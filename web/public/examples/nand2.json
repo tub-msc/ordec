@@ -1,0 +1,88 @@
+{
+  "root": {
+    "type": "row",
+    "content": [
+      {
+        "type": "stack",
+        "content": [
+          {
+            "type": "component",
+            "size": "1fr",
+            "id": "",
+            "maximised": false,
+            "isClosable": false,
+            "reorderEnabled": true,
+            "title": "Source Editor",
+            "componentType": "editor",
+            "componentState": {
+              "source": "cell Nand2:\n    symbol:\n        output y (17,13)\n        input a  (1,10)\n        input b  (1,21)\n        input vdd (1,19)\n        input vss (1,0)\n    schematic:\n        net x # Between n1 and n2\n\n        Nmos n1(pos=(4,1), s -- vss, d -- x, g -- a)\n        Nmos n2(pos=(4,7),  s -- x, d -- y, g -- b)\n        Pmos p1(pos=(4,14), s -- vdd, d -- y, g -- a)\n        \n        # Alternative way to connect instance:\n        Pmos p2:\n            .pos = (12,14)\n            .s -- vdd\n            .d -- y\n            .g -- b\n\n        # Connections can also be added after declaration of the instance:\n        n1.b -- vss\n        n2.b -- vss\n        p1.b -- vdd\n        p2.b -- vdd\n        \n        # Paramters:\n        p1.$w = 100n\n        p2.$w = 200n\n        # ...\n        ",
+              "sourceType": "ord"
+            }
+          }
+        ],
+        "size": "50%",
+        "id": "",
+        "maximised": false,
+        "isClosable": false,
+        "activeItemIndex": 0
+      },
+      {
+        "type": "stack",
+        "content": [
+          {
+            "type": "component",
+            "size": "1fr",
+            "id": "",
+            "maximised": false,
+            "isClosable": true,
+            "reorderEnabled": true,
+            "title": "Result View",
+            "componentType": "result",
+            "componentState": {
+              "view": "Nand2().schematic"
+            }
+          }
+        ],
+        "size": "50%",
+        "id": "",
+        "maximised": false,
+        "isClosable": true,
+        "activeItemIndex": 0
+      }
+    ],
+    "size": "1fr",
+    "id": "",
+    "isClosable": true
+  },
+  "openPopouts": [],
+  "settings": {
+    "constrainDragToContainer": true,
+    "reorderEnabled": true,
+    "popoutWholeStack": false,
+    "blockedPopoutsThrowError": true,
+    "closePopoutsOnUnload": true,
+    "responsiveMode": "none",
+    "tabOverlapAllowance": 0,
+    "reorderOnTabMenuClick": true,
+    "tabControlOffset": 10,
+    "popInOnClose": false
+  },
+  "dimensions": {
+    "borderWidth": 5,
+    "borderGrabWidth": 5,
+    "defaultMinItemHeight": "0px",
+    "defaultMinItemWidth": "10px",
+    "headerHeight": 20,
+    "dragProxyWidth": 300,
+    "dragProxyHeight": 200
+  },
+  "header": {
+    "show": "top",
+    "popout": false,
+    "dock": "dock",
+    "close": "close",
+    "maximise": "maximise",
+    "minimise": "minimise",
+    "tabDropdown": "additional tabs"
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "root": {
+    "type": "column",
+    "content": [
+      {
+        "type": "stack",
+        "content": [
+          {
+            "type": "component",
+            "size": "1fr",
+            "id": "",
+            "maximised": false,
+            "isClosable": false,
+            "reorderEnabled": true,
+            "title": "Source Editor",
+            "componentType": "editor",
+            "componentState": {
+              "source": "cell Ringosc:\n    symbol:\n        output y (24,4)\n        input vdd (1,8)\n        input vss (1,1)\n\n    schematic:\n\n        Inv i0:\n            .pos = (3,2)\n            .vdd -- vdd\n            .a   -- y\n            .vss -- vss\n            .y   -- i1.a\n\n        Inv i1:\n            .pos = (10,2)\n            .vdd -- vdd\n            .vss -- vss\n            .y   -- i2.a\n            .a   -- i0.y\n\n        Inv i2:\n            .pos = (17,2)\n            .vdd -- vdd\n            .y   -- y\n            .vss -- vss\n            .a   -- i1.y",
+              "sourceType": "ord"
+            }
+          }
+        ],
+        "size": "39.80582524271845%",
+        "id": "",
+        "maximised": false,
+        "isClosable": false,
+        "activeItemIndex": 0
+      },
+      {
+        "type": "stack",
+        "content": [
+          {
+            "type": "component",
+            "size": "1fr",
+            "id": "",
+            "maximised": false,
+            "isClosable": true,
+            "reorderEnabled": true,
+            "title": "Result View",
+            "componentType": "result",
+            "componentState": {
+              "view": "Ringosc().schematic"
+            }
+          }
+        ],
+        "size": "60.19417475728155%",
+        "id": "",
+        "maximised": false,
+        "isClosable": true,
+        "activeItemIndex": 0
+      }
+    ],
+    "size": "1fr",
+    "id": "",
+    "isClosable": true
+  },
+  "openPopouts": [],
+  "settings": {
+    "constrainDragToContainer": true,
+    "reorderEnabled": true,
+    "popoutWholeStack": false,
+    "blockedPopoutsThrowError": true,
+    "closePopoutsOnUnload": true,
+    "responsiveMode": "none",
+    "tabOverlapAllowance": 0,
+    "reorderOnTabMenuClick": true,
+    "tabControlOffset": 10,
+    "popInOnClose": false
+  },
+  "dimensions": {
+    "borderWidth": 5,
+    "borderGrabWidth": 5,
+    "defaultMinItemHeight": "0px",
+    "defaultMinItemWidth": "10px",
+    "headerHeight": 20,
+    "dragProxyWidth": 300,
+    "dragProxyHeight": 200
+  },
+  "header": {
+    "show": "top",
+    "popout": false,
+    "dock": "dock",
+    "close": "close",
+    "maximise": "maximise",
+    "minimise": "minimise",
+    "tabDropdown": "additional tabs"
+  }
+}

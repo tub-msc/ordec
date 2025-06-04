@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="65.775978mm"
+   height="25.626549mm"
+   viewBox="0 0 65.775978 25.626549"
+   version="1.1"
+   id="svg488"
+   inkscape:version="1.2.2 (b0a8486541, 2022-12-01)"
+   sodipodi:docname="ordec_logo.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview490"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     showgrid="false"
+     inkscape:zoom="6.1005612"
+     inkscape:cx="124.25086"
+     inkscape:cy="74.501343"
+     inkscape:window-width="2560"
+     inkscape:window-height="1387"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs485" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-0.59531235,-2.5523642)">
+    <g
+       id="g468"
+       transform="matrix(0.35277777,0,0,-0.35277777,-71.684443,262.97427)">
+      <g
+         id="g110">
+        <text
+           xml:space="preserve"
+           transform="matrix(1,0,0,-1,203.2,690.989)"
+           style="font-variant:normal;font-weight:bold;font-size:72px;font-family:Carlito;-inkscape-font-specification:Carlito-Bold;writing-mode:lr-tb;fill:#c00000;fill-opacity:1;fill-rule:nonzero;stroke:none"
+           id="text114"><tspan
+             x="0 48.672001 89.136002 134.496 150.76801"
+             y="0"
+             sodipodi:role="line"
+             id="tspan112">ORD C</tspan></text>
+      </g>
+      <g
+         id="g116">
+        <text
+           xml:space="preserve"
+           transform="matrix(1,0,0,-1,323.5,666.089)"
+           style="font-style:italic;font-variant:normal;font-weight:bold;font-size:72px;font-family:Carlito;-inkscape-font-specification:Carlito-BoldItalic;writing-mode:lr-tb;fill:#c00000;fill-opacity:1;fill-rule:nonzero;stroke:none"
+           id="text120"><tspan
+             x="0"
+             y="0"
+             id="tspan118">e</tspan></text>
+      </g>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,119 @@
+{
+  "root": {
+    "type": "row",
+    "content": [
+      {
+        "type": "column",
+        "content": [
+          {
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": false,
+                "reorderEnabled": true,
+                "title": "Source Editor",
+                "componentType": "editor",
+                "componentState": {
+                  "source": "class VoltageDivider(Cell):\n    @generate(Schematic)\n    def schematic(self, node):\n        node.vdd = Net()\n        node.vss = Net()\n        node.a = Net()\n        node.b = Net()\n\n        s_vdc = Vdc(dc=R(1)).symbol\n        s_gnd = Gnd().symbol\n        s_res = Res(r=R(100)).symbol\n\n        node % SchemInstance(pos=Vec2R(x=5,y=0), ref=s_gnd, portmap={s_gnd.p: node.vss})\n        node % SchemInstance(pos=Vec2R(x=0,y=6), ref=s_vdc, portmap={s_vdc.m: node.vss, s_vdc.p: node.vdd})\n        node % SchemInstance(pos=Vec2R(x=5,y=6), ref=s_res, portmap={s_res.m: node.vss, s_res.p: node.a})\n        node % SchemInstance(pos=Vec2R(x=5,y=11), ref=s_res, portmap={s_res.m: node.a,  s_res.p: node.b})\n        node % SchemInstance(pos=Vec2R(x=5,y=16), ref=s_res, portmap={s_res.m: node.b,  s_res.p: node.vdd})\n        \n        node.vss % SchemPoly(vertices=[Vec2R(x=7, y=4), Vec2R(x=7, y=5), Vec2R(x=7, y=6)])\n        node.vss % SchemPoly(vertices=[Vec2R(x=2, y=6), Vec2R(x=2, y=5), Vec2R(x=7, y=5)])\n        node.vdd % SchemPoly(vertices=[Vec2R(x=2, y=10), Vec2R(x=2, y=21), Vec2R(x=7, y=21), Vec2R(x=7, y=20)])\n        node.a % SchemPoly(vertices=[Vec2R(x=7, y=10), Vec2R(x=7, y=11)])\n        node.b % SchemPoly(vertices=[Vec2R(x=7, y=15), Vec2R(x=7, y=16)])\n        \n        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=9, uy=21))\n\n        helpers.schem_check(node, add_conn_points=True)\n\n    @generate(SimHierarchy)\n    def sim_dc(self, node):\n        sim = HighlevelSim(self.schematic, node)\n        sim.op()",
+                  "sourceType": "python"
+                }
+              }
+            ],
+            "size": "50%",
+            "id": "",
+            "maximised": false,
+            "isClosable": false,
+            "activeItemIndex": 0
+          },
+          {
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "Result View",
+                "componentType": "result",
+                "componentState": {
+                  "view": "VoltageDivider().sim_dc"
+                }
+              }
+            ],
+            "size": "50%",
+            "id": "",
+            "maximised": false,
+            "isClosable": true,
+            "activeItemIndex": 0
+          }
+        ],
+        "size": "50%",
+        "id": "",
+        "isClosable": true
+      },
+      {
+        "type": "stack",
+        "content": [
+          {
+            "type": "component",
+            "size": "1fr",
+            "id": "",
+            "maximised": false,
+            "isClosable": true,
+            "reorderEnabled": true,
+            "title": "Result View",
+            "componentType": "result",
+            "componentState": {
+              "view": "VoltageDivider().schematic"
+            }
+          }
+        ],
+        "size": "50%",
+        "id": "",
+        "maximised": false,
+        "isClosable": true,
+        "activeItemIndex": 0
+      }
+    ],
+    "size": "1fr",
+    "id": "",
+    "isClosable": true
+  },
+  "openPopouts": [],
+  "settings": {
+    "constrainDragToContainer": true,
+    "reorderEnabled": true,
+    "popoutWholeStack": false,
+    "blockedPopoutsThrowError": true,
+    "closePopoutsOnUnload": true,
+    "responsiveMode": "none",
+    "tabOverlapAllowance": 0,
+    "reorderOnTabMenuClick": true,
+    "tabControlOffset": 10,
+    "popInOnClose": false
+  },
+  "dimensions": {
+    "borderWidth": 5,
+    "borderGrabWidth": 5,
+    "defaultMinItemHeight": "0px",
+    "defaultMinItemWidth": "10px",
+    "headerHeight": 20,
+    "dragProxyWidth": 300,
+    "dragProxyHeight": 200
+  },
+  "header": {
+    "show": "top",
+    "popout": false,
+    "dock": "dock",
+    "close": "close",
+    "maximise": "maximise",
+    "minimise": "minimise",
+    "tabDropdown": "additional tabs"
+  }
+}

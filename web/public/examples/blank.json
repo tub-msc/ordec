@@ -1,0 +1,26 @@
+{
+  "content": [
+    {
+      "type": "row",
+      "content": [
+        {
+          "type": "component",
+          "title": "Source Editor",
+          "componentName": "editor",
+          "componentState": {
+            "sourceType": "python",
+            "source": "# Source code goes here."
+          },
+          "isClosable": false
+        },
+        {
+          "type": "component",
+          "title": "Result View",
+          "componentName": "result",
+          "componentState": {
+          }
+        }
+      ]
+    }
+  ]
+}
