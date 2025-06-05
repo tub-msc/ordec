@@ -182,32 +182,23 @@ class Netlister:
     def pinlist(self, sym: Symbol):
         return list(sym.traverse(Pin))
 
+    def portmap(self, inst, pins):
+        return [self.name_of_obj[inst.portmap[pin]] for pin in pins]
+
     def netlist_schematic(self, s: Schematic):    
-        def portmap(inst, pins):
-            return [self.name_of_obj[inst.portmap[pin]] for pin in pins]
-        
         for net in s.traverse(Net):
             self.name_obj(net, s)
         
         subckt_dep = set()
         for inst in s.traverse(SchemInstance):
-            if isinstance(inst.ref.parent, lib.Res):
-                param_r = inst.ref.parent.params.r
-                pins = [inst.ref.p, inst.ref.m]
-                self.add(self.name_obj(inst, s, prefix="r"), portmap(inst, pins), f'r={param_r.compat_str()}')
-            elif isinstance(inst.ref.parent, lib.Vdc):
-                param_dc = inst.ref.parent.params.dc
-                pins = [inst.ref.p, inst.ref.m]
-                self.add(self.name_obj(inst, s, prefix="v"), portmap(inst, pins) , f'dc {param_dc.compat_str()}')
-            elif isinstance(inst.ref.parent, lib.Gnd):
-                pins = [inst.ref.p]
-                self.add(self.name_obj(inst, s, prefix="v"), portmap(inst, pins), '0', f'dc 0')
-            elif isinstance(inst.ref.parent, lib.NoConn):
-                pass
-            else: # subckt
+            try:
+                f = inst.ref.parent.netlist_ngspice
+            except AttributeError: # subckt
                 pins = self.pinlist(inst.ref)
                 subckt_dep.add(inst.ref)
-                self.add(self.name_obj(inst, s, prefix="x"), portmap(inst, pins), self.name_obj(inst.ref.parent))
+                self.add(self.name_obj(inst, s, prefix="x"), self.portmap(inst, pins), self.name_obj(inst.ref.parent))
+            else:
+                f(self, inst, s)
         return subckt_dep
 
     def netlist_hier(self, top: Schematic):

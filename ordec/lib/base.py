@@ -43,6 +43,11 @@ class Res(Cell):
         
         node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
     
+    def netlist_ngspice(self, netlister, inst, schematic):
+        param_r = self.params.r
+        pins = [inst.ref.p, inst.ref.m]
+        netlister.add(netlister.name_obj(inst, schematic, prefix="r"), netlister.portmap(inst, pins), f'r={param_r.compat_str()}')
+
 class Cap(Cell):
     spiceSymbol = "C"
     def symbol(self, node) -> Symbol:  
@@ -103,6 +108,10 @@ class Gnd(Cell):
         #node % SchemPoly(vertices=[Vec2R(x=1.6, y=1.05), Vec2R(x=2, y=1.25), Vec2R(x=1.6, y=1.45)])
         node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
  
+    def netlist_ngspice(self, netlister, inst, schematic):
+        pins = [inst.ref.p]
+        netlister.add(netlister.name_obj(inst, schematic, prefix="v"), netlister.portmap(inst, pins), '0', f'dc 0')
+
 class NoConn(Cell):
     @generate(Symbol)
     def symbol(self, node):
@@ -113,6 +122,9 @@ class NoConn(Cell):
         node % SchemPoly(vertices=[Vec2R(x=1.5, y=1.5), Vec2R(x=2.5, y=2.5)])
 
         node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+
+    def netlist_ngspice(self, netlister, inst, schematic):
+        pass
 
 # Voltage & current sources
 # =========================
@@ -154,6 +166,11 @@ class Vdc(Cell):
 
         node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
  
+    def netlist_ngspice(self, netlister, inst, schematic):
+        param_dc = self.params.dc
+        pins = [inst.ref.p, inst.ref.m]
+        netlister.add(netlister.name_obj(inst, schematic, prefix="v"), netlister.portmap(inst, pins) , f'dc {param_dc.compat_str()}')
+
 class Idc(Cell):
     spiceSymbol = "I"
     #V: Rational = field(mandatory=True) 
@@ -183,6 +200,11 @@ class Idc(Cell):
             
 
         node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+
+    def netlist_ngspice(self, netlister, inst, schematic):
+        param_dc = self.params.dc
+        pins = [inst.ref.p, inst.ref.m]
+        netlister.add(netlister.name_obj(inst, schematic, prefix="i"), netlister.portmap(inst, pins) , f'dc {param_dc.compat_str()}')
 
 class PieceWiseLinearVoltageSource(Cell):
     """
