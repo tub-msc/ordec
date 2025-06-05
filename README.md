@@ -24,7 +24,7 @@ Then, visit http://localhost:8100 to access the web interface and try out exampl
 
 ![Web interface screenshot](docs/screenshot_demo.png)
 
-Further documentation of ORDeC is found in the *docs/* folder and will also shortly be available online.
+Further documentation is located in the *docs/* folder and is available online: https://ordec.readthedocs.io/
 
 ## Motivation
 

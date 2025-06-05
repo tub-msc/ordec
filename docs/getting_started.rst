@@ -7,7 +7,7 @@ Try it out (using Docker)
 The easiest way to get started is via Docker::
 
     docker build . -t ordec
-    docker run -p 127.0.0.1:8100:8100 -it ordec
+    docker run --rm -p 127.0.0.1:8100:8100 -it ordec
 
 Then, visit http://localhost:8100 for the webinterface and examples.
 
