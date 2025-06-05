@@ -1,0 +1,10 @@
+cell Inv:
+    symbol:
+        output y (10,7)
+        input a (1,7)
+        inout vdd (1,13)
+        inout vss (1,1)
+    schematic:
+
+        Nmos pd(pos = (4,2), d -- y, s -- vss, b -- vss, g -- a)
+        Pmos pu(pos = (4,8), s -- vdd, b -- vdd, d -- y, g -- a)

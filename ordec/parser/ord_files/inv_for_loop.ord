@@ -1,0 +1,23 @@
+cell Inv:
+    symbol:
+        output y (9,7)
+        input a (1,7)
+        inout vdd (2,13)
+        inout vss (2,1)
+    schematic:
+
+        Nmos pd
+        Pmos pu
+
+        pd.pos = (3,2)
+        pd.d <-> y
+        pd.s <-> vss
+        pd.b <-> vss
+
+        pu.pos = (3,8)
+        pu.s <-> vdd
+        pu.b <-> vdd
+        pu.d <-> y
+
+        for t in pd, pu:
+            t.g <-> a

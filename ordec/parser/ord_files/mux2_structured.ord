@@ -1,0 +1,33 @@
+cell Mux2:
+    symbol:
+        output y
+        input a
+        input b
+        input vdd
+        input vss
+        input s
+        input s_not
+
+    schematic:
+        vss.route = False
+        vdd.route = False
+        structured:
+            parallel:
+                series:
+                    vdd
+                    s_not
+                    s
+                    a
+                    vss
+                series:
+                    Pmos p1 (s -- vdd, b -- vdd, d -- p2.s, g -- a)
+                    Pmos p2 (s -- p1.d, b -- vdd, d -- y, g -- s_not)
+                    Nmos n2 (s -- n1.d, b -- vss, d -- y, g -- s)
+                    Nmos n1 (s -- vss, b -- vss, d -- n2.s, g -- a)
+                b
+                series:
+                    Pmos p3 (s -- vdd, b -- vdd, d -- p4.s, g -- b)
+                    Pmos p4 (s -- p3.d, b -- vdd, d -- y, g -- s)
+                    Nmos n4 (s -- n3.d, b -- vss, d -- y, g -- s_not)
+                    Nmos n3 (s -- vss, b -- vss, d -- n4.s, g -- b)
+                y

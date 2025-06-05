@@ -1,0 +1,12 @@
+cell Ringosc:
+    symbol:
+        output y (24,4)
+        input vdd (1,8)
+        input vss (1,1)
+    schematic:
+
+        Inv i0(pos = (3,2), vdd -- vdd, a -- y, vss -- vss, y -- i1.a)
+        Inv i1(pos = (10,2), vdd -- vdd, vss -- vss, y -- i2.a, a -- i0.y)
+        Inv i2(pos = (17,2), vdd -- vdd, y -- y, vss -- vss, a -- i1.y)
+
+

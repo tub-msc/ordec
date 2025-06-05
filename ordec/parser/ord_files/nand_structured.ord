@@ -1,0 +1,23 @@
+cell Nand:
+    symbol:
+        output y
+        input a
+        input b
+        input vdd
+        input vss
+    schematic:
+
+        structured:
+            parallel:
+                series:
+                    vdd
+                    a
+                    b
+                    vss
+                series:
+                    parallel:
+                        Pmos p1 (s -- vdd, b -- vdd, d -- y, g -- a)
+                        Pmos p2 (s -- vdd, b -- vdd, d -- y, g -- b)
+                    Nmos n2 (s -- n1.d, b -- vss, d -- y, g -- a)
+                    Nmos n1 (s -- vss, b -- vss, d -- n2.s, g -- b)
+                y

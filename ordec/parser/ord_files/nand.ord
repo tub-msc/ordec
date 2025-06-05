@@ -1,0 +1,38 @@
+cell Nand:
+    symbol:
+        output y (25,6)
+        input a  (1,4)
+        input b  (1,17)
+        input vdd (1,23)
+        input vss (1,1)
+    schematic:
+
+        Nmos n1, n2
+        Pmos p1, p2
+
+
+        n1.pos = (10,2)
+        n2.pos = (10,10)
+        p1.pos = (5,18)
+        p2.pos = (15,18)
+
+        n1.d <-> n2.s
+        n1.s <-> vss
+        n1.b <-> vss
+        n1.g <-> a
+
+        n2.d <-> y
+        n2.s <-> n1.d
+        n2.b <-> vss
+        n2.g <-> b
+
+        p1.d <-> y
+        p1.s <-> vdd
+        p1.b <-> vdd
+        p1.g <-> a
+
+        p2.d <-> y
+        p2.s <-> vdd
+        p2.b <-> vdd
+        p2.g <-> b
+

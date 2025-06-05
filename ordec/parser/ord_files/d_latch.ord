@@ -1,0 +1,32 @@
+cell D_latch:
+    symbol:
+        input D (1, 7)
+        input CLK (1, 9)
+        input vdd (1, 20)
+        input vss (1, 1)
+        output Q (18, 7)
+        output Q_not (18, 8)
+
+    schematic:
+
+        SR_flip_flop sr1
+        Inv i1
+
+        vss.route = False
+        vdd.route = False
+
+        sr1.pos = (10, 5)
+        i1.pos = (3, 13)
+
+        i1.a -- D
+        i1.y -- sr1.R
+
+        sr1.S -- D
+        sr1.Q -- Q
+        sr1.CLK -- CLK
+        sr1.Q_not -- Q_not
+        sr1.R -- i1.y
+
+        for inst in i1, sr1:
+            inst.vdd -- vdd
+            inst.vss -- vss
