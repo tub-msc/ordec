@@ -1,0 +1,19 @@
+cell Inv:
+    symbol:
+        output y
+        input a
+        inout vdd
+        inout vss
+    schematic:
+
+        Pmos p1 (s -- vdd, b -- vdd, d -- y, g -- a)
+        Nmos n1 (s -- vss, b -- vss, d -- y, g -- a)
+
+        above(vdd, p1, 2)
+        above(p1, n1, 3)
+        above(a, n1, 1)
+        above(y, n1, 1)
+        left(a, n1, 2)
+        left(a, p1, 2)
+        right(y, n1, 2)
+        below(vss, n1, 2)

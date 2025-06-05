@@ -1,0 +1,30 @@
+cell Inv:
+    symbol:
+        output y
+        input a
+        inout vdd
+        inout vss
+    schematic:
+
+        Nmos pd
+        Pmos pu
+
+        pd.d <-> y
+        pd.s <-> vss
+        pd.b <-> vss
+
+        pu.s <-> vdd
+        pu.b <-> vdd
+        pu.d <-> y
+
+        above(vdd, pu, 2)
+        above(pu, pd, 3)
+        above(a, pd, 1)
+        above(y, pd, 1)
+        left(a, pd, 2)
+        left(a, pu, 2)
+        right(y, pd, 2)
+        below(vss, pd, 2)
+
+        for t in pd, pu:
+            t.g <-> a

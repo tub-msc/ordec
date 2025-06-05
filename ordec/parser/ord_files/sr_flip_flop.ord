@@ -1,0 +1,40 @@
+cell SR_flip_flop:
+    symbol:
+        input S (1, 16)
+        input R (1, 6)
+        input CLK (8, 12)
+        input vdd (2, 22)
+        input vss (2, 0)
+        output Q (33, 16)
+        output Q_not (33, 6)
+
+    schematic:
+
+        Nand n1, n2, n3, n4
+        vss.route = False
+        vdd.route = False
+
+        n1.pos = (10, 14)
+        n2.pos = (10, 3)
+        n3.pos = (21, 14)
+        n4.pos = (21, 2)
+
+        n1.a -- S
+        n1.b -- CLK
+        n1.y -- n3.a
+
+        n2.a -- CLK
+        n2.y -- n4.b
+        n2.b -- R
+
+        n3.b -- Q_not
+        n3.a -- n1.y
+        n3.y -- Q
+
+        n4.a -- Q
+        n4.b -- n2.y
+        n4.y -- Q_not
+
+        for inst in n1, n2, n3, n4:
+            inst.vdd -- vdd
+            inst.vss -- vss

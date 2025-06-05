@@ -1,0 +1,28 @@
+cell Inv:
+    symbol:
+        input vdd (5, 25)
+        input vss (5, 1)
+        input a (1, 10)
+    schematic:
+        net x
+
+        Pmos p1:
+            .pos = (2, 15)
+            .s -- vdd
+            .b -- vdd
+            .g -- a
+            .d -- x
+
+        Pmos p2:
+            .pos = (12, 15)
+            .s -- vdd
+            .b -- vdd
+            .g -- a
+            .d -- x
+
+        Nmos n1:
+            .pos = (7, 5)
+            .s -- vss
+            .b -- vss
+            .g -- a
+            .d -- x

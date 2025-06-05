@@ -1,0 +1,16 @@
+cell Ringosc:
+    symbol:
+        output y
+        input vdd
+        input vss
+    schematic:
+
+        structured:
+            parallel:
+                series:
+                    vdd
+                    vss
+                Inv i0(vdd -- vdd, a -- y, vss -- vss, y -- i1.a)
+                Inv i1(vdd -- vdd, vss -- vss, y -- i2.a, a -- i0.y)
+                Inv i2(vdd -- vdd, y -- y, vss -- vss, a -- i1.y)
+                y

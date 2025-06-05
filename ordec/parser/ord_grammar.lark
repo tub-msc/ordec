@@ -1,0 +1,152 @@
+// SPDX-FileCopyrightText: 2025 ORDeC contributors
+// SPDX-License-Identifier: Apache-2.0
+
+?start: cell*
+
+cell: _CELL NAME _COLON _NL _INDENT symbol schematic _DEDENT
+
+multi_symbol_stmt: symbol_stmt+
+multi_schematic_stmt: schematic_stmt+
+
+symbol_stmt: (PASS? _NL)
+            | port_declaration
+
+schematic_stmt: (PASS? _NL)
+            | port_declaration
+            | assign_map
+            | assign_pos
+            | assign_route
+            | assign_attribute
+            | assign_orientation
+            | constraint
+            | for_loop
+            | structured
+            | declaration
+            | net_declaration
+
+// Standard nested statements
+_nested_symbol_stmts: _COLON _NL _INDENT multi_symbol_stmt _DEDENT
+_nested_schematic_stmts: _COLON _NL _INDENT multi_schematic_stmt _DEDENT
+
+// Nested declarations
+_nested_declaration: _COLON _NL _INDENT _inner_assignments _DEDENT
+_ctype_declaration: _LPAR inner_assignment_option (_COMMA inner_assignment_option)* _RPAR
+_inner_assignments: (_DOT inner_assignment_option _NL)+
+inner_assignment_option: (POS ASSIGN tuple_expr)
+    | (NAME CONNECT instance_access)
+    | (DOLLAR NAME ASSIGN number NAME?)
+    | (ORIENTATION ASSIGN orientations)
+
+schematic: _SCHEMATIC _nested_schematic_stmts
+symbol: _SYMBOL _nested_symbol_stmts
+
+// grammar for the nested positioning
+_structure_options: _COLON _NL _INDENT (NAME _NL | declaration _NL | series | parallel)+ _DEDENT
+structured: _STRUCTURED _structure_options
+series: _SERIES _structure_options
+parallel: _PARALLEL _structure_options
+
+// declarations
+declaration: NAME NAME (_nested_declaration | (_COMMA NAME)+ | _ctype_declaration)?
+port_declaration: (INPUT | INOUT| OUTPUT) NAME tuple_expr? _NL
+net_declaration: _NET NAME (_COMMA NAME)* _NL
+
+// assignments and constraints
+instance_access: NAME (_DOT NAME)?
+attribute_access: NAME _DOT DOLLAR NAME
+tuple_expr: _LPAR math_expr _COMMA math_expr _RPAR
+assign_pos: NAME _DOT POS ASSIGN tuple_expr _NL
+assign_route: NAME? _DOT ROUTE ASSIGN bool _NL
+assign_map: instance_access CONNECT instance_access _NL
+assign_attribute: attribute_access ASSIGN number NAME? _NL
+assign_orientation: NAME _DOT ORIENTATION ASSIGN orientations _NL
+constraint: direction _LPAR  NAME _COMMA NAME (_COMMA UNSIGNED)? _RPAR _NL
+for_loop: _FOR NAME _IN (range_expr | name_expr) _nested_schematic_stmts
+
+range_expr: _RANGE _LPAR UNSIGNED _COMMA UNSIGNED _RPAR
+name_expr: NAME (_COMMA NAME)*
+
+direction: (ABOVE | BELOW | LEFT | RIGHT)
+bool: (TRUE | FALSE)
+orientations: (NORTH | EAST | SOUTH | WEST | FLIP_X | FLIP_Y)
+number: MINUS? (UNSIGNED | FLOAT)
+
+math_expr: math_expr PLUS term
+         | math_expr MINUS term
+         | term
+
+term: term TIMES factor
+    | term DIV factor
+    | factor
+
+factor: MINUS factor
+      | PLUS factor
+      | UNSIGNED
+      | FLOAT
+      | "(" math_expr ")"
+
+NAME: ("_"|LETTER) ("_"|LETTER|DIGIT)*
+UNSIGNED: DIGIT+
+ABOVE: "above"
+BELOW: "below"
+LEFT: "left"
+RIGHT: "right"
+
+CONNECT: ("<->" | "--")
+_SCHEMATIC: "schematic"
+_SYMBOL: "symbol"
+_STRUCTURED: "structured"
+_SERIES: "series"
+_PARALLEL: "parallel"
+_NET: "net"
+_FOR: "for"
+_IN: "in"
+_NL: /(\r?\n[\t ]*)+/
+_CELL: "cell"
+ORIENTATION: "orientation"
+PASS: "pass"
+INPUT: "input"
+OUTPUT: "output"
+INOUT: "inout"
+NORTH: "North"
+WEST: "West"
+SOUTH: "South"
+EAST: "East"
+FLIP_X: "Flipx"
+FLIP_Y: "Flipy"
+TRUE: "True"
+FALSE: "False"
+POS: "pos"
+ROUTE: "route"
+BULK: ("<-" | "->")
+ASSIGN: "="
+DOLLAR: "$"
+PLUS: "+"
+MINUS: "-"
+TIMES: "*"
+DIV: "/"
+_COLON: ":"
+_COMMA: ","
+_LPAR: "("
+_RPAR: ")"
+_LBRA: "["
+_RBRA: "]"
+_DOT: "."
+_GATE: "-|"
+_RANGE: "range"
+
+
+// Rules for comments
+COMMENT_SINGLE: /#.*/
+COMMENT_MULTI: /\/\*.*?\*\//s
+
+// Ignore both types of comments
+%ignore COMMENT_SINGLE
+%ignore COMMENT_MULTI
+
+%import common.WS_INLINE
+%import common.LETTER
+%import common.DIGIT
+%import common.FLOAT
+%declare _INDENT _DEDENT
+%ignore WS_INLINE

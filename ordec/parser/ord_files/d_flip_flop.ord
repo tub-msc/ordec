@@ -1,0 +1,38 @@
+cell D_flip_flop:
+    symbol:
+        input D (1, 14)
+        input CLK (1, 9)
+        input vdd (1, 20)
+        input vss (1, 1)
+        output Q (23, 14)
+        output Q_not (23, 15)
+
+    schematic:
+
+        D_latch dl1, dl2
+        Inv i1
+        net q_not_1
+
+        vss.route = False
+        vdd.route = False
+
+        i1.pos = (7, 3)
+        dl1.pos = (7, 12)
+        dl2.pos = (16, 12)
+
+        dl1.D -- D
+        dl1.Q -- dl2.D
+        dl1.CLK -- CLK
+        dl1.Q_not -- q_not_1
+
+        dl2.Q -- Q
+        dl2.D -- dl1.Q
+        dl2.CLK -- i1.y
+        dl2.Q_not -- Q_not
+
+        i1.a -- CLK
+        i1.y -- dl2.CLK
+
+        for inst in i1, dl1, dl2:
+            inst.vdd -- vdd
+            inst.vss -- vss

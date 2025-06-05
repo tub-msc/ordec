@@ -1,0 +1,21 @@
+cell D_latch:
+    symbol:
+        input D
+        input LE
+        input vdd
+        input vss
+        output Q
+    schematic:
+
+        structured:
+            parallel:
+                series:
+                    LE
+                    D
+                    vss
+                Inv i2 (vdd -- vdd, vss -- vss, a -- LE, y -- m1.s_not)
+                series:
+                    vdd
+                    Mux2 m1 (s -- LE, s_not -- i2.y, vdd -- vdd, vss -- vss, a -- Q, b -- D, y -- i1.a)
+                Inv i1 (vdd -- vdd, vss -- vss, a -- m1.y, y -- Q)
+                Q

@@ -1,0 +1,32 @@
+cell D_flip_flop:
+    symbol:
+        input vdd
+        input vss
+        input CLK
+        input D
+        output Q
+
+    schematic:
+        net s_val
+        net CLK_not
+
+        vdd.route = False
+        vss.route = False
+        CLK_not.route = False
+        CLK.route = False
+
+        structured:
+            parallel:
+                series:
+                    D
+                    CLK
+                    vdd
+                    vss
+                series:
+                    Mux2 m1 (vdd -- vdd, vss -- vss, s -- CLK, s_not -- CLK_not, a -- D, b -- s_val, y -- i1.a)
+                    Inv clk_inv (vdd -- vdd, vss -- vss, a -- CLK, y -- CLK_not)
+                Inv i1 (vdd -- vdd, vss -- vss, a -- m1.y, y -- s_val)
+                Mux2 m2 (vdd -- vdd, vss -- vss, s -- CLK_not, s_not -- CLK, a -- s_val, b -- Q, y -- i2.a)
+                Inv i2 (vdd -- vdd, vss -- vss, a -- m2.y, y -- Q)
+                Q
+
