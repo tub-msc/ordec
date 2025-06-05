@@ -3,28 +3,59 @@
     "type": "row",
     "content": [
       {
-        "type": "stack",
+        "type": "column",
         "content": [
           {
-            "type": "component",
-            "size": "1fr",
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": false,
+                "reorderEnabled": true,
+                "title": "Source Editor",
+                "componentType": "editor",
+                "componentState": {
+                  "source": "cell DiffPair:\n    symbol:\n        input vdd (1,21)\n        input vss (1,0)\n        input vin1 (1,10)\n        input vin2 (1,13)\n        input vbias (5,3)\n        output vout1 (17,14)\n        output vout2 (17,15)\n    schematic:\n        net s\n        Nmos M3(pos=(7,1), s -- vss, g -- vbias, d -- s)\n        Nmos M1(pos=(3,8), s -- s, d -- vout1, g -- vin1)\n        Nmos M2(pos=(15,8), orientation = Flipy, s -- s, d -- vout2, g -- vin2)\n        Res R1(pos=(3,16), m -- vout1, p -- vdd)\n        Res R2(pos=(11,16),  m -- vout2, p -- vdd)\n        \n        for m in M1, M2, M3:\n            m.b -- vss\n            m.$l = 1u\n            m.$w = 5u\n        \n        for r in R1, R2:\n            r.$r = 250k\n            \ncell DiffPairTb:\n    symbol:\n        pass\n    schematic:\n        net vss\n        net vdd\n        net vbias\n        net vin1\n        net vin2\n        net vout1\n        net vout2\n        \n        DiffPair DUT:\n            .pos=(23,6)\n            .vss -- vss\n            .vdd -- vdd\n            .vbias -- vbias\n            .vin1 -- vin1\n            .vin2 -- vin2\n            .vout1 -- vout1\n            .vout2 -- vout2\n        Gnd gnd(pos=(0,0), p -- vss)\n\n        Vdc src_vdd(pos=(0,6), m -- vss, p -- vdd,    $dc=5)\n        Vdc src_vbias(pos=(5,6), m -- vss, p -- vbias,$dc=1.5)\n        Vdc src_vin2(pos=(10,6), m -- vss, p -- vin2, $dc=3.05)\n        Vdc src_vin1(pos=(15,6), m -- vss, p -- vin1, $dc=2.95)\n",
+                  "sourceType": "ord"
+                }
+              }
+            ],
+            "size": "50%",
             "id": "",
             "maximised": false,
             "isClosable": false,
-            "reorderEnabled": true,
-            "title": "Source Editor",
-            "componentType": "editor",
-            "componentState": {
-              "source": "cell Nand2:\n    symbol:\n        output y (17,13)\n        input a  (1,10)\n        input b  (1,21)\n        input vdd (1,19)\n        input vss (1,0)\n    schematic:\n        net x # Between n1 and n2\n\n        Nmos n1(pos=(4,1), s -- vss, d -- x, g -- a)\n        Nmos n2(pos=(4,7),  s -- x, d -- y, g -- b)\n        Pmos p1(pos=(4,14), s -- vdd, d -- y, g -- a)\n        \n        # Alternative way to connect instance:\n        Pmos p2:\n            .pos = (12,14)\n            .s -- vdd\n            .d -- y\n            .g -- b\n\n        # Connections can also be added after declaration of the instance:\n        n1.b -- vss\n        n2.b -- vss\n        p1.b -- vdd\n        p2.b -- vdd\n        \n        # Set width and length parameters for all transistors:\n        for t in p1, p2, n1, n2:\n            t.$w = 1u\n            t.$l = 500n\n\ncell Nand2Tb:\n    symbol:\n        pass\n    schematic:\n        net vdd\n        net vss\n        net a\n        net b\n        net y\n        \n        Nand2 DUT:\n            .pos=(17,6)\n            .vdd -- vdd\n            .vss -- vss\n            .a -- a\n            .b -- b\n            .y -- y\n            \n        Gnd gnd(pos=(0,0), p -- vss)\n        \n        Vdc src_vdd(pos=(0,6), m -- vss, p -- vdd,    $dc=5)\n        Vdc src_a(pos=(10,6), m -- vss, p -- a,$dc=5)\n        Vdc src_b(pos=(5,6), m -- vss, p -- b, $dc=0)\n",
-              "sourceType": "ord"
-            }
+            "activeItemIndex": 0
+          },
+          {
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "Result View",
+                "componentType": "result",
+                "componentState": {
+                  "view": "DiffPairTb().sim_dc"
+                }
+              }
+            ],
+            "size": "50%",
+            "id": "",
+            "maximised": false,
+            "isClosable": true,
+            "activeItemIndex": 0
           }
         ],
         "size": "50%",
         "id": "",
-        "maximised": false,
-        "isClosable": false,
-        "activeItemIndex": 0
+        "isClosable": true
       },
       {
         "type": "column",
@@ -42,11 +73,11 @@
                 "title": "Result View",
                 "componentType": "result",
                 "componentState": {
-                  "view": "Nand2().schematic"
+                  "view": "DiffPair().schematic"
                 }
               }
             ],
-            "size": "53.59844130180847%",
+            "size": "59.21450151057401%",
             "id": "",
             "maximised": false,
             "isClosable": true,
@@ -65,34 +96,11 @@
                 "title": "Result View",
                 "componentType": "result",
                 "componentState": {
-                  "view": "Nand2Tb().schematic"
+                  "view": "DiffPairTb().schematic"
                 }
               }
             ],
-            "size": "25.778643721217513%",
-            "id": "",
-            "maximised": false,
-            "isClosable": true,
-            "activeItemIndex": 0
-          },
-          {
-            "type": "stack",
-            "content": [
-              {
-                "type": "component",
-                "size": "1fr",
-                "id": "",
-                "maximised": false,
-                "isClosable": true,
-                "reorderEnabled": true,
-                "title": "Result View",
-                "componentType": "result",
-                "componentState": {
-                  "view": "Nand2Tb().sim_dc"
-                }
-              }
-            ],
-            "size": "20.62291497697401%",
+            "size": "40.78549848942599%",
             "id": "",
             "maximised": false,
             "isClosable": true,

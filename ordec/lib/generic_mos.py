@@ -4,8 +4,15 @@
 from .. import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, SchemConnPoint, SchemTapPoint, generate, helpers
  
 def setup_generic_mos(netlister):
-    netlister.add('.model', 'nmosgeneric', 'NMOS', 'level=1')
-    netlister.add('.model', 'pmosgeneric', 'PMOS', 'level=1')
+    vt0 = 1.0
+    common_args = [
+        'KP=2.0e-5', # Transconductance parameter
+        'LAMBDA=0.0', # Channel length modulation parameter
+        'PHI=0.6', # Surface potential
+        'GAMMA=0.0', # Bulk threshold parameter
+    ]
+    netlister.add('.model', 'nmosgeneric', 'NMOS', 'level=1', f'VTO={vt0}', *common_args)
+    netlister.add('.model', 'pmosgeneric', 'PMOS', 'level=1', f'VTO={-vt0}', *common_args)
 
 def params_to_spice(params, allowed_keys=('l', 'w', 'ad', 'as', 'm')):
     spice_params = []

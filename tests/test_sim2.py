@@ -60,14 +60,14 @@ def test_generic_mos_netlister():
     nl.netlist_hier(lib_test.NmosSourceFollowerTb().schematic)
     netlist = nl.out()
 
-    assert netlist.count('.model nmosgeneric NMOS level=1\n') == 1
-    assert netlist.count('.model pmosgeneric PMOS level=1\n') == 1
+    assert netlist.count('.model nmosgeneric NMOS level=1') == 1
+    assert netlist.count('.model pmosgeneric PMOS level=1') == 1
 
 def test_generic_mos_nmos_sourcefollower():
-    assert lib_test.NmosSourceFollowerTb(vin=R(2)).sim_dc.o.dc_voltage == 1.683772
-    assert lib_test.NmosSourceFollowerTb(vin=R(3)).sim_dc.o.dc_voltage == 2.683772
+    assert lib_test.NmosSourceFollowerTb(vin=R(2)).sim_dc.o.dc_voltage == 0.6837722
+    assert lib_test.NmosSourceFollowerTb(vin=R(3)).sim_dc.o.dc_voltage == 1.683772
 
 def test_generic_mos_inv():
     assert lib_test.InvTb(vin=R(0)).sim_dc.o.dc_voltage  == 5.0
     assert lib_test.InvTb(vin=R('2.5')).sim_dc.o.dc_voltage == 2.5
-    assert lib_test.InvTb(vin=R(5)).sim_dc.o.dc_voltage == 2.505e-08
+    assert lib_test.InvTb(vin=R(5)).sim_dc.o.dc_voltage == 3.13125e-08

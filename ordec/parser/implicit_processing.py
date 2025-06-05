@@ -132,8 +132,7 @@ def postprocess(self, node, outline, postprocess_data: PostProcess):
     #do the routing
     if postprocess_data.routing.get("__self__", True) is not False:
         schematic_routing(node, outline, postprocess_data.routing)
-    #Add helpers
-    schem_check(node, add_conn_points=True, add_terminal_taps=True)
+    
     #Add helpers
     # WARNING/TODO: Temporarily disabled schem_check here for better interactivity (web):
     #schem_check(node, add_conn_points=True, add_terminal_taps=True)
