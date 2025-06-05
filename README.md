@@ -22,21 +22,23 @@ docker run -p 127.0.0.1:8100:8100 -it ordec
 
 Then, visit http://localhost:8100 to access the web interface and try out examples.
 
+![Web interface screenshot](docs/screenshot_demo.png)
+
 Further documentation of ORDeC is found in the *docs/* folder and will also shortly be available online.
 
 ## Motivation
 
 ORDeC's goal is to provide an accessible and streamlined interface to design and analyze analog, mixed-signal and custom digital integrated circuits from schematic to layout.
 
-Established open-source interfaces for IC design are mostly based on old-fashioned technologies (Tcl/Tk, C etc.) and lack a coherent experience across design stages such as schematic entry, simulation and layout. ORDeC aims to provide a coherent experience across design stages using an interactive web interface. In the future, a public web-based ORDeC instance might enable users to get started without any local setup. Furthermore, ORDeC's core is written in Python and designed to allow analyzing and transforming design data with ease.
+Established open-source interfaces for IC design are mostly based on old-fashioned technologies (Tcl/Tk, C etc.) and lack a coherent experience across design stages such as schematic entry, simulation and layout. ORDeC offers a hardware description language (HDL) and interactive web interface across design stages. In the future, a public web-based ORDeC instance might make it possible to get started in custom IC design without any local setup. ORDeC's core is written in Python and is designed to make it easy to analyze and transform design data.
 
-Why a textual hardware description language (HDL) instead of a WYSIWYG interface? The motivation is to make custom IC design more software-like. Design data is made transparent and suitable for software-style version control (e.g. Git), which improves maintainability and makes it possible to adapt workflows from software engineering.
+Why a new HDL instead of a WYSIWYG interface? The motivation is to make custom IC design more software-like. Design data is made transparent and suitable for software-style version control (e.g. Git), which improves maintainability and makes it possible to adapt workflows from software engineering.
 
-Further goals of ORDeC are: built-in support for open PDKs, and visualizing silicon area, energy efficiency as sustainability design parameters. 
+Further goals of ORDeC are: built-in support for open PDKs, and visualizing silicon area and energy efficiency as sustainability design parameters. 
 
 ## Contact
 
-Questions and feedback via GitHub issues are welcome. Alternatively, feel free to email Tobias Kaiser (kaiser@tu-berlin.de).
+Questions and feedback via GitHub issues are welcome! Alternatively, feel free to email Tobias Kaiser (kaiser@tu-berlin.de).
 
 ## Acknowledgements
 
