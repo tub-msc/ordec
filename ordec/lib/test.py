@@ -5,8 +5,8 @@ from .. import Cell, Vec2R, Rect4R, Pin, Symbol, Schematic, PinType, Rational as
 from ..helpers import qinst
 from ..sim2.sim_hierarchy import HighlevelSim
 
-from .generic_mos import Or2, Nmos, Pmos, Ringosc
-from .base import Gnd, NoConn, Res, Vdc
+from .generic_mos import Or2, Nmos, Pmos, Ringosc, Inv
+from .base import Gnd, NoConn, Res, Vdc, Idc
 
 class RotateTest(Cell):
     @generate(Schematic)
@@ -420,6 +420,63 @@ class ResdivHierTb(Cell):
     def sim_hierarchy(self, node):
         HighlevelSim(self.schematic, node)
         # Build SimHierarchy, but runs no simulations.
+
+    @generate(SimHierarchy)
+    def sim_dc(self, node):
+        sim = HighlevelSim(self.schematic, node)
+        sim.op()
+
+class NmosSourceFollowerTb(Cell):
+    """Nmos (generic_mos) source follower with optional parameter vin."""
+    @generate(Schematic)
+    def schematic(self, node):
+        node.vdd = Net()
+        node.i = Net()
+        node.o = Net()
+        node.vss = Net()
+        try:
+            vin = self.params.vin
+        except AttributeError:
+            vin = R(2)
+
+        node % qinst(pos=Vec2R(x=11,y=12), ref=Nmos(w=R('5u'), l=R('1u')).symbol, d = node.vdd, s=node.o, g=node.i, b=node.vss)
+        
+        node % qinst(pos=Vec2R(x=11,y=0), ref=Gnd().symbol, p=node.vss)
+        node % qinst(pos=Vec2R(x=0,y=6), ref=Vdc(dc=R('5')).symbol, m=node.vss, p = node.vdd)
+        node % qinst(pos=Vec2R(x=5,y=6), ref=Vdc(dc=vin).symbol, m=node.vss, p = node.i)
+        node % qinst(pos=Vec2R(x=11,y=6), ref=Idc(dc=R('5u')).symbol, m=node.vss, p = node.o)
+        
+        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=16, uy=22))
+        
+        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
+
+    @generate(SimHierarchy)
+    def sim_dc(self, node):
+        sim = HighlevelSim(self.schematic, node)
+        sim.op()
+
+class InvTb(Cell):
+    @generate(Schematic)
+    def schematic(self, node):
+        node.vdd = Net()
+        node.i = Net()
+        node.o = Net()
+        node.vss = Net()
+        try:
+            vin = self.params.vin
+        except AttributeError:
+            vin = R(0)
+
+        node % qinst(pos=Vec2R(x=11,y=9), ref=Inv().symbol, vdd = node.vdd, vss=node.vss, a=node.i, y=node.o)
+        node % qinst(pos=Vec2R(x=16,y=9), ref=NoConn().symbol, a=node.o)
+        
+        node % qinst(pos=Vec2R(x=11,y=0), ref=Gnd().symbol, p=node.vss)
+        node % qinst(pos=Vec2R(x=0,y=6), ref=Vdc(dc=R('5')).symbol, m=node.vss, p = node.vdd)
+        node % qinst(pos=Vec2R(x=5,y=6), ref=Vdc(dc=vin).symbol, m=node.vss, p = node.i)
+        
+        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=20, uy=14))
+        
+        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
 
     @generate(SimHierarchy)
     def sim_dc(self, node):

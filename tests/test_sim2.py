@@ -3,7 +3,8 @@
 
 import re
 import pytest
-from ordec.sim2.ngspice import Ngspice, NgspiceError, NgspiceFatalError
+from ordec.sim2.ngspice import Ngspice, NgspiceError, NgspiceFatalError, Netlister
+from ordec import Rational as R
 from ordec.lib import test as lib_test
 
 def test_ngspice_illegal_netlist_1():
@@ -53,3 +54,20 @@ def test_sim_dc_hier():
     h = lib_test.ResdivHierTb().sim_dc
     assert h.anon_3.anon_10.m.dc_voltage == 0.5897436
     assert h.r.dc_voltage == 0.3589744
+
+def test_generic_mos_netlister():
+    nl = Netlister()
+    nl.netlist_hier(lib_test.NmosSourceFollowerTb().schematic)
+    netlist = nl.out()
+
+    assert netlist.count('.model nmosgeneric NMOS level=1\n') == 1
+    assert netlist.count('.model pmosgeneric PMOS level=1\n') == 1
+
+def test_generic_mos_nmos_sourcefollower():
+    assert lib_test.NmosSourceFollowerTb(vin=R(2)).sim_dc.o.dc_voltage == 1.683772
+    assert lib_test.NmosSourceFollowerTb(vin=R(3)).sim_dc.o.dc_voltage == 2.683772
+
+def test_generic_mos_inv():
+    assert lib_test.InvTb(vin=R(0)).sim_dc.o.dc_voltage  == 5.0
+    assert lib_test.InvTb(vin=R('2.5')).sim_dc.o.dc_voltage == 2.5
+    assert lib_test.InvTb(vin=R(5)).sim_dc.o.dc_voltage == 2.505e-08

@@ -142,7 +142,12 @@ class Netlister:
         self.obj_of_name = {}
         self.name_of_obj = {}
         self.spice_cards = []
+        self.cur_line = 0
         self.indent = 0
+        self.setup_funcs = set()
+
+    def require_setup(self, setup_func):
+        self.setup_funcs.add(setup_func)
 
     def out(self):
         return "\n".join(self.spice_cards)+"\n.end\n"
@@ -154,7 +159,8 @@ class Netlister:
                 args_flat += arg
             else:
                 args_flat.append(arg)
-        self.spice_cards.append(" "*self.indent + " ".join(args_flat))
+        self.spice_cards.insert(self.cur_line, " "*self.indent + " ".join(args_flat))
+        self.cur_line += 1
 
     def name_obj(self, obj, domain=None, prefix=""):
         try:
@@ -217,3 +223,8 @@ class Netlister:
             self.indent -= 4
             self.add(".ends", self.name_obj(symbol.parent))
             subckt_done.add(symbol)
+
+        # Add model setup lines at top:
+        self.cur_line = 1
+        for setup_func in self.setup_funcs:
+            setup_func(self)

@@ -24,7 +24,7 @@ def build_cells(source_type: str, source_data: str) -> (dict, dict):
     conn_globals['ext'] = conn_globals # <-- bad hack, this is not how it is intended...
     exec("from ordec import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, Rational, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, SchemConnPoint, SchemTapPoint, SimHierarchy, generate, helpers\nfrom ordec.sim2.sim_hierarchy import HighlevelSim", conn_globals, conn_globals)
     #exec("from ordec.lib.test import ResdivHierTb\nfrom ordec.lib import Ringosc, Inv, Res, Gnd, Vdc, Nmos, Pmos", conn_globals, conn_globals)
-    exec("from ordec.lib import Inv, Res, Gnd, Vdc, Nmos, Pmos", conn_globals, conn_globals)
+    exec("from ordec.lib import Inv, Res, Gnd, Vdc, Idc, Nmos, Pmos, NoConn", conn_globals, conn_globals)
 
     if source_type == 'python' or source_type == 'ord':
         try:

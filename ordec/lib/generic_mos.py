@@ -3,6 +3,17 @@
 
 from .. import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, SchemConnPoint, SchemTapPoint, generate, helpers
  
+def setup_generic_mos(netlister):
+    netlister.add('.model', 'nmosgeneric', 'NMOS', 'level=1')
+    netlister.add('.model', 'pmosgeneric', 'PMOS', 'level=1')
+
+def params_to_spice(params, allowed_keys=('l', 'w', 'ad', 'as', 'm')):
+    spice_params = []
+    for k, v in params.items():
+        if k not in allowed_keys:
+            continue
+        spice_params.append(f"{k}={v}")
+    return spice_params
 
 class Nmos(Cell):
     @generate(Symbol)
@@ -21,6 +32,11 @@ class Nmos(Cell):
 
         node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
 
+    def netlist_ngspice(self, netlister, inst, schematic):
+        netlister.require_setup(setup_generic_mos)
+        pins = [inst.ref.d, inst.ref.g, inst.ref.s, inst.ref.b]
+        netlister.add(netlister.name_obj(inst, schematic, prefix="m"), netlister.portmap(inst, pins), 'nmosgeneric', *params_to_spice(self.params))
+
 class Pmos(Cell):
     @generate(Symbol)
     def symbol(self, node):
@@ -37,6 +53,11 @@ class Pmos(Cell):
         node % SchemPoly(vertices=[Vec2R(x=1.6, y=1.8), Vec2R(x=2, y=2), Vec2R(x=1.6, y=2.2)])
 
         node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+
+    def netlist_ngspice(self, netlister, inst, schematic):
+        netlister.require_setup(setup_generic_mos)
+        pins = [inst.ref.d, inst.ref.g, inst.ref.s, inst.ref.b]
+        netlister.add(netlister.name_obj(inst, schematic, prefix="m"), netlister.portmap(inst, pins), 'pmosgeneric', *params_to_spice(self.params))
 
 class Inv(Cell):
     @generate(Symbol)
