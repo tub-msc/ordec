@@ -1,0 +1,22 @@
+version: 2
+
+build:
+  os: ubuntu-24.04
+  tools:
+    python: "3.11"
+  apt_packages:
+    - libgirepository1.0-dev
+    - libcairo2-dev
+    - fonts-inconsolata
+    - gir1.2-pango-1.0
+
+
+sphinx:
+   configuration: docs/conf.py
+  
+python:
+  install:
+    - requirements: docs/requirements.txt
+    - method: pip
+      path: .
+    
