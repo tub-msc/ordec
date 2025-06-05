@@ -17,7 +17,7 @@ The easiest way to get started is via docker:
 
 ```
 docker build . -t ordec
-docker run -p 127.0.0.1:8100:8100 -it ordec
+docker run --rm -p 127.0.0.1:8100:8100 -it ordec
 ```
 
 Then, visit http://localhost:8100 to access the web interface and try out examples.

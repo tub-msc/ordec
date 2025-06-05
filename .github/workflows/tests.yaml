@@ -1,0 +1,26 @@
+on: push
+jobs:
+  build:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - name: check out repository
+        uses: actions/checkout@v2
+      - name: build docker image
+        run: docker build . -t ordec
+      - name: run tests
+        run: docker run --name ordec_test -e COVERAGE_FILE=/tmp/coverage -i ordec pytest -c /usr/local/app/pytest.ini --cov-report=html:/tmp/htmlcov -o cache_dir=/tmp/pytestcache --junit-xml=/tmp/test-results.xml
+        continue-on-error: true
+      - name: retrieve test results
+        run: docker container cp ordec_test:/tmp/test-results.xml test-results.xml
+        continue-on-error: true
+      - name: display test results
+        if: always()
+        uses: pmeier/pytest-results-action@main
+        with:
+          path: test-results.xml
+          summary: true
+          display-options: fEX
+          fail-on-empty: true
+      - name: delete container
+        run: docker rm ordec_test
