@@ -209,7 +209,6 @@ class Idc(Cell):
 class PieceWiseLinearVoltageSource(Cell):
     """
     Represents a Piecewise Linear Voltage Source.
-    Connects to PySpice's PieceWiseLinearVoltageSource.
     Expects a parameter 'V' which is a list of (time, voltage) tuples.
     Example: V=[(0, 0), (1e-9, 1.8), (5e-9, 1.8), (6e-9, 0)]
     """
@@ -249,7 +248,6 @@ class PieceWiseLinearVoltageSource(Cell):
 class PulseVoltageSource(Cell):
     """
     Represents a Pulse Voltage Source.
-    Connects to PySpice's PulseVoltageSource.
     Requires parameters: initial_value, pulsed_value, delay_time,
                          rise_time, fall_time, pulse_width, period.
     """
@@ -288,7 +286,6 @@ class PulseVoltageSource(Cell):
 class SinusoidalVoltageSource(Cell):
     """
     Represents a Sinusoidal Voltage Source.
-    Connects to PySpice's SinusoidalVoltageSource.
     Requires parameters: offset, amplitude, frequency, delay.
     Optional parameter: damping_factor (defaults to 0).
     """
@@ -364,7 +361,6 @@ class PieceWiseLinearCurrentSource(Cell):
 class PulseCurrentSource(Cell):
     """
     Represents a Pulse Current Source.
-    Connects to PySpice's PulseCurrentSource.
     Uses a symbol with an internal pulse shape and an arrow indicating direction.
     Requires parameters: initial_value, pulsed_value, delay_time,
                          rise_time, fall_time, pulse_width, period.
@@ -410,7 +406,6 @@ class PulseCurrentSource(Cell):
 class SinusoidalCurrentSource(Cell):
     """
     Represents a Sinusoidal Current Source.
-    Connects to PySpice's SinusoidalCurrentSource.
     Uses a symbol with an internal sine shape and an arrow indicating direction.
     Requires parameters: offset, amplitude, frequency, delay.
     Optional parameter: damping_factor (defaults to 0).
