@@ -1,0 +1,52 @@
+cell DiffPair:
+    symbol:
+        input vdd (1,21)
+        input vss (1,0)
+        input vin1 (1,10)
+        input vin2 (1,13)
+        input vbias (5,3)
+        output vout1 (17,14)
+        output vout2 (17,15)
+    schematic:
+        net s
+        Nmos M3(pos=(7,1), s -- vss, g -- vbias, d -- s)
+        Nmos M1(pos=(3,8), s -- s, d -- vout1, g -- vin1)
+        Nmos M2(pos=(15,8), orientation = Flipy, s -- s, d -- vout2, g -- vin2)
+        Res R1(pos=(3,16), m -- vout1, p -- vdd)
+        Res R2(pos=(11,16),  m -- vout2, p -- vdd)
+        
+        for m in M1, M2, M3:
+            m.b -- vss
+            m.$l = 1u
+            m.$w = 5u
+        
+        for r in R1, R2:
+            r.$r = 250k
+            
+cell DiffPairTb:
+    symbol:
+        pass
+    schematic:
+        net vss
+        net vdd
+        net vbias
+        net vin1
+        net vin2
+        net vout1
+        net vout2
+        
+        DiffPair DUT:
+            .pos=(23,6)
+            .vss -- vss
+            .vdd -- vdd
+            .vbias -- vbias
+            .vin1 -- vin1
+            .vin2 -- vin2
+            .vout1 -- vout1
+            .vout2 -- vout2
+        Gnd gnd(pos=(0,0), p -- vss)
+
+        Vdc src_vdd(pos=(0,6), m -- vss, p -- vdd,    $dc=5)
+        Vdc src_vbias(pos=(5,6), m -- vss, p -- vbias,$dc=1.5)
+        Vdc src_vin2(pos=(10,6), m -- vss, p -- vin2, $dc=3.05)
+        Vdc src_vin1(pos=(15,6), m -- vss, p -- vin1, $dc=2.95)

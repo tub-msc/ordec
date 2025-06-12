@@ -4,6 +4,8 @@
 import pytest
 from ordec import lib, render_image
 from ordec.lib import test as lib_test
+import ordec.importer
+from ordec.lib.examples import diffpair
 from ordec.helpers import SchematicError
 import importlib.resources
 #import reference
@@ -35,6 +37,8 @@ testdata = [
     (lib_test.MultibitReg_StructOfArrays(bits=5).symbol, refdir/"multibitref_structofarrays5_symbol.png"),
     (lib_test.TestNmosInv(variant='default', add_conn_points=True, add_terminal_taps=False).schematic, refdir/"testnmosinv.png"),
     (lib_test.TestNmosInv(variant='no_wiring', add_conn_points=False, add_terminal_taps=True).schematic, refdir/"testnmosinv_nowiring.png"),
+    (diffpair.DiffPair().schematic, refdir/"ord_diffpair.png"),
+    (diffpair.DiffPairTb().schematic, refdir/"ord_diffpair_tb.png"),
 ]
 
 @pytest.mark.parametrize("testcase", testdata, ids=lambda t: t[1].with_suffix("").name)

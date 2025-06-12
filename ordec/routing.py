@@ -55,8 +55,7 @@ def schematic_routing(node, outline=None, routing=None):
                 inner_connections = dict()
                 for pin in instance.ref.traverse():
                     if type(pin) is Pin:
-                        inst_orientation = D4(instance.loc_transform().set(transl=Vec2R(x=0, y=0)))
-                        alignment = (inst_orientation * pin.align).unflip().lefdef()
+                        alignment = (instance.orientation * pin.align).unflip().lefdef()
                         inner_pos = instance_transform * pin.pos
                         # pin arrays have pin connections with names as ints
                         # get the parent name to get a unique assignment

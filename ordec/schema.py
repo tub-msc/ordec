@@ -139,7 +139,7 @@ class SchemInstance(Node):
     portmap = attr(type=PortMap, freezer=PortMap)
 
     def loc_transform(self):
-        return self.orientation.value.set(transl=self.pos)
+        return TD4(transl=self.pos) * self.orientation.value
 
 class SchemPort(Node):
     """

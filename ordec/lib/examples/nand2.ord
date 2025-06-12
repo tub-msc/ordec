@@ -1,0 +1,55 @@
+cell Nand2:
+    symbol:
+        output y (17,13)
+        input a  (1,10)
+        input b  (1,21)
+        input vdd (1,19)
+        input vss (1,0)
+    schematic:
+        net x # Between n1 and n2
+
+        Nmos n1(pos=(4,1), s -- vss, d -- x, g -- a)
+        Nmos n2(pos=(4,7),  s -- x, d -- y, g -- b)
+        Pmos p1(pos=(4,14), s -- vdd, d -- y, g -- a)
+        
+        # Alternative way to connect instance:
+        Pmos p2:
+            .pos = (12,14)
+            .s -- vdd
+            .d -- y
+            .g -- b
+
+        # Connections can also be added after declaration of the instance:
+        n1.b -- vss
+        n2.b -- vss
+        p1.b -- vdd
+        p2.b -- vdd
+        
+        # Set width and length parameters for all transistors:
+        for t in p1, p2, n1, n2:
+            t.$w = 1u
+            t.$l = 500n
+
+cell Nand2Tb:
+    symbol:
+        pass
+    schematic:
+        net vdd
+        net vss
+        net a
+        net b
+        net y
+        
+        Nand2 DUT:
+            .pos=(17,6)
+            .vdd -- vdd
+            .vss -- vss
+            .a -- a
+            .b -- b
+            .y -- y
+            
+        Gnd gnd(pos=(0,0), p -- vss)
+        
+        Vdc src_vdd(pos=(0,6), m -- vss, p -- vdd,    $dc=5)
+        Vdc src_a(pos=(10,6), m -- vss, p -- a,$dc=5)
+        Vdc src_b(pos=(5,6), m -- vss, p -- b, $dc=0)

@@ -129,5 +129,23 @@ def load_ord(file_path):
     return ast.unparse(load_ord_from_string(inp))
 
 
+# TODO: Make parser encapsulation consistent. ordec/importer.py and 
+# ordec/ws_server.py use ord2py() for now.
+def ord2py(source_data: str) -> ast.Module:
+    module = ast.parse(
+        "from ordec import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, Rational, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, SchemConnPoint, SchemTapPoint, SimHierarchy, generate, helpers\n" +
+        "from ordec.sim2.sim_hierarchy import HighlevelSim\n"+
+        "from ordec.lib import Inv, Res, Gnd, Vdc, Idc, Nmos, Pmos, NoConn\n"+
+        "from ordec.parser.implicit_processing import symbol_process, preprocess, PostProcess, postprocess\n" +
+        "from ordec.parser.prelim_schem_instance import PrelimSchemInstance\n"+
+        "ext = globals()\n" # <-- TODO: bad hack, this is not how it is intended...
+        )
+    x = load_ord_from_string(source_data)
+    x = ast.fix_missing_locations(x)
+    module.body += x.body
+
+    #print(ast.dump(module, indent=4, include_attributes=False))
+    return module
+
 if __name__ == '__main__':
     main()

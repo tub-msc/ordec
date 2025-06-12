@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from . import Vec2R, Rect4R, Pin, Rational as R, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, Symbol, Schematic, SchemConnPoint, SchemPort, Pin, SchemTapPoint
+from . import Vec2R, Rect4R, Pin, Rational as R, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, Symbol, Schematic, SchemConnPoint, SchemPort, Pin, SchemTapPoint, D4
 import itertools
 from dataclasses import dataclass
 
@@ -75,9 +75,7 @@ class PinOfInstance:
     @property
     def align(self):
         #TODO: check if this pin.align transformation works:
-        return Orientation(
-            (self.instance.loc_transform() * self.pin.align.value).set(transl=Vec2R(x=0,y=0))
-            )
+        return D4.from_td4(self.instance.loc_transform() * self.pin.align.value)
 
 class SchematicError(Exception):
     pass
