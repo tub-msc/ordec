@@ -5,7 +5,7 @@ import pytest
 from ordec import lib, render_image
 from ordec.lib import test as lib_test
 import ordec.importer
-from ordec.lib import diffpair
+from ordec.lib.examples import diffpair
 from ordec.helpers import SchematicError
 import importlib.resources
 #import reference

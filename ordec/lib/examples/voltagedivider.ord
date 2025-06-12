@@ -1,0 +1,11 @@
+cell VoltageDivider:
+    symbol:
+        pass
+    schematic:
+        net vss, vdd, a, b
+
+        Vdc vdc($dc = 1, m -- vss, p -- vdd, pos = (0,6))
+        Res res_1($r = 100, m -- vss, p -- a, pos = (5,6))
+        Res res_2($r = 100, m -- a, p -- b, pos = (5,12))
+        Res res_3($r = 100, m -- b, p -- vdd, pos = (5,18))
+        Gnd gnd(p -- vss, pos = (0,0))

@@ -159,15 +159,22 @@ class Editor {
         if (state['sourceType']) {
             sourceTypeSelect.value = state['sourceType']
         }
+
+        this.srcLoaded = false
         if (state['source']) {
-            this.editor.setValue(state['source'])
-            this.editor.clearSelection()
+            this.loadSrc(state['source'])
         }
 
         editor = this;
         sourceTypeSelect.onchange = function() {
             editor.settled();
         };
+    }
+
+    loadSrc(src) {
+        this.editor.setValue(src)
+        this.editor.clearSelection()
+        this.srcLoaded = true
     }
 
     changed(delta) {
@@ -179,8 +186,10 @@ class Editor {
         console.log('ordecRestartSession triggered from editor');
         ordecRestartSession();
 
+        // The source text is no longer saved in the JSON state. Instead,
+        // store it separately in ordec/lib/examples/.
         this.container.setState({
-            source: this.editor.getValue(),
+            // source: this.editor.getValue(),
             sourceType: sourceTypeSelect.options[sourceTypeSelect.selectedIndex].value,
         });
     }
@@ -192,7 +201,7 @@ if (!paramExample) {
     paramExample = 'blank';
 }
 
-const response = await fetch("/examples/" + paramExample + ".json"); // TODO: Potential XSS?!
+const response = await fetch("/examples/uistate/" + paramExample + ".json"); // TODO: Potential XSS?!
 if (!response.ok) {
     throw new Error(`Response status: ${response.status}`);
 }
@@ -204,6 +213,8 @@ config["header"] = {
 
 //var myLayout = new GoldenLayout(document.getElementById("workspace"));
 var myLayout = new GoldenLayout(document.body); // this works better than the old #workspace div
+window.myLayout = myLayout; // for easy access from console
+
 myLayout.layoutConfig.settings.showPopoutIcon = false;
 myLayout.resizeWithContainerAutomatically = true;
 myLayout.registerComponent('editor', Editor);
@@ -211,7 +222,20 @@ myLayout.registerComponent('editor', Editor);
 myLayout.registerComponent('result', ResultViewer);
 myLayout.loadLayout(config);
 
-window.myLayout = myLayout; // for easy access from console
+if(!editor.srcLoaded) {
+    // If source text was not found in JSON, load it via separate request.
+    // This request accesses the files from ordec/lib/examples/, accessible
+    // through vite-plugin-static-copy.
+    const extension = getSourceType()=="ord"?".ord":".py"
+    const response = await fetch("/examples/src/" + paramExample + extension); // TODO: Potential XSS?!
+    if (!response.ok) {
+        throw new Error(`Response status: ${response.status}`);
+    }
+
+    const src = await response.text();
+    editor.loadSrc(src);
+}
+
 
 document.getElementById("newresview").onclick = function() {
     myLayout.addComponent('result', undefined, 'Result View');
@@ -227,6 +251,9 @@ document.getElementById("savejson").onclick = function() {
     dlAnchorElem.click();
 }
 
+function getSourceType() {
+    return sourceTypeSelect.options[sourceTypeSelect.selectedIndex].value;
+}
 
 function ordecRestartSession() {
     if (ordecSock) {
@@ -239,7 +266,7 @@ function ordecRestartSession() {
         const select_source = document.getElementById("sourcetype");
         ordecSock.send(JSON.stringify({
             'msg': 'source',
-            'source_type': select_source.options[select_source.selectedIndex].value,
+            'source_type': getSourceType(),
             'source_data': editor.editor.getValue(),
         }))
     }
