@@ -16,6 +16,8 @@ import ast
 from pathlib import Path
 import mimetypes
 from urllib.parse import urlparse
+import threading
+import signal
 
 from . import Cell, Schematic, Symbol, View, SimHierarchy, SimNet
 from .parser.parser import ord2py
@@ -177,6 +179,22 @@ def main():
     parser.add_argument('-r', '--static-root', help="Static web directory.", nargs='?')
 
     args = parser.parse_args()
+
+    # Launch server in separate daemon thread (daemon=True). The connection
+    # threads automatically inherit the daemon property. All daemon threads
+    # are terminated when the main thread terminates. This makes it possible
+    # to terminate the whole thing with a single Ctrl+C.
+    # A future version of the websockets library might make this workaround
+    # unnecessary.
+    threading.Thread(target=server_thread, args=(args,), daemon=True).start()
+
+    try:
+        while True:
+            signal.pause()
+    except KeyboardInterrupt:
+        print("Terminating.")
+
+def server_thread(args):
     hostname = args.hostname
     port = args.port
 
