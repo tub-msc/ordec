@@ -1,3 +1,7 @@
+from ordec import Cell, Schematic, Vec2R, Rect4R, Rational as R, SchemPoly, SchemRect, SchemInstance, Net, SimHierarchy, generate, helpers
+from ordec.sim2.sim_hierarchy import HighlevelSim
+from ordec.lib import Res, Gnd, Vdc
+
 class VoltageDivider(Cell):
     @generate(Schematic)
     def schematic(self, node):

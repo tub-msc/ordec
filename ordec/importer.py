@@ -7,7 +7,7 @@ from importlib.abc import Loader, MetaPathFinder
 from importlib.util import spec_from_loader
 import ast
 
-from .parser.parser import load_ord_from_string
+from .parser.parser import ord2py
 
 # For related examples, see:
 # - https://python.plainenglish.io/metapathfinders-or-how-to-change-python-import-behavior-a1cf3b5a13ec
@@ -26,17 +26,9 @@ class OrdLoader(Loader):
 
     def exec_module(self, module):
         module.__dict__['__file__'] = self.ord_path
-
-        module.__dict__['ext'] = module. __dict__ # <-- TODO: bad hack, this is not how it is intended...
-        
-        exec("from ordec import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, Rational, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, SchemConnPoint, SchemTapPoint, SimHierarchy, generate, helpers\nfrom ordec.sim2.sim_hierarchy import HighlevelSim", module.__dict__, module.__dict__)
-        exec("from ordec.lib import Inv, Res, Gnd, Vdc, Idc, Nmos, Pmos, NoConn", module.__dict__, module.__dict__)
-
-        exec("from ordec.parser.implicit_processing import symbol_process, preprocess, PostProcess, postprocess\nfrom ordec.parser.prelim_schem_instance import PrelimSchemInstance", module.__dict__, module.__dict__)
-
-
-        python_source = ast.unparse(load_ord_from_string(self.source_text))        
-        exec(python_source, module.__dict__, module.__dict__)
+        code = ast.unparse(ord2py(self.source_text))
+        #code = compile(ord2py(self.source_text), "<string>", "exec") <-- TODO: Not working at the moment.
+        exec(code, module.__dict__, module.__dict__)
 
 class OrdMetaPathFinder(MetaPathFinder):
     def find_spec(self, fullname, path, target=None):

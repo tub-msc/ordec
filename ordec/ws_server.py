@@ -4,8 +4,6 @@
 """
 WebSocket server for use in conjunction with the new web interface.
 """
-from . import Cell, Schematic, Symbol, View, SimHierarchy, SimNet
-from .parser.parser import load_ord_from_string
 
 import argparse
 from websockets.sync.server import serve
@@ -19,21 +17,19 @@ from pathlib import Path
 import mimetypes
 from urllib.parse import urlparse
 
+from . import Cell, Schematic, Symbol, View, SimHierarchy, SimNet
+from .parser.parser import ord2py
+
 def build_cells(source_type: str, source_data: str) -> (dict, dict):
     conn_globals = {}
-    conn_globals['ext'] = conn_globals # <-- TODO: bad hack, this is not how it is intended...
-    exec("from ordec import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, Rational, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, SchemConnPoint, SchemTapPoint, SimHierarchy, generate, helpers\nfrom ordec.sim2.sim_hierarchy import HighlevelSim", conn_globals, conn_globals)
-    #exec("from ordec.lib.test import ResdivHierTb\nfrom ordec.lib import Ringosc, Inv, Res, Gnd, Vdc, Nmos, Pmos", conn_globals, conn_globals)
-    exec("from ordec.lib import Inv, Res, Gnd, Vdc, Idc, Nmos, Pmos, NoConn", conn_globals, conn_globals)
-
     if source_type == 'python' or source_type == 'ord':
         try:
             if source_type == 'ord':
-                exec("from ordec.parser.implicit_processing import symbol_process, preprocess, PostProcess, postprocess\nfrom ordec.parser.prelim_schem_instance import PrelimSchemInstance", conn_globals, conn_globals)
-                python_source = ast.unparse(load_ord_from_string(source_data))
+                code = ast.unparse(ord2py(source_data))
+                #code = compile(ord2py(source_data), "<string>", "exec") <-- TODO: Not working at the moment.
+                exec(code, conn_globals, conn_globals)
             else:
-                python_source = source_data
-            exec(python_source, conn_globals, conn_globals)
+                exec(source_data, conn_globals, conn_globals)
         except Exception:
             print("Reporting exception.")
             return {

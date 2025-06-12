@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
-?start: cell*
+start: cell*
 
 cell: _CELL NAME _COLON _NL _INDENT symbol schematic _DEDENT
 
