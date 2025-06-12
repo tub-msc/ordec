@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.geoprim import Vec2R, D4, TD4
+from ordec.geoprim import Vec2R, D4, TD4, Rect4R
 from ordec.rational import Rational as R
+import pytest
 
 def test_TD4():
     assert TD4() * TD4() == TD4()
@@ -51,3 +52,52 @@ def test_TD4():
     for a in D4:
         assert a.inv() * a == D4.R0
         assert a.value*Vec2R(x=0, y=1) == a.value.flip()*Vec2R(x=0, y=1)
+
+    t1 = TD4(Vec2R(1,2), False, False, True)
+
+    assert repr(t1) == "TD4(transl=Vec2R(x=1., y=2.), flipxy=False, negx=False, negy=True)"
+    t2 = TD4(Vec2R(5,6), True, True, False)
+
+    with pytest.raises(AttributeError):
+        t1.hello = 'world'
+    with pytest.raises(AttributeError):
+        t1.negx = 123
+
+    with pytest.raises(TypeError):
+        t1 + t2
+
+    assert D4.from_td4(t1) == D4.MX
+    assert D4.from_td4(t2) == D4.R90
+
+    assert t1 * t2 == TD4(Vec2R(6, -4), True, True, True)
+
+def test_Vec2R():
+    v = Vec2R(1, 2)
+    assert isinstance(v.x, R)
+    assert isinstance(v.y, R)
+
+    with pytest.raises(AttributeError):
+        v.hello = 'world'
+    with pytest.raises(AttributeError):
+        v.x = 123
+
+    assert repr(v) == "Vec2R(x=1., y=2.)"
+
+
+def test_Rect4R():
+    r = Rect4R(1, 2, 3, 4)
+    with pytest.raises(AttributeError):
+        r.hello = 'world'
+    with pytest.raises(AttributeError):
+        r.lx = 123
+
+    assert repr(r) == "Rect4R(lx=1., ly=2., ux=3., uy=4.)"
+
+    with pytest.raises(ValueError, match=r"lx or ly greater than ux or uy"):
+        Rect4R(0, 0, -1, 0)
+
+    with pytest.raises(ValueError, match=r"lx or ly greater than ux or uy"):
+        Rect4R(0, 0, 0, -1)
+
+    with pytest.raises(TypeError):
+        Rect4R(1,2,3,3)+Rect4R(4,5,5,6)

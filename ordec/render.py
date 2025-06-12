@@ -131,7 +131,7 @@ class Renderer:
         ctx.stroke()
 
     def draw_label(self, label: str, trans: TD4, space=0, halign: LabelAlign = LabelAlign.BASELINE):
-        align = D4(trans.set(transl=Vec2R(x=0,y=0))).unflip()
+        align = D4.from_td4(trans).unflip()
         pos = trans.transl
 
         ctx = self.ctx

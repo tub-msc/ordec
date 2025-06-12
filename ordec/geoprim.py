@@ -5,10 +5,9 @@
 Geometric primitive types: vectors, matrices, orientations and rotations (D4)
 """
 from enum import Enum
-from pyrsistent import PClass, field
 from .rational import Rational as R
 
-class Vec2R(PClass):
+class Vec2R(tuple):
     """
     Point in 2D space.
 
@@ -17,15 +16,31 @@ class Vec2R(PClass):
         y (Rational): y coordinate
     """
 
-    x = field(type=(R,), factory=R, mandatory=True)
-    y = field(type=(R,), factory=R, mandatory=True)
+    __slots__ = ()
+
+    def __new__(cls, x, y):
+        x = R(x)
+        y = R(y)
+        return tuple.__new__(cls, (x, y))
+
+    @property
+    def x(self):
+        return self[0]
+
+    @property
+    def y(self):
+        return self[1]
+
     def tofloat(self):
         return float(self.x), float(self.y)
 
     def __add__(self, other):
         return Vec2R(x=self.x+other.x, y=self.y+other.y)
 
-class Rect4R(PClass):
+    def __repr__(self):
+        return f"Vec2R(x={self.x}, y={self.y})"
+
+class Rect4R(tuple):
     """
     Rectangle in 2D space.
 
@@ -36,12 +51,35 @@ class Rect4R(PClass):
         uy (Rational): upper y coordinate
     """
 
-    __invariant__ = lambda r: (r.lx <= r.ux and r.ly <= r.uy, "lx or ly greater than ux or uy")
+    __slots__ = ()
 
-    lx = field(type=(R,), factory=R, mandatory=True)
-    ly = field(type=(R,), factory=R, mandatory=True)
-    ux = field(type=(R,), factory=R, mandatory=True)
-    uy = field(type=(R,), factory=R, mandatory=True)
+    def __new__(cls, lx, ly, ux, uy):
+        lx = R(lx)
+        ly = R(ly)
+        ux = R(ux)
+        uy = R(uy)
+
+        if lx > ux or ly > uy:
+            raise ValueError("lx or ly greater than ux or uy")
+
+        return tuple.__new__(cls, (lx, ly, ux, uy))
+
+    @property
+    def lx(self):
+        return self[0]
+
+    @property
+    def ly(self):
+        return self[1]
+
+    @property
+    def ux(self):
+        return self[2]
+
+    @property
+    def uy(self):
+        return self[3]
+
     def tofloat(self):
         return float(self.lx), float(self.ly), float(self.ux), float(self.uy)
 
@@ -54,8 +92,13 @@ class Rect4R(PClass):
     def north_west(self):
         return Vec2R(x=self.lx, y=self.uy)
 
+    def __add__(self, other):
+        raise TypeError("Rect4R cannot be added.")
 
-class TD4(PClass):
+    def __repr__(self):
+        return f"Rect4R(lx={self.lx}, ly={self.ly}, ux={self.ux}, uy={self.uy})"
+
+class TD4(tuple):
     """
     Transformation group supporting 2D translation, X/Y mirroring and 90° rotations.
     Multiply instances of this class with a :class:`Vec2R`, :class:`Rect4R` or :class:`TD4`
@@ -68,10 +111,26 @@ class TD4(PClass):
         negy (bool): negate y coordinate
     """
 
-    transl = field(type=(Vec2R,), mandatory=True, initial=Vec2R(x=0,y=0))
-    flipxy = field(type=(bool,), mandatory=True, initial=False)
-    negx = field(type=(bool,), mandatory=True, initial=False)
-    negy = field(type=(bool,), mandatory=True, initial=False)
+    __slots__ = ()
+
+    def __new__(cls, transl=Vec2R(0,0), flipxy=False, negx=False, negy=False):
+        return tuple.__new__(cls, (transl, flipxy, negx, negy))
+
+    @property
+    def transl(self):
+        return self[0]
+
+    @property
+    def flipxy(self):
+        return self[1]
+
+    @property
+    def negx(self):
+        return self[2]
+
+    @property
+    def negy(self):
+        return self[3]
 
     def __mul__(self, other):
         if isinstance(other, Vec2R):
@@ -106,6 +165,9 @@ class TD4(PClass):
         else:
             raise TypeError(f"Unsupported type for {type(self).__name__} multiplication")
 
+    def __add__(self, other):
+        raise TypeError("TD4 cannot be added.")
+
     def det(self) -> int:
         """Returns 1 if handedness is preserved, -1 if flipped."""
         return -1 if self.flipxy ^ self.negx ^ self.negy else 1
@@ -113,9 +175,9 @@ class TD4(PClass):
     def flip(self) -> "TD4":
         """Returns TD4 with flipped handedness, preserving the point Vec2R(x=0, y=1)."""
         if self.flipxy:
-            return self.set(negy=not self.negy)
+            return TD4(transl=self.transl, flipxy=self.flipxy, negx=self.negx, negy=not self.negy)
         else:
-            return self.set(negx=not self.negx)
+            return TD4(transl=self.transl, flipxy=self.flipxy, negx=not self.negx, negy=self.negy)
 
     def arc(self, angle_start: R, angle_end: R) -> (R, R):
         """
@@ -124,7 +186,7 @@ class TD4(PClass):
         """
         l = angle_end - angle_start
         #assert l > R(0)
-        d = D4(self.set(transl=Vec2R(x=0,y=0)))
+        d = D4.from_td4(self)
         a = {
             D4.R0: R(0),
             D4.R90: R(0.25),
@@ -138,6 +200,9 @@ class TD4(PClass):
         else:
             s = R(0.5) + a - angle_start
             return s - l, s
+
+    def __repr__(self):
+        return f"TD4(transl={self.transl}, flipxy={self.flipxy}, negx={self.negx}, negy={self.negy})"
 
 class D4(Enum):
     """
@@ -216,5 +281,9 @@ class D4(Enum):
     FlippedSouth = MY
     FlippedWest = MX90
     FlippedEast = MY90
+
+    @classmethod
+    def from_td4(cls, td4: TD4):
+        return cls(TD4(flipxy=td4.flipxy, negx=td4.negx, negy=td4.negy))
 
 Orientation = D4 # alias
