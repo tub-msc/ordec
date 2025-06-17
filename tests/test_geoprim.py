@@ -55,7 +55,7 @@ def test_TD4():
 
     t1 = TD4(Vec2R(1,2), False, False, True)
 
-    assert repr(t1) == "TD4(transl=Vec2R(x=1., y=2.), flipxy=False, negx=False, negy=True)"
+    assert repr(t1) == "TD4(transl=Vec2R(x=R('1.'), y=R('2.')), flipxy=False, negx=False, negy=True)"
     t2 = TD4(Vec2R(5,6), True, True, False)
 
     with pytest.raises(AttributeError):
@@ -81,7 +81,7 @@ def test_Vec2R():
     with pytest.raises(AttributeError):
         v.x = 123
 
-    assert repr(v) == "Vec2R(x=1., y=2.)"
+    assert repr(v) == "Vec2R(x=R('1.'), y=R('2.'))"
 
 
 def test_Rect4R():
@@ -91,7 +91,7 @@ def test_Rect4R():
     with pytest.raises(AttributeError):
         r.lx = 123
 
-    assert repr(r) == "Rect4R(lx=1., ly=2., ux=3., uy=4.)"
+    assert repr(r) == "Rect4R(lx=R('1.'), ly=R('2.'), ux=R('3.'), uy=R('4.'))"
 
     with pytest.raises(ValueError, match=r"lx or ly greater than ux or uy"):
         Rect4R(0, 0, -1, 0)

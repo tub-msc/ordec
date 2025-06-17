@@ -38,7 +38,7 @@ class Vec2R(tuple):
         return Vec2R(x=self.x+other.x, y=self.y+other.y)
 
     def __repr__(self):
-        return f"Vec2R(x={self.x}, y={self.y})"
+        return f"Vec2R(x={self.x!r}, y={self.y!r})"
 
 class Rect4R(tuple):
     """
@@ -96,7 +96,7 @@ class Rect4R(tuple):
         raise TypeError("Rect4R cannot be added.")
 
     def __repr__(self):
-        return f"Rect4R(lx={self.lx}, ly={self.ly}, ux={self.ux}, uy={self.uy})"
+        return f"Rect4R(lx={self.lx!r}, ly={self.ly!r}, ux={self.ux!r}, uy={self.uy!r})"
 
 class TD4(tuple):
     """
@@ -202,7 +202,7 @@ class TD4(tuple):
             return s - l, s
 
     def __repr__(self):
-        return f"TD4(transl={self.transl}, flipxy={self.flipxy}, negx={self.negx}, negy={self.negy})"
+        return f"TD4(transl={self.transl!r}, flipxy={self.flipxy!r}, negx={self.negx!r}, negy={self.negy!r})"
 
 class D4(Enum):
     """
