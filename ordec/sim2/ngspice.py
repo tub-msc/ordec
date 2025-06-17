@@ -38,7 +38,9 @@ class Ngspice:
             try:
                 yield Ngspice(p, debug=debug, cwd=Path(cwd_str))
             finally:
-                p.send_signal(signal.SIGTERM) # Not needed for ngspice-39; needed for ngspice-44.
+                # SIGTERM was not needed for ngspice-39, but then needed for ngspice-44.
+                # Possibly, this is due to different libedit/libreadline configurations, not due to the Ngspice version.
+                p.send_signal(signal.SIGTERM)
                 p.stdin.close()
                 p.stdout.read()
                 p.wait()
@@ -52,15 +54,21 @@ class Ngspice:
         """Executes ngspice command and returns string output from ngspice process."""
         if self.debug:
             print(f"[debug] sending command to ngspice ({self.p.pid}): {command}")
-        self.p.stdin.write(f"{command}\necho FINISHED\n".encode("ascii"))
+        self.p.stdin.write(f"{command}; echo FINISHED\n".encode("ascii"))
         self.p.stdin.flush()
         out = []
         while True:
             l=self.p.stdout.readline()
             #print(f"[debug] received line from ngspice: {l}")
 
-            if re.match(rb"ngspice [0-9]+ -> .*\n", l): # Not needed for ngspice-39; needed for ngspice-44.
+            # Ignore echo in case of ngspice build with libreadline:
+            if re.match(rb"ngspice [0-9]+ -> .*; echo FINISHED\n", l):
                 continue
+
+            # Strip "ngspice 123 -> " from line in case of ngspice build with neither libreadline nor libedit:
+            m = re.match(rb"ngspice [0-9]+ -> (.*\n)", l)
+            if m:
+                l = m.group(1)
 
             if l == b'FINISHED\n':
                 break

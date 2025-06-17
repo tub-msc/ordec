@@ -6,3 +6,4 @@ Developer's Corner
    :caption: Contents:
 
    ipython_integration
+   ngspice_pipe_mode
