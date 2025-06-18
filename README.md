@@ -13,11 +13,10 @@ The development of ORDeC is currently at an early, experimental stage. The main 
 
 ## Getting Started
 
-The easiest way to get started is via docker:
+The easiest way to get started is via Docker:
 
 ```
-docker build . -t ordec
-docker run --rm -p 127.0.0.1:8100:8100 -it ordec
+docker run --rm -p 127.0.0.1:8100:8100 -it ghcr.io/tub-msc/ordec:latest
 ```
 
 Then, visit http://localhost:8100 to access the web interface and try out examples.
