@@ -48,5 +48,4 @@ def pytest_assertrepr_compare(op, left, right):
             ret.append(f"Mismatch nid={nid}:")
             ret.append(f"\tleft: {left_d[nid]}")
             ret.append(f"\tright: {right_d[nid]}")
-        ret.append(f"{nids_common}")
         return ret

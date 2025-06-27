@@ -28,11 +28,6 @@ class LabelAlign(Enum):
     CENTER = 1
     TOP = 2
 
-def get_parent(node, t):
-    while not isinstance(node, t):
-        node = node.parent
-    return node
-
 class Renderer:
     pango_custom_scale = 0.05
     padding = 1
@@ -88,7 +83,7 @@ class Renderer:
 
     def draw_unit_grid(self, rect: Rect4R):
         ctx = self.ctx
-        lx, ly, ux, uy = rect.pos.tofloat()
+        lx, ly, ux, uy = rect.tofloat()
         for x in range(math.floor(lx), math.ceil(ux)+1):
             for y in range(math.floor(ly), math.ceil(uy)+1):
                 ctx.rectangle(x-0.05, y-0.05, 0.1, 0.1)
@@ -100,17 +95,18 @@ class Renderer:
         ctx.rectangle(lx, ly, ux-lx, uy-ly)
         ctx.stroke()
 
-    def draw_schem_poly(self, poly: SchemWire, trans: TD4 = TD4()):
+    def draw_symbol_poly(self, poly: SymbolPoly, trans: TD4 = TD4()):
         ctx = self.ctx
-        x, y = (trans * poly.vertices[0]).tofloat()
+        vertices = [c.pos for c in poly.vertices]
+        x, y = (trans * vertices[0]).tofloat()
         ctx.move_to(x, y)
-        for point in poly.vertices[1:-1]:
+        for point in vertices[1:-1]:
             x, y = (trans * point).tofloat()
             ctx.line_to(x,y)
-        if poly.vertices.closed():
+        if vertices[-1] == vertices[0]:
             ctx.close_path()
         else:
-            x, y = (trans * poly.vertices[-1]).tofloat()
+            x, y = (trans * vertices[-1]).tofloat()
             ctx.line_to(x,y)
         ctx.stroke()
 
@@ -190,7 +186,7 @@ class Renderer:
         ctx.set_source_rgb(1,0,0)
         self.draw_pinportarrow(pin.pintype, trans_local, center=True, halfheight=0.2, width=0.4)
 
-        label = str(pin.path()[2:])
+        label = str(pin.full_path_str())
 
 
         # Flip by 180 degrees, as the text face the opposite of the pin direction:
@@ -228,9 +224,11 @@ class Renderer:
         ctx = self.ctx
         trans = TD4(transl=port.pos)*port.align.value
         ctx.set_source_rgb(0.2,0.6,1.0)
-        self.draw_pinportarrow(port.ref.pintype, trans)
+        self.draw_pinportarrow(port.ref.pin.pintype, trans)
         width = 0.5
-        self.draw_label(str(port.ref.path()[2:]), trans*D4.R180.value*TD4(transl=Vec2R(x=0, y=width)), space=self.port_text_space, halign=LabelAlign.CENTER)
+        #label = port.ref.full_path_str()
+        label = port.ref.pin.full_path_str()
+        self.draw_label(label, trans*D4.R180.value*TD4(transl=Vec2R(x=0, y=width)), space=self.port_text_space, halign=LabelAlign.CENTER)
 
     def draw_schem_tappoint(self, p: SchemTapPoint):
         ctx = self.ctx
@@ -239,10 +237,8 @@ class Renderer:
         tran = TD4(transl=p.pos)*p.align.value
         ctx.set_matrix(to_cairo_matrix(tran)*ctx.get_matrix())
 
-        parent_schematic = get_parent(p, Schematic)
-
-        is_default_supply = parent_schematic.default_supply == p.parent
-        is_default_ground = parent_schematic.default_ground == p.parent
+        is_default_supply = p.subgraph.default_supply == p.ref
+        is_default_ground = p.subgraph.default_ground == p.ref
 
         #ctx.arc(0.5, 0, 0.15, 0, 2*math.pi)
         #ctx.stroke()
@@ -275,49 +271,46 @@ class Renderer:
         ctx.restore()
         
         if not (is_default_supply or is_default_ground):
-            label = str(p.parent.path()[2:])
+            label = p.ref.full_path_str()
             self.draw_label(label, tran*TD4(transl=Vec2R(x=0, y=0.5)), space=self.port_text_space, halign=LabelAlign.CENTER)
 
     def draw_symbol(self, s: Symbol, trans: TD4, inst_name: str="?"):
         ctx = self.ctx
         ctx.set_line_width(0.1)
         ctx.set_source_rgb(0.5,0.5,0.5)
-        for rect in s.traverse(SchemRect):
-            pos = trans * rect.pos
-            if rect == s.outline:
-                ctx.set_source_rgb(0.5,0.7,0.5)
-                self.draw_schem_rect(pos)
 
-                #str(s.path()[0])
-                cell = s.path()[0]
-                cell_name = type(cell).__name__
-                #params_str = cell.params_str()
-                params_str = "\n".join(cell.params_list())
+        # Draw outline
+        ctx.set_source_rgb(0.5,0.7,0.5)
+        rect = trans * s.outline
+        self.draw_schem_rect(rect)
 
-                self.draw_label(cell_name, TD4(transl=pos.north_east())*D4.R90.value, space=self.pin_text_space, halign=LabelAlign.TOP)
-                self.draw_label(params_str, TD4(transl=pos.south_east())*D4.R90.value, space=self.pin_text_space, halign=LabelAlign.BASELINE)
+        #str(s.path()[0])
+        
+        cell_name = type(s.cell).__name__
+        #params_str = cell.params_str()
+        params_str = "\n".join(s.cell.params_list())
 
-                ctx.set_source_rgb(1,0,0)
-                self.draw_label(f"<b>{inst_name}</b>", TD4(transl=pos.north_west())*D4.MX90.value, space=self.pin_text_space, halign=LabelAlign.TOP)
-            else:
-                ctx.set_source_rgb(0.5,0.5,0.5)
-                self.draw_schem_rect(pos)
+        self.draw_label(cell_name, TD4(transl=rect.north_east())*D4.R90.value, space=self.pin_text_space, halign=LabelAlign.TOP)
+        self.draw_label(params_str, TD4(transl=rect.south_east())*D4.R90.value, space=self.pin_text_space, halign=LabelAlign.BASELINE)
+
+        ctx.set_source_rgb(1,0,0)
+        self.draw_label(f"<b>{inst_name}</b>", TD4(transl=rect.north_west())*D4.MX90.value, space=self.pin_text_space, halign=LabelAlign.TOP)
         
         ctx.set_line_width(0.1)
         ctx.set_source_rgb(0,0,0)
-        for poly in s.traverse(SchemPoly):
-            self.draw_schem_poly(poly, trans)
-        for arc in s.traverse(SymbolArc):
+        for poly in s.all(SymbolPoly):
+            self.draw_symbol_poly(poly, trans) # TODO: This could maybe 
+        for arc in s.all(SymbolArc):
             self.draw_schem_arc(arc, trans)
 
         ctx.set_source_rgb(1,0,0)
-        for pin in s.traverse(Pin):
+        for pin in s.all(Pin):
             self.draw_pin(pin, trans)
 
     def render(self, obj):
-        if isinstance(obj, Symbol):
+        if isinstance(obj.node, Symbol):
             self.render_symbol(obj)
-        elif isinstance(obj, Schematic):
+        elif isinstance(obj.node, Schematic):
             self.render_schematic(obj)
         else:
             raise TypeError(f"Unsupported object {obj} for rending.")
@@ -338,20 +331,20 @@ class Renderer:
         self.draw_unit_grid(s.outline)
 
         ctx.set_source_rgb(0.8, 0.8, 0)
-        for poly in s.traverse(SchemPoly):
-            self.draw_schem_poly(poly)
+        for poly in s.all(SchemWire):
+            self.draw_symbol_poly(poly)
 
-        for p in s.traverse(SchemConnPoint):
+        for p in s.all(SchemConnPoint):
             self.draw_schem_connpoint(p)
 
-        for p in s.traverse(SchemTapPoint):
+        for p in s.all(SchemTapPoint):
             self.draw_schem_tappoint(p)
 
-        for inst in s.traverse(SchemInstance):
+        for inst in s.all(SchemInstance):
             trans = inst.loc_transform()
-            self.draw_symbol(inst.ref, trans, str(inst.name))
+            self.draw_symbol(inst.symbol, trans, str(inst.full_path_str()))
 
-        for port in s.traverse(SchemPort):
+        for port in s.all(SchemPort):
             self.draw_schem_port(port)
 
 

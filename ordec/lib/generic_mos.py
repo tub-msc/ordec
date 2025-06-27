@@ -114,7 +114,7 @@ class Inv(Cell):
         node.y % SchemWire([Vec2R(5, 6), Vec2R(5, 7), Vec2R(5, 8)])
         node.y % SchemWire([Vec2R(5, 7), Vec2R(9, 7)])
 
-        #helpers.schem_check(node, add_conn_points=True)
+        helpers.schem_check(node, add_conn_points=True)
 
         node.outline = Rect4R(lx=0, ly=1, ux=10, uy=13)
 
@@ -131,31 +131,31 @@ class Ringosc(Cell):
     def schematic(self, node):
         node.y0 = Net()
         node.y1 = Net()
-        node.y2 = Net()
-        node.vdd = Net()
-        node.vss = Net()
+        node.y2 = Net(pin=self.symbol.y.nid)
+        node.vdd = Net(pin=self.symbol.vdd.nid)
+        node.vss = Net(pin=self.symbol.vss.nid)
 
         inv = Inv().symbol
         node.i0 = SchemInstance(inv.portmap(vdd=node.vdd, vss=node.vss, a=node.y2, y=node.y0), pos=Vec2R(x=4, y=2))
         node.i1 = SchemInstance(inv.portmap(vdd=node.vdd, vss=node.vss, a=node.y0, y=node.y1), pos=Vec2R(x=10, y=2))
         node.i2 = SchemInstance(inv.portmap(vdd=node.vdd, vss=node.vss, a=node.y1, y=node.y2), pos=Vec2R(x=16, y=2))
-        node.ref = self.symbol
-        node.port_vdd = SchemPort(pos=Vec2R(x=2, y=7), align=Orientation.East, ref=self.symbol.vdd, net=node.vdd)
-        node.port_vss = SchemPort(pos=Vec2R(x=2, y=1), align=Orientation.East, ref=self.symbol.vss, net=node.vss)
-        node.port_y = SchemPort(pos=Vec2R(x=22, y=4), align=Orientation.West, ref=self.symbol.y, net=node.y2)
+        node.symbol = self.symbol
+        node.vdd % SchemPort(pos=Vec2R(x=2, y=7), align=Orientation.East)
+        node.vss % SchemPort(pos=Vec2R(x=2, y=1), align=Orientation.East)
+        node.y2 % SchemPort(pos=Vec2R(x=22, y=4), align=Orientation.West)
         
         node.outline = Rect4R(lx=0, ly=0, ux=24, uy=8)
 
         node.y0 % SchemWire(vertices=[node.i0.pos+inv.y.pos, node.i1.pos+inv.a.pos])
         node.y1 % SchemWire(vertices=[node.i1.pos+inv.y.pos, node.i2.pos+inv.a.pos])
-        node.y2 % SchemWire(vertices=[node.i2.pos+inv.y.pos, Vec2R(x=21,y=4), node.port_y.pos])
+        node.y2 % SchemWire(vertices=[node.i2.pos+inv.y.pos, Vec2R(x=21,y=4), Vec2R(x=22, y=4)])
         node.y2 % SchemWire(vertices=[Vec2R(x=21,y=4), Vec2R(x=21,y=8), Vec2R(x=3,y=8), Vec2R(x=3,y=4), node.i0.pos+inv.a.pos])
 
-        node.vss % SchemWire(vertices=[node.port_vss.pos, Vec2R(x=6, y=1), Vec2R(x=12, y=1), Vec2R(x=18, y=1), Vec2R(x=18, y=2)])
+        node.vss % SchemWire(vertices=[Vec2R(x=2, y=1), Vec2R(x=6, y=1), Vec2R(x=12, y=1), Vec2R(x=18, y=1), Vec2R(x=18, y=2)])
         node.vss % SchemWire(vertices=[Vec2R(x=6, y=1), Vec2R(x=6, y=2)])
         node.vss % SchemWire(vertices=[Vec2R(x=12, y=1), Vec2R(x=12, y=2)])
 
-        node.vdd % SchemWire(vertices=[node.port_vdd.pos, Vec2R(x=6, y=7), Vec2R(x=12, y=7), Vec2R(x=18, y=7), Vec2R(x=18, y=6)])
+        node.vdd % SchemWire(vertices=[Vec2R(x=2, y=7), Vec2R(x=6, y=7), Vec2R(x=12, y=7), Vec2R(x=18, y=7), Vec2R(x=18, y=6)])
         node.vdd % SchemWire(vertices=[Vec2R(x=6, y=7), Vec2R(x=6, y=6)])
         node.vdd % SchemWire(vertices=[Vec2R(x=12, y=7), Vec2R(x=12, y=6)])
 

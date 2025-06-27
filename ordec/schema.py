@@ -45,6 +45,11 @@ class Symbol(SubgraphHead):
             return main_nid
         return inserter_func
 
+    @cursormethod
+    def _repr_html_(cursor):
+        from .render import render_svg
+        return render_svg(cursor.subgraph).as_html()
+
 class Pin(Node):
     pintype = Attr(PinType, default=PinType.Inout)
     pos     = Attr(Vec2R)
@@ -82,25 +87,34 @@ class SymbolArc(Node):
 # # Schematic
 # # ---------
 
+class Net(Node):
+    pin = ExternalRef(Pin, of_subgraph=lambda c: c.subgraph.symbol)
+
 class Schematic(SubgraphHead):
     symbol = Attr(Symbol) # Subgraph reference
     outline = Attr(Rect4R)
     cell = Attr('Cell')
+    default_supply = LocalRef(Net)
+    default_ground = LocalRef(Net)
 
-class Net(Node):
-    pin = Attr(int) # ExternalRef to Pin in Schematic.ref
+    @cursormethod
+    def _repr_html_(cursor):
+        from .render import render_svg
+        return render_svg(cursor.subgraph).as_html()
 
 class SchemPort(Node):
     ref = LocalRef(Net)
+    ref_idx = Index(ref)
     pos = Attr(Vec2R)
-    align = Attr(D4)
+    align = Attr(D4, default=D4.R0)
 
 class SchemWire(SymbolPoly):
     ref = LocalRef(Net)
+    ref_idx = Index(ref)
 
 class SchemInstance(Node):
     pos = Attr(Vec2R)
-    align = Attr(D4)
+    orientation = Attr(D4, default=D4.R0)
     symbol = Attr(Symbol) # Subgraph reference
 
     def __new__(cls, connect=None, **kwargs):
@@ -110,16 +124,35 @@ class SchemInstance(Node):
         else:
             return FuncInserter(partial(connect, main))
 
+    @cursormethod
+    def loc_transform(cursor):
+        return TD4(transl=cursor.pos) * cursor.orientation.value
+
+    @cursormethod
+    @property
+    def conns(cursor):
+        return cursor.subgraph.all(SchemInstanceConn.ref_idx.query(cursor.nid))
+
 class SchemInstanceConn(Node):
     ref = LocalRef(SchemInstance)
+    ref_idx = Index(ref)
+
     here = LocalRef(Net)
-    there = Attr(int) # ExternalRef to Pin in SchemInstance.symbol
+    there = ExternalRef(Pin, of_subgraph=lambda c: c.ref.symbol) # ExternalRef to Pin in SchemInstance.symbol
+
 
 class SchemTapPoint(Node):
-    pass
+    ref = LocalRef(Net)
+    ref_idx = Index(ref)
+
+    pos = Attr(Vec2R)
+    align = Attr(D4, default=D4.R0)
 
 class SchemConnPoint(Node):
-    pass
+    ref = LocalRef(Net)
+    ref_idx = Index(ref)
+
+    pos = Attr(Vec2R)
 
 # Simulation hierarchy
 # --------------------

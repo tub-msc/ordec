@@ -458,6 +458,9 @@ def test_cursor_paths():
     assert (npath.name, npath.parent, npath.ref) == ('sub', None, None)
 
     with pytest.raises(OrdbException):
+        s.root_cursor['undefined']
+
+    with pytest.raises(AttributeError):
         s.undefined
 
     s.sub.mkpath('sub')
@@ -484,9 +487,6 @@ def test_cursor_paths():
     assert s.sub.sub.parent.parent == s.root_cursor
     with pytest.raises(QueryException, match="Subgraph root has no parent"):
         s.parent
-
-    with pytest.raises(QueryException, match="Path not found"):
-        s.invalid
 
     # Test item access (x[y]):
     with pytest.raises(TypeError):
@@ -622,3 +622,57 @@ def test_index_custom_sort():
     index_values = s.all(MyItem.idx_ref.query(1), wrap_cursor=False)
     assert index_values == [99, 98, 100, 102, 101] # ordered by node.order
 
+
+def test_subgraph_ntype():
+    s = MyHead()
+    assert isinstance(s.node, MyHead)
+    assert isinstance(s.root_cursor, MyHead._cursor_type)
+
+def test_all_ntype():
+    class NodeA(Node):
+        text = Attr(str)
+
+    class NodeB(Node):
+        text = Attr(str)
+
+    s = MyHead()
+    s % NodeA(text="A1")
+    s % NodeA(text="A2")
+    s % NodeB(text="B1")
+    s % NodeB(text="B2")
+
+    q1 = s.all(NodeA)
+    assert [c.text for c in q1] == ['A1', 'A2']
+    q2 = s.all(NodeB)
+    assert [c.text for c in q2] == ['B1', 'B2']
+
+def test_cursor_localref():
+    class MyNodeItem(Node):
+        ref = LocalRef(MyNode)
+        text = Attr(str)
+
+    s = MyHead()
+    s.n1 = MyNode()
+    n1_foo = s.n1 % MyNodeItem(text='n1 foo')
+
+    assert n1_foo.ref == s.n1
+
+def test_cursor_externalref():
+    class NodeExtRef(Node):
+        subg = Attr(MyHead)
+        eref = ExternalRef(MyNode, of_subgraph=lambda c: c.subg)
+
+    s1 = MyHead()
+    s1.n1 = MyNode(label='hello')
+    s1 = s1.freeze()
+
+    s2 = MyHead()
+    s2.n1 = MyNode(label='world')
+    s2 = s2.freeze()
+
+    s3 = MyHead()
+    s3.e1 = NodeExtRef(subg=s1, eref=s1.n1.nid)
+    s3.e2 = NodeExtRef(subg=s2, eref=s2.n1.nid)
+
+    assert s3.e1.eref == s1.n1
+    assert s3.e2.eref == s2.n1

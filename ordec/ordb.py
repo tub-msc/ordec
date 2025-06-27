@@ -78,6 +78,9 @@ class Attr:
     factory: Callable = lambda x: x
     #help: str = ""
 
+    def read_hook(self, value, cursor):
+        return value
+
 @dataclass(frozen=True, eq=False)
 class AttrDescriptor:
     ntype: type
@@ -111,7 +114,8 @@ class CursorAttrDescriptor:
             return self
         else: # for instances: return value of attribute
             assert owner == self.ntype._cursor_type
-            return cursor.node[self.index]
+            #return cursor.node[self.index]
+            return self.attr.read_hook(cursor.node[self.index], cursor)
 
     def __set__(self, cursor, value):
         cursor.subgraph.update(cursor.node.set_index(self.index, value), cursor.nid)
@@ -146,6 +150,23 @@ class LocalRef(Attr):
             raise TypeError('Only None, int or Cursor can be assigned to LocalRef.')
 
     factory: Callable = localref_factory
+
+    def read_hook(self, value, cursor):
+        if value is None:
+            return value
+        else:
+            return cursor.subgraph.cursor_at(value)
+
+@public
+@dataclass(frozen=False, eq=False)
+class ExternalRef(Attr):
+    refs_ntype: type = None
+    of_subgraph: Callable = None
+    type: type = int
+    optional: bool = True
+
+    def read_hook(self, value, cursor):
+        return self.of_subgraph(cursor).cursor_at(value)
 
 @public
 class Index(GenericIndex):
@@ -237,6 +258,9 @@ class NTypeIndex(Index):
 
     def index_value(self, node, nid):
         return nid
+
+    def query(self, key):
+        return IndexQuery(key)
 
 class LocalRefIndex(Index):
     """
@@ -375,7 +399,12 @@ class Cursor(NamedTuple):
 
     def __getattr__(self, k):
         # If attribute is not found, look for k as subpath:
-        return self.__getitem__(k)
+        
+        try:
+            return self.__getitem__(k)
+        except QueryException as e:
+            # IPython needs an AttributeError here, else it does not use _repr_html_.
+            raise AttributeError(*e.args)
 
     def __setattr__(self, k, v):
         try:
@@ -451,6 +480,14 @@ class Cursor(NamedTuple):
                 sgu.update(sgu.nodes[main_nid].set(ref=self.nid), main_nid)
                 return main_nid
             return self.subgraph % FuncInserter(inserter_func)
+
+    def __hash__(self):
+        return hash((id(self.subgraph), self.nid))
+
+    def __eq__(self, other):
+        if other == None:
+            return False
+        return (id(self.subgraph) == id(other.subgraph)) and (self.nid == other.nid)
 
 class NodeMeta(type):
     @staticmethod
@@ -883,6 +920,9 @@ class Subgraph(ABC):
         return 'MutableSubgraph.load({\n' + ''.join([f'\t{k!r}: {v!r},\n' for k, v in d.items()]) + '})'
 
     def all(self, query: IndexQuery, wrap_cursor:bool=True):
+        if isinstance(query, type):
+            assert issubclass(query, Node)
+            query = Node.index_ntype.query(query)
         try:
             nids = self.index[query.index_key]
         except KeyError:

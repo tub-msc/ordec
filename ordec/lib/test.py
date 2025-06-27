@@ -18,12 +18,12 @@ class RotateTest(Cell):
         node.R180 = SchemInstance(c.portmap(), pos=Vec2R(x=18, y=6), orientation=Orientation.R180)
         node.R270 = SchemInstance(c.portmap(), pos=Vec2R(x=19, y=6), orientation=Orientation.R270)
 
-        node.MY = SchemInstance(pos=Vec2R(x=6, y=7), ref=c, portmap={}, orientation=Orientation.MY)
-        node.MY90 = SchemInstance(pos=Vec2R(x=12, y=12), ref=c, portmap={}, orientation=Orientation.MY90)
-        node.MX = SchemInstance(pos=Vec2R(x=13, y=12), ref=c, portmap={}, orientation=Orientation.MX)
-        node.MX90 = SchemInstance(pos=Vec2R(x=19, y=7), ref=c, portmap={}, orientation=Orientation.MX90)
+        node.MY   = SchemInstance(c.portmap(), pos=Vec2R(x=6, y=7), orientation=Orientation.MY)
+        node.MY90 = SchemInstance(c.portmap(), pos=Vec2R(x=12, y=12), orientation=Orientation.MY90)
+        node.MX   = SchemInstance(c.portmap(), pos=Vec2R(x=13, y=12), orientation=Orientation.MX)
+        node.MX90 = SchemInstance(c.portmap(), pos=Vec2R(x=19, y=7), orientation=Orientation.MX90)
         
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=25, uy=13))
+        node.outline = Rect4R(lx=0, ly=0, ux=25, uy=13)
 
 class PortAlignTest(Cell):
     @generate(Symbol)
@@ -36,18 +36,18 @@ class PortAlignTest(Cell):
 
     @generate(Schematic)
     def schematic(self, node):
-        node.n1 = Net()
-        node.n2 = Net()
-        node.n3 = Net()
-        node.n4 = Net()
+        node.symbol = self.symbol
+        node.n1 = Net(pin=self.symbol.north.nid)
+        node.n2 = Net(pin=self.symbol.south.nid)
+        node.n3 = Net(pin=self.symbol.east.nid)
+        node.n4 = Net(pin=self.symbol.west.nid)
 
-        node.ref = self.symbol
-        node.port_north = SchemPort(pos=Vec2R(x=4, y=2), align=Orientation.North, ref=self.symbol.north, net=node.n1)
-        node.port_south = SchemPort(pos=Vec2R(x=4, y=6), align=Orientation.South, ref=self.symbol.south, net=node.n2)
-        node.port_west = SchemPort(pos=Vec2R(x=6, y=4), align=Orientation.West, ref=self.symbol.west, net=node.n4)
-        node.port_east = SchemPort(pos=Vec2R(x=2, y=4), align=Orientation.East, ref=self.symbol.east, net=node.n3)
+        node.n1 % SchemPort(pos=Vec2R(x=4, y=2), align=Orientation.North)
+        node.n2 % SchemPort(pos=Vec2R(x=4, y=6), align=Orientation.South)
+        node.n3 % SchemPort(pos=Vec2R(x=2, y=4), align=Orientation.East)
+        node.n4 % SchemPort(pos=Vec2R(x=6, y=4), align=Orientation.West)
 
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=8, uy=8))
+        node.outline = Rect4R(lx=0, ly=0, ux=8, uy=8)
 
 class TapAlignTest(Cell):
     @generate(Schematic)
@@ -62,7 +62,7 @@ class TapAlignTest(Cell):
         node.west % SchemTapPoint(pos=Vec2R(x=2, y=4), align=Orientation.West)
         node.east % SchemTapPoint(pos=Vec2R(x=6, y=4), align=Orientation.East)
 
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=8, uy=8))
+        node.outline = Rect4R(lx=0, ly=0, ux=8, uy=8)
 
 
 class DFF(Cell):

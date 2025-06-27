@@ -50,13 +50,13 @@ def test_example_schematic():
         6: NPath(parent=None, name='vdd', ref=5),
         7: Net(pin=3),
         8: NPath(parent=None, name='vss', ref=7),
-        9: SchemInstance(pos=Vec2R(x=R('3.'), y=R('2.')), align=None, symbol=Nmos().symbol),
+        9: SchemInstance(pos=Vec2R(x=R('3.'), y=R('2.')), orientation=D4.R0, symbol=Nmos().symbol),
         10: SchemInstanceConn(ref=9, here=7, there=3),
         11: SchemInstanceConn(ref=9, here=7, there=7),
         12: SchemInstanceConn(ref=9, here=1, there=1),
         13: SchemInstanceConn(ref=9, here=3, there=5),
         14: NPath(parent=None, name='pd', ref=9),
-        15: SchemInstance(pos=Vec2R(x=R('3.'), y=R('8.')), align=None, symbol=Pmos().symbol),
+        15: SchemInstance(pos=Vec2R(x=R('3.'), y=R('8.')), orientation=D4.R0, symbol=Pmos().symbol),
         16: SchemInstanceConn(ref=15, here=5, there=5),
         17: SchemInstanceConn(ref=15, here=5, there=7),
         18: SchemInstanceConn(ref=15, here=1, there=1),
@@ -100,6 +100,10 @@ def test_example_schematic():
         56: SchemWire(ref=3),
         57: PolyVec2R(ref=56, order=0, pos=Vec2R(x=R('5.'), y=R('7.'))),
         58: PolyVec2R(ref=56, order=1, pos=Vec2R(x=R('9.'), y=R('7.'))),
+        59: SchemConnPoint(ref=7, pos=Vec2R(x=R('2.'), y=R('7.'))),
+        60: SchemConnPoint(ref=7, pos=Vec2R(x=R('5.'), y=R('7.'))),
+        61: SchemConnPoint(ref=7, pos=Vec2R(x=R('5.'), y=R('13.'))),
+        62: SchemConnPoint(ref=7, pos=Vec2R(x=R('5.'), y=R('1.'))),
     })
 
     schematic = Inv().schematic
