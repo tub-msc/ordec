@@ -22,28 +22,29 @@ To copy test results in as reference:
 refdir = importlib.resources.files("tests.reference")
 
 testdata = [
-    (lib.Inv().schematic, refdir/"inverter_schematic.png"),
-    (lib.Inv().symbol, refdir/"inverter_symbol.png"),
-    (lib.Ringosc().schematic, refdir/"ringosc_schematic.png"),
-    (lib_test.RotateTest().schematic, refdir/"rotatetest_schematic.png"),
-    (lib.And2().symbol, refdir/"and2_symbol.png"),
-    (lib.Or2().symbol, refdir/"or2_symbol.png"),
-    (lib_test.PortAlignTest().schematic, refdir/"portaligntest_schematic.png"),
-    (lib_test.TapAlignTest().schematic, refdir/"tapaligntest_schematic.png"),
-    (lib_test.MultibitReg_Arrays(bits=5).symbol, refdir/"multibitref_arrays5_symbol.png"),
-    (lib_test.MultibitReg_Arrays(bits=5).schematic, refdir/"multibitref_arrays5_schematic.png"),
-    (lib_test.MultibitReg_Arrays(bits=32).symbol, refdir/"multibitref_arrays32_symbol.png"),
-    (lib_test.MultibitReg_ArrayOfStructs(bits=5).symbol, refdir/"multibitref_arrayofstructs5_symbol.png"),
-    (lib_test.MultibitReg_StructOfArrays(bits=5).symbol, refdir/"multibitref_structofarrays5_symbol.png"),
-    (lib_test.TestNmosInv(variant='default', add_conn_points=True, add_terminal_taps=False).schematic, refdir/"testnmosinv.png"),
-    (lib_test.TestNmosInv(variant='no_wiring', add_conn_points=False, add_terminal_taps=True).schematic, refdir/"testnmosinv_nowiring.png"),
-    (diffpair.DiffPair().schematic, refdir/"ord_diffpair.png"),
-    (diffpair.DiffPairTb().schematic, refdir/"ord_diffpair_tb.png"),
+    (lambda: lib.Inv().schematic, refdir/"inverter_schematic.png"),
+    (lambda: lib.Inv().symbol, refdir/"inverter_symbol.png"),
+    (lambda: lib.Ringosc().schematic, refdir/"ringosc_schematic.png"),
+    (lambda: lib_test.RotateTest().schematic, refdir/"rotatetest_schematic.png"),
+    (lambda: lib.And2().symbol, refdir/"and2_symbol.png"),
+    (lambda: lib.Or2().symbol, refdir/"or2_symbol.png"),
+    (lambda: lib_test.PortAlignTest().schematic, refdir/"portaligntest_schematic.png"),
+    (lambda: lib_test.TapAlignTest().schematic, refdir/"tapaligntest_schematic.png"),
+    (lambda: lib_test.MultibitReg_Arrays(bits=5).symbol, refdir/"multibitref_arrays5_symbol.png"),
+    (lambda: lib_test.MultibitReg_Arrays(bits=5).schematic, refdir/"multibitref_arrays5_schematic.png"),
+    (lambda: lib_test.MultibitReg_Arrays(bits=32).symbol, refdir/"multibitref_arrays32_symbol.png"),
+    (lambda: lib_test.MultibitReg_ArrayOfStructs(bits=5).symbol, refdir/"multibitref_arrayofstructs5_symbol.png"),
+    (lambda: lib_test.MultibitReg_StructOfArrays(bits=5).symbol, refdir/"multibitref_structofarrays5_symbol.png"),
+    (lambda: lib_test.TestNmosInv(variant='default', add_conn_points=True, add_terminal_taps=False).schematic, refdir/"testnmosinv.png"),
+    (lambda: lib_test.TestNmosInv(variant='no_wiring', add_conn_points=False, add_terminal_taps=True).schematic, refdir/"testnmosinv_nowiring.png"),
+    (lambda: diffpair.DiffPair().schematic, refdir/"ord_diffpair.png"),
+    (lambda: diffpair.DiffPairTb().schematic, refdir/"ord_diffpair_tb.png"),
 ]
 
 @pytest.mark.parametrize("testcase", testdata, ids=lambda t: t[1].with_suffix("").name)
 def test_schematic_image(testcase, tmp_path):
-    view, ref_file = testcase
+    view_lambda, ref_file = testcase
+    view = view_lambda()
     img = render_image(view)
     (tmp_path / ref_file.name).write_bytes(img.as_png())
 

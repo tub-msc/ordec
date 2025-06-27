@@ -6,7 +6,9 @@ Geometric primitive types: vectors, matrices, orientations and rotations (D4)
 """
 from enum import Enum
 from .rational import Rational as R
+from public import public
 
+@public
 class Vec2R(tuple):
     """
     Point in 2D space.
@@ -40,6 +42,7 @@ class Vec2R(tuple):
     def __repr__(self):
         return f"Vec2R(x={self.x!r}, y={self.y!r})"
 
+@public
 class Rect4R(tuple):
     """
     Rectangle in 2D space.
@@ -98,6 +101,7 @@ class Rect4R(tuple):
     def __repr__(self):
         return f"Rect4R(lx={self.lx!r}, ly={self.ly!r}, ux={self.ux!r}, uy={self.uy!r})"
 
+@public
 class TD4(tuple):
     """
     Transformation group supporting 2D translation, X/Y mirroring and 90° rotations.
@@ -204,6 +208,7 @@ class TD4(tuple):
     def __repr__(self):
         return f"TD4(transl={self.transl!r}, flipxy={self.flipxy!r}, negx={self.negx!r}, negy={self.negy!r})"
 
+@public
 class D4(Enum):
     """
     Dihedral group D4, supporting X/Y mirroring and 90° rotations.
@@ -286,4 +291,5 @@ class D4(Enum):
     def from_td4(cls, td4: TD4):
         return cls(TD4(flipxy=td4.flipxy, negx=td4.negx, negy=td4.negy))
 
-Orientation = D4 # alias
+
+public(Orientation = D4) # alias

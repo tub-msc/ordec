@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from .. import Net, SchemInstance, Pin, SimNet, SimInstance, Schematic, SimHierarchy
+from ..schema import *
 from .ngspice import Ngspice, Netlister
 
 def build_hier_symbol(node, symbol):

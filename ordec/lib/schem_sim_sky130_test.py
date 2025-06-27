@@ -13,7 +13,7 @@ from ordec import (
     PinType,
     Rational as R,
     SchemPoly,
-    SchemArc,
+    SymbolArc,
     SchemRect,
     SchemInstance,
     SchemPort,

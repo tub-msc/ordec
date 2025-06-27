@@ -11,7 +11,7 @@ gi.require_version('Pango', '1.0')
 gi.require_version('PangoCairo', '1.0')
 from gi.repository import Pango, PangoCairo
 
-from . import Symbol, Pin, SchemPoly, SchemArc, SchemRect, Schematic, SchemInstance, SchemPort, PinType, SchemConnPoint, SchemTapPoint
+from . import Symbol, Pin, SchemWire, SymbolPoly, SymbolArc, Schematic, SchemInstance, SchemPort, PinType, SchemConnPoint, SchemTapPoint
 from .geoprim import Rect4R, Vec2R, TD4, D4, Orientation
 
 def to_cairo_matrix(trans: TD4):
@@ -100,7 +100,7 @@ class Renderer:
         ctx.rectangle(lx, ly, ux-lx, uy-ly)
         ctx.stroke()
 
-    def draw_schem_poly(self, poly: SchemPoly, trans: TD4 = TD4()):
+    def draw_schem_poly(self, poly: SchemWire, trans: TD4 = TD4()):
         ctx = self.ctx
         x, y = (trans * poly.vertices[0]).tofloat()
         ctx.move_to(x, y)
@@ -120,7 +120,7 @@ class Renderer:
         ctx.arc(x, y, 0.1625, 0, 2*math.pi)
         ctx.fill()
 
-    def draw_schem_arc(self, arc: SchemArc, trans: TD4):
+    def draw_schem_arc(self, arc: SymbolArc, trans: TD4):
         ctx = self.ctx
         x, y = (trans * arc.pos).tofloat()
         radius = float(arc.radius)
@@ -307,7 +307,7 @@ class Renderer:
         ctx.set_source_rgb(0,0,0)
         for poly in s.traverse(SchemPoly):
             self.draw_schem_poly(poly, trans)
-        for arc in s.traverse(SchemArc):
+        for arc in s.traverse(SymbolArc):
             self.draw_schem_arc(arc, trans)
 
         ctx.set_source_rgb(1,0,0)
@@ -403,11 +403,11 @@ class RendererImage(Renderer):
 
 
 def render_svg(object) -> RendererSVG:
-    with RendererSVG(object.outline.pos) as r:
+    with RendererSVG(object.outline) as r:
         r.render(object)
     return r
 
 def render_image(object) -> RendererImage:
-    with RendererImage(object.outline.pos) as r:
+    with RendererImage(object.outline) as r:
         r.render(object)
     return r

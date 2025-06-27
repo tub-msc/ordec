@@ -133,7 +133,9 @@ def load_ord(file_path):
 # ordec/ws_server.py use ord2py() for now.
 def ord2py(source_data: str) -> ast.Module:
     module = ast.parse(
-        "from ordec import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, Rational, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, SchemConnPoint, SchemTapPoint, SimHierarchy, generate, helpers\n" +
+        "from ordec.schema import *\n" +
+        "from ordec.cell import Cell, generate\n" +
+        "from ordec.rational import R\n" +
         "from ordec.sim2.sim_hierarchy import HighlevelSim\n"+
         "from ordec.lib import Inv, Res, Gnd, Vdc, Idc, Nmos, Pmos, NoConn\n"+
         "from ordec.parser.implicit_processing import symbol_process, preprocess, PostProcess, postprocess\n" +

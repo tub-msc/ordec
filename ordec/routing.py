@@ -4,7 +4,7 @@
 #standard imports
 
 #ordec imports
-from . import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemPoly
+from . import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire
 from .geoprim import D4
 from .parser import schematic_routing as routing_module
 
@@ -143,16 +143,16 @@ def schematic_routing(node, outline=None, routing=None):
     vertices_dict = routing_module.calculate_vertices(outline, cells, ports, connections)
     i = 0
     for name, vertices_lists in vertices_dict.items():
-        # Example: node.vss % SchemPoly(vertices=[Vec2R(x=6, y=1), Vec2R(x=6, y=2)])
+        # Example: node.vss % SchemWire(vertices=[Vec2R(x=6, y=1), Vec2R(x=6, y=2)])
         for vertices in vertices_lists:
             # Set the vertices from the ports
             # Case for internal nets
             schem_part = getattr(node, name)
             if isinstance(schem_part, Net):
                 setattr(getattr(node, name),  f"vert_{i}",
-                        SchemPoly(vertices=[Vec2R(x=vert[0], y=vert[1]) for vert in vertices]))
+                        SchemWire(vertices=[Vec2R(x=vert[0], y=vert[1]) for vert in vertices]))
             # case for external ports
             else:
                 setattr(getattr(node, name).net, f"vert_{i}",
-                        SchemPoly(vertices=[Vec2R(x=vert[0], y=vert[1]) for vert in vertices]))
+                        SchemWire(vertices=[Vec2R(x=vert[0], y=vert[1]) for vert in vertices]))
             i += 1

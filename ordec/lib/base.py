@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from .. import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, SchemConnPoint, SchemTapPoint, generate, helpers
-import pyrsistent
+from ..base import *
+from .. import helpers
 
 __all__=["Res", "Cap", "Ind", "Gnd", "NoConn", "Vdc", "Idc",
     "PieceWiseLinearVoltageSource", "PulseVoltageSource", "SinusoidalVoltageSource",
@@ -20,15 +20,15 @@ class Res(Cell):
         
         if self.params.get("alt_symbol", False):
             # Box symbol
-            node % SchemPoly(vertices=[Vec2R(x=1.5, y=3), Vec2R(x=2.5, y=3), Vec2R(x=2.5, y=1), Vec2R(x=1.5, y=1), Vec2R(x=1.5, y=3)])
-            node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])
-            node % SchemPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)])
+            node % SymbolPoly(vertices=[Vec2R(x=1.5, y=3), Vec2R(x=2.5, y=3), Vec2R(x=2.5, y=1), Vec2R(x=1.5, y=1), Vec2R(x=1.5, y=3)])
+            node % SymbolPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])
+            node % SymbolPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)])
         else:
             # Zigzag symbol
             zigzag_height = R(2)
             zigzag_width_half = R(0.625)
             zigzag_start = (R(4) - zigzag_height)/R(2)
-            node % SchemPoly(vertices=[
+            node % SymbolPoly(vertices=[
                 Vec2R(x=2, y=0),
                 Vec2R(x=2, y=zigzag_start),
                 Vec2R(x=2 - zigzag_width_half, y=zigzag_start+zigzag_height*R(1)/R(12) ),
@@ -78,9 +78,9 @@ class Ind(Cell):
         #node % SchemPoly(vertices=[Vec2R(x=1.25, y=1.8), Vec2R(x=2.75, y=1.8)])
         #node % SchemPoly(vertices=[Vec2R(x=1.25, y=2.2), Vec2R(x=2.75, y=2.2)])
         r=0.35
-        node % SchemArc(pos=Vec2R(x=2,y=3-r), radius=R(r), angle_start=R(-0.25), angle_end=R(0.25))
-        node % SchemArc(pos=Vec2R(x=2,y=3-(3*r)), radius=R(r), angle_start=R(-0.25), angle_end=R(0.25))
-        node % SchemArc(pos=Vec2R(x=2,y=3-(5*r)), radius=R(r), angle_start=R(-0.25), angle_end=R(0.25))
+        node % SymbolArc(pos=Vec2R(x=2,y=3-r), radius=R(r), angle_start=R(-0.25), angle_end=R(0.25))
+        node % SymbolArc(pos=Vec2R(x=2,y=3-(3*r)), radius=R(r), angle_start=R(-0.25), angle_end=R(0.25))
+        node % SymbolArc(pos=Vec2R(x=2,y=3-(5*r)), radius=R(r), angle_start=R(-0.25), angle_end=R(0.25))
         
         #Linien
         node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])
@@ -138,7 +138,7 @@ class Vdc(Cell):
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
         
         #Kreis
-        node % SchemArc(pos=Vec2R(x=2,y=2), radius=R(1))
+        node % SymbolArc(pos=Vec2R(x=2,y=2), radius=R(1))
         
         #Linien
         node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])
@@ -181,8 +181,8 @@ class Idc(Cell):
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
         
         #Kreis
-        node % SchemArc(pos=Vec2R(x=2,y=4-2*0.7), radius=R(7,10))
-        node % SchemArc(pos=Vec2R(x=2,y=0+2*0.7), radius=R(7,10))
+        node % SymbolArc(pos=Vec2R(x=2,y=4-2*0.7), radius=R(7,10))
+        node % SymbolArc(pos=Vec2R(x=2,y=0+2*0.7), radius=R(7,10))
         
         #Linien
         node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])
@@ -221,7 +221,7 @@ class PieceWiseLinearVoltageSource(Cell):
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
         
         
-        node % SchemArc(pos=Vec2R(x=2,y=2), radius=R(1))
+        node % SymbolArc(pos=Vec2R(x=2,y=2), radius=R(1))
         
     
         node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)]) # To positive pin
@@ -256,7 +256,7 @@ class PulseVoltageSource(Cell):
         node.m = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
 
-        node % SchemArc(pos=Vec2R(x=2, y=2), radius=R(1))
+        node % SymbolArc(pos=Vec2R(x=2, y=2), radius=R(1))
 
         node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])  # To positive pin 'p'
         node % SchemPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)])  # To negative pin 'm'
@@ -295,7 +295,7 @@ class SinusoidalVoltageSource(Cell):
         node.m = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
 
-        node % SchemArc(pos=Vec2R(x=2, y=2), radius=R(1))
+        node % SymbolArc(pos=Vec2R(x=2, y=2), radius=R(1))
 
         node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)]) # To positive pin 'p'
         node % SchemPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)]) # To negative pin 'm'
@@ -325,7 +325,7 @@ class PieceWiseLinearCurrentSource(Cell):
         node.m = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
 
     
-        node % SchemArc(pos=Vec2R(x=2, y=2), radius=R(1))
+        node % SymbolArc(pos=Vec2R(x=2, y=2), radius=R(1))
 
         
         node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)]) # To positive pin 'p'
@@ -372,7 +372,7 @@ class PulseCurrentSource(Cell):
 
         # Draw the symbol
         # Circle
-        node % SchemArc(pos=Vec2R(x=2, y=2), radius=R(1))
+        node % SymbolArc(pos=Vec2R(x=2, y=2), radius=R(1))
 
         # Lines
         node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)]) # To positive pin 'p'
@@ -417,7 +417,7 @@ class SinusoidalCurrentSource(Cell):
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
 
         # Circle
-        node % SchemArc(pos=Vec2R(x=2, y=2), radius=R(1))
+        node % SymbolArc(pos=Vec2R(x=2, y=2), radius=R(1))
 
         # Lines
         node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)]) # To positive pin 'p'

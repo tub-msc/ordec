@@ -12,12 +12,12 @@ class PrelimSchemInstance():
     SchemInstance wrapper which is holding instance information and conversion to real
     SchemInstance via the from_prelim function
     """
-    prelim_pos = ordec.attr(type=ordec.Vec2R)
-    prelim_orientation = ordec.attr(type=ordec.Orientation, default=ordec.Orientation.R0)
-    prelim_name = ordec.attr(type=str)
-    prelim_ref = ordec.attr(type=str)
-    prelim_params = ordec.attr(type=map, freezer=CheckedPMap)
-    prelim_portmap = ordec.attr(type=map, freezer=CheckedPMap)
+    # prelim_pos = ordec.attr(type=ordec.Vec2R)
+    # prelim_orientation = ordec.attr(type=ordec.Orientation, default=ordec.Orientation.R0)
+    # prelim_name = ordec.attr(type=str)
+    # prelim_ref = ordec.attr(type=str)
+    # prelim_params = ordec.attr(type=map, freezer=CheckedPMap)
+    # prelim_portmap = ordec.attr(type=map, freezer=CheckedPMap)
 
     def __init__(self, prelim_name, prelim_ref):
         self.prelim_name = prelim_name

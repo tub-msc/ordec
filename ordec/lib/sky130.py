@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from .. import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, NetArray, NetStruct, Orientation, SchemConnPoint, SchemTapPoint
+from .. import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, SchemPoly, SymbolArc, SchemRect, SchemInstance, SchemPort, Net, NetArray, NetStruct, Orientation, SchemConnPoint, SchemTapPoint
 from .. import helpers
 from . import Nmos, Pmos
 from ..parser.implicit_processing import schematic_routing
@@ -94,7 +94,7 @@ class Inv(Cell):
         node % SchemPoly(vertices=[Vec2R(x=0, y=2), Vec2R(x=1, y=2)])  # Input line
         node % SchemPoly(vertices=[Vec2R(x=3.25, y=2), Vec2R(x=4, y=2)])  # Output line
         node % SchemPoly(vertices=[Vec2R(x=1, y=1), Vec2R(x=1, y=3), Vec2R(x=2.75, y=2), Vec2R(x=1, y=1)])  # Triangle
-        node % SchemArc(pos=Vec2R(x=3, y=2), radius=R(0.25))  # Output bubble
+        node % SymbolArc(pos=Vec2R(x=3, y=2), radius=R(0.25))  # Output bubble
 
         # Outline
         node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))

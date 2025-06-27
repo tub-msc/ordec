@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 #testbenches
-from ordec import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, NetArray, NetStruct, Orientation, SchemConnPoint, SchemTapPoint
+from ordec import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, SchemPoly, SymbolArc, SchemRect, SchemInstance, SchemPort, Net, NetArray, NetStruct, Orientation, SchemConnPoint, SchemTapPoint
 from ordec.lib import Nmos, Pmos, Inv, And2, Or2, Ringosc, Vdc, Res, Cap, Ind, SinusoidalVoltageSource, Gnd
 from IPython.core.display import HTML
 from pyrsistent import PMap, field

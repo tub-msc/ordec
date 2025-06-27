@@ -5,7 +5,8 @@
 from dataclasses import dataclass, field
 
 #ordec imports
-from ..schema import Pin, Net, SchemPort, Orientation, SchemRect, Rect4R, Vec2R, PinType
+from ..schema import Pin, Net, SchemPort, PinType
+from ..geoprim import Orientation, Rect4R, Vec2R
 from ..parser.optimize_position import get_pos_with_constraints
 from ..helpers import symbol_place_pins, schem_check
 from ..routing import schematic_routing, check_outline_rescaling

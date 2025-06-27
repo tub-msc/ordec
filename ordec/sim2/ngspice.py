@@ -10,7 +10,8 @@ from pathlib import Path
 import tempfile
 import signal
 import re
-from ordec import Cell, Vec2R, Rect4R, Pin, Symbol, Schematic, PinType, Rational as R, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, SchemConnPoint, SchemTapPoint, PathArray, PathStruct, generate, lib, helpers, SimNet, SimHierarchy, SimInstance
+from ordec.schema import *
+from ordec.cell import Cell
 
 NgspiceVector = namedtuple('NgspiceVector', ['name', 'quantity', 'dtype', 'rest'])
 NgspiceValue = namedtuple('NgspiceValue', ['name', 'value'])

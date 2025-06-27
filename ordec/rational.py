@@ -5,8 +5,9 @@ import itertools
 import collections
 import math
 import fractions
+from public import public
 
-
+@public
 class Rational(fractions.Fraction):
     """
     This class is meant to offer a convenient and exact numeric data type for
@@ -127,3 +128,5 @@ class Rational(fractions.Fraction):
             return self.compat_str()
         else:
             return super().__format__(spec)
+
+public(R = Rational) # alias

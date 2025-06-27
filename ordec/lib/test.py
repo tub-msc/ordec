@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from .. import Cell, Vec2R, Rect4R, Pin, Symbol, Schematic, PinType, Rational as R, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, SchemConnPoint, SchemTapPoint, PathArray, PathStruct, generate, SimHierarchy, helpers
-from ..helpers import qinst
+from .. import helpers
+from ..base import *
 from ..sim2.sim_hierarchy import HighlevelSim
 
 from .generic_mos import Or2, Nmos, Pmos, Ringosc, Inv
@@ -13,10 +13,10 @@ class RotateTest(Cell):
     def schematic(self, node):
         c = Or2().symbol
 
-        node.R0 = SchemInstance(pos=Vec2R(x=1, y=1), ref=c, portmap={}, orientation=Orientation.R0)
-        node.R90 = SchemInstance(pos=Vec2R(x=12, y=1), ref=c, portmap={}, orientation=Orientation.R90)
-        node.R180 = SchemInstance(pos=Vec2R(x=18, y=6), ref=c, portmap={}, orientation=Orientation.R180)
-        node.R270 = SchemInstance(pos=Vec2R(x=19, y=6), ref=c, portmap={}, orientation=Orientation.R270)
+        node.R0   = SchemInstance(c.portmap(), pos=Vec2R(x=1, y=1), orientation=Orientation.R0)
+        node.R90  = SchemInstance(c.portmap(), pos=Vec2R(x=12, y=1), orientation=Orientation.R90)
+        node.R180 = SchemInstance(c.portmap(), pos=Vec2R(x=18, y=6), orientation=Orientation.R180)
+        node.R270 = SchemInstance(c.portmap(), pos=Vec2R(x=19, y=6), orientation=Orientation.R270)
 
         node.MY = SchemInstance(pos=Vec2R(x=6, y=7), ref=c, portmap={}, orientation=Orientation.MY)
         node.MY90 = SchemInstance(pos=Vec2R(x=12, y=12), ref=c, portmap={}, orientation=Orientation.MY90)

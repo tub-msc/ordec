@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from . import Vec2R, Rect4R, Pin, Rational as R, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, Symbol, Schematic, SchemConnPoint, SchemPort, Pin, SchemTapPoint, D4
 import itertools
 from dataclasses import dataclass
+from .base import *
 
 def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     """
@@ -203,10 +203,3 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
         unconnected = must_reach-reaches
         if len(unconnected) > 0:
             raise SchematicError(f"Net {net} misses wiring to locations {unconnected}.")
-
-def qinst(pos=None, ref=None, orientation=Orientation.R0, **kwargs):
-    """Helper for concisely generating SchemInstance."""
-    portmap = {}
-    for port, net in kwargs.items():
-        portmap[getattr(ref, port)] = net
-    return SchemInstance(pos=pos, ref=ref, orientation=orientation, portmap=portmap)
