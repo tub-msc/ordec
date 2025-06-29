@@ -143,7 +143,7 @@ def basename_escape(obj):
     if isinstance(obj, Cell):
         basename = f"{type(obj).__name__}_{'_'.join(obj.params_list())}"
     else:
-        basename = "_".join(obj.path()[2:])
+        basename = "_".join(obj.full_path_list())
     return re.sub(r'[^a-zA-Z0-9]', '_', basename).lower()
 
 class Netlister:
@@ -186,38 +186,44 @@ class Netlister:
             return name
     
     def name_simnet(self, sn):
-        ret = [self.name_obj(sn.ref, sn.ref.root_view)]
-        node = sn
-        while not isinstance(node, SimHierarchy):
-            if isinstance(node, SimInstance):
-                ret.insert(0, self.name_obj(node.ref, node.ref.root_view))
-            node = node.parent
+        ret = [self.name_obj(sn.ref, sn.ref.subgraph)]
+
+        c = sn
+        while not isinstance(c.node, SimHierarchy):
+            if isinstance(c.node, SimInstance):
+                ret.insert(0, self.name_obj(c.ref, c.ref.subgraph))
+            c = c.parent
+        print(".".join(ret))
         return ".".join(ret)
 
     def pinlist(self, sym: Symbol):
-        return list(sym.traverse(Pin))
+        return list(sym.all(Pin))
 
     def portmap(self, inst, pins):
-        return [self.name_of_obj[inst.portmap[pin]] for pin in pins]
+        ret = []
+        for pin in pins:
+            conn = inst.subgraph.one(SchemInstanceConn.ref_pin_idx.query((inst.nid, pin.nid)))
+            ret.append(self.name_of_obj[conn.here])
+        return ret
 
     def netlist_schematic(self, s: Schematic):    
-        for net in s.traverse(Net):
+        for net in s.all(Net):
             self.name_obj(net, s)
         
         subckt_dep = set()
-        for inst in s.traverse(SchemInstance):
+        for inst in s.all(SchemInstance):
             try:
-                f = inst.ref.parent.netlist_ngspice
+                f = inst.symbol.cell.netlist_ngspice
             except AttributeError: # subckt
-                pins = self.pinlist(inst.ref)
-                subckt_dep.add(inst.ref)
-                self.add(self.name_obj(inst, s, prefix="x"), self.portmap(inst, pins), self.name_obj(inst.ref.parent))
+                pins = self.pinlist(inst.symbol)
+                subckt_dep.add(inst.symbol)
+                self.add(self.name_obj(inst, s, prefix="x"), self.portmap(inst, pins), self.name_obj(inst.symbol.cell))
             else:
                 f(self, inst, s)
         return subckt_dep
 
     def netlist_hier(self, top: Schematic):
-        self.add('.title', self.name_obj(top.parent))
+        self.add('.title', self.name_obj(top.cell))
         #self.add('.probe', 'alli')
         #self.add('.option', 'savecurrents')
 
@@ -225,12 +231,12 @@ class Netlister:
         subckt_done = set()
         while len(subckt_dep - subckt_done) > 0:
             symbol = next(iter(subckt_dep - subckt_done))
-            schematic = symbol.parent.schematic
-            self.add('.subckt', self.name_obj(symbol.parent), [self.name_obj(pin, symbol) for pin in self.pinlist(symbol)])
+            schematic = symbol.cell.schematic
+            self.add('.subckt', self.name_obj(symbol.cell), [self.name_obj(pin, symbol) for pin in self.pinlist(symbol)])
             self.indent += 4
             subckt_dep |= self.netlist_schematic(schematic)
             self.indent -= 4
-            self.add(".ends", self.name_obj(symbol.parent))
+            self.add(".ends", self.name_obj(symbol.cell))
             subckt_done.add(symbol)
 
         # Add model setup lines at top:

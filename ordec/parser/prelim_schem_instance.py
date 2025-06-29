@@ -1,11 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-#standard imports
-from pyrsistent import CheckedPMap
-#ordec imports
-import ordec
-
+from ..base import *
 
 class PrelimSchemInstance():
     """
@@ -24,17 +20,17 @@ class PrelimSchemInstance():
         self.prelim_ref = prelim_ref
         self.prelim_params = {}
         self.prelim_portmap = {}
-        self.prelim_orientation = ordec.Orientation.R0
-        self.prelim_pos = ordec.Vec2R(x=0, y=0)
+        self.prelim_orientation = Orientation.R0
+        self.prelim_pos = Vec2R(x=0, y=0)
 
     def from_prelim(self, ext, node):
         # get the new ref
         new_ref = ext[self.prelim_ref](**self.prelim_params).symbol
-        setattr(node, self.prelim_name, ordec.SchemInstance(ref=new_ref, portmap={}))
+        setattr(node, self.prelim_name, SchemInstance(new_ref.portmap()))
         new_instance = getattr(node, self.prelim_name)
         # map the ports
         for source, destination in self.prelim_portmap.items():
-            new_instance.portmap[getattr(new_ref, source)] = destination
+            new_instance % SchemInstanceConn(here=destination, there=getattr(new_ref, source))
         # map the orientation
         new_instance.orientation = self.prelim_orientation
         # map the postion

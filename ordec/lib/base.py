@@ -14,7 +14,8 @@ __all__=["Res", "Cap", "Ind", "Gnd", "NoConn", "Vdc", "Idc",
 class Res(Cell):
     spiceSymbol = "R"
 
-    def symbol(self, node) -> Symbol:
+    @generate(Symbol)
+    def symbol(self, node):
         node.m = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
         
@@ -41,55 +42,59 @@ class Res(Cell):
                 Vec2R(x=2, y=4),
                 ])
         
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+        node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
     
     def netlist_ngspice(self, netlister, inst, schematic):
         param_r = self.params.r
-        pins = [inst.ref.p, inst.ref.m]
+        pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, schematic, prefix="r"), netlister.portmap(inst, pins), f'r={param_r.compat_str()}')
 
 class Cap(Cell):
     spiceSymbol = "C"
-    def symbol(self, node) -> Symbol:  
+
+    @generate(Symbol)
+    def symbol(self, node):
         node.m = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
         
         #Kondensator
-        node % SchemPoly(vertices=[Vec2R(x=1.25, y=1.8), Vec2R(x=2.75, y=1.8)])
-        node % SchemPoly(vertices=[Vec2R(x=1.25, y=2.2), Vec2R(x=2.75, y=2.2)])
+        node % SymbolPoly(vertices=[Vec2R(x=1.25, y=1.8), Vec2R(x=2.75, y=1.8)])
+        node % SymbolPoly(vertices=[Vec2R(x=1.25, y=2.2), Vec2R(x=2.75, y=2.2)])
         
         #Linien
-        node % SchemPoly(vertices=[Vec2R(x=2, y=2.2), Vec2R(x=2, y=4)])
-        node % SchemPoly(vertices=[Vec2R(x=2, y=1.8), Vec2R(x=2, y=0)])
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=2.2), Vec2R(x=2, y=4)])
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=1.8), Vec2R(x=2, y=0)])
 
 
-        #node % SchemPoly(vertices=[Vec2R(x=1.6, y=1.05), Vec2R(x=2, y=1.25), Vec2R(x=1.6, y=1.45)])
+        #node % SymbolPoly(vertices=[Vec2R(x=1.6, y=1.05), Vec2R(x=2, y=1.25), Vec2R(x=1.6, y=1.45)])
 
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+        node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
    
 class Ind(Cell):
     spiceSymbol = "L"
-    def symbol(self, node) -> Symbol:
+
+    @generate(Symbol)
+    def symbol(self, node):
         
         node.m = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
         
         #Kondensator
-        #node % SchemPoly(vertices=[Vec2R(x=1.25, y=1.8), Vec2R(x=2.75, y=1.8)])
-        #node % SchemPoly(vertices=[Vec2R(x=1.25, y=2.2), Vec2R(x=2.75, y=2.2)])
+        #node % SymbolPoly(vertices=[Vec2R(x=1.25, y=1.8), Vec2R(x=2.75, y=1.8)])
+        #node % SymbolPoly(vertices=[Vec2R(x=1.25, y=2.2), Vec2R(x=2.75, y=2.2)])
         r=0.35
         node % SymbolArc(pos=Vec2R(x=2,y=3-r), radius=R(r), angle_start=R(-0.25), angle_end=R(0.25))
         node % SymbolArc(pos=Vec2R(x=2,y=3-(3*r)), radius=R(r), angle_start=R(-0.25), angle_end=R(0.25))
         node % SymbolArc(pos=Vec2R(x=2,y=3-(5*r)), radius=R(r), angle_start=R(-0.25), angle_end=R(0.25))
         
         #Linien
-        node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])
-        node % SchemPoly(vertices=[Vec2R(x=2, y=3-(6*r)), Vec2R(x=2, y=0)])
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=3-(6*r)), Vec2R(x=2, y=0)])
 
 
-        #node % SchemPoly(vertices=[Vec2R(x=1.6, y=1.05), Vec2R(x=2, y=1.25), Vec2R(x=1.6, y=1.45)])
+        #node % SymbolPoly(vertices=[Vec2R(x=1.6, y=1.05), Vec2R(x=2, y=1.25), Vec2R(x=1.6, y=1.45)])
 
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+        node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
  
   
 # Misc
@@ -97,19 +102,21 @@ class Ind(Cell):
 
 class Gnd(Cell):
     spiceSymbol = "V"
+
+    @generate(Symbol)
     def symbol(self, node) -> Symbol:      
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)  
 
         
         #Linien
-        node % SchemPoly(vertices=[Vec2R(x=2, y=2.5), Vec2R(x=2, y=4)])
-        node % SchemPoly(vertices=[Vec2R(x=1, y=2.5), Vec2R(x=3, y=2.5), Vec2R(x=2, y=1),Vec2R(x=1, y=2.5)])
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=2.5), Vec2R(x=2, y=4)])
+        node % SymbolPoly(vertices=[Vec2R(x=1, y=2.5), Vec2R(x=3, y=2.5), Vec2R(x=2, y=1),Vec2R(x=1, y=2.5)])
 
-        #node % SchemPoly(vertices=[Vec2R(x=1.6, y=1.05), Vec2R(x=2, y=1.25), Vec2R(x=1.6, y=1.45)])
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+        #node % SymbolPoly(vertices=[Vec2R(x=1.6, y=1.05), Vec2R(x=2, y=1.25), Vec2R(x=1.6, y=1.45)])
+        node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
  
     def netlist_ngspice(self, netlister, inst, schematic):
-        pins = [inst.ref.p]
+        pins = [inst.symbol.p]
         netlister.add(netlister.name_obj(inst, schematic, prefix="v"), netlister.portmap(inst, pins), '0', f'dc 0')
 
 class NoConn(Cell):
@@ -117,11 +124,11 @@ class NoConn(Cell):
     def symbol(self, node):
         node.a = Pin(pos=Vec2R(x=0, y=2), pintype=PinType.In, align=Orientation.West)
 
-        node % SchemPoly(vertices=[Vec2R(x=0, y=2), Vec2R(x=2, y=2)])
-        node % SchemPoly(vertices=[Vec2R(x=1.5, y=2.5), Vec2R(x=2.5, y=1.5)])
-        node % SchemPoly(vertices=[Vec2R(x=1.5, y=1.5), Vec2R(x=2.5, y=2.5)])
+        node % SymbolPoly(vertices=[Vec2R(x=0, y=2), Vec2R(x=2, y=2)])
+        node % SymbolPoly(vertices=[Vec2R(x=1.5, y=2.5), Vec2R(x=2.5, y=1.5)])
+        node % SymbolPoly(vertices=[Vec2R(x=1.5, y=1.5), Vec2R(x=2.5, y=2.5)])
 
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+        node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
 
     def netlist_ngspice(self, netlister, inst, schematic):
         pass
@@ -141,34 +148,34 @@ class Vdc(Cell):
         node % SymbolArc(pos=Vec2R(x=2,y=2), radius=R(1))
         
         #Linien
-        node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])
-        node % SchemPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)])
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)])
 
         if self.params.get("alt_symbol", False):
             #Pfeil
-            node % SchemPoly(vertices=[Vec2R(x=0.5, y=1), Vec2R(x=0.5, y=3)])
-            node % SchemPoly(vertices=[Vec2R(x=0.5, y=3)+Vec2R(x=-0.2, y=-0.2), Vec2R(x=0.5, y=3)])
-            node % SchemPoly(vertices=[Vec2R(x=0.5, y=3)+Vec2R(x=0.2, y=-0.2), Vec2R(x=0.5, y=3)])
+            node % SymbolPoly(vertices=[Vec2R(x=0.5, y=1), Vec2R(x=0.5, y=3)])
+            node % SymbolPoly(vertices=[Vec2R(x=0.5, y=3)+Vec2R(x=-0.2, y=-0.2), Vec2R(x=0.5, y=3)])
+            node % SymbolPoly(vertices=[Vec2R(x=0.5, y=3)+Vec2R(x=0.2, y=-0.2), Vec2R(x=0.5, y=3)])
     
             #+/-
-            node % SchemPoly(vertices=[Vec2R(x=1.5, y=2.1), Vec2R(x=2.5, y=2.1)])
-            node % SchemPoly(vertices=[Vec2R(x=1.5, y=1.9), Vec2R(x=1.8, y=1.9)])
-            node % SchemPoly(vertices=[Vec2R(x=1.9, y=1.9), Vec2R(x=2.1, y=1.9)])
-            node % SchemPoly(vertices=[Vec2R(x=2.2, y=1.9), Vec2R(x=2.5, y=1.9)])
-            #node % SchemPoly(vertices=[Vec2R(x=1.6, y=1.05), Vec2R(x=2, y=1.25), Vec2R(x=1.6, y=1.45)])
+            node % SymbolPoly(vertices=[Vec2R(x=1.5, y=2.1), Vec2R(x=2.5, y=2.1)])
+            node % SymbolPoly(vertices=[Vec2R(x=1.5, y=1.9), Vec2R(x=1.8, y=1.9)])
+            node % SymbolPoly(vertices=[Vec2R(x=1.9, y=1.9), Vec2R(x=2.1, y=1.9)])
+            node % SymbolPoly(vertices=[Vec2R(x=2.2, y=1.9), Vec2R(x=2.5, y=1.9)])
+            #node % SymbolPoly(vertices=[Vec2R(x=1.6, y=1.05), Vec2R(x=2, y=1.25), Vec2R(x=1.6, y=1.45)])
         else:
             #+
-            node % SchemPoly(vertices=[Vec2R(x=2, y=2.2), Vec2R(x=2, y=2.8)])
-            node % SchemPoly(vertices=[Vec2R(x=1.7, y=2.5), Vec2R(x=2.3, y=2.5)])
+            node % SymbolPoly(vertices=[Vec2R(x=2, y=2.2), Vec2R(x=2, y=2.8)])
+            node % SymbolPoly(vertices=[Vec2R(x=1.7, y=2.5), Vec2R(x=2.3, y=2.5)])
             #-
-            node % SchemPoly(vertices=[Vec2R(x=1.65, y=1.5), Vec2R(x=2.35, y=1.5)])
+            node % SymbolPoly(vertices=[Vec2R(x=1.65, y=1.5), Vec2R(x=2.35, y=1.5)])
             
 
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+        node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
  
     def netlist_ngspice(self, netlister, inst, schematic):
         param_dc = self.params.dc
-        pins = [inst.ref.p, inst.ref.m]
+        pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, schematic, prefix="v"), netlister.portmap(inst, pins) , f'dc {param_dc.compat_str()}')
 
 class Idc(Cell):
@@ -185,25 +192,25 @@ class Idc(Cell):
         node % SymbolArc(pos=Vec2R(x=2,y=0+2*0.7), radius=R(7,10))
         
         #Linien
-        node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])
-        node % SchemPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)])
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)])
         #Pfeil
-        node % SchemPoly(vertices=[Vec2R(x=0.5, y=1), Vec2R(x=0.5, y=3)])
-        node % SchemPoly(vertices=[Vec2R(x=0.5, y=1)+Vec2R(x=-0.2, y=0.2), Vec2R(x=0.5, y=1)])
-        node % SchemPoly(vertices=[Vec2R(x=0.5, y=1)+Vec2R(x=0.2, y=0.2), Vec2R(x=0.5, y=1)])
+        node % SymbolPoly(vertices=[Vec2R(x=0.5, y=1), Vec2R(x=0.5, y=3)])
+        node % SymbolPoly(vertices=[Vec2R(x=0.5, y=1)+Vec2R(x=-0.2, y=0.2), Vec2R(x=0.5, y=1)])
+        node % SymbolPoly(vertices=[Vec2R(x=0.5, y=1)+Vec2R(x=0.2, y=0.2), Vec2R(x=0.5, y=1)])
 
         #+
-        #node % SchemPoly(vertices=[Vec2R(x=2, y=2.2), Vec2R(x=2, y=2.8)])
-        #node % SchemPoly(vertices=[Vec2R(x=1.7, y=2.5), Vec2R(x=2.3, y=2.5)])
+        #node % SymbolPoly(vertices=[Vec2R(x=2, y=2.2), Vec2R(x=2, y=2.8)])
+        #node % SymbolPoly(vertices=[Vec2R(x=1.7, y=2.5), Vec2R(x=2.3, y=2.5)])
         #-
-        #node % SchemPoly(vertices=[Vec2R(x=1.65, y=1.5), Vec2R(x=2.35, y=1.5)])
+        #node % SymbolPoly(vertices=[Vec2R(x=1.65, y=1.5), Vec2R(x=2.35, y=1.5)])
             
 
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+        node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
 
     def netlist_ngspice(self, netlister, inst, schematic):
         param_dc = self.params.dc
-        pins = [inst.ref.p, inst.ref.m]
+        pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, schematic, prefix="i"), netlister.portmap(inst, pins) , f'dc {param_dc.compat_str()}')
 
 class PieceWiseLinearVoltageSource(Cell):
@@ -214,8 +221,8 @@ class PieceWiseLinearVoltageSource(Cell):
     """
     spiceSymbol = "V" 
     
-    
-    def symbol(self, node) -> Symbol:
+    @generate(Symbol)
+    def symbol(self, node):
         """ Defines the schematic symbol for the PWL source. """
         node.m = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
@@ -224,11 +231,11 @@ class PieceWiseLinearVoltageSource(Cell):
         node % SymbolArc(pos=Vec2R(x=2,y=2), radius=R(1))
         
     
-        node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)]) # To positive pin
-        node % SchemPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)]) # To negative pin
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)]) # To positive pin
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)]) # To negative pin
 
     
-        node % SchemPoly(vertices=[
+        node % SymbolPoly(vertices=[
             Vec2R(x=1.4, y=1.8), 
             Vec2R(x=1.7, y=2.4), 
             Vec2R(x=2.0, y=1.6),
@@ -237,12 +244,12 @@ class PieceWiseLinearVoltageSource(Cell):
             
         ])
         #+
-        node % SchemPoly(vertices=[Vec2R(x=2, y=2.3), Vec2R(x=2, y=2.9)])
-        node % SchemPoly(vertices=[Vec2R(x=1.7, y=2.6), Vec2R(x=2.3, y=2.6)])
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=2.3), Vec2R(x=2, y=2.9)])
+        node % SymbolPoly(vertices=[Vec2R(x=1.7, y=2.6), Vec2R(x=2.3, y=2.6)])
         #-
-        node % SchemPoly(vertices=[Vec2R(x=1.65, y=1.3), Vec2R(x=2.35, y=1.3)])
+        node % SymbolPoly(vertices=[Vec2R(x=1.65, y=1.3), Vec2R(x=2.35, y=1.3)])
     
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+        node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
 
 
 class PulseVoltageSource(Cell):
@@ -252,17 +259,19 @@ class PulseVoltageSource(Cell):
                          rise_time, fall_time, pulse_width, period.
     """
     spiceSymbol = "V"
-    def symbol(self, node) -> Symbol:
+
+    @generate(Symbol)
+    def symbol(self, node):
         node.m = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
 
         node % SymbolArc(pos=Vec2R(x=2, y=2), radius=R(1))
 
-        node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])  # To positive pin 'p'
-        node % SchemPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)])  # To negative pin 'm'
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])  # To positive pin 'p'
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)])  # To negative pin 'm'
 
         # Pulse symbol
-        node % SchemPoly(vertices=[
+        node % SymbolPoly(vertices=[
             Vec2R(x=1.5, y=1.5),
             Vec2R(x=1.5, y=2.5),
             Vec2R(x=2.0, y=2.5),
@@ -273,14 +282,14 @@ class PulseVoltageSource(Cell):
 
 
         # + 
-        node % SchemPoly(vertices=[Vec2R(x=2, y=2.55), Vec2R(x=2, y=2.95)]) # Vertical bar
-        node % SchemPoly(vertices=[Vec2R(x=1.8, y=2.75), Vec2R(x=2.2, y=2.75)]) # Horizontal bar
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=2.55), Vec2R(x=2, y=2.95)]) # Vertical bar
+        node % SymbolPoly(vertices=[Vec2R(x=1.8, y=2.75), Vec2R(x=2.2, y=2.75)]) # Horizontal bar
         # - 
-        node % SchemPoly(vertices=[Vec2R(x=1.8, y=1.2), Vec2R(x=2.2, y=1.2)]) # Horizontal bar
+        node % SymbolPoly(vertices=[Vec2R(x=1.8, y=1.2), Vec2R(x=2.2, y=1.2)]) # Horizontal bar
 
 
         # Outline
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+        node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
 
 
 class SinusoidalVoltageSource(Cell):
@@ -290,36 +299,38 @@ class SinusoidalVoltageSource(Cell):
     Optional parameter: damping_factor (defaults to 0).
     """
     spiceSymbol = "V"
-    def symbol(self, node) -> Symbol:
+
+    @generate(Symbol)
+    def symbol(self, node):
         import numpy as np # TODO: Get rid of numpy dependency
         node.m = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
 
         node % SymbolArc(pos=Vec2R(x=2, y=2), radius=R(1))
 
-        node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)]) # To positive pin 'p'
-        node % SchemPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)]) # To negative pin 'm'
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)]) # To positive pin 'p'
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)]) # To negative pin 'm'
 
         sine_wave_points = [
             Vec2R(x=1.2 + 0.1 * t, y=2.0 + 0.6 * np.sin(np.pi * t / 4))
             for t in range(17)
         ]
-        node % SchemPoly(vertices=sine_wave_points)
+        node % SymbolPoly(vertices=sine_wave_points)
         
         # +
-        node % SchemPoly(vertices=[Vec2R(x=2, y=2.5), Vec2R(x=2, y=2.9)]) # Vertical bar
-        node % SchemPoly(vertices=[Vec2R(x=1.8, y=2.75), Vec2R(x=2.2, y=2.75)]) # Horizontal bar
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=2.5), Vec2R(x=2, y=2.9)]) # Vertical bar
+        node % SymbolPoly(vertices=[Vec2R(x=1.8, y=2.75), Vec2R(x=2.2, y=2.75)]) # Horizontal bar
         # - 
-        node % SchemPoly(vertices=[Vec2R(x=1.8, y=1.2), Vec2R(x=2.2, y=1.2)]) # Horizontal bar
+        node % SymbolPoly(vertices=[Vec2R(x=1.8, y=1.2), Vec2R(x=2.2, y=1.2)]) # Horizontal bar
         
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+        node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
 
 
 class PieceWiseLinearCurrentSource(Cell):
     spiceSymbol = "I"
 
-
-    def symbol(self, node) -> Symbol:
+    @generate(Symbol)
+    def symbol(self, node):
         """ Defines the schematic symbol for the PWL current source. """
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
         node.m = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
@@ -328,11 +339,11 @@ class PieceWiseLinearCurrentSource(Cell):
         node % SymbolArc(pos=Vec2R(x=2, y=2), radius=R(1))
 
         
-        node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)]) # To positive pin 'p'
-        node % SchemPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)]) # To negative pin 'm'
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)]) # To positive pin 'p'
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)]) # To negative pin 'm'
 
         
-        node % SchemPoly(vertices=[
+        node % SymbolPoly(vertices=[
             Vec2R(x=1.4, y=1.7),
             Vec2R(x=1.7, y=2.3),
             Vec2R(x=2.0, y=1.5),
@@ -347,15 +358,15 @@ class PieceWiseLinearCurrentSource(Cell):
         arrow_width = 0.2 
 
         # Shaft
-        node % SchemPoly(vertices=[Vec2R(x=2, y=arrow_base_y), Vec2R(x=2, y=arrow_tip_y)])
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=arrow_base_y), Vec2R(x=2, y=arrow_tip_y)])
         # Head
-        node % SchemPoly(vertices=[
+        node % SymbolPoly(vertices=[
             Vec2R(x=2 - arrow_width, y=arrow_barb_y), # Left barb base
             Vec2R(x=2, y=arrow_tip_y),                # Tip
             Vec2R(x=2 + arrow_width, y=arrow_barb_y)  # Right barb base
         ])
 
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+        node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
 
 
 class PulseCurrentSource(Cell):
@@ -366,7 +377,9 @@ class PulseCurrentSource(Cell):
                          rise_time, fall_time, pulse_width, period.
     """
     spiceSymbol = "I"
-    def symbol(self, node) -> Symbol:
+
+    @generate(Symbol)
+    def symbol(self, node):
         node.m = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
 
@@ -375,11 +388,11 @@ class PulseCurrentSource(Cell):
         node % SymbolArc(pos=Vec2R(x=2, y=2), radius=R(1))
 
         # Lines
-        node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)]) # To positive pin 'p'
-        node % SchemPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)]) # To negative pin 'm'
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)]) # To positive pin 'p'
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)]) # To negative pin 'm'
 
         # Pulse symbol
-        node % SchemPoly(vertices=[
+        node % SymbolPoly(vertices=[
             Vec2R(x=1.5, y=1.3),
             Vec2R(x=1.5, y=2.3),
             Vec2R(x=2.0, y=2.3),
@@ -393,14 +406,14 @@ class PulseCurrentSource(Cell):
         arrow_base_y = 2.5 
         arrow_barb_y = 2.7
         arrow_width = 0.3 
-        node % SchemPoly(vertices=[Vec2R(x=2, y=arrow_base_y), Vec2R(x=2, y=arrow_tip_y)]) # Shaft
-        node % SchemPoly(vertices=[
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=arrow_base_y), Vec2R(x=2, y=arrow_tip_y)]) # Shaft
+        node % SymbolPoly(vertices=[
             Vec2R(x=2 - arrow_width, y=arrow_barb_y), # Left barb base
             Vec2R(x=2, y=arrow_tip_y),                # Tip
             Vec2R(x=2 + arrow_width, y=arrow_barb_y)  # Right barb base
         ])
 
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+        node.outline = node % Rect4R(lx=0, ly=0, ux=4, uy=4)
 
 
 class SinusoidalCurrentSource(Cell):
@@ -411,7 +424,9 @@ class SinusoidalCurrentSource(Cell):
     Optional parameter: damping_factor (defaults to 0).
     """
     spiceSymbol = "I"
-    def symbol(self, node) -> Symbol:
+
+    @generate(Symbol)
+    def symbol(self, node):
         import numpy as np # TODO: Get rid of numpy dependency
         node.m = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
@@ -420,15 +435,15 @@ class SinusoidalCurrentSource(Cell):
         node % SymbolArc(pos=Vec2R(x=2, y=2), radius=R(1))
 
         # Lines
-        node % SchemPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)]) # To positive pin 'p'
-        node % SchemPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)]) # To negative pin 'm'
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)]) # To positive pin 'p'
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)]) # To negative pin 'm'
 
         # Sinusoidal symbol 
         sine_wave_points = [
             Vec2R(x=1.2 + 0.1 * t, y=1.9 + 0.6 * np.sin(np.pi * t / 4))
             for t in range(17)
         ]
-        node % SchemPoly(vertices=sine_wave_points)
+        node % SymbolPoly(vertices=sine_wave_points)
 
         # Arrow pointing UP
         arrow_tip_y = 3.0 
@@ -436,13 +451,13 @@ class SinusoidalCurrentSource(Cell):
         arrow_barb_y = 2.7
         arrow_width = 0.3 
 
-        node % SchemPoly(vertices=[Vec2R(x=2, y=arrow_base_y), Vec2R(x=2, y=arrow_tip_y)]) # Shaft
-        node % SchemPoly(vertices=[
+        node % SymbolPoly(vertices=[Vec2R(x=2, y=arrow_base_y), Vec2R(x=2, y=arrow_tip_y)]) # Shaft
+        node % SymbolPoly(vertices=[
             Vec2R(x=2 - arrow_width, y=arrow_barb_y), # Left barb base
             Vec2R(x=2, y=arrow_tip_y),                # Tip
             Vec2R(x=2 + arrow_width, y=arrow_barb_y)  # Right barb base
         ])
 
         # Outline
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+        node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
 

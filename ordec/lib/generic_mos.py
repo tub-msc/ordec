@@ -45,7 +45,7 @@ class Nmos(Cell):
 
     def netlist_ngspice(self, netlister, inst, schematic):
         netlister.require_setup(setup_generic_mos)
-        pins = [inst.ref.d, inst.ref.g, inst.ref.s, inst.ref.b]
+        pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
         netlister.add(netlister.name_obj(inst, schematic, prefix="m"), netlister.portmap(inst, pins), 'nmosgeneric', *params_to_spice(self.params))
 
 class Pmos(Cell):
@@ -67,7 +67,7 @@ class Pmos(Cell):
 
     def netlist_ngspice(self, netlister, inst, schematic):
         netlister.require_setup(setup_generic_mos)
-        pins = [inst.ref.d, inst.ref.g, inst.ref.s, inst.ref.b]
+        pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
         netlister.add(netlister.name_obj(inst, schematic, prefix="m"), netlister.portmap(inst, pins), 'pmosgeneric', *params_to_spice(self.params))
 
 class Inv(Cell):
@@ -87,10 +87,10 @@ class Inv(Cell):
 
     @generate(Schematic)
     def schematic(self, node):
-        node.a = Net(pin=self.symbol.a.nid)
-        node.y = Net(pin=self.symbol.y.nid)
-        node.vdd = Net(pin=self.symbol.vdd.nid)
-        node.vss = Net(pin=self.symbol.vss.nid)
+        node.a = Net(pin=self.symbol.a)
+        node.y = Net(pin=self.symbol.y)
+        node.vdd = Net(pin=self.symbol.vdd)
+        node.vss = Net(pin=self.symbol.vss)
 
         nmos = Nmos(w=R("500n"), l=R("250n")).symbol
         pmos = Pmos(w=R("500n"), l=R("250n")).symbol
@@ -131,9 +131,9 @@ class Ringosc(Cell):
     def schematic(self, node):
         node.y0 = Net()
         node.y1 = Net()
-        node.y2 = Net(pin=self.symbol.y.nid)
-        node.vdd = Net(pin=self.symbol.vdd.nid)
-        node.vss = Net(pin=self.symbol.vss.nid)
+        node.y2 = Net(pin=self.symbol.y)
+        node.vdd = Net(pin=self.symbol.vdd)
+        node.vss = Net(pin=self.symbol.vss)
 
         inv = Inv().symbol
         node.i0 = SchemInstance(inv.portmap(vdd=node.vdd, vss=node.vss, a=node.y2, y=node.y0), pos=Vec2R(x=4, y=2))

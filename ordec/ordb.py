@@ -168,6 +168,17 @@ class ExternalRef(Attr):
     def read_hook(self, value, cursor):
         return self.of_subgraph(cursor).cursor_at(value)
 
+    @staticmethod
+    def externalref_factory(val: 'int|Cursor|NoneType'):
+        if val==None or isinstance(val, int):
+            return val
+        elif isinstance(val, Cursor):
+            return val.nid
+        else:
+            raise TypeError('Only None, int or Cursor can be assigned to ExternalRef.')
+
+    factory: Callable = externalref_factory
+
 @public
 class Index(GenericIndex):
     def __init__(self, attr: Attr, unique:bool=False, sortkey: Callable=None):
@@ -485,9 +496,10 @@ class Cursor(NamedTuple):
         return hash((id(self.subgraph), self.nid))
 
     def __eq__(self, other):
-        if other == None:
+        if isinstance(other, Cursor):
+            return (id(self.subgraph) == id(other.subgraph)) and (self.nid == other.nid)
+        else:
             return False
-        return (id(self.subgraph) == id(other.subgraph)) and (self.nid == other.nid)
 
 class NodeMeta(type):
     @staticmethod
@@ -815,6 +827,7 @@ class SubgraphUpdater:
 
         self.check_nids[nid] = True # Mark node for deferred constraint check.
 
+@public
 class Subgraph(ABC):
     # Using __slots__ to prevent accidental creation of 'stray' attributes.
     __slots__ = (
@@ -1057,6 +1070,7 @@ class Subgraph(ABC):
     def __delattr__(self, name):
         return delattr(self.root_cursor, name)
 
+@public
 class FrozenSubgraph(Subgraph):
     __slots__=()
     def __init__(self, subgraph):

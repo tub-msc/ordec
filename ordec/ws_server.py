@@ -19,7 +19,8 @@ from urllib.parse import urlparse
 import threading
 import signal
 
-from . import Cell, Schematic, Symbol, View, SimHierarchy, SimNet
+from .base import *
+from .ordb import Subgraph
 from .parser.parser import ord2py
 
 def build_cells(source_type: str, source_data: str) -> (dict, dict):
@@ -69,24 +70,24 @@ def query_view(view_name, conn_globals):
     return msg_ret
 
 def serialize_view(name, view):
-    if not isinstance(view, View):
+    if not isinstance(view, Subgraph):
         return {'exception': "Requested object is not View."}
 
-    if isinstance(view, (Schematic, Symbol)):
+    if isinstance(view.node, (Schematic, Symbol)):
         from .render import render_svg
         return {'img': render_svg(view).as_url()}
 
-    if isinstance(view, SimHierarchy):
+    if isinstance(view.node, SimHierarchy):
         dc_table = []
-        for sn in view.traverse(SimNet):
+        for sn in view.all(SimNet):
             if not sn.dc_voltage:
                 continue
-            dc_table.append([str(sn.path()[2:]), sn.dc_voltage])
+            dc_table.append([sn.full_path_str(), sn.dc_voltage])
 
         return {'dc_table': dc_table}
 
     # Fallback: just return the view as tree.
-    return {'tree':view.tree()}
+    return {'tree':view.tables()}
 
 def handle_connection(websocket):
     remote = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"

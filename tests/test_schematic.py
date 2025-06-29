@@ -115,7 +115,7 @@ def test_schematic_portmap_stray_key():
         lib_test.TestNmosInv(variant='portmap_stray_key', add_conn_points=True, add_terminal_taps=False).schematic
 
 def test_schematic_portmap_bad_value():
-    with pytest.raises(TypeError):
+    with pytest.raises(KeyError):
         lib_test.TestNmosInv(variant='portmap_bad_value', add_conn_points=True, add_terminal_taps=False).schematic
 
 def test_schematic_terminal_multiple_wires():

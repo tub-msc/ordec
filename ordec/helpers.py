@@ -4,6 +4,7 @@
 import itertools
 from dataclasses import dataclass
 from .base import *
+from .ordb import Cursor
 
 def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     """
@@ -114,7 +115,7 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
 
     def add_terminal(t):
         if not isinstance(t.ref.node, Net):
-            raise TypeError(f"Illegal connection of {t} to {type(t.net)}.")
+            raise TypeError(f"Illegal connection of {t} to {type(t.ref.node)}.")
         if t.pos in terminal_at:
             raise SchematicError(f"Overlapping terminals at {t.pos}.")
         terminal_at[t.pos] = t
@@ -122,8 +123,8 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
 
         if t.pos not in net_at:
             if add_terminal_taps:
-                t.net % SchemTapPoint(pos=t.pos, align=t.align.unflip())
-                g.add_biedge(t.pos, t.net)
+                t.ref % SchemTapPoint(pos=t.pos, align=t.align.unflip())
+                g.add_biedge(t.pos, t.ref)
                 net_at[t.pos] = t.ref
             else:
                 raise SchematicError(f"Missing terminal connection at {t.pos}.")
@@ -138,7 +139,7 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
             g.add_biedge(tap.pos, net)
             if tap.pos in net_at:
                 if net_at[tap.pos] != net:
-                    raise SchematicError(f"Geometric short at {p} between {net_at[p]} and {net}.")
+                    raise SchematicError(f"Geometric short at {tap.pos} between {net_at[tap.pos]} and {net}.")
             else:
                 net_at[tap.pos] = net
 
@@ -177,7 +178,8 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
 
     # Check whether wiring is valid:
     for pos, connections in g.edges.items():
-        if isinstance(pos, Net):
+        if isinstance(pos, Cursor):
+            assert isinstance(pos.node, Net)
             continue
         assert isinstance(pos, Vec2R)
         terminal = terminal_at.get(pos, None)

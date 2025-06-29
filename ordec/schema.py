@@ -140,6 +140,7 @@ class SchemInstanceConn(Node):
     here = LocalRef(Net)
     there = ExternalRef(Pin, of_subgraph=lambda c: c.ref.symbol) # ExternalRef to Pin in SchemInstance.symbol
 
+    ref_pin_idx = CombinedIndex([ref, there], unique=True)
 
 class SchemTapPoint(Node):
     ref = LocalRef(Net)
@@ -158,13 +159,20 @@ class SchemConnPoint(Node):
 # --------------------
 
 class SimNet(Node):
-    pass # TODO
+    trans_voltage = Attr(list[float])
+    trans_current = Attr(list[float])
+    dc_voltage = Attr(float)
+    dc_current = Attr(float)
+
+    ref = Attr(type=Net|Pin)
 
 class SimInstance(Node):
-    pass # TODO
+    is_leaf = False
+    ref = Attr(SchemInstance)
 
-class SimHierarchy(Node):
-    pass # TODO
+class SimHierarchy(SubgraphHead):
+    ref = Attr(Schematic)
+    cell = Attr('Cell')
 
 # Every class defined in this file is public:
 populate_all()

@@ -11,13 +11,15 @@ class ViewGenerator:
     def __init__(self, head_class, func):
         self.head_class = head_class
         self.func = func
-        self.node = None
 
     def __get__(self, obj, owner=None):
         if obj == None: # for the class: return self
             return self
         else: # for instances: create view if not present yet, return view
-            if self.node is None:
+            
+            try:
+                return obj.cached_subgraphs[self]
+            except KeyError:
                 if self.head_class:
                     # Compatibility with old @generate: node is generated outside the method and passed as argument:
                     node = self.head_class()
@@ -27,8 +29,9 @@ class ViewGenerator:
                     # New style: node is generated in method:
                     node = self.func(obj)
                     # self.func has to attach node.cell, if desired.
-                self.node = node.freeze()
-            return self.node
+                node = node.freeze()
+                obj.cached_subgraphs[self] = node
+                return node
 
     def __set__(self, cursor, value):
         raise TypeError("ViewGenerator cannot be set.")
@@ -80,13 +83,18 @@ class Cell(metaclass=MetaCell):
         children (dict[str,Node]): all child views that were generated so far.
     """
     def __init__(self, params: PMap):
-        super().__setattr__('params', params)
-        super().__setattr__('children', {})
+        self.params = params
+        self.cached_subgraphs = {}
                 
-    def params_list(self) -> list[str]:
+    def params_list(self, use_repr=False) -> list[str]:
         param_items = list(self.params.items())
         param_items.sort(key=lambda x: x[0])
-        return [f"{k}={v}" for k, v in param_items]
+        if use_repr:
+            return [f"{k}={v!r}" for k, v in param_items]
+        else:
+            return [f"{k}={v}" for k, v in param_items]
+
+
 
     def __repr__(self):
-        return f"{type(self).__name__}({','.join(self.params_list())})"
+        return f"{type(self).__name__}({','.join(self.params_list(use_repr=True))})"

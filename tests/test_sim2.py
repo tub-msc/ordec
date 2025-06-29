@@ -52,8 +52,8 @@ def test_sim_dc_flat():
 
 def test_sim_dc_hier():
     h = lib_test.ResdivHierTb().sim_dc
-    assert h.anon_3.anon_10.m.dc_voltage == 0.5897436
     assert h.r.dc_voltage == 0.3589744
+    assert h.I0.I1.m.dc_voltage == 0.5897436
 
 def test_generic_mos_netlister():
     nl = Netlister()

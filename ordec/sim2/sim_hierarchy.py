@@ -5,22 +5,23 @@ from ..schema import *
 from .ngspice import Ngspice, Netlister
 
 def build_hier_symbol(node, symbol):
-    for pin in symbol.traverse(Pin):
+    for pin in symbol.all(Pin):
         # TODO: implement hierarchical construction within schematic
-        setattr(node, pin.name, SimNet(ref=pin))
+        setattr(node, pin.full_path_str(), SimNet(ref=pin))
 
 def build_hier_schematic(node, schematic):
-    for net in schematic.traverse(Net):
+    for net in schematic.all(Net):
         # TODO: implement hierarchical construction within schematic
-        setattr(node, net.name, SimNet(ref=net))
+        setattr(node, net.full_path_str(), SimNet(ref=net))
 
-    for inst in schematic.traverse(SchemInstance):
-        setattr(node, inst.name, SimInstance(ref=inst))
-        subnode = getattr(node, inst.name)
+    for inst in schematic.all(SchemInstance):
+        # TODO: implement hierarchical construction
+        setattr(node, inst.full_path_str(), SimInstance(ref=inst))
+        subnode = getattr(node, inst.full_path_str())
         try:
-            subschematic = inst.ref.parent.schematic
+            subschematic = inst.symbol.cell.schematic
         except AttributeError:
-            build_hier_symbol(subnode, inst.ref)
+            build_hier_symbol(subnode, inst.symbol)
         else:
             build_hier_schematic(subnode, subschematic)
 
@@ -35,8 +36,9 @@ class HighlevelSim:
         self.node.ref = self.top
         build_hier_schematic(self.node, self.node.ref)
         self.str_to_simnet = {}
-        for sn in node.traverse(SimNet):
-            self.str_to_simnet[self.netlister.name_simnet(sn)] = sn
+        for sn in node.all(SimNet):
+            name = self.netlister.name_simnet(sn)
+            self.str_to_simnet[name] = sn
 
     def op(self):
         with Ngspice.launch(debug=False) as sim:
