@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from .. import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, SchemPoly, SymbolArc, SchemRect, SchemInstance, SchemPort, Net, NetArray, NetStruct, Orientation, SchemConnPoint, SchemTapPoint
+from ..base import *
 from .. import helpers
 from . import Nmos, Pmos
 from ..parser.implicit_processing import schematic_routing
@@ -83,7 +83,8 @@ class PmosSky130(Pmos):
         circuit.parameter("mc_mm_switch", 0)
 
 class Inv(Cell):
-    def symbol(self, node) -> Symbol:
+    @generate(Symbol)
+    def symbol(self, node):
         # Define pins for the inverter
         node.vdd = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
         node.vss = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
@@ -97,9 +98,10 @@ class Inv(Cell):
         node % SymbolArc(pos=Vec2R(x=3, y=2), radius=R(0.25))  # Output bubble
 
         # Outline
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=4, uy=4))
+        node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
 
-    def schematic(self, node) -> Schematic:
+    @generate(Schematic)
+    def schematic(self, node):
         # Create nets for internal connections
         node.a = Net()
         node.y = Net()
@@ -174,4 +176,4 @@ class Inv(Cell):
         schematic_routing(node,asd)
         helpers.schem_check(node, add_conn_points=True)
         # Add outline
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=1, ux=asd[0], uy=asd[1]))
+        node.outline = Rect4R(lx=0, ly=1, ux=asd[0], uy=asd[1])

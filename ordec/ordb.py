@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from pyrsistent import pmap, pvector, pset
+from pyrsistent import pmap, pvector, pset, PMap, PVector, PSet
 from typing import Self, Callable
 from types import NoneType
 from dataclasses import dataclass, field
@@ -72,6 +72,9 @@ class DanglingLocalRef(ModelViolation):
 @public
 @dataclass(frozen=False, eq=False)
 class Attr:
+    """
+    Schema attribute for use in Node subclasses.
+    """
     type: type
     default: object = None
     indices : list[GenericIndex] = field(default_factory=list)
@@ -134,6 +137,9 @@ class cursormethod:
 @public
 @dataclass(frozen=False, eq=False)
 class LocalRef(Attr):
+    """
+    Reference to a node in the same subgraph by nid.
+    """
     refs_ntype: type = None
     type: type = int
     optional: bool = True
@@ -160,6 +166,9 @@ class LocalRef(Attr):
 @public
 @dataclass(frozen=False, eq=False)
 class ExternalRef(Attr):
+    """
+    Reference to a node in another subgraph by nid.
+    """
     refs_ntype: type = None
     of_subgraph: Callable = None
     type: type = int
@@ -328,10 +337,18 @@ class NPathIndex(CombinedIndex):
         except UniqueViolation:
             raise ModelViolation("Path exists") # TODO: Report actual path?
 
+@public
 class Cursor(NamedTuple):
+    """
+    Cursor provides an access layer to mutable and immutable subgraphs.
+    """
+
     subgraph: 'Subgraph'
+    """The subgraph in which this Cursor moves."""
     nid: int|NoneType
+    """The nid of the node to which this Cursor points."""
     npath_nid: int|NoneType
+    """The nid of the NPath node matching the nid attribute."""
 
     def full_path_list(self) -> list[str|int]:
         if self.nid == 0:
@@ -695,6 +712,10 @@ Inserter.register(Node)
 
 @public
 class SubgraphHead(Node):
+    """
+    Each subgraph has a single SubgraphHead node. The subclass of SubgraphHead
+    defines what kind of design data the subgraph represents.
+    """
     is_leaf = False
 
     def __new__(cls, **kwargs):
@@ -712,6 +733,13 @@ class SubgraphHead(Node):
         return f"{type(self).__name__}.head({self.vals_repr()})"
 
 class SubgraphUpdater:
+    """
+    A SubgraphUpdater collects changes to a subgraph as a kind of
+    transaction. The SubgraphUpdater is used in a 'with' context. When this
+    context is exited, the current state of SubgraphUpdater is checked for
+    consistency. When no problem is found, the MutableSubgraph from which the
+    SubgraphUpdater was created is updated.
+    """
     __slots__ = (
         'target_subgraph',
         'nodes',
@@ -876,9 +904,13 @@ class Subgraph(ABC):
                 ))
         return "\n".join(ret).replace('\n', '\n  ')
 
-    def node_dict(self, mode='canonical'):
+    def node_dict(self, mode='canonical') -> dict[int,Node]:
         """
-        Returns list of nodes sorted ONLY by nid.
+        Returns an ordered dict of nodes (values) by their nids (keys).
+
+        Args:
+            mode: If 'canonical', the return dict is ordered by nid. If 'pretty',
+                the return dict is ordered by node type and nid.
         """
         if mode == 'canonical':
             # sort by nid:
@@ -991,19 +1023,23 @@ class Subgraph(ABC):
     # properties to prevent accidental mutation.
 
     @property
-    def nodes(self):
+    def nodes(self) -> PMap:
+        """A persistent mapping of nids to Nodes."""
         return self._nodes
 
     @property
-    def index(self):
+    def index(self) -> PMap:
+        """A persistent mapping of index keys to index values."""
         return self._index
 
     @property
-    def nid_alloc(self):
+    def nid_alloc(self) -> range:
+        """An allocation range from which new nids must be generated."""
         return self._nid_alloc
 
     @property
-    def root_cursor(self):
+    def root_cursor(self) -> Cursor:
+        """Root cursor pointing to subgraph head."""
         return self._root_cursor
 
     # Abstract methods
@@ -1028,6 +1064,7 @@ class Subgraph(ABC):
 
     @abstractmethod
     def copy(self) -> Self:
+        """Returns a copy of the subgraph."""
         pass
 
     @abstractmethod

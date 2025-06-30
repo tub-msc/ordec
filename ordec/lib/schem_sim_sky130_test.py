@@ -45,7 +45,8 @@ from ordec.parser.implicit_processing import schematic_routing
 
 
 class TBMosfetLoad(Cell):
-    def schematic(self, node) -> Schematic:
+    @generate(Schematic)
+    def schematic(self, node):
         node.vdd = Net()
         node.gnd = Net()
         node.vin = Net()
@@ -107,7 +108,8 @@ class TBMosfetLoad(Cell):
 
 
 class TBInv(Cell):
-    def schematic(self, node) -> Schematic:
+    @generate(Schematic)
+    def schematic(self, node):
         node.input_node = Net()
         node.vdd = Net()
         node.gnd = Net()

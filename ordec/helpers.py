@@ -207,3 +207,25 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
         unconnected = must_reach-reaches
         if len(unconnected) > 0:
             raise SchematicError(f"Net {net} misses wiring to locations {unconnected}.")
+
+def add_conn_points(s: Schematic):
+    """
+    Adds SchemConnPoints where two wires of the same net meet.
+
+    schem_check does the same thing more thoroughly, but fails for incomplete
+    schematics.
+    """
+    for net in s.all(Net):
+        pos_single = set()
+        pos_multi = set()
+        for wire in s.all(SchemWire.ref_idx.query(net.nid)):
+            for poly_point in wire.vertices:
+                pos = poly_point.pos
+                if pos in pos_single:
+                    pos_multi.add(pos)
+                else:
+                    pos_single.add(pos)
+            
+        for pos in pos_multi:
+            net % SchemConnPoint(pos=pos)
+

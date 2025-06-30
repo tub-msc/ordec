@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 #ordec imports
 from ..base import *
 from ..parser.optimize_position import get_pos_with_constraints
-from ..helpers import symbol_place_pins, schem_check
+from .. import helpers
 from ..routing import schematic_routing, check_outline_rescaling
 
 @dataclass
@@ -23,7 +23,7 @@ def symbol_process(node):
     :param node: current node instance
     :returns: None
     """
-    symbol_place_pins(node, vpadding=2, hpadding=2)
+    helpers.symbol_place_pins(node, vpadding=2, hpadding=2)
 
 
 def preprocess(self, node, outline, port_positions):
@@ -137,5 +137,7 @@ def postprocess(self, node, outline, postprocess_data: PostProcess):
     
     #Add helpers
     # WARNING/TODO: Temporarily disabled schem_check here for better interactivity (web):
-    #schem_check(node, add_conn_points=True, add_terminal_taps=True)
+    #helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
+    helpers.add_conn_points(node)
+
     node.outline = Rect4R(lx=0, ly=0, ux=outline[0], uy=outline[1])

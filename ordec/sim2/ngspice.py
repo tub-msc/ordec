@@ -14,7 +14,7 @@ from ordec.schema import *
 from ordec.cell import Cell
 
 NgspiceVector = namedtuple('NgspiceVector', ['name', 'quantity', 'dtype', 'rest'])
-NgspiceValue = namedtuple('NgspiceValue', ['name', 'value'])
+NgspiceValue = namedtuple('NgspiceValue', ['type', 'name', 'subname', 'value'])
 
 class NgspiceError(Exception):
     pass
@@ -99,11 +99,25 @@ class Ngspice:
 
     def op(self) -> Iterator[NgspiceValue]:
         self.command("op")
-        for line in self.command("print all").split('\n'):
+        print_all_res = self.command("print all")
+        for line in print_all_res.split('\n'):
             if len(line) == 0:
                 continue
-            res = re.match(r"([0-9a-zA-Z_.#]*)\s*=\s*([0-9.\-+e]+)\s*", line)
-            yield NgspiceValue(res.group(1), float(res.group(2)))
+            
+            # Voltage result:
+            res = re.match(r"([0-9a-zA-Z_.]+)\s*=\s*([0-9.\-+e]+)\s*", line)
+            if res:
+                yield NgspiceValue(type='voltage', name=res.group(1), subname=None, value=float(res.group(2)))
+
+            # Current result like "vgnd#branch":
+            res = re.match(r"([0-9a-zA-Z_.]+)#branch\s*=\s*([0-9.\-+e]+)\s*", line)
+            if res:
+                yield NgspiceValue(type='current', name=res.group(1), subname='branch', value=float(res.group(2)))
+
+            # Current result like "@m.xdut.mm2[is]" from savecurrents:
+            res = re.match(r"@([a-zA-Z]\.)?([0-9a-zA-Z_.]+)\[([0-9a-zA-Z_]+)\]\s*=\s*([0-9.\-+e]+)\s*", line)
+            if res:
+                yield NgspiceValue(type='current', name=res.group(2), subname=res.group(3), value=float(res.group(4)))
 
 RawVariable = namedtuple('RawVariable', ['name', 'unit'])
 
@@ -185,15 +199,17 @@ class Netlister:
             self.name_of_obj[obj] = name
             return name
     
-    def name_simnet(self, sn):
-        ret = [self.name_obj(sn.ref, sn.ref.subgraph)]
-
+    def name_hier_simobj(self, sn):
         c = sn
+        if not isinstance(c.node, SimInstance):
+            ret = [self.name_obj(sn.eref, sn.eref.subgraph)]
+        else:
+            ret = []
+
         while not isinstance(c.node, SimHierarchy):
             if isinstance(c.node, SimInstance):
-                ret.insert(0, self.name_obj(c.ref, c.ref.subgraph))
+                ret.insert(0, self.name_obj(c.eref, c.eref.subgraph))
             c = c.parent
-        print(".".join(ret))
         return ".".join(ret)
 
     def pinlist(self, sym: Symbol):
@@ -224,8 +240,8 @@ class Netlister:
 
     def netlist_hier(self, top: Schematic):
         self.add('.title', self.name_obj(top.cell))
-        #self.add('.probe', 'alli')
-        #self.add('.option', 'savecurrents')
+        #self.add('.probe', 'alli') # This seems to be needed to see currents of subcircuits
+        self.add('.option', 'savecurrents') # This seems to be needed to see currents of devices (R, M)
 
         subckt_dep = self.netlist_schematic(top)
         subckt_done = set()

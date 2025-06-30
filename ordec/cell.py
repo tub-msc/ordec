@@ -41,6 +41,9 @@ class ViewGenerator:
 
 @public
 def generate(arg):
+    """
+    TODO: add docs here.
+    """
     if isinstance(arg, type):
         # old @generate
         return lambda func: ViewGenerator(arg, func)

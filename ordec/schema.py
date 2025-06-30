@@ -21,9 +21,13 @@ class PinType(Enum):
 # ----
 
 class PolyVec2R(Node):
+    """
+    One element/point of a Vec2R polygonal chain, which can be open or closed.
+    A polygonal chain is closed if the last and first element are equivalent.
+    """
     ref    = LocalRef('SymbolPoly|SchemWire')
-    "This is the polygon"
     order   = Attr(int)
+    """Order of the point in the polygonal chain"""
     pos     = Attr(Vec2R)
 
     ref_idx = Index(ref, sortkey=lambda node: node.order)
@@ -32,6 +36,7 @@ class PolyVec2R(Node):
 # ------
 
 class Symbol(SubgraphHead):
+    """A symbol of an individual cell."""
     outline = Attr(Rect4R)
     caption = Attr(str)
     cell = Attr('Cell')
@@ -51,6 +56,9 @@ class Symbol(SubgraphHead):
         return render_svg(cursor.subgraph).as_html()
 
 class Pin(Node):
+    """
+    Pins are single wire connections exposed through a symbol.
+    """
     pintype = Attr(PinType, default=PinType.Inout)
     pos     = Attr(Vec2R)
     align   = Attr(D4, default=D4.R0)
@@ -74,6 +82,7 @@ class SymbolPoly(Node):
         return cursor.subgraph.all(PolyVec2R.ref_idx.query(cursor.nid))
 
 class SymbolArc(Node):
+    """A drawn circle or circular segment for use in Symbol."""
     pos         = Attr(Vec2R)
     "Center point"
     radius      = Attr(R)
@@ -91,6 +100,9 @@ class Net(Node):
     pin = ExternalRef(Pin, of_subgraph=lambda c: c.subgraph.symbol)
 
 class Schematic(SubgraphHead):
+    """
+    A schematic of an individual cell.
+    """
     symbol = Attr(Symbol) # Subgraph reference
     outline = Attr(Rect4R)
     cell = Attr('Cell')
@@ -103,16 +115,23 @@ class Schematic(SubgraphHead):
         return render_svg(cursor.subgraph).as_html()
 
 class SchemPort(Node):
+    """
+    Port of a Schematic, corresponding to a Pin of the schematic's Symbol.
+    """
     ref = LocalRef(Net)
     ref_idx = Index(ref)
     pos = Attr(Vec2R)
     align = Attr(D4, default=D4.R0)
 
 class SchemWire(SymbolPoly):
+    """A drawn schematic wire representing an electrical connection."""
     ref = LocalRef(Net)
     ref_idx = Index(ref)
 
 class SchemInstance(Node):
+    """
+    An instance of a Symbol in a Schematic (foundation for schematic hierarchy).
+    """
     pos = Attr(Vec2R)
     orientation = Attr(D4, default=D4.R0)
     symbol = Attr(Symbol) # Subgraph reference
@@ -134,6 +153,9 @@ class SchemInstance(Node):
         return cursor.subgraph.all(SchemInstanceConn.ref_idx.query(cursor.nid))
 
 class SchemInstanceConn(Node):
+    """
+    Maps Pins of a SchemInstance to Nets of its Schematic.
+    """
     ref = LocalRef(SchemInstance)
     ref_idx = Index(ref)
 
@@ -143,6 +165,7 @@ class SchemInstanceConn(Node):
     ref_pin_idx = CombinedIndex([ref, there], unique=True)
 
 class SchemTapPoint(Node):
+    """A schematic tap point for connecting points by label, typically visualized using the net's name."""
     ref = LocalRef(Net)
     ref_idx = Index(ref)
 
@@ -150,6 +173,7 @@ class SchemTapPoint(Node):
     align = Attr(D4, default=D4.R0)
 
 class SchemConnPoint(Node):
+    """A schematic point to indicate a connection at a 3- or 4-way junction of wires."""
     ref = LocalRef(Net)
     ref_idx = Index(ref)
 
@@ -158,20 +182,27 @@ class SchemConnPoint(Node):
 # Simulation hierarchy
 # --------------------
 
+def parent_siminstance(c: Cursor) -> Cursor:
+    while not isinstance(c.node, (SimInstance, SimHierarchy)):
+        c = c.parent
+    return c
+
 class SimNet(Node):
     trans_voltage = Attr(list[float])
     trans_current = Attr(list[float])
     dc_voltage = Attr(float)
-    dc_current = Attr(float)
 
-    ref = Attr(type=Net|Pin)
+    eref = ExternalRef(type=Net|Pin, of_subgraph=lambda c: parent_siminstance(c).schematic)
 
 class SimInstance(Node):
+    dc_current = Attr(float)
+
     is_leaf = False
-    ref = Attr(SchemInstance)
+    schematic = Attr(Schematic)
+    eref = ExternalRef(SchemInstance, of_subgraph=lambda c: parent_siminstance(c.parent).schematic)
 
 class SimHierarchy(SubgraphHead):
-    ref = Attr(Schematic)
+    schematic = Attr(Schematic)
     cell = Attr('Cell')
 
 # Every class defined in this file is public:

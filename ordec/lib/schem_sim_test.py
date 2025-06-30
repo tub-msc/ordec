@@ -1,17 +1,14 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-#testbenches
-from ordec import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, SchemPoly, SymbolArc, SchemRect, SchemInstance, SchemPort, Net, NetArray, NetStruct, Orientation, SchemConnPoint, SchemTapPoint
-from ordec.lib import Nmos, Pmos, Inv, And2, Or2, Ringosc, Vdc, Res, Cap, Ind, SinusoidalVoltageSource, Gnd
-from IPython.core.display import HTML
-from pyrsistent import PMap, field
-from ordec import helpers
-from ordec.sim import create_circuit_from_dict, get_portmaps
+from ..base import *
+from . import Nmos, Pmos, Inv, And2, Or2, Ringosc, Vdc, Res, Cap, Ind, SinusoidalVoltageSource, Gnd, PieceWiseLinearVoltageSource, SinusoidalCurrentSource
+from .. import helpers
 
 class TestCell1(Cell):
 
-    def symbol(self, node) -> Symbol:
+    @generate(Symbol)
+    def symbol(self, node):
         node.a = PinArray()
         node.a[0]=Pin(pintype=PinType.Inout, align=Orientation.South)
         node.a[1]=Pin(pintype=PinType.Inout, align=Orientation.South)
@@ -22,7 +19,8 @@ class TestCell1(Cell):
 
         helpers.symbol_place_pins(node, vpadding=2, hpadding=2)
     
-    def schematic(self, node) -> Schematic:
+    @generate(Schematic)
+    def schematic(self, node):
         node.a = NetArray()
         node.b = NetArray()
         node.a[0] = Net()
@@ -37,25 +35,25 @@ class TestCell1(Cell):
         
         helpers.schem_check(node, add_conn_points=True,add_terminal_taps=True)
 
-        node.outline = node % SchemRect(pos=Rect4R(lx=3, ly=7, ux=15, uy=13))
+        node.outline = Rect4R(lx=3, ly=7, ux=15, uy=13)
 
-        
 class TestCell2(Cell):
-
-    def symbol(self, node) -> Symbol:
-        node.a = PinStruct()
+    @generate(Symbol)
+    def symbol(self, node):
+        node.mkpath('a')
         node.a.left=Pin(pintype=PinType.Inout, align=Orientation.South)
         node.a.right=Pin(pintype=PinType.Inout, align=Orientation.South)
         
-        node.b = PinStruct()
+        node.mkpath('b')
         node.b.left = Pin(pintype=PinType.Out, align=Orientation.North)
         node.b.right = Pin(pintype=PinType.Out, align=Orientation.North)
 
         helpers.symbol_place_pins(node, vpadding=2, hpadding=2)
     
-    def schematic(self, node) -> Schematic:
-        node.a = NetStruct()
-        node.b = NetStruct()
+    @generate(Schematic)
+    def schematic(self, node):
+        node.mkpath('a')
+        node.mkpath('b')
         node.a.left = Net()
         node.a.right = Net()
         node.b.left = Net()
@@ -68,10 +66,11 @@ class TestCell2(Cell):
         
         helpers.schem_check(node, add_conn_points=True,add_terminal_taps=True)
 
-        node.outline = node % SchemRect(pos=Rect4R(lx=3, ly=5, ux=15, uy=15))
+        node.outline = Rect4R(lx=3, ly=5, ux=15, uy=15)
 
 class TestBenchNestedCell(Cell):
-    def schematic(self, node) -> Schematic:
+    @generate(Schematic)
+    def schematic(self, node):
         node.y = Net()
         #node.vdd = Net()
         node.gnd = Net()
@@ -90,12 +89,11 @@ class TestBenchNestedCell(Cell):
         node.gnd_inst = SchemInstance(pos=Vec2R(x=12, y=16), ref=gnd_inst,portmap={gnd_inst.p:node.gnd})
         helpers.schem_check(node, add_conn_points=True,add_terminal_taps=True)
 
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=1, ux=25, uy=13))
-
-
+        node.outline = Rect4R(lx=0, ly=1, ux=25, uy=13)
 
 class LowPassFilterTB(Cell):
-    def schematic(self, node) -> Schematic:
+    @generate(Schematic)
+    def schematic(self, node):
         node.input_node = Net()
         node.gnd = Net()
         node.out = Net()
@@ -148,10 +146,7 @@ class LowPassFilterTB(Cell):
         gnd_inst = Gnd().symbol
         node.gnd_inst = SchemInstance(pos=Vec2R(x=12, y=16), ref=gnd_inst,portmap={gnd_inst.p:node.gnd})
         helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=2, ux=20, uy=12))
-
-
-from ordec.lib import  Res, PieceWiseLinearVoltageSource
+        node.outline = Rect4R(lx=0, ly=2, ux=20, uy=12)
 
 class PieceWiseVoltageLinearTB(Cell):
     """
@@ -159,7 +154,8 @@ class PieceWiseVoltageLinearTB(Cell):
     Connects the PWL source across a resistor to ground.
     Uses string representations for R().
     """
-    def schematic(self, node) -> Schematic:
+    @generate(Schematic)
+    def schematic(self, node):
         node.source_output = Net()
         node.gnd = Net()
 
@@ -199,12 +195,12 @@ class PieceWiseVoltageLinearTB(Cell):
 
         helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
 
+        node.outline = Rect4R(lx=0, ly=2, ux=14, uy=9)
 
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=2, ux=14, uy=9))      
-from ordec.lib import  SinusoidalCurrentSource
 class TestSineCurrentSourceTB(Cell):
     """Testbench for the SinusoidalCurrentSource."""
-    def schematic(self, node) -> Schematic:
+    @generate(Schematic)
+    def schematic(self, node):
         node.gnd = Net()
         node.load_node = Net()
 
@@ -239,4 +235,4 @@ class TestSineCurrentSourceTB(Cell):
         node.gnd_inst = SchemInstance(pos=Vec2R(x=5, y=0), ref=gnd_inst_ref, portmap={gnd_inst_ref.p: node.gnd})
 
         helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=12, uy=10))        
+        node.outline = Rect4R(lx=0, ly=0, ux=12, uy=10)

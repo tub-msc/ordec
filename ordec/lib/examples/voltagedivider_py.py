@@ -1,36 +1,36 @@
-from ordec import Cell, Schematic, Vec2R, Rect4R, Rational as R, SchemPoly, SchemRect, SchemInstance, Net, SimHierarchy, generate, helpers
+from ordec.base import *
+from ordec import helpers
 from ordec.sim2.sim_hierarchy import HighlevelSim
 from ordec.lib import Res, Gnd, Vdc
 
 class VoltageDivider(Cell):
-    @generate(Schematic)
-    def schematic(self, node):
-        node.vdd = Net()
-        node.vss = Net()
-        node.a = Net()
-        node.b = Net()
+    @generate
+    def schematic(self):
+        s = Schematic(cell=self, outline=Rect4R(lx=0, ly=0, ux=9, uy=21))
+        s.vdd = Net()
+        s.vss = Net()
+        s.a = Net()
+        s.b = Net()
 
-        s_vdc = Vdc(dc=R(1)).symbol
-        s_gnd = Gnd().symbol
-        s_res = Res(r=R(100)).symbol
+        res = Res(r=R(100)).symbol
 
-        node % SchemInstance(pos=Vec2R(x=5,y=0), ref=s_gnd, portmap={s_gnd.p: node.vss})
-        node % SchemInstance(pos=Vec2R(x=0,y=6), ref=s_vdc, portmap={s_vdc.m: node.vss, s_vdc.p: node.vdd})
-        node % SchemInstance(pos=Vec2R(x=5,y=6), ref=s_res, portmap={s_res.m: node.vss, s_res.p: node.a})
-        node % SchemInstance(pos=Vec2R(x=5,y=11), ref=s_res, portmap={s_res.m: node.a,  s_res.p: node.b})
-        node % SchemInstance(pos=Vec2R(x=5,y=16), ref=s_res, portmap={s_res.m: node.b,  s_res.p: node.vdd})
+        s.I0 = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(x=5,y=0))
+        s.I1 = SchemInstance(Vdc(dc=R(1)).symbol.portmap(m=s.vss, p=s.vdd), pos=Vec2R(x=0,y=6))
+        s.I2 = SchemInstance(res.portmap(m=s.vss, p=s.a), pos=Vec2R(x=5,y=6))
+        s.I3 = SchemInstance(res.portmap(m=s.a, p=s.b), pos=Vec2R(x=5,y=11))
+        s.I4 = SchemInstance(res.portmap(m=s.b, p=s.vdd), pos=Vec2R(x=5,y=16))
         
-        node.vss % SchemPoly(vertices=[Vec2R(x=7, y=4), Vec2R(x=7, y=5), Vec2R(x=7, y=6)])
-        node.vss % SchemPoly(vertices=[Vec2R(x=2, y=6), Vec2R(x=2, y=5), Vec2R(x=7, y=5)])
-        node.vdd % SchemPoly(vertices=[Vec2R(x=2, y=10), Vec2R(x=2, y=21), Vec2R(x=7, y=21), Vec2R(x=7, y=20)])
-        node.a % SchemPoly(vertices=[Vec2R(x=7, y=10), Vec2R(x=7, y=11)])
-        node.b % SchemPoly(vertices=[Vec2R(x=7, y=15), Vec2R(x=7, y=16)])
-        
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=9, uy=21))
+        s.vss % SchemWire([Vec2R(x=7, y=4), Vec2R(x=7, y=5), Vec2R(x=7, y=6)])
+        s.vss % SchemWire([Vec2R(x=2, y=6), Vec2R(x=2, y=5), Vec2R(x=7, y=5)])
+        s.vdd % SchemWire([Vec2R(x=2, y=10), Vec2R(x=2, y=21), Vec2R(x=7, y=21), Vec2R(x=7, y=20)])
+        s.a % SchemWire([Vec2R(x=7, y=10), Vec2R(x=7, y=11)])
+        s.b % SchemWire([Vec2R(x=7, y=15), Vec2R(x=7, y=16)])
+        helpers.schem_check(s, add_conn_points=True)
+        return s
 
-        helpers.schem_check(node, add_conn_points=True)
-
-    @generate(SimHierarchy)
-    def sim_dc(self, node):
-        sim = HighlevelSim(self.schematic, node)
+    @generate
+    def sim_dc(self):
+        s = SimHierarchy()
+        sim = HighlevelSim(self.schematic, s)
         sim.op()
+        return s

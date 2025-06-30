@@ -104,7 +104,7 @@ class Gnd(Cell):
     spiceSymbol = "V"
 
     @generate(Symbol)
-    def symbol(self, node) -> Symbol:      
+    def symbol(self, node):
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)  
 
         
@@ -187,25 +187,29 @@ class Idc(Cell):
         node.m = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
         
-        #Kreis
-        node % SymbolArc(pos=Vec2R(x=2,y=4-2*0.7), radius=R(7,10))
-        node % SymbolArc(pos=Vec2R(x=2,y=0+2*0.7), radius=R(7,10))
-        
-        #Linien
-        node % SymbolPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])
-        node % SymbolPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)])
-        #Pfeil
-        node % SymbolPoly(vertices=[Vec2R(x=0.5, y=1), Vec2R(x=0.5, y=3)])
-        node % SymbolPoly(vertices=[Vec2R(x=0.5, y=1)+Vec2R(x=-0.2, y=0.2), Vec2R(x=0.5, y=1)])
-        node % SymbolPoly(vertices=[Vec2R(x=0.5, y=1)+Vec2R(x=0.2, y=0.2), Vec2R(x=0.5, y=1)])
-
-        #+
-        #node % SymbolPoly(vertices=[Vec2R(x=2, y=2.2), Vec2R(x=2, y=2.8)])
-        #node % SymbolPoly(vertices=[Vec2R(x=1.7, y=2.5), Vec2R(x=2.3, y=2.5)])
-        #-
-        #node % SymbolPoly(vertices=[Vec2R(x=1.65, y=1.5), Vec2R(x=2.35, y=1.5)])
+        if self.params.get("alt_symbol", False):
+             #Kreis
+            node % SymbolArc(pos=Vec2R(x=2,y=4-2*0.7), radius=R(7,10))
+            node % SymbolArc(pos=Vec2R(x=2,y=0+2*0.7), radius=R(7,10))
             
+            #Linien
+            node % SymbolPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])
+            node % SymbolPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)])
+            #Pfeil
+            node % SymbolPoly(vertices=[Vec2R(x=0.5, y=1), Vec2R(x=0.5, y=3)])
+            node % SymbolPoly(vertices=[Vec2R(x=0.5, y=1)+Vec2R(x=-0.2, y=0.2), Vec2R(x=0.5, y=1)])
+            node % SymbolPoly(vertices=[Vec2R(x=0.5, y=1)+Vec2R(x=0.2, y=0.2), Vec2R(x=0.5, y=1)])
 
+        else:
+            node % SymbolPoly(vertices=[Vec2R(x=2, y=3), Vec2R(x=2, y=4)])
+            node % SymbolPoly(vertices=[Vec2R(x=2, y=1), Vec2R(x=2, y=0)])
+            node % SymbolArc(pos=Vec2R(x=2,y=2), radius=R(1))
+
+            # Pfeil:
+            b = Vec2R(x=2, y=1.25)
+            node % SymbolPoly(vertices=[b, Vec2R(x=2, y=2.75)])
+            node % SymbolPoly(vertices=[b + Vec2R(x=-0.5, y=0.5), b, b + Vec2R(x=0.5, y=0.5)])
+        
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
 
     def netlist_ngspice(self, netlister, inst, schematic):

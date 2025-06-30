@@ -1,0 +1,19 @@
+cell CurrentMirror:
+    symbol:
+        pass
+    schematic:
+        net vss, vdd, l, r
+        
+        Nmos n0(pos=(10,6), d--l, $w=500n, orientation=Flipy)
+        Nmos n1(pos=(14,6), d--r, $w=500n)
+        
+        for n in n0, n1:
+            n.$l = 250n
+            n.g -- l
+            n.s -- vss
+            n.b -- vss
+        
+        Gnd gnd (pos=(0,0),   p--vss)
+        Idc isrc(pos=(6,12),  p--vdd, m--l,   $dc=10u)
+        Vdc vsrc(pos=(0,9),   p--vdd, m--vss, $dc=5)
+        Res r0  (pos=(14,12), p--vdd, m--r,   $r=10k)
