@@ -129,4 +129,22 @@ class Rational(fractions.Fraction):
         else:
             return super().__format__(spec)
 
+    def __mul__(self, other):
+        return type(self)(super().__mul__(other))
+
+    def __add__(self, other):
+        return type(self)(super().__add__(other))
+
+    def __sub__(self, other):
+        return type(self)(super().__sub__(other))
+
+    def __truediv__(self, other):
+        return type(self)(super().__truediv__(other))
+
+    def __floordiv__(self, other):
+        return type(self)(super().__floordiv__(other))
+
+    def __mod__(self, other):
+        return type(self)(super().__mod__(other))
+
 public(R = Rational) # alias
