@@ -32,16 +32,19 @@ def test_ngspice_op_no_auto_gnd():
     .end
     """
 
+    def voltages(op):
+        return {name:value for vtype, name, subname, value in op if vtype=='voltage'}
+
     # Default behavior: net 'gnd' is automatically ground.
     with Ngspice.launch(debug=True) as sim:
         sim.load_netlist(netlist_voltage_divider, no_auto_gnd=False)
-        op = {key: value for key, value in sim.op()}
+        op = voltages(sim.op())
     assert op['a'] == 1.5
 
     # Altered no_auto_gnd behavior
     with Ngspice.launch(debug=True) as sim:
         sim.load_netlist(netlist_voltage_divider, no_auto_gnd=True)
-        op = {key: value for key, value in sim.op()}
+        op = voltages(sim.op())
     assert op['a'] == 2.0
     assert op['gnd'] == 1.0
 
