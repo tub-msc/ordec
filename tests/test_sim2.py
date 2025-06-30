@@ -17,6 +17,17 @@ def test_ngspice_illegal_netlist_2():
         with pytest.raises(NgspiceError, match=".*unknown subckt: x0 1 2 3 invalid.*"):
             sim.load_netlist(".title test\nx0 1 2 3 invalid\n.end")
 
+@pytest.mark.skip(reason="Ngspice seems to hang here.")
+def test_ngspice_illegal_netlist_3():
+    broken_netlist = """.title test
+    MN0 d 0 0 0 N1 w=hello
+    .end
+    """
+    with Ngspice.launch(debug=True) as sim:
+        sim.load_netlist(broken_netlist)
+
+# TODO: Not all problems seem to currently be caught and raises in Python as exception at the moment (see sky130 with Rational params).
+
 def test_ngspice_version():
     with Ngspice.launch(debug=True) as sim:
         version_str = sim.command("version -f")
