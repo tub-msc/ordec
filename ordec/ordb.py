@@ -75,11 +75,17 @@ class Attr:
     """
     Schema attribute for use in Node subclasses.
     """
+
+    def default_factory(val):
+        if isinstance(val, Cursor):
+            raise TypeError("Cursors can only be added to LocalRef or ExternalRef attributes.")
+        return val
+
     type: type
     default: object = None
     indices : list[GenericIndex] = field(default_factory=list)
-    factory: Callable = lambda x: x
-    #help: str = ""
+    factory: Callable = default_factory
+
 
     def read_hook(self, value, cursor):
         return value
@@ -869,7 +875,7 @@ class Subgraph(ABC):
     # --------------------
 
     def __repr__(self):
-        return f"<Subgraph {id(self)} head={self.nodes[0]!r}, {len(self.nodes)} nodes>"
+        return f"<{type(self).__name__} {id(self)} head={self.nodes[0]!r}, {len(self.nodes)} nodes>"
 
     def iter_tables(self):
         it = iter(self.node_dict('pretty').items())
