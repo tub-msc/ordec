@@ -116,16 +116,29 @@ class ResultViewer {
     updateView(msg) {
         this.viewLoaded = true;
 
-        if (msg['dc_table']) {
+        if (msg['dc_voltages']) {
             var table = document.createElement('table');
             table.classList.add('dc_table')
             this.resContent.appendChild(table)
             table.innerHTML = '<tr><th>Net</th><th>Voltage</th></tr>'
-            msg['dc_table'].forEach(function (row) {
+            msg['dc_voltages'].forEach(function (row) {
                 var tr = document.createElement('tr')
                 table.appendChild(tr)
                 tr.innerHTML = '<td>'+row[0]+'</td><td>'+row[1]+'</td>'
             })
+
+            this.resContent.appendChild(document.createElement('br'));
+
+            var table = document.createElement('table');
+            table.classList.add('dc_table')
+            this.resContent.appendChild(table)
+            table.innerHTML = '<tr><th>Branch</th><th>Current</th></tr>'
+            msg['dc_currents'].forEach(function (row) {
+                var tr = document.createElement('tr')
+                table.appendChild(tr)
+                tr.innerHTML = '<td>'+row[0]+'</td><td>'+row[1] + '</td>'
+            })
+
         } else if (msg['img']) {
             var img = document.createElement("img");
             img.src = msg['img'];
@@ -201,6 +214,15 @@ if (!paramExample) {
     paramExample = 'blank';
 }
 
+// add &debug=true to show 'debug' elements
+var debug = urlParams.get('debug');
+if(debug) {
+    Array.from(document.getElementsByClassName("debug")).forEach(function(e) {
+        e.style.display = "block";
+    })
+}
+
+
 const response = await fetch("/examples/uistate/" + paramExample + ".json"); // TODO: Potential XSS?!
 if (!response.ok) {
     throw new Error(`Response status: ${response.status}`);
@@ -211,8 +233,8 @@ config["header"] = {
     "popout": false
 }
 
-//var myLayout = new GoldenLayout(document.getElementById("workspace"));
-var myLayout = new GoldenLayout(document.body); // this works better than the old #workspace div
+var myLayout = new GoldenLayout(document.getElementById("workspace"));
+//var myLayout = new GoldenLayout(document.body); // this works better than the old #workspace div
 window.myLayout = myLayout; // for easy access from console
 
 myLayout.layoutConfig.settings.showPopoutIcon = false;
@@ -260,7 +282,7 @@ function ordecRestartSession() {
         ordecSock.close();
     }
     //ordecSock = new WebSocket("ws://localhost:9123/websocket", "ordecExperimental", );
-    ordecSock = new WebSocket(websocketURL, "ordecExperimental", );
+    ordecSock = new WebSocket(websocketURL, []);
     ordecSock.onopen = (event) => {
         setStatus('connected')
         const select_source = document.getElementById("sourcetype");

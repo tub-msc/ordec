@@ -11,6 +11,7 @@ from websockets.http11 import Request, Response
 from websockets.datastructures import Headers
 import http
 import json
+import re
 import traceback
 import ast
 from pathlib import Path
@@ -19,7 +20,8 @@ from urllib.parse import urlparse
 import threading
 import signal
 
-from . import Cell, Schematic, Symbol, View, SimHierarchy, SimNet
+from .base import *
+from .ordb import Subgraph
 from .parser.parser import ord2py
 
 def build_cells(source_type: str, source_data: str) -> (dict, dict):
@@ -43,7 +45,7 @@ def build_cells(source_type: str, source_data: str) -> (dict, dict):
             for k, v in conn_globals.items():
                 if not (isinstance(v, type) and issubclass(v, Cell) and v!=Cell):
                     continue
-                cell_views = [elem for elem in dir(v()) if (not elem.startswith('__')) and (not elem in ('children', 'instances', 'params', 'params_list'))]
+                cell_views = [elem for elem in dir(v()) if (not elem.startswith('__')) and (not elem in ('children', 'instances', 'params', 'params_list', 'netlist_ngspice', 'cached_subgraphs', 'spiceSymbol'))]
                 for v in cell_views:
                     views.append(f'{k}().{v}')
             print(f"Reporting {len(views)} views.")
@@ -68,25 +70,36 @@ def query_view(view_name, conn_globals):
 
     return msg_ret
 
+def fmt_float(val, unit):
+    x=str(Rational(f"{val:.03e}"))+unit
+    x=re.sub(r"([0-9])([a-zA-Z])", r"\1 \2", x)
+    x=x.replace("u", "μ")
+    x=re.sub(r"e([+-]?[0-9]+)", r"×10<sup>\1</sup>", x)
+    return x
+
 def serialize_view(name, view):
-    if not isinstance(view, View):
+    if not isinstance(view, Subgraph):
         return {'exception': "Requested object is not View."}
 
-    if isinstance(view, (Schematic, Symbol)):
+    if isinstance(view.node, (Schematic, Symbol)):
         from .render import render_svg
         return {'img': render_svg(view).as_url()}
 
-    if isinstance(view, SimHierarchy):
-        dc_table = []
-        for sn in view.traverse(SimNet):
+    if isinstance(view.node, SimHierarchy):
+        dc_voltages = []
+        for sn in view.all(SimNet):
             if not sn.dc_voltage:
                 continue
-            dc_table.append([str(sn.path()[2:]), sn.dc_voltage])
-
-        return {'dc_table': dc_table}
+            dc_voltages.append([sn.full_path_str(), fmt_float(sn.dc_voltage, "V")])
+        dc_currents = []
+        for sn in view.all(SimInstance):
+            if not sn.dc_current:
+                continue
+            dc_currents.append([sn.full_path_str(), fmt_float(sn.dc_current, "A")])
+        return {'dc_voltages': dc_voltages, 'dc_currents': dc_currents}
 
     # Fallback: just return the view as tree.
-    return {'tree':view.tree()}
+    return {'tree':view.tables()}
 
 def handle_connection(websocket):
     remote = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"

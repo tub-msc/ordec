@@ -1,9 +1,10 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from . import Vec2R, Rect4R, Pin, Rational as R, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, Symbol, Schematic, SchemConnPoint, SchemPort, Pin, SchemTapPoint, D4
 import itertools
 from dataclasses import dataclass
+from .base import *
+from .ordb import Cursor
 
 def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     """
@@ -13,7 +14,7 @@ def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     """
 
     pin_by_align = {Orientation.South:[], Orientation.North:[], Orientation.West:[], Orientation.East:[]}
-    for pin in node.traverse(Pin):
+    for pin in node.all(Pin):
         pin_by_align[pin.align].append(pin)
 
     height=max(len(pin_by_align[Orientation.East]), len(pin_by_align[Orientation.West]))+2*vpadding-1
@@ -28,7 +29,7 @@ def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     for i, pin in enumerate(pin_by_align[Orientation.East]):
         pin.pos = Vec2R(x=width,y=vpadding+i)
 
-    node.outline = node.anonymous(SchemRect(pos=Rect4R(lx=0, ly=0, ux=width, uy=height)))
+    node.outline = Rect4R(lx=0, ly=0, ux=width, uy=height)
 
 
 def schem_add_pin_tap(inst: SchemInstance, pin: Pin):
@@ -60,22 +61,24 @@ def first_last_iter(iterable):
 
 @dataclass
 class PinOfInstance:
-    pin: Pin
-    instance: SchemInstance
+    conn: SchemInstanceConn
 
     @property
     def pos(self):
-        return self.instance.loc_transform() * self.pin.pos
-
+        return self.conn.ref.loc_transform() * self.conn.there.pos
 
     @property
     def net(self):
-        return self.instance.portmap[self.pin]    
+        return self.conn.here
 
     @property
     def align(self):
         #TODO: check if this pin.align transformation works:
-        return D4.from_td4(self.instance.loc_transform() * self.pin.align.value)
+        return D4.from_td4(self.conn.ref.loc_transform() * self.conn.there.align.value)
+
+    @property
+    def ref(self):
+        return self.conn.here
 
 class SchematicError(Exception):
     pass
@@ -111,46 +114,46 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
     terminals_of_net = {}
 
     def add_terminal(t):
-        if not isinstance(t.net, Net):
-            raise TypeError(f"Illegal connection of {t} to {type(t.net)}.")
+        if not isinstance(t.ref.node, Net):
+            raise TypeError(f"Illegal connection of {t} to {type(t.ref.node)}.")
         if t.pos in terminal_at:
             raise SchematicError(f"Overlapping terminals at {t.pos}.")
         terminal_at[t.pos] = t
-        terminals_of_net[t.net].append(t)
+        terminals_of_net[t.ref].append(t)
 
         if t.pos not in net_at:
             if add_terminal_taps:
-                t.net % SchemTapPoint(pos=t.pos, align=t.align.unflip())
-                g.add_biedge(t.pos, t.net)
-                net_at[t.pos] = t.net
+                t.ref % SchemTapPoint(pos=t.pos, align=t.align.unflip())
+                g.add_biedge(t.pos, t.ref)
+                net_at[t.pos] = t.ref
             else:
                 raise SchematicError(f"Missing terminal connection at {t.pos}.")
-        elif net_at[t.pos] != t.net:
+        elif net_at[t.pos] != t.ref:
             raise SchematicError(f"Incorrect terminal connection at {t.pos}.")
 
-    # Wiring: SchemPolys, SchemTapPoints and SchemConnPoints:
-    for net in node.traverse(Net):
+    # Wiring: SchemWires, SchemTapPoints and SchemConnPoints:
+    for net in node.all(Net):
         terminals_of_net[net] = []
 
-        for tap in net.traverse(SchemTapPoint):
+        for tap in node.all(SchemTapPoint.ref_idx.query(net.nid)):
             g.add_biedge(tap.pos, net)
             if tap.pos in net_at:
                 if net_at[tap.pos] != net:
-                    raise SchematicError(f"Geometric short at {p} between {net_at[p]} and {net}.")
+                    raise SchematicError(f"Geometric short at {tap.pos} between {net_at[tap.pos]} and {net}.")
             else:
                 net_at[tap.pos] = net
 
-        for poly in net.traverse(SchemPoly):
+        for poly in node.all(SchemWire.ref_idx.query(net.nid)):
             for a, b in itertools.pairwise(poly.vertices):
-                g.add_biedge(a, b)
+                g.add_biedge(a.pos, b.pos)
             for p in poly.vertices:
-                if p in net_at:
-                    if net_at[p] != net:
-                        raise SchematicError(f"Geometric short at {p} between {net_at[p]} and {net}.")
+                if p.pos in net_at:
+                    if net_at[p.pos] != net:
+                        raise SchematicError(f"Geometric short at {p.pos} between {net_at[p.pos]} and {net}.")
                 else:
-                    net_at[p] = net
+                    net_at[p.pos] = net
 
-        for p in net.traverse(SchemConnPoint):
+        for p in node.all(SchemConnPoint.ref_idx.query(net.nid)):
             if p.pos in conn_point_at:
                 raise SchematicError(f"Overlapping SchemConnPoints at {p.pos}.")
             if (p.pos not in net_at) or (net_at[p.pos] != net):
@@ -158,11 +161,11 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
             conn_point_at[p.pos] = p
 
     # Terminals: SchemPorts and SchemInstance pins:
-    for port in node.traverse(SchemPort):
+    for port in node.all(SchemPort):
         add_terminal(port)
-    for inst in node.traverse(SchemInstance):
-        pins_expected = set(inst.ref.traverse(Pin))
-        pins_found = set(inst.portmap)
+    for inst in node.all(SchemInstance):
+        pins_expected = set(inst.symbol.all(Pin, wrap_cursor=False))
+        pins_found = {c.there.nid for c in inst.conns}
         pins_missing = pins_expected - pins_found
         pins_stray = pins_found - pins_expected
         if len(pins_missing) > 0:
@@ -170,12 +173,13 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
         if len(pins_stray) > 0:
             raise SchematicError(f"Stray pins {pins_stray} in portmap of {inst}.")
         assert pins_expected == pins_found
-        for pin in inst.ref.traverse(Pin):
-            add_terminal(PinOfInstance(pin, inst))
+        for conn in node.all(SchemInstanceConn.ref_idx.query(inst.nid)):
+            add_terminal(PinOfInstance(conn))
 
     # Check whether wiring is valid:
     for pos, connections in g.edges.items():
-        if isinstance(pos, Net):
+        if isinstance(pos, Cursor):
+            assert isinstance(pos.node, Net)
             continue
         assert isinstance(pos, Vec2R)
         terminal = terminal_at.get(pos, None)
@@ -196,7 +200,7 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
                 else:
                     raise SchematicError(f"Missing SchemConnPoint at {pos}.")
 
-    # Check that terminals of all nets are connected with some kind of wiring (SchemPoly or SchemTapPoint):
+    # Check that terminals of all nets are connected with some kind of wiring (SchemWire or SchemTapPoint):
     for net, terminals in terminals_of_net.items():
         must_reach = {t.pos for t in terminals}
         reaches = set(g.reachable_from(terminals[0].pos))
@@ -204,9 +208,24 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
         if len(unconnected) > 0:
             raise SchematicError(f"Net {net} misses wiring to locations {unconnected}.")
 
-def qinst(pos=None, ref=None, orientation=Orientation.R0, **kwargs):
-    """Helper for concisely generating SchemInstance."""
-    portmap = {}
-    for port, net in kwargs.items():
-        portmap[getattr(ref, port)] = net
-    return SchemInstance(pos=pos, ref=ref, orientation=orientation, portmap=portmap)
+def add_conn_points(s: Schematic):
+    """
+    Adds SchemConnPoints where two wires of the same net meet.
+
+    schem_check does the same thing more thoroughly, but fails for incomplete
+    schematics.
+    """
+    for net in s.all(Net):
+        pos_single = set()
+        pos_multi = set()
+        for wire in s.all(SchemWire.ref_idx.query(net.nid)):
+            for poly_point in wire.vertices:
+                pos = poly_point.pos
+                if pos in pos_single:
+                    pos_multi.add(pos)
+                else:
+                    pos_single.add(pos)
+            
+        for pos in pos_multi:
+            net % SchemConnPoint(pos=pos)
+

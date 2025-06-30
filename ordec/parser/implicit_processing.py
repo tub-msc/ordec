@@ -5,9 +5,9 @@
 from dataclasses import dataclass, field
 
 #ordec imports
-from ..schema import Pin, Net, SchemPort, Orientation, SchemRect, Rect4R, Vec2R, PinType
+from ..base import *
 from ..parser.optimize_position import get_pos_with_constraints
-from ..helpers import symbol_place_pins, schem_check
+from .. import helpers
 from ..routing import schematic_routing, check_outline_rescaling
 
 @dataclass
@@ -23,7 +23,7 @@ def symbol_process(node):
     :param node: current node instance
     :returns: None
     """
-    symbol_place_pins(node, vpadding=2, hpadding=2)
+    helpers.symbol_place_pins(node, vpadding=2, hpadding=2)
 
 
 def preprocess(self, node, outline, port_positions):
@@ -36,27 +36,28 @@ def preprocess(self, node, outline, port_positions):
     :returns: None
     """
     """Add ref to symbol"""
-    node.ref = self.symbol
-    for x in self.symbol.traverse():
-        if type(x) is Pin:
-            name = x.name
-            setattr(node, name, Net())
-            """Add port references"""
-            if x.pintype == PinType.In or x.pintype == PinType.Inout:
-                setattr(node, "port_" + name, SchemPort(align=Orientation.East,
-                                                          ref=getattr(self.symbol, name),
-                                                          net=getattr(node, name)))
-            else:
-                setattr(node, "port_" + name, SchemPort(align=Orientation.West,
-                                                          ref=getattr(self.symbol, name),
-                                                          net=getattr(node, name)))
-            """Add positions of ports and adjust outline if necessary"""
-            if name in port_positions.keys():
-                position = port_positions[name]
-                if position[0] is not None and position[1] is not None:
-                    position = (int(position[0]), int(position[1]))
-                    check_outline_rescaling(position[0], position[1], outline)
-                    setattr(getattr(node, "port_" + name), "pos", Vec2R(x=position[0], y=position[1]))
+    node.symbol = self.symbol
+    for x in self.symbol.all(Pin):
+        name = x.full_path_str()
+        setattr(node, name, Net(pin=x))
+
+        net = getattr(node, name)
+
+        port = net % SchemPort()
+
+        """Add port references"""
+        if x.pintype == PinType.In or x.pintype == PinType.Inout:
+            port.align=Orientation.East
+        else:
+            port.align=Orientation.West
+            
+        # Add positions of ports and adjust outline if necessary:
+        if name in port_positions:
+            position = port_positions[name]
+            if position[0] is not None and position[1] is not None:
+                position = (int(position[0]), int(position[1]))
+                check_outline_rescaling(position[0], position[1], outline)
+                port.pos = Vec2R(x=position[0], y=position[1])
 
 def add_positions_from_constraints(constraints, outline, called_instances, node, ext):
     """
@@ -74,8 +75,9 @@ def add_positions_from_constraints(constraints, outline, called_instances, node,
         positioned_instances.add(values[0])
         positioned_instances.add(values[1])
 
-    for name, value in node.children.items():
-        if isinstance(value, Net) and name in positioned_instances and not name.startswith("ordec_unique_net"):
+    for value in node.all(Net):
+        name = value.full_path_str()
+        if name in positioned_instances and not name.startswith("ordec_unique_net"):
             called_instances[name] = None
 
     name_pos_dict = get_pos_with_constraints(constraints, called_instances, ext)
@@ -135,5 +137,7 @@ def postprocess(self, node, outline, postprocess_data: PostProcess):
     
     #Add helpers
     # WARNING/TODO: Temporarily disabled schem_check here for better interactivity (web):
-    #schem_check(node, add_conn_points=True, add_terminal_taps=True)
-    node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=outline[0], uy=outline[1]))
+    #helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
+    helpers.add_conn_points(node)
+
+    node.outline = Rect4R(lx=0, ly=0, ux=outline[0], uy=outline[1])

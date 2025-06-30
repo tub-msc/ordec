@@ -21,8 +21,10 @@ dependencies = [
     "astor>=0.8.1",
     "numpy>=1.24.2",
     "scipy>=1.10.1",
+    "atpublic>=6.0.1",
     # "ipython>=8.5.0",
     "websockets>=15.0.1",
+    "tabulate>=0.8.9",
 ]
 dynamic = ["version"]
 

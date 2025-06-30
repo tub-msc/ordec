@@ -46,3 +46,12 @@ def test_rational_compat_str():
     assert R("f'2/3").compat_str() == "6.666667e-01"
     assert R("f'234/999").compat_str() == "2.342342e-01"
     assert R("1.1273178269318723641239485943457345e-60").compat_str() == "1.1273178269318723641239485943457345e-60"
+
+
+def test_rational_op_types():
+    assert type(R(1) + R(1)) == R
+    assert type(R(1) - R(1)) == R
+    assert type(R(1) * R(1)) == R
+    assert type(R(1) / R(1)) == R
+    assert type(R(1) // R(1)) == R
+    assert type(R(1) % R(1)) == R

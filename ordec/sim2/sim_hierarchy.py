@@ -1,26 +1,29 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from .. import Net, SchemInstance, Pin, SimNet, SimInstance, Schematic, SimHierarchy
+from ..schema import *
 from .ngspice import Ngspice, Netlister
 
 def build_hier_symbol(node, symbol):
-    for pin in symbol.traverse(Pin):
+    node.schematic = symbol
+    for pin in symbol.all(Pin):
         # TODO: implement hierarchical construction within schematic
-        setattr(node, pin.name, SimNet(ref=pin))
+        setattr(node, pin.full_path_str(), SimNet(eref=pin))
 
 def build_hier_schematic(node, schematic):
-    for net in schematic.traverse(Net):
+    node.schematic = schematic
+    for net in schematic.all(Net):
         # TODO: implement hierarchical construction within schematic
-        setattr(node, net.name, SimNet(ref=net))
+        setattr(node, net.full_path_str(), SimNet(eref=net))
 
-    for inst in schematic.traverse(SchemInstance):
-        setattr(node, inst.name, SimInstance(ref=inst))
-        subnode = getattr(node, inst.name)
+    for inst in schematic.all(SchemInstance):
+        # TODO: implement hierarchical construction
+        setattr(node, inst.full_path_str(), SimInstance(eref=inst))
+        subnode = getattr(node, inst.full_path_str())
         try:
-            subschematic = inst.ref.parent.schematic
+            subschematic = inst.symbol.cell.schematic
         except AttributeError:
-            build_hier_symbol(subnode, inst.ref)
+            build_hier_symbol(subnode, inst.symbol)
         else:
             build_hier_schematic(subnode, subschematic)
 
@@ -32,19 +35,30 @@ class HighlevelSim:
         self.netlister.netlist_hier(self.top)
 
         self.node = node
-        self.node.ref = self.top
-        build_hier_schematic(self.node, self.node.ref)
-        self.str_to_simnet = {}
-        for sn in node.traverse(SimNet):
-            self.str_to_simnet[self.netlister.name_simnet(sn)] = sn
+        #self.node.schematic = self.top
+        build_hier_schematic(self.node, self.top)
+        self.str_to_simobj = {}
+        for sn in node.all(SimNet):
+            name = self.netlister.name_hier_simobj(sn)
+            self.str_to_simobj[name] = sn
+
+        for sn in node.all(SimInstance):
+            name = self.netlister.name_hier_simobj(sn)
+            self.str_to_simobj[name] = sn
 
     def op(self):
         with Ngspice.launch(debug=False) as sim:
             sim.load_netlist(self.netlister.out())
-            for name, value in sim.op():
-                try:
-                    sn = self.str_to_simnet[name]
-                except KeyError:
-                    print(f"warning: ignoring {name}")
-                else:
-                    sn.dc_voltage = value
+            for vtype, name, subname, value in sim.op():
+                if vtype == 'voltage':
+                    try:
+                        simnet = self.str_to_simobj[name]
+                    except KeyError:
+                        print(f"warning: ignoring {name}")
+                    else:
+                        simnet.dc_voltage = value
+                elif vtype == 'current':
+                    if subname not in ('id', 'branch', 'i'):
+                        continue
+                    siminstance = self.str_to_simobj[name]
+                    siminstance.dc_current = value

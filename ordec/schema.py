@@ -1,242 +1,209 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""
-This file defines the common schema for IC design data.
-"""
-from .base import View, Node, Cell, attr, IntegrityError, PathNode, PathArray, PathStruct
-from pyrsistent import CheckedPMap, CheckedPVector
-from .rational import Rational as R
-from .geoprim import TD4, Vec2R, Rect4R, Orientation
 from enum import Enum
-from collections.abc import Mapping
-from .parser.prelim_schem_instance import PrelimSchemInstance
-from warnings import warn
+from functools import partial
+from public import populate_all
 
-# Everything needed for the Symbol view
-# -------------------------------------
-
-class PolyVec2R(CheckedPVector):
-    """
-    A list of Vec2R points representing a polygonal chain, which can be
-    open or closed. A polygonal chain is closed if the last and first element
-    are equivalent.
-    """
-    __type__ = Vec2R
-
-    def closed(self) -> bool:
-        return self[-1] == self[0]
+from .rational import R
+from .geoprim import *
+from .ordb import *
 
 class PinType(Enum):
     In = 'in'
     Out = 'out'
     Inout = 'inout'
 
-class SchemPoly(Node):
-    """A polygonal chain in a schematic or symbol."""
-    vertices = attr(type=PolyVec2R, freezer=PolyVec2R)
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
 
-class SchemConnPoint(Node):
-    """A schematic point to indicate a connection at a 3- or 4-way junction of wires."""
-    pos = attr(type=Vec2R)
+# Misc
+# ----
 
-class SchemTapPoint(Node):
-    """A schematic tap point for connecting points by label, typically visualized using the net's name."""
+class PolyVec2R(Node):
+    """
+    One element/point of a Vec2R polygonal chain, which can be open or closed.
+    A polygonal chain is closed if the last and first element are equivalent.
+    """
+    ref    = LocalRef('SymbolPoly|SchemWire')
+    order   = Attr(int)
+    """Order of the point in the polygonal chain"""
+    pos     = Attr(Vec2R)
 
-    pos = attr(type=Vec2R)
-    align = attr(type=Orientation)
+    ref_idx = Index(ref, sortkey=lambda node: node.order)
 
-    def check_integrity(self):
-        if self.align.value.det() != 1:
-            raise IntegrityError('SchemTapPoint cannot have mirrored orientation.')
+# Symbol
+# ------
 
-class SchemRect(Node):
-    """A schematic rectangle, currently only used for Symbol and Schematic onlines."""
-    pos = attr(type=Rect4R)
+class Symbol(SubgraphHead):
+    """A symbol of an individual cell."""
+    outline = Attr(Rect4R)
+    caption = Attr(str)
+    cell = Attr('Cell')
 
-class SchemArc(Node):
-    """A drawn circle or circular segment for use in Symbol."""
-    pos = attr(type=Vec2R, help="Center point")
-    radius = attr(type=R, help="Radius of the arc")
-    angle_start = attr(type=R, default=R(0), help="Must be less than angle_end and between -1 and 1, with -1 representing -360° and 1 representing 360°.")
-    angle_end = attr(type=R, default=R(1), help="Must be greater than angle_start and between -1 and 1, with -1 representing -360° and 1 representing 360°.")
+    @cursormethod
+    def portmap(cursor, **kwargs):
+        def inserter_func(main, sgu):
+            main_nid = main.set(symbol=cursor.subgraph).insert(sgu)
+            for k, v in kwargs.items():
+                SchemInstanceConn(ref=main_nid, here=v.nid, there=cursor[k].nid).insert(sgu)
+            return main_nid
+        return inserter_func
 
-    def check_integrity(self):
-        if self.radius <= R(0):
-            raise IntegrityError("SchemArc radius must be greater than 0.")
-        if self.angle_start >= self.angle_end:
-            raise IntegrityError("SchemArc angle_start must be less than angle_end.")
-        for a in self.angle_start, self.angle_end:
-            if a < R(-1) or a > R(1):
-                raise IntegrityError("angle_start and angle_end must be between -1 and 1.")
+    @cursormethod
+    def _repr_html_(cursor):
+        from .render import render_svg
+        return render_svg(cursor.subgraph).as_html()
 
 class Pin(Node):
     """
     Pins are single wire connections exposed through a symbol.
-    In the future, a second Pin-like node might be added to support
-    struct / array (bus) connections through single schematic connectors.
     """
-    pos = attr(type=Vec2R)
-    pintype = attr(type=PinType)
-    align = attr(type=Orientation)
+    pintype = Attr(PinType, default=PinType.Inout)
+    pos     = Attr(Vec2R)
+    align   = Attr(D4, default=D4.R0)
+ 
+class SymbolPoly(Node):
+    def __new__(cls, vertices:list[Vec2R]=None, **kwargs):
+        main = super().__new__(cls, **kwargs)
+        if vertices == None:
+            return main
+        else:
+            def inserter_func(sgu):
+                main_nid = main.insert(sgu)
+                for i, v in enumerate(vertices):
+                    PolyVec2R(ref=main_nid, order=i, pos=v).insert(sgu)
+                return main_nid
+            return FuncInserter(inserter_func)
 
-    def check_integrity(self):
-        if self.align.value.det() != 1:
-            raise IntegrityError('Pin cannot have mirrored orientation.')
+    @cursormethod
+    @property
+    def vertices(cursor):
+        return cursor.subgraph.all(PolyVec2R.ref_idx.query(cursor.nid))
 
-class PinArray(PathArray):
-    children: Mapping[int, "inherit"]
-    def __init__(self, parent, name, **kwargs):
-        warn(f"Use PathArray instead of PinArray.", DeprecationWarning, stacklevel=4)
-        super().__init__(parent, name, **kwargs)
-
-class PinStruct(PathArray):
-    children: Mapping[str, "inherit"]
-    def __init__(self, parent, name, **kwargs):
-        warn(f"Use PathStruct instead of PinStruct.", DeprecationWarning, stacklevel=4)
-        super().__init__(parent, name, **kwargs)
-
-class Symbol(View):
-    """
-    A symbol of an individual cell.
-    """
-    children: Mapping[str, Pin|SchemPoly|SchemArc|SchemRect|PathNode]
+class SymbolArc(Node):
+    """A drawn circle or circular segment for use in Symbol."""
+    pos         = Attr(Vec2R)
+    "Center point"
+    radius      = Attr(R)
+    "Radius of the arc."
+    angle_start = Attr(R, default=R(0))
+    "Must be less than angle_end and between -1 and 1, with -1 representing -360° and 1 representing 360°."
+    angle_end   = Attr(R, default=R(1))
+    "Must be greater than angle_start and between -1 and 1, with -1 representing -360° and 1 representing 360°."
     
-    outline = attr(type=SchemRect)
 
-    def _repr_html_(self):
-        from .render import render_svg
-        return render_svg(self).as_html()
-
-# Everything needed for the Schematic view
-# ----------------------------------------
+# # Schematic
+# # ---------
 
 class Net(Node):
-    """
-    Pins are single wire connections exposed through a symbol.
-    In the future, a second Pin-like node might be added to support
-    struct / array (bus) connections through single schematic connectors.
-    """
+    pin = ExternalRef(Pin, of_subgraph=lambda c: c.subgraph.symbol)
 
-    children: Mapping[str, SchemPoly|SchemConnPoint|SchemTapPoint]
-
-class PortMap(CheckedPMap):
+class Schematic(SubgraphHead):
     """
-    Maps Pins of a SchemInstance to Nets of its Schematic.
-    "PinMap" would be a more fitting name, but PortMap seems catchier due to its use in VHDL.
+    A schematic of an individual cell.
     """
-    __key_type__ = (Pin,)
-    __value_type__ = (Net,)
+    symbol = Attr(Symbol) # Subgraph reference
+    outline = Attr(Rect4R)
+    cell = Attr('Cell')
+    default_supply = LocalRef(Net)
+    default_ground = LocalRef(Net)
 
-
-class SchemInstance(Node):
-    """
-    An instance of a Symbol in a Schematic (foundation for schematic hierarchy).
-    """
-    pos = attr(type=Vec2R)
-    orientation = attr(type=Orientation, default=Orientation.R0)
-    ref = attr(type=Symbol)
-    portmap = attr(type=PortMap, freezer=PortMap)
-
-    def loc_transform(self):
-        return TD4(transl=self.pos) * self.orientation.value
+    @cursormethod
+    def _repr_html_(cursor):
+        from .render import render_svg
+        return render_svg(cursor.subgraph).as_html()
 
 class SchemPort(Node):
     """
     Port of a Schematic, corresponding to a Pin of the schematic's Symbol.
     """
-    pos = attr(type=Vec2R)
-    ref = attr(type=Pin)
-    align = attr(type=Orientation)
-    net = attr(type=Net)
+    ref = LocalRef(Net)
+    ref_idx = Index(ref)
+    pos = Attr(Vec2R)
+    align = Attr(D4, default=D4.R0)
 
-    def check_integrity(self):
-        if self.align.value.det() != 1:
-            raise IntegrityError('SchemPort cannot have mirrored orientation.')
+class SchemWire(SymbolPoly):
+    """A drawn schematic wire representing an electrical connection."""
+    ref = LocalRef(Net)
+    ref_idx = Index(ref)
 
-class NetArray(PathArray):
-    children: Mapping[int, "inherit"]
-    def __init__(self, parent, name, **kwargs):
-        warn(f"Use PathArray instead of NetArray.", DeprecationWarning, stacklevel=4)
-        super().__init__(parent, name, **kwargs)
-
-class NetStruct(PathArray):
-    children: Mapping[str, "inherit"]
-    def __init__(self, parent, name, **kwargs):
-        warn(f"Use PathStruct instead of NetStruct.", DeprecationWarning, stacklevel=4)
-        super().__init__(parent, name, **kwargs)
-class Schematic(View):
+class SchemInstance(Node):
     """
-    A schematic of an individual cell.
+    An instance of a Symbol in a Schematic (foundation for schematic hierarchy).
     """
-    children: Mapping[str, Net|SchemInstance|PrelimSchemInstance|SchemRect|SchemPort|PathNode]
-    outline = attr(type=SchemRect)
-    default_supply = attr(type=Net|type(None), help="SchemTapPoints of referenced net are visually shown as main supply net (arrow without text), optional.")
-    default_ground = attr(type=Net|type(None), help="SchemTapPoints of referenced net are visually shown as main ground net (three bars without text), optional.")
-    ref = attr(type=Symbol|type(None), help="If SchemPorts are present in the Schematic, this attribute must reference the corresponding Symbol.")
+    pos = Attr(Vec2R)
+    orientation = Attr(D4, default=D4.R0)
+    symbol = Attr(Symbol) # Subgraph reference
 
-    def _repr_html_(self):
-        from .render import render_svg
-        return render_svg(self).as_html()
-
-    def check_integrity(self):
-        first = True
-
-        if self.ref:
-            pins_expected = {pin for pin in self.ref.traverse(Pin)}
+    def __new__(cls, connect=None, **kwargs):
+        main = super().__new__(cls, **kwargs)
+        if connect == None:
+            return main
         else:
-            pins_expected = set()
-        ports_found = {port for port in self.traverse(SchemPort)}
-        pins_found = {port.ref for port in ports_found}
-        assert len(pins_found) <= len(ports_found)
-        if len(pins_found) < len(ports_found):
-            raise IntegrityError("Schematic with multiple SchemPorts referencing same Pin.")
+            return FuncInserter(partial(connect, main))
 
-        if pins_expected != pins_found:
-            if self.ref == None:
-                raise IntegrityError("Schematic with SchemPorts must reference its symbol (attribute 'ref').")
-            else:
-                raise IntegrityError("SchemPort/Pin mismatch between schematic and reference symbol.")
+    @cursormethod
+    def loc_transform(cursor):
+        return TD4(transl=cursor.pos) * cursor.orientation.value
 
-# Simulation hierarchy + results
-# ------------------------------
+    @cursormethod
+    @property
+    def conns(cursor):
+        return cursor.subgraph.all(SchemInstanceConn.ref_idx.query(cursor.nid))
 
-class FloatVect(CheckedPVector):
-    __type__ = float
+class SchemInstanceConn(Node):
+    """
+    Maps Pins of a SchemInstance to Nets of its Schematic.
+    """
+    ref = LocalRef(SchemInstance)
+    ref_idx = Index(ref)
+
+    here = LocalRef(Net)
+    there = ExternalRef(Pin, of_subgraph=lambda c: c.ref.symbol) # ExternalRef to Pin in SchemInstance.symbol
+
+    ref_pin_idx = CombinedIndex([ref, there], unique=True)
+
+class SchemTapPoint(Node):
+    """A schematic tap point for connecting points by label, typically visualized using the net's name."""
+    ref = LocalRef(Net)
+    ref_idx = Index(ref)
+
+    pos = Attr(Vec2R)
+    align = Attr(D4, default=D4.R0)
+
+class SchemConnPoint(Node):
+    """A schematic point to indicate a connection at a 3- or 4-way junction of wires."""
+    ref = LocalRef(Net)
+    ref_idx = Index(ref)
+
+    pos = Attr(Vec2R)
+
+# Simulation hierarchy
+# --------------------
+
+def parent_siminstance(c: Cursor) -> Cursor:
+    while not isinstance(c.node, (SimInstance, SimHierarchy)):
+        c = c.parent
+    return c
 
 class SimNet(Node):
-    """
-    SimNet is the place to measure a voltage.
-    """
-    trans_voltage = attr(type=FloatVect|type(None))
-    trans_current = attr(type=FloatVect|type(None))
-    dc_voltage = attr(type=float|type(None))
-    dc_current = attr(type=float|type(None))
+    trans_voltage = Attr(list[float])
+    trans_current = Attr(list[float])
+    dc_voltage = Attr(float)
 
-    ref = attr(type=Net|Pin)
-
-# class SimPin(Node):
-#     """
-#     SimPin is the place to measure a current.
-#     """
-#     current_trans = attr(type=FloatVect|type(None))
-
-#     ref = attr(type=Pin)
+    eref = ExternalRef(type=Net|Pin, of_subgraph=lambda c: parent_siminstance(c).schematic)
 
 class SimInstance(Node):
-    """
-    Each unique SchemInstance become a SimInstance for simulation. SimInstances
-    should be created for each unique used cell in the simulation hierarchy,
-    irrespective of whether a corresponding schematic exists or not.
+    dc_current = Attr(float)
 
-    For the top-level testbench, the SimHierarchy view itself assumes the role
-    of the SimInstance.
-    """
-    ref = attr(type=SchemInstance)
+    is_leaf = False
+    schematic = Attr(Schematic)
+    eref = ExternalRef(SchemInstance, of_subgraph=lambda c: parent_siminstance(c.parent).schematic)
 
-SimInstance.__annotations__['children'] = Mapping[str, SimInstance|SimNet|PathNode] # Outside of class due to self-reference
+class SimHierarchy(SubgraphHead):
+    schematic = Attr(Schematic)
+    cell = Attr('Cell')
 
-class SimHierarchy(View):
-    children: Mapping[str, SimInstance|SimNet|PathNode]
-
-    ref = attr(type=Schematic)
+# Every class defined in this file is public:
+populate_all()
