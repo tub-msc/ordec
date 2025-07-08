@@ -8,4 +8,5 @@ Developer's Corner
    containers_and_ci
    ipython_integration
    ngspice_pipe_mode
+   design_decisions
    todos
