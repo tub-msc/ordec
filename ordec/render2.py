@@ -1,0 +1,327 @@
+# SPDX-FileCopyrightText: 2025 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+import xml.etree.ElementTree as ET
+import math
+from base64 import b64encode
+from .base import *
+from enum import Enum
+import re
+
+class HAlign(Enum):
+    Left = 1
+    Right = 2
+
+class VAlign(Enum):
+    Top = 1
+    Bottom = 2
+    Middle = 3
+
+common_css = """
+svg {
+    stroke-linecap: butt;
+    stroke-linejoin: bevel;
+}
+text {
+    font-size: 11pt;
+    font-family: "Inconsolata", monospace;
+}
+.instanceName {
+    font-weight: bold;
+    fill: #f00;
+}
+.pinLabel, .pinArrow {
+    fill: #f00;
+}
+.params, .cellName {
+    fill: #80b380;
+}
+.symbolOutline {
+    stroke: #80b380;
+}
+.symbolPoly {
+    stroke: #000;
+}
+.symbolOutline, .symbolPoly, .schemWire, .tapPoint {
+    fill: none;
+    stroke-width: 0.1;
+}
+.grid {
+    fill: #ccc;
+}
+.schemWire, .tapPoint {
+    stroke: rgb(80%, 80%, 0%);
+}
+.connPoint, .tapPointLabel {
+    fill: rgb(80%, 80%, 0%);
+}
+.portArrow, .portLabel {
+    fill: rgb(20%, 60%, 100%);
+}
+"""
+common_css = re.sub(r"\s+", " ", common_css).strip() # remove newlines / unneeded spaces
+
+class SVG:
+    pin_text_space = 0.125
+    port_text_space = 0.15 + 0.5
+    pixel_per_unit = 50
+    conn_point_radius = 0.1625
+    font_narrow_factor = 0.9 # do we want this?
+
+    def __init__(self):
+        self.root = ET.Element('svg', xmlns="http://www.w3.org/2000/svg", )
+        style = ET.SubElement(self.root, 'style', type='text/css')
+        style.text = common_css
+        self.root_g = ET.SubElement(self.root, 'g')
+        
+    def render_symbol(self, s):
+        self.init_grid(s.outline)
+        self.draw_symbol(s, TD4())
+
+
+    def draw_symbol(self, s: Symbol, trans: TD4, inst_name: str="?"):
+        # Draw outline
+        rect = trans * s.outline
+        lx, ly, ux, uy = rect.tofloat()
+        r=ET.SubElement(self.root_g, 'rect', x=str(lx), y=str(ly), width=str(ux-lx), height=str(uy-ly))
+        r.attrib['class'] = 'symbolOutline'
+
+        #params_str = cell.params_str()
+        params_str = "\n".join(s.cell.params_list())
+
+        self.draw_label(type(s.cell).__name__,
+            TD4(transl=rect.north_east())*D4.R90.value,
+            valign=VAlign.Top, space=self.pin_text_space,
+            svg_class="cellName")
+        self.draw_label(params_str, TD4(transl=rect.south_east())*D4.R90.value,
+            valign=VAlign.Bottom, space=self.pin_text_space,
+            svg_class="params")
+        self.draw_label(inst_name, TD4(transl=rect.north_west())*D4.MX90.value,
+            valign=VAlign.Top, space=self.pin_text_space,
+            svg_class="instanceName")
+        
+        for poly in s.all(SymbolPoly):
+            p = ET.SubElement(self.root_g, 'path', d=poly.svg_path(), transform=trans.svg_transform())
+            p.attrib['class'] = 'symbolPoly'
+        
+        for arc in s.all(SymbolArc):
+            p = ET.SubElement(self.root_g, 'path', d=arc.svg_path(), transform=trans.svg_transform())
+            p.attrib['class'] = 'symbolPoly'
+        
+        for pin in s.all(Pin):
+            self.draw_pin(pin, trans)
+
+    def draw_pin(self, pin: Pin, trans: TD4):
+        # Flip by 180 degrees, as the text face the opposite of the pin direction:
+        trans_local = trans*TD4(transl=pin.pos)*D4.R180.value*pin.align.value
+
+        self.draw_pinportarrow(pin.pintype,
+            trans_local, center=True, halfheight=0.2, width=0.4, svg_class='pinArrow')
+
+        label = str(pin.full_path_str())
+        self.draw_label(label, trans_local, space=self.pin_text_space, valign=VAlign.Bottom,
+            svg_class='pinLabel')
+
+    def draw_pinportarrow(self, pt: PinType, trans: TD4, halfheight=0.25, width=0.5, center=False, svg_class=''):
+        arrow_left = pt in (PinType.Inout, PinType.Out)
+        arrow_right = pt in (PinType.Inout, PinType.In)
+
+        left_tip = halfheight if arrow_left else 0
+        right_tip = halfheight if arrow_right else 0
+        
+        if center:
+            m = trans * TD4(transl=Vec2R(x=0,y=width/2))
+        else:
+            m = trans
+    
+        g = ET.SubElement(self.root_g, 'g', transform=m.svg_transform())
+
+        d = ' '.join([
+            "M0 0",
+            f"L{halfheight} {-right_tip}",
+            f"L{halfheight} {-width+left_tip}",
+            f"L0 {-width}",
+            f"L{-halfheight} {-width+left_tip}",
+            f"L{-halfheight} {-right_tip}",
+            "Z",
+            ])
+
+        p=ET.SubElement(g, 'path', d=d)
+        p.attrib['class']=svg_class
+
+    def draw_label(self, text: str, trans: TD4, halign=HAlign.Left, valign=VAlign.Top, space=0, svg_class=""):
+        """
+        dominant_baseline: chose "hanging" or "ideographic"
+        """
+
+        align = D4.from_td4(trans).unflip()
+        pos = trans.transl
+
+        if align in (Orientation.West, Orientation.South):
+            if halign == halign.Left:
+                halign = halign.Right
+            elif halign == halign.Right:
+                halign = halign.Left
+
+        # g_matrix has same basic translation as trans, but limits rotations of text
+        # to 0 or 90 degrees (so that you never have to rotate your head by 180 degrees)
+        g_matrix = TD4(transl=pos) 
+        if align in (Orientation.South, Orientation.North):  
+             g_matrix *= D4.R90.value
+
+        # Furthermore, g_matrix adds some space (padding):
+        g_matrix *= TD4(transl=Vec2R(
+            x = {HAlign.Left: +1, HAlign.Right: -1}[halign]*space,
+            y = {VAlign.Bottom: +1, VAlign.Top: -1, VAlign.Middle: 0}[valign]*space,
+            ))
+
+        g = ET.SubElement(self.root_g, 'g', transform=g_matrix.svg_transform())
+
+        scale = 0.05 # 1/self.pixel_per_unit (?) Not sure why this is so off.
+        tag = ET.SubElement(g, 'text', transform=f"matrix({self.font_narrow_factor*scale} 0 0 -{scale} 0 0)")
+
+        lines = text.split('\n')
+        if len(lines) == 1:
+            # Make the XML tree more compact by skipping <tspan> for single-line text: 
+            tag.text = lines[0]
+        else:
+            for idx, line in enumerate(lines):
+                y = idx+1-len(lines)
+                tspan=ET.SubElement(tag, 'tspan', x="0", y=f"{y}em")
+                tspan.text = line
+
+        tag.attrib['dominant-baseline'] = {
+            VAlign.Top: 'hanging',
+            VAlign.Bottom: 'ideographic',
+            VAlign.Middle: 'middle',
+            }[valign]
+        tag.attrib['text-anchor'] = {HAlign.Left: 'start', HAlign.Right: 'end'}[halign]
+        tag.attrib['class'] = svg_class
+
+    def init_grid(self, rect: Rect4R, dot_size: float = 0.1, padding: float = 1.0, highlight_origin: bool = False):
+
+        lx, ly, ux, uy = rect.tofloat()
+        
+        # Initialize the coordinate system to how we like it:
+        lx_p = lx - padding
+        ly_p = ly - padding
+        ux_p = ux + padding
+        uy_p = uy + padding
+        w = ux - lx
+        h = uy - ly
+        w_p = ux_p - lx_p
+        h_p = uy_p - ly_p
+
+        self.root.attrib['width'] = f'{w_p*self.pixel_per_unit}px'
+        self.root.attrib['height'] = f'{h_p*self.pixel_per_unit}px'
+        self.root.attrib['viewBox'] = f'{lx_p} {ly_p} {w_p} {h_p}'
+        # Not sure why this is the correct transform matrix:
+        self.root_g.attrib['transform']=f"matrix(1 0 0 -1 0 {uy+ly})"
+
+        # Draw grid:
+        g = ET.SubElement(self.root_g, 'g')
+        g.attrib['class'] = 'grid'
+
+        for x in range(math.floor(lx), math.ceil(ux)+1):
+            for y in range(math.floor(ly), math.ceil(uy)+1):
+                s = ET.SubElement(g, 'rect', x=str(x-dot_size/2), y=str(y-dot_size/2), height=str(dot_size), width=str(dot_size))
+                if highlight_origin and (x==0 and y==0):
+                    s.attrib['fill'] = '#f00'
+
+    def render_schematic(self, s):
+        self.init_grid(s.outline)
+
+        for poly in s.all(SchemWire):
+            p = ET.SubElement(self.root_g, 'path', d=poly.svg_path())
+            p.attrib['class'] = 'schemWire'
+
+        for p in s.all(SchemConnPoint):
+            cx, cy = p.pos.tofloat()
+            circle = ET.SubElement(self.root_g, 'circle', cx=str(cx), cy=str(cy), r=str(self.conn_point_radius))
+            circle.attrib['class']='connPoint'
+
+        for p in s.all(SchemTapPoint):
+            self.draw_schem_tappoint(p)
+
+        for inst in s.all(SchemInstance):
+            trans = inst.loc_transform()
+            self.draw_symbol(inst.symbol, trans, str(inst.full_path_str()))
+
+        for port in s.all(SchemPort):
+            self.draw_schem_port(port)
+
+    def draw_schem_port(self, port: SchemPort):
+        trans = TD4(transl=port.pos)*port.align.value
+        self.draw_pinportarrow(port.ref.pin.pintype, trans, svg_class='portArrow')
+        
+        label = port.ref.pin.full_path_str()
+        self.draw_label(label, trans*D4.R180.value,
+            space=self.port_text_space, halign=HAlign.Left, valign=VAlign.Middle,
+            svg_class='portLabel')
+
+    def draw_schem_tappoint(self, p: SchemTapPoint):
+        is_default_supply = p.subgraph.default_supply == p.ref
+        is_default_ground = p.subgraph.default_ground == p.ref
+        if is_default_supply:
+            d = ' '.join([
+                "M0 0",
+                "L0 1.0",
+                "M0.25 0.5",
+                "L0 1.0",
+                "L-0.25 0.5",
+                ])
+        elif is_default_ground:
+            d = ' '.join([
+                "M0 0",
+                "L0 0.5",
+                "M-0.375 0.5",
+                "L0.375 0.5",
+                "M-0.25 0.75",
+                "L0.25 0.75",
+                "M-0.125, 1.0",
+                "L0.125 1.0",
+                ])
+        else:
+            d = ' '.join([
+                "M0 0",
+                "L0 0.5",
+                ])
+
+        tran = p.loc_transform()
+
+        path = ET.SubElement(self.root_g, 'path', d=d, transform=tran.svg_transform())
+        path.attrib['class'] = 'tapPoint'
+        
+        if not (is_default_supply or is_default_ground):
+            label = p.ref.full_path_str()
+            self.draw_label(label, tran,
+                space=self.port_text_space, valign=VAlign.Middle,
+                svg_class="tapPointLabel")
+
+    def svg(self) -> bytes:
+        """
+        Returns SVG XML data as bytes. (Does not depend on cairo or other
+        fancy SVG libraries.)
+        """
+        return ET.tostring(self.root)
+
+    def png(self) -> bytes:
+        """
+        This method is a thin wrapper around the svg() method that uses cairosvg
+        to convert the SVG data to a PNG raster image.
+
+        One of the goals of this new render module is to get rid of the
+        cairo and pango dependencies, or at least weaken them. Maybe use the
+        method only in test code. I am not sure yet if the cairosvg is as
+        error-prone as pycairo + pangi via python3-gi, but maybe just avoid it.
+
+        Earlier trials using the 'wand' library did not lead to satisfactory
+        results: the fonts and text baselines were messed up. This is strange,
+        as ImageMagick's command line tool 'convert' did not have those
+        problems.
+        """
+        import cairosvg
+        return cairosvg.svg2png(self.svg())
+
+    def dump_url(self):
+        return f"data:image/svg+xml;base64,{b64encode(self.dump()).decode('ascii')}"
