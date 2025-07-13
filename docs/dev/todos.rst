@@ -37,3 +37,11 @@ ORDB
 - Branching and merging of Subgraphs
 - SimHierarchy: do not duplicates the nets of Schematics and Symbols
 - Profiling
+
+SVG Renderer
+------------
+
+- understand how to properly compute the scaling factor for text instead of just guessing a value (0.045).
+- in the medium term, make the symbols more compact overall and put params outside symbol. then, we can also drop the condensed font hack.
+- can we deliver the font to the browser so that the user does not need to have inconsolate installed and the svg does not need to embed the font (some sort of browser font inheritance from the html page to the svg context)?
+- firefox and cairosvg render fonts slightly differently (baseline). figure out whether an alternative dominant-baseline setting could fix this.

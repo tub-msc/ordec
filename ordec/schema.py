@@ -53,7 +53,7 @@ class Symbol(SubgraphHead):
 
     @cursormethod
     def _repr_html_(cursor):
-        from .render2 import render
+        from .render import render
         return render(cursor.subgraph).html()
 
 class Pin(Node):
@@ -166,7 +166,7 @@ class Schematic(SubgraphHead):
 
     @cursormethod
     def _repr_html_(cursor):
-        from .render2 import render
+        from .render import render
         return render(cursor.subgraph).html()
 
 class SchemPort(Node):
