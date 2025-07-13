@@ -97,10 +97,7 @@ RUN useradd -ms /bin/bash app && \
         libgomp1 \
         python3-minimal \
         python3-venv \
-        python3-gi-cairo \
-        python3-gi \
         npm \
-        gir1.2-pango-1.0 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 USER app
 WORKDIR /home/app
