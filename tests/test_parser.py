@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
-from ordec import render_image
+#from ordec import render_image
 from ordec.lib import Nmos, Pmos, Vdc, Res, Gnd
 from ordec.parser.parser import load_ord, execute_in_environment
 from tests.reference_ord_output import save_reference_pngs

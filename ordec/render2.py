@@ -83,13 +83,21 @@ class Renderer:
 
     pin_text_space = 0.125
     port_text_space = 0.15 + 0.5
-    pixel_per_unit = 50
+    pixel_per_unit = 35
     conn_point_radius = 0.1625
     font_narrow_factor = 0.9 # do we want this?
 
     css = default_css
 
-    def __init__(self):
+    def __init__(self, include_nids: bool=True):
+        """
+        Args:
+            include_nids: controls whether to include id="nid123" attributes.
+                These ids make the SVG more useful for interactions, but make
+                them less comparable in test scenarios.
+        """
+        self.include_nids = include_nids
+
         self.root = ET.Element('svg', xmlns="http://www.w3.org/2000/svg", )
         style = ET.SubElement(self.root, 'style', type='text/css')
         style.text = self.css
@@ -100,8 +108,10 @@ class Renderer:
         return self.group_stack[-1]
 
     @contextmanager
-    def subgroup(self, **kwargs):
-        self.group_stack.append(ET.SubElement(self.cur_group, 'g', **kwargs))
+    def subgroup(self, node=None):
+        self.group_stack.append(ET.SubElement(self.cur_group, 'g'))
+        if node and self.include_nids:
+            self.cur_group.attrib['id'] = f'nid{node.nid}'
         try:
             yield 
         finally:
@@ -155,12 +165,12 @@ class Renderer:
             self.draw_schem_tappoint(p)
 
         for inst in s.all(SchemInstance):
-            with self.subgroup(id=f'nid{inst.nid}'):
+            with self.subgroup(node=inst):
                 trans = inst.loc_transform()
                 self.draw_symbol(inst.symbol, trans, inst.full_path_str())
 
         for port in s.all(SchemPort):
-            with self.subgroup(id=f'nid{port.nid}'):
+            with self.subgroup(node=port):
                 self.draw_schem_port(port)
 
     def draw_symbol(self, s: Symbol, trans: TD4, inst_name: str="?"):
@@ -268,7 +278,7 @@ class Renderer:
 
         g = ET.SubElement(self.cur_group, 'g', transform=g_matrix.svg_transform())
 
-        scale = 0.05 # 1/self.pixel_per_unit (?) Not sure why this is so off.
+        scale = 0.045 # 1/self.pixel_per_unit (?) Not sure why this is so off.
         tag = ET.SubElement(g, 'text', transform=f"matrix({self.font_narrow_factor*scale} 0 0 -{scale} 0 0)")
 
         lines = text.split('\n')
@@ -371,8 +381,8 @@ class Renderer:
         import cairosvg
         return cairosvg.svg2png(self.svg())
 
-def render(obj) -> Renderer:
-    r = Renderer()
+def render(obj, **kwargs) -> Renderer:
+    r = Renderer(**kwargs)
     if isinstance(obj.node, Symbol):
         r.render_symbol(obj)
     elif isinstance(obj.node, Schematic):
