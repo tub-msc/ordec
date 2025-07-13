@@ -3,6 +3,6 @@
 
 from .ordb import *
 from .base import *
-from .render import render_svg, render_image
+from .render import render
 from .parser.implicit_processing import preprocess, postprocess, PostProcess, symbol_process
 from .parser.prelim_schem_instance import PrelimSchemInstance

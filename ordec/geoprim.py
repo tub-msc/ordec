@@ -39,8 +39,14 @@ class Vec2R(tuple):
     def __add__(self, other):
         return Vec2R(x=self.x+other.x, y=self.y+other.y)
 
+    def __sub__(self, other):
+        return Vec2R(x=self.x-other.x, y=self.y-other.y)
+
     def __repr__(self):
         return f"Vec2R(x={self.x!r}, y={self.y!r})"
+
+    def transl(self) -> 'TD4':
+        return TD4(transl=self)
 
 @public
 class Rect4R(tuple):
@@ -204,6 +210,20 @@ class TD4(tuple):
         else:
             s = R(0.5) + a - angle_start
             return s - l, s
+
+
+    def svg_transform(self) -> str:
+        """
+        Returns a string representation of the transformation
+        suitable for the SVG attribute "transform".
+        """
+        x0, y0 = self.transl.tofloat()
+        xx=-1 if self.negx else 1
+        yy=-1 if self.negy else 1
+        if self.flipxy:
+            return f"matrix(0 {yy} {xx} 0 {x0} {y0})"
+        else:
+            return f"matrix({xx} 0 0 {yy} {x0} {y0})"
 
     def __repr__(self):
         return f"TD4(transl={self.transl!r}, flipxy={self.flipxy!r}, negx={self.negx!r}, negy={self.negy!r})"

@@ -21,6 +21,7 @@ import threading
 import signal
 
 from .base import *
+from .render import render
 from .ordb import Subgraph
 from .parser.parser import ord2py
 
@@ -82,8 +83,7 @@ def serialize_view(name, view):
         return {'exception': "Requested object is not View."}
 
     if isinstance(view.node, (Schematic, Symbol)):
-        from .render import render_svg
-        return {'img': render_svg(view).as_url()}
+        return {'img': render(view).svg_url()}
 
     if isinstance(view.node, SimHierarchy):
         dc_voltages = []

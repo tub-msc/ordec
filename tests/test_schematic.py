@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
-from ordec import lib, render_image
+from ordec import lib, render
 from ordec.lib import test as lib_test
 import ordec.importer
 from ordec.lib.examples import diffpair
@@ -15,42 +15,42 @@ Comparing symbol + schematic images to reference images.
 
 To copy test results in as reference:
 
-    cp /tmp/pytest-of-[username]/pytest-current/test_schematic_image*/*.png [dir]/tests/reference
+    cp /tmp/pytest-of-[username]/pytest-current/test_schematic_image*/*.svg [dir]/tests/reference
 """
 
 
 refdir = importlib.resources.files("tests.reference")
 
 testdata = [
-    (lambda: lib.Inv().schematic, refdir/"inverter_schematic.png"),
-    (lambda: lib.Inv().symbol, refdir/"inverter_symbol.png"),
-    (lambda: lib.Ringosc().schematic, refdir/"ringosc_schematic.png"),
-    (lambda: lib_test.RotateTest().schematic, refdir/"rotatetest_schematic.png"),
-    (lambda: lib.And2().symbol, refdir/"and2_symbol.png"),
-    (lambda: lib.Or2().symbol, refdir/"or2_symbol.png"),
-    (lambda: lib_test.PortAlignTest().schematic, refdir/"portaligntest_schematic.png"),
-    (lambda: lib_test.TapAlignTest().schematic, refdir/"tapaligntest_schematic.png"),
-    (lambda: lib_test.MultibitReg_Arrays(bits=5).symbol, refdir/"multibitref_arrays5_symbol.png"),
-    (lambda: lib_test.MultibitReg_Arrays(bits=5).schematic, refdir/"multibitref_arrays5_schematic.png"),
-    (lambda: lib_test.MultibitReg_Arrays(bits=32).symbol, refdir/"multibitref_arrays32_symbol.png"),
-    (lambda: lib_test.MultibitReg_ArrayOfStructs(bits=5).symbol, refdir/"multibitref_arrayofstructs5_symbol.png"),
-    (lambda: lib_test.MultibitReg_StructOfArrays(bits=5).symbol, refdir/"multibitref_structofarrays5_symbol.png"),
-    (lambda: lib_test.TestNmosInv(variant='default', add_conn_points=True, add_terminal_taps=False).schematic, refdir/"testnmosinv.png"),
-    (lambda: lib_test.TestNmosInv(variant='no_wiring', add_conn_points=False, add_terminal_taps=True).schematic, refdir/"testnmosinv_nowiring.png"),
-    (lambda: diffpair.DiffPair().schematic, refdir/"ord_diffpair.png"),
-    (lambda: diffpair.DiffPairTb().schematic, refdir/"ord_diffpair_tb.png"),
+    (lambda: lib.Inv().schematic, refdir/"inverter_schematic.svg"),
+    (lambda: lib.Inv().symbol, refdir/"inverter_symbol.svg"),
+    (lambda: lib.Ringosc().schematic, refdir/"ringosc_schematic.svg"),
+    (lambda: lib_test.RotateTest().schematic, refdir/"rotatetest_schematic.svg"),
+    (lambda: lib.And2().symbol, refdir/"and2_symbol.svg"),
+    (lambda: lib.Or2().symbol, refdir/"or2_symbol.svg"),
+    (lambda: lib_test.PortAlignTest().schematic, refdir/"portaligntest_schematic.svg"),
+    (lambda: lib_test.TapAlignTest().schematic, refdir/"tapaligntest_schematic.svg"),
+    (lambda: lib_test.MultibitReg_Arrays(bits=5).symbol, refdir/"multibitreg_arrays5_symbol.svg"),
+    (lambda: lib_test.MultibitReg_Arrays(bits=5).schematic, refdir/"multibitreg_arrays5_schematic.svg"),
+    (lambda: lib_test.MultibitReg_Arrays(bits=32).symbol, refdir/"multibitreg_arrays32_symbol.svg"),
+    (lambda: lib_test.MultibitReg_ArrayOfStructs(bits=5).symbol, refdir/"multibitreg_arrayofstructs5_symbol.svg"),
+    (lambda: lib_test.MultibitReg_StructOfArrays(bits=5).symbol, refdir/"multibitreg_structofarrays5_symbol.svg"),
+    (lambda: lib_test.TestNmosInv(variant='default', add_conn_points=True, add_terminal_taps=False).schematic, refdir/"testnmosinv.svg"),
+    (lambda: lib_test.TestNmosInv(variant='no_wiring', add_conn_points=False, add_terminal_taps=True).schematic, refdir/"testnmosinv_nowiring.svg"),
+    (lambda: diffpair.DiffPair().schematic, refdir/"ord_diffpair.svg"),
+    (lambda: diffpair.DiffPairTb().schematic, refdir/"ord_diffpair_tb.svg"),
 ]
 
 @pytest.mark.parametrize("testcase", testdata, ids=lambda t: t[1].with_suffix("").name)
 def test_schematic_image(testcase, tmp_path):
     view_lambda, ref_file = testcase
     view = view_lambda()
-    img = render_image(view)
-    (tmp_path / ref_file.name).write_bytes(img.as_png())
+    svg = render(view, include_nids=False).svg()
+    (tmp_path / ref_file.name).write_bytes(svg)
 
-    img_ref = cairo.ImageSurface.create_from_png(ref_file)
+    svg_ref = ref_file.read_bytes()
 
-    assert img.surface.get_data() == img_ref.get_data()
+    assert svg == svg_ref
 
 
 def test_schematic_unconnected_conn_point():

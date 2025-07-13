@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec import render_image
+#from ordec import render_image
 from ordec.lib import Nmos, Pmos, Vdc, Res, Gnd
 from ordec.parser.parser import execute_in_environment, load_ord
 import ordec

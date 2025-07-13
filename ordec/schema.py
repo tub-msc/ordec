@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from enum import Enum
+import math
 from functools import partial
 from public import populate_all
 
@@ -52,8 +53,8 @@ class Symbol(SubgraphHead):
 
     @cursormethod
     def _repr_html_(cursor):
-        from .render import render_svg
-        return render_svg(cursor.subgraph).as_html()
+        from .render import render
+        return render(cursor.subgraph).html()
 
 class Pin(Node):
     """
@@ -81,6 +82,27 @@ class SymbolPoly(Node):
     def vertices(cursor):
         return cursor.subgraph.all(PolyVec2R.ref_idx.query(cursor.nid))
 
+    @cursormethod
+    def svg_path(cursor) -> str:
+        """
+        Returns string representation of polygon suitable for
+        "d" attribute of SVG <path>.
+        """
+        d = []
+        vertices = [c.pos for c in cursor.vertices]
+        x, y = vertices[0].tofloat()
+        d.append(f"M{x} {y}")
+        for point in vertices[1:-1]:
+            x, y = point.tofloat()
+            d.append(f"L{x} {y}")
+        if vertices[-1] == vertices[0]:
+            d.append("Z")
+        else:
+            x, y = vertices[-1].tofloat()
+            d.append(f"L{x} {y}")
+        return ' '.join(d)
+
+
 class SymbolArc(Node):
     """A drawn circle or circular segment for use in Symbol."""
     pos         = Attr(Vec2R)
@@ -92,6 +114,39 @@ class SymbolArc(Node):
     angle_end   = Attr(R, default=R(1))
     "Must be greater than angle_start and between -1 and 1, with -1 representing -360° and 1 representing 360°."
     
+    @cursormethod
+    def svg_path(arc) -> str:
+        """
+        Returns string representation of arc suitable for
+        "d" attribute of SVG <path>.
+        """
+        def vec2r_on_circle(radius: R, angle: R) -> Vec2R:
+            return Vec2R(
+                x = radius * math.cos(2 * math.pi * angle),
+                y = radius * math.sin(2 * math.pi * angle)
+                )
+
+        d = []
+        x, y = arc.pos.tofloat()
+        r = float(arc.radius)
+        d.append(f"M{x} {y}")
+        if arc.angle_start == 0 and arc.angle_end == 1:
+            d.append(f"m{r} 0")
+            d.append(f"a {r} {r} 0 0 0 {-2*r} 0")
+            d.append(f"a {r} {r} 0 0 0 {2*r} 0")
+        else:
+            start = vec2r_on_circle(arc.radius, arc.angle_start)
+            end = vec2r_on_circle(arc.radius, arc.angle_end)
+            rel_end = end - start
+            s_x, s_y = start.tofloat()
+            e_dx, e_dy = rel_end.tofloat()
+
+            large_arc_flag = 0 # my understanding is this has no effect when x and y radius are identical.
+            sweep_flag = 1
+            d.append(f"m{s_x} {s_y}")
+            d.append(f"a {r} {r} 0 {large_arc_flag} {sweep_flag} {e_dx} {e_dy}")
+        return ' '.join(d)
+
 
 # # Schematic
 # # ---------
@@ -111,8 +166,8 @@ class Schematic(SubgraphHead):
 
     @cursormethod
     def _repr_html_(cursor):
-        from .render import render_svg
-        return render_svg(cursor.subgraph).as_html()
+        from .render import render
+        return render(cursor.subgraph).html()
 
 class SchemPort(Node):
     """
@@ -171,6 +226,10 @@ class SchemTapPoint(Node):
 
     pos = Attr(Vec2R)
     align = Attr(D4, default=D4.R0)
+
+    @cursormethod
+    def loc_transform(cursor):
+        return TD4(transl=cursor.pos) * cursor.align.value
 
 class SchemConnPoint(Node):
     """A schematic point to indicate a connection at a 3- or 4-way junction of wires."""

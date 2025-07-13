@@ -1,406 +1,392 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import xml.etree.ElementTree as ET
 import math
 from base64 import b64encode
-import io
+from contextlib import contextmanager
+from .base import *
 from enum import Enum
-import cairo
-import gi
-gi.require_version('Pango', '1.0')
-gi.require_version('PangoCairo', '1.0')
-from gi.repository import Pango, PangoCairo
+import re
 
-from . import Symbol, Pin, SchemWire, SymbolPoly, SymbolArc, Schematic, SchemInstance, SchemPort, PinType, SchemConnPoint, SchemTapPoint
-from .geoprim import Rect4R, Vec2R, TD4, D4, Orientation
+class HAlign(Enum):
+    Left = 1
+    Right = 2
 
-def to_cairo_matrix(trans: TD4):
-    x0, y0 = trans.transl.tofloat()
-    xx=-1 if trans.negx else 1
-    yy=-1 if trans.negy else 1
-    if trans.flipxy:
-        return cairo.Matrix(xx=0, xy=xx, yy=0, yx=yy, x0=x0, y0=y0)
-    else:
-        return cairo.Matrix(xx=xx, xy=0, yy=yy, yx=0, x0=x0, y0=y0)
+    def invert(self):
+        if self == self.Left:
+            return self.Right
+        elif self == self.Right:
+            return self.Left
+        else:    
+            return self
 
-class LabelAlign(Enum):
-    BASELINE = 0
-    CENTER = 1
-    TOP = 2
+class VAlign(Enum):
+    Top = 1
+    Bottom = 2
+    Middle = 3
+
+class ArrowType(Enum):
+    Pin = 1
+    Port = 2
+
+default_css = """
+svg {
+    stroke-linecap: butt;
+    stroke-linejoin: bevel;
+}
+text {
+    font-size: 11pt;
+    font-family: "Inconsolata", monospace;
+}
+.instanceName {
+    font-weight: bold;
+    fill: #f00;
+}
+.pinLabel, .pinArrow {
+    fill: #f00;
+}
+.params, .cellName {
+    fill: #80b380;
+}
+.symbolOutline {
+    stroke: #80b380;
+}
+.symbolPoly {
+    stroke: #000;
+}
+.symbolOutline, .symbolPoly, .schemWire, .tapPoint {
+    fill: none;
+    stroke-width: 0.1;
+}
+#grid {
+    fill: #ccc;
+}
+.schemWire, .tapPoint {
+    stroke: rgb(80%, 80%, 0%);
+}
+.connPoint, .tapPointLabel {
+    fill: rgb(80%, 80%, 0%);
+}
+.portArrow, .portLabel {
+    fill: rgb(20%, 60%, 100%);
+}
+"""
+default_css = re.sub(r"\s+", " ", default_css).strip() # remove newlines / unneeded spaces
 
 class Renderer:
-    pango_custom_scale = 0.05
-    padding = 1
-    scale = 30
-    pin_rect_size = 0.4
+    """
+    Instantiate the Renderer class and then call one of its render_ methods,
+    e.g. render_schematic(). draw_... and other methods are more internal.
+    Afterwards, obtain the result via the svg(), svg_url() or png() methods.
+    """
+
     pin_text_space = 0.125
-    port_text_space = 0.15
-    font_narrow_factor = 0.9
+    port_text_space = 0.15 + 0.5
+    pixel_per_unit = 35
+    conn_point_radius = 0.1625
+    font_narrow_factor = 0.9 # do we want this?
 
-    def surface_dimensions(self):
-        lx, ly, ux, uy = self.outline.tofloat()
-        w, h = ux - lx, uy - ly
-        surface_w = (w + 2*self.padding)*self.scale
-        surface_h = (h + 2*self.padding)*self.scale
+    css = default_css
 
-        offx = (self.padding-lx)*self.scale
-        offy = surface_h-(self.padding-ly)*self.scale
+    def __init__(self, include_nids: bool=True):
+        """
+        Args:
+            include_nids: controls whether to include id="nid123" attributes.
+                These ids make the SVG more useful for interactions, but make
+                them less comparable in test scenarios.
+        """
+        self.include_nids = include_nids
 
-        return offx, offy, surface_w, surface_h
+        self.root = ET.Element('svg', xmlns="http://www.w3.org/2000/svg", )
+        style = ET.SubElement(self.root, 'style', type='text/css')
+        style.text = self.css
+        self.group_stack = [ET.SubElement(self.root, 'g')]
 
-    # We could add rendering options to the __init__ function here:
-    def __init__(self, outline: Rect4R):
-        self.outline = outline
+    @property
+    def cur_group(self):
+        return self.group_stack[-1]
 
-    def init_context(self):
-        ctx = cairo.Context(self.surface)
-        ctx.set_matrix(cairo.Matrix(1,0,0,-1, 0, 0))
-        ctx.scale(self.scale, self.scale)
-        ctx.set_line_join(cairo.LineJoin.BEVEL)
-        ctx.set_line_cap(cairo.LineCap.BUTT)
-        ctx.set_antialias(cairo.Antialias.NONE) # Should only affect ImageRenderer
-        self.ctx = ctx
+    @contextmanager
+    def subgroup(self, node=None):
+        self.group_stack.append(ET.SubElement(self.cur_group, 'g'))
+        if node and self.include_nids:
+            self.cur_group.attrib['id'] = f'nid{node.nid}'
+        try:
+            yield 
+        finally:
+            self.group_stack.pop()
 
-        fo =  cairo.FontOptions()
-        #o.set_antialias(cairo.Antialias.GOOD)
-        fo.set_antialias(cairo.Antialias.NONE)
-        fo.set_hint_style(cairo.HintStyle.FULL)
-        fo.set_hint_metrics(cairo.HintMetrics.ON)
 
-        self.pango_ctx = PangoCairo.create_context(ctx)
-        PangoCairo.context_set_font_options(self.pango_ctx, fo)
-        #PangoCairo.context_set_resolution(self.pango_ctx, 4)
-
-        self.font = Pango.font_description_from_string('Inconsolata Normal 10')
-
-        # Measure "e":
-        ref_e = Pango.Layout.new(self.pango_ctx)
-        ref_e.set_font_description(self.font)
-        ref_e.set_markup("e", -1)
-        ink_box_e, log_box_e = ref_e.get_extents()
-        # Memorize font's e half height:
-        self.font_eh = (ink_box_e.y + ink_box_e.height/2) / Pango.SCALE * self.pango_custom_scale
-
-    def draw_unit_grid(self, rect: Rect4R):
-        ctx = self.ctx
+    def setup_grid(self, rect: Rect4R, dot_size: float = 0.1, padding: float = 1.0, highlight_origin: bool = False):
+        # Initialize the coordinate system to how we like it:
         lx, ly, ux, uy = rect.tofloat()
+        lx_p = lx - padding
+        ly_p = ly - padding
+        ux_p = ux + padding
+        uy_p = uy + padding
+        w_p = ux_p - lx_p
+        h_p = uy_p - ly_p
+
+        self.root.attrib['width'] = f'{w_p*self.pixel_per_unit}px'
+        self.root.attrib['height'] = f'{h_p*self.pixel_per_unit}px'
+        self.root.attrib['viewBox'] = f'{lx_p} {ly_p} {w_p} {h_p}'
+        # Not sure why this is the correct transform matrix:
+        self.cur_group.attrib['transform']=f"matrix(1 0 0 -1 0 {uy+ly})"
+
+        # Draw grid:
+        g = ET.SubElement(self.cur_group, 'g')
+        g.attrib['id'] = 'grid'
+
         for x in range(math.floor(lx), math.ceil(ux)+1):
             for y in range(math.floor(ly), math.ceil(uy)+1):
-                ctx.rectangle(x-0.05, y-0.05, 0.1, 0.1)
-        ctx.fill()
+                ET.SubElement(g, 'rect',
+                    x=str(x - dot_size/2), y=str(y - dot_size/2),
+                    height=str(dot_size), width=str(dot_size)
+                    )
 
-    def draw_schem_rect(self, rect: Rect4R):
-        ctx = self.ctx
+    def render_symbol(self, s: Symbol):
+        self.setup_grid(s.outline)
+        self.draw_symbol(s, TD4())
+
+    def render_schematic(self, s: Schematic):
+        self.setup_grid(s.outline)
+
+        for poly in s.all(SchemWire):
+            p = ET.SubElement(self.cur_group, 'path', d=poly.svg_path())
+            p.attrib['class'] = 'schemWire'
+
+        for p in s.all(SchemConnPoint):
+            cx, cy = p.pos.tofloat()
+            circle = ET.SubElement(self.cur_group, 'circle', cx=str(cx), cy=str(cy), r=str(self.conn_point_radius))
+            circle.attrib['class']='connPoint'
+
+        for p in s.all(SchemTapPoint):
+            self.draw_schem_tappoint(p)
+
+        for inst in s.all(SchemInstance):
+            with self.subgroup(node=inst):
+                trans = inst.loc_transform()
+                self.draw_symbol(inst.symbol, trans, inst.full_path_str())
+
+        for port in s.all(SchemPort):
+            with self.subgroup(node=port):
+                self.draw_schem_port(port)
+
+    def draw_symbol(self, s: Symbol, trans: TD4, inst_name: str="?"):
+        # Draw outline
+        rect = trans * s.outline
         lx, ly, ux, uy = rect.tofloat()
-        ctx.rectangle(lx, ly, ux-lx, uy-ly)
-        ctx.stroke()
+        outline = ET.SubElement(self.cur_group, 'rect',
+            x=str(lx), y=str(ly), width=str(ux-lx), height=str(uy-ly))
+        outline.attrib['class'] = 'symbolOutline'
 
-    def draw_symbol_poly(self, poly: SymbolPoly, trans: TD4 = TD4()):
-        ctx = self.ctx
-        vertices = [c.pos for c in poly.vertices]
-        x, y = (trans * vertices[0]).tofloat()
-        ctx.move_to(x, y)
-        for point in vertices[1:-1]:
-            x, y = (trans * point).tofloat()
-            ctx.line_to(x,y)
-        if vertices[-1] == vertices[0]:
-            ctx.close_path()
-        else:
-            x, y = (trans * vertices[-1]).tofloat()
-            ctx.line_to(x,y)
-        ctx.stroke()
+        #params_str = cell.params_str()
+        params_str = "\n".join(s.cell.params_list())
 
-    def draw_schem_connpoint(self, p: SchemConnPoint, trans: TD4 = TD4()):
-        ctx = self.ctx
-        x, y = (trans * p.pos).tofloat()
-        ctx.arc(x, y, 0.1625, 0, 2*math.pi)
-        ctx.fill()
-
-    def draw_schem_arc(self, arc: SymbolArc, trans: TD4):
-        ctx = self.ctx
-        x, y = (trans * arc.pos).tofloat()
-        radius = float(arc.radius)
-        s, e = trans.arc(arc.angle_start, arc.angle_end)
-        angle_start = float(s)*2*math.pi
-        angle_end = float(e)*2*math.pi
-        ctx.arc(x, y, radius, angle_start, angle_end)
-        ctx.stroke()
-
-    def draw_label(self, label: str, trans: TD4, space=0, halign: LabelAlign = LabelAlign.BASELINE):
-        align = D4.from_td4(trans).unflip()
-        pos = trans.transl
-
-        ctx = self.ctx
-        x, y = pos.tofloat()
-
-        layout = Pango.Layout.new(self.pango_ctx)
-        layout.set_font_description(self.font)
-        if align in (Orientation.West, Orientation.South):
-            layout.set_alignment(Pango.Alignment.LEFT)
-        else:
-            layout.set_alignment(Pango.Alignment.RIGHT)
-        layout.set_markup(label, -1)
-
-        ink_box,log_box = layout.get_extents()
-        b = layout.get_baseline()/Pango.SCALE * self.pango_custom_scale
-        w = log_box.width / Pango.SCALE * self.pango_custom_scale
-        h = log_box.height / Pango.SCALE * self.pango_custom_scale
-        w *= self.font_narrow_factor
-
-        ctx.save()
-        ctx.translate(x, y)
-
-        ctx.scale(1,-1)
-        if align in (Orientation.South, Orientation.North):  
-             ctx.rotate(-math.pi/2)
-
-        # x positioning:
-        if align in (Orientation.West, Orientation.South):
-            ctx.translate(-(w+space), 0)
-        else:
-            ctx.translate(space, 0)
-
-        # y positioning:
-        if halign == LabelAlign.BASELINE:
-            ctx.translate(0, -h-space)
-        elif halign == LabelAlign.CENTER:
-            ctx.translate(0, -self.font_eh)
-        else:
-            assert halign == LabelAlign.TOP
-            ctx.translate(0, space)
-
-        ctx.scale(self.pango_custom_scale,self.pango_custom_scale)
-        ctx.scale(self.font_narrow_factor,1) # narrower fonts
-        PangoCairo.show_layout(ctx, layout)
-        ctx.restore()
+        self.draw_label(type(s.cell).__name__,
+            rect.north_east().transl() * D4.R90.value, svg_class="cellName")
+        self.draw_label(params_str, rect.south_east().transl() * D4.R90.value,
+            valign=VAlign.Bottom, svg_class="params")
+        self.draw_label(inst_name, rect.north_west().transl() * D4.MX90.value,
+            svg_class="instanceName")
+        
+        for poly in s.all(SymbolPoly):
+            p = ET.SubElement(self.cur_group, 'path', d=poly.svg_path(),
+                transform=trans.svg_transform())
+            p.attrib['class'] = 'symbolPoly'
+        
+        for arc in s.all(SymbolArc):
+            p = ET.SubElement(self.cur_group, 'path', d=arc.svg_path(),
+                transform=trans.svg_transform())
+            p.attrib['class'] = 'symbolPoly'
+        
+        for pin in s.all(Pin):
+            self.draw_pin(pin, trans)
 
     def draw_pin(self, pin: Pin, trans: TD4):
-        ctx = self.ctx
+        # Flip by 180 degrees, as the text face the opposite of the pin direction:
+        trans_local = trans * pin.pos.transl() * D4.R180.value * pin.align.value
 
-        #x, y = (trans * pin.pos).tofloat()
-        #ctx.rectangle(x-self.pin_rect_size/2, y-self.pin_rect_size/2, self.pin_rect_size, self.pin_rect_size)
-        #ctx.arc(x, y, 0.1625, 0, 2*math.pi)
-
-        trans_local = trans*TD4(transl=pin.pos)*D4.R180.value*pin.align.value
-        #ctx.fill()
-        ctx.set_source_rgb(1,0,0)
-        self.draw_pinportarrow(pin.pintype, trans_local, center=True, halfheight=0.2, width=0.4)
+        self.draw_arrow(ArrowType.Pin, pin.pintype, trans_local)
 
         label = str(pin.full_path_str())
+        self.draw_label(label, trans_local,
+            valign=VAlign.Bottom, svg_class='pinLabel')
 
-
-        # Flip by 180 degrees, as the text face the opposite of the pin direction:
-        self.draw_label(label, trans_local, space=self.pin_text_space)
-    
-    def draw_pinportarrow(self, pt: PinType, trans: TD4, halfheight=0.25, width=0.5, center=False):
+    def draw_arrow(self, arrowtype: ArrowType, pt: PinType, trans: TD4):
+        if arrowtype == ArrowType.Pin:
+            svg_class = 'pinArrow'
+            center = True
+            halfheight = 0.2
+            width = 0.4
+        else:
+            svg_class='portArrow'
+            center=False
+            halfheight=0.25
+            width=0.5
         arrow_left = pt in (PinType.Inout, PinType.Out)
         arrow_right = pt in (PinType.Inout, PinType.In)
 
         left_tip = halfheight if arrow_left else 0
         right_tip = halfheight if arrow_right else 0
         
-        ctx = self.ctx
-        ctx.save()
         if center:
-            ctx.set_matrix(to_cairo_matrix(trans*TD4(transl=Vec2R(x=0,y=width/2)))*ctx.get_matrix())
+            m = trans * Vec2R(x=0,y=width/2).transl()
         else:
-            ctx.set_matrix(to_cairo_matrix(trans)*ctx.get_matrix())
+            m = trans
+    
+        g = ET.SubElement(self.cur_group, 'g', transform=m.svg_transform())
 
-        ctx.move_to(0, 0)
-        ctx.line_to(halfheight, -right_tip)
-        ctx.line_to(halfheight, -width+left_tip)
-        ctx.line_to(0, -width)
-        ctx.line_to(-halfheight, -width+left_tip)
-        ctx.line_to(-halfheight, -right_tip)
-        ctx.close_path()
-        #ctx.set_source_rgb(0.2,0.6,1.0)
-        ctx.fill()
-        #ctx.set_source_rgb(0,0,0)
-        #ctx.stroke()
+        d = ' '.join([
+            "M0 0",
+            f"L{halfheight} {-right_tip}",
+            f"L{halfheight} {-width+left_tip}",
+            f"L0 {-width}",
+            f"L{-halfheight} {-width+left_tip}",
+            f"L{-halfheight} {-right_tip}",
+            "Z",
+            ])
 
-        ctx.restore()
+        p=ET.SubElement(g, 'path', d=d)
+        p.attrib['class']=svg_class
 
-    def draw_schem_port(self, port: SchemPort):
-        ctx = self.ctx
-        trans = TD4(transl=port.pos)*port.align.value
-        ctx.set_source_rgb(0.2,0.6,1.0)
-        self.draw_pinportarrow(port.ref.pin.pintype, trans)
-        width = 0.5
-        #label = port.ref.full_path_str()
-        label = port.ref.pin.full_path_str()
-        self.draw_label(label, trans*D4.R180.value*TD4(transl=Vec2R(x=0, y=width)), space=self.port_text_space, halign=LabelAlign.CENTER)
+    def draw_label(self, text: str, trans: TD4, halign=HAlign.Left, valign=VAlign.Top, space=None, svg_class=""):
+        """
+        dominant_baseline: chose "hanging" or "ideographic"
+        """
+
+        align = D4.from_td4(trans).unflip()
+        pos = trans.transl
+
+        if align in (Orientation.West, Orientation.South):
+            halign = halign.invert()
+
+        # g_matrix has same basic translation as trans, but limits rotations of text
+        # to 0 or 90 degrees (so that you never have to rotate your head by 180 degrees)
+        g_matrix = pos.transl() 
+        if align in (Orientation.South, Orientation.North):  
+             g_matrix *= D4.R90.value
+
+        # Furthermore, g_matrix adds some space (padding):
+        if space == None:
+            space = self.pin_text_space
+        g_matrix *= Vec2R(
+            x = {HAlign.Left: +1, HAlign.Right: -1}[halign]*space,
+            y = {VAlign.Bottom: +1, VAlign.Top: -1, VAlign.Middle: 0}[valign]*space,
+            ).transl()
+
+        g = ET.SubElement(self.cur_group, 'g', transform=g_matrix.svg_transform())
+
+        scale = 0.045 # 1/self.pixel_per_unit (?) Not sure why this is so off.
+        tag = ET.SubElement(g, 'text', transform=f"matrix({self.font_narrow_factor*scale} 0 0 -{scale} 0 0)")
+
+        lines = text.split('\n')
+        if len(lines) == 1:
+            # Make the XML tree more compact by skipping <tspan> for single-line text: 
+            tag.text = lines[0]
+        else:
+            for idx, line in enumerate(lines):
+                y = idx+1-len(lines)
+                tspan=ET.SubElement(tag, 'tspan', x="0", y=f"{y}em")
+                tspan.text = line
+
+        tag.attrib['dominant-baseline'] = {
+            VAlign.Top: 'hanging',
+            VAlign.Bottom: 'ideographic',
+            VAlign.Middle: 'middle',
+            }[valign]
+        tag.attrib['text-anchor'] = {HAlign.Left: 'start', HAlign.Right: 'end'}[halign]
+        tag.attrib['class'] = svg_class
+
+    def draw_schem_port(self, p: SchemPort):
+        trans = p.pos.transl() * p.align.value
+        self.draw_arrow(ArrowType.Port, p.ref.pin.pintype, trans)
+        
+        label = p.ref.pin.full_path_str()
+        self.draw_label(label, trans*D4.R180.value,
+            space=self.port_text_space, halign=HAlign.Left, valign=VAlign.Middle,
+            svg_class='portLabel')
 
     def draw_schem_tappoint(self, p: SchemTapPoint):
-        ctx = self.ctx
-       
-        ctx.save()
-        tran = TD4(transl=p.pos)*p.align.value
-        ctx.set_matrix(to_cairo_matrix(tran)*ctx.get_matrix())
-
         is_default_supply = p.subgraph.default_supply == p.ref
         is_default_ground = p.subgraph.default_ground == p.ref
-
-        #ctx.arc(0.5, 0, 0.15, 0, 2*math.pi)
-        #ctx.stroke()
-        #ctx.fill()
-
         if is_default_supply:
-            ctx.move_to(0, 0)
-            ctx.line_to(0, 1.0)
-            ctx.move_to(0.25, 0.5)
-            ctx.line_to(0, 1.0)
-            ctx.line_to(-0.25, 0.5)
+            d = ' '.join([
+                "M0 0",
+                "L0 1.0",
+                "M0.25 0.5",
+                "L0 1.0",
+                "L-0.25 0.5",
+                ])
         elif is_default_ground:
-            ctx.move_to(0, 0)
-            ctx.line_to(0, 0.5)
-
-            ctx.move_to(-0.375, 0.5)
-            ctx.line_to(0.375, 0.5)
-
-            ctx.move_to(-0.25, 0.75)
-            ctx.line_to(0.25, 0.75)
-
-            ctx.move_to(-0.125, 1.0)
-            ctx.line_to(0.125, 1.0)
+            d = ' '.join([
+                "M0 0",
+                "L0 0.5",
+                "M-0.375 0.5",
+                "L0.375 0.5",
+                "M-0.25 0.75",
+                "L0.25 0.75",
+                "M-0.125, 1.0",
+                "L0.125 1.0",
+                ])
         else:
-            ctx.move_to(0, 0)
-            ctx.line_to(0, 0.5)
+            d = ' '.join([
+                "M0 0",
+                "L0 0.5",
+                ])
 
-        ctx.stroke()
-        #ctx.fill()
-        ctx.restore()
+        tran = p.loc_transform()
+
+        path = ET.SubElement(self.cur_group, 'path', d=d, transform=tran.svg_transform())
+        path.attrib['class'] = 'tapPoint'
         
         if not (is_default_supply or is_default_ground):
             label = p.ref.full_path_str()
-            self.draw_label(label, tran*TD4(transl=Vec2R(x=0, y=0.5)), space=self.port_text_space, halign=LabelAlign.CENTER)
+            self.draw_label(label, tran,
+                space=self.port_text_space, valign=VAlign.Middle,
+                svg_class="tapPointLabel")
 
-    def draw_symbol(self, s: Symbol, trans: TD4, inst_name: str="?"):
-        ctx = self.ctx
-        ctx.set_line_width(0.1)
-        ctx.set_source_rgb(0.5,0.5,0.5)
+    def svg(self) -> bytes:
+        """
+        Returns SVG XML data as bytes. (Does not depend on cairo or other
+        fancy SVG libraries.)
+        """
+        return ET.tostring(self.root)
 
-        # Draw outline
-        ctx.set_source_rgb(0.5,0.7,0.5)
-        rect = trans * s.outline
-        self.draw_schem_rect(rect)
+    def svg_url(self) -> str:
+        """
+        Returns SVG XML data packed into Base64 encoded URL.
+        """
+        return f"data:image/svg+xml;base64,{b64encode(self.svg()).decode('ascii')}"
 
-        #str(s.path()[0])
-        
-        cell_name = type(s.cell).__name__
-        #params_str = cell.params_str()
-        params_str = "\n".join(s.cell.params_list())
+    def html(self) -> str:
+        return f'<img src="{self.svg_url()}" />'
 
-        self.draw_label(cell_name, TD4(transl=rect.north_east())*D4.R90.value, space=self.pin_text_space, halign=LabelAlign.TOP)
-        self.draw_label(params_str, TD4(transl=rect.south_east())*D4.R90.value, space=self.pin_text_space, halign=LabelAlign.BASELINE)
+    def png(self) -> bytes:
+        """
+        This method is a thin wrapper around the svg() method that uses cairosvg
+        to convert the SVG data to a PNG raster image.
 
-        ctx.set_source_rgb(1,0,0)
-        self.draw_label(f"<b>{inst_name}</b>", TD4(transl=rect.north_west())*D4.MX90.value, space=self.pin_text_space, halign=LabelAlign.TOP)
-        
-        ctx.set_line_width(0.1)
-        ctx.set_source_rgb(0,0,0)
-        for poly in s.all(SymbolPoly):
-            self.draw_symbol_poly(poly, trans) # TODO: This could maybe 
-        for arc in s.all(SymbolArc):
-            self.draw_schem_arc(arc, trans)
+        One of the goals of this new render module is to get rid of the
+        cairo and pango dependencies, or at least weaken them. Maybe use the
+        method only in test code. I am not sure yet if the cairosvg is as
+        error-prone as pycairo + pangi via python3-gi, but maybe just avoid it.
 
-        ctx.set_source_rgb(1,0,0)
-        for pin in s.all(Pin):
-            self.draw_pin(pin, trans)
+        Earlier trials using the 'wand' library did not lead to satisfactory
+        results: the fonts and text baselines were messed up. This is strange,
+        as ImageMagick's command line tool 'convert' did not have those
+        problems.
+        """
+        import cairosvg
+        return cairosvg.svg2png(self.svg())
 
-    def render(self, obj):
-        if isinstance(obj.node, Symbol):
-            self.render_symbol(obj)
-        elif isinstance(obj.node, Schematic):
-            self.render_schematic(obj)
-        else:
-            raise TypeError(f"Unsupported object {obj} for rending.")
-
-    def render_symbol(self, s):
-        ctx = self.ctx
-    
-        ctx.set_source_rgb(0.8, 0.8, 0.8)
-        self.draw_unit_grid(s.outline)
-
-        self.draw_symbol(s, TD4())
-
-    def render_schematic(self, s):
-        ctx = self.ctx
-        ctx.set_line_width(0.1)
-
-        ctx.set_source_rgb(0.8, 0.8, 0.8)
-        self.draw_unit_grid(s.outline)
-
-        ctx.set_source_rgb(0.8, 0.8, 0)
-        for poly in s.all(SchemWire):
-            self.draw_symbol_poly(poly)
-
-        for p in s.all(SchemConnPoint):
-            self.draw_schem_connpoint(p)
-
-        for p in s.all(SchemTapPoint):
-            self.draw_schem_tappoint(p)
-
-        for inst in s.all(SchemInstance):
-            trans = inst.loc_transform()
-            self.draw_symbol(inst.symbol, trans, str(inst.full_path_str()))
-
-        for port in s.all(SchemPort):
-            self.draw_schem_port(port)
-
-
-    def as_html(self) -> str:
-        return f'<img src="{self.as_url()}" />'
-
-class RendererSVG(Renderer):
-    def __enter__(self):
-        self.outbuf = io.BytesIO()
-
-        offx, offy, w, h = self.surface_dimensions()
-        self.surface = cairo.SVGSurface(self.outbuf, w, h)
-        self.surface.set_device_offset(offx, offy)
-        
-        self.init_context()
-
-        return self
-
-    def __exit__(self, type, value, traceback):
-        self.surface.finish()
-    
-    def as_url(self) -> str:
-        return f'data:image/svg+xml;base64,{b64encode(self.outbuf.getvalue()).decode("ascii")}'
-    
-class RendererImage(Renderer):
-    def __enter__(self):
-        self.outbuf = io.BytesIO()
-
-        offx, offy, w, h = self.surface_dimensions()
-        self.surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, math.ceil(w), math.ceil(h))
-        self.surface.set_device_offset(offx, offy)
-        
-        self.init_context()
-
-        return self
-
-    def __exit__(self, type, value, traceback):
-        # finish destroys the buffer, so it is not useful for us here.
-        #self.surface.finish()
-        pass
-    
-    def as_png(self):
-        outbuf = io.BytesIO()
-        self.surface.write_to_png(outbuf)
-        return outbuf.getvalue()
-
-    def as_url(self):
-        return f'data:image/png;base64,{b64encode(self.as_png()).decode("ascii")}'
-
-
-def render_svg(object) -> RendererSVG:
-    with RendererSVG(object.outline) as r:
-        r.render(object)
-    return r
-
-def render_image(object) -> RendererImage:
-    with RendererImage(object.outline) as r:
-        r.render(object)
+def render(obj, **kwargs) -> Renderer:
+    r = Renderer(**kwargs)
+    if isinstance(obj.node, Symbol):
+        r.render_symbol(obj)
+    elif isinstance(obj.node, Schematic):
+        r.render_schematic(obj)
+    else:
+        raise TypeError(f"Unsupported object {obj} for rending.")
     return r
