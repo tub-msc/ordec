@@ -78,7 +78,7 @@ class Renderer:
     """
     Instantiate the Renderer class and then call one of its render_ methods,
     e.g. render_schematic(). draw_... and other methods are more internal.
-    Afterwards, obtain the result via the svg(), svg_url() or png() methods.
+    Afterwards, obtain the result via the svg() or png() methods.
     """
 
     pin_text_space = 0.125
@@ -354,14 +354,19 @@ class Renderer:
         """
         return ET.tostring(self.root)
 
-    def svg_url(self) -> str:
-        """
-        Returns SVG XML data packed into Base64 encoded URL.
-        """
-        return f"data:image/svg+xml;base64,{b64encode(self.svg()).decode('ascii')}"
+    # Use inline SVG (with svg()) instead of svg-as-image (base64-encoded SVG +
+    # <img> using old svg_url() and html() methods). Advantages of inline SVG
+    # are (1) that the containing HTML can control font loading and
+    # (2) easier interaction with containing HTML (click, hover etc.)
 
-    def html(self) -> str:
-        return f'<img src="{self.svg_url()}" />'
+    # def svg_url(self) -> str:
+    #     """
+    #     Returns SVG XML data packed into Base64 encoded URL.
+    #     """
+    #     return f"data:image/svg+xml;base64,{b64encode(self.svg()).decode('ascii')}"
+
+    # def html(self) -> str:
+    #     return f'<img src="{self.svg_url()}" />'
 
     def png(self) -> bytes:
         """
