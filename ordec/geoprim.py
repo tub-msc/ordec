@@ -45,6 +45,9 @@ class Vec2R(tuple):
     def __repr__(self):
         return f"Vec2R(x={self.x!r}, y={self.y!r})"
 
+    def transl(self) -> 'TD4':
+        return TD4(transl=self)
+
 @public
 class Rect4R(tuple):
     """

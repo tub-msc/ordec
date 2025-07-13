@@ -4,6 +4,7 @@
 import xml.etree.ElementTree as ET
 import math
 from base64 import b64encode
+from contextlib import contextmanager
 from .base import *
 from enum import Enum
 import re
@@ -12,12 +13,24 @@ class HAlign(Enum):
     Left = 1
     Right = 2
 
+    def invert(self):
+        if self == self.Left:
+            return self.Right
+        elif self == self.Right:
+            return self.Left
+        else:    
+            return self
+
 class VAlign(Enum):
     Top = 1
     Bottom = 2
     Middle = 3
 
-common_css = """
+class ArrowType(Enum):
+    Pin = 1
+    Port = 2
+
+default_css = """
 svg {
     stroke-linecap: butt;
     stroke-linejoin: bevel;
@@ -46,7 +59,7 @@ text {
     fill: none;
     stroke-width: 0.1;
 }
-.grid {
+#grid {
     fill: #ccc;
 }
 .schemWire, .tapPoint {
@@ -59,53 +72,123 @@ text {
     fill: rgb(20%, 60%, 100%);
 }
 """
-common_css = re.sub(r"\s+", " ", common_css).strip() # remove newlines / unneeded spaces
+default_css = re.sub(r"\s+", " ", default_css).strip() # remove newlines / unneeded spaces
 
-class SVG:
+class Renderer:
+    """
+    Instantiate the Renderer class and then call one of its render_ methods,
+    e.g. render_schematic(). draw_... and other methods are more internal.
+    Afterwards, obtain the result via the svg(), svg_url() or png() methods.
+    """
+
     pin_text_space = 0.125
     port_text_space = 0.15 + 0.5
     pixel_per_unit = 50
     conn_point_radius = 0.1625
     font_narrow_factor = 0.9 # do we want this?
 
+    css = default_css
+
     def __init__(self):
         self.root = ET.Element('svg', xmlns="http://www.w3.org/2000/svg", )
         style = ET.SubElement(self.root, 'style', type='text/css')
-        style.text = common_css
-        self.root_g = ET.SubElement(self.root, 'g')
-        
-    def render_symbol(self, s):
-        self.init_grid(s.outline)
+        style.text = self.css
+        self.group_stack = [ET.SubElement(self.root, 'g')]
+
+    @property
+    def cur_group(self):
+        return self.group_stack[-1]
+
+    @contextmanager
+    def subgroup(self, **kwargs):
+        self.group_stack.append(ET.SubElement(self.cur_group, 'g', **kwargs))
+        try:
+            yield 
+        finally:
+            self.group_stack.pop()
+
+
+    def setup_grid(self, rect: Rect4R, dot_size: float = 0.1, padding: float = 1.0, highlight_origin: bool = False):
+        # Initialize the coordinate system to how we like it:
+        lx, ly, ux, uy = rect.tofloat()
+        lx_p = lx - padding
+        ly_p = ly - padding
+        ux_p = ux + padding
+        uy_p = uy + padding
+        w_p = ux_p - lx_p
+        h_p = uy_p - ly_p
+
+        self.root.attrib['width'] = f'{w_p*self.pixel_per_unit}px'
+        self.root.attrib['height'] = f'{h_p*self.pixel_per_unit}px'
+        self.root.attrib['viewBox'] = f'{lx_p} {ly_p} {w_p} {h_p}'
+        # Not sure why this is the correct transform matrix:
+        self.cur_group.attrib['transform']=f"matrix(1 0 0 -1 0 {uy+ly})"
+
+        # Draw grid:
+        g = ET.SubElement(self.cur_group, 'g')
+        g.attrib['id'] = 'grid'
+
+        for x in range(math.floor(lx), math.ceil(ux)+1):
+            for y in range(math.floor(ly), math.ceil(uy)+1):
+                ET.SubElement(g, 'rect',
+                    x=str(x - dot_size/2), y=str(y - dot_size/2),
+                    height=str(dot_size), width=str(dot_size)
+                    )
+
+    def render_symbol(self, s: Symbol):
+        self.setup_grid(s.outline)
         self.draw_symbol(s, TD4())
 
+    def render_schematic(self, s: Schematic):
+        self.setup_grid(s.outline)
+
+        for poly in s.all(SchemWire):
+            p = ET.SubElement(self.cur_group, 'path', d=poly.svg_path())
+            p.attrib['class'] = 'schemWire'
+
+        for p in s.all(SchemConnPoint):
+            cx, cy = p.pos.tofloat()
+            circle = ET.SubElement(self.cur_group, 'circle', cx=str(cx), cy=str(cy), r=str(self.conn_point_radius))
+            circle.attrib['class']='connPoint'
+
+        for p in s.all(SchemTapPoint):
+            self.draw_schem_tappoint(p)
+
+        for inst in s.all(SchemInstance):
+            with self.subgroup(id=f'nid{inst.nid}'):
+                trans = inst.loc_transform()
+                self.draw_symbol(inst.symbol, trans, inst.full_path_str())
+
+        for port in s.all(SchemPort):
+            with self.subgroup(id=f'nid{port.nid}'):
+                self.draw_schem_port(port)
 
     def draw_symbol(self, s: Symbol, trans: TD4, inst_name: str="?"):
         # Draw outline
         rect = trans * s.outline
         lx, ly, ux, uy = rect.tofloat()
-        r=ET.SubElement(self.root_g, 'rect', x=str(lx), y=str(ly), width=str(ux-lx), height=str(uy-ly))
-        r.attrib['class'] = 'symbolOutline'
+        outline = ET.SubElement(self.cur_group, 'rect',
+            x=str(lx), y=str(ly), width=str(ux-lx), height=str(uy-ly))
+        outline.attrib['class'] = 'symbolOutline'
 
         #params_str = cell.params_str()
         params_str = "\n".join(s.cell.params_list())
 
         self.draw_label(type(s.cell).__name__,
-            TD4(transl=rect.north_east())*D4.R90.value,
-            valign=VAlign.Top, space=self.pin_text_space,
-            svg_class="cellName")
-        self.draw_label(params_str, TD4(transl=rect.south_east())*D4.R90.value,
-            valign=VAlign.Bottom, space=self.pin_text_space,
-            svg_class="params")
-        self.draw_label(inst_name, TD4(transl=rect.north_west())*D4.MX90.value,
-            valign=VAlign.Top, space=self.pin_text_space,
+            rect.north_east().transl() * D4.R90.value, svg_class="cellName")
+        self.draw_label(params_str, rect.south_east().transl() * D4.R90.value,
+            valign=VAlign.Bottom, svg_class="params")
+        self.draw_label(inst_name, rect.north_west().transl() * D4.MX90.value,
             svg_class="instanceName")
         
         for poly in s.all(SymbolPoly):
-            p = ET.SubElement(self.root_g, 'path', d=poly.svg_path(), transform=trans.svg_transform())
+            p = ET.SubElement(self.cur_group, 'path', d=poly.svg_path(),
+                transform=trans.svg_transform())
             p.attrib['class'] = 'symbolPoly'
         
         for arc in s.all(SymbolArc):
-            p = ET.SubElement(self.root_g, 'path', d=arc.svg_path(), transform=trans.svg_transform())
+            p = ET.SubElement(self.cur_group, 'path', d=arc.svg_path(),
+                transform=trans.svg_transform())
             p.attrib['class'] = 'symbolPoly'
         
         for pin in s.all(Pin):
@@ -113,16 +196,25 @@ class SVG:
 
     def draw_pin(self, pin: Pin, trans: TD4):
         # Flip by 180 degrees, as the text face the opposite of the pin direction:
-        trans_local = trans*TD4(transl=pin.pos)*D4.R180.value*pin.align.value
+        trans_local = trans * pin.pos.transl() * D4.R180.value * pin.align.value
 
-        self.draw_pinportarrow(pin.pintype,
-            trans_local, center=True, halfheight=0.2, width=0.4, svg_class='pinArrow')
+        self.draw_arrow(ArrowType.Pin, pin.pintype, trans_local)
 
         label = str(pin.full_path_str())
-        self.draw_label(label, trans_local, space=self.pin_text_space, valign=VAlign.Bottom,
-            svg_class='pinLabel')
+        self.draw_label(label, trans_local,
+            valign=VAlign.Bottom, svg_class='pinLabel')
 
-    def draw_pinportarrow(self, pt: PinType, trans: TD4, halfheight=0.25, width=0.5, center=False, svg_class=''):
+    def draw_arrow(self, arrowtype: ArrowType, pt: PinType, trans: TD4):
+        if arrowtype == ArrowType.Pin:
+            svg_class = 'pinArrow'
+            center = True
+            halfheight = 0.2
+            width = 0.4
+        else:
+            svg_class='portArrow'
+            center=False
+            halfheight=0.25
+            width=0.5
         arrow_left = pt in (PinType.Inout, PinType.Out)
         arrow_right = pt in (PinType.Inout, PinType.In)
 
@@ -130,11 +222,11 @@ class SVG:
         right_tip = halfheight if arrow_right else 0
         
         if center:
-            m = trans * TD4(transl=Vec2R(x=0,y=width/2))
+            m = trans * Vec2R(x=0,y=width/2).transl()
         else:
             m = trans
     
-        g = ET.SubElement(self.root_g, 'g', transform=m.svg_transform())
+        g = ET.SubElement(self.cur_group, 'g', transform=m.svg_transform())
 
         d = ' '.join([
             "M0 0",
@@ -149,7 +241,7 @@ class SVG:
         p=ET.SubElement(g, 'path', d=d)
         p.attrib['class']=svg_class
 
-    def draw_label(self, text: str, trans: TD4, halign=HAlign.Left, valign=VAlign.Top, space=0, svg_class=""):
+    def draw_label(self, text: str, trans: TD4, halign=HAlign.Left, valign=VAlign.Top, space=None, svg_class=""):
         """
         dominant_baseline: chose "hanging" or "ideographic"
         """
@@ -158,24 +250,23 @@ class SVG:
         pos = trans.transl
 
         if align in (Orientation.West, Orientation.South):
-            if halign == halign.Left:
-                halign = halign.Right
-            elif halign == halign.Right:
-                halign = halign.Left
+            halign = halign.invert()
 
         # g_matrix has same basic translation as trans, but limits rotations of text
         # to 0 or 90 degrees (so that you never have to rotate your head by 180 degrees)
-        g_matrix = TD4(transl=pos) 
+        g_matrix = pos.transl() 
         if align in (Orientation.South, Orientation.North):  
              g_matrix *= D4.R90.value
 
         # Furthermore, g_matrix adds some space (padding):
-        g_matrix *= TD4(transl=Vec2R(
+        if space == None:
+            space = self.pin_text_space
+        g_matrix *= Vec2R(
             x = {HAlign.Left: +1, HAlign.Right: -1}[halign]*space,
             y = {VAlign.Bottom: +1, VAlign.Top: -1, VAlign.Middle: 0}[valign]*space,
-            ))
+            ).transl()
 
-        g = ET.SubElement(self.root_g, 'g', transform=g_matrix.svg_transform())
+        g = ET.SubElement(self.cur_group, 'g', transform=g_matrix.svg_transform())
 
         scale = 0.05 # 1/self.pixel_per_unit (?) Not sure why this is so off.
         tag = ET.SubElement(g, 'text', transform=f"matrix({self.font_narrow_factor*scale} 0 0 -{scale} 0 0)")
@@ -198,63 +289,11 @@ class SVG:
         tag.attrib['text-anchor'] = {HAlign.Left: 'start', HAlign.Right: 'end'}[halign]
         tag.attrib['class'] = svg_class
 
-    def init_grid(self, rect: Rect4R, dot_size: float = 0.1, padding: float = 1.0, highlight_origin: bool = False):
-
-        lx, ly, ux, uy = rect.tofloat()
+    def draw_schem_port(self, p: SchemPort):
+        trans = p.pos.transl() * p.align.value
+        self.draw_arrow(ArrowType.Port, p.ref.pin.pintype, trans)
         
-        # Initialize the coordinate system to how we like it:
-        lx_p = lx - padding
-        ly_p = ly - padding
-        ux_p = ux + padding
-        uy_p = uy + padding
-        w = ux - lx
-        h = uy - ly
-        w_p = ux_p - lx_p
-        h_p = uy_p - ly_p
-
-        self.root.attrib['width'] = f'{w_p*self.pixel_per_unit}px'
-        self.root.attrib['height'] = f'{h_p*self.pixel_per_unit}px'
-        self.root.attrib['viewBox'] = f'{lx_p} {ly_p} {w_p} {h_p}'
-        # Not sure why this is the correct transform matrix:
-        self.root_g.attrib['transform']=f"matrix(1 0 0 -1 0 {uy+ly})"
-
-        # Draw grid:
-        g = ET.SubElement(self.root_g, 'g')
-        g.attrib['class'] = 'grid'
-
-        for x in range(math.floor(lx), math.ceil(ux)+1):
-            for y in range(math.floor(ly), math.ceil(uy)+1):
-                s = ET.SubElement(g, 'rect', x=str(x-dot_size/2), y=str(y-dot_size/2), height=str(dot_size), width=str(dot_size))
-                if highlight_origin and (x==0 and y==0):
-                    s.attrib['fill'] = '#f00'
-
-    def render_schematic(self, s):
-        self.init_grid(s.outline)
-
-        for poly in s.all(SchemWire):
-            p = ET.SubElement(self.root_g, 'path', d=poly.svg_path())
-            p.attrib['class'] = 'schemWire'
-
-        for p in s.all(SchemConnPoint):
-            cx, cy = p.pos.tofloat()
-            circle = ET.SubElement(self.root_g, 'circle', cx=str(cx), cy=str(cy), r=str(self.conn_point_radius))
-            circle.attrib['class']='connPoint'
-
-        for p in s.all(SchemTapPoint):
-            self.draw_schem_tappoint(p)
-
-        for inst in s.all(SchemInstance):
-            trans = inst.loc_transform()
-            self.draw_symbol(inst.symbol, trans, str(inst.full_path_str()))
-
-        for port in s.all(SchemPort):
-            self.draw_schem_port(port)
-
-    def draw_schem_port(self, port: SchemPort):
-        trans = TD4(transl=port.pos)*port.align.value
-        self.draw_pinportarrow(port.ref.pin.pintype, trans, svg_class='portArrow')
-        
-        label = port.ref.pin.full_path_str()
+        label = p.ref.pin.full_path_str()
         self.draw_label(label, trans*D4.R180.value,
             space=self.port_text_space, halign=HAlign.Left, valign=VAlign.Middle,
             svg_class='portLabel')
@@ -289,7 +328,7 @@ class SVG:
 
         tran = p.loc_transform()
 
-        path = ET.SubElement(self.root_g, 'path', d=d, transform=tran.svg_transform())
+        path = ET.SubElement(self.cur_group, 'path', d=d, transform=tran.svg_transform())
         path.attrib['class'] = 'tapPoint'
         
         if not (is_default_supply or is_default_ground):
@@ -304,6 +343,15 @@ class SVG:
         fancy SVG libraries.)
         """
         return ET.tostring(self.root)
+
+    def svg_url(self) -> str:
+        """
+        Returns SVG XML data packed into Base64 encoded URL.
+        """
+        return f"data:image/svg+xml;base64,{b64encode(self.svg()).decode('ascii')}"
+
+    def html(self) -> str:
+        return f'<img src="{self.svg_url()}" />'
 
     def png(self) -> bytes:
         """
@@ -323,5 +371,12 @@ class SVG:
         import cairosvg
         return cairosvg.svg2png(self.svg())
 
-    def dump_url(self):
-        return f"data:image/svg+xml;base64,{b64encode(self.dump()).decode('ascii')}"
+def render(obj) -> Renderer:
+    r = Renderer()
+    if isinstance(obj.node, Symbol):
+        r.render_symbol(obj)
+    elif isinstance(obj.node, Schematic):
+        r.render_schematic(obj)
+    else:
+        raise TypeError(f"Unsupported object {obj} for rending.")
+    return r
