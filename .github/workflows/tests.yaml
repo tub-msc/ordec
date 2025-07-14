@@ -16,9 +16,6 @@ jobs:
         run: |
           . /home/app/venv/bin/activate
           echo PATH=$PATH >> $GITHUB_ENV
-      - name: Add ngspice to path
-        run: |
-          echo PATH=$PATH:/home/app/ngspice/min/bin >> $GITHUB_ENV
       - name: pip install
         run: pip install -e .
       - name: run tests
