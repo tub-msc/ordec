@@ -1,9 +1,6 @@
 # Set ngspice_multibuild to "on" to enable triple ngspice build (for future testing).
 ARG ngspice_multibuild="off"
 
-# Set experimental to "on" to include experimental stuff (OpenVAF, PDKs).
-ARG experimental="off"
-
 # Stage 1: Download stuff
 # =======================
 
@@ -12,7 +9,7 @@ FROM debian:bookworm AS ordec-fetch
 RUN useradd -ms /bin/bash app && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        wget ca-certificates \
+        wget ca-certificates zstd \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 USER app
 
@@ -24,21 +21,31 @@ RUN wget https://netcologne.dl.sourceforge.net/project/ngspice/ng-spice-rework/4
     mv ngspice-44.2 ngspice-src
 
 WORKDIR /home/app/openvaf
-RUN if [ ${experimental} != off ]; then \
-    wget https://openva.fra1.cdn.digitaloceanspaces.com/openvaf_23_5_0_linux_amd64.tar.gz && \
+RUN wget https://openva.fra1.cdn.digitaloceanspaces.com/openvaf_23_5_0_linux_amd64.tar.gz && \
     echo "79c0e08ad948a7a9f460dc87be88b261bbd99b63a4038db3c64680189f44e4f0 openvaf_23_5_0_linux_amd64.tar.gz" | sha256sum -c && \
     tar xzvf openvaf_23_5_0_linux_amd64.tar.gz && \
-    rm openvaf_23_5_0_linux_amd64.tar.gz; \
-    fi
+    rm openvaf_23_5_0_linux_amd64.tar.gz
 
+# Note: Some stuff (like libs.doc) are deleted to save space.
 WORKDIR /home/app
-RUN if [ ${experimental} != off ]; then \
-    wget https://github.com/IHP-GmbH/IHP-Open-PDK/archive/refs/tags/v0.2.0.tar.gz && \
+RUN wget https://github.com/IHP-GmbH/IHP-Open-PDK/archive/refs/tags/v0.2.0.tar.gz && \
     echo "3fbc8da1aa59505a6eee2122bfcf5419f621b9f1ed7ed9826318505f7bb38fbf v0.2.0.tar.gz" | sha256sum -c && \
     tar xzvf v0.2.0.tar.gz && \
     rm v0.2.0.tar.gz && \
-    mv IHP-Open-PDK-0.2.0 IHP-Open-PDK; \
-    fi && mkdir -p /home/app/IHP-Open-PDK
+    mv IHP-Open-PDK-0.2.0 IHP-Open-PDK && \
+    rm -r IHP-Open-PDK/ihp-sg13g2/libs.doc IHP-Open-PDK/ihp-sg13g2/libs.tech/openems
+
+# Note: Some stuff (like libs.tech/xschem) are deleted to save space.
+WORKDIR /home/app/skywater
+RUN wget "https://github.com/efabless/volare/releases/download/sky130-fa87f8f4bbcc7255b6f0c0fb506960f531ae2392/common.tar.zst" && \
+    echo "c7c155596a1fd1fcf6d5414dfcffcbbcf4e35b2b33160af97f4340e763c97406 common.tar.zst" | sha256sum -c && \
+    wget "https://github.com/efabless/volare/releases/download/sky130-fa87f8f4bbcc7255b6f0c0fb506960f531ae2392/sky130_fd_pr.tar.zst" && \
+    echo "41dc9098541ed3329eba4ec7f5dfd1422eb09e94b623ea1f6dc3895f9ccebf63 sky130_fd_pr.tar.zst" | sha256sum -c && \
+    tar xvf common.tar.zst && \
+    tar xvf sky130_fd_pr.tar.zst && \
+    rm common.tar.zst sky130_fd_pr.tar.zst && \
+    rm -r sky130A/libs.tech/xschem sky130B/libs.tech/xschem && \
+    rm -r sky130A/libs.tech/openlane sky130B/libs.tech/openlane
 
 # Stage 2: Build Ngspice
 # ======================
@@ -105,6 +112,12 @@ WORKDIR /home/app
 COPY --chown=app --from=ordec-cbuild /home/app/ngspice /home/app/ngspice
 COPY --chown=app --from=ordec-fetch /home/app/openvaf /home/app/openvaf
 COPY --chown=app --from=ordec-fetch /home/app/IHP-Open-PDK /home/app/IHP-Open-PDK
+COPY --chown=app --from=ordec-fetch /home/app/skywater /home/app/skywater
+
+ENV PATH="/home/app/openvaf:/home/app/ngspice/min/bin:$PATH"
+ENV ORDEC_PDK_SKY130A="/home/app/skywater/sky130A"
+ENV ORDEC_PDK_SKY130B="/home/app/skywater/sky130B"
+ENV ORDEC_PDK_IHP_SG13G2="/home/app/IHP-Open-PDK/ihp-sg13g2"
 
 # Create Python venv + install Python dependencies
 # ------------------------------------------------

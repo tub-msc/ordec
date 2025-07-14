@@ -15,7 +15,5 @@ RUN npm run build
 
 # Run web interface:
 WORKDIR /home/app/ordec
-ENV PATH_ORIG="$PATH"
-ENV PATH="/home/app/openvaf:/home/app/ngspice/min/bin:$PATH_ORIG"
 EXPOSE 8100
 CMD ["ordec-server", "-l", "0.0.0.0", "-p", "8100", "-r", "web/dist/"]
