@@ -26,16 +26,16 @@ cell Strongarm:
                 Pmos s1(s -- vdd, b -- vdd, g -- CLK, d -- p)
                 Pmos s3(s -- vdd, b -- vdd, g -- CLK, d -- out1)
                 series:
-                    Pmos m5(s -- vdd, b -- vdd, g -- out2, d -- out1, orientation = Flipy)
+                    Pmos m5(s -- vdd, b -- vdd, g -- out2, d -- out1, orientation = FlippedSouth)
                     out2
-                    Nmos m3(s -- p, b -- vss, g -- out2, d -- out1, orientation = Flipy)
+                    Nmos m3(s -- p, b -- vss, g -- out2, d -- out1, orientation = FlippedSouth)
                     Nmos m1(s -- r, b -- vss, g -- in1, d -- p)
                 Nmos m7(s -- vss, b -- vss, g -- CLK, d -- r)
                 series:
                     Pmos m6(s -- vdd, b -- vdd, g -- out1, d -- out2)
                     out1
                     Nmos m4(s -- q, b -- vss, g -- out1, d -- out2)
-                    Nmos m2(s -- r, b -- vss, g -- in2, d -- q, orientation = Flipy)
-                Pmos s4(s -- vdd, b -- vdd, g -- CLK, d -- out2, orientation = Flipy)
-                Pmos s2(s -- vdd, b -- vdd, g -- CLK, d -- q, orientation = Flipy)
+                    Nmos m2(s -- r, b -- vss, g -- in2, d -- q, orientation = FlippedSouth)
+                Pmos s4(s -- vdd, b -- vdd, g -- CLK, d -- out2, orientation = FlippedSouth)
+                Pmos s2(s -- vdd, b -- vdd, g -- CLK, d -- q, orientation = FlippedSouth)
 
