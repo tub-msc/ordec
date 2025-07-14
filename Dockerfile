@@ -1,6 +1,6 @@
 # Install/build ORDeC + run web interface using ordec-base (base.Dockerfile) as base image.
 
-FROM ghcr.io/tub-msc/ordec-base:sha-23535c9 AS ordec
+FROM ghcr.io/tub-msc/ordec-base:sha-1a0c5bc AS ordec
 
 # Install ORDeC core (Python):
 WORKDIR /home/app/ordec
