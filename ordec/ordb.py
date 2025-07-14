@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from pyrsistent import pmap, pvector, pset, PMap, PVector, PSet
-from typing import Self, Callable
+from typing import Callable
+from typing import NamedTuple
 from types import NoneType
 from dataclasses import dataclass, field
-from typing import NamedTuple
 from abc import ABC, ABCMeta, abstractmethod
 import bisect
 import string
@@ -1061,15 +1061,15 @@ class Subgraph(ABC):
         pass
 
     @abstractmethod
-    def freeze(self) -> Self:
+    def freeze(self) -> 'FrozenSubgraph':
         pass
 
     @abstractmethod
-    def thaw(self) -> Self:
+    def thaw(self) -> 'MutableSubgraph':
         pass
 
     @abstractmethod
-    def copy(self) -> Self:
+    def copy(self) -> 'Self':
         """Returns a copy of the subgraph."""
         pass
 
@@ -1122,14 +1122,14 @@ class FrozenSubgraph(Subgraph):
         self._nid_alloc = subgraph.nid_alloc
         self._root_cursor = self.cursor_at(0)
     
-    def __copy__(self):
+    def __copy__(self) -> 'FrozenSubgraph':
         return self # Since FrozenSubgraph is immutable, copies are never needed?!
 
     @property
     def mutable(self):
         return False
 
-    def thaw(self) -> Self:
+    def thaw(self) -> 'MutableSubgraph':
         """
         Create new mutable subgraph existing immutable subgraph.
         """
@@ -1144,7 +1144,7 @@ class FrozenSubgraph(Subgraph):
         """
         return hash((self.nodes, self.index, self.nid_alloc))
 
-    def freeze(self):
+    def freeze(self) -> 'FrozenSubgraph':
         raise TypeError("Subgraph is already frozen.")
 
     def mutate(self, nodes, index, nid_alloc):
@@ -1166,7 +1166,7 @@ class MutableSubgraph(Subgraph):
     def mutable(self):
         return True
 
-    def thaw(self) -> Self:
+    def thaw(self) -> 'MutableSubgraph':
         raise TypeError("Subgraph is already mutable.")
 
     @classmethod
@@ -1190,13 +1190,13 @@ class MutableSubgraph(Subgraph):
         if self._root_cursor is None:
             self._root_cursor = self.cursor_at(0)
 
-    def __copy__(self) -> Self: # For Python's copy module
+    def __copy__(self) -> 'MutableSubgraph': # For Python's copy module
         # Alternative: return self.freeze().thaw(), but this might have disadvantages in the future (freeze as checkpoint).
         ret = MutableSubgraph()
         ret.mutate(self.nodes, self.index, self.nid_alloc)
         return ret
 
-    def copy(self) -> Self:
+    def copy(self) -> 'MutableSubgraph':
         """
         Create new mutable subgraph from existing mutable subgraph.
         """
