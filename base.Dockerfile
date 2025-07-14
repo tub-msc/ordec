@@ -115,7 +115,7 @@ RUN python3 -m venv $VIRTUAL_ENV --system-site-packages
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # TODO: Docker layer with pyproject.toml for this / maybe also pin dependencies via requirements.txt or so.
-RUN pip install \
+RUN pip install --no-cache-dir \
     pyrsistent \
     astor \
     websockets \
@@ -130,6 +130,6 @@ RUN pip install \
 
 WORKDIR /home/app/ordec/web
 COPY --chown=app web/package.json web/package-lock.json .
-RUN npm install
+RUN npm install && npm cache clean --force
 
 WORKDIR /home/app
