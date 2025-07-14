@@ -11,7 +11,7 @@ cell DiffPair:
         net s
         Nmos M3(pos=(7,1), s -- vss, g -- vbias, d -- s)
         Nmos M1(pos=(3,8), s -- s, d -- vout1, g -- vin1)
-        Nmos M2(pos=(15,8), orientation = Flipy, s -- s, d -- vout2, g -- vin2)
+        Nmos M2(pos=(15,8), orientation = FlippedSouth, s -- s, d -- vout2, g -- vin2)
         Res R1(pos=(3,16), m -- vout1, p -- vdd)
         Res R2(pos=(11,16),  m -- vout2, p -- vdd)
         

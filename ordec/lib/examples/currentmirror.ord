@@ -4,7 +4,7 @@ cell CurrentMirror:
     schematic:
         net vss, vdd, l, r
         
-        Nmos n0(pos=(10,6), d--l, $w=500n, orientation=Flipy)
+        Nmos n0(pos=(10,6), d--l, $w=500n, orientation=FlippedSouth)
         Nmos n1(pos=(14,6), d--r, $w=500n)
         
         for n in n0, n1:

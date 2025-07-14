@@ -68,7 +68,7 @@ name_expr: NAME (_COMMA NAME)*
 
 direction: (ABOVE | BELOW | LEFT | RIGHT)
 bool: (TRUE | FALSE)
-orientations: (NORTH | EAST | SOUTH | WEST | FLIP_X | FLIP_Y)
+orientations: (NORTH | EAST | SOUTH | WEST | FLIPPED_NORTH | FLIPPED_SOUTH | FLIPPED_WEST | FLIPPED_EAST)
 number: MINUS? (UNSIGNED | FLOAT)
 
 math_expr: math_expr PLUS term
@@ -112,8 +112,10 @@ NORTH: "North"
 WEST: "West"
 SOUTH: "South"
 EAST: "East"
-FLIP_X: "Flipx"
-FLIP_Y: "Flipy"
+FLIPPED_NORTH: "FlippedNorth"
+FLIPPED_SOUTH: "FlippedSouth"
+FLIPPED_WEST: "FlippedWest"
+FLIPPED_EAST: "FlippedEast"
 TRUE: "True"
 FALSE: "False"
 POS: "pos"

@@ -410,30 +410,16 @@ class OrdecTransformer(Transformer):
         """
         instance = items[0]
         value = items[3]
-        if type(value) != int:
-            # flip by x and y
-            assignment = convert_to_ast_assignment(
-                convert_to_ast_attribute_store(
-                        convert_to_ast_name_load(instance),
-                "prelim_orientation"),
-                # Orientation.R90
-                convert_to_ast_attribute_load(
-                    convert_to_ast_name_load("Orientation"),
-                    f"M{value}"
-                )
+        assignment = convert_to_ast_assignment(
+            convert_to_ast_attribute_store(
+                    convert_to_ast_name_load(instance),
+            "prelim_orientation"),
+            # Orientation.R90
+            convert_to_ast_attribute_load(
+                convert_to_ast_name_load("Orientation"),
+                f"{value}"
             )
-        else:
-            # rotate around
-            assignment = convert_to_ast_assignment(
-                convert_to_ast_attribute_store(
-                        convert_to_ast_name_load(instance),
-                "prelim_orientation"),
-                # Orientation.R90
-                convert_to_ast_attribute_load(
-                    convert_to_ast_name_load("Orientation"),
-                    f"R{value}"
-                )
-            )
+        )
         return assignment
 
 
@@ -855,12 +841,14 @@ class OrdecTransformer(Transformer):
     POS = lambda self, token: token.value
     FLOAT = lambda self, number: float(number)
     ORIENTATION = lambda self, token: token.value
-    EAST = lambda  self, token: 270
-    NORTH = lambda  self, token: 0
-    WEST = lambda  self, token: 90
-    SOUTH = lambda  self, token: 180
-    FLIP_X = lambda  self, token: "X"
-    FLIP_Y = lambda  self, token: "Y"
+    EAST = lambda  self, token: "R270"
+    NORTH = lambda  self, token: "R0"
+    WEST = lambda  self, token: "R90"
+    SOUTH = lambda  self, token: "R180"
+    FLIPPED_NORTH = lambda  self, token: "MX"
+    FLIPPED_SOUTH = lambda  self, token: "MY"
+    FLIPPED_WEST = lambda  self, token: "MX90"
+    FLIPPED_EAST = lambda  self, token: "MY90"
     TRUE = lambda self, token: True
     FALSE = lambda self, token: False
     ROUTE = lambda self, token: token.value
