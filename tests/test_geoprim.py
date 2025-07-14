@@ -33,7 +33,7 @@ def test_TD4():
     assert (D4.R90 * Vec2R(x=77, y=-9).transl()) * Vec2R(x=1, y=5) == Vec2R(x=4, y=78)
     assert D4.R90 * (Vec2R(x=77, y=-9).transl() * Vec2R(x=1, y=5)) == Vec2R(x=4, y=78)
     assert Vec2R(x=77, y=-9).transl() * (D4.R90 * Vec2R(x=1, y=5)) == Vec2R(x=72, y=-8)
-    assert (Vec2R(x=77, y=-9).transl() * D4.R90.value) * Vec2R(x=1, y=5) == Vec2R(x=72, y=-8)
+    assert (Vec2R(x=77, y=-9).transl() * D4.R90) * Vec2R(x=1, y=5) == Vec2R(x=72, y=-8)
 
     flip_pairs = (
         (D4.R0,   D4.MY),
@@ -51,7 +51,7 @@ def test_TD4():
 
     for a in D4:
         assert a.inv() * a == D4.R0
-        assert a.value*Vec2R(x=0, y=1) == a.value.flip()*Vec2R(x=0, y=1)
+        assert a * Vec2R(x=0, y=1) == a.value.flip() * Vec2R(x=0, y=1)
 
     t1 = TD4(Vec2R(1,2), False, False, True)
 

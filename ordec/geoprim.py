@@ -160,6 +160,8 @@ class TD4(tuple):
             lx, ux = sorted([tl.x, tu.x])
             ly, uy = sorted([tl.y, tu.y])
             return Rect4R(lx=lx, ly=ly, ux=ux, uy=uy)
+        elif isinstance(other, D4):
+            return self * other.value
         elif isinstance(other, TD4):
             if self.flipxy:
                 onegx, onegy = other.negy, other.negx
@@ -244,13 +246,13 @@ class D4(Enum):
         MY90: mirror along Y axis, followed by 90° rotation
     """
     R0 = TD4()
-    R90 = TD4(negx=True, flipxy=True)
-    R180 = R90 * R90
-    R270 = R180 * R90
-    MX = TD4(negy=True)
-    MY = TD4(negx=True)
-    MX90 = R90 * MX
-    MY90 = R90 * MY
+    R90  = TD4(flipxy=True,  negx=True,  negy=False)
+    R180 = TD4(flipxy=False, negx=True,  negy=True)
+    R270 = TD4(flipxy=True,  negx=False, negy=True)
+    MX   = TD4(flipxy=False, negx=False, negy=True)
+    MY   = TD4(flipxy=False, negx=True,  negy=False)
+    MX90 = TD4(flipxy=True,  negx=False, negy=False)
+    MY90 = TD4(flipxy=True,  negx=True,  negy=True)
 
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'

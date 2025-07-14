@@ -185,10 +185,10 @@ class Renderer:
         params_str = "\n".join(s.cell.params_list())
 
         self.draw_label(type(s.cell).__name__,
-            rect.north_east().transl() * D4.R90.value, svg_class="cellName")
-        self.draw_label(params_str, rect.south_east().transl() * D4.R90.value,
+            rect.north_east().transl() * D4.R90, svg_class="cellName")
+        self.draw_label(params_str, rect.south_east().transl() * D4.R90,
             valign=VAlign.Bottom, svg_class="params")
-        self.draw_label(inst_name, rect.north_west().transl() * D4.MX90.value,
+        self.draw_label(inst_name, rect.north_west().transl() * D4.MX90,
             svg_class="instanceName")
         
         for poly in s.all(SymbolPoly):
@@ -206,7 +206,7 @@ class Renderer:
 
     def draw_pin(self, pin: Pin, trans: TD4):
         # Flip by 180 degrees, as the text face the opposite of the pin direction:
-        trans_local = trans * pin.pos.transl() * D4.R180.value * pin.align.value
+        trans_local = trans * pin.pos.transl() * D4.R180 * pin.align
 
         self.draw_arrow(ArrowType.Pin, pin.pintype, trans_local)
 
@@ -266,7 +266,7 @@ class Renderer:
         # to 0 or 90 degrees (so that you never have to rotate your head by 180 degrees)
         g_matrix = pos.transl() 
         if align in (Orientation.South, Orientation.North):  
-             g_matrix *= D4.R90.value
+             g_matrix *= D4.R90
 
         # Furthermore, g_matrix adds some space (padding):
         if space == None:
@@ -300,11 +300,11 @@ class Renderer:
         tag.attrib['class'] = svg_class
 
     def draw_schem_port(self, p: SchemPort):
-        trans = p.pos.transl() * p.align.value
+        trans = p.pos.transl() * p.align
         self.draw_arrow(ArrowType.Port, p.ref.pin.pintype, trans)
         
         label = p.ref.pin.full_path_str()
-        self.draw_label(label, trans*D4.R180.value,
+        self.draw_label(label, trans*D4.R180,
             space=self.port_text_space, halign=HAlign.Left, valign=VAlign.Middle,
             svg_class='portLabel')
 

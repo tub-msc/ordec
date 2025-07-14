@@ -74,7 +74,7 @@ class PinOfInstance:
     @property
     def align(self):
         #TODO: check if this pin.align transformation works:
-        return D4.from_td4(self.conn.ref.loc_transform() * self.conn.there.align.value)
+        return D4.from_td4(self.conn.ref.loc_transform() * self.conn.there.align)
 
     @property
     def ref(self):
