@@ -26,14 +26,14 @@ def test_TD4():
     assert D4.MX * Vec2R(x=12, y=34) == Vec2R(x=12, y=-34)
     assert D4.MX90 * Vec2R(x=12, y=34) == Vec2R(x=34, y=12)
 
-    assert TD4(transl=Vec2R(x=77, y=-9)) * Vec2R(x=1, y=5) == Vec2R(x=78, y=-4)
+    assert Vec2R(x=77, y=-9).transl() * Vec2R(x=1, y=5) == Vec2R(x=78, y=-4)
 
-    assert TD4(transl=Vec2R(x=-10, y=2)) * TD4(transl=Vec2R(x=77, y=-9)) * Vec2R(x=1, y=5) == Vec2R(x=68, y=-2)
+    assert Vec2R(x=-10, y=2).transl() * Vec2R(x=77, y=-9).transl() * Vec2R(x=1, y=5) == Vec2R(x=68, y=-2)
 
-    assert (D4.R90 * TD4(transl=Vec2R(x=77, y=-9))) * Vec2R(x=1, y=5) == Vec2R(x=4, y=78)
-    assert D4.R90 * (TD4(transl=Vec2R(x=77, y=-9)) * Vec2R(x=1, y=5)) == Vec2R(x=4, y=78)
-    assert TD4(transl=Vec2R(x=77, y=-9)) * (D4.R90 * Vec2R(x=1, y=5)) == Vec2R(x=72, y=-8)
-    assert (TD4(transl=Vec2R(x=77, y=-9)) * D4.R90.value) * Vec2R(x=1, y=5) == Vec2R(x=72, y=-8)
+    assert (D4.R90 * Vec2R(x=77, y=-9).transl()) * Vec2R(x=1, y=5) == Vec2R(x=4, y=78)
+    assert D4.R90 * (Vec2R(x=77, y=-9).transl() * Vec2R(x=1, y=5)) == Vec2R(x=4, y=78)
+    assert Vec2R(x=77, y=-9).transl() * (D4.R90 * Vec2R(x=1, y=5)) == Vec2R(x=72, y=-8)
+    assert (Vec2R(x=77, y=-9).transl() * D4.R90.value) * Vec2R(x=1, y=5) == Vec2R(x=72, y=-8)
 
     flip_pairs = (
         (D4.R0,   D4.MY),

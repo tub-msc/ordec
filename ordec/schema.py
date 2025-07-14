@@ -200,7 +200,7 @@ class SchemInstance(Node):
 
     @cursormethod
     def loc_transform(cursor):
-        return TD4(transl=cursor.pos) * cursor.orientation.value
+        return cursor.pos.transl() * cursor.orientation.value
 
     @cursormethod
     @property
@@ -229,7 +229,7 @@ class SchemTapPoint(Node):
 
     @cursormethod
     def loc_transform(cursor):
-        return TD4(transl=cursor.pos) * cursor.align.value
+        return cursor.pos.transl() * cursor.align.value
 
 class SchemConnPoint(Node):
     """A schematic point to indicate a connection at a 3- or 4-way junction of wires."""
