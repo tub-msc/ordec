@@ -14,35 +14,35 @@ RUN useradd -ms /bin/bash app && \
 USER app
 
 WORKDIR /home/app
-RUN wget https://netcologne.dl.sourceforge.net/project/ngspice/ng-spice-rework/44.2/ngspice-44.2.tar.gz && \
+RUN wget -q https://netcologne.dl.sourceforge.net/project/ngspice/ng-spice-rework/44.2/ngspice-44.2.tar.gz && \
     echo "e7dadfb7bd5474fd22409c1e5a67acdec19f77e597df68e17c5549bc1390d7fd ngspice-44.2.tar.gz" | sha256sum -c && \
-    tar xzvf ngspice-44.2.tar.gz && \
+    tar xf ngspice-44.2.tar.gz && \
     rm ngspice-44.2.tar.gz && \
     mv ngspice-44.2 ngspice-src
 
 WORKDIR /home/app/openvaf
-RUN wget https://openva.fra1.cdn.digitaloceanspaces.com/openvaf_23_5_0_linux_amd64.tar.gz && \
+RUN wget -q https://openva.fra1.cdn.digitaloceanspaces.com/openvaf_23_5_0_linux_amd64.tar.gz && \
     echo "79c0e08ad948a7a9f460dc87be88b261bbd99b63a4038db3c64680189f44e4f0 openvaf_23_5_0_linux_amd64.tar.gz" | sha256sum -c && \
-    tar xzvf openvaf_23_5_0_linux_amd64.tar.gz && \
+    tar xf openvaf_23_5_0_linux_amd64.tar.gz && \
     rm openvaf_23_5_0_linux_amd64.tar.gz
 
 # Note: Some stuff (like libs.doc) are deleted to save space.
 WORKDIR /home/app
-RUN wget https://github.com/IHP-GmbH/IHP-Open-PDK/archive/refs/tags/v0.2.0.tar.gz && \
+RUN wget -q https://github.com/IHP-GmbH/IHP-Open-PDK/archive/refs/tags/v0.2.0.tar.gz && \
     echo "3fbc8da1aa59505a6eee2122bfcf5419f621b9f1ed7ed9826318505f7bb38fbf v0.2.0.tar.gz" | sha256sum -c && \
-    tar xzvf v0.2.0.tar.gz && \
+    tar xf v0.2.0.tar.gz && \
     rm v0.2.0.tar.gz && \
     mv IHP-Open-PDK-0.2.0 IHP-Open-PDK && \
     rm -r IHP-Open-PDK/ihp-sg13g2/libs.doc IHP-Open-PDK/ihp-sg13g2/libs.tech/openems
 
 # Note: Some stuff (like libs.tech/xschem) are deleted to save space.
 WORKDIR /home/app/skywater
-RUN wget "https://github.com/efabless/volare/releases/download/sky130-fa87f8f4bbcc7255b6f0c0fb506960f531ae2392/common.tar.zst" && \
+RUN wget -q "https://github.com/efabless/volare/releases/download/sky130-fa87f8f4bbcc7255b6f0c0fb506960f531ae2392/common.tar.zst" && \
     echo "c7c155596a1fd1fcf6d5414dfcffcbbcf4e35b2b33160af97f4340e763c97406 common.tar.zst" | sha256sum -c && \
-    wget "https://github.com/efabless/volare/releases/download/sky130-fa87f8f4bbcc7255b6f0c0fb506960f531ae2392/sky130_fd_pr.tar.zst" && \
+    wget -q "https://github.com/efabless/volare/releases/download/sky130-fa87f8f4bbcc7255b6f0c0fb506960f531ae2392/sky130_fd_pr.tar.zst" && \
     echo "41dc9098541ed3329eba4ec7f5dfd1422eb09e94b623ea1f6dc3895f9ccebf63 sky130_fd_pr.tar.zst" | sha256sum -c && \
-    tar xvf common.tar.zst && \
-    tar xvf sky130_fd_pr.tar.zst && \
+    tar xf common.tar.zst && \
+    tar xf sky130_fd_pr.tar.zst && \
     rm common.tar.zst sky130_fd_pr.tar.zst && \
     rm -r sky130A/libs.tech/xschem sky130B/libs.tech/xschem && \
     rm -r sky130A/libs.tech/openlane sky130B/libs.tech/openlane
