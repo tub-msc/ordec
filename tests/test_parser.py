@@ -7,7 +7,7 @@ from ordec.lib import Nmos, Pmos, Vdc, Res, Gnd
 from ordec.parser.parser import load_ord, execute_in_environment
 from tests.reference_ord_output import save_reference_pngs
 import ordec
-import cairo
+#import cairo
 import os
 from pathlib import Path
 

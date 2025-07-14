@@ -8,8 +8,6 @@ import ordec.importer
 from ordec.lib.examples import diffpair
 from ordec.helpers import SchematicError
 import importlib.resources
-#import reference
-import cairo
 """
 Comparing symbol + schematic images to reference images.
 
