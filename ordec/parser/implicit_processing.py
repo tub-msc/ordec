@@ -94,10 +94,13 @@ def add_positions_from_constraints(constraints, outline, called_instances, node,
             outline[0] = position[0]
         if position[1] > outline[1]:
             outline[1] = position[1]
+
         if called_instances[ref_name] is not None:
-            setattr(getattr(node, str(ref_name)), "pos", Vec2R(x=position[0], y=position[1]))
+            x = getattr(node, ref_name)
         else:
-            setattr(getattr(node, str("port_" + ref_name)), "pos", Vec2R(x=position[0], y=position[1]))
+            net = getattr(node, ref_name)
+            x = node.one(SchemPort.ref_idx.query(net.nid))
+        x.pos = Vec2R(x=position[0], y=position[1])
 
 
 def prelim_to_real_instance(called_instances, ext, node):

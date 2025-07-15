@@ -29,7 +29,7 @@ class Geo:
     def solve(self):
         A = np.array([t.coeffs for t in self.constraints])
         b_u = np.array([-t.scalar for t in self.constraints])
-        b_l = np.full_like(b_u, -np.inf)
+        b_l = np.full_like(b_u, np.iinfo(b_u.dtype).min) # was: -np.inf
 
         objective = np.zeros((len(self.vars),), dtype=int)
         # Construct the constraints
