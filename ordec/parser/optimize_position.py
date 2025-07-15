@@ -9,8 +9,6 @@ warnings.filterwarnings('ignore')
 
 from scipy.optimize import LinearConstraint, milp
 
-# ordec imports
-
 
 class Geo:
     """
@@ -213,7 +211,7 @@ def get_pos_with_constraints(constraints, instances, ext):
             G.constrain(geo_mapping[name].width == 1)
         else:
             sub_cell_symbol = geo_mapping[name][1]
-            positions = sub_cell_symbol.outline.pos
+            positions = sub_cell_symbol.outline
             width = positions.ux - positions.lx
             height = positions.uy - positions.ly
             G.constrain(geo_mapping[name][0].height == int(height))

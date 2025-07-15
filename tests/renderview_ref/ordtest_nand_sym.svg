@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="210.0px" height="245.0px" viewBox="-1.0 -1.0 6.0 7.0">
+  <style type="text/css">svg { stroke-linecap: butt; stroke-linejoin: bevel; } text { font-size: 11pt; font-family: "Inconsolata", monospace; font-stretch: 75%; } .instanceName { font-weight: bold; fill: #f00; } .pinLabel, .pinArrow { fill: #f00; } .params, .cellName { fill: #80b380; } .symbolOutline { stroke: #80b380; } .symbolPoly { stroke: #000; } .symbolOutline, .symbolPoly, .schemWire, .tapPoint { fill: none; stroke-width: 0.1; } #grid { fill: #ccc; } .schemWire, .tapPoint { stroke: #cc0; } .schemWire { stroke-linecap: square; } .connPoint, .tapPointLabel { fill: #cc0; } .portArrow, .portLabel { fill: #39f; }</style>
+  <g transform="matrix(1 0 0 -1 0 5.0)">
+    <rect x="0.0" y="0.0" width="4.0" height="5.0" class="symbolOutline" />
+    <text transform="matrix(0.045 0 0 -0.045 3.875 4.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Nand</text>
+    <text transform="matrix(0.045 0 0 -0.045 3.875 0.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+    <text transform="matrix(0.045 0 0 -0.045 0.125 4.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">?</text>
+    <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 3.8 2.0)" class="pinArrow" />
+    <text transform="matrix(0.045 0 0 -0.045 3.875 2.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">y</text>
+    <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 2.0)" class="pinArrow" />
+    <text transform="matrix(0.045 0 0 -0.045 0.125 2.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">a</text>
+    <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 3.0)" class="pinArrow" />
+    <text transform="matrix(0.045 0 0 -0.045 0.125 3.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">b</text>
+    <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(-1 0 0 -1 2.0 4.8)" class="pinArrow" />
+    <text transform="matrix(0 0.045 0.045 0 1.875 4.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">vdd</text>
+    <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(1 0 0 1 2.0 0.2)" class="pinArrow" />
+    <text transform="matrix(0 0.045 0.045 0 1.875 0.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">vss</text>
+  </g>
+</svg>

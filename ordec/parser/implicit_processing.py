@@ -87,7 +87,7 @@ def add_positions_from_constraints(constraints, outline, called_instances, node,
             instance = getattr(node, ref_name)
             instance.pos = Vec2R(x=position[0], y=position[1])
             instance_transform = instance.loc_transform()
-            converted_pos = instance_transform * instance.ref.outline.pos
+            converted_pos = instance_transform * instance.symbol.outline
             # Get the inverted position in this case
             position = (int(2 * position[0] - converted_pos.lx), int(2 * position[1] - converted_pos.ly))
         if position[0] > outline[0]:
