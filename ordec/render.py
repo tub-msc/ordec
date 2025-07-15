@@ -38,6 +38,7 @@ svg {
 text {
     font-size: 11pt;
     font-family: "Inconsolata", monospace;
+    font-stretch: 75%;
 }
 .instanceName {
     font-weight: bold;
@@ -63,13 +64,16 @@ text {
     fill: #ccc;
 }
 .schemWire, .tapPoint {
-    stroke: rgb(80%, 80%, 0%);
+    stroke: #cc0;
+}
+.schemWire {
+    stroke-linecap: square;
 }
 .connPoint, .tapPointLabel {
-    fill: rgb(80%, 80%, 0%);
+    fill: #cc0;
 }
 .portArrow, .portLabel {
-    fill: rgb(20%, 60%, 100%);
+    fill: #39f;
 }
 """
 default_css = re.sub(r"\s+", " ", default_css).strip() # remove newlines / unneeded spaces
@@ -85,11 +89,9 @@ class Renderer:
     port_text_space = 0.15 + 0.5
     pixel_per_unit = 35
     conn_point_radius = 0.1625
-    font_narrow_factor = 0.9 # do we want this?
-
     css = default_css
 
-    def __init__(self, include_nids: bool=True):
+    def __init__(self, include_nids: bool=True, enable_grid: bool=True, enable_css: bool=True):
         """
         Args:
             include_nids: controls whether to include id="nid123" attributes.
@@ -97,10 +99,12 @@ class Renderer:
                 them less comparable in test scenarios.
         """
         self.include_nids = include_nids
+        self.enable_grid = enable_grid 
 
         self.root = ET.Element('svg', xmlns="http://www.w3.org/2000/svg", )
-        style = ET.SubElement(self.root, 'style', type='text/css')
-        style.text = self.css
+        if enable_css:
+            style = ET.SubElement(self.root, 'style', type='text/css')
+            style.text = self.css
         self.group_stack = [ET.SubElement(self.root, 'g')]
 
     @property
@@ -118,7 +122,7 @@ class Renderer:
             self.group_stack.pop()
 
 
-    def setup_grid(self, rect: Rect4R, dot_size: float = 0.1, padding: float = 1.0, highlight_origin: bool = False):
+    def setup_grid(self, rect: Rect4R, dot_size: float = 0.1, padding: float = 1.0):
         # Initialize the coordinate system to how we like it:
         lx, ly, ux, uy = rect.tofloat()
         lx_p = lx - padding
@@ -135,15 +139,16 @@ class Renderer:
         self.cur_group.attrib['transform']=f"matrix(1 0 0 -1 0 {uy+ly})"
 
         # Draw grid:
-        g = ET.SubElement(self.cur_group, 'g')
-        g.attrib['id'] = 'grid'
+        if self.enable_grid:
+            with self.subgroup():
+                self.cur_group.attrib['id']='grid'
 
-        for x in range(math.floor(lx), math.ceil(ux)+1):
-            for y in range(math.floor(ly), math.ceil(uy)+1):
-                ET.SubElement(g, 'rect',
-                    x=str(x - dot_size/2), y=str(y - dot_size/2),
-                    height=str(dot_size), width=str(dot_size)
-                    )
+                for x in range(math.floor(lx), math.ceil(ux)+1):
+                    for y in range(math.floor(ly), math.ceil(uy)+1):
+                        ET.SubElement(self.cur_group, 'rect',
+                            x=str(x - dot_size/2), y=str(y - dot_size/2),
+                            height=str(dot_size), width=str(dot_size)
+                            )
 
     def render_symbol(self, s: Symbol):
         self.setup_grid(s.outline)
@@ -235,8 +240,6 @@ class Renderer:
             m = trans * Vec2R(x=0,y=width/2).transl()
         else:
             m = trans
-    
-        g = ET.SubElement(self.cur_group, 'g', transform=m.svg_transform())
 
         d = ' '.join([
             "M0 0",
@@ -248,7 +251,7 @@ class Renderer:
             "Z",
             ])
 
-        p=ET.SubElement(g, 'path', d=d)
+        p=ET.SubElement(self.cur_group, 'path', d=d, transform=m.svg_transform())
         p.attrib['class']=svg_class
 
     def draw_label(self, text: str, trans: TD4, halign=HAlign.Left, valign=VAlign.Top, space=None, svg_class=""):
@@ -276,10 +279,8 @@ class Renderer:
             y = {VAlign.Bottom: +1, VAlign.Top: -1, VAlign.Middle: 0}[valign]*space,
             ).transl()
 
-        g = ET.SubElement(self.cur_group, 'g', transform=g_matrix.svg_transform())
-
         scale = 0.045 # 1/self.pixel_per_unit (?) Not sure why this is so off.
-        tag = ET.SubElement(g, 'text', transform=f"matrix({self.font_narrow_factor*scale} 0 0 -{scale} 0 0)")
+        tag = ET.SubElement(self.cur_group, 'text', transform=g_matrix.svg_transform(x_scale=scale, y_scale=-scale))
 
         lines = text.split('\n')
         if len(lines) == 1:
@@ -347,6 +348,38 @@ class Renderer:
                 space=self.port_text_space, valign=VAlign.Middle,
                 svg_class="tapPointLabel")
 
+    def indent_xml_recursive(self, elem, depth):
+        if elem.tag in ('text',):
+            # Spaces within <text></text> are sometimes rendered. To avoid this,
+            # no not add spaces / new lines within <text></text. 
+            return
+        if elem.text:
+            # Also skip elements with leading text to avoid messing up something
+            # here. This is likely never the case, unless indent_xml() is called
+            # twice.
+            return
+        if len(elem):
+            # For elements that have children, indent children:
+
+            indent = '  '
+            indent_here  = '\n' + depth*indent
+            indent_below = '\n' + (depth + 1)*indent
+
+            # Increase indentation after <opening> tag:
+            elem.text =  indent_below
+            for i, subelem in enumerate(elem):
+                if not subelem.tail:
+                    if i < len(elem)-1:
+                        subelem.tail = indent_below
+                    else:
+                        # Reduce indentation for </closing> tag after last element:
+                        subelem.tail = indent_here
+                self.indent_xml_recursive(subelem, depth + 1)
+
+    def indent_xml(self):
+        """Add newlines and indent SVG without messing up <text>."""
+        self.indent_xml_recursive(self.root, 0)
+
     def svg(self) -> bytes:
         """
         Returns SVG XML data as bytes. (Does not depend on cairo or other
@@ -394,4 +427,5 @@ def render(obj, **kwargs) -> Renderer:
         r.render_schematic(obj)
     else:
         raise TypeError(f"Unsupported object {obj} for rending.")
+    r.indent_xml()
     return r
