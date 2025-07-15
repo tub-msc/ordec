@@ -45,13 +45,18 @@ testdata = [
 def test_schematic_image(testcase, tmp_path):
     view_lambda, ref_file = testcase
     view = view_lambda()
-    svg = render(view, include_nids=False).svg()
+
+    svg = render(view, 
+        include_nids=False, # Do not include nids to make the output independent of nids.
+        enable_grid=False, # Disable grid to make the files smaller.
+        enable_css=True # To be able to inspect the SVG files for correctness, we need to include the proper CSS.
+        ).svg()
     (tmp_path / ref_file.name).write_bytes(svg)
 
     svg_ref = ref_file.read_bytes()
 
-    assert svg == svg_ref
-
+    # Pytest is better at string diffs than at byte diffs:
+    assert svg.decode('ascii') == svg_ref.decode('ascii')
 
 def test_schematic_unconnected_conn_point():
     with pytest.raises(SchematicError, match=r"Incorrectly placed SchemConnPoint"):
