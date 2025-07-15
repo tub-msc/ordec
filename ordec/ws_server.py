@@ -83,7 +83,7 @@ def serialize_view(name, view):
         return {'exception': "Requested object is not View."}
 
     if isinstance(view.node, (Schematic, Symbol)):
-        return {'img': render(view).svg_url()}
+        return {'html': render(view).svg().decode('ascii')}
 
     if isinstance(view.node, SimHierarchy):
         dc_voltages = []

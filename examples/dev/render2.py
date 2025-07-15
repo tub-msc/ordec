@@ -18,6 +18,12 @@
 from IPython.core.interactiveshell import InteractiveShell
 InteractiveShell.ast_node_interactivity = "all"
 
+# +
+from ordec import lib, render
+
+print(render(lib.Inv().schematic, enable_grid=False).svg().decode('ascii'))
+# -
+
 # Implicit rendering in Jupyter via \_repr\_html\_():
 
 # +
@@ -44,13 +50,3 @@ s = render(lib_test.Inv().schematic)
 display(SVG(s.svg()))
 
 #display(Image(s.png(), format='png'))
-# -
-
-# Use the following pretty() function intead of adding indentation to the XML itself.
-#
-# Addinng indentation / spaces / newlines in the XML would mess up the text rendering a bit, as some spaces would get rendered to the output graphic.
-
-def pretty(xml):
-    import lxml.etree as etree
-    return etree.tostring(etree.fromstring(xml), pretty_print=True).decode('ascii')
-#print(pretty(s.svg()))

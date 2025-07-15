@@ -139,11 +139,14 @@ class ResultViewer {
                 tr.innerHTML = '<td>'+row[0]+'</td><td>'+row[1] + '</td>'
             })
 
-        } else if (msg['img']) {
+        } else if (msg['html']) {
+            /*
             var img = document.createElement("img");
             img.src = msg['img'];
             img.classList.add("resimg");
             this.resContent.appendChild(img);
+            */
+            this.resContent.innerHTML = msg['html'];
         } else if (msg['exception']) {
             var pre = document.createElement("pre");
             pre.innerText = msg['exception'];

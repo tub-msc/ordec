@@ -214,17 +214,19 @@ class TD4(tuple):
             return s - l, s
 
 
-    def svg_transform(self) -> str:
+    def svg_transform(self, x_scale=1, y_scale=1) -> str:
         """
         Returns a string representation of the transformation
         suitable for the SVG attribute "transform".
         """
         x0, y0 = self.transl.tofloat()
-        xx=-1 if self.negx else 1
-        yy=-1 if self.negy else 1
         if self.flipxy:
+            xx=(-1 if self.negx else 1) * y_scale
+            yy=(-1 if self.negy else 1) * x_scale
             return f"matrix(0 {yy} {xx} 0 {x0} {y0})"
         else:
+            xx=(-1 if self.negx else 1) * x_scale
+            yy=(-1 if self.negy else 1) * y_scale
             return f"matrix({xx} 0 0 {yy} {x0} {y0})"
 
     def __repr__(self):
