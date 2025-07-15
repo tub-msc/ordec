@@ -1,7 +1,7 @@
 @font-face {
     font-family: 'Inconsolata';
     size-adjust: 100%;
-    src: url('/fonts/Inconsolata/Inconsolata-VariableFont_wdth,wght.ttf') format('ttf');
+    src: url('/fonts/Inconsolata/Inconsolata-VariableFont_wdth,wght.ttf') format('truetype');
 }
 body {
     margin:0px;
