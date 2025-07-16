@@ -16,6 +16,7 @@ jobs:
         run: |
           . /home/app/venv/bin/activate
           echo PATH=$PATH >> $GITHUB_ENV
+          echo SETUPTOOLS_SCM_PRETEND_VERSION="0" >> $GITHUB_ENV
       - name: pip install
         run: pip install -e .
       - name: run tests
