@@ -19,6 +19,8 @@ import mimetypes
 from urllib.parse import urlparse
 import threading
 import signal
+import importlib.resources
+import tarfile
 
 from .base import *
 from .render import render
@@ -137,20 +139,14 @@ def build_response(status: http.HTTPStatus=http.HTTPStatus.OK, mime_type: str='t
         data,
     )
 
-
-class MyStaticHandler:
+class StaticHandlerBase:
     """
     This adds a static file HTTP server to the websockets HTTP server.
     This way, for local demos it is not needed to run two separate servers.
     For development or (possible future) multi-user production setups,
     this should not be used.
     """
-    def __init__(self, static_root: Path):
-        if static_root:
-            self.static_root = Path(static_root).resolve()
-        else:
-            self.static_root = None
-
+        
     def process_request(self, connection, request):
         url=urlparse(request.path)
         if url.path.startswith('/'):
@@ -161,37 +157,116 @@ class MyStaticHandler:
         if req_path == Path('websocket'):
             return None
 
-        if self.static_root:
-            requested_file = (self.static_root / req_path).resolve()
-            if self.static_root != requested_file and (self.static_root not in requested_file.parents):
-                # Catch path traversal:
-                return build_response(http.HTTPStatus.FORBIDDEN)
+        return self.process_request_static(connection, request, req_path)
 
-            if requested_file.is_dir():
-                requested_file = requested_file / 'index.html'
-            try:
-                mime_type = mimetypes.types_map[requested_file.suffix]
-            except KeyError:
-                mime_type = 'application/octet-stream'
-            try:
-                data = requested_file.read_bytes()
-            except FileNotFoundError:
-                return build_response(http.HTTPStatus.NOT_FOUND)
-            except:
-                print(traceback.print_exc())
-                return build_response(http.HTTPStatus.INTERNAL_SERVER_ERROR)
-            else:
-                return build_response(http.HTTPStatus.OK, mime_type=mime_type, data=data)
-
+    def process_request_static(self, connection, request, req_path):
         return build_response(http.HTTPStatus.NOT_FOUND)
+
+class StaticHandlerDir(StaticHandlerBase):
+    """
+    This adds a static file HTTP server to the websockets HTTP server.
+    This way, for local demos it is not needed to run two separate servers.
+    For development or (possible future) multi-user production setups,
+    this should not be used.
+    """
+    def __init__(self, static_root: Path):
+        self.static_root = Path(static_root).resolve()
+    
+    def process_request_static(self, connection, request, req_path):
+        requested_file = (self.static_root / req_path).resolve()
+        if self.static_root != requested_file and (self.static_root not in requested_file.parents):
+            # Catch path traversal:
+            return build_response(http.HTTPStatus.FORBIDDEN)
+
+        if requested_file.is_dir():
+            requested_file = requested_file / 'index.html'
+        try:
+            mime_type = mimetypes.types_map[requested_file.suffix]
+        except KeyError:
+            mime_type = 'application/octet-stream'
+        try:
+            data = requested_file.read_bytes()
+        except FileNotFoundError:
+            return build_response(http.HTTPStatus.NOT_FOUND)
+        except:
+            print(traceback.print_exc())
+            return build_response(http.HTTPStatus.INTERNAL_SERVER_ERROR)
+        else:
+            return build_response(http.HTTPStatus.OK, mime_type=mime_type, data=data)
+
+def tar_path(p: Path) -> str:
+    if len(p.parts) == 0:
+        return '.'
+    else:
+        return f'./{p}'
+
+class StaticHandlerTar(StaticHandlerBase):
+    """
+    This adds a static file HTTP server to the websockets HTTP server.
+    This way, for local demos it is not needed to run two separate servers.
+    For development or (possible future) multi-user production setups,
+    this should not be used.
+
+    This class obtains static files from a tar file rather than a classical
+    directory tree. The advantage of this is that we do not pollute the Python
+    package tree with a hierarchy of packages/directories that really only
+    matter for this HTTP server.
+    """
+
+    def __init__(self, fn: Path):
+        self.tar = tarfile.open(fn)
+        self.tar_semaphore = threading.Semaphore()
+
+    def process_request_static(self, connection, request, req_path):
+        url=urlparse(request.path)
+        if url.path.startswith('/'):
+            req_path = Path(url.path[1:])
+        else:
+            req_path = Path(url.path)
+
+        if req_path == Path('websocket'):
+            return None
+
+        requested_file = Path(req_path)
+        
+        # tarfile.TarFile seems not to be thread-safe, a semaphore seems to fix this.
+        with self.tar_semaphore:
+            try:
+                info = self.tar.getmember(tar_path(requested_file))
+                if info.type == tarfile.DIRTYPE:
+                    requested_file = requested_file / 'index.html'
+                    info = self.tar.getmember(tar_path(requested_file))
+            except KeyError:
+                return build_response(http.HTTPStatus.NOT_FOUND)
+
+            data = self.tar.extractfile(info).read()
+
+        try:
+            mime_type = mimetypes.types_map[requested_file.suffix]
+        except KeyError:
+            mime_type = 'application/octet-stream'
+
+        return build_response(http.HTTPStatus.OK, mime_type=mime_type, data=data)
 
 def main():
     parser = argparse.ArgumentParser(prog='ordec-server')
     parser.add_argument('-l', '--hostname', default="localhost", help="Hostname to listen on.")
     parser.add_argument('-p', '--port', default=8100, type=int, help="Port to listen on.")
     parser.add_argument('-r', '--static-root', help="Static web directory.", nargs='?')
+    parser.add_argument('-n', '--no-frontend', action='store_true')
 
     args = parser.parse_args()
+    hostname = args.hostname
+    port = args.port
+    
+    if args.no_frontend:
+        static_handler = StaticHandlerBase()
+    else:
+        if args.static_root:
+            static_handler = StaticHandlerDir(args.static_root)
+        else:
+            webdist_tar = importlib.resources.files(__package__) / 'webdist.tar'
+            static_handler = StaticHandlerTar(webdist_tar)
 
     # Launch server in separate daemon thread (daemon=True). The connection
     # threads automatically inherit the daemon property. All daemon threads
@@ -199,7 +274,7 @@ def main():
     # to terminate the whole thing with a single Ctrl+C.
     # A future version of the websockets library might make this workaround
     # unnecessary.
-    threading.Thread(target=server_thread, args=(args,), daemon=True).start()
+    threading.Thread(target=server_thread, args=(hostname, port, static_handler), daemon=True).start()
 
     try:
         while True:
@@ -207,12 +282,7 @@ def main():
     except KeyboardInterrupt:
         print("Terminating.")
 
-def server_thread(args):
-    hostname = args.hostname
-    port = args.port
-
-    static_handler = MyStaticHandler(args.static_root)
-
+def server_thread(hostname, port, static_handler):
     with serve(handle_connection, hostname, port, process_request=static_handler.process_request) as server:
         print(f"Listening on {hostname}, port {port}")
         server.serve_forever()

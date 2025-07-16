@@ -25,6 +25,10 @@ dependencies = [
 ]
 dynamic = ["version"]
 
+[project.urls]
+Homepage = "https://github.com/tub-msc/ordec"
+Documentation = "https://ordec.readthedocs.io"
+
 [project.optional-dependencies]
 test = [
     "pytest>=7.2.1",
@@ -34,10 +38,21 @@ extra = [
     "black>=23.1.0",
 ]
 
-[tool.setuptools]
-packages = ["ordec"]
-
 [project.scripts]
 ordec-server =  "ordec.ws_server:main"
 
+[tool.setuptools]
+packages = [
+    "ordec",
+    "ordec.lib",
+    "ordec.lib.examples",
+    "ordec.lib.ord_test",
+    "ordec.parser",
+    "ordec.sim2",
+]
 
+[tool.setuptools.package-data]
+"ordec" = ["webdist.tar"]
+
+[tool.setuptools_scm]
+version_scheme = "release-branch-semver"
