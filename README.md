@@ -1,5 +1,11 @@
 ![ORDeC](docs/ordec_logo.svg)
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![REUSE status](https://api.reuse.software/badge/github.com/tub-msc/ordec)](https://api.reuse.software/info/github.com/tub-msc/ordec)
+[![ORDeC on PyPI](https://img.shields.io/pypi/v/ordec.svg)](https://pypi.python.org/pypi/ordec)
+[![Read the Docs](https://img.shields.io/readthedocs/ordec)](https://ordec.readthedocs.io)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/tub-msc/ordec/tests.yaml?label=tests)](https://github.com/tub-msc/ordec/actions/workflows/tests.yaml)
+
 **ORDeC** (Open Rapid Design Composer) is an open-source **custom IC design platform**. Its goal is to provide an accessible and streamlined interface to design and analyze analog, mixed-signal and custom digital integrated circuits from schematic to layout. ORDeC consists of:
 
 - the ORD hardware description language (HDL) for design entry,
