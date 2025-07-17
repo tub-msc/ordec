@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ..base import *
+from ..core import *
 from . import Nmos, Pmos, Inv, And2, Or2, Ringosc, Vdc, Res, Cap, Ind, SinusoidalVoltageSource, Gnd, PieceWiseLinearVoltageSource, SinusoidalCurrentSource
 from .. import helpers
 

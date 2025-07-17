@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
-from ordec.ordb import Subgraph
+from ordec import Subgraph
 
 def pytest_addoption(parser):
     parser.addoption(

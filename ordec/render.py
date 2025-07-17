@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 import math
 from base64 import b64encode
 from contextlib import contextmanager
-from .base import *
+from .core import *
 from enum import Enum
 import re
 

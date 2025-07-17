@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
-from ordec.base import Cell
+from ordec.core import Cell
 
 @pytest.mark.xfail
 def test_ord_empty():

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from .. import helpers
-from ..base import *
+from ..core import *
 from ..sim2.sim_hierarchy import HighlevelSim
 
 from .generic_mos import Or2, Nmos, Pmos, Ringosc, Inv

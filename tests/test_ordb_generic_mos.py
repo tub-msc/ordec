@@ -1,8 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.base import *
-from ordec.ordb import MutableSubgraph, NPath
+from ordec.core import *
 from ordec.lib.generic_mos import Inv, Nmos, Pmos
 
 def test_example_symbol():

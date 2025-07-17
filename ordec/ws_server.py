@@ -22,9 +22,8 @@ import signal
 import importlib.resources
 import tarfile
 
-from .base import *
+from .core import *
 from .render import render
-from .ordb import Subgraph
 from .parser.parser import ord2py
 
 def build_cells(source_type: str, source_data: str) -> (dict, dict):

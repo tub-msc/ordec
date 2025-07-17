@@ -3,9 +3,7 @@
 
 #standard imports
 
-#ordec imports
-from . import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire
-from .geoprim import D4
+from .core import D4, Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire
 from .parser import schematic_routing as routing_module
 
 def check_outline_rescaling(x, y, outline):

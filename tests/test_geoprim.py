@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.geoprim import Vec2R, D4, TD4, Rect4R
-from ordec.rational import Rational as R
+from ordec.core.geoprim import Vec2R, D4, TD4, Rect4R
+from ordec.core.rational import R
 import pytest
 
 def test_TD4():

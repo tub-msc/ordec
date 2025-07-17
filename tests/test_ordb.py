@@ -3,11 +3,7 @@
 
 import pytest
 import re
-from ordec.ordb import *
-from ordec.ordb import NPath
-from ordec.schema import * # TODO: Maybe do not use this here.
-from ordec.rational import R
-from ordec.geoprim import *
+from ordec.core import *
 from tabulate import tabulate
 
 

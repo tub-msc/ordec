@@ -1206,6 +1206,7 @@ class MutableSubgraph(Subgraph):
         return FrozenSubgraph(self)
 
 
+@public
 class NPath(Node):
     @staticmethod
     def check_name(name: str|int):

@@ -10,8 +10,7 @@ from pathlib import Path
 import tempfile
 import signal
 import re
-from ordec.schema import *
-from ordec.cell import Cell
+from ..core import *
 
 NgspiceVector = namedtuple('NgspiceVector', ['name', 'quantity', 'dtype', 'rest'])
 NgspiceValue = namedtuple('NgspiceValue', ['type', 'name', 'subname', 'value'])

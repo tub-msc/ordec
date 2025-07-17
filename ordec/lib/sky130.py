@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ..base import *
+from ..core import *
 from .. import helpers
 from . import Nmos, Pmos
-from ..parser.implicit_processing import schematic_routing
+from ..routing import schematic_routing
 from pathlib import Path
 _MODULE_DIR = Path(__file__).parent
 _PROJECT_ROOT = _MODULE_DIR.parent.parent

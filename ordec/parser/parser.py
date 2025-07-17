@@ -133,7 +133,7 @@ def load_ord(file_path):
 # ordec/ws_server.py use ord2py() for now.
 def ord2py(source_data: str) -> ast.Module:
     module = ast.parse(
-        "from ordec.base import *\n" +
+        "from ordec.core import *\n" +
         "from ordec.sim2.sim_hierarchy import HighlevelSim\n"+
         "from ordec.lib import Inv, Res, Gnd, Vdc, Idc, Nmos, Pmos, NoConn\n"+
         "from ordec.parser.implicit_processing import symbol_process, preprocess, PostProcess, postprocess\n" +
