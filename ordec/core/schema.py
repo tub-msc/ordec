@@ -52,9 +52,9 @@ class Symbol(SubgraphHead):
         return inserter_func
 
     @cursormethod
-    def _repr_html_(cursor):
-        from .render import render
-        return render(cursor.subgraph).svg().decode('ascii')
+    def _repr_svg_(cursor):
+        from ..render import render
+        return render(cursor.subgraph).svg().decode('ascii'), {'isolated': False}
 
 class Pin(Node):
     """
@@ -165,9 +165,9 @@ class Schematic(SubgraphHead):
     default_ground = LocalRef(Net)
 
     @cursormethod
-    def _repr_html_(cursor):
-        from .render import render
-        return render(cursor.subgraph).svg().decode('ascii')
+    def _repr_svg_(cursor):
+        from ..render import render
+        return render(cursor.subgraph).svg().decode('ascii'), {'isolated': False}
 
 class SchemPort(Node):
     """
