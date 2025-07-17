@@ -24,7 +24,7 @@ else:
     skip_webtests = False
 
     webdriver_options = webdriver.ChromeOptions()
-    #webdriver_options.add_argument("--headless=new")
+    webdriver_options.add_argument("--headless=new")
     webdriver_options.add_argument("--force-device-scale-factor=1")
     # The following sets the window size, not the viewport size (see resize_viewport below):
     # webdriver_options.add_argument("--window-size=1280,720")

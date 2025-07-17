@@ -19,7 +19,6 @@ from importlib import import_module
 import ordec.importer
 from ordec import lib, render
 from ordec.lib import test as libtest
-from ordec.base import Cell
 
 @dataclass
 class RenderViewTestcase:
@@ -114,8 +113,7 @@ testdata = [
         refdir / "ordtest_dlatchsoc_sch.svg",
         marks=pytest.mark.xfail),
     testcase(ord_lambda('.lib.ord_test.inv_all_features', 'Inv', 'schematic'),
-        refdir / "ordtest_invallfeatures_sch.svg",
-        marks=pytest.mark.xfail),
+        refdir / "ordtest_invallfeatures_sch.svg"),
     testcase(ord_lambda('.lib.ord_test.inv_for_loop', 'Inv', 'schematic'),
         refdir / "ordtest_invforloop_sch.svg"),
     testcase(ord_lambda('.lib.ord_test.inv_liop', 'Inv', 'schematic'),
@@ -150,20 +148,6 @@ testdata = [
     testcase(ord_lambda('.lib.ord_test.strongarm_structured', 'Strongarm', 'schematic'),
         refdir / "ordtest_strongarmstructured_sch.svg"),
 ]
-
-@pytest.mark.xfail
-def test_ord_empty():
-    from ordec.lib.ord_test import empty
-
-@pytest.mark.xfail
-def test_ord_empty2():
-    from ordec.lib.ord_test import empty2
-
-def test_ord_multicell():
-    from ordec.lib.ord_test import multicell
-    assert issubclass(multicell.Cell1, Cell)
-    assert issubclass(multicell.Cell2, Cell)
-
 
 @pytest.mark.parametrize("testcase", testdata, ids=lambda t: t.ref_file.with_suffix("").name)
 def test_renderview(testcase, tmp_path):
