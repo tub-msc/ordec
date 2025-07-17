@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # Install/build ORDeC + run web interface using ordec-base (base.Dockerfile) as base image.
 
 FROM ghcr.io/tub-msc/ordec-base:sha-1a0c5bc AS ordec

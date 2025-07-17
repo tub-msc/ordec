@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # Set ngspice_multibuild to "on" to enable triple ngspice build (for future testing).
 ARG ngspice_multibuild="off"
 

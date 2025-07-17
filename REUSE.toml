@@ -1,0 +1,87 @@
+version = 1
+
+[[annotations]]
+# Auto-generated files:
+path = [
+    "docs/Makefile",
+    "docs/make.bat",
+    "web/package-lock.json",
+    "web/public/examples/uistate/*.json",
+    "tests/renderview_ref/*.svg",
+    "tests/web_ref/*.png",
+]
+SPDX-FileCopyrightText = "NONE"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+# Boilerplate files:
+path = [
+    ".gitignore",
+    "docs/.gitignore",
+    "web/.gitignore",
+    ".dockerignore",
+    "MANIFEST.in",
+    "docs/requirements.txt",
+]
+SPDX-FileCopyrightText = "NONE"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+# ordec.lib.examples code:
+path = [
+    "ordec/lib/examples/*.py",
+    "ordec/lib/examples/*.ord",
+]
+SPDX-FileCopyrightText = "2025 ORDeC contributors"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+# Basic Jupyter example:
+path = [
+    "examples/JupyterExample.py",
+]
+SPDX-FileCopyrightText = "2025 ORDeC contributors"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+# ORD test code:
+path = [
+    "ordec/lib/ord_test/*.ord"
+]
+SPDX-FileCopyrightText = "2025 ORDeC contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+# Example code for development:
+path = [
+    "examples/dev/*.py",
+]
+SPDX-FileCopyrightText = "2025 ORDeC contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+# File in web/ where inline SPDX data would be messy or impossible:
+path = [
+    "web/package.json",
+    "web/app.html",
+    "web/index.html",
+    "web/src/style.css",
+    "web/public/ordec_icon.svg",
+    "web/public/ordec_logo.svg",
+]
+SPDX-FileCopyrightText = "2025 ORDeC contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+# Documentation files:
+path = [
+    "README.md",
+    "docs/**/*.rst",
+    "docs/**/*.svg",
+    "docs/ref/ordb_demo.py",
+    "docs/cell_lib/base.py",
+    "docs/screenshot_demo.png",
+    "examples/README.md",
+]
+SPDX-FileCopyrightText = "2025 ORDeC contributors"
+SPDX-License-Identifier = "Apache-2.0"
