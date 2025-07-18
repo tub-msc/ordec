@@ -200,13 +200,13 @@ class Netlister:
     
     def name_hier_simobj(self, sn):
         c = sn
-        if not isinstance(c.node, SimInstance):
+        if not isinstance(c, SimInstance):
             ret = [self.name_obj(sn.eref, sn.eref.subgraph)]
         else:
             ret = []
 
-        while not isinstance(c.node, SimHierarchy):
-            if isinstance(c.node, SimInstance):
+        while not isinstance(c, SimHierarchy):
+            if isinstance(c, SimInstance):
                 ret.insert(0, self.name_obj(c.eref, c.eref.subgraph))
             c = c.parent
         return ".".join(ret)

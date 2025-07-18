@@ -21,7 +21,7 @@ class PinType(Enum):
 # Misc
 # ----
 
-class PolyVec2R(Node):
+class PolyVec2R(Cursor):
     """
     One element/point of a Vec2R polygonal chain, which can be open or closed.
     A polygonal chain is closed if the last and first element are equivalent.
@@ -31,7 +31,7 @@ class PolyVec2R(Node):
     """Order of the point in the polygonal chain"""
     pos     = Attr(Vec2R)
 
-    ref_idx = Index(ref, sortkey=lambda node: node.order)
+    ref_idx = Index(ref, sortkey=lambda Cursor: Cursor.order)
 
 # Symbol
 # ------
@@ -42,7 +42,6 @@ class Symbol(SubgraphHead):
     caption = Attr(str)
     cell = Attr('Cell')
 
-    @cursormethod
     def portmap(cursor, **kwargs):
         def inserter_func(main, sgu):
             main_nid = main.set(symbol=cursor.subgraph).insert(sgu)
@@ -51,12 +50,11 @@ class Symbol(SubgraphHead):
             return main_nid
         return inserter_func
 
-    @cursormethod
     def _repr_svg_(cursor):
         from ..render import render
-        return render(cursor.subgraph).svg().decode('ascii'), {'isolated': False}
+        return render(cursor).svg().decode('ascii'), {'isolated': False}
 
-class Pin(Node):
+class Pin(Cursor):
     """
     Pins are single wire connections exposed through a symbol.
     """
@@ -64,7 +62,7 @@ class Pin(Node):
     pos     = Attr(Vec2R)
     align   = Attr(D4, default=D4.R0)
  
-class SymbolPoly(Node):
+class SymbolPoly(Cursor):
     def __new__(cls, vertices:list[Vec2R]=None, **kwargs):
         main = super().__new__(cls, **kwargs)
         if vertices == None:
@@ -77,12 +75,10 @@ class SymbolPoly(Node):
                 return main_nid
             return FuncInserter(inserter_func)
 
-    @cursormethod
     @property
     def vertices(cursor):
         return cursor.subgraph.all(PolyVec2R.ref_idx.query(cursor.nid))
 
-    @cursormethod
     def svg_path(cursor) -> str:
         """
         Returns string representation of polygon suitable for
@@ -103,7 +99,7 @@ class SymbolPoly(Node):
         return ' '.join(d)
 
 
-class SymbolArc(Node):
+class SymbolArc(Cursor):
     """A drawn circle or circular segment for use in Symbol."""
     pos         = Attr(Vec2R)
     "Center point"
@@ -114,7 +110,6 @@ class SymbolArc(Node):
     angle_end   = Attr(R, default=R(1))
     "Must be greater than angle_start and between -1 and 1, with -1 representing -360° and 1 representing 360°."
     
-    @cursormethod
     def svg_path(arc) -> str:
         """
         Returns string representation of arc suitable for
@@ -151,25 +146,24 @@ class SymbolArc(Node):
 # # Schematic
 # # ---------
 
-class Net(Node):
-    pin = ExternalRef(Pin, of_subgraph=lambda c: c.subgraph.symbol)
+class Net(Cursor):
+    pin = ExternalRef(Pin, of_subgraph=lambda c: c.root.symbol)
 
 class Schematic(SubgraphHead):
     """
     A schematic of an individual cell.
     """
-    symbol = Attr(Symbol) # Subgraph reference
+    symbol = SubgraphRef(Symbol)
     outline = Attr(Rect4R)
     cell = Attr('Cell')
     default_supply = LocalRef(Net)
     default_ground = LocalRef(Net)
 
-    @cursormethod
     def _repr_svg_(cursor):
         from ..render import render
-        return render(cursor.subgraph).svg().decode('ascii'), {'isolated': False}
+        return render(cursor).svg().decode('ascii'), {'isolated': False}
 
-class SchemPort(Node):
+class SchemPort(Cursor):
     """
     Port of a Schematic, corresponding to a Pin of the schematic's Symbol.
     """
@@ -183,13 +177,13 @@ class SchemWire(SymbolPoly):
     ref = LocalRef(Net)
     ref_idx = Index(ref)
 
-class SchemInstance(Node):
+class SchemInstance(Cursor):
     """
     An instance of a Symbol in a Schematic (foundation for schematic hierarchy).
     """
     pos = Attr(Vec2R)
     orientation = Attr(D4, default=D4.R0)
-    symbol = Attr(Symbol) # Subgraph reference
+    symbol = SubgraphRef(Symbol)
 
     def __new__(cls, connect=None, **kwargs):
         main = super().__new__(cls, **kwargs)
@@ -198,16 +192,14 @@ class SchemInstance(Node):
         else:
             return FuncInserter(partial(connect, main))
 
-    @cursormethod
     def loc_transform(cursor):
         return cursor.pos.transl() * cursor.orientation
 
-    @cursormethod
     @property
     def conns(cursor):
         return cursor.subgraph.all(SchemInstanceConn.ref_idx.query(cursor.nid))
 
-class SchemInstanceConn(Node):
+class SchemInstanceConn(Cursor):
     """
     Maps Pins of a SchemInstance to Nets of its Schematic.
     """
@@ -219,7 +211,7 @@ class SchemInstanceConn(Node):
 
     ref_pin_idx = CombinedIndex([ref, there], unique=True)
 
-class SchemTapPoint(Node):
+class SchemTapPoint(Cursor):
     """A schematic tap point for connecting points by label, typically visualized using the net's name."""
     ref = LocalRef(Net)
     ref_idx = Index(ref)
@@ -227,11 +219,10 @@ class SchemTapPoint(Node):
     pos = Attr(Vec2R)
     align = Attr(D4, default=D4.R0)
 
-    @cursormethod
     def loc_transform(cursor):
         return cursor.pos.transl() * cursor.align
 
-class SchemConnPoint(Node):
+class SchemConnPoint(Cursor):
     """A schematic point to indicate a connection at a 3- or 4-way junction of wires."""
     ref = LocalRef(Net)
     ref_idx = Index(ref)
@@ -242,26 +233,26 @@ class SchemConnPoint(Node):
 # --------------------
 
 def parent_siminstance(c: Cursor) -> Cursor:
-    while not isinstance(c.node, (SimInstance, SimHierarchy)):
+    while not isinstance(c, (SimInstance, SimHierarchy)):
         c = c.parent
     return c
 
-class SimNet(Node):
+class SimNet(Cursor):
     trans_voltage = Attr(list[float])
     trans_current = Attr(list[float])
     dc_voltage = Attr(float)
 
     eref = ExternalRef(type=Net|Pin, of_subgraph=lambda c: parent_siminstance(c).schematic)
 
-class SimInstance(Node):
+class SimInstance(Cursor):
     dc_current = Attr(float)
 
     is_leaf = False
-    schematic = Attr(Schematic)
+    schematic = SubgraphRef(Schematic)
     eref = ExternalRef(SchemInstance, of_subgraph=lambda c: parent_siminstance(c.parent).schematic)
 
 class SimHierarchy(SubgraphHead):
-    schematic = Attr(Schematic)
+    schematic = SubgraphRef(Schematic)
     cell = Attr('Cell')
 
 # Every class defined in this file is public:

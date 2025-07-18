@@ -11,18 +11,18 @@ from tabulate import tabulate
 class MyHead(SubgraphHead):
     label = Attr(str)
 
-class MyNode(Node):
+class MyNode(Cursor):
     label = Attr(str)
 
 def test_schema_attr_inheritance():
-    assert [ad.name for ad in MyNode._layout] == ['label']
-    assert MyNode.indices == []
+    assert [ad.name for ad in MyNode.NodeTuple._layout] == ['label']
+    assert MyNode.NodeTuple.indices == []
     assert isinstance(MyNode.label, Attr) # This checks if AttrDescriptor works properly on the class itself.
     assert MyNode.label.type == str
     
     class ExtMyNode(MyNode):
         label = Attr(bytes)
-    assert [ad.name for ad in ExtMyNode._layout] == ['label']
+    assert [ad.name for ad in ExtMyNode.NodeTuple._layout] == ['label']
     assert MyNode.label != ExtMyNode.label
 
     class ExtMyNode2(MyNode):
@@ -32,18 +32,18 @@ def test_schema_attr_inheritance():
 
         C1 = Index(weight, unique=True)
         C2 = CombinedIndex([color, height], unique=True)
-    assert [ad.name for ad in ExtMyNode2._layout] == ['label', 'weight', 'color', 'height']
+    assert [ad.name for ad in ExtMyNode2.NodeTuple._layout] == ['label', 'weight', 'color', 'height']
     assert isinstance(ExtMyNode2.C1, Index)
-    assert ExtMyNode2.indices == [ExtMyNode2.C1, ExtMyNode2.C2]
+    assert ExtMyNode2.NodeTuple.indices == [ExtMyNode2.C1, ExtMyNode2.C2]
     assert ExtMyNode2.label == MyNode.label
 
     class ExtMyNode3(ExtMyNode2):
         rating = Attr(int)
         weight = Attr(str)
-    assert [ad.name for ad in ExtMyNode3._layout] == ['label', 'weight', 'color', 'height', 'rating']
+    assert [ad.name for ad in ExtMyNode3.NodeTuple._layout] == ['label', 'weight', 'color', 'height', 'rating']
     assert ExtMyNode3.label == ExtMyNode2.label
     assert ExtMyNode3.weight != ExtMyNode2.weight
-    assert ExtMyNode3.indices == [ExtMyNode2.C2] # ExtMyNode2.C1 is not in indices anymore, because the corresponding attribute was removed.
+    assert ExtMyNode3.NodeTuple.indices == [ExtMyNode2.C2] # ExtMyNode2.C1 is not in indices anymore, because the corresponding attribute was removed.
 
 def test_node():
     #n = Node()
@@ -61,17 +61,17 @@ def test_node():
         n.pintype = 123
 
     with pytest.raises(AttributeError, match='Unknown attributes provided: invalid'):
-        n = Node(invalid='hello')
+        n = Pin(invalid='hello')
 
     with pytest.raises(TypeError, match="is not iterable"):
         for x in n:
             pass
 
 def test_node_hash_and_equiv():    
-    class NodeA(Node):
+    class NodeA(Cursor):
         text = Attr(str)
 
-    class NodeB(Node):
+    class NodeB(Cursor):
         text = Attr(str)
 
     a = NodeA(text='hello')
@@ -120,7 +120,7 @@ def test_subgraph_load():
         102: Pin(pintype=PinType.Out, pos=Vec2R(x=R('4.'), y=R('2.')), align=D4.R0),
         103: NPath(parent=None, name='y', ref=102),
     }
-    s = MutableSubgraph.load(s_dict)
+    s = MutableSubgraph.load(s_dict).subgraph
     assert s.nodes[0] == s_dict[0]
     assert s.nodes[101] == s_dict[101]
     assert s.nodes[103] == s_dict[103]
@@ -133,13 +133,13 @@ def test_subgraph_dump():
     s.nodeA = MyNode(label='hello')
     s.nodeB = MyNode(label='world')
 
-    d = s.dump()
+    d = s.subgraph.dump()
 
     s_restored = eval(d, globals(), locals())
-    assert s == s_restored
+    assert s.subgraph == s_restored.subgraph
 
 def test_subgraph_table():
-    ref_table = """Subgraph MyHead.head(label='head label'):
+    ref_table = """Subgraph MyHead.NodeTuple(label='head label'):
   MyNode
   |   nid | label   |
   |-------|---------|
@@ -155,49 +155,51 @@ def test_subgraph_table():
     s.nodeA = MyNode(label='hello')
     s.nodeB = MyNode(label='world')
     #print(s.tables())
-    assert re.sub(r"\s*[0-9]+", '<num>', s.tables()) == re.sub(r"\s*[0-9]+", '<num>', ref_table)
+
+    table = s.subgraph.tables()
+    assert re.sub(r"\s*[0-9]+", '<num>', table) == re.sub(r"\s*[0-9]+", '<num>', ref_table)
 
 def test_subgraph_equiv():
     ref = MutableSubgraph.load({
-        0: Symbol.head(outline=None, caption=None),
-        100: Pin(pintype=PinType.In, pos=Vec2R(x=R('0.'), y=R('2.')), align=D4.R0),
-        101: NPath(parent=None, name='a', ref=100),
-        102: Pin(pintype=PinType.Out, pos=Vec2R(x=R('4.'), y=R('2.')), align=D4.R0),
-        103: NPath(parent=None, name='y', ref=102),
+        0: Symbol.NodeTuple(outline=None, caption=None),
+        100: Pin.NodeTuple(pintype=PinType.In, pos=Vec2R(x=R('0.'), y=R('2.')), align=D4.R0),
+        101: NPath.NodeTuple(parent=None, name='a', ref=100),
+        102: Pin.NodeTuple(pintype=PinType.Out, pos=Vec2R(x=R('4.'), y=R('2.')), align=D4.R0),
+        103: NPath.NodeTuple(parent=None, name='y', ref=102),
     })
 
     # 1. create subgraph via Subgraph.add():
     s = Symbol()
-    assert s.root_cursor.subgraph is s
+    assert s.subgraph.root_cursor is s
     a_nid = s.add(Pin(pintype=PinType.In, pos=Vec2R(0, 2)))
     a_path_nid = s.add(NPath(name='a', ref=a_nid))
     y_nid = s.add(Pin(pintype=PinType.Out, pos=Vec2R(4, 2)))
     y_path_nid = s.add(NPath(name='y', ref=y_nid))
-    assert s == ref
+    assert s.subgraph == ref.subgraph
 
     # Change of attribute should lead to inequivalence:
     s2 = s.copy()
-    assert s2.root_cursor.subgraph is s2
-    s2.root_cursor.caption = "hello"
-    assert s2 != ref
+    assert s2.subgraph.root_cursor is s2
+    s2.caption = "hello"
+    assert s2.subgraph != ref.subgraph
     # Original subgraph s should be unaffected:
-    assert s == ref
+    assert s.subgraph == ref.subgraph
 
     # Adding nodes should also lead to inequivalence:
     s3 = s.copy()
     s3.add(Pin(pintype=PinType.In, pos=Vec2R(2, 0)))
     assert s3 != ref
-    # Original subgraph s should not unaffected:
-    assert s == ref
+    # Original subgraph s should be unaffected:
+    assert s.subgraph == ref.subgraph
 
     # Removing nodes also lead to inequivalence:
     s4 = s.copy()
     with s4.updater() as u:
         u.remove_nid(a_nid)
         u.remove_nid(a_path_nid)
-    assert s4 != ref
+    assert s4.subgraph != ref.subgraph
     # Original subgraph s should not unaffected:
-    assert s == ref
+    assert s.subgraph == ref.subgraph
 
     # 2. create subgraph using '%' shorthand (Subgraph.__mod__) instead of Subgraph.add:
     s5 = Symbol()
@@ -205,17 +207,17 @@ def test_subgraph_equiv():
     s5 % NPath(name='a', ref=a_cursor.nid)
     y_cursor = s5 % Pin(pintype=PinType.Out, pos=Vec2R(4, 2))
     s5 % NPath(name='y', ref=y_cursor.nid)
-    assert s5 == ref
+    assert s5.subgraph == ref.subgraph
 
     # 3. create subgraph using implicit Cursor:
     s6 = Symbol()
     s6.a = Pin(pintype=PinType.In, pos=Vec2R(0, 2))
     s6.y = Pin(pintype=PinType.Out, pos=Vec2R(4, 2))
-    assert s6 == ref
+    assert s6.subgraph == ref.subgraph
 
 def test_funcinserter():
-    class Person(Node):
-        best_friend = LocalRef(Node)
+    class Person(Cursor):
+        best_friend = LocalRef(Cursor)
 
     ref = MutableSubgraph.load({
         0: MyHead.head(label=None),
@@ -233,42 +235,42 @@ def test_funcinserter():
     s.add(inserter)
 
     assert isinstance(inserter, Inserter)
-    assert s == ref
+    assert s.subgraph == ref.subgraph
 
 def test_inserter_node():
     assert isinstance(MyNode(), Inserter)
-    assert issubclass(MyNode, Inserter)
+    assert issubclass(MyNode.NodeTuple, Inserter)
 
 def test_nid_generator():
     s = MyHead()
     # Initial nid_alloc range:
-    assert s.nid_alloc == range(1, 2**32)
-    assert len(s.nodes) == 1
+    assert s.subgraph.nid_alloc == range(1, 2**32)
+    assert len(s.subgraph.nodes) == 1
 
     # Adding a node changes nid_alloc. The new node will have nid=2.
     with s.updater() as u:
         u.add(MyNode(label='hello'))
-    assert s.nid_alloc == range(2, 2**32)
-    assert len(s.nodes) == 2
-    assert s.nodes[1].label == 'hello'
+    assert s.subgraph.nid_alloc == range(2, 2**32)
+    assert len(s.subgraph.nodes) == 2
+    assert s.subgraph.nodes[1].label == 'hello'
 
     # Just generating nids but not adding nodes will not change s.nid_alloc:
     with s.updater() as u:
         assert u.nid_generate() == 2
         assert u.nid_generate() == 3
-    assert s.nid_alloc == range(2, 2**32)
+    assert s.subgraph.nid_alloc == range(2, 2**32)
 
     # Adding a custom nid will increase s.nid_alloc more:
     with s.updater() as u:
         u.add_single(MyNode(label='world'), 1234)
-    assert s.nodes[1234].label == 'world'
-    assert s.nid_alloc == range(1235, 2**32)
+    assert s.subgraph.nodes[1234].label == 'world'
+    assert s.subgraph.nid_alloc == range(1235, 2**32)
 
 def test_updater():
     s_orig = MyHead()
-    assert s_orig.nid_alloc.start == 1
+    assert s_orig.subgraph.nid_alloc.start == 1
     s = s_orig.copy()
-    assert s.internally_equal(s_orig)
+    assert s.subgraph.internally_equal(s_orig.subgraph)
 
     # This updater has no effect on s, because commit is set to False manually:
     with s.updater() as u:
@@ -277,13 +279,13 @@ def test_updater():
         u.add(MyNode(label='foo'))
         u.add(MyNode(label='bar'))
         u.commit = False    
-    assert s.internally_equal(s_orig)
+    assert s.subgraph.internally_equal(s_orig.subgraph)
 
     # This updater has no effect on s, because a constraint check fails:
     with pytest.raises(DanglingLocalRef):
         with s.updater() as u:
             u.add(NPath(parent=None, name='a', ref=100))
-    assert s.internally_equal(s_orig)
+    assert s.subgraph.internally_equal(s_orig.subgraph)
 
     # This updater mutates s, as commit is True (default) and no constraint check fails:
     with s.updater() as u:
@@ -291,17 +293,17 @@ def test_updater():
         u.add(MyNode(label='world'))
         u.add(MyNode(label='foo'))
         u.add(MyNode(label='bar'))
-    assert not s.internally_equal(s_orig)
-    assert s.nid_alloc.start == 5
+    assert not s.subgraph.internally_equal(s_orig.subgraph)
+    assert s.subgraph.nid_alloc.start == 5
 
     s = s_orig.copy()
     with s.updater() as u:
         u.add(MyNode(label='hello'))
 
 def test_localref_integrity():
-    class Person(Node):
-        best_friend = LocalRef(Node)
-        worst_enemy = LocalRef(Node)
+    class Person(Cursor):
+        best_friend = LocalRef(Cursor)
+        worst_enemy = LocalRef(Cursor)
 
     s = MyHead()
 
@@ -318,7 +320,7 @@ def test_localref_integrity():
     with pytest.raises(DanglingLocalRef) as exc_info:
         s % Person(worst_enemy=dangling_ref)
     assert exc_info.value.nid == dangling_ref
-    assert s == s_before
+    assert s.subgraph == s_before.subgraph
 
     # Dangling reference on node removal:
     s_before = s.copy()
@@ -327,21 +329,21 @@ def test_localref_integrity():
             u.remove_nid(bob.nid)
             # This fails because bob is missing!
     assert exc_info.value.nid == bob.nid
-    assert s == s_before
+    assert s.subgraph == s_before.subgraph
 
     # Dangling reference on node update:
     s_before = s.copy()
     with pytest.raises(DanglingLocalRef) as exc_info:
         charlie.worst_enemy = dangling_ref
     assert exc_info.value.nid == dangling_ref
-    assert s == s_before
+    assert s.subgraph == s_before.subgraph
 
     s_before = s.copy()
     with pytest.raises(DanglingLocalRef) as exc_info:
         s.remove_nid(alice.nid)
         # We cannot remove alice (dangling LocalRef).
     assert exc_info.value.nid == alice.nid
-    assert s == s_before
+    assert s.subgraph == s_before.subgraph
 
     # But if we remove its reference first, we can remove alice:
     bob.best_friend = charlie
@@ -349,7 +351,7 @@ def test_localref_integrity():
 
 def test_index():
     # TODO!
-    class NodeA(Node):
+    class NodeA(Cursor):
         color = Attr(int)
         Index(color)
 
@@ -362,7 +364,7 @@ def test_index():
 
 def test_unique():
     # TODO: Extend this test
-    class NodeU1(Node):
+    class NodeU1(Cursor):
         label = Attr(str)
         unique_label = Index(label, unique=True)
 
@@ -371,27 +373,27 @@ def test_unique():
     s2 = s.copy()
     with pytest.raises(UniqueViolation):
         s2 % NodeU1(label='hello')
-    assert s2 == s and s2.index == s.index # Make sure neither the nodes nor the index was modified here.
+    assert s2.subgraph == s.subgraph and s2.subgraph.index == s.subgraph.index # Make sure neither the nodes nor the index was modified here.
 
 def test_cursor_remove():
     s = MyHead()
     s.node1 = MyNode(label='hello')
     s.node2 = MyNode(label='world')
-    assert s == MutableSubgraph.load({
+    assert s.subgraph == MutableSubgraph.load({
         0: MyHead.head(label=None),
         28: MyNode(label='hello'),
         29: NPath(parent=None, name='node1', ref=28),
         30: MyNode(label='world'),
         31: NPath(parent=None, name='node2', ref=30),
-    })
+    }).subgraph
 
     del s.node2
 
-    assert s == MutableSubgraph.load({
+    assert s.subgraph == MutableSubgraph.load({
         0: MyHead.head(label=None),
         28: MyNode(label='hello'),
         29: NPath(parent=None, name='node1', ref=28),
-    })
+    }).subgraph
 
     # Cannot delete node that does not exist:
     with pytest.raises(QueryException, match=r'Path not found'):
@@ -414,10 +416,10 @@ def test_freeze():
 
     assert s.mutable
     with pytest.raises(TypeError, match="unhashable type"):
-        hash(s)
+        hash(s.subgraph)
     s=s.freeze()
     assert not s.mutable
-    hash(s)
+    hash(s.subgraph)
 
     with pytest.raises(TypeError, match=r'Subgraph is already frozen.'):
         s.freeze()
@@ -432,8 +434,7 @@ def test_freeze():
 def test_cursor_attribute():
     s = MyHead(label='hi')
     assert s.label == 'hi'
-    assert s.root_cursor.label == 'hi'
-    assert type(s.root_cursor) is MyHead._cursor_type
+    assert type(s) is MyHead
     
     s.label = 'blub'
 
@@ -441,7 +442,7 @@ def test_cursor_attribute():
         del s.label
 
 def test_cursor_paths():
-    class MyNodeNonLeaf(Node):
+    class MyNodeNonLeaf(Cursor):
         label = Attr(str)
         is_leaf = False
 
@@ -450,11 +451,11 @@ def test_cursor_paths():
 
     npath_nid = s.sub.npath_nid
     npath  = s.sub.npath
-    assert isinstance(s.sub.npath, NPath)
+    assert isinstance(s.sub.npath, NPath.NodeTuple)
     assert (npath.name, npath.parent, npath.ref) == ('sub', None, None)
 
     with pytest.raises(OrdbException):
-        s.root_cursor['undefined']
+        s['undefined']
 
     with pytest.raises(AttributeError):
         s.undefined
@@ -478,16 +479,14 @@ def test_cursor_paths():
     assert s.node2.label == 'hello'
 
     # .parent:
-    assert s.node2.parent == s.root_cursor
+    assert s.node2.parent == s
     assert s.node2.subnode.parent == s.node2
-    assert s.sub.sub.parent.parent == s.root_cursor
+    assert s.sub.sub.parent.parent == s
     with pytest.raises(QueryException, match="Subgraph root has no parent"):
         s.parent
 
     # Test item access (x[y]):
-    with pytest.raises(TypeError):
-        s['sub'] # Subgraph itself is not subscriptable.
-    assert s.root_cursor['sub'] == s.sub # But the root cursor is.
+    assert s['sub'] == s.sub # But the root cursor is.
     assert s.sub['sub'] == s.sub.sub # And other cursors are, too.
 
 def test_full_path():
@@ -522,19 +521,19 @@ def test_cursor_paths_unique():
 
     with pytest.raises(OrdbException, match=r"Path exists"):
         s2.mkpath('sub')
-    assert s2 == s # Make sure no partial insertion was done.
+    assert s2.subgraph == s.subgraph # Make sure no partial insertion was done.
 
     with pytest.raises(OrdbException, match=r"Path exists"):
         s2.sub = MyNode()
-    assert s2 == s # Make sure no partial insertion was done.
+    assert s2.subgraph == s.subgraph # Make sure no partial insertion was done.
 
     with pytest.raises(OrdbException, match=r"Path exists"):
         s2.mkpath('node1')
-    assert s2 == s # Make sure no partial insertion was done.
+    assert s2.subgraph == s.subgraph # Make sure no partial insertion was done.
 
     with pytest.raises(OrdbException, match=r"Path exists"):
         s2.node1 = MyNode()
-    assert s2 == s # Make sure no partial insertion was done.
+    assert s2.subgraph == s.subgraph # Make sure no partial insertion was done.
 
 def test_polyvec2r():
     s = Symbol()
@@ -566,7 +565,7 @@ def test_cursor_at_npath():
     assert s.node_with_npath.npath_nid > 0
     
     # cursor_at for a node without NPath returns a cursor without npath_nid.
-    c_node_without_npath = s.cursor_at(node_without_npath.nid)
+    c_node_without_npath = s.subgraph.cursor_at(node_without_npath.nid)
     assert c_node_without_npath.nid == node_without_npath.nid
     assert c_node_without_npath.npath_nid == None
 
@@ -581,7 +580,7 @@ def test_cursor_at_npath():
     assert c_node_with_npath.npath_nid == None
 
 def test_index_sort_nid():
-    class MyItem(Node):
+    class MyItem(Cursor):
         ref    = LocalRef(MyNode)
         order  = Attr(int)
 
@@ -600,7 +599,7 @@ def test_index_sort_nid():
     assert index_values == [98, 99, 100, 101, 102] # ordered by nid
 
 def test_index_custom_sort():
-    class MyItem(Node):
+    class MyItem(Cursor):
         ref    = LocalRef(MyNode)
         order  = Attr(int)
 
@@ -621,14 +620,14 @@ def test_index_custom_sort():
 
 def test_subgraph_ntype():
     s = MyHead()
-    assert isinstance(s.node, MyHead)
-    assert isinstance(s.root_cursor, MyHead._cursor_type)
+    assert isinstance(s, MyHead)
+    assert isinstance(s.node, MyHead.NodeTuple)
 
 def test_all_ntype():
-    class NodeA(Node):
+    class NodeA(Cursor):
         text = Attr(str)
 
-    class NodeB(Node):
+    class NodeB(Cursor):
         text = Attr(str)
 
     s = MyHead()
@@ -643,7 +642,7 @@ def test_all_ntype():
     assert [c.text for c in q2] == ['B1', 'B2']
 
 def test_cursor_localref():
-    class MyNodeItem(Node):
+    class MyNodeItem(Cursor):
         ref = LocalRef(MyNode)
         text = Attr(str)
 
@@ -654,8 +653,8 @@ def test_cursor_localref():
     assert n1_foo.ref == s.n1
 
 def test_cursor_externalref():
-    class NodeExtRef(Node):
-        subg = Attr(MyHead)
+    class NodeExtRef(Cursor):
+        subg = SubgraphRef(MyHead)
         eref = ExternalRef(MyNode, of_subgraph=lambda c: c.subg)
 
     s1 = MyHead()

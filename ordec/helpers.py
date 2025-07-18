@@ -114,8 +114,8 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
     terminals_of_net = {}
 
     def add_terminal(t):
-        if not isinstance(t.ref.node, Net):
-            raise TypeError(f"Illegal connection of {t} to {type(t.ref.node)}.")
+        if not isinstance(t.ref, Net):
+            raise TypeError(f"Illegal connection of {t} to {type(t.ref)}.")
         if t.pos in terminal_at:
             raise SchematicError(f"Overlapping terminals at {t.pos}.")
         terminal_at[t.pos] = t
@@ -178,8 +178,7 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
 
     # Check whether wiring is valid:
     for pos, connections in g.edges.items():
-        if isinstance(pos, Cursor):
-            assert isinstance(pos.node, Net)
+        if isinstance(pos, Net):
             continue
         assert isinstance(pos, Vec2R)
         terminal = terminal_at.get(pos, None)

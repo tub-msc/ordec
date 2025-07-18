@@ -32,11 +32,11 @@ def test_example_symbol():
     symbol = Inv().symbol
     symbol2 = Inv().symbol
 
-    assert symbol == symbol2
-    assert symbol2 == symbol
+    assert symbol.subgraph == symbol2.subgraph
+    assert symbol2.subgraph == symbol.subgraph
 
-    assert symbol == ref
-    assert ref == symbol
+    assert symbol.subgraph == ref.subgraph
+    assert ref.subgraph == symbol.subgraph
 
 def test_example_schematic():
     ref = MutableSubgraph.load({
@@ -107,4 +107,4 @@ def test_example_schematic():
 
     schematic = Inv().schematic
 
-    assert schematic == ref
+    assert schematic.subgraph == ref.subgraph
