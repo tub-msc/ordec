@@ -10,7 +10,7 @@ jobs:
     name: pytest
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/tub-msc/ordec-base:sha-1a0c5bc
+      image: ghcr.io/tub-msc/ordec-base:sha-784bbdb
       options: --user root
     steps:
       - name: check out repository
@@ -21,9 +21,9 @@ jobs:
           echo PATH=$PATH >> $GITHUB_ENV
           echo SETUPTOOLS_SCM_PRETEND_VERSION="0" >> $GITHUB_ENV
       - name: pip install
-        run: pip install -e .
+        run: pip install .
       - name: run tests
-        run: COVERAGE_FILE=/tmp/coverage pytest --cov-report=html:/tmp/htmlcov -o cache_dir=/tmp/pytestcache --junit-xml=/tmp/test-results.xml
+        run: COVERAGE_FILE=/tmp/coverage pytest -v --cov-report=html:/tmp/htmlcov -o cache_dir=/tmp/pytestcache --junit-xml=/tmp/test-results.xml
       - name: display test results
         if: always()
         uses: pmeier/pytest-results-action@main

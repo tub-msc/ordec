@@ -28,10 +28,12 @@ const sourceTypeSelect = document.getElementById("sourcetype");
 function setStatus(status) {
     var div_status = document.getElementById("status");
     div_status.innerText = status;
-    if (status == 'connected') {
+    if (status == 'busy') {
+        div_status.style.backgroundColor = '#ffff44';
+    } else if (status == 'ready') {
         div_status.style.backgroundColor = '#44ff44';
     } else if (status == 'exception') {
-        div_status.style.backgroundColor = '#ffff44';
+        div_status.style.backgroundColor = '#ff4444';
     } else if (status == 'disconnected') {
         div_status.style.backgroundColor = '#ff4444';
     } else {
@@ -107,10 +109,10 @@ class ResultViewer {
     }
 
     resize() {
-        console.log('component.resize');
-        if(this.chart) {
-            this.chart.resize()
-        }
+        // console.log('component.resize');
+        // if(this.chart) {
+        //     this.chart.resize()
+        // }
     }
 
     updateView(msg) {
@@ -170,6 +172,10 @@ class Editor {
         this.editor = ace.edit(this.rootElement);
         this.editor.setTheme("ace/theme/github");
         this.editor.session.setMode("ace/mode/python");
+        this.editor.setOptions({
+            fontFamily: "Inconsolata",
+            fontSize: "12pt"
+        });
         this.editor.session.on('change', (e) => this.changed(e));
 
         if (state['sourceType']) {
@@ -287,7 +293,7 @@ function ordecRestartSession() {
     //ordecSock = new WebSocket("ws://localhost:9123/websocket", "ordecExperimental", );
     ordecSock = new WebSocket(websocketURL, []);
     ordecSock.onopen = (event) => {
-        setStatus('connected')
+        setStatus('busy')
         const select_source = document.getElementById("sourcetype");
         ordecSock.send(JSON.stringify({
             'msg': 'source',
@@ -325,18 +331,22 @@ function requestNextView() {
     })
 
     if (nextView) {
-        console.log('next view', nextView.viewRequested)
+        //console.log('next view', nextView.viewRequested)
         ordecSock.send(JSON.stringify({
             'msg': 'getview',
             'view': nextView.viewRequested,
         }))
         reqPending = true;
+    } else {
+        if (!globalException) {
+            setStatus('ready')
+        }
     }
 }
 
 function ordecOnMessage(messageEvent) {
     const msg = JSON.parse(messageEvent.data);
-    console.log(msg)
+    //console.log(msg)
     if ((msg['msg'] == 'views') || (msg['msg'] == 'exception')) {
         if (msg['msg'] == 'exception') {
             globalException = msg['exception']
@@ -365,5 +375,3 @@ function ordecOnClose(closeEvent) {
         rv.updateGlobalState()
     })
 };
-
-ordecRestartSession();
