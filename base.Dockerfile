@@ -103,10 +103,10 @@ FROM debian:bookworm AS ordec-base
 RUN useradd -ms /bin/bash app && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        fonts-inconsolata \
         libgomp1 \
         python3-minimal \
         python3-venv \
+        chromium-driver \
         npm \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 USER app
@@ -127,7 +127,7 @@ ENV ORDEC_PDK_IHP_SG13G2="/home/app/IHP-Open-PDK/ihp-sg13g2"
 
 WORKDIR /home/app/ordec
 ENV VIRTUAL_ENV=/home/app/venv
-RUN python3 -m venv $VIRTUAL_ENV --system-site-packages
+RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # TODO: Docker layer with pyproject.toml for this / maybe also pin dependencies via requirements.txt or so.
@@ -139,7 +139,8 @@ RUN pip install --no-cache-dir \
     scipy \
     numpy \
     pytest \
-    pytest-cov
+    pytest-cov \
+    selenium
 
 # NPM install
 # -----------
