@@ -9,7 +9,7 @@
 # Stage 1
 # -------
 
-FROM ghcr.io/tub-msc/ordec-base:sha-784bbdb AS ordec-base
+FROM ghcr.io/tub-msc/ordec-base:sha-9e65737 AS ordec-base
 
 # Build ORDeC wheel:
 WORKDIR /home/app/ordec
