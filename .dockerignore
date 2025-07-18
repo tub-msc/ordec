@@ -1,6 +1,5 @@
 Dockerfile
 .dockerignore
-README.md
 .readthedocs.yaml
 .github/
 .pytest_cache/
@@ -17,5 +16,3 @@ web/node_modules/
 **/.idea/
 **/*.ipynb
 **/*.swp
-**/.git
-**/.gitignore

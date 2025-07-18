@@ -1,6 +1,11 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+# This multi-stage Dockerfile generates the 'ordec-base' image for testing,
+# development and building of ORDeC.
+#
+# See docs/dev/containers_and_ci.rst for details.
+
 # Set ngspice_multibuild to "on" to enable triple ngspice build (for future testing).
 ARG ngspice_multibuild="off"
 
