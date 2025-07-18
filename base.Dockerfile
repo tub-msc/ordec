@@ -113,6 +113,7 @@ RUN useradd -ms /bin/bash app && \
         python3-venv \
         chromium-driver \
         npm \
+        git \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 USER app
 WORKDIR /home/app
@@ -145,7 +146,8 @@ RUN pip install --no-cache-dir \
     numpy \
     pytest \
     pytest-cov \
-    selenium
+    selenium \
+    build
 
 # NPM install
 # -----------

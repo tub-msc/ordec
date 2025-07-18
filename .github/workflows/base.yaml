@@ -4,6 +4,12 @@
 name: ordec-base docker image
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'base.Dockerfile'
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: tub-msc/ordec-base
@@ -17,8 +23,6 @@ jobs:
       attestations: write
       id-token: write
     steps:
-      - name: Install git
-        run: apt-get update && apt-get install -y --no-install-recommends git
       - name: Checkout repository
         uses: actions/checkout@v4
         with:

@@ -6,20 +6,19 @@
 #
 # See docs/dev/containers_and_ci.rst for details.
 
+# Stage 1
+# -------
+
 FROM ghcr.io/tub-msc/ordec-base:sha-784bbdb AS ordec-base
 
-USER root
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        git \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-USER app
-
-# Install ORDeC core (Python):
+# Build ORDeC wheel:
 WORKDIR /home/app/ordec
 COPY --chown=app . .
 #ENV SETUPTOOLS_SCM_PRETEND_VERSION=0
-RUN pip3 install build && python3 -m build "."
+RUN python3 -m build .
+
+# Stage 2
+# -------
 
 FROM debian:bookworm AS ordec
 
