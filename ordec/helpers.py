@@ -4,7 +4,6 @@
 import itertools
 from dataclasses import dataclass
 from .core import *
-from .core.ordb import Cursor
 
 def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     """

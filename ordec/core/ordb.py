@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from pyrsistent import pmap, pvector, pset, PMap, PVector, PSet
-from typing import Callable
+from typing import Callable, Iterable
 from typing import NamedTuple
 from types import NoneType
 from dataclasses import dataclass, field
@@ -77,8 +77,8 @@ class Attr:
     """
 
     def default_factory(val):
-        if isinstance(val, Cursor):
-            raise TypeError("Cursors can only be added to LocalRef, ExternalRef or SubgraphRef attributes.")
+        if isinstance(val, Node):
+            raise TypeError("Nodes can only be added to LocalRef, ExternalRef or SubgraphRef attributes.")
         return val
 
     type: type
@@ -101,7 +101,7 @@ class NodeTupleAttrDescriptor:
         return isinstance(self.attr, LocalRef)
 
     def __get__(self, obj, owner=None):
-        if obj == None: # for the class: return CursorAttrDescriptor object
+        if obj == None: # for the class: return NodeAttrDescriptor object
             return self
         else: # for instances: return value of attribute
             assert owner == self.ntype.Tuple
@@ -111,8 +111,8 @@ class NodeTupleAttrDescriptor:
         return f"NodeTupleAttrDescriptor({self.ntype.__name__}.{self.name})"
 
 @dataclass(frozen=True, eq=False)
-class CursorAttrDescriptor:
-    """Like AttrDescriptor, but for the SubCursor instead of the tuple"""
+class NodeAttrDescriptor:
+    """Like NodeTupleAttrDescriptor, but for the Node instead of the NodeTuple"""
     ntype: type
     index: int
     name: str
@@ -145,13 +145,13 @@ class LocalRef(Attr):
         self.indices.append(LocalRefIndex(self))
 
     @staticmethod
-    def localref_factory(val: 'int|Cursor|NoneType'):
+    def localref_factory(val: 'int|Node|NoneType'):
         if val==None or isinstance(val, int):
             return val
-        elif isinstance(val, Cursor):
+        elif isinstance(val, Node):
             return val.nid
         else:
-            raise TypeError('Only None, int or Cursor can be assigned to LocalRef.')
+            raise TypeError('Only None, int or Node can be assigned to LocalRef.')
 
     factory: Callable = localref_factory
 
@@ -176,13 +176,13 @@ class ExternalRef(Attr):
         return self.of_subgraph(cursor).cursor_at(value)
 
     @staticmethod
-    def externalref_factory(val: 'int|Cursor|NoneType'):
+    def externalref_factory(val: 'int|Node|NoneType'):
         if val==None or isinstance(val, int):
             return val
-        elif isinstance(val, Cursor):
+        elif isinstance(val, Node):
             return val.nid
         else:
-            raise TypeError('Only None, int or Cursor can be assigned to ExternalRef.')
+            raise TypeError('Only None, int or Node can be assigned to ExternalRef.')
 
     factory: Callable = externalref_factory
 
@@ -203,7 +203,7 @@ class SubgraphRef(Attr):
     def externalref_factory(val: 'FrozenSubgraph|SubgraphHead|NoneType'):
         if val==None or isinstance(val, FrozenSubgraph):
             return val
-        elif isinstance(val, Cursor):
+        elif isinstance(val, Node):
             if val.subgraph.mutable:
                 raise TypeError('SubgraphHead for externalref_factory must be frozen.')
             return val.subgraph
@@ -473,7 +473,7 @@ class NodeTuple(tuple):
 # Register NodeTuple as virtual subclass of Inserter. Combining tuple and ABC seems like it could cause problems.
 Inserter.register(NodeTuple)
 
-class CursorMeta(type):
+class NodeMeta(type):
     @staticmethod
     def _collect_raw_attrs(d, bases):
         raw_attrs = {} # The order in raw_attrs defines the tuple layout later on.
@@ -498,7 +498,7 @@ class CursorMeta(type):
 
         # Populate special class attributes:
         attrs |= {'_raw_attrs': raw_attrs, '__slots__':()}
-        return super(CursorMeta, mcs).__new__(mcs, name, bases, attrs)
+        return super(NodeMeta, mcs).__new__(mcs, name, bases, attrs)
 
     def __init__(cls, name, bases, attrs):
         # Build descriptors from raw attributes:
@@ -513,7 +513,7 @@ class CursorMeta(type):
         for n, (k, v) in enumerate(cls._raw_attrs.items()):
             nt_ad = NodeTupleAttrDescriptor(ntype=cls, index=n, name=k, attr=v)
             nodetuple_dict[k] = nt_ad
-            c_ad = CursorAttrDescriptor(ntype=cls, index=n, name=k, attr=v)
+            c_ad = NodeAttrDescriptor(ntype=cls, index=n, name=k, attr=v)
             setattr(cls, k, c_ad)
             cls.__annotations__[k] = v.type # Not so nice; for Sphinx.
             layout.append(nt_ad)
@@ -534,13 +534,12 @@ class CursorMeta(type):
 
         return super().__init__(name, bases, attrs)
 
-
 @public
-class Cursor(tuple, metaclass=CursorMeta):
+class Node(tuple, metaclass=NodeMeta):
     """
-    Cursor provides an access layer to mutable and immutable subgraphs.
+    Node provides a cursor-like access layer to NodeTuples within mutable or immutable subgraphs.
 
-    Cursors are 3-tuples (subgraph, nid npath_nid)
+    Node objects are 3-tuples (subgraph, nid ,npath_nid)
     """
 
     is_leaf : bool = True
@@ -548,12 +547,12 @@ class Cursor(tuple, metaclass=CursorMeta):
 
     @property
     def subgraph(self) -> 'Subgraph':
-        """The subgraph in which this Cursor moves."""
+        """The subgraph in which this Node moves."""
         return super().__getitem__(0)
 
     @property
     def nid(self) -> int|NoneType:
-        """The nid of the node to which this Cursor points."""
+        """The nid of the node to which this Node points."""
         return super().__getitem__(1)
 
     @property
@@ -654,7 +653,7 @@ class Cursor(tuple, metaclass=CursorMeta):
 
     def __setattr__(self, k, v):
         try:
-            # This triggers __set__ of descriptors such as CursorAttrDescriptor:
+            # This triggers __set__ of descriptors such as NodeAttrDescriptor:
             # See https://stackoverflow.com/a/61550073 on why object is used instead of super().
             object.__setattr__(self, k, v)
         except AttributeError:
@@ -711,7 +710,7 @@ class Cursor(tuple, metaclass=CursorMeta):
         if self.nid != None:
             self.subgraph.remove_nid(self.nid)
 
-    def __mod__(self, node: Inserter) -> 'Cursor':
+    def __mod__(self, node: Inserter) -> 'Node':
         """
         Inserts node and sets 'ref' attribute (which should be a LocalRef) to the cursor nid.
         """
@@ -734,7 +733,7 @@ class Cursor(tuple, metaclass=CursorMeta):
     #    return hash((self.subgraph, self.nid, self.npath_nid))
 
     def __eq__(self, other):
-        if isinstance(other, Cursor):
+        if isinstance(other, Node):
             #return (id(self.subgraph) == id(other.subgraph)) and (self.nid == other.nid)
             return (self.subgraph is other.subgraph) and (self.nid == other.nid)
         else:
@@ -746,7 +745,7 @@ class Cursor(tuple, metaclass=CursorMeta):
         return self.subgraph.root_cursor
 
 @public
-class SubgraphHead(Cursor):
+class SubgraphHead(Node):
     """
     Each subgraph has a single SubgraphHead node. The subclass of SubgraphHead
     defines what kind of design data the subgraph represents.
@@ -796,19 +795,19 @@ class SubgraphHead(Cursor):
         """Insets node and returns nid."""
         return self.subgraph.add(node)
 
-    def __mod__(self, node) -> Cursor:
+    def __mod__(self, node) -> Node:
         """
         Add node and return cursor at created node.
         """
         return self.subgraph.__mod__(node)
 
-    def cursor_at(self, *args, **kwargs) -> Cursor:
+    def cursor_at(self, *args, **kwargs) -> Node:
         return self.subgraph.cursor_at(*args, **kwargs)
 
-    def all(self, *args, **kwargs) -> Cursor:
+    def all(self, *args, **kwargs) -> Iterable[Node]:
         return self.subgraph.all(*args, **kwargs)
 
-    def one(self, *args, **kwargs) -> Cursor:
+    def one(self, *args, **kwargs) -> Node:
         return self.subgraph.one(*args, **kwargs)
 
     # TODO?!
@@ -1052,7 +1051,7 @@ class Subgraph(ABC):
 
     def all(self, query: IndexQuery, wrap_cursor:bool=True):
         if isinstance(query, type):
-            assert issubclass(query, Cursor)
+            assert issubclass(query, Node)
             query = NodeTuple.index_ntype.query(query.Tuple)
         try:
             nids = self.index[query.index_key]
@@ -1083,7 +1082,7 @@ class Subgraph(ABC):
         if nid == None:
             # NPath without node
             assert npath_nid != None
-            cursor_cls = Cursor
+            cursor_cls = Node
         else:
             cursor_cls = self.nodes[nid]._cursor_type
             if lookup_npath and npath_nid == None:
@@ -1120,7 +1119,7 @@ class Subgraph(ABC):
         return self._nid_alloc
 
     @property
-    def root_cursor(self) -> Cursor:
+    def root_cursor(self) -> Node:
         """Root cursor pointing to subgraph head."""
         return self._root_cursor
 
@@ -1172,7 +1171,7 @@ class Subgraph(ABC):
         with self.updater() as u:
             return u.add(node)
 
-    def __mod__(self, node) -> Cursor:
+    def __mod__(self, node) -> Node:
         """
         Add node and return cursor at created node.
         """
@@ -1274,7 +1273,7 @@ class MutableSubgraph(Subgraph):
 
 
 @public
-class NPath(Cursor):
+class NPath(Node):
     @staticmethod
     def check_name(name: str|int):
         if isinstance(name, str):

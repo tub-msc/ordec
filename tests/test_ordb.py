@@ -11,7 +11,7 @@ from tabulate import tabulate
 class MyHead(SubgraphHead):
     label = Attr(str)
 
-class MyNode(Cursor):
+class MyNode(Node):
     label = Attr(str)
 
 def test_schema_attr_inheritance():
@@ -68,10 +68,10 @@ def test_node():
             pass
 
 def test_node_hash_and_equiv():    
-    class NodeA(Cursor):
+    class NodeA(Node):
         text = Attr(str)
 
-    class NodeB(Cursor):
+    class NodeB(Node):
         text = Attr(str)
 
     a = NodeA(text='hello')
@@ -209,15 +209,15 @@ def test_subgraph_equiv():
     s5 % NPath(name='y', ref=y_cursor.nid)
     assert s5.subgraph == ref.subgraph
 
-    # 3. create subgraph using implicit Cursor:
+    # 3. create subgraph using implicit Node:
     s6 = Symbol()
     s6.a = Pin(pintype=PinType.In, pos=Vec2R(0, 2))
     s6.y = Pin(pintype=PinType.Out, pos=Vec2R(4, 2))
     assert s6.subgraph == ref.subgraph
 
 def test_funcinserter():
-    class Person(Cursor):
-        best_friend = LocalRef(Cursor)
+    class Person(Node):
+        best_friend = LocalRef(Node)
 
     ref = MutableSubgraph.load({
         0: MyHead.head(label=None),
@@ -301,9 +301,9 @@ def test_updater():
         u.add(MyNode(label='hello'))
 
 def test_localref_integrity():
-    class Person(Cursor):
-        best_friend = LocalRef(Cursor)
-        worst_enemy = LocalRef(Cursor)
+    class Person(Node):
+        best_friend = LocalRef(Node)
+        worst_enemy = LocalRef(Node)
 
     s = MyHead()
 
@@ -351,7 +351,7 @@ def test_localref_integrity():
 
 def test_index():
     # TODO!
-    class NodeA(Cursor):
+    class NodeA(Node):
         color = Attr(int)
         Index(color)
 
@@ -364,7 +364,7 @@ def test_index():
 
 def test_unique():
     # TODO: Extend this test
-    class NodeU1(Cursor):
+    class NodeU1(Node):
         label = Attr(str)
         unique_label = Index(label, unique=True)
 
@@ -442,7 +442,7 @@ def test_cursor_attribute():
         del s.label
 
 def test_cursor_paths():
-    class MyNodeNonLeaf(Cursor):
+    class MyNodeNonLeaf(Node):
         label = Attr(str)
         is_leaf = False
 
@@ -496,11 +496,11 @@ def test_full_path():
     s.mkpath('hello')
     assert s.hello.full_path_list() == ['hello']
     assert s.hello.full_path_str() == 'hello'
-    assert repr(s.hello) == 'Cursor(path=hello)'
+    assert repr(s.hello) == 'Node(path=hello)'
     s.hello.mkpath('world')
     assert s.hello.world.full_path_list() == ['hello', 'world']
     assert s.hello.world.full_path_str() == 'hello.world'
-    assert repr(s.hello.world) == 'Cursor(path=hello.world)'
+    assert repr(s.hello.world) == 'Node(path=hello.world)'
 
     s.mkpath('array')
     s.array.mkpath(0)
@@ -508,9 +508,9 @@ def test_full_path():
     s.array[0].mkpath('sub')
     assert s.array[0].sub.full_path_list() == ['array', 0, 'sub']
     assert s.array[0].sub.full_path_str() == 'array[0].sub'
-    assert repr(s.array[0].sub) == 'Cursor(path=array[0].sub)'
+    assert repr(s.array[0].sub) == 'Node(path=array[0].sub)'
     assert s.array[123456789].full_path_str() == 'array[123456789]'
-    assert repr(s.array[123456789]) == 'Cursor(path=array[123456789])'
+    assert repr(s.array[123456789]) == 'Node(path=array[123456789])'
 
 def test_cursor_paths_unique():
     s = MyHead()
@@ -580,7 +580,7 @@ def test_cursor_at_npath():
     assert c_node_with_npath.npath_nid == None
 
 def test_index_sort_nid():
-    class MyItem(Cursor):
+    class MyItem(Node):
         ref    = LocalRef(MyNode)
         order  = Attr(int)
 
@@ -599,7 +599,7 @@ def test_index_sort_nid():
     assert index_values == [98, 99, 100, 101, 102] # ordered by nid
 
 def test_index_custom_sort():
-    class MyItem(Cursor):
+    class MyItem(Node):
         ref    = LocalRef(MyNode)
         order  = Attr(int)
 
@@ -624,10 +624,10 @@ def test_subgraph_ntype():
     assert isinstance(s.node, MyHead.Tuple)
 
 def test_all_ntype():
-    class NodeA(Cursor):
+    class NodeA(Node):
         text = Attr(str)
 
-    class NodeB(Cursor):
+    class NodeB(Node):
         text = Attr(str)
 
     s = MyHead()
@@ -642,7 +642,7 @@ def test_all_ntype():
     assert [c.text for c in q2] == ['B1', 'B2']
 
 def test_cursor_localref():
-    class MyNodeItem(Cursor):
+    class MyNodeItem(Node):
         ref = LocalRef(MyNode)
         text = Attr(str)
 
@@ -653,7 +653,7 @@ def test_cursor_localref():
     assert n1_foo.ref == s.n1
 
 def test_cursor_externalref():
-    class NodeExtRef(Cursor):
+    class NodeExtRef(Node):
         subg = SubgraphRef(MyHead)
         eref = ExternalRef(MyNode, of_subgraph=lambda c: c.subg)
 

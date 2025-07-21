@@ -21,7 +21,7 @@ class PinType(Enum):
 # Misc
 # ----
 
-class PolyVec2R(Cursor):
+class PolyVec2R(Node):
     """
     One element/point of a Vec2R polygonal chain, which can be open or closed.
     A polygonal chain is closed if the last and first element are equivalent.
@@ -31,7 +31,7 @@ class PolyVec2R(Cursor):
     """Order of the point in the polygonal chain"""
     pos     = Attr(Vec2R)
 
-    ref_idx = Index(ref, sortkey=lambda Cursor: Cursor.order)
+    ref_idx = Index(ref, sortkey=lambda node: node.order)
 
 # Symbol
 # ------
@@ -54,7 +54,7 @@ class Symbol(SubgraphHead):
         from ..render import render
         return render(cursor).svg().decode('ascii'), {'isolated': False}
 
-class Pin(Cursor):
+class Pin(Node):
     """
     Pins are single wire connections exposed through a symbol.
     """
@@ -62,7 +62,7 @@ class Pin(Cursor):
     pos     = Attr(Vec2R)
     align   = Attr(D4, default=D4.R0)
  
-class SymbolPoly(Cursor):
+class SymbolPoly(Node):
     def __new__(cls, vertices:list[Vec2R]=None, **kwargs):
         main = super().__new__(cls, **kwargs)
         if vertices == None:
@@ -99,7 +99,7 @@ class SymbolPoly(Cursor):
         return ' '.join(d)
 
 
-class SymbolArc(Cursor):
+class SymbolArc(Node):
     """A drawn circle or circular segment for use in Symbol."""
     pos         = Attr(Vec2R)
     "Center point"
@@ -146,7 +146,7 @@ class SymbolArc(Cursor):
 # # Schematic
 # # ---------
 
-class Net(Cursor):
+class Net(Node):
     pin = ExternalRef(Pin, of_subgraph=lambda c: c.root.symbol)
 
 class Schematic(SubgraphHead):
@@ -163,7 +163,7 @@ class Schematic(SubgraphHead):
         from ..render import render
         return render(cursor).svg().decode('ascii'), {'isolated': False}
 
-class SchemPort(Cursor):
+class SchemPort(Node):
     """
     Port of a Schematic, corresponding to a Pin of the schematic's Symbol.
     """
@@ -177,7 +177,7 @@ class SchemWire(SymbolPoly):
     ref = LocalRef(Net)
     ref_idx = Index(ref)
 
-class SchemInstance(Cursor):
+class SchemInstance(Node):
     """
     An instance of a Symbol in a Schematic (foundation for schematic hierarchy).
     """
@@ -199,7 +199,7 @@ class SchemInstance(Cursor):
     def conns(cursor):
         return cursor.subgraph.all(SchemInstanceConn.ref_idx.query(cursor.nid))
 
-class SchemInstanceConn(Cursor):
+class SchemInstanceConn(Node):
     """
     Maps Pins of a SchemInstance to Nets of its Schematic.
     """
@@ -211,7 +211,7 @@ class SchemInstanceConn(Cursor):
 
     ref_pin_idx = CombinedIndex([ref, there], unique=True)
 
-class SchemTapPoint(Cursor):
+class SchemTapPoint(Node):
     """A schematic tap point for connecting points by label, typically visualized using the net's name."""
     ref = LocalRef(Net)
     ref_idx = Index(ref)
@@ -222,7 +222,7 @@ class SchemTapPoint(Cursor):
     def loc_transform(cursor):
         return cursor.pos.transl() * cursor.align
 
-class SchemConnPoint(Cursor):
+class SchemConnPoint(Node):
     """A schematic point to indicate a connection at a 3- or 4-way junction of wires."""
     ref = LocalRef(Net)
     ref_idx = Index(ref)
@@ -232,19 +232,19 @@ class SchemConnPoint(Cursor):
 # Simulation hierarchy
 # --------------------
 
-def parent_siminstance(c: Cursor) -> Cursor:
+def parent_siminstance(c: Node) -> Node:
     while not isinstance(c, (SimInstance, SimHierarchy)):
         c = c.parent
     return c
 
-class SimNet(Cursor):
+class SimNet(Node):
     trans_voltage = Attr(list[float])
     trans_current = Attr(list[float])
     dc_voltage = Attr(float)
 
     eref = ExternalRef(type=Net|Pin, of_subgraph=lambda c: parent_siminstance(c).schematic)
 
-class SimInstance(Cursor):
+class SimInstance(Node):
     dc_current = Attr(float)
 
     is_leaf = False
