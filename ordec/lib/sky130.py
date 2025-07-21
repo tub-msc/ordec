@@ -1,86 +1,62 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 from ..core import *
 from .. import helpers
-from . import Nmos, Pmos
-from ..routing import schematic_routing
+from ..parser.implicit_processing import schematic_routing
+from . import generic_mos
 from pathlib import Path
+
 _MODULE_DIR = Path(__file__).parent
 _PROJECT_ROOT = _MODULE_DIR.parent.parent
-_SKY130_MODEL_PATH_STR = "sky130A/libs.tech/ngspice/corners/tt.spice"
-_SKY130_MODEL_FULL_PATH = (_PROJECT_ROOT / _SKY130_MODEL_PATH_STR).resolve()
+_SKY130_RELATIVE_MODEL_PATH = "libs.tech/ngspice/corners/tt.spice"
+
+env_var_path = os.getenv("ORDEC_PDK_SKY130A")
+
+if env_var_path:
+    _SKY130_MODEL_FULL_PATH = (Path(env_var_path) / _SKY130_RELATIVE_MODEL_PATH).resolve()
+else:
+    _SKY130_MODEL_FULL_PATH = (_PROJECT_ROOT / "sky130A" / _SKY130_RELATIVE_MODEL_PATH).resolve()
 
 
 if not _SKY130_MODEL_FULL_PATH.is_file():
     print(f"WARNING: Sky130 model file not found at expected path derived from project structure: {_SKY130_MODEL_FULL_PATH}")
-    print(f"Ensure the path '{_SKY130_MODEL_PATH_STR}' exists relative to the project root '{_PROJECT_ROOT}' and models are downloaded.")
+    print(f"Ensure the files exist, or set the enviromental variable ORDEC_PDK_SKY130A")
 
-class NmosSky130(Nmos):
-    @staticmethod
-    def transistorTechnology() -> str:
-        """Returns the resolved, absolute path to the Sky130 TT model file."""
-        if not _SKY130_MODEL_FULL_PATH.is_file():
-            raise FileNotFoundError(f"Sky130 model file missing: {_SKY130_MODEL_FULL_PATH}")
-        return str(_SKY130_MODEL_FULL_PATH)
 
+def setup_sky(netlister):
+
+
+    netlister.add(".include",f"\"{_SKY130_MODEL_FULL_PATH}\"")
+    netlister.add(".param","mc_mm_switch=0")
+
+def params_to_spice(params, allowed_keys=('l', 'w', 'ad', 'as', 'm',"pd","ps")):
+    spice_params = []
+    for k, v in params.items():
+        if k not in allowed_keys:
+            continue
+        
+        scale_factor = {'w':1e9, 'l':1e9}
+        if isinstance(v, R):
+            v = (v * scale_factor.get(k, 1)).compat_str()
+        spice_params.append(f"{k}={v}")
+    return spice_params
+
+class Nmos(generic_mos.Nmos):
     @staticmethod
     def model_name() -> str:
         return "sky130_fd_pr__nfet_01v8"
+    def netlist_ngspice(self, netlister, inst, schematic):
+        netlister.require_setup(setup_sky)
+        pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
+        netlister.add(netlister.name_obj(inst, schematic, prefix="x"), netlister.portmap(inst, pins), self.model_name(), *params_to_spice(self.params))
 
-    @staticmethod
-    def add_to_circuit(scircuit, component):
-        ports = component.portmap.copy()
-        for pin, node in ports.items():
-            if isinstance(node, str) and 'gnd' in node:
-                ports[pin] = scircuit.gnd
-
-        params = component.params.copy()
-
-        scircuit.X(
-            component.name,  
-            NmosSky130.model_name(),  
-            *[ports['d'], ports['g'], ports['s'], ports['b']],  # Ports: drain, gate, source, bulk
-            **params 
-        )
-
-    @staticmethod
-    def circuit_global(circuit):
-        circuit.include(NmosSky130.transistorTechnology())
-        circuit.parameter("mc_mm_switch", 0)
-        
-class PmosSky130(Pmos):
-    @staticmethod
-    def transistorTechnology() -> str:
-        """Returns the resolved, absolute path to the Sky130 TT model file."""
-        if not _SKY130_MODEL_FULL_PATH.is_file():
-            raise FileNotFoundError(f"Sky130 model file missing: {_SKY130_MODEL_FULL_PATH}")
-        return str(_SKY130_MODEL_FULL_PATH)
-
-    @staticmethod
-    def model_name() -> str:
-        return "sky130_fd_pr__pfet_01v8"
-
-    @staticmethod
-    def add_to_circuit(scircuit, component):
-
-        ports = component.portmap.copy()
-        for pin, node in ports.items():
-            if isinstance(node, str) and 'gnd' in node:
-                ports[pin] = scircuit.gnd
-        params = component.params.copy()
-
-        scircuit.X(
-            component.name,
-            PmosSky130.model_name(), 
-            *[ports['d'], ports['g'], ports['s'], ports['b']],  # Ports: drain, gate, source, bulk
-            **params  
-        )
-
-    @staticmethod
-    def circuit_global(circuit):
-        circuit.include(PmosSky130.transistorTechnology())
-        circuit.parameter("mc_mm_switch", 0)
+class Pmos(generic_mos.Pmos):
+    def netlist_ngspice(self, netlister, inst, schematic):
+        netlister.require_setup(setup_sky)
+        pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
+        netlister.add(netlister.name_obj(inst, schematic, prefix="x"), netlister.portmap(inst, pins), 'sky130_fd_pr__pfet_01v8', *params_to_spice(self.params))
 
 class Inv(Cell):
     @generate(Symbol)
@@ -92,9 +68,9 @@ class Inv(Cell):
         node.y = Pin(pos=Vec2R(x=4, y=2), pintype=PinType.Out, align=Orientation.East)
 
         # Draw the inverter symbol
-        node % SchemPoly(vertices=[Vec2R(x=0, y=2), Vec2R(x=1, y=2)])  # Input line
-        node % SchemPoly(vertices=[Vec2R(x=3.25, y=2), Vec2R(x=4, y=2)])  # Output line
-        node % SchemPoly(vertices=[Vec2R(x=1, y=1), Vec2R(x=1, y=3), Vec2R(x=2.75, y=2), Vec2R(x=1, y=1)])  # Triangle
+        node % SymbolPoly(vertices=[Vec2R(x=0, y=2), Vec2R(x=1, y=2)])  # Input line
+        node % SymbolPoly(vertices=[Vec2R(x=3.25, y=2), Vec2R(x=4, y=2)])  # Output line
+        node % SymbolPoly(vertices=[Vec2R(x=1, y=1), Vec2R(x=1, y=3), Vec2R(x=2.75, y=2), Vec2R(x=1, y=1)])  # Triangle
         node % SymbolArc(pos=Vec2R(x=3, y=2), radius=R(0.25))  # Output bubble
 
         # Outline
@@ -102,13 +78,10 @@ class Inv(Cell):
 
     @generate(Schematic)
     def schematic(self, node):
-        # Create nets for internal connections
-        node.a = Net()
-        node.y = Net()
-        node.vdd = Net()
-        node.vss = Net()
-        node.ref = self.symbol
-       #l=0.15  w=0.99  as=0.26235  ad=0.26235  ps=2.51   pd=2.51
+        node.a = Net(pin=self.symbol.a)
+        node.y = Net(pin=self.symbol.y)
+        node.vdd = Net(pin=self.symbol.vdd)
+        node.vss = Net(pin=self.symbol.vss)
 
         nmos_params = {
             "l": "0.15",
@@ -118,8 +91,7 @@ class Inv(Cell):
             "ps": "1.52",
             "pd": "1.52"
         }
-        nmos = NmosSky130(**nmos_params).symbol
-        #l=0.15  w=0.495 as=0.131175 ad=0.131175 ps=1.52   pd=1.52
+        nmos = Nmos(**nmos_params).symbol
         pmos_params = {
             "l": "0.15",
             "w": "0.99",
@@ -128,52 +100,108 @@ class Inv(Cell):
             "ps": "2.51",
             "pd": "2.51"
         }
-        pmos = PmosSky130(**pmos_params).symbol
+        pmos = Pmos(**pmos_params).symbol
 
-        # Place NMOS and PMOS transistors in the schematic
-        node.nmos = SchemInstance(
-            pos=Vec2R(x=3, y=2),  # Position of NMOS
-            ref=nmos,  # NMOS symbol
-            portmap={
-                nmos.d: node.y,  # Drain connected to output
-                nmos.g: node.a,  # Gate connected to input
-                nmos.s: node.vss,  # Source connected to ground
-                nmos.b: node.vss  # Bulk connected to ground
-            }
-        )
+        node.pd = SchemInstance(nmos.portmap(s=node.vss, b=node.vss, g=node.a, d=node.y), pos=Vec2R(3, 2))
+        node.pu = SchemInstance(pmos.portmap(s=node.vdd, b=node.vdd, g=node.a, d=node.y), pos=Vec2R(3, 8))
 
-        node.pmos = SchemInstance(
-            pos=Vec2R(x=3, y=8),  # Position of PMOS
-            ref=pmos,  # PMOS symbol
-            portmap={
-                pmos.d: node.y,  # Drain connected to output
-                pmos.g: node.a,  # Gate connected to input
-                pmos.s: node.vdd,  # Source connected to Vdd
-                pmos.b: node.vdd  # Bulk connected to Vdd
-            }
-        )
 
-        # Connect pins to nets
-        node.port_vdd = SchemPort(
-            pos=Vec2R(x=1, y=13), align=Orientation.East, ref=self.symbol.vdd, net=node.vdd
-        )
-        node.port_vss = SchemPort(
-            pos=Vec2R(x=2, y=1), align=Orientation.East, ref=self.symbol.vss, net=node.vss
-        )
-        node.port_a = SchemPort(
-            pos=Vec2R(x=1, y=7), align=Orientation.East, ref=self.symbol.a, net=node.a
-        )
-        node.port_y = SchemPort(
-            pos=Vec2R(x=9, y=7), align=Orientation.West, ref=self.symbol.y, net=node.y
-        )
+        node.symbol = self.symbol
+        node.vdd % SchemPort(pos=Vec2R(x=2, y=13), align=Orientation.East, ref=self.symbol.vdd)
+        node.vss % SchemPort(pos=Vec2R(x=2, y=1), align=Orientation.East, ref=self.symbol.vss)
+        node.a % SchemPort(pos=Vec2R(x=1, y=7), align=Orientation.East, ref=self.symbol.a)
+        node.y % SchemPort(pos=Vec2R(x=9, y=7), align=Orientation.West, ref=self.symbol.y)
 
-        # Draw connections
-        #node.vss % SchemPoly(vertices=[node.port_vss.pos, Vec2R(x=5, y=1), Vec2R(x=8, y=1), node.nmos.pos + nmos.s.pos])
-        #node.vdd % SchemPoly(vertices=[node.port_vdd.pos, Vec2R(x=5, y=13), Vec2R(x=8, y=13), node.pmos.pos + pmos.s.pos])
-        #node.a % SchemPoly(vertices=[node.port_a.pos, node.port_a.pos + Vec2R(x=1, y=0), node.nmos.pos + nmos.g.pos, node.pmos.pos + pmos.g.pos])
-        #node.y % SchemPoly(vertices=[node.nmos.pos + nmos.d.pos, Vec2R(x=5, y=7), node.pmos.pos + pmos.d.pos, node.port_y.pos])
-        asd=[0,0]
-        schematic_routing(node,asd)
+        node.vss % SchemWire([Vec2R(2, 1), Vec2R(5, 1), Vec2R(8, 1), Vec2R(8, 4), Vec2R(7, 4)])
+        node.vss % SchemWire([Vec2R(5, 1), node.pd.pos + nmos.s.pos])
+        node.vdd % SchemWire([Vec2R(2, 13), Vec2R(5, 13), Vec2R(8, 13), Vec2R(8, 10), Vec2R(7, 10)])
+        node.vdd % SchemWire([Vec2R(5, 13), node.pu.pos + pmos.s.pos])
+        node.a % SchemWire([Vec2R(3, 4), Vec2R(2, 4), Vec2R(2, 7), Vec2R(2, 10), Vec2R(3, 10)])
+        node.a % SchemWire([Vec2R(1, 7), Vec2R(2, 7)])
+        node.y % SchemWire([Vec2R(5, 6), Vec2R(5, 7), Vec2R(5, 8)])
+        node.y % SchemWire([Vec2R(5, 7), Vec2R(9, 7)])
+
         helpers.schem_check(node, add_conn_points=True)
-        # Add outline
-        node.outline = Rect4R(lx=0, ly=1, ux=asd[0], uy=asd[1])
+
+        node.outline = Rect4R(lx=0, ly=1, ux=10, uy=13)
+
+
+class Ringosc(Cell):
+    @generate(Symbol)
+    def symbol(self, node):
+        node.vdd = Pin(pintype=PinType.Inout, align=Orientation.North)
+        node.vss = Pin(pintype=PinType.Inout, align=Orientation.South)
+        node.y = Pin(pintype=PinType.Out, align=Orientation.East)
+
+        helpers.symbol_place_pins(node, vpadding=2, hpadding=2)
+
+    @generate(Schematic)
+    def schematic(self, node):
+        node.y0 = Net()
+        node.y1 = Net()
+        node.y2 = Net()
+        node.vdd = Net()
+        node.vss = Net()
+
+        inv = Inv().symbol
+        node.i0 = SchemInstance(inv.portmap(vdd=node.vdd, vss=node.vss, a=node.y2, y=node.y0), pos=Vec2R(x=4, y=2))
+        node.i1 = SchemInstance(inv.portmap(vdd=node.vdd, vss=node.vss, a=node.y0, y=node.y1), pos=Vec2R(x=10, y=2))
+        node.i2 = SchemInstance(inv.portmap(vdd=node.vdd, vss=node.vss, a=node.y1, y=node.y2), pos=Vec2R(x=16, y=2))
+
+        node.vdd % SchemPort(pos=Vec2R(x=2, y=7), align=Orientation.East)
+        node.vss % SchemPort(pos=Vec2R(x=2, y=1), align=Orientation.East)
+        node.y2 % SchemPort(pos=Vec2R(x=22, y=4), align=Orientation.West)
+
+        node.outline = Rect4R(lx=0, ly=0, ux=24, uy=8)
+
+        node.y0 % SchemWire(vertices=[node.i0.pos+inv.y.pos, node.i1.pos+inv.a.pos])
+        node.y1 % SchemWire(vertices=[node.i1.pos+inv.y.pos, node.i2.pos+inv.a.pos])
+        node.y2 % SchemWire(vertices=[node.i2.pos+inv.y.pos, Vec2R(x=21,y=4), Vec2R(x=22, y=4)])
+        node.y2 % SchemWire(vertices=[Vec2R(x=21,y=4), Vec2R(x=21,y=8), Vec2R(x=3,y=8), Vec2R(x=3,y=4), node.i0.pos+inv.a.pos])
+
+        node.vss % SchemWire(vertices=[Vec2R(x=2, y=1), Vec2R(x=6, y=1), Vec2R(x=12, y=1), Vec2R(x=18, y=1), Vec2R(x=18, y=2)])
+        node.vss % SchemWire(vertices=[Vec2R(x=6, y=1), Vec2R(x=6, y=2)])
+        node.vss % SchemWire(vertices=[Vec2R(x=12, y=1), Vec2R(x=12, y=2)])
+
+        node.vdd % SchemWire(vertices=[Vec2R(x=2, y=7), Vec2R(x=6, y=7), Vec2R(x=12, y=7), Vec2R(x=18, y=7), Vec2R(x=18, y=6)])
+        node.vdd % SchemWire(vertices=[Vec2R(x=6, y=7), Vec2R(x=6, y=6)])
+        node.vdd % SchemWire(vertices=[Vec2R(x=12, y=7), Vec2R(x=12, y=6)])
+
+        helpers.schem_check(node, add_conn_points=True)
+
+class And2(Cell):
+    @generate(Symbol)
+    def symbol(self, node):
+        node.vdd = Pin(pos=Vec2R(x=2.5, y=5), pintype=PinType.Inout, align=Orientation.North)
+        node.vss = Pin(pos=Vec2R(x=2.5, y=0), pintype=PinType.Inout, align=Orientation.South)
+        node.a = Pin(pos=Vec2R(x=0, y=3), pintype=PinType.In, align=Orientation.West)
+        node.b = Pin(pos=Vec2R(x=0, y=2), pintype=PinType.In, align=Orientation.West)
+        node.y = Pin(pos=Vec2R(x=5, y=2.5), pintype=PinType.Out, align=Orientation.East)
+
+        node % SymbolPoly(vertices=[Vec2R(x=0, y=2), Vec2R(x=1, y=2)])
+        node % SymbolPoly(vertices=[Vec2R(x=0, y=3), Vec2R(x=1, y=3)])
+        node % SymbolPoly(vertices=[Vec2R(x=4, y=2.5), Vec2R(x=5, y=2.5)])
+        node % SymbolPoly(vertices=[Vec2R(x=2.75, y=1.25), Vec2R(x=1, y=1.25), Vec2R(x=1, y=3.75), Vec2R(x=2.75, y=3.75)])
+        node % SymbolArc(pos=Vec2R(x=2.75,y=2.5), radius=R(1.25), angle_start=R(-0.25), angle_end=R(0.25))
+        node.outline = Rect4R(lx=0, ly=0, ux=5, uy=5)
+
+class Or2(Cell):
+    @generate(Symbol)
+    def symbol(self, node):
+        node.vdd = Pin(pos=Vec2R(x=2.5, y=5), pintype=PinType.Inout, align=Orientation.North)
+        node.vss = Pin(pos=Vec2R(x=2.5, y=0), pintype=PinType.Inout, align=Orientation.South)
+        node.a = Pin(pos=Vec2R(x=0, y=3), pintype=PinType.In, align=Orientation.West)
+        node.b = Pin(pos=Vec2R(x=0, y=2), pintype=PinType.In, align=Orientation.West)
+        node.y = Pin(pos=Vec2R(x=5, y=2.5), pintype=PinType.Out, align=Orientation.East)
+
+        node % SymbolPoly(vertices=[Vec2R(x=0, y=2), Vec2R(x=1.3, y=2)])
+        node % SymbolPoly(vertices=[Vec2R(x=0, y=3), Vec2R(x=1.3, y=3)])
+        node % SymbolPoly(vertices=[Vec2R(x=4, y=2.5), Vec2R(x=5, y=2.5)])
+        node % SymbolPoly(vertices=[Vec2R(x=1, y=3.75), Vec2R(x=1.95, y=3.75)])
+        node % SymbolPoly(vertices=[Vec2R(x=1, y=1.25), Vec2R(x=1.95, y=1.25)])
+        node % SymbolArc(pos=Vec2R(x=-1.02,y=2.5), radius=R(2.4), angle_start=R(-0.085), angle_end=R(0.085))
+        node % SymbolArc(pos=Vec2R(x=1.95,y=1.35), radius=R(2.4), angle_start=R(0.08), angle_end=R(0.25))
+        node % SymbolArc(pos=Vec2R(x=1.95,y=3.65), radius=R(2.4), angle_start=R(-0.25), angle_end=R(-0.08))
+        node.outline = Rect4R(lx=0, ly=0, ux=5, uy=5)
+
+__all__ = ["Nmos", "Pmos", "Inv", "Ringosc", "And2", "Or2"]

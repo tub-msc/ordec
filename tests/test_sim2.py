@@ -85,3 +85,8 @@ def test_generic_mos_inv():
     assert lib_test.InvTb(vin=R(0)).sim_dc.o.dc_voltage  == 5.0
     assert lib_test.InvTb(vin=R('2.5')).sim_dc.o.dc_voltage == 2.5
     assert lib_test.InvTb(vin=R(5)).sim_dc.o.dc_voltage == 3.13125e-08
+
+def test_sky_mos_inv():
+    assert lib_test.InvSkyTb(vin=R(0)).sim_dc.o.dc_voltage  == 5.0
+    assert lib_test.InvSkyTb(vin=R('2.5')).sim_dc.o.dc_voltage == 1.980606
+    assert lib_test.InvSkyTb(vin=R(5)).sim_dc.o.dc_voltage ==  0.00012159

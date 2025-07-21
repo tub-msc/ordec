@@ -7,6 +7,7 @@ from ..sim2.sim_hierarchy import HighlevelSim
 
 from .generic_mos import Or2, Nmos, Pmos, Ringosc, Inv
 from .base import Gnd, NoConn, Res, Vdc, Idc
+from . import sky130
 
 class RotateTest(Cell):
     @generate(Schematic)
@@ -478,6 +479,40 @@ class InvTb(Cell):
         
         node.outline = Rect4R(lx=0, ly=0, ux=20, uy=14)
         
+        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
+
+    @generate(SimHierarchy)
+    def sim_dc(self, node):
+        sim = HighlevelSim(self.schematic, node)
+        sim.op()
+
+class InvSkyTb(Cell):
+    @generate(Schematic)
+    def schematic(self, node):
+        node.vdd = Net()
+        node.i = Net()
+        node.o = Net()
+        node.vss = Net()
+        try:
+            vin = self.params.vin
+        except AttributeError:
+            vin = R(0)
+
+        s_inv = sky130.Inv().symbol
+        s_nc = NoConn().symbol
+        s_gnd = Gnd().symbol
+        s_vdc_vdd = Vdc(dc=R('5')).symbol
+        s_vdc_in = Vdc(dc=vin).symbol
+
+        node.i_inv = SchemInstance(s_inv.portmap(vdd=node.vdd, vss=node.vss, a=node.i, y=node.o), pos=Vec2R(x=11,y=9))
+        node.i_nc = SchemInstance(s_nc.portmap(a=node.o), pos=Vec2R(x=16,y=9))
+
+        node.i_gnd = SchemInstance(s_gnd.portmap(p=node.vss), pos=Vec2R(x=11,y=0))
+        node.i_vdd = SchemInstance(s_vdc_vdd.portmap(m=node.vss, p=node.vdd), pos=Vec2R(x=0,y=6))
+        node.i_in = SchemInstance(s_vdc_in.portmap(m=node.vss, p=node.i), pos=Vec2R(x=5,y=6))
+
+        node.outline = Rect4R(lx=0, ly=0, ux=20, uy=14)
+
         helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
 
     @generate(SimHierarchy)
