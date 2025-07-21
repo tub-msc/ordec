@@ -8,7 +8,7 @@ from tabulate import tabulate
 
 
 # Custom schema for testing:
-class MyHead(SubgraphHead):
+class MyHead(SubgraphRoot):
     label = Attr(str)
 
 class MyNode(Node):
@@ -103,18 +103,18 @@ def test_attr_undefined():
         p = Pin(pos=Vec2R(4, 2), invalid='example')
 
 def test_subgraph_load():
-    with pytest.raises(ModelViolation, match=r"Missing head node"):
+    with pytest.raises(ModelViolation, match=r"Missing root node"):
         MutableSubgraph.load({
             100: Pin(pintype=PinType.In, pos=Vec2R(x=R('0.'), y=R('2.')), align=D4.R0),
         })
 
-    with pytest.raises(ModelViolation, match=r"Missing head node"):
+    with pytest.raises(ModelViolation, match=r"Missing root node"):
         MutableSubgraph.load({
-            100: Symbol.head(outline=None, caption=None),
+            100: Symbol.Tuple(outline=None, caption=None),
         })
 
     s_dict = {
-        0: Symbol.head(outline=None, caption=None),
+        0: Symbol.Tuple(outline=None, caption=None),
         100: Pin(pintype=PinType.In, pos=Vec2R(x=R('0.'), y=R('2.')), align=D4.R0),
         101: NPath(parent=None, name='a', ref=100),
         102: Pin(pintype=PinType.Out, pos=Vec2R(x=R('4.'), y=R('2.')), align=D4.R0),
@@ -220,7 +220,7 @@ def test_funcinserter():
         best_friend = LocalRef(Node)
 
     ref = MutableSubgraph.load({
-        0: MyHead.head(label=None),
+        0: MyHead.Tuple(label=None),
         22: Person(best_friend=23),
         23: Person(best_friend=22),
     })
@@ -380,7 +380,7 @@ def test_cursor_remove():
     s.node1 = MyNode(label='hello')
     s.node2 = MyNode(label='world')
     assert s.subgraph == MutableSubgraph.load({
-        0: MyHead.head(label=None),
+        0: MyHead.Tuple(label=None),
         28: MyNode(label='hello'),
         29: NPath(parent=None, name='node1', ref=28),
         30: MyNode(label='world'),
@@ -390,7 +390,7 @@ def test_cursor_remove():
     del s.node2
 
     assert s.subgraph == MutableSubgraph.load({
-        0: MyHead.head(label=None),
+        0: MyHead.Tuple(label=None),
         28: MyNode(label='hello'),
         29: NPath(parent=None, name='node1', ref=28),
     }).subgraph
@@ -403,7 +403,7 @@ def test_cursor_remove():
     with pytest.raises(TypeError, match=r'Attributes cannot be deleted.'):
         del s.node1.label
 
-    # Cannot delete attributes, also for head node:
+    # Cannot delete attributes, also for root node:
     with pytest.raises(TypeError, match=r'Attributes cannot be deleted.'):
         del s.label
 

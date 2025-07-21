@@ -36,7 +36,7 @@ class PolyVec2R(Node):
 # Symbol
 # ------
 
-class Symbol(SubgraphHead):
+class Symbol(SubgraphRoot):
     """A symbol of an individual cell."""
     outline = Attr(Rect4R)
     caption = Attr(str)
@@ -149,7 +149,7 @@ class SymbolArc(Node):
 class Net(Node):
     pin = ExternalRef(Pin, of_subgraph=lambda c: c.root.symbol)
 
-class Schematic(SubgraphHead):
+class Schematic(SubgraphRoot):
     """
     A schematic of an individual cell.
     """
@@ -251,7 +251,7 @@ class SimInstance(Node):
     schematic = SubgraphRef(Schematic)
     eref = ExternalRef(SchemInstance, of_subgraph=lambda c: parent_siminstance(c.parent).schematic)
 
-class SimHierarchy(SubgraphHead):
+class SimHierarchy(SubgraphRoot):
     schematic = SubgraphRef(Schematic)
     cell = Attr('Cell')
 

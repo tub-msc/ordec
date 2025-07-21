@@ -80,7 +80,7 @@ def fmt_float(val, unit):
     return x
 
 def serialize_view(name, view):
-    if not isinstance(view, SubgraphHead):
+    if not isinstance(view, SubgraphRoot):
         return {'exception': "Requested object is not View."}
 
     if isinstance(view, (Schematic, Symbol)):

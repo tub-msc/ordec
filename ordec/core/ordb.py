@@ -200,15 +200,15 @@ class SubgraphRef(Attr):
         return value.root_cursor
 
     @staticmethod
-    def externalref_factory(val: 'FrozenSubgraph|SubgraphHead|NoneType'):
+    def externalref_factory(val: 'FrozenSubgraph|SubgraphRoot|NoneType'):
         if val==None or isinstance(val, FrozenSubgraph):
             return val
         elif isinstance(val, Node):
             if val.subgraph.mutable:
-                raise TypeError('SubgraphHead for externalref_factory must be frozen.')
+                raise TypeError('SubgraphRoot for externalref_factory must be frozen.')
             return val.subgraph
         else:
-            raise TypeError('Only None, FrozenSubgraph or SubgraphHead can be assigned to SubgraphRef.')
+            raise TypeError('Only None, FrozenSubgraph or SubgraphRoot can be assigned to SubgraphRef.')
 
     factory: Callable = externalref_factory
 
@@ -745,23 +745,19 @@ class Node(tuple, metaclass=NodeMeta):
         return self.subgraph.root_cursor
 
 @public
-class SubgraphHead(Node):
+class SubgraphRoot(Node):
     """
-    Each subgraph has a single SubgraphHead node. The subclass of SubgraphHead
+    Each subgraph has a single SubgraphRoot node. The subclass of SubgraphRoot
     defines what kind of design data the subgraph represents.
     """
     is_leaf = False
 
     def __new__(cls, **kwargs):
-        # __new__ calls super().__new__ via SubgraphHead.head(), but wraps the result in a Subgraph object.
+        # __new__ calls super().__new__ via SubgraphRoot.Tuple(), but wraps the result in a Subgraph object.
         sg = MutableSubgraph()
         with sg.updater() as u:
-            u.add_single(cls.head(**kwargs), nid=0) # SubgraphHeads always have nid = 0
+            u.add_single(cls.Tuple(**kwargs), nid=0) # SubgraphRoots always have nid = 0
         return sg.root_cursor
-
-    @classmethod
-    def head(cls, **kwargs):
-        return super().__new__(cls, **kwargs)
 
     # Forward stuff to Subgraph, which is now further hidden
     # ------------------------------------------------------
@@ -810,10 +806,6 @@ class SubgraphHead(Node):
     def one(self, *args, **kwargs) -> Node:
         return self.subgraph.one(*args, **kwargs)
 
-    # TODO?!
-    #def __repr__(self):
-    #    return f"{type(self).__name__}.head({self.vals_repr()})"
-
 class SubgraphUpdater:
     """
     A SubgraphUpdater collects changes to a subgraph as a kind of
@@ -857,7 +849,7 @@ class SubgraphUpdater:
             self.commit = False
         if self.commit:
             if 0 not in self.nodes:
-                raise ModelViolation("Missing head node (nid 0).")
+                raise ModelViolation("Missing root node (nid 0).")
 
             for nid in self.check_nids:
                 self.nodes[nid].check_contraints(self, nid)
@@ -917,7 +909,7 @@ class SubgraphUpdater:
             raise TypeError("Invalid SubgraphUpdater.")
         
         if nid == 0:
-            raise OrdbException("Cannot delete SubgraphHead (nid=0).")
+            raise OrdbException("Cannot delete SubgraphRoot (nid=0).")
         node = self.nodes[nid]
         
         node.index_remove(self, nid) # Update metadata first.
@@ -951,7 +943,7 @@ class Subgraph(ABC):
     # --------------------
 
     def __repr__(self):
-        return f"<{type(self).__name__} {id(self)} head={self.nodes[0]!r}, {len(self.nodes)} nodes>"
+        return f"<{type(self).__name__} {id(self)} root={self.nodes[0]!r}, {len(self.nodes)} nodes>"
 
     def iter_tables(self):
         it = iter(self.node_dict('pretty').items())
@@ -972,7 +964,7 @@ class Subgraph(ABC):
 
         ret = [f'Subgraph {self.nodes[0]}:']
         for ntype, nodes in self.iter_tables():
-            if issubclass(ntype._cursor_type, SubgraphHead):
+            if issubclass(ntype._cursor_type, SubgraphRoot):
                 continue
             ret.append(ntype._cursor_type.__name__)
             table = []
@@ -1001,7 +993,7 @@ class Subgraph(ABC):
             def sortkey_pretty(item):
                 nid, node = item
                 return (
-                    not isinstance(node, SubgraphHead), # 1. Sort SubgraphHead to front.
+                    not isinstance(node, SubgraphRoot), # 1. Sort SubgraphRoot to front.
                     type(node).__name__, # 2. Sort alphabetically by ntype name.
                     nid, # 3. Sort by nid
                 )
@@ -1120,7 +1112,7 @@ class Subgraph(ABC):
 
     @property
     def root_cursor(self) -> Node:
-        """Root cursor pointing to subgraph head."""
+        """Root cursor pointing to subgraph root."""
         return self._root_cursor
 
     # Abstract methods
