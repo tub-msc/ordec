@@ -15,14 +15,14 @@ class MyNode(Cursor):
     label = Attr(str)
 
 def test_schema_attr_inheritance():
-    assert [ad.name for ad in MyNode.NodeTuple._layout] == ['label']
-    assert MyNode.NodeTuple.indices == []
+    assert [ad.name for ad in MyNode.Tuple._layout] == ['label']
+    assert MyNode.Tuple.indices == []
     assert isinstance(MyNode.label, Attr) # This checks if AttrDescriptor works properly on the class itself.
     assert MyNode.label.type == str
     
     class ExtMyNode(MyNode):
         label = Attr(bytes)
-    assert [ad.name for ad in ExtMyNode.NodeTuple._layout] == ['label']
+    assert [ad.name for ad in ExtMyNode.Tuple._layout] == ['label']
     assert MyNode.label != ExtMyNode.label
 
     class ExtMyNode2(MyNode):
@@ -32,18 +32,18 @@ def test_schema_attr_inheritance():
 
         C1 = Index(weight, unique=True)
         C2 = CombinedIndex([color, height], unique=True)
-    assert [ad.name for ad in ExtMyNode2.NodeTuple._layout] == ['label', 'weight', 'color', 'height']
+    assert [ad.name for ad in ExtMyNode2.Tuple._layout] == ['label', 'weight', 'color', 'height']
     assert isinstance(ExtMyNode2.C1, Index)
-    assert ExtMyNode2.NodeTuple.indices == [ExtMyNode2.C1, ExtMyNode2.C2]
+    assert ExtMyNode2.Tuple.indices == [ExtMyNode2.C1, ExtMyNode2.C2]
     assert ExtMyNode2.label == MyNode.label
 
     class ExtMyNode3(ExtMyNode2):
         rating = Attr(int)
         weight = Attr(str)
-    assert [ad.name for ad in ExtMyNode3.NodeTuple._layout] == ['label', 'weight', 'color', 'height', 'rating']
+    assert [ad.name for ad in ExtMyNode3.Tuple._layout] == ['label', 'weight', 'color', 'height', 'rating']
     assert ExtMyNode3.label == ExtMyNode2.label
     assert ExtMyNode3.weight != ExtMyNode2.weight
-    assert ExtMyNode3.NodeTuple.indices == [ExtMyNode2.C2] # ExtMyNode2.C1 is not in indices anymore, because the corresponding attribute was removed.
+    assert ExtMyNode3.Tuple.indices == [ExtMyNode2.C2] # ExtMyNode2.C1 is not in indices anymore, because the corresponding attribute was removed.
 
 def test_node():
     #n = Node()
@@ -139,7 +139,7 @@ def test_subgraph_dump():
     assert s.subgraph == s_restored.subgraph
 
 def test_subgraph_table():
-    ref_table = """Subgraph MyHead.NodeTuple(label='head label'):
+    ref_table = """Subgraph MyHead.Tuple(label='head label'):
   MyNode
   |   nid | label   |
   |-------|---------|
@@ -161,11 +161,11 @@ def test_subgraph_table():
 
 def test_subgraph_equiv():
     ref = MutableSubgraph.load({
-        0: Symbol.NodeTuple(outline=None, caption=None),
-        100: Pin.NodeTuple(pintype=PinType.In, pos=Vec2R(x=R('0.'), y=R('2.')), align=D4.R0),
-        101: NPath.NodeTuple(parent=None, name='a', ref=100),
-        102: Pin.NodeTuple(pintype=PinType.Out, pos=Vec2R(x=R('4.'), y=R('2.')), align=D4.R0),
-        103: NPath.NodeTuple(parent=None, name='y', ref=102),
+        0: Symbol.Tuple(outline=None, caption=None),
+        100: Pin.Tuple(pintype=PinType.In, pos=Vec2R(x=R('0.'), y=R('2.')), align=D4.R0),
+        101: NPath.Tuple(parent=None, name='a', ref=100),
+        102: Pin.Tuple(pintype=PinType.Out, pos=Vec2R(x=R('4.'), y=R('2.')), align=D4.R0),
+        103: NPath.Tuple(parent=None, name='y', ref=102),
     })
 
     # 1. create subgraph via Subgraph.add():
@@ -239,7 +239,7 @@ def test_funcinserter():
 
 def test_inserter_node():
     assert isinstance(MyNode(), Inserter)
-    assert issubclass(MyNode.NodeTuple, Inserter)
+    assert issubclass(MyNode.Tuple, Inserter)
 
 def test_nid_generator():
     s = MyHead()
@@ -451,7 +451,7 @@ def test_cursor_paths():
 
     npath_nid = s.sub.npath_nid
     npath  = s.sub.npath
-    assert isinstance(s.sub.npath, NPath.NodeTuple)
+    assert isinstance(s.sub.npath, NPath.Tuple)
     assert (npath.name, npath.parent, npath.ref) == ('sub', None, None)
 
     with pytest.raises(OrdbException):
@@ -621,7 +621,7 @@ def test_index_custom_sort():
 def test_subgraph_ntype():
     s = MyHead()
     assert isinstance(s, MyHead)
-    assert isinstance(s.node, MyHead.NodeTuple)
+    assert isinstance(s.node, MyHead.Tuple)
 
 def test_all_ntype():
     class NodeA(Cursor):

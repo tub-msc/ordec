@@ -104,7 +104,7 @@ class NodeTupleAttrDescriptor:
         if obj == None: # for the class: return CursorAttrDescriptor object
             return self
         else: # for instances: return value of attribute
-            assert owner == self.ntype.NodeTuple
+            assert owner == self.ntype.Tuple
             return obj[self.index]
 
     def __repr__(self):
@@ -528,11 +528,12 @@ class CursorMeta(type):
         nodetuple_dict['_attrdesc_by_attr'] = attrdesc_by_attr
         nodetuple_dict['_layout'] = layout
         nodetuple_dict['_cursor_type'] = cls
-        SubNodeTuple = type(name+'.NodeTuple', (NodeTuple,), nodetuple_dict)
+        SubNodeTuple = type(name+'.Tuple', (NodeTuple,), nodetuple_dict)
 
-        cls.NodeTuple = SubNodeTuple
+        cls.Tuple = SubNodeTuple
 
         return super().__init__(name, bases, attrs)
+
 
 @public
 class Cursor(tuple, metaclass=CursorMeta):
@@ -565,7 +566,7 @@ class Cursor(tuple, metaclass=CursorMeta):
         return super().__new__(cls, (subgraph, nid, npath_nid))
 
     def __new__(self, **kwargs):
-        return self.NodeTuple(**kwargs)
+        return self.Tuple(**kwargs)
 
     def full_path_list(self) -> list[str|int]:
         if self.nid == 0:
@@ -1052,7 +1053,7 @@ class Subgraph(ABC):
     def all(self, query: IndexQuery, wrap_cursor:bool=True):
         if isinstance(query, type):
             assert issubclass(query, Cursor)
-            query = NodeTuple.index_ntype.query(query.NodeTuple)
+            query = NodeTuple.index_ntype.query(query.Tuple)
         try:
             nids = self.index[query.index_key]
         except KeyError:
