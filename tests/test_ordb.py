@@ -136,7 +136,7 @@ def test_subgraph_dump():
     d = s.subgraph.dump()
 
     s_restored = eval(d, globals(), locals())
-    assert s.subgraph == s_restored.subgraph
+    assert s.freeze() == s_restored.freeze()
 
 def test_subgraph_table():
     ref_table = """Subgraph MyHead.Tuple(label='head label'):
@@ -159,7 +159,7 @@ def test_subgraph_table():
     table = s.subgraph.tables()
     assert re.sub(r"\s*[0-9]+", '<num>', table) == re.sub(r"\s*[0-9]+", '<num>', ref_table)
 
-def test_subgraph_equiv():
+def test_subgraph_matches():
     ref = MutableSubgraph.load({
         0: Symbol.Tuple(outline=None, caption=None),
         100: Pin.Tuple(pintype=PinType.In, pos=Vec2R(x=R('0.'), y=R('2.')), align=D4.R0),
@@ -175,31 +175,31 @@ def test_subgraph_equiv():
     a_path_nid = s.add(NPath(name='a', ref=a_nid))
     y_nid = s.add(Pin(pintype=PinType.Out, pos=Vec2R(4, 2)))
     y_path_nid = s.add(NPath(name='y', ref=y_nid))
-    assert s.subgraph == ref.subgraph
+    assert s.matches(ref)
 
     # Change of attribute should lead to inequivalence:
     s2 = s.copy()
     assert s2.subgraph.root_cursor is s2
     s2.caption = "hello"
-    assert s2.subgraph != ref.subgraph
+    assert not s2.matches(ref)
     # Original subgraph s should be unaffected:
-    assert s.subgraph == ref.subgraph
+    assert s.matches(ref)
 
     # Adding nodes should also lead to inequivalence:
     s3 = s.copy()
     s3.add(Pin(pintype=PinType.In, pos=Vec2R(2, 0)))
-    assert s3 != ref
+    assert not s3.matches(ref)
     # Original subgraph s should be unaffected:
-    assert s.subgraph == ref.subgraph
+    assert s.matches(ref)
 
     # Removing nodes also lead to inequivalence:
     s4 = s.copy()
     with s4.updater() as u:
         u.remove_nid(a_nid)
         u.remove_nid(a_path_nid)
-    assert s4.subgraph != ref.subgraph
+    assert not s4.matches(ref)
     # Original subgraph s should not unaffected:
-    assert s.subgraph == ref.subgraph
+    assert s.matches(ref)
 
     # 2. create subgraph using '%' shorthand (Subgraph.__mod__) instead of Subgraph.add:
     s5 = Symbol()
@@ -207,13 +207,13 @@ def test_subgraph_equiv():
     s5 % NPath(name='a', ref=a_cursor.nid)
     y_cursor = s5 % Pin(pintype=PinType.Out, pos=Vec2R(4, 2))
     s5 % NPath(name='y', ref=y_cursor.nid)
-    assert s5.subgraph == ref.subgraph
+    assert s5.matches(ref)
 
     # 3. create subgraph using implicit Node:
     s6 = Symbol()
     s6.a = Pin(pintype=PinType.In, pos=Vec2R(0, 2))
     s6.y = Pin(pintype=PinType.Out, pos=Vec2R(4, 2))
-    assert s6.subgraph == ref.subgraph
+    assert s6.matches(ref)
 
 def test_funcinserter():
     class Person(Node):
@@ -235,7 +235,7 @@ def test_funcinserter():
     s.add(inserter)
 
     assert isinstance(inserter, Inserter)
-    assert s.subgraph == ref.subgraph
+    assert s.matches(ref)
 
 def test_inserter_node():
     assert isinstance(MyNode(), Inserter)
@@ -320,7 +320,7 @@ def test_localref_integrity():
     with pytest.raises(DanglingLocalRef) as exc_info:
         s % Person(worst_enemy=dangling_ref)
     assert exc_info.value.nid == dangling_ref
-    assert s.subgraph == s_before.subgraph
+    assert s.matches(s_before)
 
     # Dangling reference on node removal:
     s_before = s.copy()
@@ -329,21 +329,21 @@ def test_localref_integrity():
             u.remove_nid(bob.nid)
             # This fails because bob is missing!
     assert exc_info.value.nid == bob.nid
-    assert s.subgraph == s_before.subgraph
+    assert s.matches(s_before)
 
     # Dangling reference on node update:
     s_before = s.copy()
     with pytest.raises(DanglingLocalRef) as exc_info:
         charlie.worst_enemy = dangling_ref
     assert exc_info.value.nid == dangling_ref
-    assert s.subgraph == s_before.subgraph
+    assert s.matches(s_before)
 
     s_before = s.copy()
     with pytest.raises(DanglingLocalRef) as exc_info:
         s.remove_nid(alice.nid)
         # We cannot remove alice (dangling LocalRef).
     assert exc_info.value.nid == alice.nid
-    assert s.subgraph == s_before.subgraph
+    assert s.matches(s_before)
 
     # But if we remove its reference first, we can remove alice:
     bob.best_friend = charlie
@@ -373,27 +373,29 @@ def test_unique():
     s2 = s.copy()
     with pytest.raises(UniqueViolation):
         s2 % NodeU1(label='hello')
-    assert s2.subgraph == s.subgraph and s2.subgraph.index == s.subgraph.index # Make sure neither the nodes nor the index was modified here.
+    # Make sure neither the nodes nor the index was modified here:
+    assert s2.subgraph.internally_equal(s.subgraph) 
+    assert s2.subgraph.index == s.subgraph.index 
 
 def test_cursor_remove():
     s = MyHead()
     s.node1 = MyNode(label='hello')
     s.node2 = MyNode(label='world')
-    assert s.subgraph == MutableSubgraph.load({
+    assert s.matches(MutableSubgraph.load({
         0: MyHead.Tuple(label=None),
         28: MyNode(label='hello'),
         29: NPath(parent=None, name='node1', ref=28),
         30: MyNode(label='world'),
         31: NPath(parent=None, name='node2', ref=30),
-    }).subgraph
+    }))
 
     del s.node2
 
-    assert s.subgraph == MutableSubgraph.load({
+    assert s.matches(MutableSubgraph.load({
         0: MyHead.Tuple(label=None),
         28: MyNode(label='hello'),
         29: NPath(parent=None, name='node1', ref=28),
-    }).subgraph
+    }))
 
     # Cannot delete node that does not exist:
     with pytest.raises(QueryException, match=r'Path not found'):
@@ -409,16 +411,30 @@ def test_cursor_remove():
 
 def test_freeze():
     s = MyHead(label='head label')
+    assert isinstance(s, MutableNode)
+    assert isinstance(s, MyHead.Mutable)
+    assert isinstance(s, MyHead)
     s.node1 = MyNode(label='hello')
+    assert isinstance(s.node1, MutableNode)
+    assert isinstance(s.node1, MyNode.Mutable)
+    assert isinstance(s.node1, MyNode)
     s.node2 = MyNode(label='world')
 
     s.node1.label = 'ahoy'
 
     assert s.mutable
-    with pytest.raises(TypeError, match="unhashable type"):
-        hash(s.subgraph)
+    hash(s.subgraph) # Ensure that MutableSubgraph is hashable
+
     s=s.freeze()
     assert not s.mutable
+    assert isinstance(s, FrozenNode)
+    assert isinstance(s, MyHead.Frozen)
+    assert isinstance(s, MyHead)
+    assert isinstance(s.node1, FrozenNode)
+    assert isinstance(s.node1, MyNode.Frozen)
+    assert isinstance(s.node1, MyNode)
+
+    # TODO: revisit hash and .subgraph stuff
     hash(s.subgraph)
 
     with pytest.raises(TypeError, match=r'Subgraph is already frozen.'):
@@ -434,7 +450,7 @@ def test_freeze():
 def test_cursor_attribute():
     s = MyHead(label='hi')
     assert s.label == 'hi'
-    assert type(s) is MyHead
+    assert type(s) is MyHead.Mutable
     
     s.label = 'blub'
 
@@ -496,11 +512,11 @@ def test_full_path():
     s.mkpath('hello')
     assert s.hello.full_path_list() == ['hello']
     assert s.hello.full_path_str() == 'hello'
-    assert repr(s.hello) == 'Node(path=hello)'
+    assert repr(s.hello) == 'PathNode.Mutable(path=hello)'
     s.hello.mkpath('world')
     assert s.hello.world.full_path_list() == ['hello', 'world']
     assert s.hello.world.full_path_str() == 'hello.world'
-    assert repr(s.hello.world) == 'Node(path=hello.world)'
+    assert repr(s.hello.world) == 'PathNode.Mutable(path=hello.world)'
 
     s.mkpath('array')
     s.array.mkpath(0)
@@ -508,9 +524,9 @@ def test_full_path():
     s.array[0].mkpath('sub')
     assert s.array[0].sub.full_path_list() == ['array', 0, 'sub']
     assert s.array[0].sub.full_path_str() == 'array[0].sub'
-    assert repr(s.array[0].sub) == 'Node(path=array[0].sub)'
+    assert repr(s.array[0].sub) == 'PathNode.Mutable(path=array[0].sub)'
     assert s.array[123456789].full_path_str() == 'array[123456789]'
-    assert repr(s.array[123456789]) == 'Node(path=array[123456789])'
+    assert repr(s.array[123456789]) == 'PathNode.Mutable(path=array[123456789])'
 
 def test_cursor_paths_unique():
     s = MyHead()
@@ -521,19 +537,19 @@ def test_cursor_paths_unique():
 
     with pytest.raises(OrdbException, match=r"Path exists"):
         s2.mkpath('sub')
-    assert s2.subgraph == s.subgraph # Make sure no partial insertion was done.
+    assert s2.matches(s) # Make sure no partial insertion was done.
 
     with pytest.raises(OrdbException, match=r"Path exists"):
         s2.sub = MyNode()
-    assert s2.subgraph == s.subgraph # Make sure no partial insertion was done.
+    assert s2.matches(s) # Make sure no partial insertion was done.
 
     with pytest.raises(OrdbException, match=r"Path exists"):
         s2.mkpath('node1')
-    assert s2.subgraph == s.subgraph # Make sure no partial insertion was done.
+    assert s2.matches(s) # Make sure no partial insertion was done.
 
     with pytest.raises(OrdbException, match=r"Path exists"):
         s2.node1 = MyNode()
-    assert s2.subgraph == s.subgraph # Make sure no partial insertion was done.
+    assert s2.matches(s) # Make sure no partial insertion was done.
 
 def test_polyvec2r():
     s = Symbol()

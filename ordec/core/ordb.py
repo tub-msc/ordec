@@ -86,7 +86,6 @@ class Attr:
     indices : list[GenericIndex] = field(default_factory=list)
     factory: Callable = default_factory
 
-
     def read_hook(self, value, cursor):
         return value
 
@@ -122,7 +121,7 @@ class NodeAttrDescriptor:
         if cursor == None: # for the class: return Attr object
             return self.attr
         else: # for instances: return value of attribute
-            assert owner == self.ntype
+            assert issubclass(owner, self.ntype)
             #return cursor.node[self.index]
             return self.attr.read_hook(cursor.node[self.index], cursor)
 
@@ -493,53 +492,59 @@ class NodeMeta(type):
 
         return raw_attrs
 
-    def __new__(mcs, name, bases, attrs):
-        raw_attrs = mcs._collect_raw_attrs(attrs, bases)
-
-        # Populate special class attributes:
-        attrs |= {'_raw_attrs': raw_attrs, '__slots__':()}
+    def __new__(mcs, name, bases, attrs, build_node=True):
+        attrs['__slots__'] = ()
+        if build_node:
+            raw_attrs = mcs._collect_raw_attrs(attrs, bases)
+            # Populate special class attributes:
+            attrs['_raw_attrs'] = raw_attrs
         return super(NodeMeta, mcs).__new__(mcs, name, bases, attrs)
 
-    def __init__(cls, name, bases, attrs):
-        # Build descriptors from raw attributes:
-        attrdesc_by_attr = {}
-        attrdesc_by_name = {}
-        nodetuple_dict = {'_raw_attrs': cls._raw_attrs, '__slots__':()}
-        layout = []
-        #attrs.setdefault('__annotations__', {})
-        cls.__annotations__ = {}
-        nt_indices = []
+    def __init__(cls, name, bases, attrs, build_node=True):
+        if build_node:
+            # Build descriptors from raw attributes:
+            attrdesc_by_attr = {}
+            attrdesc_by_name = {}
+            nodetuple_dict = {'_raw_attrs': cls._raw_attrs, '__slots__':()}
+            layout = []
+            #attrs.setdefault('__annotations__', {})
+            cls.__annotations__ = {}
+            nt_indices = []
 
-        for n, (k, v) in enumerate(cls._raw_attrs.items()):
-            nt_ad = NodeTupleAttrDescriptor(ntype=cls, index=n, name=k, attr=v)
-            nodetuple_dict[k] = nt_ad
-            c_ad = NodeAttrDescriptor(ntype=cls, index=n, name=k, attr=v)
-            setattr(cls, k, c_ad)
-            cls.__annotations__[k] = v.type # Not so nice; for Sphinx.
-            layout.append(nt_ad)
-            attrdesc_by_attr[v] = nt_ad
-            attrdesc_by_name[k] = nt_ad
-            for ns in v.indices:
-                if ns not in nt_indices:
-                    nt_indices.append(ns)
+            for n, (k, v) in enumerate(cls._raw_attrs.items()):
+                nt_ad = NodeTupleAttrDescriptor(ntype=cls, index=n, name=k, attr=v)
+                nodetuple_dict[k] = nt_ad
+                c_ad = NodeAttrDescriptor(ntype=cls, index=n, name=k, attr=v)
+                setattr(cls, k, c_ad)
+                cls.__annotations__[k] = v.type # Not so nice; for Sphinx.
+                layout.append(nt_ad)
+                attrdesc_by_attr[v] = nt_ad
+                attrdesc_by_name[k] = nt_ad
+                for ns in v.indices:
+                    if ns not in nt_indices:
+                        nt_indices.append(ns)
 
-        nodetuple_dict['indices'] = nt_indices
-        nodetuple_dict['_attrdesc_by_name'] = attrdesc_by_name
-        nodetuple_dict['_attrdesc_by_attr'] = attrdesc_by_attr
-        nodetuple_dict['_layout'] = layout
-        nodetuple_dict['_cursor_type'] = cls
-        SubNodeTuple = type(name+'.Tuple', (NodeTuple,), nodetuple_dict)
-
-        cls.Tuple = SubNodeTuple
+            nodetuple_dict['indices'] = nt_indices
+            nodetuple_dict['_attrdesc_by_name'] = attrdesc_by_name
+            nodetuple_dict['_attrdesc_by_attr'] = attrdesc_by_attr
+            nodetuple_dict['_layout'] = layout
+            nodetuple_dict['_cursor_type'] = cls
+            cls.Tuple = type(name+'.Tuple', (NodeTuple,), nodetuple_dict)
+            cls.Mutable = type(name+'.Mutable', (cls, MutableNode), {'__slots__':()}, build_node=False)
+            cls.Frozen = type(name+'.Frozen', (cls, FrozenNode), {'__slots__':()}, build_node=False)
 
         return super().__init__(name, bases, attrs)
 
 @public
-class Node(tuple, metaclass=NodeMeta):
+class Node(tuple, metaclass=NodeMeta, build_node=False):
     """
     Node provides a cursor-like access layer to NodeTuples within mutable or immutable subgraphs.
 
-    Node objects are 3-tuples (subgraph, nid ,npath_nid)
+    Node objects are 3-tuples (subgraph, nid ,npath_nid).
+
+    The hash() and == behviour of Node is implemented by tuple.__hash__ and
+    tuple.__eq__ and relies on the hash() and == behavior of MutableSubgraph
+    (for MutableNodes) or FrozenSubgraph (for FrozenNodes).
     """
 
     is_leaf : bool = True
@@ -726,23 +731,21 @@ class Node(tuple, metaclass=NodeMeta):
                 return main_nid
             return self.subgraph % FuncInserter(inserter_func)
 
-    def __hash__(self):
-        return hash((id(self.subgraph), self.nid))
-
-    #def __hash__(self):
-    #    return hash((self.subgraph, self.nid, self.npath_nid))
-
-    def __eq__(self, other):
-        if isinstance(other, Node):
-            #return (id(self.subgraph) == id(other.subgraph)) and (self.nid == other.nid)
-            return (self.subgraph is other.subgraph) and (self.nid == other.nid)
-        else:
-            return False
-
-
     @property
     def root(self):
         return self.subgraph.root_cursor
+
+@public
+class FrozenNode(Node, build_node=False):
+    pass
+
+@public
+class MutableNode(Node, build_node=False):
+    pass
+
+@public
+class PathNode(Node):
+    pass
 
 @public
 class SubgraphRoot(Node):
@@ -805,6 +808,12 @@ class SubgraphRoot(Node):
 
     def one(self, *args, **kwargs) -> Node:
         return self.subgraph.one(*args, **kwargs)
+
+    def matches(self, other):
+        if not isinstance(other, SubgraphRoot):
+            return False
+        assert other.nid == 0
+        return self.subgraph.matches(other.subgraph)
 
 class SubgraphUpdater:
     """
@@ -1003,13 +1012,16 @@ class Subgraph(ABC):
         
         return {k: v for k, v in sorted(self.nodes.items(), key=sortkey)}
 
-    def __eq__(self, other):
+    def matches(self, other):
         """
-        Comparing for equality based on canonical node lists.
+        Check whether two subgraphs match regardless of nid numbers. While the nids
+        and LocalRefs are ignored, the nid order (i.e. insertion order) must match
+        for equivalence.
 
-        The nids and corresponding LocalRefs do not have to match for equivalence.
+        This operation is based on canonical node lists.
 
-        While the nids themselves are ignored, the nid order (i.e. insertion order) must match for equivalence.
+        TODO: It is not clear whether this function is needed at all. Furthermore,
+        ExternalRefs are not handled.
         """
         if not isinstance(other, Subgraph):
             return False
@@ -1036,6 +1048,11 @@ class Subgraph(ABC):
                 return False
 
         return True
+
+    def internally_equal(self, other) -> bool:
+        if not isinstance(other, Subgraph):
+            raise TypeError("Expected Subgraph.")
+        return (self.nodes == other.nodes) and (self.nid_alloc == other.nid_alloc)
 
     def dump(self) -> str:
         d = self.node_dict('canonical')
@@ -1074,7 +1091,7 @@ class Subgraph(ABC):
         if nid == None:
             # NPath without node
             assert npath_nid != None
-            cursor_cls = Node
+            cursor_cls = PathNode
         else:
             cursor_cls = self.nodes[nid]._cursor_type
             if lookup_npath and npath_nid == None:
@@ -1082,15 +1099,11 @@ class Subgraph(ABC):
                     npath_nid = self.one(NPath.idx_path_of.query(nid), wrap_cursor=False)
                 except QueryException:
                     pass
+        if self.mutable:
+            return cursor_cls.Mutable.raw_cursor(self, nid, npath_nid)
+        else:
+            return cursor_cls.Frozen.raw_cursor(self, nid, npath_nid)
 
-        return cursor_cls.raw_cursor(self, nid, npath_nid)
-
-    def internally_equal(self, other) -> bool:
-        if not isinstance(other, Subgraph):
-            raise TypeError("Expected Subgraph.")
-        return (self.nodes == other.nodes) \
-            and (self.index == other.index) \
-            and (self.nid_alloc == other.nid_alloc)
 
     # The private _nodes, _index, _nid_alloc and _root_cursor are hidden behind
     # properties to prevent accidental mutation.
@@ -1173,6 +1186,13 @@ class Subgraph(ABC):
 
 @public
 class FrozenSubgraph(Subgraph):
+    """
+    FrozenSubgraph has custom __hash__ and __eq__ methods, which treat subgraphs
+    with the equal nodes and nid_alloc as equal. Thus, its hash() and ==
+    behavior matches that of immutable types like tuple and str. 'index' is
+    not checked for equivalence, as it should be equal by construction.
+    """
+
     __slots__=()
     def __init__(self, subgraph):
         self._nodes= subgraph.nodes
@@ -1195,12 +1215,13 @@ class FrozenSubgraph(Subgraph):
         ret.mutate(self.nodes, self.index, self.nid_alloc)
         return ret
 
+    def __eq__(self, other):
+        if not isinstance(other, FrozenSubgraph):
+            return False
+        return (self.nodes == other.nodes) and (self.nid_alloc == other.nid_alloc)
+
     def __hash__(self):
-        """
-        FrozenSubgraph has __hash__ and __eq__ (as it is immutable),
-        while MutableSubgraph only has __eq__ (as it is mutable).
-        """
-        return hash((self.nodes, self.index, self.nid_alloc))
+        return hash((self.nodes, self.nid_alloc))
 
     def freeze(self) -> 'FrozenSubgraph':
         raise TypeError("Subgraph is already frozen.")
@@ -1218,6 +1239,22 @@ class FrozenSubgraph(Subgraph):
 
 @public
 class MutableSubgraph(Subgraph):
+    """
+    MutableSubgraph does not override object.__eq__ and object.__hash__. Thus,
+    hash() and == behavior is based purely on the id() / address of a
+    MutableSubgraph. In contrast to the FrozenSubgraphs, a copy of a
+    MutableSubgraph is not equal to the original and has a different hash.
+
+    An alternative approach here would be to use the same __eq__ as
+    FrozenSubgraph does. In this case, we would end up with with an unhashable
+    type, which we can for example not use as key in dictionaries. We want
+    MutableSubgraphs and MutableNodes (which reference MutableSubgraphs) to be
+    hashable. Therefore, the default object behavior is the one that seems
+    most sensible.
+
+    To compare two MutableSubgraphs a and b for internal equivalence, either do
+    a.freeze() == b.freeze() or subgraphs_match(a, b).
+    """
     __slots__=()
 
     @property
