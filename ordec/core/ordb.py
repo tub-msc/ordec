@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from pyrsistent import pmap, pvector, pset, PMap, PVector, PSet
-from typing import Callable
+from typing import Callable, Iterable
 from typing import NamedTuple
 from types import NoneType
 from dataclasses import dataclass, field
@@ -27,14 +27,14 @@ class ModelViolation(OrdbException):
 class Inserter(ABC):
     __slots__=()
     @abstractmethod
-    def insert(self, sgu):
+    def insert_into(self, sgu):
         pass
 
 @public
 class FuncInserter(Inserter):
-    __slots__=("insert",)
+    __slots__=("insert_into",)
     def __init__(self, inserter_func):
-        self.insert = inserter_func
+        self.insert_into = inserter_func
 
 class IndexKey(NamedTuple):
     index: 'Index'
@@ -73,12 +73,12 @@ class DanglingLocalRef(ModelViolation):
 @dataclass(frozen=False, eq=False)
 class Attr:
     """
-    Schema attribute for use in Node subclasses.
+    Schema attribute for use in Node subclasses. # TODO: update this doc
     """
 
     def default_factory(val):
-        if isinstance(val, Cursor):
-            raise TypeError("Cursors can only be added to LocalRef or ExternalRef attributes.")
+        if isinstance(val, Node):
+            raise TypeError("Nodes can only be added to LocalRef, ExternalRef or SubgraphRef attributes.")
         return val
 
     type: type
@@ -86,12 +86,11 @@ class Attr:
     indices : list[GenericIndex] = field(default_factory=list)
     factory: Callable = default_factory
 
-
     def read_hook(self, value, cursor):
         return value
 
 @dataclass(frozen=True, eq=False)
-class AttrDescriptor:
+class NodeTupleAttrDescriptor:
     ntype: type
     index: int
     name: str
@@ -101,28 +100,28 @@ class AttrDescriptor:
         return isinstance(self.attr, LocalRef)
 
     def __get__(self, obj, owner=None):
-        if obj == None: # for the class: return Attr object
-            return self.attr
+        if obj == None: # for the class: return NodeAttrDescriptor object
+            return self
         else: # for instances: return value of attribute
-            assert owner == self.ntype
+            assert owner == self.ntype.Tuple
             return obj[self.index]
 
     def __repr__(self):
-        return f"AttrDescriptor({self.ntype.__name__}.{self.name})"
+        return f"NodeTupleAttrDescriptor({self.ntype.__name__}.{self.name})"
 
 @dataclass(frozen=True, eq=False)
-class CursorAttrDescriptor:
-    """Like AttrDescriptor, but for the SubCursor instead of the tuple"""
+class NodeAttrDescriptor:
+    """Like NodeTupleAttrDescriptor, but for the Node instead of the NodeTuple"""
     ntype: type
     index: int
     name: str
     attr: Attr
 
     def __get__(self, cursor, owner=None):
-        if cursor == None: # for the class: return CursorAttrDescriptor object 
-            return self
+        if cursor == None: # for the class: return Attr object
+            return self.attr
         else: # for instances: return value of attribute
-            assert owner == self.ntype._cursor_type
+            assert issubclass(owner, self.ntype)
             #return cursor.node[self.index]
             return self.attr.read_hook(cursor.node[self.index], cursor)
 
@@ -131,14 +130,6 @@ class CursorAttrDescriptor:
 
     def __delete__(self, cursor):
         raise TypeError("Attributes cannot be deleted.")
-
-@public
-@dataclass(frozen=True, eq=False)
-class cursormethod:
-    """
-    cursormethod might be a misnomer.
-    """
-    method: Callable
 
 @public
 @dataclass(frozen=False, eq=False)
@@ -153,13 +144,13 @@ class LocalRef(Attr):
         self.indices.append(LocalRefIndex(self))
 
     @staticmethod
-    def localref_factory(val: 'int|Cursor|NoneType'):
+    def localref_factory(val: 'int|Node|NoneType'):
         if val==None or isinstance(val, int):
             return val
-        elif isinstance(val, Cursor):
+        elif isinstance(val, Node):
             return val.nid
         else:
-            raise TypeError('Only None, int or Cursor can be assigned to LocalRef.')
+            raise TypeError('Only None, int or Node can be assigned to LocalRef.')
 
     factory: Callable = localref_factory
 
@@ -184,15 +175,42 @@ class ExternalRef(Attr):
         return self.of_subgraph(cursor).cursor_at(value)
 
     @staticmethod
-    def externalref_factory(val: 'int|Cursor|NoneType'):
+    def externalref_factory(val: 'int|Node|NoneType'):
         if val==None or isinstance(val, int):
             return val
-        elif isinstance(val, Cursor):
+        elif isinstance(val, Node):
             return val.nid
         else:
-            raise TypeError('Only None, int or Cursor can be assigned to ExternalRef.')
+            raise TypeError('Only None, int or Node can be assigned to ExternalRef.')
 
     factory: Callable = externalref_factory
+
+@public
+@dataclass(frozen=False, eq=False)
+class SubgraphRef(Attr):
+    """
+    Reference to a node in another subgraph by nid.
+    """
+    refs_cursortype: type = None
+    type: type = 'FrozenSubgraph'
+    optional: bool = True
+
+    def read_hook(self, value, cursor):
+        return value.root_cursor
+
+    @staticmethod
+    def externalref_factory(val: 'FrozenSubgraph|SubgraphRoot|NoneType'):
+        if val==None or isinstance(val, FrozenSubgraph):
+            return val
+        elif isinstance(val, Node):
+            if val.subgraph.mutable:
+                raise TypeError('SubgraphRoot for externalref_factory must be frozen.')
+            return val.subgraph
+        else:
+            raise TypeError('Only None, FrozenSubgraph or SubgraphRoot can be assigned to SubgraphRef.')
+
+    factory: Callable = externalref_factory
+
 
 @public
 class Index(GenericIndex):
@@ -343,18 +361,229 @@ class NPathIndex(CombinedIndex):
         except UniqueViolation:
             raise ModelViolation("Path exists") # TODO: Report actual path?
 
+# TODO: fix docs: Nodes subclasses make up the schema (like table definitions). Node instances are like database rows.
+
 @public
-class Cursor(NamedTuple):
+class NodeTuple(tuple):
     """
-    Cursor provides an access layer to mutable and immutable subgraphs.
+    Why is this a custom tuple subclass rather than building upon PClass, NamedTuple, recordclass.dataobject or pydantic?
+
+    - This is somewhere between NamedTuple and pyrsistent's PClass.
+    - For PClass, the behaviour of field() is difficult to change without touching everything.
+    - Also, the overhead of mutating PClass seems a bit high (just from reading the code).
+    - Downside of all tuples compared to PClass: all attribute references must be copied when a single attribute is updated
+    - Sublassing NamedTuple is cursed (no inheritance etc.)
+    - recordclass.dataobject would be an additional dependency, and its readonly=True option seems to be a (buggy) afterthought only.
+    - pydantic is too heavyweight.
     """
 
-    subgraph: 'Subgraph'
-    """The subgraph in which this Cursor moves."""
-    nid: int|NoneType
-    """The nid of the node to which this Cursor points."""
-    npath_nid: int|NoneType
-    """The nid of the NPath node matching the nid attribute."""
+    __slots__ = ()
+
+    def check_hashable(self):
+        try:
+            hash(self)
+        except TypeError:
+            raise TypeError("All attributes of NodeTuple must be hashable.")
+
+    def __new__(cls, **kwargs):
+        ret=super().__new__(cls, (ad.attr.factory(kwargs.pop(ad.name)) if (ad.name in kwargs) else ad.attr.default for ad in cls._layout))
+        if len(kwargs) > 0:
+            unknown_attrs = ', '.join(kwargs.keys())
+            raise AttributeError(f"Unknown attributes provided: {unknown_attrs}")
+        ret.check_hashable()
+        return ret
+
+    def vals_repr(self):
+        return ', '.join([f"{ad.name}={self[ad.index]!r}" for ad in self._layout])
+
+    def __repr__(self):
+        return f"{type(self).__name__}({self.vals_repr()})"
+
+    def set(self, **kwargs):
+        # Bypasses NodeTuple.__new__:
+
+        ret=super().__new__(type(self), (ad.attr.factory(kwargs.pop(ad.name)) if (ad.name in kwargs) else self[ad.index] for ad in self._layout))
+        if len(kwargs) > 0:
+            unknown_attrs = ', '.join(kwargs.keys())
+            raise AttributeError(f"Unknown attributes provided: {unknown_attrs}")
+        ret.check_hashable() # We could also check only the updated values for hashability.
+        return  ret 
+
+    def set_index(self, idx, value):
+        value = self._layout[idx].attr.factory(value)
+        # Check only the updated value for hashability:
+        try:
+            hash(value)
+        except TypeError:
+            raise TypeError("All attributes of NodeTuple must be hashable.")
+        ret = super().__new__(type(self), (value if i == idx else elem for i, elem in enumerate(tuple.__iter__(self))))
+        return ret
+
+    def __iter__(self):
+        raise TypeError(f"{type(self).__name__} is not iterable")
+
+    def translate_nids(self, nid_map):
+        # Bypasses NodeTuple.__new__:
+        ret=super().__new__(type(self), (nid_map[self[ad.index]] if ad.is_nid() and self[ad.index]!=None else self[ad.index] for ad in self._layout))
+        return ret
+
+    def index_add(self, sgu: 'SubgraphUpdater', nid):
+        self.index_ntype.index_add(sgu, self, nid)
+        for ns in self.indices:
+            ns.index_add(sgu, self, nid)
+
+    def index_remove(self, sgu: 'SubgraphUpdater', nid):
+        self.index_ntype.index_remove(sgu, self, nid)
+        for ns in self.indices:
+            ns.index_remove(sgu, self, nid)
+
+    def check_contraints(self, sgu: 'SubgraphUpdater', nid):
+        for ns in self.indices:
+            ns.check_contraints(sgu, self, nid)
+
+    def insert_into(self, sgu):
+        return sgu.add_single(self, sgu.nid_generate())
+
+    def __eq__(self, other):
+        return type(self)==type(other) and tuple.__eq__(self, other)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __lt__(self, other):
+        return NotImplemented
+
+    def __le__(self, other):
+        return NotImplemented
+
+    def __gt__(self, other):
+        return NotImplemented
+
+    def __ge__(self, other):
+        return NotImplemented
+
+    def __hash__(self):
+        return hash((type(self), tuple.__hash__(self)))
+
+    index_ntype = NTypeIndex()
+    "Subgraph-wide index of nodes by their type (table)"
+
+# Register NodeTuple as virtual subclass of Inserter. Combining tuple and ABC seems like it could cause problems.
+Inserter.register(NodeTuple)
+
+class NodeMeta(type):
+    @staticmethod
+    def _collect_raw_attrs(d, bases):
+        raw_attrs = {} # The order in raw_attrs defines the tuple layout later on.
+
+        # First come inherited attributes:
+        for b in bases:
+            try:
+                raw_attrs |= b._raw_attrs
+            except AttributeError:
+                pass
+
+        # Then newly added attributes:
+        for k, v in list(d.items()):
+            if isinstance(v, Attr):
+                raw_attrs[k] = v
+                del d[k] # Gets repopulated later.
+
+        return raw_attrs
+
+    def __new__(mcs, name, bases, attrs, build_node=True):
+        attrs['__slots__'] = ()
+        if build_node:
+            raw_attrs = mcs._collect_raw_attrs(attrs, bases)
+            # Populate special class attributes:
+            attrs['_raw_attrs'] = raw_attrs
+        return super(NodeMeta, mcs).__new__(mcs, name, bases, attrs)
+
+    def __init__(cls, name, bases, attrs, build_node=True):
+        if build_node:
+            # Build descriptors from raw attributes:
+            attrdesc_by_attr = {}
+            attrdesc_by_name = {}
+            nodetuple_dict = {'_raw_attrs': cls._raw_attrs, '__slots__':()}
+            layout = []
+            #attrs.setdefault('__annotations__', {})
+            cls.__annotations__ = {}
+            nt_indices = []
+
+            for n, (k, v) in enumerate(cls._raw_attrs.items()):
+                nt_ad = NodeTupleAttrDescriptor(ntype=cls, index=n, name=k, attr=v)
+                nodetuple_dict[k] = nt_ad
+                c_ad = NodeAttrDescriptor(ntype=cls, index=n, name=k, attr=v)
+                setattr(cls, k, c_ad)
+                cls.__annotations__[k] = v.type # Not so nice; for Sphinx.
+                layout.append(nt_ad)
+                attrdesc_by_attr[v] = nt_ad
+                attrdesc_by_name[k] = nt_ad
+                for ns in v.indices:
+                    if ns not in nt_indices:
+                        nt_indices.append(ns)
+
+            nodetuple_dict['indices'] = nt_indices
+            nodetuple_dict['_attrdesc_by_name'] = attrdesc_by_name
+            nodetuple_dict['_attrdesc_by_attr'] = attrdesc_by_attr
+            nodetuple_dict['_layout'] = layout
+            nodetuple_dict['_cursor_type'] = cls
+            cls.Tuple = type(name+'.Tuple', (NodeTuple,), nodetuple_dict)
+            cls.Mutable = type(name+'.Mutable', (cls, MutableNode), {'__slots__':()}, build_node=False)
+            cls.Frozen = type(name+'.Frozen', (cls, FrozenNode), {'__slots__':()}, build_node=False)
+
+            # Not sure whether this is a good idea, but it is nice for the
+            # inheritance diagrams in the docs.
+            cls.Tuple.__module__ = cls.__module__
+            cls.Mutable.__module__ = cls.__module__
+            cls.Frozen.__module__ = cls.__module__
+
+        return super().__init__(name, bases, attrs)
+
+@public
+class Node(tuple, metaclass=NodeMeta, build_node=False):
+    """
+    Node provides a cursor-like access layer to NodeTuples within mutable or immutable subgraphs.
+
+    Node objects are 3-tuples (subgraph, nid ,npath_nid).
+
+    The hash() and == behviour of Node is implemented by tuple.__hash__ and
+    tuple.__eq__ and relies on the hash() and == behavior of MutableSubgraph
+    (for MutableNodes) or FrozenSubgraph (for FrozenNodes).
+    """
+
+    @classmethod
+    def raw_cursor(cls, subgraph: 'Subgraph', nid: int|NoneType, npath_nid: int|NoneType):
+        return super().__new__(cls, (subgraph, nid, npath_nid))
+
+    def __new__(self, **kwargs):
+        return self.Tuple(**kwargs)
+
+    @property
+    def subgraph(self) -> 'Subgraph':
+        """The subgraph in which this Node moves."""
+        return super().__getitem__(0)
+
+    @property
+    def nid(self) -> int|NoneType:
+        """The nid of the node to which this Node points."""
+        return super().__getitem__(1)
+
+    @property
+    def node(self):
+        return self.subgraph.nodes[self.nid]
+
+    @property
+    def npath_nid(self) -> int|NoneType:
+        """The nid of the NPath node matching the nid attribute."""    
+        return super().__getitem__(2)
+
+    @property
+    def npath(self):
+        if self.npath_nid == None:
+            return None
+        else:
+            return self.subgraph.nodes[self.npath_nid]
 
     def full_path_list(self) -> list[str|int]:
         if self.nid == 0:
@@ -400,23 +629,6 @@ class Cursor(NamedTuple):
 
         return f"{type(self).__name__}({', '.join(info)})"
 
-    def with_subgraph(self, new_subgraph):
-        return type(self)(subgraph=new_subgraph, nid=self.nid, npath_nid=self.npath_nid)
-
-    # Properties
-    # ----------
-
-    @property
-    def node(self):
-        return self.subgraph.nodes[self.nid]
-
-    @property
-    def npath(self):
-        if self.npath_nid == None:
-            return None
-        else:
-            return self.subgraph.nodes[self.npath_nid]
-
     @property
     def parent(self):
         if self.npath == None:
@@ -428,8 +640,49 @@ class Cursor(NamedTuple):
             npath_next = self.subgraph.nodes[npath_next_nid]
             return self.subgraph.cursor_at(npath_next.ref, npath_next_nid)
 
-    # Attribute handlers
-    # ------------------
+    def update(self, **kwargs):
+        self.subgraph.update(self.node.set(**kwargs), self.nid)
+
+    def delete(self):
+        if self.npath_nid != None:
+            self.subgraph.remove_nid(self.npath_nid)
+        if self.nid != None:
+            self.subgraph.remove_nid(self.nid)
+
+    def __mod__(self, node: Inserter) -> 'Node':
+        """
+        Inserts node and sets 'ref' attribute (which should be a LocalRef) to the cursor nid.
+        """
+        if isinstance(node, NodeTuple):
+            # Simple case: just update the node before inserting:
+            # This could also be done by the complex case below, so this is a performance optimization:
+            nid_new = self.subgraph.add(node.set(ref=self.nid))
+        else:
+            # Complex case:
+            def inserter_func(sgu):
+                main_nid = node.insert_into(sgu)
+                sgu.update(sgu.nodes[main_nid].set(ref=self.nid), main_nid)
+                return main_nid
+            nid_new = self.subgraph.add(FuncInserter(inserter_func))
+        # Optimization: lookup_npath is disabled, because this newly added node has no NPath.
+        return self.subgraph.cursor_at(nid_new, lookup_npath=False)
+
+    @property
+    def root(self):
+        return self.subgraph.root_cursor
+
+    @property
+    def mutable(self):
+        raise TypeError("n.mutable is unavailable where n is not subclass of MutableNode or FrozenNode.")
+
+    def __copy__(self) -> 'Self':
+        return self # tuple is immutable (at shallow level), thus no copy needed.
+
+
+@public
+class NonLeafNode(Node, build_node=False):
+    # Attribute handlers wrapping the item handlers below
+    # ---------------------------------------------------
 
     def __getattr__(self, k):
         # If attribute is not found, look for k as subpath:
@@ -442,7 +695,7 @@ class Cursor(NamedTuple):
 
     def __setattr__(self, k, v):
         try:
-            # This triggers __set__ of descriptors such as CursorAttrDescriptor:
+            # This triggers __set__ of descriptors such as NodeAttrDescriptor:
             # See https://stackoverflow.com/a/61550073 on why object is used instead of super().
             object.__setattr__(self, k, v)
         except AttributeError:
@@ -461,7 +714,7 @@ class Cursor(NamedTuple):
 
     def __setitem__(self, k, v):
         with self.subgraph.updater() as u:
-            v_nid = u.add(v)
+            v_nid = v.insert_into(u)
             self.mkpath_addnode(k, v_nid, u)
 
     def __getitem__(self, k):
@@ -484,259 +737,94 @@ class Cursor(NamedTuple):
     def mkpath_addnode(self, k, ref, u: 'SubgraphUpdater'):
         """Creates NPath node below current cursor. NPath node is empty when ref=None."""
         if self.nid not in (None, 0):
-            if u.nodes[self.nid].is_leaf:
-                raise OrdbException("Cannot add NPath below existing NPath referencing leaf node.")
             if self.npath_nid == None:
                 raise OrdbException("Cannot add node at cursor without NPath.")
-        u.add(NPath(parent=self.npath_nid, name=k, ref=ref))
-
-    def update(self, **kwargs):
-        self.subgraph.update(self.node.set(**kwargs), self.nid)
-
-    def delete(self):
-        if self.npath_nid != None:
-            self.subgraph.remove_nid(self.npath_nid)
-        if self.nid != None:
-            self.subgraph.remove_nid(self.nid)
-
-    def __mod__(self, node: Inserter) -> 'Cursor':
-        """
-        Inserts node and sets 'ref' attribute (which should be a LocalRef) to the cursor nid.
-        """
-        if isinstance(node, Node):
-            # Simple case: just update the node before inserting:
-            # This could also be done by the complex case below, so this is a performance optimization:
-            return self.subgraph % node.set(ref=self.nid)
-        else:
-            # Complex case:
-            def inserter_func(sgu):
-                main_nid = sgu.add(node)
-                sgu.update(sgu.nodes[main_nid].set(ref=self.nid), main_nid)
-                return main_nid
-            return self.subgraph % FuncInserter(inserter_func)
-
-    def __hash__(self):
-        return hash((id(self.subgraph), self.nid))
-
-    def __eq__(self, other):
-        if isinstance(other, Cursor):
-            return (id(self.subgraph) == id(other.subgraph)) and (self.nid == other.nid)
-        else:
-            return False
-
-class NodeMeta(type):
-    @staticmethod
-    def _collect_raw_attrs(d, bases):
-        raw_attrs = {} # The order in raw_attrs defines the tuple layout later on.
-
-        # First come inherited attributes:
-        for b in bases:
-            try:
-                raw_attrs |= b._raw_attrs
-            except AttributeError:
-                pass
-
-        # Then newly added attributes:
-        for k, v in list(d.items()):
-            if isinstance(v, Attr):
-                raw_attrs[k] = v
-                del d[k] # Gets repopulated later.
-
-        return raw_attrs
-
-    @staticmethod
-    def _collect_cursormethods(d, bases):
-        cursormethods = {}
-
-        # First come inherited attributes:
-        for b in bases:
-            try:
-                cursormethods |= b._cursormethods
-            except AttributeError:
-                pass
-
-        # Then newly added attributes:
-        for k, v in list(d.items()):
-            if isinstance(v, cursormethod):
-                cursormethods[k] = v.method
-                del d[k] # We want the cursormethod only in the Cursor subclass __dict__, not in the Node subclass __dict__.   
-
-        return cursormethods
-
-    def __new__(mcs, name, bases, attrs):
-        raw_attrs = mcs._collect_raw_attrs(attrs, bases)
-        cursormethods = mcs._collect_cursormethods(attrs, bases)
-
-        # Populate special class attributes:
-        attrs |= {'_raw_attrs': raw_attrs, '_cursormethods':cursormethods, '__slots__':()}
-        return super(NodeMeta, mcs).__new__(mcs, name, bases, attrs)
-
-    def __init__(cls, name, bases, attrs):
-        # Build descriptors from raw attributes:
-        attrdesc_by_attr = {}
-        attrdesc_by_name = {}
-        subcursor_dict = {'__slots__':()}
-        layout = []
-        #attrs.setdefault('__annotations__', {})
-        cls.__annotations__ = {}
-        cls.indices = []
-        for n, (k, v) in enumerate(cls._raw_attrs.items()):
-            ad = AttrDescriptor(ntype=cls, index=n, name=k, attr=v)
-            subcursor_dict[k] = CursorAttrDescriptor(ntype=cls, index=n, name=k, attr=v)
-            setattr(cls, k, ad)
-            cls.__annotations__[k] = v.type # Not so nice; for Sphinx.
-            layout.append(ad)
-            attrdesc_by_attr[v] = ad
-            attrdesc_by_name[k] = ad
-            for ns in v.indices:
-                if ns not in cls.indices:
-                    cls.indices.append(ns)
-
-        for k, cd in cls._cursormethods.items():
-            subcursor_dict[k] = cd
-
-        SubCursor = type(name+'Cursor', (Cursor,), subcursor_dict)
-
-        cls._attrdesc_by_name = attrdesc_by_name
-        cls._attrdesc_by_attr = attrdesc_by_attr
-        cls._layout = layout
-        cls._cursor_type = SubCursor
-
-        return super().__init__(name, bases, attrs)
+        NPath(parent=self.npath_nid, name=k, ref=ref).insert_into(u)
 
 @public
-class Node(tuple, metaclass=NodeMeta):
-    """
-    Nodes subclasses make up the schema (like table definitions). Node instances are like database rows.
-
-    Why is this a custom tuple subclass rather than building upon PClass, NamedTuple, recordclass.dataobject or pydantic?
-
-    - This is somewhere between NamedTuple and pyrsistent's PClass.
-    - For PClass, the behaviour of field() is difficult to change without touching everything.
-    - Also, the overhead of mutating PClass seems a bit high (just from reading the code).
-    - Downside of all tuples compared to PClass: all attribute references must be copied when a single attribute is updated
-    - Sublassing NamedTuple is cursed (no inheritance etc.)
-    - recordclass.dataobject would be an additional dependency, and its readonly=True option seems to be a (buggy) afterthought only.
-    - pydantic is too heavyweight.
-    """
-
-    is_leaf : bool = True
-    """Controls whether this node type can have children in the NPath hierarchy."""
-
-    def check_hashable(self):
-        try:
-            hash(self)
-        except TypeError:
-            raise TypeError("All attributes of Node must be hashable.")
-
-    def __new__(cls, **kwargs):
-        ret=super().__new__(cls, (ad.attr.factory(kwargs.pop(ad.name)) if (ad.name in kwargs) else ad.attr.default for ad in cls._layout))
-        if len(kwargs) > 0:
-            unknown_attrs = ', '.join(kwargs.keys())
-            raise AttributeError(f"Unknown attributes provided: {unknown_attrs}")
-        ret.check_hashable()
-        return ret
-
-    def vals_repr(self):
-        return ', '.join([f"{ad.name}={self[ad.index]!r}" for ad in self._layout])
-
-    def __repr__(self):
-        return f"{type(self).__name__}({self.vals_repr()})"
-
-    def set(self, **kwargs):
-        # Bypasses Node.__new__:
-
-        ret=super().__new__(type(self), (ad.attr.factory(kwargs.pop(ad.name)) if (ad.name in kwargs) else self[ad.index] for ad in self._layout))
-        if len(kwargs) > 0:
-            unknown_attrs = ', '.join(kwargs.keys())
-            raise AttributeError(f"Unknown attributes provided: {unknown_attrs}")
-        ret.check_hashable() # We could also check only the updated values for hashability.
-        return  ret 
-
-    def set_index(self, idx, value):
-        value = self._layout[idx].attr.factory(value)
-        # Check only the updated value for hashability:
-        try:
-            hash(value)
-        except TypeError:
-            raise TypeError("All attributes of Node must be hashable.")
-        ret = super().__new__(type(self), (value if i == idx else elem for i, elem in enumerate(tuple.__iter__(self))))
-        return ret
-
-    def __iter__(self):
-        raise TypeError(f"{type(self).__name__} is not iterable")
-
-    def translate_nids(self, nid_map):
-        # Bypasses Node.__new__:
-        ret=super().__new__(type(self), (nid_map[self[ad.index]] if ad.is_nid() and self[ad.index]!=None else self[ad.index] for ad in self._layout))
-        return ret
-
-    def index_add(self, sgu: 'SubgraphUpdater', nid):
-        self.index_ntype.index_add(sgu, self, nid)
-        for ns in self.indices:
-            ns.index_add(sgu, self, nid)
-
-
-    def index_remove(self, sgu: 'SubgraphUpdater', nid):
-        self.index_ntype.index_remove(sgu, self, nid)
-        for ns in self.indices:
-            ns.index_remove(sgu, self, nid)
-
-    def check_contraints(self, sgu: 'SubgraphUpdater', nid):
-        for ns in self.indices:
-            ns.check_contraints(sgu, self, nid)
-
-    def insert(self, sgu):
-        return sgu.add_single(self, sgu.nid_generate())
-
-    def __eq__(self, other):
-        return type(self)==type(other) and tuple.__eq__(self, other)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def __lt__(self, other):
-        return NotImplemented
-
-    def __le__(self, other):
-        return NotImplemented
-
-    def __gt__(self, other):
-        return NotImplemented
-
-    def __ge__(self, other):
-        return NotImplemented
-
-    def __hash__(self):
-        return hash((type(self), tuple.__hash__(self)))
-
-    index_ntype = NTypeIndex()
-    "Subgraph-wide index of nodes by their type (table)"
-
-# Register Node as virtual subclass of Inserter. Combining tuple and ABC seems like it could cause problems.
-Inserter.register(Node)
+class FrozenNode(Node, build_node=False):
+    @property
+    def mutable(self):
+        return False
 
 @public
-class SubgraphHead(Node):
+class MutableNode(Node, build_node=False):
+    @property
+    def mutable(self):
+        return True
+
+@public
+class PathNode(NonLeafNode):
+    pass
+
+@public
+class SubgraphRoot(NonLeafNode):
     """
-    Each subgraph has a single SubgraphHead node. The subclass of SubgraphHead
+    Each subgraph has a single SubgraphRoot node. The subclass of SubgraphRoot
     defines what kind of design data the subgraph represents.
     """
-    is_leaf = False
 
     def __new__(cls, **kwargs):
-        # __new__ calls super().__new__ via SubgraphHead.head(), but wraps the result in a Subgraph object.
+        # __new__ calls super().__new__ via SubgraphRoot.Tuple(), but wraps the result in a Subgraph object.
         sg = MutableSubgraph()
         with sg.updater() as u:
-            u.add_single(cls.head(**kwargs), nid=0) # SubgraphHeads always have nid = 0
-        return sg
+            u.add_single(cls.Tuple(**kwargs), nid=0) # SubgraphRoots always have nid = 0
+        return sg.root_cursor
 
-    @classmethod
-    def head(cls, **kwargs):
-        return super().__new__(cls, **kwargs)
+    def __mod__(self, node) -> Node:
+        """
+        Add node and return cursor at created node.
 
-    def __repr__(self):
-        return f"{type(self).__name__}.head({self.vals_repr()})"
+        This is a simpler version of Node.__mod__ that does not set the 'ref'
+        attribute of the inserted node.
+        """
+        nid_new = self.subgraph.add(node)
+        # Optimization: lookup_npath is disabled, because this newly added node has no NPath.
+        return self.subgraph.cursor_at(nid_new, lookup_npath=False)
+
+    # Convenience forwards to self.subgraph
+    # -------------------------------------
+
+    def updater(self) -> 'SubgraphUpdater':
+        return SubgraphUpdater(self.subgraph)
+
+    def cursor_at(self, *args, **kwargs) -> Node:
+        return self.subgraph.cursor_at(*args, **kwargs)
+
+    def all(self, *args, **kwargs) -> Iterable[Node]:
+        return self.subgraph.all(*args, **kwargs)
+
+    def one(self, *args, **kwargs) -> Node:
+        return self.subgraph.one(*args, **kwargs)
+
+    def matches(self, other):
+        if not isinstance(other, SubgraphRoot):
+            return False
+        assert other.nid == 0
+        return self.subgraph.matches(other.subgraph)
+
+    def freeze(self):
+        return self.subgraph.freeze().root_cursor
+
+    def thaw(self):
+        return self.subgraph.thaw().root_cursor
+
+    def tables(self) -> str:
+        return self.subgraph.tables()
+
+    def dump(self) -> str:
+        return self.subgraph.dump()
+
+    def copy(self) -> 'Self':
+        """
+        For convenience, SubgraphRoot.copy and SubgraphRoot.__copy__ copy the
+        Subgraph itself (deep copy) and return the root cursor of the new
+        subgraph.
+        """
+        return self.subgraph.copy().root_cursor
+
+    def __copy__(self) -> 'Self':
+        return self.copy()
 
 class SubgraphUpdater:
     """
@@ -781,7 +869,7 @@ class SubgraphUpdater:
             self.commit = False
         if self.commit:
             if 0 not in self.nodes:
-                raise ModelViolation("Missing head node (nid 0).")
+                raise ModelViolation("Missing root node (nid 0).")
 
             for nid in self.check_nids:
                 self.nodes[nid].check_contraints(self, nid)
@@ -794,11 +882,6 @@ class SubgraphUpdater:
 
         self.valid = False
 
-    def add(self, node: Inserter) -> int:
-        """returns nid"""
-        return node.insert(self)
-        return nid_new
-
     def nid_generate(self):
         if self.nid_gen_counter not in self.target_subgraph.nid_alloc:
             raise OrdbException("nid allocation exhausted.")
@@ -806,7 +889,7 @@ class SubgraphUpdater:
         self.nid_gen_counter += 1
         return ret
 
-    def add_single(self, node: Node, nid: int) -> int:
+    def add_single(self, node: NodeTuple, nid: int) -> int:
         """
         Args:
             relaxed: Set to True to relax nid insertion order.
@@ -816,8 +899,8 @@ class SubgraphUpdater:
         if not self.valid:
             raise TypeError("Invalid SubgraphUpdater.")
         
-        if not isinstance(node, Node):
-            raise TypeError("node must be instance of Node.")
+        if not isinstance(node, NodeTuple):
+            raise TypeError("node must be instance of NodeTuple.")
 
         if nid not in self.target_subgraph.nid_alloc:
             raise OrdbException(f"selected nid {nid} is outside allocated {self.target_subgraph.nid_alloc}.")
@@ -841,7 +924,7 @@ class SubgraphUpdater:
             raise TypeError("Invalid SubgraphUpdater.")
         
         if nid == 0:
-            raise OrdbException("Cannot delete SubgraphHead (nid=0).")
+            raise OrdbException("Cannot delete SubgraphRoot (nid=0).")
         node = self.nodes[nid]
         
         node.index_remove(self, nid) # Update metadata first.
@@ -849,7 +932,7 @@ class SubgraphUpdater:
         self.check_nids.pop(nid, None) # Skip constraint check for this node, if it was previously selected.
         self.removed_nids[nid] = True # Mark nid as removed.
 
-    def update(self, node: Node, nid: int):
+    def update(self, node: NodeTuple, nid: int):
         if not self.valid:
             raise TypeError("Invalid SubgraphUpdater.")
 
@@ -875,7 +958,7 @@ class Subgraph(ABC):
     # --------------------
 
     def __repr__(self):
-        return f"<{type(self).__name__} {id(self)} head={self.nodes[0]!r}, {len(self.nodes)} nodes>"
+        return f"<{type(self).__name__} {id(self)} root={self.nodes[0]!r}, {len(self.nodes)} nodes>"
 
     def iter_tables(self):
         it = iter(self.node_dict('pretty').items())
@@ -896,9 +979,9 @@ class Subgraph(ABC):
 
         ret = [f'Subgraph {self.nodes[0]}:']
         for ntype, nodes in self.iter_tables():
-            if issubclass(ntype,  SubgraphHead):
+            if issubclass(ntype._cursor_type, SubgraphRoot):
                 continue
-            ret.append(ntype.__name__)
+            ret.append(ntype._cursor_type.__name__)
             table = []
             for nid, node in nodes:
                 table.append([nid]+[val for val in tuple.__iter__(node)])
@@ -910,7 +993,7 @@ class Subgraph(ABC):
                 ))
         return "\n".join(ret).replace('\n', '\n  ')
 
-    def node_dict(self, mode='canonical') -> dict[int,Node]:
+    def node_dict(self, mode='canonical') -> dict[int,NodeTuple]:
         """
         Returns an ordered dict of nodes (values) by their nids (keys).
 
@@ -925,7 +1008,7 @@ class Subgraph(ABC):
             def sortkey_pretty(item):
                 nid, node = item
                 return (
-                    not isinstance(node, SubgraphHead), # 1. Sort SubgraphHead to front.
+                    not isinstance(node, SubgraphRoot), # 1. Sort SubgraphRoot to front.
                     type(node).__name__, # 2. Sort alphabetically by ntype name.
                     nid, # 3. Sort by nid
                 )
@@ -935,14 +1018,20 @@ class Subgraph(ABC):
         
         return {k: v for k, v in sorted(self.nodes.items(), key=sortkey)}
 
-    def __eq__(self, other):
+    def matches(self, other):
         """
-        Comparing for equality based on canonical node lists.
+        Check whether two subgraphs match regardless of nid numbers. While the nids
+        and LocalRefs are ignored, the nid order (i.e. insertion order) must match
+        for equivalence.
 
-        The nids and corresponding LocalRefs do not have to match for equivalence.
+        This operation is based on canonical node lists.
 
-        While the nids themselves are ignored, the nid order (i.e. insertion order) must match for equivalence.
+        TODO: It is not clear whether this function is needed at all. Furthermore,
+        ExternalRefs are not handled.
         """
+        if not isinstance(other, Subgraph):
+            return False
+
         nd_self = self.node_dict()
         nd_other = other.node_dict()
         if len(nd_self) != len(nd_other):
@@ -966,6 +1055,11 @@ class Subgraph(ABC):
 
         return True
 
+    def internally_equal(self, other) -> bool:
+        if not isinstance(other, Subgraph):
+            raise TypeError("Expected Subgraph.")
+        return (self.nodes == other.nodes) and (self.nid_alloc == other.nid_alloc)
+
     def dump(self) -> str:
         d = self.node_dict('canonical')
         return 'MutableSubgraph.load({\n' + ''.join([f'\t{k!r}: {v!r},\n' for k, v in d.items()]) + '})'
@@ -973,7 +1067,7 @@ class Subgraph(ABC):
     def all(self, query: IndexQuery, wrap_cursor:bool=True):
         if isinstance(query, type):
             assert issubclass(query, Node)
-            query = Node.index_ntype.query(query)
+            query = NodeTuple.index_ntype.query(query.Tuple)
         try:
             nids = self.index[query.index_key]
         except KeyError:
@@ -999,17 +1093,11 @@ class Subgraph(ABC):
 
         return single(iter(self.all(*args, **kwargs)))
 
-    def __getattr__(self, name):
-        #if name in ("__getstate__", "__setstate__", "__dataclass_fields__"):
-        if name.startswith("__"):
-            return super().__getattr__(name)
-        return getattr(self.root_cursor, name)
-
     def cursor_at(self, nid: int, npath_nid: NoneType|int=None, lookup_npath: bool=True):
         if nid == None:
             # NPath without node
             assert npath_nid != None
-            cursor_cls = Cursor
+            cursor_cls = PathNode
         else:
             cursor_cls = self.nodes[nid]._cursor_type
             if lookup_npath and npath_nid == None:
@@ -1017,20 +1105,18 @@ class Subgraph(ABC):
                     npath_nid = self.one(NPath.idx_path_of.query(nid), wrap_cursor=False)
                 except QueryException:
                     pass
+        if self.mutable:
+            return cursor_cls.Mutable.raw_cursor(self, nid, npath_nid)
+        else:
+            return cursor_cls.Frozen.raw_cursor(self, nid, npath_nid)
 
-        return cursor_cls(self, nid, npath_nid)
-
-    def internally_equal(self, other) -> bool:
-        return (self.nodes == other.nodes) \
-            and (self.index == other.index) \
-            and (self.nid_alloc == other.nid_alloc)
 
     # The private _nodes, _index, _nid_alloc and _root_cursor are hidden behind
     # properties to prevent accidental mutation.
 
     @property
     def nodes(self) -> PMap:
-        """A persistent mapping of nids to Nodes."""
+        """A persistent mapping of nids to NodeTuples."""
         return self._nodes
 
     @property
@@ -1044,16 +1130,15 @@ class Subgraph(ABC):
         return self._nid_alloc
 
     @property
-    def root_cursor(self) -> Cursor:
-        """Root cursor pointing to subgraph head."""
+    def root_cursor(self) -> Node:
+        """Root cursor pointing to subgraph root."""
         return self._root_cursor
 
     # Abstract methods
     # ----------------
 
     # We want the interfaces of our subclasses (FrozenSubgraph and MutableSubgraph)
-    # to be as similar as possible. Main reason is to prevent the funky error
-    # messages of the Subgraph.__getattr__ fallback.
+    # to be as similar as possible.
 
     @property
     @abstractmethod
@@ -1087,34 +1172,24 @@ class Subgraph(ABC):
         with self.updater() as u:
             u.remove_nid(nid)
 
-    def update(self, node: Node, nid: int) -> int:
+    def update(self, node: NodeTuple, nid: int) -> int:
         with self.updater() as u:
             u.update(node, nid)
 
     def add(self, node: Inserter) -> int:
         """Insets node and returns nid."""
         with self.updater() as u:
-            return u.add(node)
-
-    def __mod__(self, node) -> Cursor:
-        """
-        Add node and return cursor at created node.
-        """
-        nid_new = self.add(node)
-        # Optimization: lookup_npath is disabled, because this newly added node has no NPath.
-        return self.cursor_at(nid_new, lookup_npath=False)
-
-    def __setattr__(self, name, value):
-        try:
-            return super().__setattr__(name, value)
-        except AttributeError:
-            return setattr(self.root_cursor, name, value)
-
-    def __delattr__(self, name):
-        return delattr(self.root_cursor, name)
+            return node.insert_into(u)
 
 @public
 class FrozenSubgraph(Subgraph):
+    """
+    FrozenSubgraph has custom __hash__ and __eq__ methods, which treat subgraphs
+    with the equal nodes and nid_alloc as equal. Thus, its hash() and ==
+    behavior matches that of immutable types like tuple and str. 'index' is
+    not checked for equivalence, as it should be equal by construction.
+    """
+
     __slots__=()
     def __init__(self, subgraph):
         self._nodes= subgraph.nodes
@@ -1124,6 +1199,9 @@ class FrozenSubgraph(Subgraph):
     
     def __copy__(self) -> 'FrozenSubgraph':
         return self # Since FrozenSubgraph is immutable, copies are never needed?!
+
+    def copy(self):
+        return self # No need to copy frozen subgraph
 
     @property
     def mutable(self):
@@ -1137,12 +1215,13 @@ class FrozenSubgraph(Subgraph):
         ret.mutate(self.nodes, self.index, self.nid_alloc)
         return ret
 
+    def __eq__(self, other):
+        if not isinstance(other, FrozenSubgraph):
+            return False
+        return (self.nodes == other.nodes) and (self.nid_alloc == other.nid_alloc)
+
     def __hash__(self):
-        """
-        FrozenSubgraph has __hash__ and __eq__ (as it is immutable),
-        while MutableSubgraph only has __eq__ (as it is mutable).
-        """
-        return hash((self.nodes, self.index, self.nid_alloc))
+        return hash((self.nodes, self.nid_alloc))
 
     def freeze(self) -> 'FrozenSubgraph':
         raise TypeError("Subgraph is already frozen.")
@@ -1155,11 +1234,24 @@ class FrozenSubgraph(Subgraph):
         # but it will raise the error earlier.
         raise TypeError("Unsupported operation on FrozenSubgraph.")
 
-    def copy(self):
-        raise TypeError("No need to copy frozen subgraph.")
-
 @public
 class MutableSubgraph(Subgraph):
+    """
+    MutableSubgraph does not override object.__eq__ and object.__hash__. Thus,
+    hash() and == behavior is based purely on the id() / address of a
+    MutableSubgraph. In contrast to the FrozenSubgraphs, a copy of a
+    MutableSubgraph is not equal to the original and has a different hash.
+
+    An alternative approach here would be to use the same __eq__ as
+    FrozenSubgraph does. In this case, we would end up with with an unhashable
+    type, which we can for example not use as key in dictionaries. We want
+    MutableSubgraphs and MutableNodes (which reference MutableSubgraphs) to be
+    hashable. Therefore, the default object behavior is the one that seems
+    most sensible.
+
+    To compare two MutableSubgraphs a and b for internal equivalence, either do
+    a.freeze() == b.freeze() or subgraphs_match(a, b).
+    """
     __slots__=()
 
     @property
@@ -1170,12 +1262,12 @@ class MutableSubgraph(Subgraph):
         raise TypeError("Subgraph is already mutable.")
 
     @classmethod
-    def load(cls, nodes: dict[int,Node]):
+    def load(cls, nodes: dict[int,NodeTuple]):
         s = cls()
         with s.updater() as u:
             for nid, node in nodes.items():
                 u.add_single(node=node, nid=nid)
-        return s
+        return s.root_cursor
 
     def __init__(self):
         self._nodes = pmap() # self._nodes is the one true location at which data within the Subgraph is recorded.

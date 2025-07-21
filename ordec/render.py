@@ -310,8 +310,8 @@ class Renderer:
             svg_class='portLabel')
 
     def draw_schem_tappoint(self, p: SchemTapPoint):
-        is_default_supply = p.subgraph.default_supply == p.ref
-        is_default_ground = p.subgraph.default_ground == p.ref
+        is_default_supply = p.root.default_supply == p.ref
+        is_default_ground = p.root.default_ground == p.ref
         if is_default_supply:
             d = ' '.join([
                 "M0 0",
@@ -421,9 +421,9 @@ class Renderer:
 
 def render(obj, **kwargs) -> Renderer:
     r = Renderer(**kwargs)
-    if isinstance(obj.node, Symbol):
+    if isinstance(obj, Symbol):
         r.render_symbol(obj)
-    elif isinstance(obj.node, Schematic):
+    elif isinstance(obj, Schematic):
         r.render_schematic(obj)
     else:
         raise TypeError(f"Unsupported object {obj} for rending.")

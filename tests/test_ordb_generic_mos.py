@@ -6,7 +6,7 @@ from ordec.lib.generic_mos import Inv, Nmos, Pmos
 
 def test_example_symbol():
     ref = MutableSubgraph.load({
-        0: Symbol.head(outline=Rect4R(lx=R('0.'), ly=R('0.'), ux=R('4.'), uy=R('4.')), cell=Inv()),
+        0: Symbol.Tuple(outline=Rect4R(lx=R('0.'), ly=R('0.'), ux=R('4.'), uy=R('4.')), cell=Inv()),
         21: NPath(parent=None, name='vdd', ref=20),
         23: NPath(parent=None, name='vss', ref=22),
         25: NPath(parent=None, name='a', ref=24),
@@ -32,15 +32,15 @@ def test_example_symbol():
     symbol = Inv().symbol
     symbol2 = Inv().symbol
 
-    assert symbol == symbol2
-    assert symbol2 == symbol
+    assert symbol.matches(symbol2)
+    assert symbol2.matches(symbol)
 
-    assert symbol == ref
-    assert ref == symbol
+    assert symbol.matches(ref)
+    assert ref.matches(symbol)
 
 def test_example_schematic():
     ref = MutableSubgraph.load({
-        0: Schematic.head(symbol=Inv().symbol, outline=Rect4R(lx=R('0.'), ly=R('1.'), ux=R('10.'), uy=R('13.')), cell=Inv()),
+        0: Schematic.Tuple(symbol=Inv().symbol, outline=Rect4R(lx=R('0.'), ly=R('1.'), ux=R('10.'), uy=R('13.')), cell=Inv()),
         1: Net(pin=5),
         2: NPath(parent=None, name='a', ref=1),
         3: Net(pin=7),
@@ -107,4 +107,4 @@ def test_example_schematic():
 
     schematic = Inv().schematic
 
-    assert schematic == ref
+    assert schematic.matches(ref)

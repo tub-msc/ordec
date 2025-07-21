@@ -143,7 +143,7 @@ def schematic_routing(node, outline=None, routing=None):
             # Set the vertices from the ports
             # Case for internal nets
             schem_part = getattr(node, name)
-            if isinstance(schem_part.node, Net):
+            if isinstance(schem_part, Net):
                 schem_part % SchemWire(vertices=[Vec2R(x=vert[0], y=vert[1]) for vert in vertices])
             # case for external ports
             else:

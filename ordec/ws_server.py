@@ -80,13 +80,13 @@ def fmt_float(val, unit):
     return x
 
 def serialize_view(name, view):
-    if not isinstance(view, Subgraph):
+    if not isinstance(view, SubgraphRoot):
         return {'exception': "Requested object is not View."}
 
-    if isinstance(view.node, (Schematic, Symbol)):
+    if isinstance(view, (Schematic, Symbol)):
         return {'html': render(view).svg().decode('ascii')}
 
-    if isinstance(view.node, SimHierarchy):
+    if isinstance(view, SimHierarchy):
         dc_voltages = []
         for sn in view.all(SimNet):
             if not sn.dc_voltage:

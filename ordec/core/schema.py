@@ -36,25 +36,23 @@ class PolyVec2R(Node):
 # Symbol
 # ------
 
-class Symbol(SubgraphHead):
+class Symbol(SubgraphRoot):
     """A symbol of an individual cell."""
     outline = Attr(Rect4R)
     caption = Attr(str)
     cell = Attr('Cell')
 
-    @cursormethod
     def portmap(cursor, **kwargs):
         def inserter_func(main, sgu):
-            main_nid = main.set(symbol=cursor.subgraph).insert(sgu)
+            main_nid = main.set(symbol=cursor.subgraph).insert_into(sgu)
             for k, v in kwargs.items():
-                SchemInstanceConn(ref=main_nid, here=v.nid, there=cursor[k].nid).insert(sgu)
+                SchemInstanceConn(ref=main_nid, here=v.nid, there=cursor[k].nid).insert_into(sgu)
             return main_nid
         return inserter_func
 
-    @cursormethod
     def _repr_svg_(cursor):
         from ..render import render
-        return render(cursor.subgraph).svg().decode('ascii'), {'isolated': False}
+        return render(cursor).svg().decode('ascii'), {'isolated': False}
 
 class Pin(Node):
     """
@@ -71,18 +69,16 @@ class SymbolPoly(Node):
             return main
         else:
             def inserter_func(sgu):
-                main_nid = main.insert(sgu)
+                main_nid = main.insert_into(sgu)
                 for i, v in enumerate(vertices):
-                    PolyVec2R(ref=main_nid, order=i, pos=v).insert(sgu)
+                    PolyVec2R(ref=main_nid, order=i, pos=v).insert_into(sgu)
                 return main_nid
             return FuncInserter(inserter_func)
 
-    @cursormethod
     @property
     def vertices(cursor):
         return cursor.subgraph.all(PolyVec2R.ref_idx.query(cursor.nid))
 
-    @cursormethod
     def svg_path(cursor) -> str:
         """
         Returns string representation of polygon suitable for
@@ -114,7 +110,6 @@ class SymbolArc(Node):
     angle_end   = Attr(R, default=R(1))
     "Must be greater than angle_start and between -1 and 1, with -1 representing -360° and 1 representing 360°."
     
-    @cursormethod
     def svg_path(arc) -> str:
         """
         Returns string representation of arc suitable for
@@ -152,22 +147,21 @@ class SymbolArc(Node):
 # # ---------
 
 class Net(Node):
-    pin = ExternalRef(Pin, of_subgraph=lambda c: c.subgraph.symbol)
+    pin = ExternalRef(Pin, of_subgraph=lambda c: c.root.symbol)
 
-class Schematic(SubgraphHead):
+class Schematic(SubgraphRoot):
     """
     A schematic of an individual cell.
     """
-    symbol = Attr(Symbol) # Subgraph reference
+    symbol = SubgraphRef(Symbol)
     outline = Attr(Rect4R)
     cell = Attr('Cell')
     default_supply = LocalRef(Net)
     default_ground = LocalRef(Net)
 
-    @cursormethod
     def _repr_svg_(cursor):
         from ..render import render
-        return render(cursor.subgraph).svg().decode('ascii'), {'isolated': False}
+        return render(cursor).svg().decode('ascii'), {'isolated': False}
 
 class SchemPort(Node):
     """
@@ -189,7 +183,7 @@ class SchemInstance(Node):
     """
     pos = Attr(Vec2R)
     orientation = Attr(D4, default=D4.R0)
-    symbol = Attr(Symbol) # Subgraph reference
+    symbol = SubgraphRef(Symbol)
 
     def __new__(cls, connect=None, **kwargs):
         main = super().__new__(cls, **kwargs)
@@ -198,11 +192,9 @@ class SchemInstance(Node):
         else:
             return FuncInserter(partial(connect, main))
 
-    @cursormethod
     def loc_transform(cursor):
         return cursor.pos.transl() * cursor.orientation
 
-    @cursormethod
     @property
     def conns(cursor):
         return cursor.subgraph.all(SchemInstanceConn.ref_idx.query(cursor.nid))
@@ -227,7 +219,6 @@ class SchemTapPoint(Node):
     pos = Attr(Vec2R)
     align = Attr(D4, default=D4.R0)
 
-    @cursormethod
     def loc_transform(cursor):
         return cursor.pos.transl() * cursor.align
 
@@ -241,8 +232,8 @@ class SchemConnPoint(Node):
 # Simulation hierarchy
 # --------------------
 
-def parent_siminstance(c: Cursor) -> Cursor:
-    while not isinstance(c.node, (SimInstance, SimHierarchy)):
+def parent_siminstance(c: Node) -> Node:
+    while not isinstance(c, (SimInstance, SimHierarchy)):
         c = c.parent
     return c
 
@@ -253,15 +244,14 @@ class SimNet(Node):
 
     eref = ExternalRef(type=Net|Pin, of_subgraph=lambda c: parent_siminstance(c).schematic)
 
-class SimInstance(Node):
+class SimInstance(NonLeafNode):
     dc_current = Attr(float)
 
-    is_leaf = False
-    schematic = Attr(Schematic)
+    schematic = SubgraphRef(Schematic)
     eref = ExternalRef(SchemInstance, of_subgraph=lambda c: parent_siminstance(c.parent).schematic)
 
-class SimHierarchy(SubgraphHead):
-    schematic = Attr(Schematic)
+class SimHierarchy(SubgraphRoot):
+    schematic = SubgraphRef(Schematic)
     cell = Attr('Cell')
 
 # Every class defined in this file is public:
