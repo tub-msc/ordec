@@ -171,10 +171,10 @@ def test_subgraph_matches():
     # 1. create subgraph via Subgraph.add():
     s = Symbol()
     assert s.subgraph.root_cursor is s
-    a_nid = s.add(Pin(pintype=PinType.In, pos=Vec2R(0, 2)))
-    a_path_nid = s.add(NPath(name='a', ref=a_nid))
-    y_nid = s.add(Pin(pintype=PinType.Out, pos=Vec2R(4, 2)))
-    y_path_nid = s.add(NPath(name='y', ref=y_nid))
+    a_nid = s.subgraph.add(Pin(pintype=PinType.In, pos=Vec2R(0, 2)))
+    a_path_nid = s.subgraph.add(NPath(name='a', ref=a_nid))
+    y_nid = s.subgraph.add(Pin(pintype=PinType.Out, pos=Vec2R(4, 2)))
+    y_path_nid = s.subgraph.add(NPath(name='y', ref=y_nid))
     assert s.matches(ref)
 
     # Change of attribute should lead to inequivalence:
@@ -187,7 +187,7 @@ def test_subgraph_matches():
 
     # Adding nodes should also lead to inequivalence:
     s3 = s.copy()
-    s3.add(Pin(pintype=PinType.In, pos=Vec2R(2, 0)))
+    s3.subgraph.add(Pin(pintype=PinType.In, pos=Vec2R(2, 0)))
     assert not s3.matches(ref)
     # Original subgraph s should be unaffected:
     assert s.matches(ref)
@@ -232,7 +232,7 @@ def test_funcinserter():
         sgu.add_single(Person(best_friend=bob_nid), alice_nid)
         sgu.add_single(Person(best_friend=alice_nid), bob_nid)
     inserter = FuncInserter(f)
-    s.add(inserter)
+    s.subgraph.add(inserter)
 
     assert isinstance(inserter, Inserter)
     assert s.matches(ref)
@@ -340,14 +340,14 @@ def test_localref_integrity():
 
     s_before = s.copy()
     with pytest.raises(DanglingLocalRef) as exc_info:
-        s.remove_nid(alice.nid)
+        s.subgraph.remove_nid(alice.nid)
         # We cannot remove alice (dangling LocalRef).
     assert exc_info.value.nid == alice.nid
     assert s.matches(s_before)
 
     # But if we remove its reference first, we can remove alice:
     bob.best_friend = charlie
-    s.remove_nid(alice.nid)
+    s.subgraph.remove_nid(alice.nid)
 
 def test_index():
     # TODO!
@@ -458,9 +458,8 @@ def test_cursor_attribute():
         del s.label
 
 def test_cursor_paths():
-    class MyNodeNonLeaf(Node):
+    class MyNodeNonLeaf(NonLeafNode):
         label = Attr(str)
-        is_leaf = False
 
     s = MyHead()
     s.mkpath('sub')
@@ -485,7 +484,7 @@ def test_cursor_paths():
     assert (npath3.name, npath3.parent, npath3.ref) == ('node1', None, s.node1.nid)
 
     # Leaf nodes cannot have NPath children:
-    with pytest.raises(OrdbException, match=r"Cannot add NPath below existing NPath referencing leaf node."):
+    with pytest.raises(AttributeError):
         s.node1.subnode = MyNode()
 
     # Non-leaf nodes can have NPath children. Not sure if this is helpful in any situation.
@@ -568,11 +567,11 @@ def test_polyvec2r():
 
 def test_npath_double_reference():
     s = MyHead()
-    nid = s.add(MyNode(label='hello'))
-    s.add(NPath(parent=None, name='path1', ref=nid))
+    nid = s.subgraph.add(MyNode(label='hello'))
+    s.subgraph.add(NPath(parent=None, name='path1', ref=nid))
     # Two NPaths are not allowed to reference the same node:
     with pytest.raises(UniqueViolation):
-        s.add(NPath(parent=None, name='path2', ref=nid))
+        s.subgraph.add(NPath(parent=None, name='path2', ref=nid))
 
 def test_cursor_at_npath():
     s = MyHead()

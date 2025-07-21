@@ -547,8 +547,12 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
     (for MutableNodes) or FrozenSubgraph (for FrozenNodes).
     """
 
-    is_leaf : bool = True
-    """Controls whether this node type can have children in the NPath hierarchy."""
+    @classmethod
+    def raw_cursor(cls, subgraph: 'Subgraph', nid: int|NoneType, npath_nid: int|NoneType):
+        return super().__new__(cls, (subgraph, nid, npath_nid))
+
+    def __new__(self, **kwargs):
+        return self.Tuple(**kwargs)
 
     @property
     def subgraph(self) -> 'Subgraph':
@@ -561,16 +565,20 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         return super().__getitem__(1)
 
     @property
+    def node(self):
+        return self.subgraph.nodes[self.nid]
+
+    @property
     def npath_nid(self) -> int|NoneType:
         """The nid of the NPath node matching the nid attribute."""    
         return super().__getitem__(2)
 
-    @classmethod
-    def raw_cursor(cls, subgraph: 'Subgraph', nid: int|NoneType, npath_nid: int|NoneType):
-        return super().__new__(cls, (subgraph, nid, npath_nid))
-
-    def __new__(self, **kwargs):
-        return self.Tuple(**kwargs)
+    @property
+    def npath(self):
+        if self.npath_nid == None:
+            return None
+        else:
+            return self.subgraph.nodes[self.npath_nid]
 
     def full_path_list(self) -> list[str|int]:
         if self.nid == 0:
@@ -616,23 +624,6 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
 
         return f"{type(self).__name__}({', '.join(info)})"
 
-    def with_subgraph(self, new_subgraph):
-        return type(self)(subgraph=new_subgraph, nid=self.nid, npath_nid=self.npath_nid)
-
-    # Properties
-    # ----------
-
-    @property
-    def node(self):
-        return self.subgraph.nodes[self.nid]
-
-    @property
-    def npath(self):
-        if self.npath_nid == None:
-            return None
-        else:
-            return self.subgraph.nodes[self.npath_nid]
-
     @property
     def parent(self):
         if self.npath == None:
@@ -644,8 +635,45 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
             npath_next = self.subgraph.nodes[npath_next_nid]
             return self.subgraph.cursor_at(npath_next.ref, npath_next_nid)
 
-    # Attribute handlers
-    # ------------------
+    def update(self, **kwargs):
+        self.subgraph.update(self.node.set(**kwargs), self.nid)
+
+    def delete(self):
+        if self.npath_nid != None:
+            self.subgraph.remove_nid(self.npath_nid)
+        if self.nid != None:
+            self.subgraph.remove_nid(self.nid)
+
+    def __mod__(self, node: Inserter) -> 'Node':
+        """
+        Inserts node and sets 'ref' attribute (which should be a LocalRef) to the cursor nid.
+        """
+        if isinstance(node, NodeTuple):
+            # Simple case: just update the node before inserting:
+            # This could also be done by the complex case below, so this is a performance optimization:
+            nid_new = self.subgraph.add(node.set(ref=self.nid))
+        else:
+            # Complex case:
+            def inserter_func(sgu):
+                main_nid = sgu.add(node)
+                sgu.update(sgu.nodes[main_nid].set(ref=self.nid), main_nid)
+                return main_nid
+            nid_new = self.subgraph.add(FuncInserter(inserter_func))
+        # Optimization: lookup_npath is disabled, because this newly added node has no NPath.
+        return self.subgraph.cursor_at(nid_new, lookup_npath=False)
+
+    @property
+    def root(self):
+        return self.subgraph.root_cursor
+
+    @property
+    def mutable(self):
+        raise TypeError("n.mutable is unavailable where n is not subclass of MutableNode or FrozenNode.")
+
+@public
+class NonLeafNode(Node, build_node=False):
+    # Attribute handlers wrapping the item handlers below
+    # ---------------------------------------------------
 
     def __getattr__(self, k):
         # If attribute is not found, look for k as subpath:
@@ -700,60 +728,32 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
     def mkpath_addnode(self, k, ref, u: 'SubgraphUpdater'):
         """Creates NPath node below current cursor. NPath node is empty when ref=None."""
         if self.nid not in (None, 0):
-            if self.is_leaf:
-                raise OrdbException("Cannot add NPath below existing NPath referencing leaf node.")
             if self.npath_nid == None:
                 raise OrdbException("Cannot add node at cursor without NPath.")
         u.add(NPath(parent=self.npath_nid, name=k, ref=ref))
 
-    def update(self, **kwargs):
-        self.subgraph.update(self.node.set(**kwargs), self.nid)
-
-    def delete(self):
-        if self.npath_nid != None:
-            self.subgraph.remove_nid(self.npath_nid)
-        if self.nid != None:
-            self.subgraph.remove_nid(self.nid)
-
-    def __mod__(self, node: Inserter) -> 'Node':
-        """
-        Inserts node and sets 'ref' attribute (which should be a LocalRef) to the cursor nid.
-        """
-        if isinstance(node, NodeTuple):
-            # Simple case: just update the node before inserting:
-            # This could also be done by the complex case below, so this is a performance optimization:
-            return self.subgraph % node.set(ref=self.nid)
-        else:
-            # Complex case:
-            def inserter_func(sgu):
-                main_nid = sgu.add(node)
-                sgu.update(sgu.nodes[main_nid].set(ref=self.nid), main_nid)
-                return main_nid
-            return self.subgraph % FuncInserter(inserter_func)
-
-    @property
-    def root(self):
-        return self.subgraph.root_cursor
-
 @public
 class FrozenNode(Node, build_node=False):
-    pass
+    @property
+    def mutable(self):
+        return False
 
 @public
 class MutableNode(Node, build_node=False):
+    @property
+    def mutable(self):
+        return True
+
+@public
+class PathNode(NonLeafNode):
     pass
 
 @public
-class PathNode(Node):
-    pass
-
-@public
-class SubgraphRoot(Node):
+class SubgraphRoot(NonLeafNode):
     """
     Each subgraph has a single SubgraphRoot node. The subclass of SubgraphRoot
     defines what kind of design data the subgraph represents.
     """
-    is_leaf = False
 
     def __new__(cls, **kwargs):
         # __new__ calls super().__new__ via SubgraphRoot.Tuple(), but wraps the result in a Subgraph object.
@@ -762,43 +762,22 @@ class SubgraphRoot(Node):
             u.add_single(cls.Tuple(**kwargs), nid=0) # SubgraphRoots always have nid = 0
         return sg.root_cursor
 
-    # Forward stuff to Subgraph, which is now further hidden
-    # ------------------------------------------------------
-
-    @property
-    def mutable(self) -> bool:
-        return self.subgraph.mutable
-
-    def freeze(self):
-        return self.subgraph.freeze().root_cursor
-
-    def thaw(self):
-        return self.subgraph.thaw().root_cursor
-
-    def copy(self) -> 'Self':
-        return self.subgraph.copy().root_cursor
-
-    def mutate(self, nodes, index, nid_alloc):
-        return self.subgraph.mutate(nodes, index, nid_alloc)
-
-    def updater(self) -> 'SubgraphUpdater':
-        return SubgraphUpdater(self.subgraph)
-
-    def remove_nid(self, nid: int):
-        return self.subgraph.remove_nid(nid)
-
-    def update(self, node: NodeTuple, nid: int) -> int:
-        return self.subgraph.update(node, nid)
-
-    def add(self, node: Inserter) -> int:
-        """Insets node and returns nid."""
-        return self.subgraph.add(node)
-
     def __mod__(self, node) -> Node:
         """
         Add node and return cursor at created node.
+
+        This is a simpler version of Node.__mod__ that does not set the 'ref'
+        attribute of the inserted node.
         """
-        return self.subgraph.__mod__(node)
+        nid_new = self.subgraph.add(node)
+        # Optimization: lookup_npath is disabled, because this newly added node has no NPath.
+        return self.subgraph.cursor_at(nid_new, lookup_npath=False)
+
+    # Convenience forwards to self.subgraph
+    # -------------------------------------
+
+    def updater(self) -> 'SubgraphUpdater':
+        return SubgraphUpdater(self.subgraph)
 
     def cursor_at(self, *args, **kwargs) -> Node:
         return self.subgraph.cursor_at(*args, **kwargs)
@@ -814,6 +793,15 @@ class SubgraphRoot(Node):
             return False
         assert other.nid == 0
         return self.subgraph.matches(other.subgraph)
+
+    def freeze(self):
+        return self.subgraph.freeze().root_cursor
+
+    def thaw(self):
+        return self.subgraph.thaw().root_cursor
+
+    def copy(self) -> 'Self':
+        return self.subgraph.copy().root_cursor
 
 class SubgraphUpdater:
     """
@@ -1132,8 +1120,7 @@ class Subgraph(ABC):
     # ----------------
 
     # We want the interfaces of our subclasses (FrozenSubgraph and MutableSubgraph)
-    # to be as similar as possible. Main reason is to prevent the funky error
-    # messages of the Subgraph.__getattr__ fallback.
+    # to be as similar as possible.
 
     @property
     @abstractmethod
@@ -1175,14 +1162,6 @@ class Subgraph(ABC):
         """Insets node and returns nid."""
         with self.updater() as u:
             return u.add(node)
-
-    def __mod__(self, node) -> Node:
-        """
-        Add node and return cursor at created node.
-        """
-        nid_new = self.add(node)
-        # Optimization: lookup_npath is disabled, because this newly added node has no NPath.
-        return self.cursor_at(nid_new, lookup_npath=False)
 
 @public
 class FrozenSubgraph(Subgraph):

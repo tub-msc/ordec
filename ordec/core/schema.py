@@ -244,10 +244,9 @@ class SimNet(Node):
 
     eref = ExternalRef(type=Net|Pin, of_subgraph=lambda c: parent_siminstance(c).schematic)
 
-class SimInstance(Node):
+class SimInstance(NonLeafNode):
     dc_current = Attr(float)
 
-    is_leaf = False
     schematic = SubgraphRef(Schematic)
     eref = ExternalRef(SchemInstance, of_subgraph=lambda c: parent_siminstance(c.parent).schematic)
 
