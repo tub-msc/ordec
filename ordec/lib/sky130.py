@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 from ..core import *
 from .. import helpers
 #from . import Nmos, Pmos
@@ -8,15 +9,22 @@ from ..parser.implicit_processing import schematic_routing
 #from .. import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, SchemConnPoint, SchemTapPoint, generate, helpers
 from . import generic_mos
 from pathlib import Path
+
 _MODULE_DIR = Path(__file__).parent
 _PROJECT_ROOT = _MODULE_DIR.parent.parent
-_SKY130_MODEL_PATH_STR = "sky130A/libs.tech/ngspice/corners/tt.spice"
-_SKY130_MODEL_FULL_PATH = (_PROJECT_ROOT / _SKY130_MODEL_PATH_STR).resolve()
+_SKY130_RELATIVE_MODEL_PATH = "libs.tech/ngspice/corners/tt.spice"
+
+env_var_path = os.getenv("ORDEC_PDK_SKY130A")
+
+if env_var_path:
+    _SKY130_MODEL_FULL_PATH = (Path(env_var_path) / _SKY130_RELATIVE_MODEL_PATH).resolve()
+else:
+    _SKY130_MODEL_FULL_PATH = (_PROJECT_ROOT / "sky130A" / _SKY130_RELATIVE_MODEL_PATH).resolve()
 
 
 if not _SKY130_MODEL_FULL_PATH.is_file():
     print(f"WARNING: Sky130 model file not found at expected path derived from project structure: {_SKY130_MODEL_FULL_PATH}")
-    print(f"Ensure the path '{_SKY130_MODEL_PATH_STR}' exists relative to the project root '{_PROJECT_ROOT}' and models are downloaded.")
+    print(f"Ensure the files exist, or set the enviromental variable ORDEC_PDK_SKY130A")
 
 
 def setup_sky(netlister):
