@@ -4,9 +4,7 @@
 import os
 from ..core import *
 from .. import helpers
-#from . import Nmos, Pmos
 from ..parser.implicit_processing import schematic_routing
-#from .. import Cell, Vec2R, Rect4R, Pin, PinArray, PinStruct, Symbol, Schematic, PinType, Rational as R, SchemPoly, SchemArc, SchemRect, SchemInstance, SchemPort, Net, Orientation, SchemConnPoint, SchemTapPoint, generate, helpers
 from . import generic_mos
 from pathlib import Path
 
@@ -52,14 +50,12 @@ class Nmos(generic_mos.Nmos):
     def netlist_ngspice(self, netlister, inst, schematic):
         netlister.require_setup(setup_sky)
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
-        #netlister.add(netlister.name_obj(inst, schematic, prefix="m"), netlister.portmap(inst, pins), self.model_name(), *params_to_spice(self.params))
         netlister.add(netlister.name_obj(inst, schematic, prefix="x"), netlister.portmap(inst, pins), self.model_name(), *params_to_spice(self.params))
 
 class Pmos(generic_mos.Pmos):
     def netlist_ngspice(self, netlister, inst, schematic):
         netlister.require_setup(setup_sky)
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
-        #netlister.add(netlister.name_obj(inst, schematic, prefix="m"), netlister.portmap(inst, pins), 'sky130_fd_pr__pfet_01v8', *params_to_spice(self.params))
         netlister.add(netlister.name_obj(inst, schematic, prefix="x"), netlister.portmap(inst, pins), 'sky130_fd_pr__pfet_01v8', *params_to_spice(self.params))
 
 class Inv(Cell):
