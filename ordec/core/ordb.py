@@ -691,7 +691,7 @@ class NonLeafNode(Node, build_node=False):
             return self.__getitem__(k)
         except QueryException as e:
             # IPython needs an AttributeError here, else it does not use _repr_html_.
-            raise AttributeError(*e.args)
+            raise AttributeError(*e.args) from None
 
     def __setattr__(self, k, v):
         try:
@@ -723,7 +723,7 @@ class NonLeafNode(Node, build_node=False):
         try:
             npath_next_nid = self.subgraph.one(NPath.idx_parent_name.query((self.npath_nid, k)), wrap_cursor=False)
         except QueryException:
-            raise QueryException(f"Path not found: {k!r}")
+            raise QueryException(f"Attribute or path {k!r} not found.") from None
         npath_next_ref = self.subgraph.nodes[npath_next_nid].ref
         return self.subgraph.cursor_at(npath_next_ref, npath_next_nid)
 

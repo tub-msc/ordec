@@ -409,7 +409,7 @@ def test_cursor_remove():
     }))
 
     # Cannot delete node that does not exist:
-    with pytest.raises(QueryException, match=r'Path not found'):
+    with pytest.raises(QueryException, match=r'Attribute or path .* not found'):
         del s.node2
 
     # Cannot delete attributes:
