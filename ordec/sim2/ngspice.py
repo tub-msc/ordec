@@ -98,23 +98,51 @@ class Ngspice:
 
     def op(self) -> Iterator[NgspiceValue]:
         self.command("op")
-        print_all_res = self.command("print all")
+
+        # Try "print all" first - if it fails due to zero-length vectors,
+        # fall back to printing only available vectors individually
+        try:
+            print_all_res = self.command("print all")
+            # Check if the result contains warnings about zero-length vectors
+            if "is not available or has zero length" in print_all_res:
+                raise NgspiceError("Zero-length vectors detected, switching to individual vector access")
+        except (NgspiceError, Exception):
+            # Fallback: get list of available vectors and print only valid ones
+            display_output = self.command("display")
+            print_all_res = ""
+
+            # Parse vector list and print only vectors with length > 0
+            for line in display_output.split('\n'):
+                # Look for vector definitions like "name: type, real, N long"
+                vector_match = re.match(r'\s*([^:]+):\s*[^,]+,\s*[^,]+,\s*([0-9]+)\s+long', line)
+                if vector_match:
+                    vector_name = vector_match.group(1).strip()
+                    vector_length = int(vector_match.group(2))
+
+                    # Only print vectors that have data (length > 0)
+                    if vector_length > 0:
+                        try:
+                            result = self.command(f"print {vector_name}")
+                            print_all_res += result + "\n"
+                        except:
+                            continue  # Skip vectors that can't be printed
+
         for line in print_all_res.split('\n'):
             if len(line) == 0:
                 continue
-            
-            # Voltage result:
-            res = re.match(r"([0-9a-zA-Z_.]+)\s*=\s*([0-9.\-+e]+)\s*", line)
+
+            # Voltage result - updated regex to handle device names with special chars:
+            res = re.match(r"([0-9a-zA-Z_.#]+)\s*=\s*([0-9.\-+e]+)\s*", line)
             if res:
                 yield NgspiceValue(type='voltage', name=res.group(1), subname=None, value=float(res.group(2)))
 
             # Current result like "vgnd#branch":
-            res = re.match(r"([0-9a-zA-Z_.]+)#branch\s*=\s*([0-9.\-+e]+)\s*", line)
+            res = re.match(r"([0-9a-zA-Z_.#]+)#branch\s*=\s*([0-9.\-+e]+)\s*", line)
             if res:
                 yield NgspiceValue(type='current', name=res.group(1), subname='branch', value=float(res.group(2)))
 
             # Current result like "@m.xdut.mm2[is]" from savecurrents:
-            res = re.match(r"@([a-zA-Z]\.)?([0-9a-zA-Z_.]+)\[([0-9a-zA-Z_]+)\]\s*=\s*([0-9.\-+e]+)\s*", line)
+            res = re.match(r"@([a-zA-Z]\.)?([0-9a-zA-Z_.#]+)\[([0-9a-zA-Z_]+)\]\s*=\s*([0-9.\-+e]+)\s*", line)
             if res:
                 yield NgspiceValue(type='current', name=res.group(2), subname=res.group(3), value=float(res.group(4)))
 

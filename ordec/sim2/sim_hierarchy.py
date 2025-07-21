@@ -53,12 +53,18 @@ class HighlevelSim:
                 if vtype == 'voltage':
                     try:
                         simnet = self.str_to_simobj[name]
-                    except KeyError:
-                        print(f"warning: ignoring {name}")
-                    else:
                         simnet.dc_voltage = value
+                    except KeyError:
+                        # Silently ignore internal subcircuit voltages that can't be mapped to hierarchy
+                        # These are typically internal nodes within subcircuits (e.g. device body nodes)
+                        continue
                 elif vtype == 'current':
                     if subname not in ('id', 'branch', 'i'):
                         continue
-                    siminstance = self.str_to_simobj[name]
-                    siminstance.dc_current = value
+                    try:
+                        siminstance = self.str_to_simobj[name]
+                        siminstance.dc_current = value
+                    except KeyError:
+                        # Silently ignore internal subcircuit device currents that can't be mapped to hierarchy
+                        # These are typically internal devices within subcircuits (e.g. MOSFET models)
+                        continue

@@ -498,15 +498,21 @@ class InvSkyTb(Cell):
         except AttributeError:
             vin = R(0)
 
-        node % qinst(pos=Vec2R(x=11,y=9), ref=sky130.Inv().symbol, vdd = node.vdd, vss=node.vss, a=node.i, y=node.o)
-        node % qinst(pos=Vec2R(x=16,y=9), ref=NoConn().symbol, a=node.o)
-        
-        node % qinst(pos=Vec2R(x=11,y=0), ref=Gnd().symbol, p=node.vss)
-        node % qinst(pos=Vec2R(x=0,y=6), ref=Vdc(dc=R('5')).symbol, m=node.vss, p = node.vdd)
-        node % qinst(pos=Vec2R(x=5,y=6), ref=Vdc(dc=vin).symbol, m=node.vss, p = node.i)
-        
-        node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=20, uy=14))
-        
+        s_inv = sky130.Inv().symbol
+        s_nc = NoConn().symbol
+        s_gnd = Gnd().symbol
+        s_vdc_vdd = Vdc(dc=R('5')).symbol
+        s_vdc_in = Vdc(dc=vin).symbol
+
+        node.i_inv = SchemInstance(s_inv.portmap(vdd=node.vdd, vss=node.vss, a=node.i, y=node.o), pos=Vec2R(x=11,y=9))
+        node.i_nc = SchemInstance(s_nc.portmap(a=node.o), pos=Vec2R(x=16,y=9))
+
+        node.i_gnd = SchemInstance(s_gnd.portmap(p=node.vss), pos=Vec2R(x=11,y=0))
+        node.i_vdd = SchemInstance(s_vdc_vdd.portmap(m=node.vss, p=node.vdd), pos=Vec2R(x=0,y=6))
+        node.i_in = SchemInstance(s_vdc_in.portmap(m=node.vss, p=node.i), pos=Vec2R(x=5,y=6))
+
+        node.outline = Rect4R(lx=0, ly=0, ux=20, uy=14)
+
         helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
 
     @generate(SimHierarchy)
