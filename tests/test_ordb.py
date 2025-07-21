@@ -5,7 +5,7 @@ import pytest
 import re
 from ordec.core import *
 from tabulate import tabulate
-
+import ordec.core.ordb
 
 # Custom schema for testing:
 class MyHead(SubgraphRoot):
@@ -13,6 +13,15 @@ class MyHead(SubgraphRoot):
 
 class MyNode(Node):
     label = Attr(str)
+
+class test_node_tuple():
+    t = MyNode(label='hello')
+    assert isinstance(t, MyNode.Tuple)
+    assert t == MyNode.Tuple(label='hello')
+    assert t.label == 'hello'
+    assert t.set(label='world') == MyNode.Tuple(label='world')
+
+    assert isinstance(MyNode.Tuple.label, ordec.core.ordb.NodeTupleAttrDescriptor)
 
 def test_schema_attr_inheritance():
     assert [ad.name for ad in MyNode.Tuple._layout] == ['label']
@@ -249,7 +258,7 @@ def test_nid_generator():
 
     # Adding a node changes nid_alloc. The new node will have nid=2.
     with s.updater() as u:
-        u.add(MyNode(label='hello'))
+        MyNode(label='hello').insert_into(u)
     assert s.subgraph.nid_alloc == range(2, 2**32)
     assert len(s.subgraph.nodes) == 2
     assert s.subgraph.nodes[1].label == 'hello'
@@ -274,31 +283,33 @@ def test_updater():
 
     # This updater has no effect on s, because commit is set to False manually:
     with s.updater() as u:
-        u.add(MyNode(label='hello'))
-        u.add(MyNode(label='world'))
-        u.add(MyNode(label='foo'))
-        u.add(MyNode(label='bar'))
+        MyNode(label='hello').insert_into(u)
+        MyNode(label='world').insert_into(u)
+        MyNode(label='foo').insert_into(u)
+        MyNode(label='bar').insert_into(u)
         u.commit = False    
     assert s.subgraph.internally_equal(s_orig.subgraph)
 
     # This updater has no effect on s, because a constraint check fails:
     with pytest.raises(DanglingLocalRef):
         with s.updater() as u:
-            u.add(NPath(parent=None, name='a', ref=100))
+            NPath(parent=None, name='a', ref=100).insert_into(u)
     assert s.subgraph.internally_equal(s_orig.subgraph)
 
     # This updater mutates s, as commit is True (default) and no constraint check fails:
     with s.updater() as u:
-        u.add(MyNode(label='hello'))
-        u.add(MyNode(label='world'))
-        u.add(MyNode(label='foo'))
-        u.add(MyNode(label='bar'))
+        MyNode(label='hello').insert_into(u)
+        MyNode(label='world').insert_into(u)
+        MyNode(label='foo').insert_into(u)
+        MyNode(label='bar').insert_into(u)
     assert not s.subgraph.internally_equal(s_orig.subgraph)
     assert s.subgraph.nid_alloc.start == 5
 
     s = s_orig.copy()
     with s.updater() as u:
-        u.add(MyNode(label='hello'))
+        MyNode(label='hello').insert_into(u)
+
+    #TODO?
 
 def test_localref_integrity():
     class Person(Node):

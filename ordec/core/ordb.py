@@ -27,14 +27,14 @@ class ModelViolation(OrdbException):
 class Inserter(ABC):
     __slots__=()
     @abstractmethod
-    def insert(self, sgu):
+    def insert_into(self, sgu):
         pass
 
 @public
 class FuncInserter(Inserter):
-    __slots__=("insert",)
+    __slots__=("insert_into",)
     def __init__(self, inserter_func):
-        self.insert = inserter_func
+        self.insert_into = inserter_func
 
 class IndexKey(NamedTuple):
     index: 'Index'
@@ -432,7 +432,6 @@ class NodeTuple(tuple):
         for ns in self.indices:
             ns.index_add(sgu, self, nid)
 
-
     def index_remove(self, sgu: 'SubgraphUpdater', nid):
         self.index_ntype.index_remove(sgu, self, nid)
         for ns in self.indices:
@@ -442,7 +441,7 @@ class NodeTuple(tuple):
         for ns in self.indices:
             ns.check_contraints(sgu, self, nid)
 
-    def insert(self, sgu):
+    def insert_into(self, sgu):
         return sgu.add_single(self, sgu.nid_generate())
 
     def __eq__(self, other):
@@ -655,7 +654,7 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         else:
             # Complex case:
             def inserter_func(sgu):
-                main_nid = sgu.add(node)
+                main_nid = node.insert_into(sgu)
                 sgu.update(sgu.nodes[main_nid].set(ref=self.nid), main_nid)
                 return main_nid
             nid_new = self.subgraph.add(FuncInserter(inserter_func))
@@ -705,7 +704,7 @@ class NonLeafNode(Node, build_node=False):
 
     def __setitem__(self, k, v):
         with self.subgraph.updater() as u:
-            v_nid = u.add(v)
+            v_nid = v.insert_into(u)
             self.mkpath_addnode(k, v_nid, u)
 
     def __getitem__(self, k):
@@ -730,7 +729,7 @@ class NonLeafNode(Node, build_node=False):
         if self.nid not in (None, 0):
             if self.npath_nid == None:
                 raise OrdbException("Cannot add node at cursor without NPath.")
-        u.add(NPath(parent=self.npath_nid, name=k, ref=ref))
+        NPath(parent=self.npath_nid, name=k, ref=ref).insert_into(u)
 
 @public
 class FrozenNode(Node, build_node=False):
@@ -858,11 +857,6 @@ class SubgraphUpdater:
             self.target_subgraph.mutate(self.nodes, self.index, range(self.nid_max_encountered+1, self.target_subgraph.nid_alloc.stop))
 
         self.valid = False
-
-    def add(self, node: Inserter) -> int:
-        """returns nid"""
-        return node.insert(self)
-        return nid_new
 
     def nid_generate(self):
         if self.nid_gen_counter not in self.target_subgraph.nid_alloc:
@@ -1161,7 +1155,7 @@ class Subgraph(ABC):
     def add(self, node: Inserter) -> int:
         """Insets node and returns nid."""
         with self.updater() as u:
-            return u.add(node)
+            return node.insert_into(u)
 
 @public
 class FrozenSubgraph(Subgraph):

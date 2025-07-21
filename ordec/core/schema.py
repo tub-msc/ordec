@@ -44,9 +44,9 @@ class Symbol(SubgraphRoot):
 
     def portmap(cursor, **kwargs):
         def inserter_func(main, sgu):
-            main_nid = main.set(symbol=cursor.subgraph).insert(sgu)
+            main_nid = main.set(symbol=cursor.subgraph).insert_into(sgu)
             for k, v in kwargs.items():
-                SchemInstanceConn(ref=main_nid, here=v.nid, there=cursor[k].nid).insert(sgu)
+                SchemInstanceConn(ref=main_nid, here=v.nid, there=cursor[k].nid).insert_into(sgu)
             return main_nid
         return inserter_func
 
@@ -69,9 +69,9 @@ class SymbolPoly(Node):
             return main
         else:
             def inserter_func(sgu):
-                main_nid = main.insert(sgu)
+                main_nid = main.insert_into(sgu)
                 for i, v in enumerate(vertices):
-                    PolyVec2R(ref=main_nid, order=i, pos=v).insert(sgu)
+                    PolyVec2R(ref=main_nid, order=i, pos=v).insert_into(sgu)
                 return main_nid
             return FuncInserter(inserter_func)
 
