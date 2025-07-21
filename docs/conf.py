@@ -20,6 +20,7 @@ extensions = [
     'sphinx_rtd_theme',
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
+    'sphinx.ext.inheritance_diagram',
     #'jupyter_sphinx',
     #'nbsphinx',
     "myst_nb",
@@ -29,11 +30,15 @@ templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'conf.py', 'data_model.rst']
 
 napoleon_use_ivar = True
+#add_module_names = False
 
 autodoc_default_options = {
     'show-inheritance': True,
 }
 autodoc_class_signature = 'separated'
+
+# Make inheritance graphs go from top to bottom instead of left to right:
+inheritance_graph_attrs = dict(rankdir="TB", size='""')
 
 
 # -- Options for HTML output -------------------------------------------------

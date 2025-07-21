@@ -532,6 +532,12 @@ class NodeMeta(type):
             cls.Mutable = type(name+'.Mutable', (cls, MutableNode), {'__slots__':()}, build_node=False)
             cls.Frozen = type(name+'.Frozen', (cls, FrozenNode), {'__slots__':()}, build_node=False)
 
+            # Not sure whether this is a good idea, but it is nice for the
+            # inheritance diagrams in the docs.
+            cls.Tuple.__module__ = cls.__module__
+            cls.Mutable.__module__ = cls.__module__
+            cls.Frozen.__module__ = cls.__module__
+
         return super().__init__(name, bases, attrs)
 
 @public
@@ -802,6 +808,12 @@ class SubgraphRoot(NonLeafNode):
 
     def thaw(self):
         return self.subgraph.thaw().root_cursor
+
+    def tables(self) -> str:
+        return self.subgraph.tables()
+
+    def dump(self) -> str:
+        return self.subgraph.dump()
 
     def copy(self) -> 'Self':
         """

@@ -23,8 +23,8 @@
 # All ORDB data must conform to some predefined schema. Usually, we would use the Node and SubgraphHead subclasses defined in {ref}`data-schema` (which are for IC design data), but for this example we will define a small example schema describing a planet with airports and flights that connect airports.
 
 # +
-from ordec.ordb import *
-class Planet(SubgraphHead):
+from ordec.core.ordb import *
+class Planet(SubgraphRoot):
     diameter = Attr(float)
 
 class Airport(Node):
@@ -142,17 +142,17 @@ print(x.parent[1])
 #
 # So far, we wrote and read various nodes of our subgraph "earth". Internally, the nodes are stored in a persistent map data structure (pyrsistent.PMap):
 
-print(earth.nodes)
+print(earth.subgraph.nodes)
 
 # Persistent data structures are immutable and never need to be copied. Creating a copy of earth gives us a new Python object, but this new earth2 references the identical underlying PMap:
 
 earth2 = earth.copy()
-earth2.nodes is earth.nodes
+earth2.subgraph.nodes is earth.subgraph.nodes
 
-# Once we modify earth2, its "nodes" PMap in earth2 is replaced with a new one.
+# Once we modify earth2, its "nodes" PMap in earth2 is replaced with an extended one.
 
 earth2 % Flight(flight_code="ABC100", origin=earth.united_kingdom.man, destination=earth.cdg, duration=45)
-earth2.nodes is earth.nodes
+earth2.subgraph.nodes is earth.subgraph.nodes
 
 # The new flight is part of earth2, but not of the original earth:
 
@@ -198,12 +198,12 @@ except TypeError as e:
 # Another important part of ORDB are references between subgraphs. To explore this, let's define a second type of subgraph for flight tickets:
 
 # +
-class Ticket(SubgraphHead):
+class Ticket(SubgraphRoot):
     price = Attr(float)
-    planet = Attr(Planet)
+    planet = SubgraphRef(Planet)
 
 class TicketSegment(Node):
-    flight = ExternalRef(Flight, of_subgraph=lambda c: c.subgraph.planet)
+    flight = ExternalRef(Flight, of_subgraph=lambda c: c.root.planet)
     seat = Attr(str)
     
 myticket = Ticket(price=1999, planet=earth_frozen)
@@ -233,7 +233,7 @@ except TypeError as e:
 # ORDeC organizes IC design data in Cell subclasses. These Cell subclasses represent hardware units for which different ORDB subgraphs can be generated, e.g. a symbol, a schematic, a layout, and/or simulation results.
 
 # +
-from ordec.base import *
+from ordec.core import *
 from ordec.lib import Res, Gnd, Vdc
 
 class VoltageDivider(Cell):
@@ -272,7 +272,7 @@ VoltageDivider().schematic
 # Cells can be **parametrized**. Cell-level parameters can be accessed under "self.params" by the view generators:
 
 # +
-from ordec.base import *
+from ordec.core import *
 from ordec.lib import Res, Gnd, Vdc
 
 class ParamVDiv(Cell):

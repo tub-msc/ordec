@@ -63,6 +63,30 @@ Other thoughts:
     
 Persistency is implemented using `Pyrsistent <https://pyrsistent.readthedocs.io/>`_.
 
+Node inheritance
+----------------
+
+.. currentmodule:: ordec.core
+
+:class:`ordb.Node` subclasses are essential for ORDB. The following "core subclasses" are defined in the ordb module:
+
+.. inheritance-diagram:: ordb.FrozenNode ordb.MutableNode ordb.PathNode ordb.SubgraphRoot
+  :parts: -2
+
+The schema module defines further :class:`ordb.Node` subclasses. One example is :class:`schema.Net`:
+
+.. inheritance-diagram:: schema.Net
+  :include-subclasses:
+  :parts: -2
+
+Note that the class :class:`schema.Net` itself will never be instantiated. Instead, either Net.Frozen or Net.Mutable will be used, depending on whether the Node is part of a FrozenSubgraph or a MutableSubgraph.
+
+An example of a :class:`ordb.SubgraphRoot` is :class:`schema.Schematic`. Its inheritance diagram looks as follows:
+
+.. inheritance-diagram:: schema.Schematic
+  :include-subclasses:
+  :parts: -2
+
 Reference
 ---------
 
@@ -76,17 +100,6 @@ Further remarks:
   - Thaw + modify the subgraph (add and update nodes).
   - Keep the subgraph immutable, create a new subgraph that references it.
 
-.. automodule:: ordec.ordb
+.. automodule:: ordec.core.ordb
   :member-order: bysource
   :members:
-
-.. .. autoclass:: Cell
-..    :members:
-..    :exclude-members: __init__
-
-.. .. autoclass:: Node
-..    :members:
-..    :exclude-members: Children, __init__
-
-.. .. autoclass:: View
-..    :members:
