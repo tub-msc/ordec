@@ -5,6 +5,7 @@ name: run pytest
 on:
   workflow_dispatch:
   push:
+  pull_request:
 jobs:
   build:
     name: pytest
