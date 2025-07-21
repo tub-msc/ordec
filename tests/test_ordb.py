@@ -430,11 +430,8 @@ def test_freeze():
     assert isinstance(s.node1, MyNode.Mutable)
     assert isinstance(s.node1, MyNode)
     s.node2 = MyNode(label='world')
-
     s.node1.label = 'ahoy'
-
     assert s.mutable
-    hash(s.subgraph) # Ensure that MutableSubgraph is hashable
 
     s=s.freeze()
     assert not s.mutable
@@ -445,9 +442,6 @@ def test_freeze():
     assert isinstance(s.node1, MyNode.Frozen)
     assert isinstance(s.node1, MyNode)
 
-    # TODO: revisit hash and .subgraph stuff
-    hash(s.subgraph)
-
     with pytest.raises(TypeError, match=r'Subgraph is already frozen.'):
         s.freeze()
 
@@ -457,6 +451,85 @@ def test_freeze():
 
     with pytest.raises(TypeError, match=r'Unsupported operation on FrozenSubgraph.'):
         s.node1.label = 'beep'
+
+def test_hash_eq():
+    a1 = MyHead(label='alice')
+    a2 = MyHead(label='alice')
+    b = MyHead(label='bob')
+
+    # Mutable nodes/subgraphs behave like objects (each has an own 'identity'):
+    assert len({hash(a1), hash(a2), hash(b)}) == 3
+    assert len({hash(a1.subgraph), hash(a2.subgraph), hash(b.subgraph)}) == 3
+    assert a1 != a2
+    assert b != a1
+
+    # Frozen subgraphs behave like immutable types (eq and hash match when they are internally equal):
+    assert a1.subgraph.freeze() == a2.subgraph.freeze()
+    assert a1.subgraph.freeze() is not a2.subgraph.freeze()
+    assert len({
+        hash(a1.subgraph.freeze()),
+        hash(a2.subgraph.freeze()),
+        hash(b.subgraph.freeze()),
+        }) == 2
+    assert len({
+        hash(a1.subgraph.freeze()),
+        hash(a2.subgraph.freeze()),
+        hash(b.subgraph.freeze()),
+        hash(a1.subgraph),
+        hash(a2.subgraph),
+        hash(b.subgraph),
+        }) == 5
+
+    # Frozen nodes also behave like immutable types:
+    assert a1.freeze() == a2.freeze()
+    assert a1.freeze() == a1.freeze()
+    assert a1.freeze() is not a2.freeze()
+    assert a1.freeze() is not a1.freeze()
+    assert a1.freeze() != a1
+    assert a1 != a1.freeze()
+    assert b.freeze() != a1.freeze()
+    assert len({
+        hash(a1.freeze()),
+        hash(a2.freeze()),
+        hash(b.freeze()),
+        }) == 2
+    assert len({
+        hash(a1.freeze()),
+        hash(a2.freeze()),
+        hash(b.freeze()),
+        hash(a1),
+        hash(a2),
+        hash(b),
+        }) == 5
+
+def test_copy():
+    from copy import copy
+    
+    a1 = MyHead(label='alice')
+    a1.node1 = MyNode(label='hello')
+    
+    # copy() of SubgraphRoot is deep:
+    a2 = a1.copy()
+    a3 = copy(a1)
+    assert a1 != a2
+    assert a1 != a3
+    assert a1.freeze() == a2.freeze()
+    assert a1.freeze() is not a2.freeze()
+
+    # Frozen Nodes are not copied.
+    f = a1.freeze()
+    assert f.copy() == f
+    assert copy(f) == f
+    assert f.copy() is f
+    assert copy(f) is f
+
+    # copy() of Nodes that are not SubgraphRoot is shallow:
+    n1 = a1.node1
+    n2 = copy(n1)
+    assert n1 == n2
+    assert n1 is n2
+    with pytest.raises(AttributeError):
+        n2.copy() # To prevent confusion, this method does not exist.
 
 def test_cursor_attribute():
     s = MyHead(label='hi')

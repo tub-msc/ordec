@@ -669,6 +669,10 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
     def mutable(self):
         raise TypeError("n.mutable is unavailable where n is not subclass of MutableNode or FrozenNode.")
 
+    def __copy__(self) -> 'Self':
+        return self # tuple is immutable (at shallow level), thus no copy needed.
+
+
 @public
 class NonLeafNode(Node, build_node=False):
     # Attribute handlers wrapping the item handlers below
@@ -800,7 +804,15 @@ class SubgraphRoot(NonLeafNode):
         return self.subgraph.thaw().root_cursor
 
     def copy(self) -> 'Self':
+        """
+        For convenience, SubgraphRoot.copy and SubgraphRoot.__copy__ copy the
+        Subgraph itself (deep copy) and return the root cursor of the new
+        subgraph.
+        """
         return self.subgraph.copy().root_cursor
+
+    def __copy__(self) -> 'Self':
+        return self.copy()
 
 class SubgraphUpdater:
     """
@@ -1176,6 +1188,9 @@ class FrozenSubgraph(Subgraph):
     def __copy__(self) -> 'FrozenSubgraph':
         return self # Since FrozenSubgraph is immutable, copies are never needed?!
 
+    def copy(self):
+        return self # No need to copy frozen subgraph
+
     @property
     def mutable(self):
         return False
@@ -1206,9 +1221,6 @@ class FrozenSubgraph(Subgraph):
         # This is not really needed, as mutate will prevent mutation anyway,
         # but it will raise the error earlier.
         raise TypeError("Unsupported operation on FrozenSubgraph.")
-
-    def copy(self):
-        raise TypeError("No need to copy frozen subgraph.")
 
 @public
 class MutableSubgraph(Subgraph):
