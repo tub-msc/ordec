@@ -96,21 +96,18 @@ class Ngspice:
             self.command("set no_auto_gnd")
         check_errors(self.command(f"source {netlist_fn}"))
 
-    def op(self) -> Iterator[NgspiceValue]:
-        self.command("op")
+    def print_all(self) -> Iterator[str]:
+        """
+        Tries "print all" first. If it fails due to zero-length vectors, emulate
+        "print all" using display and print but skip zero-length vectors.
+        """
 
-        # Try "print all" first - if it fails due to zero-length vectors,
-        # fall back to printing only available vectors individually
-        try:
-            print_all_res = self.command("print all")
-            # Check if the result contains warnings about zero-length vectors
-            if "is not available or has zero length" in print_all_res:
-                raise NgspiceError("Zero-length vectors detected, switching to individual vector access")
-        except (NgspiceError, Exception):
+        print_all_res = self.command("print all")
+        # Check if the result contains the warning about zero-length vectors
+        if "is not available or has zero length" in print_all_res:
             # Fallback: get list of available vectors and print only valid ones
             display_output = self.command("display")
-            print_all_res = ""
-
+            
             # Parse vector list and print only vectors with length > 0
             for line in display_output.split('\n'):
                 # Look for vector definitions like "name: type, real, N long"
@@ -121,13 +118,14 @@ class Ngspice:
 
                     # Only print vectors that have data (length > 0)
                     if vector_length > 0:
-                        try:
-                            result = self.command(f"print {vector_name}")
-                            print_all_res += result + "\n"
-                        except:
-                            continue  # Skip vectors that can't be printed
+                        yield self.command(f"print {vector_name}")
+        else:
+            yield from print_all_res.split('\n')
 
-        for line in print_all_res.split('\n'):
+    def op(self) -> Iterator[NgspiceValue]:
+        self.command("op")
+
+        for line in self.print_all():
             if len(line) == 0:
                 continue
 
