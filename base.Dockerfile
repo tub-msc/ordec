@@ -17,7 +17,7 @@ FROM debian:bookworm AS ordec-fetch
 RUN useradd -ms /bin/bash app && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        wget ca-certificates zstd \
+        wget ca-certificates zstd git \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 USER app
 
@@ -34,14 +34,14 @@ RUN wget -q https://openva.fra1.cdn.digitaloceanspaces.com/openvaf_23_5_0_linux_
     tar xf openvaf_23_5_0_linux_amd64.tar.gz && \
     rm openvaf_23_5_0_linux_amd64.tar.gz
 
+# The IHP PDK version is pinned to a specific commit hash (on the main branch) below:
 # Note: Some stuff (like libs.doc) are deleted to save space.
-WORKDIR /home/app
-RUN wget -q https://github.com/IHP-GmbH/IHP-Open-PDK/archive/refs/tags/v0.2.0.tar.gz && \
-    echo "3fbc8da1aa59505a6eee2122bfcf5419f621b9f1ed7ed9826318505f7bb38fbf v0.2.0.tar.gz" | sha256sum -c && \
-    tar xf v0.2.0.tar.gz && \
-    rm v0.2.0.tar.gz && \
-    mv IHP-Open-PDK-0.2.0 IHP-Open-PDK && \
-    rm -r IHP-Open-PDK/ihp-sg13g2/libs.doc IHP-Open-PDK/ihp-sg13g2/libs.tech/openems
+WORKDIR /home/app/IHP-Open-PDK
+RUN git init && \
+    git remote add origin https://github.com/IHP-GmbH/IHP-Open-PDK.git && \
+    git fetch --depth 1 origin 0854e9bcd558b68c573149038b4c95706314e2f1 && \
+    git checkout FETCH_HEAD && \
+    rm -r ihp-sg13g2/libs.doc ihp-sg13g2/libs.tech/openems .git
 
 # Note: Some stuff (like libs.tech/xschem) are deleted to save space.
 WORKDIR /home/app/skywater
@@ -105,6 +105,8 @@ RUN if [ ${ngspice_multibuild} != off ]; then \
 
 FROM debian:bookworm AS ordec-base
 
+# - libgomp1: needed for Ngspice
+# - binutils: needed for OpenVAF
 RUN useradd -ms /bin/bash app && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -114,6 +116,7 @@ RUN useradd -ms /bin/bash app && \
         chromium-driver \
         npm \
         git \
+        binutils \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 USER app
 WORKDIR /home/app
@@ -127,6 +130,9 @@ ENV PATH="/home/app/openvaf:/home/app/ngspice/min/bin:$PATH"
 ENV ORDEC_PDK_SKY130A="/home/app/skywater/sky130A"
 ENV ORDEC_PDK_SKY130B="/home/app/skywater/sky130B"
 ENV ORDEC_PDK_IHP_SG13G2="/home/app/IHP-Open-PDK/ihp-sg13g2"
+
+WORKDIR /home/app/IHP-Open-PDK/ihp-sg13g2/libs.tech/verilog-a/
+RUN ./openvaf-compile-va.sh
 
 # Create Python venv + install Python dependencies
 # ------------------------------------------------
