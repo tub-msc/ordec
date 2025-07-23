@@ -1,105 +1,181 @@
-ORDB Data Model
-======================
+:mod:`ordec.core.ordb` --- Functional, relational, schema-based data model
+==========================================================================
 
-ORDB is the foundation of ORDeC's data model.
+.. toctree::
+  :hidden:
 
-It defines the basis of how IC design data (e.g. schematics, symbols, layouts, simulation results, extraction results, DRC \& LVS results) is represented and how design data can be queried and modified.
-
-Each design flow step produces a set of interrelated design objects. For example, a step might return a schematic that consists of nets, ports, drawn wires and instantiated symbols. This can be seen as a **graph**, with the design objects being nodes and the references between them being edges. Some of the edges might be between nodes generated within one specific step, while other edges might link nodes between distinct steps. From this point of view, the nodes from each design flow step constitute a **subgraph**.
-
-Based on this idea of subgraphs, ORDB provides a data model that can be summarized in five principles:
-
-1. **Schema-based:** ORDB design data must conform to some a predefined schema. This schema primarily defines a set of node types (tables) with specific attributes (columns). The schema also defines possible relations between nodes.
-
-  - Attributes must be hashable, which means that lists and dicts cannot be attributes. Attributes are typically either primitive types (e.g. string, int, Vec2R) or immutable subgraph references. An exception is the "cell" attribute.
-
-3. **Relational queries:**
-  
-  - In a 1:n relation, if we add a reference on one side, we want to be able to efficiently access the reference in the opposite direction.
-  - For this, we need transparent indices.
-  - Integrity checks ("foreign keys").
-  - ORDB can loosely be seen as relational database.
-
-3. **Hierarchical tree organization:** Names can be assigned to nodes. Those names can be arranged hierarchically in a tree. This makes it possible to group design objects in arrays, structs or other logical units.
-4. **Persistent data structure:** ORDB subgraphs are based on `persistent data structures <https://en.wikipedia.org/wiki/Persistent_data_structure>`_.
-
-  - The state of a subgraph is immutable.
-  - Modifying a subgraph (i.e. adding, updating or removing nodes) replaces its old state with a new state (that is built upon the previous state). The old subgraph state remains unchanged.
-  - Logical copies of subgraphs are free, as the underlying data structures are immutable and thus do not need to be copied.
-  - Using this mechanism, similar subgraphs can share data.
-
-5. **Mutable and immutable interfaces:**
-   
-  - While creating or transforming a subgraph, a mutable interface is used, hiding the aforementioned immutability and persistence.
-  - At functional boundaries, subgraphs are made immutable (frozen). This ensures that subsequent use of the subgraph is read-only and does not accidentally modify it. It also and allows caching of return values -- for example, we can generate a Symbol once and then use it at many occasions.
-
-ORDB is primarily intended as **in-memory** database. Serialization and network support is planned but not currently implemented.
-
-The :ref:`ordb_demo` demonstrates the principles listed above with hands-on examples.
-
-As potential alternatives to ORDB, some other ideas were considered but discarded:
-
-- A in-memory global relational database could be used within the context of running the design tool / concerning one IC design. Such a system would be *schema-based* and offer *relational queries*, but it would not provide a *persistent data structure* and *mutable and immutable interfaces* on subgraph level.
-- ORDeC's old data model layer was *schema-based* and had *mutable and immutable interfaces*, but lacked *persistency* and *relational queries*.
-- Plain Python objects, frozen dataclasses or similar approaches mainly lack *persistency*, the ability to have *mutable and immutable interfaes* on subgraph level and *relational queries*.
-
-Why persistency?
-----------------
-
-Subgraphs with high degrees of similarity should share memory:
-    
-- Example 1: very similar symbols (e.g. resistors with different values) each have separate, but almost identical subgraphs in memory (e.g. only captions differ)
-- Example 2: evolving a schematic or layout for cross-technology mapping
-- Example 3: placement or routing steps that evolve layouts
-- Example 4: power grid generation
-- Example 5: separate copies of the SimHierarchy when performing multiple simulations (e.g. parameter sweep, monte carlo, op+transient, ...)
-
-Other thoughts:
-
-- Various incremental versions/copies of design data can be maintained.
-- Full functional encapsulation, results of functions are immutable and can be cached.
-- Reverting changes is easy.
-- Tasks like PNR, PEX, Monte-Carlo simulation could be done in parallel based on the persistent structures. Either by dividing the problem or by testing out different parameters and using the best result.
-    
-Persistency is implemented using `Pyrsistent <https://pyrsistent.readthedocs.io/>`_.
-
-Node inheritance
-----------------
-
-.. currentmodule:: ordec.core
-
-:class:`ordb.Node` subclasses are essential for ORDB. The following "core subclasses" are defined in the ordb module:
-
-.. inheritance-diagram:: ordb.FrozenNode ordb.MutableNode ordb.PathNode ordb.SubgraphRoot
-  :parts: -2
-
-The schema module defines further :class:`ordb.Node` subclasses. One example is :class:`schema.Net`:
-
-.. inheritance-diagram:: schema.Net
-  :include-subclasses:
-  :parts: -2
-
-Note that the class :class:`schema.Net` itself will never be instantiated. Instead, either Net.Frozen or Net.Mutable will be used, depending on whether the Node is part of a FrozenSubgraph or a MutableSubgraph.
-
-An example of a :class:`ordb.SubgraphRoot` is :class:`schema.Schematic`. Its inheritance diagram looks as follows:
-
-.. inheritance-diagram:: schema.Schematic
-  :include-subclasses:
-  :parts: -2
-
-Reference
----------
-
-Further remarks:
-
-- Every node has a node ID (nid) that identifies it uniquely within its subgraph. Both nodes inside the subgraph and nodes in other subgraphs use this nid to reference the node.
-- Nodes can only references immutable subgraphs. For this reason, subgraphs form a a directed acyclic graph.
-- The access layer (Cursor) is separate from the stored data (Node).
-- There are two ways to build upon an immutable subgraph:
-  
-  - Thaw + modify the subgraph (add and update nodes).
-  - Keep the subgraph immutable, create a new subgraph that references it.
+  ordb_demo
 
 .. automodule:: ordec.core.ordb
-  :member-order: bysource
+
+ORDB is the core of ORDeC's internal data model. It provides a functional, relational, schema-based mechanism to represent IC design data such as schematics, symbols, layouts and simulation results. IC design data is structured in subgraphs (:class:`Subgraph`), which can comprise many nodes (:class:`Node`) including a single special root node (:class:`SubgraphRoot`). Nodes can reference other nodes within the same subgraph (:class:`LocalRef`) or in other subgraphs (:class:`ExternalRef` in combination with :class:`SubgraphRef`).
+ORDB is primarily a in-memory database. Serialization and network support is planned but not currently implemented.
+
+An example subgraph might represent a schematic comprising multiple nets, ports, drawn wires and symbol instances.
+
+For a practical demonstration, view :ref:`ordb_demo`.
+
+ORDB is based on five principles:
+
+1. **Schema-based:** ORDB design data must conform to a predefined schema, which defines a set of node types (tables) with attributes (columns), including relations between nodes. See :ref:`attribute_types` for details.
+
+2. **Relational queries:** ORDB supports a basic form of relational queries and can loosely be seen as relational database. When node A references node B through a LocalRef attribute, this reference can not only be followed from A to B but also in the reverse direction from B to A, without having to explicitly add a second reference in the opposite direction. This is especially important in 1:n relations, where the reference by convention is always stored at the '1' side, never at the 'n' side. Relational queries are powered by automatic indices.
+
+3. **Hierarchical tree organization:** Names can be assigned to nodes. Those names can be arranged hierarchically in a tree. This makes it possible to group design objects in arrays, structs or other logical units.
+
+4. **Persistent data structures:** The state of a ORDB subgraph is stored using `persistent data structures <https://en.wikipedia.org/wiki/Persistent_data_structure>`_ (from the `Pyrsistent <https://pyrsistent.readthedocs.io/>`_ library). Persistent data structures are immutable.
+   
+   Modifying a subgraph (i.e. adding, updating or removing nodes) replaces its old state with a new state, which is built upon the previous state. The old subgraph state remains unchanged. Due to this, logical copies of subgraphs are very cheap, as the underlying data structures are immutable and thus do not need to be copied.
+   
+   Persistence allows highly similar subgraphs to share memory. Examples: very similar symbols such as resistors with different values where only captions differ; evolving a schematic or layout for cross-technology mapping; placement or routing steps that evolve layouts; power grid generation; separate copies of the SimHierarchy when performing different simulations; reverting incremental changes.
+
+5. **Mutable and immutable interfaces:** While constructing or transforming a subgraph, a mutable interface is used, which hides the aforementioned immutability and persistence. At functional boundaries, subgraphs can be frozen (made immutable). Frozen subgraphs are read-only and cannot be accidentally modified. Functions that return frozen subgraphs are well-suited for return value caching / memoization. For example, we can generate a Symbol once and then use it at many occasions. Side effects between independent users of the same frozen subgraph are eliminated.
+
+Before the current design of ORDB, some other ideas were evaluated but discarded:
+ORDeC's first data model layer was schema-based and had mutable and immutable interfaces, but lacked persistence and support for relational queries.
+Another alternative to the current ORDB could be an in-memory global relational database for each IC design. Such a system would be schema-based and support relational queries, but it would not provide a mutable and immutable interfaces on subgraph level (and the resulting functional encapsulation) and lack the advantages of persistent data structures.
+Lastly, plain Python objects, frozen dataclasses or similar approaches lack relational queries, mutable and immutable interfaces on subgraph level and persistence.
+
+.. _attribute_types:
+
+Schema: nodes and attributes
+----------------------------
+
+A schema defines node types and their attributes, including the special SubgraphRoot node types, of which there is exactly one per subgraph. As an example, see the following excerpt of ORDeC's full schema for IC design data (:mod:`ordec.core.schema`):
+
+.. code-block:: python
+
+  class Symbol(SubgraphRoot):
+      outline = Attr(Rect4R)
+
+  class Pin(Node):
+      pintype = Attr(PinType, default=PinType.Inout)
+      pos     = Attr(Vec2R)
+      align   = Attr(D4, default=D4.R0)
+
+**Attribute** values must be hashable and should be immutable. Thus, lists and dicts cannot be attributes. To take advantage of ORDB's capabilities, it is also strongly encouraged to use atomic attributes rather than compound types (first normal form).
+
+.. autoclass:: Attr
   :members:
+
+.. autoclass:: LocalRef
+
+.. note::
+
+  In one instance, the above recommendation that attribute values should be immutable and primitive is violated: The 'cell' attribute of some SubgraphRoot classes such as :class:`ordec.core.schema.Schematic` reference instances of :class:`ordec.core.cell.Cell`, which are hashable but potentially mutable. The 'cell' attributes are currently needed to resolve symbols to schematics.
+
+References to nodes within another subgraph require two attributes: a reference to another subgraph (:class:`ordec.core.ordb.SubgraphRef`) and a reference to the the node within that subgraph (:class:`ordec.core.ordb.ExternalRef`). 
+
+.. autoclass:: SubgraphRef
+
+.. autoclass:: ExternalRef
+
+Attributes are always defined as part of a :class:`Node` subclass.
+
+Each node instance (row) has a **node ID (nid)** that identifies it uniquely within its subgraph. Both nodes inside the subgraph and nodes in other subgraphs can use this nid to reference the node (:class:`LocalRef` and :class:`ExternalRef`).
+
+.. autoclass:: Node
+  :members:
+
+  .. attribute:: Tuple
+    :type: type[NodeTuple]
+
+    auto-generated subclass of :class:`NodeTuple`
+
+  .. attribute:: Mutable
+    :type: type[MutableNode]
+
+    auto-generated subclass of this Node subclass and :class:`MutableNode`
+
+  .. attribute:: Frozen
+    :type: type[FrozenNode]
+
+    auto-generated subclass of this Node subclass and :class:`FrozenNode`
+
+.. autoclass:: NonLeafNode
+  :show-inheritance:
+  :members:
+
+.. autoclass:: SubgraphRoot
+  :show-inheritance:
+
+Every :class:`SubgraphRoot` is a subclass of :class:`NonLeafNode`, i.e. SubgraphRoots always support child nodes:
+
+.. inheritance-diagram:: ordec.core.ordb.PathNode ordec.core.ordb.SubgraphRoot
+  :parts: -2
+
+The classes :class:`ordec.core.ordb.MutableNode` and :class:`ordec.core.ordb.FrozenNode` have an auxiliary function as base class for :attr:`Node.Mutable` and :attr:`Node.Frozen`.
+
+.. autoclass:: MutableNode
+
+.. autoclass:: FrozenNode
+
+The following inheritance diagram around :class:`ordec.core.schema.Net` exemplifies their role:
+
+.. inheritance-diagram:: ordec.core.schema.Net
+  :include-subclasses:
+  :parts: -2
+
+Note that the class :class:`ordec.core.schema.Net` itself will never be instantiated. Instead, either Net.Frozen or Net.Mutable will be used, depending on whether a :class:`FrozenSubgraph` or a :class:`MutableSubgraph` is selected.
+
+.. An example of a :class:`SubgraphRoot` is :class:`ordec.core.schema.Schematic`. Its inheritance diagram looks as follows:
+
+.. .. inheritance-diagram:: ordec.core.schema.Schematic
+..   :include-subclasses:
+..   :parts: -2
+
+
+Inserters & indices
+-------------------
+
+.. autoclass:: Inserter
+
+.. autoclass:: FuncInserter
+
+.. autoclass:: Index
+
+.. autoclass:: CombinedIndex
+
+Low-level stuff
+---------------
+
+.. autoclass:: NodeTuple
+  :members:
+
+.. autoclass:: Subgraph
+  :members:
+
+.. autoclass:: MutableSubgraph
+
+.. autoclass:: FrozenSubgraph
+
+.. autoclass:: SubgraphUpdater
+
+:class:`NPath` and :class:`PathNode` implement the path hierarchy of subgraphs:
+
+.. autoclass:: NPath
+
+.. autoclass:: PathNode
+
+
+Exceptions
+----------
+
+.. autoclass:: OrdbException
+
+.. autoclass:: QueryException
+  :show-inheritance:
+
+.. autoclass:: ModelViolation
+  :show-inheritance:
+
+.. autoclass:: UniqueViolation
+  :show-inheritance:
+
+.. autoclass:: DanglingLocalRef
+  :show-inheritance:
+
+Design patterns
+---------------
+
+There are two ways to build upon an immutable subgraph: The subgraph can be thawed and modified, or a new subgraph that references it can be created, keeping the original subgraph immutable.

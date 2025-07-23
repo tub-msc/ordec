@@ -4,12 +4,13 @@
 from enum import Enum
 import math
 from functools import partial
-from public import populate_all
+from public import public
 
 from .rational import R
 from .geoprim import *
 from .ordb import *
 
+@public
 class PinType(Enum):
     In = 'in'
     Out = 'out'
@@ -21,6 +22,7 @@ class PinType(Enum):
 # Misc
 # ----
 
+@public
 class PolyVec2R(Node):
     """
     One element/point of a Vec2R polygonal chain, which can be open or closed.
@@ -36,6 +38,7 @@ class PolyVec2R(Node):
 # Symbol
 # ------
 
+@public
 class Symbol(SubgraphRoot):
     """A symbol of an individual cell."""
     outline = Attr(Rect4R)
@@ -54,6 +57,7 @@ class Symbol(SubgraphRoot):
         from ..render import render
         return render(cursor).svg().decode('ascii'), {'isolated': False}
 
+@public
 class Pin(Node):
     """
     Pins are single wire connections exposed through a symbol.
@@ -62,6 +66,7 @@ class Pin(Node):
     pos     = Attr(Vec2R)
     align   = Attr(D4, default=D4.R0)
  
+@public
 class SymbolPoly(Node):
     def __new__(cls, vertices:list[Vec2R]=None, **kwargs):
         main = super().__new__(cls, **kwargs)
@@ -98,7 +103,7 @@ class SymbolPoly(Node):
             d.append(f"L{x} {y}")
         return ' '.join(d)
 
-
+@public
 class SymbolArc(Node):
     """A drawn circle or circular segment for use in Symbol."""
     pos         = Attr(Vec2R)
@@ -146,9 +151,11 @@ class SymbolArc(Node):
 # # Schematic
 # # ---------
 
+@public
 class Net(Node):
     pin = ExternalRef(Pin, of_subgraph=lambda c: c.root.symbol)
 
+@public
 class Schematic(SubgraphRoot):
     """
     A schematic of an individual cell.
@@ -163,6 +170,7 @@ class Schematic(SubgraphRoot):
         from ..render import render
         return render(cursor).svg().decode('ascii'), {'isolated': False}
 
+@public
 class SchemPort(Node):
     """
     Port of a Schematic, corresponding to a Pin of the schematic's Symbol.
@@ -172,11 +180,13 @@ class SchemPort(Node):
     pos = Attr(Vec2R)
     align = Attr(D4, default=D4.R0)
 
+@public
 class SchemWire(SymbolPoly):
     """A drawn schematic wire representing an electrical connection."""
     ref = LocalRef(Net)
     ref_idx = Index(ref)
 
+@public
 class SchemInstance(Node):
     """
     An instance of a Symbol in a Schematic (foundation for schematic hierarchy).
@@ -199,6 +209,7 @@ class SchemInstance(Node):
     def conns(cursor):
         return cursor.subgraph.all(SchemInstanceConn.ref_idx.query(cursor.nid))
 
+@public
 class SchemInstanceConn(Node):
     """
     Maps Pins of a SchemInstance to Nets of its Schematic.
@@ -211,6 +222,7 @@ class SchemInstanceConn(Node):
 
     ref_pin_idx = CombinedIndex([ref, there], unique=True)
 
+@public
 class SchemTapPoint(Node):
     """A schematic tap point for connecting points by label, typically visualized using the net's name."""
     ref = LocalRef(Net)
@@ -222,6 +234,7 @@ class SchemTapPoint(Node):
     def loc_transform(cursor):
         return cursor.pos.transl() * cursor.align
 
+@public
 class SchemConnPoint(Node):
     """A schematic point to indicate a connection at a 3- or 4-way junction of wires."""
     ref = LocalRef(Net)
@@ -237,22 +250,22 @@ def parent_siminstance(c: Node) -> Node:
         c = c.parent
     return c
 
+@public
 class SimNet(Node):
     trans_voltage = Attr(list[float])
     trans_current = Attr(list[float])
     dc_voltage = Attr(float)
 
-    eref = ExternalRef(type=Net|Pin, of_subgraph=lambda c: parent_siminstance(c).schematic)
+    eref = ExternalRef(Net|Pin, of_subgraph=lambda c: parent_siminstance(c).schematic)
 
+@public
 class SimInstance(NonLeafNode):
     dc_current = Attr(float)
 
     schematic = SubgraphRef(Schematic)
     eref = ExternalRef(SchemInstance, of_subgraph=lambda c: parent_siminstance(c.parent).schematic)
 
+@public
 class SimHierarchy(SubgraphRoot):
     schematic = SubgraphRef(Schematic)
     cell = Attr('Cell')
-
-# Every class defined in this file is public:
-populate_all()

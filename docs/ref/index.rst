@@ -8,7 +8,6 @@ User Reference
    ordb
    cell_and_generate
    schema
-   ordb_demo
    geoprim
    rational
 

@@ -213,9 +213,11 @@ def test_subgraph_matches():
     # 2. create subgraph using '%' shorthand (Subgraph.__mod__) instead of Subgraph.add:
     s5 = Symbol()
     a_cursor = s5 % Pin(pintype=PinType.In, pos=Vec2R(0, 2))
-    s5 % NPath(name='a', ref=a_cursor.nid)
+    with s5.updater() as u:
+        NPath(name='a', ref=a_cursor.nid).insert_into(u)
     y_cursor = s5 % Pin(pintype=PinType.Out, pos=Vec2R(4, 2))
-    s5 % NPath(name='y', ref=y_cursor.nid)
+    with s5.updater() as u:
+        NPath(name='y', ref=y_cursor.nid).insert_into(u)
     assert s5.matches(ref)
 
     # 3. create subgraph using implicit Node:

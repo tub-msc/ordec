@@ -61,30 +61,46 @@ class GenericIndex(ABC):
 @public
 @dataclass(frozen=True, eq=True)
 class UniqueViolation(ModelViolation):
+    """
+    TODO
+    """
     index: GenericIndex
     value: tuple
 
 @public
 @dataclass(frozen=True, eq=True)
 class DanglingLocalRef(ModelViolation):
+    """
+    TODO
+    """
     nid: int
 
 @public
-@dataclass(frozen=False, eq=False)
 class Attr:
     """
-    Schema attribute for use in Node subclasses. # TODO: update this doc
+    Defines a node attribute of a primitive type such as string, int or Vec2R.
+
+    Args:
+        type: Defines the type of attribute values.
+        default: Default attribute value.
+        factory: Function applied to each value before assignment to attribute.
+
+    Attributes:
+        indices (list[GenericIndex]): list of all indices associated with attribute
     """
 
-    def default_factory(val):
+    def __init__(self, type: type, default=None, factory: Callable=None):
+        self.type = type
+        self.default = default
+        self.custom_factory = factory
+        self.indices = []
+
+    def factory(self, val):
+        if self.custom_factory:
+            val = self.custom_factory(val)
         if isinstance(val, Node):
             raise TypeError("Nodes can only be added to LocalRef, ExternalRef or SubgraphRef attributes.")
         return val
-
-    type: type
-    default: object = None
-    indices : list[GenericIndex] = field(default_factory=list)
-    factory: Callable = default_factory
 
     def read_hook(self, value, cursor):
         return value
@@ -132,27 +148,32 @@ class NodeAttrDescriptor:
         raise TypeError("Attributes cannot be deleted.")
 
 @public
-@dataclass(frozen=False, eq=False)
 class LocalRef(Attr):
     """
-    Reference to a node in the same subgraph by nid.
+    Defines a node attribute referencing a node within the same subgraph. The
+    reference is internally stored as integer nid. The :class:`Node` interface
+    hides the nid in two ways: On reading the LocalRef attribute, the Node
+    object is returned instead of a nid. Node objects of the same subgraph can
+    also be assigned directly to the attribute.
+
+    Args:
+        refs_ntype: The Node subclass that this reference points to.
+        optional: Specifies whether the reference can be None.
     """
-    refs_ntype: type = None
-    type: type = int
-    optional: bool = True
-    def __post_init__(self):
+
+    def __init__(self, refs_ntype: type, optional: bool = True):
+        super().__init__(type=int)
+        self.refs_ntype = refs_ntype
+        self.optional = optional
         self.indices.append(LocalRefIndex(self))
 
-    @staticmethod
-    def localref_factory(val: 'int|Node|NoneType'):
+    def factory(self, val: 'int|Node|NoneType'):
         if val==None or isinstance(val, int):
             return val
         elif isinstance(val, Node):
             return val.nid
         else:
             raise TypeError('Only None, int or Node can be assigned to LocalRef.')
-
-    factory: Callable = localref_factory
 
     def read_hook(self, value, cursor):
         if value is None:
@@ -161,56 +182,66 @@ class LocalRef(Attr):
             return cursor.subgraph.cursor_at(value)
 
 @public
-@dataclass(frozen=False, eq=False)
+class SubgraphRef(Attr):
+    """
+    References another subgraph. Can serve as base reference for zero or more
+    :class:`ordec.core.ordb.ExternalRef` attributes.
+
+    Either a SubgraphRoot or a FrozenSubgraph can be assigned to a SubgraphRef.
+    Reading a SubgraphRef always returns a SubgraphRoot object.
+
+    The referenced subgraph must be frozen.
+
+    Args:
+        type: SubgraphRoot class of the referenced subgraph.
+    """
+    
+    def read_hook(self, value, cursor):
+        return value.root_cursor
+
+    def factory(self, val: 'FrozenSubgraph|SubgraphRoot|NoneType'):
+        if val==None or isinstance(val, FrozenSubgraph):
+            return val
+        elif isinstance(val, Node) and not val.mutable:
+            return val.subgraph
+        else:
+            raise TypeError('Only None, FrozenSubgraph or SubgraphRoot can be assigned to SubgraphRef.')
+
+@public
 class ExternalRef(Attr):
     """
-    Reference to a node in another subgraph by nid.
+    References a node in another subgraph.
+
+    Each ExternalRef is resolved using a corresponding SubgraphRef. The
+    corresponding SubgraphRef can be an attribute of the same node or of
+    another node. The of_subgraph argument defines which SubgraphRef corresponds
+    to the ExternalRef.
+
+    Args:
+        refs_ntype: The referenced node type.
+        of_subgraph: Function receiving the current node as argument and
+            returning the SubgraphRoot of the referenced subgraph by reading
+            the SubgraphRef that corresponds to this instance of the
+            ExternalRef.
+        optional: Specifies whether the reference can be None.
     """
-    refs_ntype: type = None
-    of_subgraph: Callable = None
-    type: type = int
-    optional: bool = True
+
+    def __init__(self, refs_ntype: type, of_subgraph: 'Callable[[Node], SubgraphRoot]', optional: bool = True):
+        super().__init__(type=int)
+        self.refs_ntype = refs_ntype
+        self.of_subgraph = of_subgraph
+        self.optional = optional
 
     def read_hook(self, value, cursor):
         return self.of_subgraph(cursor).cursor_at(value)
 
-    @staticmethod
-    def externalref_factory(val: 'int|Node|NoneType'):
+    def factory(self, val: 'int|Node|NoneType'):
         if val==None or isinstance(val, int):
             return val
         elif isinstance(val, Node):
             return val.nid
         else:
             raise TypeError('Only None, int or Node can be assigned to ExternalRef.')
-
-    factory: Callable = externalref_factory
-
-@public
-@dataclass(frozen=False, eq=False)
-class SubgraphRef(Attr):
-    """
-    Reference to a node in another subgraph by nid.
-    """
-    refs_cursortype: type = None
-    type: type = 'FrozenSubgraph'
-    optional: bool = True
-
-    def read_hook(self, value, cursor):
-        return value.root_cursor
-
-    @staticmethod
-    def externalref_factory(val: 'FrozenSubgraph|SubgraphRoot|NoneType'):
-        if val==None or isinstance(val, FrozenSubgraph):
-            return val
-        elif isinstance(val, Node):
-            if val.subgraph.mutable:
-                raise TypeError('SubgraphRoot for externalref_factory must be frozen.')
-            return val.subgraph
-        else:
-            raise TypeError('Only None, FrozenSubgraph or SubgraphRoot can be assigned to SubgraphRef.')
-
-    factory: Callable = externalref_factory
-
 
 @public
 class Index(GenericIndex):
@@ -465,8 +496,7 @@ class NodeTuple(tuple):
     def __hash__(self):
         return hash((type(self), tuple.__hash__(self)))
 
-    index_ntype = NTypeIndex()
-    "Subgraph-wide index of nodes by their type (table)"
+    index_ntype = NTypeIndex() #: Subgraph-wide index of nodes by their type (table)
 
 # Register NodeTuple as virtual subclass of Inserter. Combining tuple and ABC seems like it could cause problems.
 Inserter.register(NodeTuple)
@@ -543,12 +573,20 @@ class NodeMeta(type):
 @public
 class Node(tuple, metaclass=NodeMeta, build_node=False):
     """
-    Node provides a cursor-like access layer to NodeTuples within mutable or immutable subgraphs.
+    Subclass this class to define own node types (tables) for ORDB.
 
-    Node objects are 3-tuples (subgraph, nid ,npath_nid).
+    Calling/instantiating a Node subclass X does not return an object of type
+    X, but an object of type X.Tuple, which is a implicitly created subclass
+    of :class:`NodeTuple`. A corresponding X object is only obtained when
+    the the X.Tuple object is attached to a subgraph, for example using the
+    modulo ('%') operator.
+
+    Node objects provides a cursor-like access layer to the :class:`NodeTuple`
+    objects that are stored within :class:`Subgraph` objects. They are 3-tuples
+    (subgraph, nid, npath_nid).
 
     The hash() and == behviour of Node is implemented by tuple.__hash__ and
-    tuple.__eq__ and relies on the hash() and == behavior of MutableSubgraph
+    tuple.__eq__. It relies on the hash() and == behavior of MutableSubgraph
     (for MutableNodes) or FrozenSubgraph (for FrozenNodes).
     """
 
@@ -561,31 +599,34 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
 
     @property
     def subgraph(self) -> 'Subgraph':
-        """The subgraph in which this Node moves."""
+        """The subgraph of the selected node."""
         return super().__getitem__(0)
 
     @property
     def nid(self) -> int|NoneType:
-        """The nid of the node to which this Node points."""
+        """The node ID (nid) of the selected node."""
         return super().__getitem__(1)
 
     @property
-    def node(self):
+    def node(self) -> NodeTuple:
+        """The node's raw NodeTuple stored in subgraph."""
         return self.subgraph.nodes[self.nid]
 
     @property
     def npath_nid(self) -> int|NoneType:
-        """The nid of the NPath node matching the nid attribute."""    
+        """The nid of the NPath node matching the selected node."""    
         return super().__getitem__(2)
 
     @property
-    def npath(self):
+    def npath(self) -> 'NPath.Tuple':
+        """The raw NPath.Tuple matching the selected node."""
         if self.npath_nid == None:
             return None
         else:
             return self.subgraph.nodes[self.npath_nid]
 
     def full_path_list(self) -> list[str|int]:
+        """Hierarchial path of the selected node in NPath hierarchy as list."""
         if self.nid == 0:
             # Root node special case:
             return []
@@ -597,7 +638,8 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         else:
             return self.parent.full_path_list() + here
 
-    def full_path_str(self):
+    def full_path_str(self) -> str:
+        """Hierarchial path of the selected node in NPath hierarchy as string."""
         it = iter(self.full_path_list())
         try:
             first = next(it)
@@ -630,7 +672,8 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         return f"{type(self).__name__}({', '.join(info)})"
 
     @property
-    def parent(self):
+    def parent(self) -> 'Node':
+        """Parent node of selected node in NPath hierarchy."""
         if self.npath == None:
             raise QueryException("Subgraph root has no parent.")
         if self.npath.parent == None:
@@ -641,9 +684,15 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
             return self.subgraph.cursor_at(npath_next.ref, npath_next_nid)
 
     def update(self, **kwargs):
+        """
+        Each key, value argument pair updates the attribute key of the
+        selected node to the provided value.
+        """
+
         self.subgraph.update(self.node.set(**kwargs), self.nid)
 
-    def delete(self):
+    def remove(self):
+        """Removes selected node from the subgraph."""
         if self.npath_nid != None:
             self.subgraph.remove_nid(self.npath_nid)
         if self.nid != None:
@@ -651,7 +700,8 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
 
     def __mod__(self, node: Inserter) -> 'Node':
         """
-        Inserts node and sets 'ref' attribute (which should be a LocalRef) to the cursor nid.
+        Inserts node and sets 'ref' attribute of the inserted node to
+        the nid of the selected node.
         """
         if isinstance(node, NodeTuple):
             # Simple case: just update the node before inserting:
@@ -668,11 +718,13 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         return self.subgraph.cursor_at(nid_new, lookup_npath=False)
 
     @property
-    def root(self):
+    def root(self) -> 'SubgraphRoot':
+        """Returns SubgraphRoot of the selected subgraph."""
         return self.subgraph.root_cursor
 
     @property
-    def mutable(self):
+    def mutable(self) -> bool:
+        """Returns whether the selected subgraph is mutable."""
         raise TypeError("n.mutable is unavailable where n is not subclass of MutableNode or FrozenNode.")
 
     def __copy__(self) -> 'Self':
@@ -681,8 +733,12 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
 
 @public
 class NonLeafNode(Node, build_node=False):
-    # Attribute handlers wrapping the item handlers below
-    # ---------------------------------------------------
+    """
+    NonLeafNodes differ from other Nodes in that they can have children
+    in the NPath hierarchy.
+    """
+
+    # The attribute handlers wrap the item handlers:
 
     def __getattr__(self, k):
         # If attribute is not found, look for k as subpath:
@@ -709,13 +765,12 @@ class NonLeafNode(Node, build_node=False):
             # Try to delete child node:
             self.__delitem__(k)
 
-    # Item handlers (subpaths)
-    # ------------------------
+    # The item handlers allow accessing children in the NPath hierarchy:
 
     def __setitem__(self, k, v):
         with self.subgraph.updater() as u:
             v_nid = v.insert_into(u)
-            self.mkpath_addnode(k, v_nid, u)
+            self._mkpath_addnode(k, v_nid, u)
 
     def __getitem__(self, k):
         """Returns cursor to a subpath."""
@@ -728,34 +783,33 @@ class NonLeafNode(Node, build_node=False):
         return self.subgraph.cursor_at(npath_next_ref, npath_next_nid)
 
     def __delitem__(self, k):
-        self.__getitem__(k).delete()
+        self.__getitem__(k).remove()
 
-    def mkpath(self, k, ref=None):
+    def mkpath(self, k: str|int, ref=None):
+        """Create empty NPath 'k' below selected node."""
         with self.subgraph.updater() as u:
-            self.mkpath_addnode(k, ref, u)
+            self._mkpath_addnode(k, ref, u)
             
-    def mkpath_addnode(self, k, ref, u: 'SubgraphUpdater'):
+    def _mkpath_addnode(self, k, ref, u: 'SubgraphUpdater'):
         """Creates NPath node below current cursor. NPath node is empty when ref=None."""
         if self.nid not in (None, 0):
             if self.npath_nid == None:
                 raise OrdbException("Cannot add node at cursor without NPath.")
-        NPath(parent=self.npath_nid, name=k, ref=ref).insert_into(u)
+        NPath.Tuple(parent=self.npath_nid, name=k, ref=ref).insert_into(u)
 
 @public
 class FrozenNode(Node, build_node=False):
+    """Auxiliary base class for auto-generated :attr:`Node.Frozen` classes."""
     @property
     def mutable(self):
         return False
 
 @public
 class MutableNode(Node, build_node=False):
+    """Auxiliary base class for auto-generated :attr:`Node.Mutable` classes."""
     @property
     def mutable(self):
         return True
-
-@public
-class PathNode(NonLeafNode):
-    pass
 
 @public
 class SubgraphRoot(NonLeafNode):
@@ -1297,9 +1351,22 @@ class MutableSubgraph(Subgraph):
     def freeze(self):
         return FrozenSubgraph(self)
 
+@public
+class PathNode(NonLeafNode):
+    """
+    PathNode represents an empty path of a subgraph. Its selected nid is None,
+    but it selects some path_nid.
+    """
 
 @public
 class NPath(Node):
+    """
+    NPath.Tuple is used to build a subgraph's path hierarchy. NPath itself
+    (rather than NPath.Tuple) is never instantiated. Instead, reference an
+    empty path (NPath with ref = None) use :class:`PathNode`. Non-empty
+    paths (NPath.Tuple X with X.ref != None) are referenced through the Node
+    class correponding to X.ref.
+    """
     @staticmethod
     def check_name(name: str|int):
         if isinstance(name, str):
@@ -1310,6 +1377,10 @@ class NPath(Node):
             return name
         else:
             raise TypeError("NPath name must be int or str.")
+
+    @classmethod
+    def raw_cursor(cls, subgraph: 'Subgraph', nid: int|NoneType, npath_nid: int|NoneType):
+        raise TypeError("raw_cursor of NPath not supported. Use PathNode instead.")
 
     parent  = LocalRef('Path|type(None)')
     name    = Attr(str|int, factory=check_name)

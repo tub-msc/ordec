@@ -12,14 +12,18 @@
 #     name: python3
 # ---
 
+# + tags=["remove-cell"]
+# %xmode Plain
+# -
+
 # (ordb_demo)=
-
+#
 # # ORDB Demo
-
+#
 # This Jupyter notebook demonstrates the five main principles of ORDB, which is ORDeC's data model layer. In addition, it briefly introduces ORDeC's Cell-and-@generate pattern.
-
+#
 # ## Principle 1: schema-based
-
+#
 # All ORDB data must conform to some predefined schema. Usually, we would use the Node and SubgraphHead subclasses defined in {ref}`data-schema` (which are for IC design data), but for this example we will define a small example schema describing a planet with airports and flights that connect airports.
 
 # +
@@ -185,11 +189,11 @@ count_flights(earth2)
 
 earth_frozen = earth.freeze()
 
-try:
-    count_flights(earth_frozen)
-except TypeError as e:
-    print("This led to an exception:", e)
+# + tags=["raises-exception"]
+count_flights(earth_frozen)
 
+
+# -
 
 # FrozenSubgraphs are conveniently used at function boundaries, preventing unintended side effects.
 
@@ -223,10 +227,9 @@ sum([segment.flight.duration for segment in myticket.all(TicketSegment)])
 
 # Note that subgraph references such as Ticket.planet must always point to FrozenSubgraphs. Here, a MutableSubgraph leads to a TypeError:
 
-try:
-    another_ticket = Ticket(price=1999, planet=earth)
-except TypeError as e:
-    print("This led to an exception:", e)
+# + tags=["raises-exception"]
+another_ticket = Ticket(price=1999, planet=earth)
+# -
 
 # ## Cell and @generate
 #

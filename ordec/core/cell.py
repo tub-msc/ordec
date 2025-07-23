@@ -42,7 +42,7 @@ class ViewGenerator:
 @public
 def generate(arg):
     """
-    TODO: add docs here.
+    Decorator for view generator methods.
     """
     if isinstance(arg, type):
         # old @generate

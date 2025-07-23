@@ -33,9 +33,9 @@ napoleon_use_ivar = True
 #add_module_names = False
 
 autodoc_default_options = {
-    'show-inheritance': True,
+#    'show-inheritance': True,
 }
-autodoc_class_signature = 'separated'
+#autodoc_class_signature = 'separated'
 
 # Make inheritance graphs go from top to bottom instead of left to right:
 inheritance_graph_attrs = dict(rankdir="TB", size='""')
@@ -58,3 +58,6 @@ import jupytext
 nb_custom_formats = {
   ".py": ["jupytext.reads", {"fmt": "py"}]
 }
+
+def myfunc(*args, **kwargs):
+    return myst_nb.docutils_(jupytext.reads(*args, **kwargs))
