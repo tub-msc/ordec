@@ -5,12 +5,13 @@ Welcome to ORDeC's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   getting_started
+   readme
    tutorials/index
    cell_lib/index
    ref/index
    dev/index
    related_projects
+
 
 Indices and tables
 ==================

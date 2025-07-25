@@ -10,4 +10,4 @@ We collect some past and future design decisions here.
 - The native design entry format (ORD/Python) is separate from the native exchange format (serialized ORDB). Foreign exchange formats can be used for both purposes, design entry and exchange.
 - Do not generate code for the user. Eliminate the need for boilerplate and overly verbose code.
 - The ORD or Python design input should act as single source of truth.
-- Try to minimize external dependencies, especially if they are large and at risk of becoming unmaintained.
+- Try to minimize external dependencies, especially if they are large and at risk of becoming unmaintained. Currently, myst-nb seems like the largest dependency, but it is only relevant for the documentation and presentation, not for the core components themselves.

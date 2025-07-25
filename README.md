@@ -1,4 +1,4 @@
-![ORDeC](docs/ordec_logo.svg)
+![ORDeC](https://raw.githubusercontent.com/tub-msc/ordec/refs/heads/main/docs/ordec_logo.svg)
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![REUSE status](https://api.reuse.software/badge/github.com/tub-msc/ordec)](https://api.reuse.software/info/github.com/tub-msc/ordec)
@@ -22,12 +22,13 @@ The development of ORDeC is currently at an early, experimental stage. The main 
 The easiest way to get started is via Docker:
 
 ```
+docker pull ghcr.io/tub-msc/ordec:latest
 docker run --rm -p 127.0.0.1:8100:8100 -it ghcr.io/tub-msc/ordec:latest
 ```
 
 Then, visit http://localhost:8100 to access the web interface and try out examples.
 
-![Web interface screenshot](docs/screenshot_demo.png)
+![Web interface screenshot](https://raw.githubusercontent.com/tub-msc/ordec/refs/heads/main/docs/screenshot_demo.png)
 
 Further documentation is located in the *docs/* folder and is available online: https://ordec.readthedocs.io/
 
