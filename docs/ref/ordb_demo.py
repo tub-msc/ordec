@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.16.4
+#       jupytext_version: 1.17.2
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -175,7 +175,7 @@ def count_flights(planet):
     count = 0
     for flight in planet.all(Flight):
         count += 1
-        flight.delete()
+        flight.remove()
     return count
 
 

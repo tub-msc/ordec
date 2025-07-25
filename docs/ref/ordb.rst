@@ -98,6 +98,7 @@ Each node instance (row) has a **node ID (nid)** that identifies it uniquely wit
 
 .. autoclass:: SubgraphRoot
   :show-inheritance:
+  :members:
 
 Every :class:`SubgraphRoot` is a subclass of :class:`NonLeafNode`, i.e. SubgraphRoots always support child nodes:
 
@@ -132,9 +133,15 @@ Inserters & indices
 
 .. autoclass:: FuncInserter
 
+.. autoclass:: GenericIndex
+  :members:
+
 .. autoclass:: Index
+  :members:
 
 .. autoclass:: CombinedIndex
+
+.. autoclass:: IndexQuery
 
 Low-level stuff
 ---------------
@@ -142,12 +149,24 @@ Low-level stuff
 .. autoclass:: NodeTuple
   :members:
 
+
+.. note::
+
+  :class:`NodeTuple` is a custom tuple subclass. Some alternatives to this were considered but discarded:
+
+  - NamedTuple classes do not support default values and cannot be subclassed, as they are not normal classes.
+  - For pyrsistent.PClass, the behaviour of field() is difficult to change without touching everything. Also, the performance overhead of mutating pyrsistent.PClass seems a bit high, just from reading its code. A downside of the current tuple subclass or NamedTuple compared to PClass is that all attribute references must be copied when a single attribute is updated, but this is probably not an issue as long as the number of attributes remains low.
+  - recordclass.dataobject would be an additional fragile dependency, and its readonly=True option seems to be a (buggy) afterthought only.
+  - pydantic is too heavyweight.
+
 .. autoclass:: Subgraph
   :members:
 
 .. autoclass:: MutableSubgraph
+  :show-inheritance:
 
 .. autoclass:: FrozenSubgraph
+  :show-inheritance:
 
 .. autoclass:: SubgraphUpdater
 

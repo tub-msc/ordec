@@ -13,14 +13,18 @@ from public import public
 
 @public
 class OrdbException(Exception):
+    """Base class for all ORDB custom exceptions."""
     pass
 
 @public
 class QueryException(OrdbException):
+    """Raised when a query fails."""
     pass
 
 @public
 class ModelViolation(OrdbException):
+    """Raised when a data integrity condition is violated, e.g.
+    :class:`UniqueViolation`, :class:`DanglingLocalRef`."""
     pass
 
 @public
@@ -40,7 +44,10 @@ class IndexKey(NamedTuple):
     index: 'Index'
     value: tuple|int
 
+@public
 class IndexQuery(NamedTuple):
+    """Pass IndexQuery objects to :meth:`SubgraphRoot.all` or
+    :meth:`SubgraphRoot.one` to run query on a specific subgraph."""
     index_key: IndexKey
 
 class GenericIndex(ABC):
@@ -61,17 +68,16 @@ class GenericIndex(ABC):
 @public
 @dataclass(frozen=True, eq=True)
 class UniqueViolation(ModelViolation):
-    """
-    TODO
-    """
-    index: GenericIndex
-    value: tuple
+    """Exception raised when a unique constraint is violated."""
+    index: GenericIndex #: :class:`GenericIndex` violating the unique constraint.
+    value: tuple #: Value violating the unique constraint.
 
 @public
 @dataclass(frozen=True, eq=True)
 class DanglingLocalRef(ModelViolation):
     """
-    TODO
+    Exception raised when a :class:`LocalRef` attribute ends up referencing
+    an inexistent nid.
     """
     nid: int
 
@@ -309,7 +315,10 @@ class Index(GenericIndex):
     def __repr__(self):
         return f"<{type(self).__name__} {id(self):x}>"
 
-    def query(self, key):
+    def query(self, key) -> IndexQuery:
+        """
+        Returns IndexQuery object for equivalence query with key.
+        """
         return IndexQuery(IndexKey(self, key))
 
 @public
@@ -392,20 +401,11 @@ class NPathIndex(CombinedIndex):
         except UniqueViolation:
             raise ModelViolation("Path exists") # TODO: Report actual path?
 
-# TODO: fix docs: Nodes subclasses make up the schema (like table definitions). Node instances are like database rows.
-
 @public
 class NodeTuple(tuple):
     """
-    Why is this a custom tuple subclass rather than building upon PClass, NamedTuple, recordclass.dataobject or pydantic?
-
-    - This is somewhere between NamedTuple and pyrsistent's PClass.
-    - For PClass, the behaviour of field() is difficult to change without touching everything.
-    - Also, the overhead of mutating PClass seems a bit high (just from reading the code).
-    - Downside of all tuples compared to PClass: all attribute references must be copied when a single attribute is updated
-    - Sublassing NamedTuple is cursed (no inheritance etc.)
-    - recordclass.dataobject would be an additional dependency, and its readonly=True option seems to be a (buggy) afterthought only.
-    - pydantic is too heavyweight.
+    NodeTuples store the node data of a subgraph in :attr:`Subgraph.nodes`.
+    It is recommended to acccess NodeTuples via the :class:`Node` interface.
     """
 
     __slots__ = ()
@@ -840,33 +840,42 @@ class SubgraphRoot(NonLeafNode):
     # -------------------------------------
 
     def updater(self) -> 'SubgraphUpdater':
+        """Convenience wrapper for :meth:`Subgraph.updater`."""
         return SubgraphUpdater(self.subgraph)
 
     def cursor_at(self, *args, **kwargs) -> Node:
+        """Convenience wrapper for :meth:`Subgraph.cursor_at`."""
         return self.subgraph.cursor_at(*args, **kwargs)
 
     def all(self, *args, **kwargs) -> Iterable[Node]:
+        """Convenience wrapper for :meth:`Subgraph.all`."""
         return self.subgraph.all(*args, **kwargs)
 
     def one(self, *args, **kwargs) -> Node:
+        """Convenience wrapper for :meth:`Subgraph.one`."""
         return self.subgraph.one(*args, **kwargs)
 
     def matches(self, other):
+        """Convenience wrapper for :meth:`Subgraph.matches`."""
         if not isinstance(other, SubgraphRoot):
             return False
         assert other.nid == 0
         return self.subgraph.matches(other.subgraph)
 
     def freeze(self):
+        """Convenience wrapper for :meth:`Subgraph.freeze`."""
         return self.subgraph.freeze().root_cursor
 
     def thaw(self):
+        """Convenience wrapper for :meth:`Subgraph.thaw`."""
         return self.subgraph.thaw().root_cursor
 
     def tables(self) -> str:
+        """Convenience wrapper for :meth:`Subgraph.tables`."""
         return self.subgraph.tables()
 
     def dump(self) -> str:
+        """Convenience wrapper for :meth:`Subgraph.dump`."""
         return self.subgraph.dump()
 
     def copy(self) -> 'Self':
@@ -1072,7 +1081,7 @@ class Subgraph(ABC):
         
         return {k: v for k, v in sorted(self.nodes.items(), key=sortkey)}
 
-    def matches(self, other):
+    def matches(self, other: 'Subgraph') -> bool:
         """
         Check whether two subgraphs match regardless of nid numbers. While the nids
         and LocalRefs are ignored, the nid order (i.e. insertion order) must match
@@ -1118,7 +1127,14 @@ class Subgraph(ABC):
         d = self.node_dict('canonical')
         return 'MutableSubgraph.load({\n' + ''.join([f'\t{k!r}: {v!r},\n' for k, v in d.items()]) + '})'
 
-    def all(self, query: IndexQuery, wrap_cursor:bool=True):
+    def all(self, query: IndexQuery, wrap_cursor:bool=True) -> Iterable[Node|int]:
+        """
+        Run query and return all matching nodes.
+
+        Args:
+            query: Query to run.
+            wrap_cursor: If True, Nodes are returned, else nid ints are returned.
+        """
         if isinstance(query, type):
             assert issubclass(query, Node)
             query = NodeTuple.index_ntype.query(query.Tuple)
@@ -1132,7 +1148,11 @@ class Subgraph(ABC):
             else:
                 return nids
 
-    def one(self, *args, **kwargs):
+    def one(self, query: IndexQuery, wrap_cursor:bool=True) -> Node|int:
+        """
+        Wrapper for :meth:`Subgraph.all` returning exactly one node. If zero or
+        more than one node are found, a :class:`QueryException` is raised.
+        """
         def single(it):
             try:
                 r = next(it)
@@ -1145,7 +1165,7 @@ class Subgraph(ABC):
             else:
                 raise QueryException("Query returned more than one element.")
 
-        return single(iter(self.all(*args, **kwargs)))
+        return single(iter(self.all(query, wrap_cursor)))
 
     def cursor_at(self, nid: int, npath_nid: NoneType|int=None, lookup_npath: bool=True):
         if nid == None:
@@ -1170,7 +1190,7 @@ class Subgraph(ABC):
 
     @property
     def nodes(self) -> PMap:
-        """A persistent mapping of nids to NodeTuples."""
+        """A persistent mapping of nids to :class:`NodeTuple` instances."""
         return self._nodes
 
     @property
@@ -1197,14 +1217,21 @@ class Subgraph(ABC):
     @property
     @abstractmethod
     def mutable(self) -> bool:
+        """Returns True if Subgraph is mutable, False if frozen."""
         pass
 
     @abstractmethod
     def freeze(self) -> 'FrozenSubgraph':
+        """Create :class:`FrozenSubgraph` from :class:`MutableSubgraph`.
+        Future modifications of the original MutableSubgraph are not visible at
+        the FrozenSubgraph."""
         pass
 
     @abstractmethod
     def thaw(self) -> 'MutableSubgraph':
+        """Create :class:`MutableSubgraph` from :class:`FrozenSubgraph`.
+        Future modifications of the MutableSubgraph are not visible at the
+        original FrozenSubgraph."""
         pass
 
     @abstractmethod
@@ -1214,6 +1241,8 @@ class Subgraph(ABC):
 
     @abstractmethod
     def mutate(self, nodes, index, nid_alloc):
+        """Low-level function used by :class:`SubgraphUpdater` to update
+        state of :class:`MutableSubgraph`."""
         pass
 
     # Mutating methods, disabled for FrozenSubgraph via SubgraphUpdater
@@ -1231,7 +1260,7 @@ class Subgraph(ABC):
             u.update(node, nid)
 
     def add(self, node: Inserter) -> int:
-        """Insets node and returns nid."""
+        """Inserts node and returns nid."""
         with self.updater() as u:
             return node.insert_into(u)
 
