@@ -286,6 +286,18 @@ function getSourceType() {
     return sourceTypeSelect.options[sourceTypeSelect.selectedIndex].value;
 }
 
+function getAuthCookie() {
+  let authCookie = '';
+  document.cookie.split(';').forEach(function(el) {
+    let split = el.split('=');
+    if(split[0].trim() == 'ordecAuth') {
+        authCookie = split.slice(1).join("=");
+    }
+  })
+  return authCookie;
+}
+
+
 function ordecRestartSession() {
     if (ordecSock) {
         ordecSock.close();
@@ -299,6 +311,7 @@ function ordecRestartSession() {
             'msg': 'source',
             'source_type': getSourceType(),
             'source_data': editor.editor.getValue(),
+            'auth': getAuthCookie(),
         }))
     }
 

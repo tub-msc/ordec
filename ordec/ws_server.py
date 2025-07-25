@@ -21,6 +21,8 @@ import threading
 import signal
 import importlib.resources
 import tarfile
+from functools import partial
+import secrets
 
 from .core import *
 from .render import render
@@ -102,13 +104,22 @@ def serialize_view(name, view):
     # Fallback: just return the view as tree.
     return {'tree':view.tables()}
 
-def handle_connection(websocket):
+def handle_connection(websocket, auth_token):
     remote = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
     print(f"{remote}: new connection")
     msgs = iter(websocket)
 
-    # First message - read design input / build cells:
+    # Validate auth_token to prevent code execution from untrusted connections:
     msg_first = json.loads(next(msgs))
+    if auth_token:
+        if not secrets.compare_digest(auth_token, msg_first['auth']):
+            websocket.send(json.dumps({
+                'msg':'exception',
+                'exception':"incorrect auth token provided",
+                }))
+            return
+
+    # First message - read design input / build cells:
     assert msg_first['msg'] == 'source'
     source_type = msg_first['source_type']
     source_data = msg_first['source_data']
@@ -253,10 +264,19 @@ def main():
     parser.add_argument('-p', '--port', default=8100, type=int, help="Port to listen on.")
     parser.add_argument('-r', '--static-root', help="Static web directory.", nargs='?')
     parser.add_argument('-n', '--no-frontend', action='store_true')
+    parser.add_argument('--unsafe', action='store_true', help="Accept any auth token.")
 
     args = parser.parse_args()
     hostname = args.hostname
     port = args.port
+
+    if args.unsafe:
+        auth_token = None
+    else:
+        auth_token = secrets.token_urlsafe()
+    
+    print(f"?auth={auth_token if auth_token else 'none'}")
+
     
     if args.no_frontend:
         static_handler = StaticHandlerBase()
@@ -273,7 +293,7 @@ def main():
     # to terminate the whole thing with a single Ctrl+C.
     # A future version of the websockets library might make this workaround
     # unnecessary.
-    threading.Thread(target=server_thread, args=(hostname, port, static_handler), daemon=True).start()
+    threading.Thread(target=server_thread, args=(hostname, port, static_handler, auth_token), daemon=True).start()
 
     try:
         while True:
@@ -281,7 +301,8 @@ def main():
     except KeyboardInterrupt:
         print("Terminating.")
 
-def server_thread(hostname, port, static_handler):
-    with serve(handle_connection, hostname, port, process_request=static_handler.process_request) as server:
+def server_thread(hostname, port, static_handler, auth_token):
+    h = partial(handle_connection, auth_token=auth_token)
+    with serve(h, hostname, port, process_request=static_handler.process_request) as server:
         print(f"Listening on {hostname}, port {port}")
         server.serve_forever()
