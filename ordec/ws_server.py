@@ -25,6 +25,7 @@ from functools import partial
 import secrets
 import io
 import time
+import tempfile
 
 from .core import *
 from .render import render
@@ -246,7 +247,35 @@ class StaticHandler:
             mime_type = 'application/octet-stream'
 
         return build_response(http.HTTPStatus.OK, mime_type=mime_type, data=data)    
+
+def secure_url_open(user_url):
+    """
+    user_url includes the secret auth_token, which potentially allows
+    arbitrary code generation / privilege escalation. When we open this user_url
+    in a browser, we must ensure that the secret is not leaked through the
+    command line arguments (argv) of the browser. This is done by this
+    function, which uses an private temporary file as redirect. The path of
+    this file is not secret, but the file (which should only be readable by
+    the user) contains the secret auth_token.
     
+    This is similar to Jupyter Notebook's auth token setup.
+    """
+
+    launch_html = tempfile.NamedTemporaryFile('w', suffix='.html', delete=True)
+    launch_html.write(
+        '<!DOCTYPE html>\n'
+        '<html>\n'
+        f'<head><meta charset="UTF-8"><meta http-equiv="refresh" content="1;url={user_url}" /></head>\n'
+        f'<body><a href="{user_url}">Go to ORDeC!</a><script>window.location.href = "{user_url}";</script></body>\n'
+        '</html>\n'
+        )
+    launch_html.flush()
+
+    import webbrowser
+    webbrowser.open(launch_html.name)
+
+    return launch_html
+
 
 def main():
     parser = argparse.ArgumentParser(prog='ordec-server')
@@ -261,6 +290,8 @@ def main():
     port = args.port
 
     auth_token = secrets.token_urlsafe()
+
+    launch_html = None
 
     if args.no_frontend:
         static_handler = StaticHandler()
@@ -287,19 +318,16 @@ def main():
     time.sleep(1)
 
     if args.launch_browser:
-        # We need to do the thing that Jupyter does here
-        # (.local/share/jupyter/runtime/nbserver-...) so that we do not leak
-        # the secret in argv.
-        raise NotImplementedError()
-        #import webbrowser
-        #webbrowser.open(user_url)
-
+        launch_html = secure_url_open(user_url)
 
     try:
         while True:
             signal.pause()
     except KeyboardInterrupt:
         print("Terminating.")
+    finally:
+        if launch_html:
+            launch_html.close()
 
 def server_thread(hostname, port, static_handler, auth_token):
     h = partial(handle_connection, auth_token=auth_token)
