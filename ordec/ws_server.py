@@ -24,6 +24,7 @@ import tarfile
 from functools import partial
 import secrets
 import io
+import time
 
 from .core import *
 from .render import render
@@ -41,7 +42,7 @@ def build_cells(source_type: str, source_data: str) -> (dict, dict):
             else:
                 exec(source_data, conn_globals, conn_globals)
         except Exception:
-            print("Reporting exception.")
+            #print("Reporting exception.")
             return {
                 'msg':'exception',
                 'exception':traceback.format_exc(),
@@ -54,7 +55,7 @@ def build_cells(source_type: str, source_data: str) -> (dict, dict):
                 cell_views = [elem for elem in dir(v()) if (not elem.startswith('__')) and (not elem in ('children', 'instances', 'params', 'params_list', 'netlist_ngspice', 'cached_subgraphs', 'spiceSymbol'))]
                 for v in cell_views:
                     views.append(f'{k}().{v}')
-            print(f"Reporting {len(views)} views.")
+            #print(f"Reporting {len(views)} views.")
             return {
                 'msg':'views',
                 'views':views,
@@ -108,7 +109,7 @@ def serialize_view(name, view):
 
 def handle_connection(websocket, auth_token):
     remote = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
-    print(f"{remote}: new connection")
+    print(f"{remote}: new websocket connection")
     msgs = iter(websocket)
 
     # Validate auth_token to prevent code execution from untrusted connections:
@@ -125,7 +126,7 @@ def handle_connection(websocket, auth_token):
     assert msg_first['msg'] == 'source'
     source_type = msg_first['source_type']
     source_data = msg_first['source_data']
-    print(f"Received source of type {source_type}.")
+    #print(f"Received source of type {source_type}.")
     msg_ret, conn_globals = build_cells(source_type, source_data)
     websocket.send(json.dumps(msg_ret))
     if not conn_globals:
@@ -135,11 +136,11 @@ def handle_connection(websocket, auth_token):
         msg = json.loads(msg_raw)
         assert msg['msg'] == 'getview'
         view_name = msg['view']
-        print(f"View {view_name} was requested.")
+        #print(f"View {view_name} was requested.")
 
         msg_ret = query_view(view_name, conn_globals)
         websocket.send(json.dumps(msg_ret))
-    print(f"{remote}: connection ended")
+    print(f"{remote}: websocket connection ended")
 
 def build_response(status: http.HTTPStatus=http.HTTPStatus.OK, mime_type: str='text/plain', data: bytes=None):
     if data == None:
@@ -253,27 +254,26 @@ def main():
     parser.add_argument('-p', '--port', default=8100, type=int, help="Port to listen on.")
     parser.add_argument('-r', '--static-root', help="Static web directory.", nargs='?')
     parser.add_argument('-n', '--no-frontend', action='store_true')
-    parser.add_argument('--unsafe', action='store_true', help="Accept any auth token.")
-
+    parser.add_argument('-b', '--launch-browser', action='store_true')
+    
     args = parser.parse_args()
     hostname = args.hostname
     port = args.port
 
-    if args.unsafe:
-        auth_token = None
-    else:
-        auth_token = secrets.token_urlsafe()
-    
-    print(f"?auth={auth_token if auth_token else 'none'}")
+    auth_token = secrets.token_urlsafe()
 
     if args.no_frontend:
         static_handler = StaticHandler()
+        # Vite provides the frontend for the user on port 5173:
+        print("--no-frontend: Make sure to run 'npm run dev' in web/ in addition to 'ordec-server'.")
+        user_url = f"http://localhost:5173/?auth={auth_token}"
     else:
         if args.static_root:
             tar = anonymous_tar(args.static_root)
         else:
             tar = tarfile.open(importlib.resources.files(__package__) / 'webdist.tar')
         static_handler = StaticHandler(tar)
+        user_url = f"http://{hostname}:{port}/?auth={auth_token}"
 
     # Launch server in separate daemon thread (daemon=True). The connection
     # threads automatically inherit the daemon property. All daemon threads
@@ -282,6 +282,18 @@ def main():
     # A future version of the websockets library might make this workaround
     # unnecessary.
     threading.Thread(target=server_thread, args=(hostname, port, static_handler, auth_token), daemon=True).start()
+
+    print(f"To start ORDeC, navigate to: {user_url}")
+    time.sleep(1)
+
+    if args.launch_browser:
+        # We need to do the thing that Jupyter does here
+        # (.local/share/jupyter/runtime/nbserver-...) so that we do not leak
+        # the secret in argv.
+        raise NotImplementedError()
+        #import webbrowser
+        #webbrowser.open(user_url)
+
 
     try:
         while True:
@@ -292,5 +304,5 @@ def main():
 def server_thread(hostname, port, static_handler, auth_token):
     h = partial(handle_connection, auth_token=auth_token)
     with serve(h, hostname, port, process_request=static_handler.process_request) as server:
-        print(f"Listening on {hostname}, port {port}")
+        #print(f"Listening on {hostname}, port {port}")
         server.serve_forever()
