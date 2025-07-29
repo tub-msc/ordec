@@ -4,13 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "VITE_WS_URL=ws://localhost:8100/websocket vite",
-    "build": "VITE_WS_URL=/websocket vite build",
+    "dev": "vite",
+    "build": "vite build",
     "preview": "vite preview"
   },
   "devDependencies": {
-    "vite": "^6.3.5",
-    "vite-plugin-static-copy": "^3.0.0"
+    "vite": "^6.3.5"
   },
   "dependencies": {
     "ace-builds": "^1.41.0",

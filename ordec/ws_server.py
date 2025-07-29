@@ -16,7 +16,7 @@ import traceback
 import ast
 from pathlib import Path
 import mimetypes
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 import threading
 import signal
 import importlib.resources
@@ -27,6 +27,7 @@ import secrets
 from .core import *
 from .render import render
 from .parser.parser import ord2py
+from .lib import examples
 
 def build_cells(source_type: str, source_data: str) -> (dict, dict):
     conn_globals = {}
@@ -158,18 +159,41 @@ class StaticHandlerBase:
     """
         
     def process_request(self, connection, request):
-        url=urlparse(request.path)
-        if url.path.startswith('/'):
-            req_path = Path(url.path[1:])
-        else:
-            req_path = Path(url.path)
+        try:
+            url=urlparse(request.path)
+            if url.path.startswith('/'):
+                req_path = Path(url.path[1:])
+            else:
+                req_path = Path(url.path)
 
-        if req_path == Path('websocket'):
-            return None
+            if req_path == Path('api/websocket'):
+                return None # --> for websocket connection
 
-        return self.process_request_static(connection, request, req_path)
+            if req_path == Path('api/example'):
+                query = parse_qs(url.query)
+                return self.process_request_example(query['name'][0])
 
-    def process_request_static(self, connection, request, req_path):
+            return self.process_request_static(req_path)
+        except:
+            print(traceback.print_exc())
+            return build_response(http.HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def process_request_example(self, name):
+        src = ''
+        uistate = {}
+        for p in importlib.resources.files(examples).iterdir():
+            if p.stem == name:
+                src = p.read_text()
+            if p.name == f'{name}.uistate.json':
+                with open(p) as f:
+                    uistate = json.load(f)
+        data = json.dumps({
+            'src':src,
+            'uistate':uistate,
+        })
+        return build_response(data=data.encode('utf8'), mime_type='application/json')
+
+    def process_request_static(self, req_path):
         return build_response(http.HTTPStatus.NOT_FOUND)
 
 class StaticHandlerDir(StaticHandlerBase):
@@ -182,7 +206,7 @@ class StaticHandlerDir(StaticHandlerBase):
     def __init__(self, static_root: Path):
         self.static_root = Path(static_root).resolve()
     
-    def process_request_static(self, connection, request, req_path):
+    def process_request_static(self, req_path):
         requested_file = (self.static_root / req_path).resolve()
         if self.static_root != requested_file and (self.static_root not in requested_file.parents):
             # Catch path traversal:
@@ -227,7 +251,7 @@ class StaticHandlerTar(StaticHandlerBase):
         self.tar = tarfile.open(fn)
         self.tar_semaphore = threading.Semaphore()
 
-    def process_request_static(self, connection, request, req_path):
+    def process_request_static(self, req_path):
         url=urlparse(request.path)
         if url.path.startswith('/'):
             req_path = Path(url.path[1:])
@@ -260,7 +284,7 @@ class StaticHandlerTar(StaticHandlerBase):
 
 def main():
     parser = argparse.ArgumentParser(prog='ordec-server')
-    parser.add_argument('-l', '--hostname', default="localhost", help="Hostname to listen on.")
+    parser.add_argument('-l', '--hostname', default="127.0.0.1", help="Hostname to listen on.")
     parser.add_argument('-p', '--port', default=8100, type=int, help="Port to listen on.")
     parser.add_argument('-r', '--static-root', help="Static web directory.", nargs='?')
     parser.add_argument('-n', '--no-frontend', action='store_true')

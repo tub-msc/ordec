@@ -13,7 +13,6 @@ import 'ace-builds/src-noconflict/ace'
 import "ace-builds/src-noconflict/mode-python";
 import "ace-builds/src-noconflict/theme-github";
 import "ace-builds/src-noconflict/ext-language_tools";
-const websocketURL = import.meta.env.VITE_WS_URL;
 
 const refreshTimeout = 500;
 
@@ -182,11 +181,6 @@ class Editor {
             sourceTypeSelect.value = state['sourceType']
         }
 
-        this.srcLoaded = false
-        if (state['source']) {
-            this.loadSrc(state['source'])
-        }
-
         editor = this;
         sourceTypeSelect.onchange = function() {
             editor.settled();
@@ -196,7 +190,6 @@ class Editor {
     loadSrc(src) {
         this.editor.setValue(src)
         this.editor.clearSelection()
-        this.srcLoaded = true
     }
 
     changed(delta) {
@@ -231,13 +224,14 @@ if(debug) {
     })
 }
 
-
-const response = await fetch("/examples/uistate/" + paramExample + ".json"); // TODO: Potential XSS?!
+const response = await fetch("/api/example?name=" + paramExample); // TODO: Potential XSS?!
 if (!response.ok) {
     throw new Error(`Response status: ${response.status}`);
 }
 
-const config = await response.json();
+const response_data = await response.json();
+
+const config = response_data['uistate'];
 config["header"] = {
     "popout": false
 }
@@ -253,20 +247,7 @@ myLayout.registerComponent('editor', Editor);
 myLayout.registerComponent('result', ResultViewer);
 myLayout.loadLayout(config);
 
-if(!editor.srcLoaded) {
-    // If source text was not found in JSON, load it via separate request.
-    // This request accesses the files from ordec/lib/examples/, accessible
-    // through vite-plugin-static-copy.
-    const extension = getSourceType()=="ord"?".ord":".py"
-    const response = await fetch("/examples/src/" + paramExample + extension); // TODO: Potential XSS?!
-    if (!response.ok) {
-        throw new Error(`Response status: ${response.status}`);
-    }
-
-    const src = await response.text();
-    editor.loadSrc(src);
-}
-
+editor.loadSrc(response_data['src']);
 
 document.getElementById("newresview").onclick = function() {
     myLayout.addComponent('result', undefined, 'Result View');
@@ -297,13 +278,19 @@ function getAuthCookie() {
   return authCookie;
 }
 
-
 function ordecRestartSession() {
     if (ordecSock) {
         ordecSock.close();
     }
     //ordecSock = new WebSocket("ws://localhost:9123/websocket", "ordecExperimental", );
-    ordecSock = new WebSocket(websocketURL, []);
+    const wsUrl = new URL('/api/websocket', location.href);
+    if(wsUrl.protocol=='http:') {
+        wsUrl.protocol = 'ws:';
+    } else {
+        wsUrl.protocol = 'wss:';
+    }
+    console.log(wsUrl.href)
+    ordecSock = new WebSocket(wsUrl.href, []);
     ordecSock.onopen = (event) => {
         setStatus('busy')
         const select_source = document.getElementById("sourcetype");

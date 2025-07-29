@@ -8,8 +8,7 @@
           "title": "Source Editor",
           "componentName": "editor",
           "componentState": {
-            "sourceType": "python",
-            "source": "# Source code goes here."
+            "sourceType": "python"
           },
           "isClosable": false
         },
