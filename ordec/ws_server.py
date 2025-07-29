@@ -23,6 +23,7 @@ import importlib.resources
 import tarfile
 from functools import partial
 import secrets
+import io
 
 from .core import *
 from .render import render
@@ -150,13 +151,42 @@ def build_response(status: http.HTTPStatus=http.HTTPStatus.OK, mime_type: str='t
         data,
     )
 
-class StaticHandlerBase:
+def anonymous_tar(p: Path) -> tarfile.TarFile:
+    f = io.BytesIO()
+    def strip_path(tarinfo):
+        fn = str((Path('/')/(tarinfo.name)).relative_to(Path('/')/p))
+        if not fn.startswith('.'):
+            fn = './' + fn
+        tarinfo.name = fn
+        return tarinfo
+    with tarfile.open(fileobj=f, mode='w') as t:
+        t.add(p, filter=strip_path)
+    f.seek(0)
+    return tarfile.open(fileobj=f, mode='r')
+
+def tar_path(p: Path) -> str:
+    if len(p.parts) == 0:
+        return '.'
+    else:
+        return f'./{p}'
+
+class StaticHandler:
     """
     This adds a static file HTTP server to the websockets HTTP server.
     This way, for local demos it is not needed to run two separate servers.
     For development or (possible future) multi-user production setups,
     this should not be used.
+
+    This class obtains static files from a tar file rather than a classical
+    directory tree. The advantage of this is that we do not pollute the Python
+    package tree with a hierarchy of packages/directories that really only
+    matter for this HTTP server.
     """
+
+    def __init__(self, tar: tarfile.TarFile=None):
+        self.tar = tar
+        self.tar_semaphore = threading.Semaphore()
+
         
     def process_request(self, connection, request):
         try:
@@ -194,93 +224,28 @@ class StaticHandlerBase:
         return build_response(data=data.encode('utf8'), mime_type='application/json')
 
     def process_request_static(self, req_path):
-        return build_response(http.HTTPStatus.NOT_FOUND)
-
-class StaticHandlerDir(StaticHandlerBase):
-    """
-    This adds a static file HTTP server to the websockets HTTP server.
-    This way, for local demos it is not needed to run two separate servers.
-    For development or (possible future) multi-user production setups,
-    this should not be used.
-    """
-    def __init__(self, static_root: Path):
-        self.static_root = Path(static_root).resolve()
-    
-    def process_request_static(self, req_path):
-        requested_file = (self.static_root / req_path).resolve()
-        if self.static_root != requested_file and (self.static_root not in requested_file.parents):
-            # Catch path traversal:
-            return build_response(http.HTTPStatus.FORBIDDEN)
-
-        if requested_file.is_dir():
-            requested_file = requested_file / 'index.html'
-        try:
-            mime_type = mimetypes.types_map[requested_file.suffix]
-        except KeyError:
-            mime_type = 'application/octet-stream'
-        try:
-            data = requested_file.read_bytes()
-        except FileNotFoundError:
+        if not self.tar:
             return build_response(http.HTTPStatus.NOT_FOUND)
-        except:
-            print(traceback.print_exc())
-            return build_response(http.HTTPStatus.INTERNAL_SERVER_ERROR)
-        else:
-            return build_response(http.HTTPStatus.OK, mime_type=mime_type, data=data)
-
-def tar_path(p: Path) -> str:
-    if len(p.parts) == 0:
-        return '.'
-    else:
-        return f'./{p}'
-
-class StaticHandlerTar(StaticHandlerBase):
-    """
-    This adds a static file HTTP server to the websockets HTTP server.
-    This way, for local demos it is not needed to run two separate servers.
-    For development or (possible future) multi-user production setups,
-    this should not be used.
-
-    This class obtains static files from a tar file rather than a classical
-    directory tree. The advantage of this is that we do not pollute the Python
-    package tree with a hierarchy of packages/directories that really only
-    matter for this HTTP server.
-    """
-
-    def __init__(self, fn: Path):
-        self.tar = tarfile.open(fn)
-        self.tar_semaphore = threading.Semaphore()
-
-    def process_request_static(self, req_path):
-        url=urlparse(request.path)
-        if url.path.startswith('/'):
-            req_path = Path(url.path[1:])
-        else:
-            req_path = Path(url.path)
-
-        if req_path == Path('websocket'):
-            return None
-
-        requested_file = Path(req_path)
         
         # tarfile.TarFile seems not to be thread-safe, a semaphore seems to fix this.
         with self.tar_semaphore:
             try:
-                info = self.tar.getmember(tar_path(requested_file))
+                info = self.tar.getmember(tar_path(req_path))
                 if info.type == tarfile.DIRTYPE:
-                    requested_file = requested_file / 'index.html'
-                    info = self.tar.getmember(tar_path(requested_file))
+                    req_path = req_path / 'index.html'
+                    info = self.tar.getmember(tar_path(req_path))
             except KeyError:
                 return build_response(http.HTTPStatus.NOT_FOUND)
 
             data = self.tar.extractfile(info).read()
 
         try:
-            mime_type = mimetypes.types_map[requested_file.suffix]
+            mime_type = mimetypes.types_map[req_path.suffix]
         except KeyError:
             mime_type = 'application/octet-stream'
 
-        return build_response(http.HTTPStatus.OK, mime_type=mime_type, data=data)
+        return build_response(http.HTTPStatus.OK, mime_type=mime_type, data=data)    
+    
 
 def main():
     parser = argparse.ArgumentParser(prog='ordec-server')
@@ -301,15 +266,14 @@ def main():
     
     print(f"?auth={auth_token if auth_token else 'none'}")
 
-    
     if args.no_frontend:
-        static_handler = StaticHandlerBase()
+        static_handler = StaticHandler()
     else:
         if args.static_root:
-            static_handler = StaticHandlerDir(args.static_root)
+            tar = anonymous_tar(args.static_root)
         else:
-            webdist_tar = importlib.resources.files(__package__) / 'webdist.tar'
-            static_handler = StaticHandlerTar(webdist_tar)
+            tar = tarfile.open(importlib.resources.files(__package__) / 'webdist.tar')
+        static_handler = StaticHandler(tar)
 
     # Launch server in separate daemon thread (daemon=True). The connection
     # threads automatically inherit the daemon property. All daemon threads
