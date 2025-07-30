@@ -45,17 +45,17 @@ class Symbol(SubgraphRoot):
     caption = Attr(str)
     cell = Attr('Cell')
 
-    def portmap(cursor, **kwargs):
+    def portmap(self, **kwargs):
         def inserter_func(main, sgu):
-            main_nid = main.set(symbol=cursor.subgraph).insert_into(sgu)
+            main_nid = main.set(symbol=self.subgraph).insert_into(sgu)
             for k, v in kwargs.items():
-                SchemInstanceConn(ref=main_nid, here=v.nid, there=cursor[k].nid).insert_into(sgu)
+                SchemInstanceConn(ref=main_nid, here=v.nid, there=self[k].nid).insert_into(sgu)
             return main_nid
         return inserter_func
 
-    def _repr_svg_(cursor):
+    def _repr_svg_(self):
         from ..render import render
-        return render(cursor).svg().decode('ascii'), {'isolated': False}
+        return render(self).svg().decode('ascii'), {'isolated': False}
 
     def webdata(self):
         from ..render import render
@@ -85,16 +85,16 @@ class SymbolPoly(Node):
             return FuncInserter(inserter_func)
 
     @property
-    def vertices(cursor):
-        return cursor.subgraph.all(PolyVec2R.ref_idx.query(cursor.nid))
+    def vertices(self):
+        return self.subgraph.all(PolyVec2R.ref_idx.query(self.nid))
 
-    def svg_path(cursor) -> str:
+    def svg_path(self) -> str:
         """
         Returns string representation of polygon suitable for
         "d" attribute of SVG <path>.
         """
         d = []
-        vertices = [c.pos for c in cursor.vertices]
+        vertices = [c.pos for c in self.vertices]
         x, y = vertices[0].tofloat()
         d.append(f"M{x} {y}")
         for point in vertices[1:-1]:
@@ -170,9 +170,9 @@ class Schematic(SubgraphRoot):
     default_supply = LocalRef(Net)
     default_ground = LocalRef(Net)
 
-    def _repr_svg_(cursor):
+    def _repr_svg_(self):
         from ..render import render
-        return render(cursor).svg().decode('ascii'), {'isolated': False}
+        return render(self).svg().decode('ascii'), {'isolated': False}
 
     def webdata(self):
         from ..render import render
@@ -210,12 +210,12 @@ class SchemInstance(Node):
         else:
             return FuncInserter(partial(connect, main))
 
-    def loc_transform(cursor):
-        return cursor.pos.transl() * cursor.orientation
+    def loc_transform(self):
+        return self.pos.transl() * self.orientation
 
     @property
-    def conns(cursor):
-        return cursor.subgraph.all(SchemInstanceConn.ref_idx.query(cursor.nid))
+    def conns(self):
+        return self.subgraph.all(SchemInstanceConn.ref_idx.query(self.nid))
 
 @public
 class SchemInstanceConn(Node):
@@ -239,8 +239,8 @@ class SchemTapPoint(Node):
     pos = Attr(Vec2R)
     align = Attr(D4, default=D4.R0)
 
-    def loc_transform(cursor):
-        return cursor.pos.transl() * cursor.align
+    def loc_transform(self):
+        return self.pos.transl() * self.align
 
 @public
 class SchemConnPoint(Node):
