@@ -302,27 +302,3 @@ ParamVDiv(r=R(200)) is not ParamVDiv(r=R(100))
 # In the example above, the parameter "r" is used to calculate the resistance of both resistors of the ParamVDiv.schmatic. In the example below, setting the parameter to 456 leads to resistances of 228 Ω for both resistors:
 
 ParamVDiv(r=R(456)).schematic
-
-
-# ### Legacy @generate
-#
-# The old way to use the @generate is shown in the following example:
-
-# +
-class ParamVDiv(Cell):
-    @generate(Schematic)
-    def schematic(self, s):
-        print("INFO: Generating the schematic!")
-        s.outline = Rect4R(0, 0, 4, 9)
-        
-        s.a = Net()
-        s.b = Net()
-        s.c = Net()
-        
-        s.R0 = SchemInstance(Res(r=self.params.r / 2).symbol.portmap(m=s.a, p=s.b), pos=Vec2R(0, 0))
-        s.R1 = SchemInstance(Res(r=self.params.r / 2).symbol.portmap(m=s.b, p=s.c), pos=Vec2R(0, 5))
-
-ParamVDiv(r=R(456)).schematic
-# -
-
-# This way of using @generate is discouraged now and will at some point be removed from the code. Currently, it is still heavily used throughout the codebase.

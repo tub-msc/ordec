@@ -59,8 +59,10 @@ class Pmos(generic_mos.Pmos):
         netlister.add(netlister.name_obj(inst, schematic, prefix="x"), netlister.portmap(inst, pins), 'sky130_fd_pr__pfet_01v8', *params_to_spice(self.params))
 
 class Inv(Cell):
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         # Define pins for the inverter
         node.vdd = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
         node.vss = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
@@ -73,11 +75,13 @@ class Inv(Cell):
         node % SymbolPoly(vertices=[Vec2R(1, 1), Vec2R(1, 3), Vec2R(2.75, 2), Vec2R(1, 1)])  # Triangle
         node % SymbolArc(pos=Vec2R(3, 2), radius=R(0.25))  # Output bubble
 
-        # Outline
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
 
-    @generate(Schematic)
-    def schematic(self, node):
+        return node
+
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self, symbol=self.symbol)
         node.a = Net(pin=self.symbol.a)
         node.y = Net(pin=self.symbol.y)
         node.vdd = Net(pin=self.symbol.vdd)
@@ -105,8 +109,6 @@ class Inv(Cell):
         node.pd = SchemInstance(nmos.portmap(s=node.vss, b=node.vss, g=node.a, d=node.y), pos=Vec2R(3, 2))
         node.pu = SchemInstance(pmos.portmap(s=node.vdd, b=node.vdd, g=node.a, d=node.y), pos=Vec2R(3, 8))
 
-
-        node.symbol = self.symbol
         node.vdd % SchemPort(pos=Vec2R(2, 13), align=Orientation.East, ref=self.symbol.vdd)
         node.vss % SchemPort(pos=Vec2R(2, 1), align=Orientation.East, ref=self.symbol.vss)
         node.a % SchemPort(pos=Vec2R(1, 7), align=Orientation.East, ref=self.symbol.a)
@@ -121,22 +123,28 @@ class Inv(Cell):
         node.y % SchemWire([Vec2R(5, 6), Vec2R(5, 7), Vec2R(5, 8)])
         node.y % SchemWire([Vec2R(5, 7), Vec2R(9, 7)])
 
-        helpers.schem_check(node, add_conn_points=True)
-
         node.outline = Rect4R(lx=0, ly=1, ux=10, uy=13)
+        
+        helpers.schem_check(node, add_conn_points=True)
+        return node
 
 
 class Ringosc(Cell):
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.vdd = Pin(pintype=PinType.Inout, align=Orientation.North)
         node.vss = Pin(pintype=PinType.Inout, align=Orientation.South)
         node.y = Pin(pintype=PinType.Out, align=Orientation.East)
 
         helpers.symbol_place_pins(node, vpadding=2, hpadding=2)
+        return node
 
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Symbol(cell=self, symbol=self.symbol)
+
         node.y0 = Net()
         node.y1 = Net()
         node.y2 = Net()
@@ -168,10 +176,13 @@ class Ringosc(Cell):
         node.vdd % SchemWire(vertices=[Vec2R(12, 7), Vec2R(12, 6)])
 
         helpers.schem_check(node, add_conn_points=True)
+        return node
 
 class And2(Cell):
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.vdd = Pin(pos=Vec2R(2.5, 5), pintype=PinType.Inout, align=Orientation.North)
         node.vss = Pin(pos=Vec2R(2.5, 0), pintype=PinType.Inout, align=Orientation.South)
         node.a = Pin(pos=Vec2R(0, 3), pintype=PinType.In, align=Orientation.West)
@@ -185,9 +196,13 @@ class And2(Cell):
         node % SymbolArc(pos=Vec2R(2.75, 2.5), radius=R(1.25), angle_start=R(-0.25), angle_end=R(0.25))
         node.outline = Rect4R(lx=0, ly=0, ux=5, uy=5)
 
+        return node
+
 class Or2(Cell):
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.vdd = Pin(pos=Vec2R(2.5, 5), pintype=PinType.Inout, align=Orientation.North)
         node.vss = Pin(pos=Vec2R(2.5, 0), pintype=PinType.Inout, align=Orientation.South)
         node.a = Pin(pos=Vec2R(0, 3), pintype=PinType.In, align=Orientation.West)
@@ -203,5 +218,7 @@ class Or2(Cell):
         node % SymbolArc(pos=Vec2R(1.95, 1.35), radius=R(2.4), angle_start=R(0.08), angle_end=R(0.25))
         node % SymbolArc(pos=Vec2R(1.95, 3.65), radius=R(2.4), angle_start=R(-0.25), angle_end=R(-0.08))
         node.outline = Rect4R(lx=0, ly=0, ux=5, uy=5)
+
+        return node
 
 __all__ = ["Nmos", "Pmos", "Inv", "Ringosc", "And2", "Or2"]

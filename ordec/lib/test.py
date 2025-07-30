@@ -10,8 +10,9 @@ from .base import Gnd, NoConn, Res, Vdc, Idc
 from . import sky130
 
 class RotateTest(Cell):
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self)
         c = Or2().symbol
 
         node.R0   = SchemInstance(c.portmap(), pos=Vec2R(1, 1), orientation=Orientation.R0)
@@ -25,19 +26,25 @@ class RotateTest(Cell):
         node.MX90 = SchemInstance(c.portmap(), pos=Vec2R(19, 7), orientation=Orientation.MX90)
         
         node.outline = Rect4R(lx=0, ly=0, ux=25, uy=13)
+        return node
 
 class PortAlignTest(Cell):
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.north = Pin(pintype=PinType.In, align=Orientation.North)
         node.south = Pin(pintype=PinType.In, align=Orientation.South)
         node.west = Pin(pintype=PinType.In, align=Orientation.West)
         node.east = Pin(pintype=PinType.In, align=Orientation.East)
         helpers.symbol_place_pins(node)
 
-    @generate(Schematic)
-    def schematic(self, node):
-        node.symbol = self.symbol
+        return node
+
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self, symbol=self.symbol)
+
         node.n1 = Net(pin=self.symbol.north)
         node.n2 = Net(pin=self.symbol.south)
         node.n3 = Net(pin=self.symbol.east)
@@ -49,10 +56,13 @@ class PortAlignTest(Cell):
         node.n4 % SchemPort(pos=Vec2R(6, 4), align=Orientation.West)
 
         node.outline = Rect4R(lx=0, ly=0, ux=8, uy=8)
+        return node
 
 class TapAlignTest(Cell):
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self)
+
         node.north = Net()
         node.south = Net()
         node.east = Net()
@@ -64,11 +74,14 @@ class TapAlignTest(Cell):
         node.east % SchemTapPoint(pos=Vec2R(6, 4), align=Orientation.East)
 
         node.outline = Rect4R(lx=0, ly=0, ux=8, uy=8)
+        return node
 
 
 class DFF(Cell):
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.vss = Pin(pintype=PinType.In, align=Orientation.South)
         node.vdd = Pin(pintype=PinType.In, align=Orientation.North)
         node.d = Pin(pintype=PinType.In, align=Orientation.West)
@@ -76,9 +89,13 @@ class DFF(Cell):
         node.clk = Pin(pintype=PinType.In, align=Orientation.West)
         helpers.symbol_place_pins(node, vpadding=2, hpadding=3)
 
+        return node
+
 class MultibitReg_Arrays(Cell):
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.vss = Pin(pintype=PinType.In, align=Orientation.South)
         node.vdd = Pin(pintype=PinType.In, align=Orientation.North)
         node.mkpath('d')
@@ -89,9 +106,12 @@ class MultibitReg_Arrays(Cell):
         node.clk = Pin(pintype=PinType.In, align=Orientation.West)
         helpers.symbol_place_pins(node)
 
-    @generate(Schematic)
-    def schematic(self, node):
-        node.symbol = self.symbol
+        return node
+
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self, symbol=self.symbol)
+
         node.vss = Net(pin=self.symbol.vss)
         node.vdd = Net(pin=self.symbol.vdd)
         node.clk = Net(pin=self.symbol.clk)
@@ -111,21 +131,25 @@ class MultibitReg_Arrays(Cell):
                     clk=node.clk,
                     d=node.d[i],
                     q=node.q[i],
-                ), pos=Vec2R(x=2, y=3 + 8*i), orientation=Orientation.R0)
+                ), pos=Vec2R(2, 3 + 8*i), orientation=Orientation.R0)
 
-            node.d[i] % SchemPort(pos=Vec2R(x=1, y=5+8*i), align=Orientation.East)
-            node.d[i] % SchemWire(vertices=[Vec2R(x=1, y=5+8*i), Vec2R(x=2, y=5+8*i)])
-            node.q[i] % SchemPort(pos=Vec2R(x=9, y=5+8*i), align=Orientation.West)
-            node.q[i] % SchemWire(vertices=[Vec2R(x=8, y=5+8*i), Vec2R(x=9, y=5+8*i)])
+            node.d[i] % SchemPort(pos=Vec2R(1, 5+8*i), align=Orientation.East)
+            node.d[i] % SchemWire(vertices=[Vec2R(1, 5+8*i), Vec2R(2, 5+8*i)])
+            node.q[i] % SchemPort(pos=Vec2R(9, 5+8*i), align=Orientation.West)
+            node.q[i] % SchemWire(vertices=[Vec2R(8, 5+8*i), Vec2R(9, 5+8*i)])
 
         node.outline = Rect4R(lx=0, ly=0, ux=10, uy=2+8*self.params.bits)
 
         helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
 
+        return node
+
 
 class MultibitReg_ArrayOfStructs(Cell):
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.vss = Pin(pintype=PinType.In, align=Orientation.South)
         node.vdd = Pin(pintype=PinType.In, align=Orientation.North)
         node.mkpath('bit')
@@ -136,9 +160,13 @@ class MultibitReg_ArrayOfStructs(Cell):
         node.clk = Pin(pintype=PinType.In, align=Orientation.West)
         helpers.symbol_place_pins(node)
 
+        return node
+
 class MultibitReg_StructOfArrays(Cell):
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.vss = Pin(pintype=PinType.In, align=Orientation.South)
         node.vdd = Pin(pintype=PinType.In, align=Orientation.North)
         node.mkpath('data')
@@ -150,21 +178,27 @@ class MultibitReg_StructOfArrays(Cell):
         node.clk = Pin(pintype=PinType.In, align=Orientation.West)
         helpers.symbol_place_pins(node)
 
+        return node
+
 class TestNmosInv(Cell):
     """
     For testing schem_check.
     """
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.vdd = Pin(pintype=PinType.Inout, align=Orientation.North)
         node.vss = Pin(pintype=PinType.Inout, align=Orientation.South)
         node.a = Pin(pintype=PinType.In, align=Orientation.West)
         node.y = Pin(pintype=PinType.Out, align=Orientation.East)
         helpers.symbol_place_pins(node)
+
+        return node
         
-    @generate(Schematic)
-    def schematic(self, node):
-        node.symbol = self.symbol
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self, symbol=self.symbol)
 
         node.a = Net(pin=self.symbol.a)
         node.y = Net(pin=self.symbol.y)
@@ -249,13 +283,16 @@ class TestNmosInv(Cell):
             node.y % SchemConnPoint(pos=Vec2R(4, 7))
 
 
+        node.outline = Rect4R(lx=0, ly=1, ux=10, uy=13)
         helpers.schem_check(node, add_conn_points=self.params.add_conn_points, add_terminal_taps=self.params.add_terminal_taps)
 
-        node.outline = Rect4R(lx=0, ly=1, ux=10, uy=13)
+        return node
 
 class RingoscTb(Cell):
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self)
+
         node.vdd = Net()
         node.vss = Net()
         node.y = Net()
@@ -287,9 +324,13 @@ class RingoscTb(Cell):
         
         helpers.schem_check(node, add_conn_points=True)
 
+        return node
+
 class ResdivFlatTb(Cell):
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self)
+
         node.vdd = Net()
         node.vss = Net()
         node.a = Net()
@@ -315,23 +356,32 @@ class ResdivFlatTb(Cell):
 
         helpers.schem_check(node, add_conn_points=True)
 
-    @generate(SimHierarchy)
-    def sim_dc(self, node):
+        return node
+
+    @generate
+    def sim_dc(self):
+        node = SimHierarchy(cell=self)
         sim = HighlevelSim(self.schematic, node)
         sim.op()
+        return node
 
 
 class ResdivHier2(Cell):
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.t = Pin(pintype=PinType.Inout, align=Orientation.North)
         node.r = Pin(pintype=PinType.Inout, align=Orientation.East)
         node.b = Pin(pintype=PinType.Inout, align=Orientation.South)
         helpers.symbol_place_pins(node, vpadding=2, hpadding=2)
 
-    @generate(Schematic)
-    def schematic(self, node):
-        node.symbol = self.symbol
+        return node
+
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self, symbol=self.symbol)
+
         node.t = Net(pin=self.symbol.t)
         node.r = Net(pin=self.symbol.r)
         node.b = Net(pin=self.symbol.b)
@@ -357,17 +407,23 @@ class ResdivHier2(Cell):
 
         helpers.schem_check(node, add_conn_points=True)
 
+        return node
+
 class ResdivHier1(Cell):
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.t = Pin(pintype=PinType.Inout, align=Orientation.North)
         node.r = Pin(pintype=PinType.Inout, align=Orientation.East)
         node.b = Pin(pintype=PinType.Inout, align=Orientation.South)
         helpers.symbol_place_pins(node, vpadding=2, hpadding=2)
 
-    @generate(Schematic)
-    def schematic(self, node):
-        node.symbol = self.symbol
+        return node
+
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self, symbol=self.symbol)
 
         node.t = Net(pin=self.symbol.t)
         node.r = Net(pin=self.symbol.r)
@@ -399,9 +455,13 @@ class ResdivHier1(Cell):
 
         helpers.schem_check(node, add_conn_points=True)
 
+        return node
+
 class ResdivHierTb(Cell):
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self)
+
         node.t = Net()
         node.r = Net()
         node.gnd = Net()
@@ -420,20 +480,28 @@ class ResdivHierTb(Cell):
 
         helpers.schem_check(node, add_conn_points=True)
 
-    @generate(SimHierarchy)
-    def sim_hierarchy(self, node):
-        HighlevelSim(self.schematic, node)
-        # Build SimHierarchy, but runs no simulations.
+        return node
 
-    @generate(SimHierarchy)
-    def sim_dc(self, node):
+    @generate
+    def sim_hierarchy(self):
+        node = SimHierarchy(cell=self)
+        # Build SimHierarchy, but runs no simulations.
+        HighlevelSim(self.schematic, node)
+        return node
+
+    @generate
+    def sim_dc(self):
+        node = SimHierarchy(cell=self)
         sim = HighlevelSim(self.schematic, node)
         sim.op()
+        return node
 
 class NmosSourceFollowerTb(Cell):
     """Nmos (generic_mos) source follower with optional parameter vin."""
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self)
+
         node.vdd = Net()
         node.i = Net()
         node.o = Net()
@@ -454,14 +522,19 @@ class NmosSourceFollowerTb(Cell):
         
         helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
 
-    @generate(SimHierarchy)
-    def sim_dc(self, node):
+        return node
+
+    @generate
+    def sim_dc(self):
+        node = SimHierarchy(cell=self)
         sim = HighlevelSim(self.schematic, node)
         sim.op()
+        return node
 
 class InvTb(Cell):
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self)
         node.vdd = Net()
         node.i = Net()
         node.o = Net()
@@ -481,14 +554,20 @@ class InvTb(Cell):
         
         helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
 
-    @generate(SimHierarchy)
-    def sim_dc(self, node):
+        return node
+
+    @generate
+    def sim_dc(self):
+        node = SimHierarchy(cell=self)
         sim = HighlevelSim(self.schematic, node)
         sim.op()
+        return node
 
 class InvSkyTb(Cell):
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self)
+
         node.vdd = Net()
         node.i = Net()
         node.o = Net()
@@ -515,7 +594,11 @@ class InvSkyTb(Cell):
 
         helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
 
-    @generate(SimHierarchy)
-    def sim_dc(self, node):
+        return node
+
+    @generate
+    def sim_dc(self):
+        node = SimHierarchy(cell=self)
         sim = HighlevelSim(self.schematic, node)
         sim.op()
+        return node

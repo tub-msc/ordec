@@ -14,8 +14,10 @@ __all__=["Res", "Cap", "Ind", "Gnd", "NoConn", "Vdc", "Idc",
 class Res(Cell):
     spiceSymbol = "R"
 
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
         
@@ -43,6 +45,7 @@ class Res(Cell):
                 ])
         
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return node
     
     def netlist_ngspice(self, netlister, inst, schematic):
         param_r = self.params.r
@@ -52,8 +55,10 @@ class Res(Cell):
 class Cap(Cell):
     spiceSymbol = "C"
 
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
         
@@ -65,17 +70,18 @@ class Cap(Cell):
         node % SymbolPoly(vertices=[Vec2R(2, 2.2), Vec2R(2, 4)])
         node % SymbolPoly(vertices=[Vec2R(2, 1.8), Vec2R(2, 0)])
 
-
         #node % SymbolPoly(vertices=[Vec2R(1.6, 1.05), Vec2R(2, 1.25), Vec2R(1.6, 1.45)])
 
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return node
    
 class Ind(Cell):
     spiceSymbol = "L"
 
-    @generate(Symbol)
-    def symbol(self, node):
-        
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
         
@@ -91,37 +97,40 @@ class Ind(Cell):
         node % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)])
         node % SymbolPoly(vertices=[Vec2R(2, 3-(6*r)), Vec2R(2, 0)])
 
-
         #node % SymbolPoly(vertices=[Vec2R(1.6, 1.05), Vec2R(2, 1.25), Vec2R(1.6, 1.45)])
 
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return node
  
-  
 # Misc
 # ====
 
 class Gnd(Cell):
     spiceSymbol = "V"
 
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+        
         node.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)  
 
-        
         #Linien
         node % SymbolPoly(vertices=[Vec2R(2, 2.5), Vec2R(2, 4)])
         node % SymbolPoly(vertices=[Vec2R(1, 2.5), Vec2R(3, 2.5), Vec2R(2, 1),Vec2R(1, 2.5)])
 
         #node % SymbolPoly(vertices=[Vec2R(1.6, 1.05), Vec2R(2, 1.25), Vec2R(1.6, 1.45)])
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return node
  
     def netlist_ngspice(self, netlister, inst, schematic):
         pins = [inst.symbol.p]
         netlister.add(netlister.name_obj(inst, schematic, prefix="v"), netlister.portmap(inst, pins), '0', f'dc 0')
 
 class NoConn(Cell):
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.a = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=Orientation.West)
 
         node % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(2, 2)])
@@ -129,6 +138,7 @@ class NoConn(Cell):
         node % SymbolPoly(vertices=[Vec2R(1.5, 1.5), Vec2R(2.5, 2.5)])
 
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return node
 
     def netlist_ngspice(self, netlister, inst, schematic):
         pass
@@ -139,8 +149,10 @@ class NoConn(Cell):
 class Vdc(Cell):
     #V: Rational = field(mandatory=True) 
 
-    @generate(Symbol)
-    def symbol(self, node):    
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
         
@@ -170,8 +182,8 @@ class Vdc(Cell):
             #-
             node % SymbolPoly(vertices=[Vec2R(1.65, 1.5), Vec2R(2.35, 1.5)])
             
-
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return node
  
     def netlist_ngspice(self, netlister, inst, schematic):
         param_dc = self.params.dc
@@ -181,8 +193,9 @@ class Vdc(Cell):
 class Idc(Cell):
     spiceSymbol = "I"
     #V: Rational = field(mandatory=True) 
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
         
         node.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
@@ -211,6 +224,7 @@ class Idc(Cell):
             node % SymbolPoly(vertices=[b + Vec2R(-0.5, 0.5), b, b + Vec2R(0.5, 0.5)])
         
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return node
 
     def netlist_ngspice(self, netlister, inst, schematic):
         param_dc = self.params.dc
@@ -225,19 +239,18 @@ class PieceWiseLinearVoltageSource(Cell):
     """
     spiceSymbol = "V" 
     
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
         """ Defines the schematic symbol for the PWL source. """
+        node = Symbol(cell=self)
+
         node.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
         
-        
         node % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
-        
     
         node % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)]) # To positive pin
         node % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)]) # To negative pin
-
     
         node % SymbolPoly(vertices=[
             Vec2R(1.4, 1.8), 
@@ -254,6 +267,7 @@ class PieceWiseLinearVoltageSource(Cell):
         node % SymbolPoly(vertices=[Vec2R(1.65, 1.3), Vec2R(2.35, 1.3)])
     
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return node
 
 
 class PulseVoltageSource(Cell):
@@ -264,8 +278,10 @@ class PulseVoltageSource(Cell):
     """
     spiceSymbol = "V"
 
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
 
@@ -291,9 +307,8 @@ class PulseVoltageSource(Cell):
         # - 
         node % SymbolPoly(vertices=[Vec2R(1.8, 1.2), Vec2R(2.2, 1.2)]) # Horizontal bar
 
-
-        # Outline
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return node
 
 
 class SinusoidalVoltageSource(Cell):
@@ -304,8 +319,10 @@ class SinusoidalVoltageSource(Cell):
     """
     spiceSymbol = "V"
 
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         import numpy as np # TODO: Get rid of numpy dependency
         node.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
@@ -328,24 +345,22 @@ class SinusoidalVoltageSource(Cell):
         node % SymbolPoly(vertices=[Vec2R(1.8, 1.2), Vec2R(2.2, 1.2)]) # Horizontal bar
         
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
-
+        return node
 
 class PieceWiseLinearCurrentSource(Cell):
     spiceSymbol = "I"
 
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
         """ Defines the schematic symbol for the PWL current source. """
+        node = Symbol(cell=self)
+
         node.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
         node.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
 
-    
         node % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
-
-        
         node % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)]) # To positive pin 'p'
         node % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)]) # To negative pin 'm'
-
         
         node % SymbolPoly(vertices=[
             Vec2R(1.4, 1.7),
@@ -354,7 +369,6 @@ class PieceWiseLinearCurrentSource(Cell):
             Vec2R(2.3, 2.3),
             Vec2R(2.6, 2.3),
         ])
-
 
         arrow_tip_y = 2.7
         arrow_base_y = 2.3
@@ -371,7 +385,7 @@ class PieceWiseLinearCurrentSource(Cell):
         ])
 
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
-
+        return node
 
 class PulseCurrentSource(Cell):
     """
@@ -382,8 +396,10 @@ class PulseCurrentSource(Cell):
     """
     spiceSymbol = "I"
 
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
 
@@ -418,7 +434,7 @@ class PulseCurrentSource(Cell):
         ])
 
         node.outline = node % Rect4R(lx=0, ly=0, ux=4, uy=4)
-
+        return node
 
 class SinusoidalCurrentSource(Cell):
     """
@@ -429,8 +445,10 @@ class SinusoidalCurrentSource(Cell):
     """
     spiceSymbol = "I"
 
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         import numpy as np # TODO: Get rid of numpy dependency
         node.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
         node.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
@@ -462,6 +480,5 @@ class SinusoidalCurrentSource(Cell):
             Vec2R(2 + arrow_width, arrow_barb_y)  # Right barb base
         ])
 
-        # Outline
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
-
+        return node

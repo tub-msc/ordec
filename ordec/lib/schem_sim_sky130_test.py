@@ -45,8 +45,10 @@ from ordec.parser.implicit_processing import schematic_routing
 
 
 class TBMosfetLoad(Cell):
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self)
+
         node.vdd = Net()
         node.gnd = Net()
         node.vin = Net()
@@ -103,13 +105,16 @@ class TBMosfetLoad(Cell):
                 sin_source.m: node.gnd,
             },
         )
-        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
         node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=0, ux=25, uy=20))
-
+        
+        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
+        return node
 
 class TBInv(Cell):
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self)
+
         node.input_node = Net()
         node.vdd = Net()
         node.gnd = Net()
@@ -156,5 +161,7 @@ class TBInv(Cell):
         node.gnd_inst = SchemInstance(
             pos=Vec2R(12, 16), ref=gnd_inst, portmap={gnd_inst.p: node.gnd}
         )
-        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
         node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=2, ux=25, uy=16))
+
+        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
+        return node

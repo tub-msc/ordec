@@ -6,9 +6,10 @@ from . import Nmos, Pmos, Inv, And2, Or2, Ringosc, Vdc, Res, Cap, Ind, Sinusoida
 from .. import helpers
 
 class TestCell1(Cell):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
 
-    @generate(Symbol)
-    def symbol(self, node):
         node.a = PinArray()
         node.a[0]=Pin(pintype=PinType.Inout, align=Orientation.South)
         node.a[1]=Pin(pintype=PinType.Inout, align=Orientation.South)
@@ -18,9 +19,12 @@ class TestCell1(Cell):
         node.b[1] = Pin(pintype=PinType.Out, align=Orientation.North)
 
         helpers.symbol_place_pins(node, vpadding=2, hpadding=2)
+        return node
     
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self, symbol=self.symbol)
+
         node.a = NetArray()
         node.b = NetArray()
         node.a[0] = Net()
@@ -33,13 +37,16 @@ class TestCell1(Cell):
         node.res1 = SchemInstance(pos=Vec2R(3, 8), ref=r_inst, portmap={r_inst.p:node.a[0], r_inst.m:node.b[0]})
         node.res2 = SchemInstance(pos=Vec2R(10, 8), ref=r_inst2, portmap={r_inst2.p:node.a[1], r_inst2.m:node.b[1]})
         
-        helpers.schem_check(node, add_conn_points=True,add_terminal_taps=True)
-
         node.outline = Rect4R(lx=3, ly=7, ux=15, uy=13)
 
+        helpers.schem_check(node, add_conn_points=True,add_terminal_taps=True)
+        return node
+
 class TestCell2(Cell):
-    @generate(Symbol)
-    def symbol(self, node):
+    @generate
+    def symbol(self):
+        node = Symbol(cell=self)
+
         node.mkpath('a')
         node.a.left=Pin(pintype=PinType.Inout, align=Orientation.South)
         node.a.right=Pin(pintype=PinType.Inout, align=Orientation.South)
@@ -49,9 +56,12 @@ class TestCell2(Cell):
         node.b.right = Pin(pintype=PinType.Out, align=Orientation.North)
 
         helpers.symbol_place_pins(node, vpadding=2, hpadding=2)
+        return node
     
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self, symbol=self.symbol)
+
         node.mkpath('a')
         node.mkpath('b')
         node.a.left = Net()
@@ -64,13 +74,16 @@ class TestCell2(Cell):
         node.res1 = SchemInstance(pos=Vec2R(3, 8), ref=r_inst, portmap={r_inst.p:node.a.left, r_inst.m:node.b.left})
         node.res2 = SchemInstance(pos=Vec2R(10, 8), ref=r_inst2, portmap={r_inst2.p:node.a.right, r_inst2.m:node.b.right})
         
-        helpers.schem_check(node, add_conn_points=True,add_terminal_taps=True)
-
         node.outline = Rect4R(lx=3, ly=5, ux=15, uy=15)
 
+        helpers.schem_check(node, add_conn_points=True,add_terminal_taps=True)
+        return node
+
 class TestBenchNestedCell(Cell):
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self)
+
         node.y = Net()
         #node.vdd = Net()
         node.gnd = Net()
@@ -91,9 +104,13 @@ class TestBenchNestedCell(Cell):
 
         node.outline = Rect4R(lx=0, ly=1, ux=25, uy=13)
 
+        return node
+
 class LowPassFilterTB(Cell):
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self)
+
         node.input_node = Net()
         node.gnd = Net()
         node.out = Net()
@@ -145,8 +162,10 @@ class LowPassFilterTB(Cell):
 
         gnd_inst = Gnd().symbol
         node.gnd_inst = SchemInstance(pos=Vec2R(12, 16), ref=gnd_inst,portmap={gnd_inst.p:node.gnd})
-        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
         node.outline = Rect4R(lx=0, ly=2, ux=20, uy=12)
+
+        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
+        return node
 
 class PieceWiseVoltageLinearTB(Cell):
     """
@@ -154,8 +173,10 @@ class PieceWiseVoltageLinearTB(Cell):
     Connects the PWL source across a resistor to ground.
     Uses string representations for R().
     """
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
+        node = Schematic(cell=self)
+
         node.source_output = Net()
         node.gnd = Net()
 
@@ -193,14 +214,15 @@ class PieceWiseVoltageLinearTB(Cell):
         gnd_inst = Gnd().symbol
         node.gnd_inst = SchemInstance(pos=Vec2R(12, 16), ref=gnd_inst,portmap={gnd_inst.p:node.gnd})
 
-        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
-
         node.outline = Rect4R(lx=0, ly=2, ux=14, uy=9)
+
+        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
+        return node
 
 class TestSineCurrentSourceTB(Cell):
     """Testbench for the SinusoidalCurrentSource."""
-    @generate(Schematic)
-    def schematic(self, node):
+    @generate
+    def schematic(self):
         node.gnd = Net()
         node.load_node = Net()
 
@@ -234,5 +256,7 @@ class TestSineCurrentSourceTB(Cell):
         gnd_inst_ref = Gnd().symbol
         node.gnd_inst = SchemInstance(pos=Vec2R(5, 0), ref=gnd_inst_ref, portmap={gnd_inst_ref.p: node.gnd})
 
-        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
         node.outline = Rect4R(lx=0, ly=0, ux=12, uy=10)
+
+        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
+        return node
