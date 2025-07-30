@@ -28,6 +28,133 @@ def check_errors(ngspice_out):
         m = re.match(r"Error:\s*(.*)", line)
         if m:
             raise NgspiceError(m.group(1))
+class NgspiceTable:
+    def __init__(self, name):
+        self.name = name
+        self.headers = []
+        self.data = []
+
+class NgspiceTransientResult:
+    def __init__(self):
+        self.time = []
+        self.signals = {}
+        self.tables = []  # Keep original tables for backward compatibility
+        self.voltages = {}  # Node voltages
+        self.currents = {}  # Device currents
+        self.branches = {}  # Branch currents
+
+    def add_table(self, table):
+        """Add a table and extract signals into the signals dictionary."""
+        self.tables.append(table)
+
+        if not table.headers or not table.data:
+            return
+
+        # Find time column (usually index 1, but could be elsewhere)
+        time_idx = None
+        for i, header in enumerate(table.headers):
+            if header.lower() == 'time':
+                time_idx = i
+                break
+
+        if time_idx is None:
+            return
+
+        # Extract time data if we don't have it yet
+        if not self.time and table.data:
+            self.time = [float(row[time_idx]) for row in table.data if len(row) > time_idx]
+
+        # Extract signal data
+        for i, header in enumerate(table.headers):
+            if header.lower() in ['index', 'time']:
+                continue
+
+            signal_name = header
+            signal_data = []
+
+            for row in table.data:
+                if len(row) > i:
+                    try:
+                        signal_data.append(float(row[i]))
+                    except (ValueError, IndexError):
+                        signal_data.append(0.0)
+
+            self.signals[signal_name] = signal_data
+
+            # Categorize signals for easier access
+            self._categorize_signal(signal_name, signal_data)
+
+    def _categorize_signal(self, signal_name, signal_data):
+        """Categorize signals into voltages, currents, and branches."""
+        if signal_name.startswith('@') and '[' in signal_name:
+            # Device current like "@m.xi0.mpd[id]"
+            device_part = signal_name.split('[')[0][1:]  # Remove @ and get device part
+            current_type = signal_name.split('[')[1].rstrip(']')  # Get current type
+            if device_part not in self.currents:
+                self.currents[device_part] = {}
+            self.currents[device_part][current_type] = signal_data
+        elif signal_name.endswith('#branch'):
+            # Branch current like "vi3#branch"
+            branch_name = signal_name.replace('#branch', '')
+            self.branches[branch_name] = signal_data
+        else:
+            # Regular node voltage
+            self.voltages[signal_name] = signal_data
+
+    def __getitem__(self, key):
+        """Allow backward compatibility with table indexing or signal access."""
+        if isinstance(key, int):
+            return self.tables[key]
+        else:
+            return self.get_signal(key)
+
+    def __len__(self):
+        """Return number of tables for backward compatibility."""
+        return len(self.tables)
+
+    def __iter__(self):
+        """Allow iteration over tables for backward compatibility."""
+        return iter(self.tables)
+
+    def get_signal(self, signal_name):
+        """Get signal data by name."""
+        return self.signals.get(signal_name, [])
+
+    def get_voltage(self, node_name):
+        """Get voltage data for a node."""
+        return self.voltages.get(node_name, [])
+
+    def get_current(self, device_name, current_type='id'):
+        """Get current data for a device (id, ig, is, ib)."""
+        device_currents = self.currents.get(device_name, {})
+        return device_currents.get(current_type, [])
+
+    def get_branch_current(self, branch_name):
+        """Get branch current data."""
+        return self.branches.get(branch_name, [])
+
+    def list_signals(self):
+        """List all available signal names."""
+        return list(self.signals.keys())
+
+    def list_voltages(self):
+        """List all available voltage node names."""
+        return list(self.voltages.keys())
+
+    def list_currents(self):
+        """List all available device names with currents."""
+        return list(self.currents.keys())
+
+    def list_branches(self):
+        """List all available branch current names."""
+        return list(self.branches.keys())
+
+    def plot_signals(self, *signal_names):
+        """Helper method to get time and signal data for plotting."""
+        result = {'time': self.time}
+        for name in signal_names:
+            result[name] = self.get_signal(name)
+        return result
 
 class Ngspice:
     @staticmethod
@@ -92,6 +219,8 @@ class Ngspice:
     def load_netlist(self, netlist: str, no_auto_gnd:bool=True):
         netlist_fn = self.cwd / 'netlist.sp'
         netlist_fn.write_text(netlist)
+        if self.debug:
+            print(f"Written netlist: \n {netlist}")
         if no_auto_gnd:
             self.command("set no_auto_gnd")
         check_errors(self.command(f"source {netlist_fn}"))
@@ -107,7 +236,7 @@ class Ngspice:
         if "is not available or has zero length" in print_all_res:
             # Fallback: get list of available vectors and print only valid ones
             display_output = self.command("display")
-            
+
             # Parse vector list and print only vectors with length > 0
             for line in display_output.split('\n'):
                 # Look for vector definitions like "name: type, real, N long"
@@ -143,6 +272,86 @@ class Ngspice:
             res = re.match(r"@([a-zA-Z]\.)?([0-9a-zA-Z_.#]+)\[([0-9a-zA-Z_]+)\]\s*=\s*([0-9.\-+e]+)\s*", line)
             if res:
                 yield NgspiceValue(type='current', name=res.group(2), subname=res.group(3), value=float(res.group(4)))
+    def tran(self, *args) -> NgspiceTransientResult:
+        self.command(f"tran {' '.join(args)}")
+        print_all_res = self.command("print all")
+        lines = print_all_res.split('\n')
+
+        result = NgspiceTransientResult()
+        i = 0
+
+        while i < len(lines):
+            line = lines[i]
+
+            if len(line) == 0:
+                i += 1
+                continue
+
+            # Look for NGspice table pattern:
+            # Line i: Table title (non-empty, not dashes)
+            # Line i+1: Optional description line
+            # Line i+2: Separator (all dashes)
+            # Line i+3: Headers
+            # Line i+4: Separator (all dashes)
+            # Line i+5+: Data rows until separator or end
+
+            # Check if this could be start of a table
+            if (not re.match(r"^-+$", line.strip()) and  # Not a separator line
+                line.strip() and  # Not empty
+                i + 4 < len(lines)):  # Enough lines ahead
+
+                # Look for the pattern ahead
+                desc_offset = 1
+
+                # Check if next line is description or separator
+                if re.match(r"^-+$", lines[i + 1].strip()):
+                    # Next line is separator, no description
+                    desc_offset = 0
+                elif (i + 2 < len(lines) and
+                      re.match(r"^-+$", lines[i + 2].strip())):
+                    # Line after next is separator, so next line is description
+                    desc_offset = 1
+                else:
+                    # Not a table pattern
+                    i += 1
+                    continue
+
+                separator1_idx = i + 1 + desc_offset
+                headers_idx = separator1_idx + 1
+                separator2_idx = headers_idx + 1
+
+                if (separator2_idx < len(lines) and
+                    re.match(r"^-+$", lines[separator1_idx].strip()) and
+                    re.match(r"^-+$", lines[separator2_idx].strip())):
+
+                    table = NgspiceTable(line.strip())
+                    table.headers = lines[headers_idx].split()
+
+                    # Skip to data section
+                    i = separator2_idx + 1
+
+                    # Read data rows
+                    while i < len(lines):
+                        data_line = lines[i]
+                        i += 1
+
+                        # Check for table end
+                        if (re.match(r"^-+$", data_line.strip()) or
+                            data_line == '\x0c' or
+                            not data_line.strip()):
+                            break
+
+                        # Add data row
+                        table.data.append(data_line.split())
+
+                    result.add_table(table)
+                    continue
+
+            # Not a table, move to next line
+            i += 1
+
+        return result
+
 
 RawVariable = namedtuple('RawVariable', ['name', 'unit'])
 
@@ -223,7 +432,7 @@ class Netlister:
             self.obj_of_name[domain, name] = obj
             self.name_of_obj[obj] = name
             return name
-    
+
     def name_hier_simobj(self, sn):
         c = sn
         if not isinstance(c, SimInstance):
@@ -247,10 +456,10 @@ class Netlister:
             ret.append(self.name_of_obj[conn.here])
         return ret
 
-    def netlist_schematic(self, s: Schematic):    
+    def netlist_schematic(self, s: Schematic):
         for net in s.all(Net):
             self.name_obj(net, s)
-        
+
         subckt_dep = set()
         for inst in s.all(SchemInstance):
             try:

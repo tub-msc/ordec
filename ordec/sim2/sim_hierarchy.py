@@ -47,7 +47,7 @@ class HighlevelSim:
             self.str_to_simobj[name] = sn
 
     def op(self):
-        with Ngspice.launch(debug=False) as sim:
+        with Ngspice.launch(debug=True) as sim:
             sim.load_netlist(self.netlister.out())
             for vtype, name, subname, value in sim.op():
                 if vtype == 'voltage':
