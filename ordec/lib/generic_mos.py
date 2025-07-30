@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+from public import public
+
 from ..core import *
 from .. import helpers
  
@@ -23,6 +25,7 @@ def params_to_spice(params, allowed_keys=('l', 'w', 'ad', 'as', 'm')):
         spice_params.append(f"{k}={v}")
     return spice_params
 
+@public
 class Nmos(Cell):
     @generate
     def symbol(self):
@@ -48,6 +51,7 @@ class Nmos(Cell):
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
         netlister.add(netlister.name_obj(inst, schematic, prefix="m"), netlister.portmap(inst, pins), 'nmosgeneric', *params_to_spice(self.params))
 
+@public
 class Pmos(Cell):
     @generate
     def symbol(self):
@@ -73,6 +77,7 @@ class Pmos(Cell):
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
         netlister.add(netlister.name_obj(inst, schematic, prefix="m"), netlister.portmap(inst, pins), 'pmosgeneric', *params_to_spice(self.params))
 
+@public
 class Inv(Cell):
     @generate
     def symbol(self):
@@ -125,6 +130,7 @@ class Inv(Cell):
         helpers.schem_check(s, add_conn_points=True)
         return s
 
+@public
 class Ringosc(Cell):
     @generate
     def symbol(self):
@@ -173,6 +179,7 @@ class Ringosc(Cell):
         helpers.schem_check(s, add_conn_points=True)
         return s
 
+@public
 class And2(Cell):
     @generate
     def symbol(self):
@@ -193,6 +200,7 @@ class And2(Cell):
 
         return s
 
+@public
 class Or2(Cell):
     @generate
     def symbol(self):
@@ -215,5 +223,3 @@ class Or2(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=5, uy=5)
 
         return s
-
-__all__ = ["Nmos", "Pmos", "Inv", "Ringosc", "And2", "Or2"]

@@ -1,16 +1,15 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+from public import public
+
 from ..core import *
 from .. import helpers
-
-__all__=["Res", "Cap", "Ind", "Gnd", "NoConn", "Vdc", "Idc",
-    "PieceWiseLinearVoltageSource", "PulseVoltageSource", "SinusoidalVoltageSource",
-    "PieceWiseLinearCurrentSource", "PulseCurrentSource", "SinusoidalCurrentSource"]
 
 # Passives
 # ========
 
+@public
 class Res(Cell):
     spiceSymbol = "R"
 
@@ -52,6 +51,7 @@ class Res(Cell):
         pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, schematic, prefix="r"), netlister.portmap(inst, pins), f'r={param_r.compat_str()}')
 
+@public
 class Cap(Cell):
     spiceSymbol = "C"
 
@@ -74,7 +74,8 @@ class Cap(Cell):
 
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
-   
+
+@public
 class Ind(Cell):
     spiceSymbol = "L"
 
@@ -105,6 +106,7 @@ class Ind(Cell):
 # Misc
 # ====
 
+@public
 class Gnd(Cell):
     spiceSymbol = "V"
 
@@ -126,6 +128,7 @@ class Gnd(Cell):
         pins = [inst.symbol.p]
         netlister.add(netlister.name_obj(inst, schematic, prefix="v"), netlister.portmap(inst, pins), '0', f'dc 0')
 
+@public
 class NoConn(Cell):
     @generate
     def symbol(self):
@@ -146,6 +149,7 @@ class NoConn(Cell):
 # Voltage & current sources
 # =========================
 
+@public
 class Vdc(Cell):
     #V: Rational = field(mandatory=True) 
 
@@ -190,6 +194,7 @@ class Vdc(Cell):
         pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, schematic, prefix="v"), netlister.portmap(inst, pins) , f'dc {param_dc.compat_str()}')
 
+@public
 class Idc(Cell):
     spiceSymbol = "I"
     #V: Rational = field(mandatory=True) 
@@ -231,6 +236,7 @@ class Idc(Cell):
         pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, schematic, prefix="i"), netlister.portmap(inst, pins) , f'dc {param_dc.compat_str()}')
 
+@public
 class PieceWiseLinearVoltageSource(Cell):
     """
     Represents a Piecewise Linear Voltage Source.
@@ -269,7 +275,7 @@ class PieceWiseLinearVoltageSource(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-
+@public
 class PulseVoltageSource(Cell):
     """
     Represents a Pulse Voltage Source.
@@ -310,7 +316,7 @@ class PulseVoltageSource(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-
+@public
 class SinusoidalVoltageSource(Cell):
     """
     Represents a Sinusoidal Voltage Source.
@@ -347,6 +353,7 @@ class SinusoidalVoltageSource(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
+@public
 class PieceWiseLinearCurrentSource(Cell):
     spiceSymbol = "I"
 
@@ -387,6 +394,7 @@ class PieceWiseLinearCurrentSource(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
+@public
 class PulseCurrentSource(Cell):
     """
     Represents a Pulse Current Source.
@@ -436,6 +444,7 @@ class PulseCurrentSource(Cell):
         s.outline = s % Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
+@public
 class SinusoidalCurrentSource(Cell):
     """
     Represents a Sinusoidal Current Source.
