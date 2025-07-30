@@ -30,8 +30,8 @@ class TestCell1(Cell):
 
         r_inst = Res(R=R("1000")).symbol
         r_inst2 = Res(R=R("2000")).symbol
-        node.res1 = SchemInstance(pos=Vec2R(x=3, y=8), ref=r_inst, portmap={r_inst.p:node.a[0], r_inst.m:node.b[0]})
-        node.res2 = SchemInstance(pos=Vec2R(x=10, y=8), ref=r_inst2, portmap={r_inst2.p:node.a[1], r_inst2.m:node.b[1]})
+        node.res1 = SchemInstance(pos=Vec2R(3, 8), ref=r_inst, portmap={r_inst.p:node.a[0], r_inst.m:node.b[0]})
+        node.res2 = SchemInstance(pos=Vec2R(10, 8), ref=r_inst2, portmap={r_inst2.p:node.a[1], r_inst2.m:node.b[1]})
         
         helpers.schem_check(node, add_conn_points=True,add_terminal_taps=True)
 
@@ -61,8 +61,8 @@ class TestCell2(Cell):
 
         r_inst = Res(R=R("1000")).symbol
         r_inst2 = Res(R=R("2000")).symbol
-        node.res1 = SchemInstance(pos=Vec2R(x=3, y=8), ref=r_inst, portmap={r_inst.p:node.a.left, r_inst.m:node.b.left})
-        node.res2 = SchemInstance(pos=Vec2R(x=10, y=8), ref=r_inst2, portmap={r_inst2.p:node.a.right, r_inst2.m:node.b.right})
+        node.res1 = SchemInstance(pos=Vec2R(3, 8), ref=r_inst, portmap={r_inst.p:node.a.left, r_inst.m:node.b.left})
+        node.res2 = SchemInstance(pos=Vec2R(10, 8), ref=r_inst2, portmap={r_inst2.p:node.a.right, r_inst2.m:node.b.right})
         
         helpers.schem_check(node, add_conn_points=True,add_terminal_taps=True)
 
@@ -80,13 +80,13 @@ class TestBenchNestedCell(Cell):
         tb_inst = TestCell1().symbol 
         tb_inst2 = TestCell2().symbol 
 
-        node.vdc = SchemInstance(pos=Vec2R(x=3, y=2), ref=vdc_inst, portmap={vdc_inst.m:node.gnd, vdc_inst.p:node.y})
-        node.tb1 = SchemInstance(pos=Vec2R(x=3, y=8), ref=tb_inst, portmap={tb_inst.a[0]:node.y,tb_inst.a[1]:node.y, tb_inst.b[0]:node.k,tb_inst.b[1]:node.k})
-        node.tb2 = SchemInstance(pos=Vec2R(x=12, y=8), ref=tb_inst2, portmap={tb_inst2.a.left:node.gnd,tb_inst2.a.right:node.gnd, tb_inst2.b.left:node.k,tb_inst2.b.right:node.k})
+        node.vdc = SchemInstance(pos=Vec2R(3, 2), ref=vdc_inst, portmap={vdc_inst.m:node.gnd, vdc_inst.p:node.y})
+        node.tb1 = SchemInstance(pos=Vec2R(3, 8), ref=tb_inst, portmap={tb_inst.a[0]:node.y,tb_inst.a[1]:node.y, tb_inst.b[0]:node.k,tb_inst.b[1]:node.k})
+        node.tb2 = SchemInstance(pos=Vec2R(12, 8), ref=tb_inst2, portmap={tb_inst2.a.left:node.gnd,tb_inst2.a.right:node.gnd, tb_inst2.b.left:node.k,tb_inst2.b.right:node.k})
         node.default_ground=node.gnd
 
         gnd_inst = Gnd().symbol
-        node.gnd_inst = SchemInstance(pos=Vec2R(x=12, y=16), ref=gnd_inst,portmap={gnd_inst.p:node.gnd})
+        node.gnd_inst = SchemInstance(pos=Vec2R(12, 16), ref=gnd_inst,portmap={gnd_inst.p:node.gnd})
         helpers.schem_check(node, add_conn_points=True,add_terminal_taps=True)
 
         node.outline = Rect4R(lx=0, ly=1, ux=25, uy=13)
@@ -108,7 +108,7 @@ class LowPassFilterTB(Cell):
         }
         sinusoidal_source = SinusoidalVoltageSource(**sinusoidal_params).symbol
         node.sinusoidal = SchemInstance(
-            pos=Vec2R(x=2, y=5),
+            pos=Vec2R(2, 5),
             ref=sinusoidal_source,
             portmap={
                 sinusoidal_source.p: node.input_node,
@@ -121,7 +121,7 @@ class LowPassFilterTB(Cell):
         resistor_params = {'R': R(1e3)}  # 1 kOhm
         resistor = Res(**resistor_params).symbol
         node.resistor = SchemInstance(
-            pos=Vec2R(x=8, y=5),
+            pos=Vec2R(8, 5),
             ref=resistor,
             portmap={
                 resistor.p: node.input_node,
@@ -133,7 +133,7 @@ class LowPassFilterTB(Cell):
         capacitor_params = {'C': R(100e-9)}  # 100 nF
         capacitor = Cap(**capacitor_params).symbol
         node.capacitor = SchemInstance(
-            pos=Vec2R(x=14, y=5),
+            pos=Vec2R(14, 5),
             ref=capacitor,
             portmap={
                 capacitor.p: node.out,
@@ -144,7 +144,7 @@ class LowPassFilterTB(Cell):
         node.default_ground=node.gnd
 
         gnd_inst = Gnd().symbol
-        node.gnd_inst = SchemInstance(pos=Vec2R(x=12, y=16), ref=gnd_inst,portmap={gnd_inst.p:node.gnd})
+        node.gnd_inst = SchemInstance(pos=Vec2R(12, 16), ref=gnd_inst,portmap={gnd_inst.p:node.gnd})
         helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
         node.outline = Rect4R(lx=0, ly=2, ux=20, uy=12)
 
@@ -170,7 +170,7 @@ class PieceWiseVoltageLinearTB(Cell):
 
         pwl_source_ref = PieceWiseLinearVoltageSource(V=pwl_points).symbol
         node.pwl_source = SchemInstance(
-            pos=Vec2R(x=2, y=5),
+            pos=Vec2R(2, 5),
             ref=pwl_source_ref,
             portmap={
                 pwl_source_ref.p: node.source_output, 
@@ -180,7 +180,7 @@ class PieceWiseVoltageLinearTB(Cell):
 
         resistor_ref = Res(R=R("1k")).symbol
         node.load_resistor = SchemInstance(
-            pos=Vec2R(x=8, y=5),
+            pos=Vec2R(8, 5),
             ref=resistor_ref,
             portmap={
                 resistor_ref.p: node.source_output, 
@@ -191,7 +191,7 @@ class PieceWiseVoltageLinearTB(Cell):
         node.default_ground = node.gnd
 
         gnd_inst = Gnd().symbol
-        node.gnd_inst = SchemInstance(pos=Vec2R(x=12, y=16), ref=gnd_inst,portmap={gnd_inst.p:node.gnd})
+        node.gnd_inst = SchemInstance(pos=Vec2R(12, 16), ref=gnd_inst,portmap={gnd_inst.p:node.gnd})
 
         helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
 
@@ -212,7 +212,7 @@ class TestSineCurrentSourceTB(Cell):
         }
         sine_current_ref = SinusoidalCurrentSource(**sine_current_params).symbol
         node.sine_current = SchemInstance(
-            pos=Vec2R(x=2, y=5),
+            pos=Vec2R(2, 5),
             ref=sine_current_ref,
             portmap={
                 sine_current_ref.p: node.load_node, # Current flows m -> p
@@ -222,7 +222,7 @@ class TestSineCurrentSourceTB(Cell):
 
         sine_load_ref = Res(R=R("100")).symbol # 100 Ohm load
         node.sine_load = SchemInstance(
-            pos=Vec2R(x=8, y=5),
+            pos=Vec2R(8, 5),
             ref=sine_load_ref,
             portmap={
                 sine_load_ref.p: node.load_node,
@@ -232,7 +232,7 @@ class TestSineCurrentSourceTB(Cell):
 
         node.default_ground = node.gnd
         gnd_inst_ref = Gnd().symbol
-        node.gnd_inst = SchemInstance(pos=Vec2R(x=5, y=0), ref=gnd_inst_ref, portmap={gnd_inst_ref.p: node.gnd})
+        node.gnd_inst = SchemInstance(pos=Vec2R(5, 0), ref=gnd_inst_ref, portmap={gnd_inst_ref.p: node.gnd})
 
         helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
         node.outline = Rect4R(lx=0, ly=0, ux=12, uy=10)

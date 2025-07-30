@@ -26,17 +26,17 @@ def params_to_spice(params, allowed_keys=('l', 'w', 'ad', 'as', 'm')):
 class Nmos(Cell):
     @generate(Symbol)
     def symbol(self, node):
-        node.g = Pin(pos=Vec2R(x=0, y=2), pintype=PinType.In, align=Orientation.West)
-        node.s = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
-        node.d = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
-        node.b = Pin(pos=Vec2R(x=4, y=2), pintype=PinType.In, align=Orientation.East)
+        node.g = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=Orientation.West)
+        node.s = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
+        node.d = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
+        node.b = Pin(pos=Vec2R(4, 2), pintype=PinType.In, align=Orientation.East)
         
-        node % SymbolPoly(vertices=[Vec2R(x=2, y=0), Vec2R(x=2, y=1.25), Vec2R(x=1.3, y=1.25), Vec2R(x=1.3, y=2.75), Vec2R(x=2, y=2.75), Vec2R(x=2, y=4)])
-        node % SymbolPoly(vertices=[Vec2R(x=1, y=1.25), Vec2R(x=1, y=2.75)])
-        node % SymbolPoly(vertices=[Vec2R(x=0, y=2), Vec2R(x=1, y=2)])
-        node % SymbolPoly(vertices=[Vec2R(x=4, y=2), Vec2R(x=1.3, y=2)])
-        node % SymbolPoly(vertices=[Vec2R(x=1.7, y=1.8), Vec2R(x=1.3, y=2), Vec2R(x=1.7, y=2.2)])
-        node % SymbolPoly(vertices=[Vec2R(x=1.6, y=1.05), Vec2R(x=2, y=1.25), Vec2R(x=1.6, y=1.45)])
+        node % SymbolPoly(vertices=[Vec2R(2, 0), Vec2R(2, 1.25), Vec2R(1.3, 1.25), Vec2R(1.3, 2.75), Vec2R(2, 2.75), Vec2R(2, 4)])
+        node % SymbolPoly(vertices=[Vec2R(1, 1.25), Vec2R(1, 2.75)])
+        node % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(1, 2)])
+        node % SymbolPoly(vertices=[Vec2R(4, 2), Vec2R(1.3, 2)])
+        node % SymbolPoly(vertices=[Vec2R(1.7, 1.8), Vec2R(1.3, 2), Vec2R(1.7, 2.2)])
+        node % SymbolPoly(vertices=[Vec2R(1.6, 1.05), Vec2R(2, 1.25), Vec2R(1.6, 1.45)])
 
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
 
@@ -48,17 +48,17 @@ class Nmos(Cell):
 class Pmos(Cell):
     @generate(Symbol)
     def symbol(self, node):
-        node.g = Pin(pos=Vec2R(x=0, y=2), pintype=PinType.In, align=Orientation.West)
-        node.d = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
-        node.s = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
-        node.b = Pin(pos=Vec2R(x=4, y=2), pintype=PinType.In, align=Orientation.East)
+        node.g = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=Orientation.West)
+        node.d = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
+        node.s = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
+        node.b = Pin(pos=Vec2R(4, 2), pintype=PinType.In, align=Orientation.East)
         
-        node % SymbolPoly(vertices=[Vec2R(x=2, y=0), Vec2R(x=2, y=1.25), Vec2R(x=1.3, y=1.25), Vec2R(x=1.3, y=2.75), Vec2R(x=2, y=2.75), Vec2R(x=2, y=4)])
-        node % SymbolPoly(vertices=[Vec2R(x=1, y=1.25), Vec2R(x=1, y=2.75)])
-        node % SymbolPoly(vertices=[Vec2R(x=0, y=2), Vec2R(x=1, y=2)])
-        node % SymbolPoly(vertices=[Vec2R(x=4, y=2), Vec2R(x=1.3, y=2)])
-        node % SymbolPoly(vertices=[Vec2R(x=1.7, y=2.55), Vec2R(x=1.3, y=2.75), Vec2R(x=1.7, y=2.95)])
-        node % SymbolPoly(vertices=[Vec2R(x=1.6, y=1.8), Vec2R(x=2, y=2), Vec2R(x=1.6, y=2.2)])
+        node % SymbolPoly(vertices=[Vec2R(2, 0), Vec2R(2, 1.25), Vec2R(1.3, 1.25), Vec2R(1.3, 2.75), Vec2R(2, 2.75), Vec2R(2, 4)])
+        node % SymbolPoly(vertices=[Vec2R(1, 1.25), Vec2R(1, 2.75)])
+        node % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(1, 2)])
+        node % SymbolPoly(vertices=[Vec2R(4, 2), Vec2R(1.3, 2)])
+        node % SymbolPoly(vertices=[Vec2R(1.7, 2.55), Vec2R(1.3, 2.75), Vec2R(1.7, 2.95)])
+        node % SymbolPoly(vertices=[Vec2R(1.6, 1.8), Vec2R(2, 2), Vec2R(1.6, 2.2)])
 
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
 
@@ -70,15 +70,15 @@ class Pmos(Cell):
 class Inv(Cell):
     @generate(Symbol)
     def symbol(self, node):
-        node.vdd = Pin(pos=Vec2R(x=2, y=4), pintype=PinType.Inout, align=Orientation.North)
-        node.vss = Pin(pos=Vec2R(x=2, y=0), pintype=PinType.Inout, align=Orientation.South)
-        node.a = Pin(pos=Vec2R(x=0, y=2), pintype=PinType.In, align=Orientation.West)
-        node.y = Pin(pos=Vec2R(x=4, y=2), pintype=PinType.Out, align=Orientation.East)
+        node.vdd = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
+        node.vss = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
+        node.a = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=Orientation.West)
+        node.y = Pin(pos=Vec2R(4, 2), pintype=PinType.Out, align=Orientation.East)
 
-        node % SymbolPoly(vertices=[Vec2R(x=0, y=2), Vec2R(x=1, y=2)])
-        node % SymbolPoly(vertices=[Vec2R(x=3.25, y=2), Vec2R(x=4, y=2)])
-        node % SymbolPoly(vertices=[Vec2R(x=1, y=1), Vec2R(x=1, y=3), Vec2R(x=2.75,y=2), Vec2R(x=1, y=1)])
-        node % SymbolArc(pos=Vec2R(x=3,y=2), radius=R(0.25))
+        node % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(1, 2)])
+        node % SymbolPoly(vertices=[Vec2R(3.25, 2), Vec2R(4, 2)])
+        node % SymbolPoly(vertices=[Vec2R(1, 1), Vec2R(1, 3), Vec2R(2.75, 2), Vec2R(1, 1)])
+        node % SymbolArc(pos=Vec2R(3, 2), radius=R(0.25))
 
         node.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
 
@@ -97,10 +97,10 @@ class Inv(Cell):
 
         
         node.symbol = self.symbol
-        node.vdd % SchemPort(pos=Vec2R(x=2, y=13), align=Orientation.East, ref=self.symbol.vdd)
-        node.vss % SchemPort(pos=Vec2R(x=2, y=1), align=Orientation.East, ref=self.symbol.vss)
-        node.a % SchemPort(pos=Vec2R(x=1, y=7), align=Orientation.East, ref=self.symbol.a)
-        node.y % SchemPort(pos=Vec2R(x=9, y=7), align=Orientation.West, ref=self.symbol.y)
+        node.vdd % SchemPort(pos=Vec2R(2, 13), align=Orientation.East, ref=self.symbol.vdd)
+        node.vss % SchemPort(pos=Vec2R(2, 1), align=Orientation.East, ref=self.symbol.vss)
+        node.a % SchemPort(pos=Vec2R(1, 7), align=Orientation.East, ref=self.symbol.a)
+        node.y % SchemPort(pos=Vec2R(9, 7), align=Orientation.West, ref=self.symbol.y)
         
         node.vss % SchemWire([Vec2R(2, 1), Vec2R(5, 1), Vec2R(8, 1), Vec2R(8, 4), Vec2R(7, 4)])
         node.vss % SchemWire([Vec2R(5, 1), node.pd.pos + nmos.s.pos])
@@ -133,64 +133,64 @@ class Ringosc(Cell):
         node.vss = Net(pin=self.symbol.vss)
 
         inv = Inv().symbol
-        node.i0 = SchemInstance(inv.portmap(vdd=node.vdd, vss=node.vss, a=node.y2, y=node.y0), pos=Vec2R(x=4, y=2))
-        node.i1 = SchemInstance(inv.portmap(vdd=node.vdd, vss=node.vss, a=node.y0, y=node.y1), pos=Vec2R(x=10, y=2))
-        node.i2 = SchemInstance(inv.portmap(vdd=node.vdd, vss=node.vss, a=node.y1, y=node.y2), pos=Vec2R(x=16, y=2))
+        node.i0 = SchemInstance(inv.portmap(vdd=node.vdd, vss=node.vss, a=node.y2, y=node.y0), pos=Vec2R(4, 2))
+        node.i1 = SchemInstance(inv.portmap(vdd=node.vdd, vss=node.vss, a=node.y0, y=node.y1), pos=Vec2R(10, 2))
+        node.i2 = SchemInstance(inv.portmap(vdd=node.vdd, vss=node.vss, a=node.y1, y=node.y2), pos=Vec2R(16, 2))
         node.symbol = self.symbol
-        node.vdd % SchemPort(pos=Vec2R(x=2, y=7), align=Orientation.East)
-        node.vss % SchemPort(pos=Vec2R(x=2, y=1), align=Orientation.East)
-        node.y2 % SchemPort(pos=Vec2R(x=22, y=4), align=Orientation.West)
+        node.vdd % SchemPort(pos=Vec2R(2, 7), align=Orientation.East)
+        node.vss % SchemPort(pos=Vec2R(2, 1), align=Orientation.East)
+        node.y2 % SchemPort(pos=Vec2R(22, 4), align=Orientation.West)
         
         node.outline = Rect4R(lx=0, ly=0, ux=24, uy=8)
 
         node.y0 % SchemWire(vertices=[node.i0.pos+inv.y.pos, node.i1.pos+inv.a.pos])
         node.y1 % SchemWire(vertices=[node.i1.pos+inv.y.pos, node.i2.pos+inv.a.pos])
-        node.y2 % SchemWire(vertices=[node.i2.pos+inv.y.pos, Vec2R(x=21,y=4), Vec2R(x=22, y=4)])
-        node.y2 % SchemWire(vertices=[Vec2R(x=21,y=4), Vec2R(x=21,y=8), Vec2R(x=3,y=8), Vec2R(x=3,y=4), node.i0.pos+inv.a.pos])
+        node.y2 % SchemWire(vertices=[node.i2.pos+inv.y.pos, Vec2R(21, 4), Vec2R(22, 4)])
+        node.y2 % SchemWire(vertices=[Vec2R(21, 4), Vec2R(21, 8), Vec2R(3, 8), Vec2R(3, 4), node.i0.pos+inv.a.pos])
 
-        node.vss % SchemWire(vertices=[Vec2R(x=2, y=1), Vec2R(x=6, y=1), Vec2R(x=12, y=1), Vec2R(x=18, y=1), Vec2R(x=18, y=2)])
-        node.vss % SchemWire(vertices=[Vec2R(x=6, y=1), Vec2R(x=6, y=2)])
-        node.vss % SchemWire(vertices=[Vec2R(x=12, y=1), Vec2R(x=12, y=2)])
+        node.vss % SchemWire(vertices=[Vec2R(2, 1), Vec2R(6, 1), Vec2R(12, 1), Vec2R(18, 1), Vec2R(18, 2)])
+        node.vss % SchemWire(vertices=[Vec2R(6, 1), Vec2R(6, 2)])
+        node.vss % SchemWire(vertices=[Vec2R(12, 1), Vec2R(12, 2)])
 
-        node.vdd % SchemWire(vertices=[Vec2R(x=2, y=7), Vec2R(x=6, y=7), Vec2R(x=12, y=7), Vec2R(x=18, y=7), Vec2R(x=18, y=6)])
-        node.vdd % SchemWire(vertices=[Vec2R(x=6, y=7), Vec2R(x=6, y=6)])
-        node.vdd % SchemWire(vertices=[Vec2R(x=12, y=7), Vec2R(x=12, y=6)])
+        node.vdd % SchemWire(vertices=[Vec2R(2, 7), Vec2R(6, 7), Vec2R(12, 7), Vec2R(18, 7), Vec2R(18, 6)])
+        node.vdd % SchemWire(vertices=[Vec2R(6, 7), Vec2R(6, 6)])
+        node.vdd % SchemWire(vertices=[Vec2R(12, 7), Vec2R(12, 6)])
 
         helpers.schem_check(node, add_conn_points=True)
 
 class And2(Cell):
     @generate(Symbol)
     def symbol(self, node):
-        node.vdd = Pin(pos=Vec2R(x=2.5, y=5), pintype=PinType.Inout, align=Orientation.North)
-        node.vss = Pin(pos=Vec2R(x=2.5, y=0), pintype=PinType.Inout, align=Orientation.South)
-        node.a = Pin(pos=Vec2R(x=0, y=3), pintype=PinType.In, align=Orientation.West)
-        node.b = Pin(pos=Vec2R(x=0, y=2), pintype=PinType.In, align=Orientation.West)
-        node.y = Pin(pos=Vec2R(x=5, y=2.5), pintype=PinType.Out, align=Orientation.East)
+        node.vdd = Pin(pos=Vec2R(2.5, 5), pintype=PinType.Inout, align=Orientation.North)
+        node.vss = Pin(pos=Vec2R(2.5, 0), pintype=PinType.Inout, align=Orientation.South)
+        node.a = Pin(pos=Vec2R(0, 3), pintype=PinType.In, align=Orientation.West)
+        node.b = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=Orientation.West)
+        node.y = Pin(pos=Vec2R(5, 2.5), pintype=PinType.Out, align=Orientation.East)
 
-        node % SymbolPoly(vertices=[Vec2R(x=0, y=2), Vec2R(x=1, y=2)])
-        node % SymbolPoly(vertices=[Vec2R(x=0, y=3), Vec2R(x=1, y=3)])
-        node % SymbolPoly(vertices=[Vec2R(x=4, y=2.5), Vec2R(x=5, y=2.5)])
-        node % SymbolPoly(vertices=[Vec2R(x=2.75, y=1.25), Vec2R(x=1, y=1.25), Vec2R(x=1, y=3.75), Vec2R(x=2.75, y=3.75)])
-        node % SymbolArc(pos=Vec2R(x=2.75,y=2.5), radius=R(1.25), angle_start=R(-0.25), angle_end=R(0.25))
+        node % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(1, 2)])
+        node % SymbolPoly(vertices=[Vec2R(0, 3), Vec2R(1, 3)])
+        node % SymbolPoly(vertices=[Vec2R(4, 2.5), Vec2R(5, 2.5)])
+        node % SymbolPoly(vertices=[Vec2R(2.75, 1.25), Vec2R(1, 1.25), Vec2R(1, 3.75), Vec2R(2.75, 3.75)])
+        node % SymbolArc(pos=Vec2R(2.75, 2.5), radius=R(1.25), angle_start=R(-0.25), angle_end=R(0.25))
         node.outline = Rect4R(lx=0, ly=0, ux=5, uy=5)
 
 class Or2(Cell):
     @generate(Symbol)
     def symbol(self, node):
-        node.vdd = Pin(pos=Vec2R(x=2.5, y=5), pintype=PinType.Inout, align=Orientation.North)
-        node.vss = Pin(pos=Vec2R(x=2.5, y=0), pintype=PinType.Inout, align=Orientation.South)
-        node.a = Pin(pos=Vec2R(x=0, y=3), pintype=PinType.In, align=Orientation.West)
-        node.b = Pin(pos=Vec2R(x=0, y=2), pintype=PinType.In, align=Orientation.West)
-        node.y = Pin(pos=Vec2R(x=5, y=2.5), pintype=PinType.Out, align=Orientation.East)
+        node.vdd = Pin(pos=Vec2R(2.5, 5), pintype=PinType.Inout, align=Orientation.North)
+        node.vss = Pin(pos=Vec2R(2.5, 0), pintype=PinType.Inout, align=Orientation.South)
+        node.a = Pin(pos=Vec2R(0, 3), pintype=PinType.In, align=Orientation.West)
+        node.b = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=Orientation.West)
+        node.y = Pin(pos=Vec2R(5, 2.5), pintype=PinType.Out, align=Orientation.East)
 
-        node % SymbolPoly(vertices=[Vec2R(x=0, y=2), Vec2R(x=1.3, y=2)])
-        node % SymbolPoly(vertices=[Vec2R(x=0, y=3), Vec2R(x=1.3, y=3)])
-        node % SymbolPoly(vertices=[Vec2R(x=4, y=2.5), Vec2R(x=5, y=2.5)])
-        node % SymbolPoly(vertices=[Vec2R(x=1, y=3.75), Vec2R(x=1.95, y=3.75)])
-        node % SymbolPoly(vertices=[Vec2R(x=1, y=1.25), Vec2R(x=1.95, y=1.25)])
-        node % SymbolArc(pos=Vec2R(x=-1.02,y=2.5), radius=R(2.4), angle_start=R(-0.085), angle_end=R(0.085))
-        node % SymbolArc(pos=Vec2R(x=1.95,y=1.35), radius=R(2.4), angle_start=R(0.08), angle_end=R(0.25))
-        node % SymbolArc(pos=Vec2R(x=1.95,y=3.65), radius=R(2.4), angle_start=R(-0.25), angle_end=R(-0.08))
+        node % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(1.3, 2)])
+        node % SymbolPoly(vertices=[Vec2R(0, 3), Vec2R(1.3, 3)])
+        node % SymbolPoly(vertices=[Vec2R(4, 2.5), Vec2R(5, 2.5)])
+        node % SymbolPoly(vertices=[Vec2R(1, 3.75), Vec2R(1.95, 3.75)])
+        node % SymbolPoly(vertices=[Vec2R(1, 1.25), Vec2R(1.95, 1.25)])
+        node % SymbolArc(pos=Vec2R(-1.02, 2.5), radius=R(2.4), angle_start=R(-0.085), angle_end=R(0.085))
+        node % SymbolArc(pos=Vec2R(1.95, 1.35), radius=R(2.4), angle_start=R(0.08), angle_end=R(0.25))
+        node % SymbolArc(pos=Vec2R(1.95, 3.65), radius=R(2.4), angle_start=R(-0.25), angle_end=R(-0.08))
         node.outline = Rect4R(lx=0, ly=0, ux=5, uy=5)
 
 __all__ = ["Nmos", "Pmos", "Inv", "Ringosc", "And2", "Or2"]

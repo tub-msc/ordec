@@ -54,7 +54,7 @@ class TBMosfetLoad(Cell):
         nmos_params = {"l": "2", "w": "2"}
         nmos = NmosSky130(**nmos_params).symbol
         node.mosfet = SchemInstance(
-            pos=Vec2R(x=10, y=5),
+            pos=Vec2R(10, 5),
             ref=nmos,
             portmap={
                 nmos.d: node.vout,
@@ -67,7 +67,7 @@ class TBMosfetLoad(Cell):
         resistor_params = {"R": R("9e3")}
         resistor = Res(**resistor_params).symbol
         node.rl = SchemInstance(
-            pos=Vec2R(x=10, y=10),
+            pos=Vec2R(10, 10),
             ref=resistor,
             portmap={resistor.p: node.vdd, resistor.m: node.vout},
         )
@@ -75,7 +75,7 @@ class TBMosfetLoad(Cell):
         capacitor_params = {"C": R("20e-12")}
         capacitor = Cap(**capacitor_params).symbol
         node.cl = SchemInstance(
-            pos=Vec2R(x=15, y=5),
+            pos=Vec2R(15, 5),
             ref=capacitor,
             portmap={capacitor.p: node.vout, capacitor.m: node.gnd},
         )
@@ -83,7 +83,7 @@ class TBMosfetLoad(Cell):
         vdc_vdd_params = {"V": R("1.8")}
         vdc_vdd = Vdc(**vdc_vdd_params).symbol
         node.vdd_source = SchemInstance(
-            pos=Vec2R(x=5, y=15),
+            pos=Vec2R(5, 15),
             ref=vdc_vdd,
             portmap={vdc_vdd.p: node.vdd, vdc_vdd.m: node.gnd},
         )
@@ -96,7 +96,7 @@ class TBMosfetLoad(Cell):
         }
         sin_source = SinusoidalVoltageSource(**sin_params).symbol
         node.vac = SchemInstance(
-            pos=Vec2R(x=2, y=5),
+            pos=Vec2R(2, 5),
             ref=sin_source,
             portmap={
                 sin_source.p: node.vin,
@@ -126,7 +126,7 @@ class TBInv(Cell):
         }
         pulse_source = PulseVoltageSource(**pulse_params).symbol
         node.pulse = SchemInstance(
-            pos=Vec2R(x=2, y=5),
+            pos=Vec2R(2, 5),
             ref=pulse_source,
             portmap={pulse_source.p: node.input_node, pulse_source.m: node.gnd},
         )
@@ -134,14 +134,14 @@ class TBInv(Cell):
         vdc_inst = Vdc(V=R("1.8")).symbol
 
         node.vdc = SchemInstance(
-            pos=Vec2R(x=3, y=10),
+            pos=Vec2R(3, 10),
             ref=vdc_inst,
             portmap={vdc_inst.m: node.gnd, vdc_inst.p: node.vdd},
         )
 
         inv = Inv().symbol
         node.inv = SchemInstance(
-            pos=Vec2R(x=8, y=5),
+            pos=Vec2R(8, 5),
             ref=inv,
             portmap={
                 inv.a: node.input_node,
@@ -154,7 +154,7 @@ class TBInv(Cell):
 
         gnd_inst = Gnd().symbol
         node.gnd_inst = SchemInstance(
-            pos=Vec2R(x=12, y=16), ref=gnd_inst, portmap={gnd_inst.p: node.gnd}
+            pos=Vec2R(12, 16), ref=gnd_inst, portmap={gnd_inst.p: node.gnd}
         )
         helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
         node.outline = node % SchemRect(pos=Rect4R(lx=0, ly=2, ux=25, uy=16))
