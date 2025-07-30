@@ -26,13 +26,13 @@ First, launch the frontend (Vite_)::
     npm install
     npm run dev
 
-:code:`npm install` is only needed at the first launch. You can then access the webinterface at http://localhost:5173. In this setup, the frontend automatically connects to the backend on localhost port 8100 via websocket.
-
-The backend server provides a websocket interface to the Python-based ORDeC core. To launch the backend, simply run::
+:code:`npm install` is only needed at the first launch. In this setup, the Vite frontend server acts as proxy to the backend server on port 8100, which has to be run separately::
     
-    ordec-server -n
+    ordec-server -n -b
 
-Then, navigate to the provided URL. The URL includes an authentication token to prevent unauthorized users from gaining access and executing arbitrary code through ORDeC (similar to https://jupyter-server.readthedocs.io/en/latest/operators/security.html). This token-based authentication is also important in a localhost / single-user setup to prevent privilege escalation.
+This will launch a browser and open the ORDeC interface.
+
+To prevent unauthorized users from gaining access and executing arbitrary code through ORDeC, a new authentication token is generated on each start of ordec-server (similar to https://jupyter-server.readthedocs.io/en/latest/operators/security.html). This token-based authentication is also important in localhost / single-user setups to prevent privilege escalation. The authentication token is passed to the frontend using the ?auth= parameter of index.html. From there, it is stored as a cookie and sent to the server at the start of each websocket connection.
 
 Run tests
 ---------

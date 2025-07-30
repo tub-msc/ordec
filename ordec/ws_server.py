@@ -276,14 +276,42 @@ def secure_url_open(user_url):
 
     return launch_html
 
+cli_help = """
+ORDeC, a custom IC design platform.
+
+There are three recommended variants to run ordec-server:
+
+(1) Combined frontend + backend server with regular installation:
+    A regular installation of ORDeC includes a compiled version of the
+    frontend (webdist.tar). In this case, ORDeC can be started through
+    a simple 'ordec-server -b'.
+
+(2) Combined frontend + backend server with editable installation:
+    In case of a editable installation ("develop mode" / pip -e), variant (1)
+    is not supported, as webdist.tar is not available in the package.
+    Instead, the frontend can be build separately through 'npm run build' in
+    the web/ directory. The build results must then be supplied to the
+    ordec-server command: 'ordec-server -b -r [...]/web/dist/'
+
+(3) Separate frontend + backend server for frontend development:
+    In the web/ directory, run the Vite frontend server using 'npm run dev'.
+    Then, separately start the backend server using 'ordec-server -n -b'.
+    This gives the best development experience when working on the frontend
+    code. In this variant, the Vite server acts as proxy for the backend
+    server. Thus, you should use the browser only to connect to the Vite
+    server / port.
+"""
 
 def main():
-    parser = argparse.ArgumentParser(prog='ordec-server')
-    parser.add_argument('-l', '--hostname', default="127.0.0.1", help="Hostname to listen on.")
-    parser.add_argument('-p', '--port', default=8100, type=int, help="Port to listen on.")
-    parser.add_argument('-r', '--static-root', help="Static web directory.", nargs='?')
-    parser.add_argument('-n', '--no-frontend', action='store_true')
-    parser.add_argument('-b', '--launch-browser', action='store_true')
+    parser = argparse.ArgumentParser(prog='ordec-server',
+        description=cli_help,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    parser.add_argument('-l', '--hostname', default="127.0.0.1", help="Hostname to listen on (default 127.0.0.1).")
+    parser.add_argument('-p', '--port', default=8100, type=int, help="Port to listen on (default 8100).")
+    parser.add_argument('-r', '--static-root', help="Path for static web resources. If not specified, the webdist.tar file included in the ORDeC installation is used.", nargs='?')
+    parser.add_argument('-n', '--no-frontend', action='store_true', help="Serve backend only. Requires a separate server (e.g. Vite) to serve the frontend.")
+    parser.add_argument('-b', '--launch-browser', action='store_true', help="Automatically open ORDeC in browser.")
     
     args = parser.parse_args()
     hostname = args.hostname
@@ -293,18 +321,27 @@ def main():
 
     launch_html = None
 
+    user_url = f"http://{hostname}:{port}/?auth={auth_token}"
+
     if args.no_frontend:
         static_handler = StaticHandler()
         # Vite provides the frontend for the user on port 5173:
         print("--no-frontend: Make sure to run 'npm run dev' in web/ in addition to 'ordec-server'.")
         user_url = f"http://localhost:5173/?auth={auth_token}"
+    elif args.static_root:
+        static_handler = StaticHandler(anonymous_tar(args.static_root))
     else:
-        if args.static_root:
-            tar = anonymous_tar(args.static_root)
-        else:
-            tar = tarfile.open(importlib.resources.files(__package__) / 'webdist.tar')
-        static_handler = StaticHandler(tar)
-        user_url = f"http://{hostname}:{port}/?auth={auth_token}"
+        webdist_tar = importlib.resources.files(__package__) / 'webdist.tar'
+        try:
+            static_handler = StaticHandler(tarfile.open(webdist_tar))
+        except FileNotFoundError:
+            print(
+                "ERROR: webdist.tar not found. -- This is likely an editable "
+                "installation. Please use variant (2) or (3) outlined below to "
+                "run the server.\n"
+                )
+            parser.print_help()
+            raise SystemExit(1)
 
     # Launch server in separate daemon thread (daemon=True). The connection
     # threads automatically inherit the daemon property. All daemon threads
@@ -327,7 +364,7 @@ def main():
         print("Terminating.")
     finally:
         if launch_html:
-            launch_html.close()
+            launch_html.close() # Deletes the temporary file.
 
 def server_thread(hostname, port, static_handler, auth_token):
     h = partial(handle_connection, auth_token=auth_token)
