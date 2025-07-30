@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+"""
+Important: You have to run 'npm run build' in web/ before running the tests.
+"""
+
 import pytest
 import threading
 import time
@@ -8,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from dataclasses import dataclass
 import importlib.resources
-import io
+import secrets
 
 from ordec import ws_server
 
@@ -37,18 +41,27 @@ examples = {
     "diffpair":{'DiffPair().schematic', 'DiffPairTb().schematic', 'DiffPairTb().sim_dc'},
 }
 
+
 @dataclass
 class WebserverInfo:
     url: str
+    auth_token: str
 
 @pytest.fixture(scope="session", autouse=True)
 def webserver():
-    static_handler = ws_server.StaticHandlerDir(Path('web/dist')) # TODO: Make this cleaner.
+    auth_token = secrets.token_urlsafe()
+    # Using a port other than 8100 makes it possible to run the tests
+    # while having another independent ordec-server running.
+    port = 8102
+    web_dist_path = (Path(__file__).parent.parent/'web'/'dist').resolve()
+    tar = ws_server.anonymous_tar(web_dist_path)
+    static_handler = ws_server.StaticHandler(tar)
+
     t = threading.Thread(target=ws_server.server_thread,
-        args=('localhost', 8100, static_handler), daemon=True)
+        args=('127.0.0.1', port, static_handler, auth_token), daemon=True)
     t.start()
     time.sleep(1) # Delay for server startup
-    yield WebserverInfo("http://localhost:8100/")
+    yield WebserverInfo(f"http://127.0.0.1:{port}/", auth_token)
     # Server will stop when pytest exits.
 
 @pytest.mark.web
@@ -86,6 +99,10 @@ def resize_viewport(driver, w, h):
 def request_example(webserver, example):
     with webdriver.Chrome(options=webdriver_options) as driver:
         resize_viewport(driver, 800, 600)
+
+        driver.get(webserver.url)
+        driver.add_cookie({"name": "ordecAuth", "value": webserver.auth_token})
+
         driver.get(webserver.url + f'app.html?example={example}')
         
         WebDriverWait(driver, 10).until(
@@ -122,5 +139,3 @@ def test_example(webserver, tmp_path, example):
             pass # for blank example
         else:
             raise NotImplementedError(f"No test implemented for result viewer {view_name!r}.")
-
-        

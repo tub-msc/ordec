@@ -26,7 +26,7 @@ docker pull ghcr.io/tub-msc/ordec:latest
 docker run --rm -p 127.0.0.1:8100:8100 -it ghcr.io/tub-msc/ordec:latest
 ```
 
-Then, visit http://localhost:8100 to access the web interface and try out examples.
+Then, access the web interface via the generated URL and try out examples.
 
 ![Web interface screenshot](https://raw.githubusercontent.com/tub-msc/ordec/refs/heads/main/docs/screenshot_demo.png)
 
