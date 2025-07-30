@@ -11,7 +11,6 @@ from websockets.http11 import Request, Response
 from websockets.datastructures import Headers
 import http
 import json
-import re
 import traceback
 import ast
 from pathlib import Path
@@ -28,7 +27,6 @@ import time
 import tempfile
 
 from .core import *
-from .render import render
 from .parser.parser import ord2py
 from .lib import examples
 
@@ -72,41 +70,11 @@ def query_view(view_name, conn_globals):
 
     try:
         view = eval(view_name, conn_globals, conn_globals)
-        msg_ret |= serialize_view(view_name, view)
+        msg_ret |= view.webdata()
     except Exception:    
         msg_ret['exception'] = traceback.format_exc()
 
     return msg_ret
-
-def fmt_float(val, unit):
-    x=str(Rational(f"{val:.03e}"))+unit
-    x=re.sub(r"([0-9])([a-zA-Z])", r"\1 \2", x)
-    x=x.replace("u", "μ")
-    x=re.sub(r"e([+-]?[0-9]+)", r"×10<sup>\1</sup>", x)
-    return x
-
-def serialize_view(name, view):
-    if not isinstance(view, SubgraphRoot):
-        return {'exception': "Requested object is not View."}
-
-    if isinstance(view, (Schematic, Symbol)):
-        return {'html': render(view).svg().decode('ascii')}
-
-    if isinstance(view, SimHierarchy):
-        dc_voltages = []
-        for sn in view.all(SimNet):
-            if not sn.dc_voltage:
-                continue
-            dc_voltages.append([sn.full_path_str(), fmt_float(sn.dc_voltage, "V")])
-        dc_currents = []
-        for sn in view.all(SimInstance):
-            if not sn.dc_current:
-                continue
-            dc_currents.append([sn.full_path_str(), fmt_float(sn.dc_current, "A")])
-        return {'dc_voltages': dc_voltages, 'dc_currents': dc_currents}
-
-    # Fallback: just return the view as tree.
-    return {'tree':view.tables()}
 
 def handle_connection(websocket, auth_token):
     remote = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"

@@ -57,6 +57,10 @@ class Symbol(SubgraphRoot):
         from ..render import render
         return render(cursor).svg().decode('ascii'), {'isolated': False}
 
+    def webdata(self):
+        from ..render import render
+        return {'html': render(self).svg().decode('ascii')}
+
 @public
 class Pin(Node):
     """
@@ -170,6 +174,10 @@ class Schematic(SubgraphRoot):
         from ..render import render
         return render(cursor).svg().decode('ascii'), {'isolated': False}
 
+    def webdata(self):
+        from ..render import render
+        return {'html': render(self).svg().decode('ascii')}
+
 @public
 class SchemPort(Node):
     """
@@ -269,3 +277,24 @@ class SimInstance(NonLeafNode):
 class SimHierarchy(SubgraphRoot):
     schematic = SubgraphRef(Schematic)
     cell = Attr('Cell')
+
+    def webdata(self):
+        def fmt_float(val, unit):
+            import re
+            x=str(R(f"{val:.03e}"))+unit
+            x=re.sub(r"([0-9])([a-zA-Z])", r"\1 \2", x)
+            x=x.replace("u", "μ")
+            x=re.sub(r"e([+-]?[0-9]+)", r"×10<sup>\1</sup>", x)
+            return x
+
+        dc_voltages = []
+        for sn in self.all(SimNet):
+            if not sn.dc_voltage:
+                continue
+            dc_voltages.append([sn.full_path_str(), fmt_float(sn.dc_voltage, "V")])
+        dc_currents = []
+        for si in self.all(SimInstance):
+            if not si.dc_current:
+                continue
+            dc_currents.append([si.full_path_str(), fmt_float(si.dc_current, "A")])
+        return {'dc_voltages': dc_voltages, 'dc_currents': dc_currents}
