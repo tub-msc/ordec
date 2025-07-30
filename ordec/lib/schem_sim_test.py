@@ -8,112 +8,112 @@ from .. import helpers
 class TestCell1(Cell):
     @generate
     def symbol(self):
-        node = Symbol(cell=self)
+        s = Symbol(cell=self)
 
-        node.a = PinArray()
-        node.a[0]=Pin(pintype=PinType.Inout, align=Orientation.South)
-        node.a[1]=Pin(pintype=PinType.Inout, align=Orientation.South)
+        s.a = PinArray()
+        s.a[0]=Pin(pintype=PinType.Inout, align=Orientation.South)
+        s.a[1]=Pin(pintype=PinType.Inout, align=Orientation.South)
         
-        node.b = PinArray()
-        node.b[0] = Pin(pintype=PinType.Out, align=Orientation.North)
-        node.b[1] = Pin(pintype=PinType.Out, align=Orientation.North)
+        s.b = PinArray()
+        s.b[0] = Pin(pintype=PinType.Out, align=Orientation.North)
+        s.b[1] = Pin(pintype=PinType.Out, align=Orientation.North)
 
-        helpers.symbol_place_pins(node, vpadding=2, hpadding=2)
-        return node
+        helpers.symbol_place_pins(s, vpadding=2, hpadding=2)
+        return s
     
     @generate
     def schematic(self):
-        node = Schematic(cell=self, symbol=self.symbol)
+        s = Schematic(cell=self, symbol=self.symbol)
 
-        node.a = NetArray()
-        node.b = NetArray()
-        node.a[0] = Net()
-        node.a[1] = Net()
-        node.b[0] = Net()
-        node.b[1] = Net()
+        s.a = NetArray()
+        s.b = NetArray()
+        s.a[0] = Net()
+        s.a[1] = Net()
+        s.b[0] = Net()
+        s.b[1] = Net()
 
         r_inst = Res(R=R("1000")).symbol
         r_inst2 = Res(R=R("2000")).symbol
-        node.res1 = SchemInstance(pos=Vec2R(3, 8), ref=r_inst, portmap={r_inst.p:node.a[0], r_inst.m:node.b[0]})
-        node.res2 = SchemInstance(pos=Vec2R(10, 8), ref=r_inst2, portmap={r_inst2.p:node.a[1], r_inst2.m:node.b[1]})
+        s.res1 = SchemInstance(pos=Vec2R(3, 8), ref=r_inst, portmap={r_inst.p:s.a[0], r_inst.m:s.b[0]})
+        s.res2 = SchemInstance(pos=Vec2R(10, 8), ref=r_inst2, portmap={r_inst2.p:s.a[1], r_inst2.m:s.b[1]})
         
-        node.outline = Rect4R(lx=3, ly=7, ux=15, uy=13)
+        s.outline = Rect4R(lx=3, ly=7, ux=15, uy=13)
 
-        helpers.schem_check(node, add_conn_points=True,add_terminal_taps=True)
-        return node
+        helpers.schem_check(s, add_conn_points=True,add_terminal_taps=True)
+        return s
 
 class TestCell2(Cell):
     @generate
     def symbol(self):
-        node = Symbol(cell=self)
+        s = Symbol(cell=self)
 
-        node.mkpath('a')
-        node.a.left=Pin(pintype=PinType.Inout, align=Orientation.South)
-        node.a.right=Pin(pintype=PinType.Inout, align=Orientation.South)
+        s.mkpath('a')
+        s.a.left=Pin(pintype=PinType.Inout, align=Orientation.South)
+        s.a.right=Pin(pintype=PinType.Inout, align=Orientation.South)
         
-        node.mkpath('b')
-        node.b.left = Pin(pintype=PinType.Out, align=Orientation.North)
-        node.b.right = Pin(pintype=PinType.Out, align=Orientation.North)
+        s.mkpath('b')
+        s.b.left = Pin(pintype=PinType.Out, align=Orientation.North)
+        s.b.right = Pin(pintype=PinType.Out, align=Orientation.North)
 
-        helpers.symbol_place_pins(node, vpadding=2, hpadding=2)
-        return node
+        helpers.symbol_place_pins(s, vpadding=2, hpadding=2)
+        return s
     
     @generate
     def schematic(self):
-        node = Schematic(cell=self, symbol=self.symbol)
+        s = Schematic(cell=self, symbol=self.symbol)
 
-        node.mkpath('a')
-        node.mkpath('b')
-        node.a.left = Net()
-        node.a.right = Net()
-        node.b.left = Net()
-        node.b.right = Net()
+        s.mkpath('a')
+        s.mkpath('b')
+        s.a.left = Net()
+        s.a.right = Net()
+        s.b.left = Net()
+        s.b.right = Net()
 
         r_inst = Res(R=R("1000")).symbol
         r_inst2 = Res(R=R("2000")).symbol
-        node.res1 = SchemInstance(pos=Vec2R(3, 8), ref=r_inst, portmap={r_inst.p:node.a.left, r_inst.m:node.b.left})
-        node.res2 = SchemInstance(pos=Vec2R(10, 8), ref=r_inst2, portmap={r_inst2.p:node.a.right, r_inst2.m:node.b.right})
+        s.res1 = SchemInstance(pos=Vec2R(3, 8), ref=r_inst, portmap={r_inst.p:s.a.left, r_inst.m:s.b.left})
+        s.res2 = SchemInstance(pos=Vec2R(10, 8), ref=r_inst2, portmap={r_inst2.p:s.a.right, r_inst2.m:s.b.right})
         
-        node.outline = Rect4R(lx=3, ly=5, ux=15, uy=15)
+        s.outline = Rect4R(lx=3, ly=5, ux=15, uy=15)
 
-        helpers.schem_check(node, add_conn_points=True,add_terminal_taps=True)
-        return node
+        helpers.schem_check(s, add_conn_points=True,add_terminal_taps=True)
+        return s
 
 class TestBenchNestedCell(Cell):
     @generate
     def schematic(self):
-        node = Schematic(cell=self)
+        s = Schematic(cell=self)
 
-        node.y = Net()
-        #node.vdd = Net()
-        node.gnd = Net()
-        node.k = Net()
+        s.y = Net()
+        #s.vdd = Net()
+        s.gnd = Net()
+        s.k = Net()
 
         vdc_inst = Vdc(V=R("1")).symbol 
         tb_inst = TestCell1().symbol 
         tb_inst2 = TestCell2().symbol 
 
-        node.vdc = SchemInstance(pos=Vec2R(3, 2), ref=vdc_inst, portmap={vdc_inst.m:node.gnd, vdc_inst.p:node.y})
-        node.tb1 = SchemInstance(pos=Vec2R(3, 8), ref=tb_inst, portmap={tb_inst.a[0]:node.y,tb_inst.a[1]:node.y, tb_inst.b[0]:node.k,tb_inst.b[1]:node.k})
-        node.tb2 = SchemInstance(pos=Vec2R(12, 8), ref=tb_inst2, portmap={tb_inst2.a.left:node.gnd,tb_inst2.a.right:node.gnd, tb_inst2.b.left:node.k,tb_inst2.b.right:node.k})
-        node.default_ground=node.gnd
+        s.vdc = SchemInstance(pos=Vec2R(3, 2), ref=vdc_inst, portmap={vdc_inst.m:s.gnd, vdc_inst.p:s.y})
+        s.tb1 = SchemInstance(pos=Vec2R(3, 8), ref=tb_inst, portmap={tb_inst.a[0]:s.y,tb_inst.a[1]:s.y, tb_inst.b[0]:s.k,tb_inst.b[1]:s.k})
+        s.tb2 = SchemInstance(pos=Vec2R(12, 8), ref=tb_inst2, portmap={tb_inst2.a.left:s.gnd,tb_inst2.a.right:s.gnd, tb_inst2.b.left:s.k,tb_inst2.b.right:s.k})
+        s.default_ground=s.gnd
 
         gnd_inst = Gnd().symbol
-        node.gnd_inst = SchemInstance(pos=Vec2R(12, 16), ref=gnd_inst,portmap={gnd_inst.p:node.gnd})
-        helpers.schem_check(node, add_conn_points=True,add_terminal_taps=True)
+        s.gnd_inst = SchemInstance(pos=Vec2R(12, 16), ref=gnd_inst,portmap={gnd_inst.p:s.gnd})
+        helpers.schem_check(s, add_conn_points=True,add_terminal_taps=True)
 
-        node.outline = Rect4R(lx=0, ly=1, ux=25, uy=13)
+        s.outline = Rect4R(lx=0, ly=1, ux=25, uy=13)
 
-        return node
+        return s
 
 class LowPassFilterTB(Cell):
     @generate
     def schematic(self):
-        node = Schematic(cell=self)
+        s = Schematic(cell=self)
 
-        node.input_node = Net()
-        node.gnd = Net()
-        node.out = Net()
+        s.input_node = Net()
+        s.gnd = Net()
+        s.out = Net()
 
         # Instantiate SinusoidalVoltageSource
         sinusoidal_params = {
@@ -124,12 +124,12 @@ class LowPassFilterTB(Cell):
             'damping_factor': R(0)
         }
         sinusoidal_source = SinusoidalVoltageSource(**sinusoidal_params).symbol
-        node.sinusoidal = SchemInstance(
+        s.sinusoidal = SchemInstance(
             pos=Vec2R(2, 5),
             ref=sinusoidal_source,
             portmap={
-                sinusoidal_source.p: node.input_node,
-                sinusoidal_source.m: node.gnd
+                sinusoidal_source.p: s.input_node,
+                sinusoidal_source.m: s.gnd
             }
         )
 
@@ -137,35 +137,35 @@ class LowPassFilterTB(Cell):
         # Instantiate Resistor (R)
         resistor_params = {'R': R(1e3)}  # 1 kOhm
         resistor = Res(**resistor_params).symbol
-        node.resistor = SchemInstance(
+        s.resistor = SchemInstance(
             pos=Vec2R(8, 5),
             ref=resistor,
             portmap={
-                resistor.p: node.input_node,
-                resistor.m: node.out
+                resistor.p: s.input_node,
+                resistor.m: s.out
             }
         )
 
         # Instantiate Capacitor (C)
         capacitor_params = {'C': R(100e-9)}  # 100 nF
         capacitor = Cap(**capacitor_params).symbol
-        node.capacitor = SchemInstance(
+        s.capacitor = SchemInstance(
             pos=Vec2R(14, 5),
             ref=capacitor,
             portmap={
-                capacitor.p: node.out,
-                capacitor.m: node.gnd
+                capacitor.p: s.out,
+                capacitor.m: s.gnd
             }
         )
 
-        node.default_ground=node.gnd
+        s.default_ground=s.gnd
 
         gnd_inst = Gnd().symbol
-        node.gnd_inst = SchemInstance(pos=Vec2R(12, 16), ref=gnd_inst,portmap={gnd_inst.p:node.gnd})
-        node.outline = Rect4R(lx=0, ly=2, ux=20, uy=12)
+        s.gnd_inst = SchemInstance(pos=Vec2R(12, 16), ref=gnd_inst,portmap={gnd_inst.p:s.gnd})
+        s.outline = Rect4R(lx=0, ly=2, ux=20, uy=12)
 
-        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
-        return node
+        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        return s
 
 class PieceWiseVoltageLinearTB(Cell):
     """
@@ -175,10 +175,10 @@ class PieceWiseVoltageLinearTB(Cell):
     """
     @generate
     def schematic(self):
-        node = Schematic(cell=self)
+        s = Schematic(cell=self)
 
-        node.source_output = Net()
-        node.gnd = Net()
+        s.source_output = Net()
+        s.gnd = Net()
 
         # (time_seconds, voltage_volts)
         pwl_points = [
@@ -190,41 +190,41 @@ class PieceWiseVoltageLinearTB(Cell):
         ]
 
         pwl_source_ref = PieceWiseLinearVoltageSource(V=pwl_points).symbol
-        node.pwl_source = SchemInstance(
+        s.pwl_source = SchemInstance(
             pos=Vec2R(2, 5),
             ref=pwl_source_ref,
             portmap={
-                pwl_source_ref.p: node.source_output, 
-                pwl_source_ref.m: node.gnd
+                pwl_source_ref.p: s.source_output, 
+                pwl_source_ref.m: s.gnd
             }
         )
 
         resistor_ref = Res(R=R("1k")).symbol
-        node.load_resistor = SchemInstance(
+        s.load_resistor = SchemInstance(
             pos=Vec2R(8, 5),
             ref=resistor_ref,
             portmap={
-                resistor_ref.p: node.source_output, 
-                resistor_ref.m: node.gnd
+                resistor_ref.p: s.source_output, 
+                resistor_ref.m: s.gnd
             }
         )
 
-        node.default_ground = node.gnd
+        s.default_ground = s.gnd
 
         gnd_inst = Gnd().symbol
-        node.gnd_inst = SchemInstance(pos=Vec2R(12, 16), ref=gnd_inst,portmap={gnd_inst.p:node.gnd})
+        s.gnd_inst = SchemInstance(pos=Vec2R(12, 16), ref=gnd_inst,portmap={gnd_inst.p:s.gnd})
 
-        node.outline = Rect4R(lx=0, ly=2, ux=14, uy=9)
+        s.outline = Rect4R(lx=0, ly=2, ux=14, uy=9)
 
-        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
-        return node
+        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        return s
 
 class TestSineCurrentSourceTB(Cell):
     """Testbench for the SinusoidalCurrentSource."""
     @generate
     def schematic(self):
-        node.gnd = Net()
-        node.load_node = Net()
+        s.gnd = Net()
+        s.load_node = Net()
 
         sine_current_params = {
             'offset': R(0),
@@ -233,30 +233,30 @@ class TestSineCurrentSourceTB(Cell):
             'delay': R(0)
         }
         sine_current_ref = SinusoidalCurrentSource(**sine_current_params).symbol
-        node.sine_current = SchemInstance(
+        s.sine_current = SchemInstance(
             pos=Vec2R(2, 5),
             ref=sine_current_ref,
             portmap={
-                sine_current_ref.p: node.load_node, # Current flows m -> p
-                sine_current_ref.m: node.gnd
+                sine_current_ref.p: s.load_node, # Current flows m -> p
+                sine_current_ref.m: s.gnd
             }
         )
 
         sine_load_ref = Res(R=R("100")).symbol # 100 Ohm load
-        node.sine_load = SchemInstance(
+        s.sine_load = SchemInstance(
             pos=Vec2R(8, 5),
             ref=sine_load_ref,
             portmap={
-                sine_load_ref.p: node.load_node,
-                sine_load_ref.m: node.gnd
+                sine_load_ref.p: s.load_node,
+                sine_load_ref.m: s.gnd
             }
         )
 
-        node.default_ground = node.gnd
+        s.default_ground = s.gnd
         gnd_inst_ref = Gnd().symbol
-        node.gnd_inst = SchemInstance(pos=Vec2R(5, 0), ref=gnd_inst_ref, portmap={gnd_inst_ref.p: node.gnd})
+        s.gnd_inst = SchemInstance(pos=Vec2R(5, 0), ref=gnd_inst_ref, portmap={gnd_inst_ref.p: s.gnd})
 
-        node.outline = Rect4R(lx=0, ly=0, ux=12, uy=10)
+        s.outline = Rect4R(lx=0, ly=0, ux=12, uy=10)
 
-        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
-        return node
+        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        return s

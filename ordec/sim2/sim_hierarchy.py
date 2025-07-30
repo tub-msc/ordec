@@ -4,22 +4,22 @@
 from ..core import *
 from .ngspice import Ngspice, Netlister
 
-def build_hier_symbol(node, symbol):
-    node.schematic = symbol
+def build_hier_symbol(simhier, symbol):
+    simhier.schematic = symbol
     for pin in symbol.all(Pin):
         # TODO: implement hierarchical construction within schematic
-        setattr(node, pin.full_path_str(), SimNet(eref=pin))
+        setattr(simhier, pin.full_path_str(), SimNet(eref=pin))
 
-def build_hier_schematic(node, schematic):
-    node.schematic = schematic
+def build_hier_schematic(simhier, schematic):
+    simhier.schematic = schematic
     for net in schematic.all(Net):
         # TODO: implement hierarchical construction within schematic
-        setattr(node, net.full_path_str(), SimNet(eref=net))
+        setattr(simhier, net.full_path_str(), SimNet(eref=net))
 
     for inst in schematic.all(SchemInstance):
         # TODO: implement hierarchical construction
-        setattr(node, inst.full_path_str(), SimInstance(eref=inst))
-        subnode = getattr(node, inst.full_path_str())
+        setattr(simhier, inst.full_path_str(), SimInstance(eref=inst))
+        subnode = getattr(simhier, inst.full_path_str())
         try:
             subschematic = inst.symbol.cell.schematic
         except AttributeError:
@@ -28,21 +28,21 @@ def build_hier_schematic(node, schematic):
             build_hier_schematic(subnode, subschematic)
 
 class HighlevelSim:
-    def __init__(self, top: Schematic, node: SimHierarchy):
+    def __init__(self, top: Schematic, simhier: SimHierarchy):
         self.top = top
 
         self.netlister = Netlister()
         self.netlister.netlist_hier(self.top)
 
-        self.node = node
-        #self.node.schematic = self.top
-        build_hier_schematic(self.node, self.top)
+        self.simhier = simhier
+        #self.simhier.schematic = self.top
+        build_hier_schematic(self.simhier, self.top)
         self.str_to_simobj = {}
-        for sn in node.all(SimNet):
+        for sn in simhier.all(SimNet):
             name = self.netlister.name_hier_simobj(sn)
             self.str_to_simobj[name] = sn
 
-        for sn in node.all(SimInstance):
+        for sn in simhier.all(SimInstance):
             name = self.netlister.name_hier_simobj(sn)
             self.str_to_simobj[name] = sn
 

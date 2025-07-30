@@ -22,16 +22,16 @@ class ViewGenerator:
             except KeyError:
                 if self.head_class:
                     # Compatibility with old @generate: node is generated outside the method and passed as argument:
-                    node = self.head_class()
-                    self.func(obj, node)
-                    node.cell = obj
+                    ret = self.head_class()
+                    self.func(obj, ret)
+                    ret.cell = obj
                 else:
                     # New style: node is generated in method:
-                    node = self.func(obj)
+                    ret = self.func(obj)
                     # self.func has to attach node.cell, if desired.
-                node = node.freeze()
-                obj.cached_subgraphs[self] = node
-                return node
+                ret = ret.freeze()
+                obj.cached_subgraphs[self] = ret
+                return ret
 
     def __set__(self, cursor, value):
         raise TypeError("ViewGenerator cannot be set.")
