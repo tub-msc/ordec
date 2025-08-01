@@ -19,22 +19,6 @@ class PinType(Enum):
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'
 
-# Misc
-# ----
-
-@public
-class PolyVec2R(Node):
-    """
-    One element/point of a Vec2R polygonal chain, which can be open or closed.
-    A polygonal chain is closed if the last and first element are equivalent.
-    """
-    ref    = LocalRef('SymbolPoly|SchemWire')
-    order   = Attr(int)
-    """Order of the point in the polygonal chain"""
-    pos     = Attr(Vec2R)
-
-    ref_idx = Index(ref, sortkey=lambda node: node.order)
-
 # Symbol
 # ------
 
@@ -66,12 +50,16 @@ class Pin(Node):
     """
     Pins are single wire connections exposed through a symbol.
     """
+    in_subgraphs = [Symbol]
+
     pintype = Attr(PinType, default=PinType.Inout)
     pos     = Attr(Vec2R)
     align   = Attr(D4, default=D4.R0)
  
 @public
 class SymbolPoly(Node):
+    in_subgraphs = [Symbol]
+
     def __new__(cls, vertices:list[Vec2R]=None, **kwargs):
         main = super().__new__(cls, **kwargs)
         if vertices == None:
@@ -110,14 +98,12 @@ class SymbolPoly(Node):
 @public
 class SymbolArc(Node):
     """A drawn circle or circular segment for use in Symbol."""
-    pos         = Attr(Vec2R)
-    "Center point"
-    radius      = Attr(R)
-    "Radius of the arc."
-    angle_start = Attr(R, default=R(0))
-    "Must be less than angle_end and between -1 and 1, with -1 representing -360° and 1 representing 360°."
-    angle_end   = Attr(R, default=R(1))
-    "Must be greater than angle_start and between -1 and 1, with -1 representing -360° and 1 representing 360°."
+    in_subgraphs = [Symbol]
+
+    pos         = Attr(Vec2R) #: Center point
+    radius      = Attr(R) #: Radius of the arc.
+    angle_start = Attr(R, default=R(0)) #: Must be less than angle_end and between -1 and 1, with -1 representing -360° and 1 representing 360°.
+    angle_end   = Attr(R, default=R(1)) #:Must be greater than angle_start and between -1 and 1, with -1 representing -360° and 1 representing 360°.
     
     def svg_path(arc) -> str:
         """
@@ -151,13 +137,8 @@ class SymbolArc(Node):
             d.append(f"a {r} {r} 0 {large_arc_flag} {sweep_flag} {e_dx} {e_dy}")
         return ' '.join(d)
 
-
 # # Schematic
 # # ---------
-
-@public
-class Net(Node):
-    pin = ExternalRef(Pin, of_subgraph=lambda c: c.root.symbol)
 
 @public
 class Schematic(SubgraphRoot):
@@ -167,8 +148,8 @@ class Schematic(SubgraphRoot):
     symbol = SubgraphRef(Symbol)
     outline = Attr(Rect4R)
     cell = Attr('Cell')
-    default_supply = LocalRef(Net)
-    default_ground = LocalRef(Net)
+    default_supply = LocalRef('Net')
+    default_ground = LocalRef('Net')
 
     def _repr_svg_(self):
         from ..render import render
@@ -179,10 +160,17 @@ class Schematic(SubgraphRoot):
         return render(self).webdata() 
 
 @public
+class Net(Node):
+    in_subgraphs = [Schematic]
+    pin = ExternalRef(Pin, of_subgraph=lambda c: c.root.symbol)
+
+@public
 class SchemPort(Node):
     """
     Port of a Schematic, corresponding to a Pin of the schematic's Symbol.
     """
+    in_subgraphs = [Schematic]
+
     ref = LocalRef(Net)
     ref_idx = Index(ref)
     pos = Attr(Vec2R)
@@ -191,6 +179,8 @@ class SchemPort(Node):
 @public
 class SchemWire(SymbolPoly):
     """A drawn schematic wire representing an electrical connection."""
+    in_subgraphs = [Schematic]
+
     ref = LocalRef(Net)
     ref_idx = Index(ref)
 
@@ -199,6 +189,8 @@ class SchemInstance(Node):
     """
     An instance of a Symbol in a Schematic (foundation for schematic hierarchy).
     """
+    in_subgraphs = [Schematic]
+
     pos = Attr(Vec2R)
     orientation = Attr(D4, default=D4.R0)
     symbol = SubgraphRef(Symbol)
@@ -222,6 +214,8 @@ class SchemInstanceConn(Node):
     """
     Maps Pins of a SchemInstance to Nets of its Schematic.
     """
+    in_subgraphs = [Schematic]
+
     ref = LocalRef(SchemInstance)
     ref_idx = Index(ref)
 
@@ -233,6 +227,8 @@ class SchemInstanceConn(Node):
 @public
 class SchemTapPoint(Node):
     """A schematic tap point for connecting points by label, typically visualized using the net's name."""
+    in_subgraphs = [Schematic]
+
     ref = LocalRef(Net)
     ref_idx = Index(ref)
 
@@ -245,6 +241,7 @@ class SchemTapPoint(Node):
 @public
 class SchemConnPoint(Node):
     """A schematic point to indicate a connection at a 3- or 4-way junction of wires."""
+    in_subgraphs = [Schematic]
     ref = LocalRef(Net)
     ref_idx = Index(ref)
 
@@ -257,21 +254,6 @@ def parent_siminstance(c: Node) -> Node:
     while not isinstance(c, (SimInstance, SimHierarchy)):
         c = c.parent
     return c
-
-@public
-class SimNet(Node):
-    trans_voltage = Attr(list[float])
-    trans_current = Attr(list[float])
-    dc_voltage = Attr(float)
-
-    eref = ExternalRef(Net|Pin, of_subgraph=lambda c: parent_siminstance(c).schematic)
-
-@public
-class SimInstance(NonLeafNode):
-    dc_current = Attr(float)
-
-    schematic = SubgraphRef(Schematic)
-    eref = ExternalRef(SchemInstance, of_subgraph=lambda c: parent_siminstance(c.parent).schematic)
 
 @public
 class SimHierarchy(SubgraphRoot):
@@ -298,3 +280,36 @@ class SimHierarchy(SubgraphRoot):
                 continue
             dc_currents.append([si.full_path_str(), fmt_float(si.dc_current, "A")])
         return 'dcsim', {'dc_voltages': dc_voltages, 'dc_currents': dc_currents}
+
+@public
+class SimNet(Node):
+    in_subgraphs = [SimHierarchy]
+    trans_voltage = Attr(list[float])
+    trans_current = Attr(list[float])
+    dc_voltage = Attr(float)
+
+    eref = ExternalRef(Net|Pin, of_subgraph=lambda c: parent_siminstance(c).schematic)
+
+@public
+class SimInstance(NonLeafNode):
+    in_subgraphs = [SimHierarchy]
+    dc_current = Attr(float)
+
+    schematic = SubgraphRef(Schematic)
+    eref = ExternalRef(SchemInstance, of_subgraph=lambda c: parent_siminstance(c.parent).schematic)
+
+# Misc
+# ----
+
+@public
+class PolyVec2R(Node):
+    """
+    One element/point of a Vec2R polygonal chain, which can be open or closed.
+    A polygonal chain is closed if the last and first element are equivalent.
+    """
+    in_subgraphs = [Symbol, Schematic]
+    ref    = LocalRef('SymbolPoly|SchemWire')
+    order   = Attr(int) #: Order of the point in the polygonal chain
+    pos     = Attr(Vec2R)
+
+    ref_idx = Index(ref, sortkey=lambda node: node.order)

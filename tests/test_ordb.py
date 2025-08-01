@@ -12,6 +12,7 @@ class MyHead(SubgraphRoot):
     label = Attr(str)
 
 class MyNode(Node):
+    in_subgraphs=[MyHead]
     label = Attr(str)
 
 class test_node_tuple():
@@ -78,9 +79,11 @@ def test_node():
 
 def test_node_hash_and_equiv():    
     class NodeA(Node):
+        in_subgraphs=[MyHead]
         text = Attr(str)
 
     class NodeB(Node):
+        in_subgraphs=[MyHead]
         text = Attr(str)
 
     a = NodeA(text='hello')
@@ -228,6 +231,7 @@ def test_subgraph_matches():
 
 def test_funcinserter():
     class Person(Node):
+        in_subgraphs=[MyHead]
         best_friend = LocalRef(Node)
 
     ref = MutableSubgraph.load({
@@ -315,6 +319,7 @@ def test_updater():
 
 def test_localref_integrity():
     class Person(Node):
+        in_subgraphs=[MyHead]
         best_friend = LocalRef(Node)
         worst_enemy = LocalRef(Node)
 
@@ -365,6 +370,7 @@ def test_localref_integrity():
 def test_index():
     # TODO!
     class NodeA(Node):
+        in_subgraphs=[MyHead]
         color = Attr(int)
         Index(color)
 
@@ -378,6 +384,7 @@ def test_index():
 def test_unique():
     # TODO: Extend this test
     class NodeU1(Node):
+        in_subgraphs=[MyHead]
         label = Attr(str)
         unique_label = Index(label, unique=True)
 
@@ -545,6 +552,7 @@ def test_cursor_attribute():
 
 def test_cursor_paths():
     class MyNodeNonLeaf(NonLeafNode):
+        in_subgraphs=[MyHead]
         label = Attr(str)
 
     s = MyHead()
@@ -682,9 +690,9 @@ def test_cursor_at_npath():
 
 def test_index_sort_nid():
     class MyItem(Node):
+        in_subgraphs=[MyHead]
         ref    = LocalRef(MyNode)
         order  = Attr(int)
-
         idx_ref = Index(ref)
 
     s = MyHead()
@@ -701,9 +709,9 @@ def test_index_sort_nid():
 
 def test_index_custom_sort():
     class MyItem(Node):
+        in_subgraphs=[MyHead]
         ref    = LocalRef(MyNode)
         order  = Attr(int)
-
         idx_ref = Index(ref, sortkey=lambda node: node.order)
 
     s = MyHead()
@@ -726,9 +734,11 @@ def test_subgraph_ntype():
 
 def test_all_ntype():
     class NodeA(Node):
+        in_subgraphs=[MyHead]
         text = Attr(str)
 
     class NodeB(Node):
+        in_subgraphs=[MyHead]
         text = Attr(str)
 
     s = MyHead()
@@ -744,6 +754,7 @@ def test_all_ntype():
 
 def test_cursor_localref():
     class MyNodeItem(Node):
+        in_subgraphs=[MyHead]
         ref = LocalRef(MyNode)
         text = Attr(str)
 
@@ -755,6 +766,7 @@ def test_cursor_localref():
 
 def test_cursor_externalref():
     class NodeExtRef(Node):
+        in_subgraphs=[MyHead]
         subg = SubgraphRef(MyHead)
         eref = ExternalRef(MyNode, of_subgraph=lambda c: c.subg)
 

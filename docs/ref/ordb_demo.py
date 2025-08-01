@@ -32,10 +32,14 @@ class Planet(SubgraphRoot):
     diameter = Attr(float)
 
 class Airport(Node):
+    in_subgraphs = [Planet]
+    
     label = Attr(str)
     year_opened = Attr(int)
     
 class Flight(Node):
+    in_subgraphs = [Planet]
+    
     flight_code = Attr(str)
     duration = Attr(int)
     origin = LocalRef(Airport)
@@ -207,6 +211,8 @@ class Ticket(SubgraphRoot):
     planet = SubgraphRef(Planet)
 
 class TicketSegment(Node):
+    in_subgraphs = [Ticket]
+    
     flight = ExternalRef(Flight, of_subgraph=lambda c: c.root.planet)
     seat = Attr(str)
     

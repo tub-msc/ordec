@@ -62,7 +62,7 @@ class GenericIndex(ABC):
         pass
     
     @abstractmethod
-    def check_contraints(self, sgu: 'SubgraphUpdater', node, nid):
+    def check_constraints(self, sgu: 'SubgraphUpdater', node, nid):
         pass
 
 @public
@@ -301,7 +301,7 @@ class Index(GenericIndex):
         else:
             sgu.index = sgu.index.remove(key)
     
-    def check_contraints(self, sgu: 'SubgraphUpdater', node, nid):
+    def check_constraints(self, sgu: 'SubgraphUpdater', node, nid):
         if self.unique:
             key = self.index_key(node, nid)
             if not key:
@@ -383,7 +383,7 @@ class LocalRefIndex(Index):
         else:
             sgu.index = sgu.index.remove(key)
 
-    def check_contraints(self, sgu: 'SubgraphUpdater', node, nid):
+    def check_constraints(self, sgu: 'SubgraphUpdater', node, nid):
         ref = node[node._attrdesc_by_attr[self.attr].index]
 
         if node._attrdesc_by_attr[self.attr].attr.optional and ref == None:
@@ -395,9 +395,9 @@ class LocalRefIndex(Index):
             raise DanglingLocalRef(ref)
 
 class NPathIndex(CombinedIndex):
-    def check_contraints(self, sgu: 'SubgraphUpdater', node, nid):
+    def check_constraints(self, sgu: 'SubgraphUpdater', node, nid):
         try:
-            super().check_contraints(sgu, node, nid)
+            super().check_constraints(sgu, node, nid)
         except UniqueViolation:
             raise ModelViolation("Path exists") # TODO: Report actual path?
 
@@ -468,9 +468,9 @@ class NodeTuple(tuple):
         for ns in self.indices:
             ns.index_remove(sgu, self, nid)
 
-    def check_contraints(self, sgu: 'SubgraphUpdater', nid):
+    def check_constraints(self, sgu: 'SubgraphUpdater', nid):
         for ns in self.indices:
-            ns.check_contraints(sgu, self, nid)
+            ns.check_constraints(sgu, self, nid)
 
     def insert_into(self, sgu):
         return sgu.add_single(self, sgu.nid_generate())
@@ -589,6 +589,8 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
     tuple.__eq__. It relies on the hash() and == behavior of MutableSubgraph
     (for MutableNodes) or FrozenSubgraph (for FrozenNodes).
     """
+
+    in_subgraphs = []
 
     @classmethod
     def raw_cursor(cls, subgraph: 'Subgraph', nid: int|NoneType, npath_nid: int|NoneType):
@@ -934,8 +936,13 @@ class SubgraphUpdater:
             if 0 not in self.nodes:
                 raise ModelViolation("Missing root node (nid 0).")
 
+            subgraph_root_cls = self.nodes[0]._cursor_type
             for nid in self.check_nids:
-                self.nodes[nid].check_contraints(self, nid)
+                if nid != 0:
+                    permitted_in_subgraphs = self.nodes[nid]._cursor_type.in_subgraphs
+                    if not any([issubclass(subgraph_root_cls, cls) for cls in permitted_in_subgraphs]):
+                        raise ModelViolation(f"{self.nodes[nid]._cursor_type.__name__} is not permitted in subgraph {subgraph_root_cls.__name__}.")
+                self.nodes[nid].check_constraints(self, nid)
 
             for nid in self.removed_nids:
                 if nid in self.index:
@@ -1417,3 +1424,5 @@ class NPath(Node):
 
     idx_parent_name = NPathIndex([parent, name], unique=True)
     idx_path_of = Index(ref, unique=True)
+
+    in_subgraphs = [SubgraphRoot]
