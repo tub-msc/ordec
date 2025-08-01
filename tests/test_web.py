@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+"""
+Important: You have to run 'npm run build' in web/ before running the tests.
+"""
+
 import pytest
 import threading
 import time
@@ -8,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from dataclasses import dataclass
 import importlib.resources
-import io
+import secrets
 
 from ordec import ws_server
 
@@ -29,26 +33,74 @@ else:
     # The following sets the window size, not the viewport size (see resize_viewport below):
     # webdriver_options.add_argument("--window-size=1280,720")
 
+@dataclass
+class WebResViewer:
+    html: str
+    width: int
+    height: int
+
+# TODO: check_schematic, check_symbol and check_sim_dc seem a bit too primitive at the moment.
+
+def check_schematic(res_viewer):
+    assert res_viewer.html.find('<svg') >= 0
+
+def check_symbol(res_viewer):
+    assert res_viewer.html.find('<svg') >= 0
+
+def check_sim_dc(res_viewer):
+    assert res_viewer.html.find('<table') >= 0
+
+def check_min_size(min_width, min_height):
+    def func(res_viewer):
+        assert res_viewer.width >= min_width
+        assert res_viewer.height >= min_height
+    return func
+
 examples = {
-    "nand2":{'Nand2().schematic', 'Nand2Tb().schematic', 'Nand2Tb().sim_dc'},
-    "voltagedivider_py":{'VoltageDivider().schematic', 'VoltageDivider().sim_dc'},
-    "blank":{'undefined'},
-    "voltagedivider":{'VoltageDivider().schematic', 'VoltageDivider().sim_dc'},
-    "diffpair":{'DiffPair().schematic', 'DiffPairTb().schematic', 'DiffPairTb().sim_dc'},
+    "nand2":{
+        'Nand2().schematic': [check_schematic, check_min_size(300, 100)],
+        'Nand2Tb().schematic': [check_schematic, check_min_size(300, 50)],
+        'Nand2Tb().sim_dc': [check_sim_dc, check_min_size(300, 50)],
+    },
+    "voltagedivider_py":{
+        'VoltageDivider().schematic': [check_schematic, check_min_size(300, 200)],
+        'VoltageDivider().sim_dc': [check_sim_dc, check_min_size(300, 200)],
+    },
+    "blank":{
+        'undefined':[],
+    },
+    "voltagedivider":{
+        'VoltageDivider().schematic': [check_schematic, check_min_size(300, 200)],
+        'VoltageDivider().sim_dc': [check_sim_dc, check_min_size(300, 200)],
+    },
+    "diffpair":{
+        'DiffPair().schematic': [check_schematic, check_min_size(300, 100)],
+        'DiffPairTb().schematic': [check_schematic, check_min_size(300, 100)],
+        'DiffPairTb().sim_dc': [check_sim_dc, check_min_size(300, 100)],
+    },
 }
+
 
 @dataclass
 class WebserverInfo:
     url: str
+    auth_token: str
 
 @pytest.fixture(scope="session", autouse=True)
 def webserver():
-    static_handler = ws_server.StaticHandlerDir(Path('web/dist')) # TODO: Make this cleaner.
+    auth_token = secrets.token_urlsafe()
+    # Using a port other than 8100 makes it possible to run the tests
+    # while having another independent ordec-server running.
+    port = 8102
+    web_dist_path = (Path(__file__).parent.parent/'web'/'dist').resolve()
+    tar = ws_server.anonymous_tar(web_dist_path)
+    static_handler = ws_server.StaticHandler(tar)
+
     t = threading.Thread(target=ws_server.server_thread,
-        args=('localhost', 8100, static_handler), daemon=True)
+        args=('127.0.0.1', port, static_handler, auth_token), daemon=True)
     t.start()
     time.sleep(1) # Delay for server startup
-    yield WebserverInfo("http://localhost:8100/")
+    yield WebserverInfo(f"http://127.0.0.1:{port}/", auth_token)
     # Server will stop when pytest exits.
 
 @pytest.mark.web
@@ -58,7 +110,7 @@ def test_index(webserver):
         driver.get(webserver.url + '')
         app_html_link_queries = set()
         for a in driver.find_elements(By.TAG_NAME, 'a'):
-            href =urlparse(a.get_attribute('href'))
+            href = urlparse(a.get_attribute('href'))
             if href.path == '/app.html':
                 app_html_link_queries.add(href.query)
 
@@ -86,6 +138,10 @@ def resize_viewport(driver, w, h):
 def request_example(webserver, example):
     with webdriver.Chrome(options=webdriver_options) as driver:
         resize_viewport(driver, 800, 600)
+
+        driver.get(webserver.url)
+        driver.add_cookie({"name": "ordecAuth", "value": webserver.auth_token})
+
         driver.get(webserver.url + f'app.html?example={example}')
         
         WebDriverWait(driver, 10).until(
@@ -96,12 +152,17 @@ def request_example(webserver, example):
             window.myLayout.root.getAllContentItems().forEach(function(e) {
                 if (!e.isComponent) return;
                 if (e.componentName != 'result') return;
-                res[e.component.viewRequested] = e.component.resContent.innerHTML;
+                res[e.component.viewRequested] = {
+                    'html':e.component.resContent.innerHTML,
+                    'width':e.component.resContent.offsetWidth,
+                    'height':e.component.resContent.offsetHeight,
+                };
             });
             return res;
         """)
+
         #driver.save_screenshot('test.png')
-    return res_viewers
+    return {k:WebResViewer(**v) for k, v in res_viewers.items()}
 
 @pytest.mark.web
 @pytest.mark.parametrize('example', examples.keys())
@@ -109,18 +170,11 @@ def request_example(webserver, example):
 def test_example(webserver, tmp_path, example):
     res_viewers = request_example(webserver, example)
 
-    assert set(res_viewers.keys()) == examples[example]
+    ref = examples[example]
+    assert set(res_viewers.keys()) == set(ref.keys())
 
-    for view_name, html in res_viewers.items():
-        if view_name.endswith(".schematic"):
-            assert html.find('<svg') >= 0
-        elif view_name.endswith(".symbol"):
-            assert html.find('<svg') >= 0
-        elif view_name.endswith(".sim_dc"):
-            assert html.find('<table') >= 0
-        elif view_name == 'undefined':
-            pass # for blank example
-        else:
-            raise NotImplementedError(f"No test implemented for result viewer {view_name!r}.")
+    for view_name, checkers in ref.items():
+        res_viewer = res_viewers[view_name]
 
-        
+        for checker in checkers:
+            checker(res_viewer)

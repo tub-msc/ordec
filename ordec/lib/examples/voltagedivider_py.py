@@ -14,17 +14,17 @@ class VoltageDivider(Cell):
 
         res = Res(r=R(100)).symbol
 
-        s.I0 = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(x=5,y=0))
-        s.I1 = SchemInstance(Vdc(dc=R(1)).symbol.portmap(m=s.vss, p=s.vdd), pos=Vec2R(x=0,y=6))
-        s.I2 = SchemInstance(res.portmap(m=s.vss, p=s.a), pos=Vec2R(x=5,y=6))
-        s.I3 = SchemInstance(res.portmap(m=s.a, p=s.b), pos=Vec2R(x=5,y=11))
-        s.I4 = SchemInstance(res.portmap(m=s.b, p=s.vdd), pos=Vec2R(x=5,y=16))
+        s.I0 = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(5, 0))
+        s.I1 = SchemInstance(Vdc(dc=R(1)).symbol.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 6))
+        s.I2 = SchemInstance(res.portmap(m=s.vss, p=s.a), pos=Vec2R(5, 6))
+        s.I3 = SchemInstance(res.portmap(m=s.a, p=s.b), pos=Vec2R(5, 11))
+        s.I4 = SchemInstance(res.portmap(m=s.b, p=s.vdd), pos=Vec2R(5, 16))
         
-        s.vss % SchemWire([Vec2R(x=7, y=4), Vec2R(x=7, y=5), Vec2R(x=7, y=6)])
-        s.vss % SchemWire([Vec2R(x=2, y=6), Vec2R(x=2, y=5), Vec2R(x=7, y=5)])
-        s.vdd % SchemWire([Vec2R(x=2, y=10), Vec2R(x=2, y=21), Vec2R(x=7, y=21), Vec2R(x=7, y=20)])
-        s.a % SchemWire([Vec2R(x=7, y=10), Vec2R(x=7, y=11)])
-        s.b % SchemWire([Vec2R(x=7, y=15), Vec2R(x=7, y=16)])
+        s.vss % SchemWire([Vec2R(7, 4), Vec2R(7, 5), Vec2R(7, 6)])
+        s.vss % SchemWire([Vec2R(2, 6), Vec2R(2, 5), Vec2R(7, 5)])
+        s.vdd % SchemWire([Vec2R(2, 10), Vec2R(2, 21), Vec2R(7, 21), Vec2R(7, 20)])
+        s.a % SchemWire([Vec2R(7, 10), Vec2R(7, 11)])
+        s.b % SchemWire([Vec2R(7, 15), Vec2R(7, 16)])
         helpers.schem_check(s, add_conn_points=True)
         return s
 

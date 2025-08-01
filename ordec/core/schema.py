@@ -45,17 +45,21 @@ class Symbol(SubgraphRoot):
     caption = Attr(str)
     cell = Attr('Cell')
 
-    def portmap(cursor, **kwargs):
+    def portmap(self, **kwargs):
         def inserter_func(main, sgu):
-            main_nid = main.set(symbol=cursor.subgraph).insert_into(sgu)
+            main_nid = main.set(symbol=self.subgraph).insert_into(sgu)
             for k, v in kwargs.items():
-                SchemInstanceConn(ref=main_nid, here=v.nid, there=cursor[k].nid).insert_into(sgu)
+                SchemInstanceConn(ref=main_nid, here=v.nid, there=self[k].nid).insert_into(sgu)
             return main_nid
         return inserter_func
 
-    def _repr_svg_(cursor):
+    def _repr_svg_(self):
         from ..render import render
-        return render(cursor).svg().decode('ascii'), {'isolated': False}
+        return render(self).svg().decode('ascii'), {'isolated': False}
+
+    def webdata(self):
+        from ..render import render
+        return {'html': render(self).svg().decode('ascii')}
 
 @public
 class Pin(Node):
@@ -81,16 +85,16 @@ class SymbolPoly(Node):
             return FuncInserter(inserter_func)
 
     @property
-    def vertices(cursor):
-        return cursor.subgraph.all(PolyVec2R.ref_idx.query(cursor.nid))
+    def vertices(self):
+        return self.subgraph.all(PolyVec2R.ref_idx.query(self.nid))
 
-    def svg_path(cursor) -> str:
+    def svg_path(self) -> str:
         """
         Returns string representation of polygon suitable for
         "d" attribute of SVG <path>.
         """
         d = []
-        vertices = [c.pos for c in cursor.vertices]
+        vertices = [c.pos for c in self.vertices]
         x, y = vertices[0].tofloat()
         d.append(f"M{x} {y}")
         for point in vertices[1:-1]:
@@ -166,9 +170,13 @@ class Schematic(SubgraphRoot):
     default_supply = LocalRef(Net)
     default_ground = LocalRef(Net)
 
-    def _repr_svg_(cursor):
+    def _repr_svg_(self):
         from ..render import render
-        return render(cursor).svg().decode('ascii'), {'isolated': False}
+        return render(self).svg().decode('ascii'), {'isolated': False}
+
+    def webdata(self):
+        from ..render import render
+        return {'html': render(self).svg().decode('ascii')}
 
 @public
 class SchemPort(Node):
@@ -202,12 +210,12 @@ class SchemInstance(Node):
         else:
             return FuncInserter(partial(connect, main))
 
-    def loc_transform(cursor):
-        return cursor.pos.transl() * cursor.orientation
+    def loc_transform(self):
+        return self.pos.transl() * self.orientation
 
     @property
-    def conns(cursor):
-        return cursor.subgraph.all(SchemInstanceConn.ref_idx.query(cursor.nid))
+    def conns(self):
+        return self.subgraph.all(SchemInstanceConn.ref_idx.query(self.nid))
 
 @public
 class SchemInstanceConn(Node):
@@ -231,8 +239,8 @@ class SchemTapPoint(Node):
     pos = Attr(Vec2R)
     align = Attr(D4, default=D4.R0)
 
-    def loc_transform(cursor):
-        return cursor.pos.transl() * cursor.align
+    def loc_transform(self):
+        return self.pos.transl() * self.align
 
 @public
 class SchemConnPoint(Node):
@@ -269,3 +277,24 @@ class SimInstance(NonLeafNode):
 class SimHierarchy(SubgraphRoot):
     schematic = SubgraphRef(Schematic)
     cell = Attr('Cell')
+
+    def webdata(self):
+        def fmt_float(val, unit):
+            import re
+            x=str(R(f"{val:.03e}"))+unit
+            x=re.sub(r"([0-9])([a-zA-Z])", r"\1 \2", x)
+            x=x.replace("u", "μ")
+            x=re.sub(r"e([+-]?[0-9]+)", r"×10<sup>\1</sup>", x)
+            return x
+
+        dc_voltages = []
+        for sn in self.all(SimNet):
+            if not sn.dc_voltage:
+                continue
+            dc_voltages.append([sn.full_path_str(), fmt_float(sn.dc_voltage, "V")])
+        dc_currents = []
+        for si in self.all(SimInstance):
+            if not si.dc_current:
+                continue
+            dc_currents.append([si.full_path_str(), fmt_float(si.dc_current, "A")])
+        return {'dc_voltages': dc_voltages, 'dc_currents': dc_currents}

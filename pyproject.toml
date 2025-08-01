@@ -64,6 +64,7 @@ packages = [
 
 [tool.setuptools.package-data]
 "ordec" = ["webdist.tar"]
+"ordec.lib.examples" = ["*.json"]
 
 [tool.setuptools_scm]
 version_scheme = "release-branch-semver"

@@ -17,23 +17,23 @@ def test_TD4():
     assert repr(D4.R0) == 'D4.R0'
     assert str(D4.R0) == 'D4.R0'
 
-    assert D4.R0 * Vec2R(x=12, y=34) == Vec2R(x=12, y=34)
-    assert D4.R90 * Vec2R(x=12, y=34) == Vec2R(x=-34, y=12)
-    assert D4.R180 * Vec2R(x=12, y=34) == Vec2R(x=-12, y=-34)
-    assert D4.R270 * Vec2R(x=12, y=34) == Vec2R(x=34, y=-12)
-    assert D4.MY * Vec2R(x=12, y=34) == Vec2R(x=-12, y=34)
-    assert D4.MY90 * Vec2R(x=12, y=34) == Vec2R(x=-34, y=-12)
-    assert D4.MX * Vec2R(x=12, y=34) == Vec2R(x=12, y=-34)
-    assert D4.MX90 * Vec2R(x=12, y=34) == Vec2R(x=34, y=12)
+    assert D4.R0 * Vec2R(12, 34) == Vec2R(12, 34)
+    assert D4.R90 * Vec2R(12, 34) == Vec2R(-34, 12)
+    assert D4.R180 * Vec2R(12, 34) == Vec2R(-12, -34)
+    assert D4.R270 * Vec2R(12, 34) == Vec2R(34, -12)
+    assert D4.MY * Vec2R(12, 34) == Vec2R(-12, 34)
+    assert D4.MY90 * Vec2R(12, 34) == Vec2R(-34, -12)
+    assert D4.MX * Vec2R(12, 34) == Vec2R(12, -34)
+    assert D4.MX90 * Vec2R(12, 34) == Vec2R(34, 12)
 
-    assert Vec2R(x=77, y=-9).transl() * Vec2R(x=1, y=5) == Vec2R(x=78, y=-4)
+    assert Vec2R(77, -9).transl() * Vec2R(1, 5) == Vec2R(78, -4)
 
-    assert Vec2R(x=-10, y=2).transl() * Vec2R(x=77, y=-9).transl() * Vec2R(x=1, y=5) == Vec2R(x=68, y=-2)
+    assert Vec2R(-10, 2).transl() * Vec2R(77, -9).transl() * Vec2R(1, 5) == Vec2R(68, -2)
 
-    assert (D4.R90 * Vec2R(x=77, y=-9).transl()) * Vec2R(x=1, y=5) == Vec2R(x=4, y=78)
-    assert D4.R90 * (Vec2R(x=77, y=-9).transl() * Vec2R(x=1, y=5)) == Vec2R(x=4, y=78)
-    assert Vec2R(x=77, y=-9).transl() * (D4.R90 * Vec2R(x=1, y=5)) == Vec2R(x=72, y=-8)
-    assert (Vec2R(x=77, y=-9).transl() * D4.R90) * Vec2R(x=1, y=5) == Vec2R(x=72, y=-8)
+    assert (D4.R90 * Vec2R(77, -9).transl()) * Vec2R(1, 5) == Vec2R(4, 78)
+    assert D4.R90 * (Vec2R(77, -9).transl() * Vec2R(1, 5)) == Vec2R(4, 78)
+    assert Vec2R(77, -9).transl() * (D4.R90 * Vec2R(1, 5)) == Vec2R(72, -8)
+    assert (Vec2R(77, -9).transl() * D4.R90) * Vec2R(1, 5) == Vec2R(72, -8)
 
     flip_pairs = (
         (D4.R0,   D4.MY),
@@ -51,11 +51,11 @@ def test_TD4():
 
     for a in D4:
         assert a.inv() * a == D4.R0
-        assert a * Vec2R(x=0, y=1) == a.value.flip() * Vec2R(x=0, y=1)
+        assert a * Vec2R(0, 1) == a.value.flip() * Vec2R(0, 1)
 
     t1 = TD4(Vec2R(1,2), False, False, True)
 
-    assert repr(t1) == "TD4(transl=Vec2R(x=R('1.'), y=R('2.')), flipxy=False, negx=False, negy=True)"
+    assert repr(t1) == "TD4(transl=Vec2R(R('1.'), R('2.')), flipxy=False, negx=False, negy=True)"
     t2 = TD4(Vec2R(5,6), True, True, False)
 
     with pytest.raises(AttributeError):
@@ -81,7 +81,7 @@ def test_Vec2R():
     with pytest.raises(AttributeError):
         v.x = 123
 
-    assert repr(v) == "Vec2R(x=R('1.'), y=R('2.'))"
+    assert repr(v) == "Vec2R(R('1.'), R('2.'))"
 
 
 def test_Rect4R():

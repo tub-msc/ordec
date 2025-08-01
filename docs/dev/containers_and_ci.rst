@@ -48,7 +48,7 @@ This image is automatically built through *.github/workflows/base.yaml* using *b
 ordec Docker image
 ------------------
 
-The `ordec <https://github.com/tub-msc/ordec/pkgs/container/ordec>`_ image is built on top of ordec-base. It contains an installation of ORDeC that can be run by users through a single docker command, as is described in :ref:`getting_started` and the readme file.
+The `ordec <https://github.com/tub-msc/ordec/pkgs/container/ordec>`_ image is built on top of ordec-base. It contains an installation of ORDeC that can be run by users through a single docker command, as described in the Readme.
 
 This image is automatically built through *.github/workflows/build.yaml* using *Dockerfile*. It can also be built manually using this *Dockerfile*.
 

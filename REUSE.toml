@@ -6,9 +6,7 @@ path = [
     "docs/Makefile",
     "docs/make.bat",
     "web/package-lock.json",
-    "web/public/examples/uistate/*.json",
     "tests/renderview_ref/*.svg",
-    "tests/web_ref/*.png",
 ]
 SPDX-FileCopyrightText = "NONE"
 SPDX-License-Identifier = "CC0-1.0"
@@ -31,6 +29,7 @@ SPDX-License-Identifier = "CC0-1.0"
 path = [
     "ordec/lib/examples/*.py",
     "ordec/lib/examples/*.ord",
+    "ordec/lib/examples/*.uistate.json",
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "CC0-1.0"

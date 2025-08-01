@@ -37,13 +37,13 @@ class Vec2R(tuple):
         return float(self.x), float(self.y)
 
     def __add__(self, other):
-        return Vec2R(x=self.x+other.x, y=self.y+other.y)
+        return Vec2R(self.x+other.x, self.y+other.y)
 
     def __sub__(self, other):
-        return Vec2R(x=self.x-other.x, y=self.y-other.y)
+        return Vec2R(self.x-other.x, self.y-other.y)
 
     def __repr__(self):
-        return f"Vec2R(x={self.x!r}, y={self.y!r})"
+        return f"Vec2R({self.x!r}, {self.y!r})"
 
     def transl(self) -> 'TD4':
         return TD4(transl=self)
@@ -93,13 +93,13 @@ class Rect4R(tuple):
         return float(self.lx), float(self.ly), float(self.ux), float(self.uy)
 
     def south_east(self):
-        return Vec2R(x=self.ux, y=self.ly)
+        return Vec2R(self.ux, self.ly)
     def south_west(self):
-        return Vec2R(x=self.lx, y=self.ly)
+        return Vec2R(self.lx, self.ly)
     def north_east(self):
-        return Vec2R(x=self.ux, y=self.uy)
+        return Vec2R(self.ux, self.uy)
     def north_west(self):
-        return Vec2R(x=self.lx, y=self.uy)
+        return Vec2R(self.lx, self.uy)
 
     def __add__(self, other):
         raise TypeError("Rect4R cannot be added.")
@@ -154,8 +154,8 @@ class TD4(tuple):
                 y = -y
             return Vec2R(x = self.transl.x + x, y = self.transl.y + y)
         elif isinstance(other, Rect4R):
-            tl = self * Vec2R(x=other.lx, y=other.ly)
-            tu = self * Vec2R(x=other.ux, y=other.uy)
+            tl = self * Vec2R(other.lx, other.ly)
+            tu = self * Vec2R(other.ux, other.uy)
 
             lx, ux = sorted([tl.x, tu.x])
             ly, uy = sorted([tl.y, tu.y])
@@ -185,7 +185,7 @@ class TD4(tuple):
         return -1 if self.flipxy ^ self.negx ^ self.negy else 1
 
     def flip(self) -> "TD4":
-        """Returns TD4 with flipped handedness, preserving the point Vec2R(x=0, y=1)."""
+        """Returns TD4 with flipped handedness, preserving the point Vec2R(0, 1)."""
         if self.flipxy:
             return TD4(transl=self.transl, flipxy=self.flipxy, negx=self.negx, negy=not self.negy)
         else:
@@ -268,7 +268,7 @@ class D4(Enum):
     def unflip(self) -> "D4":
         """
         Return D4 element with non-flipped handedness (det=1), preserving
-        Vec2R(x=0, y=1).
+        Vec2R(0, 1).
         """
         if self.value.det() < 0:
             return D4(self.value.flip())
