@@ -6,32 +6,41 @@ from enum import Enum
 from pyrsistent import freeze, pmap, PMap
 from warnings import warn
 from public import public
+from .ordb import MutableNode
 
 class ViewGenerator:
-    def __init__(self, head_class, func):
-        self.head_class = head_class
+    def __init__(self, func):
         self.func = func
 
     def __get__(self, obj, owner=None):
         if obj == None: # for the class: return self
             return self
         else: # for instances: create view if not present yet, return view
-            
             try:
                 return obj.cached_subgraphs[self]
             except KeyError:
-                if self.head_class:
-                    # Compatibility with old @generate: node is generated outside the method and passed as argument:
-                    ret = self.head_class()
-                    self.func(obj, ret)
-                    ret.cell = obj
-                else:
-                    # New style: node is generated in method:
-                    ret = self.func(obj)
-                    # self.func has to attach node.cell, if desired.
+                pass
+                # The 'except' branch is following below to shorten tracebacks
+                # (do not include the KeyError).
+
+            # New style: node is generated in method:
+            ret = self.func(obj)
+            # self.func has to attach node.cell, if desired.
+
+            # Freeze if not already frozen:
+            if isinstance(ret, MutableNode):
+                if ret.nid != 0:
+                    raise TypeError("MutableNode returned by ViewGenerator must be SubgraphRoot.")
                 ret = ret.freeze()
-                obj.cached_subgraphs[self] = ret
-                return ret
+        
+            # ViewGenerator return value must be hashable (not sure whether this is really useful):
+            try:
+                hash(ret)
+            except TypeError:
+                raise TypeError("ViewGenerator result must be hashable.") from None
+
+            obj.cached_subgraphs[self] = ret
+            return ret
 
     def __set__(self, cursor, value):
         raise TypeError("ViewGenerator cannot be set.")
@@ -44,12 +53,7 @@ def generate(arg):
     """
     Decorator for view generator methods.
     """
-    if isinstance(arg, type):
-        # old @generate
-        return lambda func: ViewGenerator(arg, func)
-    else:
-        # new @generate
-        return ViewGenerator(None, arg)
+    return ViewGenerator(arg)
 
 class MetaCell(type):
     def __init__(cls, name, bases, attrs):

@@ -62,11 +62,21 @@ class OrdecTransformer(Transformer):
         :param items: items in this hierarchy level
         :returns: ast converted items
         """
-        decorator = convert_to_ast_call(function_name=convert_to_ast_name_load("generate"),
-                                        args=[convert_to_ast_name_load("Schematic")])
+
+        node_init = ast.Assign(
+            targets=[ast.Name(id='node', ctx=ast.Store())],
+            value=ast.Call(
+                func=ast.Name(id='Schematic', ctx=ast.Load()),
+                args=[],
+                keywords=[ast.keyword(arg='cell', value=ast.Name(id='self', ctx=ast.Load()))]
+            )
+        )
+        node_return = ast.Return(value=ast.Name(id='node', ctx=ast.Load()))
+
+        decorator = convert_to_ast_name_load("generate")
         return convert_to_ast_function_def("schematic",
-                                           ["self", "node"],
-                                           self.flatten_stmt_lists(items),
+                                           ["self"],
+                                           [node_init] + self.flatten_stmt_lists(items) + [node_return],
                                            [decorator])
 
     def symbol(self, items):
@@ -75,11 +85,20 @@ class OrdecTransformer(Transformer):
         :param items: items in this hierarchy level
         :returns: ast converted items
         """
-        decorator = convert_to_ast_call(function_name=convert_to_ast_name_load("generate"),
-                                        args=[convert_to_ast_name_load("Symbol")])
+        node_init = ast.Assign(
+            targets=[ast.Name(id='node', ctx=ast.Store())],
+            value=ast.Call(
+                func=ast.Name(id='Symbol', ctx=ast.Load()),
+                args=[],
+                keywords=[ast.keyword(arg='cell', value=ast.Name(id='self', ctx=ast.Load()))]
+            )
+        )
+        node_return = ast.Return(value=ast.Name(id='node', ctx=ast.Load()))
+
+        decorator = convert_to_ast_name_load("generate")
         return convert_to_ast_function_def("symbol",
-                                           ["self", "node"],
-                                           self.flatten_stmt_lists(items),
+                                           ["self"],
+                                           [node_init] + self.flatten_stmt_lists(items) + [node_return],
                                            [decorator])
 
     def port_declaration(self, items):

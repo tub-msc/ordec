@@ -64,8 +64,8 @@ class SchematicModifier(ast.NodeTransformer):
                 convert_to_ast_name_load("ext")
             )
 
-            node.body.insert(0, postprocess_external)
-            node.body.insert(0, postprocess_data)
+            node.body.insert(1, postprocess_external)
+            node.body.insert(1, postprocess_data)
 
 
             # Add pre and postprocess functions to the function
@@ -88,8 +88,8 @@ class SchematicModifier(ast.NodeTransformer):
                                     )
             )
 
-            node.body.insert(0, preprocess)
-            node.body.append(postprocess)
+            node.body.insert(1, preprocess)
+            node.body.insert(len(node.body)-1, postprocess)
 
             # Add positions for ports
 
@@ -102,7 +102,7 @@ class SchematicModifier(ast.NodeTransformer):
                     convert_to_ast_tuple_load([pos if isinstance(pos, ast.AST) else
                                                convert_to_ast_constant(pos) for pos in position])
                 )
-                node.body.insert(0, port_positions_append)
+                node.body.insert(1, port_positions_append)
 
             # add all the dictionaries for transformation
 
@@ -111,8 +111,8 @@ class SchematicModifier(ast.NodeTransformer):
             port_positions = convert_to_ast_assignment(convert_to_ast_name_store("port_positions"),
                 convert_to_ast_dict())
 
-            node.body.insert(0, port_positions)
-            node.body.insert(0, outline)
+            node.body.insert(1, port_positions)
+            node.body.insert(1, outline)
 
 
         if node.name == "symbol":
@@ -123,7 +123,7 @@ class SchematicModifier(ast.NodeTransformer):
                                     args=[convert_to_ast_name_load("node")]
                                     )
             )
-            node.body.append(symbol_process)
+            node.body.insert(len(node.body)-1, symbol_process)
 
         # Visit children of the class node, e.g., methods within the class
         for item in node.body:
@@ -136,6 +136,14 @@ class SchematicModifier(ast.NodeTransformer):
         :param node: current ast node
         :returns: converted node
         """
+        node_init = ast.Assign(
+            targets=[ast.Name(id='node', ctx=ast.Store())],
+            value=ast.Call(
+                func=ast.Name(id='SimHierarchy', ctx=ast.Load()),
+                args=[],
+                keywords=[ast.keyword(arg='cell', value=ast.Name(id='self', ctx=ast.Load()))]
+            )
+        )
         sim_assignment = convert_to_ast_assignment(
             convert_to_ast_name_store("sim"),
             convert_to_ast_call(
@@ -149,12 +157,14 @@ class SchematicModifier(ast.NodeTransformer):
         sim_execution = convert_to_ast_expr(convert_to_ast_call(
             function_name=convert_to_ast_attribute_load(convert_to_ast_name_load("sim"), "op")
         ))
-        decorator = convert_to_ast_call(function_name=convert_to_ast_name_load("generate"),
-                                        args=[convert_to_ast_name_load("SimHierarchy")])
+        node_return = ast.Return(value=ast.Name(id='node', ctx=ast.Load()))
+
+        decorator = convert_to_ast_name_load("generate")
+        # TODO: args=[convert_to_ast_name_load("SimHierarchy")])
         dc_sim = convert_to_ast_function_def(
             function_name="sim_dc",
-            args=["self", "node"],
-            body=[sim_assignment, sim_execution],
+            args=["self"],
+            body=[node_init, sim_assignment, sim_execution, node_return],
             decorators=[decorator]
         )
 
