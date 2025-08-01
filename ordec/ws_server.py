@@ -12,7 +12,6 @@ from websockets.datastructures import Headers
 import http
 import json
 import traceback
-import ast
 from pathlib import Path
 import mimetypes
 from urllib.parse import urlparse, parse_qs
