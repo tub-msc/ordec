@@ -134,6 +134,7 @@ class Renderer:
 
         self.root.attrib['width'] = f'{w_p*self.pixel_per_unit}px'
         self.root.attrib['height'] = f'{h_p*self.pixel_per_unit}px'
+        self.viewbox = [lx_p, ly_p, w_p, h_p]
         self.root.attrib['viewBox'] = f'{lx_p} {ly_p} {w_p} {h_p}'
         # Not sure why this is the correct transform matrix:
         self.cur_group.attrib['transform']=f"matrix(1 0 0 -1 0 {uy+ly})"
@@ -380,6 +381,10 @@ class Renderer:
         """Add newlines and indent SVG without messing up <text>."""
         self.indent_xml_recursive(self.root, 0)
 
+    def inner_svg(self) -> bytes:
+        """Like svg(), but without the top <svg> tag."""
+        return b''.join(ET.tostring(e) for e in self.root)
+
     def svg(self) -> bytes:
         """
         Returns SVG XML data as bytes. (Does not depend on cairo or other
@@ -400,6 +405,9 @@ class Renderer:
 
     # def html(self) -> str:
     #     return f'<img src="{self.svg_url()}" />'
+
+    def webdata(self):
+        return 'svg', {'inner': self.inner_svg().decode('ascii'), 'viewbox': self.viewbox}
 
     def png(self) -> bytes:
         """

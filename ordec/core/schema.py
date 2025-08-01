@@ -59,7 +59,7 @@ class Symbol(SubgraphRoot):
 
     def webdata(self):
         from ..render import render
-        return 'html', render(self).svg().decode('ascii')
+        return render(self).webdata()
 
 @public
 class Pin(Node):
@@ -176,7 +176,7 @@ class Schematic(SubgraphRoot):
 
     def webdata(self):
         from ..render import render
-        return 'html', render(self).svg().decode('ascii')
+        return render(self).webdata() 
 
 @public
 class SchemPort(Node):

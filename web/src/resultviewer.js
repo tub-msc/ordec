@@ -3,11 +3,39 @@
 
 // To be improved. Consider the constructor-only classes stubs for future functions.
 
+import * as d3 from "d3";
+
 const viewClassOf = {
     html: class {
         constructor(resContent, msgData) {
             this.resContent = resContent;
             this.resContent.innerHTML = msgData;
+        }
+    },
+    svg: class {
+        constructor(resContent, msgData) {
+            this.resContent = resContent;
+
+            const viewbox = msgData['viewbox'];
+            const viewbox2 = [[viewbox[0], viewbox[1]], [viewbox[2], viewbox[3]]]
+
+            const svg = d3.create("svg")
+                .attr("viewBox", viewbox);
+
+            const g = svg.append("g")
+                .html(msgData['inner'])
+
+            svg.call(d3.zoom()
+                .extent(viewbox2)
+                .scaleExtent([1, 12])
+                .translateExtent(viewbox2)
+                .on("zoom", zoomed));
+
+            function zoomed({transform}) {
+                g.attr("transform", transform);
+            }
+
+            this.resContent.append(svg.node());
         }
     },
     dcsim: class {

@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "ace-builds": "^1.41.0",
+    "d3": "^7.9.0",
+    "d3-zoom": "^3.0.0",
     "golden-layout": "^2.6.0"
   }
 }
