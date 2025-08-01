@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import './style.css'
+
 import {
     GoldenLayout,
     LayoutConfig
@@ -14,15 +15,23 @@ import "ace-builds/src-noconflict/mode-python";
 import "ace-builds/src-noconflict/theme-github";
 import "ace-builds/src-noconflict/ext-language_tools";
 
-const refreshTimeout = 500;
+import { ResultViewer } from "./resultviewer.js"
 
-var globalException = undefined;
-var globalViews = [];
-var ordecSock;
-var nextView = undefined;
-var reqPending = false;
 var editor;
 const sourceTypeSelect = document.getElementById("sourcetype");
+const urlParams = new URLSearchParams(window.location.search);
+
+// add &debug=true to show 'debug' elements
+const debug = urlParams.get('debug');
+if(debug) {
+    Array.from(document.getElementsByClassName("debug")).forEach(function(e) {
+        e.style.display = "block";
+    })
+}
+
+function getSourceType() {
+    return sourceTypeSelect.options[sourceTypeSelect.selectedIndex].value;
+}
 
 function setStatus(status) {
     var div_status = document.getElementById("status");
@@ -40,151 +49,22 @@ function setStatus(status) {
     }
 }
 
-class ResultViewer {
-    constructor(container, state) {
-        this.container = container
-        this.rootElement = container.element
-        this.rootElement.innerHTML =
-            '<div class="resview"><div class="resviewhead"><select class="viewsel"></select></div><div class="rescontent">result will be shown here</div></div>';
-        this.resizeWithContainerAutomatically = true
-        this.resContent = this.rootElement.getElementsByClassName("rescontent")[0];
-        this.viewSel = this.rootElement.getElementsByClassName("viewsel")[0];
-        this.viewLoaded = false;
-
-        this.viewRequested = undefined
-        const this2 = this;
-        this.viewSel.onchange = function() {
-            this2.viewRequested = this2.viewSel.options[this2.viewSel.selectedIndex].value;
-            const s = {
-                'view': this2.viewSel.options[this2.viewSel.selectedIndex].value
-            };
-            this2.container.setState(s);
-            if (!globalException) {
-                this2.clear()
-                requestNextView()
-            }
-        };
-        if (state['view']) {
-            this.restoreSelectedView = state['view']
-        }
-        this.updateGlobalState()
-
-
-        this.container.on('resize',() => this.resize())
-    }
-
-    clear() {
-        this.resContent.innerHTML = "";
-        this.viewLoaded = false;
-    }
-
-    updateGlobalState() {
-        this.clear()
-        if (globalException) {
-            var pre = document.createElement("pre");
-            pre.innerText = globalException;
-            pre.classList.add('exception')
-            this.resContent.appendChild(pre);
-            this.viewLoaded = true;
-        }
-        var vs = this.viewSel
-        var prevOptVal;
-        if (vs.selectedIndex > 0) {
-            prevOptVal = vs.options[vs.selectedIndex].value
-        } else {
-            prevOptVal = this.restoreSelectedView;
-        }
-        vs.innerHTML = "<option disabled selected value>--- Select result from list ---</option>";
-        globalViews.forEach(function(view) {
-            var option = document.createElement("option")
-            option.innerText = view
-            option.value = view
-            vs.appendChild(option)
-            if (view == prevOptVal) {
-                option.selected = true;
-            }
-        })
-        this.viewRequested = prevOptVal
-    }
-
-    resize() {
-        // console.log('component.resize');
-        // if(this.chart) {
-        //     this.chart.resize()
-        // }
-    }
-
-    updateView(msg) {
-        this.viewLoaded = true;
-
-        if (msg['dc_voltages']) {
-            var table = document.createElement('table');
-            table.classList.add('dc_table')
-            this.resContent.appendChild(table)
-            table.innerHTML = '<tr><th>Net</th><th>Voltage</th></tr>'
-            msg['dc_voltages'].forEach(function (row) {
-                var tr = document.createElement('tr')
-                table.appendChild(tr)
-                tr.innerHTML = '<td>'+row[0]+'</td><td>'+row[1]+'</td>'
-            })
-
-            this.resContent.appendChild(document.createElement('br'));
-
-            var table = document.createElement('table');
-            table.classList.add('dc_table')
-            this.resContent.appendChild(table)
-            table.innerHTML = '<tr><th>Branch</th><th>Current</th></tr>'
-            msg['dc_currents'].forEach(function (row) {
-                var tr = document.createElement('tr')
-                table.appendChild(tr)
-                tr.innerHTML = '<td>'+row[0]+'</td><td>'+row[1] + '</td>'
-            })
-
-        } else if (msg['html']) {
-            /*
-            var img = document.createElement("img");
-            img.src = msg['img'];
-            img.classList.add("resimg");
-            this.resContent.appendChild(img);
-            */
-            this.resContent.innerHTML = msg['html'];
-        } else if (msg['exception']) {
-            var pre = document.createElement("pre");
-            pre.innerText = msg['exception'];
-            pre.classList.add('exception')
-            this.resContent.appendChild(pre);
-        } else {
-            var pre = document.createElement("pre");
-            pre.innerText = msg['tree'];
-            this.resContent.appendChild(pre);
-        }
-    }
-}
-
 class Editor {
     constructor(container, state) {
+        this.refreshTimeout = 0;
         this.container = container
-        this.rootElement = container.element
-        //this.rootElement.innerHTML = "<div></div>"
         this.resizeWithContainerAutomatically = true
 
-        this.editor = ace.edit(this.rootElement);
+        this.editor = ace.edit(container.element);
         this.editor.setTheme("ace/theme/github");
         this.editor.session.setMode("ace/mode/python");
         this.editor.setOptions({
             fontFamily: "Inconsolata",
             fontSize: "12pt"
         });
-        this.editor.session.on('change', (e) => this.changed(e));
-
-        if (state['sourceType']) {
-            sourceTypeSelect.value = state['sourceType']
-        }
+        this.editor.session.on('change', this.changed.bind(this));
 
         editor = this;
-        sourceTypeSelect.onchange = function() {
-            editor.settled();
-        };
     }
 
     loadSrc(src) {
@@ -193,123 +73,154 @@ class Editor {
     }
 
     changed(delta) {
-        window.clearTimeout(this.timeout)
-        this.timeout = window.setTimeout(() => this.settled(), refreshTimeout);
-    }
-
-    settled() {
-        console.log('ordecRestartSession triggered from editor');
-        ordecRestartSession();
-
-        // The source text is no longer saved in the JSON state. Instead,
-        // store it separately in ordec/lib/examples/.
-        this.container.setState({
-            // source: this.editor.getValue(),
-            sourceType: sourceTypeSelect.options[sourceTypeSelect.selectedIndex].value,
-        });
+        if(this.refreshTimeout <= 0) {
+            this.handleUpdate()
+        } else {
+            window.clearTimeout(this.timeout)
+            this.timeout = window.setTimeout(
+                () => {
+                    console.log('ordecRestartSession triggered from editor');
+                    this.handleUpdate()
+                },
+                this.refreshTimeout
+            );
+        }
     }
 }
 
-const urlParams = new URLSearchParams(window.location.search);
-var paramExample = urlParams.get('example');
-if (!paramExample) {
-    paramExample = 'blank';
-}
-
-// add &debug=true to show 'debug' elements
-var debug = urlParams.get('debug');
-if(debug) {
-    Array.from(document.getElementsByClassName("debug")).forEach(function(e) {
-        e.style.display = "block";
-    })
-}
-
-const response = await fetch("/api/example?name=" + paramExample); // TODO: Potential XSS?!
-if (!response.ok) {
-    throw new Error(`Response status: ${response.status}`);
-}
-
-const response_data = await response.json();
-
-const config = response_data['uistate'];
-config["header"] = {
-    "popout": false
-}
-
-var myLayout = new GoldenLayout(document.getElementById("workspace"));
-//var myLayout = new GoldenLayout(document.body); // this works better than the old #workspace div
-window.myLayout = myLayout; // for easy access from console
-
-myLayout.layoutConfig.settings.showPopoutIcon = false;
-myLayout.resizeWithContainerAutomatically = true;
-myLayout.registerComponent('editor', Editor);
-//myLayout.registerComponent('example', MyComponent);
-myLayout.registerComponent('result', ResultViewer);
-myLayout.loadLayout(config);
-
-editor.loadSrc(response_data['src']);
-
-document.getElementById("newresview").onclick = function() {
-    myLayout.addComponent('result', undefined, 'Result View');
-};
-
-document.getElementById("savejson").onclick = function() {
-    var cfg = LayoutConfig.fromResolved(myLayout.saveLayout());
-
-    var dataStr = "data:application/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cfg, null, 2));
-    var dlAnchorElem = document.getElementById('downloadAnchorElem');
-    dlAnchorElem.setAttribute("href", dataStr);
-    dlAnchorElem.setAttribute("target", "_blank");
-    dlAnchorElem.click();
-}
-
-function getSourceType() {
-    return sourceTypeSelect.options[sourceTypeSelect.selectedIndex].value;
-}
-
-function getAuthCookie() {
-  let authCookie = '';
-  document.cookie.split(';').forEach(function(el) {
-    let split = el.split('=');
-    if(split[0].trim() == 'ordecAuth') {
-        authCookie = split.slice(1).join("=");
+class OrdecClient {
+    constructor(layout, srctype, resultViewers) {
+        this.layout = layout
+        this.views = []
+        this.reqPending = false
+        this.srctype = srctype
+        this.resultViewers = resultViewers
     }
-  })
-  return authCookie;
-}
 
-function ordecRestartSession() {
-    if (ordecSock) {
-        ordecSock.close();
+    getAuthCookie() {
+        let authCookie = '';
+        document.cookie.split(';').forEach(function(el) {
+            let split = el.split('=');
+            if(split[0].trim() == 'ordecAuth') {
+                authCookie = split.slice(1).join("=");
+            }
+        })
+        return authCookie;
     }
-    //ordecSock = new WebSocket("ws://localhost:9123/websocket", "ordecExperimental", );
-    const wsUrl = new URL('/api/websocket', location.href);
-    if(wsUrl.protocol=='http:') {
-        wsUrl.protocol = 'ws:';
-    } else {
-        wsUrl.protocol = 'wss:';
+
+    connect() {
+        if (this.sock) {
+            this.sock.close();
+        }
+        const wsUrl = new URL('/api/websocket', location.href);
+        if(wsUrl.protocol=='http:') {
+            wsUrl.protocol = 'ws:';
+        } else {
+            wsUrl.protocol = 'wss:';
+        }
+        this.sock = new WebSocket(wsUrl.href, []);
+        this.sock.onopen = this.wsOnOpen.bind(this);
+        this.sock.onmessage = this.wsOnMessage.bind(this);
+        this.sock.onclose = this.wsOnClose.bind(this);
+        this.reqPending = false;
     }
-    console.log(wsUrl.href)
-    ordecSock = new WebSocket(wsUrl.href, []);
-    ordecSock.onopen = (event) => {
+
+    wsOnMessage(messageEvent) {
+        const msg = JSON.parse(messageEvent.data);
+        //console.log(msg)
+        if ((msg['msg'] == 'views') || (msg['msg'] == 'exception')) {
+            if (msg['msg'] == 'exception') {
+                this.exception = msg['exception']
+                setStatus('exception')
+            } else {
+                this.exception = undefined
+                this.views = msg['views']
+            }
+            this.resultViewers.forEach(function(rv) {
+                rv.updateGlobalState()
+            })
+            this.requestNextView()
+        } else if (msg['msg'] == 'view') {
+            this.nextView.updateView(msg);
+            this.reqPending = false;
+            this.requestNextView();
+        }
+    };
+
+    wsOnClose(closeEvent) {
+        if (!this.exception) {
+            this.exception = "Websocket disconnected.";
+            setStatus('disconnected')
+        }
+        this.resultViewers.forEach(function(rv) {
+            rv.updateGlobalState()
+        })
+    };
+
+    wsOnOpen(event) {
         setStatus('busy')
-        const select_source = document.getElementById("sourcetype");
-        ordecSock.send(JSON.stringify({
+        this.sock.send(JSON.stringify({
             'msg': 'source',
-            'source_type': getSourceType(),
-            'source_data': editor.editor.getValue(),
-            'auth': getAuthCookie(),
+            'srctype': this.srctype,
+            'src': editor.editor.getValue(),
+            'auth': this.getAuthCookie(),
         }))
     }
 
-    ordecSock.onmessage = ordecOnMessage;
-    ordecSock.onclose = ordecOnClose;
-    reqPending = false;
+    requestNextView() {
+        if (this.reqPending) {
+            return;
+        }
+
+        this.nextView = undefined;
+        this.resultViewers.some((rv) => {
+            if (!rv.viewLoaded && rv.viewRequested) {
+                this.nextView = rv;
+                return true; // = "break;" in some()
+            }
+        })
+
+        if (this.nextView) {
+            //console.log('next view', nextView.viewRequested)
+            this.sock.send(JSON.stringify({
+                'msg': 'getview',
+                'view': this.nextView.viewRequested,
+            }))
+            this.reqPending = true;
+        } else {
+            if (!this.exception) {
+                setStatus('ready')
+            }
+        }
+    }
 }
+
+async function getInitData() {
+    var paramExample = urlParams.get('example');
+    if (!paramExample) {
+        paramExample = 'blank';
+    }
+
+    const response = await fetch("/api/example?name=" + paramExample); // TODO: Potential XSS?!
+    if (!response.ok) {
+        throw new Error(`Response status: ${response.status}`);
+    }
+    return await response.json();
+}
+
+const initData = await getInitData()
+initData.uistate.header = {"popout": false};
+
+const layout = new GoldenLayout(document.getElementById("workspace"));
+layout.layoutConfig.settings.showPopoutIcon = false;
+layout.resizeWithContainerAutomatically = true;
+layout.registerComponent('editor', Editor);
+layout.registerComponent('result', ResultViewer);
+layout.loadLayout(initData.uistate);
 
 function getResultViewers() {
     var ret = [];
-    window.myLayout.root.getAllContentItems().forEach(function(e) {
+    layout.root.getAllContentItems().forEach(function(e) {
         if (!e.isComponent) return;
         if (e.componentName != 'result') return;
         ret.push(e.component);
@@ -317,61 +228,32 @@ function getResultViewers() {
     return ret;
 }
 
-function requestNextView() {
-    if (reqPending) {
-        return;
-    }
+sourceTypeSelect.value = initData.srctype;
 
-    nextView = undefined;
-    getResultViewers().some(function(rv) {
-        if (!rv.viewLoaded && rv.viewRequested) {
-            nextView = rv;
-            return true; // = "break;" in some()
-        }
-    })
+document.getElementById("newresview").onclick = function() {
+    layout.addComponent('result', undefined, 'Result View');
+};
 
-    if (nextView) {
-        //console.log('next view', nextView.viewRequested)
-        ordecSock.send(JSON.stringify({
-            'msg': 'getview',
-            'view': nextView.viewRequested,
-        }))
-        reqPending = true;
-    } else {
-        if (!globalException) {
-            setStatus('ready')
-        }
-    }
+document.getElementById("savejson").onclick = function() {
+    const uistate = LayoutConfig.fromResolved(layout.saveLayout());
+
+    const dataStr = "data:application/json;charset=utf-8,"
+        + encodeURIComponent(JSON.stringify(uistate, null, 2));
+    const dlAnchorElem = document.getElementById('downloadAnchorElem');
+    dlAnchorElem.setAttribute("href", dataStr);
+    dlAnchorElem.setAttribute("target", "_blank");
+    dlAnchorElem.click();
 }
 
-function ordecOnMessage(messageEvent) {
-    const msg = JSON.parse(messageEvent.data);
-    //console.log(msg)
-    if ((msg['msg'] == 'views') || (msg['msg'] == 'exception')) {
-        if (msg['msg'] == 'exception') {
-            globalException = msg['exception']
-            setStatus('exception')
-        } else {
-            globalException = undefined
-            globalViews = msg['views']
-        }
-        getResultViewers().forEach(function(rv) {
-            rv.updateGlobalState()
-        })
-        requestNextView()
-    } else if (msg['msg'] == 'view') {
-        nextView.updateView(msg);
-        reqPending = false;
-        requestNextView();
-    }
-};
+window.ordecClient = new OrdecClient(layout, getSourceType(), getResultViewers())
 
-function ordecOnClose(closeEvent) {
-    if (!globalException) {
-        globalException = "Websocket disconnected.";
-        setStatus('disconnected')
-    }
-    getResultViewers().forEach(function(rv) {
-        rv.updateGlobalState()
-    })
+editor.handleUpdate = window.ordecClient.connect.bind(window.ordecClient);
+editor.loadSrc(initData.src);
+// 1st request, caused by loadSrc, is with refreshTimeout = 0.
+editor.refreshTimeout = 500; 
+
+sourceTypeSelect.onchange = function() {
+    window.ordecClient.srctype = getSourceType()
+    window.ordecClient.connect()
 };
+layout.addEventListener('stateChanged', () => layout.resultViewers = getResultViewers())

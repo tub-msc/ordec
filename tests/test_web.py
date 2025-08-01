@@ -149,13 +149,11 @@ def request_example(webserver, example):
         
         res_viewers = driver.execute_script("""
             var res = {};
-            window.myLayout.root.getAllContentItems().forEach(function(e) {
-                if (!e.isComponent) return;
-                if (e.componentName != 'result') return;
-                res[e.component.viewRequested] = {
-                    'html':e.component.resContent.innerHTML,
-                    'width':e.component.resContent.offsetWidth,
-                    'height':e.component.resContent.offsetHeight,
+            window.ordecClient.resultViewers.forEach(function(rv) {
+                res[rv.viewRequested] = {
+                    'html':rv.resContent.innerHTML,
+                    'width':rv.resContent.offsetWidth,
+                    'height':rv.resContent.offsetHeight,
                 };
             });
             return res;

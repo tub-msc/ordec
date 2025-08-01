@@ -18,7 +18,6 @@
                 "title": "Source Editor",
                 "componentType": "editor",
                 "componentState": {
-                  "sourceType": "python"
                 }
               }
             ],

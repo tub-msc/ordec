@@ -59,7 +59,7 @@ class Symbol(SubgraphRoot):
 
     def webdata(self):
         from ..render import render
-        return {'html': render(self).svg().decode('ascii')}
+        return 'html', render(self).svg().decode('ascii')
 
 @public
 class Pin(Node):
@@ -176,7 +176,7 @@ class Schematic(SubgraphRoot):
 
     def webdata(self):
         from ..render import render
-        return {'html': render(self).svg().decode('ascii')}
+        return 'html', render(self).svg().decode('ascii')
 
 @public
 class SchemPort(Node):
@@ -297,4 +297,4 @@ class SimHierarchy(SubgraphRoot):
             if not si.dc_current:
                 continue
             dc_currents.append([si.full_path_str(), fmt_float(si.dc_current, "A")])
-        return {'dc_voltages': dc_voltages, 'dc_currents': dc_currents}
+        return 'dcsim', {'dc_voltages': dc_voltages, 'dc_currents': dc_currents}

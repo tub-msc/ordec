@@ -68,7 +68,9 @@ def query_view(view_name, conn_globals):
 
     try:
         view = eval(view_name, conn_globals, conn_globals)
-        msg_ret |= view.webdata()
+        viewtype, data = view.webdata()
+        msg_ret['type'] = viewtype
+        msg_ret['data'] = data
     except Exception:    
         msg_ret['exception'] = traceback.format_exc()
 
@@ -91,8 +93,8 @@ def handle_connection(websocket, auth_token):
 
     # First message - read design input / build cells:
     assert msg_first['msg'] == 'source'
-    source_type = msg_first['source_type']
-    source_data = msg_first['source_data']
+    source_type = msg_first['srctype']
+    source_data = msg_first['src']
     #print(f"Received source of type {source_type}.")
     msg_ret, conn_globals = build_cells(source_type, source_data)
     websocket.send(json.dumps(msg_ret))
@@ -178,15 +180,18 @@ class StaticHandler:
 
     def process_request_example(self, name):
         src = ''
+        srctype = 'Python'
         uistate = {}
         for p in importlib.resources.files(examples).iterdir():
             if p.stem == name:
                 src = p.read_text()
+                srctype = {'.ord': 'ord', '.py': 'python'}[p.suffix]
             if p.name == f'{name}.uistate.json':
                 with open(p) as f:
                     uistate = json.load(f)
         data = json.dumps({
             'src':src,
+            'srctype': srctype,
             'uistate':uistate,
         })
         return build_response(data=data.encode('utf8'), mime_type='application/json')
