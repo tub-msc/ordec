@@ -16,6 +16,7 @@ import "ace-builds/src-noconflict/theme-github";
 import "ace-builds/src-noconflict/ext-language_tools";
 
 import { ResultViewer } from "./resultviewer.js"
+import { OrdecClient } from './client.js'
 
 var editor;
 const sourceTypeSelect = document.getElementById("sourcetype");
@@ -64,7 +65,7 @@ class Editor {
         });
         this.editor.session.on('change', this.changed.bind(this));
 
-        editor = this;
+        window.ordecClient.editor = this
     }
 
     loadSrc(src) {
@@ -74,123 +75,16 @@ class Editor {
 
     changed(delta) {
         if(this.refreshTimeout <= 0) {
-            this.handleUpdate()
+            window.ordecClient.connect()
         } else {
             window.clearTimeout(this.timeout)
             this.timeout = window.setTimeout(
                 () => {
                     console.log('ordecRestartSession triggered from editor');
-                    this.handleUpdate()
+                    window.ordecClient.connect()
                 },
                 this.refreshTimeout
             );
-        }
-    }
-}
-
-class OrdecClient {
-    constructor(layout, srctype, resultViewers) {
-        this.layout = layout
-        this.views = []
-        this.reqPending = false
-        this.srctype = srctype
-        this.resultViewers = resultViewers
-    }
-
-    getAuthCookie() {
-        let authCookie = '';
-        document.cookie.split(';').forEach(function(el) {
-            let split = el.split('=');
-            if(split[0].trim() == 'ordecAuth') {
-                authCookie = split.slice(1).join("=");
-            }
-        })
-        return authCookie;
-    }
-
-    connect() {
-        if (this.sock) {
-            this.sock.close();
-        }
-        const wsUrl = new URL('/api/websocket', location.href);
-        if(wsUrl.protocol=='http:') {
-            wsUrl.protocol = 'ws:';
-        } else {
-            wsUrl.protocol = 'wss:';
-        }
-        this.sock = new WebSocket(wsUrl.href, []);
-        this.sock.onopen = this.wsOnOpen.bind(this);
-        this.sock.onmessage = this.wsOnMessage.bind(this);
-        this.sock.onclose = this.wsOnClose.bind(this);
-        this.reqPending = false;
-    }
-
-    wsOnMessage(messageEvent) {
-        const msg = JSON.parse(messageEvent.data);
-        //console.log(msg)
-        if ((msg['msg'] == 'views') || (msg['msg'] == 'exception')) {
-            if (msg['msg'] == 'exception') {
-                this.exception = msg['exception']
-                setStatus('exception')
-            } else {
-                this.exception = undefined
-                this.views = msg['views']
-            }
-            this.resultViewers.forEach(function(rv) {
-                rv.updateGlobalState()
-            })
-            this.requestNextView()
-        } else if (msg['msg'] == 'view') {
-            this.nextView.updateView(msg);
-            this.reqPending = false;
-            this.requestNextView();
-        }
-    };
-
-    wsOnClose(closeEvent) {
-        if (!this.exception) {
-            this.exception = "Websocket disconnected.";
-            setStatus('disconnected')
-        }
-        this.resultViewers.forEach(function(rv) {
-            rv.updateGlobalState()
-        })
-    };
-
-    wsOnOpen(event) {
-        setStatus('busy')
-        this.sock.send(JSON.stringify({
-            'msg': 'source',
-            'srctype': this.srctype,
-            'src': editor.editor.getValue(),
-            'auth': this.getAuthCookie(),
-        }))
-    }
-
-    requestNextView() {
-        if (this.reqPending) {
-            return;
-        }
-
-        this.nextView = undefined;
-        this.resultViewers.some((rv) => {
-            if (!rv.viewLoaded && rv.viewRequested) {
-                this.nextView = rv;
-                return true; // = "break;" in some()
-            }
-        })
-
-        if (this.nextView) {
-            //console.log('next view', nextView.viewRequested)
-            this.sock.send(JSON.stringify({
-                'msg': 'getview',
-                'view': this.nextView.viewRequested,
-            }))
-            this.reqPending = true;
-        } else {
-            if (!this.exception) {
-                setStatus('ready')
-            }
         }
     }
 }
@@ -211,6 +105,14 @@ async function getInitData() {
 const initData = await getInitData()
 initData.uistate.header = {"popout": false};
 
+sourceTypeSelect.value = initData.srctype;
+
+window.ordecClient = new OrdecClient(
+    getSourceType(),
+    [],
+    setStatus,
+)
+
 const layout = new GoldenLayout(document.getElementById("workspace"));
 layout.layoutConfig.settings.showPopoutIcon = false;
 layout.resizeWithContainerAutomatically = true;
@@ -228,7 +130,8 @@ function getResultViewers() {
     return ret;
 }
 
-sourceTypeSelect.value = initData.srctype;
+
+layout.addEventListener('stateChanged', () => window.ordecClient.resultViewers = getResultViewers())
 
 document.getElementById("newresview").onclick = function() {
     layout.addComponent('result', undefined, 'Result View');
@@ -245,15 +148,11 @@ document.getElementById("savejson").onclick = function() {
     dlAnchorElem.click();
 }
 
-window.ordecClient = new OrdecClient(layout, getSourceType(), getResultViewers())
-
-editor.handleUpdate = window.ordecClient.connect.bind(window.ordecClient);
-editor.loadSrc(initData.src);
-// 1st request, caused by loadSrc, is with refreshTimeout = 0.
-editor.refreshTimeout = 500; 
-
 sourceTypeSelect.onchange = function() {
     window.ordecClient.srctype = getSourceType()
     window.ordecClient.connect()
 };
-layout.addEventListener('stateChanged', () => layout.resultViewers = getResultViewers())
+
+window.ordecClient.editor.loadSrc(initData.src);
+// 1st request, caused by loadSrc, is with refreshTimeout = 0.
+window.ordecClient.editor.refreshTimeout = 500; 

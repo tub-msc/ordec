@@ -53,6 +53,7 @@ export class ResultViewer {
         if (state['view']) {
             this.restoreSelectedView = state['view']
         }
+        this.updateGlobalState()
     }
 
     viewSelOnChange() {
