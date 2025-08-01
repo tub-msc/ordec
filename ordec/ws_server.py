@@ -24,15 +24,14 @@ import tarfile
 
 from .core import *
 from .render import render
-from .parser.parser import ord2py
+from .ord1.parser import ord2py
 
 def build_cells(source_type: str, source_data: str) -> (dict, dict):
     conn_globals = {}
     if source_type == 'python' or source_type == 'ord':
         try:
             if source_type == 'ord':
-                code = ast.unparse(ord2py(source_data))
-                #code = compile(ord2py(source_data), "<string>", "exec") <-- TODO: Not working at the moment.
+                code = compile(ord2py(source_data), "<string>", "exec")
                 exec(code, conn_globals, conn_globals)
             else:
                 exec(source_data, conn_globals, conn_globals)

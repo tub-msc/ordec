@@ -41,7 +41,7 @@ from pyrsistent import PMap, field
 from ordec import helpers
 from ordec.sim import create_circuit_from_dict, get_portmaps
 from ordec.lib.sky130 import NmosSky130, PmosSky130, Inv
-from ordec.parser.implicit_processing import schematic_routing
+from ordec.ord1.implicit_processing import schematic_routing
 
 
 class TBMosfetLoad(Cell):

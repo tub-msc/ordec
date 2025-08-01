@@ -4,7 +4,7 @@
 import os
 from ..core import *
 from .. import helpers
-from ..parser.implicit_processing import schematic_routing
+from ..ord1.implicit_processing import schematic_routing
 from . import generic_mos
 from pathlib import Path
 

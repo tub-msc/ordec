@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 #ordec imports
 from ..core import *
-from ..parser.optimize_position import get_pos_with_constraints
+from ..ord1.optimize_position import get_pos_with_constraints
 from .. import helpers
 from ..routing import schematic_routing, check_outline_rescaling
 

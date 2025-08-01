@@ -3,5 +3,5 @@
 
 from .core import *
 from .render import render
-from .parser.implicit_processing import preprocess, postprocess, PostProcess, symbol_process
-from .parser.prelim_schem_instance import PrelimSchemInstance
+from .ord1.implicit_processing import preprocess, postprocess, PostProcess, symbol_process
+from .ord1.prelim_schem_instance import PrelimSchemInstance
