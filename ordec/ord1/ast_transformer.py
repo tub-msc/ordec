@@ -5,7 +5,7 @@
 import ast
 
 #ordec imports
-from ..parser.ast_conversion import convert_to_ast_assignment, convert_to_ast_name_store, convert_to_ast_call, \
+from ..ord1.ast_conversion import convert_to_ast_assignment, convert_to_ast_name_store, convert_to_ast_call, \
     convert_to_ast_name_load, convert_to_ast_attribute_store, convert_to_ast_expr, convert_to_ast_subscript_store, \
     convert_to_ast_constant, convert_to_ast_tuple_load, convert_to_ast_list_load, convert_to_ast_dict, \
     convert_to_ast_attribute_load, convert_to_ast_function_def
@@ -97,7 +97,7 @@ class SchematicModifier(ast.NodeTransformer):
 
                 port_positions_append = convert_to_ast_assignment(
                     convert_to_ast_subscript_store(
-                        convert_to_ast_name_store("port_positions"),
+                        convert_to_ast_name_load("port_positions"),
                         convert_to_ast_constant(port_name)),
                     convert_to_ast_tuple_load([pos if isinstance(pos, ast.AST) else
                                                convert_to_ast_constant(pos) for pos in position])

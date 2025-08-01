@@ -78,14 +78,14 @@ def convert_to_ast_class_function(class_name, derived_classes, body):
 
 
 def convert_to_ast_attribute_store(parent_val, attribute_val):
-    attribute = ast.Attribute(parent_val,
+    attribute = ast.Attribute(value=parent_val,
                               attr=attribute_val,
                               ctx=ast.Store())
     return attribute
 
 
 def convert_to_ast_attribute_load(parent_val, attribute_val):
-    attribute = ast.Attribute(parent_val,
+    attribute = ast.Attribute(value=parent_val,
                               attr=attribute_val,
                               ctx=ast.Load())
     return attribute
@@ -94,26 +94,30 @@ def convert_to_ast_list_load(values):
     return ast.List(elts=[convert_to_ast_constant(value) for value in values], ctx=ast.Load())
 
 def convert_to_ast_attribute_load_list(attribute_list):
-    if len(attribute_list) <= 0:
-        print("convert_to_ast_attribute_load_list: Not a valid list")
-        return
-    elif len(attribute_list) > 1:
-        return ast.Attribute(convert_to_ast_attribute_load_list(attribute_list[:-1]),
-                              attr=attribute_list[-1],
-                              ctx=ast.Load())
-    else:
+    """Convert a list of attributes to nested Attribute nodes with Load context"""
+    if not attribute_list:
+        print("convert_to_ast_attribute_load_list: Empty list")
+        return None
+    if len(attribute_list) == 1:
         return convert_to_ast_name_load(attribute_list[0])
+    return ast.Attribute(
+        value=convert_to_ast_attribute_load_list(attribute_list[:-1]),
+        attr=attribute_list[-1],
+        ctx=ast.Load()
+    )
 
 def convert_to_ast_attribute_store_list(attribute_list):
-    if len(attribute_list) <= 0:
-        print("convert_to_ast_attribute_store_list: Not a valid list")
-        return
-    elif len(attribute_list) > 1:
-        return ast.Attribute(convert_to_ast_attribute_load_list(attribute_list[:-1]),
-                              attr=attribute_list[-1],
-                              ctx=ast.Store())
-    else:
-        return convert_to_ast_name_load(attribute_list[0])
+    """Convert a list of attributes to nested Attribute nodes with Store context"""
+    if not attribute_list:
+        print("convert_to_ast_attribute_store_list: Empty list")
+        return None
+    if len(attribute_list) == 1:
+        return convert_to_ast_name_store(attribute_list[0])
+    return ast.Attribute(
+        value=convert_to_ast_attribute_load_list(attribute_list[:-1]),  # Inner nodes use Load
+        attr=attribute_list[-1],
+        ctx=ast.Store()  # Only the outermost is Store
+    )
 
 
 def convert_to_ast_op(op):

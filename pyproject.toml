@@ -58,7 +58,7 @@ packages = [
     "ordec.lib",
     "ordec.lib.examples",
     "ordec.lib.ord_test",
-    "ordec.parser",
+    "ordec.ord1",
     "ordec.sim2",
 ]
 

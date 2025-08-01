@@ -8,10 +8,11 @@ import uuid
 import ast
 
 #ordec imports
-from ..parser.ast_conversion import convert_to_ast_call, convert_to_ast_class_function, convert_to_ast_name_load, \
+from ..ord1.ast_conversion import convert_to_ast_call, convert_to_ast_class_function, convert_to_ast_name_load, \
     convert_to_ast_function_def, convert_to_ast_assignment, convert_to_ast_name_store, convert_to_ast_attribute_load, \
     convert_to_ast_attribute_store, convert_to_ast_subscript_store, convert_to_ast_constant, convert_to_ast_tuple_load, \
-    convert_to_ast_module, convert_to_ast_expr, convert_to_ast_for_loop, convert_to_ast_bin_op, convert_to_ast_unary_op
+    convert_to_ast_expr, convert_to_ast_for_loop, convert_to_ast_bin_op, convert_to_ast_unary_op, \
+    convert_to_ast_keyword, convert_to_ast_module
 
 
 class TreeIndenter(Indenter):
@@ -34,6 +35,18 @@ class OrdecTransformer(Transformer):
         self.port_positions = dict()
         self.additional_nets = dict()
 
+    def flatten_stmt_lists(self, nodes):
+        flat = []
+        for node in nodes:
+            if isinstance(node, tuple):
+                # For structured declaration
+                flat.extend(self.flatten_stmt_lists(node[2]))
+            elif isinstance(node, list):
+                flat.extend(self.flatten_stmt_lists(node))
+            else:
+                flat.append(node)
+        return flat
+
     def cell(self, items):
         """
         Convert to the cell class definition
@@ -41,8 +54,7 @@ class OrdecTransformer(Transformer):
         :returns: ast converted items
         """
 
-        return convert_to_ast_class_function(items[0], ["Cell"],
-                                             body = items[1:])
+        return convert_to_ast_class_function(items[0], ["Cell"], body=items[1:])
 
     def schematic(self, items):
         """
@@ -54,7 +66,7 @@ class OrdecTransformer(Transformer):
                                         args=[convert_to_ast_name_load("Schematic")])
         return convert_to_ast_function_def("schematic",
                                            ["self", "node"],
-                                           items,
+                                           self.flatten_stmt_lists(items),
                                            [decorator])
 
     def symbol(self, items):
@@ -67,7 +79,7 @@ class OrdecTransformer(Transformer):
                                         args=[convert_to_ast_name_load("Symbol")])
         return convert_to_ast_function_def("symbol",
                                            ["self", "node"],
-                                           items,
+                                           self.flatten_stmt_lists(items),
                                            [decorator])
 
     def port_declaration(self, items):
@@ -102,22 +114,17 @@ class OrdecTransformer(Transformer):
                 direction = "Inout"
         else:
             direction = "Out"
-        pin_assignment = convert_to_ast_assignment(convert_to_ast_name_store("pintype"),
-                                                   convert_to_ast_attribute_load(
-                                                       convert_to_ast_name_load("PinType"), direction))
-        align_assignment = convert_to_ast_assignment(convert_to_ast_name_store("align"),
-                                                     convert_to_ast_attribute_load(
-                                                         convert_to_ast_name_load("Orientation"),
-                                                         alignment
-                                                     ))
+        pin_assignment = convert_to_ast_keyword("pintype", convert_to_ast_attribute_load(
+                                                                    convert_to_ast_name_load("PinType"),
+                                                                    direction))
+        align_assignment = convert_to_ast_keyword("align", convert_to_ast_attribute_load(
+                                                                    convert_to_ast_name_load("Orientation"),
+                                                                    alignment))
         # combine to full assign and insert
         lhs = convert_to_ast_attribute_store(convert_to_ast_name_load("node"), ref)
         rhs = convert_to_ast_call(
             function_name=convert_to_ast_name_load("Pin"),
-            args=[
-                pin_assignment,
-                align_assignment
-            ]
+            keywords=[pin_assignment, align_assignment]
         )
         full_assign = convert_to_ast_assignment(lhs, rhs)
         return full_assign
@@ -133,8 +140,8 @@ class OrdecTransformer(Transformer):
         """
         called_instances_append = convert_to_ast_assignment(
             convert_to_ast_subscript_store(
-                convert_to_ast_attribute_store(
-                    convert_to_ast_name_store("postprocess_data"),
+                convert_to_ast_attribute_load(
+                    convert_to_ast_name_load("postprocess_data"),
                     "called_instances"
                 ),
                 convert_to_ast_constant(instance_name)
@@ -147,11 +154,9 @@ class OrdecTransformer(Transformer):
 
         instance = convert_to_ast_assignment(
             convert_to_ast_name_store(instance_name),
-            convert_to_ast_call(function_name=convert_to_ast_name_load('PrelimSchemInstance'), args=[
-                convert_to_ast_assignment(convert_to_ast_name_store('prelim_name'),
-                                          convert_to_ast_constant(instance_name)),
-                convert_to_ast_assignment(convert_to_ast_name_store('prelim_ref'),
-                                          convert_to_ast_constant(instance_type))
+            convert_to_ast_call(function_name=convert_to_ast_name_load('PrelimSchemInstance'), keywords=[
+                convert_to_ast_keyword('prelim_name', convert_to_ast_constant(instance_name)),
+                convert_to_ast_keyword('prelim_ref', convert_to_ast_constant(instance_type))
             ]))
         instance_declarations.append(instance)
         instance_declarations.append(called_instances_append)
@@ -203,9 +208,9 @@ class OrdecTransformer(Transformer):
                         instance_declarations.append(self.assign_orientation(passed_items))
 
         if STRUCTURED_LIOP:
-            return f"{instance_name}", [], convert_to_ast_module(instance_declarations)
+            return f"{instance_name}", [], instance_declarations
         else:
-            return f"{instance_name}", [0,0], convert_to_ast_module(instance_declarations)
+            return f"{instance_name}", [0,0], instance_declarations
 
     def tuple_expr(self, items):
         """
@@ -230,14 +235,14 @@ class OrdecTransformer(Transformer):
         position_x = position[0] if isinstance(position[0], ast.AST) else convert_to_ast_constant(position[0])
         position_y = position[1] if isinstance(position[1], ast.AST) else convert_to_ast_constant(position[1])
 
-        arg_x = convert_to_ast_assignment(convert_to_ast_name_store('x'), position_x)
-        arg_y = convert_to_ast_assignment(convert_to_ast_name_store('y'), position_y)
+        arg_x = convert_to_ast_keyword('x', position_x)
+        arg_y = convert_to_ast_keyword('y', position_y)
         attribute = convert_to_ast_attribute_store(convert_to_ast_name_load(instance_name), "prelim_pos")
 
         pos_assignment = convert_to_ast_assignment(attribute,
                                                     convert_to_ast_call(
                                                         function_name=convert_to_ast_name_load("Vec2R"),
-                                                         args=[arg_x, arg_y]
+                                                         keywords=[arg_x, arg_y]
                                                         )
                                                     )
         return pos_assignment
@@ -252,7 +257,7 @@ class OrdecTransformer(Transformer):
         """
         access_tuple = items[0]
         mapped_name = items[2]
-        attribute = convert_to_ast_attribute_store(
+        attribute = convert_to_ast_attribute_load(
             convert_to_ast_name_load(access_tuple[0]), "prelim_portmap")
         lhs = convert_to_ast_subscript_store(attribute, convert_to_ast_constant(access_tuple[1]))
 
@@ -278,7 +283,7 @@ class OrdecTransformer(Transformer):
                                                   self.additional_nets.get(access_tuple))
             map_assignment = convert_to_ast_assignment(lhs, rhs)
             return_values.append(map_assignment)
-            map_assignment = convert_to_ast_module(return_values)
+            map_assignment = return_values
         else:
             # Get rhs and lhs of assignment
             rhs = convert_to_ast_attribute_load(convert_to_ast_name_load('node'), mapped_name[0])
@@ -394,7 +399,7 @@ class OrdecTransformer(Transformer):
         else:
             si_value = ""
         # check if the attribute is related to an instance name
-        attribute = convert_to_ast_attribute_store(convert_to_ast_name_load(attribute_access[0]), "prelim_params")
+        attribute = convert_to_ast_attribute_load(convert_to_ast_name_load(attribute_access[0]), "prelim_params")
         lhs = convert_to_ast_subscript_store(attribute, convert_to_ast_constant(attribute_access[1]))
         rhs = convert_to_ast_call(function_name=convert_to_ast_name_load("Rational"),
                                   args=[convert_to_ast_constant(f"{value}{si_value}")])
@@ -482,7 +487,7 @@ class OrdecTransformer(Transformer):
                 convert_to_ast_call(function_name=convert_to_ast_name_load("Net"))
             )
             nets.append(net)
-        return convert_to_ast_module(nets)
+        return nets
 
     def assign_route(self, items):
         """
@@ -498,7 +503,7 @@ class OrdecTransformer(Transformer):
             state = items[3]
         routing_net_state  = convert_to_ast_assignment(
             convert_to_ast_subscript_store(
-                convert_to_ast_attribute_store(
+                convert_to_ast_attribute_load(
                     convert_to_ast_name_load("postprocess_data"),
                     "routing"
                 ),
@@ -592,9 +597,9 @@ class OrdecTransformer(Transformer):
                     declaration = node[2]
                     # for declarations
                     statements.append(declaration)
-                    arg_x = convert_to_ast_assignment(convert_to_ast_name_store('x'),
+                    arg_x = convert_to_ast_keyword(convert_to_ast_name_store('x'),
                           convert_to_ast_constant(pos[0] * STRUCTURED_SPACING + 2))
-                    arg_y = convert_to_ast_assignment(convert_to_ast_name_store('y'),
+                    arg_y = convert_to_ast_keyword(convert_to_ast_name_store('y'),
                         convert_to_ast_constant((max_coordinates[1] - pos[1]) * STRUCTURED_SPACING + STRUCTURED_OFFSET))
                     pos_statement = convert_to_ast_assignment(
                         convert_to_ast_attribute_store(
@@ -603,7 +608,7 @@ class OrdecTransformer(Transformer):
                         ),
                         convert_to_ast_call(
                             function_name=convert_to_ast_name_load('Vec2R'),
-                            args=[arg_x, arg_y]
+                            keywords=[arg_x, arg_y]
                         )
                     )
                     statements.append(pos_statement)
@@ -615,7 +620,7 @@ class OrdecTransformer(Transformer):
                                                  (STRUCTURED_OFFSET + PORT_OFFSET_X_DEFAULT),
                                  (max_coordinates[1] - pos[1]) * STRUCTURED_SPACING +
                                                  (PORT_OFFSET_Y_DEFAULT + STRUCTURED_OFFSET))
-        return convert_to_ast_module(statements)
+        return statements
 
     def flatten_rows(self, node):
         """
@@ -719,7 +724,7 @@ class OrdecTransformer(Transformer):
         statements.extend(modules)
         for constraint in constraints:
             statements.append(self.constraint(constraint))
-        return convert_to_ast_module(statements)
+        return statements
 
 
     def structured(self, items):

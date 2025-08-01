@@ -39,7 +39,7 @@ def ord_lambda(name, cell, view, **kwargs):
     This function makes it possible to test the views of cells without having
     to import them on the level of the test module.
 
-    This ensures that errors raised by the ORD parser during import of an .ord
+    This ensures that errors raised by the ORD ord1 during import of an .ord
     file do not break the entire test module.
     """
     return lambda: getattr(getattr(import_module(name, package='ordec'), cell)(**kwargs), view)
@@ -94,7 +94,7 @@ testdata = [
     testcase(ord_lambda('.lib.examples.diffpair', 'DiffPairTb', 'schematic'),
         refdir / "examples_diffpairtb_sch.svg"),
     
-    # Test cells from lib.ord_test (previously ordec.parser.ord_files)
+    # Test cells from lib.ord_test (previously ordec.ord1.ord_files)
     # ----------------------------------------------------------------
 
     testcase(ord_lambda('.lib.ord_test.d_ff_soc', 'D_flip_flop', 'schematic'),

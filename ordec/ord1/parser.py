@@ -14,8 +14,8 @@ except ImportError:
     black = None
 
 #ordec imports
-from ..parser.ast_transformer import SchematicModifier
-from ..parser.lark_transformer import OrdecTransformer, TreeIndenter
+from ..ord1.ast_transformer import SchematicModifier
+from ..ord1.lark_transformer import OrdecTransformer, TreeIndenter
 
 def save_ast_to_file(ast_node, filename):
     """
@@ -129,15 +129,15 @@ def load_ord(file_path):
     return ast.unparse(load_ord_from_string(inp))
 
 
-# TODO: Make parser encapsulation consistent. ordec/importer.py and 
+# TODO: Make ord1 encapsulation consistent. ordec/importer.py and
 # ordec/ws_server.py use ord2py() for now.
 def ord2py(source_data: str) -> ast.Module:
     module = ast.parse(
         "from ordec.core import *\n" +
         "from ordec.sim2.sim_hierarchy import HighlevelSim\n"+
         "from ordec.lib import Inv, Res, Gnd, Vdc, Idc, Nmos, Pmos, NoConn\n"+
-        "from ordec.parser.implicit_processing import symbol_process, preprocess, PostProcess, postprocess\n" +
-        "from ordec.parser.prelim_schem_instance import PrelimSchemInstance\n"+
+        "from ordec.ord1.implicit_processing import symbol_process, preprocess, PostProcess, postprocess\n" +
+        "from ordec.ord1.prelim_schem_instance import PrelimSchemInstance\n"+
         "ext = globals()\n" # <-- TODO: bad hack, this is not how it is intended...
         )
     x = load_ord_from_string(source_data)

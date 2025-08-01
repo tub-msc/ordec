@@ -7,7 +7,7 @@ from public import public
 
 from ..core import *
 from .. import helpers
-from ..parser.implicit_processing import schematic_routing
+from ..ord1.implicit_processing import schematic_routing
 from . import generic_mos
 
 _MODULE_DIR = Path(__file__).parent
