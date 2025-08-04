@@ -45,8 +45,7 @@ const viewClassOf = {
 
             svg.call(zoom.on("zoom", (x) => this.zoomed(x)));
 
-            this.resContent.innerHTML = '';
-            this.resContent.append(svg.node());
+            this.resContent.replaceChildren(svg.node());
         }
     },
     dcsim: class {
@@ -55,28 +54,29 @@ const viewClassOf = {
         }
 
         update(msgData) {
-            this.resContent.innerHTML = '';
-            var table = document.createElement('table');
-            table.classList.add('dc_table')
-            this.resContent.appendChild(table)
-            table.innerHTML = '<tr><th>Net</th><th>Voltage</th></tr>'
-            msgData.dc_voltages.forEach(function (row) {
-                var tr = document.createElement('tr')
-                table.appendChild(tr)
-                tr.innerHTML = '<td>'+row[0]+'</td><td>'+row[1]+'</td>'
+            let table = document.createElement('table');
+            table.classList.add('dc_table');
+            table.innerHTML = '<tr><th>Net</th><th>Voltage</th></tr>';
+            msgData.dc_voltages.forEach(row => {
+                let tr = document.createElement('tr');
+                table.appendChild(tr);
+                tr.innerHTML = `<td>${row[0]}</td><td>${row[1]}</td>`;
             })
 
-            this.resContent.appendChild(document.createElement('br'));
+            let table2 = document.createElement('table');
+            table2.classList.add('dc_table');
+            table2.innerHTML = '<tr><th>Branch</th><th>Current</th></tr>';
+            msgData.dc_currents.forEach(row => {
+                let tr = document.createElement('tr');
+                table2.appendChild(tr);
+                tr.innerHTML = `<td>${row[0]}</td><td>${row[1]}</td>`;
+            });
 
-            var table = document.createElement('table');
-            table.classList.add('dc_table')
-            this.resContent.appendChild(table)
-            table.innerHTML = '<tr><th>Branch</th><th>Current</th></tr>'
-            msgData.dc_currents.forEach(function (row) {
-                var tr = document.createElement('tr')
-                table.appendChild(tr)
-                tr.innerHTML = '<td>'+row[0]+'</td><td>'+row[1] + '</td>'
-            })
+            this.resContent.replaceChildren(
+                table,
+                document.createElement('br'),
+                table2
+            );
         }
     }
 }
@@ -85,16 +85,16 @@ export class ResultViewer {
     constructor(container, state) {
         this.container = container
         container.element.innerHTML = '<div class="resview"><div class="resviewhead"><select class="viewsel"></select></div><div class="rescontent">result will be shown here</div><div class="resexception"></div></div>';
-        this.resizeWithContainerAutomatically = true
+        this.resizeWithContainerAutomatically = true;
         this.resContent = container.element.getElementsByClassName("rescontent")[0];
         this.resException = container.element.getElementsByClassName("resexception")[0];
         this.viewSel = container.element.getElementsByClassName("viewsel")[0];
         this.viewLoaded = false;
 
-        this.viewRequested = undefined;
-        this.viewSel.onchange = this.viewSelOnChange.bind(this);
+        this.viewRequested = null;
+        this.viewSel.onchange = () => this.viewSelOnChange();
         if (state['view']) {
-            this.restoreSelectedView = state['view']
+            this.restoreSelectedView = state['view'];
         }
         this.updateGlobalState()
     }
@@ -102,11 +102,11 @@ export class ResultViewer {
     viewSelOnChange() {
         this.viewRequested = this.viewSel.options[this.viewSel.selectedIndex].value;
         this.container.setState({
-            'view': this.viewSel.options[this.viewSel.selectedIndex].value
+            view: this.viewSel.options[this.viewSel.selectedIndex].value
         });
         
         this.invalidate();
-        this.resContent.innerHTML = "";
+        this.resContent.replaceChildren();
         this.view = null;
         if (!window.ordecClient.exception) {
             window.ordecClient.requestNextView();
@@ -120,61 +120,70 @@ export class ResultViewer {
     updateGlobalState() {
         this.invalidate();
         this.updateViewList();
-        this.updateExceptionState();
+        this.updateGlobalExceptionState();
     }
 
     updateViewList() {
-        var vs = this.viewSel
-        var prevOptVal;
+        let vs = this.viewSel;
+        let prevOptVal;
         if (vs.selectedIndex > 0) {
             prevOptVal = vs.options[vs.selectedIndex].value
         } else {
             prevOptVal = this.restoreSelectedView;
         }
         vs.innerHTML = "<option disabled selected value>--- Select result from list ---</option>";
-        window.ordecClient.views.forEach(function(view) {
-            var option = document.createElement("option")
-            option.innerText = view
-            option.value = view
+        window.ordecClient.views.forEach(view => {
+            var option = document.createElement("option");
+            option.innerText = view;
+            option.value = view;
             vs.appendChild(option)
             if (view == prevOptVal) {
                 option.selected = true;
             }
-        })
-        this.viewRequested = prevOptVal
+        });
+        this.viewRequested = prevOptVal;
     }
 
-    updateExceptionState() {
+    updateGlobalExceptionState() {
         if (window.ordecClient.exception) {
-            this.resException.style.display = 'block';
-            this.resContent.style.display = 'none';
-
-            var pre = document.createElement("pre");
-            pre.innerText = window.ordecClient.exception;
-            pre.classList.add('exception')
-            this.resException.innerHTML = '';
-            this.resException.appendChild(pre);
-            
+            this.showException(window.ordecClient.exception);
         } else {
-            this.resException.style.display = 'none';
-            this.resContent.style.display = 'block';
+            // this.resException.style.display = 'none';
+            // this.resContent.style.display = 'block';
+        }
+    }
+
+    showException(text) {
+        this.resException.style.display = text?'block':'none';
+        this.resContent.style.display = text?'none':'block';
+
+        if(text) {
+            let pre = document.createElement("pre");
+            pre.innerText = text;
+            pre.classList.add('exception');
+            this.resException.replaceChildren(pre);
         }
     }
 
     updateView(msg) {
-        this.resContent.innerHTML = "";
+        this.resContent.replaceChildren();
         this.viewLoaded = true;
-    
-        const viewClass = viewClassOf[msg.type]
-        if(!viewClass) {
-            var pre = document.createElement("pre");
-            pre.innerText = 'no handler found for type '+msg.type;
-            this.resContent.appendChild(pre);
-        } else if(this.view instanceof viewClass) {
-            this.view.update(msg.data);
+
+        if(msg.exception) {
+            this.showException(msg.exception);
         } else {
-            this.view = new viewClass(this.resContent);
-            this.view.update(msg.data);
-        } 
+            this.showException(null);
+            const viewClass = viewClassOf[msg.type];
+            if(!viewClass) {
+                let pre = document.createElement("pre");
+                pre.innerText = 'no handler found for type ' + msg.type;
+                this.resContent.appendChild(pre);
+            } else if(this.view instanceof viewClass) {
+                this.view.update(msg.data);
+            } else {
+                this.view = new viewClass(this.resContent);
+                this.view.update(msg.data);
+            }
+        }
     }
 }

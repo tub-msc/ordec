@@ -18,16 +18,15 @@ import "ace-builds/src-noconflict/ext-language_tools";
 import { ResultViewer } from "./resultviewer.js"
 import { OrdecClient } from './client.js'
 
-var editor;
 const sourceTypeSelect = document.getElementById("sourcetype");
 const urlParams = new URLSearchParams(window.location.search);
 
 // add &debug=true to show 'debug' elements
 const debug = urlParams.get('debug');
 if(debug) {
-    Array.from(document.getElementsByClassName("debug")).forEach(function(e) {
+    Array.from(document.getElementsByClassName("debug")).forEach(e => {
         e.style.display = "block";
-    })
+    });
 }
 
 function getSourceType() {
@@ -35,26 +34,21 @@ function getSourceType() {
 }
 
 function setStatus(status) {
-    var div_status = document.getElementById("status");
-    div_status.innerText = status;
-    if (status == 'busy') {
-        div_status.style.backgroundColor = '#ffff44';
-    } else if (status == 'ready') {
-        div_status.style.backgroundColor = '#44ff44';
-    } else if (status == 'exception') {
-        div_status.style.backgroundColor = '#ff4444';
-    } else if (status == 'disconnected') {
-        div_status.style.backgroundColor = '#ff4444';
-    } else {
-        div_status.style.backgroundColor = '#ffffff';
-    }
+    let divStatus = document.getElementById("status");
+    divStatus.innerText = status;
+    divStatus.style.backgroundColor = {
+        'busy': '#ffff44',
+        'ready': '#44ff44',
+        'exception': '#ff4444',
+        'disconnected': '#ff4444'
+    }[status];
 }
 
 class Editor {
     constructor(container, state) {
         this.refreshTimeout = 0;
-        this.container = container
-        this.resizeWithContainerAutomatically = true
+        this.container = container;
+        this.resizeWithContainerAutomatically = true;
 
         this.editor = ace.edit(container.element);
         this.editor.setTheme("ace/theme/github");
@@ -63,34 +57,33 @@ class Editor {
             fontFamily: "Inconsolata",
             fontSize: "12pt"
         });
-        this.editor.session.on('change', this.changed.bind(this));
+        this.editor.session.on('change', (delta) => this.changed(delta));
 
-        window.ordecClient.editor = this
+        window.ordecClient.editor = this;
     }
 
     loadSrc(src) {
-        this.editor.setValue(src)
-        this.editor.clearSelection()
+        this.editor.setValue(src);
+        this.editor.clearSelection();
     }
 
     changed(delta) {
         if(this.refreshTimeout <= 0) {
-            window.ordecClient.connect()
+            window.ordecClient.src = this.editor.getValue();
+            window.ordecClient.connect();
         } else {
-            window.clearTimeout(this.timeout)
-            this.timeout = window.setTimeout(
-                () => {
-                    console.log('ordecRestartSession triggered from editor');
-                    window.ordecClient.connect()
-                },
-                this.refreshTimeout
-            );
+            window.clearTimeout(this.timeout);
+            this.timeout = window.setTimeout(() => {
+                console.log('ordecRestartSession triggered from editor');
+                window.ordecClient.src = this.editor.getValue();
+                window.ordecClient.connect();
+            }, this.refreshTimeout);
         }
     }
 }
 
 async function getInitData() {
-    var paramExample = urlParams.get('example');
+    let paramExample = urlParams.get('example');
     if (!paramExample) {
         paramExample = 'blank';
     }
@@ -102,16 +95,12 @@ async function getInitData() {
     return await response.json();
 }
 
-const initData = await getInitData()
-initData.uistate.header = {"popout": false};
+const initData = await getInitData();
+initData.uistate.header = {popout: false};
 
 sourceTypeSelect.value = initData.srctype;
 
-window.ordecClient = new OrdecClient(
-    getSourceType(),
-    [],
-    setStatus,
-)
+window.ordecClient = new OrdecClient(getSourceType(), [], setStatus);
 
 const layout = new GoldenLayout(document.getElementById("workspace"));
 layout.layoutConfig.settings.showPopoutIcon = false;
@@ -121,8 +110,8 @@ layout.registerComponent('result', ResultViewer);
 layout.loadLayout(initData.uistate);
 
 function getResultViewers() {
-    var ret = [];
-    layout.root.getAllContentItems().forEach(function(e) {
+    let ret = [];
+    layout.root.getAllContentItems().forEach(e => {
         if (!e.isComponent) return;
         if (e.componentName != 'result') return;
         ret.push(e.component);
@@ -131,13 +120,15 @@ function getResultViewers() {
 }
 
 
-layout.addEventListener('stateChanged', () => window.ordecClient.resultViewers = getResultViewers())
+layout.addEventListener('stateChanged', () => {
+    window.ordecClient.resultViewers = getResultViewers();
+});
 
-document.getElementById("newresview").onclick = function() {
+document.getElementById("newresview").onclick = () => {
     layout.addComponent('result', undefined, 'Result View');
 };
 
-document.getElementById("savejson").onclick = function() {
+document.getElementById("savejson").onclick = () => {
     const uistate = LayoutConfig.fromResolved(layout.saveLayout());
 
     const dataStr = "data:application/json;charset=utf-8,"
@@ -146,11 +137,11 @@ document.getElementById("savejson").onclick = function() {
     dlAnchorElem.setAttribute("href", dataStr);
     dlAnchorElem.setAttribute("target", "_blank");
     dlAnchorElem.click();
-}
+};
 
-sourceTypeSelect.onchange = function() {
-    window.ordecClient.srctype = getSourceType()
-    window.ordecClient.connect()
+sourceTypeSelect.onchange = () => {
+    window.ordecClient.srctype = getSourceType();
+    window.ordecClient.connect();
 };
 
 window.ordecClient.editor.loadSrc(initData.src);
