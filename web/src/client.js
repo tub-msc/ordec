@@ -41,17 +41,15 @@ export class OrdecClient {
     wsOnMessage(messageEvent) {
         const msg = JSON.parse(messageEvent.data);
         //console.log(msg)
-        if ((msg['msg'] == 'views') || (msg['msg'] == 'exception')) {
-            if (msg['msg'] == 'exception') {
-                this.exception = msg['exception']
-                this.setStatus('exception')
-            } else {
-                this.exception = undefined
-                this.views = msg['views']
-            }
-            this.resultViewers.forEach(function(rv) {
-                rv.updateGlobalState()
-            })
+        if (msg['msg'] == 'views') {
+            this.exception = null;
+            this.views = msg['views'];
+            this.resultViewers.forEach(rv => rv.updateGlobalState());
+            this.requestNextView()
+        } else if (msg['msg'] == 'exception') {
+            this.exception = msg['exception'];
+            this.setStatus('exception');
+            this.resultViewers.forEach(rv => rv.updateGlobalState());
             this.requestNextView()
         } else if (msg['msg'] == 'view') {
             this.nextView.updateView(msg);
@@ -62,12 +60,9 @@ export class OrdecClient {
 
     wsOnClose(closeEvent) {
         if (!this.exception) {
-            this.exception = "Websocket disconnected.";
+            //this.exception = "Websocket disconnected.";
             this.setStatus('disconnected')
         }
-        this.resultViewers.forEach(function(rv) {
-            rv.updateGlobalState()
-        })
     };
 
     wsOnOpen(event) {

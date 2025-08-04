@@ -7,41 +7,55 @@ import * as d3 from "d3";
 
 const viewClassOf = {
     html: class {
-        constructor(resContent, msgData) {
+        constructor(resContent) {
             this.resContent = resContent;
+        }
+
+        update(msgData) {
             this.resContent.innerHTML = msgData;
         }
     },
     svg: class {
-        constructor(resContent, msgData) {
+        constructor(resContent) {
             this.resContent = resContent;
-
+            this.transform = d3.zoomIdentity;
+        }
+        zoomed({transform}) {
+            this.transform = transform;
+            this.g.attr("transform", transform);
+        }
+        update(msgData) {
             const viewbox = msgData['viewbox'];
             const viewbox2 = [[viewbox[0], viewbox[1]], [viewbox[2], viewbox[3]]]
 
             const svg = d3.create("svg")
+                .attr("class", "fit")
                 .attr("viewBox", viewbox);
 
-            const g = svg.append("g")
+            this.g = svg.append("g")
                 .html(msgData['inner'])
 
-            svg.call(d3.zoom()
+            let zoom = d3.zoom()
                 .extent(viewbox2)
                 .scaleExtent([1, 12])
-                .translateExtent(viewbox2)
-                .on("zoom", zoomed));
+                .translateExtent(viewbox2);
 
-            function zoomed({transform}) {
-                g.attr("transform", transform);
-            }
+            svg.call(zoom.transform, this.transform);
+            this.g.attr("transform", this.transform);
 
+            svg.call(zoom.on("zoom", (x) => this.zoomed(x)));
+
+            this.resContent.innerHTML = '';
             this.resContent.append(svg.node());
         }
     },
     dcsim: class {
-        constructor(resContent, msgData) {
+        constructor(resContent) {
             this.resContent = resContent;
+        }
 
+        update(msgData) {
+            this.resContent.innerHTML = '';
             var table = document.createElement('table');
             table.classList.add('dc_table')
             this.resContent.appendChild(table)
@@ -70,9 +84,10 @@ const viewClassOf = {
 export class ResultViewer {
     constructor(container, state) {
         this.container = container
-        container.element.innerHTML = '<div class="resview"><div class="resviewhead"><select class="viewsel"></select></div><div class="rescontent">result will be shown here</div></div>';
+        container.element.innerHTML = '<div class="resview"><div class="resviewhead"><select class="viewsel"></select></div><div class="rescontent">result will be shown here</div><div class="resexception"></div></div>';
         this.resizeWithContainerAutomatically = true
         this.resContent = container.element.getElementsByClassName("rescontent")[0];
+        this.resException = container.element.getElementsByClassName("resexception")[0];
         this.viewSel = container.element.getElementsByClassName("viewsel")[0];
         this.viewLoaded = false;
 
@@ -89,26 +104,26 @@ export class ResultViewer {
         this.container.setState({
             'view': this.viewSel.options[this.viewSel.selectedIndex].value
         });
+        
+        this.invalidate();
+        this.resContent.innerHTML = "";
+        this.view = null;
         if (!window.ordecClient.exception) {
-            this.clear()
-            window.ordecClient.requestNextView()
+            window.ordecClient.requestNextView();
         }
     }
 
-    clear() {
-        this.resContent.innerHTML = "";
+    invalidate() {
         this.viewLoaded = false;
     }
 
     updateGlobalState() {
-        this.clear()
-        if (window.ordecClient.exception) {
-            var pre = document.createElement("pre");
-            pre.innerText = window.ordecClient.exception;
-            pre.classList.add('exception')
-            this.resContent.appendChild(pre);
-            this.viewLoaded = true;
-        }
+        this.invalidate();
+        this.updateViewList();
+        this.updateExceptionState();
+    }
+
+    updateViewList() {
         var vs = this.viewSel
         var prevOptVal;
         if (vs.selectedIndex > 0) {
@@ -129,23 +144,37 @@ export class ResultViewer {
         this.viewRequested = prevOptVal
     }
 
-    updateView(msg) {
-        this.viewLoaded = true;
+    updateExceptionState() {
+        if (window.ordecClient.exception) {
+            this.resException.style.display = 'block';
+            this.resContent.style.display = 'none';
 
-        if (msg.exception) {
             var pre = document.createElement("pre");
-            pre.innerText = msg['exception'];
+            pre.innerText = window.ordecClient.exception;
             pre.classList.add('exception')
-            this.resContent.appendChild(pre);
+            this.resException.innerHTML = '';
+            this.resException.appendChild(pre);
+            
         } else {
-            const viewClass = viewClassOf[msg.type]
-            if(viewClass) {
-                new viewClass(this.resContent, msg.data)    
-            } else  {
-                var pre = document.createElement("pre");
-                pre.innerText = 'no handler found for type '+msg.type;
-                this.resContent.appendChild(pre);
-            }
+            this.resException.style.display = 'none';
+            this.resContent.style.display = 'block';
         }
+    }
+
+    updateView(msg) {
+        this.resContent.innerHTML = "";
+        this.viewLoaded = true;
+    
+        const viewClass = viewClassOf[msg.type]
+        if(!viewClass) {
+            var pre = document.createElement("pre");
+            pre.innerText = 'no handler found for type '+msg.type;
+            this.resContent.appendChild(pre);
+        } else if(this.view instanceof viewClass) {
+            this.view.update(msg.data);
+        } else {
+            this.view = new viewClass(this.resContent);
+            this.view.update(msg.data);
+        } 
     }
 }
