@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.17.2
+#       jupytext_version: 1.16.4
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -53,7 +53,7 @@ class Flight(Node):
 
 # We can now create a planet and add some airports and flights to it:
 
-earth = Planet(diameter=12756)
+earth = Planet(diameter=1275.6)
 earth.ber = Airport(label="Berlin Brandenburg Airport", year_opened=2012)
 earth.cdg = Airport(label="Paris Charles de Gaulle Airport", year_opened=1974)
 earth.lax = Airport(label="Los Angeles International Airport", year_opened=1928)
@@ -216,7 +216,7 @@ class TicketSegment(Node):
     flight = ExternalRef(Flight, of_subgraph=lambda c: c.root.planet)
     seat = Attr(str)
     
-myticket = Ticket(price=1999, planet=earth_frozen)
+myticket = Ticket(price=1999.0, planet=earth_frozen)
 
 f1 = [f for f in earth_frozen.all(Flight) if f.origin==earth_frozen.lax and f.destination==earth_frozen.cdg][0]
 f2 = [f for f in earth_frozen.all(Flight) if f.origin==earth_frozen.cdg and f.destination==earth_frozen.ber][0]
@@ -234,7 +234,7 @@ sum([segment.flight.duration for segment in myticket.all(TicketSegment)])
 # Note that subgraph references such as Ticket.planet must always point to FrozenSubgraphs. Here, a MutableSubgraph leads to a TypeError:
 
 # + tags=["raises-exception"]
-another_ticket = Ticket(price=1999, planet=earth)
+another_ticket = Ticket(price=1999.0, planet=earth)
 # -
 
 # ## Cell and @generate

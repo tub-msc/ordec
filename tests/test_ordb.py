@@ -726,7 +726,6 @@ def test_index_custom_sort():
     index_values = s.all(MyItem.idx_ref.query(1), wrap_cursor=False)
     assert index_values == [99, 98, 100, 102, 101] # ordered by node.order
 
-
 def test_subgraph_ntype():
     s = MyHead()
     assert isinstance(s, MyHead)
@@ -784,3 +783,98 @@ def test_cursor_externalref():
 
     assert s3.e1.eref == s1.n1
     assert s3.e2.eref == s2.n1
+
+def test_typecheck_simple():
+    class NodeA(Node):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    with pytest.raises(TypeError):
+        NodeA(text=123)
+
+def test_typecheck_custom():
+    class NodeA(Node):
+        in_subgraphs=[MyHead]
+        size = Attr(int, typecheck_custom=lambda v: isinstance(v, int) and v >=0)
+
+    NodeA(size=123)
+
+    with pytest.raises(TypeError):
+        NodeA(size=-1)
+
+def test_mandatory():
+    class NodeA(Node):
+        in_subgraphs=[MyHead]
+        text = Attr(str, optional=False)
+
+    NodeA(text='hello')
+
+    with pytest.raises(TypeError):
+        NodeA()
+
+    with pytest.raises(TypeError):
+        NodeA(text=None)
+
+def test_refcheck_localref():
+    class NodeA(Node):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    class NodeB(Node):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    class NodeRef(Node):
+        in_subgraphs=[MyHead]
+        ref = LocalRef(NodeA)
+
+    s = MyHead()
+    s.a = NodeA()
+    s.b = NodeB()
+    s % NodeRef(ref=s.b)
+
+    with pytest.raises(ModelViolation):
+        s % NodeRef(ref=s.a)
+
+def test_refcheck_localref():
+    class NodeA(Node):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    class NodeRef(Node):
+        in_subgraphs=[MyHead]
+        ref = LocalRef(NodeA, optional=False)
+
+    with pytest.raises(TypeError):
+        NodeRef()
+        
+def test_typecheck_subgraphref():
+    class AnotherHead(SubgraphRoot):
+        label = Attr(str)
+
+    class NodeExtRef(Node):
+        in_subgraphs=[MyHead]
+        subg = SubgraphRef(MyHead)
+
+    e1 = MyHead().freeze()
+    e2 = AnotherHead().freeze()
+
+    NodeExtRef(subg=e1)
+
+    with pytest.raises(TypeError):
+        NodeExtRef(subg=e2)
+
+def test_subgraphref_mandatory():
+    class NodeExtRef(Node):
+        in_subgraphs=[MyHead]
+        subg = SubgraphRef(MyHead, optional=False)
+
+    e1 = MyHead().freeze()
+    
+    NodeExtRef(subg=e1)
+
+    with pytest.raises(TypeError):
+        NodeExtRef()
+
+    with pytest.raises(TypeError):
+        NodeExtRef(subg=None)

@@ -81,6 +81,10 @@ class DanglingLocalRef(ModelViolation):
     """
     nid: int
 
+def must_be_type(t):
+    if not isinstance(t, type):
+        raise TypeError(f"{t} is not type.")
+
 @public
 class Attr:
     """
@@ -90,24 +94,48 @@ class Attr:
         type: Defines the type of attribute values.
         default: Default attribute value.
         factory: Function applied to each value before assignment to attribute.
+        typecheck_custom: If this argument is not provided, type checking
+            is performed through isinstance(val, type). If it is provided,
+            typecheck_custom is called with val instead of the default
+            type check. This is for example used in NPath to support both int
+            and str values.
 
     Attributes:
         indices (list[GenericIndex]): list of all indices associated with attribute
     """
 
-    def __init__(self, type: type, default=None, factory: Callable=None):
+    def __init__(self, type: type, default=None, optional: bool=True, factory: Callable=None, typecheck_custom: Callable=None):
+        if typecheck_custom:
+            self.typecheck = typecheck_custom
+        else:
+            must_be_type(type)
+            self.typecheck = lambda val: isinstance(val, type)
+
         self.type = type
         self.default = default
         self.custom_factory = factory
+        self.optional = optional
         self.indices = []
 
     def factory(self, val):
+        if val == None:
+            val = self.default
         if self.custom_factory:
             val = self.custom_factory(val)
         if isinstance(val, Node):
             raise TypeError("Nodes can only be added to LocalRef, ExternalRef or SubgraphRef attributes.")
-        return val
 
+        if val == None:
+            if self.optional:
+                return val
+            else:
+                raise TypeError('Attribute is not optional.')
+        
+        if not self.typecheck(val):
+            raise TypeError(f"Incorrect type {type(val).__name__} for attribute.")
+        
+        return val
+        
     def read_hook(self, value, cursor):
         return value
 
@@ -167,19 +195,29 @@ class LocalRef(Attr):
         optional: Specifies whether the reference can be None.
     """
 
-    def __init__(self, refs_ntype: type, optional: bool = True):
-        super().__init__(type=int)
+    def __init__(self, refs_ntype: type, optional: bool=True, refcheck_custom: Callable=None):
+        super().__init__(type=int, optional=optional)
         self.refs_ntype = refs_ntype
-        self.optional = optional
+
+        if refcheck_custom:
+            self.refcheck = refcheck_custom
+        else:
+            must_be_type(refs_ntype)
+            self.refcheck = lambda val: issubclass(val, refs_ntype)
+
         self.indices.append(LocalRefIndex(self))
 
     def factory(self, val: 'int|Node|NoneType'):
-        if val==None or isinstance(val, int):
-            return val
-        elif isinstance(val, Node):
-            return val.nid
-        else:
-            raise TypeError('Only None, int or Node can be assigned to LocalRef.')
+        if val==None:
+            if self.optional:
+                return val
+            else:
+                raise TypeError('Attribute is not optional.')
+        if isinstance(val, Node):
+            val = val.nid
+        if not isinstance(val, int):
+            raise TypeError('Only int or Node (or None if optional) can be assigned to LocalRef.')
+        return val
 
     def read_hook(self, value, cursor):
         if value is None:
@@ -206,13 +244,24 @@ class SubgraphRef(Attr):
         return value.root_cursor
 
     def factory(self, val: 'FrozenSubgraph|SubgraphRoot|NoneType'):
-        if val==None or isinstance(val, FrozenSubgraph):
-            return val
-        elif isinstance(val, Node) and not val.mutable:
-            return val.subgraph
-        else:
-            raise TypeError('Only None, FrozenSubgraph or SubgraphRoot can be assigned to SubgraphRef.')
+        if val==None:
+            if self.optional:
+                return val
+            else:
+                raise TypeError('Attribute is not optional.')
+        if isinstance(val, Node):
+            val = val.subgraph
 
+        if not isinstance(val, FrozenSubgraph):
+            if isinstance(val, MutableSubgraph):
+                raise TypeError('MutableSubgraph cannot be assigned to SubgraphRef (must be frozen).')
+            else:
+                raise TypeError('Only None, FrozenSubgraph or SubgraphRoot can be assigned to SubgraphRef.')
+
+        if not self.typecheck(val.root_cursor):
+            raise TypeError(f"Incorrect type {type(val.root_cursor).__name__} for SubgraphRef.")
+        
+        return val
 @public
 class ExternalRef(Attr):
     """
@@ -222,6 +271,9 @@ class ExternalRef(Attr):
     corresponding SubgraphRef can be an attribute of the same node or of
     another node. The of_subgraph argument defines which SubgraphRef corresponds
     to the ExternalRef.
+
+    Warning: ExternalRefs are currently not typechecked in the way that
+    LocalRefs are.
 
     Args:
         refs_ntype: The referenced node type.
@@ -233,21 +285,25 @@ class ExternalRef(Attr):
     """
 
     def __init__(self, refs_ntype: type, of_subgraph: 'Callable[[Node], SubgraphRoot]', optional: bool = True):
-        super().__init__(type=int)
+        super().__init__(type=int, optional=optional)
         self.refs_ntype = refs_ntype
         self.of_subgraph = of_subgraph
-        self.optional = optional
 
     def read_hook(self, value, cursor):
         return self.of_subgraph(cursor).cursor_at(value)
 
     def factory(self, val: 'int|Node|NoneType'):
-        if val==None or isinstance(val, int):
-            return val
-        elif isinstance(val, Node):
-            return val.nid
-        else:
+        if val==None:
+            if self.optional:
+                return val
+            else:
+                raise TypeError('Attribute is not optional.')
+        if isinstance(val, Node):
+            val = val.nid
+        if not isinstance(val, int):
             raise TypeError('Only None, int or Node can be assigned to ExternalRef.')
+        return val
+            
 
 @public
 class Index(GenericIndex):
@@ -384,15 +440,22 @@ class LocalRefIndex(Index):
             sgu.index = sgu.index.remove(key)
 
     def check_constraints(self, sgu: 'SubgraphUpdater', node, nid):
-        ref = node[node._attrdesc_by_attr[self.attr].index]
+        attrdesc = node._attrdesc_by_attr[self.attr]
+        ref = node[attrdesc.index]
 
-        if node._attrdesc_by_attr[self.attr].attr.optional and ref == None:
+        if  ref == None:
+            # The optional check on which this assertion is based is in
+            # LocalRef.factory.
+            assert attrdesc.attr.optional
             return
-        if not isinstance(ref, int):
-            raise ModelViolation("LocalRefs must be int (or None if optional).")
-
-        if ref not in sgu.nodes:
-            raise DanglingLocalRef(ref)
+        
+        try:
+            target = sgu.nodes[ref]
+        except KeyError:
+            raise DanglingLocalRef(ref) from None
+        
+        if not attrdesc.attr.refcheck(target._cursor_type):
+            raise ModelViolation(f"LocalRef invalid reference {attrdesc.name}={ref} ({target._cursor_type.__name__}) in {node._cursor_type.__name__}(nid={nid}, ...)") from None
 
 class NPathIndex(CombinedIndex):
     def check_constraints(self, sgu: 'SubgraphUpdater', node, nid):
@@ -417,7 +480,7 @@ class NodeTuple(tuple):
             raise TypeError("All attributes of NodeTuple must be hashable.")
 
     def __new__(cls, **kwargs):
-        ret=super().__new__(cls, (ad.attr.factory(kwargs.pop(ad.name)) if (ad.name in kwargs) else ad.attr.default for ad in cls._layout))
+        ret=super().__new__(cls, (ad.attr.factory(kwargs.pop(ad.name, None)) for ad in cls._layout))
         if len(kwargs) > 0:
             unknown_attrs = ', '.join(kwargs.keys())
             raise AttributeError(f"Unknown attributes provided: {unknown_attrs}")
@@ -433,7 +496,7 @@ class NodeTuple(tuple):
     def set(self, **kwargs):
         # Bypasses NodeTuple.__new__:
 
-        ret=super().__new__(type(self), (ad.attr.factory(kwargs.pop(ad.name)) if (ad.name in kwargs) else self[ad.index] for ad in self._layout))
+        ret=super().__new__(type(self), (ad.attr.factory(kwargs.pop(ad.name, self[ad.index])) for ad in self._layout))
         if len(kwargs) > 0:
             unknown_attrs = ', '.join(kwargs.keys())
             raise AttributeError(f"Unknown attributes provided: {unknown_attrs}")
@@ -1418,9 +1481,10 @@ class NPath(Node):
     def raw_cursor(cls, subgraph: 'Subgraph', nid: int|NoneType, npath_nid: int|NoneType):
         raise TypeError("raw_cursor of NPath not supported. Use PathNode instead.")
 
-    parent  = LocalRef('Path|type(None)')
-    name    = Attr(str|int, factory=check_name)
-    ref     = LocalRef(object|type(None))
+    parent  = LocalRef('NPath', refcheck_custom=lambda val: issubclass(val, NPath))
+    name    = Attr(str|int, factory=check_name,
+        typecheck_custom=lambda val: isinstance(val, (str, int)))
+    ref     = LocalRef(Node, refcheck_custom=lambda v: True)
 
     idx_parent_name = NPathIndex([parent, name], unique=True)
     idx_path_of = Index(ref, unique=True)

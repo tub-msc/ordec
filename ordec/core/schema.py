@@ -9,6 +9,7 @@ from public import public
 from .rational import R
 from .geoprim import *
 from .ordb import *
+from .cell import Cell
 
 @public
 class PinType(Enum):
@@ -27,7 +28,7 @@ class Symbol(SubgraphRoot):
     """A symbol of an individual cell."""
     outline = Attr(Rect4R)
     caption = Attr(str)
-    cell = Attr('Cell')
+    cell = Attr(Cell)
 
     def portmap(self, **kwargs):
         def inserter_func(main, sgu):
@@ -147,9 +148,9 @@ class Schematic(SubgraphRoot):
     """
     symbol = SubgraphRef(Symbol)
     outline = Attr(Rect4R)
-    cell = Attr('Cell')
-    default_supply = LocalRef('Net')
-    default_ground = LocalRef('Net')
+    cell = Attr(Cell)
+    default_supply = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
+    default_ground = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
 
     def _repr_svg_(self):
         from ..render import render
@@ -258,7 +259,7 @@ def parent_siminstance(c: Node) -> Node:
 @public
 class SimHierarchy(SubgraphRoot):
     schematic = SubgraphRef(Schematic)
-    cell = Attr('Cell')
+    cell = Attr(Cell)
 
     def webdata(self):
         def fmt_float(val, unit):
@@ -284,8 +285,8 @@ class SimHierarchy(SubgraphRoot):
 @public
 class SimNet(Node):
     in_subgraphs = [SimHierarchy]
-    trans_voltage = Attr(list[float])
-    trans_current = Attr(list[float])
+    trans_voltage = Attr(tuple)
+    trans_current = Attr(tuple)
     dc_voltage = Attr(float)
 
     eref = ExternalRef(Net|Pin, of_subgraph=lambda c: parent_siminstance(c).schematic)
@@ -295,7 +296,7 @@ class SimInstance(NonLeafNode):
     in_subgraphs = [SimHierarchy]
     dc_current = Attr(float)
 
-    schematic = SubgraphRef(Schematic)
+    schematic = SubgraphRef(Symbol|Schematic, typecheck_custom=lambda v: isinstance(v, (Symbol, Schematic)))
     eref = ExternalRef(SchemInstance, of_subgraph=lambda c: parent_siminstance(c.parent).schematic)
 
 # Misc
@@ -308,7 +309,7 @@ class PolyVec2R(Node):
     A polygonal chain is closed if the last and first element are equivalent.
     """
     in_subgraphs = [Symbol, Schematic]
-    ref    = LocalRef('SymbolPoly|SchemWire')
+    ref    = LocalRef(SymbolPoly, refcheck_custom=lambda v:True)
     order   = Attr(int) #: Order of the point in the polygonal chain
     pos     = Attr(Vec2R)
 

@@ -205,6 +205,7 @@ class TestNmosInv(Cell):
         s.vdd = Net(pin=self.symbol.vdd)
         s.vss = Net(pin=self.symbol.vss)
 
+
         nmos = Nmos(w=R("500n"), l=R("250n")).symbol
 
         portmap = nmos.portmap(s=s.vss, b=s.vss, g=s.a, d=s.y)
@@ -215,7 +216,8 @@ class TestNmosInv(Cell):
 
         s.pd = SchemInstance(portmap, pos=Vec2R(3, 2))
         if self.params.variant == "portmap_stray_key":
-            s.pd % SchemInstanceConn(here=0, there=0)
+            s.stray = Net()
+            s.pd % SchemInstanceConn(here=s.stray, there=0)
         elif self.params.variant == "portmap_bad_value":
             list(s.pd.conns)[0].there = 12345
 
