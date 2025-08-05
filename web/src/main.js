@@ -15,8 +15,10 @@ import "ace-builds/src-noconflict/mode-python";
 import "ace-builds/src-noconflict/theme-github";
 import "ace-builds/src-noconflict/ext-language_tools";
 
-import { ResultViewer } from "./resultviewer.js"
-import { OrdecClient } from './client.js'
+import './auth.js';
+
+import { ResultViewer } from "./resultviewer.js";
+import { OrdecClient } from './client.js';
 
 const sourceTypeSelect = document.querySelector("#sourcetype");
 const urlParams = new URLSearchParams(window.location.search);
@@ -30,7 +32,12 @@ if(debug) {
 }
 
 // Overrides auto_refresh=False behavior for test_web.py:
-ResultViewer.refreshAll = Boolean(urlParams.get('refreshall')); 
+ResultViewer.refreshAll = Boolean(urlParams.get('refreshall'));
+
+// the module= URL paramter is used to work on an external module rather than use the source editor.
+const extModule = urlParams.get('module');
+const extModuleView = urlParams.get('view');
+
 
 function getSourceType() {
     return sourceTypeSelect.options[sourceTypeSelect.selectedIndex].value;
@@ -73,11 +80,12 @@ class Editor {
     changed(delta) {
         if(this.refreshTimeout <= 0) {
             window.ordecClient.src = this.editor.getValue();
+            console.log('ordecClient.connect() triggered by editor change (no timeout).');
             window.ordecClient.connect();
         } else {
             window.clearTimeout(this.timeout);
             this.timeout = window.setTimeout(() => {
-                console.log('ordecRestartSession triggered from editor');
+                console.log('ordecClient.connect() triggered by editor change.');
                 window.ordecClient.src = this.editor.getValue();
                 window.ordecClient.connect();
             }, this.refreshTimeout);
@@ -98,11 +106,6 @@ async function getInitData() {
     return await response.json();
 }
 
-const initData = await getInitData();
-initData.uistate.header = {popout: false};
-
-sourceTypeSelect.value = initData.srctype;
-
 window.ordecClient = new OrdecClient(getSourceType(), [], setStatus);
 
 const layout = new GoldenLayout(document.querySelector("#workspace"));
@@ -110,7 +113,6 @@ layout.layoutConfig.settings.showPopoutIcon = false;
 layout.resizeWithContainerAutomatically = true;
 layout.registerComponent('editor', Editor);
 layout.registerComponent('result', ResultViewer);
-layout.loadLayout(initData.uistate);
 
 function getResultViewers() {
     let ret = [];
@@ -121,7 +123,6 @@ function getResultViewers() {
     });
     return ret;
 }
-
 
 layout.addEventListener('stateChanged', () => {
     window.ordecClient.resultViewers = getResultViewers();
@@ -142,11 +143,51 @@ document.querySelector("#savejson").onclick = () => {
     dlAnchorElem.click();
 };
 
-sourceTypeSelect.onchange = () => {
-    window.ordecClient.srctype = getSourceType();
+document.querySelector("#refresh").onclick = () => {
     window.ordecClient.connect();
 };
 
-window.ordecClient.editor.loadSrc(initData.src);
-// 1st request, caused by loadSrc, is with refreshTimeout = 0.
-window.ordecClient.editor.refreshTimeout = 500; 
+sourceTypeSelect.onchange = () => {
+    window.ordecClient.srctype = getSourceType();
+    console.log('ordecClient.connect() triggered by source type selector.');
+    window.ordecClient.connect();
+};
+
+if(extModule) {
+    document.querySelector("#toolSourcetype").style.display='none';
+
+    const uistate = {
+        "content": [
+            {
+                "type": "row",
+                "content": [
+                    {
+                        "type": "component",
+                        "title": "Result View",
+                        "componentName": "result",
+                        "componentState": {
+                            "view": extModuleView,
+                        }
+                    }
+                ]
+            }
+        ]
+    }; 
+    uistate.header = {popout: false};
+
+    layout.loadLayout(uistate);
+    window.ordecClient.extModule = extModule;
+    window.ordecClient.connect();
+} else {
+    document.querySelector("#toolRefresh").style.display='none';
+
+    const initData = await getInitData();
+    initData.uistate.header = {popout: false};
+    sourceTypeSelect.value = initData.srctype;
+    window.ordecClient.srctype = initData.srctype;
+    layout.loadLayout(initData.uistate);
+
+    window.ordecClient.editor.loadSrc(initData.src);
+    // 1st request, caused by loadSrc, is with refreshTimeout = 0.
+    window.ordecClient.editor.refreshTimeout = 500; 
+}

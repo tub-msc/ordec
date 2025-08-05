@@ -163,7 +163,10 @@ export class ResultViewer {
     invalidate() {
         this.viewUpToDate = false;
         this.refreshRequestedByUser = false;
-        if(this.viewInfo().auto_refresh && !ResultViewer.refreshAll) {
+
+        if(!this.viewSelected) {
+            this.showRefreshOverlay(null);
+        } else if(this.viewInfo().auto_refresh && !ResultViewer.refreshAll) {
             this.showRefreshOverlay("refreshing");
         } else {
             this.showRefreshOverlay("refreshable");

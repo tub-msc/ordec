@@ -6,9 +6,6 @@ WebSocket server for use in conjunction with the new web interface.
 """
 
 import argparse
-from websockets.sync.server import serve
-from websockets.http11 import Request, Response
-from websockets.datastructures import Headers
 import http
 import json
 import traceback
@@ -17,14 +14,24 @@ import mimetypes
 from urllib.parse import urlparse, parse_qs
 import threading
 import signal
+import importlib
 import importlib.resources
 import tarfile
-from functools import partial
 import secrets
 import io
 import time
 import tempfile
+import sys
+import os
+import select
 
+import inotify_simple
+from websockets.sync.server import serve
+from websockets.http11 import Request, Response
+from websockets.datastructures import Headers
+from websockets.exceptions import ConnectionClosedOK
+
+from . import importer
 from .core import *
 from .core.cell import ViewGenerator
 from .ord1.parser import ord2py
@@ -41,16 +48,43 @@ def discover_views(conn_globals):
                         | member.info_dict())
     return views
 
-def build_cells(source_type: str, source_data: str) -> (dict, dict):
-    conn_globals = {}
-    if source_type == 'python' or source_type == 'ord':
+class ConnectionHandler:
+    def __init__(self, auth_token, sysmodules_orig):
+        self.sysmodules_orig = set(sysmodules_orig.keys())
+        self.auth_token = auth_token
+        self.import_lock = threading.Lock()
+        # import_lock is not perfect. Ideally, we would have a RW lock which
+        # ensure that no other thread is evaluating view requests when import_lock
+        # is acquired.
+
+    def query_view(self, view_name, conn_globals):
+        msg_ret = {
+            'msg':'view',
+            'view':view_name,
+        }
+
+        try:
+            with self.import_lock:
+                view = eval(view_name, conn_globals, conn_globals)
+                viewtype, data = view.webdata()
+            msg_ret['type'] = viewtype
+            msg_ret['data'] = data
+        except:    
+            msg_ret['exception'] = traceback.format_exc()
+
+        return msg_ret
+
+    def build_cells(self, source_type: str, source_data: str) -> (dict, dict):
+        conn_globals = {}
         try:
             if source_type == 'ord':
                 code = compile(ord2py(source_data), "<string>", "exec")
                 exec(code, conn_globals, conn_globals)
-            else:
+            elif source_type == 'python':
                 exec(source_data, conn_globals, conn_globals)
-        except Exception:
+            else:
+                raise NotImplementedError(f'source_type {source_type} not implemented')
+        except:
             #print("Reporting exception.")
             return {
                 'msg':'exception',
@@ -61,59 +95,134 @@ def build_cells(source_type: str, source_data: str) -> (dict, dict):
                 'msg':'viewlist',
                 'views':discover_views(conn_globals),
             }, conn_globals
-    else:
-        raise NotImplementedError(f'source_type {source_type} not implemented')
 
-def query_view(view_name, conn_globals):
-    msg_ret = {
-        'msg':'view',
-        'view':view_name,
-    }
+    def purge_modules(self):
+        """
+        Removes all modules from sys.modules that were not in sys.modules
+        before the first build_cells or build_extmodule call. This ensures that
+        re-imports read the sources freshly.
 
-    try:
-        view = eval(view_name, conn_globals, conn_globals)
-        viewtype, data = view.webdata()
-        msg_ret['type'] = viewtype
-        msg_ret['data'] = data
-    except Exception:    
-        msg_ret['exception'] = traceback.format_exc()
+        Only call this method with self.import_lock acquired.
+        """
+        for k in list(sys.modules.keys()):
+            if k not in self.sysmodules_orig:
+                #print(f"Unloading {k}...")
+                del sys.modules[k]
 
-    return msg_ret
+    def watch_files(self):
+        ret = []
+        for k, v in sys.modules.items():
+            if k not in self.sysmodules_orig:
+                try:
+                    ret.append(v.__file__)
+                except AttributeError:
+                    pass
+        return ret
 
-def handle_connection(websocket, auth_token):
-    remote = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
-    print(f"{remote}: new websocket connection")
-    msgs = iter(websocket)
+    def build_extmodule(self, extmodule: str):
+        with self.import_lock:
+            self.purge_modules()
+            try:
+                #print(f"Importing {extmodule}...")
+                module = importlib.import_module(extmodule)
+                conn_globals = module.__dict__
+            except:
+                return {
+                    'msg':'exception',
+                    'exception':traceback.format_exc(),
+                }, None, self.watch_files()
+            else:
+                return {
+                    'msg':'viewlist',
+                    'views':discover_views(conn_globals),
+                }, conn_globals, self.watch_files()
 
-    # Validate auth_token to prevent code execution from untrusted connections:
-    msg_first = json.loads(next(msgs))
-    if auth_token:
-        if not secrets.compare_digest(auth_token, msg_first['auth']):
+    def handle_connection(self, websocket):
+        remote = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
+        print(f"{remote}: new websocket connection")
+        msgs = iter(websocket)
+
+        # Validate auth_token to prevent code execution from untrusted connections:
+        msg_first = json.loads(next(msgs))
+        if not secrets.compare_digest(self.auth_token, msg_first['auth']):
             websocket.send(json.dumps({
                 'msg':'exception',
                 'exception':"incorrect auth token provided",
                 }))
             return
 
-    # First message - read design input / build cells:
-    assert msg_first['msg'] == 'source'
-    source_type = msg_first['srctype']
-    source_data = msg_first['src']
-    #print(f"Received source of type {source_type}.")
-    msg_ret, conn_globals = build_cells(source_type, source_data)
-    websocket.send(json.dumps(msg_ret))
-    if not conn_globals:
-        return
-
-    for msg_raw in websocket:
-        msg = json.loads(msg_raw)
-        assert msg['msg'] == 'getview'
-        view_name = msg['view']
-        #print(f"View {view_name} was requested.")
-
-        msg_ret = query_view(view_name, conn_globals)
+        # First message - read design input / build cells:
+        if msg_first['msg'] == 'source':
+            #print(f"Received source of type {source_type}.")
+            msg_ret, conn_globals = self.build_cells(msg_first['srctype'], msg_first['src'])
+            watch_files = []
+        elif msg_first['msg'] == 'extmodule':
+            msg_ret, conn_globals, watch_files = self.build_extmodule(msg_first['extmodule'])
+        else:
+            raise Exception("Excpected 'source' or 'extmodule' message.")    
         websocket.send(json.dumps(msg_ret))
-    print(f"{remote}: websocket connection ended")
+        if not conn_globals:
+            return
+
+        if watch_files:
+            pipe_inotify_abort_r_fd, pipe_inotify_abort_w_fd = os.pipe()
+            pipe_inotify_abort_r = os.fdopen(pipe_inotify_abort_r_fd, 'r')
+            pipe_inotify_abort_w = os.fdopen(pipe_inotify_abort_w_fd, 'w')
+            watch_thread = threading.Thread(target=background_inotify,
+                args=(watch_files, pipe_inotify_abort_r, websocket), daemon=True)
+            watch_thread.start()
+        try:
+            for msg_raw in websocket:
+                msg = json.loads(msg_raw)
+                assert msg['msg'] == 'getview'
+                view_name = msg['view']
+                #print(f"View {view_name} was requested.")
+
+                msg_ret = self.query_view(view_name, conn_globals)
+                websocket.send(json.dumps(msg_ret))
+        finally:
+            if watch_files:
+                pipe_inotify_abort_w.write("abort!")
+                pipe_inotify_abort_w.flush()
+                # "abort!" is just a dummy message to trigger select() and 
+                # stop the inotify thread. See "Gracefully exit a blocking read()"
+                # in the inotify_simple documentation.
+
+                #print("Waiting for inotify thread...")
+                watch_thread.join()
+                #print("Inotify thread finished.")
+                pipe_inotify_abort_w.close()
+
+        print(f"{remote}: websocket connection ended")
+
+def background_inotify(watch_files, pipe_inotify_abort_r, websocket):
+    # This has be to a separate thread, because the file websocket.socket
+    # is done in yet another separate thread. I would have preferred a single
+    # thread per websocket that uses select.select. Now, we have three threads
+    # per websocket: the event processor thread of the websockets library,
+    # the background_inotify thread and the connection's handle_connection
+    # thread.
+
+    inotify = inotify_simple.INotify()
+    watch_flags = inotify_simple.flags.DELETE_SELF | inotify_simple.flags.MODIFY | inotify_simple.flags.MOVE_SELF
+    for f in watch_files:
+        #print(f"Watching for {f}")
+        inotify.add_watch(f, watch_flags)
+
+    while True:
+        readable, _, _ = select.select([inotify, pipe_inotify_abort_r], [], [])
+        if pipe_inotify_abort_r in readable:
+            break
+        if inotify in readable:
+            for m in inotify.read(timeout=0):
+                #print("INOTIFY event!")
+                websocket.send(json.dumps({'msg':'inotify'}))
+                # Current there are potentially multiple inotify messages
+                # sent to the client. We could also end the background_inotify
+                # thread after
+    inotify.close()
+    pipe_inotify_abort_r.close()
+
 
 def build_response(status: http.HTTPStatus=http.HTTPStatus.OK, mime_type: str='text/plain', data: bytes=None):
     if data == None:
@@ -159,8 +268,7 @@ class StaticHandler:
 
     def __init__(self, tar: tarfile.TarFile=None):
         self.tar = tar
-        self.tar_semaphore = threading.Semaphore()
-
+        self.tar_lock = threading.Lock()
         
     def process_request(self, connection, request):
         try:
@@ -205,7 +313,7 @@ class StaticHandler:
             return build_response(http.HTTPStatus.NOT_FOUND)
         
         # tarfile.TarFile seems not to be thread-safe, a semaphore seems to fix this.
-        with self.tar_semaphore:
+        with self.tar_lock:
             try:
                 info = self.tar.getmember(tar_path(req_path))
                 if info.type == tarfile.DIRTYPE:
@@ -287,7 +395,9 @@ def main():
     parser.add_argument('-r', '--static-root', help="Path for static web resources. If not specified, the webdist.tar file included in the ORDeC installation is used.", nargs='?')
     parser.add_argument('-n', '--no-frontend', action='store_true', help="Serve backend only. Requires a separate server (e.g. Vite) to serve the frontend.")
     parser.add_argument('-b', '--launch-browser', action='store_true', help="Automatically open ORDeC in browser.")
-    
+    parser.add_argument('-m', '--module', help="Use specified module in file system rather than web editor.")
+    parser.add_argument('-v', '--view', help="Open specified view of selected module (requires --module).")
+
     args = parser.parse_args()
     hostname = args.hostname
     port = args.port
@@ -296,13 +406,13 @@ def main():
 
     launch_html = None
 
-    user_url = f"http://{hostname}:{port}/?auth={auth_token}"
+    user_url = f"http://{hostname}:{port}"
 
     if args.no_frontend:
         static_handler = StaticHandler()
         # Vite provides the frontend for the user on port 5173:
         print("--no-frontend: Make sure to run 'npm run dev' in web/ in addition to 'ordec-server'.")
-        user_url = f"http://localhost:5173/?auth={auth_token}"
+        user_url = f"http://localhost:5173"
     elif args.static_root:
         static_handler = StaticHandler(anonymous_tar(args.static_root))
     else:
@@ -317,6 +427,15 @@ def main():
                 )
             parser.print_help()
             raise SystemExit(1)
+
+    if args.module:
+        user_url += f"/app.html?auth={auth_token}&module={args.module}"
+        if args.view:
+            user_url += f"&view={args.view}"
+        # Enable importing modules from current working directory:
+        sys.path.append(os.getcwd()) 
+    else:
+        user_url += f"/?auth={auth_token}"
 
     # Launch server in separate daemon thread (daemon=True). The connection
     # threads automatically inherit the daemon property. All daemon threads
@@ -342,7 +461,7 @@ def main():
             launch_html.close() # Deletes the temporary file.
 
 def server_thread(hostname, port, static_handler, auth_token):
-    h = partial(handle_connection, auth_token=auth_token)
-    with serve(h, hostname, port, process_request=static_handler.process_request) as server:
+    c = ConnectionHandler(auth_token=auth_token, sysmodules_orig=sys.modules)
+    with serve(c.handle_connection, hostname, port, process_request=static_handler.process_request) as server:
         #print(f"Listening on {hostname}, port {port}")
         server.serve_forever()

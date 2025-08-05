@@ -9,6 +9,7 @@ export class OrdecClient {
         this.src = ""; // set by Editor from the outside
         this.resultViewers = resultViewers;
         this.setStatus = setStatus;
+        this.extModule = null; // Set to module name when in extModule mode.
     }
 
     getAuthCookie() {
@@ -59,6 +60,9 @@ export class OrdecClient {
             this.nextView.updateView(msg);
             this.reqPending = false;
             this.requestNextView();
+        } else if (msg['msg'] == 'inotify') {
+            console.log("ordecClient.connect() triggered by inotify message.");
+            this.connect();
         }
     }
 
@@ -70,13 +74,23 @@ export class OrdecClient {
     }
 
     wsOnOpen(event) {
+        let msg;
         this.setStatus('busy');
-        this.sock.send(JSON.stringify({
-            msg: 'source',
-            srctype: this.srctype,
-            src: this.src,
-            auth: this.getAuthCookie(),
-        }));
+        if(this.extModule) {
+            msg = {
+                msg: 'extmodule',
+                extmodule: this.extModule,
+                auth: this.getAuthCookie(),
+            };
+        } else {
+            msg = {
+                msg: 'source',
+                srctype: this.srctype,
+                src: this.src,
+                auth: this.getAuthCookie(),
+            };
+        }
+        this.sock.send(JSON.stringify(msg));
     }
 
     requestNextView() {
