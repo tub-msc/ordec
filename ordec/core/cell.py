@@ -4,13 +4,19 @@
 from typing import Type
 from enum import Enum
 from pyrsistent import freeze, pmap, PMap
-from warnings import warn
+from functools import partial
 from public import public
 from .ordb import MutableNode
 
 class ViewGenerator:
-    def __init__(self, func):
+    def __init__(self, func, auto_refresh: bool):
         self.func = func
+        self.auto_refresh = auto_refresh
+
+    def info_dict(self):
+        return {
+            'auto_refresh': self.auto_refresh,
+        }
 
     def __get__(self, obj, owner=None):
         if obj == None: # for the class: return self
@@ -49,11 +55,17 @@ class ViewGenerator:
         raise TypeError("ViewGenerator cannot be deleted.")
 
 @public
-def generate(arg):
+def generate(func=None, auto_refresh=True):
     """
     Decorator for view generator methods.
     """
-    return ViewGenerator(arg)
+    p = partial(ViewGenerator,
+        auto_refresh=auto_refresh,
+        )
+    if func:
+        return p(func)
+    else:
+        return p
 
 class MetaCell(type):
     def __init__(cls, name, bases, attrs):

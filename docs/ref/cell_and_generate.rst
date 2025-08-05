@@ -19,3 +19,11 @@
             s.my_net = Net()
             # ...
             return s
+
+  To disable automatic refreshing in the web interface (e.g. for long simulations):
+
+  .. code-block:: python
+
+      @generate(auto_refresh=False)
+      def schematic(self):
+          # ...

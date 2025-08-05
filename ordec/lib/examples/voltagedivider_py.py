@@ -28,7 +28,7 @@ class VoltageDivider(Cell):
         helpers.schem_check(s, add_conn_points=True)
         return s
 
-    @generate
+    @generate(auto_refresh=False)
     def sim_dc(self):
         s = SimHierarchy()
         sim = HighlevelSim(self.schematic, s)

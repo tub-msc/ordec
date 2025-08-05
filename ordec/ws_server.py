@@ -26,8 +26,20 @@ import time
 import tempfile
 
 from .core import *
+from .core.cell import ViewGenerator
 from .ord1.parser import ord2py
 from .lib import examples
+
+def discover_views(conn_globals):
+    views = []
+    for k, v in conn_globals.items():
+        if isinstance(v, type) and issubclass(v, Cell) and v!=Cell:
+            for member_name in dir(v):
+                member = getattr(v, member_name)
+                if isinstance(member, ViewGenerator):
+                    views.append({'name': f'{k}().{member_name}'}
+                        | member.info_dict())
+    return views
 
 def build_cells(source_type: str, source_data: str) -> (dict, dict):
     conn_globals = {}
@@ -45,17 +57,9 @@ def build_cells(source_type: str, source_data: str) -> (dict, dict):
                 'exception':traceback.format_exc(),
             }, None
         else:
-            views = []
-            for k, v in conn_globals.items():
-                if not (isinstance(v, type) and issubclass(v, Cell) and v!=Cell):
-                    continue
-                cell_views = [elem for elem in dir(v()) if (not elem.startswith('__')) and (not elem in ('children', 'instances', 'params', 'params_list', 'netlist_ngspice', 'cached_subgraphs', 'spiceSymbol'))]
-                for v in cell_views:
-                    views.append(f'{k}().{v}')
-            #print(f"Reporting {len(views)} views.")
             return {
-                'msg':'views',
-                'views':views,
+                'msg':'viewlist',
+                'views':discover_views(conn_globals),
             }, conn_globals
     else:
         raise NotImplementedError(f'source_type {source_type} not implemented')

@@ -142,7 +142,7 @@ def request_example(webserver, example):
         driver.get(webserver.url)
         driver.add_cookie({"name": "ordecAuth", "value": webserver.auth_token})
 
-        driver.get(webserver.url + f'app.html?example={example}')
+        driver.get(webserver.url + f'app.html?example={example}&refreshall=true')
         
         WebDriverWait(driver, 10).until(
             EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
@@ -150,7 +150,7 @@ def request_example(webserver, example):
         res_viewers = driver.execute_script("""
             var res = {};
             window.ordecClient.resultViewers.forEach(function(rv) {
-                res[rv.viewRequested] = {
+                res[rv.viewSelected] = {
                     'html':rv.resContent.innerHTML,
                     'width':rv.resContent.offsetWidth,
                     'height':rv.resContent.offsetHeight,

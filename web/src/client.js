@@ -3,7 +3,7 @@
 
 export class OrdecClient {
     constructor(srctype, resultViewers, setStatus) {
-        this.views = [];
+        this.views = new Map();
         this.reqPending = false;
         this.srctype = srctype;
         this.src = ""; // set by Editor from the outside
@@ -42,9 +42,12 @@ export class OrdecClient {
     wsOnMessage(messageEvent) {
         const msg = JSON.parse(messageEvent.data);
         //console.log(msg)
-        if (msg['msg'] == 'views') {
+        if (msg['msg'] == 'viewlist') {
             this.exception = null;
-            this.views = msg['views'];
+            this.views.clear();
+            msg['views'].forEach(view => {
+                this.views.set(view.name, view);
+            });
             this.resultViewers.forEach(rv => rv.updateGlobalState());
             this.requestNextView();
         } else if (msg['msg'] == 'exception') {
@@ -77,13 +80,13 @@ export class OrdecClient {
     }
 
     requestNextView() {
-        if (this.reqPending) {
+        if (this.reqPending || this.exception) {
             return;
         }
 
         this.nextView = null;
         this.resultViewers.some((rv) => {
-            if (!rv.viewLoaded && rv.viewRequested) {
+            if (rv.requestsView()) {
                 this.nextView = rv;
                 return true; // = "break;" in some()
             }
@@ -93,7 +96,7 @@ export class OrdecClient {
             //console.log('next view', nextView.viewRequested)
             this.sock.send(JSON.stringify({
                 msg: 'getview',
-                view: this.nextView.viewRequested,
+                view: this.nextView.viewSelected,
             }));
             this.reqPending = true;
         } else {

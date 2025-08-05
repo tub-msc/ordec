@@ -18,23 +18,26 @@ import "ace-builds/src-noconflict/ext-language_tools";
 import { ResultViewer } from "./resultviewer.js"
 import { OrdecClient } from './client.js'
 
-const sourceTypeSelect = document.getElementById("sourcetype");
+const sourceTypeSelect = document.querySelector("#sourcetype");
 const urlParams = new URLSearchParams(window.location.search);
 
 // add &debug=true to show 'debug' elements
-const debug = urlParams.get('debug');
+const debug = Boolean(urlParams.get('debug'));
 if(debug) {
-    Array.from(document.getElementsByClassName("debug")).forEach(e => {
+    Array.from(document.querySelectorAll(".debug")).forEach(e => {
         e.style.display = "block";
     });
 }
+
+// Overrides auto_refresh=False behavior for test_web.py:
+ResultViewer.refreshAll = Boolean(urlParams.get('refreshall')); 
 
 function getSourceType() {
     return sourceTypeSelect.options[sourceTypeSelect.selectedIndex].value;
 }
 
 function setStatus(status) {
-    let divStatus = document.getElementById("status");
+    let divStatus = document.querySelector("#status");
     divStatus.innerText = status;
     divStatus.style.backgroundColor = {
         'busy': '#ffff44',
@@ -102,7 +105,7 @@ sourceTypeSelect.value = initData.srctype;
 
 window.ordecClient = new OrdecClient(getSourceType(), [], setStatus);
 
-const layout = new GoldenLayout(document.getElementById("workspace"));
+const layout = new GoldenLayout(document.querySelector("#workspace"));
 layout.layoutConfig.settings.showPopoutIcon = false;
 layout.resizeWithContainerAutomatically = true;
 layout.registerComponent('editor', Editor);
@@ -124,16 +127,16 @@ layout.addEventListener('stateChanged', () => {
     window.ordecClient.resultViewers = getResultViewers();
 });
 
-document.getElementById("newresview").onclick = () => {
+document.querySelector("#newresview").onclick = () => {
     layout.addComponent('result', undefined, 'Result View');
 };
 
-document.getElementById("savejson").onclick = () => {
+document.querySelector("#savejson").onclick = () => {
     const uistate = LayoutConfig.fromResolved(layout.saveLayout());
 
     const dataStr = "data:application/json;charset=utf-8,"
         + encodeURIComponent(JSON.stringify(uistate, null, 2));
-    const dlAnchorElem = document.getElementById('downloadAnchorElem');
+    const dlAnchorElem = document.querySelector('#downloadAnchorElem');
     dlAnchorElem.setAttribute("href", dataStr);
     dlAnchorElem.setAttribute("target", "_blank");
     dlAnchorElem.click();

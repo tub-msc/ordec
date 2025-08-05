@@ -72,6 +72,14 @@ SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
+# Public domain assets in web/
+path = [
+    "web/public/loading.gif",
+]
+SPDX-FileCopyrightText = "NONE"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
 # Documentation files:
 path = [
     "README.md",
