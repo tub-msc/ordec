@@ -84,8 +84,24 @@ const viewClassOf = {
 export class ResultViewer {
     constructor(container, state) {
         this.container = container
-        container.element.innerHTML = '<div class="resview"><div class="resviewhead"><select class="viewsel"></select></div><div class="rescontent">result will be shown here</div><div class="resexception"></div></div>';
+        container.element.innerHTML = `
+            <div class="resview">
+                <div class="resviewhead"><select class="viewsel"></select></div>
+                <div class="reswrapper">
+                    <div class="resoverlay-topleft refreshing">Refreshing...</div>
+                    <div class="resoverlay-topleft refreshable">View is out of date. <button>Refresh</button></div>
+                    <div class="resoverlay-bottomright">Hello world</div>
+                    <div class="rescontent">result will be shown here</div>
+                    </div>
+                </div>
+                <div class="resexception"></div>
+            </div>
+        `;
         this.resizeWithContainerAutomatically = true;
+        this.resOverlayRefreshing = container.element.getElementsByClassName("refreshing")[0];
+        this.resOverlayRefreshable = container.element.getElementsByClassName("refreshable")[0];
+        this.resOverlayRefreshable.style.display = 'none';
+        this.resOverlayRefreshing.style.display = 'none';
         this.resContent = container.element.getElementsByClassName("rescontent")[0];
         this.resException = container.element.getElementsByClassName("resexception")[0];
         this.viewSel = container.element.getElementsByClassName("viewsel")[0];
@@ -115,6 +131,7 @@ export class ResultViewer {
 
     invalidate() {
         this.viewLoaded = false;
+        this.resOverlayRefreshing.style.display = '';
     }
 
     updateGlobalState() {
@@ -168,6 +185,7 @@ export class ResultViewer {
     updateView(msg) {
         this.resContent.replaceChildren();
         this.viewLoaded = true;
+        this.resOverlayRefreshing.style.display = 'none';
 
         if(msg.exception) {
             this.showException(msg.exception);

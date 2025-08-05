@@ -103,3 +103,15 @@ pre {
 .debug {
     display:none;
 }
+.resoverlay-topleft, .resoverlay-bottomright {
+    position:absolute;
+    background-color:#eee;
+    border:1px solid #aaa;
+    margin:5px;
+    padding:5px;
+    border-radius:5px;
+}
+.resoverlay-bottomright {
+    bottom:0px;
+    right:0px;
+}
