@@ -47,4 +47,4 @@ ENV ORDEC_PDK_SKY130B="/home/app/skywater/sky130B"
 ENV ORDEC_PDK_IHP_SG13G2="/home/app/IHP-Open-PDK/ihp-sg13g2"
 
 EXPOSE 8100
-CMD ["ordec-server", "-l", "0.0.0.0", "-p", "8100"]
+CMD ["ordec-server", "-l", "0.0.0.0", "-p", "8100", "--no-browser"]

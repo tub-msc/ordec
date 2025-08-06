@@ -6,9 +6,9 @@ Welcome to ORDeC's documentation!
    :caption: Contents:
 
    readme
-   tutorials/index
-   cell_lib/index
+   webui
    ref/index
+   cell_lib/index
    dev/index
    related_projects
 

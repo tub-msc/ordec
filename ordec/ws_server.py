@@ -2,7 +2,56 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-WebSocket server for use in conjunction with the new web interface.
+``ordec-server`` is the command line tool to start the web interface of
+ORDeC, the custom IC design platform.
+
+There are three recommended setups to run ``ordec-server``:
+
+(1) **Combined frontend + backend server with regular installation:**
+    A regular installation of ORDeC includes a compiled version of the
+    frontend (webdist.tar). In this case, ORDeC can be started through
+    a simple ``ordec-server``.
+
+(2) **Combined frontend + backend server with editable installation:**
+    In case of a editable installation ("develop mode" / pip -e), setup (1)
+    is not supported, as webdist.tar is not available in the package.
+    Instead, the frontend can be build separately through 'npm run build' in
+    the web/ directory. The build results must then be supplied to the
+    ordec-server command: ``ordec-server -r [...]/web/dist/``
+
+(3) **Separate frontend + backend server for frontend development:**
+    In the web/ directory, run the Vite frontend server using 'npm run dev'.
+    Then, separately start the backend server using ``ordec-server -b``.
+    This gives the best development experience when working on the frontend
+    code. In this setup, the Vite server acts as proxy for the backend
+    server. Thus, you should use the browser only to connect to the Vite
+    server / port.
+
+Furthermore, there are two modes in which you can use the ORDeC web UI:
+
+(1) **Integrated mode:**
+    The source code is entered through the web UI's integrated editor. The
+    design is rebuilt automatically when the source is changed. The entered
+    source code is not saved anywhere. Please save any code that you want to
+    keep manually using copy & paste to local files.
+
+    Unless ``--module`` (``-m``) is specified, the web UI is launched in
+    integrated mode.
+
+(2) **Local mode:**
+    Source code is entered and stored in the local file system. An editor
+    outside the web browser is used. The design is rebuilt automatically when
+    it is detected that source files have changed. This is done using inotify.
+
+    By specifying ``--module`` (``-m``) and optionally ``--view`` (``-V``),
+    the web interface is launched in local mode.
+
+    The specified module name (e.g. ``--module mydesign``) is treated as regular
+    Python module import. It could reference a single Python file mydesign.py,
+    a single ORD file mydesign.ord, or a directory mydesign/ containing an
+    __init__.py (which enables projects / packages with multiple modules / 
+    source files). Hierarchical names such as mydesign.submodule are permitted
+    as well.
 """
 
 import argparse
@@ -359,44 +408,18 @@ def secure_url_open(user_url):
 
     return launch_html
 
-cli_help = """
-ORDeC, a custom IC design platform.
-
-There are three recommended variants to run ordec-server:
-
-(1) Combined frontend + backend server with regular installation:
-    A regular installation of ORDeC includes a compiled version of the
-    frontend (webdist.tar). In this case, ORDeC can be started through
-    a simple 'ordec-server -b'.
-
-(2) Combined frontend + backend server with editable installation:
-    In case of a editable installation ("develop mode" / pip -e), variant (1)
-    is not supported, as webdist.tar is not available in the package.
-    Instead, the frontend can be build separately through 'npm run build' in
-    the web/ directory. The build results must then be supplied to the
-    ordec-server command: 'ordec-server -b -r [...]/web/dist/'
-
-(3) Separate frontend + backend server for frontend development:
-    In the web/ directory, run the Vite frontend server using 'npm run dev'.
-    Then, separately start the backend server using 'ordec-server -n -b'.
-    This gives the best development experience when working on the frontend
-    code. In this variant, the Vite server acts as proxy for the backend
-    server. Thus, you should use the browser only to connect to the Vite
-    server / port.
-"""
-
 def main():
     parser = argparse.ArgumentParser(prog='ordec-server',
-        description=cli_help,
+        description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
 
     parser.add_argument('-l', '--hostname', default="127.0.0.1", help="Hostname to listen on (default 127.0.0.1).")
     parser.add_argument('-p', '--port', default=8100, type=int, help="Port to listen on (default 8100).")
     parser.add_argument('-r', '--static-root', help="Path for static web resources. If not specified, the webdist.tar file included in the ORDeC installation is used.", nargs='?')
-    parser.add_argument('-n', '--no-frontend', action='store_true', help="Serve backend only. Requires a separate server (e.g. Vite) to serve the frontend.")
-    parser.add_argument('-b', '--launch-browser', action='store_true', help="Automatically open ORDeC in browser.")
-    parser.add_argument('-m', '--module', help="Use specified module in file system rather than web editor.")
-    parser.add_argument('-v', '--view', help="Open specified view of selected module (requires --module).")
+    parser.add_argument('-b', '--backend-only', action='store_true', help="Serve backend only. Requires a separate server (e.g. Vite) to serve the frontend.")
+    parser.add_argument('-n', '--no-browser', action='store_true', help="Show URL, but do not launch browser.")
+    parser.add_argument('-m', '--module', help="Open the specified module from the local file system (local mode).")
+    parser.add_argument('-V', '--view', help="Open specified view of selected module (requires --module / local mode).")
 
     args = parser.parse_args()
     hostname = args.hostname
@@ -404,14 +427,12 @@ def main():
 
     auth_token = secrets.token_urlsafe()
 
-    launch_html = None
-
     user_url = f"http://{hostname}:{port}"
 
-    if args.no_frontend:
+    if args.backend_only:
         static_handler = StaticHandler()
         # Vite provides the frontend for the user on port 5173:
-        print("--no-frontend: Make sure to run 'npm run dev' in web/ in addition to 'ordec-server'.")
+        print("--backend-only: Make sure to run separate frontend server using 'npm run dev' in web/, in addition to this 'ordec-server'.")
         user_url = f"http://localhost:5173"
     elif args.static_root:
         static_handler = StaticHandler(anonymous_tar(args.static_root))
@@ -446,9 +467,11 @@ def main():
     threading.Thread(target=server_thread, args=(hostname, port, static_handler, auth_token), daemon=True).start()
 
     print(f"To start ORDeC, navigate to: {user_url}")
-    time.sleep(1)
 
-    if args.launch_browser:
+    if args.no_browser:
+        launch_html = None
+    else:
+        time.sleep(1)
         launch_html = secure_url_open(user_url)
 
     try:

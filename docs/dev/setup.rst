@@ -43,6 +43,7 @@ The IHP Open PDK includes Verilog-A models, which must be compiled before use us
 
 Then, configure the environment variable ORDEC_PDK_IHP_SG13G2 to point to the IHP-Open-PDK/ihp-sg13g2 directory, for example in your .bashrc or .profile.
 
+
 Launch webinterface
 -------------------
 
@@ -56,11 +57,9 @@ First, launch the frontend (using Vite_)::
 
 :code:`npm install` is only needed at the first launch. In this setup, the Vite frontend server acts as proxy to the backend server on port 8100, which has to be run separately::
     
-    ordec-server -n -b
+    ordec-server -b
 
 This will launch a browser and open the ORDeC interface.
-
-To prevent unauthorized users from gaining access and executing arbitrary code through ORDeC, a new authentication token is generated on each start of ordec-server (similar to https://jupyter-server.readthedocs.io/en/latest/operators/security.html). This token-based authentication is also important in localhost / single-user setups to prevent privilege escalation. The authentication token is passed to the frontend using the ?auth= parameter of index.html. From there, it is stored as a cookie and sent to the server at the start of each websocket connection.
 
 Run tests
 ---------

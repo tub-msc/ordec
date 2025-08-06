@@ -6,13 +6,11 @@ ORDB
 
 - Add tree() method to Cursor that descends using NPath
 - Implement subgraph directory index + Cursor.iterdir()
-- Add test for legacy and new @generate
 - External references:
 
   - add some kind of index to detect DanglingExternalRefs either on adding the ExternalRef or when updating the subgraph reference Attr.
   - do we need any other indices for external references?
 
-- LocalRef type checking (refs_ntype)
 - Cursor deletion:
   
   - delete path + node + "dependent" nodes?
