@@ -108,6 +108,7 @@ export class OrdecClient {
 
         if (this.nextView) {
             //console.log('next view', nextView.viewRequested)
+            this.setStatus('busy');
             this.sock.send(JSON.stringify({
                 msg: 'getview',
                 view: this.nextView.viewSelected,

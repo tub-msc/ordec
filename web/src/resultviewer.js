@@ -244,4 +244,13 @@ export class ResultViewer {
             }
         }
     }
+
+    testInfo() {
+        // For automated browser testing (see test_web.py).
+        return {
+            html: this.resContent.innerHTML,
+            width: this.resContent.offsetWidth,
+            height: this.resContent.offsetHeight,
+        };
+    }
 }
