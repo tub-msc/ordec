@@ -6,9 +6,6 @@
 #
 # See docs/dev/containers_and_ci.rst for details.
 
-# Set ngspice_multibuild to "on" to enable triple ngspice build (for future testing).
-ARG ngspice_multibuild="off"
-
 # Stage 1: Download stuff
 # =======================
 
@@ -60,6 +57,9 @@ RUN wget -q "https://github.com/efabless/volare/releases/download/sky130-fa87f8f
 
 FROM debian:bookworm AS ordec-cbuild
 
+# Set ngspice_multibuild to "on" to enable triple ngspice build (for future testing).
+ARG ngspice_multibuild="off"
+
 RUN useradd -ms /bin/bash app && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -85,6 +85,11 @@ ARG ngspice_common_args="--disable-debug --without-x --enable-xspice --disable-c
 WORKDIR /home/app/ngspice-src
 
 RUN ./configure --prefix=/home/app/ngspice/min ${ngspice_common_args} --with-readline=no --with-editline=no && \
+    make -j`nproc --ignore=1` && \
+    make install
+
+# ngspice shared library:
+RUN ./configure --prefix=/home/app/ngspice/shared ${ngspice_common_args} --with-ngshared --with-readline=no --with-editline=no && \
     make -j`nproc --ignore=1` && \
     make install
 
@@ -127,6 +132,7 @@ COPY --chown=app --from=ordec-fetch /home/app/IHP-Open-PDK /home/app/IHP-Open-PD
 COPY --chown=app --from=ordec-fetch /home/app/skywater /home/app/skywater
 
 ENV PATH="/home/app/openvaf:/home/app/ngspice/min/bin:$PATH"
+ENV LD_LIBRARY_PATH="/home/app/ngspice/shared/lib"
 ENV ORDEC_PDK_SKY130A="/home/app/skywater/sky130A"
 ENV ORDEC_PDK_SKY130B="/home/app/skywater/sky130B"
 ENV ORDEC_PDK_IHP_SG13G2="/home/app/IHP-Open-PDK/ihp-sg13g2"
@@ -153,6 +159,7 @@ RUN pip install --no-cache-dir \
     pytest \
     pytest-cov \
     selenium \
+    inotify-simple \
     build
 
 # NPM install
