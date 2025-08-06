@@ -9,7 +9,7 @@ export class OrdecClient {
         this.src = ""; // set by Editor from the outside
         this.resultViewers = resultViewers;
         this.setStatus = setStatus;
-        this.extModule = null; // Set to module name when in extModule mode.
+        this.localModule = null; // Set to module name when in localModule mode.
     }
 
     getAuthCookie() {
@@ -60,8 +60,8 @@ export class OrdecClient {
             this.nextView.updateView(msg);
             this.reqPending = false;
             this.requestNextView();
-        } else if (msg['msg'] == 'inotify') {
-            console.log("ordecClient.connect() triggered by inotify message.");
+        } else if (msg['msg'] == 'localmodule_changed') {
+            console.log("ordecClient.connect() triggered by localmodule_changed message.");
             this.connect();
         }
     }
@@ -76,13 +76,15 @@ export class OrdecClient {
     wsOnOpen(event) {
         let msg;
         this.setStatus('busy');
-        if(this.extModule) {
+        if(this.localModule) {
+            // Local mode:
             msg = {
-                msg: 'extmodule',
-                extmodule: this.extModule,
+                msg: 'localmodule',
+                module: this.localModule,
                 auth: this.getAuthCookie(),
             };
         } else {
+            // Integrated mode:
             msg = {
                 msg: 'source',
                 srctype: this.srctype,

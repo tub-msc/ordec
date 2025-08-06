@@ -148,7 +148,7 @@ class ConnectionHandler:
     def purge_modules(self):
         """
         Removes all modules from sys.modules that were not in sys.modules
-        before the first build_cells or build_extmodule call. This ensures that
+        before the first build_cells or build_localmodule call. This ensures that
         re-imports read the sources freshly.
 
         Only call this method with self.import_lock acquired.
@@ -168,12 +168,12 @@ class ConnectionHandler:
                     pass
         return ret
 
-    def build_extmodule(self, extmodule: str):
+    def build_localmodule(self, localmodule: str):
         with self.import_lock:
             self.purge_modules()
             try:
-                #print(f"Importing {extmodule}...")
-                module = importlib.import_module(extmodule)
+                #print(f"Importing {localmodule}...")
+                module = importlib.import_module(localmodule)
                 conn_globals = module.__dict__
             except:
                 return {
@@ -205,10 +205,10 @@ class ConnectionHandler:
             #print(f"Received source of type {source_type}.")
             msg_ret, conn_globals = self.build_cells(msg_first['srctype'], msg_first['src'])
             watch_files = []
-        elif msg_first['msg'] == 'extmodule':
-            msg_ret, conn_globals, watch_files = self.build_extmodule(msg_first['extmodule'])
+        elif msg_first['msg'] == 'localmodule':
+            msg_ret, conn_globals, watch_files = self.build_localmodule(msg_first['module'])
         else:
-            raise Exception("Excpected 'source' or 'extmodule' message.")    
+            raise Exception("Excpected 'source' or 'localmodule' message.")
         websocket.send(json.dumps(msg_ret))
         if not conn_globals:
             return
@@ -253,9 +253,11 @@ def background_inotify(watch_files, pipe_inotify_abort_r, websocket):
     # thread.
 
     inotify = inotify_simple.INotify()
-    watch_flags = inotify_simple.flags.DELETE_SELF | inotify_simple.flags.MODIFY | inotify_simple.flags.MOVE_SELF
+    watch_flags = inotify_simple.flags.DELETE_SELF \
+        | inotify_simple.flags.MODIFY \
+        | inotify_simple.flags.MOVE_SELF
     for f in watch_files:
-        #print(f"Watching for {f}")
+        #print(f"Watching for changes to file: {f}")
         inotify.add_watch(f, watch_flags)
 
     while True:
@@ -264,11 +266,12 @@ def background_inotify(watch_files, pipe_inotify_abort_r, websocket):
             break
         if inotify in readable:
             for m in inotify.read(timeout=0):
-                #print("INOTIFY event!")
-                websocket.send(json.dumps({'msg':'inotify'}))
-                # Current there are potentially multiple inotify messages
-                # sent to the client. We could also end the background_inotify
-                # thread after
+                websocket.send(json.dumps({'msg':'localmodule_changed'}))
+                # Currently multiple localmodule_changed messages are
+                # potentially sent to the client. Alternatively, the
+                # background_inotify thread could terminate after the first
+                # message.
+
     inotify.close()
     pipe_inotify_abort_r.close()
 

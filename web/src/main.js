@@ -35,8 +35,8 @@ if(debug) {
 ResultViewer.refreshAll = Boolean(urlParams.get('refreshall'));
 
 // the module= URL paramter is used to work on an external module rather than use the source editor.
-const extModule = urlParams.get('module');
-const extModuleView = urlParams.get('view');
+const localModule = urlParams.get('module');
+const localModuleView = urlParams.get('view');
 
 
 function getSourceType() {
@@ -153,7 +153,10 @@ sourceTypeSelect.onchange = () => {
     window.ordecClient.connect();
 };
 
-if(extModule) {
+if(localModule) {
+    // If localModule is set, the web UI is used in **local mode**.
+    // In this case, only a single result view is opened by default.
+
     document.querySelector("#toolSourcetype").style.display='none';
 
     const uistate = {
@@ -166,7 +169,7 @@ if(extModule) {
                         "title": "Result View",
                         "componentName": "result",
                         "componentState": {
-                            "view": extModuleView,
+                            "view": localModuleView,
                         }
                     }
                 ]
@@ -176,9 +179,14 @@ if(extModule) {
     uistate.header = {popout: false};
 
     layout.loadLayout(uistate);
-    window.ordecClient.extModule = extModule;
+    window.ordecClient.localModule = localModule;
     window.ordecClient.connect();
 } else {
+    // If localModule is null, the web UI is used in **integrated mode**.
+    // In this case, the source code is entered through the web editor.
+    // This editor and zero or more result views are initialized through
+    // the data obtained from the server through getInitData().
+
     document.querySelector("#toolRefresh").style.display='none';
 
     const initData = await getInitData();
