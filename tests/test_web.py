@@ -14,7 +14,7 @@ from dataclasses import dataclass
 import importlib.resources
 import secrets
 
-from ordec import ws_server
+from ordec import server
 
 try:
     from selenium import webdriver
@@ -99,10 +99,10 @@ def webserver():
     # while having another independent ordec-server running.
     port = 8102
     web_dist_path = (Path(__file__).parent.parent/'web'/'dist').resolve()
-    tar = ws_server.anonymous_tar(web_dist_path)
-    static_handler = ws_server.StaticHandler(tar)
+    tar = server.anonymous_tar(web_dist_path)
+    static_handler = server.StaticHandler(tar)
 
-    t = threading.Thread(target=ws_server.server_thread,
+    t = threading.Thread(target=server.server_thread,
         args=('127.0.0.1', port, static_handler, auth_token), daemon=True)
     t.start()
     time.sleep(1) # Delay for server startup
@@ -135,7 +135,7 @@ def resize_viewport(driver, w, h):
 #
 # The examples are now tested in two ways:
 # 1. Does the webinterface reach the 'ready' state? For this to happen, a lot of
-#    things have to go right. The ws_server has to process the source data,
+#    things have to go right. The server has to process the source data,
 #    and the view requests. If the 'ready' state is not reached, request_example
 #    fails.
 # 2. The innerHTML of some result viewers is _superficially_ checked to make

@@ -51,7 +51,7 @@ extra = [
 ]
 
 [project.scripts]
-ordec-server =  "ordec.ws_server:main"
+ordec-server =  "ordec.server:main"
 
 [tool.setuptools]
 packages = [

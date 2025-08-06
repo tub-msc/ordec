@@ -1,7 +1,7 @@
 Web UI: ``ordec-server``
 ========================
 
-.. automodule:: ordec.ws_server
+.. automodule:: ordec.server
 
 Integrated mode is recommended for demo purposes and getting started. Local mode is likely preferrable for bigger projects.
 
