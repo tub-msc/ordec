@@ -9,7 +9,14 @@ from public import public
 from .ordb import MutableNode
 
 class ViewGenerator:
-    def __init__(self, func, auto_refresh: bool):
+    def __new__(cls, func=None, **kwargs):
+        # This __new__ makes @decorator() equivalent to @decorator.
+        if func:
+            return super().__new__(cls)
+        else:
+            return partial(cls, **kwargs)
+
+    def __init__(self, func, auto_refresh: bool=True):
         self.func = func
         self.auto_refresh = auto_refresh
 
@@ -18,35 +25,43 @@ class ViewGenerator:
             'auto_refresh': self.auto_refresh,
         }
 
+    def func_eval(self, *args):
+        # New style: node is generated in method:
+        ret = self.func(*args)
+        # self.func has to attach node.cell, if desired.
+
+        # Freeze if not already frozen:
+        if isinstance(ret, MutableNode):
+            if ret.nid != 0:
+                raise TypeError("MutableNode returned by ViewGenerator must be SubgraphRoot.")
+            ret = ret.freeze()
+    
+        # ViewGenerator return value must be hashable (not sure whether this is really useful):
+        try:
+            hash(ret)
+        except TypeError:
+            raise TypeError("ViewGenerator result must be hashable.") from None
+
+        return ret
+
+@public
+class generate(ViewGenerator):
+    """
+    Decorator for view generator methods. Use in :class:`Cell` subclasses.
+    The decorated function cannot have any parameters beyond 'self' (use
+    Cell-level parameters instead).
+
+    Decorated view generator methods are visible in the web UI.
+
+    ``@generate`` returns a Python Descriptor.
+    """
     def __get__(self, obj, owner=None):
         if obj == None: # for the class: return self
             return self
         else: # for instances: create view if not present yet, return view
-            try:
-                return obj.cached_subgraphs[self]
-            except KeyError:
-                pass
-                # The 'except' branch is following below to shorten tracebacks
-                # (do not include the KeyError).
-
-            # New style: node is generated in method:
-            ret = self.func(obj)
-            # self.func has to attach node.cell, if desired.
-
-            # Freeze if not already frozen:
-            if isinstance(ret, MutableNode):
-                if ret.nid != 0:
-                    raise TypeError("MutableNode returned by ViewGenerator must be SubgraphRoot.")
-                ret = ret.freeze()
-        
-            # ViewGenerator return value must be hashable (not sure whether this is really useful):
-            try:
-                hash(ret)
-            except TypeError:
-                raise TypeError("ViewGenerator result must be hashable.") from None
-
-            obj.cached_subgraphs[self] = ret
-            return ret
+            if self not in obj.cached_subgraphs:
+                obj.cached_subgraphs[self] = self.func_eval(obj)    
+            return obj.cached_subgraphs[self]
 
     def __set__(self, cursor, value):
         raise TypeError("ViewGenerator cannot be set.")
@@ -55,17 +70,29 @@ class ViewGenerator:
         raise TypeError("ViewGenerator cannot be deleted.")
 
 @public
-def generate(func=None, auto_refresh=True):
+class generate_func(ViewGenerator):
     """
-    Decorator for view generator methods.
+    Decorator for view generator functions. Use for module-level functions
+    outside of :class:`Cell` subclasses. The decorated function cannot have
+    any parameters.
+
+    Decorated view generator functions are visible in the web UI.
+
+    ``@generate_func`` is provided to simplify small examples. For anything
+    complex, ``@generate`` should be prefered.
+
+    ``@generate_func`` is similar to Python's functools.cache.
     """
-    p = partial(ViewGenerator,
-        auto_refresh=auto_refresh,
-        )
-    if func:
-        return p(func)
-    else:
-        return p
+    def __init__(self, *args, **kwargs):
+        self.result = None
+        self.evaluated = False
+        return super().__init__(*args, **kwargs)
+
+    def __call__(self):
+        if not self.evaluated:
+            self.result = self.func_eval()
+            self.evaluated = True
+        return self.result
 
 class MetaCell(type):
     def __init__(cls, name, bases, attrs):

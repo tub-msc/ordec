@@ -82,19 +82,19 @@ from websockets.exceptions import ConnectionClosedOK
 
 from . import importer
 from .core import *
-from .core.cell import ViewGenerator
-from .ord1.parser import ord2py
 from .lib import examples
 
 def discover_views(conn_globals):
     views = []
     for k, v in conn_globals.items():
+        if isinstance(v, generate_func):
+            views.append({'name': f"{k}()"} | v.info_dict())
         if isinstance(v, type) and issubclass(v, Cell) and v!=Cell:
             for member_name in dir(v):
                 member = getattr(v, member_name)
-                if isinstance(member, ViewGenerator):
-                    views.append({'name': f'{k}().{member_name}'}
-                        | member.info_dict())
+                if isinstance(member, generate):
+                    name = f'{k}().{member_name}'
+                    views.append({'name': name} | member.info_dict())
     return views
 
 class ConnectionHandler:
@@ -127,6 +127,8 @@ class ConnectionHandler:
         conn_globals = {}
         try:
             if source_type == 'ord':
+                # Having the import here enables auto-realoading of ord1.
+                from .ord1.parser import ord2py
                 code = compile(ord2py(source_data), "<string>", "exec")
                 exec(code, conn_globals, conn_globals)
             elif source_type == 'python':
