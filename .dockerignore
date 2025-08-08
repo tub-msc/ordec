@@ -16,3 +16,4 @@ web/node_modules/
 **/.idea/
 **/*.ipynb
 **/*.swp
+dist/

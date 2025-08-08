@@ -444,7 +444,9 @@ def main():
     parser.add_argument('-n', '--no-browser', action='store_true', help="Show URL, but do not launch browser.")
     parser.add_argument('-m', '--module', help="Open the specified module from the local file system (local mode).")
     parser.add_argument('-w', '--view', help="Open specified view of selected module (requires --module / local mode).")
+    parser.add_argument('--url-authority', help="Use provided URL authority part (host:port) instead values of --hostname and --port for printed / opened URL.")
     parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {version}')
+
 
     args = parser.parse_args()
     hostname = args.hostname
@@ -452,13 +454,17 @@ def main():
 
     auth_token = secrets.token_urlsafe()
 
-    user_url = f"http://{hostname}:{port}"
+    if args.url_authority:
+        user_url = f"http://{args.url_authority}"
+    elif args.backend_only:
+        user_url = f"http://localhost:5173"
+        # Vite provides the frontend for the user on port 5173:
+        print("--backend-only: Make sure to run separate frontend server using 'npm run dev' in web/, in addition to this 'ordec-server'.")
+    else:
+        user_url = f"http://{hostname}:{port}"
 
     if args.backend_only:
         static_handler = StaticHandler()
-        # Vite provides the frontend for the user on port 5173:
-        print("--backend-only: Make sure to run separate frontend server using 'npm run dev' in web/, in addition to this 'ordec-server'.")
-        user_url = f"http://localhost:5173"
     elif args.static_root:
         static_handler = StaticHandler(anonymous_tar(args.static_root))
     else:
