@@ -119,6 +119,8 @@ class Parameter:
         coerce_between_types = (R, float, int)
         if self.type in coerce_between_types and isinstance(value, coerce_between_types):
             return self.type(value)
+        elif self.type == R and isinstance(value, str):
+            return R(value)
         else:
             return value
 
@@ -252,7 +254,8 @@ class Cell(metaclass=MetaCell):
     def params_list(self, use_repr=False) -> list[str]:
         param_items = [(k, getattr(self, k)) for k in self._class_params if getattr(self, k) != None]
         if use_repr:
-            return [f"{k}={v!r}" for k, v in param_items]
+            # Abbreviate x=R('1k') to x='1k', which is fine due to the coercion str -> R in Parameter.coerce_type
+            return [f"{k}={str(v)!r}" if isinstance(v, R) else f"{k}={v!r}" for k, v in param_items]
         else:
             return [f"{k}={v}" for k, v in param_items]
 

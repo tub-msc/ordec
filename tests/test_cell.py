@@ -88,12 +88,13 @@ def test_param_inst():
     assert A(l=1.0, w=2.0) is a1
     assert A(1, 2) is a1
     assert A(1, w=2) is a1
+    assert A('1', '2') is a1
 
     with pytest.raises(TypeError, match="Mandatory parameter 'l' is missing"):
         A()
 
     with pytest.raises(TypeError, match="Expected type"):
-        A(l='hello', w=2)
+        A(l=('invalid', 'value'), w=2)
 
     with pytest.raises(ValueError, match="Too many parameters passed as positional arguments to"):
         A(1,2,3)
