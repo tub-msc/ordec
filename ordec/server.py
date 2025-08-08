@@ -82,19 +82,25 @@ from websockets.exceptions import ConnectionClosedOK
 
 from . import importer
 from .core import *
-from .lib import examples
 
 def discover_views(conn_globals):
     views = []
     for k, v in conn_globals.items():
         if isinstance(v, generate_func):
             views.append({'name': f"{k}()"} | v.info_dict())
+
         if isinstance(v, type) and issubclass(v, Cell) and v!=Cell:
+            generate_members = []
             for member_name in dir(v):
                 member = getattr(v, member_name)
                 if isinstance(member, generate):
-                    name = f'{k}().{member_name}'
+                    generate_members.append((member_name, member))
+                    
+            for instance in v.discoverable_instances():
+                for member_name, member in generate_members:
+                    name = f'{instance!r}.{member_name}'
                     views.append({'name': name} | member.info_dict())
+            
     return views
 
 class ConnectionHandler:
@@ -348,6 +354,7 @@ class StaticHandler:
         src = ''
         srctype = 'Python'
         uistate = {}
+        from .lib import examples
         for p in importlib.resources.files(examples).iterdir():
             if p.stem == name:
                 src = p.read_text()

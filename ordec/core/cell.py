@@ -262,3 +262,14 @@ class Cell(metaclass=MetaCell):
     def __repr__(self):
         return f"{type(self).__name__}({','.join(self.params_list(use_repr=True))})"
 
+    @classmethod
+    def discoverable_instances(cls):
+        """
+        Returns instances of Cell that are discovered / shown by the web UI.
+        """
+        r = []
+        try:
+            r.append(cls())
+        except TypeError:
+            pass
+        return r

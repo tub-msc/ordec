@@ -51,6 +51,10 @@ class Res(Cell):
         pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, schematic, prefix="r"), netlister.portmap(inst, pins), f'r={self.r.compat_str()}')
 
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls('1k')]
+
 @public
 class Cap(Cell):
     c = Parameter(R)
@@ -74,6 +78,10 @@ class Cap(Cell):
 
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls('1p')]
 
 @public
 class Ind(Cell):
@@ -102,6 +110,10 @@ class Ind(Cell):
 
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls('1u')]
  
 # Misc
 # ====
@@ -192,6 +204,10 @@ class Vdc(Cell):
         pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, schematic, prefix="v"), netlister.portmap(inst, pins) , f'dc {self.dc.compat_str()}')
 
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls('1')]
+
 @public
 class Idc(Cell):
     dc = Parameter(R)
@@ -233,6 +249,10 @@ class Idc(Cell):
     def netlist_ngspice(self, netlister, inst, schematic):
         pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, schematic, prefix="i"), netlister.portmap(inst, pins) , f'dc {self.dc.compat_str()}')
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls('1u')]
 
 @public
 class PieceWiseLinearVoltageSource(Cell):
