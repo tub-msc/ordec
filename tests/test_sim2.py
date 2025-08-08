@@ -71,7 +71,7 @@ def test_sim_dc_hier():
 
 def test_generic_mos_netlister():
     nl = Netlister()
-    nl.netlist_hier(lib_test.NmosSourceFollowerTb().schematic)
+    nl.netlist_hier(lib_test.NmosSourceFollowerTb(vin=R(2)).schematic)
     netlist = nl.out()
 
     assert netlist.count('.model nmosgeneric NMOS level=1') == 1

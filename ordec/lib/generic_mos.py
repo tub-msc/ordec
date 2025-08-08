@@ -17,16 +17,27 @@ def setup_generic_mos(netlister):
     netlister.add('.model', 'nmosgeneric', 'NMOS', 'level=1', f'VTO={vt0}', *common_args)
     netlister.add('.model', 'pmosgeneric', 'PMOS', 'level=1', f'VTO={-vt0}', *common_args)
 
-def params_to_spice(params, allowed_keys=('l', 'w', 'ad', 'as', 'm')):
-    spice_params = []
-    for k, v in params.items():
-        if k not in allowed_keys:
-            continue
-        spice_params.append(f"{k}={v}")
-    return spice_params
+class Mos(Cell):
+    """
+    Shared base class of Nmos and Pmos.
+    """
+    l = Parameter(R, default=R('1u'))
+    w = Parameter(R, default=R('1u'))
+
+    def netlist_ngspice(self, netlister, inst, schematic):
+        netlister.require_setup(setup_generic_mos)
+        pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
+        netlister.add(
+            netlister.name_obj(inst, schematic, prefix="m"),
+            netlister.portmap(inst, pins),
+            self.model_name,
+            *helpers.spice_params({
+                'l': self.l,
+                'w': self.w,
+            }))
 
 @public
-class Nmos(Cell):
+class Nmos(Mos):
     @generate
     def symbol(self):
         s = Symbol(cell=self)
@@ -46,13 +57,10 @@ class Nmos(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst, schematic):
-        netlister.require_setup(setup_generic_mos)
-        pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
-        netlister.add(netlister.name_obj(inst, schematic, prefix="m"), netlister.portmap(inst, pins), 'nmosgeneric', *params_to_spice(self.params))
+    model_name = "nmosgeneric"    
 
 @public
-class Pmos(Cell):
+class Pmos(Mos):
     @generate
     def symbol(self):
         s = Symbol(cell=self)
@@ -72,10 +80,7 @@ class Pmos(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst, schematic):
-        netlister.require_setup(setup_generic_mos)
-        pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
-        netlister.add(netlister.name_obj(inst, schematic, prefix="m"), netlister.portmap(inst, pins), 'pmosgeneric', *params_to_spice(self.params))
+    model_name = "pmosgeneric"
 
 @public
 class Inv(Cell):

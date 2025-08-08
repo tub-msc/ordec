@@ -28,39 +28,54 @@ if not _SKY130_MODEL_FULL_PATH.is_file():
 
 
 def setup_sky(netlister):
-
-
     netlister.add(".include",f"\"{_SKY130_MODEL_FULL_PATH}\"")
     netlister.add(".param","mc_mm_switch=0")
 
-def params_to_spice(params, allowed_keys=('l', 'w', 'ad', 'as', 'm',"pd","ps")):
-    spice_params = []
-    for k, v in params.items():
-        if k not in allowed_keys:
-            continue
-        
-        scale_factor = {'w':1e9, 'l':1e9}
-        if isinstance(v, R):
-            v = (v * scale_factor.get(k, 1)).compat_str()
-        spice_params.append(f"{k}={v}")
-    return spice_params
+class Mos(Cell):
+    l = Parameter(R) #: Length
+    w = Parameter(R) #: Width
+    nf = Parameter(int, default=1) #: Number of fingers
+    ad = Parameter(R, default=R(0)) #: Drain area
+    as_ = Parameter(R, default=R(0)) #: Source area; underscore added because 'as' is keyword in Python
+    pd = Parameter(R, default=R(0)) #: Drain perimeter
+    ps = Parameter(R, default=R(0)) #: Source perimeter
+    nrd = Parameter(R, default=R(0)) #: Number of squares in drain
+    nrs = Parameter(R, default=R(0)) #: Number of squares in source
+    sa = Parameter(R, default=R(0)) #: Distance between OD edge to Poly
+    sb = Parameter(R, default=R(0)) #: Distance between OD edge to Poly (other side)
+    sd = Parameter(R, default=R(0)) #: Distance between neighboring fingers
 
-@public
-class Nmos(generic_mos.Nmos):
-    @staticmethod
-    def model_name() -> str:
-        return "sky130_fd_pr__nfet_01v8"
     def netlist_ngspice(self, netlister, inst, schematic):
         netlister.require_setup(setup_sky)
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
-        netlister.add(netlister.name_obj(inst, schematic, prefix="x"), netlister.portmap(inst, pins), self.model_name(), *params_to_spice(self.params))
+        netlister.add(
+            netlister.name_obj(inst, schematic, prefix="x"),
+            netlister.portmap(inst, pins),
+            self.model_name,
+            *helpers.spice_params({
+                # sky130 uses ".option scale=1.0u"
+                'l': self.l * R('1e6'), 
+                'w': self.w * R('1e6'),
+                # how do the other parameters need to be scaled?
+                'nf': self.nf,
+                'ad': self.ad,
+                'as': self.as_,
+                'pd': self.pd,
+                'ps': self.ps,
+                'nrd': self.nrd,
+                'nrs': self.nrs,
+                'sa': self.sa,
+                'sb': self.sb,
+                'sd': self.sd,
+            }))
 
 @public
-class Pmos(generic_mos.Pmos):
-    def netlist_ngspice(self, netlister, inst, schematic):
-        netlister.require_setup(setup_sky)
-        pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
-        netlister.add(netlister.name_obj(inst, schematic, prefix="x"), netlister.portmap(inst, pins), 'sky130_fd_pr__pfet_01v8', *params_to_spice(self.params))
+class Nmos(Mos, generic_mos.Nmos):
+    model_name = "sky130_fd_pr__nfet_01v8"
+
+@public
+class Pmos(Mos, generic_mos.Pmos):
+    model_name = "sky130_fd_pr__pfet_01v8"
 
 @public
 class Inv(Cell):
@@ -93,21 +108,21 @@ class Inv(Cell):
         s.vss = Net(pin=self.symbol.vss)
 
         nmos_params = {
-            "l": "0.15",
-            "w": "0.495",
-            "as": "0.131175",
-            "ad": "0.131175",
-            "ps": "1.52",
-            "pd": "1.52"
+            "l": R("0.15u"),
+            "w": R("0.495u"),
+            "as_": R("0.131175"),
+            "ad": R("0.131175"),
+            "ps": R("1.52"),
+            "pd": R("1.52"),
         }
         nmos = Nmos(**nmos_params).symbol
         pmos_params = {
-            "l": "0.15",
-            "w": "0.99",
-            "as": "0.26235",
-            "ad": "0.26235",
-            "ps": "2.51",
-            "pd": "2.51"
+            "l": R("0.15u"),
+            "w": R("0.99u"),
+            "as_": R("0.26235"),
+            "ad": R("0.26235"),
+            "ps": R("2.51"),
+            "pd": R("2.51"),
         }
         pmos = Pmos(**pmos_params).symbol
 

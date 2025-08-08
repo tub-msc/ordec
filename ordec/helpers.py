@@ -5,6 +5,16 @@ import itertools
 from dataclasses import dataclass
 from .core import *
 
+def spice_params(params: dict) -> list[str]:
+    """Helper function for Netlister.add(). This function is in helper.py
+    instead of ngspice.py due to the import structure (?)."""
+    spice_params = []
+    for k, v in params.items():
+        if isinstance(v, R):
+            v = v.compat_str()
+        spice_params.append(f"{k}={v}")
+    return spice_params
+
 def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     """
     Arranges all Pins of a symbol, setting their pos attributes.

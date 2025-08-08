@@ -278,13 +278,14 @@ print(repr(VoltageDivider().schematic))
 
 VoltageDivider().schematic
 
-# Cells can be **parametrized**. Cell-level parameters can be accessed under "self.params" by the view generators:
+# Cells can be **parametrized**:
 
 # +
 from ordec.core import *
 from ordec.lib import Res, Gnd, Vdc
 
 class ParamVDiv(Cell):
+    r = Parameter(R)
     @generate
     def schematic(self):
         print("INFO: Generating the schematic!")
@@ -293,8 +294,8 @@ class ParamVDiv(Cell):
         s.b = Net()
         s.c = Net()
         
-        s.R0 = SchemInstance(Res(r=self.params.r / 2).symbol.portmap(m=s.a, p=s.b), pos=Vec2R(0, 0))
-        s.R1 = SchemInstance(Res(r=self.params.r / 2).symbol.portmap(m=s.b, p=s.c), pos=Vec2R(0, 5))
+        s.R0 = SchemInstance(Res(r=self.r / 2).symbol.portmap(m=s.a, p=s.b), pos=Vec2R(0, 0))
+        s.R1 = SchemInstance(Res(r=self.r / 2).symbol.portmap(m=s.b, p=s.c), pos=Vec2R(0, 5))
         
         return s
 

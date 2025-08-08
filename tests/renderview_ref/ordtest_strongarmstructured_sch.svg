@@ -31,7 +31,7 @@
     <g>
       <rect x="7.0" y="22.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 10.875 25.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Pmos</text>
-      <text transform="matrix(0.045 0 0 -0.045 10.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 10.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
       <text transform="matrix(0.045 0 0 -0.045 7.125 25.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">s1</text>
       <path d="M2.0 0.0 L2.0 1.25 L1.3 1.25 L1.3 2.75 L2.0 2.75 L2.0 4.0" transform="matrix(1 0 0 1 7.0 22.0)" class="symbolPoly" />
       <path d="M1.0 1.25 L1.0 2.75" transform="matrix(1 0 0 1 7.0 22.0)" class="symbolPoly" />
@@ -51,7 +51,7 @@
     <g>
       <rect x="15.0" y="22.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 18.875 25.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Pmos</text>
-      <text transform="matrix(0.045 0 0 -0.045 18.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 18.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
       <text transform="matrix(0.045 0 0 -0.045 15.125 25.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">s3</text>
       <path d="M2.0 0.0 L2.0 1.25 L1.3 1.25 L1.3 2.75 L2.0 2.75 L2.0 4.0" transform="matrix(1 0 0 1 15.0 22.0)" class="symbolPoly" />
       <path d="M1.0 1.25 L1.0 2.75" transform="matrix(1 0 0 1 15.0 22.0)" class="symbolPoly" />
@@ -71,7 +71,7 @@
     <g>
       <rect x="23.0" y="28.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 26.875 31.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Pmos</text>
-      <text transform="matrix(0.045 0 0 -0.045 26.875 28.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 26.875 28.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
       <text transform="matrix(0.045 0 0 -0.045 23.125 31.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">m5</text>
       <path d="M2.0 0.0 L2.0 1.25 L1.3 1.25 L1.3 2.75 L2.0 2.75 L2.0 4.0" transform="matrix(-1 0 0 1 27.0 28.0)" class="symbolPoly" />
       <path d="M1.0 1.25 L1.0 2.75" transform="matrix(-1 0 0 1 27.0 28.0)" class="symbolPoly" />
@@ -91,7 +91,7 @@
     <g>
       <rect x="23.0" y="15.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 26.875 18.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Nmos</text>
-      <text transform="matrix(0.045 0 0 -0.045 26.875 15.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 26.875 15.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
       <text transform="matrix(0.045 0 0 -0.045 23.125 18.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">m3</text>
       <path d="M2.0 0.0 L2.0 1.25 L1.3 1.25 L1.3 2.75 L2.0 2.75 L2.0 4.0" transform="matrix(-1 0 0 1 27.0 15.0)" class="symbolPoly" />
       <path d="M1.0 1.25 L1.0 2.75" transform="matrix(-1 0 0 1 27.0 15.0)" class="symbolPoly" />
@@ -111,7 +111,7 @@
     <g>
       <rect x="23.0" y="7.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 26.875 10.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Nmos</text>
-      <text transform="matrix(0.045 0 0 -0.045 26.875 7.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 26.875 7.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
       <text transform="matrix(0.045 0 0 -0.045 23.125 10.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">m1</text>
       <path d="M2.0 0.0 L2.0 1.25 L1.3 1.25 L1.3 2.75 L2.0 2.75 L2.0 4.0" transform="matrix(1 0 0 1 23.0 7.0)" class="symbolPoly" />
       <path d="M1.0 1.25 L1.0 2.75" transform="matrix(1 0 0 1 23.0 7.0)" class="symbolPoly" />
@@ -131,7 +131,7 @@
     <g>
       <rect x="31.0" y="22.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 34.875 25.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Nmos</text>
-      <text transform="matrix(0.045 0 0 -0.045 34.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 34.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
       <text transform="matrix(0.045 0 0 -0.045 31.125 25.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">m7</text>
       <path d="M2.0 0.0 L2.0 1.25 L1.3 1.25 L1.3 2.75 L2.0 2.75 L2.0 4.0" transform="matrix(1 0 0 1 31.0 22.0)" class="symbolPoly" />
       <path d="M1.0 1.25 L1.0 2.75" transform="matrix(1 0 0 1 31.0 22.0)" class="symbolPoly" />
@@ -151,7 +151,7 @@
     <g>
       <rect x="39.0" y="28.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 42.875 31.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Pmos</text>
-      <text transform="matrix(0.045 0 0 -0.045 42.875 28.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 42.875 28.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
       <text transform="matrix(0.045 0 0 -0.045 39.125 31.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">m6</text>
       <path d="M2.0 0.0 L2.0 1.25 L1.3 1.25 L1.3 2.75 L2.0 2.75 L2.0 4.0" transform="matrix(1 0 0 1 39.0 28.0)" class="symbolPoly" />
       <path d="M1.0 1.25 L1.0 2.75" transform="matrix(1 0 0 1 39.0 28.0)" class="symbolPoly" />
@@ -171,7 +171,7 @@
     <g>
       <rect x="39.0" y="15.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 42.875 18.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Nmos</text>
-      <text transform="matrix(0.045 0 0 -0.045 42.875 15.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 42.875 15.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
       <text transform="matrix(0.045 0 0 -0.045 39.125 18.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">m4</text>
       <path d="M2.0 0.0 L2.0 1.25 L1.3 1.25 L1.3 2.75 L2.0 2.75 L2.0 4.0" transform="matrix(1 0 0 1 39.0 15.0)" class="symbolPoly" />
       <path d="M1.0 1.25 L1.0 2.75" transform="matrix(1 0 0 1 39.0 15.0)" class="symbolPoly" />
@@ -191,7 +191,7 @@
     <g>
       <rect x="39.0" y="7.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 42.875 10.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Nmos</text>
-      <text transform="matrix(0.045 0 0 -0.045 42.875 7.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 42.875 7.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
       <text transform="matrix(0.045 0 0 -0.045 39.125 10.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">m2</text>
       <path d="M2.0 0.0 L2.0 1.25 L1.3 1.25 L1.3 2.75 L2.0 2.75 L2.0 4.0" transform="matrix(-1 0 0 1 43.0 7.0)" class="symbolPoly" />
       <path d="M1.0 1.25 L1.0 2.75" transform="matrix(-1 0 0 1 43.0 7.0)" class="symbolPoly" />
@@ -211,7 +211,7 @@
     <g>
       <rect x="47.0" y="22.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 50.875 25.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Pmos</text>
-      <text transform="matrix(0.045 0 0 -0.045 50.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 50.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
       <text transform="matrix(0.045 0 0 -0.045 47.125 25.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">s4</text>
       <path d="M2.0 0.0 L2.0 1.25 L1.3 1.25 L1.3 2.75 L2.0 2.75 L2.0 4.0" transform="matrix(-1 0 0 1 51.0 22.0)" class="symbolPoly" />
       <path d="M1.0 1.25 L1.0 2.75" transform="matrix(-1 0 0 1 51.0 22.0)" class="symbolPoly" />
@@ -231,7 +231,7 @@
     <g>
       <rect x="55.0" y="22.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 58.875 25.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Pmos</text>
-      <text transform="matrix(0.045 0 0 -0.045 58.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 58.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
       <text transform="matrix(0.045 0 0 -0.045 55.125 25.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">s2</text>
       <path d="M2.0 0.0 L2.0 1.25 L1.3 1.25 L1.3 2.75 L2.0 2.75 L2.0 4.0" transform="matrix(-1 0 0 1 59.0 22.0)" class="symbolPoly" />
       <path d="M1.0 1.25 L1.0 2.75" transform="matrix(-1 0 0 1 59.0 22.0)" class="symbolPoly" />
