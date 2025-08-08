@@ -43,7 +43,7 @@ Furthermore, there are two modes in which you can use the ORDeC web UI:
     outside the web browser is used. The design is rebuilt automatically when
     it is detected that source files have changed. This is done using inotify.
 
-    By specifying ``--module`` (``-m``) and optionally ``--view`` (``-V``),
+    By specifying ``--module`` (``-m``) and optionally ``--view`` (``-w``),
     the web interface is launched in local mode.
 
     The specified module name (e.g. ``--module mydesign``) is treated as regular
@@ -82,6 +82,7 @@ from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosedOK
 
 from . import importer
+from .version import version
 from .core import *
 
 def discover_views(conn_globals, recursive=True):
@@ -349,6 +350,9 @@ class StaticHandler:
                 query = parse_qs(url.query)
                 return self.process_request_example(query['name'][0])
 
+            if req_path == Path('api/version'):
+                return self.process_request_version()
+
             return self.process_request_static(req_path)
         except:
             print(traceback.print_exc())
@@ -371,6 +375,10 @@ class StaticHandler:
             'srctype': srctype,
             'uistate':uistate,
         })
+        return build_response(data=data.encode('utf8'), mime_type='application/json')
+
+    def process_request_version(self):
+        data = json.dumps({'version': version})
         return build_response(data=data.encode('utf8'), mime_type='application/json')
 
     def process_request_static(self, req_path):
@@ -435,7 +443,8 @@ def main():
     parser.add_argument('-b', '--backend-only', action='store_true', help="Serve backend only. Requires a separate server (e.g. Vite) to serve the frontend.")
     parser.add_argument('-n', '--no-browser', action='store_true', help="Show URL, but do not launch browser.")
     parser.add_argument('-m', '--module', help="Open the specified module from the local file system (local mode).")
-    parser.add_argument('-V', '--view', help="Open specified view of selected module (requires --module / local mode).")
+    parser.add_argument('-w', '--view', help="Open specified view of selected module (requires --module / local mode).")
+    parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {version}')
 
     args = parser.parse_args()
     hostname = args.hostname

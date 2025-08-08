@@ -199,3 +199,7 @@ if(localModule) {
     // 1st request, caused by loadSrc, is with refreshTimeout = 0.
     window.ordecClient.editor.refreshTimeout = 500; 
 }
+
+fetch('/api/version').then(response => response.json()).then(data => {
+    document.querySelector('#version').innerText = data['version'];
+});
