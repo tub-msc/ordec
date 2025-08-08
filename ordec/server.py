@@ -59,6 +59,7 @@ import http
 import json
 import traceback
 from pathlib import Path
+from types import ModuleType
 import mimetypes
 from urllib.parse import urlparse, parse_qs
 import threading
@@ -83,13 +84,16 @@ from websockets.exceptions import ConnectionClosedOK
 from . import importer
 from .core import *
 
-def discover_views(conn_globals):
+def discover_views(conn_globals, recursive=True):
     views = []
     for k, v in conn_globals.items():
-        if isinstance(v, generate_func):
+        if isinstance(v, ModuleType) and recursive:
+            for subview in discover_views(v.__dict__, recursive=recursive):
+                subview['name'] = f"{k}.{subview['name']}"
+                views.append(subview)
+        elif isinstance(v, generate_func):
             views.append({'name': f"{k}()"} | v.info_dict())
-
-        if isinstance(v, type) and issubclass(v, Cell) and v!=Cell:
+        elif isinstance(v, type) and issubclass(v, Cell) and v!=Cell:
             generate_members = []
             for member_name in dir(v):
                 member = getattr(v, member_name)
