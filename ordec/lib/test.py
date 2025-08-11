@@ -337,7 +337,33 @@ class RingoscTb(Cell):
 
         return s
 
-class ResdivFlatTb(Cell):
+
+# Cells for sim2 testing
+# ----------------------
+
+class SimBase(Cell):
+    @generate
+    def sim_hierarchy(self):
+        s = SimHierarchy(cell=self)
+        # Build SimHierarchy, but runs no simulations.
+        HighlevelSim(self.schematic, s)
+        return s
+
+    @generate
+    def sim_dc(self):
+        s = SimHierarchy(cell=self)
+        sim = HighlevelSim(self.schematic, s)
+        sim.op()
+        return s
+
+    @generate
+    def sim_dc_ffi(self):
+        s = SimHierarchy(cell=self)
+        sim = HighlevelSim(self.schematic, s, backend='ffi')
+        sim.op()
+        return s
+
+class ResdivFlatTb(SimBase):
     @generate
     def schematic(self):
         s = Schematic(cell=self)
@@ -368,14 +394,6 @@ class ResdivFlatTb(Cell):
         helpers.schem_check(s, add_conn_points=True)
 
         return s
-
-    @generate
-    def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s)
-        sim.op()
-        return s
-
 
 class ResdivHier2(Cell):
     r = Parameter(R)
@@ -468,7 +486,7 @@ class ResdivHier1(Cell):
         helpers.schem_check(s, add_conn_points=True)
         return s
 
-class ResdivHierTb(Cell):
+class ResdivHierTb(SimBase):
     @generate
     def schematic(self):
         s = Schematic(cell=self)
@@ -492,21 +510,7 @@ class ResdivHierTb(Cell):
         helpers.schem_check(s, add_conn_points=True)
         return s
 
-    @generate
-    def sim_hierarchy(self):
-        s = SimHierarchy(cell=self)
-        # Build SimHierarchy, but runs no simulations.
-        HighlevelSim(self.schematic, s)
-        return s
-
-    @generate
-    def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s)
-        sim.op()
-        return s
-
-class NmosSourceFollowerTb(Cell):
+class NmosSourceFollowerTb(SimBase):
     """Nmos (generic_mos) source follower with optional parameter vin."""
     
     vin = Parameter(R)
@@ -537,14 +541,7 @@ class NmosSourceFollowerTb(Cell):
 
         return s
 
-    @generate
-    def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s)
-        sim.op()
-        return s
-
-class InvTb(Cell):
+class InvTb(SimBase):
     vin = Parameter(R)
     
     @generate
@@ -571,14 +568,7 @@ class InvTb(Cell):
 
         return s
 
-    @generate
-    def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s)
-        sim.op()
-        return s
-
-class InvSkyTb(Cell):
+class InvSkyTb(SimBase):
     vin = Parameter(R)
 
     @generate
@@ -611,11 +601,4 @@ class InvSkyTb(Cell):
 
         helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
 
-        return s
-
-    @generate
-    def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s)
-        sim.op()
         return s

@@ -42,13 +42,6 @@ class ResdivFlatTb(Cell):
 
         return s
 
-    @generate
-    def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s, backend='ffi')
-        sim.op()
-        return s
-
     def sim_tran_async(self, tstep, tstop, backend='ffi', callback=None, throttle_interval=0.1):
         """Run async transient simulation."""
         # Create hierarchical simulation
@@ -203,19 +196,6 @@ class ResdivHierTb(Cell):
         helpers.schem_check(s, add_conn_points=True)
         return s
 
-    @generate
-    def sim_hierarchy(self):
-        s = SimHierarchy(cell=self)
-        # Build SimHierarchy, but runs no simulations.
-        HighlevelSim(self.schematic, s, backend='ffi')
-        return s
-
-    @generate
-    def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s, backend='ffi')
-        sim.op()
-        return s
 
     def sim_tran_async(self, tstep, tstop, backend='ffi', callback=None, throttle_interval=0.1):
         """Run async transient simulation."""
@@ -283,13 +263,6 @@ class NmosSourceFollowerTb(Cell):
 
         return s
 
-    @generate
-    def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s, backend='ffi')
-        sim.op()
-        return s
-
     def sim_tran_async(self, tstep, tstop, backend='ffi', callback=None, throttle_interval=0.1):
         """Run async transient simulation."""
         # Create hierarchical simulation
@@ -349,13 +322,6 @@ class InvTb(Cell):
 
         helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
 
-        return s
-
-    @generate
-    def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s, backend='ffi')
-        sim.op()
         return s
 
     def sim_tran_async(self, tstep, tstop, backend='ffi', callback=None, throttle_interval=0.1, enable_savecurrents=True):
@@ -434,13 +400,6 @@ class InvSkyTb(Cell):
 
         helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
 
-        return s
-
-    @generate
-    def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s, backend='ffi')
-        sim.op()
         return s
 
     def sim_tran_async(self, tstep, tstop, backend='ffi', callback=None, throttle_interval=0.1, enable_savecurrents=False):
