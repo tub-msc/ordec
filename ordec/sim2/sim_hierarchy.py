@@ -28,7 +28,7 @@ def build_hier_schematic(simhier, schematic):
             build_hier_schematic(subnode, subschematic)
 
 class HighlevelSim:
-    def __init__(self, top: Schematic, simhier: SimHierarchy, enable_savecurrents: bool = True, backend: str = None):
+    def __init__(self, top: Schematic, simhier: SimHierarchy, enable_savecurrents: bool = True, backend: str = 'subprocess'):
         self.top = top
         self.backend = backend
 

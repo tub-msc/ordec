@@ -33,57 +33,14 @@ class NgspiceFatalError(NgspiceError):
     pass
 
 
-class NgSpiceConfigError(NgspiceError):
+class NgspiceConfigError(NgspiceError):
     """Raised when backend configuration fails."""
     pass
 
-class NgSpiceBackend(Enum):
+class NgspiceBackend(Enum):
     """Available NgSpice backend types."""
     SUBPROCESS = "subprocess"
     FFI = "ffi"
-    AUTO = "auto"
-
-
-def get_default_backend() -> NgSpiceBackend:
-    # Environment variable option is disabled - always default to auto
-    return NgSpiceBackend.AUTO
-
-
-def _detect_ffi_availability() -> bool:
-    try:
-        _FFIBackend.find_library()
-        return True
-    except NgSpiceConfigError:
-        return False
-
-
-def _detect_subprocess_availability() -> bool:
-    # We assume 'ngspice' is in the PATH. A more thorough check could be added.
-    return True
-
-
-def select_backend(preferred: NgSpiceBackend) -> NgSpiceBackend:
-    """Selects the best available backend."""
-    #currently we default to subprocess
-    is_ffi_available = _detect_ffi_availability()
-    is_subprocess_available = _detect_subprocess_availability()
-
-    if preferred == NgSpiceBackend.AUTO:
-        if is_subprocess_available:
-            return NgSpiceBackend.SUBPROCESS
-        if is_ffi_available:
-            return NgSpiceBackend.FFI
-        raise NgSpiceConfigError("No suitable NgSpice backend found. Please install NgSpice.")
-    elif preferred == NgSpiceBackend.FFI:
-        if is_ffi_available:
-            return NgSpiceBackend.FFI
-        raise NgSpiceConfigError("NgSpice FFI backend selected but the shared library could not be found.")
-    elif preferred == NgSpiceBackend.SUBPROCESS:
-        if is_subprocess_available:
-            return NgSpiceBackend.SUBPROCESS
-        raise NgSpiceConfigError("NgSpice subprocess backend selected but the executable is not available.")
-    raise NgSpiceConfigError(f"Unknown backend '{preferred}' requested.")
-
 
 class NgspiceTable:
     def __init__(self, name):
@@ -313,7 +270,7 @@ class _FFIBackend:
             None
         )
         if init_result != 0:
-            raise NgSpiceConfigError(f"Failed to initialize NgSpice FFI library (error code: {init_result}).")
+            raise NgspiceConfigError(f"Failed to initialize NgSpice FFI library (error code: {init_result}).")
 
     @staticmethod
     @contextmanager
@@ -752,22 +709,12 @@ class _FFIBackend:
 
     @staticmethod
     def find_library() -> ctypes.CDLL:
-        lib_names = {
-            'win32': ['ngspice.dll', 'libngspice-0.dll'],
-            'darwin': ['libngspice.dylib', 'libngspice.0.dylib'],
-        }.get(sys.platform, ['libngspice.so', 'libngspice.so.0'])
-
-        # Check standard system paths first
-        for lib_name in lib_names:
-            try:
-                return ctypes.CDLL(lib_name)
-            except OSError:
-                continue
-
-        raise NgSpiceConfigError(
-            "Could not find the ngspice shared library. Please ensure ngspice is installed "
-            "and the library is in the system's search path."
-        )
+        if sys.platform == 'win32':
+            return ctypes.CDLL('libngspice-0.dll')
+        elif sys.platform == 'darwin':
+            return ctypes.CDLL('libngspice.0.dylib')
+        else:
+            return ctypes.CDLL('libngspice.so.0')
 
     def _setup_library_functions(self):
         # Define callback function prototypes
@@ -1119,23 +1066,17 @@ def check_errors(ngspice_out):
 class Ngspice:
     @staticmethod
     @contextmanager
-    def launch(debug=False, backend=None):
-        if backend is None:
-            backend_type = get_default_backend()
-        elif isinstance(backend, str):
-            backend_type = NgSpiceBackend(backend.lower())
-        else:
-            backend_type = backend
-
-        chosen_backend = select_backend(backend_type)
+    def launch(debug=False, backend : NgspiceBackend = NgspiceBackend.SUBPROCESS):
+        if isinstance(backend, str):
+            backend = NgspiceBackend(backend.lower())
 
         if debug:
-            print(f"[Ngspice] Using backend: {chosen_backend.value}")
+            print(f"[Ngspice] Using backend: {backend.value}")
 
         backend_class = {
-            NgSpiceBackend.FFI: _FFIBackend,
-            NgSpiceBackend.SUBPROCESS: _SubprocessBackend,
-        }[chosen_backend]
+            NgspiceBackend.FFI: _FFIBackend,
+            NgspiceBackend.SUBPROCESS: _SubprocessBackend,
+        }[backend]
 
         with backend_class.launch(debug=debug) as backend_instance:
             yield Ngspice(backend_instance, debug=debug)
