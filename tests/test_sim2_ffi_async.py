@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
-from ordec.lib import test_ffi as lib_test
+from ordec.lib import test as lib_test
 from ordec.core.rational import R
 
 
