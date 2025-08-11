@@ -76,6 +76,7 @@ def test_sim_dc_flat():
     assert h.a.dc_voltage == 0.3333333
     assert h.b.dc_voltage == 0.6666667
 
+@pytest.mark.libngspice
 def test_sim_dc_flat_ffi():
     h = lib_test.ResdivFlatTb().sim_dc_ffi
     # FFI backend golden values
@@ -87,6 +88,7 @@ def test_sim_dc_hier():
     assert h.r.dc_voltage == 0.3589744
     assert h.I0.I1.m.dc_voltage == 0.5897436
 
+@pytest.mark.libngspice
 def test_sim_dc_hier_ffi():
     h = lib_test.ResdivHierTb().sim_dc_ffi
     # FFI backend golden values
@@ -105,6 +107,7 @@ def test_generic_mos_nmos_sourcefollower():
     assert lib_test.NmosSourceFollowerTb(vin=R(2)).sim_dc.o.dc_voltage == 0.6837722
     assert lib_test.NmosSourceFollowerTb(vin=R(3)).sim_dc.o.dc_voltage == 1.683772
 
+@pytest.mark.libngspice
 def test_generic_mos_nmos_sourcefollower_ffi():
     # FFI backend golden values
     assert lib_test.NmosSourceFollowerTb(vin=R(2)).sim_dc_ffi.o.dc_voltage == 0.6837722116612965
@@ -115,6 +118,7 @@ def test_generic_mos_inv():
     assert lib_test.InvTb(vin=R('2.5')).sim_dc.o.dc_voltage == 2.5
     assert lib_test.InvTb(vin=R(5)).sim_dc.o.dc_voltage == 3.13125e-08
 
+@pytest.mark.libngspice
 def test_generic_mos_inv_ffi():
     # FFI backend golden values
     assert lib_test.InvTb(vin=R(0)).sim_dc_ffi.o.dc_voltage == 4.9999999698343345
@@ -126,6 +130,7 @@ def test_sky_mos_inv():
     assert lib_test.InvSkyTb(vin=R('2.5')).sim_dc.o.dc_voltage == 1.980606
     assert lib_test.InvSkyTb(vin=R(5)).sim_dc.o.dc_voltage ==  0.00012159
 
+@pytest.mark.libngspice
 def test_sky_mos_inv_ffi():
     # FFI backend golden values
     assert lib_test.InvSkyTb(vin=R(0)).sim_dc_ffi.o.dc_voltage == 4.999999973187308

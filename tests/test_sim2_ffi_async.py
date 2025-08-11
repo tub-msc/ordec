@@ -6,6 +6,7 @@ from ordec.lib import test as lib_test
 from ordec.core.rational import R
 
 
+@pytest.mark.libngspice
 def test_highlevel_async_tran_basic():
     h = lib_test.ResdivFlatTb()
 
@@ -33,6 +34,7 @@ def test_highlevel_async_tran_basic():
         assert time_values[i] >= time_values[i-1]
 
 
+@pytest.mark.libngspice
 def test_highlevel_async_tran_with_callback():
     progress_updates = []
 
@@ -66,6 +68,7 @@ def test_highlevel_async_tran_with_callback():
         assert progress_updates[i]['progress'] >= progress_updates[i-1]['progress']
 
 
+@pytest.mark.libngspice
 def test_sky130_streaming_without_savecurrents():
     h = lib_test.InvSkyTb(vin=R(2.5))
 
@@ -89,6 +92,7 @@ def test_sky130_streaming_without_savecurrents():
     assert callback_count >= 1, f"Expected at least 1 callback without savecurrents, got {callback_count}"
 
 
+@pytest.mark.libngspice
 def test_sky130_streaming_with_savecurrents():
     h = lib_test.InvSkyTb(vin=R(2.5))
 
@@ -112,6 +116,7 @@ def test_sky130_streaming_with_savecurrents():
     assert callback_count >= 0, f"Expected non-negative callbacks with savecurrents, got {callback_count}"
 
 
+@pytest.mark.libngspice
 def test_sky130_netlist_savecurrents_option():
     from ordec.sim2.sim_hierarchy import SimHierarchy, HighlevelSim
 
@@ -131,6 +136,7 @@ def test_sky130_netlist_savecurrents_option():
     assert ".option savecurrents" not in netlist_without, "Netlist with enable_savecurrents=False should not contain .option savecurrents"
 
 
+@pytest.mark.libngspice
 def test_highlevel_async_mos_sourcefollower():
     """Test async transient simulation with MOS source follower."""
     h = lib_test.NmosSourceFollowerTb(vin=R(2.0))
@@ -148,6 +154,7 @@ def test_highlevel_async_mos_sourcefollower():
     assert hasattr(final_result.o, 'voltage')
 
 
+@pytest.mark.libngspice
 def test_highlevel_async_mos_inverter():
     h = lib_test.InvTb(vin=R(0))
 
@@ -165,6 +172,7 @@ def test_highlevel_async_mos_inverter():
     assert hasattr(final_result.o, 'voltage')
 
 
+@pytest.mark.libngspice
 def test_highlevel_async_sky_inverter():
     h = lib_test.InvSkyTb(vin=R(2.5))
 
@@ -181,6 +189,7 @@ def test_highlevel_async_sky_inverter():
     assert hasattr(final_result.o, 'voltage')
 
 
+@pytest.mark.libngspice
 def test_highlevel_async_early_termination():
     h = lib_test.ResdivFlatTb()
 
@@ -198,6 +207,7 @@ def test_highlevel_async_early_termination():
     assert data_count <= 5
 
 
+@pytest.mark.libngspice
 def test_highlevel_async_multiple_circuits():
     """Test running multiple async transient simulations sequentially."""
     # First circuit
@@ -225,6 +235,7 @@ def test_highlevel_async_multiple_circuits():
     assert hasattr(results2[0].r, 'voltage')
 
 
+@pytest.mark.libngspice
 def test_highlevel_async_parameter_sweep():
     input_voltages = [2.0, 3.0, 4.0]
     results = {}
