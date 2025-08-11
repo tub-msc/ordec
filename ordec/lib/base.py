@@ -339,6 +339,11 @@ class SinusoidalVoltageSource(Cell):
     Requires parameters: offset, amplitude, frequency, delay.
     Optional parameter: damping_factor (defaults to 0).
     """
+    offset = Parameter(R, optional=True)
+    amplitude = Parameter(R)  
+    frequency = Parameter(R)
+    delay = Parameter(R, optional=True)
+    damping_factor = Parameter(R, optional=True)
 
     @generate
     def symbol(self):
@@ -367,6 +372,20 @@ class SinusoidalVoltageSource(Cell):
         
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
+
+    def netlist_ngspice(self, netlister, inst, schematic):
+        pins = [inst.symbol.p, inst.symbol.m]
+        # NGSPICE sine format: SIN(VOFF VAMP FREQ TD THETA PHASE)
+        # VOFF = offset voltage, VAMP = amplitude, FREQ = frequency 
+        # TD = delay, THETA = damping factor, PHASE = phase (default 0)
+        offset = self.params.get('offset', R(0))
+        delay = self.params.get('delay', R(0))
+        damping = self.params.get('damping_factor', R(0))
+        netlister.add(
+            netlister.name_obj(inst, schematic, prefix="v"), 
+            netlister.portmap(inst, pins),
+            f'SIN({offset.compat_str()} {self.amplitude.compat_str()} {self.frequency.compat_str()} {delay.compat_str()} {damping.compat_str()})'
+        )
 
 @public
 class PieceWiseLinearCurrentSource(Cell):

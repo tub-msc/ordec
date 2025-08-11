@@ -7,3 +7,9 @@ __pycache__
 *.ipynb
 *.swp
 dist/
+build/
+.pytest_cache/
+htmlcov/
+ordec/webdist.tar
+sky130A/
+sky130B/

@@ -123,13 +123,20 @@ RUN useradd -ms /bin/bash app && \
         git \
         binutils \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
-USER app
-WORKDIR /home/app
 
 COPY --chown=app --from=ordec-cbuild /home/app/ngspice /home/app/ngspice
 COPY --chown=app --from=ordec-fetch /home/app/openvaf /home/app/openvaf
 COPY --chown=app --from=ordec-fetch /home/app/IHP-Open-PDK /home/app/IHP-Open-PDK
 COPY --chown=app --from=ordec-fetch /home/app/skywater /home/app/skywater
+
+# Install ngspice shared library to system location and configure with ldconfig
+RUN mkdir -p /usr/local/ngspice-shared/lib && \
+    cp -a /home/app/ngspice/shared/lib/* /usr/local/ngspice-shared/lib/ && \
+    echo "/usr/local/ngspice-shared/lib" > /etc/ld.so.conf.d/ngspice.conf && \
+    ldconfig
+
+USER app
+WORKDIR /home/app
 
 ENV PATH="/home/app/openvaf:/home/app/ngspice/min/bin:$PATH"
 ENV LD_LIBRARY_PATH="/home/app/ngspice/shared/lib"

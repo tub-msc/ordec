@@ -28,10 +28,11 @@ def build_hier_schematic(simhier, schematic):
             build_hier_schematic(subnode, subschematic)
 
 class HighlevelSim:
-    def __init__(self, top: Schematic, simhier: SimHierarchy):
+    def __init__(self, top: Schematic, simhier: SimHierarchy, enable_savecurrents: bool = True, backend: str = None):
         self.top = top
+        self.backend = backend
 
-        self.netlister = Netlister()
+        self.netlister = Netlister(enable_savecurrents=enable_savecurrents)
         self.netlister.netlist_hier(self.top)
 
         self.simhier = simhier
@@ -47,7 +48,7 @@ class HighlevelSim:
             self.str_to_simobj[name] = sn
 
     def op(self):
-        with Ngspice.launch(debug=False) as sim:
+        with Ngspice.launch(debug=False, backend=self.backend) as sim:
             sim.load_netlist(self.netlister.out())
             for vtype, name, subname, value in sim.op():
                 if vtype == 'voltage':
