@@ -1,0 +1,66 @@
+// SPDX-FileCopyrightText: 2025 ORDeC contributors
+// SPDX-License-Identifier: Apache-2.0
+
+{
+  "name": "ORDeC Development Container",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "nodeGypDependencies": true,
+      "version": "22"
+    },
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "latest",
+      "profile": "minimal"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    },
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  "containerEnv": {
+    "ORDEC_PDK_SKY130A": "/home/vscode/skywater/sky130A",
+    "ORDEC_PDK_SKY130B": "/home/vscode/skywater/sky130B", 
+    "ORDEC_PDK_IHP_SG13G2": "/home/vscode/IHP-Open-PDK/ihp-sg13g2"
+  },
+
+  "remoteEnv": {
+    "PATH": "${containerEnv:PATH}:/home/vscode/openvaf:/home/vscode/ngspice/min/bin:/home/vscode/.local/bin"
+  },
+
+  "onCreateCommand": [
+    "bash",
+    "-c", 
+    "sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential automake bison flex gfortran libedit-dev libncurses-dev libtool libreadline-dev libgomp1 binutils wget ca-certificates zstd && mkdir -p /home/vscode/.local/bin"
+  ],
+
+  "postCreateCommand": [
+    "bash",
+    "-c",
+    ".devcontainer/setup.sh"
+  ],
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.pylint",
+        "ms-python.black-formatter",
+        "bradlc.vscode-tailwindcss",
+        "esbenp.prettier-vscode",
+        "ms-vscode.vscode-json"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/home/vscode/venv/bin/python",
+        "python.terminal.activateEnvironment": false
+      }
+    }
+  },
+
+  "forwardPorts": [8100],
+  
+  "remoteUser": "vscode"
+}

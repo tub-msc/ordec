@@ -7,3 +7,7 @@ __pycache__
 *.ipynb
 *.swp
 dist/
+build/
+ordec/webdist.tar
+sky130A/
+sky130B/
