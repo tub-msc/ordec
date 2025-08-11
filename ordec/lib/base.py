@@ -314,12 +314,12 @@ class PulseVoltageSource(Cell):
 
         # Pulse symbol
         s % SymbolPoly(vertices=[
-            Vec2R(1.5, 1.5),
-            Vec2R(1.5, 2.5),
-            Vec2R(2.0, 2.5),
-            Vec2R(2.0, 1.5),
-            Vec2R(2.5, 1.5),
-            Vec2R(2.5, 2.5)
+            Vec2R(1.5, 1.75),
+            Vec2R(1.5, 2.25),
+            Vec2R(2.0, 2.25),
+            Vec2R(2.0, 1.75),
+            Vec2R(2.5, 1.75),
+            Vec2R(2.5, 2.25)
         ])
 
 
@@ -452,7 +452,7 @@ class PulseCurrentSource(Cell):
             Vec2R(2 + arrow_width, arrow_barb_y)  # Right barb base
         ])
 
-        s.outline = s % Rect4R(lx=0, ly=0, ux=4, uy=4)
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
 @public
