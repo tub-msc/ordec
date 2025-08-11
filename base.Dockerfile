@@ -85,22 +85,26 @@ ARG ngspice_common_args="--disable-debug --without-x --enable-xspice --disable-c
 WORKDIR /home/app/ngspice-src
 
 RUN ./configure --prefix=/home/app/ngspice/min ${ngspice_common_args} --with-readline=no --with-editline=no && \
+    make clean && \
     make -j`nproc --ignore=1` && \
     make install
 
 # ngspice shared library:
 RUN ./configure --prefix=/home/app/ngspice/shared ${ngspice_common_args} --with-ngshared --with-readline=no --with-editline=no && \
+    make clean && \
     make -j`nproc --ignore=1` && \
     make install
 
 RUN if [ ${ngspice_multibuild} != off ]; then \
     ./configure --prefix=/home/app/ngspice/readline ${ngspice_common_args} --with-readline=yes --with-editline=no && \
+    make clean && \
     make -j`nproc --ignore=1` && \
     make install; \
     fi
 
 RUN if [ ${ngspice_multibuild} != off ]; then \
     ./configure --prefix=/home/app/ngspice/editline ${ngspice_common_args} --with-readline=no --with-editline=yes && \
+    make clean && \
     make -j`nproc --ignore=1` && \
     make install; \
     fi
