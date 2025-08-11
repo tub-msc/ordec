@@ -7,19 +7,6 @@ from ordec.sim2.ngspice import Ngspice, NgspiceError, NgspiceFatalError, Netlist
 from ordec import Rational as R
 from ordec.lib import test_ffi as lib_test
 
-@pytest.fixture(autouse=True)
-def set_ffi_backend(monkeypatch):
-    """Clear cell caches to prevent cross-contamination between tests.
-    FFI backend is now specified explicitly in testbench classes.
-    """
-    # Clear cell caches to prevent cross-contamination between backend tests
-    from ordec.lib import test_ffi as lib_test
-    # Clear caches from all Cell classes that might have cached simulation results
-    for cell_cls in [lib_test.InvSkyTb, lib_test.InvTb, lib_test.NmosSourceFollowerTb,
-                     lib_test.ResdivFlatTb, lib_test.ResdivHierTb]:
-        for cell_instance in cell_cls.instances.values():
-            cell_instance.cached_subgraphs.clear()
-
 def test_ngspice_illegal_netlist_1():
     with Ngspice.launch(backend="ffi", debug=True) as sim:
         with pytest.raises(NgspiceFatalError, match=".*Error: Mismatch of .subckt ... .ends statements!.*"):
