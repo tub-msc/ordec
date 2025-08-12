@@ -2,17 +2,10 @@ Cell Library
 ============
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: Contents:
 
    base
-
-IHP SG13G2
-----------
-
-*Coming soon.*
-
-SKY130
-------
-
-*Coming soon.*
+   generic_mos
+   ihp130
+   sky130

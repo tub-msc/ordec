@@ -368,9 +368,6 @@ class Index(GenericIndex):
             else:
                 assert vals == pvector((self.index_value(node, nid), ))
 
-    def __repr__(self):
-        return f"<{type(self).__name__} {id(self):x}>"
-
     def query(self, key) -> IndexQuery:
         """
         Returns IndexQuery object for equivalence query with key.
@@ -599,8 +596,8 @@ class NodeMeta(type):
             attrdesc_by_name = {}
             nodetuple_dict = {'_raw_attrs': cls._raw_attrs, '__slots__':()}
             layout = []
-            #attrs.setdefault('__annotations__', {})
-            cls.__annotations__ = {}
+            attrs.setdefault('__annotations__', {})
+            #cls.__annotations__ = {}
             nt_indices = []
 
             for n, (k, v) in enumerate(cls._raw_attrs.items()):

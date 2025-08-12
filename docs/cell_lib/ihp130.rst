@@ -1,0 +1,11 @@
+:mod:`ordec.lib.ihp130` --- IHP SG13G2 technology
+=================================================
+
+This cell library provides part of the `IHP Open PDK <https://github.com/IHP-GmbH/IHP-Open-PDK>`_.
+
+.. automodule:: ordec.lib.ihp130
+  :members:
+  :member-order: groupwise
+  :undoc-members:
+  :exclude-members: instances, netlist_ngspice, discoverable_instances, params_check, params_list, params_preprocess, params_rewrite
+  :inherited-members:

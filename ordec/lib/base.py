@@ -11,11 +11,12 @@ from .. import helpers
 
 @public
 class Res(Cell):
-    r = Parameter(R)
-    alt_symbol = Parameter(bool, optional=True)
+    """Ideal resistor"""
+    r = Parameter(R) #: Resistance in ohm
+    alt_symbol = Parameter(bool, optional=True) #: Use box symbol instead of zigzag symbol
 
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
@@ -57,10 +58,11 @@ class Res(Cell):
 
 @public
 class Cap(Cell):
-    c = Parameter(R)
+    """Ideal capacitor"""
+    c = Parameter(R) #: Capacitance in farad
 
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
@@ -85,10 +87,11 @@ class Cap(Cell):
 
 @public
 class Ind(Cell):
-    l = Parameter(R)
+    """Ideal inductor"""
+    l = Parameter(R) #: Inductance in henry
 
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
@@ -120,8 +123,9 @@ class Ind(Cell):
 
 @public
 class Gnd(Cell):
+    """Global ground tie"""
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
         
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)  
@@ -140,8 +144,9 @@ class Gnd(Cell):
 
 @public
 class NoConn(Cell):
+    """No connection"""
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         s.a = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=Orientation.West)
@@ -161,11 +166,12 @@ class NoConn(Cell):
 
 @public
 class Vdc(Cell):
-    dc = Parameter(R)
-    alt_symbol = Parameter(bool, optional=True)
+    """DC voltage source"""
+    dc = Parameter(R) #: DC voltage in volt
+    alt_symbol = Parameter(bool, optional=True) #: Use alternative symbol
 
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
@@ -210,11 +216,12 @@ class Vdc(Cell):
 
 @public
 class Idc(Cell):
-    dc = Parameter(R)
-    alt_symbol = Parameter(bool, optional=True)
+    """DC current source"""
+    dc = Parameter(R) #: DC current in ampere
+    alt_symbol = Parameter(bool, optional=True) #: Use alternative symbol
 
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
         
         s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
@@ -257,13 +264,16 @@ class Idc(Cell):
 @public
 class PieceWiseLinearVoltageSource(Cell):
     """
+    .. warning::
+      Currently not usable.
+
     Represents a Piecewise Linear Voltage Source.
     Expects a parameter 'V' which is a list of (time, voltage) tuples.
     Example: V=[(0, 0), (1e-9, 1.8), (5e-9, 1.8), (6e-9, 0)]
     """
     
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         """ Defines the schematic symbol for the PWL source. """
         s = Symbol(cell=self)
 
@@ -295,13 +305,15 @@ class PieceWiseLinearVoltageSource(Cell):
 @public
 class PulseVoltageSource(Cell):
     """
+    .. warning::
+      Currently not usable.
+
     Represents a Pulse Voltage Source.
-    Requires parameters: initial_value, pulsed_value, delay_time,
-                         rise_time, fall_time, pulse_width, period.
+    Requires parameters: initial_value, pulsed_value, delay_time, rise_time, fall_time, pulse_width, period.
     """
     
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
@@ -346,7 +358,7 @@ class SinusoidalVoltageSource(Cell):
     damping_factor = Parameter(R, optional=True)
 
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         import numpy as np # TODO: Get rid of numpy dependency
@@ -389,8 +401,12 @@ class SinusoidalVoltageSource(Cell):
 
 @public
 class PieceWiseLinearCurrentSource(Cell):
+    """
+    .. warning::
+      Currently not usable.
+    """
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         """ Defines the schematic symbol for the PWL current source. """
         s = Symbol(cell=self)
 
@@ -429,13 +445,15 @@ class PieceWiseLinearCurrentSource(Cell):
 @public
 class PulseCurrentSource(Cell):
     """
+    .. warning::
+      Currently not usable.
+
     Represents a Pulse Current Source.
     Uses a symbol with an internal pulse shape and an arrow indicating direction.
-    Requires parameters: initial_value, pulsed_value, delay_time,
-                         rise_time, fall_time, pulse_width, period.
+    Requires parameters: initial_value, pulsed_value, delay_time, rise_time, fall_time, pulse_width, period.
     """
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
@@ -477,13 +495,16 @@ class PulseCurrentSource(Cell):
 @public
 class SinusoidalCurrentSource(Cell):
     """
+    .. warning::
+      Currently not usable.
+
     Represents a Sinusoidal Current Source.
     Uses a symbol with an internal sine shape and an arrow indicating direction.
     Requires parameters: offset, amplitude, frequency, delay.
     Optional parameter: damping_factor (defaults to 0).
     """
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         import numpy as np # TODO: Get rid of numpy dependency

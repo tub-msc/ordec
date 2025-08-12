@@ -21,7 +21,8 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
     'sphinx.ext.inheritance_diagram',
-    "myst_nb",
+    'myst_nb',
+    'ordec.sphinx_ext',
 ]
 
 templates_path = ['_templates']
@@ -36,6 +37,7 @@ autodoc_default_options = {
 napoleon_use_ivar = False
 #add_module_names = False
 #autodoc_class_signature = 'separated'
+autodoc_inherit_docstrings = False
 
 # Make inheritance graphs go from top to bottom instead of left to right:
 inheritance_graph_attrs = dict(rankdir="TB", size='""')

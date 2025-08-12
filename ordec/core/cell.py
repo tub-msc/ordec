@@ -19,6 +19,9 @@ class ViewGenerator:
     def __init__(self, func, auto_refresh: bool=True):
         self.func = func
         self.auto_refresh = auto_refresh
+        # Use docstring of func instead of docstring of ViewGenerator subclass
+        # for instances.
+        self.__doc__ = func.__doc__
 
     def info_dict(self):
         return {
@@ -130,6 +133,9 @@ class Parameter:
         self.optional = optional
         self.default = default
         self.name = None
+        # Prevent the docstring of Parameter to be shown for every individual
+        # Parameter instance in a Cell subclass.
+        self.__doc__ = None
 
     def __get__(self, obj, owner=None):
         if obj == None: # for the class: return self
@@ -162,10 +168,6 @@ class Parameter:
             raise ParameterError(f"Expected type {self.type.__name__} for parameter {self.name!r}.")
 
 class MetaCell(type):
-    def __init__(cls, name, bases, attrs):
-        cls.instances = {}
-        return super().__init__(name, bases, attrs)
-
     @staticmethod
     def _collect_class_params(d, bases):
         class_params = {} # The order in raw_attrs defines the tuple layout later on.
@@ -191,6 +193,15 @@ class MetaCell(type):
     def __new__(mcs, name, bases, attrs):
         attrs['_class_params'] = mcs._collect_class_params(attrs, bases)
         return super(MetaCell, mcs).__new__(mcs, name, bases, attrs)
+
+    def __init__(cls, name, bases, attrs):
+        cls.instances = {}
+
+        attrs.setdefault('__annotations__', {})
+        for k, v in cls._class_params.items():
+           cls.__annotations__.setdefault(k, v.type)
+
+        return super().__init__(name, bases, attrs)
 
     def _process_params(cls, args, kwargs) -> PMap:
         args, kwargs = cls.params_preprocess(args, kwargs)

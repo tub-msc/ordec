@@ -16,7 +16,7 @@ Parametrizable cells
 .. autoclass:: Parameter
 
   Example:
-  
+
   .. code-block:: python
 
     class SomeCell(Cell):
@@ -33,6 +33,7 @@ Parametrizable cells
 
     SomeCell('100k', 123, 'string parameter').schematic
 
+.. autoexception:: ParameterError
 
 View generators
 ----------------------

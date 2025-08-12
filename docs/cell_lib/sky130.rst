@@ -1,0 +1,11 @@
+:mod:`ordec.lib.sky130` --- SkyWater 130 nm technology
+======================================================
+
+This cell library provides part of the `SkyWater Open Source PDK <https://github.com/google/skywater-pdk/>`_.
+
+.. automodule:: ordec.lib.sky130
+  :members:
+  :member-order: groupwise
+  :undoc-members:
+  :exclude-members: instances, netlist_ngspice, discoverable_instances, params_check, params_list, params_preprocess, params_rewrite
+  :inherited-members:
