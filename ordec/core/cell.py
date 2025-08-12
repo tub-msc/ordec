@@ -1,10 +1,9 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Type
-from enum import Enum
-from pyrsistent import freeze, pmap, PMap
+from typing import Self
 from functools import partial
+from pyrsistent import freeze, PMap
 from public import public
 from .ordb import MutableNode
 from .rational import R
@@ -48,7 +47,7 @@ class ViewGenerator:
 @public
 class generate(ViewGenerator):
     """
-    Decorator for view generator methods. Use in :class:`Cell` subclasses.
+    Decorator for **view generator methods** defined in :class:`Cell` subclasses.
     The decorated function cannot have any parameters beyond 'self' (use
     Cell-level parameters instead).
 
@@ -73,7 +72,7 @@ class generate(ViewGenerator):
 @public
 class generate_func(ViewGenerator):
     """
-    Decorator for view generator functions. Use for module-level functions
+    Decorator for **view generator functions**. Use for module-level functions
     outside of :class:`Cell` subclasses. The decorated function cannot have
     any parameters.
 
@@ -96,9 +95,38 @@ class generate_func(ViewGenerator):
         return self.result
 
 @public
+class ParameterError(Exception):
+    """
+    Exception raised during :class:`Cell` instantiation upon:
+
+    - missing mandatory parameter,
+    - invalid type for parameter,
+    - too many positional arguments
+    - parameter set using both positional and keyword argument,
+    - unknown paramter name,
+    - parameter outside valid range,
+    - inconsistent combination of parameter values.
+    """
+    pass
+
+@public
 class Parameter:
-    def __init__(self, type, optional: bool = False, default=None):
-        self.type = type
+    """
+    Defines a :class:`Cell` parameter.
+
+    Accessing the parameter from a :class:`Cell` instance returns its value;
+    accessing it from a :class:`Cell` class returns the :class:`Parameter`
+    object. This behavior is achieved by Parameter acting as a Python
+    Descriptor.
+
+    Args:
+        t: The type that the parameter must be an instance of. Instances of the
+            type should be immutable and hashable.
+        optional: Indicate whether None is a valid parameter value.
+        default: Default value of the parameter.
+    """
+    def __init__(self, t: type, optional: bool = False, default=None):
+        self.type = t
         self.optional = optional
         self.default = default
         self.name = None
@@ -129,9 +157,9 @@ class Parameter:
             if self.optional:
                 return
             else:
-                raise TypeError(f"Mandatory parameter {self.name!r} is missing.")    
+                raise ParameterError(f"Mandatory parameter {self.name!r} is missing.")    
         if not isinstance(value, self.type):
-            raise TypeError(f"Expected type {self.type.__name__} for parameter {self.name!r}.")
+            raise ParameterError(f"Expected type {self.type.__name__} for parameter {self.name!r}.")
 
 class MetaCell(type):
     def __init__(cls, name, bases, attrs):
@@ -167,36 +195,36 @@ class MetaCell(type):
     def _process_params(cls, args, kwargs) -> PMap:
         args, kwargs = cls.params_preprocess(args, kwargs)
 
+        # Map args, kwargs to params dict:
         params = {}
         missing_cls_params = list(cls._class_params.keys())
-
         for v in args:
             try:
                 k = missing_cls_params.pop(0)
             except IndexError:
-                raise ValueError(f"Too many parameters passed as positional arguments to {cls.__name__}.") from None
+                raise ParameterError(f"Too many parameters passed as positional arguments to {cls.__name__}.") from None
             params[k] = v
-
         for k, v in kwargs.items():
             try:
                 missing_cls_params.remove(k)
             except ValueError:
                 if k in cls._class_params:
-                    raise ValueError(f"Parameter {k!r} to {cls.__name__} passed both as positional and keyword argument.") from None
+                    raise ParameterError(f"Parameter {k!r} to {cls.__name__} passed both as positional and keyword argument.") from None
                 else:    
-                    raise ValueError(f"{cls.__name__} has no parameter {k!r}.") from None
+                    raise ParameterError(f"{cls.__name__} has no parameter {k!r}.") from None
             params[k] = v
         for k in missing_cls_params:
             params[k] = cls._class_params[k].default
-
         assert set(params.keys()) == set(cls._class_params.keys())
 
+        # Parameter type coercion:
         for k in params:
             clsparam = cls._class_params[k]
             params[k] = clsparam.coerce_type(params[k])
 
         params = cls.params_rewrite(params)
 
+        # Per-parameter type checking:
         for k in params:
             clsparam = cls._class_params[k]
             clsparam.check(params[k])
@@ -224,7 +252,11 @@ class MetaCell(type):
 class Cell(metaclass=MetaCell):
     """
     Subclass this class to define (parametric) design cells.
-    The magic of this class is accomplished by its metaclass :class:`MetaCell`.
+
+    When a Cell subclass is instantiated multiple times with identical effective
+    parameters, the same instance is returned. In other words, each Cell
+    subclass in combination with a particular parameter setting acts as
+    singleton. This magic is accomplished by the metaclass :class:`MetaCell`.
     """
     def __init__(self, params: PMap):
         self.params = params
@@ -233,21 +265,47 @@ class Cell(metaclass=MetaCell):
     @classmethod
     def params_preprocess(cls, args, kwargs):
         """
-        Override this to modify args and kwargs before anything else is done.
+        A subclass can override this method to modify args and kwargs at
+        instantiation. This method is called using the original args and kwargs
+        provided, before any processing of their values is done.
+
+        Override this to modify how args and kwargs are handled.
+
+        Example uses:
+
+        - restrict use of positional parameters,
+        - rename parameters (aliases).
         """
         return args, kwargs
 
     @classmethod
     def params_rewrite(cls, params: dict) -> dict:
         """
-        Override this to rewrite parameters, before per-parameter type checking.
+        A subclass can override this method to modify the parameter dict
+        before per-parameter type checking.
+
+        This method is called after args and kwargs are mapped to the parameter
+        dict and after basic per-parameter type coercion.
+
+        Example uses:
+
+        - custom type conversion of parameters,
+        - calculation of missing parameters based on parameters provided.
         """
         return params
 
     @classmethod
     def params_check(cls, params: dict):
         """
-        Override this to check parameter validity, after per-parameter type checking.
+        A subclass can override this method to implement parameter checking.
+        This method is called after successful per-parameter type checking and
+        should not modify the parameter dictionary. If the parameters are found
+        to be invalid, a descriptive :class:`ParameterError` should be raised.
+
+        Example uses:
+
+        - check whether transistor dimensions are within technology ranges,
+        - check whether values of dependent parameters are consistent.
         """
         pass
 
@@ -263,13 +321,20 @@ class Cell(metaclass=MetaCell):
         return f"{type(self).__name__}({','.join(self.params_list(use_repr=True))})"
 
     @classmethod
-    def discoverable_instances(cls):
+    def discoverable_instances(cls) -> list[Self]:
         """
-        Returns instances of Cell that are discovered / shown by the web UI.
+        This classmethod defines which instances of a Cell subclass are
+        discoverable for the web UI, i.e. shown to the user.
+
+        By default, only the Cell's instance with empty parameter set is
+        discoverable. If this instance is unavailable due to a ParameterError
+        (e.g. mandatory parameters), no instances are discoverable. In this
+        case, a Cell subclass could override this method and return a list
+        of one or multiple of its instances created from valid parameters.
         """
         r = []
         try:
             r.append(cls())
-        except TypeError:
+        except ParameterError:
             pass
         return r

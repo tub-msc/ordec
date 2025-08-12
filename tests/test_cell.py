@@ -90,17 +90,17 @@ def test_param_inst():
     assert A(1, w=2) is a1
     assert A('1', '2') is a1
 
-    with pytest.raises(TypeError, match="Mandatory parameter 'l' is missing"):
+    with pytest.raises(ParameterError, match="Mandatory parameter 'l' is missing"):
         A()
 
-    with pytest.raises(TypeError, match="Expected type"):
+    with pytest.raises(ParameterError, match="Expected type"):
         A(l=('invalid', 'value'), w=2)
 
-    with pytest.raises(ValueError, match="Too many parameters passed as positional arguments to"):
+    with pytest.raises(ParameterError, match="Too many parameters passed as positional arguments to"):
         A(1,2,3)
 
-    with pytest.raises(ValueError, match="passed both as positional and keyword argument"):
+    with pytest.raises(ParameterError, match="passed both as positional and keyword argument"):
         A(1, l=1, w=3)
 
-    with pytest.raises(ValueError, match="has no parameter"):
+    with pytest.raises(ParameterError, match="has no parameter"):
         A(l=1, w=1, x=123)
