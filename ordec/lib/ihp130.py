@@ -59,7 +59,7 @@ class Pmos(Mos, generic_mos.Pmos):
 @public
 class Inv(Cell):
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         # Define pins for the inverter
@@ -79,7 +79,7 @@ class Inv(Cell):
         return s
 
     @generate
-    def schematic(self):
+    def schematic(self) -> Schematic:
         s = Schematic(cell=self, symbol=self.symbol)
         s.a = Net(pin=self.symbol.a)
         s.y = Net(pin=self.symbol.y)

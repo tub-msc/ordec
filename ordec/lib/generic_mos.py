@@ -39,7 +39,7 @@ class Mos(Cell):
 @public
 class Nmos(Mos):
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         s.g = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=Orientation.West)
@@ -62,7 +62,7 @@ class Nmos(Mos):
 @public
 class Pmos(Mos):
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         s.g = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=Orientation.West)
@@ -85,7 +85,7 @@ class Pmos(Mos):
 @public
 class Inv(Cell):
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         s.vdd = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
@@ -102,7 +102,7 @@ class Inv(Cell):
         return s
 
     @generate
-    def schematic(self):
+    def schematic(self) -> Schematic:
         s = Schematic(cell=self, symbol=self.symbol)
 
         s.a = Net(pin=self.symbol.a)
@@ -138,7 +138,7 @@ class Inv(Cell):
 @public
 class Ringosc(Cell):
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         s.vdd = Pin(pintype=PinType.Inout, align=Orientation.North)
@@ -149,7 +149,7 @@ class Ringosc(Cell):
         return s
 
     @generate
-    def schematic(self):
+    def schematic(self) -> Schematic:
         s = Schematic(cell=self, symbol=self.symbol)
 
         s.y0 = Net()
@@ -187,7 +187,7 @@ class Ringosc(Cell):
 @public
 class And2(Cell):
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         s.vdd = Pin(pos=Vec2R(2.5, 5), pintype=PinType.Inout, align=Orientation.North)
@@ -208,7 +208,7 @@ class And2(Cell):
 @public
 class Or2(Cell):
     @generate
-    def symbol(self):
+    def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         s.vdd = Pin(pos=Vec2R(2.5, 5), pintype=PinType.Inout, align=Orientation.North)
