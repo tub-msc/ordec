@@ -4,6 +4,7 @@
 from enum import Enum
 import math
 from functools import partial
+from typing import NamedTuple
 from public import public
 
 from .rational import R
@@ -19,6 +20,11 @@ class PinType(Enum):
 
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'
+
+@public
+class GdsLayer(NamedTuple):
+    layer: int
+    data_type: int
 
 # Symbol
 # ------
@@ -57,8 +63,7 @@ class Pin(Node):
     pos     = Attr(Vec2R)
     align   = Attr(D4, default=D4.R0)
  
-@public
-class SymbolPoly(Node):
+class GenericPoly(Node):
     in_subgraphs = [Symbol]
 
     def __new__(cls, vertices:list[Vec2R]=None, **kwargs):
@@ -95,6 +100,10 @@ class SymbolPoly(Node):
             x, y = vertices[-1].tofloat()
             d.append(f"L{x} {y}")
         return ' '.join(d)
+
+@public
+class SymbolPoly(GenericPoly):
+    pass
 
 @public
 class SymbolArc(Node):
@@ -178,7 +187,7 @@ class SchemPort(Node):
     align = Attr(D4, default=D4.R0)
 
 @public
-class SchemWire(SymbolPoly):
+class SchemWire(GenericPoly):
     """A drawn schematic wire representing an electrical connection."""
     in_subgraphs = [Schematic]
 
@@ -299,6 +308,49 @@ class SimInstance(NonLeafNode):
     schematic = SubgraphRef(Symbol|Schematic, typecheck_custom=lambda v: isinstance(v, (Symbol, Schematic)))
     eref = ExternalRef(SchemInstance, of_subgraph=lambda c: parent_siminstance(c.parent).schematic)
 
+# LayerStack
+# ----------
+
+@public
+class LayerStack(SubgraphRoot):
+    cell = Attr(Cell)
+
+@public
+class Layer(NonLeafNode):
+    in_subgraphs = [LayerStack]
+    gdslayer_text = Attr(GdsLayer)
+    gdslayer_shapes = Attr(GdsLayer)
+
+    gdslayer_text_index = Index(gdslayer_text, unique=True)
+    gdslayer_shapes_index = Index(gdslayer_shapes, unique=True)
+
+
+# Layout
+# ------
+
+@public
+class Layout(SubgraphRoot):
+    cell = Attr(Cell)
+    ref_layers = SubgraphRef(LayerStack)
+
+    def webdata(self):
+        return 'html', "Hello from the Layout!"
+
+@public
+class Label(Node):
+    in_subgraphs = [Layout]
+
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
+    pos = Attr(Vec2R)
+    text = Attr(str)
+
+@public
+class RectPoly(GenericPoly):
+    in_subgraphs = [Layout]
+
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
+
+
 # Misc
 # ----
 
@@ -308,7 +360,7 @@ class PolyVec2R(Node):
     One element/point of a Vec2R polygonal chain, which can be open or closed.
     A polygonal chain is closed if the last and first element are equivalent.
     """
-    in_subgraphs = [Symbol, Schematic]
+    in_subgraphs = [Symbol, Schematic, Layout]
     ref    = LocalRef(SymbolPoly, refcheck_custom=lambda v:True)
     order   = Attr(int) #: Order of the point in the polygonal chain
     pos     = Attr(Vec2R)
