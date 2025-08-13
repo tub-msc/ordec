@@ -640,7 +640,6 @@ class SinusoidalCurrentSource(Cell):
         amplitude = self.params['amplitude']
         frequency = self.params['frequency']
 
-        # The optional parameters can keep using .get() with a default.
         offset = self.params.get('offset', R(0))
         delay = self.params.get('delay', R(0))
         damping = self.params.get('damping_factor', R(0))
