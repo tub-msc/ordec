@@ -85,11 +85,16 @@ from . import importer
 from .version import version
 from .core import *
 
-def discover_views(conn_globals, recursive=True):
+def discover_views(conn_globals, recursive=True, modules_visited=None):
+    if modules_visited == None:
+        modules_visited = set()
     views = []
     for k, v in conn_globals.items():
         if isinstance(v, ModuleType) and recursive:
-            for subview in discover_views(v.__dict__, recursive=recursive):
+            if v in modules_visited:
+                continue
+            modules_visited.add(v)
+            for subview in discover_views(v.__dict__, recursive=recursive, modules_visited=modules_visited):
                 subview['name'] = f"{k}.{subview['name']}"
                 views.append(subview)
         elif isinstance(v, generate_func):
