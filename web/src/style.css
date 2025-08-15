@@ -138,3 +138,16 @@ pre {
 .refreshable {
     background-color:#f00;
 }
+.ordb-table {
+    font-family: 'Inconsolata';
+}
+.ordb-table table td, .ordb-table table th {
+    border:1px solid black;
+    padding:0px 3px;
+}
+.ordb-table table th {
+    background-color: #ccc;
+}
+.ordb-table table {
+    border-collapse:collapse;
+}

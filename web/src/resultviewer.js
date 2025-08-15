@@ -48,6 +48,42 @@ const viewClassOf = {
             this.resContent.replaceChildren(svg.node());
         }
     },
+    layout: class {
+        constructor(resContent) {
+            this.resContent = resContent;
+            this.transform = d3.zoomIdentity;
+        }
+        zoomed({transform}) {
+            this.transform = transform;
+            this.g.attr("transform", transform);
+        }
+        update(msgData) {
+            const viewbox = [0, 0, 1, 1];
+            const viewbox2 = [[viewbox[0], viewbox[1]], [viewbox[2], viewbox[3]]]
+
+            // todo: create svg at server side
+
+            const svg = d3.create("svg")
+                .attr("class", "fit")
+                .attr("viewBox", viewbox);
+
+            this.g = svg.append("g");
+    
+            console.log(msgData);
+
+            let zoom = d3.zoom()
+                .extent(viewbox2)
+                .scaleExtent([1, 12])
+                .translateExtent(viewbox2);
+
+            svg.call(zoom.transform, this.transform);
+            this.g.attr("transform", this.transform);
+
+            svg.call(zoom.on("zoom", (x) => this.zoomed(x)));
+
+            this.resContent.replaceChildren(svg.node());
+        }
+    },
     dcsim: class {
         constructor(resContent) {
             this.resContent = resContent;

@@ -334,7 +334,8 @@ class Layout(SubgraphRoot):
     ref_layers = SubgraphRef(LayerStack)
 
     def webdata(self):
-        return 'html', "Hello from the Layout!"
+        from ..layout import layout_webdata
+        return layout_webdata(self)        
 
 @public
 class Label(Node):

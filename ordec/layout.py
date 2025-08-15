@@ -132,3 +132,20 @@ def read_gds(gds_fn, layers, top=None):
         layouts[name] = layout
 
     return layouts
+
+
+def layout_webdata(layout: Layout.Frozen):
+    polys = []
+    for rp in layout.all(RectPoly):
+        vertices = []
+        for v in rp.vertices:
+            vertices.append(v.pos.tofloat())
+        polys.append({
+            'vertices': vertices,
+            'layer_nid': rp.layer.nid,
+        })
+            
+
+    return 'layout', {
+        'polys': polys,
+    }
