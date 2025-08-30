@@ -2,7 +2,7 @@ __pycache__
 *.egg-info
 .ipynb_checkpoints
 .hypothesis
-.coverage
+.coverage*
 .idea/
 *.ipynb
 *.swp
@@ -11,3 +11,4 @@ build/
 ordec/webdist.tar
 sky130A/
 sky130B/
+ihp-sg13g2
