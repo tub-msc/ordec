@@ -1,3 +1,6 @@
+from ordec.lib import Nmos, Res
+from ordec.lib import Gnd, Vdc
+
 cell DiffPair:
     symbol:
         input vdd (1,21)

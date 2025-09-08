@@ -1,3 +1,5 @@
+from ordec.lib import Vdc,Res,Gnd
+
 cell ResdivFlatTb:
     symbol:
         pass

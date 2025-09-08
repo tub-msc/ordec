@@ -1,3 +1,6 @@
+from ordec.lib import Nmos, Pmos
+from ordec.lib import Gnd, Vdc
+
 cell Nand2:
     symbol:
         output y (17,13)

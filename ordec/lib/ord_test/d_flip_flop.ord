@@ -1,3 +1,6 @@
+from ordec.lib.ord_test.d_latch import D_latch
+from ordec.lib.ord_test.inv_all_features import Inv
+
 cell D_flip_flop:
     symbol:
         input D (1, 14)

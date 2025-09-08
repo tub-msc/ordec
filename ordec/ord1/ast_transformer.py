@@ -6,7 +6,7 @@ import ast
 
 #ordec imports
 from ..ord1.ast_conversion import convert_to_ast_assignment, convert_to_ast_name_store, convert_to_ast_call, \
-    convert_to_ast_name_load, convert_to_ast_attribute_store, convert_to_ast_expr, convert_to_ast_subscript_store, \
+    convert_to_ast_name_load, convert_to_ast_expr, convert_to_ast_subscript_store, \
     convert_to_ast_constant, convert_to_ast_tuple_load, convert_to_ast_list_load, convert_to_ast_dict, \
     convert_to_ast_attribute_load, convert_to_ast_function_def
 
@@ -55,16 +55,6 @@ class SchematicModifier(ast.NodeTransformer):
                     function_name=convert_to_ast_name_load("PostProcess")
                 )
             )
-
-            postprocess_external = convert_to_ast_assignment(
-                convert_to_ast_attribute_store(
-                    convert_to_ast_name_load("postprocess_data"),
-                    "external_dictionary"
-                ),
-                convert_to_ast_name_load("ext")
-            )
-
-            node.body.insert(1, postprocess_external)
             node.body.insert(1, postprocess_data)
 
 

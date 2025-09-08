@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
-start: cell*
+start: ((imports cell) | _NL)*
 
 cell: _CELL NAME _COLON _NL _INDENT symbol schematic _DEDENT
 
@@ -23,15 +23,31 @@ schematic_stmt: (PASS? _NL)
             | structured
             | declaration
             | net_declaration
+            | import_stmt
+
+// Import statement
+
+dotted_name: NAME (DOT NAME)*
+relative_module: DOT* dotted_name?
+dotted_as_name: dotted_name (_AS NAME)?
+_dotted_as_names: dotted_as_name (_COMMA dotted_as_name)*
+import_as_name: NAME (_AS NAME)?
+_import_as_names: import_as_name (_COMMA import_as_name)*
+
+import_simple: _IMPORT _dotted_as_names
+import_from: _FROM relative_module _IMPORT _import_as_names
+import_stmt: import_simple
+           | import_from
+imports: (import_stmt _NL)*
 
 // Standard nested statements
 _nested_symbol_stmts: _COLON _NL _INDENT multi_symbol_stmt _DEDENT
 _nested_schematic_stmts: _COLON _NL _INDENT multi_schematic_stmt _DEDENT
 
 // Nested declarations
-_nested_declaration: _COLON _NL _INDENT _inner_assignments _DEDENT
+_nested_declaration: _COLON _NL _INDENT inner_assignments _DEDENT
 _ctype_declaration: _LPAR inner_assignment_option (_COMMA inner_assignment_option)* _RPAR
-_inner_assignments: (_DOT inner_assignment_option _NL)+
+inner_assignments: (DOT inner_assignment_option _NL)+
 inner_assignment_option: (POS ASSIGN tuple_expr)
     | (NAME CONNECT instance_access)
     | (DOLLAR NAME ASSIGN number NAME?)
@@ -52,14 +68,14 @@ port_declaration: (INPUT | INOUT| OUTPUT) NAME tuple_expr? _NL
 net_declaration: _NET NAME (_COMMA NAME)* _NL
 
 // assignments and constraints
-instance_access: NAME (_DOT NAME)?
-attribute_access: NAME _DOT DOLLAR NAME
+instance_access: NAME (DOT NAME)?
+attribute_access: NAME DOT DOLLAR NAME
 tuple_expr: _LPAR math_expr _COMMA math_expr _RPAR
-assign_pos: NAME _DOT POS ASSIGN tuple_expr _NL
-assign_route: NAME? _DOT ROUTE ASSIGN bool _NL
+assign_pos: NAME DOT POS ASSIGN tuple_expr _NL
+assign_route: NAME? DOT ROUTE ASSIGN bool _NL
 assign_map: instance_access CONNECT instance_access _NL
 assign_attribute: attribute_access ASSIGN number NAME? _NL
-assign_orientation: NAME _DOT ORIENTATION ASSIGN orientations _NL
+assign_orientation: NAME DOT ORIENTATION ASSIGN orientations _NL
 constraint: direction _LPAR  NAME _COMMA NAME (_COMMA UNSIGNED)? _RPAR _NL
 for_loop: _FOR NAME _IN (range_expr | name_expr) _nested_schematic_stmts
 
@@ -127,15 +143,18 @@ PLUS: "+"
 MINUS: "-"
 TIMES: "*"
 DIV: "/"
+DOT: "."
 _COLON: ":"
 _COMMA: ","
 _LPAR: "("
 _RPAR: ")"
 _LBRA: "["
 _RBRA: "]"
-_DOT: "."
 _GATE: "-|"
 _RANGE: "range"
+_FROM: "from"
+_IMPORT: "import"
+_AS: "as"
 
 
 // Rules for comments

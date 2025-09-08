@@ -1,3 +1,6 @@
+from ordec.lib.ord_test.inv_all_features import Inv
+from ordec.lib.ord_test.mux2_structured import Mux2
+
 cell D_flip_flop:
     symbol:
         input vdd

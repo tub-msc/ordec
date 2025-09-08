@@ -1,3 +1,5 @@
+from ordec.lib.ord_test.nand import Nand
+
 cell SR_flip_flop:
     symbol:
         input S (1, 16)

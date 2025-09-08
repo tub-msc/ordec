@@ -70,11 +70,7 @@ def load_ord_from_string(ord_string):
     parser = Lark.open(lark_fn, parser="lalr", lexer="basic", postlex=TreeIndenter())
     
     # Parse the string directly
-    if len(ord_string) == 0:
-        parsed = ast.Module([], [])
-    else:
-        parsed = parser.parse(ord_string + "\n")
-    
+    parsed = parser.parse(ord_string + "\n")
     # Transform using OrdecTransformer
     ordec_transformer = OrdecTransformer()
     transformed = ordec_transformer.transform(parsed)
@@ -135,11 +131,8 @@ def ord2py(source_data: str) -> ast.Module:
     module = ast.parse(
         "from ordec.core import *\n" +
         "from ordec.sim2.sim_hierarchy import HighlevelSim\n"+
-        "from ordec.lib import Inv, Res, Gnd, Vdc, Idc, Nmos, Pmos, NoConn\n"+
         "from ordec.ord1.implicit_processing import symbol_process, preprocess, PostProcess, postprocess\n" +
-        "from ordec.ord1.prelim_schem_instance import PrelimSchemInstance\n"+
-        "ext = globals()\n" # <-- TODO: bad hack, this is not how it is intended...
-        )
+        "from ordec.ord1.prelim_schem_instance import PrelimSchemInstance\n")
     x = load_ord_from_string(source_data)
     x = ast.fix_missing_locations(x)
     module.body += x.body

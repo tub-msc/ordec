@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 #standard imports
-from lark import Transformer
+from lark import Transformer, Token
 from lark.indenter import Indenter
 import uuid
 import ast
@@ -175,10 +175,13 @@ class OrdecTransformer(Transformer):
             convert_to_ast_name_store(instance_name),
             convert_to_ast_call(function_name=convert_to_ast_name_load('PrelimSchemInstance'), keywords=[
                 convert_to_ast_keyword('prelim_name', convert_to_ast_constant(instance_name)),
-                convert_to_ast_keyword('prelim_ref', convert_to_ast_constant(instance_type))
+                convert_to_ast_keyword('prelim_ref', convert_to_ast_name_load(instance_type))
             ]))
         instance_declarations.append(instance)
         instance_declarations.append(called_instances_append)
+
+    def inner_assignments(self, items):
+        return "inner_assignments", [item for item in items if item != "."]
 
     def declaration(self, items):
         """
@@ -195,23 +198,27 @@ class OrdecTransformer(Transformer):
         instance_type = items[0]
         instance_name = items[1]
         self.declaration_helper(instance_name, instance_type, instance_declarations)
-
         # if multiple comma separated instance declarations
-        if len(items) <= 2 or not isinstance(items[2], list):
+        if len(items) <= 2 or not isinstance(items[2], (list, tuple)):
             for item in items[2:]:
                 self.declaration_helper(item, instance_type, instance_declarations)
         else:
             # declaration with nested assignments/connections
             # comes from _inner_assignments
-            for assignment in items[2:]:
+            if isinstance(items[2], tuple) and items[2][0] == "inner_assignments":
+                parameters = items[2][1]
+            else:
+                parameters = items[2:]
+            for assignment in parameters:
                 if isinstance(assignment, list):
                     assignment_type = assignment[0]
                     # Combine the instance plus the access
                     instance_access = (instance_name, assignment[1])
+                    dot = "."
                     if assignment_type == "POS":
                         assign = "="
                         # create the item_list so the transformer methods can process them
-                        passed_items = [instance_name, assignment[1], assign] + assignment[2:]
+                        passed_items = [instance_name, dot, assignment[1], assign] + assignment[2:]
                         instance_declarations.append(self.assign_pos(passed_items))
                     elif assignment_type == "CONNECT":
                         assign = "--"
@@ -223,7 +230,7 @@ class OrdecTransformer(Transformer):
                         instance_declarations.append(self.assign_attribute(passed_items))
                     elif assignment_type == "ORIENTATION":
                         assign = "="
-                        passed_items = [instance_name, assignment[1], assign] + assignment[2:]
+                        passed_items = [instance_name, dot, assignment[1], assign] + assignment[2:]
                         instance_declarations.append(self.assign_orientation(passed_items))
 
         if STRUCTURED_LIOP:
@@ -250,7 +257,7 @@ class OrdecTransformer(Transformer):
         :returns: ast converted items
         """
         instance_name = items[0]
-        position = items[3]
+        position = items[4]
         position_x = position[0] if isinstance(position[0], ast.AST) else convert_to_ast_constant(position[0])
         position_y = position[1] if isinstance(position[1], ast.AST) else convert_to_ast_constant(position[1])
 
@@ -331,7 +338,7 @@ class OrdecTransformer(Transformer):
         :param items: items in this hierarchy level
         :returns: port access items in a tuple
         """
-        return items[0], items[2]
+        return items[0], items[3]
 
     # Positons defined via constraints need to be inserted in post-processing
     def constraint(self, items):
@@ -433,7 +440,7 @@ class OrdecTransformer(Transformer):
         :returns: returns a normal python for loop
         """
         instance = items[0]
-        value = items[3]
+        value = items[4]
         assignment = convert_to_ast_assignment(
             convert_to_ast_attribute_store(
                     convert_to_ast_name_load(instance),
@@ -515,11 +522,11 @@ class OrdecTransformer(Transformer):
         :returns: returns all net declarations
         """
         net_name = items[0]
-        if net_name == "route":
+        if net_name == ".":
             net_name = "__self__"
-            state = items[2]
-        else:
             state = items[3]
+        else:
+            state = items[4]
         routing_net_state  = convert_to_ast_assignment(
             convert_to_ast_subscript_store(
                 convert_to_ast_attribute_load(
@@ -839,8 +846,46 @@ class OrdecTransformer(Transformer):
             return f"-{items[1]}"
         return str(items[0])
 
+    def dotted_name(self, items):
+        items = [item for item in items if item != "."]
+        return ".".join(items)
+
+    def relative_module(self, items):
+        level = 0
+        module = None
+        for i in items:
+            if isinstance(i, Token) and i == ".":
+                level += 1
+            else:
+                module = i
+        return level, module
+
+    def dotted_as_name(self, items):
+        if len(items) == 2:
+            return items[0], items[1]
+        return items[0], None
+
+    def import_as_name(self, items):
+        if len(items) == 2:
+            return items[0], items[1]
+        return items[0], None
+
+    def import_simple(self, items):
+        aliases = [ast.alias(name=name, asname=asname) for name, asname in items[0]]
+        return ast.Import(names=aliases)
+
+    def import_from(self, items):
+        relative_level, module = items[0]
+        names = items[1:]  # rest are name, asname pairs
+        module_str = module if module is not None else None
+        aliases = [ast.alias(name=name, asname=asname) for name, asname in names]
+        return ast.ImportFrom(module=module_str, names=aliases, level=relative_level)
+
     # Simple return and transform nodes
-    start = lambda self, items: convert_to_ast_module(items)
+    start = lambda self, items: convert_to_ast_module(self.flatten_stmt_lists(items))
+    top_statements = lambda self, items: items
+    imports = lambda self, items: items
+    import_stmt = lambda self, items: items
     schematic_stmt = lambda self, items: items
     symbol_stmt = lambda self, items: items
     direction = lambda self, items: items[0]
@@ -880,4 +925,5 @@ class OrdecTransformer(Transformer):
     MINUS = lambda self, token: token.value
     DIV = lambda self, token: token.value
     TIMES = lambda self, token: token.value
+    DOT = lambda self, token: token.value
 

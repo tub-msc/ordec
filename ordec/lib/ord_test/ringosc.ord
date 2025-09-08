@@ -1,3 +1,6 @@
+from ordec.lib.generic_mos import Inv
+
+
 cell Ringosc:
     symbol:
         output y (24,4)
