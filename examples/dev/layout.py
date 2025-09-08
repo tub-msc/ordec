@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import ordec.layout
 from ordec.core import *
+from ordec import render
 
 @generate_func
 def sg13g2_xor2_1_layout() -> Layout:
@@ -10,3 +11,8 @@ def sg13g2_xor2_1_layout() -> Layout:
     top = 'sg13g2_xor2_1'
     layouts = ordec.layout.read_gds(gds_fn, ordec.layout.SG13G2().layers, top)
     return layouts[top]
+
+
+layout = sg13g2_xor2_1_layout()
+
+print(render(layout).svg().decode('utf-8'))

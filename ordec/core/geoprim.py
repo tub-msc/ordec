@@ -101,6 +101,26 @@ class Rect4R(tuple):
     def north_west(self):
         return Vec2R(self.lx, self.uy)
 
+    def __contains__(self, point):
+        if isinstance(point, Vec2R):
+            return point.x >= self.lx \
+                and point.x <= self.ux \
+                and point.y >= self.ly \
+                and point.y <= self.uy
+        else:
+            return super().__contains__(point)
+
+    def extend(self, point: Vec2R):
+        if point in self:
+            return self
+        else:
+            return Rect4R(
+                lx=min(self.lx, point.x),
+                ly=min(self.ly, point.y),
+                ux=max(self.ux, point.x),
+                uy=max(self.uy, point.y),
+            )
+
     def __add__(self, other):
         raise TypeError("Rect4R cannot be added.")
 
