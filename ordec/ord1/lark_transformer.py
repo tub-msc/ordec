@@ -846,10 +846,6 @@ class OrdecTransformer(Transformer):
             return f"-{items[1]}"
         return str(items[0])
 
-    def dotted_name(self, items):
-        items = [item for item in items if item != "."]
-        return ".".join(items)
-
     def relative_module(self, items):
         level = 0
         module = None
@@ -860,25 +856,33 @@ class OrdecTransformer(Transformer):
                 module = i
         return level, module
 
-    def dotted_as_name(self, items):
-        if len(items) == 2:
-            return items[0], items[1]
-        return items[0], None
+    def dotted_name(self, items):
+        return [str(item) for item in items if str(item) != "."]
 
-    def import_as_name(self, items):
-        if len(items) == 2:
-            return items[0], items[1]
-        return items[0], None
+    def dotted_as_name(self, items):
+        name = items[0]
+        if isinstance(name, list):  # from dotted_name
+            name = ".".join(name)
+        asname = items[1] if len(items) == 2 else None
+        return name, asname
 
     def import_simple(self, items):
-        aliases = [ast.alias(name=name, asname=asname) for name, asname in items[0]]
+        aliases = [ast.alias(name=name, asname=asname) for name, asname in items]
         return ast.Import(names=aliases)
+
+    def import_as_name(self, items):
+        name = str(items[0])
+        asname = str(items[1]) if len(items) == 2 else None
+        return name, asname
 
     def import_from(self, items):
         relative_level, module = items[0]
-        names = items[1:]  # rest are name, asname pairs
-        module_str = module if module is not None else None
-        aliases = [ast.alias(name=name, asname=asname) for name, asname in names]
+        # Check the dotted name
+        if isinstance(module, list):
+            module_str = ".".join(module)
+        else:
+            module_str = module  # None or already a string
+        aliases = [ast.alias(name=name, asname=asname) for name, asname in items[1:]]
         return ast.ImportFrom(module=module_str, names=aliases, level=relative_level)
 
     # Simple return and transform nodes
