@@ -170,7 +170,7 @@ class Rect:
         y = self.bottom.value
         return f'<rect width="{w}" height="{h}" x="{x}" y="{y}" fill="blue" />'
 
-def get_pos_with_constraints(constraints, instances, ext):
+def get_pos_with_constraints(constraints, instances):
     """
     Information which we need to calculate the position:
         - instance list (keyword (if instance not port), type)
@@ -184,7 +184,6 @@ def get_pos_with_constraints(constraints, instances, ext):
             --> if left or right just swap in the column section
     :param constraints: the constraints from the parsing
     :param instances: instances with (name, type, size)
-    :param ext: external cells as refs
     :returns instance_positions: dict of instances with their position
     """
     G = Geo()
@@ -201,7 +200,7 @@ def get_pos_with_constraints(constraints, instances, ext):
             geo_mapping[name] = Rect(G)
         else:
             # Get symbol size from lib and add rect to geo instance
-            sub_cell_symbol = ext[instance_type[1]]().symbol
+            sub_cell_symbol = instance_type[0].prelim_ref().symbol
             geo_mapping[name] = (Rect(G), sub_cell_symbol)
 
     # calculate sizes --> add constraints for width and height

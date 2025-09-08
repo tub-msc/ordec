@@ -1,3 +1,5 @@
+from ordec.lib import Nmos,Pmos
+
 cell Nand:
     symbol:
         output y (25,6)

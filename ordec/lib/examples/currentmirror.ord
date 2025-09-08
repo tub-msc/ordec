@@ -1,3 +1,6 @@
+from ordec.lib import Nmos, Pmos, Res
+from ordec.lib import Vdc, Idc, Gnd
+
 cell CurrentMirror:
     symbol:
         pass

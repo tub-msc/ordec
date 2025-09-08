@@ -1,3 +1,5 @@
+from ordec.lib import Nmos,Pmos
+
 cell Mux2:
     symbol:
         output y

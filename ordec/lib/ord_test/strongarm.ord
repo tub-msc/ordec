@@ -1,3 +1,5 @@
+from ordec.lib import Nmos,Pmos
+
 cell Strongarm:
     symbol:
         input vdd (1, 30)
