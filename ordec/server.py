@@ -181,7 +181,9 @@ class ConnectionHandler:
         for k, v in sys.modules.items():
             if k not in self.sysmodules_orig:
                 try:
-                    ret.append(v.__file__)
+                    fn = v.__file__
+                    if fn:
+                        ret.append(fn)
                 except AttributeError:
                     pass
         return ret
