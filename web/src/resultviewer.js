@@ -58,22 +58,19 @@ const viewClassOf = {
             this.g.attr("transform", transform);
         }
         update(msgData) {
-            const viewbox = [0, 0, 1, 1];
+            const viewbox = msgData['viewbox'];
             const viewbox2 = [[viewbox[0], viewbox[1]], [viewbox[2], viewbox[3]]]
 
-            // todo: create svg at server side
-
             const svg = d3.create("svg")
-                .attr("class", "fit")
+                .attr("class", "fit layout")
                 .attr("viewBox", viewbox);
 
-            this.g = svg.append("g");
-    
-            console.log(msgData);
+            this.g = svg.append("g")
+                .html(msgData['inner'])
 
             let zoom = d3.zoom()
                 .extent(viewbox2)
-                .scaleExtent([1, 12])
+                .scaleExtent([0.5, 12])
                 .translateExtent(viewbox2);
 
             svg.call(zoom.transform, this.transform);

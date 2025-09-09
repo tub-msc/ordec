@@ -321,8 +321,11 @@ class Layer(NonLeafNode):
     gdslayer_text = Attr(GdsLayer)
     gdslayer_shapes = Attr(GdsLayer)
 
+    style_color = Attr(str, default="#ffffff")
+
     gdslayer_text_index = Index(gdslayer_text, unique=True)
     gdslayer_shapes_index = Index(gdslayer_shapes, unique=True)
+
 
 
 # Layout

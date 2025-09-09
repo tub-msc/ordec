@@ -13,6 +13,5 @@ def sg13g2_xor2_1_layout() -> Layout:
     return layouts[top]
 
 
-layout = sg13g2_xor2_1_layout()
-
-print(render(layout).svg().decode('utf-8'))
+#layout = sg13g2_xor2_1_layout()
+#print(render(layout).svg().decode('utf-8'))

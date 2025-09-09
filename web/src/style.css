@@ -151,3 +151,6 @@ pre {
 .ordb-table table {
     border-collapse:collapse;
 }
+.layout {
+    background-color: #000;
+}

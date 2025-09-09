@@ -10,6 +10,7 @@ import gdsii.structure
 # raw integer values.
 
 from ordec.core import *
+from .render import render
 
 class SG13G2(Cell):
     @generate
@@ -18,42 +19,52 @@ class SG13G2(Cell):
 
         s.Activ = Layer(
             gdslayer_shapes=GdsLayer(layer=1, data_type=0),
+            style_color="#00ff00",
             )
 
         s.GatPoly = Layer(
             gdslayer_shapes=GdsLayer(layer=5, data_type=0),
+            style_color="#bf4026",
             )
         
         s.Cont = Layer(
             gdslayer_shapes=GdsLayer(layer=6, data_type=0),
+            style_color="#00ffff",
             )
 
         s.Metal1 = Layer(
             gdslayer_shapes=GdsLayer(layer=8, data_type=0),
+            style_color="#39bfff",
             )
         s.Metal1.pin = Layer(
             gdslayer_text=GdsLayer(layer=8, data_type=25),
             gdslayer_shapes=GdsLayer(layer=8, data_type=2),
+            style_color="#39bfff",
             )
 
         s.Metal2 = Layer(
             gdslayer_shapes=GdsLayer(layer=10, data_type=0),
+            style_color="#bf4026",
             )
         s.Metal2.pin = Layer(
             gdslayer_shapes=GdsLayer(layer=10, data_type=2),
             gdslayer_text=GdsLayer(layer=10, data_type=25),
+            style_color="#bf4026",
             )
 
         s.pSD = Layer(
             gdslayer_shapes=GdsLayer(layer=14, data_type=0),
+            style_color="#ccb899",
             )
 
         s.Via1 = Layer(
             gdslayer_shapes=GdsLayer(layer=19, data_type=0),
+            style_color="#ccccff",
             )
 
         s.NWell = Layer(
             gdslayer_shapes=GdsLayer(layer=31, data_type=0),
+            style_color="#268c6b",
             )
 
         s.TEXT = Layer(
@@ -62,10 +73,12 @@ class SG13G2(Cell):
 
         s.Recog = Layer(
             gdslayer_shapes=GdsLayer(layer=99, data_type=31),
+            style_color="#bdcccc",
             )
 
         s.prBoundary = Layer(
             gdslayer_shapes=GdsLayer(layer=189, data_type=4), # data_type 4 or 0?
+            style_color="#9900e6",
             )
 
         return s
@@ -135,17 +148,24 @@ def read_gds(gds_fn, layers, top=None):
 
 
 def layout_webdata(layout: Layout.Frozen):
-    polys = []
-    for rp in layout.all(RectPoly):
-        vertices = []
-        for v in rp.vertices:
-            vertices.append(v.pos.tofloat())
-        polys.append({
-            'vertices': vertices,
-            'layer_nid': rp.layer.nid,
-        })
+    r = render(layout)
+    return 'layout', {
+        'inner': r.inner_svg().decode('ascii'),
+        'viewbox': r.viewbox,
+    }
+
+# def layout_webdata(layout: Layout.Frozen):
+#     polys = []
+#     for rp in layout.all(RectPoly):
+#         vertices = []
+#         for v in rp.vertices:
+#             vertices.append(v.pos.tofloat())
+#         polys.append({
+#             'vertices': vertices,
+#             'layer_nid': rp.layer.nid,
+#         })
             
 
-    return 'layout', {
-        'polys': polys,
-    }
+#     return 'layout', {
+#         'polys': polys,
+#     }

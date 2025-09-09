@@ -463,16 +463,19 @@ svg {
     stroke-linecap: butt;
     stroke-linejoin: bevel;
 }
-.rectPoly {
-    opacity:0.5;
-}
-#layer_nid1 {
-    fill:green;
-}
-#layer_nid5 {
-    fill:red;
-}
 """
+
+# In general, we want the following, but it is somehow slow in browsers:
+# path {
+#     mix-blend-mode: screen;
+#     vector-effect: non-scaling-stroke;
+# }
+# .isolate {
+#     isolation:isolate;
+# }
+# Look into this issue further if possible (Firefox WebRender etc.)
+
+
 default_css_layout = re.sub(r"\s+", " ", default_css_layout).strip() # remove newlines / unneeded spaces
 
 class LayoutRenderer(Renderer):
@@ -505,16 +508,18 @@ class LayoutRenderer(Renderer):
             except KeyError:    
                 layer_g = ET.SubElement(self.cur_group, 'g')
                 self.layer_groups[layer_nid] = layer_g
-                layer_g.attrib['id'] = f'layer_nid{poly.layer.nid}'
-                layer_g.attrib['data-layer-path'] = poly.layer.full_path_str()
+                layer = poly.layer
+                layer_g.attrib['id'] = f'layer_nid{layer.nid}'
+                layer_g.attrib['data-layer-path'] = layer.full_path_str()
+                layer_g.attrib['style'] = f"fill:{layer.style_color};"
             
             p = ET.SubElement(layer_g, 'path', d=poly.svg_path())
             p.attrib['class'] = 'rectPoly'
             for vertex in poly.vertices:
                 self.auto_outline_add(vertex.pos)
 
-        self.setup_canvas(self.auto_outline, padding=0.0, scale_viewbox=1e6)
-
+        self.setup_canvas(self.auto_outline, padding=0.0, scale_viewbox=1e9)
+        self.cur_group.attrib['class'] = 'isolate'
 
 def render(obj, **kwargs) -> Renderer:
     if isinstance(obj, Symbol):
