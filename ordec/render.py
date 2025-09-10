@@ -63,8 +63,11 @@ class Renderer:
         return self.group_stack[-1]
 
     @contextmanager
-    def subgroup(self, node=None):
-        self.group_stack.append(ET.SubElement(self.cur_group, 'g'))
+    def subgroup(self, node=None, existing_group=None):
+        if existing_group:
+            self.group_stack.append(existing_group)
+        else:    
+            self.group_stack.append(ET.SubElement(self.cur_group, 'g'))
         if node and self.include_nids:
             self.cur_group.attrib['id'] = f'nid{node.nid}'
         try:
@@ -463,6 +466,25 @@ svg {
     stroke-linecap: butt;
     stroke-linejoin: bevel;
 }
+.rectPoly {
+}
+.rectPoly, .layoutText, .cross {
+    mix-blend-mode: screen;
+    opacity:0.5;
+}
+.layoutText {
+    font-size: 11pt;
+    font-family: "Inconsolata", monospace;
+    font-stretch: 75%;
+
+}
+.cross {
+    stroke:white;
+    stroke-width:0.05;
+}
+.isolate {
+    isolation:isolate;
+}
 """
 
 # In general, we want the following, but it is somehow slow in browsers:
@@ -498,28 +520,62 @@ class LayoutRenderer(Renderer):
         else:
             self.auto_outline = Rect4R(point.x, point.y, point.x, point.y)
 
+    def layer_group(self, layer: Layer):
+        try:
+            return self.layer_groups[layer.nid]
+        except KeyError:
+            layer_g = ET.SubElement(self.cur_group, 'g')
+            self.layer_groups[layer.nid] = layer_g
+            self.layers_present.append(layer)
+            layer_g.attrib['class'] = f'layer_nid{layer.nid}'
+            layer_g.attrib['data-layer-path'] = layer.full_path_str()
+            layer_g.attrib['style'] = layer.inline_css()
+            return layer_g
+
     def render_layout(self, l: Layout):
         self.layer_groups = {}
+        self.layers_present = []
         for poly in l.all(RectPoly):
-
-            layer_nid = poly.layer.nid
-            try:
-                layer_g = self.layer_groups[layer_nid]
-            except KeyError:    
-                layer_g = ET.SubElement(self.cur_group, 'g')
-                self.layer_groups[layer_nid] = layer_g
-                layer = poly.layer
-                layer_g.attrib['id'] = f'layer_nid{layer.nid}'
-                layer_g.attrib['data-layer-path'] = layer.full_path_str()
-                layer_g.attrib['style'] = f"fill:{layer.style_color};"
-            
+            layer_g = self.layer_group(poly.layer)
             p = ET.SubElement(layer_g, 'path', d=poly.svg_path())
             p.attrib['class'] = 'rectPoly'
             for vertex in poly.vertices:
                 self.auto_outline_add(vertex.pos)
 
+        for label in l.all(Label):
+            with self.subgroup(existing_group=self.layer_group(label.layer)):
+
+                d = "M-0.1 -0.1 L0.1 0.1 M-0.1 0.1 L0.1 -0.1"
+                scale = 5e-7
+                with self.subgroup():
+                    self.cur_group.attrib['transform'] = label.pos.transl().svg_transform()
+                    with self.subgroup():
+                        self.cur_group.attrib['transform'] = f"scale({scale})"
+                        self.cur_group.attrib['class'] = 'rescale'
+                        p=ET.SubElement(self.cur_group, 'path', d=d)
+                        p.attrib['class'] = 'cross'
+                        self.draw_label(label.text, label.pos.transl()*D4.R90, halign=HAlign.Left, valign=VAlign.Top, space=0.0, svg_class="layoutText")
+
+
+        self.cur_group[:] = sorted(self.cur_group, key=lambda x: x.attrib['class'], reverse=True)
+        self.layers_present.sort(key=lambda x: x.nid)
         self.setup_canvas(self.auto_outline, padding=0.0, scale_viewbox=1e9)
         self.cur_group.attrib['class'] = 'isolate'
+
+    def webdata(self):
+        layer_info = []
+        for layer in self.layers_present:
+            layer_info.append({
+                'nid': layer.nid,
+                'path': layer.full_path_str(),
+                'inline_css': layer.inline_css(),
+            })
+
+        return 'layout', {
+            'inner': self.inner_svg().decode('ascii'),
+            'viewbox': self.viewbox,
+            'layer_info': layer_info,
+        }
 
 def render(obj, **kwargs) -> Renderer:
     if isinstance(obj, Symbol):

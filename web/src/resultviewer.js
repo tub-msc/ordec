@@ -5,6 +5,12 @@
 
 import * as d3 from "d3";
 
+let idCounter = 0;
+function generateId() {
+    idCounter += 1;
+    return "idgen" + idCounter;
+}
+
 const viewClassOf = {
     html: class {
         constructor(resContent) {
@@ -52,12 +58,14 @@ const viewClassOf = {
         constructor(resContent) {
             this.resContent = resContent;
             this.transform = d3.zoomIdentity;
+            this.savedVisibility = new Map();
         }
         zoomed({transform}) {
             this.transform = transform;
             this.g.attr("transform", transform);
         }
         update(msgData) {
+
             const viewbox = msgData['viewbox'];
             const viewbox2 = [[viewbox[0], viewbox[1]], [viewbox[2], viewbox[3]]]
 
@@ -70,15 +78,58 @@ const viewClassOf = {
 
             let zoom = d3.zoom()
                 .extent(viewbox2)
-                .scaleExtent([0.5, 12])
+                .scaleExtent([0.9, 12])
                 .translateExtent(viewbox2);
 
             svg.call(zoom.transform, this.transform);
             this.g.attr("transform", this.transform);
 
-            svg.call(zoom.on("zoom", (x) => this.zoomed(x)));
+            svg.call(zoom.on("zoom", (x) => {
+                this.zoomed(x);
+                // Keep text + cross sizes constant:
+                this.resContent.querySelectorAll(".rescale").forEach(elem => {
+                    const s = 5e-7 / x.transform.k;
+                    elem.transform.baseVal.getItem(0).setScale(s, s);
+                });
+            }));
 
             this.resContent.replaceChildren(svg.node());
+
+            const layerInfo = msgData['layer_info'];
+
+            let layersUl = document.createElement('ul');
+            this.resContent.appendChild(layersUl);
+            layersUl.classList.add('layerList');
+            layerInfo.forEach(layer => {
+                let li = document.createElement('li');
+                layersUl.appendChild(li);
+                const id = generateId();
+                li.innerHTML = `
+                  <input type="checkbox" id="${id}" name="${layer.nid}">
+                  <label for="${id}">
+                   <svg width="30px" height="15px" viewBox="0 0 2 1"><rect style="${layer.inline_css}" width="2" height="1" /></svg>
+                   ${layer.path}
+                  </label> 
+                `;
+            });
+            this.checkboxes = layersUl.querySelectorAll('input');
+
+            this.checkboxes.forEach(checkbox => {
+                const layer_nid = Number(checkbox.name);
+                // Set checked to true both for true and undefined value returned by get():
+                checkbox.checked = (this.savedVisibility.get(layer_nid)!=false);
+                checkbox.onclick = () => this.updateLayers();
+            });
+
+            this.updateLayers();
+        }
+        updateLayers() {
+            this.checkboxes.forEach(checkbox => {
+                const layer_nid = Number(checkbox.name);
+                const layer_g = this.resContent.querySelector(".layer_nid"+layer_nid);
+                layer_g.style.display = checkbox.checked?"inherit":"none";
+                this.savedVisibility.set(layer_nid, checkbox.checked);
+            });
         }
     },
     dcsim: class {
@@ -94,7 +145,7 @@ const viewClassOf = {
                 let tr = document.createElement('tr');
                 table.appendChild(tr);
                 tr.innerHTML = `<td>${row[0]}</td><td>${row[1]}</td>`;
-            })
+            });
 
             let table2 = document.createElement('table');
             table2.classList.add('dc_table');

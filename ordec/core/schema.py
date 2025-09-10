@@ -326,7 +326,8 @@ class Layer(NonLeafNode):
     gdslayer_text_index = Index(gdslayer_text, unique=True)
     gdslayer_shapes_index = Index(gdslayer_shapes, unique=True)
 
-
+    def inline_css(self):
+         return f"fill:{self.style_color};"
 
 # Layout
 # ------
@@ -337,8 +338,10 @@ class Layout(SubgraphRoot):
     ref_layers = SubgraphRef(LayerStack)
 
     def webdata(self):
-        from ..layout import layout_webdata
-        return layout_webdata(self)        
+        #from ..layout import layout_webdata
+        #return layout_webdata(self)
+        from ..render import render
+        return render(self).webdata()
 
 @public
 class Label(Node):

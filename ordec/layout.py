@@ -91,24 +91,31 @@ def read_gds_structure(structure: gdsii.structure.Structure, layers: LayerStack,
         return Vec2R(unit * x, unit * y)
 
     layout = Layout(ref_layers=layers)
-    
     for elem in structure:
         if isinstance(elem, gdsii.elements.Boundary):
-            #print('boundary', elem.layer, elem.data_type) #, elem.xy)
-            #layers_shapes.add(GdsLayer(elem.layer, elem.data_type))
-            layer = layers.one(Layer.gdslayer_shapes_index.query(GdsLayer(elem.layer, elem.data_type)))
-            layout % RectPoly(
-                layer=layer,
-                vertices=[conv_xy(xy) for xy in elem.xy]
-                )
+            l = GdsLayer(elem.layer, elem.data_type)
+            try:
+                layer = layers.one(Layer.gdslayer_shapes_index.query(l))
+            except QueryException:
+                print(f"WARNING: ignored gds layer {l}")
+            else:
+                layout % RectPoly(
+                    layer=layer,
+                    vertices=[conv_xy(xy) for xy in elem.xy]
+                    )
         elif isinstance(elem, gdsii.elements.Text):
             #print('text', elem.layer, elem.text_type) #, elem.xy, elem.string)
-            layer = layers.one(Layer.gdslayer_text_index.query(GdsLayer(elem.layer, elem.text_type)))
-            layout % Label(
-                layer=layer,
-                pos=conv_xy(elem.xy[0]),
-                text=elem.string.decode('ascii'),
-                )
+            l = GdsLayer(elem.layer, elem.text_type)
+            try:
+                layer = layers.one(Layer.gdslayer_text_index.query(l))
+            except QueryException:
+                print(f"WARNING: ignored gds layer {l}")
+            else:
+                layout % Label(
+                    layer=layer,
+                    pos=conv_xy(elem.xy[0]),
+                    text=elem.string.decode('ascii'),
+                    )
         elif isinstance(elem, gdsii.elements.SRef):
             print('sref', elem.struct_name, elem.xy, elem.elflags, elem.mag, elem.angle)
         else:
@@ -132,7 +139,6 @@ def read_gds(gds_fn, layers, top=None):
 
     for structure in lib:
         name = structure.name.decode('ascii')
-
         if top and name != top:
             continue
 
@@ -146,14 +152,6 @@ def read_gds(gds_fn, layers, top=None):
 
     return layouts
 
-
-def layout_webdata(layout: Layout.Frozen):
-    r = render(layout)
-    return 'layout', {
-        'inner': r.inner_svg().decode('ascii'),
-        'viewbox': r.viewbox,
-    }
-
 # def layout_webdata(layout: Layout.Frozen):
 #     polys = []
 #     for rp in layout.all(RectPoly):
@@ -164,8 +162,6 @@ def layout_webdata(layout: Layout.Frozen):
 #             'vertices': vertices,
 #             'layer_nid': rp.layer.nid,
 #         })
-            
-
 #     return 'layout', {
 #         'polys': polys,
 #     }
