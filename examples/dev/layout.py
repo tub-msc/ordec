@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 import ordec.layout
 from ordec.core import *
-from ordec import render
+#from ordec.render import render
 
 @generate_func
 def sg13g2_xor2_1_layout() -> Layout:
