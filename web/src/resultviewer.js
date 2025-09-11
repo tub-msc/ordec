@@ -4,9 +4,10 @@
 // To be improved. Consider the constructor-only classes stubs for future functions.
 
 import * as d3 from "d3";
+import { LayoutGL } from './layout-gl.js';
 
 let idCounter = 0;
-function generateId() {
+export function generateId() {
     idCounter += 1;
     return "idgen" + idCounter;
 }
@@ -132,6 +133,7 @@ const viewClassOf = {
             });
         }
     },
+    layout_gl: LayoutGL,
     dcsim: class {
         constructor(resContent) {
             this.resContent = resContent;

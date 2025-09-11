@@ -338,10 +338,10 @@ class Layout(SubgraphRoot):
     ref_layers = SubgraphRef(LayerStack)
 
     def webdata(self):
-        #from ..layout import layout_webdata
-        #return layout_webdata(self)
-        from ..render import render
-        return render(self).webdata()
+        from ..layout import layout_webdata
+        return layout_webdata(self)
+        #from ..render import render
+        #return render(self).webdata()
 
 @public
 class Label(Node):
@@ -352,7 +352,13 @@ class Label(Node):
     text = Attr(str)
 
 @public
-class RectPoly(GenericPoly):
+class LayoutPoly(GenericPoly):
+    """
+    Simple polygon with CCW orientation.
+
+    At GDS import, simplicity is assumed currently assuemed, and CW polygons are
+    flipped automatically.
+    """
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)

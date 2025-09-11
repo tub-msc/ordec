@@ -466,9 +466,9 @@ svg {
     stroke-linecap: butt;
     stroke-linejoin: bevel;
 }
-.rectPoly {
+.layoutPoly {
 }
-.rectPoly, .layoutText, .cross {
+.layoutPoly, .layoutText, .cross {
     mix-blend-mode: screen;
     opacity:0.5;
 }
@@ -535,10 +535,10 @@ class LayoutRenderer(Renderer):
     def render_layout(self, l: Layout):
         self.layer_groups = {}
         self.layers_present = []
-        for poly in l.all(RectPoly):
+        for poly in l.all(LayoutPoly):
             layer_g = self.layer_group(poly.layer)
             p = ET.SubElement(layer_g, 'path', d=poly.svg_path())
-            p.attrib['class'] = 'rectPoly'
+            p.attrib['class'] = 'layoutPoly'
             for vertex in poly.vertices:
                 self.auto_outline_add(vertex.pos)
 
