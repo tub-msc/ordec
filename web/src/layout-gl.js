@@ -127,7 +127,6 @@ export class LayoutGL {
 
         this.initGL();
         this.loadBuffers();
-        this.drawGL();
 
         var zoom = d3.zoom().on( 'zoom',  ({transform}) => {
             this.transform = transform;
@@ -238,6 +237,13 @@ export class LayoutGL {
                 sampler: gl.getUniformLocation(progPost, "uSampler"),
             },
         };
+
+        this.intermediateTexture = gl.createTexture();
+        this.intermediateTextureDepth = gl.createTexture();
+        this.intermediateFramebuffer = gl.createFramebuffer();
+
+        this.width = -1;
+        this.height = -1;
     }
 
     loadBuffers() {
@@ -295,38 +301,7 @@ export class LayoutGL {
 
         gl.useProgram(programInfo.program);
 
-        this.intermediateTexture = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, this.intermediateTexture);
-        gl.texImage2D(
-            gl.TEXTURE_2D,
-            0,
-            gl.RGBA32F,
-            this.canvas.width,
-            this.canvas.height,
-            0,
-            gl.RGBA,
-            gl.FLOAT,
-            null
-        );
-
-        this.intermediateTextureDepth = gl.createTexture();
-        gl.bindTexture(gl.TEXTURE_2D, this.intermediateTextureDepth);
-        gl.texImage2D(
-            gl.TEXTURE_2D,
-            0,
-            gl.DEPTH_COMPONENT32F,
-            this.canvas.width,
-            this.canvas.height,
-            0,
-            gl.DEPTH_COMPONENT,
-            gl.FLOAT,
-            null
-        );
-
-        const fb = gl.createFramebuffer();
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this.intermediateTextureDepth, 0);
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.intermediateTexture, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.intermediateFramebuffer);
 
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.ONE, gl.ONE);
@@ -386,8 +361,6 @@ export class LayoutGL {
         gl.disable(gl.DEPTH_TEST);
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
         
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.intermediateTexture);
@@ -412,7 +385,55 @@ export class LayoutGL {
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 
+    resizeGL() {
+        const gl = this.gl;
+
+        // Configure canvas framebuffer width + height:
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, this.width, this.height);
+
+        // (Re)size intermediate framebuffer textures:
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.intermediateFramebuffer);
+
+        gl.bindTexture(gl.TEXTURE_2D, this.intermediateTexture);
+        gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.RGBA32F,
+            this.width,
+            this.height,
+            0,
+            gl.RGBA,
+            gl.FLOAT,
+            null
+        );
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.intermediateTexture, 0);
+
+        gl.bindTexture(gl.TEXTURE_2D, this.intermediateTextureDepth);
+        gl.texImage2D(
+            gl.TEXTURE_2D,
+            0,
+            gl.DEPTH_COMPONENT32F,
+            this.width,
+            this.height,
+            0,
+            gl.DEPTH_COMPONENT,
+            gl.FLOAT,
+            null
+        );
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this.intermediateTextureDepth, 0);
+    }
+
     drawGL() {
+        if((this.width != this.canvas.width) || (this.height != this.canvas.height)) {
+            this.width = this.canvas.width;
+            this.height = this.canvas.height;
+
+            this.resizeGL();    
+        }
+
         this.drawGLLayers();
         this.drawGLPost();
     }
