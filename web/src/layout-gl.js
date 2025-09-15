@@ -107,7 +107,7 @@ function isConvex(A, B, C) {
 export class LayoutGL {
     constructor(resContent) {
         this.resContent = resContent;
-        this.transform = d3.zoomIdentity.scale(1e8,1e8);
+        this.transform = d3.zoomIdentity.scale(1e-1,1e-1);
         this.visibility = new Map();
         this.brightness = 60;
     }

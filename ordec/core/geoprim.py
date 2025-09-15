@@ -49,6 +49,43 @@ class Vec2R(tuple):
         return TD4(transl=self)
 
 @public
+class Vec2I(tuple):
+    """
+    Like Vec2R, but with integer coordinates.
+    """
+
+    __slots__ = ()
+
+    def __new__(cls, x, y):
+        x = int(x)
+        y = int(y)
+        return tuple.__new__(cls, (x, y))
+
+    @property
+    def x(self):
+        return self[0]
+
+    @property
+    def y(self):
+        return self[1]
+
+    def tofloat(self):
+        return float(self.x), float(self.y)
+
+    def __add__(self, other):
+        return Vec2I(self.x+other.x, self.y+other.y)
+
+    def __sub__(self, other):
+        return Vec2I(self.x-other.x, self.y-other.y)
+
+    def __repr__(self):
+        return f"Vec2I({self.x!r}, {self.y!r})"
+
+    def transl(self) -> 'TD4':
+        raise NotImplementedError("TD4 class for Vec2I missing at the moment.")
+        #return TD4(transl=self)
+
+@public
 class Rect4R(tuple):
     """
     Rectangle in 2D space.

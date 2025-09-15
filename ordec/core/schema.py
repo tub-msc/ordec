@@ -74,13 +74,10 @@ class GenericPoly(Node):
             def inserter_func(sgu):
                 main_nid = main.insert_into(sgu)
                 for i, v in enumerate(vertices):
-                    PolyVec2R(ref=main_nid, order=i, pos=v).insert_into(sgu)
+                    cls.vertex_cls(ref=main_nid, order=i, pos=v).insert_into(sgu)
                 return main_nid
             return FuncInserter(inserter_func)
 
-    @property
-    def vertices(self):
-        return self.subgraph.all(PolyVec2R.ref_idx.query(self.nid))
 
     def svg_path(self) -> str:
         """
@@ -101,8 +98,19 @@ class GenericPoly(Node):
             d.append(f"L{x} {y}")
         return ' '.join(d)
 
+    @property
+    def vertices(self):
+        return self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid))
+
+class GenericPolyR(GenericPoly):
+    pass
+
+class GenericPolyI(GenericPoly):
+    pass
+
+
 @public
-class SymbolPoly(GenericPoly):
+class SymbolPoly(GenericPolyR):
     pass
 
 @public
@@ -187,7 +195,7 @@ class SchemPort(Node):
     align = Attr(D4, default=D4.R0)
 
 @public
-class SchemWire(GenericPoly):
+class SchemWire(GenericPolyR):
     """A drawn schematic wire representing an electrical connection."""
     in_subgraphs = [Schematic]
 
@@ -314,6 +322,7 @@ class SimInstance(NonLeafNode):
 @public
 class LayerStack(SubgraphRoot):
     cell = Attr(Cell)
+    unit = Attr(R)
 
 @public
 class Layer(NonLeafNode):
@@ -348,11 +357,11 @@ class Label(Node):
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
-    pos = Attr(Vec2R)
+    pos = Attr(Vec2I)
     text = Attr(str)
 
 @public
-class LayoutPoly(GenericPoly):
+class LayoutPoly(GenericPolyI):
     """
     Simple polygon with CCW orientation.
 
@@ -373,9 +382,25 @@ class PolyVec2R(Node):
     One element/point of a Vec2R polygonal chain, which can be open or closed.
     A polygonal chain is closed if the last and first element are equivalent.
     """
-    in_subgraphs = [Symbol, Schematic, Layout]
-    ref    = LocalRef(SymbolPoly, refcheck_custom=lambda v:True)
+    in_subgraphs = [Symbol, Schematic]
+    ref    = LocalRef(GenericPolyR, refcheck_custom=lambda v: True)
     order   = Attr(int) #: Order of the point in the polygonal chain
     pos     = Attr(Vec2R)
 
     ref_idx = Index(ref, sortkey=lambda node: node.order)
+
+@public
+class PolyVec2I(Node):
+    """
+    One element/point of a Vec2I polygonal chain, which can be open or closed.
+    A polygonal chain is closed if the last and first element are equivalent.
+    """
+    in_subgraphs = [Layout]
+    ref    = LocalRef(GenericPolyI, refcheck_custom=lambda v: True)
+    order   = Attr(int) #: Order of the point in the polygonal chain
+    pos     = Attr(Vec2I)
+
+    ref_idx = Index(ref, sortkey=lambda node: node.order)
+
+GenericPolyR.vertex_cls = PolyVec2R
+GenericPolyI.vertex_cls = PolyVec2I

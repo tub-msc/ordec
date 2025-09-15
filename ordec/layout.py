@@ -17,6 +17,8 @@ class SG13G2(Cell):
     def layers(self):
         s = LayerStack(cell=self)
 
+        s.unit = R('1n')
+
         # Frontend layers
         # ---------------
 
@@ -160,7 +162,7 @@ def poly_orientation(vertices: list[Vec2R]):
 def read_gds_structure(structure: gdsii.structure.Structure, layers: LayerStack, unit: R) -> Layout:
     def conv_xy(xy):
         x, y = xy
-        return Vec2R(unit * x, unit * y)
+        return Vec2I(x, y)
 
     layout = Layout(ref_layers=layers)
     for elem in structure:
@@ -209,6 +211,8 @@ def read_gds(gds_fn, layers, top=None):
 
     # This rounds the GDS units to the closest round decimal fractions:
     unit = R(format(lib.physical_unit, '.4e'))
+    if unit != layers.unit:
+        raise Exception("GDS unit is not equal to layers.unit")
     #logical_unit = R(format(lib.logical_unit, '.4e'))
     # 'unit' is the scaling factor to convert the database numbers to Rational
     # numbers in SI scale (which is what ORDeC uses for now).
@@ -243,7 +247,7 @@ def layout_webdata(layout: Layout.Frozen):
     for poly in layout.all(LayoutPoly):
         # Flat list of coordinates x0, y0, x1, y1 and so on. This is what
         # the JS earcut library wants.
-        vertices = [v.pos.tofloat()[xy] for v in poly.vertices for xy in (0,1)]
+        vertices = [v.pos[xy] for v in poly.vertices for xy in (0,1)]
         layer = poly.layer
         try:
             weblayer = weblayers_dict[layer]
