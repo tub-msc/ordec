@@ -244,10 +244,21 @@ def to_rgb_tuple(s):
 def layout_webdata(layout: Layout.Frozen):
     weblayers_list = []
     weblayers_dict = {}
+
+    extent = None
+    def extent_add_vertex(vertex: Vec2I):
+        nonlocal extent
+        if extent == None:
+            extent = Rect4I(vertex.x, vertex.y, vertex.x, vertex.y)
+        else:
+            extent = extent.extend(vertex)
+
     for poly in layout.all(LayoutPoly):
         # Flat list of coordinates x0, y0, x1, y1 and so on. This is what
         # the JS earcut library wants.
-        vertices = [v.pos[xy] for v in poly.vertices for xy in (0,1)]
+        vertices_flat = [v.pos[xy] for v in poly.vertices for xy in (0,1)]
+        for v in poly.vertices:
+            extent_add_vertex(v.pos)
         layer = poly.layer
         try:
             weblayer = weblayers_dict[layer]
@@ -264,9 +275,13 @@ def layout_webdata(layout: Layout.Frozen):
 
         weblayer['polys'].append({
             'nid': poly.nid,
-            'vertices': vertices,
+            'vertices': vertices_flat,
         })
+
+    if extent == None:
+        extent = Rect4I(0, 0, 0, 0)
 
     return 'layout_gl', {
         'layers': weblayers_list,
+        'extent': [extent.lx, extent.ly, extent.ux, extent.uy],
     }

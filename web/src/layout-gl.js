@@ -106,16 +106,26 @@ function isConvex(A, B, C) {
 
 export class LayoutGL {
     constructor(resContent) {
+        console.log("INIT");
         this.resContent = resContent;
         this.transform = d3.zoomIdentity.scale(1e-1,1e-1);
         this.visibility = new Map();
         this.brightness = 60;
-    }
-    update(msgData) {
+        this.initialZoomDone = false;
+
         this.canvas = document.createElement('canvas');
         this.canvas.classList.add('layoutFit');
+        this.layersUl = document.createElement('ul');
+        this.layersUl.classList.add('layerList');
+        this.resContent.replaceChildren(
+            this.canvas,
+            this.layersUl
+        );
 
-        this.resContent.replaceChildren(this.canvas);
+        console.log("orig size:", this.canvas.clientWidth, this.canvas.clientHeight);
+
+        this.canvas.width = this.canvas.clientWidth;
+        this.canvas.height = this.canvas.clientHeight;
 
         this.gl = this.canvas.getContext("webgl2");
         if (this.gl === null) {
@@ -123,35 +133,97 @@ export class LayoutGL {
             return;
         }
 
-        this.layers = msgData['layers'];
-
         this.initGL();
-        this.loadBuffers();
 
-        var zoom = d3.zoom().on( 'zoom',  ({transform}) => {
+        this.zoom = d3.zoom().on( 'zoom',  ({transform}) => {
             this.transform = transform;
             //this.g.attr("transform", transform);
             //console.log("zoomed", this.transform);
             this.drawGL();
         });
-        d3.select(this.canvas).call( zoom ).call(zoom.transform, this.transform);
+
+
+        d3.select(this.canvas).call(this.zoom).call(this.zoom.transform, this.transform);
 
         const resizeObserver = new ResizeObserver((entries) => {
+            if((this.canvas.clientWidth == 0) || (this.canvas.clientHeight == 0)) {
+                return;
+            }
+            console.log('resize', this.canvas.clientWidth, this.canvas.clientHeight);
             this.canvas.width = this.canvas.clientWidth;
             this.canvas.height = this.canvas.clientHeight;
             this.drawGL();
         });
         resizeObserver.observe(this.canvas);
 
-        const layersUl = this.createLayerList();
-        this.resContent.appendChild(layersUl);
+        this.resContent.addEventListener("keydown", event => this.onKeydown(event.key));
+    }
 
+
+    zoomFull(animate) {
+        console.log("zoom full", this.data.extent);
+        let lx = this.data.extent[0];
+        let ly = this.data.extent[1];
+        let ux = this.data.extent[2];
+        let uy = this.data.extent[3];
+
+        const pad = Math.max(ux-lx, uy-ly)*0.05; 
+        lx -= pad;
+        ux += pad;
+        ly -= pad;
+        uy += pad;
+
+        const w = ux - lx;
+        const h = uy - ly;
+
+        const scaleX = this.canvas.width / w;
+        const scaleY = this.canvas.height / h;
+        const scale = Math.min(scaleX, scaleY);
+        let newZoom = d3.zoomIdentity;
+
+        newZoom.k = scale;
+        newZoom.x = -(lx*newZoom.k);
+        newZoom.y = (uy*newZoom.k);
+
+        if(scaleX > scaleY) {
+            // center horizontally
+            newZoom.x += (this.canvas.width - w*newZoom.k)/2;
+        } else {
+            // center vertically
+            newZoom.y += (this.canvas.height - h*newZoom.k)/2;
+        }
+        console.log('scale', scaleX, scaleY);
+
+        if(animate) {
+            d3.select(this.canvas).transition().duration(400).call(this.zoom.transform, newZoom);
+        } else {
+            d3.select(this.canvas).call(this.zoom.transform, newZoom);
+        }
+    }
+
+    onKeydown(key) {
+        if(key == "f") {
+            this.zoomFull(true);
+        }
+    }
+
+    update(msgData) {
+        this.data = msgData;
+
+        if(!this.initialZoomDone) {
+            this.zoomFull(false);
+            this.initialZoomDone = true;
+        }
+
+        this.loadBuffers();
+        this.updateLayerList();
         this.updateLayers();
     }
 
-    createLayerList() {
-        const layersUl = document.createElement('ul');
-        layersUl.classList.add('layerList');
+    updateLayerList() {
+        const layersUl = this.layersUl;
+        layersUl.innerHTML = "";
+
         let li;
         let id;
 
@@ -162,7 +234,7 @@ export class LayoutGL {
             <label for="${id}"><b>all</b></label> 
         `;
         layersUl.appendChild(li);
-        this.layers.forEach(layer => {
+        this.data.layers.forEach(layer => {
             li = document.createElement('li');
             id = generateId();
             li.innerHTML = `
@@ -202,7 +274,6 @@ export class LayoutGL {
             this.drawGL();
         }
 
-        return layersUl;
     }
 
     initGL() {
@@ -255,7 +326,7 @@ export class LayoutGL {
 
         const positions = [];
 
-        this.layers.forEach(layer => {
+        this.data.layers.forEach(layer => {
             layer.glOffset = positions.length/2;
             layer.polys.forEach(poly => {
                 const triangles = earcut(poly.vertices);
@@ -324,15 +395,26 @@ export class LayoutGL {
         mat4.orthoNO(projectionMatrix, 0, gl.canvas.width, gl.canvas.height, 0, -1, 1);
         mat4.translate(projectionMatrix, projectionMatrix, [this.transform.x, this.transform.y, 0]);
         mat4.scale(projectionMatrix, projectionMatrix, [this.transform.k, this.transform.k, 1]);
+
+        // Rectify axis orientation: X points right, Y points _up_.
+        mat4.scale(projectionMatrix, projectionMatrix, [1, -1, 1]);
+
         gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, projectionMatrix);
         
+        // const modelViewMatrix = mat4.fromValues(
+        //     1, 0, 0, 0,
+        //     0, -1, 0, 0,
+        //     0, 0, 1, 0,
+        //     0, 0, 0, 1,
+        // );
         const modelViewMatrix = mat4.create();
         gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, modelViewMatrix);
+
 
         const brightnessFactor = Math.exp((this.brightness - 80)/15);
         // Alternatively, we could do the brightness factor in postprocessing.
 
-        this.layers.forEach(layer => {
+        this.data.layers.forEach(layer => {
             if(this.visibility.get(layer.nid)==false) {
                 // --> draw layer if visibility is either true or undefined.
                 return;
@@ -433,9 +515,10 @@ export class LayoutGL {
 
             this.resizeGL();    
         }
-
-        this.drawGLLayers();
-        this.drawGLPost();
+        if(this.buffers) {
+            this.drawGLLayers();
+            this.drawGLPost();
+        }
     }
 
     updateLayers() {

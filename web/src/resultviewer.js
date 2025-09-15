@@ -178,7 +178,7 @@ export class ResultViewer {
                 <div class="reswrapper">
                     <div class="resoverlay-topleft refreshing"><img src="/loading.gif" /> Refreshing view...</div>
                     <div class="resoverlay-topleft refreshable">View is out of date. <button>Refresh</button></div>
-                    <div class="rescontent"></div>
+                    <div class="rescontent" tabindex="1"></div>
                     <div class="resexception"></div>
                 </div>
             </div>
@@ -234,6 +234,17 @@ export class ResultViewer {
         }
     }
 
+    resetResContent() {
+        // Replace the rescontent div with a fresh rescontent div, mainly
+        // to clear any event handlers that might have been attached to the
+        // resContent previously.
+        const resContentNew = document.createElement('div');
+        resContentNew.classList.add('rescontent');
+        resContentNew.tabIndex = "0";
+        this.resWrapper.replaceChild(resContentNew, this.resContent);
+        this.resContent = resContentNew;
+    }
+
     viewSelectorOnChange() {
         this.viewSelected = this.viewSelector.options[this.viewSelector.selectedIndex].value;
         this.container.setState({
@@ -241,9 +252,12 @@ export class ResultViewer {
         });
         
         this.invalidate();
-        this.resContent.replaceChildren();
+        this.resetResContent();
+        this.resContent.focus(); // tab focus on resContent
         this.view = null;
         window.ordecClient.requestNextView();
+
+
     }
 
     invalidate() {
@@ -309,7 +323,7 @@ export class ResultViewer {
     }
 
     updateView(msg) {
-        this.resContent.replaceChildren();
+        //this.resContent.replaceChildren();
         this.viewUpToDate = true;
         this.showRefreshOverlay(null);
 
@@ -321,7 +335,7 @@ export class ResultViewer {
             if(!viewClass) {
                 let pre = document.createElement("pre");
                 pre.innerText = 'no handler found for type ' + msg.type;
-                this.resContent.appendChild(pre);
+                this.resContent.replaceChildren(pre);
             } else if(this.view instanceof viewClass) {
                 this.view.update(msg.data);
             } else {

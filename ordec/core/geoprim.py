@@ -8,8 +8,31 @@ from enum import Enum
 from .rational import Rational as R
 from public import public
 
+class Vec2Generic(tuple):
+    __slots__ = ()
+
+    @property
+    def x(self):
+        return self[0]
+
+    @property
+    def y(self):
+        return self[1]
+
+    def tofloat(self):
+        return float(self.x), float(self.y)
+
+    def __add__(self, other):
+        return type(self)(self.x+other.x, self.y+other.y)
+
+    def __sub__(self, other):
+        return type(self)(self.x-other.x, self.y-other.y)
+
+    def __repr__(self):
+        return f"{type(self).__name__}({self.x!r}, {self.y!r})"
+
 @public
-class Vec2R(tuple):
+class Vec2R(Vec2Generic):
     """
     Point in 2D space.
 
@@ -25,31 +48,12 @@ class Vec2R(tuple):
         y = R(y)
         return tuple.__new__(cls, (x, y))
 
-    @property
-    def x(self):
-        return self[0]
-
-    @property
-    def y(self):
-        return self[1]
-
-    def tofloat(self):
-        return float(self.x), float(self.y)
-
-    def __add__(self, other):
-        return Vec2R(self.x+other.x, self.y+other.y)
-
-    def __sub__(self, other):
-        return Vec2R(self.x-other.x, self.y-other.y)
-
-    def __repr__(self):
-        return f"Vec2R({self.x!r}, {self.y!r})"
-
+    
     def transl(self) -> 'TD4':
         return TD4(transl=self)
 
 @public
-class Vec2I(tuple):
+class Vec2I(Vec2Generic):
     """
     Like Vec2R, but with integer coordinates.
     """
@@ -61,54 +65,11 @@ class Vec2I(tuple):
         y = int(y)
         return tuple.__new__(cls, (x, y))
 
-    @property
-    def x(self):
-        return self[0]
-
-    @property
-    def y(self):
-        return self[1]
-
-    def tofloat(self):
-        return float(self.x), float(self.y)
-
-    def __add__(self, other):
-        return Vec2I(self.x+other.x, self.y+other.y)
-
-    def __sub__(self, other):
-        return Vec2I(self.x-other.x, self.y-other.y)
-
-    def __repr__(self):
-        return f"Vec2I({self.x!r}, {self.y!r})"
-
     def transl(self) -> 'TD4':
         raise NotImplementedError("TD4 class for Vec2I missing at the moment.")
-        #return TD4(transl=self)
 
-@public
-class Rect4R(tuple):
-    """
-    Rectangle in 2D space.
-
-    Attributes:
-        lx (Rational): lower x coordinate
-        ly (Rational): lower y coordinate
-        ux (Rational): upper x coordinate
-        uy (Rational): upper y coordinate
-    """
-
+class Rect4Generic(tuple):
     __slots__ = ()
-
-    def __new__(cls, lx, ly, ux, uy):
-        lx = R(lx)
-        ly = R(ly)
-        ux = R(ux)
-        uy = R(uy)
-
-        if lx > ux or ly > uy:
-            raise ValueError("lx or ly greater than ux or uy")
-
-        return tuple.__new__(cls, (lx, ly, ux, uy))
 
     @property
     def lx(self):
@@ -130,16 +91,16 @@ class Rect4R(tuple):
         return float(self.lx), float(self.ly), float(self.ux), float(self.uy)
 
     def south_east(self):
-        return Vec2R(self.ux, self.ly)
+        return self.vector_cls(self.ux, self.ly)
     def south_west(self):
-        return Vec2R(self.lx, self.ly)
+        return self.vector_cls(self.lx, self.ly)
     def north_east(self):
-        return Vec2R(self.ux, self.uy)
+        return self.vector_cls(self.ux, self.uy)
     def north_west(self):
-        return Vec2R(self.lx, self.uy)
+        return self.vector_cls(self.lx, self.uy)
 
     def __contains__(self, point):
-        if isinstance(point, Vec2R):
+        if isinstance(point, self.vector_cls):
             return point.x >= self.lx \
                 and point.x <= self.ux \
                 and point.y >= self.ly \
@@ -147,11 +108,11 @@ class Rect4R(tuple):
         else:
             return super().__contains__(point)
 
-    def extend(self, point: Vec2R):
+    def extend(self, point):
         if point in self:
             return self
         else:
-            return Rect4R(
+            return type(self)(
                 lx=min(self.lx, point.x),
                 ly=min(self.ly, point.y),
                 ux=max(self.ux, point.x),
@@ -159,10 +120,52 @@ class Rect4R(tuple):
             )
 
     def __add__(self, other):
-        raise TypeError("Rect4R cannot be added.")
+        raise TypeError(f"{type(self).__name__} cannot be added.")
 
     def __repr__(self):
-        return f"Rect4R(lx={self.lx!r}, ly={self.ly!r}, ux={self.ux!r}, uy={self.uy!r})"
+        return f"{type(self).__name__}(lx={self.lx!r}, ly={self.ly!r}, ux={self.ux!r}, uy={self.uy!r})"
+
+@public
+class Rect4R(Rect4Generic):
+    """
+    Rectangle in 2D space.
+
+    Attributes:
+        lx (Rational): lower x coordinate
+        ly (Rational): lower y coordinate
+        ux (Rational): upper x coordinate
+        uy (Rational): upper y coordinate
+    """
+
+    __slots__ = ()
+    vector_cls = Vec2R
+
+    def __new__(cls, lx, ly, ux, uy):
+        lx = R(lx)
+        ly = R(ly)
+        ux = R(ux)
+        uy = R(uy)
+
+        if lx > ux or ly > uy:
+            raise ValueError("lx or ly greater than ux or uy")
+
+        return tuple.__new__(cls, (lx, ly, ux, uy))
+
+@public
+class Rect4I(Rect4Generic):
+    __slots__ = ()
+    vector_cls = Vec2I
+
+    def __new__(cls, lx, ly, ux, uy):
+        lx = int(lx)
+        ly = int(ly)
+        ux = int(ux)
+        uy = int(uy)
+
+        if lx > ux or ly > uy:
+            raise ValueError("lx or ly greater than ux or uy")
+
+        return tuple.__new__(cls, (lx, ly, ux, uy))
 
 @public
 class TD4(tuple):

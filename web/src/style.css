@@ -56,6 +56,9 @@ body {
 }
 .reswrapper {
     flex-grow:1;
+    display: flex;
+    align-items: stretch;
+    position:relative;
 }
 .rescontent {
     background-color:#fff;
@@ -92,6 +95,10 @@ canvas.layoutFit {
     display:block;
     width:100%;
     height:100%;
+    /* To debug:
+    padding:5px;
+    box-sizing: border-box;
+    */
 }
 *, *::before, *::after { box-sizing: border-box; } 
 .exception {
