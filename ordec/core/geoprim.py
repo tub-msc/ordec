@@ -100,13 +100,12 @@ class Rect4Generic(tuple):
         return self.vector_cls(self.lx, self.uy)
 
     def __contains__(self, point):
-        if isinstance(point, self.vector_cls):
-            return point.x >= self.lx \
-                and point.x <= self.ux \
-                and point.y >= self.ly \
-                and point.y <= self.uy
-        else:
-            return super().__contains__(point)
+        if not isinstance(point, (Vec2R, Vec2I)):
+            raise TypeError("Left-hand side of 'in' supports only Vec2R/Vec2I.")
+        return point.x >= self.lx \
+            and point.x <= self.ux \
+            and point.y >= self.ly \
+            and point.y <= self.uy
 
     def extend(self, point):
         if point in self:
