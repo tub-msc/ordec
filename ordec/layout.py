@@ -241,7 +241,9 @@ def layout_webdata(layout: Layout.Frozen):
     weblayers_list = []
     weblayers_dict = {}
     for poly in layout.all(LayoutPoly):
-        vertices = [v.pos.tofloat() for v in poly.vertices]
+        # Flat list of coordinates x0, y0, x1, y1 and so on. This is what
+        # the JS earcut library wants.
+        vertices = [v.pos.tofloat()[xy] for v in poly.vertices for xy in (0,1)]
         layer = poly.layer
         try:
             weblayer = weblayers_dict[layer]

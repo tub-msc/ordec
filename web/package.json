@@ -15,6 +15,7 @@
     "ace-builds": "^1.41.0",
     "d3": "^7.9.0",
     "d3-zoom": "^3.0.0",
+    "earcut": "^3.0.2",
     "gl-matrix": "^3.4.4",
     "golden-layout": "^2.6.0"
   }

@@ -3,6 +3,8 @@
 
 import * as d3 from "d3";
 import { mat4, vec2 } from "gl-matrix";
+import earcut from 'earcut';
+
 import { generateId } from './resultviewer.js';
 
 
@@ -100,62 +102,6 @@ function isConvex(A, B, C) {
     const x = 0, y = 1;
     const det = (B[x]-A[x])*(C[y]-A[y]) - (C[x]-A[x])*(B[y]-A[y]);
     return det > 0;
-}
-
-function containsOtherPoints(vertices, A, B, C, A_idx, B_idx, C_idx) {
-    for(let D_idx=0; D_idx<vertices.length; D_idx++) {
-        if((D_idx == A_idx) || (D_idx == B_idx) || (D_idx == C_idx)) {
-            continue;
-        }
-        const D = vertices[D_idx];
-        if(isConvex(A, B, D) && isConvex(B, C, D) && isConvex(C, A, D)) {
-            // D is inside triangle ABC.
-            return true;
-        }
-    }
-    return false;
-}
-
-function triangulatePoly(verticesOrig) {
-    const vertices = [...verticesOrig]; // copy array as not to modify the original array.
-    const triangles = [];
-    while(vertices.length > 3) {
-        let A_idx;
-        let B_idx;
-        let C_idx;
-        let A;
-        let B;
-        let C;
-        let isEar = false;
-        for(A_idx=0; A_idx<vertices.length; A_idx++) {
-            B_idx = (A_idx + 1) % vertices.length;
-            C_idx = (A_idx + 2) % vertices.length;
-
-            A = vertices[A_idx];
-            B = vertices[B_idx];
-            C = vertices[C_idx];
-            if(!isConvex(A, B, C)) {
-                continue;
-            }
-            if(containsOtherPoints(vertices, A, B, C, A_idx, B_idx, C_idx)) {
-                continue;
-            }
-            isEar = true;
-            break;
-        }
-        if(!isEar) {
-            console.log("Failed to find ear!");    
-        }
-        triangles.push([A, B, C]);
-        vertices.splice(B_idx, 1); // removes B from vertices.
-
-    }
-    if(vertices.length == 3) {
-        triangles.push([vertices[0], vertices[1], vertices[2]]);
-    } else {
-        alert("Invalid polygon (less than 3 vertices)!");
-    }
-    return triangles;
 }
 
 export class LayoutGL {
@@ -306,14 +252,10 @@ export class LayoutGL {
         this.layers.forEach(layer => {
             layer.glOffset = positions.length/2;
             layer.polys.forEach(poly => {
-                const tris = triangulatePoly(poly.vertices);
-                tris.forEach(tri => {
-                    positions.push(tri[0][0]);
-                    positions.push(tri[0][1]);
-                    positions.push(tri[1][0]);
-                    positions.push(tri[1][1]);
-                    positions.push(tri[2][0]);
-                    positions.push(tri[2][1]);
+                const triangles = earcut(poly.vertices);
+                triangles.forEach(nodeIdx => {
+                    positions.push(poly.vertices[nodeIdx*2 + 0]);
+                    positions.push(poly.vertices[nodeIdx*2 + 1]);
                 });
             });
             layer.glVertexCount = positions.length/2 - layer.glOffset;
