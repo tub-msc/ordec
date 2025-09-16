@@ -59,11 +59,8 @@ class Ngspice:
     def ac(self, *args, **kwargs) -> 'NgspiceAcResult':
         return self._backend_impl.ac(*args, **kwargs)
 
-    def tran_async(self, *args, callback: Optional[Callable] = None, throttle_interval: float = 0.1) -> Generator:
-        if hasattr(self._backend_impl, 'tran_async'):
-            yield from self._backend_impl.tran_async(*args, callback=callback, throttle_interval=throttle_interval)
-        else:
-            raise NotImplementedError("Async transient analysis is only available with FFI backend")
+    def tran_async(self, *args, throttle_interval: float = 0.1) -> 'queue.Queue':
+        return self._backend_impl.tran_async(*args, throttle_interval=throttle_interval)
 
     def op_async(self, callback: Optional[Callable] = None) -> Generator:
         if hasattr(self._backend_impl, 'op_async'):
@@ -77,8 +74,15 @@ class Ngspice:
         return False
 
     def stop_simulation(self):
+        """Stop/halt running background simulation"""
         if hasattr(self._backend_impl, 'stop_simulation'):
             self._backend_impl.stop_simulation()
+
+    def safe_halt_simulation(self, max_attempts: int = 3, wait_time: float = 0.2) -> bool:
+        return self._backend_impl.safe_halt_simulation(max_attempts, wait_time)
+
+    def safe_resume_simulation(self, max_attempts: int = 3, wait_time: float = 0.2) -> bool:
+        return self._backend_impl.safe_resume_simulation(max_attempts, wait_time)
 
 RawVariable = namedtuple('RawVariable', ['name', 'unit'])
 

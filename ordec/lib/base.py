@@ -60,6 +60,7 @@ class Res(Cell):
 class Cap(Cell):
     """Ideal capacitor"""
     c = Parameter(R) #: Capacitance in farad
+    ic = Parameter(R, optional=True) #: Initial condition voltage in volt
 
     @generate
     def symbol(self) -> Symbol:
@@ -83,7 +84,10 @@ class Cap(Cell):
 
     def netlist_ngspice(self, netlister, inst, schematic):
         pins = [inst.symbol.p, inst.symbol.m]
-        netlister.add(netlister.name_obj(inst, schematic, prefix="c"), netlister.portmap(inst, pins), f'c={self.c.compat_str()}')
+        netlist_str = f'c={self.c.compat_str()}'
+        if self.ic is not None:
+            netlist_str += f' ic={self.ic.compat_str()}'
+        netlister.add(netlister.name_obj(inst, schematic, prefix="c"), netlister.portmap(inst, pins), netlist_str)
 
     @classmethod
     def discoverable_instances(cls):

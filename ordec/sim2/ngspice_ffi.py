@@ -21,6 +21,7 @@ from .ngspice_common import (
     NgspiceTable,
 )
 
+
 class _FFIBackend:
     _instance = None
     """FFI backend for ngspice shared library.
@@ -31,6 +32,7 @@ class _FFIBackend:
     - The ngspice FFI library is NOT thread-safe - use only from single thread
     - Memory management issues exist in ngspice cleanup - avoid calling quit command
     """
+
     def __new__(cls, *args, **kwargs):
         if not cls._instance:
             cls._instance = super(_FFIBackend, cls).__new__(cls)
@@ -180,8 +182,6 @@ class _FFIBackend:
         try:
             current_time = time.time()
 
-
-
             # Throttle callbacks to prevent overwhelming Python
             if current_time - self._last_callback_time < self._async_throttle_interval:
                 return 0
@@ -206,13 +206,29 @@ class _FFIBackend:
 
                         data_points[name] = value
 
+                # Calculate progress based on simulation time if available
+                progress = 0.0
+                if 'time' in data_points and self._sim_tstop:
+                    sim_time = data_points['time']
+                    progress = min(max(sim_time / self._sim_tstop, 0.0), 1.0)
+                    # Ensure progress is monotonic
+                    progress = max(progress, self._last_progress)
+                    self._last_progress = progress
+                else:
+                    # Fallback: increment progress based on data points
+                    self._data_points_sent += 1
+                    progress = min(self._data_points_sent * 0.05, 0.95)
+                    progress = max(progress, self._last_progress)
+                    self._last_progress = progress
+
                 # Store in queue for safe retrieval
                 if data_points:
                     try:
                         self._async_data_queue.put_nowait({
                             'timestamp': current_time,
                             'data': data_points,
-                            'index': vec_count
+                            'index': vec_count,
+                            'progress': progress
                         })
                     except queue.Full:
                         # Drop oldest data if queue is full
@@ -221,7 +237,8 @@ class _FFIBackend:
                             self._async_data_queue.put_nowait({
                                 'timestamp': current_time,
                                 'data': data_points,
-                                'index': vec_count
+                                'index': vec_count,
+                                'progress': progress
                             })
                         except queue.Empty:
                             pass
@@ -273,12 +290,12 @@ class _FFIBackend:
 
         return 0
 
-    def _bg_thread_running_handler(self, is_running, ident, user_data) -> int:
+    def _bg_thread_running_handler(self, is_not_running, ident, user_data) -> int:
         """Handle background thread status updates (NEVER raise exceptions!)"""
         try:
-            self._is_running = bool(is_running)
+            self._is_running = not bool(is_not_running)
             if self.debug:
-                status = "started" if is_running else "stopped"
+                status = "stopped" if is_not_running else "started"
                 print(f"[ngspice-ffi] Background thread {status}")
 
         except Exception:
@@ -447,10 +464,29 @@ class _FFIBackend:
 
         return result
 
-    def tran_async(self, *args, callback: Optional[Callable] = None, throttle_interval: float = 0.1) -> Generator:
-        self._async_callback = callback
+    def tran_async(self, *args, throttle_interval: float = 0.1) -> 'queue.Queue':
         self._async_throttle_interval = throttle_interval
         self._last_callback_time = 0.0
+        self._data_points_sent = 0
+
+        # Store simulation parameters for progress calculation
+        self._sim_tstop = None
+        self._last_progress = 0.0
+        if len(args) >= 2:
+            # Parse tstop from second argument (tstep, tstop)
+            try:
+                tstop_str = str(args[1])
+                # Convert units (u = micro, n = nano, m = milli, etc.)
+                if tstop_str.endswith('u'):
+                    self._sim_tstop = float(tstop_str[:-1]) * 1e-6
+                elif tstop_str.endswith('n'):
+                    self._sim_tstop = float(tstop_str[:-1]) * 1e-9
+                elif tstop_str.endswith('m'):
+                    self._sim_tstop = float(tstop_str[:-1]) * 1e-3
+                else:
+                    self._sim_tstop = float(tstop_str)
+            except (ValueError, IndexError):
+                self._sim_tstop = None
 
         # Clear any existing data
         while not self._async_data_queue.empty():
@@ -460,91 +496,137 @@ class _FFIBackend:
                 break
 
         # Start background simulation using bg_tran
-        self.command(f"bg_tran {' '.join(args)}")
+        cmd_args = ' '.join(str(arg) for arg in args)
+        self.command(f"bg_tran {cmd_args}")
 
-        # Wait for simulation to start
+        # Wait for simulation to start or complete (handles fast simulations)
         timeout = time.time() + 5.0  # 5 second timeout
-        while not self._is_running and time.time() < timeout:
-            time.sleep(0.01)
+        simulation_started = False
 
-        if not self._is_running:
+        # Use race condition approach instead of polling
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+
+            def check_running_status():
+                """Check if simulation is running"""
+                return self._is_running
+
+            def check_queue_activity():
+                """Check if data queue has activity (fast simulations)"""
+                return not self._async_data_queue.empty()
+
+            while time.time() < timeout:
+                # Race between status check and queue activity
+                status_future = executor.submit(check_running_status)
+                queue_future = executor.submit(check_queue_activity)
+
+                try:
+                    done_futures = concurrent.futures.as_completed(
+                        [status_future, queue_future],
+                        timeout=0.05
+                    )
+
+                    for future in done_futures:
+                        if future == status_future and future.result():
+                            simulation_started = True
+                            break
+                        elif future == queue_future and future.result():
+                            simulation_started = True
+                            break
+
+                    if simulation_started:
+                        break
+
+                except concurrent.futures.TimeoutError:
+                    # Continue checking until main timeout
+                    pass
+
+                # Clean up futures
+                if not status_future.done():
+                    status_future.cancel()
+                if not queue_future.done():
+                    queue_future.cancel()
+
+        if not simulation_started:
             raise NgspiceError("Background simulation failed to start")
 
-        # Try streaming first - if no data comes within reasonable time, fall back to polling
-        streaming_timeout = time.time() + 0.5  # 500ms to wait for streaming data
-        got_streaming_data = False
+        # Start a thread to handle data retrieval fallback for complex simulations
+        # Some complex models (like SKY130) don't trigger data callbacks during bg_tran
+        import threading
+        def data_fallback_handler():
+            """Handle data retrieval when callbacks don't work (e.g.,Complex models like SKY130 with savecurrents option)"""
+            # Wait for simulation to complete using race condition approach
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as fallback_executor:
 
-        # Stream data as it becomes available
-        while self._is_running:
+                def check_completion_status():
+                    """Check if simulation has completed"""
+                    return not self._is_running
 
-
-            try:
-                # Check for data with short timeout
-                data_point = self._async_data_queue.get(timeout=0.01)
-
-                got_streaming_data = True
-                if callback:
-                    callback(data_point)
-
-                yield data_point
-
-            except queue.Empty:
-                # Check if simulation is still running
-                if hasattr(self.lib, 'ngSpice_running'):
-                    is_ngspice_running = self.lib.ngSpice_running()
-                    if not is_ngspice_running:
-                        self._is_running = False
-                        # Don't break yet - handle polling fallback below
-
-                # If no streaming data after timeout OR simulation completed, fall back to polling
-                if not got_streaming_data and (time.time() > streaming_timeout or not self._is_running):
-
-                    # Get final results from completed simulation
+                while True:
+                    completion_future = fallback_executor.submit(check_completion_status)
                     try:
-                        # Build result from current simulation vectors
-                        all_vectors = self._get_all_vectors()
+                        if completion_future.result(timeout=0.05):
+                            break
+                    except concurrent.futures.TimeoutError:
+                        pass
+                    finally:
+                        if not completion_future.done():
+                            completion_future.cancel()
 
-                        final_data = {}
+            # Small delay to ensure simulation is fully complete
+            time.sleep(0.1)
 
-                        for vec_name in all_vectors:
+            # If no data received via callbacks but simulation completed, manually retrieve data
+            if self._async_data_queue.empty():
+                try:
+                    # Get current vectors from ngspice
+                    vector_names = self._get_all_vectors()
+                    if vector_names and 'time' in vector_names:
+                        # Extract actual vector data using _get_vector_info
+                        vector_data_map = {}
+                        num_points = 0
+
+                        for vec_name in vector_names:
                             vec_info = self._get_vector_info(vec_name)
                             if vec_info and vec_info.v_length > 0:
-                                # Get last value from vector
-                                final_data[vec_name] = vec_info.v_realdata[vec_info.v_length - 1]
+                                num_points = max(num_points, vec_info.v_length)
+                                data_list = [vec_info.v_realdata[i] for i in range(vec_info.v_length)]
+                                vector_data_map[vec_name] = data_list
 
+                        if num_points > 0 and 'time' in vector_data_map:
+                            # Sample every 10th point to avoid overwhelming the queue
+                            sample_indices = range(0, num_points, max(1, num_points // 100))
 
+                            for i in sample_indices:
+                                data_points = {}
+                                for name, values in vector_data_map.items():
+                                    if i < len(values):
+                                        data_points[name] = values[i]
 
-                        if final_data:
-                            final_data_point = {
-                                'timestamp': time.time(),
-                                'data': final_data,
-                                'progress': 1.0
-                            }
+                                if data_points:
+                                    self._async_data_queue.put_nowait({
+                                        'timestamp': time.time(),
+                                        'data': data_points,
+                                        'index': i
+                                    })
 
-                            if callback:
-                                callback(final_data_point)
-                            yield final_data_point
-                    except Exception as e:
-                        if self.debug:
-                            print(f"[ngspice-ffi] Error in polling fallback: {e}")
+                            if self.debug:
+                                print(f"[ngspice-ffi] Fallback retrieved {len(sample_indices)} data points from {num_points} total points")
 
-                    break
+                except Exception as e:
+                    # Fallback failed, but don't crash - log errors for diagnostics
+                    import logging
+                    logging.error("Exception in data_fallback_handler: %s", e)
+                    if self.debug:
+                        import traceback
+                        logging.debug("Fallback traceback: %s", traceback.format_exc())
 
-                if not self._is_running:
-                    break
+        fallback_thread = threading.Thread(target=data_fallback_handler, daemon=True)
+        fallback_thread.start()
 
-                # Small sleep to prevent busy waiting
-                time.sleep(0.001)
-
-        # Drain any remaining data
-        while not self._async_data_queue.empty():
-            try:
-                data_point = self._async_data_queue.get_nowait()
-                if callback:
-                    callback(data_point)
-                yield data_point
-            except queue.Empty:
-                break
+        # Return the queue for direct access
+        return self._async_data_queue
 
     def op_async(self, callback: Optional[Callable] = None) -> Generator:
        self._async_callback = callback
@@ -558,12 +640,30 @@ class _FFIBackend:
        self.command("op")
        self.command("bg_run")
 
-       # Wait for simulation to start
+       # Wait for simulation to start using race condition approach
        timeout = time.time() + 5.0
-       while not self._is_running and time.time() < timeout:
-           time.sleep(0.01)
 
-       if not self._is_running:
+       import concurrent.futures
+       startup_detected = False
+       with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+
+           def check_op_startup():
+               """Check if OP analysis has started"""
+               return self._is_running
+
+           while time.time() < timeout:
+               startup_future = executor.submit(check_op_startup)
+               try:
+                   if startup_future.result(timeout=0.05):
+                       startup_detected = True
+                       break
+               except concurrent.futures.TimeoutError:
+                   pass
+               finally:
+                   if not startup_future.done():
+                       startup_future.cancel()
+
+       if not startup_detected:
            raise NgspiceError("Background operating point analysis failed to start")
 
        # Stream data as it becomes available
@@ -595,14 +695,141 @@ class _FFIBackend:
     def is_running(self) -> bool:
         return self._is_running
 
+    def get_async_data_queue(self) -> 'queue.Queue':
+        """Get direct access to the async data queue"""
+        return self._async_data_queue
+
     def stop_simulation(self):
         if self._is_running:
             self.command("bg_halt")
             self._is_running = False
-            # Wait for simulation to stop
+            # Wait for simulation to stop using race condition approach
             timeout = time.time() + 2.0
-            while self._is_running and time.time() < timeout:
-                time.sleep(0.01)
+
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+
+                def check_stop_status():
+                    """Check if simulation has stopped"""
+                    return not self._is_running
+
+                # Race condition approach: check status with timeout
+                while time.time() < timeout:
+                    stop_future = executor.submit(check_stop_status)
+                    try:
+                        if stop_future.result(timeout=0.05):
+                            return True  # Successfully stopped
+                    except concurrent.futures.TimeoutError:
+                        pass
+                    finally:
+                        if not stop_future.done():
+                            stop_future.cancel()
+
+            # If we reach here, stopping timed out but we tried
+            return not self._is_running
+        else:
+            # Already stopped
+            return True
+
+    def safe_halt_simulation(self, max_attempts: int = 3, wait_time: float = 0.2) -> bool:
+        """Halt async simulation safely."""
+        if not self._is_running:
+            return True
+
+        for attempt in range(max_attempts):
+            self.command("bg_halt")
+            self._is_running = False
+
+            # Check if simulation has stopped
+            time.sleep(wait_time)
+            if not self._is_running:
+                return True
+
+        # If we reach here, stopping timed out but we tried
+        return not self._is_running
+
+    def halt_simulation(self, timeout: float = 2.0) -> bool:
+        """Halt async simulation (alias for safe_halt_simulation for API compatibility)."""
+        result = self.safe_halt_simulation(max_attempts=int(timeout / 0.2), wait_time=0.2)
+        return result
+
+    def safe_resume_simulation(self, max_attempts: int = 3, wait_time: float = 2.0) -> bool:
+        """Resume a halted simulation safely."""
+        if self._is_running:
+            return True  # Already running
+
+        for attempt in range(max_attempts):
+            # Send bg_resume command
+            result = self.command("bg_resume")
+
+            # Check if ngspice is actually running using the library function
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+
+                def check_resume_status():
+                    """Check if simulation has resumed using ngspice library"""
+                    try:
+                        is_running = self.lib.ngSpice_running()
+                        if is_running:
+                            self._is_running = True  # Update our state
+                        return is_running
+                    except:
+                        return False
+
+                # Wait for resume to complete
+                start_time = time.time()
+                while time.time() - start_time < wait_time:
+                    resume_future = executor.submit(check_resume_status)
+                    try:
+                        if resume_future.result(timeout=0.05):
+                            return True
+                    except concurrent.futures.TimeoutError:
+                        pass
+                    finally:
+                        if not resume_future.done():
+                            resume_future.cancel()
+
+            # Wait before retry (except on last attempt)
+            if attempt < max_attempts - 1:
+                time.sleep(wait_time / 2)
+
+        return False  # Resume failed or timed out after all attempts
+
+    def resume_simulation(self, timeout=2.0):
+        if self._is_running:
+            return True  # Already running
+
+        # Send bg_resume command
+        result = self.command("bg_resume")
+
+        # Check if ngspice is actually running using the library function
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+
+            def check_resume_status():
+                """Check if simulation has resumed using ngspice library"""
+                try:
+                    is_running = self.lib.ngSpice_running()
+                    if is_running:
+                        self._is_running = True  # Update our state
+                    return is_running
+                except:
+                    return False
+
+            # Wait for resume to complete
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                resume_future = executor.submit(check_resume_status)
+                try:
+                    if resume_future.result(timeout=0.05):
+                        return True
+                except concurrent.futures.TimeoutError:
+                    pass
+                finally:
+                    if not resume_future.done():
+                        resume_future.cancel()
+
+        return False  # Resume failed or timed out
 
     def _get_all_vectors(self) -> List[str]:
         plot_name = self.lib.ngSpice_CurPlot()
