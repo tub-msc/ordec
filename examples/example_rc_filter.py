@@ -225,10 +225,7 @@ def run_rc_square_wave_simulation_with_vcd():
     return True
 
 if __name__ == "__main__":
-    try:
-        success = run_rc_square_wave_simulation_with_vcd()
-    except Exception as e:
-        print(f"\n❌ Error during simulation: {e}")
+    run_rc_square_wave_simulation_with_vcd()
         import traceback
         traceback.print_exc()
         sys.exit(1)
