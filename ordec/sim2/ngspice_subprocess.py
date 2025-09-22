@@ -446,7 +446,8 @@ class _SubprocessBackend:
                                         # Add voltage data if available for this time point
                                         if time_val in voltage_data:
                                             for node_name, voltage_val in voltage_data[time_val].items():
-                                                data_point['data'][node_name] = voltage_val
+                                                if node_name != 'time':
+                                                    data_point['data'][node_name] = voltage_val
 
                                         # Debug: print data point structure
                                         if self.debug and self._data_points_sent < 3:  # Only print first few points
