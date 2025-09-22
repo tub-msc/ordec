@@ -383,9 +383,9 @@ class PolyVec2R(Node):
     A polygonal chain is closed if the last and first element are equivalent.
     """
     in_subgraphs = [Symbol, Schematic]
-    ref    = LocalRef(GenericPolyR, refcheck_custom=lambda v: True)
-    order   = Attr(int) #: Order of the point in the polygonal chain
-    pos     = Attr(Vec2R)
+    ref    = LocalRef(GenericPolyR)
+    order   = Attr(int, optional=False) #: Order of the point in the polygonal chain
+    pos     = Attr(Vec2R, optional=False)
 
     ref_idx = Index(ref, sortkey=lambda node: node.order)
 
@@ -396,9 +396,9 @@ class PolyVec2I(Node):
     A polygonal chain is closed if the last and first element are equivalent.
     """
     in_subgraphs = [Layout]
-    ref    = LocalRef(GenericPolyI, refcheck_custom=lambda v: True)
-    order   = Attr(int) #: Order of the point in the polygonal chain
-    pos     = Attr(Vec2I)
+    ref    = LocalRef(GenericPolyI)
+    order   = Attr(int, optional=False) #: Order of the point in the polygonal chain
+    pos     = Attr(Vec2I, optional=False)
 
     ref_idx = Index(ref, sortkey=lambda node: node.order)
 
