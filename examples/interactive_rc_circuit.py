@@ -446,3 +446,7 @@ if __name__ == "__main__":
     # # Run simulation...
     # interactive_sim.stop_vcd_recording()   # Call this to stop recording
     # interactive_sim.export_to_vcd("my_simulation.vcd")  # Export to VCD
+
+InteractiveRCCircuit().schematic
+
+interactive_sim.start_vcd_recording("test.vcd") 

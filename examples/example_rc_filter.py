@@ -7,6 +7,7 @@ import termios
 import tty
 import select
 import time
+from io import BytesIO
 from ordec.core import *
 from ordec import Rational as R
 from ordec.lib.base import PulseVoltageSource, Res, Cap, Gnd
@@ -17,7 +18,9 @@ def plot_sixel(time_data, voltage_in, voltage_out, title="RC Circuit Response"):
     try:
         import matplotlib
         import matplotlib.pyplot as plt
-        matplotlib.use('module://matplotlib-backend-sixel')
+        from PIL import Image  # Import Pillow
+
+        matplotlib.use('Agg')  # Use an image backend
 
         plt.figure(figsize=(9, 5), dpi=100)
         plt.plot(time_data, voltage_in, color='#40E0D0', label='Vin (Input)')
@@ -37,11 +40,48 @@ def plot_sixel(time_data, voltage_in, voltage_out, title="RC Circuit Response"):
 
         plt.grid(True, color='gray', linestyle='--', linewidth=0.5)
         plt.tight_layout()
-        plt.show()
+
+        # Save the plot to a BytesIO object as PNG
+        buf = BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+
+        # Use sixel library to convert and print to terminal
+        try:
+            import sixel
+            writer = sixel.SixelWriter()
+            writer.draw(buf, output=sys.stdout)  # Directly draw to stdout
+            plt.close()
+            return True
+        except ImportError:
+            print("Error: 'sixel' library not found.  Install it with 'pip install sixel'.", file=sys.stderr)
+            plt.close()
+            return False
+
         plt.close()
         return True
     except Exception as e:
-        print(f"Error: {e}\n  Ensure 'matplotlib-backend-sixel' and 'imagemagick' are installed.", file=sys.stderr)
+        print(f"Error: {e}\n  Ensure 'matplotlib' and 'Pillow' are installed.", file=sys.stderr)
+        return False
+
+def plot_matplotlib_window(time_data, voltage_in, voltage_out, title="RC Circuit Response"):
+    """Plot using matplotlib with interactive window (for X11 environments)"""
+    try:
+        import matplotlib.pyplot as plt
+
+        plt.figure(figsize=(10, 6))
+        plt.plot(time_data, voltage_in, 'b-', linewidth=2, label='Vin (Input)')
+        plt.plot(time_data, voltage_out, 'r-', linewidth=2, label='Vout (Capacitor)')
+        plt.title(title, fontsize=14)
+        plt.xlabel("Time (s)", fontsize=12)
+        plt.ylabel("Voltage (V)", fontsize=12)
+        plt.legend(fontsize=12)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.show()
+        return True
+    except Exception as e:
+        print(f"Error opening matplotlib window: {e}", file=sys.stderr)
         return False
 
 def plot_ascii(time_data, voltage_in, voltage_out, width=80, height=20, title="RC Circuit Response"):
@@ -133,7 +173,30 @@ def _query_sixel_support_from_terminal():
 
 def detect_terminal_capabilities():
     sixel_support = _query_sixel_support_from_terminal()
-    return {'sixel': sixel_support, 'ascii': True}
+
+    # Check if we're running in an X11 environment
+    x11_available = False
+    try:
+        # Check DISPLAY environment variable (common on Linux/Unix)
+        if os.environ.get('DISPLAY'):
+            x11_available = True
+            try:
+                import matplotlib
+                gui_backends = ['TkAgg', 'GTK3Agg', 'GTK4Agg', 'Qt5Agg', 'QtAgg', 'WXAgg']
+                for backend in gui_backends:
+                    try:
+                        matplotlib.use(backend)
+                        import matplotlib.pyplot as plt
+                        x11_available = True
+                        break
+                    except:
+                        continue
+            except:
+                pass
+    except:
+        x11_available = False
+
+    return {'sixel': sixel_support, 'ascii': True, 'x11': x11_available}
 
 class RCSquareWaveTb(Cell):
 
@@ -211,12 +274,23 @@ def run_rc_square_wave_simulation_with_vcd():
         return False
 
     capabilities = detect_terminal_capabilities()
+
+
     if capabilities['sixel']:
         success = plot_sixel(time_data, vin_data, vout_data,
                            title="RC Circuit - Square Wave Response")
         if success:
             return True
 
+
+    if capabilities['x11']:
+         print("X11 environment detected - opening matplotlib window...")
+         success = plot_matplotlib_window(time_data, vin_data, vout_data,
+                                        title="RC Circuit - Square Wave Response")
+         if success:
+             return True
+
+    # Final fallback to ASCII art
     ascii_plot = plot_ascii(time_data, vin_data, vout_data,
                            title="RC Circuit - Square Wave Response",
                            width=80, height=20)
@@ -226,4 +300,3 @@ def run_rc_square_wave_simulation_with_vcd():
 
 if __name__ == "__main__":
     run_rc_square_wave_simulation_with_vcd()
-
