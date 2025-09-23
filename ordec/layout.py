@@ -284,4 +284,5 @@ def layout_webdata(layout: Layout.Frozen):
     return 'layout_gl', {
         'layers': weblayers_list,
         'extent': [extent.lx, extent.ly, extent.ux, extent.uy],
+        'unit': float(layout.ref_layers.unit),
     }

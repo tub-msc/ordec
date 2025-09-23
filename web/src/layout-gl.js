@@ -6,15 +6,17 @@ import { mat4, vec2 } from "gl-matrix";
 import earcut from 'earcut';
 
 import { generateId } from './resultviewer.js';
-
+import { siFormat } from './siformat.js';
 
 // See: https://github.com/mdn/dom-examples/blob/main/webgl-examples/tutorial/sample2/webgl-demo.js
 
 const fsSource = `
     uniform highp vec4 uLayerColor;
+
+    uniform highp float uBrightness;
     
     void main() {
-        gl_FragColor = vec4(uLayerColor.r, uLayerColor.g, uLayerColor.b, 1.0);
+        gl_FragColor = vec4(uLayerColor.r * uBrightness, uLayerColor.g * uBrightness, uLayerColor.b * uBrightness, 1.0);
     }
 `;
 
@@ -33,6 +35,7 @@ const vsSource = `
             uLayerColor.a,
             pos.w
         );
+        gl_PointSize = 2.0;
     }
 `;
 
@@ -104,11 +107,26 @@ function isConvex(A, B, C) {
     return det > 0;
 }
 
+function calcLayerColor(color, layerId, dampen) {
+    // If dampen is true, infinite / 0xFF brightness is 'scaled away'.
+    const dampenFactor = dampen?0.95:1.0;
+    return [
+        // The RGB values of layerColor are added to the RGB pixel buffer by the fragment shader:
+        -Math.log(1.0 - (color[0] / 255.0 * dampenFactor)),
+        -Math.log(1.0 - (color[1] / 255.0 * dampenFactor)),
+        -Math.log(1.0 - (color[2] / 255.0 * dampenFactor)),
+        // The alpha value of layerColor is used as Z value by the vertex shader to prevent coloring the same pixel for the same layer multiple times.
+        // This alpha / Z values has to be between 0.0 and 1.0!
+        layerId/65536,
+    ];
+}
+
 export class LayoutGL {
     constructor(resContent) {
         console.log("INIT");
         this.resContent = resContent;
         this.transform = d3.zoomIdentity.scale(1e-1,1e-1);
+        this.projectionMatrix = mat4.create();
         this.visibility = new Map();
         this.brightness = 60;
         this.initialZoomDone = false;
@@ -121,8 +139,6 @@ export class LayoutGL {
             this.canvas,
             this.layersUl
         );
-
-        console.log("orig size:", this.canvas.clientWidth, this.canvas.clientHeight);
 
         this.canvas.width = this.canvas.clientWidth;
         this.canvas.height = this.canvas.clientHeight;
@@ -142,7 +158,6 @@ export class LayoutGL {
             this.drawGL();
         });
 
-
         d3.select(this.canvas).call(this.zoom).call(this.zoom.transform, this.transform);
 
         const resizeObserver = new ResizeObserver((entries) => {
@@ -156,7 +171,8 @@ export class LayoutGL {
         });
         resizeObserver.observe(this.canvas);
 
-        this.resContent.addEventListener("keydown", event => this.onKeydown(event.key));
+        this.resContent.addEventListener("keydown", event => this.onKeydown(event));
+        this.canvas.addEventListener("mousemove", event => this.onMousemove(event));
     }
 
 
@@ -201,10 +217,17 @@ export class LayoutGL {
         }
     }
 
-    onKeydown(key) {
-        if(key == "f") {
+    onKeydown(event) {
+        if(event.key == "f") {
             this.zoomFull(true);
         }
+    }
+
+    onMousemove(event) {
+        const pos = this.transform.invert([event.offsetX, event.offsetY]);
+        const x = siFormat(pos[0], this.data.unit);
+        const y = siFormat(-pos[1], this.data.unit);
+        this.cursorPosLi.innerHTML = `x=${x}&nbsp;&nbsp;y=${y}`;
     }
 
     update(msgData) {
@@ -264,7 +287,6 @@ export class LayoutGL {
         };
 
         li = document.createElement('li');
-        id = generateId();
         li.innerHTML=`
             <input type="range" min="1" max="100" value="${this.brightness}" class="brightness" />
         `;
@@ -274,6 +296,10 @@ export class LayoutGL {
             this.drawGL();
         }
 
+        li = document.createElement('li');
+        li.innerHTML =`x=0&nbsp;&nbsp;y=0`;
+        layersUl.appendChild(li);
+        this.cursorPosLi = li;
     }
 
     initGL() {
@@ -294,6 +320,7 @@ export class LayoutGL {
                 projectionMatrix: gl.getUniformLocation(prog, "uProjectionMatrix"),
                 modelViewMatrix: gl.getUniformLocation(prog, "uModelViewMatrix"),
                 layerColor: gl.getUniformLocation(prog, "uLayerColor"),
+                brightness: gl.getUniformLocation(prog, "uBrightness"),
             },
         };
 
@@ -318,14 +345,25 @@ export class LayoutGL {
     }
 
     loadBuffers() {
+        this.buffers = Object();
         const gl = this.gl;
 
-        this.buffers = Object();
-        this.buffers.polyVertices = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.polyVertices);
+        // Load grid:
+
+        this.buffers.gridVertices = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.gridVertices);
+        this.gridSize = 128;
+        const grid = [];
+        for(let x = 0; x < this.gridSize; x++) {
+            for(let y = 0; y < this.gridSize; y++) {
+                grid.push(x, y);
+            }
+        }
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(grid), gl.STATIC_DRAW);
+
+        // Load polys:
 
         const positions = [];
-
         this.data.layers.forEach(layer => {
             layer.glOffset = positions.length/2;
             layer.polys.forEach(poly => {
@@ -338,6 +376,9 @@ export class LayoutGL {
             layer.glVertexCount = positions.length/2 - layer.glOffset;
         });
         this.posCount = positions.length/2/3;
+
+        this.buffers.polyVertices = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.polyVertices);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
 
         // For postprocessing: Load a screen-filling rectangle (two triangles)
@@ -387,32 +428,16 @@ export class LayoutGL {
 
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+        gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, this.projectionMatrix);
+        gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, mat4.create());
+
+        const brightnessFactor = Math.exp((this.brightness - 80)/15);
+
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.polyVertices);
         gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
 
-        const projectionMatrix = mat4.create();
-        mat4.orthoNO(projectionMatrix, 0, gl.canvas.width, gl.canvas.height, 0, -1, 1);
-        mat4.translate(projectionMatrix, projectionMatrix, [this.transform.x, this.transform.y, 0]);
-        mat4.scale(projectionMatrix, projectionMatrix, [this.transform.k, this.transform.k, 1]);
-
-        // Rectify axis orientation: X points right, Y points _up_.
-        mat4.scale(projectionMatrix, projectionMatrix, [1, -1, 1]);
-
-        gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, projectionMatrix);
-        
-        // const modelViewMatrix = mat4.fromValues(
-        //     1, 0, 0, 0,
-        //     0, -1, 0, 0,
-        //     0, 0, 1, 0,
-        //     0, 0, 0, 1,
-        // );
-        const modelViewMatrix = mat4.create();
-        gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, modelViewMatrix);
-
-
-        const brightnessFactor = Math.exp((this.brightness - 80)/15);
-        // Alternatively, we could do the brightness factor in postprocessing.
+        gl.uniform1fv(programInfo.uniformLocations.brightness, [brightnessFactor]);
 
         this.data.layers.forEach(layer => {
             if(this.visibility.get(layer.nid)==false) {
@@ -421,17 +446,54 @@ export class LayoutGL {
             }
             
             // In the future, layerColor could or should be an attribute, not a uniform value.
-            gl.uniform4fv(programInfo.uniformLocations.layerColor, [
-                // The RGB values of layerColor are added to the RGB pixel buffer by the fragment shader:
-                -Math.log(1.0 - (layer.color[0]/256)) * brightnessFactor,
-                -Math.log(1.0 - (layer.color[1]/256)) * brightnessFactor,
-                -Math.log(1.0 - (layer.color[2]/256)) * brightnessFactor,
-                // The alpha value of layerColor is used as Z value by the vertex shader to prevent coloring the same pixel for the same layer multiple times.
-                layer.nid/65536,
-            ]);
+            gl.uniform4fv(programInfo.uniformLocations.layerColor,
+                calcLayerColor(layer.color, layer.nid, true));
 
             gl.drawArrays(gl.TRIANGLES, layer.glOffset, layer.glVertexCount);
         });
+
+
+        // Draw grid:
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.gridVertices);
+        gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+
+        const white = [255, 255, 255];
+        gl.uniform4fv(programInfo.uniformLocations.layerColor,
+            calcLayerColor(white, 0, false));
+        
+        gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, this.scaleGrid());
+
+        gl.drawArrays(gl.POINTS, 0, this.gridSize * this.gridSize);
+    }
+
+    scaleGrid() {
+        const projectionMatrixInv = mat4.create();
+        mat4.invert(projectionMatrixInv, this.projectionMatrix);
+
+        // If the canvas is small, make the grid smaller to prevent it from being too dense:
+        const canvasMaxExtent = Math.max(this.width, this.height);
+        const gridMaxDensity = 20; // maximum density: one dot / 20 pixels
+        const adjustedGridSize = Math.min(canvasMaxExtent/gridMaxDensity, this.gridSize);
+
+        const topRight = vec2.create();
+        const bottomLeft = vec2.create();
+        vec2.transformMat4(topRight, vec2.fromValues(1, 1), projectionMatrixInv);
+        vec2.transformMat4(bottomLeft, vec2.fromValues(-1, -1), projectionMatrixInv);
+        const width = topRight[0] - bottomLeft[0];
+        const height = topRight[1] - bottomLeft[1];
+        const maxExtent = Math.max(width, height);
+        const scale = 10**Math.ceil(Math.log10(maxExtent/(adjustedGridSize-2)));
+        console.log("boundary:", maxExtent, scale);
+
+
+        const modelViewMatrix = mat4.create();
+        mat4.scale(modelViewMatrix, modelViewMatrix, [scale, scale, 1]);
+        const gridTranslX = Math.floor(bottomLeft[0] / scale);
+        const gridTranslY = Math.floor(bottomLeft[1] / scale);
+        mat4.translate(modelViewMatrix, modelViewMatrix, [gridTranslX, gridTranslY, 0]);
+        return modelViewMatrix;
     }
 
     drawGLPost() {
@@ -508,6 +570,15 @@ export class LayoutGL {
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this.intermediateTextureDepth, 0);
     }
 
+    updateProjectionMatrix() {
+        mat4.orthoNO(this.projectionMatrix, 0, this.width, this.height, 0, -1, 1);
+        mat4.translate(this.projectionMatrix, this.projectionMatrix, [this.transform.x, this.transform.y, 0]);
+        mat4.scale(this.projectionMatrix, this.projectionMatrix, [this.transform.k, this.transform.k, 1]);
+
+        // Rectify axis orientation: X points right, Y points _up_.
+        mat4.scale(this.projectionMatrix, this.projectionMatrix, [1, -1, 1]);
+    }
+
     drawGL() {
         if((this.width != this.canvas.width) || (this.height != this.canvas.height)) {
             this.width = this.canvas.width;
@@ -516,6 +587,7 @@ export class LayoutGL {
             this.resizeGL();    
         }
         if(this.buffers) {
+            this.updateProjectionMatrix();
             this.drawGLLayers();
             this.drawGLPost();
         }
