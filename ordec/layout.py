@@ -66,29 +66,26 @@ class SG13G2(Cell):
                 style_color=color,
             )
 
-        addmetal("Metal1", 8, "#39bfff")
-        addmetal("Metal2", 10, "#ccccd9")
-        addmetal("Metal3", 30, "#d80000")
-        addmetal("Metal4", 50, "#93e837")
-        addmetal("Metal5", 67, "#dcd146")
-        addmetal("TopMetal1", 126, "#ffe6bf")
-        addmetal("TopMetal2", 134, "#ff8000")
-
-        # Vias
-        # ----
-
         def addvia(name, layer, color):
             setattr(s, name, Layer(
                 gdslayer_shapes=GdsLayer(layer=layer, data_type=0),
                 style_color=color,
             ))
 
+
+        addmetal("Metal1", 8, "#39bfff")
         addvia("Via1", 19, "#ccccff")
+        addmetal("Metal2", 10, "#ccccd9")
         addvia("Via2", 29, "#ff3736")
+        addmetal("Metal3", 30, "#d80000")
         addvia("Via3", 49, "#9ba940")
+        addmetal("Metal4", 50, "#93e837")
         addvia("Via4", 66, "#deac5e")
+        addmetal("Metal5", 67, "#dcd146")
         addvia("TopVia1", 125, "#ffe6bf")
+        addmetal("TopMetal1", 126, "#ffe6bf")
         addvia("TopVia2", 133, "#ff8000")
+        addmetal("TopMetal2", 134, "#ff8000")
 
         # Other layers
         # ------------
@@ -280,6 +277,8 @@ def layout_webdata(layout: Layout.Frozen):
 
     if extent == None:
         extent = Rect4I(0, 0, 0, 0)
+
+    weblayers_list.sort(key=lambda l: l['nid'])
 
     return 'layout_gl', {
         'layers': weblayers_list,
