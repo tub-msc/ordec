@@ -5,6 +5,7 @@ from enum import Enum
 import math
 from functools import partial
 from typing import NamedTuple
+import re
 from public import public
 
 from .rational import R
@@ -25,6 +26,21 @@ class PinType(Enum):
 class GdsLayer(NamedTuple):
     layer: int
     data_type: int
+
+@public
+class RGBColor(NamedTuple):
+    r: int
+    g: int
+    b: int
+
+    def __str__(self):
+        return f"#{self.r:02X}{self.g:02X}{self.b:02X}"
+
+@public
+def rgb_color(s) -> RGBColor:
+    if not re.match("#[0-9a-fA-F]{6}", s):
+        raise ValueError("rgb_color expects string like '#0012EF'.")
+    return RGBColor(int(s[1:3], 16), int(s[3:5], 16), int(s[5:7], 16))
 
 # Symbol
 # ------
@@ -330,13 +346,16 @@ class Layer(NonLeafNode):
     gdslayer_text = Attr(GdsLayer)
     gdslayer_shapes = Attr(GdsLayer)
 
-    style_color = Attr(str, default="#ffffff")
+    style_fill = Attr(RGBColor)
+    style_stroke = Attr(RGBColor)
+    style_crossrect = Attr(bool, default=False)
 
     gdslayer_text_index = Index(gdslayer_text, unique=True)
     gdslayer_shapes_index = Index(gdslayer_shapes, unique=True)
 
     def inline_css(self):
-         return f"fill:{self.style_color};"
+
+         return f"fill:{self.style_fill};stroke:{self.style_stroke};"
 
 # Layout
 # ------

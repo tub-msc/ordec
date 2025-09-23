@@ -238,7 +238,7 @@ export class LayoutGL {
             this.initialZoomDone = true;
         }
 
-        this.loadBuffers();
+        this.loadBuffersDynamic();
         this.updateLayerList();
         this.updateLayers();
     }
@@ -260,10 +260,14 @@ export class LayoutGL {
         this.data.layers.forEach(layer => {
             li = document.createElement('li');
             id = generateId();
+            let svgPath = "M0.5 0.5 L29.5 0.5 L29.5 14.5 L0.5 14.5 Z";
+            if(layer.styleCrossRect) {
+                svgPath += " M0.5 0.5 L29.5 14.5 M0.5 14.5 L29.5 0.5";
+            }
             li.innerHTML = `
                 <input type="checkbox" class="singleLayer" id="${id}" name="${layer.nid}">
                 <label for="${id}">
-                    <svg width="30px" height="15px" viewBox="0 0 2 1"><rect fill="${layer.cssColor}" width="2" height="1" /></svg>
+                    <svg width="30px" height="15px" viewBox="0 0 30 15"><path style="${layer.styleCSS}" d="${svgPath}" /></svg>
                     ${layer.path}
                 </label> 
             `;
@@ -340,51 +344,82 @@ export class LayoutGL {
         this.intermediateTextureDepth = gl.createTexture();
         this.intermediateFramebuffer = gl.createFramebuffer();
 
+        this.buffers = {
+            // static, loaded by loadBuffersConstant:
+            gridVertices: gl.createBuffer(),
+            ppVertices: gl.createBuffer(),
+            ppTexCoords: gl.createBuffer(),
+
+            // dynamic, loaded by loadBuffersDynamic:
+            shapeVertices: gl.createBuffer(),
+        }
+
+        this.loadBuffersConstant();
+
         this.width = -1;
         this.height = -1;
     }
 
-    loadBuffers() {
-        this.buffers = Object();
+
+    loadBuffersDynamic() {
         const gl = this.gl;
 
-        // Load grid:
+        // For all shapes, separate triangle (fill) and line (stroke) vertex
+        // "segments" are loaded into the the shapeVertices buffer.
+        // Currently, both triangle and line data is loaded into the buffer
+        // irrespective of whether it is needed to render the layer.
+        // This way, the data is always there, for example if something like
+        // "outline on select / hover" is desired in the future.
 
-        this.buffers.gridVertices = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.gridVertices);
-        this.gridSize = 128;
-        const grid = [];
-        for(let x = 0; x < this.gridSize; x++) {
-            for(let y = 0; y < this.gridSize; y++) {
-                grid.push(x, y);
-            }
-        }
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(grid), gl.STATIC_DRAW);
-
-        // Load polys:
-
-        const positions = [];
+        const shapeVertices = [];
         this.data.layers.forEach(layer => {
-            layer.glOffset = positions.length/2;
+            layer.shapeLineVerticesOffset = shapeVertices.length/2;
+            layer.polys.forEach(poly => {
+                shapeVertices.push(poly.vertices[0], poly.vertices[1]);
+                for(let i=2;i<poly.vertices.length-1;i+=2) {
+                    shapeVertices.push(
+                        // twice: first to end last line, second to start next line
+                        poly.vertices[i], poly.vertices[i+1],
+                        poly.vertices[i], poly.vertices[i+1],
+                    );
+                }
+                shapeVertices.push(poly.vertices[0], poly.vertices[1]);
+
+                if(layer.styleCrossRect && poly.vertices.length == 4*2) {
+                    // Add "X" shape if styleCrossRect is enabled: 
+                    shapeVertices.push(
+                        poly.vertices[0], poly.vertices[1],
+                        poly.vertices[4], poly.vertices[5],
+                        poly.vertices[2], poly.vertices[3],
+                        poly.vertices[6], poly.vertices[7],
+                    );
+                }
+            });
+            layer.shapeLineVerticesCount = shapeVertices.length/2 - layer.shapeLineVerticesOffset;
+            console.log(shapeVertices.slice(
+                layer.shapeLineVerticesOffset, layer.shapeLineVerticesOffset + layer.shapeLineVerticesCount));
+            layer.shapeTriVerticesOffset = shapeVertices.length/2;
             layer.polys.forEach(poly => {
                 const triangles = earcut(poly.vertices);
                 triangles.forEach(nodeIdx => {
-                    positions.push(poly.vertices[nodeIdx*2 + 0]);
-                    positions.push(poly.vertices[nodeIdx*2 + 1]);
+                    shapeVertices.push(poly.vertices[nodeIdx*2 + 0]);
+                    shapeVertices.push(poly.vertices[nodeIdx*2 + 1]);
                 });
             });
-            layer.glVertexCount = positions.length/2 - layer.glOffset;
+            layer.shapeTriVerticesCount = shapeVertices.length/2 - layer.shapeTriVerticesOffset;
+
         });
-        this.posCount = positions.length/2/3;
 
-        this.buffers.polyVertices = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.polyVertices);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.shapeVertices);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(shapeVertices), gl.STATIC_DRAW);
+    }
 
+    loadBuffersConstant() {
         // For postprocessing: Load a screen-filling rectangle (two triangles)
         // with texture coordinates:
 
-        this.buffers.ppVertices = gl.createBuffer();
+        const gl = this.gl;
+
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.ppVertices);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
             1, 1,
@@ -395,7 +430,6 @@ export class LayoutGL {
             -1, 1,
         ]), gl.STATIC_DRAW);
 
-        this.buffers.ppTexCoords = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.ppTexCoords);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
             1, 1,
@@ -405,11 +439,24 @@ export class LayoutGL {
             0, 0,
             0, 1,
         ]), gl.STATIC_DRAW);
+
+        // Load grid buffer:
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.gridVertices);
+        this.gridSize = 128;
+        const grid = [];
+        for(let x = 0; x < this.gridSize; x++) {
+            for(let y = 0; y < this.gridSize; y++) {
+                grid.push(x, y);
+            }
+        }
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(grid), gl.STATIC_DRAW);
     }
 
     drawGLLayers() {
         const gl = this.gl;
         const programInfo = this.programInfo;
+        const white = [255, 255, 255];
 
         gl.useProgram(programInfo.program);
 
@@ -433,23 +480,33 @@ export class LayoutGL {
 
         const brightnessFactor = Math.exp((this.brightness - 80)/15);
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.polyVertices);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.shapeVertices);
         gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
 
-        gl.uniform1fv(programInfo.uniformLocations.brightness, [brightnessFactor]);
+        gl.uniform1f(programInfo.uniformLocations.brightness, brightnessFactor);
 
         this.data.layers.forEach(layer => {
             if(this.visibility.get(layer.nid)==false) {
                 // --> draw layer if visibility is either true or undefined.
                 return;
             }
-            
-            // In the future, layerColor could or should be an attribute, not a uniform value.
-            gl.uniform4fv(programInfo.uniformLocations.layerColor,
-                calcLayerColor(layer.color, layer.nid, true));
 
-            gl.drawArrays(gl.TRIANGLES, layer.glOffset, layer.glVertexCount);
+            if(layer.styleStroke) {
+                gl.uniform4fv(programInfo.uniformLocations.layerColor,
+                    calcLayerColor(layer.styleStroke, layer.nid, true));
+
+                gl.drawArrays(gl.LINES, layer.shapeLineVerticesOffset, layer.shapeLineVerticesCount);
+            }
+            
+            // In the future, layerColor could be an attribute, not a uniform value.
+
+            if(layer.styleFill) {
+                gl.uniform4fv(programInfo.uniformLocations.layerColor,
+                    calcLayerColor(layer.styleFill, layer.nid, true));
+
+                gl.drawArrays(gl.TRIANGLES, layer.shapeTriVerticesOffset, layer.shapeTriVerticesCount);
+            }
         });
 
 
@@ -459,7 +516,6 @@ export class LayoutGL {
         gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
 
-        const white = [255, 255, 255];
         gl.uniform4fv(programInfo.uniformLocations.layerColor,
             calcLayerColor(white, 0, false));
         
@@ -485,8 +541,6 @@ export class LayoutGL {
         const height = topRight[1] - bottomLeft[1];
         const maxExtent = Math.max(width, height);
         const scale = 10**Math.ceil(Math.log10(maxExtent/(adjustedGridSize-2)));
-        console.log("boundary:", maxExtent, scale);
-
 
         const modelViewMatrix = mat4.create();
         mat4.scale(modelViewMatrix, modelViewMatrix, [scale, scale, 1]);
@@ -586,7 +640,7 @@ export class LayoutGL {
 
             this.resizeGL();    
         }
-        if(this.buffers) {
+        if(this.data) {
             this.updateProjectionMatrix();
             this.drawGLLayers();
             this.drawGLPost();
