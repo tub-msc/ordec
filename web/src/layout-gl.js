@@ -10,64 +10,12 @@ import { siFormat } from './siformat.js';
 
 // See: https://github.com/mdn/dom-examples/blob/main/webgl-examples/tutorial/sample2/webgl-demo.js
 
-const fsSource = `
-    uniform highp vec4 uLayerColor;
-
-    uniform highp float uBrightness;
-    
-    void main() {
-        gl_FragColor = vec4(uLayerColor.r * uBrightness, uLayerColor.g * uBrightness, uLayerColor.b * uBrightness, 1.0);
-    }
-`;
-
-const vsSource = `
-    attribute vec4 aVertexPosition;
-    uniform mat4 uModelViewMatrix;
-    uniform mat4 uProjectionMatrix;
-    
-    uniform highp vec4 uLayerColor;
-
-    void main() {
-        vec4 pos = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
-        gl_Position = vec4(
-            pos.x,
-            pos.y,
-            uLayerColor.a,
-            pos.w
-        );
-        gl_PointSize = 2.0;
-    }
-`;
-
-const fsSourcePost = `
-    varying highp vec2 vTextureCoord;
-
-    uniform sampler2D uSampler;
-
-    void main(void) {
-        highp vec4 x = texture2D(uSampler, vTextureCoord);
-
-        gl_FragColor = vec4(
-            1.0-exp(-x.r),
-            1.0-exp(-x.g),
-            1.0-exp(-x.b),
-            1.0
-        );
-    }
-`;
-
-const vsSourcePost = `
-    attribute vec4 aVertexPosition;
-    attribute vec2 aTextureCoord;
-
-    uniform mat4 uProjectionMatrix;
-    varying highp vec2 vTextureCoord;
-
-    void main(void) {
-        gl_Position = uProjectionMatrix * aVertexPosition;
-        vTextureCoord = aTextureCoord;
-    }
-`;
+import glslShapesVert from './glsl/layout-shapes.vert';
+import glslShapesFrag from './glsl/layout-shapes.frag';
+import glslPostVert from './glsl/layout-post.vert';
+import glslPostFrag from './glsl/layout-post.frag';
+import glslLabelsVert from './glsl/layout-labels.vert';
+import glslLabelsFrag from './glsl/layout-labels.frag';
 
 function loadShader(gl, type, source) {
     const shader = gl.createShader(type);
@@ -208,7 +156,6 @@ export class LayoutGL {
             // center vertically
             newZoom.y += (this.canvas.height - h*newZoom.k)/2;
         }
-        console.log('scale', scaleX, scaleY);
 
         if(animate) {
             d3.select(this.canvas).transition().duration(400).call(this.zoom.transform, newZoom);
@@ -238,7 +185,8 @@ export class LayoutGL {
             this.initialZoomDone = true;
         }
 
-        this.loadBuffersDynamic();
+        this.loadShapes();
+        this.loadLabels();
         this.updateLayerList();
         this.updateLayers();
     }
@@ -312,10 +260,11 @@ export class LayoutGL {
         gl.getExtension("EXT_color_buffer_float");
         gl.getExtension("EXT_float_blend");
 
-        const prog = initprog(gl, vsSource, fsSource);
-        const progPost = initprog(gl, vsSourcePost, fsSourcePost);
+        this.programInfos = Object();
+        let prog;
 
-        this.programInfo = {
+        prog = initprog(gl, glslShapesVert, glslShapesFrag);
+        this.programInfos.shapes = {
             program: prog,
             attribLocations: {
                 vertexPosition: gl.getAttribLocation(prog, "aVertexPosition"),
@@ -328,30 +277,49 @@ export class LayoutGL {
             },
         };
 
-        this.programInfoPost = {
-            program: progPost,
+        prog = initprog(gl, glslLabelsVert, glslLabelsFrag);
+        this.programInfos.labels = {
+            program: prog,
             attribLocations: {
-                vertexPosition: gl.getAttribLocation(progPost, "aVertexPosition"),
-                vertexTextureCoord: gl.getAttribLocation(progPost, "aTextureCoord"),
+                vertexPosition: gl.getAttribLocation(prog, "aVertexPosition"),
+                vertexTextureCoord: gl.getAttribLocation(prog, "aTextureCoord"),
+                vertexPixelCoord: gl.getAttribLocation(prog, "aPixelCoord"),
             },
             uniformLocations: {
-                projectionMatrix: gl.getUniformLocation(progPost, "uProjectionMatrix"),
-                sampler: gl.getUniformLocation(progPost, "uSampler"),
+                projectionMatrix: gl.getUniformLocation(prog, "uProjectionMatrix"),
+                modelViewMatrix: gl.getUniformLocation(prog, "uModelViewMatrix"),
+                pixelScale: gl.getUniformLocation(prog, "uPixelScale"),
+                //layerColor: gl.getUniformLocation(prog, "uLayerColor"),
+                sampler: gl.getUniformLocation(prog, "uSampler"),
+            },
+        };
+
+        prog = initprog(gl, glslPostVert, glslPostFrag);
+        this.programInfos.post = {
+            program: prog,
+            attribLocations: {
+                vertexPosition: gl.getAttribLocation(prog, "aVertexPosition"),
+                vertexTextureCoord: gl.getAttribLocation(prog, "aTextureCoord"),
+            },
+            uniformLocations: {
+                projectionMatrix: gl.getUniformLocation(prog, "uProjectionMatrix"),
+                sampler: gl.getUniformLocation(prog, "uSampler"),
             },
         };
 
         this.intermediateTexture = gl.createTexture();
         this.intermediateTextureDepth = gl.createTexture();
         this.intermediateFramebuffer = gl.createFramebuffer();
+        this.labelsTexture = gl.createTexture();
 
         this.buffers = {
             // static, loaded by loadBuffersConstant:
             gridVertices: gl.createBuffer(),
-            ppVertices: gl.createBuffer(),
-            ppTexCoords: gl.createBuffer(),
+            postVertices: gl.createBuffer(),
 
             // dynamic, loaded by loadBuffersDynamic:
             shapeVertices: gl.createBuffer(),
+            labelVertices: gl.createBuffer(),
         }
 
         this.loadBuffersConstant();
@@ -360,8 +328,127 @@ export class LayoutGL {
         this.height = -1;
     }
 
+    loadLabels() {
+        const gl = this.gl; 
+        let labelVertices = [];
+        let textureCursorX = 0;
+        let textureCursorY = 0;
+     
+        this.labelsTextureWidth = 512;
+        this.labelsTextureHeight = 512;
+        this.labelsTextureMap = new Map();
+        this.labelsNumVertices = 0;
 
-    loadBuffersDynamic() {
+        const ctx = document.createElement("canvas").getContext("2d");
+        ctx.canvas.width  = this.labelsTextureWidth;
+        ctx.canvas.height = this.labelsTextureHeight;
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, this.labelsTextureWidth, this.labelsTextureHeight);
+        ctx.font = "18px Inconsolata";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillStyle = "#ffffff";
+
+        const textOnTexture = (text) => {
+            if(!this.labelsTextureMap.get(text)) {
+                // measure text + break line if needed, before rendering text:
+                const m = ctx.measureText(text);
+                let W = Math.ceil(m.width);
+                let H = Math.ceil(m.emHeightDescent);
+                if(textureCursorX + W > this.labelsTextureWidth) {
+                    textureCursorX = 0;
+                    textureCursorY += m.emHeightDescent;
+                }
+                if(textureCursorY + m.emHeightDescent > this.labelsTextureHeight) {
+                    alert(`Labels texture is full!`);
+                    return undefined;
+                }
+
+                // render text:
+                ctx.fillText(text, textureCursorX, textureCursorY);
+
+                this.labelsTextureMap.set(text, {
+                    x: textureCursorX,
+                    y: textureCursorY,
+                    width: W,
+                    height: H,
+                })
+                textureCursorX += W;
+            }
+            return this.labelsTextureMap.get(text);
+        };
+        
+        const addLabel = (x, y, text, halign='left', valign='top') => {
+            // halign must be one of: 'left', 'center', 'right'
+            // valign must be one of: 'top', 'middle', 'bottom'
+            const tex = textOnTexture(text);
+            
+            const lu = (tex.x) / this.labelsTextureWidth;
+            const uu = (tex.x + tex.width) / this.labelsTextureWidth;
+            const lv = (tex.y) / this.labelsTextureHeight;
+            const uv = (tex.y + tex.height) / this.labelsTextureHeight;
+            
+            const W = tex.width;
+            const H = tex.height;
+
+            // set pixelCoord values depending on halign and valign:
+            let p_xl;
+            let p_xu;
+            let p_yl;
+            let p_yu;
+            if(halign == 'left') {
+                p_xl = 0;
+                p_xu = W;
+            } else if(halign == 'right') {
+                p_xl = -W;
+                p_xu = 0;
+            } else if(halign == 'center') {
+                p_xl = -Math.ceil(W/2);
+                p_xu = p_xl + W;
+            }
+
+            if(valign == 'top') {
+                p_yl = 0;
+                p_yu = H;
+            } else if(valign == 'bottom') {
+                p_yl = -H;
+                p_yu = 0;
+            } else if(valign == 'middle') {
+                p_yl = -Math.ceil(H/2);
+                p_yu = p_yl + H;
+            }
+
+            labelVertices.push(
+                // x y    textureCoord   pixelCoord
+                x, y,     uu, lv,        p_xu, p_yl,
+                x, y,     uu, uv,        p_xu, p_yu,
+                x, y,     lu, uv,        p_xl, p_yu,
+                x, y,     uu, lv,        p_xu, p_yl,
+                x, y,     lu, uv,        p_xl, p_yu,
+                x, y,     lu, lv,        p_xl, p_yl,
+            );
+            this.labelsNumVertices += 6;
+        };
+
+        //addLabel(1000, 1000, "Label 1", 'left', 'top');
+        //addLabel(0, 0, "Origin", 'center', 'middle');
+
+        this.data.layers.forEach(layer => {
+            layer.labelVerticesOffset = this.labelsNumVertices;
+            layer.labels.forEach(label => {
+                addLabel(label.pos[0], label.pos[1], label.text, 'center', 'middle');
+            });
+            layer.labelVerticesCount = this.labelsNumVertices - layer.labelVerticesOffset;
+        });
+
+        gl.bindTexture(gl.TEXTURE_2D, this.labelsTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, gl.RED, gl.UNSIGNED_BYTE, ctx.canvas);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.labelVertices);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(labelVertices), gl.STATIC_DRAW);
+    }
+
+    loadShapes() {
         const gl = this.gl;
 
         // For all shapes, separate triangle (fill) and line (stroke) vertex
@@ -396,8 +483,6 @@ export class LayoutGL {
                 }
             });
             layer.shapeLineVerticesCount = shapeVertices.length/2 - layer.shapeLineVerticesOffset;
-            console.log(shapeVertices.slice(
-                layer.shapeLineVerticesOffset, layer.shapeLineVerticesOffset + layer.shapeLineVerticesCount));
             layer.shapeTriVerticesOffset = shapeVertices.length/2;
             layer.polys.forEach(poly => {
                 const triangles = earcut(poly.vertices);
@@ -420,26 +505,18 @@ export class LayoutGL {
 
         const gl = this.gl;
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.ppVertices);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.postVertices);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-            1, 1,
-            1, -1,
-            -1, -1,
-            1, 1,
-            -1, -1,
-            -1, 1,
+            // x y      u  v
+             1,  1,     1, 1,
+             1, -1,     1, 0,
+            -1, -1,     0, 0,
+             1,  1,     1, 1,
+            -1, -1,     0, 0,
+            -1,  1,     0, 1,
         ]), gl.STATIC_DRAW);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.ppTexCoords);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-            1, 1,
-            1, 0,
-            0, 0,
-            1, 1,
-            0, 0,
-            0, 1,
-        ]), gl.STATIC_DRAW);
-
+    
+            
         // Load grid buffer:
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.gridVertices);
@@ -453,9 +530,9 @@ export class LayoutGL {
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(grid), gl.STATIC_DRAW);
     }
 
-    drawGLLayers() {
+    drawGLShapes() {
         const gl = this.gl;
-        const programInfo = this.programInfo;
+        const programInfo = this.programInfos.shapes;
         const white = [255, 255, 255];
 
         gl.useProgram(programInfo.program);
@@ -492,7 +569,7 @@ export class LayoutGL {
                 return;
             }
 
-            if(layer.styleStroke) {
+            if(layer.styleStroke && (layer.shapeLineVerticesCount > 0)) {
                 gl.uniform4fv(programInfo.uniformLocations.layerColor,
                     calcLayerColor(layer.styleStroke, layer.nid, true));
 
@@ -501,14 +578,13 @@ export class LayoutGL {
             
             // In the future, layerColor could be an attribute, not a uniform value.
 
-            if(layer.styleFill) {
+            if(layer.styleFill && (layer.shapeTriVerticesCount > 0)) {
                 gl.uniform4fv(programInfo.uniformLocations.layerColor,
                     calcLayerColor(layer.styleFill, layer.nid, true));
 
                 gl.drawArrays(gl.TRIANGLES, layer.shapeTriVerticesOffset, layer.shapeTriVerticesCount);
             }
         });
-
 
         // Draw grid:
 
@@ -522,6 +598,53 @@ export class LayoutGL {
         gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, this.scaleGrid());
 
         gl.drawArrays(gl.POINTS, 0, this.gridSize * this.gridSize);
+    }
+
+    drawGLLabels() {
+        const gl = this.gl;
+        const programInfo = this.programInfos.labels;
+
+        gl.useProgram(programInfo.program);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        gl.blendEquation(gl.FUNC_ADD);
+
+        // Depth testing is used to prevent rendering multiple overlapping polys:
+        gl.disable(gl.DEPTH_TEST);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.labelsTexture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.uniform1i(programInfo.uniformLocations.uSampler, 0);
+        
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.labelVertices);
+        gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 6*4, 0);
+        gl.vertexAttribPointer(programInfo.attribLocations.vertexTextureCoord, 2, gl.FLOAT, false, 6*4, 2*4);
+        gl.vertexAttribPointer(programInfo.attribLocations.vertexPixelCoord, 2, gl.FLOAT, false, 6*4, 4*4);
+        gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+        gl.enableVertexAttribArray(programInfo.attribLocations.vertexTextureCoord);
+        gl.enableVertexAttribArray(programInfo.attribLocations.vertexPixelCoord);
+
+        gl.uniform2fv(programInfo.uniformLocations.pixelScale, [2/this.width,2/this.height])
+        gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, this.projectionMatrix);
+        gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, mat4.create());
+
+        this.data.layers.forEach(layer => {
+            if(this.visibility.get(layer.nid)==false) {
+                // --> draw layer if visibility is either true or undefined.
+                return;
+            }
+
+            if(layer.labelVerticesCount > 0) {
+                gl.drawArrays(gl.TRIANGLES, layer.labelVerticesOffset, layer.labelVerticesCount);
+            }
+        });
     }
 
     scaleGrid() {
@@ -552,7 +675,7 @@ export class LayoutGL {
 
     drawGLPost() {
         const gl = this.gl;
-        const programInfo = this.programInfoPost;
+        const programInfo = this.programInfos.post;
 
         gl.useProgram(programInfo.program);
         gl.disable(gl.BLEND);
@@ -568,12 +691,10 @@ export class LayoutGL {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.uniform1i(programInfo.uniformLocations.uSampler, 0);
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.ppVertices);
-        gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.postVertices);
+        gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 4*4, 0);
+        gl.vertexAttribPointer(programInfo.attribLocations.vertexTextureCoord, 2, gl.FLOAT, false, 4*4, 2*4);
         gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.ppTexCoords);
-        gl.vertexAttribPointer(programInfo.attribLocations.vertexTextureCoord, 2, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(programInfo.attribLocations.vertexTextureCoord);
 
         const projectionMatrix = mat4.create();
@@ -642,8 +763,9 @@ export class LayoutGL {
         }
         if(this.data) {
             this.updateProjectionMatrix();
-            this.drawGLLayers();
+            this.drawGLShapes();
             this.drawGLPost();
+            this.drawGLLabels();
         }
     }
 

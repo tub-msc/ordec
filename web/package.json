@@ -9,7 +9,8 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "vite-plugin-glsl": "^1.5.1"
   },
   "dependencies": {
     "ace-builds": "^1.41.0",
