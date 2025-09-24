@@ -610,7 +610,7 @@ export class LayoutGL {
 
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.ONE, gl.ONE);
-        gl.blendEquation(gl.FUNC_ADD);
+        gl.blendEquation(gl.MAX);
 
         // Depth testing is used to prevent rendering multiple overlapping polys:
         gl.disable(gl.DEPTH_TEST);
