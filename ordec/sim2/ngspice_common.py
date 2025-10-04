@@ -3,18 +3,75 @@
 
 import re
 from collections import namedtuple
+from enum import Enum
+from dataclasses import dataclass
+from typing import Dict
 
-NgspiceValue = namedtuple('NgspiceValue', ['type', 'name', 'subname', 'value'])
+NgspiceValue = namedtuple("NgspiceValue", ["type", "name", "subname", "value"])
+
+
+class SignalKind(Enum):
+    TIME = (1, "time")
+    FREQUENCY = (2, "frequency")
+    VOLTAGE = (3, "voltage")
+    CURRENT = (4, "current")
+    OTHER = (99, "other")
+
+    def __init__(self, vtype_value: int, description: str):
+        self.vtype_value = vtype_value
+        self.description = description
+
+    @classmethod
+    def from_vtype(cls, vtype: int):
+        for kind in cls:
+            if vtype == kind.vtype_value:
+                return kind
+        return cls.OTHER
+
+    def get_vtype_value(self) -> int:
+        return self.vtype_value
+
+    def get_description(self) -> str:
+        return self.description
+
+    def match(self) -> tuple[int, str]:
+        return (self.vtype_value, self.description)
+
+    def is_time(self) -> bool:
+        return self is SignalKind.TIME
+
+    def is_frequency(self) -> bool:
+        return self is SignalKind.FREQUENCY
+
+    def is_voltage(self) -> bool:
+        return self is SignalKind.VOLTAGE
+
+    def is_current(self) -> bool:
+        return self is SignalKind.CURRENT
+
+    def is_other(self) -> bool:
+        return self is SignalKind.OTHER
+
+
+@dataclass
+class SignalArray:
+    kind: SignalKind
+    values: list
+
 
 class NgspiceError(Exception):
     pass
 
+
 class NgspiceFatalError(NgspiceError):
     pass
 
+
 class NgspiceConfigError(NgspiceError):
     """Raised when backend configuration fails."""
+
     pass
+
 
 class NgspiceTable:
     def __init__(self, name):
@@ -22,14 +79,38 @@ class NgspiceTable:
         self.headers = []
         self.data = []
 
-class NgspiceTransientResult:
+
+class NgspiceResultBase:
     def __init__(self):
-        self.time = []
-        self.signals = {}
-        self.tables = []
-        self.voltages = {}
-        self.currents = {}
-        self.branches = {}
+        # Map signal name -> SignalArray
+        self.signals: Dict[str, SignalArray] = {}
+
+    def categorize_signal(self, signal_name) -> SignalKind:
+        if not signal_name:
+            return SignalKind.OTHER
+        if signal_name.startswith("@") and "[" in signal_name:
+            return SignalKind.CURRENT
+        if signal_name.endswith("#branch"):
+            return SignalKind.CURRENT
+        # Treat as node voltage
+        return SignalKind.VOLTAGE
+
+    def __getitem__(self, key):
+        """Allow signal access."""
+        return self.get_signal(key)
+
+    def get_signal(self, signal_name):
+        return self.signals.get(signal_name, [])
+
+    def list_signals(self):
+        return list(self.signals.keys())
+
+
+class NgspiceTransientResult(NgspiceResultBase):
+    def __init__(self):
+        super().__init__()
+        self.time: list = []
+        self.tables: list = []
 
     def add_table(self, table):
         """Add a table and extract signals into the signals dictionary."""
@@ -41,7 +122,7 @@ class NgspiceTransientResult:
         # Find time column (usually index 1, but could be elsewhere)
         time_idx = None
         for i, header in enumerate(table.headers):
-            if header.lower() == 'time':
+            if header.lower() == "time":
                 time_idx = i
                 break
 
@@ -64,7 +145,7 @@ class NgspiceTransientResult:
 
         # Extract signal data
         for i, header in enumerate(table.headers):
-            if header.lower() in ['index', 'time']:
+            if header.lower() in ["index", "time"]:
                 continue
 
             signal_name = header
@@ -78,31 +159,19 @@ class NgspiceTransientResult:
                         # Skip rows that can't be converted to float or are malformed
                         continue
 
-            # Only add signal if we got valid data
             if signal_data:
-                self.signals[signal_name] = signal_data
-                # Categorize signals for easier access
-                self._categorize_signal(signal_name, signal_data)
+                kind = self.categorize_signal(signal_name)
+                self.signals[signal_name] = SignalArray(kind=kind, values=signal_data)
 
-    def _categorize_signal(self, signal_name, signal_data):
-        """Categorize signals into voltages, currents, and branches."""
-        if signal_name.startswith('@') and '[' in signal_name:
-            # Device current like "@m.xi0.mpd[id]"
-            device_part = signal_name.split('[')[0][1:]  # Remove @ and get device part
-            current_type = signal_name.split('[')[1].rstrip(']')  # Get current type
-            if device_part not in self.currents:
-                self.currents[device_part] = {}
-            self.currents[device_part][current_type] = signal_data
-        elif signal_name.endswith('#branch'):
-            # Branch current like "vi3#branch"
-            branch_name = signal_name.replace('#branch', '')
-            self.branches[branch_name] = signal_data
-        else:
-            # Regular node voltage
-            self.voltages[signal_name] = signal_data
+    def categorize_signal(self, signal_name) -> SignalKind:
+        if not signal_name:
+            return SignalKind.OTHER
+        name = signal_name.lower()
+        if name in ("time", "index"):
+            return SignalKind.TIME
+        return super().categorize_signal(signal_name)
 
     def __getitem__(self, key):
-        """Allow table indexing or signal access."""
         if isinstance(key, int):
             return self.tables[key]
         else:
@@ -114,57 +183,32 @@ class NgspiceTransientResult:
     def __iter__(self):
         return iter(self.tables)
 
-    def get_signal(self, signal_name):
-        return self.signals.get(signal_name, [])
-
-    def get_voltage(self, node_name):
-        return self.voltages.get(node_name, [])
-
-    def get_current(self, device_name, current_type='id'):
-        device_currents = self.currents.get(device_name, {})
-        return device_currents.get(current_type, [])
-
-    def get_branch_current(self, branch_name):
-        return self.branches.get(branch_name, [])
-
-    def list_signals(self):
-        return list(self.signals.keys())
-
-    def list_voltages(self):
-        return list(self.voltages.keys())
-
-    def list_currents(self):
-        return list(self.currents.keys())
-
-    def list_branches(self):
-        return list(self.branches.keys())
-
     def plot_signals(self, *signal_names):
-        result = {'time': self.time}
+        result = {"time": self.time}
         for name in signal_names:
             result[name] = self.get_signal(name)
         return result
 
-class NgspiceAcResult:
-    def __init__(self):
-        self.freq = []
-        self.voltages = {}
-        self.currents = {}
-        self.branches = {}
 
-    def _categorize_signal(self, signal_name, signal_data):
-        """Categorize signals into voltages, currents, and branches."""
-        if signal_name.startswith('@') and '[' in signal_name:
-            device_part = signal_name.split('[')[0][1:]
-            current_type = signal_name.split('[')[1].rstrip(']')
-            if device_part not in self.currents:
-                self.currents[device_part] = {}
-            self.currents[device_part][current_type] = signal_data
-        elif signal_name.endswith('#branch'):
-            branch_name = signal_name.replace('#branch', '')
-            self.branches[branch_name] = signal_data
-        else:
-            self.voltages[signal_name] = signal_data
+class NgspiceAcResult(NgspiceResultBase):
+    def __init__(self):
+        super().__init__()
+        self.freq = []
+
+    def categorize_signal(self, signal_name) -> SignalKind:
+        if not signal_name:
+            return SignalKind.OTHER
+        name = signal_name.lower()
+        if name in ("frequency", "freq"):
+            return SignalKind.FREQUENCY
+        return super().categorize_signal(signal_name)
+
+    def plot_signals(self, *signal_names):
+        result = {"frequency": self.freq}
+        for name in signal_names:
+            result[name] = self.get_signal(name)
+        return result
+
 
 def check_errors(ngspice_out):
     """Helper function to raise NgspiceError in Python from "Error: ..."
@@ -172,7 +216,7 @@ def check_errors(ngspice_out):
     first_error_msg = None
     has_fatal_indicator = False
 
-    for line in ngspice_out.split('\n'):
+    for line in ngspice_out.split("\n"):
         if "no such vector" in line:
             # This error can occur when a simulation (like 'op') is run that doesn't
             # produce any plot output. It's not a fatal error, so we ignore it.
@@ -182,11 +226,9 @@ def check_errors(ngspice_out):
         if m and first_error_msg is None:
             first_error_msg = "Error: " + m.group(1)
 
-        # Check if this line indicates a fatal error
         if "cannot recover" in line or "awaits to be reset" in line:
             has_fatal_indicator = True
 
-    # Raise appropriate exception if we found an error
     if first_error_msg:
         if has_fatal_indicator:
             raise NgspiceFatalError(first_error_msg)

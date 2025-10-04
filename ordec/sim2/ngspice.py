@@ -10,20 +10,23 @@ from typing import Iterator, Optional, Callable, Generator
 import numpy as np
 
 from ..core import *
-from .ngspice_ffi import _FFIBackend
-from .ngspice_subprocess import _SubprocessBackend
-from .ngspice_mp import IsolatedFFIBackend
+from .ngspice_ffi import NgspiceFFI
+from .ngspice_subprocess import NgspiceSubprocess
+from .ngspice_mp import NgspiceIsolatedFFI
+
 
 class NgspiceBackend(Enum):
     """Available NgSpice backend types."""
+
     SUBPROCESS = "subprocess"
     FFI = "ffi"
     MP = "mp"
 
+
 class Ngspice:
     @staticmethod
     @contextmanager
-    def launch(debug=False, backend : NgspiceBackend = NgspiceBackend.SUBPROCESS):
+    def launch(debug=False, backend: NgspiceBackend = NgspiceBackend.SUBPROCESS):
         if isinstance(backend, str):
             backend = NgspiceBackend(backend.lower())
 
@@ -31,9 +34,9 @@ class Ngspice:
             print(f"[Ngspice] Using backend: {backend.value}")
 
         backend_class = {
-            NgspiceBackend.FFI: _FFIBackend,
-            NgspiceBackend.SUBPROCESS: _SubprocessBackend,
-            NgspiceBackend.MP: IsolatedFFIBackend,
+            NgspiceBackend.FFI: NgspiceFFI,
+            NgspiceBackend.SUBPROCESS: NgspiceSubprocess,
+            NgspiceBackend.MP: NgspiceIsolatedFFI,
         }[backend]
 
         with backend_class.launch(debug=debug) as backend_instance:
@@ -50,70 +53,84 @@ class Ngspice:
     def load_netlist(self, netlist: str, no_auto_gnd: bool = True):
         return self._backend_impl.load_netlist(netlist, no_auto_gnd=no_auto_gnd)
 
-    def op(self) -> Iterator['NgspiceValue']:
+    def op(self) -> Iterator["NgspiceValue"]:
         return self._backend_impl.op()
 
-    def tran(self, *args) -> 'NgspiceTransientResult':
+    def tran(self, *args) -> "NgspiceTransientResult":
         return self._backend_impl.tran(*args)
 
-    def ac(self, *args, **kwargs) -> 'NgspiceAcResult':
+    def ac(self, *args, **kwargs) -> "NgspiceAcResult":
         return self._backend_impl.ac(*args, **kwargs)
 
-    def tran_async(self, *args, throttle_interval: float = 0.1) -> 'queue.Queue':
-        return self._backend_impl.tran_async(*args, throttle_interval=throttle_interval)
+    def tran_async(
+        self, tstep, tstop=None, throttle_interval: float = 0.1
+    ) -> "queue.Queue":
+        return self._backend_impl.tran_async(
+            tstep, tstop, throttle_interval=throttle_interval
+        )
 
     def op_async(self, callback: Optional[Callable] = None) -> Generator:
-        if hasattr(self._backend_impl, 'op_async'):
+        if hasattr(self._backend_impl, "op_async"):
             yield from self._backend_impl.op_async(callback=callback)
         else:
-            raise NotImplementedError("Async operating point analysis is only available with FFI backend")
+            raise NotImplementedError(
+                "Async operating point analysis is only available with FFI backend"
+            )
 
     def is_running(self) -> bool:
-        if hasattr(self._backend_impl, 'is_running'):
+        if hasattr(self._backend_impl, "is_running"):
             return self._backend_impl.is_running()
         return False
 
     def stop_simulation(self):
         """Stop/halt running background simulation"""
-        if hasattr(self._backend_impl, 'stop_simulation'):
+        if hasattr(self._backend_impl, "stop_simulation"):
             self._backend_impl.stop_simulation()
 
-    def safe_halt_simulation(self, max_attempts: int = 3, wait_time: float = 0.2) -> bool:
+    def safe_halt_simulation(
+        self, max_attempts: int = 3, wait_time: float = 0.2
+    ) -> bool:
         return self._backend_impl.safe_halt_simulation(max_attempts, wait_time)
 
-    def safe_resume_simulation(self, max_attempts: int = 3, wait_time: float = 0.2) -> bool:
+    def safe_resume_simulation(
+        self, max_attempts: int = 3, wait_time: float = 0.2
+    ) -> bool:
         return self._backend_impl.safe_resume_simulation(max_attempts, wait_time)
 
-RawVariable = namedtuple('RawVariable', ['name', 'unit'])
+
+RawVariable = namedtuple("RawVariable", ["name", "unit"])
+
 
 def parse_raw(fn):
     info = {}
     info_vars = []
 
-    with open(fn, 'rb') as f:
+    with open(fn, "rb") as f:
         for i in range(100):
-            l = f.readline()[:-1].decode('ascii')
+            l = f.readline()[:-1].decode("ascii")
 
-            if l.startswith('\t'):
-                _, var_idx, var_name, var_unit = l.split('\t')
+            if l.startswith("\t"):
+                _, var_idx, var_name, var_unit = l.split("\t")
                 assert int(var_idx) == len(info_vars)
                 info_vars.append(RawVariable(var_name, var_unit))
             else:
-                lhs, rhs = l.split(':', 1)
+                lhs, rhs = l.split(":", 1)
                 info[lhs] = rhs.strip()
                 if lhs == "Binary":
                     break
-        assert len(info_vars) == int(info['No. Variables'])
-        no_points = int(info['No. Points'])
+        assert len(info_vars) == int(info["No. Variables"])
+        no_points = int(info["No. Points"])
 
-        dtype = np.dtype({
-            "names": [v.name for v in info_vars],
-            "formats": [np.float64]*len(info_vars)
-            })
+        dtype = np.dtype(
+            {
+                "names": [v.name for v in info_vars],
+                "formats": [np.float64] * len(info_vars),
+            }
+        )
 
         np.set_printoptions(precision=5)
 
-        data=np.fromfile(f, dtype=dtype, count=no_points)
+        data = np.fromfile(f, dtype=dtype, count=no_points)
     return data
 
 
@@ -122,7 +139,8 @@ def basename_escape(obj):
         basename = f"{type(obj).__name__}_{'_'.join(obj.params_list())}"
     else:
         basename = "_".join(obj.full_path_list())
-    return re.sub(r'[^a-zA-Z0-9]', '_', basename).lower()
+    return re.sub(r"[^a-zA-Z0-9]", "_", basename).lower()
+
 
 class Netlister:
     def __init__(self, enable_savecurrents: bool = True):
@@ -148,7 +166,7 @@ class Netlister:
         self._sim_setup_hooks.append(sim_setup_func)
 
     def out(self):
-        return "\n".join(self.spice_cards)+"\n.end\n"
+        return "\n".join(self.spice_cards) + "\n.end\n"
 
     def add(self, *args):
         args_flat = []
@@ -157,7 +175,7 @@ class Netlister:
                 args_flat += arg
             else:
                 args_flat.append(arg)
-        self.spice_cards.insert(self.cur_line, " "*self.indent + " ".join(args_flat))
+        self.spice_cards.insert(self.cur_line, " " * self.indent + " ".join(args_flat))
         self.cur_line += 1
 
     def name_obj(self, obj, domain=None, prefix=""):
@@ -193,7 +211,9 @@ class Netlister:
     def portmap(self, inst, pins):
         ret = []
         for pin in pins:
-            conn = inst.subgraph.one(SchemInstanceConn.ref_pin_idx.query((inst.nid, pin.nid)))
+            conn = inst.subgraph.one(
+                SchemInstanceConn.ref_pin_idx.query((inst.nid, pin.nid))
+            )
             ret.append(self.name_of_obj[conn.here])
         return ret
 
@@ -205,25 +225,33 @@ class Netlister:
         for inst in s.all(SchemInstance):
             try:
                 f = inst.symbol.cell.netlist_ngspice
-            except AttributeError: # subckt
+            except AttributeError:  # subckt
                 pins = self.pinlist(inst.symbol)
                 subckt_dep.add(inst.symbol)
-                self.add(self.name_obj(inst, s, prefix="x"), self.portmap(inst, pins), self.name_obj(inst.symbol.cell))
+                self.add(
+                    self.name_obj(inst, s, prefix="x"),
+                    self.portmap(inst, pins),
+                    self.name_obj(inst.symbol.cell),
+                )
             else:
                 f(self, inst, s)
         return subckt_dep
 
     def netlist_hier(self, top: Schematic):
-        self.add('.title', self.name_obj(top.cell))
+        self.add(".title", self.name_obj(top.cell))
         if self.enable_savecurrents:
-            self.add('.option', 'savecurrents')
+            self.add(".option", "savecurrents")
 
         subckt_dep = self.netlist_schematic(top)
         subckt_done = set()
         while len(subckt_dep - subckt_done) > 0:
             symbol = next(iter(subckt_dep - subckt_done))
             schematic = symbol.cell.schematic
-            self.add('.subckt', self.name_obj(symbol.cell), [self.name_obj(pin, symbol) for pin in self.pinlist(symbol)])
+            self.add(
+                ".subckt",
+                self.name_obj(symbol.cell),
+                [self.name_obj(pin, symbol) for pin in self.pinlist(symbol)],
+            )
             self.indent += 4
             subckt_dep |= self.netlist_schematic(schematic)
             self.indent -= 4
