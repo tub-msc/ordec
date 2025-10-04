@@ -183,7 +183,7 @@ C1 out 0 1uF IC=0
         sim.load_netlist(netlist)
 
         # Start async simulation - returns queue instead of generator
-        data_queue = sim.tran_async("5us", "10ms")
+        data_queue = sim.tran_async("5u", "10m")
         assert isinstance(data_queue, queue.Queue), "tran_async should return Queue object"
 
         # Wait for startup
