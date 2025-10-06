@@ -6,9 +6,19 @@ from collections import namedtuple
 from enum import Enum
 from dataclasses import dataclass
 from typing import Dict
+from abc import ABC, abstractmethod
 
 NgspiceValue = namedtuple("NgspiceValue", ["type", "name", "subname", "value"])
 
+class NgspiceBase(ABC):
+    @classmethod
+    @abstractmethod
+    def launch(cls, debug: bool):
+        pass
+
+    # More abstractmethod could be added here to document (and minimally
+    # enforce) the interface compatilibity between different NgspiceBase
+    # subclasses.
 
 class SignalKind(Enum):
     TIME = (1, "time")

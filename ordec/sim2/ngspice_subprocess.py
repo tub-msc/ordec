@@ -29,6 +29,7 @@ from .ngspice_common import (
     NgspiceTable,
     SignalKind,
     SignalArray,
+    NgspiceBase,
 )
 
 NgspiceVector = namedtuple(
@@ -36,10 +37,10 @@ NgspiceVector = namedtuple(
 )
 
 
-class NgspiceSubprocess:
-    @staticmethod
+class NgspiceSubprocess(NgspiceBase):
+    @classmethod
     @contextmanager
-    def launch(debug=False):
+    def launch(cls, debug: bool):
         # Choose the correct ngspice executable for the platform
         if sys.platform == "win32":
             # On Windows, prefer ngspice_con if available, fall back to ngspice
@@ -63,7 +64,7 @@ class NgspiceSubprocess:
                 print(f"[debug] Process started with PID: {p.pid}")
 
             try:
-                yield NgspiceSubprocess(p, debug=debug, cwd=Path(cwd_str))
+                yield cls(p, debug=debug, cwd=Path(cwd_str))
             finally:
                 if debug:
                     print(f"[debug] Cleaning up process {p.pid}")

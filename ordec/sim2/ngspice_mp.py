@@ -10,7 +10,7 @@ import queue  # For queue.Empty exception
 import threading
 import time
 
-from .ngspice_common import NgspiceTransientResult
+from .ngspice_common import NgspiceTransientResult, NgspiceBase
 
 _ASYNC_SIM_SENTINEL = "---ASYNC_SIM_SENTINEL---"
 
@@ -391,14 +391,14 @@ class FFIWorkerProcess:
         self._relay_thread.start()
 
 
-class NgspiceIsolatedFFI:
+class NgspiceIsolatedFFI(NgspiceBase):
     """
     A proxy that runs FFI calls in an isolated child process.
     """
 
-    @staticmethod
+    @classmethod
     @contextmanager
-    def launch(debug=False):
+    def launch(cls, debug: bool):
         parent_conn, child_conn = Pipe()
         async_queue = Queue()
 
@@ -406,7 +406,7 @@ class NgspiceIsolatedFFI:
         p = Process(target=worker.run)
         p.start()
 
-        backend = NgspiceIsolatedFFI(parent_conn, p, async_queue)
+        backend = cls(parent_conn, p, async_queue)
         try:
             parent_conn.send({"type": "init", "debug": debug})
             response = parent_conn.recv()

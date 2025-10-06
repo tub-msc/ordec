@@ -25,12 +25,13 @@ from .ngspice_common import (
     NgspiceTable,
     SignalKind,
     SignalArray,
+    NgspiceBase,
 )
 
 from ..core import R
 
 
-class NgspiceFFI:
+class NgspiceFFI(NgspiceBase):
     _instance = None
     """FFI backend for ngspice shared library.
 
@@ -154,12 +155,12 @@ class NgspiceFFI:
             )
         self._initialized = True
 
-    @staticmethod
+    @classmethod
     @contextmanager
-    def launch(debug=False):
+    def launch(cls, debug: bool):
         backend = None
         try:
-            backend = NgspiceFFI(debug=debug)
+            backend = cls(debug=debug)
             yield backend
         except NgspiceError as e:
             raise e

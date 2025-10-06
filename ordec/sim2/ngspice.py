@@ -14,7 +14,6 @@ from .ngspice_ffi import NgspiceFFI
 from .ngspice_subprocess import NgspiceSubprocess
 from .ngspice_mp import NgspiceIsolatedFFI
 
-
 class NgspiceBackend(Enum):
     """Available NgSpice backend types."""
 
@@ -25,8 +24,7 @@ class NgspiceBackend(Enum):
 
 class Ngspice:
     @staticmethod
-    @contextmanager
-    def launch(debug=False, backend: NgspiceBackend = NgspiceBackend.SUBPROCESS):
+    def launch(debug: bool=False, backend: NgspiceBackend = NgspiceBackend.SUBPROCESS):
         if isinstance(backend, str):
             backend = NgspiceBackend(backend.lower())
 
@@ -39,67 +37,13 @@ class Ngspice:
             NgspiceBackend.MP: NgspiceIsolatedFFI,
         }[backend]
 
-        with backend_class.launch(debug=debug) as backend_instance:
-            yield Ngspice(backend_instance, debug=debug)
+        return backend_class.launch(debug=debug)
 
-    def __init__(self, backend_impl, debug: bool = False):
-        self._backend_impl = backend_impl
-        self.debug = debug
-
-    def command(self, command: str) -> str:
-        """Executes ngspice command and returns string output from ngspice process."""
-        return self._backend_impl.command(command)
-
-    def load_netlist(self, netlist: str, no_auto_gnd: bool = True):
-        return self._backend_impl.load_netlist(netlist, no_auto_gnd=no_auto_gnd)
-
-    def op(self) -> Iterator["NgspiceValue"]:
-        return self._backend_impl.op()
-
-    def tran(self, *args) -> "NgspiceTransientResult":
-        return self._backend_impl.tran(*args)
-
-    def ac(self, *args, **kwargs) -> "NgspiceAcResult":
-        return self._backend_impl.ac(*args, **kwargs)
-
-    def tran_async(
-        self, tstep, tstop=None, throttle_interval: float = 0.1
-    ) -> "queue.Queue":
-        return self._backend_impl.tran_async(
-            tstep, tstop, throttle_interval=throttle_interval
-        )
-
-    def op_async(self, callback: Optional[Callable] = None) -> Generator:
-        if hasattr(self._backend_impl, "op_async"):
-            yield from self._backend_impl.op_async(callback=callback)
-        else:
-            raise NotImplementedError(
-                "Async operating point analysis is only available with FFI backend"
-            )
-
-    def is_running(self) -> bool:
-        if hasattr(self._backend_impl, "is_running"):
-            return self._backend_impl.is_running()
-        return False
-
-    def stop_simulation(self):
-        """Stop/halt running background simulation"""
-        if hasattr(self._backend_impl, "stop_simulation"):
-            self._backend_impl.stop_simulation()
-
-    def safe_halt_simulation(
-        self, max_attempts: int = 3, wait_time: float = 0.2
-    ) -> bool:
-        return self._backend_impl.safe_halt_simulation(max_attempts, wait_time)
-
-    def safe_resume_simulation(
-        self, max_attempts: int = 3, wait_time: float = 0.2
-    ) -> bool:
-        return self._backend_impl.safe_resume_simulation(max_attempts, wait_time)
+    def __init__(self):
+        raise TypeError("Please call Ngspice.launch(), instantiation of Ngspice is not supported!")
 
 
 RawVariable = namedtuple("RawVariable", ["name", "unit"])
-
 
 def parse_raw(fn):
     info = {}
