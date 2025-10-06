@@ -8,7 +8,7 @@ import traitlets
 class ConfettiWidget(anywidget.AnyWidget):
     _esm = """
     import confetti from "https://esm.sh/canvas-confetti@1.6.0";
-    
+
     function render({ model, el }) {
       const btn = document.createElement('button');
       btn.innerText = '🎉 Celebrate!';
@@ -17,7 +17,7 @@ class ConfettiWidget(anywidget.AnyWidget):
       btn.style.borderRadius = '8px';
       btn.style.border = '2px solid #ddd';
       btn.style.cursor = 'pointer';
-      
+
       btn.addEventListener('click', () => {
         // Fire confetti from the center
         confetti({
@@ -25,7 +25,7 @@ class ConfettiWidget(anywidget.AnyWidget):
           spread: 70,
           origin: { y: 0.6 }
         });
-        
+
         // Fire from the left and right after a small delay
         setTimeout(() => {
           confetti({
@@ -42,7 +42,7 @@ class ConfettiWidget(anywidget.AnyWidget):
           });
         }, 250);
       });
-      
+
       el.appendChild(btn);
     }
     export default { render };
@@ -60,23 +60,23 @@ class TextAreaWidget(anywidget.AnyWidget):
       textarea.value = model.get("text");
       textarea.style.width = "300px";
       textarea.style.height = "150px";
-      
+
       textarea.addEventListener("input", () => {
         model.set("text", textarea.value);
         model.save_changes();
       });
-      
+
       model.on("change:text", () => {
         textarea.value = model.get("text");
       });
-      
+
       let counter = document.createElement("div");
       counter.innerHTML = `Characters: ${textarea.value.length}`;
-      
+
       textarea.addEventListener("input", () => {
         counter.innerHTML = `Characters: ${textarea.value.length}`;
       });
-      
+
       el.appendChild(textarea);
       el.appendChild(counter);
     }
@@ -245,7 +245,7 @@ class SVGDisplayManager {
       this.selectedPath = null;
     }
   }
-  
+
 handleKeyDown(event) {
     if (!this.selectedPath) return;
 
@@ -308,7 +308,7 @@ handleKeyDown(event) {
 /**
  * Static helper class for creating standardized DOM elements
  * used in the SVG display.
- * 
+ *
  * Provides factory methods for:
  * - SVG container elements with proper tabindex and styling
  * - SVG wrapper elements with consistent dimensions
@@ -338,13 +338,13 @@ class DOMHelper {
 /**
  * Manages event listeners and their lifecycle for SVG interactions.
  * Works in conjunction with SVGDisplayManager to handle user input.
- * 
+ *
  * Responsibilities:
  * - Attaches and tracks all event listeners
  * - Handles 'clickOutside' event for deselection
  * - Manages global keyboard events
  * - Ensures proper event cleanup to prevent memory leaks
- * 
+ *
  * @param {SVGDisplayManager} svgDisplayManager - The display manager instance to handle visual updates
  */
 class EventManager {
@@ -415,7 +415,7 @@ class EventManager {
 function render({ model, el }) {
   const svgDisplayManager = new SVGDisplayManager();
   const eventManager = new EventManager(svgDisplayManager);
-  
+
   const svgContainer = DOMHelper.createSvgContainer();
   const svgEl = DOMHelper.createSvgElement();
 
@@ -484,7 +484,23 @@ export default { render };
 
 
 import base64
-from ordec.render import render_svg
+from ordec.render import render
+
+
+def render_svg(obj):
+    """Create SVG render result with as_url() method for backwards compatibility"""
+    renderer = render(obj)
+
+    class SVGResult:
+        def __init__(self, renderer):
+            self._renderer = renderer
+
+        def as_url(self):
+            svg_bytes = self._renderer.svg()
+            svg_b64 = base64.b64encode(svg_bytes).decode('ascii')
+            return f"data:image/svg+xml;base64,{svg_b64}"
+
+    return SVGResult(renderer)
 
 
 def ordec_widget(arg):
@@ -551,7 +567,7 @@ class AnimatedFnWidget(anywidget.AnyWidget):
 
       if (!defineStreamingChart) return; // Stop if library failed to load
 
-      
+
       const lib = defineStreamingChart(d3);
       if (!lib || !lib.StreamingChart) {
            console.error("Failed to get StreamingChart class after injecting D3.");
@@ -562,9 +578,9 @@ class AnimatedFnWidget(anywidget.AnyWidget):
 
       // 3. Prepare Container (use the element provided by anywidget)
       el.style.width = '100%';
-      el.style.height = '400px'; 
-      el.style.border = '1px solid #ccc'; 
-      el.style.position = 'relative';  
+      el.style.height = '400px';
+      el.style.border = '1px solid #ccc';
+      el.style.position = 'relative';
 
       function translateConfig(pyConfig) {
           const chartConfig = {
@@ -620,8 +636,8 @@ class AnimatedFnWidget(anywidget.AnyWidget):
           el.textContent = `Error creating chart: ${error.message}`;
           return; // Stop if initialization fails
       }
-   
-      
+
+
       model.on('change:_new_data_points', () => {
           const newDataJson = model.get('_new_data_points');
           if (!newDataJson || newDataJson === '{}') return; // Ignore empty updates
@@ -634,7 +650,7 @@ class AnimatedFnWidget(anywidget.AnyWidget):
               console.error("[PlotStream Widget] Error parsing/adding new data points:", e, newDataJson);
           }
       });
- 
+
       model.on('change:_update_chart_config_cmd', () => {
           const configUpdateJson = model.get('_update_chart_config_cmd');
           if (!configUpdateJson || configUpdateJson === '{}') return;
@@ -698,7 +714,7 @@ class AnimatedFnWidget(anywidget.AnyWidget):
                 console.error("[PlotStream Widget] Error parsing/applying chart config update:", e, configUpdateJson);
            }
       });
-    
+
        model.on('change:_update_series_config_cmd', () => {
             const seriesUpdateJson = model.get('_update_series_config_cmd');
             if (!seriesUpdateJson || seriesUpdateJson === '{}') return;
@@ -715,7 +731,7 @@ class AnimatedFnWidget(anywidget.AnyWidget):
             }
        });
 
-      
+
       model.on('change:_set_view_cmd', () => {
           const viewCmdJson = model.get('_set_view_cmd');
            if (!viewCmdJson || viewCmdJson === '{}') return;
@@ -731,7 +747,7 @@ class AnimatedFnWidget(anywidget.AnyWidget):
           }
       });
 
-      
+
       model.on('change:_clear_data_cmd', () => {
           // The value doesn't matter, only the change event
           if (chart) {
@@ -740,7 +756,7 @@ class AnimatedFnWidget(anywidget.AnyWidget):
           }
       });
 
-       
+
        model.on('change:_reset_view_cmd', () => {
            // The value doesn't matter, only the change event
            if (chart) {
@@ -751,7 +767,7 @@ class AnimatedFnWidget(anywidget.AnyWidget):
        });
 
 
-      
+
       return () => {
           console.log("[PlotStream Widget] Cleaning up chart instance.");
           if (chart) {
@@ -1067,3 +1083,77 @@ class AnimatedFnWidget(anywidget.AnyWidget):
         print("[PlotStream Widget] Finalizing: Flushing remaining buffer...")
         self._flush_buffer()
         print("[PlotStream Widget] Finalizing complete.")
+
+
+class VdcSliderWidget(anywidget.AnyWidget):
+    """Interactive slider for controlling VDC voltage"""
+
+    _esm = """
+    import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+
+    function render({ model, el }) {
+        const container = d3.select(el).append("div")
+            .style("padding", "15px")
+            .style("font-family", "Arial, sans-serif")
+            .style("background", "#f8f9fa")
+            .style("border-radius", "8px")
+            .style("border", "1px solid #dee2e6");
+
+        const header = container.append("div")
+            .style("margin-bottom", "10px")
+            .style("font-weight", "bold")
+            .style("color", "#495057")
+            .text("DC Voltage Control");
+
+        const controlRow = container.append("div")
+            .style("display", "flex")
+            .style("align-items", "center")
+            .style("gap", "15px");
+
+        controlRow.append("label")
+            .text("Vdc:")
+            .style("font-weight", "500")
+            .style("color", "#495057");
+
+        const slider = controlRow.append("input")
+            .attr("type", "range")
+            .attr("min", model.get("min"))
+            .attr("max", model.get("max"))
+            .attr("step", model.get("step"))
+            .attr("value", model.get("value"))
+            .style("width", "250px")
+            .style("cursor", "pointer");
+
+        const valueDisplay = controlRow.append("span")
+            .style("background", "#e9ecef")
+            .style("padding", "5px 12px")
+            .style("border-radius", "4px")
+            .style("font-weight", "500")
+            .style("color", "#495057")
+            .style("min-width", "80px")
+            .style("text-align", "center")
+            .text(model.get("value").toFixed(2) + " V");
+
+        // Update on slider change
+        slider.on("input", function() {
+            const newValue = +this.value;
+            model.set("value", newValue);
+            valueDisplay.text(newValue.toFixed(2) + " V");
+            model.save_changes();
+        });
+
+        // Update on model change
+        model.on("change:value", () => {
+            const newValue = model.get("value");
+            slider.property("value", newValue);
+            valueDisplay.text(newValue.toFixed(2) + " V");
+        });
+    }
+
+    export default { render };
+    """
+
+    value = traitlets.Float(1.0).tag(sync=True)
+    min = traitlets.Float(-2.0).tag(sync=True)
+    max = traitlets.Float(5.0).tag(sync=True)
+    step = traitlets.Float(0.1).tag(sync=True)
