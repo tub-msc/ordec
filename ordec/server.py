@@ -83,7 +83,7 @@ from websockets.exceptions import ConnectionClosedOK
 
 from . import importer
 from .version import version
-from .core import *
+from .core.cell import Cell, generate, generate_func
 
 def discover_views(conn_globals, recursive=True, modules_visited=None):
     if modules_visited == None:
@@ -181,7 +181,9 @@ class ConnectionHandler:
         for k, v in sys.modules.items():
             if k not in self.sysmodules_orig:
                 try:
-                    ret.append(v.__file__)
+                    fn = v.__file__
+                    if fn:
+                        ret.append(fn)
                 except AttributeError:
                     pass
         return ret

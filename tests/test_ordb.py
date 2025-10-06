@@ -656,8 +656,16 @@ def test_polyvec2r():
     with pytest.raises(StopIteration):
         next(it)
 
-    # with pytest.raises(TypeError, match=r'Query descriptors cannot be deleted.'):
-    #     del s.poly.vertices
+def test_polyvec2r_typecheck():
+    s = Symbol()
+    s.poly = SymbolPoly()
+    s.poly % PolyVec2R(order=1, pos=Vec2R(1,2))
+    s.poly % PolyVec2R(order=2, pos=Vec2R(3,4))
+
+    with pytest.raises(ModelViolation):
+        s.poly % PolyVec2I(order=1, pos=Vec2I(3,4))
+
+    assert [v.pos for v in s.poly.vertices] == [Vec2R(1, 2), Vec2R(3, 4)]
 
 def test_npath_double_reference():
     s = MyHead()

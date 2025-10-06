@@ -17,7 +17,8 @@ from typing import Callable
 from importlib import import_module
 
 import ordec.importer
-from ordec import lib, render
+from ordec import lib
+from ordec.render import render
 from ordec.lib import test as libtest
 
 @dataclass

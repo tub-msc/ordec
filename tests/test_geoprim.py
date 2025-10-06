@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.core.geoprim import Vec2R, D4, TD4, Rect4R
+from ordec.core.geoprim import Vec2R, D4, TD4, Rect4R, Vec2I, Rect4I
 from ordec.core.rational import R
 import pytest
 
@@ -83,6 +83,18 @@ def test_Vec2R():
 
     assert repr(v) == "Vec2R(R('1.'), R('2.'))"
 
+def test_Vec2I():
+    v = Vec2I(1, 2)
+    assert isinstance(v.x, int)
+    assert isinstance(v.y, int)
+
+    with pytest.raises(AttributeError):
+        v.hello = 'world'
+    with pytest.raises(AttributeError):
+        v.x = 123
+
+    assert repr(v) == "Vec2I(1, 2)"
+
 
 def test_Rect4R():
     r = Rect4R(1, 2, 3, 4)
@@ -101,3 +113,94 @@ def test_Rect4R():
 
     with pytest.raises(TypeError):
         Rect4R(1,2,3,3)+Rect4R(4,5,5,6)
+
+    myrect = Rect4R(10, 30, 20, 40)
+
+    inside = [
+        Vec2R(20, 30),
+        Vec2R(10, 30),
+        Vec2R(15, 30),
+        Vec2R(15, 35),
+        Vec2R(15, 40),
+        Vec2R(20, 40),
+        Vec2R(10, 40),
+    ]
+    for v in inside:
+        assert v in myrect
+        assert myrect.extend(v) is myrect
+
+    outside = [
+        (Vec2R(9, 30),    Rect4R(9, 30, 20, 40)),
+        (Vec2R(21, 30),   Rect4R(10, 30, 21, 40)),
+        (Vec2R(15, 41),   Rect4R(10, 30, 20, 41)),
+        (Vec2R(15, -100), Rect4R(10, -100, 20, 40)),
+    ]
+    for v, extended in outside:
+        assert v not in myrect
+        assert myrect.extend(v) == extended
+
+def test_Rect4I():
+    r = Rect4I(1, 2, 3, 4)
+    with pytest.raises(AttributeError):
+        r.hello = 'world'
+    with pytest.raises(AttributeError):
+        r.lx = 123
+
+    assert repr(r) == "Rect4I(lx=1, ly=2, ux=3, uy=4)"
+
+    with pytest.raises(ValueError, match=r"lx or ly greater than ux or uy"):
+        Rect4I(0, 0, -1, 0)
+
+    with pytest.raises(ValueError, match=r"lx or ly greater than ux or uy"):
+        Rect4I(0, 0, 0, -1)
+
+    with pytest.raises(TypeError):
+        Rect4I(1,2,3,3)+Rect4I(4,5,5,6)
+
+    myrect = Rect4I(10, 30, 20, 40)
+
+    inside = [
+        Vec2I(20, 30),
+        Vec2I(10, 30),
+        Vec2I(15, 30),
+        Vec2I(15, 35),
+        Vec2I(15, 40),
+        Vec2I(20, 40),
+        Vec2I(10, 40),
+    ]
+    for v in inside:
+        assert v in myrect
+        assert myrect.extend(v) is myrect
+
+    outside = [
+        (Vec2I(9, 30),    Rect4I(9, 30, 20, 40)),
+        (Vec2I(21, 30),   Rect4I(10, 30, 21, 40)),
+        (Vec2I(15, 41),   Rect4I(10, 30, 20, 41)),
+        (Vec2I(15, -100), Rect4I(10, -100, 20, 40)),
+    ]
+    for v, extended in outside:
+        assert v not in myrect
+        assert myrect.extend(v) == extended
+
+def test_mix_types():
+    # Even though I highly discourage mixing ordec.geoprim's integer and
+    # rational types, in the spirit of Python it should be possible to mix
+    # them.
+
+    assert Vec2R(1, 2) + Vec2I(3, 4) == Vec2R(4, 6)
+    assert Vec2I(1, 2) + Vec2R(3, 4) == Vec2I(4, 6)
+
+    assert Vec2I(15, 35) in Rect4R(10, 30, 20, 40)
+    assert Vec2I(15, 55) not in Rect4R(10, 30, 20, 40)
+
+    assert Vec2R(15, 35) in Rect4I(10, 30, 20, 40)
+    assert Vec2R(15, 55) not in Rect4I(10, 30, 20, 40)
+
+    with pytest.raises(TypeError):
+        (15, 15) in Rect4I(10, 30, 20, 40)
+
+    with pytest.raises(TypeError):
+        (15, 15) in Rect4R(10, 30, 20, 40)
+
+    assert Rect4R(10, 30, 20, 40).extend(Vec2I(15, 55)) == Rect4R(10, 30, 20, 55)
+    assert Rect4I(10, 30, 20, 40).extend(Vec2R(15, 55)) == Rect4I(10, 30, 20, 55)

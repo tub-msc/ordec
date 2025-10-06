@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2025 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vite'
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { defineConfig } from 'vite';
+import glsl from 'vite-plugin-glsl';
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   server: {
@@ -27,4 +28,5 @@ export default defineConfig({
     },
   },
   appType: 'mpa', // without this, vite dev returns index.html instead of 404 for files that are not found.
-})
+  plugins: [ glsl() ],
+});

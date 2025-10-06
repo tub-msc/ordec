@@ -4,6 +4,8 @@
 from enum import Enum
 import math
 from functools import partial
+from typing import NamedTuple
+import re
 from public import public
 
 from .rational import R
@@ -19,6 +21,26 @@ class PinType(Enum):
 
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'
+
+@public
+class GdsLayer(NamedTuple):
+    layer: int
+    data_type: int
+
+@public
+class RGBColor(NamedTuple):
+    r: int
+    g: int
+    b: int
+
+    def __str__(self):
+        return f"#{self.r:02X}{self.g:02X}{self.b:02X}"
+
+@public
+def rgb_color(s) -> RGBColor:
+    if not re.match("#[0-9a-fA-F]{6}", s):
+        raise ValueError("rgb_color expects string like '#0012EF'.")
+    return RGBColor(int(s[1:3], 16), int(s[3:5], 16), int(s[5:7], 16))
 
 # Symbol
 # ------
@@ -57,8 +79,7 @@ class Pin(Node):
     pos     = Attr(Vec2R)
     align   = Attr(D4, default=D4.R0)
  
-@public
-class SymbolPoly(Node):
+class GenericPoly(Node):
     in_subgraphs = [Symbol]
 
     def __new__(cls, vertices:list[Vec2R]=None, **kwargs):
@@ -69,13 +90,10 @@ class SymbolPoly(Node):
             def inserter_func(sgu):
                 main_nid = main.insert_into(sgu)
                 for i, v in enumerate(vertices):
-                    PolyVec2R(ref=main_nid, order=i, pos=v).insert_into(sgu)
+                    cls.vertex_cls(ref=main_nid, order=i, pos=v).insert_into(sgu)
                 return main_nid
             return FuncInserter(inserter_func)
 
-    @property
-    def vertices(self):
-        return self.subgraph.all(PolyVec2R.ref_idx.query(self.nid))
 
     def svg_path(self) -> str:
         """
@@ -95,6 +113,21 @@ class SymbolPoly(Node):
             x, y = vertices[-1].tofloat()
             d.append(f"L{x} {y}")
         return ' '.join(d)
+
+    @property
+    def vertices(self):
+        return self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid))
+
+class GenericPolyR(GenericPoly):
+    pass
+
+class GenericPolyI(GenericPoly):
+    pass
+
+
+@public
+class SymbolPoly(GenericPolyR):
+    pass
 
 @public
 class SymbolArc(Node):
@@ -178,7 +211,7 @@ class SchemPort(Node):
     align = Attr(D4, default=D4.R0)
 
 @public
-class SchemWire(SymbolPoly):
+class SchemWire(GenericPolyR):
     """A drawn schematic wire representing an electrical connection."""
     in_subgraphs = [Schematic]
 
@@ -333,6 +366,66 @@ class SimInstance(NonLeafNode):
     schematic = SubgraphRef(Symbol|Schematic, typecheck_custom=lambda v: isinstance(v, (Symbol, Schematic)))
     eref = ExternalRef(SchemInstance, of_subgraph=lambda c: parent_siminstance(c.parent).schematic)
 
+# LayerStack
+# ----------
+
+@public
+class LayerStack(SubgraphRoot):
+    cell = Attr(Cell)
+    unit = Attr(R)
+
+@public
+class Layer(NonLeafNode):
+    in_subgraphs = [LayerStack]
+    gdslayer_text = Attr(GdsLayer)
+    gdslayer_shapes = Attr(GdsLayer)
+
+    style_fill = Attr(RGBColor)
+    style_stroke = Attr(RGBColor)
+    style_crossrect = Attr(bool, default=False)
+
+    gdslayer_text_index = Index(gdslayer_text, unique=True)
+    gdslayer_shapes_index = Index(gdslayer_shapes, unique=True)
+
+    def inline_css(self):
+
+         return f"fill:{self.style_fill};stroke:{self.style_stroke};"
+
+# Layout
+# ------
+
+@public
+class Layout(SubgraphRoot):
+    cell = Attr(Cell)
+    ref_layers = SubgraphRef(LayerStack)
+
+    def webdata(self):
+        from ..layout import layout_webdata
+        return layout_webdata(self)
+        #from ..render import render
+        #return render(self).webdata()
+
+@public
+class Label(Node):
+    in_subgraphs = [Layout]
+
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
+    pos = Attr(Vec2I)
+    text = Attr(str)
+
+@public
+class LayoutPoly(GenericPolyI):
+    """
+    Simple polygon with CCW orientation.
+
+    At GDS import, simplicity is assumed currently assuemed, and CW polygons are
+    flipped automatically.
+    """
+    in_subgraphs = [Layout]
+
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
+
+
 # Misc
 # ----
 
@@ -343,8 +436,24 @@ class PolyVec2R(Node):
     A polygonal chain is closed if the last and first element are equivalent.
     """
     in_subgraphs = [Symbol, Schematic]
-    ref    = LocalRef(SymbolPoly, refcheck_custom=lambda v:True)
-    order   = Attr(int) #: Order of the point in the polygonal chain
-    pos     = Attr(Vec2R)
+    ref    = LocalRef(GenericPolyR)
+    order   = Attr(int, optional=False) #: Order of the point in the polygonal chain
+    pos     = Attr(Vec2R, optional=False)
 
     ref_idx = Index(ref, sortkey=lambda node: node.order)
+
+@public
+class PolyVec2I(Node):
+    """
+    One element/point of a Vec2I polygonal chain, which can be open or closed.
+    A polygonal chain is closed if the last and first element are equivalent.
+    """
+    in_subgraphs = [Layout]
+    ref    = LocalRef(GenericPolyI)
+    order   = Attr(int, optional=False) #: Order of the point in the polygonal chain
+    pos     = Attr(Vec2I, optional=False)
+
+    ref_idx = Index(ref, sortkey=lambda node: node.order)
+
+GenericPolyR.vertex_cls = PolyVec2R
+GenericPolyI.vertex_cls = PolyVec2I

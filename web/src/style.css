@@ -56,6 +56,9 @@ body {
 }
 .reswrapper {
     flex-grow:1;
+    display: flex;
+    align-items: stretch;
+    position:relative;
 }
 .rescontent {
     background-color:#fff;
@@ -64,7 +67,7 @@ body {
     width: 100%;
     height: 100%;
     z-index: 1;
-    padding:3px;
+    padding:0px;
     overflow-y:scroll;
     overflow-x:clip;   
 }
@@ -83,10 +86,19 @@ body {
     border-bottom:1px solid #aaa;
 }
 svg.fit {
+    display:block;
     object-fit:contain;
     width:100%;
     height:100%;
+}
+canvas.layoutFit {
     display:block;
+    width:100%;
+    height:100%;
+    /* To debug:
+    padding:5px;
+    box-sizing: border-box;
+    */
 }
 *, *::before, *::after { box-sizing: border-box; } 
 .exception {
@@ -137,4 +149,31 @@ pre {
 }
 .refreshable {
     background-color:#f00;
+}
+.ordb-table {
+    font-family: 'Inconsolata';
+}
+.ordb-table table td, .ordb-table table th {
+    border:1px solid black;
+    padding:0px 3px;
+}
+.ordb-table table th {
+    background-color: #ccc;
+}
+.ordb-table table {
+    border-collapse:collapse;
+}
+.layout {
+    background-color: #000;
+}
+.layerList {
+    list-style-type:none;
+    padding:5px;
+    margin:0px;
+    position:absolute;
+    top:3px;
+    right:3px;
+    background-color:#000;
+    color:#fff;
+
 }

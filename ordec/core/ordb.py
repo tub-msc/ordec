@@ -932,9 +932,9 @@ class SubgraphRoot(NonLeafNode):
         """Convenience wrapper for :meth:`Subgraph.thaw`."""
         return self.subgraph.thaw().root_cursor
 
-    def tables(self) -> str:
+    def tables(self, html=False) -> str:
         """Convenience wrapper for :meth:`Subgraph.tables`."""
-        return self.subgraph.tables()
+        return self.subgraph.tables(html=html)
 
     def dump(self) -> str:
         """Convenience wrapper for :meth:`Subgraph.dump`."""
@@ -950,6 +950,9 @@ class SubgraphRoot(NonLeafNode):
 
     def __copy__(self) -> 'Self':
         return self.copy()
+
+    def webdata(self):
+        return 'html', self.tables(html=True)
 
 class SubgraphUpdater:
     """
@@ -1104,14 +1107,21 @@ class Subgraph(ABC):
                 cur_ntype = type(node)
         yield cur_ntype, cur_nodes
 
-    def tables(self) -> str:
+    def tables(self, html=False) -> str:
         from tabulate import tabulate
 
-        ret = [f'Subgraph {self.nodes[0]}:']
+        if html:
+            ret = [f'<div class="ordb-table"><p><b>Subgraph {self.nodes[0]}:</b></p>']
+        else:
+            ret = [f'Subgraph {self.nodes[0]}:']
+
         for ntype, nodes in self.iter_tables():
             if issubclass(ntype._cursor_type, SubgraphRoot):
                 continue
-            ret.append(ntype._cursor_type.__name__)
+            if html:
+                ret.append(f"<p><i>{ntype._cursor_type.__name__}</i>:</p>")
+            else:
+                ret.append(ntype._cursor_type.__name__)
             table = []
             for nid, node in nodes:
                 table.append([nid]+[val for val in tuple.__iter__(node)])
@@ -1119,8 +1129,10 @@ class Subgraph(ABC):
             ret.append(tabulate(
                 table,
                 headers = ['nid']+[ad.name for ad in ntype._layout],
-                tablefmt="github"
+                tablefmt="html" if html else "github"
                 ))
+        if html:
+            ret.append('</div>')
         return "\n".join(ret).replace('\n', '\n  ')
 
     def node_dict(self, mode='canonical') -> dict[int,NodeTuple]:
