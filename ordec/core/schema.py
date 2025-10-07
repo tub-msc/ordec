@@ -205,7 +205,7 @@ class SchemPort(Node):
     """
     in_subgraphs = [Schematic]
 
-    ref = LocalRef(Net)
+    ref = LocalRef(Net, optional=False)
     ref_idx = Index(ref)
     pos = Attr(Vec2R)
     align = Attr(D4, default=D4.R0)
@@ -215,7 +215,7 @@ class SchemWire(GenericPolyR):
     """A drawn schematic wire representing an electrical connection."""
     in_subgraphs = [Schematic]
 
-    ref = LocalRef(Net)
+    ref = LocalRef(Net, optional=False)
     ref_idx = Index(ref)
 
 @public
@@ -227,7 +227,7 @@ class SchemInstance(Node):
 
     pos = Attr(Vec2R)
     orientation = Attr(D4, default=D4.R0)
-    symbol = SubgraphRef(Symbol)
+    symbol = SubgraphRef(Symbol, optional=False)
 
     def __new__(cls, connect=None, **kwargs):
         main = super().__new__(cls, **kwargs)
@@ -250,11 +250,11 @@ class SchemInstanceConn(Node):
     """
     in_subgraphs = [Schematic]
 
-    ref = LocalRef(SchemInstance)
+    ref = LocalRef(SchemInstance, optional=False)
     ref_idx = Index(ref)
 
-    here = LocalRef(Net)
-    there = ExternalRef(Pin, of_subgraph=lambda c: c.ref.symbol) # ExternalRef to Pin in SchemInstance.symbol
+    here = LocalRef(Net, optional=False)
+    there = ExternalRef(Pin, of_subgraph=lambda c: c.ref.symbol, optional=False) # ExternalRef to Pin in SchemInstance.symbol
 
     ref_pin_idx = CombinedIndex([ref, there], unique=True)
 
@@ -263,7 +263,7 @@ class SchemTapPoint(Node):
     """A schematic tap point for connecting points by label, typically visualized using the net's name."""
     in_subgraphs = [Schematic]
 
-    ref = LocalRef(Net)
+    ref = LocalRef(Net, optional=False)
     ref_idx = Index(ref)
 
     pos = Attr(Vec2R)
@@ -276,7 +276,7 @@ class SchemTapPoint(Node):
 class SchemConnPoint(Node):
     """A schematic point to indicate a connection at a 3- or 4-way junction of wires."""
     in_subgraphs = [Schematic]
-    ref = LocalRef(Net)
+    ref = LocalRef(Net, optional=False)
     ref_idx = Index(ref)
 
     pos = Attr(Vec2R)
@@ -297,7 +297,7 @@ def parent_siminstance(c: Node) -> Node:
 
 @public
 class SimHierarchy(SubgraphRoot):
-    schematic = SubgraphRef(Schematic)
+    schematic = SubgraphRef(Schematic) # TODO: This should be optional=False.
     cell = Attr(Cell)
     sim_type = Attr(SimType)
     time = Attr(tuple)
@@ -324,7 +324,6 @@ class SimHierarchy(SubgraphRoot):
             return 'acsim', {'freq': self.freq, 'voltages': voltages, 'currents': currents}
         elif self.sim_type == SimType.DC:
             def fmt_float(val, unit):
-                import re
                 x=str(R(f"{val:.03e}"))+unit
                 x=re.sub(r"([0-9])([a-zA-Z])", r"\1 \2", x)
                 x=x.replace("u", "μ")
@@ -354,7 +353,7 @@ class SimNet(Node):
     ac_current = Attr(tuple)
     dc_voltage = Attr(float)
 
-    eref = ExternalRef(Net|Pin, of_subgraph=lambda c: parent_siminstance(c).schematic)
+    eref = ExternalRef(Net|Pin, of_subgraph=lambda c: parent_siminstance(c).schematic) # TODO: This should be optional=False.
 
 @public
 class SimInstance(NonLeafNode):
@@ -363,8 +362,8 @@ class SimInstance(NonLeafNode):
     ac_current = Attr(tuple)
     dc_current = Attr(float)
 
-    schematic = SubgraphRef(Symbol|Schematic, typecheck_custom=lambda v: isinstance(v, (Symbol, Schematic)))
-    eref = ExternalRef(SchemInstance, of_subgraph=lambda c: parent_siminstance(c.parent).schematic)
+    schematic = SubgraphRef(Symbol|Schematic, typecheck_custom=lambda v: isinstance(v, (Symbol, Schematic))) # TODO: This should be optional=False.
+    eref = ExternalRef(SchemInstance, of_subgraph=lambda c: parent_siminstance(c.parent).schematic) # TODO: This should be optional=False.
 
 # LayerStack
 # ----------
@@ -397,7 +396,7 @@ class Layer(NonLeafNode):
 @public
 class Layout(SubgraphRoot):
     cell = Attr(Cell)
-    ref_layers = SubgraphRef(LayerStack)
+    ref_layers = SubgraphRef(LayerStack, optional=False)
 
     def webdata(self):
         from ..layout import layout_webdata
@@ -409,7 +408,7 @@ class Layout(SubgraphRoot):
 class Label(Node):
     in_subgraphs = [Layout]
 
-    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
     pos = Attr(Vec2I)
     text = Attr(str)
 
@@ -423,7 +422,7 @@ class LayoutPoly(GenericPolyI):
     """
     in_subgraphs = [Layout]
 
-    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 
 
 # Misc
@@ -436,7 +435,7 @@ class PolyVec2R(Node):
     A polygonal chain is closed if the last and first element are equivalent.
     """
     in_subgraphs = [Symbol, Schematic]
-    ref    = LocalRef(GenericPolyR)
+    ref    = LocalRef(GenericPolyR, optional=False)
     order   = Attr(int, optional=False) #: Order of the point in the polygonal chain
     pos     = Attr(Vec2R, optional=False)
 
@@ -449,7 +448,7 @@ class PolyVec2I(Node):
     A polygonal chain is closed if the last and first element are equivalent.
     """
     in_subgraphs = [Layout]
-    ref    = LocalRef(GenericPolyI)
+    ref    = LocalRef(GenericPolyI, optional=False)
     order   = Attr(int, optional=False) #: Order of the point in the polygonal chain
     pos     = Attr(Vec2I, optional=False)
 
