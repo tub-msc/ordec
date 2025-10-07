@@ -141,27 +141,16 @@ class ConnectionHandler:
 
     def build_cells(self, source_type: str, source_data: str) -> (dict, dict):
         conn_globals = {}
-        try:
-            if source_type == 'ord':
-                # Having the import here enables auto-realoading of ord1.
-                from .ord1.parser import ord2py
-                code = compile(ord2py(source_data), "<string>", "exec")
-                exec(code, conn_globals, conn_globals)
-            elif source_type == 'python':
-                exec(source_data, conn_globals, conn_globals)
-            else:
-                raise NotImplementedError(f'source_type {source_type} not implemented')
-        except:
-            #print("Reporting exception.")
-            return {
-                'msg':'exception',
-                'exception':traceback.format_exc(),
-            }, None
+        if source_type == 'ord':
+            # Having the import here enables auto-realoading of ord1.
+            from .ord1.parser import ord2py
+            code = compile(ord2py(source_data), "<string>", "exec")
+            exec(code, conn_globals, conn_globals)
+        elif source_type == 'python':
+            exec(source_data, conn_globals, conn_globals)
         else:
-            return {
-                'msg':'viewlist',
-                'views':discover_views(conn_globals),
-            }, conn_globals
+            raise NotImplementedError(f'source_type {source_type} not implemented')
+        return conn_globals
 
     def purge_modules(self):
         """
@@ -191,20 +180,9 @@ class ConnectionHandler:
     def build_localmodule(self, localmodule: str):
         with self.import_lock:
             self.purge_modules()
-            try:
-                #print(f"Importing {localmodule}...")
-                module = importlib.import_module(localmodule)
-                conn_globals = module.__dict__
-            except:
-                return {
-                    'msg':'exception',
-                    'exception':traceback.format_exc(),
-                }, None, self.watch_files()
-            else:
-                return {
-                    'msg':'viewlist',
-                    'views':discover_views(conn_globals),
-                }, conn_globals, self.watch_files()
+            module = importlib.import_module(localmodule)
+            conn_globals = module.__dict__
+            return conn_globals, self.watch_files()
 
     def handle_connection(self, websocket):
         remote = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
@@ -221,17 +199,29 @@ class ConnectionHandler:
             return
 
         # First message - read design input / build cells:
-        if msg_first['msg'] == 'source':
-            #print(f"Received source of type {source_type}.")
-            msg_ret, conn_globals = self.build_cells(msg_first['srctype'], msg_first['src'])
-            watch_files = []
-        elif msg_first['msg'] == 'localmodule':
-            msg_ret, conn_globals, watch_files = self.build_localmodule(msg_first['module'])
-        else:
-            raise Exception("Excpected 'source' or 'localmodule' message.")
-        websocket.send(json.dumps(msg_ret))
-        if not conn_globals:
+
+        try:
+            if msg_first['msg'] == 'source':
+                #print(f"Received source of type {source_type}.")
+                conn_globals = self.build_cells(msg_first['srctype'], msg_first['src'])
+                watch_files = []
+            elif msg_first['msg'] == 'localmodule':
+                conn_globals, watch_files = self.build_localmodule(msg_first['module'])
+            else:
+                raise Exception("Excpected 'source' or 'localmodule' message.")
+        except:
+            websocket.send(json.dumps({
+                'msg': 'exception',
+                'exception': traceback.format_exc(),
+            }))
             return
+    
+        discovered_views = discover_views(conn_globals)
+        discovered_view_names = [v['name'] for v in discovered_views]
+        websocket.send(json.dumps({
+            'msg': 'viewlist',
+            'views': discovered_views,
+        }))
 
         if watch_files:
             pipe_inotify_abort_r_fd, pipe_inotify_abort_w_fd = os.pipe()
@@ -245,6 +235,11 @@ class ConnectionHandler:
                 msg = json.loads(msg_raw)
                 assert msg['msg'] == 'getview'
                 view_name = msg['view']
+                if view_name not in discovered_view_names:
+                    # Prevent executing random code using the &view= URL
+                    # parameter, even though this should already be impossible
+                    # due to the SameSite=Strict setting on the session cookie.
+                    raise Exception("Unknown view requested!")
                 #print(f"View {view_name} was requested.")
 
                 msg_ret = self.query_view(view_name, conn_globals)
