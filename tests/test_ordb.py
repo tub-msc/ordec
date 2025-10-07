@@ -815,13 +815,15 @@ def test_mandatory():
         in_subgraphs=[MyHead]
         text = Attr(str, optional=False)
 
-    NodeA(text='hello')
+    h = MyHead()
 
-    with pytest.raises(TypeError):
-        NodeA()
+    h % NodeA(text='hello')
 
-    with pytest.raises(TypeError):
-        NodeA(text=None)
+    with pytest.raises(ModelViolation, match="'text' is not optional"):
+        h % NodeA()
+
+    with pytest.raises(ModelViolation, match="'text' is not optional"):
+        h % NodeA(text=None)
 
 def test_refcheck_localref():
     class NodeA(Node):
@@ -834,7 +836,7 @@ def test_refcheck_localref():
 
     class NodeRef(Node):
         in_subgraphs=[MyHead]
-        ref = LocalRef(NodeA)
+        ref = LocalRef(NodeB)
 
     s = MyHead()
     s.a = NodeA()
@@ -844,7 +846,7 @@ def test_refcheck_localref():
     with pytest.raises(ModelViolation):
         s % NodeRef(ref=s.a)
 
-def test_refcheck_localref():
+def test_localref_mandatory():
     class NodeA(Node):
         in_subgraphs=[MyHead]
         text = Attr(str)
@@ -853,8 +855,22 @@ def test_refcheck_localref():
         in_subgraphs=[MyHead]
         ref = LocalRef(NodeA, optional=False)
 
-    with pytest.raises(TypeError):
-        NodeRef()
+    # No problem if we do not attach the NodeTuple:
+    NodeRef()
+    NodeRef(ref=None)
+
+    h = MyHead()
+    h.a = NodeA()
+
+    h.a % NodeRef()
+
+    h % NodeRef(ref=h.a)
+
+    with pytest.raises(ModelViolation, match="'ref' is not optional"):
+        h % NodeRef()
+        
+    with pytest.raises(ModelViolation, match="'ref' is not optional"):
+        h % NodeRef(ref=None)
         
 def test_typecheck_subgraphref():
     class AnotherHead(SubgraphRoot):
@@ -878,11 +894,13 @@ def test_subgraphref_mandatory():
         subg = SubgraphRef(MyHead, optional=False)
 
     e1 = MyHead().freeze()
+
+    h = MyHead()
     
-    NodeExtRef(subg=e1)
+    h % NodeExtRef(subg=e1)
 
-    with pytest.raises(TypeError):
-        NodeExtRef()
+    with pytest.raises(ModelViolation, match="'subg' is not optional"):
+        h % NodeExtRef()
 
-    with pytest.raises(TypeError):
-        NodeExtRef(subg=None)
+    with pytest.raises(ModelViolation, match="'subg' is not optional"):
+        h % NodeExtRef(subg=None)

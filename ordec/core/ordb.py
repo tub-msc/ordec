@@ -126,11 +126,8 @@ class Attr:
             raise TypeError("Nodes can only be added to LocalRef, ExternalRef or SubgraphRef attributes.")
 
         if val == None:
-            if self.optional:
-                return val
-            else:
-                raise TypeError('Attribute is not optional.')
-        
+            return val
+            
         if not self.typecheck(val):
             raise TypeError(f"Incorrect type {type(val).__name__} for attribute.")
         
@@ -209,10 +206,7 @@ class LocalRef(Attr):
 
     def factory(self, val: 'int|Node|NoneType'):
         if val==None:
-            if self.optional:
-                return val
-            else:
-                raise TypeError('Attribute is not optional.')
+            return val
         if isinstance(val, Node):
             val = val.nid
         if not isinstance(val, int):
@@ -245,10 +239,7 @@ class SubgraphRef(Attr):
 
     def factory(self, val: 'FrozenSubgraph|SubgraphRoot|NoneType'):
         if val==None:
-            if self.optional:
-                return val
-            else:
-                raise TypeError('Attribute is not optional.')
+            return val
         if isinstance(val, Node):
             val = val.subgraph
 
@@ -294,10 +285,7 @@ class ExternalRef(Attr):
 
     def factory(self, val: 'int|Node|NoneType'):
         if val==None:
-            if self.optional:
-                return val
-            else:
-                raise TypeError('Attribute is not optional.')
+            return
         if isinstance(val, Node):
             val = val.nid
         if not isinstance(val, int):
@@ -529,8 +517,14 @@ class NodeTuple(tuple):
             ns.index_remove(sgu, self, nid)
 
     def check_constraints(self, sgu: 'SubgraphUpdater', nid):
+        for attrdesc, val in zip(self._layout, tuple.__iter__(self)):
+            if val is None and not attrdesc.attr.optional:
+                raise ModelViolation(f"{attrdesc.name!r} is not optional (but set to None).")
+
         for ns in self.indices:
             ns.check_constraints(sgu, self, nid)
+
+
 
     def insert_into(self, sgu):
         return sgu.add_single(self, sgu.nid_generate())

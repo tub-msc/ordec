@@ -416,9 +416,9 @@ class Label(Node):
 @public
 class LayoutPoly(GenericPolyI):
     """
-    Simple polygon with CCW orientation.
+    Simple (no self intersections) polygon with CCW orientation.
 
-    At GDS import, simplicity is assumed currently assuemed, and CW polygons are
+    At GDS import, simplicity is currently assumed, and CW polygons are
     flipped automatically.
     """
     in_subgraphs = [Layout]
