@@ -24,6 +24,7 @@ schematic_stmt: (PASS? _NL)
             | declaration
             | net_declaration
             | import_stmt
+            | schem_check
 
 // Import statement
 
@@ -78,6 +79,7 @@ assign_attribute: attribute_access ASSIGN number NAME? _NL
 assign_orientation: NAME DOT ORIENTATION ASSIGN orientations _NL
 constraint: direction _LPAR  NAME _COMMA NAME (_COMMA UNSIGNED)? _RPAR _NL
 for_loop: _FOR NAME _IN (range_expr | name_expr) _nested_schematic_stmts
+schem_check: SCHEM_CHECK _LPAR bool _RPAR _NL
 
 range_expr: _RANGE _LPAR UNSIGNED _COMMA UNSIGNED _RPAR
 name_expr: NAME (_COMMA NAME)*
@@ -108,7 +110,6 @@ BELOW: "below"
 LEFT: "left"
 RIGHT: "right"
 
-CONNECT: ("<->" | "--")
 _SCHEMATIC: "schematic"
 _SYMBOL: "symbol"
 _STRUCTURED: "structured"
@@ -119,6 +120,8 @@ _FOR: "for"
 _IN: "in"
 _NL: /(\r?\n[\t ]*)+/
 _CELL: "cell"
+SCHEM_CHECK: "schem_check"
+CONNECT: ("<->" | "--")
 ORIENTATION: "orientation"
 PASS: "pass"
 INPUT: "input"
