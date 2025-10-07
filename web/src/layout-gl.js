@@ -71,7 +71,6 @@ function calcLayerColor(color, layerId, dampen) {
 
 export class LayoutGL {
     constructor(resContent) {
-        console.log("INIT");
         this.resContent = resContent;
         this.transform = d3.zoomIdentity.scale(1e-1,1e-1);
         this.projectionMatrix = mat4.create();
@@ -186,7 +185,7 @@ export class LayoutGL {
         }
 
         this.loadShapes();
-        this.loadLabels();
+        this.loadLabels(false);
         this.updateLayerList();
         this.updateLayers();
     }
@@ -328,7 +327,7 @@ export class LayoutGL {
         this.height = -1;
     }
 
-    loadLabels() {
+    loadLabels(isFontSwap) {
         const gl = this.gl; 
         let labelVertices = [];
         let textureCursorX = 0;
@@ -339,12 +338,24 @@ export class LayoutGL {
         this.labelsTextureMap = new Map();
         this.labelsNumVertices = 0;
 
+        const fontSpec = '20px Inconsolata';
+
+        if(!document.fonts.check(fontSpec) && !isFontSwap) {
+            // Font is not yet loaded, font swap needed:
+            document.fonts.load(fontSpec).then(() => {
+                console.log("reloading labels");
+                this.loadLabels(true);
+                this.drawGL();
+            });
+        }
+
         const ctx = document.createElement("canvas").getContext("2d");
         ctx.canvas.width  = this.labelsTextureWidth;
         ctx.canvas.height = this.labelsTextureHeight;
         ctx.fillStyle = "#000000";
         ctx.fillRect(0, 0, this.labelsTextureWidth, this.labelsTextureHeight);
-        ctx.font = "18px Inconsolata";
+        ctx.font = fontSpec;
+        ctx.fontStretch = "semi-condensed";
         ctx.textAlign = "left";
         ctx.textBaseline = "top";
         ctx.fillStyle = "#ffffff";
@@ -377,6 +388,7 @@ export class LayoutGL {
             }
             return this.labelsTextureMap.get(text);
         };
+        //console.log("document fonts status B:", font.status);
         
         const addLabel = (x, y, text, halign='left', valign='top') => {
             // halign must be one of: 'left', 'center', 'right'
