@@ -102,6 +102,7 @@ def add_positions_from_constraints(constraints, outline, called_instances, node)
             net = getattr(node, ref_name)
             x = node.one(SchemPort.ref_idx.query(net.nid))
         x.pos = Vec2R(x=position[0], y=position[1])
+        outline = outline.extend(x.pos)
 
     return outline
 
