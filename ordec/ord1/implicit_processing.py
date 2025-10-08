@@ -162,5 +162,6 @@ def postprocess(self, node, outline, postprocess_data: PostProcess):
     #Add helpers
     if postprocess_data.schem_check:
         helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
+
     helpers.add_conn_points(node)
     node.outline = outline
