@@ -885,6 +885,21 @@ class OrdecTransformer(Transformer):
         aliases = [ast.alias(name=name, asname=asname) for name, asname in items[1:]]
         return ast.ImportFrom(module=module_str, names=aliases, level=relative_level)
 
+    def schem_check(self, items):
+        """
+        Enable the schem check function
+        """
+        function_name = items[0]
+        bool_value = items[1]
+        check = convert_to_ast_assignment(
+            convert_to_ast_attribute_store(
+                convert_to_ast_name_load("postprocess_data"),
+                function_name
+            ),
+            convert_to_ast_constant(bool_value)
+        )
+        return check
+
     # Simple return and transform nodes
     start = lambda self, items: convert_to_ast_module(self.flatten_stmt_lists(items))
     top_statements = lambda self, items: items
@@ -930,4 +945,5 @@ class OrdecTransformer(Transformer):
     DIV = lambda self, token: token.value
     TIMES = lambda self, token: token.value
     DOT = lambda self, token: token.value
+    SCHEM_CHECK = lambda self, token: token.value
 

@@ -8,6 +8,19 @@
     <path d="M2.0 7.0 L10.0 7.0" class="schemWire" />
     <path d="M1.0 9.0 L10.0 9.0" class="schemWire" />
     <circle cx="2.0" cy="7.0" r="0.1625" class="connPoint" />
+    <circle cx="2.0" cy="7.0" r="0.1625" class="connPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 1.0 20.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 1.65 20.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 1.0 1.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 1.65 1.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vss</text>
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 12.0 11.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 12.0 11.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 12.0 5.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 12.0 4.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 5.0 17.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 5.0 17.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 5.0 13.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 5.0 12.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
     <g>
       <rect x="10.0" y="5.0" width="4.0" height="6.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 13.875 10.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">SR_flip_flop</text>

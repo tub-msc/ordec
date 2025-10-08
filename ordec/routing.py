@@ -11,7 +11,7 @@ import math
 
 #ordec imports
 
-from .core import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire
+from ordec.core import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire, Rect4R
 
 SHORTCUT_ENABLED = True
 cache = {}
@@ -65,6 +65,17 @@ direction_moves = {
 
 # Place cells and ports on the grid
 def place_cells_and_ports(grid, cells, ports, width, height):
+    """
+    Place cells and ports initially on the schematic grid
+
+    :param grid: Schematic grid
+    :param cells: Cells in the schematic
+    :param ports: Ports in the schematic
+    :param width: Width of the schematic
+    :param height: Height of the schematic
+    """
+
+    # Place cells
     for cell in cells:
         x, y = cell.x, cell.y
         for i in range(cell.x_size):
@@ -77,7 +88,7 @@ def place_cells_and_ports(grid, cells, ports, width, height):
                 direction_offset_y = direction_moves[direction][1] + cy
                 grid[direction_offset_y][direction_offset_x] = "__dir"
 
-
+    # Place ports
     for port in ports:
         if 0 <= port.y < height and 0 <= port.x < width:
             grid[port.y][port.x] = port.name
@@ -86,7 +97,15 @@ def place_cells_and_ports(grid, cells, ports, width, height):
             grid[direction_offset_y][direction_offset_x] = "__dir"
 
 def adjust_start_end_for_direction(start, start_dir, end, end_dir):
-    """Adjust the start and end points to ensure proper direction handling."""
+    """Adjust the start and end points to ensure proper direction handling.
+    --> Start and end with the second element in the path
+
+    :param start: Start point
+    :param start_dir: Direction of the start port
+    :param end: End point
+    :param end_dir: Direction of the end port
+    :returns: New start and end
+    """
 
     # Adjust the start point based on start_dir
     if start_dir:
@@ -102,12 +121,23 @@ def adjust_start_end_for_direction(start, start_dir, end, end_dir):
 
 
 def compute_hash(straight_lines, start_name):
-    """Compute a hash of straight_lines (excluding start_name) to detect changes."""
+    """Compute a hash of straight_lines (excluding start_name) to detect changes.
+
+    :param straight_lines: Already calculated paths as vertices
+    :param start_name: Name of the current start
+    :returns: Current hash
+    """
     relevant_data = {key: value for key, value in straight_lines.items() if key != start_name}
     return hashlib.md5(str(sorted(relevant_data.items())).encode()).hexdigest()
 
 def preprocess_straight_lines(straight_lines, start_name):
-    """Preprocess straight lines into a set of blocked movements, including corner-touch prevention, while allowing orthogonal crossings."""
+    """Preprocess straight lines into a set of blocked movements, including corner-touch prevention,
+    while allowing orthogonal crossings.
+
+    :param straight_lines: Already calculated paths as vertices
+    :param start_name: Name of the current start
+    :returns: Currently blocked movements
+    """
     global cache
 
     new_hash = compute_hash(straight_lines, start_name)
@@ -159,7 +189,21 @@ def preprocess_straight_lines(straight_lines, start_name):
 
 
 def a_star(grid, start, end, width, height, ports, straight_lines, start_name, start_dir, cell_names, endpoint_mapping):
+    """Perform A* for new connections between port and endpoint
 
+    :param grid: Schematic grid
+    :param start: Point to start from
+    :param end: Point to reach
+    :param width: Width of the schematic
+    :param height: Height of the schematic
+    :param ports: Ports in the schematic
+    :param straight_lines: Already calculated paths
+    :param start_name: Name of the starting port
+    :param start_dir: Direction to start from
+    :param cell_names: Names of schematic cells
+    :param endpoint_mapping: Mapping for potential endpoints
+    :returns: Calculated path
+    """
     def is_segment_blocked(start_point, end_point, blocked_moves):
         return (start_point, end_point) in blocked_moves
 
@@ -247,7 +291,21 @@ def a_star(grid, start, end, width, height, ports, straight_lines, start_name, s
 
 def reverse_a_star(grid, start_points, end, width, height, ports, straight_lines, start_name, end_dir, cell_names,
                    endpoint_mapping):
-    """Perform reverse A* from the end point to all start points."""
+    """Perform reverse A* from the end point to all start points.
+
+    :param grid: Schematic grid
+    :param start_points: Points to reach
+    :param end: Endpoint to start from
+    :param width: Width of the schematic
+    :param height: Height of the schematic
+    :param ports: Ports in the schematic
+    :param straight_lines: Already calculated paths
+    :param start_name: Name of the starting port
+    :param end_dir: Direction to end with
+    :param cell_names: Names of schematic cells
+    :param endpoint_mapping: Mapping for potential endpoints
+    :returns: Calculated path
+    """
 
     def is_segment_blocked(start_point, end_point, blocked_moves):
         return (start_point, end_point) in blocked_moves
@@ -361,7 +419,10 @@ def reverse_a_star(grid, start_points, end, width, height, ports, straight_lines
 def shorten_lists(list_of_lists):
     """
     Shortens each list by removing overlapping prefixes with the previous list.
-    The first list remains unchanged.
+    The first list remains unchanged. (Important for intersecting paths)
+
+    :param list_of_lists: Lists to shorten
+    :returns: Shortened lists
     """
     if not list_of_lists:
         return []
@@ -391,6 +452,13 @@ def shorten_lists(list_of_lists):
 
 
 def keep_corners_and_edges(lines):
+    """
+    Full paths are unnecessary for the routing.
+    Only filter for the vertices.
+
+    :param lines: Calculated paths
+    :returns: vertices
+    """
     def is_corner(prev, curr, next_item):
         # A corner exists if there is a direction change
         return ((prev[0] != curr[0] and curr[1] != next_item[1]) or
@@ -433,6 +501,10 @@ def transform_to_pairs(list_of_lists, straights):
     """
     Transforms each list in the input into a list of consecutive pairs.
     For example: [(2, 1), (5, 1), (5, 2)] -> [((2, 1), (5, 1)), ((5, 1), (5, 2))]
+
+    :param list_of_lists: List of tuple lists
+    :param straights: Straight paths
+    :returns: Straights
     """
 
     for lst in list_of_lists:
@@ -445,6 +517,13 @@ def transform_to_pairs(list_of_lists, straights):
 
 
 def sort_connections(connections):
+    """
+    Sort connections by distance.
+    Lower distance --> higher priority
+
+    :param connections: Connections between subcells
+    :returns: Prioritised connections
+    """
     # Helper function to calculate Euclidean distance
     def euclidean_distance(point1, point2):
         return math.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
@@ -485,6 +564,17 @@ def sort_connections(connections):
 
 # Draw all connections with paths
 def draw_connections(grid, connections, width, height, ports, cells):
+    """
+    Main logic for routing and evaluation of results
+
+    :param grid: Schematic grid
+    :param connections: Connections between subcells
+    :param width: width of the schematic
+    :param height: height of the schematic
+    :param ports: Ports in the schematic
+    :param cells: Cells in the schematic
+    :returns: Calculated vertices for routes
+    """
     port_drawing_dict = dict()
     straight_lines = dict()
     # Get the cell names to avoid them on the path
@@ -588,30 +678,28 @@ def draw_connections(grid, connections, width, height, ports, cells):
     return port_drawing_dict
 
 
-def calculate_vertices(outline_xy, cells, ports, connections):
-    # grid dimensions
-    grid = np.full((outline_xy[1], outline_xy[0]), '.', dtype="<U100")
-    grid[:] = '.'
-    place_cells_and_ports(grid, list(cells.values()), list(ports.values()), outline_xy[0], outline_xy[1])
-    vertices = draw_connections(grid, connections, outline_xy[0], outline_xy[1],
-                                list(ports.values()), list(cells.values()))
-    #reversed_grid = np.flipud(grid)
-    #np.set_printoptions(formatter={'all': lambda x: f'{x:5}'}, linewidth=200)
-    #print(reversed_grid)
-    return vertices
+def calculate_vertices(outline, cells, ports, connections):
+    """
+    Place elements on a grid and perform the a-star routing
 
-def check_outline_rescaling(x, y, outline):
+    :param outline: Current schematic outline
+    :param cells: Cells in the schematic
+    :param ports: Ports in the schematic
+    :param connections: Connections between subcells
+    :returns: Calculated vertices of routes
     """
-    Check if the outline should be rescaled
-    :param x: x coord
-    :param y: y coord
-    :param outline: outline coordinates
-    :returns: None
-    """
-    if x > outline[0]:
-        outline[0] = x
-    if y > outline[1]:
-        outline[1] = y
+    width = int(outline.ux - outline.lx) * 2
+    height = int(outline.uy - outline.ly) * 2
+    grid = np.full((height, width), '.', dtype="<U100")
+    grid[:] = '.'
+    place_cells_and_ports(grid, list(cells.values()), list(ports.values()), width, height)
+    # reversed_grid = np.flipud(grid)
+    # cell_width = 5
+    # for row in reversed_grid:
+    #     print(''.join(f"{cell:<{cell_width}}" for cell in row))
+    vertices = draw_connections(grid, connections, width, height,
+                                list(ports.values()), list(cells.values()))
+    return vertices
 
 def schematic_routing(node, outline=None, routing=None):
     """
@@ -625,8 +713,12 @@ def schematic_routing(node, outline=None, routing=None):
     if routing is None:
         routing = dict()
     if outline is None:
-        outline = [0, 0]
-    padding = 3
+        outline = Rect4R(lx=0, ly=0, ux=0, uy=0)
+    width = int(outline.ux - outline.lx)
+    height = int(outline.uy - outline.ly)
+    # Calculate offset for positive coordinates while routing
+    offset_x = (width  // 2) - int(outline.lx)
+    offset_y = (height // 2) - int(outline.ly)
     ports = dict()
     cells = dict()
     # mapping between net and name
@@ -636,7 +728,7 @@ def schematic_routing(node, outline=None, routing=None):
         instance_transform = instance.loc_transform()
         # Add instance for cells
         symbol_size = instance_transform * instance.symbol.outline
-        pos = Vec2R(x=symbol_size.lx, y=symbol_size.ly)
+        pos = Vec2R(x=symbol_size.lx + offset_x, y=symbol_size.ly + offset_y)
         x_size = symbol_size.ux - symbol_size.lx
         y_size = symbol_size.uy - symbol_size.ly
         instance_name = instance.full_path_str()
@@ -655,12 +747,10 @@ def schematic_routing(node, outline=None, routing=None):
             inner_x = int(inner_pos.x)
             inner_y = int(inner_pos.y)
             # print("INNER_POS: ", inner_x, inner_y)
-            inner_connections[inner_name] = (inner_x,
-                                             inner_y,
+            inner_connections[inner_name] = (inner_x + offset_x,
+                                             inner_y + offset_y,
                                              alignment,
                                              instance_name)
-            # set the outline again
-            check_outline_rescaling(inner_x, inner_y, outline)
         # add to cells dictionary
         cells[instance_name] = Cell(int(pos.x),
                                     int(pos.y),
@@ -678,9 +768,8 @@ def schematic_routing(node, outline=None, routing=None):
         # add to ports dictionary
         inner_x = int(pos.x)
         inner_y = int(pos.y)
-        check_outline_rescaling(inner_x, inner_y, outline)
-        ports[name] = Port(inner_x,
-                           inner_y,
+        ports[name] = Port(inner_x + offset_x,
+                           inner_y + offset_y,
                            name,
                            port_alignment)
 
@@ -726,8 +815,6 @@ def schematic_routing(node, outline=None, routing=None):
                     # print("append", connected_name, connection_position)
                     connections.append((ports[connected_name], connection_position))
 
-    outline[0] = outline[0] + padding
-    outline[1] = outline[1] + padding
     # Calculate the vertices and add them to the schematic
     vertices_dict = calculate_vertices(outline, cells, ports, connections)
     i = 0
@@ -737,32 +824,53 @@ def schematic_routing(node, outline=None, routing=None):
             # Set the vertices from the ports
             # Case for internal nets
             schem_part = getattr(node, name)
+            converted_vertices = list()
             if isinstance(schem_part, Net):
-                schem_part % SchemWire(vertices=[Vec2R(x=vert[0], y=vert[1]) for vert in vertices])
+                for vert in vertices:
+                    # Remove the offset
+                    converted_vertice = Vec2R(x=vert[0] - offset_x, y=vert[1] - offset_y)
+                    outline = outline.extend(converted_vertice)
+                    converted_vertices.append(converted_vertice)
+                schem_part % SchemWire(vertices=converted_vertices)
             # case for external ports
             else:
-                setattr(schem_part.ref, f"vert_{i}",
-                        SchemWire(vertices=[Vec2R(x=vert[0], y=vert[1]) for vert in vertices]))
+                for vert in vertices:
+                    # Remove the offset
+                    converted_vertice = Vec2R(x=vert[0] - offset_x, y=vert[1] - offset_y)
+                    outline = outline.extend(converted_vertice)
+                    converted_vertices.append(converted_vertice)
+                setattr(schem_part.ref, f"vert_{i}", SchemWire(vertices=converted_vertices))
             i += 1
+    return outline
 
 
 if __name__ == "__main__":
+    """
+    Test function for the routing module
+    """
     # grid dimensions
-    GRID_WIDTH = 12
-    GRID_HEIGHT = 17
-    grid = np.full((GRID_HEIGHT, GRID_WIDTH), '.', dtype="<U100")
+    GRID_WIDTH = 11
+    GRID_HEIGHT = 20
+    lx = -1
+    ly = -5
+    width = GRID_WIDTH * 2
+    height = GRID_HEIGHT * 2
+    # center in the bigger canvas and stay within positive coordinates
+    offset_x = (GRID_WIDTH  // 2) - lx
+    offset_y = (GRID_HEIGHT // 2) - ly
+    grid = np.full((height, width), '.', dtype="<U100")
 
     # Sample cells with positions (bottom-left corner) and size
     cells = [
-        Cell(4, 2, 5, 5, "pd"),
-        Cell(4, 10, 5, 5, "pu")
+        Cell(4 + offset_x, 2 + offset_y, 5, 5, "pd"),
+        Cell(4 + offset_x, 10 + offset_y, 5, 5, "pu")
     ]
 
     ports = [
-        Port(1, 1, "vss", 'E'),
-        Port(1, 15, "vdd", 'E'),
-        Port(10, 8, "y", 'W'),
-        Port(1, 8, "a", 'E')
+        Port(-1 + offset_x, -5 + offset_y, "vss", 'E'),
+        Port(1 + offset_x, 15 + offset_y, "vdd", 'E'),
+        Port(10 + offset_x, 8 + offset_y, "y", 'W'),
+        Port(1 + offset_x, 8 + offset_y, "a", 'E')
     ]
 
     # Connections list for drawing paths
@@ -779,9 +887,10 @@ if __name__ == "__main__":
 
 
     grid[:] = '.'
-    place_cells_and_ports(grid, cells, ports, GRID_WIDTH, GRID_HEIGHT)
-    draw_connections(grid, connections, GRID_WIDTH, GRID_HEIGHT, ports, cells)
+    place_cells_and_ports(grid, cells, ports, width, height)
+    draw_connections(grid, connections, width, height, ports, cells)
     # Set the print options for a fixed width of 5 characters per value
     reversed_grid = np.flipud(grid)
-    np.set_printoptions(formatter={'all': lambda x: f'{x:5}'}, linewidth=200)
-    print(reversed_grid)
+    cell_width = 5
+    for row in reversed_grid:
+        print(''.join(f"{cell:<{cell_width}}" for cell in row))

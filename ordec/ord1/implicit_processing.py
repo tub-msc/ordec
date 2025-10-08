@@ -8,13 +8,14 @@ from dataclasses import dataclass, field
 from ..core import *
 from ..ord1.optimize_position import get_pos_with_constraints
 from .. import helpers
-from ..routing import schematic_routing, check_outline_rescaling
+from ..routing import schematic_routing
 
 @dataclass
 class PostProcess:
     constraints: list = field(default_factory=list)
     routing: dict = field(default_factory=dict)
     called_instances: dict = field(default_factory=dict)
+    schem_check: bool = field(default_factory=bool)
 
 def symbol_process(node):
     """
@@ -54,9 +55,10 @@ def preprocess(self, node, outline, port_positions):
         if name in port_positions:
             position = port_positions[name]
             if position[0] is not None and position[1] is not None:
-                position = (int(position[0]), int(position[1]))
-                check_outline_rescaling(position[0], position[1], outline)
-                port.pos = Vec2R(x=position[0], y=position[1])
+                port.pos = Vec2R(x=int(position[0]), y=int(position[1]))
+                outline = outline.extend(port.pos)
+    return outline
+
 
 def add_positions_from_constraints(constraints, outline, called_instances, node):
     """
@@ -88,10 +90,11 @@ def add_positions_from_constraints(constraints, outline, called_instances, node)
             converted_pos = instance_transform * instance.symbol.outline
             # Get the inverted position in this case
             position = (int(2 * position[0] - converted_pos.lx), int(2 * position[1] - converted_pos.ly))
-        if position[0] > outline[0]:
-            outline[0] = position[0]
-        if position[1] > outline[1]:
-            outline[1] = position[1]
+
+        low_pos = Vec2R(x=converted_pos.lx, y=converted_pos.ly)
+        outline = outline.extend(low_pos)
+        up_pos = Vec2R(x=converted_pos.ux, y=converted_pos.uy)
+        outline = outline.extend(up_pos)
 
         if called_instances[ref_name] is not None:
             x = getattr(node, ref_name)
@@ -99,6 +102,9 @@ def add_positions_from_constraints(constraints, outline, called_instances, node)
             net = getattr(node, ref_name)
             x = node.one(SchemPort.ref_idx.query(net.nid))
         x.pos = Vec2R(x=position[0], y=position[1])
+        outline = outline.extend(x.pos)
+
+    return outline
 
 
 def prelim_to_real_instance(called_instances, node):
@@ -112,6 +118,23 @@ def prelim_to_real_instance(called_instances, node):
         if prelim_instance is not None:
             prelim_instance[0].from_prelim(node)
 
+def adjust_outline_after_instanciation(node, outline):
+    """
+    Adjust the outline according to the schematic instances
+
+    :param node: node instance
+    :param outline: current outline
+    """
+    for instance in node.all(SchemInstance):
+        instance_transform = instance.loc_transform()
+        instance_geometry = instance_transform * instance.symbol.outline
+        low_pos = Vec2R(x=instance_geometry.lx , y=instance_geometry.ly)
+        up_pos = Vec2R(x=instance_geometry.ux , y=instance_geometry.uy)
+        outline = outline.extend(low_pos)
+        outline = outline.extend(up_pos)
+    return outline
+
+
 def postprocess(self, node, outline, postprocess_data: PostProcess):
     """
     Function which postprocesses the schematic transformation
@@ -124,18 +147,21 @@ def postprocess(self, node, outline, postprocess_data: PostProcess):
     # Convert preliminary instances to real instances
     prelim_to_real_instance(postprocess_data.called_instances,
                             node)
+    # Adjust the outline according to the size of the sub cells
+    outline = adjust_outline_after_instanciation(node, outline)
+
     #add positions from constraints if available
-    add_positions_from_constraints(postprocess_data.constraints,
+    outline = add_positions_from_constraints(postprocess_data.constraints,
                                    outline,
                                    postprocess_data.called_instances,
                                    node)
     #do the routing
     if postprocess_data.routing.get("__self__", True) is not False:
-        schematic_routing(node, outline, postprocess_data.routing)
-    
-    #Add helpers
-    # WARNING/TODO: Temporarily disabled schem_check here for better interactivity (web):
-    #helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
-    helpers.add_conn_points(node)
+        outline = schematic_routing(node, outline, postprocess_data.routing)
 
-    node.outline = Rect4R(lx=0, ly=0, ux=outline[0], uy=outline[1])
+    #Add helpers
+    if postprocess_data.schem_check:
+        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
+
+    helpers.add_conn_points(node)
+    node.outline = outline

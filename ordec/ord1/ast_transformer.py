@@ -7,7 +7,7 @@ import ast
 #ordec imports
 from ..ord1.ast_conversion import convert_to_ast_assignment, convert_to_ast_name_store, convert_to_ast_call, \
     convert_to_ast_name_load, convert_to_ast_expr, convert_to_ast_subscript_store, \
-    convert_to_ast_constant, convert_to_ast_tuple_load, convert_to_ast_list_load, convert_to_ast_dict, \
+    convert_to_ast_constant, convert_to_ast_tuple_load, convert_to_ast_keyword, convert_to_ast_dict, \
     convert_to_ast_attribute_load, convert_to_ast_function_def
 
 
@@ -59,7 +59,8 @@ class SchematicModifier(ast.NodeTransformer):
 
 
             # Add pre and postprocess functions to the function
-            preprocess = convert_to_ast_expr(
+            preprocess = convert_to_ast_assignment(
+                convert_to_ast_name_store("outline"),
                 convert_to_ast_call(function_name=convert_to_ast_name_load("preprocess"),
                                     args=[convert_to_ast_name_load("self"),
                                           convert_to_ast_name_load("node"),
@@ -97,7 +98,14 @@ class SchematicModifier(ast.NodeTransformer):
             # add all the dictionaries for transformation
 
             outline = convert_to_ast_assignment(convert_to_ast_name_store("outline"),
-                convert_to_ast_list_load([0,0]))
+                convert_to_ast_call(function_name=convert_to_ast_name_load("Rect4R"),
+                                    keywords=[
+                                        convert_to_ast_keyword('lx', convert_to_ast_constant(0)),
+                                        convert_to_ast_keyword('ly', convert_to_ast_constant(0)),
+                                        convert_to_ast_keyword('ux', convert_to_ast_constant(0)),
+                                        convert_to_ast_keyword('uy', convert_to_ast_constant(0)),
+                                    ])
+            )
             port_positions = convert_to_ast_assignment(convert_to_ast_name_store("port_positions"),
                 convert_to_ast_dict())
 

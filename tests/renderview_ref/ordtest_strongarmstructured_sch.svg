@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="2240.0px" height="1295.0px" viewBox="-1.0 -1.0 64.0 37.0">
+<svg xmlns="http://www.w3.org/2000/svg" width="2275.0px" height="1190.0px" viewBox="-5.0 -1.0 65.0 34.0">
   <style type="text/css">svg { stroke-linecap: butt; stroke-linejoin: bevel; } text { font-size: 11pt; font-family: "Inconsolata", monospace; font-stretch: 75%; } .instanceName { font-weight: bold; fill: #f00; } .pinLabel, .pinArrow { fill: #f00; } .params, .cellName { fill: #80b380; } .symbolOutline { stroke: #80b380; } .symbolPoly { stroke: #000; } .symbolOutline, .symbolPoly, .schemWire, .tapPoint { fill: none; stroke-width: 0.1; } #grid { fill: #ccc; } .schemWire, .tapPoint { stroke: #cc0; } .schemWire { stroke-linecap: square; } .connPoint, .tapPointLabel { fill: #cc0; } .portArrow, .portLabel { fill: #39f; }</style>
-  <g transform="matrix(1 0 0 -1 0 35.0)">
+  <g transform="matrix(1 0 0 -1 0 32.0)">
     <path d="M41.0 15.0 L41.0 14.0 L41.0 11.0" class="schemWire" />
     <path d="M41.0 14.0 L57.0 14.0 L57.0 22.0" class="schemWire" />
     <path d="M39.0 23.0 L38.0 23.0 L38.0 21.0 L38.0 17.0 L39.0 17.0" class="schemWire" />
