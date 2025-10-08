@@ -73,7 +73,7 @@ class Renderer:
         else:    
             self.group_stack.append(ET.SubElement(self.cur_group, 'g'))
         if node and self.include_nids:
-            self.cur_group.attrib['id'] = f'nid{node.nid}'
+            self.cur_group.attrib['class'] = f'nid{node.nid}'
         try:
             yield 
         finally:
@@ -272,7 +272,7 @@ class SchematicRenderer(Renderer):
             fill: none;
             stroke-width: 0.1;
         }
-        #grid {
+        .grid {
             fill: #ccc;
         }
         .schemWire, .tapPoint {
@@ -296,7 +296,7 @@ class SchematicRenderer(Renderer):
     def draw_grid(self, rect: Rect4R, dot_size: float = 0.1):
         lx, ly, ux, uy = rect.tofloat()
         with self.subgroup():
-            self.cur_group.attrib['id']='grid'
+            self.cur_group.attrib['class']='grid'
 
             for x in range(math.floor(lx), math.ceil(ux)+1):
                 for y in range(math.floor(ly), math.ceil(uy)+1):

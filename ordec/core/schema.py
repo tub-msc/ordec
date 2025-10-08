@@ -79,8 +79,13 @@ class Pin(Node):
     pos     = Attr(Vec2R)
     align   = Attr(D4, default=D4.R0)
  
+class PolyType(Enum):
+    POLYGONAL_CHAIN = 0 #: Can be either an open or closed polygonal chain. Closed if last and first vertex are equal.
+    CLOSED_POLYGON = 1 #: Always a closed polygon. Last and first vertex should not be equal.
+
 class GenericPoly(Node):
     in_subgraphs = [Symbol]
+    polytype = PolyType.POLYGONAL_CHAIN
 
     def __new__(cls, vertices:list[Vec2R]=None, **kwargs):
         main = super().__new__(cls, **kwargs)
@@ -104,14 +109,20 @@ class GenericPoly(Node):
         vertices = [c.pos for c in self.vertices]
         x, y = vertices[0].tofloat()
         d.append(f"M{x} {y}")
-        for point in vertices[1:-1]:
-            x, y = point.tofloat()
-            d.append(f"L{x} {y}")
-        if vertices[-1] == vertices[0]:
-            d.append("Z")
+        if self.polytype == PolyType.POLYGONAL_CHAIN:
+            for point in vertices[1:-1]:
+                x, y = point.tofloat()
+                d.append(f"L{x} {y}")
+            if vertices[-1] == vertices[0]:
+                d.append("Z")
+            else:
+                x, y = vertices[-1].tofloat()
+                d.append(f"L{x} {y}")
         else:
-            x, y = vertices[-1].tofloat()
-            d.append(f"L{x} {y}")
+            for point in vertices[1:]:
+                x, y = point.tofloat()
+                d.append(f"L{x} {y}")
+            d.append("Z")
         return ' '.join(d)
 
     @property
@@ -119,19 +130,19 @@ class GenericPoly(Node):
         return self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid))
 
 class GenericPolyR(GenericPoly):
-    pass
+    """Base class for polygon or polygonal chain classes (rational numbers)."""
 
 class GenericPolyI(GenericPoly):
-    pass
-
+    """Base class for polygon or polygonal chain classes (integer numbers)."""
 
 @public
 class SymbolPoly(GenericPolyR):
-    pass
+    """A drawn polygonal chain in Symbol. For visual purposes only."""
+    polytype = PolyType.POLYGONAL_CHAIN
 
 @public
 class SymbolArc(Node):
-    """A drawn circle or circular segment for use in Symbol."""
+    """A drawn circle or circular segment in Symbol. For visual purposes only."""
     in_subgraphs = [Symbol]
 
     pos         = Attr(Vec2R) #: Center point
@@ -176,9 +187,7 @@ class SymbolArc(Node):
 
 @public
 class Schematic(SubgraphRoot):
-    """
-    A schematic of an individual cell.
-    """
+    """A schematic of an individual cell."""
     symbol = SubgraphRef(Symbol)
     outline = Attr(Rect4R)
     cell = Attr(Cell)
@@ -213,6 +222,7 @@ class SchemPort(Node):
 @public
 class SchemWire(GenericPolyR):
     """A drawn schematic wire representing an electrical connection."""
+    polytype = PolyType.POLYGONAL_CHAIN
     in_subgraphs = [Schematic]
 
     ref = LocalRef(Net, optional=False)
@@ -245,9 +255,7 @@ class SchemInstance(Node):
 
 @public
 class SchemInstanceConn(Node):
-    """
-    Maps Pins of a SchemInstance to Nets of its Schematic.
-    """
+    """Maps Pins of a SchemInstance to Nets of its Schematic."""
     in_subgraphs = [Schematic]
 
     ref = LocalRef(SchemInstance, optional=False)
@@ -260,7 +268,10 @@ class SchemInstanceConn(Node):
 
 @public
 class SchemTapPoint(Node):
-    """A schematic tap point for connecting points by label, typically visualized using the net's name."""
+    """
+    A schematic tap point for connecting points by label, typically visualized
+    using the net's name.
+    """
     in_subgraphs = [Schematic]
 
     ref = LocalRef(Net, optional=False)
@@ -415,25 +426,24 @@ class Label(Node):
 @public
 class LayoutPoly(GenericPolyI):
     """
-    Simple (no self intersections) polygon with CCW orientation.
+    Simple (no self intersection, no holes) polygon with CCW orientation.
+    (LayoutPoly cannot represent an open polygonal chain. Thus, the first and
+    last vertex should not be identical.)
 
-    At GDS import, simplicity is currently assumed, and CW polygons are
-    flipped automatically.
+    At GDS import, the "simple" property is currently assumed, and CW polygons
+    are flipped automatically to CCW orientation.
     """
+    polytype = PolyType.CLOSED_POLYGON
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
-
 
 # Misc
 # ----
 
 @public
 class PolyVec2R(Node):
-    """
-    One element/point of a Vec2R polygonal chain, which can be open or closed.
-    A polygonal chain is closed if the last and first element are equivalent.
-    """
+    """One vertex of a Vec2R polygonal chain or polygon."""
     in_subgraphs = [Symbol, Schematic]
     ref    = LocalRef(GenericPolyR, optional=False)
     order   = Attr(int, optional=False) #: Order of the point in the polygonal chain
@@ -443,10 +453,7 @@ class PolyVec2R(Node):
 
 @public
 class PolyVec2I(Node):
-    """
-    One element/point of a Vec2I polygonal chain, which can be open or closed.
-    A polygonal chain is closed if the last and first element are equivalent.
-    """
+    """One vertex of a Vec2I polygonal chain or polygon."""
     in_subgraphs = [Layout]
     ref    = LocalRef(GenericPolyI, optional=False)
     order   = Attr(int, optional=False) #: Order of the point in the polygonal chain

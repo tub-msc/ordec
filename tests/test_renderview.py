@@ -6,7 +6,7 @@ Comparing symbol + schematic images to reference images.
 
 To copy test results in as reference:
 
-    cp /tmp/pytest-of-[username]/pytest-current/test_renderview*/*.svg [dir]/tests/renderview_ref
+    cp /tmp/pytest-of-$USER/pytest-current/test_renderview*/*.svg tests/renderview_ref
 """
 
 import pytest
