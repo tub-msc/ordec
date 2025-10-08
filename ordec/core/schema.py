@@ -308,7 +308,7 @@ def parent_siminstance(c: Node) -> Node:
 
 @public
 class SimHierarchy(SubgraphRoot):
-    schematic = SubgraphRef(Schematic) # TODO: This should be optional=False.
+    schematic = SubgraphRef(Schematic)
     cell = Attr(Cell)
     sim_type = Attr(SimType)
     time = Attr(tuple)
@@ -364,7 +364,10 @@ class SimNet(Node):
     ac_current = Attr(tuple)
     dc_voltage = Attr(float)
 
-    eref = ExternalRef(Net|Pin, of_subgraph=lambda c: parent_siminstance(c).schematic) # TODO: This should be optional=False.
+    eref = ExternalRef(Net|Pin,
+        of_subgraph=lambda c: parent_siminstance(c).schematic,
+        optional=False,
+        )
 
 @public
 class SimInstance(NonLeafNode):
@@ -373,8 +376,13 @@ class SimInstance(NonLeafNode):
     ac_current = Attr(tuple)
     dc_current = Attr(float)
 
-    schematic = SubgraphRef(Symbol|Schematic, typecheck_custom=lambda v: isinstance(v, (Symbol, Schematic))) # TODO: This should be optional=False.
-    eref = ExternalRef(SchemInstance, of_subgraph=lambda c: parent_siminstance(c.parent).schematic) # TODO: This should be optional=False.
+    schematic = SubgraphRef(Symbol|Schematic,
+        typecheck_custom=lambda v: isinstance(v, (Symbol, Schematic)),
+        )
+    eref = ExternalRef(SchemInstance,
+        of_subgraph=lambda c: parent_siminstance(c.parent).schematic,
+        optional=False,
+        )
 
 # LayerStack
 # ----------
