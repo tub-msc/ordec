@@ -329,16 +329,15 @@ class FFIWorkerProcess:
                         # Check if simulation finished
                         if not self.backend.is_running():
                             self._async_active.clear()
-                            # Implement data fallback mechanism
-                            self._handle_data_fallback()
 
-                            # Drain any remaining data
+                            # Drain any remaining data first
                             remaining_count = 0
                             while (
-                                remaining_count < 100
+                                remaining_count < 1000
                             ):  # Limit to prevent infinite loop
                                 try:
                                     data_point = ffi_queue.get_nowait()
+
                                     if isinstance(data_point, dict):
                                         if self._progress_lock:
                                             self._progress_lock.acquire()
@@ -346,12 +345,7 @@ class FFIWorkerProcess:
                                             if "progress" not in data_point:
                                                 data_point["progress"] = 1.0
                                             else:
-                                                # Ensure final progress doesn't go backwards
-                                                data_point["progress"] = max(
-                                                    data_point["progress"],
-                                                    self._last_progress,
-                                                    1.0,
-                                                )
+                                                data_point["progress"] =self._last_progress
                                             self._last_progress = data_point["progress"]
                                         finally:
                                             if self._progress_lock:
@@ -364,6 +358,7 @@ class FFIWorkerProcess:
                                     remaining_count += 1
                                 except queue_module.Empty:
                                     break
+
                             break
                         # Continue waiting for data
                         continue

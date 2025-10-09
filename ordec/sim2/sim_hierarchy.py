@@ -416,6 +416,10 @@ class HighlevelSim:
     def alter_session(self, backend=None, debug=False):
         use_backend = backend or self.backend
         with Ngspice.launch(debug=debug, backend=use_backend) as ngspice_sim:
+            # Execute simulation setup hooks (e.g., for IHP technology)
+            for hook in self.sim_setup_hooks:
+                hook(ngspice_sim)
+
             try:
                 yield AlterSession(self, ngspice_sim)
             finally:

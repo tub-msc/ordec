@@ -315,6 +315,29 @@ def test_highlevel_async_parameter_sweep(backend):
 
 @pytest.mark.libngspice
 @pytest.mark.parametrize("backend", ["subprocess", "ffi", "mp"])
+def test_highlevel_async_ihp_inverter(backend):
+    """Test async transient simulation with IHP inverter."""
+    h = lib_test.InvIhpTb(vin=R(2.5), backend=backend)
+
+    data_points = []
+    for i, result in enumerate(
+        h.sim_tran_async("0.1u", "1u", enable_savecurrents=False)
+    ):
+        data_points.append(result)
+        if i >= 5:
+            break
+
+    assert len(data_points) >= 1
+
+    final_result = data_points[-1]
+    assert hasattr(final_result, "o")
+    assert hasattr(final_result.o, "value")
+    assert hasattr(final_result.o, "kind")
+    assert isinstance(final_result.o.value, (int, float))
+
+
+@pytest.mark.libngspice
+@pytest.mark.parametrize("backend", ["subprocess", "ffi", "mp"])
 def test_async_alter_resume(backend):
     circuit = RCAlterTestbench()
     node = SimHierarchy()
