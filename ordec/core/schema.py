@@ -42,6 +42,12 @@ def rgb_color(s) -> RGBColor:
         raise ValueError("rgb_color expects string like '#0012EF'.")
     return RGBColor(int(s[1:3], 16), int(s[3:5], 16), int(s[5:7], 16))
 
+@public
+class PathEndType(Enum):
+    """Could also be named 'linecap'."""
+    FLUSH = 0
+    SQUARE = 2
+
 # Symbol
 # ------
 
@@ -104,6 +110,7 @@ class GenericPoly(Node):
         """
         Returns string representation of polygon suitable for
         "d" attribute of SVG <path>.
+
         """
         d = []
         vertices = [c.pos for c in self.vertices]
@@ -424,7 +431,7 @@ class Layout(SubgraphRoot):
         #return render(self).webdata()
 
 @public
-class Label(Node):
+class LayoutLabel(Node):
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
@@ -444,6 +451,18 @@ class LayoutPoly(GenericPolyI):
     polytype = PolyType.CLOSED_POLYGON
     in_subgraphs = [Layout]
 
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+
+@public
+class LayoutPath(GenericPolyI):
+    """
+    Layout path (polygonal chain with width).
+    """
+    polytype = PolyType.POLYGONAL_CHAIN
+    in_subgraphs = [Layout]
+
+    endtype = Attr(PathEndType, default=PathEndType.FLUSH)
+    width = Attr(int)
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 
 # Misc

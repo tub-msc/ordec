@@ -47,7 +47,7 @@ def layout_webdata(layout: Layout.Frozen):
             'vertices': vertices_flat,
         })
 
-    for label in layout.all(Label):
+    for label in layout.all(LayoutLabel):
         extent_add_vertex(label.pos)
 
         weblayer = get_weblayer(label.layer)
