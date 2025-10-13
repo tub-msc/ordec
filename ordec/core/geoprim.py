@@ -28,6 +28,16 @@ class Vec2Generic(tuple):
     def __sub__(self, other):
         return type(self)(self.x-other.x, self.y-other.y)
 
+    def __neg__(self):
+        return type(self)(-self.x, -self.y)
+
+    def __mul__(self, other):
+        # Multiplication with scalar
+        return type(self)(other*self.x, other*self.y)
+
+    def __rmul__(self, other):
+        return self.__mul__(other)
+
     def __repr__(self):
         return f"{type(self).__name__}({self.x!r}, {self.y!r})"
 

@@ -204,3 +204,11 @@ def test_mix_types():
 
     assert Rect4R(10, 30, 20, 40).extend(Vec2I(15, 55)) == Rect4R(10, 30, 20, 55)
     assert Rect4I(10, 30, 20, 40).extend(Vec2R(15, 55)) == Rect4I(10, 30, 20, 55)
+
+def test_neg():
+    assert -Vec2R(123, 456) == Vec2R(-123, -456)
+    assert -Vec2I(222, 333) == Vec2I(-222, -333)
+
+def test_scalar_mul():
+    assert Vec2I(5, 6)*10 == Vec2I(50, 60)
+    assert 10*Vec2I(5, 6) == Vec2I(50, 60)
