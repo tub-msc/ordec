@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+from functools import partial
 from gdsii.library import Library
 import gdsii.elements
 import gdsii.structure
@@ -93,33 +94,18 @@ def read_gds_structure(structure: gdsii.structure.Structure, layers: LayerStack,
 
     return layout.freeze()
 
-def read_gds(gds_fn, layers, top=None):
+def gds_discover(gds_fn, layers):
     with open(gds_fn, 'rb') as stream:
         lib = Library.load(stream)
 
-    # This rounds the GDS units to the closest round decimal fractions:
     unit = R(format(lib.physical_unit, '.4e'))
     if unit != layers.unit:
         raise Exception("GDS unit is not equal to layers.unit")
-    #logical_unit = R(format(lib.logical_unit, '.4e'))
-    # 'unit' is the scaling factor to convert the database numbers to Rational
-    # numbers in SI scale (which is what ORDeC uses for now).
-
-    #print(SG13G2().layers.tables())
-
-    layouts = {}
+    
+    layout_lambdas = {}
 
     for structure in lib:
         name = structure.name.decode('ascii')
-        if top and name != top:
-            continue
+        layout_lambdas[name] = partial(read_gds_structure, structure, layers, unit)
 
-        layout = read_gds_structure(structure, layers, unit)
-
-        #for p in layout.all(LayoutPoly):
-        #    print(p.layer.full_path_str(), p.vertices())
-
-        #print(layout.tables())
-        layouts[name] = layout
-
-    return layouts
+    return layout_lambdas

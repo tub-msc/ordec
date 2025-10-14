@@ -7,8 +7,10 @@ import importlib.resources
 import pytest
 
 import ordec.layout
+from ordec.layout.read_gds import GdsReaderException
 from ordec.layout.helpers import paths_to_poly, poly_orientation
 from ordec.core import *
+from ordec.extlibrary import ExtLibrary, ExtLibraryError
 
 # def test_read_gds():
 #     ihp_path = Path(os.getenv("ORDEC_PDK_IHP_SG13G2"))
@@ -18,10 +20,26 @@ from ordec.core import *
 
 gds_dir = importlib.resources.files("tests.layout_gds")
 
-def test_gds_polygon():
-    gds_fn = gds_dir / 'test_polygon.gds'
+def test_extlibrary():
+    # This test is very bare-bones at the moment.
+
+    lib = ExtLibrary()
     tech_layers = ordec.layout.SG13G2().layers
-    layout = ordec.layout.read_gds(gds_fn, tech_layers, 'TOP')['TOP']
+    lib.read_gds(gds_dir / 'test_polygon.gds', tech_layers)
+    
+    lib['TOP'].layout
+
+    with pytest.raises(ExtLibraryError, match="No layout source found for cell"):
+        lib['undefined'].layout
+
+    with pytest.raises(ExtLibraryError, match="Multiple layout sources found for cell"):
+        lib.read_gds(gds_dir / 'test_polygon.gds', tech_layers)
+
+def test_gds_polygon():
+    tech_layers = ordec.layout.SG13G2().layers
+    lib = ExtLibrary()
+    lib.read_gds(gds_dir / 'test_polygon.gds', tech_layers)
+    layout = lib['TOP'].layout
     #print(layout.tables())
     polys = list(layout.all(LayoutPoly))
     assert len(polys) == 1
@@ -42,9 +60,10 @@ def test_gds_polygon():
 
 @pytest.mark.parametrize("endtype", ['flush', 'square'])
 def test_gds_path(endtype):
-    gds_fn = gds_dir / f'test_path_{endtype}.gds'
     tech_layers = ordec.layout.SG13G2().layers
-    layout = ordec.layout.read_gds(gds_fn, tech_layers, 'TOP')['TOP']
+    lib = ExtLibrary()
+    lib.read_gds(gds_dir / f'test_path_{endtype}.gds', tech_layers)
+    layout = lib['TOP'].layout
     #print(layout.tables())
     paths = list(layout.all(LayoutPath))
     assert len(paths) == 1
@@ -59,10 +78,12 @@ def test_gds_path(endtype):
     assert path.endtype == expected_endtype
 
 def test_gds_path_round_unsupported():
-    gds_fn = gds_dir / f'test_path_round.gds'
     tech_layers = ordec.layout.SG13G2().layers
-    with pytest.raises(ordec.layout.GdsReaderException, match="GDS Path with path_type=1"):
-        ordec.layout.read_gds(gds_fn, tech_layers, 'TOP')['TOP']
+    lib = ExtLibrary()
+    lib.read_gds(gds_dir / f'test_path_round.gds', tech_layers)
+
+    with pytest.raises(GdsReaderException, match="GDS Path with path_type=1"):
+        layout = lib['TOP'].layout
 
 def test_paths_to_poly_lshapes():
     """
