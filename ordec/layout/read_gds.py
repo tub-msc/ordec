@@ -5,36 +5,13 @@ from gdsii.library import Library
 import gdsii.elements
 import gdsii.structure
 
-from ordec.core import *
+from ..core import *
+from .helpers import poly_orientation
 
 # python-gdsii was chosen over gdstk. The problem with gdstk is that it converts
 # everything to floats (more or less destructively). python-gdsii exposes the
 # raw integer values.
 
-
-def poly_orientation(vertices: list[Vec2R]):
-    """
-    Returns either 'cw' or 'ccw'.
-    Warning: Does not work for complex (i.e. self-intersecting) polygons!
-    """
-
-    # See https://en.wikipedia.org/wiki/Curve_orientation#Orientation_of_a_simple_polygon
-    B_idx = 0
-    B = vertices[0]
-    for v_idx, v in enumerate(vertices):
-        if (v.x < B.x) or ((v.x == B.x) and (v.y < B.y)):
-            B_idx = v_idx
-            B = v
-    A = vertices[(B_idx - 1) % len(vertices)]
-    C = vertices[(B_idx + 1) % len(vertices)]
-
-    det = (B.x-A.x)*(C.y-A.y) - (C.x-A.x)*(B.y-A.y)
-    if (A == B) or (B == C) or (det == 0):
-        raise ValueError("Invalid polygon.")
-    if det < 0:
-        return 'cw'
-    else:
-        return 'ccw'
 
 class GdsReaderException(Exception):
     pass

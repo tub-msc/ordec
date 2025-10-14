@@ -7,7 +7,7 @@ import importlib.resources
 import pytest
 
 import ordec.layout
-from ordec.layout.helpers import paths_to_poly
+from ordec.layout.helpers import paths_to_poly, poly_orientation
 from ordec.core import *
 
 # def test_read_gds():
@@ -104,13 +104,14 @@ def test_paths_to_poly_lshapes():
             vertices = [v.pos for v in poly.vertices]
 
             assert vertices == [
-                Vec2I(x*500, x*50),
-                Vec2I(y*50, x*50),
-                Vec2I(y*50, y*500),
                 Vec2I(-y*50, y*500),
                 Vec2I(-y*50, -x*50),
                 Vec2I(x*500, -x*50),
+                Vec2I(x*500, x*50),
+                Vec2I(y*50, x*50),
+                Vec2I(y*50, y*500),
             ]
+            assert poly_orientation(vertices) == 'ccw'
 
             # Test path to poly with PathEndType.SQUARE:
             paths_to_poly(l_square)
@@ -121,13 +122,55 @@ def test_paths_to_poly_lshapes():
             vertices = [v.pos for v in poly.vertices]
 
             assert vertices == [
-                Vec2I(x*550, x*50),
-                Vec2I(y*50, x*50),
-                Vec2I(y*50, y*550),
                 Vec2I(-y*50, y*550),
                 Vec2I(-y*50, -x*50),
                 Vec2I(x*550, -x*50),
+                Vec2I(x*550, x*50),
+                Vec2I(y*50, x*50),
+                Vec2I(y*50, y*550),
             ]
+
+def test_paths_to_poly_complex():
+    layers = ordec.layout.SG13G2().layers
+    
+    l = Layout(ref_layers=layers)
+    l % LayoutPath(
+        width=100,
+        endtype=PathEndType.FLUSH,
+        layer=layers.Metal3,
+        vertices=[
+            Vec2I(0, 0),
+            Vec2I(0, 1000),
+            Vec2I(1000, 1000),
+            Vec2I(1000, 0),
+            Vec2I(800, 0),
+            Vec2I(800, 800),
+            Vec2I(200, 800),
+            Vec2I(200, 0),
+        ],
+    )
+
+    paths_to_poly(l)
+
+    vertices = [v.pos for v in l.one(LayoutPoly).vertices]
+    assert vertices ==[
+        Vec2I(250, 0),
+        Vec2I(250, 750),
+        Vec2I(750, 750),
+        Vec2I(750, -50),
+        Vec2I(1050, -50),
+        Vec2I(1050, 1050),
+        Vec2I(-50, 1050),
+        Vec2I(-50, 0),
+        Vec2I(50, 0),
+        Vec2I(50, 950),
+        Vec2I(950, 950),
+        Vec2I(950, 50),
+        Vec2I(850, 50),
+        Vec2I(850, 850),
+        Vec2I(150, 850),
+        Vec2I(150, 0),
+    ]
 
 def test_paths_to_poly_straight_segment():
     """
@@ -156,10 +199,10 @@ def test_paths_to_poly_straight_segment():
     poly = polys[0]
     vertices = [v.pos for v in poly.vertices]
     assert vertices == [
-        Vec2I(50, 0),
-        Vec2I(50, 1000),
         Vec2I(-50, 1000),
         Vec2I(-50, 0),
+        Vec2I(50, 0),
+        Vec2I(50, 1000),
     ]
 
 def test_paths_to_poly_invalid():
