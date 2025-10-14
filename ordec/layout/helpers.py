@@ -37,16 +37,17 @@ def iter_triplets(vertices):
     This function is meant for traversing the vertices of a LayoutPath.
     Thus, the iterable must return at least two elements.
     """
-    
+    it = iter(vertices)
+
     try:
-        frame = [None, next(vertices).pos, next(vertices).pos]
+        frame = [None, next(it), next(it)]
     except StopIteration:
         raise ValueError("Too few vertices in path (must have at least two).")
     yield frame
     while True:
         frame.pop(0)
         try:
-            frame.append(next(vertices).pos)
+            frame.append(next(it))
         except StopIteration:
             break
         yield frame
@@ -80,7 +81,7 @@ def path_to_poly_vertices(path: LayoutPath) -> list[Vec2I]:
         raise ValueError(f"Path width must be multiple of two (is {path.width}.")
     halfwidth = path.width // 2
     outline = []
-    for pred, cur, succ in iter_triplets(path.vertices):
+    for pred, cur, succ in iter_triplets(path.vertices()):
         extension = Vec2I(0, 0)
         if pred == None:
             # cur is first vertex of path
@@ -120,6 +121,4 @@ def paths_to_poly(layout: Layout):
             vertices=vertices_loop,
             )
 
-        for v in old_path.vertices:
-            v.remove()
         old_path.remove()

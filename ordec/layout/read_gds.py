@@ -117,7 +117,7 @@ def read_gds(gds_fn, layers, top=None):
         layout = read_gds_structure(structure, layers, unit)
 
         #for p in layout.all(LayoutPoly):
-        #    print(p.layer.full_path_str(), [v.pos for v in p.vertices])
+        #    print(p.layer.full_path_str(), p.vertices())
 
         #print(layout.tables())
         layouts[name] = layout

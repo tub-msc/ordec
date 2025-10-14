@@ -113,7 +113,7 @@ class GenericPoly(Node):
 
         """
         d = []
-        vertices = [c.pos for c in self.vertices]
+        vertices = self.vertices()
         x, y = vertices[0].tofloat()
         d.append(f"M{x} {y}")
         if self.polytype == PolyType.POLYGONAL_CHAIN:
@@ -132,9 +132,14 @@ class GenericPoly(Node):
             d.append("Z")
         return ' '.join(d)
 
-    @property
-    def vertices(self):
-        return self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid))
+    def vertices(self) -> 'list[Vec2R | Vec2I]':
+        polyvecs = self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid))
+        return [polyvec.pos for polyvec in polyvecs]
+
+    def remove(self):
+        for vertex in self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid)):
+            vertex.remove()
+        return super().remove()
 
 class GenericPolyR(GenericPoly):
     """Base class for polygon or polygonal chain classes (rational numbers)."""

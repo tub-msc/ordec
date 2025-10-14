@@ -646,15 +646,8 @@ def test_cursor_paths_unique():
 
 def test_polyvec2r():
     s = Symbol()
-
     s.poly = SymbolPoly(vertices=[Vec2R(1, 1), Vec2R(1, 3), Vec2R(3, 3)])
-    
-    it = iter(s.poly.vertices)
-    assert next(it).pos == Vec2R(1, 1)
-    assert next(it).pos == Vec2R(1, 3)
-    assert next(it).pos == Vec2R(3, 3)
-    with pytest.raises(StopIteration):
-        next(it)
+    assert s.poly.vertices() == [Vec2R(1, 1), Vec2R(1, 3), Vec2R(3, 3)]
 
 def test_polyvec2r_typecheck():
     s = Symbol()
@@ -665,7 +658,7 @@ def test_polyvec2r_typecheck():
     with pytest.raises(ModelViolation):
         s.poly % PolyVec2I(order=1, pos=Vec2I(3,4))
 
-    assert [v.pos for v in s.poly.vertices] == [Vec2R(1, 2), Vec2R(3, 4)]
+    assert s.poly.vertices() == [Vec2R(1, 2), Vec2R(3, 4)]
 
 def test_npath_double_reference():
     s = MyHead()

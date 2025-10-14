@@ -27,12 +27,11 @@ def test_gds_polygon():
     assert len(polys) == 1
     poly = polys[0]
     assert poly.layer == tech_layers.Metal1
-    vertices = [v.pos for v in poly.vertices]
     # L-shaped polygon:
     # ┌┐
     # │└┐
     # └─┘
-    assert vertices == [
+    assert poly.vertices() == [
         Vec2I(320, 0),
         Vec2I(320, 160),
         Vec2I(160, 160),
@@ -51,8 +50,7 @@ def test_gds_path(endtype):
     assert len(paths) == 1
     path = paths[0]
     assert path.layer == tech_layers.Metal1
-    vertices = [v.pos for v in path.vertices]
-    assert vertices == [
+    assert path.vertices() == [
         Vec2I(0, 0),
         Vec2I(0, 500),
         Vec2I(500, 500),
@@ -100,10 +98,7 @@ def test_paths_to_poly_lshapes():
             poly = polys[0]
 
             assert poly.layer == layers.Metal1
-
-            vertices = [v.pos for v in poly.vertices]
-
-            assert vertices == [
+            assert poly.vertices() == [
                 Vec2I(-y*50, y*500),
                 Vec2I(-y*50, -x*50),
                 Vec2I(x*500, -x*50),
@@ -111,7 +106,7 @@ def test_paths_to_poly_lshapes():
                 Vec2I(y*50, x*50),
                 Vec2I(y*50, y*500),
             ]
-            assert poly_orientation(vertices) == 'ccw'
+            assert poly_orientation(poly.vertices()) == 'ccw'
 
             # Test path to poly with PathEndType.SQUARE:
             paths_to_poly(l_square)
@@ -119,9 +114,7 @@ def test_paths_to_poly_lshapes():
             polys = list(l_square.all(LayoutPoly))
             assert len(polys) == 1
             poly = polys[0]
-            vertices = [v.pos for v in poly.vertices]
-
-            assert vertices == [
+            assert poly.vertices() == [
                 Vec2I(-y*50, y*550),
                 Vec2I(-y*50, -x*50),
                 Vec2I(x*550, -x*50),
@@ -152,8 +145,7 @@ def test_paths_to_poly_complex():
 
     paths_to_poly(l)
 
-    vertices = [v.pos for v in l.one(LayoutPoly).vertices]
-    assert vertices ==[
+    assert l.one(LayoutPoly).vertices() ==[
         Vec2I(250, 0),
         Vec2I(250, 750),
         Vec2I(750, 750),
@@ -197,8 +189,7 @@ def test_paths_to_poly_straight_segment():
     polys = list(l.all(LayoutPoly))
     assert len(polys) == 1
     poly = polys[0]
-    vertices = [v.pos for v in poly.vertices]
-    assert vertices == [
+    assert poly.vertices() == [
         Vec2I(-50, 1000),
         Vec2I(-50, 0),
         Vec2I(50, 0),
