@@ -35,8 +35,8 @@ if(debug) {
 ResultViewer.refreshAll = Boolean(urlParams.get('refreshall'));
 
 // the module= URL paramter is used to work on an external module rather than use the source editor.
-const localModule = urlParams.get('module');
-const localModuleView = urlParams.get('view');
+const queryLocal = urlParams.get('local');
+const queryHmac = urlParams.get('hmac');
 
 
 function getSourceType() {
@@ -153,34 +153,71 @@ sourceTypeSelect.onchange = () => {
     window.ordecClient.connect();
 };
 
-if(localModule) {
-    // If localModule is set, the web UI is used in **local mode**.
+async function authenticateLocalQuery(queryLocal, queryHmac) {
+    const hmacAuthKeyCrypto = await window.crypto.subtle.importKey(
+        'raw',
+        Uint8Array.fromHex(window.ordecClient.getAuthCookie()),
+        {name: 'HMAC', hash: {name: 'SHA-256'}},
+        false,
+        ['verify']
+    );
+
+    const encoder = new TextEncoder();
+    const valid = await window.crypto.subtle.verify(
+        'HMAC',
+        hmacAuthKeyCrypto,
+        Uint8Array.fromHex(queryHmac),
+        encoder.encode(queryLocal)
+    );
+
+    if(valid) {
+        const s = queryLocal.split(":", 2);
+        return {
+            module: s[0],
+            view: s[1],
+        };
+    } else {
+        return null;
+    }
+}
+
+if(queryLocal) {
+    // If queryLocal is set, the web UI is used in **local mode**.
     // In this case, only a single result view is opened by default.
 
-    document.querySelector("#toolSourcetype").style.display='none';
+    // To prevent CSRF attacks, queryLocal is authenticated using the queryHmac
+    // parameter.
 
-    const uistate = {
-        "content": [
-            {
-                "type": "row",
-                "content": [
-                    {
-                        "type": "component",
-                        "title": "Result View",
-                        "componentName": "result",
-                        "componentState": {
-                            "view": localModuleView,
+    const local = await authenticateLocalQuery(queryLocal, queryHmac);
+
+    if(local) {
+        document.querySelector("#toolSourcetype").style.display='none';
+
+        const uistate = {
+            "content": [
+                {
+                    "type": "row",
+                    "content": [
+                        {
+                            "type": "component",
+                            "title": "Result View",
+                            "componentName": "result",
+                            "componentState": {
+                                "view": local.view,
+                            }
                         }
-                    }
-                ]
-            }
-        ]
-    }; 
-    uistate.header = {popout: false};
+                    ]
+                }
+            ]
+        }; 
+        uistate.header = {popout: false};
 
-    layout.loadLayout(uistate);
-    window.ordecClient.localModule = localModule;
-    window.ordecClient.connect();
+        layout.loadLayout(uistate);
+        window.ordecClient.localModule = local.module;
+        window.ordecClient.connect();
+    } else {
+        console.error("HMAC authentication of 'local' parameter failed.");
+    }
 } else {
     // If localModule is null, the web UI is used in **integrated mode**.
     // In this case, the source code is entered through the web editor.

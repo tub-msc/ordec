@@ -90,11 +90,11 @@ testcases_local = {
 @dataclass
 class WebserverInfo:
     url: str
-    auth_token: str
+    key: server.ServerKey
 
 @pytest.fixture(scope="session", autouse=True)
 def webserver():
-    auth_token = secrets.token_urlsafe()
+    key = server.ServerKey()
     # Using a port other than 8100 makes it possible to run the tests
     # while having another independent ordec-server running.
     port = 8102
@@ -103,10 +103,10 @@ def webserver():
     static_handler = server.StaticHandler(tar)
 
     t = threading.Thread(target=server.server_thread,
-        args=('127.0.0.1', port, static_handler, auth_token), daemon=True)
+        args=('127.0.0.1', port, static_handler, key), daemon=True)
     t.start()
     time.sleep(1) # Delay for server startup
-    yield WebserverInfo(f"http://127.0.0.1:{port}/", auth_token)
+    yield WebserverInfo(f"http://127.0.0.1:{port}/", key)
     # Server will stop when pytest exits.
 
 @pytest.mark.web
@@ -146,7 +146,7 @@ def request_integrated_example(webserver, testcase):
         resize_viewport(driver, 800, 600)
 
         driver.get(webserver.url)
-        driver.add_cookie({"name": "ordecAuth", "value": webserver.auth_token})
+        driver.add_cookie({"name": "ordecAuth", "value": webserver.key.token()})
 
         driver.get(webserver.url + f'app.html?example={testcase}&refreshall=true')
 
@@ -186,9 +186,10 @@ def request_local(webserver, module, request_views):
         resize_viewport(driver, 800, 600)
 
         driver.get(webserver.url)
-        driver.add_cookie({"name": "ordecAuth", "value": webserver.auth_token})
-
-        driver.get(webserver.url + f'app.html?module={module}&refreshall=true')
+        driver.add_cookie({"name": "ordecAuth", "value": webserver.key.token()})
+        import time
+        qs_local = webserver.key.query_string_local(module, '')
+        driver.get(webserver.url + f'app.html?refreshall=true&{qs_local}')
 
         WebDriverWait(driver, 10).until(
             EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
