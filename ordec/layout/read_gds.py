@@ -102,10 +102,13 @@ def gds_discover(gds_fn, layers):
     if unit != layers.unit:
         raise Exception("GDS unit is not equal to layers.unit")
     
-    layout_lambdas = {}
+    layout_funcs = {}
 
     for structure in lib:
         name = structure.name.decode('ascii')
-        layout_lambdas[name] = partial(read_gds_structure, structure, layers, unit)
+        # Use functools.partial to create a closure. (Not really partial though,
+        # since all argument values are provided.) This postponsed creation of
+        # the Layout subgraphs to when they are requested/needed.
+        layout_funcs[name] = partial(read_gds_structure, structure, layers, unit)
 
-    return layout_lambdas
+    return layout_funcs

@@ -9,14 +9,14 @@ class ExtLibraryError(Exception):
 
 class ExtLibrary:
     def __init__(self):
-        self.layout_lambdas = {}
+        self.layout_funcs = {}
 
     def read_gds(self, gds_fn: str, layers: LayerStack):
-        layout_lambdas_add = gds_discover(gds_fn, layers)
-        for name in layout_lambdas_add.keys():
-            if name in self.layout_lambdas:
+        layout_funcs_add = gds_discover(gds_fn, layers)
+        for name in layout_funcs_add.keys():
+            if name in self.layout_funcs:
                 raise ExtLibraryError(f"Multiple layout sources found for cell {name!r}.")
-        self.layout_lambdas |= layout_lambdas_add
+        self.layout_funcs |= layout_funcs_add
 
     def __getitem__(self, name):
         return ExtLibraryCell(self, name)
@@ -29,7 +29,7 @@ class ExtLibraryCell(Cell):
     def layout(self) -> Layout:
         print(f"generating layout {self.name}")
         try:
-            layout_func = self.extlib.layout_lambdas[self.name]
+            layout_func = self.extlib.layout_funcs[self.name]
         except KeyError:
             raise ExtLibraryError(f"No layout source found for cell {self.name!r}.") from None
         return layout_func()
