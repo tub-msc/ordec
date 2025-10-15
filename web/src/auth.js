@@ -5,34 +5,19 @@ const urlParams = new URLSearchParams(window.location.search);
 const authParam = urlParams.get('auth');
 if(authParam) {
     urlParams.delete('auth');
-    document.cookie = "ordecAuth="+window.escape(authParam)+';samesite=lax';
+    window.localStorage.setItem('ordecAuth', authParam);
     // drop ?auth=... parameter from browser url
     window.history.pushState({}, document.title, window.location.pathname + '?' + urlParams.toString());
 }
 
-function readCookies() {
-    const cookies = {
-        authKey: null,
-        authHmacBypass: false,
-    };
-    document.cookie.split(';').forEach(el => {
-        const split = el.split('=');
-        const key = split[0].trim();
-        const value = split.slice(1).join("=");
-        if(key == 'ordecAuth') {
-            cookies.authKey = value;
-        } else if(key == 'ordecHmacBypass') {
-            cookies.authHmacBypass = Boolean(value);
-        }
-    })
-    return cookies;
-}
-
-export const cookies = readCookies();
+export const session = {
+    authKey: window.localStorage.getItem('ordecAuth'),
+    authHmacBypass: window.localStorage.getItem('ordecHmacBypass'),
+};
 
 export async function authenticateLocalQuery(queryLocal, queryHmac) {
     let valid;
-    if(cookies.authHmacBypass) {
+    if(session.authHmacBypass) {
         // This workaround is **for the testing environment only**.
         // For some reason, the localhost in the testing environment might
         // be treated as insecure origin, causing window.crypto.subtle to be
@@ -42,7 +27,7 @@ export async function authenticateLocalQuery(queryLocal, queryHmac) {
     } else {
         const hmacAuthKeyCrypto = await window.crypto.subtle.importKey(
             'raw',
-            Uint8Array.fromHex(cookies.authKey),
+            Uint8Array.fromHex(session.authKey),
             {name: 'HMAC', hash: {name: 'SHA-256'}},
             false,
             ['verify']

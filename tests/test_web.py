@@ -146,7 +146,9 @@ def request_integrated_example(webserver, testcase):
         resize_viewport(driver, 800, 600)
 
         driver.get(webserver.url)
-        driver.add_cookie({"name": "ordecAuth", "value": webserver.key.token()})
+        driver.execute_script(f"""
+            window.localStorage.setItem('ordecAuth', '{webserver.key.token()}');
+        """)
 
         driver.get(webserver.url + f'app.html?example={testcase}&refreshall=true')
 
@@ -186,8 +188,10 @@ def request_local(webserver, module, request_views):
         resize_viewport(driver, 800, 600)
 
         driver.get(webserver.url)
-        driver.add_cookie({"name": "ordecAuth", "value": webserver.key.token()})
-        driver.add_cookie({"name": "ordecHmacBypass", "value": "true"})
+        driver.execute_script(f"""
+            window.localStorage.setItem('ordecAuth', '{webserver.key.token()}');
+            window.localStorage.setItem('ordecHmacBypass', 'true');
+        """)
         
         qs_local = webserver.key.query_string_local(module, '')
         driver.get(webserver.url + f'app.html?refreshall=true&{qs_local}')

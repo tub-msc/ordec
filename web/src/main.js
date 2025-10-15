@@ -15,7 +15,7 @@ import "ace-builds/src-noconflict/mode-python";
 import "ace-builds/src-noconflict/theme-github";
 import "ace-builds/src-noconflict/ext-language_tools";
 
-import { cookies, authenticateLocalQuery } from './auth.js';
+import { authenticateLocalQuery } from './auth.js';
 
 import { ResultViewer } from "./resultviewer.js";
 import { OrdecClient } from './client.js';

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { cookies } from './auth.js';
+import { session } from './auth.js';
 
 export class OrdecClient {
     constructor(srctype, resultViewers, setStatus) {
@@ -72,7 +72,7 @@ export class OrdecClient {
             msg = {
                 msg: 'localmodule',
                 module: this.localModule,
-                auth: cookies.authKey,
+                auth: session.authKey,
             };
         } else {
             // Integrated mode:
@@ -80,7 +80,7 @@ export class OrdecClient {
                 msg: 'source',
                 srctype: this.srctype,
                 src: this.src,
-                auth: cookies.authKey,
+                auth: session.authKey,
             };
         }
         this.sock.send(JSON.stringify(msg));
