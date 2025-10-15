@@ -2,26 +2,26 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-``ordec-server`` is the command line tool to start the web interface of
+``ordec`` is the command line tool to start the web UI of
 ORDeC, the custom IC design platform.
 
-There are three recommended setups to run ``ordec-server``:
+There are three recommended setups to run the ``ordec`` web UI:
 
 (1) **Combined frontend + backend server with regular installation:**
     A regular installation of ORDeC includes a compiled version of the
     frontend (webdist.tar). In this case, ORDeC can be started through
-    a simple ``ordec-server``.
+    a simple ``ordec``.
 
 (2) **Combined frontend + backend server with editable installation:**
     In case of a editable installation ("develop mode" / pip -e), setup (1)
     is not supported, as webdist.tar is not available in the package.
     Instead, the frontend can be build separately through 'npm run build' in
     the web/ directory. The build results must then be supplied to the
-    ordec-server command: ``ordec-server -r [...]/web/dist/``
+    ordec command: ``ordec -r [...]/web/dist/``
 
 (3) **Separate frontend + backend server for frontend development:**
     In the web/ directory, run the Vite frontend server using 'npm run dev'.
-    Then, separately start the backend server using ``ordec-server -b``.
+    Then, separately start the backend server using ``ordec -b``.
     This gives the best development experience when working on the frontend
     code. In this setup, the Vite server acts as proxy for the backend
     server. Thus, you should use the browser only to connect to the Vite
@@ -43,8 +43,7 @@ Furthermore, there are two modes in which you can use the ORDeC web UI:
     outside the web browser is used. The design is rebuilt automatically when
     it is detected that source files have changed. This is done using inotify.
 
-    By specifying ``--module`` (``-m``), the web interface is launched in local
-    mode.
+    By specifying ``--module`` (``-m``), the web UI is launched in local mode.
 
     The specified module name (e.g. ``--module mydesign``) is treated as regular
     Python module import. It could reference a single Python file mydesign.py,
@@ -452,7 +451,7 @@ def secure_url_open(user_url):
     return launch_html
 
 def main():
-    parser = argparse.ArgumentParser(prog='ordec-server',
+    parser = argparse.ArgumentParser(prog='ordec',
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
 
@@ -477,7 +476,7 @@ def main():
     elif args.backend_only:
         user_url = f"http://localhost:5173"
         # Vite provides the frontend for the user on port 5173:
-        print("--backend-only: Make sure to run separate frontend server using 'npm run dev' in web/, in addition to this 'ordec-server'.")
+        print("--backend-only: Make sure to run separate frontend server using 'npm run dev' in web/, in addition to this 'ordec' process.")
     else:
         user_url = f"http://{hostname}:{port}"
 
