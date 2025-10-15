@@ -70,7 +70,7 @@ if __name__ == "__main__":
     group.add_argument("--s", type=str, help="String to parse directly")
     args = arg_parser.parse_args()
 
-    # 2️⃣ Determine input
+    # Determine input
     if args.p:
         file_path = Path(args.p)
         if not file_path.is_file():
