@@ -43,8 +43,8 @@ Furthermore, there are two modes in which you can use the ORDeC web UI:
     outside the web browser is used. The design is rebuilt automatically when
     it is detected that source files have changed. This is done using inotify.
 
-    By specifying ``--module`` (``-m``) and optionally ``--view`` (``-w``),
-    the web interface is launched in local mode.
+    By specifying ``--module`` (``-m``), the web interface is launched in local
+    mode.
 
     The specified module name (e.g. ``--module mydesign``) is treated as regular
     Python module import. It could reference a single Python file mydesign.py,
@@ -461,8 +461,7 @@ def main():
     parser.add_argument('-r', '--static-root', help="Path for static web resources. If not specified, the webdist.tar file included in the ORDeC installation is used.", nargs='?')
     parser.add_argument('-b', '--backend-only', action='store_true', help="Serve backend only. Requires a separate server (e.g. Vite) to serve the frontend.")
     parser.add_argument('-n', '--no-browser', action='store_true', help="Show URL, but do not launch browser.")
-    parser.add_argument('-m', '--module', help="Open the specified module from the local file system (local mode).")
-    parser.add_argument('-w', '--view', default='', help="Open specified view of selected module (requires --module / local mode).")
+    parser.add_argument('-m', '--module', help="Open the specified module from the local file system (local mode). Furthermore, a specific view can be preselected as MODULE:VIEW.")
     parser.add_argument('--url-authority', help="Use provided URL authority part (host:port) instead values of --hostname and --port for printed / opened URL.")
     parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {version}')
 
@@ -500,7 +499,12 @@ def main():
             raise SystemExit(1)
 
     if args.module:
-        qs_module = key.query_string_local(args.module, args.view)
+        try:
+            module, view = args.module.split(':', 1)
+        except ValueError:
+            module = args.module
+            view = ''
+        qs_module = key.query_string_local(module, view)
         user_url += f"/app.html?auth={key.token()}&{qs_module}"
         # Enable importing modules from current working directory:
         sys.path.append(os.getcwd()) 
