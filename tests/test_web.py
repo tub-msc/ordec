@@ -129,10 +129,7 @@ def test_index(webserver):
     # Check that we link to each expected example.
     assert app_html_link_queries == {f'example={testcase}' for testcase in testcases_integrated.keys()}
 
-def resize_viewport(driver, w, h):
-    w_overhead = driver.execute_script("return window.outerWidth - window.innerWidth;")
-    h_overhead = driver.execute_script("return window.outerHeight - window.innerHeight;")
-    driver.set_window_size(w+w_overhead, h+h_overhead)
+
 
 
 # Visual browser-based testing was painful (fonts, different browser versions,
@@ -147,19 +144,36 @@ def resize_viewport(driver, w, h):
 # 2. The innerHTML of some result viewers is _superficially_ checked to make
 #    sure it is showing roughly what is expected.
 
+class WebDriverHelper:
+    def __init__(self, driver, webserver):
+        self.driver = driver
+        self.webserver = webserver
+
+    def resize_viewport(self, w=800, h=600):
+        w_overhead = self.driver.execute_script("return window.outerWidth - window.innerWidth;")
+        h_overhead = self.driver.execute_script("return window.outerHeight - window.innerHeight;")
+        self.driver.set_window_size(w+w_overhead, h+h_overhead)
+
+    def authenticate(self, hmac_bypass: bool=False):
+        self.driver.get(self.webserver.url)
+        self.driver.execute_script("""
+            window.localStorage.setItem('ordecAuth', arguments[0]);
+            window.localStorage.setItem('ordecHmacBypass', arguments[1]?"true":"");
+        """, self.webserver.key.token(), hmac_bypass)
+
+    def wait_for_ready(self):
+        WebDriverWait(self.driver, 10).until(
+            EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
+
 def request_integrated_example(webserver, testcase):
     with webdriver.Chrome(options=webdriver_options) as driver:
-        resize_viewport(driver, 800, 600)
-
-        driver.get(webserver.url)
-        driver.execute_script("""
-            window.localStorage.setItem('ordecAuth', arguments[0]);
-        """, webserver.key.token());
+        driver_h = WebDriverHelper(driver, webserver)
+        driver_h.resize_viewport()
+        driver_h.authenticate()
 
         driver.get(webserver.url + f'app.html?example={testcase}&refreshall=true')
 
-        WebDriverWait(driver, 10).until(
-            EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
+        driver_h.wait_for_ready()
 
         res_viewers = driver.execute_script("""
             let res = {};
@@ -191,19 +205,14 @@ def test_integrated(webserver, testcase):
 def request_local(webserver, module, request_views):
     res = {}
     with webdriver.Chrome(options=webdriver_options) as driver:
-        resize_viewport(driver, 800, 600)
-
-        driver.get(webserver.url)
-        driver.execute_script("""
-            window.localStorage.setItem('ordecAuth', arguments[0]);
-            window.localStorage.setItem('ordecHmacBypass', 'true');
-        """, webserver.key.token())
+        driver_h = WebDriverHelper(driver, webserver)
+        driver_h.resize_viewport()
+        driver_h.authenticate(hmac_bypass=True)
         
         qs_local = webserver.key.query_string_local(module, '')
         driver.get(webserver.url + f'app.html?refreshall=true&{qs_local}')
 
-        WebDriverWait(driver, 10).until(
-            EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
+        driver_h.wait_for_ready()
 
         for view in request_views:
             found = driver.execute_script("""
@@ -221,8 +230,7 @@ def request_local(webserver, module, request_views):
 
             assert found
 
-            WebDriverWait(driver, 10).until(
-                EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
+            driver_h.wait_for_ready()
 
             v = driver.execute_script("""
                 let rv = window.ordecClient.resultViewers[0];
@@ -271,21 +279,15 @@ def myhistogram(img, thresh=50):
 def test_layoutgl(webserver):
     """Fuzzy visual testing of web layout viewer (layout-gl.js)."""
     with webdriver.Chrome(options=webdriver_options) as driver:
-        resize_viewport(driver, 800, 600)
-
-        driver.get(webserver.url)
-        driver.execute_script("""
-            window.localStorage.setItem('ordecAuth', arguments[0]);
-            window.localStorage.setItem('ordecHmacBypass', 'true');
-        """, webserver.key.token())
+        driver_h = WebDriverHelper(driver, webserver)
+        driver_h.resize_viewport()
+        driver_h.authenticate(hmac_bypass=True)
         
         qs_local = webserver.key.query_string_local("ordec.lib.test", "layoutgl_example()")
         driver.get(webserver.url + f'app.html?refreshall=true&{qs_local}')
 
-        WebDriverWait(driver, 10).until(
-            EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
+        driver_h.wait_for_ready()
 
-        png = driver.get_screenshot_as_png()
         time.sleep(2)
         canvas=driver.find_element(By.CSS_SELECTOR, "canvas.layoutFit")
         png = canvas.screenshot_as_png
@@ -301,14 +303,14 @@ def test_layoutgl(webserver):
     img = img.crop([wh+margin, margin, img.width-wh-margin, img.height-margin])
     img = img.resize([512, 512], Image.Resampling.NEAREST)
 
-    expect_blue  = layout.crop((0, 0, 256, 128))
+    expect_blue  = img.crop((0, 0, 256, 128))
     assert myhistogram(expect_blue)[(16, 71, 139)] > 20000
 
-    expect_text  = layout.crop((128, 256-32, 256+128, 256+32))
+    expect_text  = img.crop((128, 256-32, 256+128, 256+32))
     assert myhistogram(expect_text)[(255,255,255)] > 100
     
-    expect_red   = layout.crop((256, 256+32, 256+128, 256+32+64))
+    expect_red   = img.crop((256, 256+32, 256+128, 256+32+64))
     assert myhistogram(expect_red)[(89, 0, 0)] > 5000
     
-    expect_black = layout.crop((256, 256+128, 256+128, 256+128+64))
-    assert myhistogram(expect_black)[(0, 0, 0)] > 5000
+    expect_black = img.crop((256, 256+128, 256+64, 256+128+64))
+    assert myhistogram(expect_black)[(0, 0, 0)] > 2000

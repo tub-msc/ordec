@@ -46,6 +46,7 @@ test = [
     "pytest>=7.2.1",
     "pytest-cov>=4.0.0",
     "selenium>=4.8.3",
+    "pillow>=11.1.0",
 ]
 extra = [
     "black>=23.1.0",
