@@ -187,7 +187,8 @@ def request_local(webserver, module, request_views):
 
         driver.get(webserver.url)
         driver.add_cookie({"name": "ordecAuth", "value": webserver.key.token()})
-        import time
+        driver.add_cookie({"name": "ordecHmacBypass", "value": "true"})
+        
         qs_local = webserver.key.query_string_local(module, '')
         driver.get(webserver.url + f'app.html?refreshall=true&{qs_local}')
 

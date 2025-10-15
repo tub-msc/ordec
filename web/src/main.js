@@ -15,7 +15,7 @@ import "ace-builds/src-noconflict/mode-python";
 import "ace-builds/src-noconflict/theme-github";
 import "ace-builds/src-noconflict/ext-language_tools";
 
-import './auth.js';
+import { cookies, authenticateLocalQuery } from './auth.js';
 
 import { ResultViewer } from "./resultviewer.js";
 import { OrdecClient } from './client.js';
@@ -153,33 +153,7 @@ sourceTypeSelect.onchange = () => {
     window.ordecClient.connect();
 };
 
-async function authenticateLocalQuery(queryLocal, queryHmac) {
-    const hmacAuthKeyCrypto = await window.crypto.subtle.importKey(
-        'raw',
-        Uint8Array.fromHex(window.ordecClient.getAuthCookie()),
-        {name: 'HMAC', hash: {name: 'SHA-256'}},
-        false,
-        ['verify']
-    );
 
-    const encoder = new TextEncoder();
-    const valid = await window.crypto.subtle.verify(
-        'HMAC',
-        hmacAuthKeyCrypto,
-        Uint8Array.fromHex(queryHmac),
-        encoder.encode(queryLocal)
-    );
-
-    if(valid) {
-        const s = queryLocal.split(":", 2);
-        return {
-            module: s[0],
-            view: s[1],
-        };
-    } else {
-        return null;
-    }
-}
 
 if(queryLocal) {
     // If queryLocal is set, the web UI is used in **local mode**.
