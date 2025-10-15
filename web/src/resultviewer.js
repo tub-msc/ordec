@@ -347,10 +347,15 @@ export class ResultViewer {
 
     testInfo() {
         // For automated browser testing (see test_web.py).
+        const r = this.resContent.getBoundingClientRect();
         return {
             html: this.resContent.innerHTML,
-            width: this.resContent.offsetWidth,
-            height: this.resContent.offsetHeight,
+            top: r.top,
+            right: r.right,
+            bottom: r.bottom,
+            left: r.left,
+            width: r.width,
+            height: r.height,
         };
     }
 }

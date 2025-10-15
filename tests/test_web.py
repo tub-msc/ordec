@@ -13,6 +13,8 @@ from urllib.parse import urlparse
 from dataclasses import dataclass
 import importlib.resources
 import secrets
+from PIL import Image, ImageStat
+import io
 
 from ordec import server
 
@@ -36,6 +38,10 @@ else:
 @dataclass
 class WebResViewer:
     html: str
+    top: int
+    left: int
+    bottom: int
+    right: int
     width: int
     height: int
 
@@ -105,7 +111,7 @@ def webserver():
     t = threading.Thread(target=server.server_thread,
         args=('127.0.0.1', port, static_handler, key), daemon=True)
     t.start()
-    time.sleep(1) # Delay for server startup
+    time.sleep(0.2) # Delay for server startup
     yield WebserverInfo(f"http://127.0.0.1:{port}/", key)
     # Server will stop when pytest exits.
 
@@ -146,9 +152,9 @@ def request_integrated_example(webserver, testcase):
         resize_viewport(driver, 800, 600)
 
         driver.get(webserver.url)
-        driver.execute_script(f"""
-            window.localStorage.setItem('ordecAuth', '{webserver.key.token()}');
-        """)
+        driver.execute_script("""
+            window.localStorage.setItem('ordecAuth', arguments[0]);
+        """, webserver.key.token());
 
         driver.get(webserver.url + f'app.html?example={testcase}&refreshall=true')
 
@@ -188,10 +194,10 @@ def request_local(webserver, module, request_views):
         resize_viewport(driver, 800, 600)
 
         driver.get(webserver.url)
-        driver.execute_script(f"""
-            window.localStorage.setItem('ordecAuth', '{webserver.key.token()}');
+        driver.execute_script("""
+            window.localStorage.setItem('ordecAuth', arguments[0]);
             window.localStorage.setItem('ordecHmacBypass', 'true');
-        """)
+        """, webserver.key.token())
         
         qs_local = webserver.key.query_string_local(module, '')
         driver.get(webserver.url + f'app.html?refreshall=true&{qs_local}')
@@ -241,3 +247,68 @@ def test_local(webserver, testcase):
 
         for checker in checkers:
             checker(res_viewer)
+
+def myhistogram(img, thresh=50):
+    h = {}
+    for x in range(img.width):
+        for y in range(img.height):
+            val = img.getpixel((x, y))
+            
+            try:
+                h[val]+=1
+            except KeyError:
+                h[val]=1
+    drop_vals = []
+    for val, count in h.items():
+        if count < thresh:
+            drop_vals.append(val)
+    for val in drop_vals:
+        del h[val]
+    return h
+
+@pytest.mark.web
+@pytest.mark.skipif(skip_webtests, reason="Prerequesites for web tests not installed.")
+def test_layoutgl(webserver):
+    """Fuzzy visual testing of web layout viewer (layout-gl.js)."""
+    with webdriver.Chrome(options=webdriver_options) as driver:
+        resize_viewport(driver, 800, 600)
+
+        driver.get(webserver.url)
+        driver.execute_script("""
+            window.localStorage.setItem('ordecAuth', arguments[0]);
+            window.localStorage.setItem('ordecHmacBypass', 'true');
+        """, webserver.key.token())
+        
+        qs_local = webserver.key.query_string_local("ordec.lib.test", "layoutgl_example()")
+        driver.get(webserver.url + f'app.html?refreshall=true&{qs_local}')
+
+        WebDriverWait(driver, 10).until(
+            EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
+
+        png = driver.get_screenshot_as_png()
+        time.sleep(2)
+        canvas=driver.find_element(By.CSS_SELECTOR, "canvas.layoutFit")
+        png = canvas.screenshot_as_png
+
+    #with open("x.png", "wb") as f:
+    #    f.write(png)
+    
+    img = Image.open(io.BytesIO(png))
+
+    wh = (img.width-img.height)/2
+    margin = 25
+
+    img = img.crop([wh+margin, margin, img.width-wh-margin, img.height-margin])
+    img = img.resize([512, 512], Image.Resampling.NEAREST)
+
+    expect_blue  = layout.crop((0, 0, 256, 128))
+    assert myhistogram(expect_blue)[(16, 71, 139)] > 20000
+
+    expect_text  = layout.crop((128, 256-32, 256+128, 256+32))
+    assert myhistogram(expect_text)[(255,255,255)] > 100
+    
+    expect_red   = layout.crop((256, 256+32, 256+128, 256+32+64))
+    assert myhistogram(expect_red)[(89, 0, 0)] > 5000
+    
+    expect_black = layout.crop((256, 256+128, 256+128, 256+128+64))
+    assert myhistogram(expect_black)[(0, 0, 0)] > 5000
