@@ -1091,6 +1091,54 @@ class Ord2Transformer(Transformer):
         else:
             return ast.Tuple(elts=nodes, ctx=ast.Load())
 
+    def f_string(self, nodes):
+        values = []
+        # remove start and end
+        for node in nodes[1:-1]:
+            # string or expression
+            if isinstance(node, str):
+                values.append(ast.Constant(value=node))
+            elif isinstance(node, ast.AST):
+                values.append(node)
+        # return the joined string
+        return ast.JoinedStr(values=values)
+
+    def f_expression(self, nodes):
+        expr_node = nodes[0]
+        conversion = -1
+        format_spec = None
+
+        for node in nodes[1:]:
+            print(node)
+            # check for the conversion
+            if isinstance(node, str):
+                conv_map = {"r": ord('r'), "s": ord('s'), "a": ord('a')}
+                conversion = conv_map[node.lower()]
+            elif isinstance(node, ast.AST):
+                format_spec = node
+
+        return ast.FormattedValue(
+            value=expr_node,
+            conversion=conversion,
+            format_spec=format_spec
+        )
+
+    def conversion(self, token):
+        return token[0]
+
+    def format_spec(self, nodes):
+        # return if only test value
+        if len(nodes) == 1 and isinstance(nodes[0], str):
+            return ast.Constant(value=nodes[0])
+        values = []
+        for node in nodes:
+            # string or expression
+            if isinstance(node, str):
+                values.append(ast.Constant(value=node))
+            elif isinstance(node, ast.AST):
+                values.append(node)
+        return ast.JoinedStr(values=values)
+
     def tuple(selfs, nodes):
         return ast.Tuple(elts=nodes, ctx=ast.Load())
 
@@ -1160,6 +1208,7 @@ class Ord2Transformer(Transformer):
     ellipsis = lambda self, _: ast.Constant(value=Ellipsis)
     pos_arg_pattern = lambda self, nodes: nodes
     keyw_arg_pattern = lambda self, nodes: nodes
+    f_string_content = lambda self, nodes: nodes[0]
 
     # -- Terminals --
     IMAG_NUMBER = lambda self, token: ast.Constant(value=complex(token.value))
@@ -1172,5 +1221,9 @@ class Ord2Transformer(Transformer):
     SLASH = lambda self, token: token.value
     AWAIT = lambda self, token: token.value
     MARK = lambda self, token: token.value
+    FSTRING_START = lambda self, token: token.value
+    FSTRING_END = lambda self, token: token.value
+    F_TEXT = lambda self, token: token.value
+
 
 

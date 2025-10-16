@@ -299,7 +299,20 @@ yield_expr: "yield" [testlist]
           | "yield" "from" test -> yield_from
 
 number: DEC_NUMBER | HEX_NUMBER | BIN_NUMBER | OCT_NUMBER | FLOAT_NUMBER | IMAG_NUMBER
-string: STRING | LONG_STRING
+string: STRING | LONG_STRING | f_string
+
+f_string: FSTRING_START f_string_content* FSTRING_END
+f_string_content: (F_TEXT | f_expression)
+F_TEXT: /[^{}"']+/
+f_expression: "{" test conversion? format_spec? "}"
+conversion: "!" /[rsa]/i
+format_spec: ":" (F_TEXT | f_expression)+
+
+FSTRING_START: /(f|fr|rf)(['"])/
+FSTRING_END: /['"]/
+
+STRING: /([ub]?r?|r[ub])("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
+LONG_STRING: /([ub]?r?|r[ub])(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is
 
 // Other terminals
 
@@ -310,14 +323,10 @@ _NEWLINE: ( /\r?\n[\t ]*/ | COMMENT )+
 %ignore COMMENT
 %declare _INDENT _DEDENT
 
-
 // Python terminals
 !name: NAME | "match" | "case"
-NAME: /[^\W\d]\w*/
+NAME: /[^\W\d]\w*(?!['"])/
 COMMENT: /#[^\n]*/
-
-STRING: /([ubf]?r?|r[ubf])("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
-LONG_STRING: /([ubf]?r?|r[ubf])(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is
 
 _SPECIAL_DEC: "0".."9"        ("_"?  "0".."9"                       )*
 DEC_NUMBER:   "1".."9"        ("_"?  "0".."9"                       )*
