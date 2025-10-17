@@ -1,10 +1,8 @@
-# SPDX-FileCopyrightText: 2025 ORDeC contributors
-# SPDX-License-Identifier: Apache-2.0
-
-from ..core import *
-from .. import helpers
+# -*- coding: ord2 -*-
+from ...core import *
+from ...import helpers
 from public import public
-from ..lib.generic_mos import Nmos, Pmos
+from ..generic_mos import Nmos, Pmos
 
 @public
 class Inv(Cell):

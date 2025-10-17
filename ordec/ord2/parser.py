@@ -36,7 +36,7 @@ def load_ord2_from_string(ord_string):
 
 
 # ordec/ws_server.py use ord2py() for now.
-def ord2_to_py(source_data: str) -> ast.Module:
+def ord2topy(source_data: str) -> ast.Module:
     """
     Compile ORD to Python
     :param source_data: ORD source code
