@@ -212,13 +212,14 @@ star_expr: "*" expr
 ?term: factor (_mul_op factor)*
 ?factor: _unary_op factor | power
 
-!_unary_op: "+"|"-"|"~"
+!_unary_op: "+"|"-"|"~"|"not"
 !_add_op: "+"|"-"
 !_shift_op: "<<"|">>"
 !_mul_op: "*"|"@"|"/"|"%"|"//"
 // <> isn't actually a valid comparison operator in Python. It's here for the
 // sake of a __future__ import described in PEP 401 (which really works :-)
-!comp_op: "<"|">"|"=="|">="|"<="|"<>"|"!="|"in"|"not" "in"|"is"|"is" "not"
+!comp_op: "<"|">"|"=="|">="|"<="|"<>"|"!="|"in"| /not\s+in/ | "is" | /is\s+not/
+
 
 ?power: await_expr ("**" factor)?
 ?await_expr: AWAIT? atom_expr
@@ -301,15 +302,23 @@ yield_expr: "yield" [testlist]
 number: DEC_NUMBER | HEX_NUMBER | BIN_NUMBER | OCT_NUMBER | FLOAT_NUMBER | IMAG_NUMBER
 string: STRING | LONG_STRING | f_string
 
-f_string: FSTRING_START f_string_content* FSTRING_END
-f_string_content: (F_TEXT | f_expression)
-f_expression: "{" test conversion? format_spec? "}"
+f_string: FSTRING_DOUBLE_START f_string_content_double* FSTRING_DOUBLE_END
+        | FSTRING_SINGLE_START f_string_content_single* FSTRING_SINGLE_END
+f_string_content_double: (FSTRING_TEXT_DOUBLE | f_expression_double)
+f_string_content_single: (FSTRING_TEXT_SINGLE | f_expression_single)
+f_expression_double: "{" test conversion? format_spec_double? "}"
+f_expression_single: "{" test conversion? format_spec_single? "}"
+format_spec_single: ":" (FSTRING_TEXT_SINGLE | f_expression_single)+
+format_spec_double: ":" (FSTRING_TEXT_DOUBLE | format_spec_double)+
 conversion: "!" /[rsa]/i
-format_spec: ":" (F_TEXT | f_expression)+
 
-F_TEXT: /[^{}"']+/
-FSTRING_START: /(f|fr|rf)(['"])/
-FSTRING_END: /['"]/
+FSTRING_DOUBLE_START: /(f|fr|rf)"/
+FSTRING_DOUBLE_END: /"/
+FSTRING_SINGLE_START: /(f|fr|rf)'/
+FSTRING_SINGLE_END: /'/
+
+FSTRING_TEXT_DOUBLE: /[^{}"]+/
+FSTRING_TEXT_SINGLE: /[^{}']+/
 
 STRING: /([ub]?r?|r[ub])("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
 LONG_STRING: /([ub]?r?|r[ub])(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is
@@ -331,9 +340,9 @@ COMMENT: /#[^\n]*/
 _SPECIAL_DEC: "0".."9"        ("_"?  "0".."9"                       )*
 DEC_NUMBER:   "1".."9"        ("_"?  "0".."9"                       )*
           |   "0"             ("_"?  "0"                            )* /(?![1-9])/
-HEX_NUMBER: "0" ("x" | "X") ("_"? ("0".."9" | "a".."f" | "A".."F"))+
-OCT_NUMBER: "0" ("o" | "O") ("_"?  "0".."7"                       )+
-BIN_NUMBER: "0" ("b" | "B") ("_"?  "0".."1"                       )+
+HEX_NUMBER.2: "0" ("x" | "X") ("_"? ("0".."9" | "a".."f" | "A".."F"))+
+OCT_NUMBER.2: "0" ("o" | "O") ("_"?  "0".."7"                       )+
+BIN_NUMBER.2: "0" ("b" | "B") ("_"?  "0".."1"                       )+
 
 _EXP: ("e"|"E") ["+" | "-"] _SPECIAL_DEC
 DECIMAL: "." _SPECIAL_DEC | _SPECIAL_DEC "." _SPECIAL_DEC?

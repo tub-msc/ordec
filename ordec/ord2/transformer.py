@@ -34,6 +34,7 @@ class Ord2Transformer(Transformer):
         '+': ast.UAdd,
         '-': ast.USub,
         '~': ast.Invert,
+        'not': ast.Not,
     }
 
     MUL_OP_MAP = {
@@ -482,6 +483,7 @@ class Ord2Transformer(Transformer):
         prelim_args = nodes[1] if len(nodes) > 1 else []
         keywords = []
         args = []
+        print(nodes)
         for arg in prelim_args:
             if isinstance(arg, list):
                 for inner_arg in arg:
@@ -498,6 +500,15 @@ class Ord2Transformer(Transformer):
             elif isinstance(arg, tuple) and arg[0] == "argvalue":
                 # normal value
                 keywords.append(ast.keyword(arg=arg[1].id, value=arg[2]))
+            elif isinstance(arg, tuple) and len(arg) == 2 and isinstance(arg[0], ast.JoinedStr) and isinstance(
+                    arg[1], list):
+                # Generator + comprehension
+                joined_str, comprehensions = arg
+                gen_expr = ast.GeneratorExp(
+                    elt=joined_str,
+                    generators=comprehensions
+                )
+                args.append(gen_expr)
             else:
                 args.append(arg)
 
@@ -530,8 +541,10 @@ class Ord2Transformer(Transformer):
         expr = nodes[0]
         for i in range(1, len(nodes), 2):
             op_token = nodes[i]
+            if isinstance(op_token, ast.AST):
+                op_token = op_token.value
             right = nodes[i + 1]
-            bin_op = self.ADD_OP_MAP[op_token.value]()
+            bin_op = self.ADD_OP_MAP[op_token]()
             expr = ast.BinOp(left=expr, op=bin_op, right=right)
         return expr
 
@@ -560,8 +573,10 @@ class Ord2Transformer(Transformer):
         expr = nodes[0]
         for i in range(1, len(nodes), 2):
             op_token = nodes[i]
+            if isinstance(op_token, ast.AST):
+                op_token = op_token.value
             right = nodes[i + 1]
-            bin_op = self.SHIFT_OP_MAP[op_token.value]()
+            bin_op = self.SHIFT_OP_MAP[op_token]()
             expr = ast.BinOp(left=expr, op=bin_op, right=right)
         return expr
 
@@ -569,8 +584,10 @@ class Ord2Transformer(Transformer):
         expr = nodes[0]
         for i in range(1, len(nodes), 2):
             op_token = nodes[i]
+            if isinstance(op_token, ast.AST):
+                op_token = op_token.value
             right = nodes[i + 1]
-            bin_op = self.MUL_OP_MAP[op_token.value]()
+            bin_op = self.MUL_OP_MAP[op_token]()
             expr = ast.BinOp(left=expr, op=bin_op, right=right)
         return expr
 
@@ -579,9 +596,11 @@ class Ord2Transformer(Transformer):
             # just a power expression
             return nodes[0]
         # unary operator case
-        op = nodes[0]
+        op_token = nodes[0]
+        if isinstance(op_token, ast.AST):
+            op_token = op_token.value
         operand = nodes[1]
-        unary_op = self.UNARY_OP_MAP[op.value]()
+        unary_op = self.UNARY_OP_MAP[op_token]()
         return ast.UnaryOp(op=unary_op, operand=operand)
 
     def list_comprehension(self, nodes):
@@ -636,7 +655,7 @@ class Ord2Transformer(Transformer):
         ops = list()
         comparators = list()
         for i in range(1, len(nodes), 2):
-            ops.append(self.CMP_OP_MAP[nodes[i]]())
+            ops.append(self.CMP_OP_MAP[" ".join(nodes[i].split())]())
             comparators.append(nodes[i+1])
         return ast.Compare(left=lhs, ops=ops, comparators=comparators)
 
@@ -878,7 +897,7 @@ class Ord2Transformer(Transformer):
         if len(orelse) > 0:
             finalbody = nodes[3][1] if len(nodes) > 3 else []
         else:
-            finalbody = nodes[3][1] if len(nodes) > 2 else []
+            finalbody = nodes[2][1] if len(nodes) > 2 else []
         return ast.Try(body=body, handlers=handlers, orelse=orelse, finalbody=finalbody)
 
     def try_finally(self, nodes):
@@ -1121,13 +1140,18 @@ class Ord2Transformer(Transformer):
         # return the joined string
         return ast.JoinedStr(values=values)
 
+    def f_expression_single(self, nodes):
+        return self.f_expression(nodes)
+
+    def f_expression_double(self, nodes):
+        return self.f_expression(nodes)
+
     def f_expression(self, nodes):
         expr_node = nodes[0]
         conversion = -1
         format_spec = None
 
         for node in nodes[1:]:
-            print(node)
             # check for the conversion
             if isinstance(node, str):
                 conv_map = {"r": ord('r'), "s": ord('s'), "a": ord('a')}
@@ -1143,6 +1167,12 @@ class Ord2Transformer(Transformer):
 
     def conversion(self, token):
         return token[0]
+
+    def format_spec_single(self, nodes):
+        return self.format_spec(nodes)
+
+    def format_spec_double(self, nodes):
+        return self.format_spec(nodes)
 
     def format_spec(self, nodes):
         # return if only test value
@@ -1199,7 +1229,7 @@ class Ord2Transformer(Transformer):
     assign_stmt = lambda self, nodes: nodes[0]
     name = lambda self, nodes: nodes[0]
     var = lambda self, nodes: ast.Name(id=nodes[0], ctx=ast.Load())
-    return_stmt = lambda self, nodes: ast.Return(value=nodes[0])
+    return_stmt = lambda self, nodes: ast.Return(value=nodes[0] if len(nodes) > 0 else None)
     del_stmt = lambda self, nodes: ast.Del(value=nodes[0])
     break_stmt = lambda self, _: ast.Break()
     continue_stmt = lambda self, _: ast.Continue()
@@ -1225,7 +1255,8 @@ class Ord2Transformer(Transformer):
     ellipsis = lambda self, _: ast.Constant(value=Ellipsis)
     pos_arg_pattern = lambda self, nodes: nodes
     keyw_arg_pattern = lambda self, nodes: nodes
-    f_string_content = lambda self, nodes: nodes[0]
+    f_string_content_single = lambda self, nodes: nodes[0]
+    f_string_content_double = lambda self, nodes: nodes[0]
 
     # -- Terminals --
     IMAG_NUMBER = lambda self, token: ast.Constant(value=complex(token.value))
@@ -1238,9 +1269,12 @@ class Ord2Transformer(Transformer):
     SLASH = lambda self, token: token.value
     AWAIT = lambda self, token: token.value
     MARK = lambda self, token: token.value
-    FSTRING_START = lambda self, token: token.value
-    FSTRING_END = lambda self, token: token.value
-    F_TEXT = lambda self, token: token.value
+    FSTRING_TEXT_SINGLE = lambda self, token: token.value
+    FSTRING_TEXT_DOUBLE = lambda self, token: token.value
+    FSTRING_SINGLE_START = lambda self, token: token.value
+    FSTRING_DOUBLE_START = lambda self, token: token.value
+    FSTRING_SINGLE_END = lambda self, token: token.value
+    FSTRING_DOUBLE_END = lambda self, token: token.value
 
 
 
