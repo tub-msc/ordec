@@ -303,11 +303,11 @@ string: STRING | LONG_STRING | f_string
 
 f_string: FSTRING_START f_string_content* FSTRING_END
 f_string_content: (F_TEXT | f_expression)
-F_TEXT: /[^{}"']+/
 f_expression: "{" test conversion? format_spec? "}"
 conversion: "!" /[rsa]/i
 format_spec: ":" (F_TEXT | f_expression)+
 
+F_TEXT: /[^{}"']+/
 FSTRING_START: /(f|fr|rf)(['"])/
 FSTRING_END: /['"]/
 

@@ -477,15 +477,26 @@ class Ord2Transformer(Transformer):
         return nodes
 
     def funccall(self, nodes):
-        """
-        Converts argvalue/stararg/kwargs nodes into Call args and keywords
-        """
+        # Converts argvalue/stararg/kwargs into arguments
         function_name = nodes[0]
         prelim_args = nodes[1] if len(nodes) > 1 else []
         keywords = []
         args = []
         for arg in prelim_args:
-            if isinstance(arg, tuple) and arg[0] == 'argvalue':
+            if isinstance(arg, list):
+                for inner_arg in arg:
+                    if isinstance(inner_arg, tuple) and inner_arg[0] == "stararg":
+                        # starred argument
+                        args.append(ast.Starred(inner_arg[1], ctx=ast.Load()))
+                    elif isinstance(inner_arg, tuple) and inner_arg[0] == "kwargs":
+                        # valued kwarg
+                        if len(inner_arg[2]) > 0:
+                            keywords.append(ast.keyword(arg=inner_arg[1], value=inner_arg[2]))
+                        # **kwargs
+                        else:
+                            keywords.append(ast.keyword(arg=None, value=inner_arg[1]))
+            elif isinstance(arg, tuple) and arg[0] == "argvalue":
+                # normal value
                 keywords.append(ast.keyword(arg=arg[1].id, value=arg[2]))
             else:
                 args.append(arg)
