@@ -309,7 +309,7 @@ f_string_content_single: (FSTRING_TEXT_SINGLE | f_expression_single)
 f_expression_double: "{" test conversion? format_spec_double? "}"
 f_expression_single: "{" test conversion? format_spec_single? "}"
 format_spec_single: ":" (FSTRING_TEXT_SINGLE | f_expression_single)+
-format_spec_double: ":" (FSTRING_TEXT_DOUBLE | format_spec_double)+
+format_spec_double: ":" (FSTRING_TEXT_DOUBLE | f_expression_double)+
 conversion: "!" /[rsa]/i
 
 FSTRING_DOUBLE_START: /(f|fr|rf)"/

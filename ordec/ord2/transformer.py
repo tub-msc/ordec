@@ -182,7 +182,7 @@ class Ord2Transformer(Transformer):
 
 
     def funcdef(self, nodes):
-        name = nodes[0]
+        name = str(nodes[0])
         if isinstance(nodes[1], ast.arguments):
             parameters = nodes[1]
             rest = nodes[2:]
@@ -483,7 +483,6 @@ class Ord2Transformer(Transformer):
         prelim_args = nodes[1] if len(nodes) > 1 else []
         keywords = []
         args = []
-        print(nodes)
         for arg in prelim_args:
             if isinstance(arg, list):
                 for inner_arg in arg:
@@ -500,8 +499,14 @@ class Ord2Transformer(Transformer):
             elif isinstance(arg, tuple) and arg[0] == "argvalue":
                 # normal value
                 keywords.append(ast.keyword(arg=arg[1].id, value=arg[2]))
-            elif isinstance(arg, tuple) and len(arg) == 2 and isinstance(arg[0], ast.JoinedStr) and isinstance(
-                    arg[1], list):
+            elif isinstance(arg, tuple) and arg[0] == "kwargs":
+                # valued kwarg
+                if len(arg[2]) > 0:
+                    keywords.append(ast.keyword(arg=arg[1], value=arg[2]))
+                # **kwargs
+                else:
+                    keywords.append(ast.keyword(arg=None, value=arg[1]))
+            elif isinstance(arg, tuple) and len(arg) == 2  and isinstance(arg[1], list):
                 # Generator + comprehension
                 joined_str, comprehensions = arg
                 gen_expr = ast.GeneratorExp(
@@ -528,12 +533,12 @@ class Ord2Transformer(Transformer):
         )
 
     def getattr(self, nodes):
-        object = nodes[0]
-        attribute = nodes[1]
+        obj = nodes[0]
+        attr_token = nodes[1]
 
         return ast.Attribute(
-            value=object,
-            attr=attribute,
+            value=obj,
+            attr=str(attr_token),
             ctx=ast.Load()
         )
 
@@ -619,6 +624,9 @@ class Ord2Transformer(Transformer):
     def set_comprehension(self, nodes):
         elt, generators = nodes[0]
         return ast.SetComp(elt=elt, generators=generators)
+
+    def set(self, nodes):
+        return ast.Set(nodes)
 
     def comprehension(self, nodes):
         # comprehension
@@ -781,8 +789,8 @@ class Ord2Transformer(Transformer):
         return ast.Lambda(args=params, body=body)
 
     def assert_stmt(self, nodes):
-        test = nodes[1]
-        message = nodes[2] if nodes[1] else None
+        test = nodes[0]
+        message = nodes[1] if len(nodes) > 1 else None
         return ast.Assert(test=test, msg=message)
 
     def dotted_name(self, nodes):
@@ -1097,6 +1105,8 @@ class Ord2Transformer(Transformer):
     def slice(self, nodes):
         # Normal index x[1]
         if len(nodes) == 1:
+            if isinstance(nodes[0], str) and nodes[0] == ":":
+                return ast.Slice(lower=None, upper=None, step=None)
             return nodes[0]
         else:
             lower = None
@@ -1194,8 +1204,13 @@ class Ord2Transformer(Transformer):
         return ast.Tuple(elts=nodes, ctx=ast.Load())
 
     def string_concat(self, nodes):
-        concatenated_value = ''.join(node.value for node in nodes)
-        return ast.Constant(value=concatenated_value)
+        values = []
+        for node in nodes:
+            if isinstance(node, ast.JoinedStr):
+                values.extend(node.values)
+            else:
+                values.append(ast.Constant(node))
+        return ast.JoinedStr(values=values)
 
     def DEC_NUMBER(self, nodes):
         value = nodes.value.replace("_", "")
