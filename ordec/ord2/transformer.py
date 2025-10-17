@@ -300,13 +300,13 @@ class Ord2Transformer(Transformer):
 
     def poststarparams(self, nodes):
         if not nodes:
-            return ([], None)
+            return [], None
 
         kwparams = nodes[-1] if (
                 isinstance(nodes[-1], tuple) and nodes[-1][0] == "kwparam"
         ) else None
         paramvalues = nodes[:-1] if kwparams else nodes
-        return (paramvalues, kwparams)
+        return paramvalues, kwparams
 
     def starguard(self, nodes):
         return "starguard"
@@ -956,7 +956,6 @@ class Ord2Transformer(Transformer):
         )
 
     def capture_pattern(self, nodes):
-        # nodes[0] is a name string
         return ast.MatchAs(name=nodes[0])
 
     def any_pattern(self, nodes):
@@ -977,8 +976,6 @@ class Ord2Transformer(Transformer):
         return self.value(nodes)
 
     def as_pattern(self, nodes):
-        # nodes[0] = or_pattern
-        # nodes[1] = optional name
         pattern = nodes[0]
         if len(nodes) > 1 and nodes[1]:
             return ast.MatchAs(pattern=pattern, name=nodes[1])
@@ -990,7 +987,6 @@ class Ord2Transformer(Transformer):
         return ast.MatchOr(patterns=nodes)
 
     def star_pattern(self, nodes):
-        # nodes[0] is the name string
         return ast.MatchStar(name=nodes[0])
 
     def sequence_pattern(self, nodes):
@@ -998,9 +994,8 @@ class Ord2Transformer(Transformer):
         return ast.MatchSequence(patterns=nodes)
 
     def mapping_item_pattern(self, nodes):
-        # nodes[0] = key (literal or attr)
-        # nodes[1] = value (as_pattern)
-        return (nodes[0], nodes[1])
+        # literal/attribute + as_pattern)
+        return nodes[0], nodes[1]
 
     def mapping_pattern(self, nodes):
         # nodes = list of mapping_item_pattern
@@ -1010,44 +1005,56 @@ class Ord2Transformer(Transformer):
 
     def mapping_star_pattern(self, nodes):
         # nodes[-1] = NAME for **rest
+        # nodes[:-1] = mapping_item_pattern
         keys = [k for k, v in nodes[:-1]]
         patterns = [v for k, v in nodes[:-1]]
         rest_name = nodes[-1][1] if isinstance(nodes[-1], tuple) else nodes[-1]
         return ast.MatchMapping(keys=keys, patterns=patterns, rest=rest_name)
 
     def keyws_arg_pattern(self, nodes):
+        # extract keys and patterns
         keys = [name for name, _ in nodes]
         patterns = [pattern for _, pattern in nodes]
         return keys, patterns
 
     def arguments_pattern(self, nodes):
-        # nodes[0] = pos_arg_pattern?
-        # nodes[1] = keyws_arg_pattern?
-        posargs = []
-        keyws = ([], [])
+        pos_args = []
+        keywords = ([], [])
         if len(nodes) == 2:
-            posargs = nodes[0]
-            keyws = nodes[1]
+            pos_args = nodes[0]
+            keywords = nodes[1]
         elif len(nodes) == 1:
             if isinstance(nodes[0], tuple):
-                keyws = nodes[0]
+                keywords = nodes[0]
             else:
-                posargs = nodes[0]
-        return posargs, keyws
+                pos_args = nodes[0]
+        return pos_args, keywords
 
     def no_pos_arguments(self, nodes):
         # only keywords
-        return ([], nodes[0])
+        return [], nodes[0]
 
     def class_pattern(self, nodes):
-        # nodes[0] = dotted name (name_or_attr_pattern)
-        cls_name = nodes[0]
-        posargs, keyws = ([], [])
-        # nodes[1] = optional arguments_pattern
+        # dotted_name (value)
+        class_name = nodes[0]
+        pos_args, keywords = ([], [])
+        # optional arguments
         if len(nodes) > 1 and nodes[1]:
-            posargs, keyws = nodes[1]
-        keys, patterns = keyws
-        return ast.MatchClass(cls=cls_name, patterns=posargs, kwd_attrs=keys, kwd_patterns=patterns)
+            pos_args, keywords = nodes[1]
+        keys, patterns = keywords
+        return ast.MatchClass(cls=class_name,
+                              patterns=pos_args,
+                              kwd_attrs=keys,
+                              kwd_patterns=patterns)
+
+    def literal_pattern(self, nodes):
+        const = nodes[0]
+        # Constants
+        if isinstance(const, ast.Constant) and const.value in (None, True, False):
+            return ast.MatchSingleton(value=const.value)
+        # Other values
+        return ast.MatchValue(value=const)
+
 
     def assign_expr(self, nodes):
         target = ast.Name(id=nodes[0], ctx=ast.Store())
@@ -1211,7 +1218,6 @@ class Ord2Transformer(Transformer):
     except_clauses = lambda self, nodes: nodes
     decorators = lambda self, nodes: nodes
     with_items = lambda self, nodes: nodes
-    literal_pattern = lambda self, nodes: nodes[0]
     encoding_decl = lambda self, nodes: nodes[0]
     const_none = lambda self, _: ast.Constant(value=None)
     const_true = lambda self, _: ast.Constant(value=True)
