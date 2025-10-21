@@ -30,7 +30,7 @@ class OrdLoader(Loader):
             # Get the coding string
             with open(path, 'r', encoding='utf-8') as f:
                 line = f.readline()
-                m = re.match(r'\s*#.*coding\s*[:=]\s*([A-Za-z0-9_\-]+)', line)
+                m = re.match(r'\s*#.*version\s*[:=]\s*([A-Za-z0-9_\-]+)', line)
                 if m:
                     return m.group(1).lower()
                 return None
