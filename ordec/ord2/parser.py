@@ -8,6 +8,16 @@ from lark.indenter import PythonIndenter
 from ..ord2.transformer import Ord2Transformer
 import ast
 
+# Load the grammar file
+lark_fn = Path(__file__).parent / "ord2.lark"
+parser = Lark.open(
+    lark_fn,
+    parser="lalr",
+    postlex=PythonIndenter(),  # same as in the original example
+    start="file_input",
+    # keep_all_tokens=True,
+    maybe_placeholders=False  # required for Reconstructor to work
+)
 
 def load_ord2_from_string(ord_string):
     """
@@ -16,24 +26,12 @@ def load_ord2_from_string(ord_string):
     :param ord_string: string containing ORD code
     :return: ast of the parsed string
     """
-    # Load the grammar file
-    lark_fn = Path(__file__).parent / "ord2.lark"
-    parser = Lark.open(
-        lark_fn,
-        parser="lalr",
-        postlex=PythonIndenter(),  # same as in the original example
-        start="file_input",
-        # keep_all_tokens=True,
-        maybe_placeholders=False  # required for Reconstructor to work
-    )
-
     # Parse the string directly
     parsed_result = parser.parse(ord_string + "\n")
     ord2_transformer = Ord2Transformer()
     transformed = ord2_transformer.transform(parsed_result)
     ast.fix_missing_locations(transformed)
     return transformed
-
 
 # ordec/ws_server.py use ord2py() for now.
 def ord2topy(source_data: str) -> ast.Module:
@@ -52,16 +50,6 @@ if __name__ == "__main__":
     :param ord_string: string containing ORD code
     :return: ast of the parsed string
     """
-    # Load the grammar file
-    lark_fn = Path(__file__).parent / "ord2.lark"
-    parser = Lark.open(
-        lark_fn,
-        parser="lalr",
-        postlex=PythonIndenter(),  # same as in the original example
-        start="file_input",
-        # keep_all_tokens=True,
-        maybe_placeholders=False  # required for Reconstructor to work
-    )
 
     # Parse the string directly
     arg_parser = argparse.ArgumentParser(description="Parse Python code from file or string")

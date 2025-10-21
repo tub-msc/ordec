@@ -73,6 +73,7 @@ class DefinitionTransformer(Transformer):
             args=args,
             body=body,
             decorator_list=[],
+            type_params=[],
             returns=returns
         )
 

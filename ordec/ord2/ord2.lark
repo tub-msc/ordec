@@ -163,7 +163,7 @@ literal_pattern: inner_literal_pattern
 ?inner_literal_pattern: "None" -> const_none
                       | "True" -> const_true
                       | "False" -> const_false
-                      | STRING -> string
+                      | normal_string
                       | number
 
 attr_pattern: NAME ("." NAME)+ -> value
@@ -300,7 +300,7 @@ yield_expr: "yield" [testlist]
           | "yield" "from" test -> yield_from
 
 number: DEC_NUMBER | HEX_NUMBER | BIN_NUMBER | OCT_NUMBER | FLOAT_NUMBER | IMAG_NUMBER
-string: STRING | LONG_STRING | f_string
+string: normal_string | long_string | f_string
 
 f_string: FSTRING_DOUBLE_START f_string_content_double* FSTRING_DOUBLE_END
         | FSTRING_SINGLE_START f_string_content_single* FSTRING_SINGLE_END
@@ -320,8 +320,11 @@ FSTRING_SINGLE_END: /'/
 FSTRING_TEXT_DOUBLE: /[^{}"]+/
 FSTRING_TEXT_SINGLE: /[^{}']+/
 
-STRING: /([ub]?r?|r[ub])("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
-LONG_STRING: /([ub]?r?|r[ub])(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is
+STRING_OTHER_PREFIX: "u" | /rb/ | /br/ | "r" | "b"
+normal_string: STRING_OTHER_PREFIX? STRING
+long_string: STRING_OTHER_PREFIX? LONG_STRING
+STRING: /("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
+LONG_STRING: /(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is
 
 // Other terminals
 

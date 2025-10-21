@@ -172,7 +172,7 @@ class ExpressionTransformer(Transformer, Misc):
         expr = nodes[0]
         for i in range(1, len(nodes)):
             right = nodes[i]
-            expr = ast.BinOp(left=expr, op=ast.And(), right=right)
+            expr = ast.BinOp(left=expr, op=ast.BitAnd(), right=right)
         return expr
 
     def shift_expr(self, nodes):
@@ -286,7 +286,7 @@ class ExpressionTransformer(Transformer, Misc):
             node = nodes[0]
             return node
         else:
-            return ast.Tuple(elts=nodes, ctx=ast.Load())
+            return nodes
 
     def power(self, nodes):
         base = nodes[0]
@@ -437,6 +437,22 @@ class ExpressionTransformer(Transformer, Misc):
             elif isinstance(node, ast.AST):
                 values.append(node)
         return ast.JoinedStr(values=values)
+
+    def normal_string(self, nodes):
+        if len(nodes) > 1:
+            if 'b' in nodes[0]:
+                return ast.Constant(value=nodes[1].encode('utf-8'))
+            if 'u' == nodes[0]:
+                return ast.Constant(value=nodes[1], kind=nodes[0])
+            else:
+                return ast.Constant(value=nodes[1])
+        return ast.Constant(value=nodes[0])
+
+    def long_string(self, nodes):
+        if len(nodes) > 1:
+            if 'b' in nodes[0]:
+                return ast.Constant(value=nodes[1].encode('utf-8'))
+        return ast.Constant(value=nodes[0])
 
     number = lambda self, nodes: nodes[0]
     string = lambda self, nodes: nodes[0]

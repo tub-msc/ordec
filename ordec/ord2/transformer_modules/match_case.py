@@ -125,7 +125,8 @@ class MatchCaseTransformer(Transformer):
     def literal_pattern(self, nodes):
         const = nodes[0]
         # Constants
-        if isinstance(const, ast.Constant) and const.value in (None, True, False):
+        if (isinstance(const, ast.Constant) and
+                (type(const.value) is bool or const.value is None)):
             return ast.MatchSingleton(value=const.value)
         # Other values
         return ast.MatchValue(value=const)

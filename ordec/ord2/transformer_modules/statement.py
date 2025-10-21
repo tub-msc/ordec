@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
-
+from jedi.parser_utils import for_stmt_defines_one_name
 #standard imports
 from lark import Transformer
 import ast
@@ -35,6 +35,16 @@ class StatementTransformer(Transformer, Misc):
     def async_stmt(self, nodes):
         if isinstance(nodes[0], ast.FunctionDef):
             return self.async_funcdef(nodes[0])
+        elif isinstance(nodes[0], ast.With):
+            with_stmt = nodes[0]
+            return ast.AsyncWith(items=with_stmt.items,
+                                 body=with_stmt.body)
+        else:
+            for_stmt = nodes[0]
+            return ast.AsyncFor(target=for_stmt.target,
+                                iter=for_stmt.iter,
+                                body=for_stmt.body,
+                                orelse=for_stmt.orelse)
 
     def simple_stmt(self, nodes):
         statements = []
@@ -146,10 +156,15 @@ class StatementTransformer(Transformer, Misc):
             aliases = [ast.alias(name='*', asname=None)]
         return ast.ImportFrom(module=module, names=aliases, level=level)
 
+    def del_stmt(self, nodes):
+        # Set for each of the inner nodes
+        for node in nodes[0]:
+            self._set_ctx(node, ast.Del())
+        return ast.Delete(targets=nodes[0])
+
     pass_stmt = lambda self, _ : ast.Pass()
     assign_stmt = lambda self, nodes: nodes[0]
     return_stmt = lambda self, nodes: ast.Return(value=nodes[0] if len(nodes) > 0 else None)
-    del_stmt = lambda self, nodes: ast.Del(value=nodes[0])
     break_stmt = lambda self, _: ast.Break()
     continue_stmt = lambda self, _: ast.Continue()
     global_stmt = lambda self, nodes: ast.Global(nodes)

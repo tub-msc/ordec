@@ -94,7 +94,7 @@ class CompoundTransformer(Transformer, Misc):
     def with_stmt(self, nodes):
         with_items = nodes[0]
         suite = nodes [1]
-        return ast.With(with_items, suite)
+        return ast.With(items=with_items, body=suite)
 
     def with_item(self, nodes):
         test = nodes[0]
