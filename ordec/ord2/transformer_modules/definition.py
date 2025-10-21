@@ -58,6 +58,7 @@ class DefinitionTransformer(Transformer):
             args=parameters,
             body=suite,
             decorator_list=[],
+            type_params=[],
             returns=return_type
         )
 
@@ -92,7 +93,8 @@ class DefinitionTransformer(Transformer):
             bases=bases,
             keywords=[],
             body=suite,
-            decorator_list=[]
+            decorator_list=[],
+            type_params=[]
         )
 
     suite = lambda self, nodes: nodes

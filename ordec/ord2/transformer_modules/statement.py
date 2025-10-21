@@ -69,7 +69,8 @@ class StatementTransformer(Transformer, Misc):
         target_type = nodes[1]
         value = nodes[2] if len(nodes) > 2 else None
         self._set_ctx(target, ast.Store())
-        return ast.AnnAssign(target=target, annotation=target_type, value=value, simple=0)
+        simple = 1 if isinstance(target, ast.Name) else 0
+        return ast.AnnAssign(target=target, annotation=target_type, value=value, simple=simple)
 
     def raise_stmt(self, nodes):
         if not nodes:
