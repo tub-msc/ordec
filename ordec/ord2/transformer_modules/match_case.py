@@ -12,6 +12,9 @@ class MatchCaseTransformer(Transformer):
 
     def case(self, nodes):
         pattern = nodes[0]
+        if isinstance(pattern, ast.Constant):
+            pattern = ast.MatchValue(value=pattern)
+
         if len(nodes) > 2:
             # pattern if xy
             test = nodes[1]

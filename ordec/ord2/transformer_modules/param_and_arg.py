@@ -73,8 +73,17 @@ class ParamArgTransformer(Transformer):
             else:
                 normal_params.append(node)
 
-        # normal params
-        for param in normal_params:
+        # Split in args and pos_args
+        slash_index = normal_params.index("/") if "/" in normal_params else -1
+        if slash_index != -1:
+            params_pos = normal_params[:slash_index]
+            params_args = normal_params[slash_index + 1:]
+        else:
+            params_pos = []
+            params_args = normal_params[:]
+        for param in params_pos:
+            unpack_param(param, posonlyargs, defaults)
+        for param in params_args:
             unpack_param(param, args, defaults)
 
         # process starparams if present

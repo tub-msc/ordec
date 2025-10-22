@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
-from jedi.parser_utils import for_stmt_defines_one_name
+
 #standard imports
 from lark import Transformer
 import ast

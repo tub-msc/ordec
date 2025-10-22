@@ -216,9 +216,9 @@ def test_walrus_operator():
     ord_string = "if (n := len(items)) > 0:\n    print(n)"
     compare_asts(ord_string)
 
-#def test_match_case():
-#    ord_string = "match x:\n    case 1:\n        pass\n    case _:\n        pass"
-#    compare_asts(ord_string)
+def test_match_case():
+    ord_string = "match x:\n    case 1:\n        pass\n    case _:\n        pass"
+    compare_asts(ord_string)
 
 def test_global_nonlocal():
     ord_string = "def func():\n    global x\n    nonlocal y"
@@ -236,9 +236,9 @@ def test_raise_no_expr():
     ord_string = "raise"
     compare_asts(ord_string)
 
-#def test_posonly_args():
-#    ord_string = "def f(a, /, b, *, c):\n    pass"
-#    compare_asts(ord_string)
+def test_posonly_args():
+    ord_string = "def f(a, /, b, *, c):\n    pass"
+    compare_asts(ord_string)
 
 def test_complex_numbers():
     ord_string = "z = 1 + 2j"
@@ -272,9 +272,9 @@ def test_match_sequence_pattern():
     ord_string = "match lst:\n    case [first, *rest]:\n        pass"
     compare_asts(ord_string)
 
-#def test_match_mapping_pattern():
-#    ord_string = "match d:\n    case {'key': value}:\n        pass"
-#    compare_asts(ord_string)
+def test_match_mapping_pattern():
+    ord_string = "match d:\n    case {'key': value}:\n        pass"
+    compare_asts(ord_string)
 
 def test_f_string_escaped():
     ord_string = "multi_complex = f\"{{{{\'hello\'}}}}\""
@@ -290,4 +290,8 @@ def test_f_string_arith():
 
 def test_f_string_escaped_call():
     ord_string = f"Value: {{{print(3 + 4)}}}"
+    compare_asts(ord_string)
+
+def test_subscript_numpy():
+    ord_string = "lst[1,:]"
     compare_asts(ord_string)
