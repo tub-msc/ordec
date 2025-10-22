@@ -7,9 +7,6 @@ import ast
 
 class ParamArgTransformer(Transformer):
 
-    def __init__(self):
-        pass
-
     def parameters(self, nodes):
         """
         Parameters transformer that handles:

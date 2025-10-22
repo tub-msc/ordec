@@ -7,9 +7,6 @@ import ast
 
 class MatchCaseTransformer(Transformer):
 
-    def __init__(self):
-        pass
-
     def case(self, nodes):
         pattern = nodes[0]
         if isinstance(pattern, ast.Constant):

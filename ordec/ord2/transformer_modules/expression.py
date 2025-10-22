@@ -50,9 +50,6 @@ class ExpressionTransformer(Transformer, Misc):
         'is not': ast.IsNot,
     }
 
-    def __init__(self):
-        pass
-
     def funccall(self, nodes):
         # Converts argvalue/stararg/kwargs into arguments
         function_name = nodes[0]
@@ -251,6 +248,9 @@ class ExpressionTransformer(Transformer, Misc):
 
         target = nodes[index]
         iterable = nodes[index + 1]
+
+        if isinstance(target, list):
+            target = ast.Tuple(target)
         self._set_ctx(target, ast.Store())
 
         return ast.comprehension(

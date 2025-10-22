@@ -7,15 +7,18 @@ import ast
 
 class DefinitionTransformer(Transformer):
 
-    def __init__(self):
-        pass
-
     def decorator(self, nodes):
         dotted_name = nodes[0]
         func_name = ast.Name(id=dotted_name, ctx=ast.Load())
 
         if len(nodes) > 1 and nodes[1]:
-            args, keywords = nodes[1]
+            args = []
+            keywords = []
+            for value in nodes[1]:
+                if isinstance(value, ast.Constant):
+                    args.append(value)
+                elif isinstance(value, tuple) and value[0] == "argvalue":
+                    keywords.append(ast.keyword(arg=value[1].id, value=value[2]))
             return ast.Call(func=func_name, args=args, keywords=keywords)
         return func_name
 
@@ -49,9 +52,6 @@ class DefinitionTransformer(Transformer):
         else:
             return_type = None
             suite = rest[0]
-
-        if return_type is not None and isinstance(return_type, str):
-            return_type = ast.Name(id=return_type, ctx=ast.Load())
 
         return ast.FunctionDef(
             name=name,

@@ -11,8 +11,11 @@ def compare_asts(ord2_code_string):
     assert (ast.dump(or2_ast) ==
             ast.dump(python_ast))
 
+def test_class_empty():
+    ord_string = "class A():\n   pass"
+    compare_asts(ord_string)
 
-def test_class():
+def test_class_inherit():
     ord_string = "class A(B, C):\n   pass"
     compare_asts(ord_string)
 
@@ -24,8 +27,28 @@ def test_return_none():
     ord_string = "def f():\n    return"
     compare_asts(ord_string)
 
+def test_return_string():
+    ord_string = "def f():\n    return 'Hello'"
+    compare_asts(ord_string)
+
+def test_funcdef_return_type():
+    ord_string = "def f() -> int:\n    return 1"
+    compare_asts(ord_string)
+
 def test_funccall():
     ord_string = "func(1, 2, 3, {'a': 1})"
+    compare_asts(ord_string)
+
+def test_funccall_starargs():
+    ord_string = "func(*argc)"
+    compare_asts(ord_string)
+
+def test_funccall_kwargs():
+    ord_string = "func(**kwargs)"
+    compare_asts(ord_string)
+
+def test_funccall_assigned():
+    ord_string = "func(a=3)"
     compare_asts(ord_string)
 
 def test_function_with_return():
@@ -42,6 +65,18 @@ def test_function_with_async():
 
 def test_decorator():
     ord_string = "@decorator\ndef func():\n  pass"
+    compare_asts(ord_string)
+
+def test_decorator_multiple():
+    ord_string = "@decorator\n@test\ndef func():\n  pass"
+    compare_asts(ord_string)
+
+def test_decorator_keyword():
+    ord_string = "@decorator(1, x=2)\ndef func():\n  pass"
+    compare_asts(ord_string)
+
+def test_simple_stmt():
+    ord_string = "x=0;y=1"
     compare_asts(ord_string)
 
 def test_list():
@@ -90,6 +125,10 @@ def test_nested_loops():
 
 def test_break_continue():
     ord_string = "for i in range(10):\n    if i == 5:\n        break\n    else:\n        continue"
+    compare_asts(ord_string)
+
+def test_try_finally():
+    ord_string = "try:\n  pass\nfinally:\n  pass"
     compare_asts(ord_string)
 
 def test_try_except():
@@ -172,6 +211,18 @@ def test_lambda_expr():
     ord_string = "f = lambda x, y=2: x + y"
     compare_asts(ord_string)
 
+def test_lambda_star_args():
+    ord_string = "f = lambda *args, **kwargs: (args, kwargs)"
+    compare_asts(ord_string)
+
+def test_lambda_complex():
+    ord_string = "f = lambda **kwargs: show_info(**{k: v for k, v in kwargs.items()})"
+    compare_asts(ord_string)
+
+def test_lambda_list_stararg():
+    ord_string = "f = lambda *args: show_numbers(*[x for x in args if x > 0])"
+    compare_asts(ord_string)
+
 def test_list_comprehension():
     ord_string = "[x * 2 for x in range(5) if x % 2 == 0]"
     compare_asts(ord_string)
@@ -190,6 +241,10 @@ def test_generator_expression():
 
 def test_import_simple():
     ord_string = "import math"
+    compare_asts(ord_string)
+
+def test_import_multiple():
+    ord_string = "import math, numpy, os.path"
     compare_asts(ord_string)
 
 def test_import_as():
@@ -216,12 +271,12 @@ def test_walrus_operator():
     ord_string = "if (n := len(items)) > 0:\n    print(n)"
     compare_asts(ord_string)
 
-def test_match_case():
-    ord_string = "match x:\n    case 1:\n        pass\n    case _:\n        pass"
-    compare_asts(ord_string)
-
 def test_global_nonlocal():
     ord_string = "def func():\n    global x\n    nonlocal y"
+    compare_asts(ord_string)
+
+def global_var():
+    ord_string = "global x"
     compare_asts(ord_string)
 
 def test_ellipsis():
@@ -234,6 +289,10 @@ def test_raise_stmt():
 
 def test_raise_no_expr():
     ord_string = "raise"
+    compare_asts(ord_string)
+    
+def test_raise_from():
+    ord_string = "raise RuntimeError('Failed to parse number') from e"
     compare_asts(ord_string)
 
 def test_posonly_args():
@@ -264,6 +323,14 @@ def test_docstring_module():
     ord_string = "\"\"\"This is a docstring\"\"\""
     compare_asts(ord_string)
 
+def test_docstring_module_binary():
+    ord_string = "b\"\"\"This is a docstring\"\"\""
+    compare_asts(ord_string)
+
+def test_match_case():
+    ord_string = "match x:\n    case 1:\n        pass\n    case _:\n        pass"
+    compare_asts(ord_string)
+
 def test_match_class_pattern():
     ord_string = "match point:\n    case Point(x, y):\n        pass"
     compare_asts(ord_string)
@@ -292,6 +359,30 @@ def test_f_string_escaped_call():
     ord_string = f"Value: {{{print(3 + 4)}}}"
     compare_asts(ord_string)
 
+def test_string_concat():
+    ord_string = "'Hello' + 'World'"
+    compare_asts(ord_string)
+
 def test_subscript_numpy():
     ord_string = "lst[1,:]"
+    compare_asts(ord_string)
+
+def test_hex_number():
+    ord_string = "0x12AB"
+    compare_asts(ord_string)
+
+def test_octal_number():
+    ord_string = "0o1234"
+    compare_asts(ord_string)
+
+def test_binary_number():
+    ord_string = "0b1010"
+    compare_asts(ord_string)
+
+def test_slice_reverse():
+    ord_string = "lst[::-1]"
+    compare_asts(ord_string)
+
+def test_slice_and_step():
+    ord_string = "lst[1:10:2]"
     compare_asts(ord_string)

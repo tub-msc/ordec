@@ -7,9 +7,6 @@ import ast
 
 class Terminal(Transformer):
 
-    def __init__(self):
-        pass
-
     def DEC_NUMBER(self, nodes):
         value = nodes.value.replace("_", "")
         return ast.Constant(value=int(value, 10))

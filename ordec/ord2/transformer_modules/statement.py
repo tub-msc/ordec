@@ -26,9 +26,6 @@ class StatementTransformer(Transformer, Misc):
         "//=": ast.FloorDiv,
     }
 
-    def __init__(self):
-        pass
-
     def expr_stmt(self, nodes):
         return ast.Expr(value=nodes[0])
 

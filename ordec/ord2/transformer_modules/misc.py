@@ -6,9 +6,6 @@ import ast
 
 class Misc():
 
-    def __init__(self):
-        pass
-
     def _flatten_body(self, body):
         # flatten ast statements
         if isinstance(body, list):

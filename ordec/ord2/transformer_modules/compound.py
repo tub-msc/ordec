@@ -10,9 +10,6 @@ from .misc import Misc
 
 class CompoundTransformer(Transformer, Misc):
 
-    def __init__(self):
-        pass
-
     def if_stmt(self, nodes):
         condition = nodes[0]
         body = nodes[1]
@@ -87,8 +84,6 @@ class CompoundTransformer(Transformer, Misc):
             exc_type = nodes[0]
             name = nodes[1]
             suite = nodes[2]
-        else:
-            raise ValueError(f"Unexpected except_clause nodes: {nodes}")
         return ast.ExceptHandler(type=exc_type, name=name, body=suite)
 
     def with_stmt(self, nodes):
