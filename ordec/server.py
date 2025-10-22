@@ -232,11 +232,9 @@ class ConnectionHandler:
             }))
             return
     
-        discovered_views = discover_views(conn_globals)
-        discovered_view_names = [v['name'] for v in discovered_views]
         websocket.send(json.dumps({
             'msg': 'viewlist',
-            'views': discovered_views,
+            'views': discover_views(conn_globals),
         }))
 
         if watch_files:
@@ -251,12 +249,6 @@ class ConnectionHandler:
                 msg = json.loads(msg_raw)
                 assert msg['msg'] == 'getview'
                 view_name = msg['view']
-                if view_name not in discovered_view_names:
-                    # Prevent executing random code using the &view= URL
-                    # parameter, even though this should already be impossible
-                    # due to the SameSite=Strict setting on the session cookie.
-                    raise Exception("Unknown view requested!")
-                #print(f"View {view_name} was requested.")
 
                 msg_ret = self.query_view(view_name, conn_globals)
                 websocket.send(json.dumps(msg_ret))
