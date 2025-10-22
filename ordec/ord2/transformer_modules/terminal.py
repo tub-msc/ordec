@@ -29,8 +29,6 @@ class Terminal(Transformer):
     IMAG_NUMBER = lambda self, token: ast.Constant(value=complex(token.value))
     FLOAT_NUMBER = lambda self, token: ast.Constant(value=float(token.value))
     DECIMAL = lambda self, token: ast.Constant(value=float(token.value))
-    STRING = lambda self, token: token.value[1:-1]
-    LONG_STRING = lambda self, token: token.value[3:-3]
     NAME = lambda self, token: token.value
     ASYNC = lambda self, token: token.value
     AWAIT = lambda self, token: token.value

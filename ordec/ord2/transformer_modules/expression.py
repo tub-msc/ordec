@@ -4,6 +4,7 @@
 # standard imports
 from lark import Transformer
 import ast
+import re
 
 # ordec imports
 from .misc import Misc
@@ -379,16 +380,25 @@ class ExpressionTransformer(Transformer, Misc):
                 values.append(ast.Constant(node))
         return ast.JoinedStr(values=values)
 
+    @staticmethod
+    def merge_adjacent_strings(items):
+        merged_buffer = []
+        temp_buffer = []
+
+        for item in items:
+            if isinstance(item, str):
+                temp_buffer.append(item)
+            else:
+                if temp_buffer:
+                    merged_buffer.append(ast.Constant(value="".join(temp_buffer)))
+                    temp_buffer.clear()
+                merged_buffer.append(item)
+        if temp_buffer:
+            merged_buffer.append(ast.Constant(value="".join(temp_buffer)))
+        return merged_buffer
+
     def f_string(self, nodes):
-        values = []
-        # remove start and end
-        for node in nodes[1:-1]:
-            # string or expression
-            if isinstance(node, str):
-                values.append(ast.Constant(value=node))
-            elif isinstance(node, ast.AST):
-                values.append(node)
-        # return the joined string
+        values = self.merge_adjacent_strings(nodes[1:-1])
         return ast.JoinedStr(values=values)
 
     def f_expression_single(self, nodes):
@@ -426,9 +436,6 @@ class ExpressionTransformer(Transformer, Misc):
         return self.format_spec(nodes)
 
     def format_spec(self, nodes):
-        # return if only test value
-        if len(nodes) == 1 and isinstance(nodes[0], str):
-            return ast.Constant(value=nodes[0])
         values = []
         for node in nodes:
             # string or expression
@@ -438,24 +445,43 @@ class ExpressionTransformer(Transformer, Misc):
                 values.append(node)
         return ast.JoinedStr(values=values)
 
-    def normal_string(self, nodes):
-        if len(nodes) > 1:
-            if 'b' in nodes[0]:
-                return ast.Constant(value=nodes[1].encode('utf-8'))
-            if 'u' == nodes[0]:
-                return ast.Constant(value=nodes[1], kind=nodes[0])
+    def string(self, nodes):
+        current_string = nodes[0]
+        if isinstance(current_string, ast.JoinedStr):
+            return current_string
+        else:
+            prefix, string = current_string
+            if prefix is None:
+                return ast.Constant(value=string)
+            elif 'b' in prefix:
+                return ast.Constant(value=string.encode('utf-8'))
+            elif 'u' == prefix:
+                return ast.Constant(value=string, kind=prefix)
             else:
-                return ast.Constant(value=nodes[1])
-        return ast.Constant(value=nodes[0])
+                return ast.Constant(value=string)
 
-    def long_string(self, nodes):
-        if len(nodes) > 1:
-            if 'b' in nodes[0]:
-                return ast.Constant(value=nodes[1].encode('utf-8'))
-        return ast.Constant(value=nodes[0])
+    def STRING(self, token):
+        current_string = token.value
+        string_parts = current_string.split(current_string[-1])
+        if string_parts[0] == '':
+            joined = '\''.join(string_parts[1:-1])
+            return None, joined
+        else:
+            joined = '\''.join(string_parts[1:-1])
+            return string_parts[0], joined
+
+
+    def LONG_STRING(self, token):
+        current_string = token.value
+        string_parts = current_string.split(current_string[-3:])
+        if string_parts[0] == '':
+            joined = '\''.join(string_parts[1:-1])
+            return None, joined
+        else:
+            joined = '\''.join(string_parts[1:-1])
+            return string_parts[0], joined
 
     number = lambda self, nodes: nodes[0]
-    string = lambda self, nodes: nodes[0]
     var = lambda self, nodes: nodes[0]
     star_expr = lambda self, nodes: ast.Starred(value=nodes[0], ctx=ast.Load())
     name = lambda self, nodes: nodes[0]
@@ -464,3 +490,7 @@ class ExpressionTransformer(Transformer, Misc):
     ellipsis = lambda self, _: ast.Constant(value=Ellipsis)
     f_string_content_single = lambda self, nodes: nodes[0]
     f_string_content_double = lambda self, nodes: nodes[0]
+    f_string_escaped_content_double = lambda self, nodes: nodes[0]
+    f_string_escaped_content_single = lambda self, nodes: nodes[0]
+    literal_open_brace = lambda self, _: '{'
+    literal_close_brace = lambda self, _: '}'

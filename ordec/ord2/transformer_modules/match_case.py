@@ -129,7 +129,7 @@ class MatchCaseTransformer(Transformer):
                 (type(const.value) is bool or const.value is None)):
             return ast.MatchSingleton(value=const.value)
         # Other values
-        return ast.MatchValue(value=const)
+        return const
 
     lambdef_nocond = lambda self, nodes: nodes
     encoding_decl = lambda self, nodes: nodes[0]

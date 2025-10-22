@@ -163,7 +163,7 @@ literal_pattern: inner_literal_pattern
 ?inner_literal_pattern: "None" -> const_none
                       | "True" -> const_true
                       | "False" -> const_false
-                      | normal_string
+                      | string
                       | number
 
 attr_pattern: NAME ("." NAME)+ -> value
@@ -300,31 +300,36 @@ yield_expr: "yield" [testlist]
           | "yield" "from" test -> yield_from
 
 number: DEC_NUMBER | HEX_NUMBER | BIN_NUMBER | OCT_NUMBER | FLOAT_NUMBER | IMAG_NUMBER
-string: normal_string | long_string | f_string
+string: STRING | LONG_STRING | f_string
 
 f_string: FSTRING_DOUBLE_START f_string_content_double* FSTRING_DOUBLE_END
         | FSTRING_SINGLE_START f_string_content_single* FSTRING_SINGLE_END
-f_string_content_double: (FSTRING_TEXT_DOUBLE | f_expression_double)
-f_string_content_single: (FSTRING_TEXT_SINGLE | f_expression_single)
+f_string_content_double: FSTRING_TEXT_DOUBLE
+                       | f_expression_double
+                       | "{{" -> literal_open_brace
+                       | "}}" -> literal_close_brace
+
+f_string_content_single: FSTRING_TEXT_SINGLE
+                       | f_expression_single
+                       | "{{" -> literal_open_brace
+                       | "}}" -> literal_close_brace
 f_expression_double: "{" test conversion? format_spec_double? "}"
 f_expression_single: "{" test conversion? format_spec_single? "}"
 format_spec_single: ":" (FSTRING_TEXT_SINGLE | "{" test "}")+
 format_spec_double: ":" (FSTRING_TEXT_DOUBLE | "{" test "}")+
 conversion: "!" /[rsa]/i
 
-FSTRING_DOUBLE_START: /(f|fr|rf)"/
 FSTRING_DOUBLE_END: /"/
-FSTRING_SINGLE_START: /(f|fr|rf)'/
 FSTRING_SINGLE_END: /'/
+
+FSTRING_SINGLE_START: /(f|fr|rf)'/
+FSTRING_DOUBLE_START: /(f|fr|rf)"/
 
 FSTRING_TEXT_DOUBLE: /[^{}"]+/
 FSTRING_TEXT_SINGLE: /[^{}']+/
 
-STRING_OTHER_PREFIX: "u" | /rb/ | /br/ | "r" | "b"
-normal_string: STRING_OTHER_PREFIX? STRING
-long_string: STRING_OTHER_PREFIX? LONG_STRING
-STRING: /("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
-LONG_STRING: /(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is
+STRING: /([ub]?r?|r[ub])("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
+LONG_STRING: /([ub]?r?|r[ub])(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is
 
 // Other terminals
 
