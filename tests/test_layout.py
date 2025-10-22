@@ -8,7 +8,7 @@ import pytest
 
 import ordec.layout
 from ordec.layout.read_gds import GdsReaderException
-from ordec.layout.helpers import paths_to_poly, poly_orientation
+from ordec.layout.helpers import poly_orientation, expand_paths, expand_rects
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary, ExtLibraryError
 
@@ -85,9 +85,9 @@ def test_gds_path_round_unsupported():
     with pytest.raises(GdsReaderException, match="GDS Path with path_type=1"):
         layout = lib['TOP'].layout
 
-def test_paths_to_poly_lshapes():
+def test_expand_paths_lshapes():
     """
-    Tests paths_to_poly with PathEndType.SQUARE and PathEndType.FLUSH
+    Tests expand_paths with PathEndType.SQUARE and PathEndType.FLUSH
     for L shapes with different orientations.
     """
     
@@ -110,7 +110,7 @@ def test_paths_to_poly_lshapes():
             l_square.one(LayoutPath).endtype = PathEndType.SQUARE
 
             # Test path to poly with PathEndType.FLUSH:
-            paths_to_poly(l_flush)
+            expand_paths(l_flush)
 
             assert len(list(l_flush.all(LayoutPath))) == 0
 
@@ -130,7 +130,7 @@ def test_paths_to_poly_lshapes():
             assert poly_orientation(poly.vertices()) == 'ccw'
 
             # Test path to poly with PathEndType.SQUARE:
-            paths_to_poly(l_square)
+            expand_paths(l_square)
 
             polys = list(l_square.all(LayoutPoly))
             assert len(polys) == 1
@@ -144,11 +144,11 @@ def test_paths_to_poly_lshapes():
                 Vec2I(y*50, y*550),
             ]
 
-def test_paths_to_poly_complex():
+def test_expand_paths_complex():
     layers = ordec.layout.SG13G2().layers
     
     l = Layout(ref_layers=layers)
-    l % LayoutPath(
+    l.path = LayoutPath(
         width=100,
         endtype=PathEndType.FLUSH,
         layer=layers.Metal3,
@@ -164,9 +164,10 @@ def test_paths_to_poly_complex():
         ],
     )
 
-    paths_to_poly(l)
+    expand_paths(l)
 
-    assert l.one(LayoutPoly).vertices() ==[
+    assert isinstance(l.path, LayoutPoly)
+    assert l.path.vertices() ==[
         Vec2I(250, 0),
         Vec2I(250, 750),
         Vec2I(750, 750),
@@ -185,16 +186,16 @@ def test_paths_to_poly_complex():
         Vec2I(150, 0),
     ]
 
-def test_paths_to_poly_straight_segment():
+def test_expand_paths_straight_segment():
     """
-    Tests whether paths_to_poly correctly drops unneeded vertices
+    Tests whether expand_paths correctly drops unneeded vertices
     on two straight segments (0 degree turns).
     """
 
     layers = ordec.layout.SG13G2().layers
 
     l = Layout(ref_layers=layers)
-    l % LayoutPath(
+    l.path = LayoutPath(
         width=100,
         endtype=PathEndType.FLUSH,
         layer=layers.Metal1,
@@ -205,19 +206,17 @@ def test_paths_to_poly_straight_segment():
         ],
     )
 
-    paths_to_poly(l)
+    expand_paths(l)
 
-    polys = list(l.all(LayoutPoly))
-    assert len(polys) == 1
-    poly = polys[0]
-    assert poly.vertices() == [
+    assert isinstance(l.path, LayoutPoly)
+    assert l.path.vertices() == [
         Vec2I(-50, 1000),
         Vec2I(-50, 0),
         Vec2I(50, 0),
         Vec2I(50, 1000),
     ]
 
-def test_paths_to_poly_invalid():
+def test_expand_paths_invalid():
     layers = ordec.layout.SG13G2().layers
 
     invalid_paths = [
@@ -251,4 +250,138 @@ def test_paths_to_poly_invalid():
         )
 
         with pytest.raises(ValueError):
-            paths_to_poly(l)
+            expand_paths(l)
+
+def test_expand_rectpoly():
+    layers = ordec.layout.SG13G2().layers
+
+    l = Layout(ref_layers=layers)
+    l.rpoly_h = LayoutRectPoly(
+        layer=layers.Metal1,
+        vertices = [
+            Vec2I(0, 0),
+            Vec2I(100, 100),
+            Vec2I(50, 50),
+        ],
+        start_direction=RectDirection.HORIZONTAL,
+    )
+    l.rpoly_v = LayoutRectPoly(
+        layer=layers.Metal1,
+        vertices = [
+            Vec2I(0, 0),
+            Vec2I(-100, 100),
+            Vec2I(-50, 50),
+        ],
+        start_direction=RectDirection.VERTICAL,
+    )
+
+    expand_rects(l)
+
+    assert len(list(l.all(LayoutRectPoly))) == 0
+    assert isinstance(l.rpoly_h, LayoutPoly)
+    assert l.rpoly_h.vertices() == [
+        Vec2I(100, 0),
+        Vec2I(100, 100),
+        Vec2I(50, 100),
+        Vec2I(50, 50),
+        Vec2I(0, 50),
+        Vec2I(0, 0),
+    ]
+    assert isinstance(l.rpoly_v, LayoutPoly)
+    assert l.rpoly_v.vertices() == [
+        Vec2I(0, 100),
+        Vec2I(-100, 100),
+        Vec2I(-100, 50),
+        Vec2I(-50, 50),
+        Vec2I(-50, 0),
+        Vec2I(0, 0),
+    ]
+
+def test_expand_rectpath():
+    layers = ordec.layout.SG13G2().layers
+
+    l = Layout(ref_layers=layers)
+    l.rpath_h = LayoutRectPath(
+        layer=layers.Metal1,
+        vertices = [
+            Vec2I(0, 0),
+            Vec2I(100, 100),
+            Vec2I(50, 50),
+        ],
+        width=10,
+        endtype=PathEndType.SQUARE,
+        start_direction=RectDirection.HORIZONTAL,
+    )
+    l.rpath_h2 = LayoutRectPath(
+        layer=layers.Metal1,
+        vertices = [
+            Vec2I(0, 0),
+            Vec2I(100, 100),
+            Vec2I(100, 50),
+        ],
+        width=10,
+        endtype=PathEndType.SQUARE,
+        start_direction=RectDirection.HORIZONTAL,
+    )
+    l.rpath_h3 = LayoutRectPath(
+        layer=layers.Metal1,
+        vertices = [
+            Vec2I(0, 0),
+            Vec2I(100, 100),
+            Vec2I(50, 100),
+        ],
+        width=10,
+        endtype=PathEndType.SQUARE,
+        start_direction=RectDirection.HORIZONTAL,
+    )
+    l.rpath_v = LayoutRectPath(
+        layer=layers.Metal1,
+        vertices = [
+            Vec2I(0, 0),
+            Vec2I(100, 100),
+            Vec2I(50, 50),
+        ],
+        width=10,
+        endtype=PathEndType.SQUARE,
+        start_direction=RectDirection.VERTICAL,
+    )
+
+    expand_rects(l)
+    assert len(list(l.all(LayoutRectPath))) == 0
+    assert isinstance(l.rpath_h, LayoutPath)
+    assert l.rpath_h.vertices() == [
+        Vec2I(0, 0),
+        Vec2I(100, 0),
+        Vec2I(100, 100),
+        Vec2I(50, 100),
+        Vec2I(50, 50),
+    ]
+    assert l.rpath_h.width == 10
+    assert l.rpath_h.endtype == PathEndType.SQUARE
+
+    assert isinstance(l.rpath_h2, LayoutPath)
+    assert l.rpath_h2.vertices() == [
+        Vec2I(0, 0),
+        Vec2I(100, 0),
+        Vec2I(100, 100),
+        Vec2I(100, 50),
+    ]
+
+    assert isinstance(l.rpath_h3, LayoutPath)
+    assert l.rpath_h3.vertices() == [
+        Vec2I(0, 0),
+        Vec2I(100, 0),
+        Vec2I(100, 100),
+        Vec2I(50, 100),
+    ]
+
+    assert isinstance(l.rpath_v, LayoutPath)
+    assert l.rpath_v.vertices() == [
+        Vec2I(0, 0),
+        Vec2I(0, 100),
+        Vec2I(100, 100),
+        Vec2I(100, 50),
+        Vec2I(50, 50),
+    ]
+
+

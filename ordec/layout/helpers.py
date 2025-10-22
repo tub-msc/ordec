@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+from itertools import chain
+from typing import Iterable
 from ..core import *
 
 def poly_orientation(vertices: list[Vec2I]):
@@ -109,16 +111,84 @@ def path_to_poly_vertices(path: LayoutPath) -> list[Vec2I]:
             
     return outline
 
-def paths_to_poly(layout: Layout):
+def expand_paths(layout: Layout):
     """
-    For the given Layout, removes all LayoutPath objects and replaces them by
-    geometrically equivalent LayoutPoly objects.
+    For the given Layout, replaces all LayoutPath instances by geometrically
+    equivalent LayoutPoly instances.
     """
-    for old_path in layout.all(LayoutPath):
-        vertices_loop = path_to_poly_vertices(old_path)
-        new_poly = layout % LayoutPoly(
-            layer=old_path.layer,
-            vertices=vertices_loop,
-            )
+    for path in layout.all(LayoutPath):
+        path.replace(LayoutPoly(
+            layer=path.layer,
+            vertices=path_to_poly_vertices(path),
+            ))
 
-        old_path.remove()
+def rpoly_to_poly_vertices(rpoly: LayoutRectPoly) -> Iterable[Vec2I]:
+    start_direction = rpoly.start_direction
+    it = iter(rpoly.vertices())
+    last = next(it)
+    for pos in chain(it, (last,)):
+        if start_direction == RectDirection.HORIZONTAL:
+            yield Vec2I(pos.x, last.y)
+        else:
+            yield Vec2I(last.x, pos.y)
+        yield pos
+        last = pos
+
+def expand_rectpolys(layout: Layout):
+    """
+    For the given Layout, replaces all LayoutRectPoly instances by geometrically
+    equivalent LayoutPoly instances.
+    """
+    for rpoly in layout.all(LayoutRectPoly):
+        rpoly.replace(LayoutPoly(
+            layer=rpoly.layer,
+            vertices=rpoly_to_poly_vertices(rpoly)
+            ))
+
+def rpath_to_path_vertices(rpath: LayoutRectPath) -> Iterable[Vec2I]:
+    start_direction = rpath.start_direction
+    it = iter(rpath.vertices())
+    pos0 = next(it)
+    yield pos0
+    last = pos0
+    for pos in it:
+        if start_direction == RectDirection.HORIZONTAL:
+            intermediate = Vec2I(pos.x, last.y)
+        else:
+            intermediate = Vec2I(last.x, pos.y)
+        if intermediate != pos and intermediate != last:
+            yield intermediate
+        yield pos
+        last = pos
+
+def expand_rectpaths(layout: Layout):
+    """
+    For the given Layout, replaces all LayoutRectPath instances by geometrically
+    equivalent LayoutPoly instances.
+    """
+    for rpath in layout.all(LayoutRectPath):
+        rpath.replace(LayoutPath(
+            layer=rpath.layer,
+            vertices=rpath_to_path_vertices(rpath),
+            endtype=rpath.endtype,
+            width=rpath.width,
+            ))
+
+def expand_rects(layout: Layout):
+    """
+    Replaces all LayoutRectPath and LayoutRectPoly instances by geometrically
+    equivalent LayoutPath and LayoutPoly instances (by calling both
+    expand_rectpolys and expand_rectpaths).
+    """
+    expand_rectpolys(layout)
+    expand_rectpaths(layout)
+
+
+def expand_geom(layout: Layout):
+    """
+    Replaces all LayoutRectPath, LayoutRectPoly and LayoutPath instances
+    by equivalent LayoutPoly instances (by calling first expand_rectts followed
+    by expand_paths).
+    """
+    expand_rects(layout)
+    expand_paths(layout)

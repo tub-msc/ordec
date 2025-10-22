@@ -660,6 +660,16 @@ def test_polyvec2r_typecheck():
 
     assert s.poly.vertices() == [Vec2R(1, 2), Vec2R(3, 4)]
 
+def test_polyvec2r_remove():
+    s = Symbol()
+    s.poly = SymbolPoly(vertices=[Vec2R(1, 1), Vec2R(1, 3), Vec2R(3, 3)])
+    assert len(list(s.all(PolyVec2R))) == 3
+    del s.poly # does the same as s.poly.remove()
+    with pytest.raises(AttributeError):
+        s.poly
+    assert len(list(s.all(PolyVec2R))) == 0
+
+
 def test_npath_double_reference():
     s = MyHead()
     nid = s.subgraph.add(MyNode(label='hello'))
@@ -838,6 +848,44 @@ def test_refcheck_localref():
 
     with pytest.raises(ModelViolation):
         s % NodeRef(ref=s.a)
+
+def test_replace():
+    class NodeA(Node):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    class NodeB(Node):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    s = MyHead()
+    s.x = NodeA()
+    assert len(list(s.all(NodeA))) == 1
+    s.x.replace(NodeB())
+    assert len(list(s.all(NodeA))) == 0
+    assert isinstance(s.x, NodeB)
+
+def test_replace_nonleaf_to_leaf():
+    class NodeA(NonLeafNode):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    class NodeB(Node):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    s = MyHead()
+    s.x = NodeA()
+    s.y = NodeA()
+    s.y.mkpath('sub')
+    assert len(list(s.all(NodeA))) == 2
+    s.x.replace(NodeB())
+    assert len(list(s.all(NodeA))) == 1
+    assert isinstance(s.x, NodeB)
+    with pytest.raises(OrdbException, match="Cannot replace non-leaf node that has children."):
+        s.y.replace(NodeB())
+    assert len(list(s.all(NodeA))) == 1
+    assert isinstance(s.y, NodeA)
 
 def test_localref_mandatory():
     class NodeA(Node):

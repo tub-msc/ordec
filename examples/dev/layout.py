@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 import ordec.layout
 from ordec.extlibrary import ExtLibrary
-from ordec.layout.helpers import paths_to_poly
+from ordec.layout.helpers import expand_geom
 from ordec.core import *
 
 ihp_path = Path(os.getenv("ORDEC_PDK_IHP_SG13G2"))
@@ -29,7 +29,7 @@ def layout_ota() -> Layout:
     return layouts[top]
 
 @generate_func
-def layout_paths2poly() -> Layout:
+def layout_expand_geom() -> Layout:
     layers = ordec.layout.SG13G2().layers
     
     l = Layout(ref_layers=layers)
@@ -77,6 +77,29 @@ def layout_paths2poly() -> Layout:
         ],
     )
 
-    paths_to_poly(l)
+    l % LayoutRectPoly(
+        layer=layers.Metal4,
+        vertices = [
+            Vec2I(0,0),
+            Vec2I(100,100),
+            Vec2I(50,50),
+            Vec2I(-100, 25),
+        ],
+    )
+
+    l % LayoutRectPath(
+        width=80,
+        endtype=PathEndType.SQUARE,
+        layer=layers.Metal5,
+        vertices = [
+            Vec2I(0,0),
+            Vec2I(1400,1400),
+            Vec2I(-400,600),
+            Vec2I(100,100),
+        ],
+        start_direction=RectDirection.HORIZONTAL,
+    )
+
+    expand_geom(l)
 
     return l

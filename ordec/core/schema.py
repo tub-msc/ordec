@@ -139,10 +139,10 @@ class GenericPoly(Node):
         polyvecs = self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid))
         return [polyvec.pos for polyvec in polyvecs]
 
-    def remove(self):
+    def remove_node(self):
         for vertex in self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid)):
             vertex.remove()
-        return super().remove()
+        return super().remove_node()
 
 class GenericPolyR(GenericPoly):
     """Base class for polygon or polygonal chain classes (rational numbers)."""
@@ -473,7 +473,7 @@ class LayoutPath(GenericPolyI, MixinPolygonalChain):
 class LayoutRectPoly(GenericPolyI):
     """
     Compact rectilinear polygon. Each vertex is connected to its successor
-    through two segment. The first segment in start_direction, the second
+    through two segments. The first segment in start_direction, the second
     segment perpendicular to the first. Each vertex has to differ in both x
     and y coordiante from its successor. The successor of the last vertex is the
     first vertex.
@@ -487,6 +487,25 @@ class LayoutRectPoly(GenericPolyI):
     in_subgraphs = [Layout]
 
     start_direction = Attr(RectDirection, default=RectDirection.HORIZONTAL)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+
+@public
+class LayoutRectPath(GenericPolyI):
+    """
+    Compact rectilinear path. Each vertex is connected to its successor
+    through two segments. The first segment in start_direction, the second
+    segment perpendicular to the first. Each vertex has to differ in both x
+    and y coordiante from its successor. The last vertex has no successor
+    (i.e. open path).
+
+    This representation of a rectilinear path requires half the vertices as
+    an equivalent LayoutPath.
+    """
+    in_subgraphs = [Layout]
+
+    start_direction = Attr(RectDirection, default=RectDirection.HORIZONTAL)
+    endtype = Attr(PathEndType, default=PathEndType.FLUSH)
+    width = Attr(int)
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 
 
