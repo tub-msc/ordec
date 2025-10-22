@@ -111,6 +111,10 @@ def test_for_loop():
     ord_string = "for i in range(10):\n  pass\nelse:\n  pass"
     compare_asts(ord_string)
 
+def test_for_multi_targets():
+    ord_string = "for x, y in val_dict.items():\n pass"
+    compare_asts(ord_string)
+
 def test_async_for_loop():
     ord_string = "async def f():\n    async for x in a:\n        await g(x)"
     compare_asts(ord_string)

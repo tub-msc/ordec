@@ -38,3 +38,4 @@ class Terminal(Transformer):
     FSTRING_DOUBLE_END = lambda self, token: token.value
     SLASH = lambda self, token: token.value
     STRING_OTHER_PREFIX = lambda self, token: token.value
+    MATCH = lambda self, token: token.value

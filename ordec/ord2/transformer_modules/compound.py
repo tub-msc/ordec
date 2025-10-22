@@ -36,6 +36,8 @@ class CompoundTransformer(Transformer, Misc):
 
     def for_stmt(self, nodes):
         target = nodes[0]
+        if isinstance(target, list):
+            target = ast.Tuple(target, ast.Store())
         self._set_ctx(target, ast.Store())
         iterator = nodes[1]
         body = nodes[2]
