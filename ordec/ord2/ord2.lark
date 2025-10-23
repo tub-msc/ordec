@@ -163,7 +163,8 @@ literal_pattern: inner_literal_pattern
 ?inner_literal_pattern: "None" -> const_none
                       | "True" -> const_true
                       | "False" -> const_false
-                      | string
+                      | STRING
+                      | LONG_STRING
                       | number
 
 attr_pattern: NAME ("." NAME)+ -> value
@@ -177,14 +178,9 @@ _sequence_pattern: (sequence_item_pattern ("," sequence_item_pattern)* ","?)?
                       | "*" NAME -> star_pattern
 
 class_pattern: name_or_attr_pattern "(" [arguments_pattern ","?] ")"
-arguments_pattern: pos_arg_pattern ["," keyws_arg_pattern]
-                 | keyws_arg_pattern -> no_pos_arguments
-
-pos_arg_pattern: as_pattern ("," as_pattern)*
-keyws_arg_pattern: keyw_arg_pattern ("," keyw_arg_pattern)*
-keyw_arg_pattern: NAME "=" as_pattern
-
-
+arguments_pattern: argument ("," argument)*
+argument: NAME "=" as_pattern -> keyw_arg_pattern
+        | as_pattern
 
 suite: simple_stmt | _NEWLINE _INDENT stmt+ _DEDENT
 

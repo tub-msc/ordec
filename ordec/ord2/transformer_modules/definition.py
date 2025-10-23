@@ -87,12 +87,18 @@ class DefinitionTransformer(Transformer):
             bases_node = []
             suite = nodes[1]
 
-        bases = bases_node if isinstance(bases_node, list) else []
+        bases = []
+        keywords = []
+        for base in bases_node:
+            if isinstance(base, tuple) and base[0] == "argvalue":
+                keywords.append(ast.keyword(arg=base[1].id, value=base[2]))
+            else:
+                bases.append(base)
 
         return ast.ClassDef(
             name=name,
             bases=bases,
-            keywords=[],
+            keywords=keywords,
             body=suite,
             decorator_list=[],
             type_params=[]

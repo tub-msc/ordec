@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
+from statistics import median_grouped
 
 # standard imports
 from lark import Transformer
 import ast
-import re
 
 # ordec imports
 from .misc import Misc
@@ -57,36 +57,31 @@ class ExpressionTransformer(Transformer, Misc):
         keywords = []
         args = []
         for arg in prelim_args:
+            # star arguments
             if isinstance(arg, list):
                 for inner_arg in arg:
                     if isinstance(inner_arg, tuple) and inner_arg[0] == "stararg":
-                        # starred argument
                         args.append(ast.Starred(inner_arg[1], ctx=ast.Load()))
+                    elif isinstance(inner_arg, tuple) and inner_arg[0] == "argvalue":
+                        keywords.append(ast.keyword(arg=inner_arg[1].id, value=inner_arg[2]))
                     elif isinstance(inner_arg, tuple) and inner_arg[0] == "kwargs":
+                        keywords.append(ast.keyword(arg=None, value=inner_arg[1]))
                         # valued kwarg
                         if len(inner_arg[2]) > 0:
-                            keywords.append(ast.keyword(arg=inner_arg[1], value=inner_arg[2]))
-                        # **kwargs
-                        else:
-                            keywords.append(ast.keyword(arg=None, value=inner_arg[1]))
+                            for kw in inner_arg[2]:
+                                keywords.append(ast.keyword(arg=kw[1].id, value=kw[2]))
+            # valued argument
             elif isinstance(arg, tuple) and arg[0] == "argvalue":
                 # normal value
                 keywords.append(ast.keyword(arg=arg[1].id, value=arg[2]))
+            # keyword arguments
             elif isinstance(arg, tuple) and arg[0] == "kwargs":
+                keywords.append(ast.keyword(arg=None, value=arg[1]))
                 # valued kwarg
                 if len(arg[2]) > 0:
-                    keywords.append(ast.keyword(arg=arg[1], value=arg[2]))
-                # **kwargs
-                else:
-                    keywords.append(ast.keyword(arg=None, value=arg[1]))
-            elif isinstance(arg, tuple) and len(arg) == 2  and isinstance(arg[1], list):
-                # Generator + comprehension
-                joined_str, comprehensions = arg
-                gen_expr = ast.GeneratorExp(
-                    elt=joined_str,
-                    generators=comprehensions
-                )
-                args.append(gen_expr)
+                    for kw in arg[2]:
+                        keywords.append(ast.keyword(arg=kw[1].id, value=kw[2]))
+            # comprehension or single argument
             else:
                 args.append(arg)
 
@@ -145,8 +140,6 @@ class ExpressionTransformer(Transformer, Misc):
         expr = nodes[0]
         for i in range(1, len(nodes), 2):
             op_token = nodes[i]
-            if isinstance(op_token, ast.AST):
-                op_token = op_token.value
             right = nodes[i + 1]
             bin_op = self.ADD_OP_MAP[op_token]()
             expr = ast.BinOp(left=expr, op=bin_op, right=right)
@@ -177,8 +170,6 @@ class ExpressionTransformer(Transformer, Misc):
         expr = nodes[0]
         for i in range(1, len(nodes), 2):
             op_token = nodes[i]
-            if isinstance(op_token, ast.AST):
-                op_token = op_token.value
             right = nodes[i + 1]
             bin_op = self.SHIFT_OP_MAP[op_token]()
             expr = ast.BinOp(left=expr, op=bin_op, right=right)
@@ -188,21 +179,14 @@ class ExpressionTransformer(Transformer, Misc):
         expr = nodes[0]
         for i in range(1, len(nodes), 2):
             op_token = nodes[i]
-            if isinstance(op_token, ast.AST):
-                op_token = op_token.value
             right = nodes[i + 1]
             bin_op = self.MUL_OP_MAP[op_token]()
             expr = ast.BinOp(left=expr, op=bin_op, right=right)
         return expr
 
     def factor(self, nodes):
-        if len(nodes) == 1:
-            # just a power expression
-            return nodes[0]
         # unary operator case
         op_token = nodes[0]
-        if isinstance(op_token, ast.AST):
-            op_token = op_token.value
         operand = nodes[1]
         unary_op = self.UNARY_OP_MAP[op_token]()
         return ast.UnaryOp(op=unary_op, operand=operand)
@@ -270,29 +254,16 @@ class ExpressionTransformer(Transformer, Misc):
         return ast.Compare(left=lhs, ops=ops, comparators=comparators)
 
     def or_test(self, nodes):
-        if len(nodes) == 1:
-            return nodes[0]
         return ast.BoolOp(op=ast.Or(), values=nodes)
 
     def and_test(self, nodes):
-        if len(nodes) == 1:
-            return nodes[0]
         return ast.BoolOp(op=ast.And(), values=nodes)
 
     def not_test(self, nodes):
         return ast.UnaryOp(op=ast.Not(), operand=nodes[0])
 
-    def exprlist(self, nodes):
-        if len(nodes) == 1:
-            node = nodes[0]
-            return node
-        else:
-            return nodes
-
     def power(self, nodes):
         base = nodes[0]
-        if len(nodes) == 1:
-            return base
         exponent = nodes[1]
         return ast.BinOp(left=base, op=ast.Pow(), right=exponent)
 
@@ -305,10 +276,7 @@ class ExpressionTransformer(Transformer, Misc):
         return ast.Expr(ast.YieldFrom(value))
 
     def await_expr(self, nodes):
-        if len(nodes) > 1:
-            return ast.Await(nodes[1])
-        else:
-            return nodes[0]
+        return ast.Await(nodes[1])
 
     def assign_expr(self, nodes):
         target = ast.Name(id=nodes[0], ctx=ast.Store())
@@ -316,14 +284,11 @@ class ExpressionTransformer(Transformer, Misc):
         return ast.NamedExpr(target=target, value=value)
 
     def test(self, nodes):
-        if len(nodes) == 3:
-            # x if y else z
-            body = nodes[0]
-            test_cond = nodes[1]
-            orelse = nodes[2]
-            return ast.IfExp(test=test_cond, body=body, orelse=orelse)
-        else:
-            return nodes[0]
+        # x if y else z
+        body = nodes[0]
+        test_cond = nodes[1]
+        orelse = nodes[2]
+        return ast.IfExp(test=test_cond, body=body, orelse=orelse)
 
     def sliceop(self, nodes):
         step = nodes[0] if nodes else None
@@ -334,7 +299,6 @@ class ExpressionTransformer(Transformer, Misc):
         if len(nodes) == 1:
             if isinstance(nodes[0], str) and nodes[0] == ":":
                 return ast.Slice(lower=None, upper=None, step=None)
-            return nodes[0]
         else:
             lower = None
             upper = None
@@ -360,10 +324,7 @@ class ExpressionTransformer(Transformer, Misc):
             return ast.Slice(lower=lower, upper=upper, step=step)
 
     def subscript_tuple(self, nodes):
-        if len(nodes) == 1:
-            return nodes[0]
-        else:
-            return ast.Tuple(elts=nodes, ctx=ast.Load())
+        return ast.Tuple(elts=nodes, ctx=ast.Load())
 
     def tuple(selfs, nodes):
         return ast.Tuple(elts=nodes, ctx=ast.Load())
@@ -371,23 +332,18 @@ class ExpressionTransformer(Transformer, Misc):
     def testlist_tuple(self, nodes):
         return ast.Tuple(elts=nodes, ctx=ast.Load())
 
-    def string_concat(self, nodes):
-        values = []
-        for node in nodes:
-            if isinstance(node, ast.JoinedStr):
-                values.extend(node.values)
-            else:
-                values.append(ast.Constant(node))
-        return ast.JoinedStr(values=values)
-
     @staticmethod
     def merge_adjacent_strings(items):
         merged_buffer = []
         temp_buffer = []
 
         for item in items:
+            # String concat
             if isinstance(item, str):
                 temp_buffer.append(item)
+            # f string
+            elif isinstance(item, ast.Constant):
+                temp_buffer.append(item.value)
             else:
                 if temp_buffer:
                     merged_buffer.append(ast.Constant(value="".join(temp_buffer)))
@@ -396,6 +352,10 @@ class ExpressionTransformer(Transformer, Misc):
         if temp_buffer:
             merged_buffer.append(ast.Constant(value="".join(temp_buffer)))
         return merged_buffer
+
+    def string_concat(self, nodes):
+        merged_string = self.merge_adjacent_strings(nodes)
+        return merged_string[0] if len(merged_string) == 1 else merged_string
 
     def f_string(self, nodes):
         values = self.merge_adjacent_strings(nodes[1:-1])
@@ -442,7 +402,7 @@ class ExpressionTransformer(Transformer, Misc):
             if isinstance(node, str):
                 values.append(ast.Constant(value=node))
             elif isinstance(node, ast.AST):
-                values.append(node)
+                values.append(self.f_expression([node]))
         return ast.JoinedStr(values=values)
 
     def string(self, nodes):
@@ -451,7 +411,7 @@ class ExpressionTransformer(Transformer, Misc):
             return current_string
         else:
             prefix, string = current_string
-            if prefix is None:
+            if  len(prefix) == 0:
                 return ast.Constant(value=string)
             elif 'b' in prefix:
                 return ast.Constant(value=string.encode('utf-8'))
@@ -465,7 +425,7 @@ class ExpressionTransformer(Transformer, Misc):
         string_parts = current_string.split(current_string[-1])
         if string_parts[0] == '':
             joined = '\''.join(string_parts[1:-1])
-            return None, joined
+            return '', joined
         else:
             joined = '\''.join(string_parts[1:-1])
             return string_parts[0], joined
@@ -476,7 +436,7 @@ class ExpressionTransformer(Transformer, Misc):
         string_parts = current_string.split(current_string[-3:])
         if string_parts[0] == '':
             joined = '\''.join(string_parts[1:-1])
-            return None, joined
+            return '', joined
         else:
             joined = '\''.join(string_parts[1:-1])
             return string_parts[0], joined
@@ -494,3 +454,4 @@ class ExpressionTransformer(Transformer, Misc):
     f_string_escaped_content_single = lambda self, nodes: nodes[0]
     literal_open_brace = lambda self, _: '{'
     literal_close_brace = lambda self, _: '}'
+    exprlist = lambda self, nodes: nodes

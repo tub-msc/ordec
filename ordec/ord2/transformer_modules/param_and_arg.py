@@ -42,13 +42,6 @@ class ParamArgTransformer(Transformer):
                 if default_list is not None:
                     default_list.append(None)
 
-        if not nodes:
-            return ast.arguments(
-                posonlyargs=[], args=[], vararg=None,
-                kwonlyargs=[], kw_defaults=[], kwarg=None,
-                defaults=[]
-            )
-
         normal_params = []
         starparams = None
         kwparams = None
@@ -100,8 +93,6 @@ class ParamArgTransformer(Transformer):
                     if (isinstance(starparams[1], tuple) and len(starparams) == 2 and
                             isinstance(starparams[1][0], list)):
                         post = starparams[1]
-                else:
-                    typed = None
             elif isinstance(starparams[0], tuple) and starparams[0][0] in ("starparam", "starguard"):
                 inner = starparams[0]
                 param_type = inner[0]
@@ -147,7 +138,7 @@ class ParamArgTransformer(Transformer):
         return "kwparam", typedparam
 
     def poststarparams(self, nodes):
-        if not nodes:
+        if len(nodes) == 0:
             return [], None
 
         kwparams = nodes[-1] if (
@@ -171,9 +162,7 @@ class ParamArgTransformer(Transformer):
     def paramvalue(self, nodes):
         typedparam = nodes[0]
         default = nodes[1] if len(nodes) > 1 else None
-        if default:
-            return "arg_with_default", typedparam, default
-        return typedparam
+        return "arg_with_default", typedparam, default
 
     def typedparam(self, nodes):
         # x:Int

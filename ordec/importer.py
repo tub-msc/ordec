@@ -26,8 +26,7 @@ class OrdLoader(Loader):
             raise ImportError()
 
     def exec_module(self, module):
-        def get_coding(path):
-            # Get the coding string
+        def get_version(path):
             with open(path, 'r', encoding='utf-8') as f:
                 line = f.readline()
                 m = re.match(r'\s*#.*version\s*[:=]\s*([A-Za-z0-9_\-]+)', line)
@@ -36,7 +35,7 @@ class OrdLoader(Loader):
                 return None
 
         module.__dict__['__file__'] = self.ord_path
-        coding = get_coding(self.ord_path)
+        coding = get_version(self.ord_path)
         if coding == "ord2":
             code = compile(ord2topy(self.source_text), "<string>", "exec")
         elif coding == "ord1":

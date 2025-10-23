@@ -47,10 +47,7 @@ class StatementTransformer(Transformer, Misc):
         statements = []
         for node in nodes:
             if node is not None:
-                if isinstance(node, list):
-                    statements.extend(node)
-                else:
-                    statements.append(node)
+                statements.append(node)
         return statements
 
     def assign(self, nodes):
@@ -107,10 +104,6 @@ class StatementTransformer(Transformer, Misc):
         name = nodes[0]
         asname = nodes[1] if len(nodes) > 1 else None
         return name, asname
-
-    def import_simple(self, nodes):
-        aliases = [ast.alias(name=name, asname=asname) for name, asname in nodes]
-        return ast.Import(names=aliases)
 
     def import_as_name(self, nodes):
         name = str(nodes[0])

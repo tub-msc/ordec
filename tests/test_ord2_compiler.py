@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-import pytest
 from ordec.ord2.parser import load_ord2_from_string
 import ast
 
@@ -19,12 +18,16 @@ def test_class_inherit():
     ord_string = "class A(B, C):\n   pass"
     compare_asts(ord_string)
 
-def test_funcdef():
-    ord_string = "def func(x:int = 2, *argc, **kwargs):\n   pass"
+def test_class_keyword():
+    ord_string = "class A(B, metaclass=Meta):\n   pass"
     compare_asts(ord_string)
 
-def test_return_none():
-    ord_string = "def f():\n    return"
+def test_funcdef():
+    ord_string = "def f():\n    pass"
+    compare_asts(ord_string)
+
+def test_function_with_return():
+    ord_string = "def func():\n    return 1"
     compare_asts(ord_string)
 
 def test_return_string():
@@ -35,32 +38,72 @@ def test_funcdef_return_type():
     ord_string = "def f() -> int:\n    return 1"
     compare_asts(ord_string)
 
-def test_funccall():
-    ord_string = "func(1, 2, 3, {'a': 1})"
+def test_funcdef_posargs():
+    ord_string = "def f(a, /, b):\n    return 'Hello'"
+    compare_asts(ord_string)
+
+def test_funcdef_star():
+    ord_string = "def func(*, a):\n    pass"
+    compare_asts(ord_string)
+
+def test_funcdef_star_args():
+    ord_string = "def f(*args):\n    pass"
+    compare_asts(ord_string)
+
+def test_funcdef_kwargs():
+    ord_string = "def f(**kwargs):\n    pass"
+    compare_asts(ord_string)
+
+def test_funcdef_complex():
+    ord_string = "def func(x:int = 2, *argc, **kwargs):\n   pass"
+    compare_asts(ord_string)
+
+def test_async_await():
+    ord_string = "await sleep(1)"
+    compare_asts(ord_string)
+
+def test_funcdef_with_async():
+    ord_string = "async def func():\n    await asyncio.sleep(1)"
+    compare_asts(ord_string)
+
+def test_funccall_arg():
+    ord_string = "func(1)"
+    compare_asts(ord_string)
+
+def test_funccall_keyword():
+    ord_string = "func(a=3)"
     compare_asts(ord_string)
 
 def test_funccall_starargs():
-    ord_string = "func(*argc)"
+    ord_string = "func(*args)"
     compare_asts(ord_string)
 
 def test_funccall_kwargs():
     ord_string = "func(**kwargs)"
     compare_asts(ord_string)
 
-def test_funccall_assigned():
-    ord_string = "func(a=3)"
+def test_funccall_kwargs_keyword():
+    ord_string = "func(**kwargs, x=3)"
     compare_asts(ord_string)
 
-def test_function_with_return():
-    ord_string = "def func():\n    return 42"
+def test_funccall_args_kwargs_keyword():
+    ord_string = "func(*args, **kwargs, x=3)"
+    compare_asts(ord_string)
+
+def test_funccall_comprehension():
+    ord_string = "func([x*2 for x in range(10)])"
+    compare_asts(ord_string)
+
+def test_funccall_complex():
+    ord_string = "func(*args, a=1, b=2, **kwargs)"
     compare_asts(ord_string)
 
 def test_function_with_yield():
     ord_string = "def gen():\n    yield 1"
     compare_asts(ord_string)
 
-def test_function_with_async():
-    ord_string = "async def afunc():\n    await asyncio.sleep(1)"
+def test_function_with_yield_from():
+    ord_string = "yield from x"
     compare_asts(ord_string)
 
 def test_decorator():
@@ -71,8 +114,12 @@ def test_decorator_multiple():
     ord_string = "@decorator\n@test\ndef func():\n  pass"
     compare_asts(ord_string)
 
+def test_decorator_argument():
+    ord_string = "@decorator(1)\ndef func():\n  pass"
+    compare_asts(ord_string)
+
 def test_decorator_keyword():
-    ord_string = "@decorator(1, x=2)\ndef func():\n  pass"
+    ord_string = "@decorator(x=2)\ndef func():\n  pass"
     compare_asts(ord_string)
 
 def test_simple_stmt():
@@ -87,8 +134,16 @@ def test_tuple():
     ord_string = "(1, 2, 3)"
     compare_asts(ord_string)
 
+def test_set():
+    ord_string = "{1, 2, 3}"
+    compare_asts(ord_string)
+
 def test_dict():
     ord_string = "{'a': 1, 'b': 2, 'c': 3}"
+    compare_asts(ord_string)
+
+def test_dict_star():
+    ord_string = "{**star_dict}"
     compare_asts(ord_string)
 
 def test_if():
@@ -116,7 +171,7 @@ def test_for_multi_targets():
     compare_asts(ord_string)
 
 def test_async_for_loop():
-    ord_string = "async def f():\n    async for x in a:\n        await g(x)"
+    ord_string = "async for i in range(10):\n  pass\nelse:\n  pass"
     compare_asts(ord_string)
 
 def test_async_with_multiple_items():
@@ -203,6 +258,10 @@ def test_comparison_expr():
     ord_string = "result = a < b and b >= c or not d"
     compare_asts(ord_string)
 
+def test_testlist():
+    ord_string = "x < 1, y > 2,"
+    compare_asts(ord_string)
+
 def test_bitwise_expr():
     ord_string = "x = a & b | c ^ d << 2 >> 1"
     compare_asts(ord_string)
@@ -211,8 +270,24 @@ def test_unary_expr():
     ord_string = "x = -y"
     compare_asts(ord_string)
 
-def test_lambda_expr():
+def test_lambda():
+    ord_string = "x = lambda : 1"
+    compare_asts(ord_string)
+
+def test_lambda_keyword():
+    ord_string = "x = lambda x = 2: x"
+    compare_asts(ord_string)
+
+def test_lambda_arg():
+    ord_string = "f = lambda x: x"
+    compare_asts(ord_string)
+
+def test_lambda_arg_keyword():
     ord_string = "f = lambda x, y=2: x + y"
+    compare_asts(ord_string)
+
+def test_lambda_keyword_after_star():
+    ord_string = "f = lambda *args, y=2: y"
     compare_asts(ord_string)
 
 def test_lambda_star_args():
@@ -239,12 +314,20 @@ def test_set_comprehension():
     ord_string = "{x for x in range(10)}"
     compare_asts(ord_string)
 
+def test_async_comprehension():
+    ord_string = "[x async for x in range(10)]"
+    compare_asts(ord_string)
+
 def test_generator_expression():
     ord_string = "(x * x for x in range(5))"
     compare_asts(ord_string)
 
 def test_import_simple():
     ord_string = "import math"
+    compare_asts(ord_string)
+
+def test_import_all():
+    ord_string = "from math import *"
     compare_asts(ord_string)
 
 def test_import_multiple():
@@ -263,23 +346,23 @@ def test_from_import_as():
     ord_string = "from sys import version as v"
     compare_asts(ord_string)
 
-def test_relative_import():
-    ord_string = "from . import utils"
+def test_from_relative_nested():
+    ord_string = "from ...ord2 import parser"
     compare_asts(ord_string)
 
-def test_fstring():
-    ord_string = "msg = f'Hello {name}!'"
+def test_relative_import():
+    ord_string = "from . import utils"
     compare_asts(ord_string)
 
 def test_walrus_operator():
     ord_string = "if (n := len(items)) > 0:\n    print(n)"
     compare_asts(ord_string)
 
-def test_global_nonlocal():
-    ord_string = "def func():\n    global x\n    nonlocal y"
+def test_nonlocal():
+    ord_string = "nonlocal y"
     compare_asts(ord_string)
 
-def global_var():
+def test_global_var():
     ord_string = "global x"
     compare_asts(ord_string)
 
@@ -307,16 +390,20 @@ def test_complex_numbers():
     ord_string = "z = 1 + 2j"
     compare_asts(ord_string)
 
+def test_literal():
+    ord_string = "r'hello'"
+    compare_asts(ord_string)
+
 def test_bytes_literal_r():
-    ord_string = "b = rb'hello'"
+    ord_string = "rb'hello'"
     compare_asts(ord_string)
 
 def test_bytes_literal_b():
-    ord_string = "b = br'hello'"
+    ord_string = "br'hello'"
     compare_asts(ord_string)
 
 def test_bytes_literal_u():
-    ord_string = "b = u'hello'"
+    ord_string = "u'hello'"
     compare_asts(ord_string)
 
 def test_set_literal_empty():
@@ -335,36 +422,116 @@ def test_match_case():
     ord_string = "match x:\n    case 1:\n        pass\n    case _:\n        pass"
     compare_asts(ord_string)
 
-def test_match_class_pattern():
+def test_match_case_singleton():
+    ord_string = "match x:\n    case True:\n        pass"
+    compare_asts(ord_string)
+
+def test_match_case_sequence():
+    ord_string = "match x:\n    case 1, 2:\n        pass"
+    compare_asts(ord_string)
+
+def test_match_case_or():
+    ord_string = "match x:\n    case 1 | 2:\n        pass"
+    compare_asts(ord_string)
+
+def test_match_case_as():
+    ord_string = "match x:\n    case test as t:\n        pass"
+    compare_asts(ord_string)
+
+def test_match_case_if():
+    ord_string = "match x:\n    case test if False:\n        pass"
+    compare_asts(ord_string)
+
+def test_match_args_pattern():
     ord_string = "match point:\n    case Point(x, y):\n        pass"
     compare_asts(ord_string)
 
-def test_match_sequence_pattern():
+def test_match_get_pattern():
+    ord_string = "match point:\n    case pointclass.Point(x, y):\n        pass"
+    compare_asts(ord_string)
+
+def test_match_keywords_pattern():
+    ord_string = "match point:\n    case Point(width=x, height=y):\n        pass"
+    compare_asts(ord_string)
+
+def test_match_arg_keyword_mixed():
+    ord_string = "match point:\n    case Point(x, height=y):\n        pass"
+    compare_asts(ord_string)
+
+def test_match_list_pattern():
     ord_string = "match lst:\n    case [first, *rest]:\n        pass"
     compare_asts(ord_string)
 
-def test_match_mapping_pattern():
-    ord_string = "match d:\n    case {'key': value}:\n        pass"
+def test_match_binary():
+    ord_string = "match x:\n    case b'test':\n        pass"
+    compare_asts(ord_string)
+
+def test_match_unicode():
+    ord_string = "match x:\n    case u'test':\n        pass"
+    compare_asts(ord_string)
+
+def test_match_raw():
+    ord_string = "match x:\n    case r'test':\n        pass"
+    compare_asts(ord_string)
+
+def test_match_dict():
+    ord_string = "match x:\n    case {'key': value}:\n        pass"
+    compare_asts(ord_string)
+
+def test_match_dict_star_pattern():
+    ord_string = "match x:\n    case {'key': value, **rest}:\n        pass"
+    compare_asts(ord_string)
+
+def test_fstring():
+    ord_string = "msg = f'Hello {name}!'"
     compare_asts(ord_string)
 
 def test_f_string_escaped():
     ord_string = "multi_complex = f\"{{{{\'hello\'}}}}\""
     compare_asts(ord_string)
 
-def test_f_string_format():
+def test_f_string_format_complex_single():
+    ord_string = "f'{a:>5.2f}, {b:<5.2f}, {c:^10.3e}'"
+    compare_asts(ord_string)
+
+def test_f_string_format_complex_double():
     ord_string = "f\"{a:>5.2f}, {b:<5.2f}, {c:^10.3e}\""
     compare_asts(ord_string)
 
 def test_f_string_arith():
-    ord_string = f"Value: {1 + 2 + 3}"
+    ord_string = "f\"Value: {1 + 2}\""
+    compare_asts(ord_string)
+
+def test_f_string_double_quote():
+    ord_string = "f\"{1}\""
+    compare_asts(ord_string)
+
+def test_f_string_single_quote():
+    ord_string = "f'{1}'"
+    compare_asts(ord_string)
+
+def test_f_string_spec_double():
+    ord_string = "f\"{test!r}\""
     compare_asts(ord_string)
 
 def test_f_string_escaped_call():
-    ord_string = f"Value: {{{print(3 + 4)}}}"
+    ord_string = "f\"Value: {{{print(3 + 4)}}}\""
     compare_asts(ord_string)
 
 def test_string_concat():
-    ord_string = "'Hello' + 'World'"
+    ord_string = "'Hello ' + 'World'"
+    compare_asts(ord_string)
+
+def test_string_concat_implicit():
+    ord_string = "'Hello ' 'World'"
+    compare_asts(ord_string)
+
+def test_string_mod():
+    ord_string = "'Hello %s %s' % (1,2)"
+    compare_asts(ord_string)
+
+def test_list_subscript():
+    ord_string = "lst[1]"
     compare_asts(ord_string)
 
 def test_subscript_numpy():
@@ -383,10 +550,18 @@ def test_binary_number():
     ord_string = "0b1010"
     compare_asts(ord_string)
 
+def test_slice():
+    ord_string = "lst[1:2]"
+    compare_asts(ord_string)
+
 def test_slice_reverse():
     ord_string = "lst[::-1]"
     compare_asts(ord_string)
 
 def test_slice_and_step():
     ord_string = "lst[1:10:2]"
+    compare_asts(ord_string)
+
+def test_comment():
+    ord_string = "# This is a comment"
     compare_asts(ord_string)
