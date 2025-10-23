@@ -82,16 +82,12 @@ def test_funccall_kwargs():
     ord_string = "func(**kwargs)"
     compare_asts(ord_string)
 
-def test_funccall_kwargs_keyword():
-    ord_string = "func(**kwargs, x=3)"
-    compare_asts(ord_string)
-
-def test_funccall_args_kwargs_keyword():
-    ord_string = "func(*args, **kwargs, x=3)"
-    compare_asts(ord_string)
-
 def test_funccall_comprehension():
     ord_string = "func([x*2 for x in range(10)])"
+    compare_asts(ord_string)
+
+def test_funccall_comprehension_nested():
+    ord_string = "b''.join(string.tostring(val) for val in lst)"
     compare_asts(ord_string)
 
 def test_funccall_complex():

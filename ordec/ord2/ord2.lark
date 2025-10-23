@@ -269,19 +269,15 @@ _exprlist: test_or_star_expr (","  test_or_star_expr)* [","]
 
 classdef: "class" name ["(" [arguments] ")"] ":" suite
 
-
-
-arguments: argvalue ("," argvalue)*  ("," [ starargs | kwargs])?
-         | starargs
+arguments: argvalue ("," argvalue)* ("," starargs_part)? ("," kwargs)? ","?
+         | starargs_part
          | kwargs
          | comprehension{test}
 
-starargs: stararg ("," stararg)* ("," argvalue)* ["," kwargs]
+starargs_part: stararg ("," stararg)* ("," argvalue)* ("," kwargs)? ","?
 stararg: "*" test
-kwargs: "**" test ("," argvalue)*
-
+kwargs: "**" test
 ?argvalue: test ("=" test)?
-
 
 comprehension{comp_result}: comp_result comp_fors [comp_if]
 comp_fors: comp_for+
@@ -315,14 +311,14 @@ format_spec_single: ":" (FSTRING_TEXT_SINGLE | "{" test "}")+
 format_spec_double: ":" (FSTRING_TEXT_DOUBLE | "{" test "}")+
 conversion: "!" /[rsa]/i
 
-FSTRING_DOUBLE_END: /"/
-FSTRING_SINGLE_END: /'/
+FSTRING_DOUBLE_END.2: /"/
+FSTRING_SINGLE_END.2: /'/
 
-FSTRING_SINGLE_START: /(f|fr|rf)'/
-FSTRING_DOUBLE_START: /(f|fr|rf)"/
+FSTRING_SINGLE_START.2: /(f|fr|rf)'/
+FSTRING_DOUBLE_START.2: /(f|fr|rf)"/
 
-FSTRING_TEXT_DOUBLE: /[^{}"]+/
-FSTRING_TEXT_SINGLE: /[^{}']+/
+FSTRING_TEXT_DOUBLE.2: /[^{}"]+/
+FSTRING_TEXT_SINGLE.2: /[^{}']+/
 
 STRING: /([ub]?r?|r[ub])("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
 LONG_STRING: /([ub]?r?|r[ub])(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is

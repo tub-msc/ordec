@@ -280,3 +280,5 @@ class ParamArgTransformer(Transformer):
             body = nodes[0]
 
         return ast.Lambda(args=params, body=body)
+
+    starargs_part = lambda self, nodes: nodes

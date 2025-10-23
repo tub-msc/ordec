@@ -82,6 +82,14 @@ class ExpressionTransformer(Transformer, Misc):
                     for kw in arg[2]:
                         keywords.append(ast.keyword(arg=kw[1].id, value=kw[2]))
             # comprehension or single argument
+            elif isinstance(arg, tuple) and len(arg) == 2  and isinstance(arg[1], list):
+                # Generator + comprehension
+                joined_str, comprehensions = arg
+                gen_expr = ast.GeneratorExp(
+                    elt=joined_str,
+                    generators=comprehensions
+                )
+                args.append(gen_expr)
             else:
                 args.append(arg)
 
@@ -355,7 +363,17 @@ class ExpressionTransformer(Transformer, Misc):
 
     def string_concat(self, nodes):
         merged_string = self.merge_adjacent_strings(nodes)
-        return merged_string[0] if len(merged_string) == 1 else merged_string
+        # Return if only one value
+        if len(merged_string) == 1:
+            return merged_string[0]
+        return_string = []
+        # Merge everything into one joined string
+        for string in merged_string:
+            if isinstance(string, ast.Constant):
+                return_string.append(string)
+            if isinstance(string, ast.JoinedStr):
+                return_string.extend(string.values)
+        return ast.JoinedStr(values=return_string)
 
     def f_string(self, nodes):
         values = self.merge_adjacent_strings(nodes[1:-1])

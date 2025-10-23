@@ -148,9 +148,10 @@ class StatementTransformer(Transformer, Misc):
 
     def del_stmt(self, nodes):
         # Set for each of the inner nodes
-        for node in nodes[0]:
-            self._set_ctx(node, ast.Del())
-        return ast.Delete(targets=nodes[0])
+        del_stmts = nodes[0] if isinstance(nodes[0], list) else [nodes[0]]
+        for del_stmt in del_stmts:
+            self._set_ctx(del_stmt, ast.Del())
+        return ast.Delete(targets=del_stmts)
 
     pass_stmt = lambda self, _ : ast.Pass()
     assign_stmt = lambda self, nodes: nodes[0]
