@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="330" height="270" viewBox="0 0 110 90" fill="none">
+  <g transform="translate(15 15)">
+    <path transform="matrix(1 0 0 1 0.0 0.0)" d="M0 -10 L0 10 L5 10 L5 0 L10 0" fill="blue" />
+    <circle r="2" cx="0" cy="0" fill="black" />
+    <text x="0" y="15" fill="black" text-anchor="middle" dominant-baseline="hanging" font-size="7">R0</text>
+  </g>
+  <g transform="translate(40 15)">
+    <path transform="matrix(0 -1 1 0 0.0 0.0)" d="M0 -10 L0 10 L5 10 L5 0 L10 0" fill="blue" />
+    <circle r="2" cx="0" cy="0" fill="black" />
+    <text x="0" y="15" fill="black" text-anchor="middle" dominant-baseline="hanging" font-size="7">R90</text>
+  </g>
+  <g transform="translate(65 15)">
+    <path transform="matrix(-1 0 0 -1 0.0 0.0)" d="M0 -10 L0 10 L5 10 L5 0 L10 0" fill="blue" />
+    <circle r="2" cx="0" cy="0" fill="black" />
+    <text x="0" y="15" fill="black" text-anchor="middle" dominant-baseline="hanging" font-size="7">R180</text>
+  </g>
+  <g transform="translate(90 15)">
+    <path transform="matrix(0 1 -1 0 0.0 0.0)" d="M0 -10 L0 10 L5 10 L5 0 L10 0" fill="blue" />
+    <circle r="2" cx="0" cy="0" fill="black" />
+    <text x="0" y="15" fill="black" text-anchor="middle" dominant-baseline="hanging" font-size="7">R270</text>
+  </g>
+  <g transform="translate(15 65)">
+    <path transform="matrix(1 0 0 -1 0.0 0.0)" d="M0 -10 L0 10 L5 10 L5 0 L10 0" fill="red" />
+    <circle r="2" cx="0" cy="0" fill="black" />
+    <text x="0" y="15" fill="black" text-anchor="middle" dominant-baseline="hanging" font-size="7">MX</text>
+  </g>
+  <g transform="translate(40 65)">
+    <path transform="matrix(0 1 1 0 0.0 0.0)" d="M0 -10 L0 10 L5 10 L5 0 L10 0" fill="red" />
+    <circle r="2" cx="0" cy="0" fill="black" />
+    <text x="0" y="15" fill="black" text-anchor="middle" dominant-baseline="hanging" font-size="7">MY90</text>
+  </g>
+  <g transform="translate(65 65)">
+    <path transform="matrix(-1 0 0 1 0.0 0.0)" d="M0 -10 L0 10 L5 10 L5 0 L10 0" fill="red" />
+    <circle r="2" cx="0" cy="0" fill="black" />
+    <text x="0" y="15" fill="black" text-anchor="middle" dominant-baseline="hanging" font-size="7">MY</text>
+  </g>
+  <g transform="translate(90 65)">
+    <path transform="matrix(0 -1 -1 0 0.0 0.0)" d="M0 -10 L0 10 L5 10 L5 0 L10 0" fill="red" />
+    <circle r="2" cx="0" cy="0" fill="black" />
+    <text x="0" y="15" fill="black" text-anchor="middle" dominant-baseline="hanging" font-size="7">MX90</text>
+  </g>
+</svg>
