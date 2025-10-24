@@ -8,7 +8,7 @@ import pytest
 
 import ordec.layout
 from ordec.layout.read_gds import GdsReaderException
-from ordec.layout.helpers import poly_orientation, expand_paths, expand_rects, flatten
+from ordec.layout.helpers import poly_orientation, expand_paths, expand_rects, expand_rectpaths, expand_rectpolys, flatten
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary, ExtLibraryError
 
@@ -411,7 +411,7 @@ def test_expand_rectpoly():
         start_direction=RectDirection.VERTICAL,
     )
 
-    expand_rects(l)
+    expand_rectpolys(l)
 
     assert len(list(l.all(LayoutRectPoly))) == 0
     assert isinstance(l.rpoly_h, LayoutPoly)
@@ -482,7 +482,7 @@ def test_expand_rectpath():
         start_direction=RectDirection.VERTICAL,
     )
 
-    expand_rects(l)
+    expand_rectpaths(l)
     assert len(list(l.all(LayoutRectPath))) == 0
     assert isinstance(l.rpath_h, LayoutPath)
     assert l.rpath_h.vertices() == [
@@ -520,4 +520,22 @@ def test_expand_rectpath():
         Vec2I(50, 50),
     ]
 
+def test_expand_rect():
+    layers = ordec.layout.SG13G2().layers
 
+    l = Layout(ref_layers=layers)
+    l.rect = LayoutRect(
+        layer=layers.Metal1,
+        rect=Rect4I(100, 500, 200, 700),
+    )
+    expand_rects(l)
+    assert len(list(l.all(LayoutRect))) == 0
+
+    assert isinstance(l.rect, LayoutPoly)
+    assert l.rect.layer == layers.Metal1
+    assert l.rect.vertices() == [
+        Vec2I(100, 500),
+        Vec2I(200, 500),
+        Vec2I(200, 700),
+        Vec2I(100, 700),
+    ]

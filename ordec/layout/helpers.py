@@ -164,7 +164,7 @@ def rpath_to_path_vertices(rpath: LayoutRectPath) -> Iterable[Vec2I]:
 def expand_rectpaths(layout: Layout):
     """
     For the given Layout, replaces all LayoutRectPath instances by geometrically
-    equivalent LayoutPoly instances.
+    equivalent LayoutPath instances.
     """
     for rpath in layout.all(LayoutRectPath):
         rpath.replace(LayoutPath(
@@ -176,20 +176,29 @@ def expand_rectpaths(layout: Layout):
 
 def expand_rects(layout: Layout):
     """
-    Replaces all LayoutRectPath and LayoutRectPoly instances by geometrically
-    equivalent LayoutPath and LayoutPoly instances (by calling both
-    expand_rectpolys and expand_rectpaths).
+    For the given Layout, replaces all LayoutRect instances by geometrically
+    equivalent LayoutPoly instances.
     """
-    expand_rectpolys(layout)
-    expand_rectpaths(layout)
 
+    for rect in layout.all(LayoutRect):
+        r = rect.rect
+        rect.replace(LayoutPoly(
+            layer=rect.layer,
+            vertices=[
+                Vec2I(r.lx, r.ly),
+                Vec2I(r.ux, r.ly),
+                Vec2I(r.ux, r.uy),
+                Vec2I(r.lx, r.uy),
+            ]
+            ))
 
 def expand_geom(layout: Layout):
     """
-    Replaces all LayoutRectPath, LayoutRectPoly and LayoutPath instances
-    by equivalent LayoutPoly instances (by calling first expand_rectts followed
-    by expand_paths).
+    Replaces all LayoutRectPath, LayoutRectPoly, LayoutRect and LayoutPath
+    instances by equivalent LayoutPoly instances.
     """
+    expand_rectpolys(layout)
+    expand_rectpaths(layout)
     expand_rects(layout)
     expand_paths(layout)
 
