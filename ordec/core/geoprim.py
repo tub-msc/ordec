@@ -79,6 +79,9 @@ class Vec2I(Vec2Generic):
     def transl(self) -> 'TD4':
         return TD4I(transl=self)
 
+    def __floordiv__(self, other):
+        return Vec2I(self.x // other, self.y // other)
+
 class Rect4Generic(tuple):
     __slots__ = ()
 

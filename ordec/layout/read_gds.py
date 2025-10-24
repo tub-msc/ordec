@@ -108,13 +108,27 @@ def read_gds_structure(structure: gdsii.structure.Structure, layers: LayerStack,
                 orientation=gds_to_d4(elem.angle, elem.strans),
                 ref=extlib[ref_name].frame,
                 )
-            #raise NotImplementedError("GDS SRef handler missing.")
         elif isinstance(elem, gdsii.elements.ARef):
-            raise NotImplementedError("GDS ARef handler missing.")
+            if elem.mag not in (1.0, None):
+                raise GdsReaderException("ARef with magnification != 1.0 not supported.")
+            ref_name = elem.struct_name.decode('ascii')
+            try:    
+                pos_origin, pos_col_end, pos_row_end = [conv_xy(xy) for xy in elem.xy]            
+            except ValueError:
+                raise GdsReaderException(f"Found ARef with len(elem.xy) of {len(elem.xy)}, expected 3.") from None
+            layout % LayoutInstanceArray(
+                pos=pos_origin,
+                orientation=gds_to_d4(elem.angle, elem.strans),
+                ref=extlib[ref_name].frame,
+                cols=elem.cols,
+                rows=elem.rows,
+                vec_col=(pos_col_end - pos_origin) // elem.cols,
+                vec_row=(pos_row_end - pos_origin) // elem.rows,
+                )
         elif isinstance(elem, gdsii.elements.Box):
-            raise NotImplementedError("GDS Box handler missing.")
+            raise NotImplementedError("GDS Box element not supported.")
         elif isinstance(elem, gdsii.elements.Node):
-            raise NotImplementedError("GDS Node handler missing.")
+            raise NotImplementedError("GDS Node element not supported.")
         else:
             raise GdsReaderException("Unknown GDS element: {elem!r}")
 

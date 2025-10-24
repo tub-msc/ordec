@@ -518,7 +518,7 @@ class LayoutRect(Node):
 
 @public
 class LayoutInstance(Node):
-    """Hierarchical layout  instance, equivalent to GDS SRef."""
+    """Hierarchical layout instance, equivalent to GDS SRef."""
 
     in_subgraphs = [Layout]
 
@@ -528,6 +528,18 @@ class LayoutInstance(Node):
 
     def loc_transform(self):
         return self.pos.transl() * self.orientation
+
+@public
+class LayoutInstanceArray(LayoutInstance):
+    """Hierarchical layout instance array, equivalent to GDS ARef."""
+
+    in_subgraphs = [Layout]
+
+    cols = Attr(int)
+    rows = Attr(int)
+
+    vec_col = Attr(Vec2I)
+    vec_row = Attr(Vec2I)
 
 # Misc
 # ----

@@ -202,15 +202,43 @@ def expand_geom(layout: Layout):
     expand_rects(layout)
     expand_paths(layout)
 
-def flatten_instance(dst: Layout, src: Layout, tran: TD4R):
+def flatten_instance(dst: Layout, src: Layout, tran: TD4I, first_level: bool):
+    # At the first level, src is dst and mutable. We need to process only the
+    # LayoutInstances and LayoutInstanceArarys and remove them.
+    # At all subsequent levels, src is not dst. The processed LayoutInstances
+    # and LayoutInstanceArrays should no longer be removed. (They cannot be
+    # removed, since src is frozen.)
+
+    assert first_level == (dst is src)
+
+    for src_e in src.all(LayoutInstance):
+        sub_tran = tran * src_e.loc_transform()
+        flatten_instance(dst, src_e.ref, sub_tran, False)
+        if first_level:
+            src_e.remove()
+
+    for src_e in src.all(LayoutInstanceArray):
+        for col in range(src_e.cols):
+            for row in range(src_e.rows):
+                sub_tran = tran \
+                    * (col*src_e.vec_col).transl() \
+                    * (row*src_e.vec_row).transl() \
+                    * src_e.loc_transform()
+                flatten_instance(dst, src_e.ref, sub_tran, False)
+        if first_level:
+            src_e.remove()
+
+
+    if first_level:
+        return
+    # Furthermore, for each layout below the first level, the geometric elements
+    # must be transformed and copied to the destination layout (dst).
+
     def transform_vertex_loop(vertices):
         ret = [tran * v for v in vertices]
         if tran.det() < 0:
             ret.reverse() # to preserve ccw orientation
         return ret
-
-    for src_e in src.all(LayoutInstance):
-        flatten_instance(dst, src_e.ref, tran * src_e.loc_transform())
 
     for src_e in src.all(LayoutPoly):
         dst % LayoutPoly(
@@ -256,6 +284,19 @@ def flatten_instance(dst: Layout, src: Layout, tran: TD4R):
         )
 
 def flatten(layout: Layout):
-    for inst in layout.all(LayoutInstance):
-        flatten_instance(layout, inst.ref, inst.loc_transform())
-        inst.remove()
+    flatten_instance(layout, layout, TD4I(), True)
+
+def expand_instancearrays(layout: Layout):
+    """
+    For the given Layout, replaces all LayoutInstanceArrays by geometrically
+    equivalent LayoutInstances.
+    """
+    for ainst in layout.all(LayoutInstanceArray):
+        for col in range(ainst.cols):
+            for row in range(ainst.rows):
+                layout % LayoutInstance(
+                    pos=ainst.pos + row*ainst.vec_row + col*ainst.vec_col,
+                    orientation=ainst.orientation,
+                    ref=ainst.ref,
+                )
+        ainst.remove()
