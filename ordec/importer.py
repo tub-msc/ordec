@@ -29,16 +29,16 @@ class OrdLoader(Loader):
         def get_version(path):
             with open(path, 'r', encoding='utf-8') as f:
                 line = f.readline()
-                m = re.match(r'\s*#.*version\s*[:=]\s*([A-Za-z0-9_\-]+)', line)
-                if m:
-                    return m.group(1).lower()
+                ord_version = re.match(r'\s*#.*version\s*[:=]\s*([A-Za-z0-9_\-]+)', line, re.IGNORECASE)
+                if ord_version:
+                    return ord_version.group(1).lower()
                 return None
 
         module.__dict__['__file__'] = self.ord_path
-        coding = get_version(self.ord_path)
-        if coding == "ord2":
+        ord_version = get_version(self.ord_path)
+        if ord_version == "ord2":
             code = compile(ord2topy(self.source_text), "<string>", "exec")
-        elif coding == "ord1":
+        elif ord_version == "ord1":
             code = compile(ord2py(self.source_text), "<string>", "exec")
         else:
             code = compile(ord2py(self.source_text), "<string>", "exec")
