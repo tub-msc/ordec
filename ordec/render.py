@@ -79,12 +79,12 @@ class Renderer:
         finally:
             self.group_stack.pop()
 
-    def draw_label(self, text: str, trans: TD4, halign=HAlign.Left, valign=VAlign.Top, space=None, svg_class=""):
+    def draw_label(self, text: str, trans: TD4R, halign=HAlign.Left, valign=VAlign.Top, space=None, svg_class=""):
         """
         dominant_baseline: chose "hanging" or "ideographic"
         """
 
-        align = D4.from_td4(trans).unflip()
+        align = trans.d4.unflip()
         pos = trans.transl
 
         if align in (Orientation.West, Orientation.South):
@@ -309,7 +309,7 @@ class SchematicRenderer(Renderer):
         self.setup_canvas(s.outline)
         if self.enable_grid:
             self.draw_grid(s.outline)
-        self.draw_symbol(s, TD4())
+        self.draw_symbol(s, TD4R())
 
     def render_schematic(self, s: Schematic):
         self.setup_canvas(s.outline)
@@ -337,7 +337,7 @@ class SchematicRenderer(Renderer):
             with self.subgroup(node=port):
                 self.draw_schem_port(port)
 
-    def draw_symbol(self, s: Symbol, trans: TD4, inst_name: str="?"):
+    def draw_symbol(self, s: Symbol, trans: TD4R, inst_name: str="?"):
         # Draw outline
         rect = trans * s.outline
         lx, ly, ux, uy = rect.tofloat()
@@ -368,7 +368,7 @@ class SchematicRenderer(Renderer):
         for pin in s.all(Pin):
             self.draw_pin(pin, trans)
 
-    def draw_pin(self, pin: Pin, trans: TD4):
+    def draw_pin(self, pin: Pin, trans: TD4R):
         # Flip by 180 degrees, as the text face the opposite of the pin direction:
         trans_local = trans * pin.pos.transl() * D4.R180 * pin.align
 
@@ -378,7 +378,7 @@ class SchematicRenderer(Renderer):
         self.draw_label(label, trans_local,
             valign=VAlign.Bottom, svg_class='pinLabel')
 
-    def draw_arrow(self, arrowtype: ArrowType, pt: PinType, trans: TD4):
+    def draw_arrow(self, arrowtype: ArrowType, pt: PinType, trans: TD4R):
         if arrowtype == ArrowType.Pin:
             svg_class = 'pinArrow'
             center = True
