@@ -108,9 +108,8 @@ def layout_expand_geom() -> Layout:
 def test_gds_sref() -> Layout:
     tech_layers = ordec.layout.SG13G2().layers
     lib = ExtLibrary()
-    lib.read_gds('tests/layout_gds/test_sref.gds', tech_layers)
+    lib.read_gds('tests/layout_gds/test_sref_nested.gds', tech_layers)
     l = lib['TOP'].layout.thaw()
     flatten(l)
-    print(l.tables())
     return l
 

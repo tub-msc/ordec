@@ -209,6 +209,9 @@ def flatten_instance(dst: Layout, src: Layout, tran: TD4R):
             ret.reverse() # to preserve ccw orientation
         return ret
 
+    for src_e in src.all(LayoutInstance):
+        flatten_instance(dst, src_e.ref, tran * src_e.loc_transform())
+
     for src_e in src.all(LayoutPoly):
         dst % LayoutPoly(
             layer=src_e.layer,

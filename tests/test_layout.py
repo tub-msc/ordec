@@ -85,10 +85,10 @@ def test_gds_path_round_unsupported():
     with pytest.raises(GdsReaderException, match="GDS Path with path_type=1"):
         layout = lib['TOP'].layout
 
-def test_gds_sref():
+def test_gds_sref_d4():
     tech_layers = ordec.layout.SG13G2().layers
     lib = ExtLibrary()
-    lib.read_gds(gds_dir / 'test_sref.gds', tech_layers)
+    lib.read_gds(gds_dir / 'test_sref_d4.gds', tech_layers)
 
     expected_pos_orientations = {
         (Vec2I(0, 0), D4.R0),
@@ -220,6 +220,30 @@ def test_flatten():
         assert label.layer == label_orig.layer
         assert label.pos == tran * label_orig.pos
         assert label.text == label_orig.text
+
+
+def test_gds_sref_nested():
+    """
+    Test flatten() of nested LayoutInstances (SRefs) through example GDS file.
+    """
+    tech_layers = ordec.layout.SG13G2().layers
+    lib = ExtLibrary()
+    lib.read_gds(gds_dir / 'test_sref_nested.gds', tech_layers)
+
+    layout = lib['TOP'].layout.thaw()
+    flatten(layout)
+    assert len(list(layout.all(LayoutInstance))) == 0
+
+    poly = layout.one(LayoutPoly)
+    assert poly.layer == tech_layers.Metal1
+    assert poly.vertices() == [
+        Vec2I(3000, 15000),
+        Vec2I(3000, 14000),
+        Vec2I(4000, 14000),
+        Vec2I(4000, 12000),
+        Vec2I(5000, 12000),
+        Vec2I(5000, 15000),
+    ]
 
 def test_expand_paths_lshapes():
     """
