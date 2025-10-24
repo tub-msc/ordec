@@ -110,6 +110,22 @@ def test_gds_sref():
         expected_pos_orientations.remove(pos_orientation)
     assert len(expected_pos_orientations) == 0
 
+def test_gds_sref_bad_mag():
+    tech_layers = ordec.layout.SG13G2().layers
+    lib = ExtLibrary()
+    lib.read_gds(gds_dir / 'test_sref_bad_mag.gds', tech_layers)
+
+    with pytest.raises(GdsReaderException, match="SRef with magnification"):
+        lib['TOP'].layout
+
+def test_gds_sref_bad_angle():
+    tech_layers = ordec.layout.SG13G2().layers
+    lib = ExtLibrary()
+    lib.read_gds(gds_dir / 'test_sref_bad_angle.gds', tech_layers)
+
+    with pytest.raises(GdsReaderException, match="SRef with angle"):
+        lib['TOP'].layout
+
 def test_flatten():
     layers = ordec.layout.SG13G2().layers
 
