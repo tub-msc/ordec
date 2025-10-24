@@ -135,6 +135,18 @@ class Rational(fractions.Fraction):
     def __add__(self, other):
         return type(self)(super().__add__(other))
 
+    def __radd__(self, other):
+        return self.__add__(other)
+
+    def __rmul__(self, other):
+        return self.__mul__(other)
+
+    def __rsub__(self, other):
+        return (-self).__add__(other)
+
+    def __neg__(self):
+        return type(self)(super().__neg__())
+
     def __sub__(self, other):
         return type(self)(super().__sub__(other))
 
