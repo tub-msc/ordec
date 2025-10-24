@@ -508,6 +508,26 @@ class LayoutRectPath(GenericPolyI):
     width = Attr(int)
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 
+@public
+class LayoutRect(Node):
+    """Layout rectangle."""
+    in_subgraphs = [Layout]
+
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+    rect = Attr(Rect4I)
+
+@public
+class LayoutInstance(Node):
+    """Hierarchical layout  instance, equivalent to GDS SRef."""
+
+    in_subgraphs = [Layout]
+
+    pos = Attr(Vec2I)
+    orientation = Attr(D4, default=D4.R0)
+    ref = SubgraphRef(Layout, optional=False) #: Can be a Layout or a frame (which is also a Layout)...
+
+    def loc_transform(self):
+        return self.pos.transl() * self.orientation
 
 # Misc
 # ----

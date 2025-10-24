@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 import ordec.layout
 from ordec.extlibrary import ExtLibrary
-from ordec.layout.helpers import expand_geom
+from ordec.layout.helpers import expand_geom, flatten
 from ordec.core import *
 
 ihp_path = Path(os.getenv("ORDEC_PDK_IHP_SG13G2"))
@@ -103,3 +103,14 @@ def layout_expand_geom() -> Layout:
     expand_geom(l)
 
     return l
+
+@generate_func
+def test_gds_sref() -> Layout:
+    tech_layers = ordec.layout.SG13G2().layers
+    lib = ExtLibrary()
+    lib.read_gds('tests/layout_gds/test_sref.gds', tech_layers)
+    l = lib['TOP'].layout.thaw()
+    flatten(l)
+    print(l.tables())
+    return l
+

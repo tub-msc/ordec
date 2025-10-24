@@ -192,3 +192,58 @@ def expand_geom(layout: Layout):
     """
     expand_rects(layout)
     expand_paths(layout)
+
+def flatten_instance(dst: Layout, src: Layout, tran: TD4R):
+    def transform_vertex_loop(vertices):
+        ret = [tran * v for v in vertices]
+        if tran.det() < 0:
+            ret.reverse() # to preserve ccw orientation
+        return ret
+
+    for src_e in src.all(LayoutPoly):
+        dst % LayoutPoly(
+            layer=src_e.layer,
+            vertices=transform_vertex_loop(src_e.vertices()),
+        )
+
+    for src_e in src.all(LayoutPath):
+        dst % LayoutPath(
+            layer=src_e.layer,
+            width=src_e.width,
+            endtype=src_e.endtype,
+            vertices=[tran * v for v in src_e.vertices()],
+        )
+
+    for src_e in src.all(LayoutRectPoly):
+        dst % LayoutRectPoly(
+            layer=src_e.layer,
+            start_direction=src_e.start_direction,
+            vertices=transform_vertex_loop(src_e.vertices()),
+        )
+    
+    for src_e in src.all(LayoutRectPath):
+        dst % LayoutRectPath(
+            layer=src_e.layer,
+            start_direction=src_e.start_direction,
+            width=src_e.width,
+            endtype=src_e.endtype,
+            vertices=[tran * v for v in src_e.vertices()],
+        )
+
+    for src_e in src.all(LayoutRect):
+        dst % LayoutRect(
+            layer=src_e.layer,
+            rect=tran * src_e.rect,
+        )
+
+    for src_e in src.all(LayoutLabel):
+        dst % LayoutLabel(
+            layer=src_e.layer,
+            pos=tran * src_e.pos,
+            text=src_e.text,
+        )
+
+def flatten(layout: Layout):
+    for inst in layout.all(LayoutInstance):
+        flatten_instance(layout, inst.ref, inst.loc_transform())
+        inst.remove()
