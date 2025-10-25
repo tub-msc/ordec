@@ -212,7 +212,15 @@ class HighlevelSim:
             for hook in self.sim_setup_hooks:
                 hook(sim)
 
-            sim.load_netlist(self.netlister.out())
+            # ngspice docs says AC does not support savecurrents
+            if sim_type == SimType.AC and self.backend in ("ffi", "mp"):
+                temp_netlister = Netlister(enable_savecurrents=False)
+                temp_netlister.netlist_hier(self.top)
+                netlist = temp_netlister.out()
+            else:
+                netlist = self.netlister.out()
+            
+            sim.load_netlist(netlist)
             data = getattr(sim, sim_method)(*sim_args, **sim_kwargs)
             setattr(
                 self.simhier,

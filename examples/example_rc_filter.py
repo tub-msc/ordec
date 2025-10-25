@@ -234,11 +234,11 @@ def detect_terminal_capabilities():
 
                         x11_available = True
                         break
-                    except:
+                    except (ImportError, ModuleNotFoundError, RuntimeError):
                         continue
-            except:
+            except (ImportError, ModuleNotFoundError):
                 pass
-    except:
+    except (OSError, RuntimeError):
         x11_available = False
 
     return {"sixel": sixel_support, "ascii": True, "x11": x11_available}
