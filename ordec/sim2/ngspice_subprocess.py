@@ -1,14 +1,16 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 import re
 import signal
+import string
 import sys
 import tempfile
 import shutil
+import queue
 import threading
 import time
-import queue
 from collections import namedtuple
 from contextlib import contextmanager
 from pathlib import Path
@@ -30,11 +32,18 @@ from .ngspice_common import (
     SignalKind,
     SignalArray,
     NgspiceBase,
+    NgspiceConfigError,
 )
 
 NgspiceVector = namedtuple(
     "NgspiceVector", ["name", "quantity", "dtype", "length", "rest"]
 )
+
+_DEBUG_PREFIX = "[ngspice-cli]"
+
+
+def _debug(message: str) -> None:
+    print(f"{_DEBUG_PREFIX} {message}")
 
 
 class NgspiceSubprocess(NgspiceBase):
@@ -49,25 +58,25 @@ class NgspiceSubprocess(NgspiceBase):
             ngspice_exe = "ngspice"
 
         if debug:
-            print(f"[debug] Using ngspice executable: {ngspice_exe}")
-            print(f"[debug] Platform: {sys.platform}")
+            _debug(f"Using ngspice executable: {ngspice_exe}")
+            _debug(f"Platform: {sys.platform}")
 
         with tempfile.TemporaryDirectory() as cwd_str:
             if debug:
-                print(f"[debug] Starting ngspice with command: {[ngspice_exe, '-p']}")
-                print(f"[debug] Working directory: {cwd_str}")
+                _debug(f"Starting ngspice with command: {[ngspice_exe, '-p']}")
+                _debug(f"Working directory: {cwd_str}")
 
             p: Popen[bytes] = Popen(
                 [ngspice_exe, "-p"], stdin=PIPE, stdout=PIPE, stderr=STDOUT, cwd=cwd_str
             )
             if debug:
-                print(f"[debug] Process started with PID: {p.pid}")
+                _debug(f"Process started with PID: {p.pid}")
 
             try:
                 yield cls(p, debug=debug, cwd=Path(cwd_str))
             finally:
                 if debug:
-                    print(f"[debug] Cleaning up process {p.pid}")
+                    _debug(f"Cleaning up process {p.pid}")
                 try:
                     p.send_signal(signal.SIGTERM)
                     if p.stdin:
@@ -82,46 +91,66 @@ class NgspiceSubprocess(NgspiceBase):
         self.p: Popen[bytes] = p
         self.debug = debug
         self.cwd = cwd
-        self._async_running = False
-        self._async_thread: Optional[threading.Thread] = None
         self._async_queue: Optional[queue.Queue] = None
-        self._async_halt_requested = False
+        self._async_thread: Optional[threading.Thread] = None
         self._async_lock = threading.Lock()
-        self._data_points_sent = 0
+        self._async_halt_requested = False
+        self._async_resume_event = threading.Event()
         self._async_current_time = 0.0
+        self._data_points_sent = 0
+        self._last_vector_length = 0
+        self._is_running = False
+        self._wrdata_file: Optional[Path] = None
+        self._wrdata_last_row = 0
+        self._wrdata_vectors: list[str] = []
+
+        self._configure_precision()
+
+    def _configure_precision(self) -> None:
+        """Configure ngspice numeric precision settings."""
+
+        try:
+            if self.debug:
+                _debug("Configuring ngspice numeric precision")
+            # Increase the number of digits printed in tabular outputs.
+            self.command("set numdgt=16")
+            # Ensure computed scalar values use the same precision.
+            self.command("set csnumprec=16")
+        except NgspiceError as exc:
+            raise NgspiceConfigError("Failed to configure ngspice precision") from exc
 
     def command(self, command: str) -> str:
         """Executes ngspice command and returns string output from ngspice process."""
         if self.p.poll() is not None:
             raise NgspiceFatalError("ngspice process has terminated unexpectedly.")
         if self.debug:
-            print(f"[debug] sending command to ngspice ({self.p.pid}): {command}")
+            _debug(f"Sending command to ngspice ({self.p.pid}): {command}")
 
         if self.p.stdin:
             # Send the command followed by echo marker on separate lines
             full_input = f"{command}\necho FINISHED\n"
             if self.debug:
-                print(f"[debug] Writing to stdin: {repr(full_input)}")
+                _debug(f"Writing to stdin: {repr(full_input)}")
             self.p.stdin.write(full_input.encode("ascii"))
             self.p.stdin.flush()
             if self.debug:
-                print(f"[debug] Stdin flushed")
+                _debug(f"Stdin flushed")
 
         out = []
         line_count = 0
         while True:
             if self.debug:
-                print(f"[debug] Waiting for line {line_count}...")
+                _debug(f"Waiting for line {line_count}...")
             l = self.p.stdout.readline()
             line_count += 1
             if self.debug:
-                print(f"[debug] received line {line_count} from ngspice: {repr(l)}")
+                _debug(f"Received line {line_count} from ngspice: {repr(l)}")
 
             # Check for EOF first
             if l == b"":  # readline() returns the empty byte string only on EOF.
                 out_flat = "".join(out)
                 if self.debug:
-                    print(f"[debug] EOF detected, ngspice terminated")
+                    _debug(f"EOF detected, ngspice terminated")
                 raise NgspiceFatalError(f"ngspice terminated abnormally:\n{out_flat}")
 
             # Strip ALL occurrences of "ngspice 123 -> " from the line on all platforms
@@ -131,8 +160,8 @@ class NgspiceSubprocess(NgspiceBase):
                 if not m:
                     break
                 if self.debug:
-                    print(
-                        f"[debug] Stripping prompt from line: {repr(l)} -> {repr(m.group(1))}"
+                    _debug(
+                        f"Stripping prompt from line: {repr(l)} -> {repr(m.group(1))}"
                     )
                 stripped_content = m.group(1)
                 # Preserve the newline if the original line had one
@@ -144,7 +173,7 @@ class NgspiceSubprocess(NgspiceBase):
             # Check for our finish marker
             if l.rstrip() == b"FINISHED":
                 if self.debug:
-                    print(f"[debug] Found FINISHED marker, breaking")
+                    _debug(f"Found FINISHED marker, breaking")
                 break
 
             # Skip empty lines that are just prompts
@@ -153,12 +182,12 @@ class NgspiceSubprocess(NgspiceBase):
 
             out.append(l.decode("ascii"))
             if self.debug:
-                print(f"[debug] Added to output: {repr(l.decode('ascii'))}")
+                _debug(f"Added to output: {repr(l.decode('ascii'))}")
 
         out_flat = "".join(out)
         if self.debug:
-            print(
-                f"[debug] received result from ngspice ({self.p.pid}): {repr(out_flat)}"
+            _debug(
+                f"Received result from ngspice ({self.p.pid}): {repr(out_flat)}"
             )
 
         check_errors(out_flat)
@@ -168,7 +197,7 @@ class NgspiceSubprocess(NgspiceBase):
         netlist_fn = self.cwd / "netlist.sp"
         netlist_fn.write_text(netlist)
         if self.debug:
-            print(f"Written netlist: \n {netlist}")
+            _debug(f"Written netlist: \n {netlist}")
         if no_auto_gnd:
             self.command("set no_auto_gnd")
         check_errors(self.command(f"source {netlist_fn}"))
@@ -331,99 +360,251 @@ class NgspiceSubprocess(NgspiceBase):
                         result.signals[vec_info.name].kind = SignalKind.CURRENT
 
     def tran_async(
-        self, tstep, tstop=None, *extra_args, throttle_interval: float = 0.1
+        self,
+        tstep,
+        tstop=None,
+        *extra_args,
+        throttle_interval: float = 0.1,
+        buffer_size: int = 10,
+        disable_buffering: bool = False,
+        disable_throttling: bool = False,
+        fallback_sampling_ratio: int = 100,
     ) -> "queue.Queue[dict]":
-        if self._async_running:
-            raise RuntimeError("Async simulation is already running")
+        """Run async transient simulation using chunked approach with stop after and step commands."""
 
-        tstep_str = str(tstep).strip()
-        tstop_str = None
-        tstop_val = None
-        if tstop is not None:
-            tstop_str = str(tstop).strip()
+        tstep_r = R(tstep)
+        tstop_r = R(tstop) if tstop is not None else None
 
-        try:
-            tstep_val = float(R(tstep_str))
-            if tstop_str is not None:
-                tstop_val = float(R(tstop_str))
-        except Exception as e:
-            raise ValueError(f"Invalid time format: {e}")
+        tstep_val = float(tstep_r)
+        tstop_val = float(tstop_r) if tstop_r is not None else None
+        tstep_str = str(tstep_r)
 
         self._async_queue = queue.Queue()
         self._async_halt_requested = False
-        self._async_running = True
+        self._async_resume_event = threading.Event()
+        self._async_resume_event.set()
+        self._async_current_time = 0.0
         self._data_points_sent = 0
-
-        cmd_parts = [tstep_str]
-        if tstop_str is not None:
-            cmd_parts.append(tstop_str)
-        if extra_args:
-            cmd_parts += [str(a) for a in extra_args]
-        cmd_tstep_str = tstep_str
+        self._last_vector_length = 0
+        self._is_running = False
+        self._wrdata_file = None
+        self._wrdata_last_row = 0
+        self._wrdata_vectors = []
 
         self._async_thread = threading.Thread(
             target=self._run_chunked_simulation,
-            args=(tstep_val, tstop_val, cmd_tstep_str, throttle_interval),
+            args=(tstep_val, tstop_val, tstep_str, throttle_interval),
             daemon=True,
         )
         self._async_thread.start()
 
         return self._async_queue
 
-    def _parse_and_enqueue_from_lines(
-        self, lines: list, current_time: float, chunk_end: float, tstop: float | None
+    def is_running(self) -> bool:
+        """Check if simulation is running."""
+        return self._is_running and self._async_thread is not None and self._async_thread.is_alive()
+
+    def safe_halt_simulation(
+        self, max_attempts: int = 3, wait_time: float = 0.2
+    ) -> bool:
+        """Halt simulation by setting halt flag and clearing resume event."""
+        if self._async_thread is None:
+            return True
+
+        with self._async_lock:
+            self._async_halt_requested = True
+            self._async_resume_event.clear()
+
+        self.command("bg_halt")
+
+        deadline = time.time() + (max_attempts * wait_time)
+        poll_interval = min(0.05, wait_time / 5) if wait_time else 0.05
+
+        while time.time() < deadline:
+            if not self.is_running():
+                return True
+            time.sleep(poll_interval)
+
+        if self.debug:
+            _debug("safe_halt_simulation timed out waiting for async thread")
+
+        return not self.is_running()
+
+    def resume_simulation(self, timeout: float = 3.0) -> bool:
+        """Resume simulation by clearing halt flag and setting resume event."""
+        with self._async_lock:
+            self._async_halt_requested = False
+            self._async_resume_event.set()
+            self._is_running = True
+
+        if self.debug:
+            _debug("Resume requested")
+
+        return True
+
+    def safe_resume_simulation(
+        self, max_attempts: int = 3, wait_time: float = 2.0
+    ) -> bool:
+        """Resume simulation safely with retry logic."""
+        for attempt in range(max_attempts):
+            result = self.resume_simulation(timeout=wait_time)
+            if result:
+                return True
+            time.sleep(wait_time)
+        return False
+
+    def _is_header_line(self, line, expected_headers):
+        """Check if a line looks like a header line."""
+        if not line.strip():
+            return False
+        line_lower = line.lower()
+        header_matches = 0
+        for header in expected_headers:
+            if header.lower() in line_lower:
+                header_matches += 1
+        return header_matches >= len(expected_headers) * 0.6
+
+    _SLICE_SAFE_CHARS = set(string.ascii_letters + string.digits + "_.")
+
+    def _quote_vector_name(self, vector_name: str) -> str:
+        if not vector_name:
+            return vector_name
+
+        if all(ch in self._SLICE_SAFE_CHARS for ch in vector_name):
+            return vector_name
+
+        escaped = vector_name.replace('"', '\\"')
+        return f'"{escaped}"'
+
+    def _collect_active_vectors(self) -> list[str]:
+        display_output = self.command("display")
+        vectors: list[str] = []
+
+        for line in display_output.split("\n"):
+            vector_match = re.match(
+                r"\s*([^:]+):\s*[^,]+,\s*[^,]+,\s*([0-9]+)\s+long",
+                line,
+            )
+            if vector_match:
+                vector_name = vector_match.group(1).strip()
+                vector_length = int(vector_match.group(2))
+
+                if vector_length == 0:
+                    continue
+
+                if vector_name in {
+                    "current_len",
+                    "old_len",
+                    "new_len",
+                    "start_idx",
+                    "end_idx",
+                }:
+                    continue
+
+                if vector_name.lower() in {"time", "index"}:
+                    continue
+
+                vectors.append(vector_name)
+
+        return vectors
+
+    def _fetch_new_samples_via_wrdata(self) -> list[dict[str, float | complex]]:
+        vectors = self._collect_active_vectors()
+        if not vectors:
+            return []
+
+        if self._wrdata_vectors != vectors:
+            self._wrdata_last_row = 0
+            self._wrdata_vectors = list(vectors)
+
+        command_vectors = ["time"] + vectors
+
+        if self._wrdata_file is None:
+            self._wrdata_file = self.cwd / "ordec_async_wrdata.dat"
+
+        quoted_vectors = " ".join(
+            self._quote_vector_name(vec) for vec in command_vectors
+        )
+
+        self.command(f"wrdata {self._wrdata_file} {quoted_vectors}")
+
+        try:
+            data = np.loadtxt(self._wrdata_file)
+        except OSError as e:
+            if self.debug:
+                _debug(
+                    f"OSError loading '{self._wrdata_file}': {e}"
+                )
+            return []
+
+        if data.size == 0:
+            return []
+
+        if data.ndim == 1:
+            data = data.reshape(1, -1)
+
+        total_rows = data.shape[0]
+        if total_rows <= self._wrdata_last_row:
+            return []
+
+        new_rows = data[self._wrdata_last_row :]
+        self._wrdata_last_row = total_rows
+
+        columns_per_vector = data.shape[1] // len(command_vectors)
+        if columns_per_vector == 0:
+            return []
+
+        samples: list[dict[str, float | complex]] = []
+
+        for row in new_rows:
+            sample: dict[str, float | complex] = {}
+
+            for idx, vec in enumerate(command_vectors):
+                start = idx * columns_per_vector
+                real_val = float(row[start])
+                imag_val = float(row[start + 1]) if columns_per_vector > 1 else 0.0
+
+                if vec == "time":
+                    sample["time"] = real_val
+                    continue
+
+                if columns_per_vector > 1 and abs(imag_val) > 1e-18:
+                    sample[vec] = complex(real_val, imag_val)
+                else:
+                    sample[vec] = real_val
+
+            samples.append(sample)
+
+        return samples
+
+    def _build_signal_kind_map(self) -> dict[str, SignalKind]:
+        kinds: dict[str, SignalKind] = {"time": SignalKind.TIME}
+        temp_result = NgspiceResultBase()
+
+        for vec in self.vector_info():
+            if vec.name.lower() == "time":
+                kinds[vec.name] = SignalKind.TIME
+                continue
+
+            kinds[vec.name] = temp_result.categorize_signal(vec.name)
+
+        return kinds
+
+    def _emit_samples(
+        self,
+        samples: list[dict[str, float | complex]],
+        tstop: float | None,
     ) -> None:
-        signal_data = {}
-        signal_kinds = {}
-        tables = {}
-        current_headers = None
+        signal_kinds = self._build_signal_kind_map()
 
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
+        for sample in samples:
+            time_val = float(sample.get("time", 0.0))
 
-            if any(x in line for x in ("---", "print all", "Transient Analysis")):
-                continue
-
-            if "Index" in line and "time" in line:
-                current_headers = tuple(line.split())
-                continue
-
-            if not current_headers:
-                continue
-
-            values = line.split()
-            if len(values) < len(current_headers):
-                continue
-
-            try:
-                time_val = float(values[1])
-            except (ValueError, IndexError):  # TODO handle
-                continue
-
-            if time_val not in signal_data:
-                signal_data[time_val] = {}
-
-            for i, header in enumerate(current_headers[2:], start=2):
-                if i < len(values):
-                    signal_val = float(values[i])
-                    signal_data[time_val][header] = signal_val
-
-                    temp_result = NgspiceResultBase()
-                    signal_kinds[header] = temp_result.categorize_signal(header)
-
-        for time_val, time_signals in signal_data.items():
             with self._async_lock:
                 if self._async_halt_requested:
                     if self.debug:
-                        print(
-                            f"DEBUG: Breaking due to halt request in chunk starting at {current_time}"
-                        )
+                        _debug("Halt requested before enqueuing samples")
                     break
-
-            if not (current_time <= time_val <= chunk_end):
-                continue
 
             data_point = {
                 "timestamp": time.time(),
@@ -435,20 +616,33 @@ class NgspiceSubprocess(NgspiceBase):
                 else 0.0,
             }
 
-            for signal_name, signal_val in time_signals.items():
-                if signal_name == "time":
+            signal_count = 0
+            for name, value in sample.items():
+                if name == "time":
                     continue
-                data_point["data"][signal_name] = signal_val
-                data_point["signal_kinds"][signal_name] = signal_kinds.get(
-                    signal_name, SignalKind.VOLTAGE
-                )
 
-            if self.debug and self._data_points_sent < 3:
-                print(f"DEBUG: Data point {self._data_points_sent}: {data_point}")
+                if isinstance(value, complex):
+                    if abs(value.imag) > 1e-18 and self.debug:
+                        _debug(
+                            f"Dropping imaginary component for {name}: {value.imag}"
+                        )
+                    value = float(value.real)
+
+                data_point["data"][name] = float(value)
+                data_point["signal_kinds"][name] = signal_kinds.get(
+                    name,
+                    SignalKind.VOLTAGE,
+                )
+                signal_count += 1
+
+            if signal_count == 0:
+                continue
 
             if self._async_queue:
                 self._async_queue.put(data_point)
+
             self._data_points_sent += 1
+            self._async_current_time = time_val
 
     def _run_chunked_simulation(
         self,
@@ -457,167 +651,120 @@ class NgspiceSubprocess(NgspiceBase):
         tstep_str: str,
         throttle_interval: float,
     ):
+        """Run chunked transient simulation using stop after and step commands."""
         try:
+            # Calculate chunk size (number of steps per chunk)
             if tstop is not None:
-                chunk_time = min(tstop / 100, max(tstep * 5, 1e-9))
+                # Aim for ~100 chunks across the simulation
+                total_steps = int(tstop / tstep)
+                chunk_steps = max(5, total_steps // 100)
             else:
-                chunk_time = max(tstep * 10, 1e-6)
+                chunk_steps = 10
 
-            current_time = self._async_current_time
+            try:
+                self.command(f"stop after {chunk_steps}")
+                tran_cmd = f"tran {tstep_str} {tstop if tstop else tstep * 1000}"
+                self.command(tran_cmd)
+                self._is_running = True
+                self._async_resume_event.set()  # Initially running
+            except NgspiceError as e:
+                error_data = {"error": f"Simulation failed to start: {str(e)}"}
+                if self._async_queue:
+                    self._async_queue.put(error_data)
+                return
 
-            while not self._async_halt_requested and (
-                tstop is None or current_time < tstop
-            ):
-                with self._async_lock:
-                    if self._async_halt_requested:
+            simulation_complete = False
+            while not simulation_complete:
+                if self._async_halt_requested:
+                    with self._async_lock:
+                        self._is_running = False
+
+                    if self.debug:
+                        _debug(f"Simulation halted, waiting for resume...")
+
+                    resumed = self._async_resume_event.wait(timeout=0.5)
+
+                    with self._async_lock:
+                        if self._async_halt_requested and not resumed:
+                            continue
+                        elif self._async_halt_requested:
+                            if self.debug:
+                                _debug(f"Exiting due to halt without resume")
+                            break
+                        else:
+                            self._is_running = True
+                            if self.debug:
+                                _debug(f"Simulation resumed")
+
+                try:
+                    samples = self._fetch_new_samples_via_wrdata()
+                except NgspiceError as exc:
+                    if self.debug:
+                        _debug(f"wrdata command failed: {exc}")
+                    samples = []
+
+                current_time = self._async_current_time
+
+                if samples:
+                    current_time = max(current_time, max(s['time'] for s in samples))
+                    self._emit_samples(samples, tstop)
+
+                if not self._async_halt_requested:
+                    try:
+                        step_output = self.command(f"step {chunk_steps}")
+                        if "simulation interrupted" not in step_output.lower():
+                            if self.debug:
+                                _debug("Simulation completed, getting final data")
+                            try:
+                                final_samples = self._fetch_new_samples_via_wrdata()
+                                if final_samples:
+                                    self._emit_samples(final_samples, tstop)
+                            except Exception as e:
+                                if self.debug:
+                                    _debug(f"Error getting final data: {e}")
+                            simulation_complete = True
+                            break
+                    except NgspiceError as e:
                         if self.debug:
-                            print(
-                                f"DEBUG: Halt requested before starting chunk at {current_time}"
-                            )
+                            _debug(f"Step command failed: {e}")
+                        simulation_complete = True
                         break
 
-                self._async_current_time = current_time
-                if tstop is not None:
-                    chunk_end = min(current_time + chunk_time, tstop)
-                else:
-                    chunk_end = current_time + chunk_time
-
-                if current_time == 0:
-                    tran_cmd = f"tran {tstep_str} {chunk_end}"
-                else:
-                    tran_cmd = f"tran {tstep_str} {chunk_end} {current_time}"
-
-                try:
-                    self.command(tran_cmd)
-                except NgspiceError as e:
-                    if chunk_time > tstep * 10:
-                        chunk_time /= 2
+                if tstop is not None and current_time >= tstop * 0.9999:
+                    if self.debug:
+                        _debug(f"Reached target time {current_time} >= {tstop}")
+                    try:
+                        final_samples = self._fetch_new_samples_via_wrdata()
+                        if final_samples:
+                            self._emit_samples(final_samples, tstop)
+                    except Exception as e:
                         if self.debug:
-                            print(
-                                f"DEBUG: Chunk failed with {e}; reducing chunk_time to {chunk_time} and continuing"
-                            )
-                        continue
-                    error_data = {"error": f"Simulation failed (tran): {str(e)}"}
-                    if self._async_queue:
-                        self._async_queue.put(error_data)
+                            _debug(f"Error getting final data: {e}")
+                    simulation_complete = True
                     break
-
-                try:
-                    print_all_res = "\n".join(self.print_all())
-                except NgspiceError:
-                    print_all_res = ""
-
-                lines = print_all_res.split("\n") if print_all_res else []
-                self._parse_and_enqueue_from_lines(
-                    lines, current_time, chunk_end, tstop
-                )
-
-                current_time = chunk_end
-                self._async_current_time = current_time
 
                 time.sleep(min(throttle_interval, 0.05))
 
+            with self._async_lock:
+                self._is_running = False
+
             if not self._async_halt_requested:
                 if self.debug:
-                    print("DEBUG: Simulation completed normally")
+                    _debug("Simulation completed normally")
                 self._async_queue.put({"status": "completed"})
             else:
                 if self.debug:
-                    print("DEBUG: Simulation halted by request")
+                    _debug("Simulation halted by request")
                 self._async_queue.put({"status": "halted"})
 
         except Exception as e:
-            error_data = {"error": f"Async simulation failed: {str(e)}"}
-            self._async_queue.put(error_data)
-        finally:
-            self._async_running = False
-
-    def is_running(self) -> bool:
-        """Check if async simulation is running."""
-        return self._async_running and (
-            self._async_thread is not None and self._async_thread.is_alive()
-        )
-
-    def safe_halt_simulation(
-        self, max_attempts: int = 3, wait_time: float = 0.2
-    ) -> bool:
-        if self.debug:
-            print(
-                f"DEBUG: safe_halt_simulation called, async_running={self._async_running}, halt_requested={self._async_halt_requested}, thread_alive={self._async_thread and self._async_thread.is_alive() if self._async_thread else False}"
-            )
-        if not self._async_running:
-            return True
-
-        with self._async_lock:
-            self._async_halt_requested = True
+            with self._async_lock:
+                self._is_running = False
             if self.debug:
-                print("DEBUG: Set async_halt_requested=True")
-
-        for attempt in range(max_attempts):
-            if (
-                self._async_thread
-                and self._async_thread.is_alive()
-                and not self._async_running
-            ):
-                if self.debug:
-                    print(f"DEBUG: Simulation paused successfully")
-                return True
-
-            if self.debug:
-                print(
-                    f"DEBUG: Attempt {attempt + 1}/{max_attempts}: thread alive={self._async_thread and self._async_thread.is_alive()}, running={self._async_running}"
-                )
-            time.sleep(wait_time)
-
-        if self.debug:
-            print(f"DEBUG: Halt timeout reached, thread may still be processing")
-        return True  # Halt request was set, thread will pause when it checks the flag
-
-    def resume_simulation(self, timeout: float = 3.0) -> bool:
-        """Resume async simulation after halt."""
-        if not self._async_halt_requested:
-            return True  # Not halted, so already "running"
-
-        with self._async_lock:
-            self._async_halt_requested = False
-            self._async_running = True  # Mark as running again
-
-        if self.debug:
-            print(f"DEBUG: Simulation resumed, halt flag cleared")
-
-        return True
-
-    def safe_resume_simulation(
-        self, max_attempts: int = 3, wait_time: float = 2.0
-    ) -> bool:
-        if self.debug:
-            print(
-                f"DEBUG: safe_resume_simulation called, async_running={self._async_running}, halt_requested={self._async_halt_requested}"
-            )
-
-        if not self._async_halt_requested:
-            return True  # Not halted, so already "running"
-
-        with self._async_lock:
-            self._async_halt_requested = False
-            self._async_running = True  # Mark as running again
-
-        return True
-
-    def _is_header_line(self, line, expected_headers):
-        """Check if a line looks like a header line."""
-        if not line.strip():
-            return False
-
-        # Check if line contains column names from the expected headers
-        line_lower = line.lower()
-        header_matches = 0
-        for header in expected_headers:
-            if header.lower() in line_lower:
-                header_matches += 1
-
-        # If most headers are found in this line, it's likely a header
-        return header_matches >= len(expected_headers) * 0.6
+                _debug(f"Exception in chunked simulation: {e}")
+            error_data = {"error": f"Simulation error: {str(e)}"}
+            if self._async_queue:
+                self._async_queue.put(error_data)
 
     def _parse_ac_wrdata(self, file_path: str, vectors: list[str]) -> "NgspiceAcResult":
         """Parses the ASCII output of a wrdata command for AC analysis."""

@@ -21,7 +21,7 @@ class OrdLoader(Loader):
         try:
             with open(self.ord_path) as f:
                 self.source_text = f.read()
-        except:
+        except (FileNotFoundError, PermissionError, OSError):
             raise ImportError()
 
     def exec_module(self, module):
