@@ -317,8 +317,8 @@ FSTRING_SINGLE_END.2: /'/
 FSTRING_SINGLE_START.2: /(f|fr|rf)'/
 FSTRING_DOUBLE_START.2: /(f|fr|rf)"/
 
-FSTRING_TEXT_DOUBLE.2: /[^{}"]+/
-FSTRING_TEXT_SINGLE.2: /[^{}']+/
+FSTRING_TEXT_DOUBLE.2: /(?:\\.|[^{}"\\])+/
+FSTRING_TEXT_SINGLE.2: /(?:\\.|[^{}'\\])+/
 
 STRING: /([ub]?r?|r[ub])("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
 LONG_STRING: /([ub]?r?|r[ub])(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is
