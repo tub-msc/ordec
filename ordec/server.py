@@ -74,7 +74,6 @@ import tempfile
 import sys
 import os
 import select
-import re
 
 import inotify_simple
 from websockets.sync.server import serve
@@ -85,6 +84,7 @@ from websockets.exceptions import ConnectionClosedOK
 from . import importer
 from .version import version
 from .core.cell import Cell, generate, generate_func
+from .helpers import ord_wrapper
 
 def discover_views(conn_globals, recursive=True, modules_visited=None):
     if modules_visited == None:
@@ -144,18 +144,7 @@ class ConnectionHandler:
         conn_globals = {}
         if source_type == 'ord':
             # Having the import here enables auto-reloading of ord.
-            first_line = source_data.splitlines()[0]
-            match = re.search(r'#.*version\s*[:=]\s*([A-Za-z0-9_.\-]+)', first_line, re.IGNORECASE)
-            ord_version = match.group(1).lower() if match else None
-            if ord_version == "ord2":
-                from .ord2.parser import ord2topy
-                code = compile(ord2topy(source_data), "<string>", "exec")
-            elif ord_version == "ord1":
-                from .ord1.parser import ord2py
-                code = compile(ord2py(source_data), "<string>", "exec")
-            else:
-                from .ord1.parser import ord2py
-                code = compile(ord2py(source_data), "<string>", "exec")
+            code = ord_wrapper(source_data)
             exec(code, conn_globals, conn_globals)
         elif source_type == 'python':
             exec(source_data, conn_globals, conn_globals)

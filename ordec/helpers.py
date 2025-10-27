@@ -4,6 +4,7 @@
 import itertools
 from dataclasses import dataclass
 from .core import *
+import re
 
 def spice_params(params: dict) -> list[str]:
     """Helper function for Netlister.add(). This function is in helper.py
@@ -237,3 +238,25 @@ def add_conn_points(s: Schematic):
         for pos in pos_multi:
             net % SchemConnPoint(pos=pos)
 
+
+
+def ord_wrapper(source_data):
+    """
+    Checks for the version string and loads the correct ORD compiler
+
+    Args:
+        source_data (str): Loaded ORD string
+    Returns:
+        None
+    """
+    first_line = source_data.splitlines()[0]
+    match = re.search(r'#.*version\s*[:=]\s*([A-Za-z0-9_.\-]+)', first_line, re.IGNORECASE)
+    ord_version = match.group(1).lower() if match else None
+    if ord_version == "ord2":
+        from .ord2.parser import ord2py
+    elif ord_version == "ord1":
+        from .ord1.parser import ord2py
+    else:
+        from .ord1.parser import ord2py
+    code = compile(ord2py(source_data), "<string>", "exec")
+    return code

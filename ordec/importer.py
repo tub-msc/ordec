@@ -3,12 +3,9 @@
 
 import sys
 import os
-import re
 from importlib.abc import Loader, MetaPathFinder
 from importlib.util import spec_from_loader
-
-from .ord2.parser import ord2topy
-from .ord1.parser import ord2py
+from .helpers import ord_wrapper
 
 # For related examples, see:
 # - https://python.plainenglish.io/metapathfinders-or-how-to-change-python-import-behavior-a1cf3b5a13ec
@@ -26,22 +23,8 @@ class OrdLoader(Loader):
             raise ImportError()
 
     def exec_module(self, module):
-        def get_version(path):
-            with open(path, 'r', encoding='utf-8') as f:
-                line = f.readline()
-                ord_version = re.match(r'\s*#.*version\s*[:=]\s*([A-Za-z0-9_\-]+)', line, re.IGNORECASE)
-                if ord_version:
-                    return ord_version.group(1).lower()
-                return None
-
         module.__dict__['__file__'] = self.ord_path
-        ord_version = get_version(self.ord_path)
-        if ord_version == "ord2":
-            code = compile(ord2topy(self.source_text), "<string>", "exec")
-        elif ord_version == "ord1":
-            code = compile(ord2py(self.source_text), "<string>", "exec")
-        else:
-            code = compile(ord2py(self.source_text), "<string>", "exec")
+        code = ord_wrapper(self.source_text)
         exec(code, module.__dict__, module.__dict__)
 
 class OrdMetaPathFinder(MetaPathFinder):
