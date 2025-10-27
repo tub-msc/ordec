@@ -249,7 +249,8 @@ def ord_wrapper(source_data):
     Returns:
         None
     """
-    first_line = source_data.splitlines()[0]
+    split_data = source_data.splitlines()
+    first_line = split_data[0] if len(split_data) > 0 else ""
     match = re.search(r'#.*version\s*[:=]\s*([A-Za-z0-9_.\-]+)', first_line, re.IGNORECASE)
     ord_version = match.group(1).lower() if match else None
     if ord_version == "ord2":
