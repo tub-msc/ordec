@@ -21,6 +21,12 @@ try:
 except (RuntimeError, AttributeError):
     pass
 
+_DEBUG_PREFIX = "[ngspice-mp]"
+
+
+def _debug(message: str) -> None:
+    print(f"{_DEBUG_PREFIX} {message}")
+
 
 class FFIWorkerProcess:
     """
@@ -105,6 +111,7 @@ class FFIWorkerProcess:
 
         # Initialize thread synchronization objects (can't pickle these)
         self._shutdown_event = threading.Event()
+        self._relay_shutdown_event = threading.Event()
         self._progress_lock = threading.Lock()
         self._command_queue = queue.Queue()
         self._response_queue = queue.Queue()
@@ -113,7 +120,7 @@ class FFIWorkerProcess:
         msg = self.conn.recv()
         if msg["type"] == "init":
             try:
-                self.backend = NgspiceFFI(debug=msg.get("debug", False))
+                self.backend = NgspiceFFI(debug=msg["debug"])
                 self.conn.send({"type": "init_success"})
             except Exception as e:
                 self.conn.send(
@@ -146,8 +153,8 @@ class FFIWorkerProcess:
                 ):
                     import traceback
 
-                    print(
-                        f"[ngspice-mp] Worker recv error: {e}\n{traceback.format_exc()}"
+                    _debug(
+                        f"Worker recv error: {e}\n{traceback.format_exc()}"
                     )
                 break
 
@@ -251,6 +258,30 @@ class FFIWorkerProcess:
                             }
                         )
 
+                elif cmd == "stop_async_simulation":
+                    try:
+                        if self._relay_thread and self._relay_thread.is_alive():
+                            self._relay_shutdown_event.set()
+                            self._relay_thread.join(timeout=2.0)
+                            if self._relay_thread.is_alive():
+                                if self.debug:
+                                    _debug(
+                                        "WARNING: relay thread did not terminate in time."
+                                    )
+
+                        self._relay_thread = None
+                        self._relay_shutdown_event.clear()
+
+                        self._response_queue.put({"type": "result", "data": pickle.dumps(True)})
+                    except Exception as e:
+                        self._response_queue.put(
+                            {
+                                "type": "error",
+                                "data": pickle.dumps(e),
+                                "traceback": traceback.format_exc(),
+                            }
+                        )
+
                 else:
                     # Handle regular commands
                     try:
@@ -282,16 +313,16 @@ class FFIWorkerProcess:
 
     def _start_relay_thread(self, ffi_queue):
         """Start a relay thread with proper synchronization"""
+        self._relay_shutdown_event.clear()
 
         def relay_data():
             """Relay data from FFI queue to multiprocess queue with proper synchronization"""
             import queue as queue_module
 
             progress_counter = 0
-            start_time = time.time()
 
             try:
-                while not self._shutdown_event.is_set() and self._async_active.is_set():
+                while not self._relay_shutdown_event.is_set() and self._async_active.is_set():
                     try:
                         # Block until data is available with timeout
                         data_point = ffi_queue.get(timeout=0.5)
@@ -360,6 +391,7 @@ class FFIWorkerProcess:
                                     break
 
                             break
+
                         # Continue waiting for data
                         continue
             except Exception as e:
@@ -370,8 +402,8 @@ class FFIWorkerProcess:
                     and hasattr(self.backend, "debug")
                     and self.backend.debug
                 ):
-                    print(
-                        f"[ngspice-mp] Relay thread error: {e}\n{traceback.format_exc()}"
+                    _debug(
+                        f"Relay thread error: {e}\n{traceback.format_exc()}"
                     )
 
         # Initialize progress tracking
@@ -401,7 +433,7 @@ class NgspiceIsolatedFFI(NgspiceBase):
         p = Process(target=worker.run)
         p.start()
 
-        backend = cls(parent_conn, p, async_queue)
+        backend = cls(parent_conn, p, async_queue, debug=debug)
         try:
             parent_conn.send({"type": "init", "debug": debug})
             response = parent_conn.recv()
@@ -414,8 +446,9 @@ class NgspiceIsolatedFFI(NgspiceBase):
             if backend:
                 try:
                     backend.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    if debug:
+                        _debug(f"Error during backend close: {e}")
             if p.is_alive():
                 p.join(timeout=2)
                 if p.is_alive():
@@ -424,14 +457,22 @@ class NgspiceIsolatedFFI(NgspiceBase):
                     if p.is_alive():
                         p.kill()
 
-    def __init__(self, conn, process, async_queue):
+    def __init__(self, conn, process, async_queue, debug: bool = False):
         self.conn = conn
         self.process = process
         self.async_queue = async_queue
         self._async_simulation_running = False
+        self.debug = debug
 
     def close(self):
         try:
+            if self._async_simulation_running:
+                try:
+                    self.stop_async_simulation()
+                except Exception as e:
+                    if self.debug:
+                        _debug(f"Error during stop_async_simulation: {e}")
+
             if not self.conn.closed:
                 self.conn.send({"type": "quit"})
         except BrokenPipeError:
@@ -440,128 +481,120 @@ class NgspiceIsolatedFFI(NgspiceBase):
             if not self.conn.closed:
                 self.conn.close()
 
-    def _call_worker(self, msg_type, *args, **kwargs):
+    def _call_worker(self, msg_type, *args, timeout=30.0, **kwargs):
         if self.conn.closed:
             raise RuntimeError("Connection to FFI worker process is closed.")
+
+        timeout_seconds = timeout
 
         # Use a lock to ensure atomic send/receive operations
         if not hasattr(self, "_comm_lock"):
             self._comm_lock = threading.Lock()
 
         with self._comm_lock:
-            try:
-                # Send command with retry logic
-                max_retries = 3
-                for attempt in range(max_retries):
-                    try:
-                        self.conn.send(
-                            {"type": msg_type, "args": args, "kwargs": kwargs}
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    self.conn.send(
+                        {"type": msg_type, "args": args, "kwargs": kwargs}
+                    )
+                    break
+                except (BrokenPipeError, EOFError) as e:
+                    if attempt == max_retries - 1:
+                        raise RuntimeError(
+                            f"Failed to send command to worker process after {max_retries} attempts: {e}"
                         )
+                    time.sleep(0.01)
+            response = None
+            poll_interval = 0.1
+            elapsed = 0
+
+            while elapsed < timeout_seconds:
+                if self.conn.poll(timeout=poll_interval):
+                    try:
+                        response = self.conn.recv()
                         break
-                    except (BrokenPipeError, EOFError) as e:
-                        if attempt == max_retries - 1:
-                            raise RuntimeError(
-                                f"Failed to send command to worker process after {max_retries} attempts: {e}"
-                            )
-                        time.sleep(0.01)  # Brief delay before retry
-
-                # Wait for response with proper timeout handling
-                response = None
-                timeout_seconds = 30
-                poll_interval = 0.1
-                elapsed = 0
-
-                while elapsed < timeout_seconds:
-                    if self.conn.poll(timeout=poll_interval):
-                        try:
-                            response = self.conn.recv()
-                            break
-                        except (EOFError, BrokenPipeError) as e:
-                            raise RuntimeError(
-                                f"Worker process communication failed: {e}"
-                            )
-                        except Exception as e:
-                            if "invalid load key" in str(e) or "unpickling" in str(e):
-                                # Pickle corruption - likely a race condition
-                                raise RuntimeError(
-                                    f"Data corruption in worker communication: {e}"
-                                )
-                            raise RuntimeError(
-                                f"Worker process communication error: {e}"
-                            )
-                    elapsed += poll_interval
-
-                    # Check if worker process is still alive (but allow some time for error handling)
-                    if not self.process.is_alive() and elapsed > 5:
-                        raise RuntimeError("Worker process died during communication")
-
-                if response is None:
-                    raise RuntimeError(
-                        f"Timeout waiting for worker process response ({timeout_seconds}s)"
-                    )
-
-                # Process response
-                if response["type"] == "result":
-                    try:
-                        return pickle.loads(response["data"])
+                    except (EOFError, BrokenPipeError) as e:
+                        raise RuntimeError(
+                            f"Worker process communication failed: {e}"
+                        )
                     except Exception as e:
+                        if "invalid load key" in str(e) or "unpickling" in str(e):
+                            raise RuntimeError(
+                                f"Data corruption in worker communication: {e}"
+                            )
                         raise RuntimeError(
-                            f"Failed to deserialize worker response: {e}"
+                            f"Worker process communication error: {e}"
                         )
-                elif response["type"] == "error":
-                    try:
-                        exc = pickle.loads(response["data"])
-                        # Re-raise the original exception type
-                        raise exc
-                    except (pickle.PickleError, TypeError, ImportError):
-                        # If deserialization fails, create a generic RuntimeError
-                        traceback_info = response.get(
-                            "traceback", "No traceback available"
-                        )
-                        raise RuntimeError(
-                            f"Worker process error: Failed to deserialize exception\n--- Traceback from worker process ---\n{traceback_info}"
-                        )
-                else:
+                elapsed += poll_interval
+                if not self.process.is_alive() and elapsed > 5:
+                    raise RuntimeError("Worker process died during communication")
+
+            if response is None:
+                raise RuntimeError(
+                    f"Timeout waiting for worker process response ({timeout_seconds}s)"
+                )
+
+            if response["type"] == "result":
+                try:
+                    return pickle.loads(response["data"])
+                except Exception as e:
                     raise RuntimeError(
-                        f"Unknown response type from worker: {response['type']}"
+                        f"Failed to deserialize worker response: {e}"
                     )
-            except Exception as e:
-                # Re-raise exceptions, but don't wrap them unnecessarily
-                raise
+            elif response["type"] == "error":
+                try:
+                    exc = pickle.loads(response["data"])
+                    raise exc
+                except (pickle.PickleError, TypeError, ImportError):
+                    traceback_info = response.get(
+                        "traceback", "No traceback available"
+                    )
+                    raise RuntimeError(
+                        f"Worker process error: Failed to deserialize exception\n--- Traceback from worker process ---\n{traceback_info}"
+                    )
+            else:
+                raise RuntimeError(
+                    f"Unknown response type from worker: {response['type']}"
+                )
 
     def _async_results_generator(self):
         """Generate results from async queue with proper error handling"""
         timeout_count = 0
         max_timeouts = 100  # Allow some timeouts before giving up
 
-        while True:
-            try:
-                # Use timeout to prevent hanging forever
-                item = self.async_queue.get(timeout=0.5)
-                timeout_count = 0  # Reset timeout counter on successful get
+        try:
+            while True:
+                try:
+                    item = self.async_queue.get(timeout=0.5)
+                    timeout_count = 0
 
-                if item == _ASYNC_SIM_SENTINEL:
-                    self._async_simulation_running = False
-                    break
-                yield item
-            except queue.Empty:
-                timeout_count += 1
-                if timeout_count > max_timeouts:
-                    # Been waiting too long, check if worker is still alive
-                    if not self.process.is_alive():
+                    if item == _ASYNC_SIM_SENTINEL:
                         self._async_simulation_running = False
                         break
-                    # Reset counter and continue waiting
-                    timeout_count = 0
-                continue
-            except (EOFError, BrokenPipeError):
-                self._async_simulation_running = False
-                break
-            except Exception as e:
-                # Log unexpected errors but continue
-                if hasattr(self, "_debug") and self._debug:
-                    print(f"[ngspice-mp] Async generator error: {e}")
-                break
+                    yield item
+                except queue.Empty:
+                    timeout_count += 1
+                    if timeout_count > max_timeouts:
+                        if not self.process.is_alive():
+                            self._async_simulation_running = False
+                            break
+                        timeout_count = 0
+                    continue
+                except (EOFError, BrokenPipeError):
+                    self._async_simulation_running = False
+                    break
+                except Exception as e:
+                    if self.debug:
+                        _debug(f"Async generator error: {e}")
+                    break
+        finally:
+            self._async_simulation_running = False
+            try:
+                self._call_worker("stop_async_simulation", timeout=5.0)
+            except RuntimeError as e:
+                if self.debug:
+                    _debug(f"Error during async cleanup: {e}")
 
     def command(self, command: str) -> str:
         return self._call_worker("command", command)
@@ -582,7 +615,6 @@ class NgspiceIsolatedFFI(NgspiceBase):
         try:
             return self._call_worker("is_running")
         except RuntimeError:
-            # If worker communication fails, assume not running
             return False
 
     def stop_simulation(self):
@@ -590,6 +622,10 @@ class NgspiceIsolatedFFI(NgspiceBase):
 
     def resume_simulation(self, timeout=2.0):
         return self._call_worker("resume_simulation", timeout=timeout)
+
+    def stop_async_simulation(self):
+        """Tell the worker to clean up the async simulation resources."""
+        return self._call_worker("stop_async_simulation")
 
     def reset(self):
         return self._call_worker("reset")
@@ -607,16 +643,16 @@ class NgspiceIsolatedFFI(NgspiceBase):
                     try:
                         callback(item)
                     except Exception as e:
-                        print(f"Error in async callback: {e}")
+                        _debug(f"Async callback error: {e}")
                 yield item
 
         return generator_with_callback()
 
     def tran_async(
-        self, tstep, tstop=None, *extra_args, throttle_interval: float = 0.1
+        self, tstep, tstop=None, *extra_args, throttle_interval: float = 0.1, disable_throttling: bool = False, fallback_sampling_ratio: int = 100
     ):
         self._call_worker(
-            "tran_async", tstep, tstop, *extra_args, throttle_interval=throttle_interval
+            "tran_async", tstep, tstop, *extra_args, throttle_interval=throttle_interval, disable_throttling=disable_throttling, fallback_sampling_ratio=fallback_sampling_ratio
         )
         return self.async_queue
 
@@ -648,18 +684,16 @@ class NgspiceIsolatedFFI(NgspiceBase):
                             if not halt_future.done():
                                 halt_future.cancel()
 
-            except Exception:
-                pass
+            except Exception as e:
+                if self.debug:
+                    _debug(f"Error during safe_halt_simulation: {e}")
 
             # Wait before retry (except on last attempt)
             if attempt < max_attempts - 1:
                 time.sleep(wait_time)
 
         # use actual worker state, not our flag
-        try:
-            return self._call_worker("is_running") == False
-        except:
-            return False
+        return self._call_worker("is_running") == False
 
     def safe_resume_simulation(self, max_attempts: int = 3, wait_time: float = 2.0):
         import time
@@ -696,8 +730,9 @@ class NgspiceIsolatedFFI(NgspiceBase):
                             if not resume_future.done():
                                 resume_future.cancel()
 
-            except Exception:
-                pass
+            except Exception as e:
+                if self.debug:
+                    _debug(f"Error during safe_resume_simulation: {e}")
 
             # Wait before retry (except on last attempt)
             if attempt < max_attempts - 1:
@@ -705,9 +740,9 @@ class NgspiceIsolatedFFI(NgspiceBase):
 
         return False
 
-    def tran_async(self, tstep, tstop=None, *extra_args, **kwargs):
+    def tran_async(self, tstep, tstop=None, *extra_args, buffer_size: int = 10, disable_buffering: bool = False, fallback_sampling_ratio: int = 100, **kwargs):
         self._async_simulation_running = True
-        self._call_worker("tran_async", tstep, tstop, *extra_args, **kwargs)
+        self._call_worker("tran_async", tstep, tstop, *extra_args, buffer_size=buffer_size, disable_buffering=disable_buffering, fallback_sampling_ratio=fallback_sampling_ratio, **kwargs)
         return self.async_queue
 
     def op_async(self, *args, **kwargs):
