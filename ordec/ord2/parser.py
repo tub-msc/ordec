@@ -5,7 +5,7 @@ from lark import Lark
 from pathlib import Path
 import argparse
 from lark.indenter import PythonIndenter
-from ..ord2.transformer import Ord2Transformer
+from .ord2_transformer import Ord2Transformer
 import ast
 
 

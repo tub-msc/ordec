@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.ord2.parser import load_ord2_from_string
+from ordec.ord2.parser import ord2_to_py
 import ast
 
 def compare_asts(ord2_code_string):
-    or2_ast = load_ord2_from_string(ord2_code_string)
+    or2_ast = ord2_to_py(ord2_code_string)
     python_ast = ast.parse(ord2_code_string)
     assert (ast.dump(or2_ast) ==
             ast.dump(python_ast))
