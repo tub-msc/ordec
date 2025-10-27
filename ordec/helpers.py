@@ -4,7 +4,6 @@
 import itertools
 from dataclasses import dataclass
 from .core import *
-import re
 
 def spice_params(params: dict) -> list[str]:
     """Helper function for Netlister.add(). This function is in helper.py
