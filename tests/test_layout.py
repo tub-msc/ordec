@@ -574,6 +574,12 @@ def test_gds_aref():
 
     layout = lib['TOP'].layout
 
+    sub_poly_vertices = lib['SUB'].layout.one(LayoutPoly).vertices()
+    # The polys are reversed in the ARef because ainst.orientation mirrors.
+    # origin_idx_reversed is 0 at the moment, but this could change when
+    # the GDS poly vertexes are rearranged.
+    origin_idx_reversed = len(sub_poly_vertices) - 1 - sub_poly_vertices.index(Vec2I(0, 0))
+
     ainst = layout.one(LayoutInstanceArray)
     assert ainst.pos == Vec2I(10000, 10000)
     assert ainst.orientation == D4.MX90
@@ -612,7 +618,7 @@ def test_gds_aref():
     assert len(list(layout_flatten.all(LayoutInstanceArray))) == 0
     pos_expected = pos_expected_orig.copy()
     for poly in layout_flatten.all(LayoutPoly):
-        pos0 = poly.vertices()[0]
+        pos0 = poly.vertices()[origin_idx_reversed]
         assert pos0 in pos_expected
         pos_expected.remove(pos0)
     assert len(pos_expected) == 0
