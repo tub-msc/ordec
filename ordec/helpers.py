@@ -116,7 +116,7 @@ class ConnectivityGraph:
 
 def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=False):
     g = ConnectivityGraph()
-
+    
     net_at = {}
     conn_point_at = {}
     terminal_at = {}
@@ -236,3 +236,4 @@ def add_conn_points(s: Schematic):
             
         for pos in pos_multi:
             net % SchemConnPoint(pos=pos)
+
