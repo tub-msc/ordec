@@ -1,10 +1,16 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+
 # standard imports
 import re
+import ast
 
-def ord_version_resolver(source_data):
+# ordec imports
+from .ord1.parser import ord1_to_py
+from .ord2.parser import ord2_to_py
+
+def ord_to_py(source_data: str) -> ast.Module:
     """
     Checks for the version string and compiles with the recognized ORD compiler
 
@@ -18,10 +24,9 @@ def ord_version_resolver(source_data):
     match = re.search(r'#.*version\s*[:=]\s*([A-Za-z0-9_.\-]+)', first_line, re.IGNORECASE)
     ord_version = match.group(1).lower() if match else None
     if ord_version == "ord2":
-        from .ord2.parser import ord2py
+        module = ord2_to_py(source_data)
     elif ord_version == "ord1":
-        from .ord1.parser import ord2py
+        module = ord1_to_py(source_data)
     else:
-        from .ord1.parser import ord2py
-    code = compile(ord2py(source_data), "<string>", "exec")
-    return code
+        module = ord1_to_py(source_data)
+    return module

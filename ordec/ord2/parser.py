@@ -18,34 +18,21 @@ parser = Lark.open(
     maybe_placeholders=False
 )
 
-def load_ord2_from_string(ord_string):
+def ord2_to_py(ord_string: str) -> ast.Module:
     """
-    Function which parses an ORD string and returns the parsed result.
+    Function which parses an ORD string and returns the transformed result.
 
     Args:
         ord_string (str): String containing ORD code
     Returns:
-        Ast of the parsed string
+        AST of the parsed and transformed string
     """
     # Parse the string directly
     parsed_result = parser.parse(ord_string + "\n")
     ord2_transformer = Ord2Transformer()
-    transformed = ord2_transformer.transform(parsed_result)
-    ast.fix_missing_locations(transformed)
-    return transformed
-
-
-def ord2py(source_data: str) -> ast.Module:
-    """
-    Compile ORD to Python
-    Args:
-        source_data (str): ORD source code
-    Returns:
-        module: Transformed AST of the data
-    """
-    module = load_ord2_from_string(source_data)
-    return module
-
+    transformed_ast = ord2_transformer.transform(parsed_result)
+    ast.fix_missing_locations(transformed_ast)
+    return transformed_ast
 
 if __name__ == "__main__":
     #Function which parses an ORD string and executes the transformed Python result.
