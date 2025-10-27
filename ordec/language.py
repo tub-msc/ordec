@@ -11,7 +11,7 @@ def ord_version_resolver(source_data):
     Args:
         source_data (str): Loaded ORD string
     Returns:
-        None
+        code: Compiled ORD code
     """
     split_data = source_data.splitlines()
     first_line = split_data[0] if len(split_data) > 0 else ""

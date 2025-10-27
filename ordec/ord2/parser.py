@@ -8,7 +8,7 @@ from lark.indenter import PythonIndenter
 from ..ord2.transformer import Ord2Transformer
 import ast
 
-# Load the grammar file
+
 lark_fn = Path(__file__).parent / "ord2.lark"
 parser = Lark.open(
     lark_fn,
@@ -34,7 +34,7 @@ def load_ord2_from_string(ord_string):
     ast.fix_missing_locations(transformed)
     return transformed
 
-# ordec/ws_server.py use ord2py() for now.
+
 def ord2py(source_data: str) -> ast.Module:
     """
     Compile ORD to Python

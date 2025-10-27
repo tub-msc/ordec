@@ -36,13 +36,13 @@ class Misc():
         # Attribute: obj.attr
         elif isinstance(node, ast.Attribute):
             node.ctx = ctx
-            self._set_ctx(node.value, ast.Load())  # The object itself is read
+            self._set_ctx(node.value, ast.Load())
 
         # Subscript: arr[0]
         elif isinstance(node, ast.Subscript):
             node.ctx = ctx
-            self._set_ctx(node.value, ast.Load())  # The container is read
-            self._set_ctx(node.slice, ast.Load())  # The index expression is read
+            self._set_ctx(node.value, ast.Load())
+            self._set_ctx(node.slice, ast.Load())
 
         # Slices like arr[1:2]
         elif isinstance(node, ast.Slice):
