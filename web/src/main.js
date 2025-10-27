@@ -54,6 +54,10 @@ function setStatus(status) {
     }[status];
 }
 
+function unloadMsg() {
+    return "Unsaved changes are lost when leaving. Do you want to leave the site?";
+}
+
 class Editor {
     constructor(container, state) {
         this.refreshTimeout = 0;
@@ -77,12 +81,17 @@ class Editor {
         this.editor.clearSelection();
     }
 
+
     changed(delta) {
         if(this.refreshTimeout <= 0) {
             window.ordecClient.src = this.editor.getValue();
             console.log('ordecClient.connect() triggered by editor change (no timeout).');
             window.ordecClient.connect();
         } else {
+            // After the user has modified the example code, he must confirm
+            // when he wants to close the browser window.
+            window.onbeforeunload = unloadMsg;
+            
             window.clearTimeout(this.timeout);
             this.timeout = window.setTimeout(() => {
                 console.log('ordecClient.connect() triggered by editor change.');
