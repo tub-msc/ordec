@@ -85,6 +85,7 @@ from websockets.exceptions import ConnectionClosedOK
 from . import importer
 from .version import version
 from .core.cell import Cell, generate, generate_func
+from .language import ord_to_py
 
 class ServerKey:
     def __init__(self):
@@ -158,9 +159,8 @@ class ConnectionHandler:
     def build_cells(self, source_type: str, source_data: str) -> (dict, dict):
         conn_globals = {}
         if source_type == 'ord':
-            # Having the import here enables auto-realoading of ord1.
-            from .ord1.parser import ord2py
-            code = compile(ord2py(source_data), "<string>", "exec")
+            # Having the import here enables auto-reloading of ord.
+            code = compile(ord_to_py(source_data), "<string>", "exec")
             exec(code, conn_globals, conn_globals)
         elif source_type == 'python':
             exec(source_data, conn_globals, conn_globals)

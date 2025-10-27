@@ -701,6 +701,26 @@ def calculate_vertices(outline, cells, ports, connections):
                                 list(ports.values()), list(cells.values()))
     return vertices
 
+
+def adjust_outline_initial(node, outline):
+    """
+    Adjust the outline according to the schematic instances
+
+    :param node: node instance
+    :param outline: current outline
+    """
+
+    for port in node.all(SchemPort):
+        outline.extend(port.pos)
+    for instance in node.all(SchemInstance):
+        instance_transform = instance.loc_transform()
+        instance_geometry = instance_transform * instance.symbol.outline
+        low_pos = Vec2R(x=instance_geometry.lx , y=instance_geometry.ly)
+        up_pos = Vec2R(x=instance_geometry.ux , y=instance_geometry.uy)
+        outline = outline.extend(low_pos)
+        outline = outline.extend(up_pos)
+    return outline
+
 def schematic_routing(node, outline=None, routing=None):
     """
     Calculate the vertices for routing via a-star pathfinding
@@ -714,6 +734,7 @@ def schematic_routing(node, outline=None, routing=None):
         routing = dict()
     if outline is None:
         outline = Rect4R(lx=0, ly=0, ux=0, uy=0)
+        outline = adjust_outline_initial(node, outline)
     width = int(outline.ux - outline.lx)
     height = int(outline.uy - outline.ly)
     # Calculate offset for positive coordinates while routing

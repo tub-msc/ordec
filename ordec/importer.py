@@ -5,9 +5,7 @@ import sys
 import os
 from importlib.abc import Loader, MetaPathFinder
 from importlib.util import spec_from_loader
-import ast
-
-from .ord1.parser import ord2py
+from .language import ord_to_py
 
 # For related examples, see:
 # - https://python.plainenglish.io/metapathfinders-or-how-to-change-python-import-behavior-a1cf3b5a13ec
@@ -26,7 +24,7 @@ class OrdLoader(Loader):
 
     def exec_module(self, module):
         module.__dict__['__file__'] = self.ord_path
-        code = compile(ord2py(self.source_text), "<string>", "exec")
+        code = compile(ord_to_py(self.source_text), "<string>", "exec")
         exec(code, module.__dict__, module.__dict__)
 
 class OrdMetaPathFinder(MetaPathFinder):

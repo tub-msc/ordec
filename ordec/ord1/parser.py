@@ -38,7 +38,7 @@ def load_ord_from_string(ord_string):
 
 # TODO: Make ord1 encapsulation consistent. ordec/importer.py and
 # ordec/ws_server.py use ord2py() for now.
-def ord2py(source_data: str) -> ast.Module:
+def ord1_to_py(source_data: str) -> ast.Module:
     """
     Compile ORD to Python
 
