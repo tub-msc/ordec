@@ -84,7 +84,7 @@ from websockets.exceptions import ConnectionClosedOK
 from . import importer
 from .version import version
 from .core.cell import Cell, generate, generate_func
-from .helpers import ord_wrapper
+from .language import ord_version_resolver
 
 def discover_views(conn_globals, recursive=True, modules_visited=None):
     if modules_visited == None:
@@ -144,7 +144,7 @@ class ConnectionHandler:
         conn_globals = {}
         if source_type == 'ord':
             # Having the import here enables auto-reloading of ord.
-            code = ord_wrapper(source_data)
+            code = ord_version_resolver(source_data)
             exec(code, conn_globals, conn_globals)
         elif source_type == 'python':
             exec(source_data, conn_globals, conn_globals)

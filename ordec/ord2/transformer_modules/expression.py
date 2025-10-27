@@ -1,6 +1,5 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
-from statistics import median_grouped
 
 # standard imports
 from lark import Transformer

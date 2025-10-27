@@ -13,18 +13,19 @@ lark_fn = Path(__file__).parent / "ord2.lark"
 parser = Lark.open(
     lark_fn,
     parser="lalr",
-    postlex=PythonIndenter(),  # same as in the original example
+    postlex=PythonIndenter(),
     start="file_input",
-    # keep_all_tokens=True,
-    maybe_placeholders=False  # required for Reconstructor to work
+    maybe_placeholders=False
 )
 
 def load_ord2_from_string(ord_string):
     """
     Function which parses an ORD string and returns the parsed result.
 
-    :param ord_string: string containing ORD code
-    :return: ast of the parsed string
+    Args:
+        ord_string (str): String containing ORD code
+    Returns:
+        Ast of the parsed string
     """
     # Parse the string directly
     parsed_result = parser.parse(ord_string + "\n")
@@ -37,19 +38,17 @@ def load_ord2_from_string(ord_string):
 def ord2py(source_data: str) -> ast.Module:
     """
     Compile ORD to Python
-    :param source_data: ORD source code
+    Args:
+        source_data (str): ORD source code
+    Returns:
+        module: Transformed AST of the data
     """
     module = load_ord2_from_string(source_data)
     return module
 
 
 if __name__ == "__main__":
-    """
-    Function which parses an ORD string and returns the parsed result.
-
-    :param ord_string: string containing ORD code
-    :return: ast of the parsed string
-    """
+    #Function which parses an ORD string and executes the transformed Python result.
 
     # Parse the string directly
     arg_parser = argparse.ArgumentParser(description="Parse Python code from file or string")
