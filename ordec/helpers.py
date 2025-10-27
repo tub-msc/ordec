@@ -83,7 +83,7 @@ class PinOfInstance:
     @property
     def align(self):
         #TODO: check if this pin.align transformation works:
-        return D4.from_td4(self.conn.ref.loc_transform() * self.conn.there.align)
+        return self.conn.ref.loc_transform().d4 * self.conn.there.align
 
     @property
     def ref(self):
@@ -153,14 +153,15 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
                 net_at[tap.pos] = net
 
         for poly in node.all(SchemWire.ref_idx.query(net.nid)):
-            for a, b in itertools.pairwise(poly.vertices):
-                g.add_biedge(a.pos, b.pos)
-            for p in poly.vertices:
-                if p.pos in net_at:
-                    if net_at[p.pos] != net:
-                        raise SchematicError(f"Geometric short at {p.pos} between {net_at[p.pos]} and {net}.")
+            vertices = poly.vertices()
+            for a, b in itertools.pairwise(vertices):
+                g.add_biedge(a, b)
+            for pos in vertices:
+                if pos in net_at:
+                    if net_at[pos] != net:
+                        raise SchematicError(f"Geometric short at {pos} between {net_at[pos]} and {net}.")
                 else:
-                    net_at[p.pos] = net
+                    net_at[pos] = net
 
         for p in node.all(SchemConnPoint.ref_idx.query(net.nid)):
             if p.pos in conn_point_at:
@@ -227,8 +228,7 @@ def add_conn_points(s: Schematic):
         pos_single = set()
         pos_multi = set()
         for wire in s.all(SchemWire.ref_idx.query(net.nid)):
-            for poly_point in wire.vertices:
-                pos = poly_point.pos
+            for pos in wire.vertices():
                 if pos in pos_single:
                     pos_multi.add(pos)
                 else:

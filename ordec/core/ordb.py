@@ -748,11 +748,32 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         self.subgraph.update(self.node.set(**kwargs), self.nid)
 
     def remove(self):
-        """Removes selected node from the subgraph."""
+        """Removes selected node from subgraph, including NPath if applicable."""
         if self.npath_nid != None:
             self.subgraph.remove_nid(self.npath_nid)
+        self.remove_node()
+
+    def remove_node(self):
+        """Removes selected node from subgraph, *exluding* potential NPath."""
         if self.nid != None:
             self.subgraph.remove_nid(self.nid)
+
+    def replace(self, inserter: Inserter):
+        """
+        Replaces the current node with a one newly inserted by provided inserter.
+
+        In case the current node has an associated NPath, this NPath is updated
+        to point to the newly inserted node.
+        """
+        if self.npath_nid != None:
+            children = self.subgraph.all(NPath.idx_parent.query(self.npath_nid), wrap_cursor=False)
+            if len(list(children)) > 0:
+                raise OrdbException("Cannot replace non-leaf node that has children.")
+        with self.subgraph.updater() as u:
+            new_nid = inserter.insert_into(u)
+        if self.npath_nid != None:
+            self.subgraph.update(self.npath.set(ref=new_nid), self.npath_nid)
+        self.remove_node()
 
     def __mod__(self, node: Inserter) -> 'Node':
         """
@@ -1489,6 +1510,7 @@ class NPath(Node):
         typecheck_custom=lambda val: isinstance(val, (str, int)))
     ref     = LocalRef(Node, refcheck_custom=lambda v: True)
 
+    idx_parent = Index(parent)
     idx_parent_name = NPathIndex([parent, name], unique=True)
     idx_path_of = Index(ref, unique=True)
 

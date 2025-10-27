@@ -42,6 +42,16 @@ def rgb_color(s) -> RGBColor:
         raise ValueError("rgb_color expects string like '#0012EF'.")
     return RGBColor(int(s[1:3], 16), int(s[3:5], 16), int(s[5:7], 16))
 
+@public
+class PathEndType(Enum):
+    """Could also be named 'linecap'."""
+    FLUSH = 0
+    SQUARE = 2
+
+@public
+class RectDirection(Enum):
+    VERTICAL = 0
+    HORIZONTAL = 1
 # Symbol
 # ------
 
@@ -78,14 +88,40 @@ class Pin(Node):
     pintype = Attr(PinType, default=PinType.Inout)
     pos     = Attr(Vec2R)
     align   = Attr(D4, default=D4.R0)
- 
-class PolyType(Enum):
-    POLYGONAL_CHAIN = 0 #: Can be either an open or closed polygonal chain. Closed if last and first vertex are equal.
-    CLOSED_POLYGON = 1 #: Always a closed polygon. Last and first vertex should not be equal.
+
+class MixinPolygonalChain:
+    def svg_path(self) -> str:
+        """Returns SVG path string of polygon."""
+        d = []
+        vertices = self.vertices()
+        x, y = vertices[0].tofloat()
+        d.append(f"M{x} {y}")
+        for point in vertices[1:-1]:
+            x, y = point.tofloat()
+            d.append(f"L{x} {y}")
+        if vertices[-1] == vertices[0]:
+            d.append("Z")
+        else:
+            x, y = vertices[-1].tofloat()
+            d.append(f"L{x} {y}")
+        return ' '.join(d)
+
+class MixinClosedPolygon:
+    def svg_path(self) -> str:
+        """Returns SVG path string of polygon."""
+        d = []
+        vertices = self.vertices()
+        x, y = vertices[0].tofloat()
+        d.append(f"M{x} {y}")    
+        for point in vertices[1:]:
+            x, y = point.tofloat()
+            d.append(f"L{x} {y}")
+        d.append("Z")
+        return ' '.join(d)
+
 
 class GenericPoly(Node):
     in_subgraphs = [Symbol]
-    polytype = PolyType.POLYGONAL_CHAIN
 
     def __new__(cls, vertices:list[Vec2R]=None, **kwargs):
         main = super().__new__(cls, **kwargs)
@@ -99,35 +135,14 @@ class GenericPoly(Node):
                 return main_nid
             return FuncInserter(inserter_func)
 
+    def vertices(self) -> 'list[Vec2R | Vec2I]':
+        polyvecs = self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid))
+        return [polyvec.pos for polyvec in polyvecs]
 
-    def svg_path(self) -> str:
-        """
-        Returns string representation of polygon suitable for
-        "d" attribute of SVG <path>.
-        """
-        d = []
-        vertices = [c.pos for c in self.vertices]
-        x, y = vertices[0].tofloat()
-        d.append(f"M{x} {y}")
-        if self.polytype == PolyType.POLYGONAL_CHAIN:
-            for point in vertices[1:-1]:
-                x, y = point.tofloat()
-                d.append(f"L{x} {y}")
-            if vertices[-1] == vertices[0]:
-                d.append("Z")
-            else:
-                x, y = vertices[-1].tofloat()
-                d.append(f"L{x} {y}")
-        else:
-            for point in vertices[1:]:
-                x, y = point.tofloat()
-                d.append(f"L{x} {y}")
-            d.append("Z")
-        return ' '.join(d)
-
-    @property
-    def vertices(self):
-        return self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid))
+    def remove_node(self):
+        for vertex in self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid)):
+            vertex.remove()
+        return super().remove_node()
 
 class GenericPolyR(GenericPoly):
     """Base class for polygon or polygonal chain classes (rational numbers)."""
@@ -136,9 +151,8 @@ class GenericPolyI(GenericPoly):
     """Base class for polygon or polygonal chain classes (integer numbers)."""
 
 @public
-class SymbolPoly(GenericPolyR):
+class SymbolPoly(GenericPolyR, MixinPolygonalChain):
     """A drawn polygonal chain in Symbol. For visual purposes only."""
-    polytype = PolyType.POLYGONAL_CHAIN
 
 @public
 class SymbolArc(Node):
@@ -220,9 +234,8 @@ class SchemPort(Node):
     align = Attr(D4, default=D4.R0)
 
 @public
-class SchemWire(GenericPolyR):
+class SchemWire(GenericPolyR, MixinPolygonalChain):
     """A drawn schematic wire representing an electrical connection."""
-    polytype = PolyType.POLYGONAL_CHAIN
     in_subgraphs = [Schematic]
 
     ref = LocalRef(Net, optional=False)
@@ -424,7 +437,7 @@ class Layout(SubgraphRoot):
         #return render(self).webdata()
 
 @public
-class Label(Node):
+class LayoutLabel(Node):
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
@@ -432,7 +445,7 @@ class Label(Node):
     text = Attr(str)
 
 @public
-class LayoutPoly(GenericPolyI):
+class LayoutPoly(GenericPolyI, MixinClosedPolygon):
     """
     Simple (no self intersection, no holes) polygon with CCW orientation.
     (LayoutPoly cannot represent an open polygonal chain. Thus, the first and
@@ -441,10 +454,92 @@ class LayoutPoly(GenericPolyI):
     At GDS import, the "simple" property is currently assumed, and CW polygons
     are flipped automatically to CCW orientation.
     """
-    polytype = PolyType.CLOSED_POLYGON
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+
+@public
+class LayoutPath(GenericPolyI, MixinPolygonalChain):
+    """
+    Layout path (polygonal chain with width).
+    """
+    in_subgraphs = [Layout]
+
+    endtype = Attr(PathEndType, default=PathEndType.FLUSH)
+    width = Attr(int)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+
+@public
+class LayoutRectPoly(GenericPolyI):
+    """
+    Compact rectilinear polygon. Each vertex is connected to its successor
+    through two segments. The first segment in start_direction, the second
+    segment perpendicular to the first. Each vertex has to differ in both x
+    and y coordiante from its successor. The successor of the last vertex is the
+    first vertex.
+
+    This representation of a rectilinear polygon requires half the vertices as
+    an equivalent LayoutPoly.
+
+    One use case is for rectangles, which this class can represent using just
+    two corner vertices.
+    """
+    in_subgraphs = [Layout]
+
+    start_direction = Attr(RectDirection, default=RectDirection.HORIZONTAL)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+
+@public
+class LayoutRectPath(GenericPolyI):
+    """
+    Compact rectilinear path. Each vertex is connected to its successor
+    through two segments. The first segment in start_direction, the second
+    segment perpendicular to the first. Each vertex has to differ in both x
+    and y coordiante from its successor. The last vertex has no successor
+    (i.e. open path).
+
+    This representation of a rectilinear path requires half the vertices as
+    an equivalent LayoutPath.
+    """
+    in_subgraphs = [Layout]
+
+    start_direction = Attr(RectDirection, default=RectDirection.HORIZONTAL)
+    endtype = Attr(PathEndType, default=PathEndType.FLUSH)
+    width = Attr(int)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+
+@public
+class LayoutRect(Node):
+    """Layout rectangle."""
+    in_subgraphs = [Layout]
+
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+    rect = Attr(Rect4I)
+
+@public
+class LayoutInstance(Node):
+    """Hierarchical layout instance, equivalent to GDS SRef."""
+
+    in_subgraphs = [Layout]
+
+    pos = Attr(Vec2I)
+    orientation = Attr(D4, default=D4.R0)
+    ref = SubgraphRef(Layout, optional=False) #: Can be a Layout or a frame (which is also a Layout)...
+
+    def loc_transform(self):
+        return self.pos.transl() * self.orientation
+
+@public
+class LayoutInstanceArray(LayoutInstance):
+    """Hierarchical layout instance array, equivalent to GDS ARef."""
+
+    in_subgraphs = [Layout]
+
+    cols = Attr(int)
+    rows = Attr(int)
+
+    vec_col = Attr(Vec2I)
+    vec_row = Attr(Vec2I)
 
 # Misc
 # ----

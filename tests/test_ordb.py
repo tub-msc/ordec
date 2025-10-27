@@ -646,15 +646,8 @@ def test_cursor_paths_unique():
 
 def test_polyvec2r():
     s = Symbol()
-
     s.poly = SymbolPoly(vertices=[Vec2R(1, 1), Vec2R(1, 3), Vec2R(3, 3)])
-    
-    it = iter(s.poly.vertices)
-    assert next(it).pos == Vec2R(1, 1)
-    assert next(it).pos == Vec2R(1, 3)
-    assert next(it).pos == Vec2R(3, 3)
-    with pytest.raises(StopIteration):
-        next(it)
+    assert s.poly.vertices() == [Vec2R(1, 1), Vec2R(1, 3), Vec2R(3, 3)]
 
 def test_polyvec2r_typecheck():
     s = Symbol()
@@ -665,7 +658,17 @@ def test_polyvec2r_typecheck():
     with pytest.raises(ModelViolation):
         s.poly % PolyVec2I(order=1, pos=Vec2I(3,4))
 
-    assert [v.pos for v in s.poly.vertices] == [Vec2R(1, 2), Vec2R(3, 4)]
+    assert s.poly.vertices() == [Vec2R(1, 2), Vec2R(3, 4)]
+
+def test_polyvec2r_remove():
+    s = Symbol()
+    s.poly = SymbolPoly(vertices=[Vec2R(1, 1), Vec2R(1, 3), Vec2R(3, 3)])
+    assert len(list(s.all(PolyVec2R))) == 3
+    del s.poly # does the same as s.poly.remove()
+    with pytest.raises(AttributeError):
+        s.poly
+    assert len(list(s.all(PolyVec2R))) == 0
+
 
 def test_npath_double_reference():
     s = MyHead()
@@ -845,6 +848,44 @@ def test_refcheck_localref():
 
     with pytest.raises(ModelViolation):
         s % NodeRef(ref=s.a)
+
+def test_replace():
+    class NodeA(Node):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    class NodeB(Node):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    s = MyHead()
+    s.x = NodeA()
+    assert len(list(s.all(NodeA))) == 1
+    s.x.replace(NodeB())
+    assert len(list(s.all(NodeA))) == 0
+    assert isinstance(s.x, NodeB)
+
+def test_replace_nonleaf_to_leaf():
+    class NodeA(NonLeafNode):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    class NodeB(Node):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    s = MyHead()
+    s.x = NodeA()
+    s.y = NodeA()
+    s.y.mkpath('sub')
+    assert len(list(s.all(NodeA))) == 2
+    s.x.replace(NodeB())
+    assert len(list(s.all(NodeA))) == 1
+    assert isinstance(s.x, NodeB)
+    with pytest.raises(OrdbException, match="Cannot replace non-leaf node that has children."):
+        s.y.replace(NodeB())
+    assert len(list(s.all(NodeA))) == 1
+    assert isinstance(s.y, NodeA)
 
 def test_localref_mandatory():
     class NodeA(Node):

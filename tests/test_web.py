@@ -13,6 +13,8 @@ from urllib.parse import urlparse
 from dataclasses import dataclass
 import importlib.resources
 import secrets
+from PIL import Image, ImageStat
+import io
 
 from ordec import server
 
@@ -36,6 +38,10 @@ else:
 @dataclass
 class WebResViewer:
     html: str
+    top: int
+    left: int
+    bottom: int
+    right: int
     width: int
     height: int
 
@@ -88,13 +94,37 @@ testcases_local = {
 
 
 @dataclass
-class WebserverInfo:
+class WebInfo:
     url: str
-    auth_token: str
+    key: server.ServerKey
+    driver: object
+
+    def resize_viewport(self, w=800, h=600):
+        w_overhead = self.driver.execute_script("return window.outerWidth - window.innerWidth;")
+        h_overhead = self.driver.execute_script("return window.outerHeight - window.innerHeight;")
+        self.driver.set_window_size(w+w_overhead, h+h_overhead)
+
+    def authenticate(self, hmac_bypass: bool=False):
+        self.driver.get(self.url)
+        self.driver.execute_script("""
+            window.localStorage.setItem('ordecAuth', arguments[0]);
+            window.localStorage.setItem('ordecHmacBypass', arguments[1]?"true":"");
+        """, self.key.token(), hmac_bypass)
+
+    def wait_for_ready(self):
+        WebDriverWait(self.driver, 10).until(
+            EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
 
 @pytest.fixture(scope="session", autouse=True)
-def webserver():
-    auth_token = secrets.token_urlsafe()
+def web():
+    """
+    This pytest fixture starts both an ORDeC server and a Selenium webdriver
+    (browser / client) to interact with the server. (Previously, this fixture
+    was only the server, and each test started a new client. By sharing both
+    server and webdriver between tests, we save some time.)
+    """
+
+    key = server.ServerKey()
     # Using a port other than 8100 makes it possible to run the tests
     # while having another independent ordec-server running.
     port = 8102
@@ -103,31 +133,34 @@ def webserver():
     static_handler = server.StaticHandler(tar)
 
     t = threading.Thread(target=server.server_thread,
-        args=('127.0.0.1', port, static_handler, auth_token), daemon=True)
+        args=('127.0.0.1', port, static_handler, key), daemon=True)
     t.start()
-    time.sleep(1) # Delay for server startup
-    yield WebserverInfo(f"http://127.0.0.1:{port}/", auth_token)
+    time.sleep(0.2) # Delay for server startup
+
+    with webdriver.Chrome(options=webdriver_options) as driver:
+        web = WebInfo(
+            f"http://127.0.0.1:{port}/", 
+            key=key,
+            driver=driver,
+            )
+        # Authentication was previously done in each test. To save time, it is
+        # now done once in this session-scope fixture.
+        web.authenticate(hmac_bypass=True)
+        yield web
     # Server will stop when pytest exits.
 
 @pytest.mark.web
 @pytest.mark.skipif(skip_webtests, reason="Prerequesites for web tests not installed.")
-def test_index(webserver):
-    with webdriver.Chrome(options=webdriver_options) as driver:
-        driver.get(webserver.url + '')
-        app_html_link_queries = set()
-        for a in driver.find_elements(By.TAG_NAME, 'a'):
-            href = urlparse(a.get_attribute('href'))
-            if href.path == '/app.html':
-                app_html_link_queries.add(href.query)
+def test_index(web):
+    web.driver.get(web.url + '')
+    app_html_link_queries = set()
+    for a in web.driver.find_elements(By.TAG_NAME, 'a'):
+        href = urlparse(a.get_attribute('href'))
+        if href.path == '/app.html':
+            app_html_link_queries.add(href.query)
 
     # Check that we link to each expected example.
     assert app_html_link_queries == {f'example={testcase}' for testcase in testcases_integrated.keys()}
-
-def resize_viewport(driver, w, h):
-    w_overhead = driver.execute_script("return window.outerWidth - window.innerWidth;")
-    h_overhead = driver.execute_script("return window.outerHeight - window.innerHeight;")
-    driver.set_window_size(w+w_overhead, h+h_overhead)
-
 
 # Visual browser-based testing was painful (fonts, different browser versions,
 # comparison algorithms, large PNGs in repo). For those reasons, it is no
@@ -141,25 +174,21 @@ def resize_viewport(driver, w, h):
 # 2. The innerHTML of some result viewers is _superficially_ checked to make
 #    sure it is showing roughly what is expected.
 
-def request_integrated_example(webserver, testcase):
-    with webdriver.Chrome(options=webdriver_options) as driver:
-        resize_viewport(driver, 800, 600)
 
-        driver.get(webserver.url)
-        driver.add_cookie({"name": "ordecAuth", "value": webserver.auth_token})
+def request_integrated_example(web, testcase):
+    web.resize_viewport()
 
-        driver.get(webserver.url + f'app.html?example={testcase}&refreshall=true')
+    web.driver.get(web.url + f'app.html?example={testcase}&refreshall=true')
 
-        WebDriverWait(driver, 10).until(
-            EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
+    web.wait_for_ready()
 
-        res_viewers = driver.execute_script("""
-            let res = {};
-            window.ordecClient.resultViewers.forEach(function(rv) {
-                res[rv.viewSelected] = rv.testInfo();
-            });
-            return res;
-        """)
+    res_viewers = web.driver.execute_script("""
+        let res = {};
+        window.ordecClient.resultViewers.forEach(function(rv) {
+            res[rv.viewSelected] = rv.testInfo();
+        });
+        return res;
+    """)
 
         #driver.save_screenshot('test.png')
     return {k:WebResViewer(**v) for k, v in res_viewers.items()}
@@ -167,9 +196,9 @@ def request_integrated_example(webserver, testcase):
 @pytest.mark.web
 @pytest.mark.parametrize('testcase', testcases_integrated.keys())
 @pytest.mark.skipif(skip_webtests, reason="Prerequesites for web tests not installed.")
-def test_integrated(webserver, testcase):
+def test_integrated(web, testcase):
     """Web tests using integrated mode (&example=..)"""
-    res_viewers = request_integrated_example(webserver, testcase)
+    res_viewers = request_integrated_example(web, testcase)
 
     ref = testcases_integrated[testcase]
     assert set(res_viewers.keys()) == set(ref.keys())
@@ -180,58 +209,109 @@ def test_integrated(webserver, testcase):
         for checker in checkers:
             checker(res_viewer)
 
-def request_local(webserver, module, request_views):
+def request_local(web, module, request_views):
     res = {}
-    with webdriver.Chrome(options=webdriver_options) as driver:
-        resize_viewport(driver, 800, 600)
+    web.resize_viewport()
+    
+    qs_local = web.key.query_string_local(module, '')
+    web.driver.get(web.url + f'app.html?refreshall=true&{qs_local}')
 
-        driver.get(webserver.url)
-        driver.add_cookie({"name": "ordecAuth", "value": webserver.auth_token})
+    web.wait_for_ready()
 
-        driver.get(webserver.url + f'app.html?module={module}&refreshall=true')
+    for view in request_views:
+        found = web.driver.execute_script("""
+            let rv = window.ordecClient.resultViewers[0];
+            let found = false;
+            Array.prototype.forEach.call(rv.viewSelector.options, (o) => {
+                if(o.value == arguments[0]) {
+                    o.selected=true;
+                    found = true;
+                }
+            });
+            rv.viewSelectorOnChange();
+            return found;
+        """, view)
 
-        WebDriverWait(driver, 10).until(
-            EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
+        assert found
 
-        for view in request_views:
-            found = driver.execute_script("""
-                let rv = window.ordecClient.resultViewers[0];
-                let found = false;
-                Array.prototype.forEach.call(rv.viewSelector.options, (o) => {
-                    if(o.value == arguments[0]) {
-                        o.selected=true;
-                        found = true;
-                    }
-                });
-                rv.viewSelectorOnChange();
-                return found;
-            """, view)
+        web.wait_for_ready()
 
-            assert found
+        v = web.driver.execute_script("""
+            let rv = window.ordecClient.resultViewers[0];
+            return rv.testInfo();
+        """)
 
-            WebDriverWait(driver, 10).until(
-                EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
-
-            v = driver.execute_script("""
-                let rv = window.ordecClient.resultViewers[0];
-                return rv.testInfo();
-            """)
-
-            res[view] = WebResViewer(**v)
+        res[view] = WebResViewer(**v)
 
     return res
 
 @pytest.mark.web
 @pytest.mark.parametrize('testcase', testcases_local.keys())
 @pytest.mark.skipif(skip_webtests, reason="Prerequesites for web tests not installed.")
-def test_local(webserver, testcase):
+def test_local(web, testcase):
     """Web tests using local mode (&module=..)"""
     ref = testcases_local[testcase]
 
-    res_viewers = request_local(webserver, testcase, ref.keys())
+    res_viewers = request_local(web, testcase, ref.keys())
 
     for view_name, checkers in ref.items():
         res_viewer = res_viewers[view_name]
 
         for checker in checkers:
             checker(res_viewer)
+
+def myhistogram(img, thresh=50):
+    h = {}
+    for x in range(img.width):
+        for y in range(img.height):
+            val = img.getpixel((x, y))
+            
+            try:
+                h[val]+=1
+            except KeyError:
+                h[val]=1
+    drop_vals = []
+    for val, count in h.items():
+        if count < thresh:
+            drop_vals.append(val)
+    for val in drop_vals:
+        del h[val]
+    return h
+
+@pytest.mark.web
+@pytest.mark.skipif(skip_webtests, reason="Prerequesites for web tests not installed.")
+def test_layoutgl(web):
+    """Fuzzy visual testing of web layout viewer (layout-gl.js)."""
+    web.resize_viewport()
+        
+    qs_local = web.key.query_string_local("ordec.lib.test", "layoutgl_example()")
+    web.driver.get(web.url + f'app.html?refreshall=true&{qs_local}')
+
+    web.wait_for_ready()
+
+    time.sleep(1)
+    canvas=web.driver.find_element(By.CSS_SELECTOR, "canvas.layoutFit")
+    png = canvas.screenshot_as_png
+
+    #with open("screenshot.png", "wb") as f:
+    #    f.write(png)
+    
+    img = Image.open(io.BytesIO(png))
+
+    wh = (img.width-img.height)/2
+    margin = 25
+
+    img = img.crop([wh+margin, margin, img.width-wh-margin, img.height-margin])
+    img = img.resize([512, 512], Image.Resampling.NEAREST)
+
+    expect_blue  = img.crop((0, 0, 256, 128))
+    assert myhistogram(expect_blue)[(16, 71, 139)] > 20000
+
+    expect_text  = img.crop((128, 256-32, 256+128, 256+32))
+    assert myhistogram(expect_text)[(255,255,255)] > 100
+    
+    expect_red   = img.crop((256, 256+32, 256+128, 256+32+64))
+    assert myhistogram(expect_red)[(89, 0, 0)] > 5000
+    
+    expect_black = img.crop((256, 256+128, 256+64, 256+128+64))
+    assert myhistogram(expect_black)[(0, 0, 0)] > 2000

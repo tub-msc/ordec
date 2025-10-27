@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { session } from './auth.js';
+
 export class OrdecClient {
     constructor(srctype, resultViewers, setStatus) {
         this.views = new Map();
@@ -10,17 +12,6 @@ export class OrdecClient {
         this.resultViewers = resultViewers;
         this.setStatus = setStatus;
         this.localModule = null; // Set to module name when in localModule mode.
-    }
-
-    getAuthCookie() {
-        let authCookie = '';
-        document.cookie.split(';').forEach(el => {
-            let split = el.split('=');
-            if(split[0].trim() == 'ordecAuth') {
-                authCookie = split.slice(1).join("=");
-            }
-        })
-        return authCookie;
     }
 
     connect() {
@@ -81,7 +72,7 @@ export class OrdecClient {
             msg = {
                 msg: 'localmodule',
                 module: this.localModule,
-                auth: this.getAuthCookie(),
+                auth: session.authKey,
             };
         } else {
             // Integrated mode:
@@ -89,7 +80,7 @@ export class OrdecClient {
                 msg: 'source',
                 srctype: this.srctype,
                 src: this.src,
-                auth: this.getAuthCookie(),
+                auth: session.authKey,
             };
         }
         this.sock.send(JSON.stringify(msg));

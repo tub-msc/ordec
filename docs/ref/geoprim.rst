@@ -18,5 +18,9 @@
 .. autoclass:: D4
   :members:
 
+  .. figure:: geoprim_D4.svg
+
+    Elements of the dihedral group D4 applied to a half arrow.
+
 .. autoclass:: Orientation
   :members:

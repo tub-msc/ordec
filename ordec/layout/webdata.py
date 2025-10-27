@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.core import *
+from ..core import *
 
 def layout_webdata(layout: Layout.Frozen):
     weblayers_list = []
@@ -36,9 +36,10 @@ def layout_webdata(layout: Layout.Frozen):
     for poly in layout.all(LayoutPoly):
         # Flat list of coordinates x0, y0, x1, y1 and so on. This is what
         # the JS earcut library wants.
-        vertices_flat = [v.pos[xy] for v in poly.vertices for xy in (0,1)]
-        for v in poly.vertices:
-            extent_add_vertex(v.pos)
+        vertices = poly.vertices()
+        vertices_flat = [pos[xy] for pos in vertices for xy in (0,1)]
+        for pos in vertices:
+            extent_add_vertex(pos)
 
         weblayer = get_weblayer(poly.layer)
 
@@ -47,7 +48,7 @@ def layout_webdata(layout: Layout.Frozen):
             'vertices': vertices_flat,
         })
 
-    for label in layout.all(Label):
+    for label in layout.all(LayoutLabel):
         extent_add_vertex(label.pos)
 
         weblayer = get_weblayer(label.layer)

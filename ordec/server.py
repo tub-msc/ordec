@@ -2,26 +2,26 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-``ordec-server`` is the command line tool to start the web interface of
+``ordec`` is the command line tool to start the web UI of
 ORDeC, the custom IC design platform.
 
-There are three recommended setups to run ``ordec-server``:
+There are three recommended setups to run the ``ordec`` web UI:
 
 (1) **Combined frontend + backend server with regular installation:**
     A regular installation of ORDeC includes a compiled version of the
     frontend (webdist.tar). In this case, ORDeC can be started through
-    a simple ``ordec-server``.
+    a simple ``ordec``.
 
 (2) **Combined frontend + backend server with editable installation:**
     In case of a editable installation ("develop mode" / pip -e), setup (1)
     is not supported, as webdist.tar is not available in the package.
     Instead, the frontend can be build separately through 'npm run build' in
     the web/ directory. The build results must then be supplied to the
-    ordec-server command: ``ordec-server -r [...]/web/dist/``
+    ordec command: ``ordec -r [...]/web/dist/``
 
 (3) **Separate frontend + backend server for frontend development:**
     In the web/ directory, run the Vite frontend server using 'npm run dev'.
-    Then, separately start the backend server using ``ordec-server -b``.
+    Then, separately start the backend server using ``ordec -b``.
     This gives the best development experience when working on the frontend
     code. In this setup, the Vite server acts as proxy for the backend
     server. Thus, you should use the browser only to connect to the Vite
@@ -43,8 +43,7 @@ Furthermore, there are two modes in which you can use the ORDeC web UI:
     outside the web browser is used. The design is rebuilt automatically when
     it is detected that source files have changed. This is done using inotify.
 
-    By specifying ``--module`` (``-m``) and optionally ``--view`` (``-w``),
-    the web interface is launched in local mode.
+    By specifying ``--module`` (``-m``), the web UI is launched in local mode.
 
     The specified module name (e.g. ``--module mydesign``) is treated as regular
     Python module import. It could reference a single Python file mydesign.py,
@@ -61,13 +60,15 @@ import traceback
 from pathlib import Path
 from types import ModuleType
 import mimetypes
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote_plus
 import threading
 import signal
 import importlib
 import importlib.resources
 import tarfile
 import secrets
+import hmac
+import hashlib
 import io
 import time
 import tempfile
@@ -84,6 +85,21 @@ from websockets.exceptions import ConnectionClosedOK
 from . import importer
 from .version import version
 from .core.cell import Cell, generate, generate_func
+
+class ServerKey:
+    def __init__(self):
+        self.key = secrets.token_bytes(32)
+
+    def token(self) -> str:
+        return self.key.hex()
+
+    def authenticate(self, other_b16: str) -> bool:
+        return secrets.compare_digest(self.token(), other_b16)
+
+    def query_string_local(self, module: str, view: str) -> str:
+        moduleview = f"{module}:{view}"
+        digest = hmac.digest(self.key, moduleview.encode('utf8'), digest=hashlib.sha256)
+        return f"local={quote_plus(moduleview)}&hmac={digest.hex()}"
 
 def discover_views(conn_globals, recursive=True, modules_visited=None):
     if modules_visited == None:
@@ -114,9 +130,9 @@ def discover_views(conn_globals, recursive=True, modules_visited=None):
     return views
 
 class ConnectionHandler:
-    def __init__(self, auth_token, sysmodules_orig):
+    def __init__(self, key, sysmodules_orig):
         self.sysmodules_orig = set(sysmodules_orig.keys())
-        self.auth_token = auth_token
+        self.key = key
         self.import_lock = threading.Lock()
         # import_lock is not perfect. Ideally, we would have a RW lock which
         # ensure that no other thread is evaluating view requests when import_lock
@@ -191,7 +207,7 @@ class ConnectionHandler:
 
         # Validate auth_token to prevent code execution from untrusted connections:
         msg_first = json.loads(next(msgs))
-        if not secrets.compare_digest(self.auth_token, msg_first['auth']):
+        if not self.key.authenticate(msg_first['auth']):
             websocket.send(json.dumps({
                 'msg':'exception',
                 'exception':"incorrect auth token provided",
@@ -216,11 +232,9 @@ class ConnectionHandler:
             }))
             return
     
-        discovered_views = discover_views(conn_globals)
-        discovered_view_names = [v['name'] for v in discovered_views]
         websocket.send(json.dumps({
             'msg': 'viewlist',
-            'views': discovered_views,
+            'views': discover_views(conn_globals),
         }))
 
         if watch_files:
@@ -235,12 +249,6 @@ class ConnectionHandler:
                 msg = json.loads(msg_raw)
                 assert msg['msg'] == 'getview'
                 view_name = msg['view']
-                if view_name not in discovered_view_names:
-                    # Prevent executing random code using the &view= URL
-                    # parameter, even though this should already be impossible
-                    # due to the SameSite=Strict setting on the session cookie.
-                    raise Exception("Unknown view requested!")
-                #print(f"View {view_name} was requested.")
 
                 msg_ret = self.query_view(view_name, conn_globals)
                 websocket.send(json.dumps(msg_ret))
@@ -435,7 +443,7 @@ def secure_url_open(user_url):
     return launch_html
 
 def main():
-    parser = argparse.ArgumentParser(prog='ordec-server',
+    parser = argparse.ArgumentParser(prog='ordec',
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
 
@@ -444,8 +452,7 @@ def main():
     parser.add_argument('-r', '--static-root', help="Path for static web resources. If not specified, the webdist.tar file included in the ORDeC installation is used.", nargs='?')
     parser.add_argument('-b', '--backend-only', action='store_true', help="Serve backend only. Requires a separate server (e.g. Vite) to serve the frontend.")
     parser.add_argument('-n', '--no-browser', action='store_true', help="Show URL, but do not launch browser.")
-    parser.add_argument('-m', '--module', help="Open the specified module from the local file system (local mode).")
-    parser.add_argument('-w', '--view', help="Open specified view of selected module (requires --module / local mode).")
+    parser.add_argument('-m', '--module', help="Open the specified module from the local file system (local mode). Furthermore, a specific view can be preselected as MODULE:VIEW.")
     parser.add_argument('--url-authority', help="Use provided URL authority part (host:port) instead values of --hostname and --port for printed / opened URL.")
     parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {version}')
 
@@ -454,14 +461,14 @@ def main():
     hostname = args.hostname
     port = args.port
 
-    auth_token = secrets.token_urlsafe()
+    key = ServerKey()
 
     if args.url_authority:
         user_url = f"http://{args.url_authority}"
     elif args.backend_only:
         user_url = f"http://localhost:5173"
         # Vite provides the frontend for the user on port 5173:
-        print("--backend-only: Make sure to run separate frontend server using 'npm run dev' in web/, in addition to this 'ordec-server'.")
+        print("--backend-only: Make sure to run separate frontend server using 'npm run dev' in web/, in addition to this 'ordec' process.")
     else:
         user_url = f"http://{hostname}:{port}"
 
@@ -483,13 +490,17 @@ def main():
             raise SystemExit(1)
 
     if args.module:
-        user_url += f"/app.html?auth={auth_token}&module={args.module}"
-        if args.view:
-            user_url += f"&view={args.view}"
+        try:
+            module, view = args.module.split(':', 1)
+        except ValueError:
+            module = args.module
+            view = ''
+        qs_module = key.query_string_local(module, view)
+        user_url += f"/app.html?auth={key.token()}&{qs_module}"
         # Enable importing modules from current working directory:
         sys.path.append(os.getcwd()) 
     else:
-        user_url += f"/?auth={auth_token}"
+        user_url += f"/?auth={key.token()}"
 
     # Launch server in separate daemon thread (daemon=True). The connection
     # threads automatically inherit the daemon property. All daemon threads
@@ -497,7 +508,7 @@ def main():
     # to terminate the whole thing with a single Ctrl+C.
     # A future version of the websockets library might make this workaround
     # unnecessary.
-    threading.Thread(target=server_thread, args=(hostname, port, static_handler, auth_token), daemon=True).start()
+    threading.Thread(target=server_thread, args=(hostname, port, static_handler, key), daemon=True).start()
 
     print(f"To start ORDeC, navigate to: {user_url}")
 
@@ -516,8 +527,8 @@ def main():
         if launch_html:
             launch_html.close() # Deletes the temporary file.
 
-def server_thread(hostname, port, static_handler, auth_token):
-    c = ConnectionHandler(auth_token=auth_token, sysmodules_orig=sys.modules)
+def server_thread(hostname, port, static_handler, key):
+    c = ConnectionHandler(key=key, sysmodules_orig=sys.modules)
     with serve(c.handle_connection, hostname, port, process_request=static_handler.process_request) as server:
         #print(f"Listening on {hostname}, port {port}")
         server.serve_forever()

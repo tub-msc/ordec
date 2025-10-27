@@ -364,13 +364,14 @@ export class LayoutGL {
             if(!this.labelsTextureMap.get(text)) {
                 // measure text + break line if needed, before rendering text:
                 const m = ctx.measureText(text);
+                console.log(m);
                 let W = Math.ceil(m.width);
-                let H = Math.ceil(m.emHeightDescent);
+                let H = Math.ceil(m.actualBoundingBoxDescent);
                 if(textureCursorX + W > this.labelsTextureWidth) {
                     textureCursorX = 0;
-                    textureCursorY += m.emHeightDescent;
+                    textureCursorY += H;
                 }
-                if(textureCursorY + m.emHeightDescent > this.labelsTextureHeight) {
+                if(textureCursorY + H > this.labelsTextureHeight) {
                     alert(`Labels texture is full!`);
                     return undefined;
                 }
@@ -389,6 +390,7 @@ export class LayoutGL {
             return this.labelsTextureMap.get(text);
         };
         //console.log("document fonts status B:", font.status);
+        console.log(this.labelsTextureMap);
         
         const addLabel = (x, y, text, halign='left', valign='top') => {
             // halign must be one of: 'left', 'center', 'right'

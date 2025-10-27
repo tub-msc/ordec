@@ -7,6 +7,7 @@ Geometric primitive types: vectors, matrices, orientations and rotations (D4)
 from enum import Enum
 from .rational import Rational as R
 from public import public
+from collections import namedtuple
 
 class Vec2Generic(tuple):
     __slots__ = ()
@@ -27,6 +28,16 @@ class Vec2Generic(tuple):
 
     def __sub__(self, other):
         return type(self)(self.x-other.x, self.y-other.y)
+
+    def __neg__(self):
+        return type(self)(-self.x, -self.y)
+
+    def __mul__(self, other):
+        # Multiplication with scalar
+        return type(self)(other*self.x, other*self.y)
+
+    def __rmul__(self, other):
+        return self.__mul__(other)
 
     def __repr__(self):
         return f"{type(self).__name__}({self.x!r}, {self.y!r})"
@@ -50,7 +61,7 @@ class Vec2R(Vec2Generic):
 
     
     def transl(self) -> 'TD4':
-        return TD4(transl=self)
+        return TD4R(transl=self)
 
 @public
 class Vec2I(Vec2Generic):
@@ -66,7 +77,10 @@ class Vec2I(Vec2Generic):
         return tuple.__new__(cls, (x, y))
 
     def transl(self) -> 'TD4':
-        raise NotImplementedError("TD4 class for Vec2I missing at the moment.")
+        return TD4I(transl=self)
+
+    def __floordiv__(self, other):
+        return Vec2I(self.x // other, self.y // other)
 
 class Rect4Generic(tuple):
     __slots__ = ()
@@ -166,7 +180,6 @@ class Rect4I(Rect4Generic):
 
         return tuple.__new__(cls, (lx, ly, ux, uy))
 
-@public
 class TD4(tuple):
     """
     Transformation group supporting 2D translation, X/Y mirroring and 90° rotations.
@@ -174,7 +187,7 @@ class TD4(tuple):
     to apply the transformation.
 
     Attributes:
-        transl (Vec2R): translation vector
+        transl (Vec2R / Vec2I): translation vector
         flipxy (bool): flip x/y coordinates
         negx (bool): negate x coordinate
         negy (bool): negate y coordinate
@@ -182,56 +195,46 @@ class TD4(tuple):
 
     __slots__ = ()
 
-    def __new__(cls, transl=Vec2R(0,0), flipxy=False, negx=False, negy=False):
-        return tuple.__new__(cls, (transl, flipxy, negx, negy))
+    def __new__(cls, transl=None, d4=None):
+        if transl == None:
+            transl=cls.vec_cls(0,0)
+        if d4 == None:
+            d4 = D4.R0
+        return tuple.__new__(cls, (transl, d4))
 
     @property
     def transl(self):
         return self[0]
 
     @property
-    def flipxy(self):
+    def d4(self):
         return self[1]
 
-    @property
-    def negx(self):
-        return self[2]
-
-    @property
-    def negy(self):
-        return self[3]
-
     def __mul__(self, other):
-        if isinstance(other, Vec2R):
-            if self.flipxy:
+        if isinstance(other, self.vec_cls):
+            d4v = self.d4.value
+            if d4v.flipxy:
                 x, y = other.y, other.x
             else:
                 x, y = other.x, other.y
-            if self.negx:
+            if d4v.negx:
                 x = -x
-            if self.negy:
+            if d4v.negy:
                 y = -y
-            return Vec2R(x = self.transl.x + x, y = self.transl.y + y)
-        elif isinstance(other, Rect4R):
-            tl = self * Vec2R(other.lx, other.ly)
-            tu = self * Vec2R(other.ux, other.uy)
+            return self.vec_cls(x = self.transl.x + x, y = self.transl.y + y)
+        elif isinstance(other, self.rect_cls):
+            tl = self * self.vec_cls(other.lx, other.ly)
+            tu = self * self.vec_cls(other.ux, other.uy)
 
             lx, ux = sorted([tl.x, tu.x])
             ly, uy = sorted([tl.y, tu.y])
-            return Rect4R(lx=lx, ly=ly, ux=ux, uy=uy)
+            return self.rect_cls(lx=lx, ly=ly, ux=ux, uy=uy)
         elif isinstance(other, D4):
-            return self * other.value
-        elif isinstance(other, TD4):
-            if self.flipxy:
-                onegx, onegy = other.negy, other.negx
-            else:
-                onegx, onegy = other.negx, other.negy
-
-            return TD4(
+            return self * type(self)(d4=other)
+        elif isinstance(other, type(self)):
+            return type(self)(
                 transl=self * other.transl,
-                flipxy=self.flipxy ^ other.flipxy,
-                negx=self.negx ^ onegx,
-                negy=self.negy ^ onegy,
+                d4=self.d4 * other.d4,
             )
         else:
             raise TypeError(f"Unsupported type for {type(self).__name__} multiplication")
@@ -241,14 +244,7 @@ class TD4(tuple):
 
     def det(self) -> int:
         """Returns 1 if handedness is preserved, -1 if flipped."""
-        return -1 if self.flipxy ^ self.negx ^ self.negy else 1
-
-    def flip(self) -> "TD4":
-        """Returns TD4 with flipped handedness, preserving the point Vec2R(0, 1)."""
-        if self.flipxy:
-            return TD4(transl=self.transl, flipxy=self.flipxy, negx=self.negx, negy=not self.negy)
-        else:
-            return TD4(transl=self.transl, flipxy=self.flipxy, negx=not self.negx, negy=self.negy)
+        return self.d4.det()
 
     def arc(self, angle_start: R, angle_end: R) -> (R, R):
         """
@@ -279,17 +275,36 @@ class TD4(tuple):
         suitable for the SVG attribute "transform".
         """
         x0, y0 = self.transl.tofloat()
-        if self.flipxy:
-            xx=(-1 if self.negx else 1) * y_scale
-            yy=(-1 if self.negy else 1) * x_scale
+        d4v = self.d4.value
+        if d4v.flipxy:
+            xx=(-1 if d4v.negx else 1) * y_scale
+            yy=(-1 if d4v.negy else 1) * x_scale
             return f"matrix(0 {yy} {xx} 0 {x0} {y0})"
         else:
-            xx=(-1 if self.negx else 1) * x_scale
-            yy=(-1 if self.negy else 1) * y_scale
+            xx=(-1 if d4v.negx else 1) * x_scale
+            yy=(-1 if d4v.negy else 1) * y_scale
             return f"matrix({xx} 0 0 {yy} {x0} {y0})"
 
     def __repr__(self):
-        return f"TD4(transl={self.transl!r}, flipxy={self.flipxy!r}, negx={self.negx!r}, negy={self.negy!r})"
+        return f"{type(self).__name__}(transl={self.transl!r}, d4={self.d4!r})"
+
+
+@public
+class TD4R(TD4):
+    """Rational version of TD4"""
+    __slots__ = ()
+    vec_cls = Vec2R
+    rect_cls = Rect4R
+
+@public
+class TD4I(TD4):
+    """Integer version of TD4"""
+    __slots__ = ()
+    vec_cls = Vec2I
+    rect_cls = Rect4I
+
+
+D4Tuple = namedtuple('D4Tuple', ['flipxy', 'negx', 'negy'])
 
 @public
 class D4(Enum):
@@ -306,33 +321,52 @@ class D4(Enum):
         MX90: mirror along X axis, followed by 90° rotation
         MY90: mirror along Y axis, followed by 90° rotation
     """
-    R0 = TD4()
-    R90  = TD4(flipxy=True,  negx=True,  negy=False)
-    R180 = TD4(flipxy=False, negx=True,  negy=True)
-    R270 = TD4(flipxy=True,  negx=False, negy=True)
-    MX   = TD4(flipxy=False, negx=False, negy=True)
-    MY   = TD4(flipxy=False, negx=True,  negy=False)
-    MX90 = TD4(flipxy=True,  negx=False, negy=False)
-    MY90 = TD4(flipxy=True,  negx=True,  negy=True)
+
+
+    R0   = D4Tuple(flipxy=False, negx=False, negy=False)
+    R90  = D4Tuple(flipxy=True,  negx=True,  negy=False)
+    R180 = D4Tuple(flipxy=False, negx=True,  negy=True)
+    R270 = D4Tuple(flipxy=True,  negx=False, negy=True)
+    MX   = D4Tuple(flipxy=False, negx=False, negy=True)
+    MY   = D4Tuple(flipxy=False, negx=True,  negy=False)
+    MX90 = D4Tuple(flipxy=True,  negx=False, negy=False)
+    MY90 = D4Tuple(flipxy=True,  negx=True,  negy=True)
 
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'
 
     def __mul__(self, other):
         if isinstance(other, D4):
-            return D4(self.value*other.value)
+            if self.value.flipxy:
+                onegx, onegy = other.value.negy, other.value.negx
+            else:
+                onegx, onegy = other.value.negx, other.value.negy
+
+            return type(self)(D4Tuple(
+                flipxy=self.value.flipxy ^ other.value.flipxy,
+                negx=self.value.negx ^ onegx,
+                negy=self.value.negy ^ onegy,
+                ))
+        elif isinstance(other, TD4):
+            return type(other)(d4=self) * other
+        elif isinstance(other, Vec2Generic):
+            return (self * other.transl()).transl
         else:
-            return self.value*other
+            raise TypeError(f"Cannot multiply {self!r} with {other!r}.")
 
     def unflip(self) -> "D4":
         """
         Return D4 element with non-flipped handedness (det=1), preserving
         Vec2R(0, 1).
         """
-        if self.value.det() < 0:
-            return D4(self.value.flip())
+        if self.det() < 0:
+            return D4(self.flip())
         else:
             return self
+
+    def det(self) -> int:
+        """Returns 1 if handedness is preserved, -1 if flipped."""
+        return -1 if self.value.flipxy ^ self.value.negx ^ self.value.negy else 1
 
     def inv(self) -> "D4":
         """
@@ -348,6 +382,21 @@ class D4(Enum):
             D4.MX90: D4.MX90,
             D4.MY90: D4.MY90,
         }[self]
+
+    def flip(self) -> "Self":
+        """Returns TD4 with flipped handedness, preserving the point (0, 1)."""
+        if self.value.flipxy:
+            return type(self)(D4Tuple(
+                flipxy=self.value.flipxy,
+                negx=self.value.negx,
+                negy=not self.value.negy,
+                ))
+        else:
+            return type(self)(D4Tuple(
+                flipxy=self.value.flipxy,
+                negx=not self.value.negx,
+                negy=self.value.negy,
+                ))
 
     def lefdef(self) -> str:
         return {
@@ -369,10 +418,6 @@ class D4(Enum):
     FlippedSouth = MY
     FlippedWest = MX90
     FlippedEast = MY90
-
-    @classmethod
-    def from_td4(cls, td4: TD4):
-        return cls(TD4(flipxy=td4.flipxy, negx=td4.negx, negy=td4.negy))
 
 
 public(Orientation = D4) # alias
