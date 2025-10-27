@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import ctypes
-import os
+
 import re
 import sys
 import queue
@@ -31,6 +31,13 @@ from .ngspice_common import (
 from ..core import R
 
 
+_DEBUG_PREFIX = "[ngspice-ffi]"
+
+
+def _debug(message: str) -> None:
+    print(f"{_DEBUG_PREFIX} {message}")
+
+
 class NgspiceFFI(NgspiceBase):
     _instance = None
     """FFI backend for ngspice shared library.
@@ -39,7 +46,6 @@ class NgspiceFFI(NgspiceBase):
     - C callbacks cannot propagate Python exceptions and will cause crashes/undefined behavior
     - Always store error states in instance variables and check them after C calls return
     - The ngspice FFI library is NOT thread-safe - use only from single thread
-    - Memory management issues exist in ngspice cleanup - avoid calling quit command
     """
 
     def __new__(cls, *args, **kwargs):
@@ -122,13 +128,16 @@ class NgspiceFFI(NgspiceBase):
         # Async simulation state
         self._is_running = False
         self._async_callback = None
-        self._async_throttle_interval = 0.1  # Default 100ms throttle
-        self._last_callback_time = 0.0
         self._async_data_queue = queue.Queue()
+        self._buffer_enabled = True
+        self._buffer_size = 10  # Number of data points to buffer before sending
+        self._data_buffer = []  # Buffer to collect data points
+        self._last_buffer_flush_time = 0.0
+        self._simulation_start_time = 0.0
         self._simulation_info = None
         self._last_progress = 0.0
-        self._data_points_sent = 0
         self._sim_tstop = 0.0
+        self._normal_callbacks_received = 0  # Initialize counter for normal callbacks
 
         # Keep references to callbacks
         self._send_char_cb = self._SendChar(self._send_char_handler)
@@ -166,21 +175,29 @@ class NgspiceFFI(NgspiceBase):
             raise e
         finally:
             if backend:
-                try:
-                    backend.cleanup()
-                except:
-                    # TODO
-                    pass
+                backend.cleanup()
 
-    def cleanup(self):  # TODO
-        pass
+    def cleanup(self):
+        """Clean up async simulation resources."""
+        if hasattr(self, '_is_running') and self._is_running:
+            timeout = 2.0
+            start_time = time.time()
+            while self._is_running and (time.time() - start_time) < timeout:
+                time.sleep(0.1)
+
+        if hasattr(self, '_fallback_thread') and self._fallback_thread and self._fallback_thread.is_alive():
+            self._fallback_thread.join(timeout=1.0)
+
+        if hasattr(self, '_async_data_queue'):
+            while not self._async_data_queue.empty():
+                self._async_data_queue.get_nowait()
 
     def _send_char_handler(self, message: bytes, ident: int, user_data) -> int:
         if message:
             msg_str = message.decode("utf-8", errors="ignore").strip()
             self._output_lines.append(msg_str)
             if self.debug:
-                print(f"[ngspice-ffi-out] {msg_str}")
+                _debug(f"Output: {msg_str}")
 
             # Exceptions in C callbacks cause undefined behavior and crashes
             if msg_str.startswith("stderr Error:"):
@@ -196,86 +213,98 @@ class NgspiceFFI(NgspiceBase):
     def _send_data_handler(self, vec_data, vec_count, ident, user_data) -> int:
         try:
             current_time = time.time()
+            self._normal_callbacks_received += 1
+            if self.debug:
+                _debug(
+                    f"Normal callback received: count={self._normal_callbacks_received}, time={current_time}"
+                )
 
-            # Throttle callbacks to prevent overwhelming Python
-            if current_time - self._last_callback_time < self._async_throttle_interval:
-                return 0
+            if self._buffer_enabled:
+                data_point = self._process_data_point(vec_data, vec_count, current_time)
+                if data_point:
+                    self._data_buffer.append(data_point)
 
-            self._last_callback_time = current_time
+                    should_flush = (
+                        len(self._data_buffer) >= self._buffer_size or
+                        current_time - self._last_buffer_flush_time > 0.5
+                    )
 
-            if vec_data and vec_count > 0:
-                data_points = {}
-                vec_data_content = vec_data.contents
-
-                for i in range(vec_data_content.veccount):
-                    vec_ptr = vec_data_content.vecsa[i]
-                    if vec_ptr:
-                        vec = vec_ptr.contents
-                        name = vec.name.decode("utf-8") if vec.name else f"vec_{i}"
-
-                        if vec.is_complex:
-                            value = complex(vec.creal, vec.cimag)
-                        else:
-                            value = vec.creal
-
-                        data_points[name] = value
-
-                # Calculate progress based on simulation time if available
-                progress = 0.0
-                if "time" in data_points and self._sim_tstop:
-                    sim_time = data_points["time"]
-                    progress = min(max(sim_time / self._sim_tstop, 0.0), 1.0)
-                    # Ensure progress is monotonic
-                    progress = max(progress, self._last_progress)
-                    self._last_progress = progress
-                else:
-                    # TODO find if this can be safely deleted.
-                    self._data_points_sent += 1
-                    progress = min(self._data_points_sent * 0.05, 0.95)
-                    progress = max(progress, self._last_progress)
-                    self._last_progress = progress
-
-                signal_kinds = {}
-                for vec_name in data_points:
-                    if vec_name != "time":
-                        vec_info = self._get_vector_info(vec_name)
-                        if vec_info:
-                            signal_kinds[vec_name] = SignalKind.from_vtype(
-                                int(vec_info.v_type)
-                            )
-
-                # Store in queue for safe retrieval
-                if data_points:
-                    try:
-                        self._async_data_queue.put_nowait(
-                            {
-                                "timestamp": current_time,
-                                "data": data_points,
-                                "signal_kinds": signal_kinds,
-                                "index": vec_count,
-                                "progress": progress,
-                            }
-                        )
-                    except queue.Full:
-                        # Drop oldest data if queue is full
-                        try:
-                            self._async_data_queue.get_nowait()
-                            self._async_data_queue.put_nowait(
-                                {
-                                    "timestamp": current_time,
-                                    "data": data_points,
-                                    "index": vec_count,
-                                    "progress": progress,
-                                }
-                            )
-                        except queue.Empty:
-                            pass
+                    if should_flush:
+                        self._flush_buffer()
+                        self._last_buffer_flush_time = current_time
+            else:
+                data_point = self._process_data_point(vec_data, vec_count, current_time)
+                if data_point:
+                    self._send_data_point(data_point)
 
         except Exception:
             if self.debug:
-                print(
-                    f"[ngspice-ffi] Error in _send_data_handler: {traceback.format_exc()}"
+                _debug(
+                    f"Error in _send_data_handler: {traceback.format_exc()}"
                 )
+
+        return 0
+
+    def _process_data_point(self, vec_data, vec_count, current_time):
+        """Process raw vector data into a structured data point."""
+        if vec_data and vec_count > 0:
+            data_points = {}
+            vec_data_content = vec_data.contents
+
+            for i in range(vec_data_content.veccount):
+                vec_ptr = vec_data_content.vecsa[i]
+                if vec_ptr:
+                    vec = vec_ptr.contents
+                    name = vec.name.decode("utf-8") if vec.name else f"vec_{i}"
+
+                    if vec.is_complex:
+                        value = complex(vec.creal, vec.cimag)
+                    else:
+                        value = vec.creal
+
+                    data_points[name] = value
+
+            progress = 0.0
+            if "time" in data_points and self._sim_tstop:
+                sim_time = data_points["time"]
+                progress = sim_time / self._sim_tstop
+                self._last_progress = progress
+
+            signal_kinds = {}
+            for vec_name in data_points:
+                if vec_name != "time":
+                    vec_info = self._get_vector_info(vec_name)
+                    if vec_info:
+                        signal_kinds[vec_name] = SignalKind.from_vtype(
+                            int(vec_info.v_type)
+                        )
+
+            return {
+                "timestamp": current_time,
+                "data": data_points,
+                "signal_kinds": signal_kinds,
+                "index": vec_count,
+                "progress": progress,
+            }
+        return None
+
+    def _send_data_point(self, data_point):
+        """Send a single data point to the async queue."""
+        self._async_data_queue.put_nowait(data_point)
+
+
+    def _flush_buffer(self):
+        """Flush buffered data points to the async queue."""
+        if not self._data_buffer:
+            return
+
+        if self.debug:
+            _debug(f"Flushing buffer with {len(self._data_buffer)} data points")
+
+        for data_point in self._data_buffer:
+            self._send_data_point(data_point)
+
+        self._data_buffer.clear()
 
         return 0
 
@@ -318,15 +347,15 @@ class NgspiceFFI(NgspiceBase):
                 self._simulation_info = simulation_info
 
                 if self.debug:
-                    print(
-                        f"[ngspice-ffi] Simulation initialized: {simulation_info['name']} with {simulation_info['veccount']} vectors"
+                    _debug(
+                        f"Simulation initialized: {simulation_info['name']} with {simulation_info['veccount']} vectors"
                     )
 
         except Exception:
             # NEVER raise exceptions in C callbacks
             if self.debug:
-                print(
-                    f"[ngspice-ffi] Error in _send_init_data_handler: {traceback.format_exc()}"
+                _debug(
+                    f"Error in _send_init_data_handler: {traceback.format_exc()}"
                 )
 
         return 0
@@ -336,20 +365,23 @@ class NgspiceFFI(NgspiceBase):
             self._is_running = not bool(is_not_running)
             if self.debug:
                 status = "stopped" if is_not_running else "started"
-                print(f"[ngspice-ffi] Background thread {status}")
+                _debug(f"Background thread {status}")
+
+            if is_not_running and self._buffer_enabled:
+                self._flush_buffer()
 
         except Exception:
             if self.debug:
-                print(
-                    f"[ngspice-ffi] Error in _bg_thread_running_handler: {traceback.format_exc()}"
+                _debug(
+                    f"Error in _bg_thread_running_handler: {traceback.format_exc()}"
                 )
 
         return 0
 
     def _send_stat_handler(self, status: bytes, ident: int, user_data) -> int:
         if self.debug and status:
-            print(
-                f"[ngspice-ffi-stat] {status.decode('utf-8', errors='ignore').strip()}"
+            _debug(
+                f"Status: {status.decode('utf-8', errors='ignore').strip()}"
             )
         return 0
 
@@ -357,7 +389,7 @@ class NgspiceFFI(NgspiceBase):
         self, status: int, unload: bool, quit_upon_exit: bool, ident: int, user_data
     ) -> int:
         if status != 0 and self.debug:
-            print(f"[ngspice-ffi-exit] code {status}")
+            _debug(f"Exit code {status}")
         return status
 
     def command(self, command: str) -> str:
@@ -378,22 +410,9 @@ class NgspiceFFI(NgspiceBase):
         return output
 
     def reset(self):
-        try:
-            self.command("remcirc")
-        except:
-            # Ignore errors if no circuit is loaded
-            # TODO: detect this error specifically
-            pass
+        self.command("remcirc")
+        self.command("destroy all")
 
-        try:
-            # Destroy all plots and data
-            self.command("destroy all")
-        except:
-            # Ignore errors if no data exists
-            # TODO: detect this error specifically
-            pass
-
-        # Clear internal state
         self._output_lines.clear()
         self._error_message = None
         self._has_fatal_error = False
@@ -464,11 +483,7 @@ class NgspiceFFI(NgspiceBase):
             if vec_info and vec_info.v_length > 0:
                 data_list = [vec_info.v_realdata[i] for i in range(vec_info.v_length)]
 
-                try:
-                    kind = SignalKind.from_vtype(int(vec_info.v_type))
-                except Exception:
-                    # TODO find if still necessary and delete if not
-                    kind = result.categorize_signal(vec_name)
+                kind = SignalKind.from_vtype(int(vec_info.v_type))
 
                 result.signals[vec_name] = SignalArray(kind=kind, values=data_list)
 
@@ -499,11 +514,7 @@ class NgspiceFFI(NgspiceBase):
                         vec_info.v_realdata[i] for i in range(vec_info.v_length)
                     ]
 
-                try:
-                    kind = SignalKind.from_vtype(int(vec_info.v_type))
-                except Exception:
-                    # TODO find if still necessary and delete if not
-                    kind = result.categorize_signal(vec_name)
+                kind = SignalKind.from_vtype(int(vec_info.v_type))
 
                 result.signals[vec_name] = SignalArray(kind=kind, values=data_list)
 
@@ -512,12 +523,16 @@ class NgspiceFFI(NgspiceBase):
 
         return result
 
-    def _setup_async_parameters(self, throttle_interval: float):
-        self._async_throttle_interval = throttle_interval
-        self._last_callback_time = 0.0
-        self._data_points_sent = 0
+    def _setup_async_parameters(self, buffer_size: int = 10, disable_buffering: bool = False):
+        self._buffer_size = buffer_size
+        self._buffer_enabled = not disable_buffering
+        self._data_buffer = []
+        self._last_buffer_flush_time = time.time()
         self._sim_tstop = None
         self._last_progress = 0.0
+        self._fallback_executed = False
+        self._normal_callbacks_received = 0
+        self._simulation_start_time = time.time()
 
     def _parse_tstop_parameter(self, tstop):
         if tstop is not None:
@@ -536,9 +551,10 @@ class NgspiceFFI(NgspiceBase):
         return " ".join(cmd_args_list)
 
     def tran_async(
-        self, tstep, tstop=None, *extra_args, throttle_interval: float = 0.1
+        self, tstep, tstop=None, *extra_args, buffer_size: int = 10, disable_buffering: bool = False, fallback_sampling_ratio: int = 100
     ) -> "queue.Queue[dict]":
-        self._setup_async_parameters(throttle_interval)
+        self._setup_async_parameters(buffer_size, disable_buffering)
+        self._fallback_sampling_ratio = fallback_sampling_ratio
         self._parse_tstop_parameter(tstop)
         self._clear_async_queue()
 
@@ -550,16 +566,17 @@ class NgspiceFFI(NgspiceBase):
             raise NgspiceError("Background simulation failed to start")
 
         # Some complex models (like SKY130) don't trigger data callbacks during bg_tran
-        fallback_thread = threading.Thread(
+        self._fallback_thread = threading.Thread(
             target=self._data_fallback_handler, daemon=True
         )
-        fallback_thread.start()
+        self._fallback_thread.start()
+        if self.debug:
+            _debug("Fallback thread started")
 
         return self._async_data_queue
 
     def _data_fallback_handler(self):
         """Handle data retrieval when callbacks don't work (e.g.,Complex models like SKY130 with savecurrents option)"""
-
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as fallback_executor:
 
             def check_completion_status():
@@ -578,6 +595,94 @@ class NgspiceFFI(NgspiceBase):
 
         # Small delay to ensure simulation is fully complete
         time.sleep(0.1)
+
+        if self._normal_callbacks_received > 0:
+            if self.debug:
+                _debug(
+                    f"Fallback handler skipped (normal callbacks received: {self._normal_callbacks_received})"
+                )
+            return
+
+        self._fallback_executed = True
+        if self.debug:
+            _debug("Fallback handler executing (no normal callbacks received)")
+
+            try:
+                vector_names = self._get_all_vectors()
+                if vector_names and "time" in vector_names:
+                    vector_data_map = {}
+                    num_points = 0
+
+                    for vec_name in vector_names:
+                        vec_info = self._get_vector_info(vec_name)
+                        if vec_info and vec_info.v_length > 0:
+                            num_points = max(num_points, vec_info.v_length)
+                            data_list = [
+                                vec_info.v_realdata[i] for i in range(vec_info.v_length)
+                            ]
+                            vector_data_map[vec_name] = data_list
+
+                    if num_points > 0 and "time" in vector_data_map:
+                        sample_indices = range(num_points)
+
+                        sample_list = list(sample_indices)
+                        sample_count = len(sample_list) if sample_list else 1
+
+                        for pos, i in enumerate(sample_list):
+                            data_points = {}
+                            for name, values in vector_data_map.items():
+                                if i < len(values):
+                                    data_points[name] = values[i]
+
+                            if not data_points:
+                                continue
+
+                            progress = None
+                            if "time" in vector_data_map and self._sim_tstop:
+                                sim_time = vector_data_map["time"][i]
+                                progress = sim_time / self._sim_tstop
+
+                            if progress is not None:
+                                self._last_progress = progress
+
+                            self._async_data_queue.put_nowait(
+                                {
+                                    "timestamp": time.time(),
+                                    "data": data_points,
+                                    "index": i,
+                                    "progress": progress,
+                                }
+                            )
+
+                        if self.debug:
+                            _debug(
+                                f"Fallback retrieved {len(sample_indices)} data points from {num_points} total points"
+                            )
+
+            except (OSError, RuntimeError, AttributeError) as e:
+                logging.error("Exception in data_fallback_handler: %s", e)
+                if self.debug:
+                    logging.debug("Fallback traceback: %s", traceback.format_exc())
+        else:
+            if self.debug:
+                _debug(
+                    f"Fallback handler skipped (normal callbacks received: {self._normal_callbacks_received})"
+                )
+
+            def check_completion_status():
+                return not self._is_running
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as completion_executor:
+                while True:
+                    completion_future = completion_executor.submit(check_completion_status)
+                    try:
+                        if completion_future.result(timeout=0.05):
+                            break
+                    except concurrent.futures.TimeoutError:
+                        pass
+                    finally:
+                        if not completion_future.done():
+                            completion_future.cancel()
 
         if self._async_data_queue.empty():
             try:
@@ -615,14 +720,9 @@ class NgspiceFFI(NgspiceBase):
                             progress = None
                             if "time" in vector_data_map and self._sim_tstop:
                                 sim_time = vector_data_map["time"][i]
-                                progress = min(
-                                    max(sim_time / self._sim_tstop, 0.0), 1.0
-                                )
+                                progress = sim_time / self._sim_tstop
 
-                            if progress < self._last_progress:
-                                # TODO invesitigate why and when
-                                progress = self._last_progress
-                            else:
+                            if progress is not None:
                                 self._last_progress = progress
 
                             self._async_data_queue.put_nowait(
@@ -635,14 +735,19 @@ class NgspiceFFI(NgspiceBase):
                             )
 
                         if self.debug:
-                            print(
-                                f"[ngspice-ffi] Fallback retrieved {len(sample_indices)} data points from {num_points} total points"
+                            _debug(
+                                f"Fallback retrieved {len(sample_indices)} data points from {num_points} total points"
                             )
 
-            except Exception as e:
+            except (OSError, RuntimeError, AttributeError) as e:
                 logging.error("Exception in data_fallback_handler: %s", e)
                 if self.debug:
                     logging.debug("Fallback traceback: %s", traceback.format_exc())
+            except Exception as e:
+                logging.error("Unexpected exception in data_fallback_handler: %s", e)
+                if self.debug:
+                    logging.debug("Fallback traceback: %s", traceback.format_exc())
+                raise
 
     def _wait_for_simulation_start(self, timeout: float) -> bool:
         timeout_time = time.time() + timeout
@@ -693,10 +798,7 @@ class NgspiceFFI(NgspiceBase):
     ) -> Generator[dict, None, None]:
         self._async_callback = callback
         while not self._async_data_queue.empty():
-            try:
-                self._async_data_queue.get_nowait()
-            except queue.Empty:
-                break
+            self._async_data_queue.get_nowait()
 
         # Start background simulation - set up analysis first, then run
         self.command("op")
@@ -741,19 +843,24 @@ class NgspiceFFI(NgspiceBase):
                         break
 
         while not self._async_data_queue.empty():
-            try:
-                data_point = self._async_data_queue.get_nowait()
-                if callback:
-                    callback(data_point)
-                yield data_point
-            except queue.Empty:
-                break
+            data_point = self._async_data_queue.get_nowait()
+            if callback:
+                callback(data_point)
+            yield data_point
 
     def is_running(self) -> bool:
         return self._is_running
 
     def get_async_data_queue(self) -> "queue.Queue[dict]":
         return self._async_data_queue
+
+    def fallback_handler_executed(self) -> bool:
+        """Check if the fallback handler was executed during async simulation."""
+        return self._fallback_executed
+
+    def get_normal_callback_count(self) -> int:
+        """Get the number of normal callbacks received during async simulation."""
+        return self._normal_callbacks_received
 
     def stop_simulation(self):
         if self._is_running:
@@ -783,21 +890,48 @@ class NgspiceFFI(NgspiceBase):
         else:
             return True
 
+    def _read_running_state(self) -> Optional[bool]:
+        try:
+            return bool(self.lib.ngSpice_running())
+        except AttributeError:
+            if self.debug:
+                _debug("ngSpice_running unavailable; assuming simulation halted")
+            return None
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            if self.debug:
+                _debug(f"ngSpice_running check failed: {exc}")
+            return bool(self._is_running)
+
     def safe_halt_simulation(
         self, max_attempts: int = 3, wait_time: float = 0.2
     ) -> bool:
         if not self._is_running:
             return True
 
-        for attempt in range(max_attempts):
+        for _ in range(max_attempts):
             self.command("bg_halt")
+            deadline = time.time() + wait_time
+
+            while time.time() < deadline:
+                is_running = self._read_running_state()
+
+                if is_running is False:
+                    self._is_running = False
+                    return True
+
+                if is_running is None:
+                    self._is_running = False
+                    return True
+
+                time.sleep(min(0.05, wait_time / 5))
+
+        final_state = self._read_running_state()
+
+        if final_state is False or final_state is None:
             self._is_running = False
+            return True
 
-            time.sleep(wait_time)
-            if not self._is_running:
-                return True
-
-        return not self._is_running
+        return False
 
     def halt_simulation(self, timeout: float = 2.0) -> bool:
         result = self.safe_halt_simulation(
@@ -824,7 +958,7 @@ class NgspiceFFI(NgspiceBase):
                         if is_running:
                             self._is_running = True  # Update our state
                         return is_running
-                    except:
+                    except Exception:
                         return False
 
                 # Wait for resume to complete
@@ -862,7 +996,7 @@ class NgspiceFFI(NgspiceBase):
                     if is_running:
                         self._is_running = True  # Update our state
                     return is_running
-                except:
+                except Exception:
                     return False
 
             # Wait for resume to complete

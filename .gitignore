@@ -9,6 +9,6 @@ __pycache__
 dist/
 build/
 ordec/webdist.tar
-sky130A/
-sky130B/
+sky130A
+sky130B
 ihp-sg13g2
