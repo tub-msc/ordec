@@ -647,7 +647,9 @@ def test_cursor_paths_unique():
 def test_polyvec2r():
     s = Symbol()
     s.poly = SymbolPoly(vertices=[Vec2R(1, 1), Vec2R(1, 3), Vec2R(3, 3)])
+    s.poly2 = SymbolPoly(vertices=[(1, 1), (1, 3), (3, 3)])
     assert s.poly.vertices() == [Vec2R(1, 1), Vec2R(1, 3), Vec2R(3, 3)]
+    assert s.poly2.vertices() == [Vec2R(1, 1), Vec2R(1, 3), Vec2R(3, 3)]
 
 def test_polyvec2r_typecheck():
     s = Symbol()

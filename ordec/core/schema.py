@@ -52,13 +52,25 @@ class PathEndType(Enum):
 class RectDirection(Enum):
     VERTICAL = 0
     HORIZONTAL = 1
+
+def coerce_tuple(target_type, tuple_length):
+    def func(val):
+        # Not using isinstance(val, tuple) here, since Vec2I/Vec2R is are
+        # subclasses of tuple.
+        if type(val) == tuple:
+            if len(val) != tuple_length:
+                raise ValueError(f"Expected tuple with {tuple_length} elements, got {val!r}.")
+            return target_type(*val)
+        return val
+    return func
+
 # Symbol
 # ------
 
 @public
 class Symbol(SubgraphRoot):
     """A symbol of an individual cell."""
-    outline = Attr(Rect4R)
+    outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
     caption = Attr(str)
     cell = Attr(Cell)
 
@@ -86,7 +98,7 @@ class Pin(Node):
     in_subgraphs = [Symbol]
 
     pintype = Attr(PinType, default=PinType.Inout)
-    pos     = Attr(Vec2R)
+    pos     = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     align   = Attr(D4, default=D4.R0)
 
 class MixinPolygonalChain:
@@ -159,7 +171,7 @@ class SymbolArc(Node):
     """A drawn circle or circular segment in Symbol. For visual purposes only."""
     in_subgraphs = [Symbol]
 
-    pos         = Attr(Vec2R) #: Center point
+    pos         = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2)) #: Center point
     radius      = Attr(R) #: Radius of the arc.
     angle_start = Attr(R, default=R(0)) #: Must be less than angle_end and between -1 and 1, with -1 representing -360° and 1 representing 360°.
     angle_end   = Attr(R, default=R(1)) #:Must be greater than angle_start and between -1 and 1, with -1 representing -360° and 1 representing 360°.
@@ -203,7 +215,7 @@ class SymbolArc(Node):
 class Schematic(SubgraphRoot):
     """A schematic of an individual cell."""
     symbol = SubgraphRef(Symbol)
-    outline = Attr(Rect4R)
+    outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
     cell = Attr(Cell)
     default_supply = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
     default_ground = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
@@ -230,7 +242,7 @@ class SchemPort(Node):
 
     ref = LocalRef(Net, optional=False)
     ref_idx = Index(ref)
-    pos = Attr(Vec2R)
+    pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     align = Attr(D4, default=D4.R0)
 
 @public
@@ -248,7 +260,7 @@ class SchemInstance(Node):
     """
     in_subgraphs = [Schematic]
 
-    pos = Attr(Vec2R)
+    pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     orientation = Attr(D4, default=D4.R0)
     symbol = SubgraphRef(Symbol, optional=False)
 
@@ -290,7 +302,7 @@ class SchemTapPoint(Node):
     ref = LocalRef(Net, optional=False)
     ref_idx = Index(ref)
 
-    pos = Attr(Vec2R)
+    pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     align = Attr(D4, default=D4.R0)
 
     def loc_transform(self):
@@ -303,7 +315,7 @@ class SchemConnPoint(Node):
     ref = LocalRef(Net, optional=False)
     ref_idx = Index(ref)
 
-    pos = Attr(Vec2R)
+    pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
 
 # Simulation hierarchy
 # --------------------
@@ -441,7 +453,7 @@ class LayoutLabel(Node):
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
-    pos = Attr(Vec2I)
+    pos = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
     text = Attr(str)
 
 @public
@@ -514,7 +526,7 @@ class LayoutRect(Node):
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
-    rect = Attr(Rect4I)
+    rect = Attr(Rect4I, factory=coerce_tuple(Rect4I, 4))
 
 @public
 class LayoutInstance(Node):
@@ -522,7 +534,7 @@ class LayoutInstance(Node):
 
     in_subgraphs = [Layout]
 
-    pos = Attr(Vec2I)
+    pos = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
     orientation = Attr(D4, default=D4.R0)
     ref = SubgraphRef(Layout, optional=False) #: Can be a Layout or a frame (which is also a Layout)...
 
@@ -538,8 +550,8 @@ class LayoutInstanceArray(LayoutInstance):
     cols = Attr(int)
     rows = Attr(int)
 
-    vec_col = Attr(Vec2I)
-    vec_row = Attr(Vec2I)
+    vec_col = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+    vec_row = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
 
 # Misc
 # ----
@@ -550,7 +562,7 @@ class PolyVec2R(Node):
     in_subgraphs = [Symbol, Schematic]
     ref    = LocalRef(GenericPolyR, optional=False)
     order   = Attr(int, optional=False) #: Order of the point in the polygonal chain
-    pos     = Attr(Vec2R, optional=False)
+    pos     = Attr(Vec2R, optional=False, factory=coerce_tuple(Vec2R, 2))
 
     ref_idx = Index(ref, sortkey=lambda node: node.order)
 
@@ -560,7 +572,7 @@ class PolyVec2I(Node):
     in_subgraphs = [Layout]
     ref    = LocalRef(GenericPolyI, optional=False)
     order   = Attr(int, optional=False) #: Order of the point in the polygonal chain
-    pos     = Attr(Vec2I, optional=False)
+    pos     = Attr(Vec2I, optional=False, factory=coerce_tuple(Vec2I, 2))
 
     ref_idx = Index(ref, sortkey=lambda node: node.order)
 

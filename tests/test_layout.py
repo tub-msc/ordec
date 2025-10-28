@@ -132,33 +132,33 @@ def test_flatten():
     sublayout = Layout(ref_layers=layers)
     poly_orig = sublayout % LayoutPoly(
         layer=layers.Metal1,
-        vertices=[Vec2I(0, 0), Vec2I(100, 0), Vec2I(100, 100), Vec2I(0, 100)],
+        vertices=[(0, 0), (100, 0), (100, 100), (0, 100)],
     )
     path_orig = sublayout % LayoutPath(
         layer=layers.Metal2,
         endtype=PathEndType.SQUARE,
         width=150,
-        vertices=[Vec2I(0, 0), Vec2I(1000, 0), Vec2I(1000, 1000)],
+        vertices=[(0, 0), (1000, 0), (1000, 1000)],
     )
     rpoly_orig = sublayout % LayoutRectPoly(
         layer=layers.Metal3,
         start_direction=RectDirection.VERTICAL,
-        vertices=[Vec2I(0, 0), Vec2I(250, 250), Vec2I(500, 500)],
+        vertices=[(0, 0), (250, 250), (500, 500)],
     )
     rpath_orig = sublayout % LayoutRectPath(
         layer=layers.Metal4,
         start_direction=RectDirection.VERTICAL,
         endtype=PathEndType.SQUARE,
         width=200,
-        vertices=[Vec2I(0, 0), Vec2I(-1000, 1000), Vec2I(500, 500)],
+        vertices=[(0, 0), (-1000, 1000), (500, 500)],
     )
     rect_orig = sublayout % LayoutRect(
         layer=layers.Metal5,
-        rect=Rect4I(900, 900, 1100, 1100),
+        rect=(900, 900, 1100, 1100),
     )
     label_orig = sublayout % LayoutLabel(
         layer=layers.Metal1,
-        pos=Vec2I(50, 50),
+        pos=(50, 50),
         text="Hello world!",
     )
     sublayout = sublayout.freeze() 
