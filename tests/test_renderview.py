@@ -110,6 +110,8 @@ testdata = [
         refdir / "ordtest_dlatchsoc_sch.svg"),
     testcase(ord_lambda('.lib.ord_test.inv_all_features', 'Inv', 'schematic'),
         refdir / "ordtest_invallfeatures_sch.svg"),
+    testcase(ord_lambda('.lib.ord_test.inv_origin_centered', 'Inv', 'schematic'),
+             refdir / "ordtest_invorigincentered_sch.svg"),
     testcase(ord_lambda('.lib.ord_test.inv_for_loop', 'Inv', 'schematic'),
         refdir / "ordtest_invforloop_sch.svg"),
     testcase(ord_lambda('.lib.ord_test.inv_liop', 'Inv', 'schematic'),
