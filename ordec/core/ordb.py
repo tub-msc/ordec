@@ -99,6 +99,7 @@ class Attr:
             typecheck_custom is called with val instead of the default
             type check. This is for example used in NPath to support both int
             and str values.
+        name (str): Name of the attribute.
 
     Attributes:
         indices (list[GenericIndex]): list of all indices associated with attribute
@@ -116,6 +117,7 @@ class Attr:
         self.custom_factory = factory
         self.optional = optional
         self.indices = []
+        self.name = None
 
     def factory(self, val):
         if val == None:
@@ -135,6 +137,17 @@ class Attr:
         
     def read_hook(self, value, cursor):
         return value
+
+@public
+class ConstrainableAttr(Attr):
+    def __init__(self, type: type, placeholder, **kwargs):
+        super().__init__(type, **kwargs)
+        self.placeholder = placeholder
+    def read_hook(self, value, cursor):
+        if value == None:
+            return self.placeholder(cursor, self)
+        return value
+
 
 @dataclass(frozen=True, eq=False)
 class NodeTupleAttrDescriptor:
@@ -481,12 +494,47 @@ class NodeTuple(tuple):
     def set(self, **kwargs):
         # Bypasses NodeTuple.__new__:
 
-        ret=super().__new__(type(self), (ad.attr.factory(kwargs.pop(ad.name, self[ad.index])) for ad in self._layout))
+        def ensure_hashable(x):
+            hash(x) # Ensure new value is hashable.
+            return x
+
+        ret=super().__new__(
+            type(self),
+            (
+                (ensure_hashable(ad.attr.factory(kwargs.pop(ad.name))) if ad.name in kwargs else prev)
+                for ad, prev in zip(self._layout, tuple.__iter__(self))
+            ),
+        )
+
         if len(kwargs) > 0:
             unknown_attrs = ', '.join(kwargs.keys())
             raise AttributeError(f"Unknown attributes provided: {unknown_attrs}")
-        ret.check_hashable() # We could also check only the updated values for hashability.
-        return  ret 
+
+        return ret
+
+    def set_byattr(self, attr, value):
+        # Bypasses NodeTuple.__new__:
+
+        found = False
+        def ensure_hashable_and_found(x):
+            hash(x) # Ensure new value is hashable.
+            nonlocal found
+            assert not found, "Attribute should not appear twice in _layout."
+            found = True
+            return x
+
+        ret=super().__new__(
+            type(self),
+            (
+                (ensure_hashable_and_found(ad.attr.factory(value)) if ad.attr == attr else prev)
+                for ad, prev in zip(self._layout, tuple.__iter__(self))
+            ),
+        )
+
+        if not found:
+            raise OrdbException(f"Attribute not found: {attr}")
+        
+        return ret
 
     def set_index(self, idx, value):
         value = self._layout[idx].attr.factory(value)
@@ -571,6 +619,10 @@ class NodeMeta(type):
         for k, v in list(d.items()):
             if isinstance(v, Attr):
                 raw_attrs[k] = v
+                if v.name == None:
+                    v.name = k
+                else:
+                    assert v.name == k
                 del d[k] # Gets repopulated later.
 
         return raw_attrs
@@ -746,6 +798,13 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         """
 
         self.subgraph.update(self.node.set(**kwargs), self.nid)
+
+    def update_byattr(self, attr: Attr, value):
+        """
+        Update single attribute to specified value.
+        """
+
+        self.subgraph.update(self.node.set_byattr(attr, value), self.nid)
 
     def remove(self):
         """Removes selected node from subgraph, including NPath if applicable."""

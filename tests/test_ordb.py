@@ -947,3 +947,29 @@ def test_subgraphref_mandatory():
 
     with pytest.raises(ModelViolation, match="'subg' is not optional"):
         h % NodeExtRef(subg=None)
+
+def test_set_byattr():
+    class NodeA(NonLeafNode):
+        in_subgraphs=[MyHead]
+        text1 = Attr(str)
+        text2 = Attr(str)
+
+    class UnrelatedNode(NonLeafNode):
+        in_subgraphs=[MyHead]
+        text1 = Attr(str)
+        text2 = Attr(str)
+
+    h = MyHead()
+    h.a = NodeA(text1="Hello", text2="world")
+
+    #print(h.a.node.set_byattr(NodeA.text2, 'you!'))
+    h.a.update_byattr(NodeA.text2, 'you!')
+
+    assert h.a.text1 == "Hello"
+    assert h.a.text2 == "you!"
+
+    # TODO
+    with pytest.raises(OrdbException):
+        h.a.update_byattr(UnrelatedNode, 'test')
+
+

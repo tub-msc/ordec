@@ -12,6 +12,7 @@ from .rational import R
 from .geoprim import *
 from .ordb import *
 from .cell import Cell
+from .constraints import MissingRect4, MissingVec2
 
 @public
 class PinType(Enum):
@@ -526,7 +527,7 @@ class LayoutRect(Node):
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
-    rect = Attr(Rect4I, factory=coerce_tuple(Rect4I, 4))
+    rect = ConstrainableAttr(Rect4I, placeholder=MissingRect4, factory=coerce_tuple(Rect4I, 4))
 
 @public
 class LayoutInstance(Node):
