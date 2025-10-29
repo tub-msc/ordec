@@ -52,7 +52,7 @@ eval_input: testlist _NEWLINE*
 
 decorator: "@" dotted_name [ "(" [arguments] ")" ] _NEWLINE
 decorators: decorator+
-decorated: decorators (classdef | celldef | funcdef | async_funcdef)
+decorated: decorators (classdef | celldef | funcdef | cell_func_def | async_funcdef)
 
 async_funcdef: "async" funcdef
 funcdef: "def" name "(" [parameters] ")" ["->" test] ":" suite
@@ -84,7 +84,17 @@ lambda_kwparams: "**" name ","?
 
 ?stmt: simple_stmt | compound_stmt
 ?simple_stmt: small_stmt (";" small_stmt)* [";"] _NEWLINE
-?small_stmt: (expr_stmt | assign_stmt | del_stmt | pass_stmt | flow_stmt | import_stmt | global_stmt | nonlocal_stmt | assert_stmt)
+?small_stmt: (expr_stmt
+            | assign_stmt
+            | del_stmt
+            | pass_stmt
+            | flow_stmt
+            | import_stmt
+            | global_stmt
+            | nonlocal_stmt
+            | assert_stmt
+            | pin_stmt
+            | port_stmt)
 expr_stmt: testlist_star_expr
 assign_stmt: annassign | augassign | assign
 
@@ -120,7 +130,7 @@ nonlocal_stmt: "nonlocal" name ("," name)*
 assert_stmt: "assert" test ["," test]
 
 ?compound_stmt: if_stmt | while_stmt | for_stmt | try_stmt | match_stmt
-              | with_stmt | funcdef | classdef | celldef | decorated | async_stmt
+              | with_stmt | funcdef | classdef | celldef | decorated | async_stmt | cell_func_def
 async_stmt: "async" (funcdef | with_stmt | for_stmt)
 if_stmt: "if" test ":" suite elifs ["else" ":" suite]
 elifs: elif_*
@@ -350,10 +360,17 @@ DECIMAL: "." _SPECIAL_DEC | _SPECIAL_DEC "." _SPECIAL_DEC?
 FLOAT_NUMBER: _SPECIAL_DEC _EXP | DECIMAL _EXP?
 IMAG_NUMBER: (_SPECIAL_DEC      | FLOAT_NUMBER) ("J" | "j")
 
-
+// ORD DEFINITIONS
 SI_SUFFIX: "a" | "f" | "p" | "n" | "u" | "m" | "k" | "M" | "G" | "T"
 ?rational_number: DEC_NUMBER SLASH DEC_NUMBER
                 | (DEC_NUMBER | FLOAT_NUMBER) SI_SUFFIX?
+
+ORIENTATION.2: "West" | "East" | "North" | "South"
+PIN_TYPE.2: "inout" | "input" | "output"
+pin_stmt: PIN_TYPE name testlist_star_expr ORIENTATION
+port_stmt: "port" name testlist_star_expr ORIENTATION
+cell_func_def: name ":" suite
+
 
 
 // Comma-separated list (with an optional trailing comma)
