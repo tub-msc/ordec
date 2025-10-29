@@ -52,7 +52,7 @@ eval_input: testlist _NEWLINE*
 
 decorator: "@" dotted_name [ "(" [arguments] ")" ] _NEWLINE
 decorators: decorator+
-decorated: decorators (classdef | funcdef | async_funcdef)
+decorated: decorators (classdef | celldef | funcdef | async_funcdef)
 
 async_funcdef: "async" funcdef
 funcdef: "def" name "(" [parameters] ")" ["->" test] ":" suite
@@ -120,7 +120,7 @@ nonlocal_stmt: "nonlocal" name ("," name)*
 assert_stmt: "assert" test ["," test]
 
 ?compound_stmt: if_stmt | while_stmt | for_stmt | try_stmt | match_stmt
-              | with_stmt | funcdef | classdef | decorated | async_stmt
+              | with_stmt | funcdef | classdef | celldef | decorated | async_stmt
 async_stmt: "async" (funcdef | with_stmt | for_stmt)
 if_stmt: "if" test ":" suite elifs ["else" ":" suite]
 elifs: elif_*
@@ -268,6 +268,7 @@ key_value: test ":"  test
 _exprlist: test_or_star_expr (","  test_or_star_expr)* [","]
 
 classdef: "class" name ["(" [arguments] ")"] ":" suite
+celldef: "cell" name ":" suite
 
 arguments: argvalue ("," argvalue)* ("," starargs_part)? ("," kwargs)? ","?
          | starargs_part
@@ -291,7 +292,7 @@ encoding_decl: name
 yield_expr: "yield" [testlist]
           | "yield" "from" test -> yield_from
 
-number: DEC_NUMBER | HEX_NUMBER | BIN_NUMBER | OCT_NUMBER | FLOAT_NUMBER | IMAG_NUMBER
+number: HEX_NUMBER | BIN_NUMBER | OCT_NUMBER | IMAG_NUMBER | rational_number
 string: STRING | LONG_STRING | f_string
 
 f_string: FSTRING_DOUBLE_START f_string_content_double* FSTRING_DOUBLE_END
@@ -348,6 +349,11 @@ _EXP: ("e"|"E") ["+" | "-"] _SPECIAL_DEC
 DECIMAL: "." _SPECIAL_DEC | _SPECIAL_DEC "." _SPECIAL_DEC?
 FLOAT_NUMBER: _SPECIAL_DEC _EXP | DECIMAL _EXP?
 IMAG_NUMBER: (_SPECIAL_DEC      | FLOAT_NUMBER) ("J" | "j")
+
+
+SI_SUFFIX: "a" | "f" | "p" | "n" | "u" | "m" | "k" | "M" | "G" | "T"
+?rational_number: DEC_NUMBER SLASH DEC_NUMBER
+                | (DEC_NUMBER | FLOAT_NUMBER) SI_SUFFIX?
 
 
 // Comma-separated list (with an optional trailing comma)

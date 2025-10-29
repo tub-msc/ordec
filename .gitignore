@@ -4,6 +4,7 @@ __pycache__
 .hypothesis
 .coverage*
 .idea/
+.venv/
 *.ipynb
 *.swp
 dist/
