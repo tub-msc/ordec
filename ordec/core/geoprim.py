@@ -159,8 +159,11 @@ class Rect4R(Rect4Generic):
         ux = R(ux)
         uy = R(uy)
 
-        if lx > ux or ly > uy:
-            raise ValueError("lx or ly greater than ux or uy")
+        if lx > ux:
+            raise ValueError("lx is greater than ux.")
+
+        if ly > uy:
+            raise ValueError("ly is greater than uy.")
 
         return tuple.__new__(cls, (lx, ly, ux, uy))
 
@@ -175,8 +178,11 @@ class Rect4I(Rect4Generic):
         ux = int(ux)
         uy = int(uy)
 
-        if lx > ux or ly > uy:
-            raise ValueError("lx or ly greater than ux or uy")
+        if lx > ux:
+            raise ValueError("lx is greater than ux.")
+
+        if ly > uy:
+            raise ValueError("ly is greater than uy.")
 
         return tuple.__new__(cls, (lx, ly, ux, uy))
 

@@ -454,7 +454,7 @@ class LayoutLabel(Node):
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
-    pos = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+    pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2), placeholder=MissingVec2)
     text = Attr(str)
 
 @public

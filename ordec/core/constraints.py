@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
 from dataclasses import dataclass
 from public import public
 from itertools import chain
@@ -28,7 +31,7 @@ class MissingAttrVal:
         return False
 
     def solution_value(self, value_of_var):
-        values = [value_of_var[variable] for variable in self.variables()]
+        values = [value_of_var.get(variable, 0) for variable in self.variables()]
         return self.solution_cls(*values)
 
 class MissingRect4(MissingAttrVal):
@@ -75,6 +78,12 @@ class MissingRect4(MissingAttrVal):
     @property
     def height(self):
         return self.uy - self.ly
+
+    def is_square(self, size=None):
+        if size is None:
+            return self.width == self.height
+        else:
+            return (self.width == self.height) & (self.width == size)
 
 class MissingVec2(MissingAttrVal):
     __slots__=()
@@ -179,13 +188,35 @@ class LinearTerm:
     def __eq__(self, other):
         return Equality(self - other)
 
+class Constraint:
+    __slots__=()
+
+    def __and__(self, other):
+        # Python's 'and' cannot be overloaded, so we overload '&' instead.
+        return MultiConstraint((self,)) & other
+
 @dataclass(frozen=True)
-class Inequality:
+class MultiConstraint:
+    constraints: tuple[Constraint]
+
+    def __and__(self, other):
+        # Python's 'and' cannot be overloaded, so we overload '&' instead.
+
+        if isinstance(other, Constraint):
+            return MultiConstraint(self.constraints + (other,))
+        elif isinstance(other, MultiConstraint):
+            return MultiConstraint(self.constraints + other.constraints)
+        else:
+            raise TypeError(f"addition not supported for {type(self)} and {type(other)}")
+
+
+@dataclass(frozen=True)
+class Inequality(Constraint):
     """term <= 0"""
     term: LinearTerm
 
 @dataclass(frozen=True)
-class Equality:
+class Equality(Constraint):
     """term == 0"""
     term: LinearTerm
 
@@ -200,8 +231,11 @@ class Solver:
         self.inequalities = []
         self.subgraph = subgraph
 
-    def constrain(self, constraint: Inequality|Equality):
-        if isinstance(constraint, Equality):
+    def constrain(self, constraint: Constraint|MultiConstraint):
+        if isinstance(constraint, MultiConstraint):
+            for elem in constraint.constraints:
+                self.constrain(elem)
+        elif isinstance(constraint, Equality):
             self.equalities.append(constraint)
         elif isinstance(constraint, Inequality):
             self.inequalities.append(constraint)

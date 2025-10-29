@@ -124,3 +124,43 @@ def test_gds_aref() -> Layout:
     #print(l.tables())
     return l
 
+
+@generate_func
+def test_constraints() -> Layout:
+    layers = ordec.layout.SG13G2().layers
+    l = Layout(ref_layers=layers)
+
+    l.activ = LayoutRect(layer=layers.Activ)
+    l.poly = LayoutRect(layer=layers.GatPoly)
+    l.cont_d = LayoutRect(layer=layers.Cont)
+    l.cont_s = LayoutRect(layer=layers.Cont)
+
+    s = Solver(l)
+
+    L = 130
+    W = 130
+
+    s.constrain(l.activ.rect.height == W)
+    s.constrain(l.activ.rect.lx == 0)
+
+    s.constrain(l.activ.rect.cx == l.poly.rect.cx)
+    s.constrain(l.activ.rect.cy == l.poly.rect.cy)
+    s.constrain(l.activ.rect.ly == l.poly.rect.ly + 180)
+    s.constrain(l.poly.rect.width == L)
+    s.constrain(l.poly.rect.ly == 0)
+
+    s.constrain(l.cont_d.rect.cy == l.activ.rect.cy)
+    s.constrain(l.cont_s.rect.cy == l.activ.rect.cy)
+
+    s.constrain(l.cont_d.rect.is_square(160))
+    s.constrain(l.cont_s.rect.is_square(160))
+
+    s.constrain(l.cont_d.rect.lx - l.activ.rect.lx == 70)
+    s.constrain(l.poly.rect.lx - l.cont_d.rect.ux == 110)
+    s.constrain(l.activ.rect.ux - l.cont_s.rect.ux ==  70)
+
+    s.solve()
+
+    expand_geom(l)
+
+    return l
