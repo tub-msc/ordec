@@ -1,8 +1,10 @@
 import os
 from pathlib import Path
-import ordec.layout
+
+import ordec.layout.ihp130 as ihp130
 from ordec.extlibrary import ExtLibrary
 from ordec.layout.helpers import expand_geom, flatten, expand_instancearrays
+from ordec.layout.makevias import makevias
 from ordec.core import *
 
 ihp_path = Path(os.getenv("ORDEC_PDK_IHP_SG13G2"))
@@ -127,39 +129,23 @@ def test_gds_aref() -> Layout:
 
 @generate_func
 def test_constraints() -> Layout:
-    layers = ordec.layout.SG13G2().layers
+    l=ihp130.Nmos(l="300n", w="200000n", ng=20).layout.thaw()
+
+    expand_geom(l)
+
+    return l
+
+
+@generate_func
+def test_makevias() -> Layout:
+    layers = ihp130.SG13G2().layers
+    
     l = Layout(ref_layers=layers)
 
-    l.activ = LayoutRect(layer=layers.Activ)
-    l.poly = LayoutRect(layer=layers.GatPoly)
-    l.cont_d = LayoutRect(layer=layers.Cont)
-    l.cont_s = LayoutRect(layer=layers.Cont)
+    a = l % LayoutRect(layer=layers.Metal1, rect=Rect4I(0, 0, 205, 800))
+    b = l % LayoutRect(layer=layers.Metal2, rect=Rect4I(0, 0, 500, 800))
 
-    s = Solver(l)
-
-    L = 130
-    W = 130
-
-    s.constrain(l.activ.rect.height == W)
-    s.constrain(l.activ.rect.lx == 0)
-
-    s.constrain(l.activ.rect.cx == l.poly.rect.cx)
-    s.constrain(l.activ.rect.cy == l.poly.rect.cy)
-    s.constrain(l.activ.rect.ly == l.poly.rect.ly + 180)
-    s.constrain(l.poly.rect.width == L)
-    s.constrain(l.poly.rect.ly == 0)
-
-    s.constrain(l.cont_d.rect.cy == l.activ.rect.cy)
-    s.constrain(l.cont_s.rect.cy == l.activ.rect.cy)
-
-    s.constrain(l.cont_d.rect.is_square(160))
-    s.constrain(l.cont_s.rect.is_square(160))
-
-    s.constrain(l.cont_d.rect.lx - l.activ.rect.lx == 70)
-    s.constrain(l.poly.rect.lx - l.cont_d.rect.ux == 110)
-    s.constrain(l.activ.rect.ux - l.cont_s.rect.ux ==  70)
-
-    s.solve()
+    makevias(l, a.rect, layers.Via1, Vec2I(80, 80), Vec2I(50, 50), Vec2I(0,0))
 
     expand_geom(l)
 

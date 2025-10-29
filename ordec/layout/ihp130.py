@@ -1,8 +1,11 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+from public import public
 from ..core import *
+from .makevias import makevias
 
+@public
 class SG13G2(Cell):
     @generate
     def layers(self):
@@ -122,3 +125,78 @@ class SG13G2(Cell):
             )
 
         return s
+
+
+class Nmos(Cell):
+
+    l = Parameter(R)  #: Length
+    w = Parameter(R)  #: Width
+    ng = Parameter(int, default=1)  #: Number of gate fingers
+
+    @generate
+    def layout(self) -> Layout:
+        # See also: ihp-sg13g2/libs.tech/klayout/python/sg13g2_pycell_lib/ihp/nmos_code.py
+        layers = SG13G2().layers
+        l = Layout(ref_layers=layers)
+        s = Solver(l)
+
+        L = int(self.l/R("1n"))
+        W = int(self.w/R("1n") / self.ng)
+
+        l.mkpath('polys')
+        l.mkpath('sd')
+
+        def add_sd(i):
+            nonlocal l, s, x_cur
+            l.sd[i] = LayoutRect(layer=layers.Metal1)
+            sd = l.sd[i]
+            s.constrain(sd.rect.width == 160)
+            s.constrain(sd.rect.cy == l.activ.rect.cy)
+            s.constrain(sd.rect.lx == x_cur)
+            if W >= 300:
+                s.constrain(sd.rect.height == W)
+            else:
+                s.constrain(sd.rect.height == 260)
+
+                activ_ext = l % LayoutRect(layer=layers.Activ)
+                s.constrain(activ_ext.rect.cx == sd.rect.cx)
+                s.constrain(activ_ext.rect.cy == sd.rect.cy)
+                s.constrain(activ_ext.rect.width == 300)
+                s.constrain(activ_ext.rect.height == 300)
+            x_cur = sd.rect.ux    
+
+        def add_poly(i):
+            nonlocal l, s, x_cur
+            x_cur += 140
+            l.polys[i] = LayoutRect(layer=layers.GatPoly)
+            poly = l.polys[i]
+            s.constrain(poly.rect.cy == l.activ.rect.cy)
+            s.constrain(poly.rect.width == L)
+            s.constrain(poly.rect.lx == x_cur)
+            s.constrain(poly.rect.ly + 100 == l.activ.rect.ly)
+            s.constrain(poly.rect.ly == 0)
+            x_cur = poly.rect.ux + 140
+
+        l.activ = LayoutRect(layer=layers.Activ)
+        s.constrain(l.activ.rect.height == W)
+        s.constrain(l.activ.rect.lx == 0)
+        x_cur = l.activ.rect.lx + 70
+
+        add_sd(0)
+        for i in range(self.ng):
+            add_poly(i)
+            add_sd(i+1)
+
+        s.constrain(l.activ.rect.ux == x_cur + 70)
+
+        s.solve()
+
+        for i in range(self.ng + 1):
+            makevias(l, l.sd[i].rect, layers.Cont, 
+                size=Vec2I(160, 160),
+                spacing=Vec2I(160, 160),
+                margin=Vec2I(50, 50),
+                cols=1,
+                )
+            
+        return l

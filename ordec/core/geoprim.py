@@ -138,6 +138,14 @@ class Rect4Generic(tuple):
     def __repr__(self):
         return f"{type(self).__name__}(lx={self.lx!r}, ly={self.ly!r}, ux={self.ux!r}, uy={self.uy!r})"
 
+    @property
+    def height(self):
+        return self.uy - self.ly
+
+    @property
+    def width(self):
+        return self.ux - self.lx
+
 @public
 class Rect4R(Rect4Generic):
     """
