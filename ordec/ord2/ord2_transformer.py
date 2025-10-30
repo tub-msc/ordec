@@ -36,13 +36,16 @@ class Ord2Transformer(PythonTransformer):
         name = nodes[1]
         pos = nodes[2]
         orientation = nodes[3]
+        # Get correct pin type
         if pin_type == "inout":
             pin_type = "Inout"
         elif pin_type == "output":
             pin_type = "Out"
         else:
             pin_type = "In"
+        # set symbol as reference
         target = ast.Attribute(value=ast.Name(id='symbol', ctx=ast.Load()), attr=name, ctx=ast.Store())
+        # keywords: position, pin_type and alignment
         keywords = list()
         keywords.append(ast.keyword(arg='pos', value=pos))
         keywords.append(ast.keyword(arg='pintype', value=ast.Attribute(value=ast.Name(id='PinType',ctx=ast.Load()),
@@ -51,10 +54,11 @@ class Ord2Transformer(PythonTransformer):
         keywords.append(ast.keyword(arg='align', value=ast.Attribute(value=ast.Name(id='Orientation',ctx=ast.Load()),
                                                                      attr=orientation,
                                                                      ctx=ast.Load())))
+        # wrap in Pin call
         pin_call = ast.Call(func=ast.Name(id='Pin', ctx=ast.Load()),
                             args=[],
                             keywords=keywords)
-
+        # return assignment
         assignment = ast.Assign(targets=[target], value=pin_call)
         return assignment
 
@@ -62,27 +66,29 @@ class Ord2Transformer(PythonTransformer):
         name = nodes[0]
         pos = nodes[1]
         orientation = nodes[2]
-
+        # set schematic as reference
         target = ast.Attribute(value=ast.Name(id='schematic', ctx=ast.Load()),
                                attr=name,
                                ctx=ast.Load())
-
+        # keywords: position, reference and alignment
         keywords = list()
         keywords.append(ast.keyword(arg='pos', value=pos))
         keywords.append(ast.keyword(arg='align', value=ast.Attribute(value=ast.Name(id='Orientation',
                                                                                     ctx=ast.Load()),
                                                                      attr=orientation,
                                                                      ctx=ast.Load())))
+        # Set symbol as reference
         keywords.append(ast.keyword(arg='ref', value=ast.Attribute(
            value=ast.Attribute(value=ast.Name(id='self', ctx=ast.Load()), attr='symbol', ctx=ast.Load()),
             attr=name,
             ctx=ast.Load()
         )))
-
+        # Wrap in port call
         port_call = ast.Call(func=ast.Name(id='SchemPort', ctx=ast.Load()),
                              keywords=keywords,
                              args=[])
 
+        # Return binary expression
         expression = ast.Expr(
             value = ast.BinOp(
                 left = target,
@@ -96,6 +102,7 @@ class Ord2Transformer(PythonTransformer):
     def cell_func_def(self, nodes):
         func_name = nodes[0]
         suite = nodes[1]
+        # Create suite assignment rhs
         suite_target = ast.Name(id=func_name, ctx=ast.Store())
         keywords = list()
         keywords.append(ast.keyword(arg='cell',
@@ -109,13 +116,12 @@ class Ord2Transformer(PythonTransformer):
                              args=[],
                              keywords=keywords)
 
-        # combine to inner assignment
+        # combine to full suite assignment
         suite_assignment = ast.Assign(
             targets=[suite_target],
             value=suite_func_call
         )
-
-        # insert assignment before first inner assignment
+        # insert assignment before first inner content
         suite.insert(0, suite_assignment)
 
         # Combine to function definition
