@@ -24,12 +24,18 @@ class Ord2Transformer(PythonTransformer):
             type_params=[]
         )
 
-    def rational_number(self, nodes):
-        if len(nodes) > 2:
-            rational_number = ast.Constant(str(nodes[0].value) + str(nodes[2].value))
+    def RATIONAL(self, token):
+        si_suffixes = ('a','f','p','n','u','m','k','M','G','T')
+        if token.endswith(si_suffixes) or '/' in token:
+            token = ast.Constant(token.value)
+            return ast.Call(func=ast.Name(id="R", ctx=ast.Load()), args=[token])
         else:
-            rational_number = ast.Constant(str(nodes[0].value) + nodes[1])
-        return ast.Call(func=ast.Name(id="R", ctx=ast.Load()), args=[rational_number])
+            if '.' in token:
+                number = float(token)
+            else:
+                number = token.value.replace("_", "")
+                number = int(number, 10)
+            return ast.Constant(value=number)
 
     def pin_stmt(self, nodes):
         pin_type = nodes[0]
@@ -143,6 +149,6 @@ class Ord2Transformer(PythonTransformer):
 
 
 
-    SI_SUFFIX = lambda self, token: token.value
+    SI = lambda self, token: token.value
     PIN_TYPE = lambda self, token: token.value
     ORIENTATION = lambda self, token: token.value

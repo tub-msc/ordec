@@ -302,7 +302,7 @@ encoding_decl: name
 yield_expr: "yield" [testlist]
           | "yield" "from" test -> yield_from
 
-number: HEX_NUMBER | BIN_NUMBER | OCT_NUMBER | IMAG_NUMBER | rational_number
+number: HEX_NUMBER | BIN_NUMBER | OCT_NUMBER | IMAG_NUMBER | RATIONAL
 string: STRING | LONG_STRING | f_string
 
 f_string: FSTRING_DOUBLE_START f_string_content_double* FSTRING_DOUBLE_END
@@ -361,9 +361,10 @@ FLOAT_NUMBER: _SPECIAL_DEC _EXP | DECIMAL _EXP?
 IMAG_NUMBER: (_SPECIAL_DEC      | FLOAT_NUMBER) ("J" | "j")
 
 // ORD DEFINITIONS
-SI_SUFFIX: "a" | "f" | "p" | "n" | "u" | "m" | "k" | "M" | "G" | "T"
-?rational_number: DEC_NUMBER SLASH DEC_NUMBER
-                | (DEC_NUMBER | FLOAT_NUMBER) SI_SUFFIX?
+SI: /[afpnumkMGT]/
+RATIONAL: DEC_NUMBER SLASH DEC_NUMBER
+        | DEC_NUMBER SI?
+        | FLOAT_NUMBER SI?
 
 ORIENTATION.2: "West" | "East" | "North" | "South"
 PIN_TYPE.2: "inout" | "input" | "output"
