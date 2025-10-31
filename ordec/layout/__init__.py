@@ -4,6 +4,7 @@
 from .webdata import *
 from .helpers import *
 from .makevias import *
+from .gds_out import *
 
 # Without __all__, Sphinx does not document the imported stuff.
 __all__ = [

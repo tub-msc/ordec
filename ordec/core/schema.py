@@ -478,7 +478,7 @@ class LayoutPath(GenericPolyI, MixinPolygonalChain):
     """
     in_subgraphs = [Layout]
 
-    endtype = Attr(PathEndType, default=PathEndType.FLUSH)
+    endtype = Attr(PathEndType, default=PathEndType.FLUSH, optional=False)
     width = Attr(int)
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 

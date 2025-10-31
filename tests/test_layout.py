@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+import io
 from pathlib import Path
 import importlib.resources
 import pytest
@@ -623,11 +624,60 @@ def test_gds_aref():
         pos_expected.remove(pos0)
     assert len(pos_expected) == 0
 
+def assert_equal_write_gds(layout, reference_fn):
+    from ordec.layout.gds_out import gds_to_str
+    with open(reference_fn, 'rb') as f:
+        reference_str = gds_to_str(f)
+
+    gds_out = io.BytesIO()
+    write_gds(layout, gds_out)
+    gds_out.seek(0)
+    result_str = gds_to_str(gds_out)
+
+    assert result_str == reference_str
+
 def test_write_gds():
     layers = SG13G2().layers
     l = Layout(ref_layers=layers)
 
-    # TODO: Write GDS to temporary file, check using some external tool?!
+    class Sub(Cell):
+        @generate
+        def layout(self) -> Layout:
+            l = Layout(ref_layers=layers, cell=self)
+            l % LayoutRectPoly(layer=layers.Metal2.pin, vertices=[(0, 0), (200, 200), (100, 100)])
+            return l
 
-    with open('out.gds', 'wb') as f:
-        write_gds(l, f)
+    class Sub2(Cell):
+        @generate
+        def layout(self) -> Layout:
+            l = Layout(ref_layers=layers, cell=self)
+            l % LayoutRectPoly(layer=layers.Metal2.pin, vertices=[(0, 0), (100, 100), (200, 200)])
+            return l
+
+    class Top(Cell):
+        @generate
+        def layout(self) -> Layout:
+            l = Layout(ref_layers=layers, cell=self)
+            l % LayoutRect(layer=layers.Metal1.pin, rect=(100, 200, 300, 400))
+            l % LayoutLabel(layer=layers.Metal1.pin, pos=(200, 300), text="My Label")
+            l % LayoutPath(
+                layer=layers.GatPoly,
+                vertices=[(0, 0), (500, 0), (500, 500), (500, 1200)],
+                width=100,
+                endtype=PathEndType.SQUARE,
+            )
+            l % LayoutInstance(pos=(-100, -100), orientation=D4.MY, ref=Sub().layout)
+            l % LayoutInstance(pos=(-400, -400), orientation=D4.R0, ref=Sub().layout)
+
+            l % LayoutInstanceArray(
+                pos=(0, 2000),
+                orientation=D4.R0,
+                ref=Sub2().layout,
+                cols=4,
+                rows=2,
+                vec_col=(250, 0),
+                vec_row=(0, 300),
+                )
+            return l
+
+    assert_equal_write_gds(Top().layout, gds_dir / 'test_write_gds.gds')

@@ -1006,6 +1006,10 @@ class SubgraphRoot(NonLeafNode):
         """Convenience wrapper for :meth:`Subgraph.thaw`."""
         return self.subgraph.thaw().root_cursor
 
+    def mutable_copy(self):
+        """Convenience wrapper for :meth:`Subgraph.mutable_copy`."""
+        return self.subgraph.mutable_copy().root_cursor
+
     def tables(self, html=False) -> str:
         """Convenience wrapper for :meth:`Subgraph.tables`."""
         return self.subgraph.tables(html=html)
@@ -1388,6 +1392,13 @@ class Subgraph(ABC):
         pass
 
     @abstractmethod
+    def mutable_copy(self) -> 'MutableSubgraph':
+        """Create :class:`MutableSubgraph` copy.
+        Future modifications of the MutableSubgraph are not visible at the
+        original FrozenSubgraph."""
+        pass
+
+    @abstractmethod
     def copy(self) -> 'Self':
         """Returns a copy of the subgraph."""
         pass
@@ -1451,6 +1462,9 @@ class FrozenSubgraph(Subgraph):
         ret.mutate(self.nodes, self.index, self.nid_alloc)
         return ret
 
+    def mutable_copy(self):
+        return self.thaw()
+
     def __eq__(self, other):
         if not isinstance(other, FrozenSubgraph):
             return False
@@ -1496,6 +1510,9 @@ class MutableSubgraph(Subgraph):
 
     def thaw(self) -> 'MutableSubgraph':
         raise TypeError("Subgraph is already mutable.")
+
+    def mutable_copy(self):
+        return self.copy()
 
     @classmethod
     def load(cls, nodes: dict[int,NodeTuple]):

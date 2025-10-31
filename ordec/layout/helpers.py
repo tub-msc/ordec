@@ -3,8 +3,9 @@
 
 from itertools import chain
 from typing import Iterable
-from ..core import *
 from public import public
+
+from ..core import *
 
 @public
 def poly_orientation(vertices: list[Vec2I]):
