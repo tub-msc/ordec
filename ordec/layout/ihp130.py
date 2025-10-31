@@ -126,7 +126,7 @@ class SG13G2(Cell):
 
         return s
 
-
+@public
 class Nmos(Cell):
 
     l = Parameter(R)  #: Length

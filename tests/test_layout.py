@@ -6,16 +6,16 @@ from pathlib import Path
 import importlib.resources
 import pytest
 
-import ordec.layout
-from ordec.layout.read_gds import GdsReaderException
-from ordec.layout.helpers import poly_orientation, expand_paths, expand_rects, expand_rectpaths, expand_rectpolys, expand_instancearrays, flatten
+from ordec.layout.ihp130 import SG13G2
+from ordec.layout.gds_in import GdsReaderException
+from ordec.layout import *
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary, ExtLibraryError
 
 # def test_read_gds():
 #     ihp_path = Path(os.getenv("ORDEC_PDK_IHP_SG13G2"))
 #     gds_fn = ihp_path / "libs.ref/sg13g2_stdcell/gds/sg13g2_stdcell.gds"
-#     x = ordec.layout.read_gds(gds_fn, ordec.layout.SG13G2().layers, 'sg13g2_xor2_1')
+#     x = ordec.layout.read_gds(gds_fn, SG13G2().layers, 'sg13g2_xor2_1')
 #     print(x)
 
 gds_dir = importlib.resources.files("tests.layout_gds")
@@ -24,7 +24,7 @@ def test_extlibrary():
     # This test is very bare-bones at the moment.
 
     lib = ExtLibrary()
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib.read_gds(gds_dir / 'test_polygon.gds', tech_layers)
     
     lib['TOP'].layout
@@ -36,7 +36,7 @@ def test_extlibrary():
         lib.read_gds(gds_dir / 'test_polygon.gds', tech_layers)
 
 def test_gds_polygon():
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(gds_dir / 'test_polygon.gds', tech_layers)
     layout = lib['TOP'].layout
@@ -60,7 +60,7 @@ def test_gds_polygon():
 
 @pytest.mark.parametrize("endtype", ['flush', 'square'])
 def test_gds_path(endtype):
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(gds_dir / f'test_path_{endtype}.gds', tech_layers)
     layout = lib['TOP'].layout
@@ -78,7 +78,7 @@ def test_gds_path(endtype):
     assert path.endtype == expected_endtype
 
 def test_gds_path_round_unsupported():
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(gds_dir / 'test_path_round.gds', tech_layers)
 
@@ -86,7 +86,7 @@ def test_gds_path_round_unsupported():
         layout = lib['TOP'].layout
 
 def test_gds_sref_d4():
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(gds_dir / 'test_sref_d4.gds', tech_layers)
 
@@ -111,7 +111,7 @@ def test_gds_sref_d4():
     assert len(expected_pos_orientations) == 0
 
 def test_gds_sref_bad_mag():
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(gds_dir / 'test_sref_bad_mag.gds', tech_layers)
 
@@ -119,7 +119,7 @@ def test_gds_sref_bad_mag():
         lib['TOP'].layout
 
 def test_gds_sref_bad_angle():
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(gds_dir / 'test_sref_bad_angle.gds', tech_layers)
 
@@ -127,7 +127,7 @@ def test_gds_sref_bad_angle():
         lib['TOP'].layout
 
 def test_flatten():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
 
     sublayout = Layout(ref_layers=layers)
     poly_orig = sublayout % LayoutPoly(
@@ -226,7 +226,7 @@ def test_gds_sref_nested():
     """
     Test flatten() of nested LayoutInstances (SRefs) through example GDS file.
     """
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(gds_dir / 'test_sref_nested.gds', tech_layers)
     layout = lib['TOP'].layout.thaw()
@@ -254,7 +254,7 @@ def test_expand_paths_lshapes():
     for L shapes with different orientations.
     """
     
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
     for x in 1, -1:
         for y in 1, -1:        
             l_flush = Layout(ref_layers=layers)
@@ -308,7 +308,7 @@ def test_expand_paths_lshapes():
             ]
 
 def test_expand_paths_complex():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
     
     l = Layout(ref_layers=layers)
     l.path = LayoutPath(
@@ -355,7 +355,7 @@ def test_expand_paths_straight_segment():
     on two straight segments (0 degree turns).
     """
 
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
 
     l = Layout(ref_layers=layers)
     l.path = LayoutPath(
@@ -380,7 +380,7 @@ def test_expand_paths_straight_segment():
     ]
 
 def test_expand_paths_invalid():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
 
     invalid_paths = [
         [ # too few vertices in path
@@ -416,7 +416,7 @@ def test_expand_paths_invalid():
             expand_paths(l)
 
 def test_expand_rectpoly():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
 
     l = Layout(ref_layers=layers)
     l.rpoly_h = LayoutRectPoly(
@@ -461,7 +461,7 @@ def test_expand_rectpoly():
     ]
 
 def test_expand_rectpath():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
 
     l = Layout(ref_layers=layers)
     l.rpath_h = LayoutRectPath(
@@ -548,7 +548,7 @@ def test_expand_rectpath():
     ]
 
 def test_expand_rect():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
 
     l = Layout(ref_layers=layers)
     l.rect = LayoutRect(
@@ -568,7 +568,7 @@ def test_expand_rect():
     ]
 
 def test_gds_aref():
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(gds_dir / 'test_aref.gds', tech_layers)
 
@@ -623,3 +623,11 @@ def test_gds_aref():
         pos_expected.remove(pos0)
     assert len(pos_expected) == 0
 
+def test_write_gds():
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers)
+
+    # TODO: Write GDS to temporary file, check using some external tool?!
+
+    with open('out.gds', 'wb') as f:
+        write_gds(l, f)

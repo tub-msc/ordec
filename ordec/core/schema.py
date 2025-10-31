@@ -444,8 +444,8 @@ class Layout(SubgraphRoot):
     ref_layers = SubgraphRef(LayerStack, optional=False)
 
     def webdata(self):
-        from ..layout import layout_webdata
-        return layout_webdata(self)
+        from ..layout import webdata
+        return webdata(self)
         #from ..render import render
         #return render(self).webdata()
 

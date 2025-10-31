@@ -4,11 +4,11 @@
 import pytest
 
 from ordec.core import *
-import ordec.layout
+from ordec.layout.ihp130 import SG13G2
 from ordec.core.constraints import Variable, LinearTerm
 
 def test_equalities():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
     l = Layout(ref_layers=layers)
 
     l.activ = LayoutRect(layer=layers.Activ)
@@ -32,7 +32,7 @@ def test_equalities():
     assert l.poly.rect == Rect4I(lx=300, ly=-175, ux=400, uy=125)
 
 def test_no_solution():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
     l = Layout(ref_layers=layers)
 
     l.activ = LayoutRect(layer=layers.Activ)
@@ -48,7 +48,7 @@ def test_no_solution():
         s.solve()
 
 def test_missing_variables():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
     l = Layout(ref_layers=layers)
 
     l.activ = LayoutRect(layer=layers.Activ)
@@ -63,7 +63,7 @@ def test_missing_variables():
     assert l.activ.rect == Rect4I(0, 100, 0, 200)
 
 def test_vec2():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
     l = Layout(ref_layers=layers)
 
     l.m1 = LayoutRect(layer=layers.Metal1.pin)
@@ -82,7 +82,7 @@ def test_vec2():
     assert l.label.pos == Vec2I(75, 75)
 
 def test_multiconstraint():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
     l = Layout(ref_layers=layers)
 
     l.activ = LayoutRect(layer=layers.Activ)

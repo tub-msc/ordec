@@ -3,7 +3,9 @@
 
 from ..core import *
 from math import floor
+from public import public
 
+@public
 def makevias(layout: Layout,
         rect: Rect4I,
         layer: Layer,

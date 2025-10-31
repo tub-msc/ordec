@@ -4,7 +4,9 @@
 from itertools import chain
 from typing import Iterable
 from ..core import *
+from public import public
 
+@public
 def poly_orientation(vertices: list[Vec2I]):
     """
     Returns either 'cw' or 'ccw'.
@@ -111,6 +113,7 @@ def path_to_poly_vertices(path: LayoutPath) -> list[Vec2I]:
             
     return outline
 
+@public
 def expand_paths(layout: Layout):
     """
     For the given Layout, replaces all LayoutPath instances by geometrically
@@ -134,6 +137,7 @@ def rpoly_to_poly_vertices(rpoly: LayoutRectPoly) -> Iterable[Vec2I]:
         yield pos
         last = pos
 
+@public
 def expand_rectpolys(layout: Layout):
     """
     For the given Layout, replaces all LayoutRectPoly instances by geometrically
@@ -161,6 +165,7 @@ def rpath_to_path_vertices(rpath: LayoutRectPath) -> Iterable[Vec2I]:
         yield pos
         last = pos
 
+@public
 def expand_rectpaths(layout: Layout):
     """
     For the given Layout, replaces all LayoutRectPath instances by geometrically
@@ -174,6 +179,7 @@ def expand_rectpaths(layout: Layout):
             width=rpath.width,
             ))
 
+@public
 def expand_rects(layout: Layout):
     """
     For the given Layout, replaces all LayoutRect instances by geometrically
@@ -192,6 +198,7 @@ def expand_rects(layout: Layout):
             ]
             ))
 
+@public
 def expand_geom(layout: Layout):
     """
     Replaces all LayoutRectPath, LayoutRectPoly, LayoutRect and LayoutPath
@@ -283,9 +290,11 @@ def flatten_instance(dst: Layout, src: Layout, tran: TD4I, first_level: bool):
             text=src_e.text,
         )
 
+@public
 def flatten(layout: Layout):
     flatten_instance(layout, layout, TD4I(), True)
 
+@public
 def expand_instancearrays(layout: Layout):
     """
     For the given Layout, replaces all LayoutInstanceArrays by geometrically

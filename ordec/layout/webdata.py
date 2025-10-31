@@ -2,8 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from ..core import *
+from public import public
 
-def layout_webdata(layout: Layout.Frozen):
+@public
+def webdata(layout: Layout.Frozen):
+    """
+    For given layout, generate and return JSON-serializable data
+    for ORDeC's web viewer (layer-gl.js).
+    """
     weblayers_list = []
     weblayers_dict = {}
 
