@@ -143,10 +143,10 @@ def test_Rect4R():
 
     assert repr(r) == "Rect4R(lx=R('1.'), ly=R('2.'), ux=R('3.'), uy=R('4.'))"
 
-    with pytest.raises(ValueError, match=r"lx or ly greater than ux or uy"):
+    with pytest.raises(ValueError, match=r"lx is greater than ux"):
         Rect4R(0, 0, -1, 0)
 
-    with pytest.raises(ValueError, match=r"lx or ly greater than ux or uy"):
+    with pytest.raises(ValueError, match=r"ly is greater than uy."):
         Rect4R(0, 0, 0, -1)
 
     with pytest.raises(TypeError):
@@ -186,10 +186,10 @@ def test_Rect4I():
 
     assert repr(r) == "Rect4I(lx=1, ly=2, ux=3, uy=4)"
 
-    with pytest.raises(ValueError, match=r"lx or ly greater than ux or uy"):
+    with pytest.raises(ValueError, match=r"lx is greater than ux"):
         Rect4I(0, 0, -1, 0)
 
-    with pytest.raises(ValueError, match=r"lx or ly greater than ux or uy"):
+    with pytest.raises(ValueError, match=r"ly is greater than uy."):
         Rect4I(0, 0, 0, -1)
 
     with pytest.raises(TypeError):

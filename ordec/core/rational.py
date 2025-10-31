@@ -34,7 +34,7 @@ class Rational(fractions.Fraction):
     sisuffix_rev = {c: n for n, c in sisuffix.items()} | {"μ":-6}
 
     def __new__(cls, number=0, denominator=None):
-        if isinstance(number, str) and denominator==None:
+        if isinstance(number, str) and denominator is None:
             if number.startswith("f'"):
                 num, den = number[2:].split("/", 1)
                 return super().__new__(cls, int(num), int(den))

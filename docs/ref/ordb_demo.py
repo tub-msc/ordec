@@ -63,11 +63,11 @@ earth.nrt = Airport(label="Narita International Airport", year_opened=1978)
 
 earth.lax.year_opened
 
-# Note that earth.lax gives us a ORDB Cursor. The underlying database tuple (Node / row) is hidden in earth.lax.node.
+# Note that earth.lax gives us a ORDB Cursor. The underlying database tuple (Node / row) is hidden in earth.lax.tuple.
 
 earth.lax
 
-earth.lax.node
+earth.lax.tuple
 
 # Notice that a **node ID (nid)** was automatically assigned to each node/Airport. The node ID is unique to the subgraph (in this case, planet):
 
@@ -93,7 +93,7 @@ print(f"Flight {xyz90.flight_code} goes from {xyz90.origin.label} to {xyz90.dest
 
 # In the underlying database tuples, the origin and destination attributes are stored as nid references: 
 
-xyz90.node
+xyz90.tuple
 
 # Using the Subgraph.tables method, we can view our data in tabular form:
 

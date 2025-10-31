@@ -105,7 +105,7 @@ class ConnectivityGraph:
         self.edges[p2].append(p1)
 
     def reachable_from(self, cur, visited=None):
-        if visited == None:
+        if visited is None:
             visited=set()
         if cur in visited:
             return

@@ -2,20 +2,21 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+import re
 from pathlib import Path
 import importlib.resources
 import pytest
 
-import ordec.layout
-from ordec.layout.read_gds import GdsReaderException
-from ordec.layout.helpers import poly_orientation, expand_paths, expand_rects, expand_rectpaths, expand_rectpolys, expand_instancearrays, flatten
+from ordec.layout.ihp130 import SG13G2
+from ordec.layout.gds_in import GdsReaderException
+from ordec.layout import *
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary, ExtLibraryError
 
 # def test_read_gds():
 #     ihp_path = Path(os.getenv("ORDEC_PDK_IHP_SG13G2"))
 #     gds_fn = ihp_path / "libs.ref/sg13g2_stdcell/gds/sg13g2_stdcell.gds"
-#     x = ordec.layout.read_gds(gds_fn, ordec.layout.SG13G2().layers, 'sg13g2_xor2_1')
+#     x = ordec.layout.read_gds(gds_fn, SG13G2().layers, 'sg13g2_xor2_1')
 #     print(x)
 
 gds_dir = importlib.resources.files("tests.layout_gds")
@@ -24,7 +25,7 @@ def test_extlibrary():
     # This test is very bare-bones at the moment.
 
     lib = ExtLibrary()
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib.read_gds(gds_dir / 'test_polygon.gds', tech_layers)
     
     lib['TOP'].layout
@@ -36,7 +37,7 @@ def test_extlibrary():
         lib.read_gds(gds_dir / 'test_polygon.gds', tech_layers)
 
 def test_gds_polygon():
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(gds_dir / 'test_polygon.gds', tech_layers)
     layout = lib['TOP'].layout
@@ -60,7 +61,7 @@ def test_gds_polygon():
 
 @pytest.mark.parametrize("endtype", ['flush', 'square'])
 def test_gds_path(endtype):
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(gds_dir / f'test_path_{endtype}.gds', tech_layers)
     layout = lib['TOP'].layout
@@ -78,15 +79,27 @@ def test_gds_path(endtype):
     assert path.endtype == expected_endtype
 
 def test_gds_path_round_unsupported():
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(gds_dir / 'test_path_round.gds', tech_layers)
 
     with pytest.raises(GdsReaderException, match="GDS Path with path_type=1"):
         layout = lib['TOP'].layout
 
+def test_gds_label():
+    tech_layers = SG13G2().layers
+    lib = ExtLibrary()
+    lib.read_gds(gds_dir / 'test_label.gds', tech_layers)
+
+    layout = lib['TOP'].layout
+    label = layout.one(LayoutLabel)
+
+    assert label.pos == Vec2I(2000, 1000)
+    assert label.text == "TestLabel"
+
+
 def test_gds_sref_d4():
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(gds_dir / 'test_sref_d4.gds', tech_layers)
 
@@ -111,7 +124,7 @@ def test_gds_sref_d4():
     assert len(expected_pos_orientations) == 0
 
 def test_gds_sref_bad_mag():
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(gds_dir / 'test_sref_bad_mag.gds', tech_layers)
 
@@ -119,15 +132,97 @@ def test_gds_sref_bad_mag():
         lib['TOP'].layout
 
 def test_gds_sref_bad_angle():
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(gds_dir / 'test_sref_bad_angle.gds', tech_layers)
 
     with pytest.raises(GdsReaderException, match="SRef with angle"):
         lib['TOP'].layout
 
+def test_gds_sref_nested():
+    """
+    Test flatten() of nested LayoutInstances (SRefs) through example GDS file.
+    """
+    tech_layers = SG13G2().layers
+    lib = ExtLibrary()
+    lib.read_gds(gds_dir / 'test_sref_nested.gds', tech_layers)
+    layout = lib['TOP'].layout.thaw()
+
+    assert layout.one(LayoutInstance).ref == lib['SUB1'].frame
+    assert lib['SUB1'].frame.one(LayoutInstance).ref == lib['SUB2'].frame
+
+    flatten(layout)
+    assert len(list(layout.all(LayoutInstance))) == 0
+
+    poly = layout.one(LayoutPoly)
+    assert poly.layer == tech_layers.Metal1
+    assert poly.vertices() == [
+        Vec2I(3000, 15000),
+        Vec2I(3000, 14000),
+        Vec2I(4000, 14000),
+        Vec2I(4000, 12000),
+        Vec2I(5000, 12000),
+        Vec2I(5000, 15000),
+    ]
+
+def test_gds_aref():
+    tech_layers = SG13G2().layers
+    lib = ExtLibrary()
+    lib.read_gds(gds_dir / 'test_aref.gds', tech_layers)
+
+    layout = lib['TOP'].layout
+
+    sub_poly_vertices = lib['SUB'].layout.one(LayoutPoly).vertices()
+    # The polys are reversed in the ARef because ainst.orientation mirrors.
+    # origin_idx_reversed is 0 at the moment, but this could change when
+    # the GDS poly vertexes are rearranged.
+    origin_idx_reversed = len(sub_poly_vertices) - 1 - sub_poly_vertices.index(Vec2I(0, 0))
+
+    ainst = layout.one(LayoutInstanceArray)
+    assert ainst.pos == Vec2I(10000, 10000)
+    assert ainst.orientation == D4.MX90
+    assert ainst.ref == lib['SUB'].frame
+    assert ainst.cols == 3
+    assert ainst.rows == 2
+    assert ainst.vec_col == Vec2I(4000, 0)
+    assert ainst.vec_row == Vec2I(2000, 3000)
+
+    pos_expected_orig = {
+        Vec2I(10000, 10000),
+        Vec2I(12000, 13000),
+        Vec2I(14000, 10000),
+        Vec2I(16000, 13000),
+        Vec2I(18000, 10000),
+        Vec2I(20000, 13000),
+    }
+
+    # Test correct handling of LayoutInstanceArray by expand_instancearrays():
+    layout_expand = layout.thaw()
+    expand_instancearrays(layout_expand)
+
+    assert len(list(layout_expand.all(LayoutInstanceArray))) == 0
+    pos_expected = pos_expected_orig.copy()
+    for inst in layout_expand.all(LayoutInstance):
+        assert inst.orientation == ainst.orientation
+        assert inst.ref == ainst.ref
+        assert inst.pos in pos_expected
+        pos_expected.remove(inst.pos)
+    assert len(pos_expected) == 0
+
+    # Test correct handling of LayoutInstanceArray by flatten():
+    layout_flatten = layout.thaw()
+    flatten(layout_flatten)
+
+    assert len(list(layout_flatten.all(LayoutInstanceArray))) == 0
+    pos_expected = pos_expected_orig.copy()
+    for poly in layout_flatten.all(LayoutPoly):
+        pos0 = poly.vertices()[origin_idx_reversed]
+        assert pos0 in pos_expected
+        pos_expected.remove(pos0)
+    assert len(pos_expected) == 0
+
 def test_flatten():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
 
     sublayout = Layout(ref_layers=layers)
     poly_orig = sublayout % LayoutPoly(
@@ -221,40 +316,13 @@ def test_flatten():
         assert label.pos == tran * label_orig.pos
         assert label.text == label_orig.text
 
-
-def test_gds_sref_nested():
-    """
-    Test flatten() of nested LayoutInstances (SRefs) through example GDS file.
-    """
-    tech_layers = ordec.layout.SG13G2().layers
-    lib = ExtLibrary()
-    lib.read_gds(gds_dir / 'test_sref_nested.gds', tech_layers)
-    layout = lib['TOP'].layout.thaw()
-
-    assert layout.one(LayoutInstance).ref == lib['SUB1'].frame
-    assert lib['SUB1'].frame.one(LayoutInstance).ref == lib['SUB2'].frame
-
-    flatten(layout)
-    assert len(list(layout.all(LayoutInstance))) == 0
-
-    poly = layout.one(LayoutPoly)
-    assert poly.layer == tech_layers.Metal1
-    assert poly.vertices() == [
-        Vec2I(3000, 15000),
-        Vec2I(3000, 14000),
-        Vec2I(4000, 14000),
-        Vec2I(4000, 12000),
-        Vec2I(5000, 12000),
-        Vec2I(5000, 15000),
-    ]
-
 def test_expand_paths_lshapes():
     """
     Tests expand_paths with PathEndType.SQUARE and PathEndType.FLUSH
     for L shapes with different orientations.
     """
     
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
     for x in 1, -1:
         for y in 1, -1:        
             l_flush = Layout(ref_layers=layers)
@@ -308,7 +376,7 @@ def test_expand_paths_lshapes():
             ]
 
 def test_expand_paths_complex():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
     
     l = Layout(ref_layers=layers)
     l.path = LayoutPath(
@@ -355,7 +423,7 @@ def test_expand_paths_straight_segment():
     on two straight segments (0 degree turns).
     """
 
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
 
     l = Layout(ref_layers=layers)
     l.path = LayoutPath(
@@ -380,7 +448,7 @@ def test_expand_paths_straight_segment():
     ]
 
 def test_expand_paths_invalid():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
 
     invalid_paths = [
         [ # too few vertices in path
@@ -416,7 +484,7 @@ def test_expand_paths_invalid():
             expand_paths(l)
 
 def test_expand_rectpoly():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
 
     l = Layout(ref_layers=layers)
     l.rpoly_h = LayoutRectPoly(
@@ -461,7 +529,7 @@ def test_expand_rectpoly():
     ]
 
 def test_expand_rectpath():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
 
     l = Layout(ref_layers=layers)
     l.rpath_h = LayoutRectPath(
@@ -548,7 +616,7 @@ def test_expand_rectpath():
     ]
 
 def test_expand_rect():
-    layers = ordec.layout.SG13G2().layers
+    layers = SG13G2().layers
 
     l = Layout(ref_layers=layers)
     l.rect = LayoutRect(
@@ -567,59 +635,75 @@ def test_expand_rect():
         Vec2I(100, 700),
     ]
 
-def test_gds_aref():
-    tech_layers = ordec.layout.SG13G2().layers
-    lib = ExtLibrary()
-    lib.read_gds(gds_dir / 'test_aref.gds', tech_layers)
+def test_write_gds():
+    layers = SG13G2().layers
 
-    layout = lib['TOP'].layout
+    class Sub(Cell):
+        @generate
+        def layout(self) -> Layout:
+            l = Layout(ref_layers=layers, cell=self)
+            l % LayoutRectPoly(layer=layers.Metal2.pin, vertices=[(0, 0), (200, 200), (100, 100)])
+            return l
 
-    sub_poly_vertices = lib['SUB'].layout.one(LayoutPoly).vertices()
-    # The polys are reversed in the ARef because ainst.orientation mirrors.
-    # origin_idx_reversed is 0 at the moment, but this could change when
-    # the GDS poly vertexes are rearranged.
-    origin_idx_reversed = len(sub_poly_vertices) - 1 - sub_poly_vertices.index(Vec2I(0, 0))
+    class Sub2(Cell):
+        @generate
+        def layout(self) -> Layout:
+            l = Layout(ref_layers=layers, cell=self)
+            l % LayoutRectPoly(layer=layers.Metal2.pin, vertices=[(0, 0), (100, 100), (200, 200)])
+            return l
 
-    ainst = layout.one(LayoutInstanceArray)
-    assert ainst.pos == Vec2I(10000, 10000)
-    assert ainst.orientation == D4.MX90
-    assert ainst.ref == lib['SUB'].frame
-    assert ainst.cols == 3
-    assert ainst.rows == 2
-    assert ainst.vec_col == Vec2I(4000, 0)
-    assert ainst.vec_row == Vec2I(2000, 3000)
+    class Top(Cell):
+        @generate
+        def layout(self) -> Layout:
+            l = Layout(ref_layers=layers, cell=self)
+            l % LayoutRect(layer=layers.Metal1.pin, rect=(100, 200, 300, 400))
+            l % LayoutLabel(layer=layers.Metal1.pin, pos=(200, 300), text="My Label")
+            l % LayoutPath(
+                layer=layers.GatPoly,
+                vertices=[(0, 0), (500, 0), (500, 500), (500, 1200)],
+                width=100,
+                endtype=PathEndType.SQUARE,
+            )
+            l % LayoutInstance(pos=(-100, -100), orientation=D4.MY, ref=Sub().layout)
+            l % LayoutInstance(pos=(-400, -400), orientation=D4.R0, ref=Sub().layout)
 
-    pos_expected_orig = {
-        Vec2I(10000, 10000),
-        Vec2I(12000, 13000),
-        Vec2I(14000, 10000),
-        Vec2I(16000, 13000),
-        Vec2I(18000, 10000),
-        Vec2I(20000, 13000),
-    }
+            l % LayoutInstanceArray(
+                pos=(0, 2000),
+                orientation=D4.R0,
+                ref=Sub2().layout,
+                cols=4,
+                rows=2,
+                vec_col=(250, 0),
+                vec_row=(0, 300),
+                )
+            return l
 
-    # Test correct handling of LayoutInstanceArray by expand_instancearrays():
-    layout_expand = layout.thaw()
-    expand_instancearrays(layout_expand)
+    assert gds_str_from_layout(Top().layout) == gds_str_from_file(gds_dir / 'test_write_gds.gds')
 
-    assert len(list(layout_expand.all(LayoutInstanceArray))) == 0
-    pos_expected = pos_expected_orig.copy()
-    for inst in layout_expand.all(LayoutInstance):
-        assert inst.orientation == ainst.orientation
-        assert inst.ref == ainst.ref
-        assert inst.pos in pos_expected
-        pos_expected.remove(inst.pos)
-    assert len(pos_expected) == 0
+def test_write_gds_without_cell():
+    layers = SG13G2().layers
 
-    # Test correct handling of LayoutInstanceArray by flatten():
-    layout_flatten = layout.thaw()
-    flatten(layout_flatten)
+    l = Layout(ref_layers=layers)
+    l % LayoutRectPoly(layer=layers.Metal2.pin, vertices=[(0, 0), (200, 200), (100, 100)])
+    l = l.freeze()
 
-    assert len(list(layout_flatten.all(LayoutInstanceArray))) == 0
-    pos_expected = pos_expected_orig.copy()
-    for poly in layout_flatten.all(LayoutPoly):
-        pos0 = poly.vertices()[origin_idx_reversed]
-        assert pos0 in pos_expected
-        pos_expected.remove(pos0)
-    assert len(pos_expected) == 0
+    reference = gds_str_from_file(gds_dir / 'test_write_gds_without_cell.gds')
+    reference = re.sub(r"\'__[0-9a-f]+\'", f"'__{id(l.subgraph):x}'", reference)
+
+    assert gds_str_from_layout(l) == reference
+
+def test_write_gds_layers_mismatch():
+    layers = SG13G2().layers
+    layers_other = LayerStack(unit=R('1n')).freeze()
+
+    sub = Layout(ref_layers=layers)
+    sub = sub.freeze()
+
+    top = Layout(ref_layers=layers_other)
+    top % LayoutInstance(pos=(0, 0), ref=sub)
+    top = top.freeze()
+
+    print(layers == layers_other)
+    with pytest.raises(ValueError, match="ref_layers mismatch during write_gds"):
+        gds_str_from_layout(top)
 
