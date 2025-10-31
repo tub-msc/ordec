@@ -108,7 +108,10 @@ async function getInitData() {
         paramExample = 'blank';
     }
 
-    const response = await fetch("/api/example?name=" + paramExample); // TODO: Potential XSS?!
+    var params = new URLSearchParams();
+    params.append('name', paramExample);
+
+    const response = await fetch("/api/example?"+params);
     if (!response.ok) {
         throw new Error(`Response status: ${response.status}`);
     }

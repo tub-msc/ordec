@@ -369,9 +369,9 @@ class StaticHandler:
             return build_response(http.HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def process_request_example(self, name):
-        src = ''
-        srctype = 'Python'
-        uistate = {}
+        srctype = None
+        src = None
+        uistate = None
         from .lib import examples
         for p in importlib.resources.files(examples).iterdir():
             if p.stem == name:
@@ -380,6 +380,8 @@ class StaticHandler:
             if p.name == f'{name}.uistate.json':
                 with open(p) as f:
                     uistate = json.load(f)
+        if (src is None) or (srctype is None) or (uistate is None):
+            raise Exception(f"Requested example {name!r} not found.")
         data = json.dumps({
             'src':src,
             'srctype': srctype,
