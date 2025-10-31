@@ -57,7 +57,7 @@ First, launch the frontend (using Vite_)::
 
 :code:`npm install` is only needed at the first launch. In this setup, the Vite frontend server acts as proxy to the backend server on port 8100, which has to be run separately::
     
-    ordec-server -b
+    ordec -b
 
 This will launch a browser and open the ORDeC interface.
 
