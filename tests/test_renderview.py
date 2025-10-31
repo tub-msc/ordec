@@ -29,7 +29,7 @@ class RenderViewTestcase:
 
 def testcase(*args, marks=None, **kwargs):
     obj = RenderViewTestcase(*args, **kwargs)
-    if marks == None:
+    if marks is None:
         return obj
     else:
         return pytest.param(obj, marks=marks)

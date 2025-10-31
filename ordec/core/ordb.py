@@ -120,14 +120,14 @@ class Attr:
         self.name = None
 
     def factory(self, val):
-        if val == None:
+        if val is None:
             val = self.default
         if self.custom_factory:
             val = self.custom_factory(val)
         if isinstance(val, Node):
             raise TypeError("Nodes can only be added to LocalRef, ExternalRef or SubgraphRef attributes.")
 
-        if val == None:
+        if val is None:
             return val
             
         if not self.typecheck(val):
@@ -144,7 +144,7 @@ class ConstrainableAttr(Attr):
         super().__init__(type, **kwargs)
         self.placeholder = placeholder
     def read_hook(self, value, cursor):
-        if value == None:
+        if value is None:
             return self.placeholder(cursor, self)
         return value
 
@@ -160,7 +160,7 @@ class NodeTupleAttrDescriptor:
         return isinstance(self.attr, LocalRef)
 
     def __get__(self, obj, owner=None):
-        if obj == None: # for the class: return NodeAttrDescriptor object
+        if obj is None: # for the class: return NodeAttrDescriptor object
             return self
         else: # for instances: return value of attribute
             assert owner == self.ntype.Tuple
@@ -178,7 +178,7 @@ class NodeAttrDescriptor:
     attr: Attr
 
     def __get__(self, cursor, owner=None):
-        if cursor == None: # for the class: return Attr object
+        if cursor is None: # for the class: return Attr object
             return self.attr
         else: # for instances: return value of attribute
             assert issubclass(owner, self.ntype)
@@ -218,7 +218,7 @@ class LocalRef(Attr):
         self.indices.append(LocalRefIndex(self))
 
     def factory(self, val: 'int|Node|NoneType'):
-        if val==None:
+        if val is None:
             return val
         if isinstance(val, Node):
             val = val.nid
@@ -251,7 +251,7 @@ class SubgraphRef(Attr):
         return value.root_cursor
 
     def factory(self, val: 'FrozenSubgraph|SubgraphRoot|NoneType'):
-        if val==None:
+        if val is None:
             return val
         if isinstance(val, Node):
             val = val.subgraph
@@ -297,7 +297,7 @@ class ExternalRef(Attr):
         return self.of_subgraph(cursor).cursor_at(value)
 
     def factory(self, val: 'int|Node|NoneType'):
-        if val==None:
+        if val is None:
             return
         if isinstance(val, Node):
             val = val.nid
@@ -317,7 +317,7 @@ class Index(GenericIndex):
 
     def index_key(self, node, nid):
         val = node[node._attrdesc_by_attr[self.attr].index]
-        if val == None:
+        if val is None:
             return None
         else:
             return IndexKey(self, val)
@@ -328,7 +328,7 @@ class Index(GenericIndex):
     def index_add(self, sgu: 'SubgraphUpdater', node, nid):
         # This method must not fail on constraint violations!
         key = self.index_key(node, nid)
-        if key == None:
+        if key is None:
             return
         value = self.index_value(node, nid)
         values = sgu.index.get(key, pvector())
@@ -348,7 +348,7 @@ class Index(GenericIndex):
     def index_remove(self, sgu: 'SubgraphUpdater', node, nid):
         # This method must not fail on constraint violations!
         key = self.index_key(node, nid)
-        if key == None:
+        if key is None:
             return
         value = self.index_value(node, nid)
         values = sgu.index[key]
@@ -408,7 +408,7 @@ class LocalRefIndex(Index):
     """
     def index_key(self, node, nid):
         ref = node[node._attrdesc_by_attr[self.attr].index]
-        if ref == None:
+        if ref is None:
             return None
         else:
             return ref
@@ -418,7 +418,7 @@ class LocalRefIndex(Index):
 
     def index_add(self, sgu: 'SubgraphUpdater', node, nid):
         key = self.index_key(node, nid)
-        if key == None:
+        if key is None:
             return
         value = self.index_value(node, nid)
         values = sgu.index.get(key, pset())
@@ -427,7 +427,7 @@ class LocalRefIndex(Index):
 
     def index_remove(self, sgu: 'SubgraphUpdater', node, nid):
         key = self.index_key(node, nid)
-        if key == None:
+        if key is None:
             return
         value = self.index_value(node, nid)
         values = sgu.index[key]
@@ -441,7 +441,7 @@ class LocalRefIndex(Index):
         attrdesc = node._attrdesc_by_attr[self.attr]
         ref = node[attrdesc.index]
 
-        if  ref == None:
+        if  ref is None:
             # The optional check on which this assertion is based is in
             # LocalRef.factory.
             assert attrdesc.attr.optional
@@ -551,7 +551,7 @@ class NodeTuple(tuple):
 
     def translate_nids(self, nid_map):
         # Bypasses NodeTuple.__new__:
-        ret=super().__new__(type(self), (nid_map[self[ad.index]] if ad.is_nid() and self[ad.index]!=None else self[ad.index] for ad in self._layout))
+        ret=super().__new__(type(self), (nid_map[self[ad.index]] if ad.is_nid() and self[ad.index] is not None else self[ad.index] for ad in self._layout))
         return ret
 
     def index_add(self, sgu: 'SubgraphUpdater', nid):
@@ -619,7 +619,7 @@ class NodeMeta(type):
         for k, v in list(d.items()):
             if isinstance(v, Attr):
                 raw_attrs[k] = v
-                if v.name == None:
+                if v.name is None:
                     v.name = k
                 else:
                     assert v.name == k
@@ -728,7 +728,7 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
     @property
     def npath(self) -> 'NPath.Tuple':
         """The raw NPath.Tuple matching the selected node."""
-        if self.npath_nid == None:
+        if self.npath_nid is None:
             return None
         else:
             return self.subgraph.nodes[self.npath_nid]
@@ -741,7 +741,7 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         if not self.npath_nid:
             raise TypeError("Requested path of cursor without NPath.")
         here = [self.npath.name]
-        if self.npath.parent == None:
+        if self.npath.parent is None:
             return here
         else:
             return self.parent.full_path_list() + here
@@ -771,9 +771,9 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
 
     def __repr__(self):
         info = []
-        if self.npath_nid != None:
+        if self.npath_nid is not None:
             info.append(f"path={self.full_path_str()}")
-        if self.nid != None:
+        if self.nid is not None:
             info.append(f"nid={self.nid}")
             info.append(self.node.vals_repr())
 
@@ -782,9 +782,9 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
     @property
     def parent(self) -> 'Node':
         """Parent node of selected node in NPath hierarchy."""
-        if self.npath == None:
+        if self.npath is None:
             raise QueryException("Subgraph root has no parent.")
-        if self.npath.parent == None:
+        if self.npath.parent is None:
             return self.subgraph.root_cursor
         else:
             npath_next_nid = self.npath.parent
@@ -808,13 +808,13 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
 
     def remove(self):
         """Removes selected node from subgraph, including NPath if applicable."""
-        if self.npath_nid != None:
+        if self.npath_nid is not None:
             self.subgraph.remove_nid(self.npath_nid)
         self.remove_node()
 
     def remove_node(self):
         """Removes selected node from subgraph, *exluding* potential NPath."""
-        if self.nid != None:
+        if self.nid is not None:
             self.subgraph.remove_nid(self.nid)
 
     def replace(self, inserter: Inserter):
@@ -824,13 +824,13 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         In case the current node has an associated NPath, this NPath is updated
         to point to the newly inserted node.
         """
-        if self.npath_nid != None:
+        if self.npath_nid is not None:
             children = self.subgraph.all(NPath.idx_parent.query(self.npath_nid), wrap_cursor=False)
             if len(list(children)) > 0:
                 raise OrdbException("Cannot replace non-leaf node that has children.")
         with self.subgraph.updater() as u:
             new_nid = inserter.insert_into(u)
-        if self.npath_nid != None:
+        if self.npath_nid is not None:
             self.subgraph.update(self.npath.set(ref=new_nid), self.npath_nid)
         self.remove_node()
 
@@ -929,7 +929,7 @@ class NonLeafNode(Node, build_node=False):
     def _mkpath_addnode(self, k, ref, u: 'SubgraphUpdater'):
         """Creates NPath node below current cursor. NPath node is empty when ref=None."""
         if self.nid not in (None, 0):
-            if self.npath_nid == None:
+            if self.npath_nid is None:
                 raise OrdbException("Cannot add node at cursor without NPath.")
         NPath.Tuple(parent=self.npath_nid, name=k, ref=ref).insert_into(u)
 
@@ -1325,13 +1325,13 @@ class Subgraph(ABC):
         return single(iter(self.all(query, wrap_cursor)))
 
     def cursor_at(self, nid: int, npath_nid: NoneType|int=None, lookup_npath: bool=True):
-        if nid == None:
+        if nid is None:
             # NPath without node
-            assert npath_nid != None
+            assert npath_nid is not None
             cursor_cls = PathNode
         else:
             cursor_cls = self.nodes[nid]._cursor_type
-            if lookup_npath and npath_nid == None:
+            if lookup_npath and npath_nid is None:
                 try:
                     npath_nid = self.one(NPath.idx_path_of.query(nid), wrap_cursor=False)
                 except QueryException:
@@ -1563,7 +1563,7 @@ class NPath(Node):
     NPath.Tuple is used to build a subgraph's path hierarchy. NPath itself
     (rather than NPath.Tuple) is never instantiated. Instead, reference an
     empty path (NPath with ref = None) use :class:`PathNode`. Non-empty
-    paths (NPath.Tuple X with X.ref != None) are referenced through the Node
+    paths (NPath.Tuple X with X.ref is not None) are referenced through the Node
     class correponding to X.ref.
     """
     @staticmethod

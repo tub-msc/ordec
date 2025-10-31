@@ -88,12 +88,12 @@ def path_to_poly_vertices(path: LayoutPath) -> list[Vec2I]:
     outline = []
     for pred, cur, succ in iter_triplets(path.vertices()):
         extension = Vec2I(0, 0)
-        if pred == None:
+        if pred is None:
             # cur is first vertex of path
             direction = rectilinear_direction(succ - cur)
             if path.endtype == PathEndType.SQUARE:
                 extension = -halfwidth*direction
-        elif succ == None:
+        elif succ is None:
             # cur is last vertex of path
             direction = rectilinear_direction(cur - pred)
             if path.endtype == PathEndType.SQUARE:

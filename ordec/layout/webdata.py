@@ -34,7 +34,7 @@ def webdata(layout: Layout.Frozen):
     extent = None
     def extent_add_vertex(vertex: Vec2I):
         nonlocal extent
-        if extent == None:
+        if extent is None:
             extent = Rect4I(vertex.x, vertex.y, vertex.x, vertex.y)
         else:
             extent = extent.extend(vertex)
@@ -64,7 +64,7 @@ def webdata(layout: Layout.Frozen):
             'text': label.text,
         })
 
-    if extent == None:
+    if extent is None:
         extent = Rect4I(0, 0, 0, 0)
 
     weblayers_list.sort(key=lambda l: l['nid'])

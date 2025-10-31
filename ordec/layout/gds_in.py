@@ -17,9 +17,9 @@ class GdsReaderException(Exception):
     pass
 
 def gds_to_d4(angle: float|None, strans: int|None) -> D4:
-    if strans == None:
+    if strans is None:
         strans = 0
-    if angle == None:
+    if angle is None:
         angle = 0
     try:
         orientation = {

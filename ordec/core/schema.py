@@ -138,7 +138,7 @@ class GenericPoly(Node):
 
     def __new__(cls, vertices:list[Vec2R]=None, **kwargs):
         main = super().__new__(cls, **kwargs)
-        if vertices == None:
+        if vertices is None:
             return main
         else:
             def inserter_func(sgu):
@@ -267,7 +267,7 @@ class SchemInstance(Node):
 
     def __new__(cls, connect=None, **kwargs):
         main = super().__new__(cls, **kwargs)
-        if connect == None:
+        if connect is None:
             return main
         else:
             return FuncInserter(partial(connect, main))

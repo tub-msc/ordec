@@ -103,7 +103,7 @@ class ServerKey:
         return f"local={quote_plus(moduleview)}&hmac={digest.hex()}"
 
 def discover_views(conn_globals, recursive=True, modules_visited=None):
-    if modules_visited == None:
+    if modules_visited is None:
         modules_visited = set()
     views = []
     for k, v in conn_globals.items():
@@ -300,7 +300,7 @@ def background_inotify(watch_files, pipe_inotify_abort_r, websocket):
 
 
 def build_response(status: http.HTTPStatus=http.HTTPStatus.OK, mime_type: str='text/plain', data: bytes=None):
-    if data == None:
+    if data is None:
         data = status.name.encode("ascii")
     return Response(
         int(status),

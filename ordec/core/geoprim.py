@@ -210,9 +210,9 @@ class TD4(tuple):
     __slots__ = ()
 
     def __new__(cls, transl=None, d4=None):
-        if transl == None:
+        if transl is None:
             transl=cls.vec_cls(0,0)
-        if d4 == None:
+        if d4 is None:
             d4 = D4.R0
         return tuple.__new__(cls, (transl, d4))
 

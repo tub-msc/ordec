@@ -63,7 +63,7 @@ class Var:
         self.value = None
 
     def __repr__(self):
-        if self.value == None:
+        if self.value is None:
             return f"v{self.idx}"
         else:
             return f"v{self.idx} = {self.value}"

@@ -97,7 +97,7 @@ class Renderer:
              g_matrix *= D4.R90
 
         # Furthermore, g_matrix adds some space (padding):
-        if space == None:
+        if space is None:
             space = self.pin_text_space
         g_matrix *= Vec2R(
             x = {HAlign.Left: +1, HAlign.Right: -1}[halign]*space,
