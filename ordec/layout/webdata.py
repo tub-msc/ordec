@@ -1,17 +1,24 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ..core import *
 from public import public
+from ..core import *
+from .helpers import expand_geom, flatten
 
 @public
 def webdata(layout: Layout.Frozen):
     """
-    For given layout, generate and return JSON-serializable data
-    for ORDeC's web viewer (layer-gl.js).
+    For a given layout, generate and return JSON-serializable data
+    for ORDeC's web viewer (layout-gl.js).
     """
     weblayers_list = []
     weblayers_dict = {}
+
+    # Preprocessing, to boil down everything to LayoutPolys and LayoutLabels:
+    layout = layout.mutable_copy()
+    flatten(layout)
+    expand_geom(layout)
+    layout = layout.freeze()
 
     def get_weblayer(layer):
         try:

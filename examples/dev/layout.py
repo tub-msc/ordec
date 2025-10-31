@@ -32,7 +32,7 @@ def layout_ota() -> Layout:
 
 @generate_func
 def layout_expand_geom() -> Layout:
-    layers = ordec.layout.SG13G2().layers
+    layers = ihp130.SG13G2().layers
     
     l = Layout(ref_layers=layers)
     for x in (1, -1):
@@ -102,51 +102,34 @@ def layout_expand_geom() -> Layout:
         start_direction=RectDirection.HORIZONTAL,
     )
 
-    expand_geom(l)
-
     return l
 
 @generate_func
 def test_gds_sref() -> Layout:
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = ihp130.SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds('tests/layout_gds/test_sref_d4.gds', tech_layers)
-    l = lib['TOP'].layout.thaw()
-    flatten(l)
-    return l
+    return lib['TOP'].layout
 
 @generate_func
 def test_gds_aref() -> Layout:
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = ihp130.SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds('tests/layout_gds/test_aref.gds', tech_layers)
-    l = lib['TOP'].layout.thaw()
-    expand_instancearrays(l)
-    flatten(l)
-    #print(l.tables())
-    return l
-
+    return lib['TOP'].layout
 
 @generate_func
-def test_constraints() -> Layout:
-    l=ihp130.Nmos(l="300n", w="200000n", ng=20).layout.thaw()
-
-    expand_geom(l)
-
-    return l
-
+def test_ihp130_nmos() -> Layout:
+    return ihp130.Nmos(l="300n", w="200000n", ng=20).layout.thaw()
 
 @generate_func
 def test_makevias() -> Layout:
     layers = ihp130.SG13G2().layers
     
     l = Layout(ref_layers=layers)
-
     a = l % LayoutRect(layer=layers.Metal1, rect=Rect4I(0, 0, 205, 800))
     b = l % LayoutRect(layer=layers.Metal2, rect=Rect4I(0, 0, 500, 800))
 
     makevias(l, a.rect, layers.Via1, Vec2I(80, 80), Vec2I(50, 50), Vec2I(0,0))
-
-    expand_geom(l)
 
     return l
