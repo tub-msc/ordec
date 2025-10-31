@@ -19,4 +19,7 @@ __all__ = [
     'flatten',
     'expand_instancearrays',
     'write_gds',
+    'gds_str',
+    'gds_str_from_file',
+    'gds_str_from_layout',
 ]

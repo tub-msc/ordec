@@ -1,13 +1,14 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import io
+from typing import IO
+from public import public
 from gdsii.library import Library
 from gdsii.structure import Structure
 from gdsii.record import Record
 import gdsii.elements as elements
 from gdsii import types, tags
-from public import public
-from typing import IO
 
 from ..core import *
 from .helpers import expand_rectpolys, expand_rectpaths, expand_rects
@@ -30,8 +31,11 @@ def d4_to_gds(d4: D4) -> tuple[float,int]:
         D4.MY90: (270.0, (1<<15)),
     }[d4]
 
-def layout_to_struc(layout: Layout):
+def layout_to_struc(layout: Layout, layers: LayerStack):
     struc = Structure(name=name_of_layout(layout))
+
+    if layout.ref_layers != layers:
+        raise ValueError(f"ref_layers mismatch during write_gds: {layout.ref_layers!r} != {layers!r}")
 
     layout = layout.mutable_copy()
     # Expand objects that are not supported by GDSII:
@@ -96,7 +100,7 @@ def layout_to_struc(layout: Layout):
 
 @public
 def write_gds(layout: Layout, file: IO[bytes]):
-    """Write layout to GDS file."""
+    """Write layout 'layout' as GDS binary data to file-like object 'file'."""
 
     layers = layout.ref_layers
 
@@ -111,7 +115,7 @@ def write_gds(layout: Layout, file: IO[bytes]):
     layouts_have = set()
     layout_next = layout
     while True:
-        struc, want = layout_to_struc(layout_next)
+        struc, want = layout_to_struc(layout_next, layers)
         lib.append(struc)    
         layouts_have.add(layout_next)
         layouts_want |= want
@@ -124,7 +128,8 @@ def write_gds(layout: Layout, file: IO[bytes]):
     lib.save(file)
 
 @public
-def gds_to_str(file: IO[bytes]):
+def gds_str(file: IO[bytes]) -> str:
+    """Reads GDS data from file-like object 'file' and returns text representation."""
     lines = []
     level = 0
     indent = '  '
@@ -147,3 +152,17 @@ def gds_to_str(file: IO[bytes]):
         if r.tag in (tags.BGNLIB, tags.BGNSTR, tags.BGNEXTN, tags.PATH, tags.BOX, tags.SREF, tags.AREF, tags.TEXT, tags.BOUNDARY, tags.NODE):
             level += 1
     return '\n'.join(lines)
+
+@public
+def gds_str_from_file(fn: str) -> str:
+    """Opens given GDS filename and returns text representation."""
+    with open(fn, 'rb') as f:
+        return gds_str(f)
+
+@public
+def gds_str_from_layout(layout: Layout) -> str:
+    """Converts given layout into GDS data (using write_gds) and returns text representation."""
+    gds_out = io.BytesIO()
+    write_gds(layout, gds_out)
+    gds_out.seek(0)
+    return gds_str(gds_out)

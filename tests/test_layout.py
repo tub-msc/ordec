@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-import io
+import re
 from pathlib import Path
 import importlib.resources
 import pytest
@@ -624,21 +624,8 @@ def test_gds_aref():
         pos_expected.remove(pos0)
     assert len(pos_expected) == 0
 
-def assert_equal_write_gds(layout, reference_fn):
-    from ordec.layout.gds_out import gds_to_str
-    with open(reference_fn, 'rb') as f:
-        reference_str = gds_to_str(f)
-
-    gds_out = io.BytesIO()
-    write_gds(layout, gds_out)
-    gds_out.seek(0)
-    result_str = gds_to_str(gds_out)
-
-    assert result_str == reference_str
-
 def test_write_gds():
     layers = SG13G2().layers
-    l = Layout(ref_layers=layers)
 
     class Sub(Cell):
         @generate
@@ -680,4 +667,32 @@ def test_write_gds():
                 )
             return l
 
-    assert_equal_write_gds(Top().layout, gds_dir / 'test_write_gds.gds')
+    assert gds_str_from_layout(Top().layout) == gds_str_from_file(gds_dir / 'test_write_gds.gds')
+
+def test_write_gds_without_cell():
+    layers = SG13G2().layers
+
+    l = Layout(ref_layers=layers)
+    l % LayoutRectPoly(layer=layers.Metal2.pin, vertices=[(0, 0), (200, 200), (100, 100)])
+    l = l.freeze()
+
+    reference = gds_str_from_file(gds_dir / 'test_write_gds_without_cell.gds')
+    reference = re.sub(r"\'__[0-9a-f]+\'", f"'__{id(l.subgraph):x}'", reference)
+
+    assert gds_str_from_layout(l) == reference
+
+def test_write_gds_layers_mismatch():
+    layers = SG13G2().layers
+    layers_other = LayerStack(unit=R('1n')).freeze()
+
+    sub = Layout(ref_layers=layers)
+    sub = sub.freeze()
+
+    top = Layout(ref_layers=layers_other)
+    top % LayoutInstance(pos=(0, 0), ref=sub)
+    top = top.freeze()
+
+    print(layers == layers_other)
+    with pytest.raises(ValueError, match="ref_layers mismatch during write_gds"):
+        gds_str_from_layout(top)
+
