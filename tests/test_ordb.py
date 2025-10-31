@@ -742,7 +742,7 @@ def test_index_custom_sort():
 def test_subgraph_ntype():
     s = MyHead()
     assert isinstance(s, MyHead)
-    assert isinstance(s.node, MyHead.Tuple)
+    assert isinstance(s.tuple, MyHead.Tuple)
 
 def test_all_ntype():
     class NodeA(Node):
@@ -962,7 +962,7 @@ def test_set_byattr():
     h = MyHead()
     h.a = NodeA(text1="Hello", text2="world")
 
-    #print(h.a.node.set_byattr(NodeA.text2, 'you!'))
+    #print(h.a.tuple.set_byattr(NodeA.text2, 'you!'))
     h.a.update_byattr(NodeA.text2, 'you!')
 
     assert h.a.text1 == "Hello"

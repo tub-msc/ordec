@@ -182,11 +182,11 @@ class NodeAttrDescriptor:
             return self.attr
         else: # for instances: return value of attribute
             assert issubclass(owner, self.ntype)
-            #return cursor.node[self.index]
-            return self.attr.read_hook(cursor.node[self.index], cursor)
+            #return cursor.tuple[self.index]
+            return self.attr.read_hook(cursor.tuple[self.index], cursor)
 
     def __set__(self, cursor, value):
-        cursor.subgraph.update(cursor.node.set_index(self.index, value), cursor.nid)
+        cursor.subgraph.update(cursor.tuple.set_index(self.index, value), cursor.nid)
 
     def __delete__(self, cursor):
         raise TypeError("Attributes cannot be deleted.")
@@ -716,7 +716,7 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         return super().__getitem__(1)
 
     @property
-    def node(self) -> NodeTuple:
+    def tuple(self) -> NodeTuple:
         """The node's raw NodeTuple stored in subgraph."""
         return self.subgraph.nodes[self.nid]
 
@@ -775,7 +775,7 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
             info.append(f"path={self.full_path_str()}")
         if self.nid is not None:
             info.append(f"nid={self.nid}")
-            info.append(self.node.vals_repr())
+            info.append(self.tuple.vals_repr())
 
         return f"{type(self).__name__}({', '.join(info)})"
 
@@ -797,14 +797,14 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         selected node to the provided value.
         """
 
-        self.subgraph.update(self.node.set(**kwargs), self.nid)
+        self.subgraph.update(self.tuple.set(**kwargs), self.nid)
 
     def update_byattr(self, attr: Attr, value):
         """
         Update single attribute to specified value.
         """
 
-        self.subgraph.update(self.node.set_byattr(attr, value), self.nid)
+        self.subgraph.update(self.tuple.set_byattr(attr, value), self.nid)
 
     def remove(self):
         """Removes selected node from subgraph, including NPath if applicable."""
