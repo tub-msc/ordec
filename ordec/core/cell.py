@@ -3,6 +3,7 @@
 
 from typing import Self
 from functools import partial
+import re
 from pyrsistent import freeze, PMap
 from public import public
 from .ordb import MutableNode
@@ -330,6 +331,14 @@ class Cell(metaclass=MetaCell):
 
     def __repr__(self):
         return f"{type(self).__name__}({','.join(self.params_list(use_repr=True))})"
+
+    def escaped_name(self):
+        params = self.params_list()
+        if len(params) > 0:
+            basename = f"{type(self).__name__}_{'_'.join(params)}"
+        else:
+            basename = type(self).__name__
+        return re.sub(r"[^a-zA-Z0-9]", "_", basename)
 
     @classmethod
     def discoverable_instances(cls) -> list[Self]:

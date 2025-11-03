@@ -1,9 +1,15 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import os
+from pathlib import Path
+import tempfile
+
 from public import public
 from ..core import *
 from .makevias import makevias
+from .gds_out import write_gds
+from . import klayout
 
 @public
 class SG13G2(Cell):
@@ -137,7 +143,7 @@ class Nmos(Cell):
     def layout(self) -> Layout:
         # See also: ihp-sg13g2/libs.tech/klayout/python/sg13g2_pycell_lib/ihp/nmos_code.py
         layers = SG13G2().layers
-        l = Layout(ref_layers=layers)
+        l = Layout(ref_layers=layers, cell=self)
         s = Solver(l)
 
         L = int(self.l/R("1n"))
@@ -194,9 +200,33 @@ class Nmos(Cell):
         for i in range(self.ng + 1):
             makevias(l, l.sd[i].rect, layers.Cont, 
                 size=Vec2I(160, 160),
-                spacing=Vec2I(160, 160),
+                spacing=Vec2I(180, 180),
                 margin=Vec2I(50, 50),
                 cols=1,
                 )
             
         return l
+
+
+
+@public
+def run_drc(l: Layout, variant='maximal'):
+    if variant not in ('minimal', 'maximal'):
+        raise ValueError("variant must be either 'minimal' or 'maximal'.")
+    ihp130_root = Path(os.environ['ORDEC_PDK_IHP_SG13G2'])
+    script = ihp130_root / "libs.tech/klayout/tech/drc/sg13g2_minimal.lydrc"
+
+    with tempfile.TemporaryDirectory() as cwd_str:
+        cwd = Path(cwd_str)
+        with open(cwd / "layout.gds", "wb") as f:
+            name_of_layout = write_gds(l, f)
+
+        klayout.run(script, cwd,
+            in_gds="layout.gds",
+            report_file="drc.xml",
+            log_file="drc.log",
+            cell=name_of_layout[l],
+            )
+
+        log = (cwd / "drc.log").read_text() # currently ignored
+        return klayout.parse_rdb(cwd / "drc.xml", name_of_layout)

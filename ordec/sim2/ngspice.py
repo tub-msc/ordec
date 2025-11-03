@@ -80,10 +80,10 @@ def parse_raw(fn):
 
 def basename_escape(obj):
     if isinstance(obj, Cell):
-        basename = f"{type(obj).__name__}_{'_'.join(obj.params_list())}"
+        return obj.escaped_name().lower()
     else:
         basename = "_".join(obj.full_path_list())
-    return re.sub(r"[^a-zA-Z0-9]", "_", basename).lower()
+        return re.sub(r"[^a-zA-Z0-9]", "_", basename).lower()
 
 
 class Netlister:
