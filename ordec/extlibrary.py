@@ -1,18 +1,23 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from .layout.read_gds import gds_discover
+from .layout.gds_in import gds_discover
 from .core import *
+from public import public
 
+@public
 class ExtLibraryError(Exception):
     pass
 
+@public
 class ExtLibrary:
+    """TODO: Document me"""
     def __init__(self):
         self.layout_funcs = {}
         self.frame_funcs = {}
 
     def read_gds(self, gds_fn: str, layers: LayerStack):
+        """TODO: Document me"""
         layout_funcs_add, frame_funcs_add = gds_discover(gds_fn, layers, self)
         for name in layout_funcs_add.keys():
             if name in self.layout_funcs:

@@ -1,11 +1,24 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+from public import public
 from ..core import *
+from .helpers import expand_geom, flatten
 
-def layout_webdata(layout: Layout.Frozen):
+@public
+def webdata(layout: Layout.Frozen):
+    """
+    For a given layout, generate and return JSON-serializable data
+    for ORDeC's web viewer (layout-gl.js).
+    """
     weblayers_list = []
     weblayers_dict = {}
+
+    # Preprocessing, to boil down everything to LayoutPolys and LayoutLabels:
+    layout = layout.mutable_copy()
+    flatten(layout)
+    expand_geom(layout)
+    layout = layout.freeze()
 
     def get_weblayer(layer):
         try:
@@ -28,7 +41,7 @@ def layout_webdata(layout: Layout.Frozen):
     extent = None
     def extent_add_vertex(vertex: Vec2I):
         nonlocal extent
-        if extent == None:
+        if extent is None:
             extent = Rect4I(vertex.x, vertex.y, vertex.x, vertex.y)
         else:
             extent = extent.extend(vertex)
@@ -58,7 +71,7 @@ def layout_webdata(layout: Layout.Frozen):
             'text': label.text,
         })
 
-    if extent == None:
+    if extent is None:
         extent = Rect4I(0, 0, 0, 0)
 
     weblayers_list.sort(key=lambda l: l['nid'])

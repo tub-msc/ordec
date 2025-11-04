@@ -105,7 +105,7 @@ class ConnectivityGraph:
         self.edges[p2].append(p1)
 
     def reachable_from(self, cur, visited=None):
-        if visited == None:
+        if visited is None:
             visited=set()
         if cur in visited:
             return
@@ -175,7 +175,7 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
         add_terminal(port)
     for inst in node.all(SchemInstance):
         pins_expected = set(inst.symbol.all(Pin, wrap_cursor=False))
-        pins_found = {c.there.nid for c in inst.conns}
+        pins_found = {c.there.nid for c in inst.conns()}
         pins_missing = pins_expected - pins_found
         pins_stray = pins_found - pins_expected
         if len(pins_missing) > 0:
@@ -236,4 +236,49 @@ def add_conn_points(s: Schematic):
             
         for pos in pos_multi:
             net % SchemConnPoint(pos=pos)
+
+def recursive_getitem(obj, tup):
+    if len(tup) == 0:
+        return obj
+    else:
+        return recursive_getitem(obj[tup[0]], tup[1:])
+
+def resolve_instances(schematic: Schematic):
+    """
+    Resolves all SchemInstanceUnresolved objects, replacing them by
+    SchemInstance objects. Corresponding SchemInstanceUnresolvedParameter
+    objects are used in the process and removed afterwards.
+    Corresponding SchemInstanceUnresolvedConn objects are replaced by
+    SchemInstanceConn objects.
+    
+    The node ids (nids) of SchemInstanceUnresolved and
+    SchemInstanceUnresolvedConn objects are preserved.
+    """
+    for ui in schematic.all(SchemInstanceUnresolved):
+        with schematic.subgraph.updater() as sgu:
+            param_dict = {}
+            for param in schematic.all(SchemInstanceUnresolvedParameter.ref_idx.query(ui.nid)):
+                param_dict[param.name] = param.value
+                sgu.remove_nid(param.nid)
+
+            symbol = ui.resolver(**param_dict)
+
+            new_scheminstance_tuple = SchemInstance(
+                pos=ui.pos,
+                orientation=ui.orientation,
+                symbol=symbol,
+                )
+
+            sgu.remove_nid(ui.nid)
+
+            for uc in schematic.all(SchemInstanceUnresolvedConn.ref_idx.query(ui.nid)):
+                pin = recursive_getitem(symbol, uc.there)
+                if not isinstance(pin, Pin):
+                    raise SchematicError("Unresolved attribute {uc.there!r} did not resolve to Pin.")
+                new_conn_tuple = SchemInstanceConn(ref=uc.ref, here=uc.here, there=pin)
+
+                sgu.remove_nid(uc.nid)
+                sgu.add_single(new_conn_tuple, uc.nid, check_nid=False)
+
+            sgu.add_single(new_scheminstance_tuple, ui.nid, check_nid=False)
 

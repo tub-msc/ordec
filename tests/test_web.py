@@ -126,7 +126,7 @@ def web():
 
     key = server.ServerKey()
     # Using a port other than 8100 makes it possible to run the tests
-    # while having another independent ordec-server running.
+    # while having another independent ordec server running.
     port = 8102
     web_dist_path = (Path(__file__).parent.parent/'web'/'dist').resolve()
     tar = server.anonymous_tar(web_dist_path)

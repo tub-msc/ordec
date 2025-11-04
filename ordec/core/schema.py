@@ -12,6 +12,7 @@ from .rational import R
 from .geoprim import *
 from .ordb import *
 from .cell import Cell
+from .constraints import MissingRect4, MissingVec2
 
 @public
 class PinType(Enum):
@@ -137,7 +138,7 @@ class GenericPoly(Node):
 
     def __new__(cls, vertices:list[Vec2R]=None, **kwargs):
         main = super().__new__(cls, **kwargs)
-        if vertices == None:
+        if vertices is None:
             return main
         else:
             def inserter_func(sgu):
@@ -266,7 +267,7 @@ class SchemInstance(Node):
 
     def __new__(cls, connect=None, **kwargs):
         main = super().__new__(cls, **kwargs)
-        if connect == None:
+        if connect is None:
             return main
         else:
             return FuncInserter(partial(connect, main))
@@ -274,13 +275,12 @@ class SchemInstance(Node):
     def loc_transform(self):
         return self.pos.transl() * self.orientation
 
-    @property
     def conns(self):
         return self.subgraph.all(SchemInstanceConn.ref_idx.query(self.nid))
 
 @public
 class SchemInstanceConn(Node):
-    """Maps Pins of a SchemInstance to Nets of its Schematic."""
+    """Maps one Pin of a SchemInstance to a Net of its Schematic."""
     in_subgraphs = [Schematic]
 
     ref = LocalRef(SchemInstance, optional=False)
@@ -290,6 +290,41 @@ class SchemInstanceConn(Node):
     there = ExternalRef(Pin, of_subgraph=lambda c: c.ref.symbol, optional=False) # ExternalRef to Pin in SchemInstance.symbol
 
     ref_pin_idx = CombinedIndex([ref, there], unique=True)
+
+@public
+class SchemInstanceUnresolved(Node):
+    """A instance of a Symbol that is not determined yet."""
+    in_subgraphs = [Schematic]
+
+    pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    orientation = Attr(D4, default=D4.R0)
+
+    resolver = Attr(object) # closure?
+
+    def loc_transform(self):
+        return self.pos.transl() * self.orientation
+
+
+@public
+class SchemInstanceUnresolvedConn(Node):
+    """Unresolved SchemInstanceConn."""
+    in_subgraphs = [Schematic]
+
+    ref = LocalRef(SchemInstanceUnresolved, optional=False)
+    ref_idx = Index(ref)
+
+    here = LocalRef(Net, optional=False)
+    there = Attr(tuple, optional=False) #: Tuple of str or int = requested path in future symbol
+
+@public
+class SchemInstanceUnresolvedParameter(Node):
+    in_subgraphs = [Schematic]
+
+    ref = LocalRef(SchemInstanceUnresolved, optional=False)
+    ref_idx = Index(ref)
+
+    name = Attr(str, optional=False)
+    value = Attr(object, optional=False) #: TODO - should be immutable.
 
 @public
 class SchemTapPoint(Node):
@@ -443,8 +478,8 @@ class Layout(SubgraphRoot):
     ref_layers = SubgraphRef(LayerStack, optional=False)
 
     def webdata(self):
-        from ..layout import layout_webdata
-        return layout_webdata(self)
+        from ..layout import webdata
+        return webdata(self)
         #from ..render import render
         #return render(self).webdata()
 
@@ -453,7 +488,7 @@ class LayoutLabel(Node):
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
-    pos = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+    pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2), placeholder=MissingVec2)
     text = Attr(str)
 
 @public
@@ -477,7 +512,7 @@ class LayoutPath(GenericPolyI, MixinPolygonalChain):
     """
     in_subgraphs = [Layout]
 
-    endtype = Attr(PathEndType, default=PathEndType.FLUSH)
+    endtype = Attr(PathEndType, default=PathEndType.FLUSH, optional=False)
     width = Attr(int)
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 
@@ -526,7 +561,7 @@ class LayoutRect(Node):
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
-    rect = Attr(Rect4I, factory=coerce_tuple(Rect4I, 4))
+    rect = ConstrainableAttr(Rect4I, placeholder=MissingRect4, factory=coerce_tuple(Rect4I, 4))
 
 @public
 class LayoutInstance(Node):

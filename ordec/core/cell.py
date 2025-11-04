@@ -3,6 +3,7 @@
 
 from typing import Self
 from functools import partial
+import re
 from pyrsistent import freeze, PMap
 from public import public
 from .ordb import MutableNode
@@ -59,7 +60,7 @@ class generate(ViewGenerator):
     ``@generate`` returns a Python Descriptor.
     """
     def __get__(self, obj, owner=None):
-        if obj == None: # for the class: return self
+        if obj is None: # for the class: return self
             return self
         else: # for instances: create view if not present yet, return view
             if self not in obj.cached_subgraphs:
@@ -138,7 +139,7 @@ class Parameter:
         self.__doc__ = None
 
     def __get__(self, obj, owner=None):
-        if obj == None: # for the class: return self
+        if obj is None: # for the class: return self
             return self
         else: # for instances: return parameter value
             return obj.params[self.name]
@@ -159,7 +160,7 @@ class Parameter:
             return value
 
     def check(self, value):
-        if value == None:
+        if value is None:
             if self.optional:
                 return
             else:
@@ -321,7 +322,7 @@ class Cell(metaclass=MetaCell):
         pass
 
     def params_list(self, use_repr=False) -> list[str]:
-        param_items = [(k, getattr(self, k)) for k in self._class_params if getattr(self, k) != None]
+        param_items = [(k, getattr(self, k)) for k in self._class_params if getattr(self, k) is not None]
         if use_repr:
             # Abbreviate x=R('1k') to x='1k', which is fine due to the coercion str -> R in Parameter.coerce_type
             return [f"{k}={str(v)!r}" if isinstance(v, R) else f"{k}={v!r}" for k, v in param_items]
@@ -330,6 +331,14 @@ class Cell(metaclass=MetaCell):
 
     def __repr__(self):
         return f"{type(self).__name__}({','.join(self.params_list(use_repr=True))})"
+
+    def escaped_name(self):
+        params = self.params_list()
+        if len(params) > 0:
+            basename = f"{type(self).__name__}_{'_'.join(params)}"
+        else:
+            basename = type(self).__name__
+        return re.sub(r"[^a-zA-Z0-9]", "_", basename)
 
     @classmethod
     def discoverable_instances(cls) -> list[Self]:

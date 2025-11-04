@@ -689,7 +689,7 @@ def test_cursor_at_npath():
     # cursor_at for a node without NPath returns a cursor without npath_nid.
     c_node_without_npath = s.subgraph.cursor_at(node_without_npath.nid)
     assert c_node_without_npath.nid == node_without_npath.nid
-    assert c_node_without_npath.npath_nid == None
+    assert c_node_without_npath.npath_nid is None
 
     # cursor_at for a node with NPath returns a cursor where npath_nid was looked up:
     c_node_with_npath = s.cursor_at(s.node_with_npath.nid)
@@ -699,7 +699,7 @@ def test_cursor_at_npath():
     # ...unless lookup_npath is set to False.
     c_node_with_npath = s.cursor_at(s.node_with_npath.nid, lookup_npath=False)
     assert c_node_with_npath.nid == s.node_with_npath.nid
-    assert c_node_with_npath.npath_nid == None
+    assert c_node_with_npath.npath_nid is None
 
 def test_index_sort_nid():
     class MyItem(Node):
@@ -742,7 +742,7 @@ def test_index_custom_sort():
 def test_subgraph_ntype():
     s = MyHead()
     assert isinstance(s, MyHead)
-    assert isinstance(s.node, MyHead.Tuple)
+    assert isinstance(s.tuple, MyHead.Tuple)
 
 def test_all_ntype():
     class NodeA(Node):
@@ -947,3 +947,29 @@ def test_subgraphref_mandatory():
 
     with pytest.raises(ModelViolation, match="'subg' is not optional"):
         h % NodeExtRef(subg=None)
+
+def test_set_byattr():
+    class NodeA(NonLeafNode):
+        in_subgraphs=[MyHead]
+        text1 = Attr(str)
+        text2 = Attr(str)
+
+    class UnrelatedNode(NonLeafNode):
+        in_subgraphs=[MyHead]
+        text1 = Attr(str)
+        text2 = Attr(str)
+
+    h = MyHead()
+    h.a = NodeA(text1="Hello", text2="world")
+
+    #print(h.a.tuple.set_byattr(NodeA.text2, 'you!'))
+    h.a.update_byattr(NodeA.text2, 'you!')
+
+    assert h.a.text1 == "Hello"
+    assert h.a.text2 == "you!"
+
+    # TODO
+    with pytest.raises(OrdbException):
+        h.a.update_byattr(UnrelatedNode, 'test')
+
+

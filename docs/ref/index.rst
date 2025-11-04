@@ -10,6 +10,8 @@ User Reference
    schema
    geoprim
    rational
+   extlibrary
+   layout
 
 .. _data-schema:
 

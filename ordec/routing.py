@@ -800,7 +800,7 @@ def schematic_routing(node, outline=None, routing=None):
     for instance in node.all(SchemInstance):
         instance_name = instance.full_path_str()
         # Connections of Cells and ports
-        for conn in instance.conns:
+        for conn in instance.conns():
             inner_connection = conn.there
             connected_to = conn.here
             # pin arrays have pin connections with names as ints

@@ -9,7 +9,7 @@
 # Stage 1: Download stuff
 # =======================
 
-FROM debian:bookworm AS ordec-fetch
+FROM debian:trixie AS ordec-fetch
 
 RUN useradd -ms /bin/bash app && \
     apt-get update && \
@@ -19,11 +19,11 @@ RUN useradd -ms /bin/bash app && \
 USER app
 
 WORKDIR /home/app
-RUN wget -q https://netcologne.dl.sourceforge.net/project/ngspice/ng-spice-rework/44.2/ngspice-44.2.tar.gz && \
-    echo "e7dadfb7bd5474fd22409c1e5a67acdec19f77e597df68e17c5549bc1390d7fd ngspice-44.2.tar.gz" | sha256sum -c && \
-    tar xf ngspice-44.2.tar.gz && \
-    rm ngspice-44.2.tar.gz && \
-    mv ngspice-44.2 ngspice-src
+RUN wget -q https://netcologne.dl.sourceforge.net/project/ngspice/ng-spice-rework/45.2/ngspice-45.2.tar.gz && \
+    echo "ba8345f4c3774714c10f33d7da850d361cec7d14b3a295d0dc9fd96f7423812d ngspice-45.2.tar.gz" | sha256sum -c && \
+    tar xf ngspice-45.2.tar.gz && \
+    rm ngspice-45.2.tar.gz && \
+    mv ngspice-45.2 ngspice-src
 
 WORKDIR /home/app/openvaf
 RUN wget -q https://openva.fra1.cdn.digitaloceanspaces.com/openvaf_23_5_0_linux_amd64.tar.gz && \
@@ -38,6 +38,7 @@ RUN git init && \
     git remote add origin https://github.com/IHP-GmbH/IHP-Open-PDK.git && \
     git fetch --depth 1 origin 0854e9bcd558b68c573149038b4c95706314e2f1 && \
     git checkout FETCH_HEAD && \
+    git submodule update --init --recursive && \
     rm -r ihp-sg13g2/libs.doc ihp-sg13g2/libs.tech/openems .git
 
 # Note: Some stuff (like libs.tech/xschem) are deleted to save space.
@@ -55,7 +56,7 @@ RUN wget -q "https://github.com/efabless/volare/releases/download/sky130-fa87f8f
 # Stage 2: Build Ngspice
 # ======================
 
-FROM debian:bookworm AS ordec-cbuild
+FROM debian:trixie AS ordec-cbuild
 
 # Set ngspice_multibuild to "on" to enable triple ngspice build (for future testing).
 ARG ngspice_multibuild="off"
@@ -85,18 +86,21 @@ ARG ngspice_common_args="--disable-debug --without-x --enable-xspice --disable-c
 WORKDIR /home/app/ngspice-src
 
 RUN ./configure --prefix=/home/app/ngspice/min ${ngspice_common_args} --with-readline=no --with-editline=no && \
+    ./autogen.sh && \
     make clean && \
     make -j`nproc --ignore=1` && \
     make install
 
 # ngspice shared library:
 RUN ./configure --prefix=/home/app/ngspice/shared ${ngspice_common_args} --with-ngshared --with-readline=no --with-editline=no && \
+    ./autogen.sh && \
     make clean && \
     make -j`nproc --ignore=1` && \
     make install
 
 RUN if [ ${ngspice_multibuild} != off ]; then \
     ./configure --prefix=/home/app/ngspice/readline ${ngspice_common_args} --with-readline=yes --with-editline=no && \
+    ./autogen.sh && \
     make clean && \
     make -j`nproc --ignore=1` && \
     make install; \
@@ -104,6 +108,7 @@ RUN if [ ${ngspice_multibuild} != off ]; then \
 
 RUN if [ ${ngspice_multibuild} != off ]; then \
     ./configure --prefix=/home/app/ngspice/editline ${ngspice_common_args} --with-readline=no --with-editline=yes && \
+    ./autogen.sh && \
     make clean && \
     make -j`nproc --ignore=1` && \
     make install; \
@@ -112,7 +117,7 @@ RUN if [ ${ngspice_multibuild} != off ]; then \
 # Stage 3: ORDeC base image
 # =========================
 
-FROM debian:bookworm AS ordec-base
+FROM debian:trixie AS ordec-base
 
 # - libgomp1: needed for Ngspice
 # - binutils: needed for OpenVAF
@@ -126,6 +131,7 @@ RUN useradd -ms /bin/bash app && \
         npm \
         git \
         binutils \
+        klayout \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 USER app
 WORKDIR /home/app
@@ -164,7 +170,11 @@ RUN pip install --no-cache-dir \
     pytest-cov \
     selenium \
     inotify-simple \
-    build
+    build \
+    atpublic \
+    tabulate \
+    pillow \
+    python-gdsii
 
 # NPM install
 # -----------

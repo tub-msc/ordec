@@ -103,7 +103,7 @@ class ServerKey:
         return f"local={quote_plus(moduleview)}&hmac={digest.hex()}"
 
 def discover_views(conn_globals, recursive=True, modules_visited=None):
-    if modules_visited == None:
+    if modules_visited is None:
         modules_visited = set()
     views = []
     for k, v in conn_globals.items():
@@ -300,7 +300,7 @@ def background_inotify(watch_files, pipe_inotify_abort_r, websocket):
 
 
 def build_response(status: http.HTTPStatus=http.HTTPStatus.OK, mime_type: str='text/plain', data: bytes=None):
-    if data == None:
+    if data is None:
         data = status.name.encode("ascii")
     return Response(
         int(status),
@@ -369,9 +369,9 @@ class StaticHandler:
             return build_response(http.HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def process_request_example(self, name):
-        src = ''
-        srctype = 'Python'
-        uistate = {}
+        srctype = None
+        src = None
+        uistate = None
         from .lib import examples
         for p in importlib.resources.files(examples).iterdir():
             if p.stem == name:
@@ -380,6 +380,8 @@ class StaticHandler:
             if p.name == f'{name}.uistate.json':
                 with open(p) as f:
                     uistate = json.load(f)
+        if (src is None) or (srctype is None) or (uistate is None):
+            raise Exception(f"Requested example {name!r} not found.")
         data = json.dumps({
             'src':src,
             'srctype': srctype,
