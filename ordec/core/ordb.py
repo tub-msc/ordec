@@ -1100,10 +1100,13 @@ class SubgraphUpdater:
         self.nid_gen_counter += 1
         return ret
 
-    def add_single(self, node: NodeTuple, nid: int) -> int:
+    def add_single(self, node: NodeTuple, nid: int, check_nid: bool=True) -> int:
         """
         Args:
             relaxed: Set to True to relax nid insertion order.
+            check_nid: Check that requested nid is within nid_alloc of the
+                targeted subgraph. This check must be disabled when replacing
+                a node that already existed and was just deleted.
         Returns:
             nid of inserted node
         """
@@ -1113,7 +1116,7 @@ class SubgraphUpdater:
         if not isinstance(node, NodeTuple):
             raise TypeError("node must be instance of NodeTuple.")
 
-        if nid not in self.target_subgraph.nid_alloc:
+        if check_nid and nid not in self.target_subgraph.nid_alloc:
             raise OrdbException(f"selected nid {nid} is outside allocated {self.target_subgraph.nid_alloc}.")
 
         if nid in self.nodes:

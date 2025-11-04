@@ -275,13 +275,12 @@ class SchemInstance(Node):
     def loc_transform(self):
         return self.pos.transl() * self.orientation
 
-    @property
     def conns(self):
         return self.subgraph.all(SchemInstanceConn.ref_idx.query(self.nid))
 
 @public
 class SchemInstanceConn(Node):
-    """Maps Pins of a SchemInstance to Nets of its Schematic."""
+    """Maps one Pin of a SchemInstance to a Net of its Schematic."""
     in_subgraphs = [Schematic]
 
     ref = LocalRef(SchemInstance, optional=False)
@@ -291,6 +290,41 @@ class SchemInstanceConn(Node):
     there = ExternalRef(Pin, of_subgraph=lambda c: c.ref.symbol, optional=False) # ExternalRef to Pin in SchemInstance.symbol
 
     ref_pin_idx = CombinedIndex([ref, there], unique=True)
+
+@public
+class SchemInstanceUnresolved(Node):
+    """A instance of a Symbol that is not determined yet."""
+    in_subgraphs = [Schematic]
+
+    pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    orientation = Attr(D4, default=D4.R0)
+
+    resolver = Attr(object) # closure?
+
+    def loc_transform(self):
+        return self.pos.transl() * self.orientation
+
+
+@public
+class SchemInstanceUnresolvedConn(Node):
+    """Unresolved SchemInstanceConn."""
+    in_subgraphs = [Schematic]
+
+    ref = LocalRef(SchemInstanceUnresolved, optional=False)
+    ref_idx = Index(ref)
+
+    here = LocalRef(Net, optional=False)
+    there = Attr(tuple, optional=False) #: Tuple of str or int = requested path in future symbol
+
+@public
+class SchemInstanceUnresolvedParameter(Node):
+    in_subgraphs = [Schematic]
+
+    ref = LocalRef(SchemInstanceUnresolved, optional=False)
+    ref_idx = Index(ref)
+
+    name = Attr(str, optional=False)
+    value = Attr(object, optional=False) #: TODO - should be immutable.
 
 @public
 class SchemTapPoint(Node):
