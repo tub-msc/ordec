@@ -12,6 +12,7 @@ import math
 #ordec imports
 
 from ordec.core import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire, Rect4R
+from ordec.helpers import recursive_getitem
 
 SHORTCUT_ENABLED = True
 cache = {}
@@ -711,7 +712,7 @@ def adjust_outline_initial(node, outline):
     """
 
     for port in node.all(SchemPort):
-        outline.extend(port.pos)
+        outline = outline.extend(port.pos)
     for instance in node.all(SchemInstance):
         instance_transform = instance.loc_transform()
         instance_geometry = instance_transform * instance.symbol.outline
@@ -783,7 +784,7 @@ def schematic_routing(node, outline=None, routing=None):
         # Add instances for ports
         port_alignment = instance.align.lefdef()
         pos = instance.pos
-        name = str(instance.ref.full_path_str())
+        name = ".".join([str(value) for value in instance.ref.full_path_list()])
         # net and name mapping for pinarrays
         array_mapping_list[instance.ref] = name
         # add to ports dictionary
@@ -844,7 +845,9 @@ def schematic_routing(node, outline=None, routing=None):
         for vertices in vertices_lists:
             # Set the vertices from the ports
             # Case for internal nets
-            schem_part = getattr(node, name)
+            split_name = name.split('.')
+            converted_name = [int(value) if value.isdigit() else value for value in split_name]
+            schem_part = recursive_getitem(node, tuple(converted_name))
             converted_vertices = list()
             if isinstance(schem_part, Net):
                 for vert in vertices:

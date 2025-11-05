@@ -358,7 +358,7 @@ BIN_NUMBER.2: "0" ("b" | "B") ("_"?  "0".."1"                       )+
 _EXP: ("e"|"E") ["+" | "-"] _SPECIAL_DEC
 DECIMAL: "." _SPECIAL_DEC | _SPECIAL_DEC "." _SPECIAL_DEC?
 FLOAT_NUMBER: _SPECIAL_DEC _EXP | DECIMAL _EXP?
-IMAG_NUMBER: (_SPECIAL_DEC      | FLOAT_NUMBER) ("J" | "j")
+IMAG_NUMBER.2: (_SPECIAL_DEC      | FLOAT_NUMBER) ("J" | "j")
 
 // ORD DEFINITIONS
 SI: /[afpnumkMGT]/
