@@ -1,12 +1,65 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from lark import Lark
+from lark import Lark, UnexpectedToken, UnexpectedCharacters, UnexpectedInput
 from pathlib import Path
 import argparse
 from lark.indenter import PythonIndenter
 from .ord2_transformer import Ord2Transformer
 import ast
+
+
+def format_error(code, line, column, window=2):
+    lines = code.splitlines()
+    error_line = line - 1
+    start = error_line - window
+    if start < 0:
+        start = 0
+    end = line + window
+    if end > len(lines):
+        end = len(lines)
+
+    error = []
+    for i in range(start, end):
+        prefix = ">" if i == error_line else " "
+        error.append(f"{prefix} {i+1:4} | {lines[i]}")
+        if i == error_line:
+            error.append(f"     | {'':{column-1}}^")
+    return "\n".join(error)
+
+
+def parse_with_errors(parser, code: str):
+    try:
+        return parser.parse(code + "\n")
+    except UnexpectedToken as e:
+        expected = ", ".join(e.expected)
+        error = format_error(code, e.line, e.column)
+        error_message = (
+            f"Syntax Error: Unexpected token `{e.token}`\n\n"
+            f"Expected one of: {expected}\n"
+            f"At line {e.line}, column {e.column}:\n\n"
+            f"{error}"
+        )
+        raise SyntaxError(error_message) from None
+
+    except UnexpectedCharacters as e:
+        error = format_error(code, e.line, e.column)
+        error_message = (
+            f"Syntax Error: Unexpected character `{e.char}`\n\n"
+            f"At line {e.line}, column {e.column}:\n\n"
+            f"{error}"
+        )
+        raise SyntaxError(error_message) from None
+
+    # fallback
+    except UnexpectedInput as e:
+        error = format_error(code, e.line, e.column)
+        error_message = (
+            "Syntax Error\n\n"
+            f"At line {e.line}, column {e.column}:\n\n"
+            f"{error}"
+        )
+        raise SyntaxError(error_message) from None
 
 
 lark_fn = Path(__file__).parent / "ord2.lark"
@@ -28,7 +81,7 @@ def ord2_to_py(ord_string: str) -> ast.Module:
         AST of the parsed and transformed string
     """
     # Parse the string directly
-    parsed_result = parser.parse(ord_string + "\n")
+    parsed_result = parse_with_errors(parser, ord_string)
     ord2_transformer = Ord2Transformer()
     transformed_ast = ord2_transformer.transform(parsed_result)
     ast.fix_missing_locations(transformed_ast)
@@ -54,7 +107,7 @@ if __name__ == "__main__":
     else:
         code = args.s
 
-    parsed = parser.parse(code + "\n")
+    parsed = parse_with_errors(parser, code)
     print(parsed)
 
     ordec_transformer = Ord2Transformer()
@@ -63,6 +116,7 @@ if __name__ == "__main__":
     print(ast.dump(transformed, indent=4))
 
     code_obj = compile(transformed, "<ast>", "exec")
+    print(ast.unparse(transformed))
     exec(code_obj, globals(), locals())
 
 

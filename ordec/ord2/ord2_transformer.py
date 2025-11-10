@@ -10,17 +10,24 @@ from .python_transformer import PythonTransformer
 
 class Ord2Transformer(PythonTransformer):
 
+    @staticmethod
+    def ast_name(identifier, ctx=ast.Load()):
+        return ast.Name(id=identifier, ctx=ctx)
+    @staticmethod
+    def ast_attribute(value, attr, ctx=ast.Load()):
+        return ast.Attribute(value=value, attr=attr, ctx=ctx)
+
     def celldef(self, nodes):
         cell_name = nodes[0]
         suite = nodes[1]
-        base = ast.Name(id='Cell', ctx=ast.Load())
+        base = self.ast_name('Cell')
 
         return ast.ClassDef(
             name=cell_name,
             bases=[base],
             keywords=[],
             body=suite,
-            decorator_list=[],
+            decorator_list=[self.ast_name("public")],
             type_params=[]
         )
 
@@ -28,7 +35,7 @@ class Ord2Transformer(PythonTransformer):
         si_suffixes = ('a','f','p','n','u','m','k','M','G','T')
         if token.endswith(si_suffixes) or '/' in token:
             token = ast.Constant(token.value)
-            return ast.Call(func=ast.Name(id="R", ctx=ast.Load()), args=[token])
+            return ast.Call(func=self.ast_name("R"), args=[token], keywords=[])
         else:
             if '.' in token:
                 number = float(token)
@@ -37,118 +44,258 @@ class Ord2Transformer(PythonTransformer):
                 number = int(number, 10)
             return ast.Constant(value=number)
 
-    def pin_stmt(self, nodes):
-        pin_type = nodes[0]
-        name = nodes[1]
-        pos = nodes[2]
-        orientation = nodes[3]
-        # Get correct pin type
-        if pin_type == "inout":
-            pin_type = "Inout"
-        elif pin_type == "output":
-            pin_type = "Out"
-        else:
-            pin_type = "In"
-        # set symbol as reference
-        target = ast.Attribute(value=ast.Name(id='symbol', ctx=ast.Load()), attr=name, ctx=ast.Store())
-        # keywords: position, pin_type and alignment
-        keywords = list()
-        keywords.append(ast.keyword(arg='pos', value=pos))
-        keywords.append(ast.keyword(arg='pintype', value=ast.Attribute(value=ast.Name(id='PinType',ctx=ast.Load()),
-                                                                       attr=pin_type,
-                                                                       ctx=ast.Load())))
-        keywords.append(ast.keyword(arg='align', value=ast.Attribute(value=ast.Name(id='Orientation',ctx=ast.Load()),
-                                                                     attr=orientation,
-                                                                     ctx=ast.Load())))
-        # wrap in Pin call
-        pin_call = ast.Call(func=ast.Name(id='Pin', ctx=ast.Load()),
-                            args=[],
-                            keywords=keywords)
-        # return assignment
-        assignment = ast.Assign(targets=[target], value=pin_call)
-        return assignment
-
-    def port_stmt(self, nodes):
-        name = nodes[0]
-        pos = nodes[1]
-        orientation = nodes[2]
-        # set schematic as reference
-        target = ast.Attribute(value=ast.Name(id='schematic', ctx=ast.Load()),
-                               attr=name,
-                               ctx=ast.Load())
-        # keywords: position, reference and alignment
-        keywords = list()
-        keywords.append(ast.keyword(arg='pos', value=pos))
-        keywords.append(ast.keyword(arg='align', value=ast.Attribute(value=ast.Name(id='Orientation',
-                                                                                    ctx=ast.Load()),
-                                                                     attr=orientation,
-                                                                     ctx=ast.Load())))
-        # Set symbol as reference
-        keywords.append(ast.keyword(arg='ref', value=ast.Attribute(
-           value=ast.Attribute(value=ast.Name(id='self', ctx=ast.Load()), attr='symbol', ctx=ast.Load()),
-            attr=name,
-            ctx=ast.Load()
-        )))
-        # Wrap in port call
-        port_call = ast.Call(func=ast.Name(id='SchemPort', ctx=ast.Load()),
-                             keywords=keywords,
-                             args=[])
-
-        # Return binary expression
-        expression = ast.Expr(
-            value = ast.BinOp(
-                left = target,
-                op = ast.Mod(),
-                right = port_call
-            )
-        )
-        return expression
-
-
     def cell_func_def(self, nodes):
         func_name = nodes[0]
         suite = nodes[1]
         # Create suite assignment rhs
-        suite_target = ast.Name(id=func_name, ctx=ast.Store())
+
         keywords = list()
-        keywords.append(ast.keyword(arg='cell',
-                                    value=ast.Name(id='self',
-                                                   ctx=ast.Load())
-                                    )
-                        )
+        keywords.append(ast.keyword(arg="cell", value=self.ast_name("self")))
+        if func_name == "schematic":
+            keywords.append(
+                ast.keyword(
+                    arg="symbol",
+                    value=self.ast_attribute(self.ast_name("self"), attr="symbol")
+                )
+            )
 
-        suite_func_call = ast.Call(func=ast.Name(id=func_name.title(),
-                                           ctx=ast.Load()),
-                             args=[],
-                             keywords=keywords)
+        cell_func_call = ast.Call(
+            func=self.ast_name(func_name.title()),
+            args=[],
+            keywords=keywords
+        )
 
-        # combine to full suite assignment
-        suite_assignment = ast.Assign(
-            targets=[suite_target],
-            value=suite_func_call
+        ord_context_call = ast.Call(
+            func=self.ast_name('OrdContext'),
+            args=[],
+            keywords=[
+                ast.keyword(
+                    arg='root',
+                    value=cell_func_call
+                ),
+                ast.keyword(
+                    arg='parent',
+                    value=self.ast_name('self')
+                )
+            ]
+        )
+
+        return_value = ast.Return(
+                ast.Call(
+                func=self.ast_attribute(self.ast_name('ctx'),
+                                    func_name + "_postprocess",
+                ),
+                args=[],
+                keywords=[]
+            )
+        )
+
+        suite.append(return_value)
+        with_context = ast.With(
+            items=[
+                ast.withitem(
+                    context_expr=ord_context_call
+                )
+            ],
+            body=suite
         )
         # insert assignment before first inner content
-        suite.insert(0, suite_assignment)
 
         # Combine to function definition
         func_def = ast.FunctionDef(
             name=func_name,
             args=ast.arguments(
                 posonlyargs=[],
-                args=[ast.arg(arg='self')],
+                args=[ast.arg(arg="self")],
                 kwonlyargs=[],
-                kw_defaults=[]
+                kw_defaults=[],
+                kwarg=None,
+                defaults=[]
             ),
-            body=suite,
-            decorator_list=[],
-            returns=ast.Name(id=func_name.title(),
-                             ctx=ast.Load()),
+            body=[with_context],
+            decorator_list=[self.ast_name("generate")],
+            returns=self.ast_name(func_name.title()),
             type_params=[]
         )
         return func_def
 
+    def connect_stmt(self, nodes):
+        # Attr because of the dotted_atom
+        connect_lhs = nodes[0].attr
+        connect_rhs = nodes[1].id
+        lhs = nodes[0].value
 
+        keywords=list()
+        keywords.append(ast.keyword(arg="here", value=self.ast_name(connect_rhs)))
+        keywords.append(ast.keyword(arg="there",
+                                    value=self.tuple([ast.Constant(value)
+                                                      for value in connect_lhs.split('.')])
+                                    )
+        )
+        rhs = ast.Call(func=self.ast_name("SchemInstanceUnresolvedConn"),
+                       args=[],
+                       keywords=keywords
+        )
+        return ast.Expr(ast.BinOp(lhs, ast.Mod(), rhs))
 
+    def context_element(self, nodes):
+        context_type = nodes[0]
+        context_name = nodes[1]
+        context_body = nodes[2] if len(nodes) > 2 else None
+        inout = ''
+
+        lhs = self.ast_name(context_name, ctx=ast.Store())
+        if context_type in ["inout", "input", "output"]:
+            match context_type:
+                case "inout":
+                    inout = "Inout"
+                case "input":
+                    inout = "In"
+                case _:
+                    inout = "Out"
+            rhs = ast.Call(
+                func=self.ast_attribute(self.ast_name("ctx"), "add"),
+                args=[
+                    ast.Tuple(
+                        elts=[ast.Constant(value=value) for value in context_name.split('.')],
+                        ctx=ast.Load()
+                    ),
+                    ast.Call(
+                        func=self.ast_name("Pin"),
+                        keywords=[
+                            ast.keyword(
+                                arg="pintype",
+                                value=self.ast_attribute(
+                                    self.ast_name("PinType"),
+                                    inout
+                                )
+                            )
+                        ],
+                        args=[]
+                    )
+                ],
+                keywords=[]
+            )
+        elif context_type == "port":
+            rhs = ast.Call(
+                func=self.ast_attribute(self.ast_name("ctx"),'add_symbol_port'),
+                args=[
+                    ast.Tuple(
+                        elts=[ast.Constant(value=value) for value in context_name.split('.')],
+                        ctx=ast.Load()
+                    ),
+                ],
+                keywords=[]
+            )
+        else:
+
+            resolver_lambda = ast.Lambda(
+                        args=ast.arguments(
+                            posonlyargs=[],
+                            args=[],
+                            kwonlyargs=[],
+                            kw_defaults=[],
+                            kwarg=ast.arg(
+                                arg="params"
+                            ),
+                            defaults=[]
+                        ),
+                        body=self.ast_attribute(
+                            ast.Call(
+                                func=self.ast_name(context_type),
+                                args=[],
+                                keywords=[
+                                    ast.keyword(
+                                        value=self.ast_name("params"),
+                                    )
+                                ]
+                            ),
+                            "symbol"
+                        )
+                    )
+
+            rhs = ast.Call(
+                func=self.ast_attribute(self.ast_name("ctx"), "add"),
+                args=[
+                    ast.Tuple(
+                        elts=[ast.Constant(value=value) for value in context_name.split('.')],
+                        ctx=ast.Load()
+                    ),
+                    ast.Call(
+                        func=self.ast_name("SchemInstanceUnresolved"),
+                        keywords=[
+                            ast.keyword(
+                                arg="resolver",
+                                value=resolver_lambda
+                            )
+                        ],
+                        args=[]
+                    )
+                ],
+                keywords=[]
+            )
+        assignment = ast.Assign([lhs], rhs)
+
+        if context_type == "port":
+            with_root_value = ast.Call(
+                func=self.ast_attribute(self.ast_name("ctx"), attr='get_symbol_port'),
+                args=[self.ast_name(context_name)],
+                keywords=[]
+            )
+        else:
+            with_root_value = self.ast_name(context_name)
+        with_stmt = ast.With(
+            items=[
+                ast.withitem(
+                    context_expr=ast.Call(
+                        func=self.ast_name("OrdContext"),
+                        args=[],
+                        keywords=[
+                            ast.keyword(
+                                arg="root",
+                                value=with_root_value
+                            )
+                        ]
+                    )
+                )
+            ],
+            body=context_body if isinstance(context_body, list) else [context_body]
+        )
+        return [assignment, with_stmt]
+
+    def depth_helper(self, depth, value):
+        node = self.ast_attribute(self.ast_name("ctx"), "root")
+
+        for _ in range(depth - 1):
+            node = self.ast_attribute(node,"parent")
+
+        node = self.ast_attribute(node, value, ctx=ast.Store())
+        return node
+
+    def dotted_atom(self, nodes):
+        if len(nodes) == 1:
+            return nodes
+        else:
+           if isinstance(nodes[0], int):
+               depth = nodes[0]
+               parameter = True if nodes[1] == "$" else False
+               value = nodes[2] if parameter and len(nodes) > 2 else nodes[1]
+               return self.depth_helper(depth, value)
+           else:
+               depth = 1
+               parameter = nodes[1]
+               return self.depth_helper(depth, parameter)
+
+    def _flatten(self, items):
+        flat = []
+        for item in items:
+            if isinstance(item, list):   # child returned multiple stmts
+                flat.extend(item)
+            else:
+                flat.append(item)
+        return flat
+
+    context_body = lambda self, nodes: nodes[0]
     SI = lambda self, token: token.value
-    PIN_TYPE = lambda self, token: token.value
-    ORIENTATION = lambda self, token: token.value
+    DOLLAR = lambda self, token: token.value
+    suite = lambda self, nodes: self._flatten(nodes)

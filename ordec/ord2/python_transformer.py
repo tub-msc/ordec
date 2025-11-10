@@ -823,11 +823,15 @@ class PythonTransformer(Transformer):
             joined = '\''.join(string_parts[1:-1])
             return string_parts[0], joined
 
+    def var(self, nodes):
+        if isinstance(nodes[0], ast.Attribute):
+            return nodes[0]
+        else:
+            return ast.Name(id=nodes[0], ctx=ast.Load())
+
     number = lambda self, nodes: nodes[0]
-    var = lambda self, nodes: nodes[0]
     star_expr = lambda self, nodes: ast.Starred(value=nodes[0], ctx=ast.Load())
     name = lambda self, nodes: nodes[0]
-    var = lambda self, nodes: ast.Name(id=nodes[0], ctx=ast.Load())
     comp_op = lambda self, nodes: nodes[0]
     ellipsis = lambda self, _: ast.Constant(value=Ellipsis)
     f_string_content_single = lambda self, nodes: nodes[0]
@@ -938,7 +942,6 @@ class PythonTransformer(Transformer):
             type_params=[]
         )
 
-    suite = lambda self, nodes: nodes
     decorators = lambda self, nodes: nodes
     arguments = lambda self, nodes: nodes
 

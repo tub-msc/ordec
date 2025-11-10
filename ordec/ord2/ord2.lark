@@ -83,7 +83,7 @@ lambda_kwparams: "**" name ","?
 
 
 ?stmt: simple_stmt | compound_stmt
-?simple_stmt: small_stmt (";" small_stmt)* [";"] _NEWLINE
+?simple_stmt: small_stmt (";" small_stmt)* [";"] _NEWLINE?
 ?small_stmt: (expr_stmt
             | assign_stmt
             | del_stmt
@@ -93,8 +93,8 @@ lambda_kwparams: "**" name ","?
             | global_stmt
             | nonlocal_stmt
             | assert_stmt
-            | pin_stmt
-            | port_stmt)
+            | connect_stmt)
+
 expr_stmt: testlist_star_expr
 assign_stmt: annassign | augassign | assign
 
@@ -131,6 +131,7 @@ assert_stmt: "assert" test ["," test]
 
 ?compound_stmt: if_stmt | while_stmt | for_stmt | try_stmt | match_stmt
               | with_stmt | funcdef | classdef | celldef | decorated | async_stmt | cell_func_def
+              | context_element
 async_stmt: "async" (funcdef | with_stmt | for_stmt)
 if_stmt: "if" test ":" suite elifs ["else" ":" suite]
 elifs: elif_*
@@ -226,14 +227,13 @@ star_expr: "*" expr
 // sake of a __future__ import described in PEP 401 (which really works :-)
 !comp_op: "<"|">"|"=="|">="|"<="|"<>"|"!="|"in"| /not\s+in/ | "is" | /is\s+not/
 
-
 ?power: await_expr ("**" factor)?
 ?await_expr: AWAIT? atom_expr
 AWAIT: "await"
 
 ?atom_expr: atom_expr "(" [arguments] ")"      -> funccall
           | atom_expr "[" subscriptlist "]"  -> getitem
-          | atom_expr "." name               -> getattr
+          | atom_expr "." dotted_atom               -> getattr
           | atom
 
 ?atom: "(" yield_expr ")"
@@ -245,7 +245,7 @@ AWAIT: "await"
      | "{" comprehension{key_value} "}" -> dict_comprehension
      | "{" _exprlist "}" -> set
      | "{" comprehension{test} "}" -> set_comprehension
-     | name -> var
+     | dotted_atom -> var
      | number
      | string_concat
      | "(" test ")"
@@ -253,7 +253,6 @@ AWAIT: "await"
      | "None"    -> const_none
      | "True"    -> const_true
      | "False"   -> const_false
-
 
 ?string_concat: string+
 
@@ -278,7 +277,6 @@ key_value: test ":"  test
 _exprlist: test_or_star_expr (","  test_or_star_expr)* [","]
 
 classdef: "class" name ["(" [arguments] ")"] ":" suite
-celldef: "cell" name ":" suite
 
 arguments: argvalue ("," argvalue)* ("," starargs_part)? ("," kwargs)? ","?
          | starargs_part
@@ -366,13 +364,14 @@ RATIONAL: DEC_NUMBER SLASH DEC_NUMBER
         | DEC_NUMBER SI?
         | FLOAT_NUMBER SI?
 
-ORIENTATION.2: "West" | "East" | "North" | "South"
-PIN_TYPE.2: "inout" | "input" | "output"
-pin_stmt: PIN_TYPE name testlist_star_expr ORIENTATION
-port_stmt: "port" name testlist_star_expr ORIENTATION
+connect_stmt: testlist_star_expr "--" testlist_star_expr
+celldef: "cell" name ":" suite
 cell_func_def: "cell_func" name ":" suite
-
-
+context_body: ":" suite
+              | "(" simple_stmt? ")" _NEWLINE
+context_element: name name context_body
+?dotted_atom: dots? DOLLAR? name
+DOLLAR: "$"
 
 // Comma-separated list (with an optional trailing comma)
 cs_list{item}: item ("," item)* ","?
