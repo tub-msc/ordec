@@ -232,9 +232,11 @@ star_expr: "*" expr
 AWAIT: "await"
 
 ?atom_expr: atom_expr "(" [arguments] ")"      -> funccall
-          | atom_expr "[" subscriptlist "]"  -> getitem
-          | atom_expr "." dotted_atom               -> getattr
+          | atom_expr "[" subscriptlist "]"    -> getitem
+          | atom_expr "." name            -> getattr
+          | atom_expr? ".$" name           -> getparam
           | atom
+          | dotted_atom
 
 ?atom: "(" yield_expr ")"
      | "(" _tuple_inner? ")" -> tuple
@@ -245,7 +247,7 @@ AWAIT: "await"
      | "{" comprehension{key_value} "}" -> dict_comprehension
      | "{" _exprlist "}" -> set
      | "{" comprehension{test} "}" -> set_comprehension
-     | dotted_atom -> var
+     | name -> var
      | number
      | string_concat
      | "(" test ")"
@@ -370,8 +372,7 @@ cell_func_def: "cell_func" name ":" suite
 context_body: ":" suite
               | "(" simple_stmt? ")" _NEWLINE
 context_element: name name context_body
-?dotted_atom: dots? DOLLAR? name
-DOLLAR: "$"
+dotted_atom: dots name
 
 // Comma-separated list (with an optional trailing comma)
 cs_list{item}: item ("," item)* ","?

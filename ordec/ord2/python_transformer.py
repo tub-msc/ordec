@@ -500,14 +500,28 @@ class PythonTransformer(Transformer):
         )
 
     def getattr(self, nodes):
-        obj = nodes[0]
-        attr_token = nodes[1]
-
-        return ast.Attribute(
-            value=obj,
-            attr=str(attr_token),
-            ctx=ast.Load()
-        )
+        def concat_attributes(node, new_name):
+            if isinstance(node, ast.Attribute):
+                node.value = concat_attributes(node.value, new_name)
+                return node
+            elif isinstance(node, ast.Name):
+                if isinstance(new_name, ast.Name):
+                    return ast.Attribute(
+                        value=ast.Name(id=new_name.id, ctx=ast.Load()),
+                        attr=node.id,
+                        ctx=ast.Load()
+                    )
+                else:
+                    return new_name
+            else:
+                return ast.Attribute(
+                    value=new_name,
+                    attr=str(node),
+                    ctx=ast.Load()
+                )
+        lhs = nodes[0]
+        rhs = nodes[1]
+        return concat_attributes(rhs, lhs)
 
     def arith_expr(self, nodes):
         expr = nodes[0]
@@ -824,10 +838,7 @@ class PythonTransformer(Transformer):
             return string_parts[0], joined
 
     def var(self, nodes):
-        if isinstance(nodes[0], ast.Attribute):
-            return nodes[0]
-        else:
-            return ast.Name(id=nodes[0], ctx=ast.Load())
+        return ast.Name(id=nodes[0], ctx=ast.Load())
 
     number = lambda self, nodes: nodes[0]
     star_expr = lambda self, nodes: ast.Starred(value=nodes[0], ctx=ast.Load())

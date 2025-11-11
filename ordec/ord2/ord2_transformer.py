@@ -263,7 +263,7 @@ class Ord2Transformer(PythonTransformer):
         )
         return [assignment, with_stmt]
 
-    def depth_helper(self, depth, value):
+    def depth_helper(self, value, depth=1):
         node = self.ast_attribute(self.ast_name("ctx"), "root")
 
         for _ in range(depth - 1):
@@ -276,15 +276,29 @@ class Ord2Transformer(PythonTransformer):
         if len(nodes) == 1:
             return nodes
         else:
-           if isinstance(nodes[0], int):
-               depth = nodes[0]
-               parameter = True if nodes[1] == "$" else False
-               value = nodes[2] if parameter and len(nodes) > 2 else nodes[1]
-               return self.depth_helper(depth, value)
-           else:
-               depth = 1
-               parameter = nodes[1]
-               return self.depth_helper(depth, parameter)
+           depth = nodes[0]
+           value = nodes[1]
+           return self.depth_helper(value, depth)
+
+    def getparam(self, nodes):
+        if len(nodes) == 2:
+            target = nodes[0]
+            attr = nodes[1]
+            ctx = ast.Load()
+        else:
+            # without lhs
+            attr = nodes[0]
+            ctx = ast.Store()
+            target = self.ast_attribute(
+                self.ast_name("ctx"),
+                "root"
+            )
+        return self.ast_attribute(
+            self.ast_attribute(
+                target,
+                "params"
+            ), attr, ctx=ctx
+        )
 
     def _flatten(self, items):
         flat = []
@@ -297,5 +311,4 @@ class Ord2Transformer(PythonTransformer):
 
     context_body = lambda self, nodes: nodes[0]
     SI = lambda self, token: token.value
-    DOLLAR = lambda self, token: token.value
     suite = lambda self, nodes: self._flatten(nodes)

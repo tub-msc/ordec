@@ -294,12 +294,26 @@ class SchemInstanceConn(Node):
 @public
 class SchemInstanceUnresolved(Node):
     """A instance of a Symbol that is not determined yet."""
+
+    class ParamWrapper:
+        def __init__(self, inst):
+            self._inst = inst
+
+        def __setattr__(self, name, value):
+            if name.startswith("_"):
+                return super().__setattr__(name, value)
+            self._inst % SchemInstanceUnresolvedParameter(name=name, value=value)
+
     in_subgraphs = [Schematic]
 
     pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     orientation = Attr(D4, default=D4.R0)
 
     resolver = Attr(object) # closure?
+
+    @property
+    def params(self):
+        return self.ParamWrapper(self)
 
     def loc_transform(self):
         return self.pos.transl() * self.orientation
