@@ -42,13 +42,22 @@ class OrdContext:
 
     def add_path(self, name):
         self.root.mkpath(name)
-        return getattr(self.root, name)
+        return list()
 
-    def add_symbol_port(self, name):
+    def add_port_normal(self, name):
         pin = helpers.recursive_getitem(ctx.root.symbol, name)
         net = self.add(name, Net(pin=pin))
-        net % SchemPort(ref=pin)
-        return net
+        port = net % SchemPort()
+        return port
+
+    def add_port_pathnode(self, name, node_list):
+        pin = helpers.recursive_getitem(ctx.root.symbol, name)
+        net = self.add(name, Net(pin=pin))
+        node_list.insert(name[-1], net % SchemPort())
+
+    def add_pathnode(self, name, node_list, value):
+        ref = self.add(name, value)
+        node_list.insert(name[-1], ref)
 
     def get_symbol_port(self, net):
         for port in self.root.all(SchemPort):

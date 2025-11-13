@@ -93,7 +93,9 @@ lambda_kwparams: "**" name ","?
             | global_stmt
             | nonlocal_stmt
             | assert_stmt
-            | connect_stmt)
+            | connect_stmt
+            | path_stmt
+            | net_stmt)
 
 expr_stmt: testlist_star_expr
 assign_stmt: annassign | augassign | assign
@@ -373,6 +375,8 @@ context_body: ":" suite
               | "(" simple_stmt? ")" _NEWLINE
 context_element: name name context_body
 dotted_atom: dots name
+path_stmt: "path" name
+net_stmt: "net" name
 
 // Comma-separated list (with an optional trailing comma)
 cs_list{item}: item ("," item)* ","?

@@ -122,11 +122,11 @@ class Ord2Transformer(PythonTransformer):
     def connect_stmt(self, nodes):
         # Attr because of the dotted_atom
         connect_lhs = nodes[0].attr
-        connect_rhs = nodes[1].id
+        connect_rhs = nodes[1]
         lhs = nodes[0].value
 
         keywords=list()
-        keywords.append(ast.keyword(arg="here", value=self.ast_name(connect_rhs)))
+        keywords.append(ast.keyword(arg="here", value=connect_rhs))
         keywords.append(ast.keyword(arg="there",
                                     value=self.tuple([ast.Constant(value)
                                                       for value in connect_lhs.split('.')])
@@ -178,7 +178,7 @@ class Ord2Transformer(PythonTransformer):
             )
         elif context_type == "port":
             rhs = ast.Call(
-                func=self.ast_attribute(self.ast_name("ctx"),'add_symbol_port'),
+                func=self.ast_attribute(self.ast_name("ctx"),'add_port_normal'),
                 args=[
                     ast.Tuple(
                         elts=[ast.Constant(value=value) for value in context_name.split('.')],
@@ -299,6 +299,27 @@ class Ord2Transformer(PythonTransformer):
                 "params"
             ), attr, ctx=ctx
         )
+
+    def net_stmt(self, nodes):
+        net_name = nodes[0]
+        lhs = self.ast_name(net_name, ctx=ast.Store())
+        rhs = ast.Call(
+            func=self.ast_attribute(self.ast_name("ctx"), "add"),
+            args=[
+                ast.Tuple(
+                    elts=[ast.Constant(value=value) for value in net_name.split('.')],
+                    ctx=ast.Load()
+                ),
+                ast.Call(
+                    func=self.ast_name("Net"),
+                    keywords=[],
+                    args=[]
+                )
+            ],
+            keywords=[]
+        )
+        return ast.Assign([lhs], rhs)
+
 
     def _flatten(self, items):
         flat = []
