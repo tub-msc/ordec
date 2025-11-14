@@ -16,7 +16,7 @@ def run(script, cwd, **kwargs):
     cmdline = ['klayout', '-b', '-r', str(script)]
     for k, v in kwargs.items():
         cmdline += ['-rd', f'{k}={v}']
-    #print(cwd, shlex.join(cmdline))
+    print(cwd, shlex.join(cmdline))
     subprocess.check_call(cmdline, cwd=cwd)
 
 @dataclass

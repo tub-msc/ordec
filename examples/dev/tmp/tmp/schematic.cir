@@ -1,0 +1,7 @@
+.title myinv
+.option savecurrents
+.subckt myinv
+    xpd y a vss vss sg13_lv_nmos l=1.3e-7 w=1.0e-6 m=1 ng=1
+    xpu y a vdd vdd sg13_lv_pmos l=1.3e-7 w=1.0e-6 m=1 ng=1
+.ends myinv
+.end

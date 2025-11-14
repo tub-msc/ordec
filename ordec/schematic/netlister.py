@@ -12,7 +12,7 @@ def basename_escape(obj):
         return re.sub(r"[^a-zA-Z0-9]", "_", basename).lower()
 
 class Netlister:
-    def __init__(self, enable_savecurrents: bool = True):
+    def __init__(self, enable_savecurrents: bool = True, lvs: bool = False):
         self.obj_of_name = {}
         self.name_of_obj = {}
         self.spice_cards = []
@@ -21,6 +21,7 @@ class Netlister:
         self.netlist_setup_funcs = set()
         self.ngspice_setup_funcs = set()
         self.enable_savecurrents = enable_savecurrents
+        self.lvs = lvs
 
     def require_netlist_setup(self, func):
         self.netlist_setup_funcs.add(func)

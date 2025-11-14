@@ -20,10 +20,15 @@ def pdk() -> PdkDict:
         raise Exception("PDK requires environment variable ORDEC_PDK_IHP_SG13G2 to be set.")
     pdk = PdkDict(root=check_dir(Path(root).resolve()))
 
-    pdk.ngspice_models_dir = check_dir(pdk.root / "libs.tech/ngspice/models")
-    pdk.ngspice_osdi_dir   = check_dir(pdk.root / "libs.tech/ngspice/osdi")
-    pdk.stdcell_spice_dir  = check_dir(pdk.root / "libs.ref/sg13g2_stdcell/spice")
-    pdk.iocell_spice_dir   = check_dir(pdk.root / "libs.ref/sg13g2_io/spice")
+    pdk.ngspice_models_dir =  check_dir(pdk.root / "libs.tech/ngspice/models")
+    pdk.ngspice_osdi_dir   =  check_dir(pdk.root / "libs.tech/ngspice/osdi")
+    pdk.stdcell_spice_dir  =  check_dir(pdk.root / "libs.ref/sg13g2_stdcell/spice")
+    pdk.iocell_spice_dir   =  check_dir(pdk.root / "libs.ref/sg13g2_io/spice")
+    pdk.klayout_lvs_deck   = check_file(pdk.root / "libs.tech/klayout/tech/lvs/sg13g2.lvs")
+    pdk.klayout_drc_deck   = {
+        'minimal':           check_file(pdk.root / "libs.tech/klayout/tech/drc/sg13g2_minimal.lydrc"),
+        'maximal':           check_file(pdk.root / "libs.tech/klayout/tech/drc/sg13g2_maximal.lydrc"),
+    }
 
     return pdk
 
@@ -48,6 +53,9 @@ def ngspice_setup(sim):
         sim.command(f"osdi '{check_file(osdi_file)}'")
 
 def netlister_setup(netlister):
+    if netlister.lvs:
+        return
+
     # Load corner library with typical corner
     model_lib = pdk().ngspice_models_dir / "cornerMOSlv.lib"
     netlister.add(".lib", f"\"{model_lib}\" mos_tt")
