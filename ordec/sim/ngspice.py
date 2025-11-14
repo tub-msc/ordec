@@ -93,21 +93,21 @@ class Netlister:
         self.spice_cards = []
         self.cur_line = 0
         self.indent = 0
-        self.setup_funcs = set()
+        self.netlist_setup_funcs = set()
+        self.ngspice_setup_funcs = set()
         self.enable_savecurrents = enable_savecurrents
-        self._sim_setup_hooks = []
 
-    def require_setup(self, setup_func):
-        self.setup_funcs.add(setup_func)
+    def require_netlist_setup(self, func):
+        self.netlist_setup_funcs.add(func)
 
-    def require_sim_setup(self, sim_setup_func):
+    def require_ngspice_setup(self, func):
         """Register a function to be called during simulation setup.
 
         The function should accept a single argument: the Ngspice instance.
         This is useful for PDK-specific setup commands that need to be
         executed on the simulator instance rather than in the netlist.
         """
-        self._sim_setup_hooks.append(sim_setup_func)
+        self.ngspice_setup_funcs.add(func)
 
     def out(self):
         return "\n".join(self.spice_cards) + "\n.end\n"
@@ -203,5 +203,5 @@ class Netlister:
             subckt_done.add(symbol)
 
         self.cur_line = 1
-        for setup_func in self.setup_funcs:
+        for setup_func in self.netlist_setup_funcs:
             setup_func(self)

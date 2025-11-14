@@ -4,31 +4,33 @@
 import os
 from pathlib import Path
 from public import public
+import functools
 
 from ..core import *
 from ..schematic import helpers
 from ..ord1.implicit_processing import schematic_routing
 from . import generic_mos
+from .pdk_common import PdkDict, check_dir, check_file
 
-_MODULE_DIR = Path(__file__).parent
-_PROJECT_ROOT = _MODULE_DIR.parent.parent
-_SKY130_RELATIVE_MODEL_PATH = "libs.tech/ngspice/corners/tt.spice"
+@functools.cache
+def pdk() -> PdkDict:
+    """Returns dictionary-like object with import PDK paths."""
+    try:
+        root = os.environ["ORDEC_PDK_SKY130A"]
+    except KeyError:
+        raise Exception("PDK requires environment variable ORDEC_PDK_SKY130A to be set.")
+    pdk = PdkDict(root=check_dir(Path(root).resolve()))
 
-env_var_path = os.getenv("ORDEC_PDK_SKY130A")
+    corners = ['ff', 'fs', 'leak', 'sf', 'ss', 'tt', 'wafer']
+    pdk.ngspice_deck = {
+        cnr: check_file(pdk.root / f"libs.tech/ngspice/corners/{cnr}.spice")
+            for cnr in corners
+        }
 
-if env_var_path:
-    _SKY130_MODEL_FULL_PATH = (Path(env_var_path) / _SKY130_RELATIVE_MODEL_PATH).resolve()
-else:
-    _SKY130_MODEL_FULL_PATH = (_PROJECT_ROOT / "sky130A" / _SKY130_RELATIVE_MODEL_PATH).resolve()
-
-
-if not _SKY130_MODEL_FULL_PATH.is_file():
-    print(f"WARNING: Sky130 model file not found at expected path derived from project structure: {_SKY130_MODEL_FULL_PATH}")
-    print(f"Ensure the files exist, or set the enviromental variable ORDEC_PDK_SKY130A")
-
-
-def setup_sky(netlister):
-    netlister.add(".include",f"\"{_SKY130_MODEL_FULL_PATH}\"")
+    return pdk
+    
+def netlist_setup(netlister):
+    netlister.add(".include",f"\"{pdk().ngspice_deck['tt']}\"")
     netlister.add(".param","mc_mm_switch=0")
 
 class Mos(Cell):
@@ -46,7 +48,7 @@ class Mos(Cell):
     sd = Parameter(R, default=R(0)) #: Distance between neighboring fingers
 
     def netlist_ngspice(self, netlister, inst, schematic):
-        netlister.require_setup(setup_sky)
+        netlister.require_netlist_setup(netlist_setup)
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
         netlister.add(
             netlister.name_obj(inst, schematic, prefix="x"),

@@ -5,88 +5,59 @@ import os
 import logging
 from pathlib import Path
 from public import public
+import functools
 
 from ..core import *
 from ..schematic import helpers
-from ..ord1.implicit_processing import schematic_routing
-from ..sim.ngspice_common import NgspiceError
 from . import generic_mos
+from .pdk_common import PdkDict, check_dir, check_file
 
-def _get_ihp_pdk_path():
-    """Helper function to determine the IHP PDK path."""
-    env_var_path = os.getenv("ORDEC_PDK_IHP_SG13G2")
-    if env_var_path:
-        return Path(env_var_path)
-    else:
-        _MODULE_DIR = Path(__file__).parent
-        _PROJECT_ROOT = _MODULE_DIR.parent.parent
-        return _PROJECT_ROOT / "ihp-sg13g2"
+@functools.cache
+def pdk() -> PdkDict:
+    """Returns dictionary-like object with import PDK paths."""
+    try:
+        root = os.environ["ORDEC_PDK_IHP_SG13G2"]
+    except KeyError:
+        raise Exception("PDK requires environment variable ORDEC_PDK_IHP_SG13G2 to be set.")
+    pdk = PdkDict(root=check_dir(Path(root).resolve()))
 
-_IHP_PDK_PATH = _get_ihp_pdk_path()
-_IHP_SG13G2_RELATIVE_MODEL_PATH = "libs.tech/ngspice/models/cornerMOSlv.lib"
-_IHP_SG13G2_MODEL_FULL_PATH = (_IHP_PDK_PATH / _IHP_SG13G2_RELATIVE_MODEL_PATH).resolve()
+    pdk.ngspice_models_dir = check_dir(pdk.root / "libs.tech/ngspice/models")
+    pdk.ngspice_osdi_dir   = check_dir(pdk.root / "libs.tech/ngspice/osdi")
+    pdk.stdcell_spice_dir  = check_dir(pdk.root / "libs.ref/sg13g2_stdcell/spice")
+    pdk.iocell_spice_dir   = check_dir(pdk.root / "libs.ref/sg13g2_io/spice")
 
-if not _IHP_SG13G2_MODEL_FULL_PATH.is_file():
-    logging.warning(f"IHP SG13G2 model file not found at expected path: {_IHP_SG13G2_MODEL_FULL_PATH}")
-    logging.warning(f"Ensure the files exist, or set the environmental variable ORDEC_PDK_IHP_SG13G2")
+    return pdk
 
-def setup_ihp_sg13g2_commands(sim):
+def ngspice_setup(sim):
     """Execute ngspice commands directly based on .spiceinit content"""
-    pdk_path = _IHP_PDK_PATH
-
-    osdi_path = pdk_path / "libs.tech/ngspice/osdi"
-    models_path = Path(pdk_path) / "libs.tech/ngspice/models"
-    stdcell_path = Path(pdk_path) / "libs.ref/sg13g2_stdcell/spice"
-    io_path = Path(pdk_path) / "libs.ref/sg13g2_io/spice"
 
     # Set ngspice behavior (from .spiceinit)
-    try:
-        sim.command("set ngbehavior=hsa")
-        sim.command("set noinit")
-    except NgspiceError as e:
-        logging.warning(f"Failed to set ngspice behavior: {e}")
+    sim.command("set ngbehavior=hsa")
+    sim.command("set noinit")
 
     # Set sourcepath (equivalent to setcs sourcepath commands in .spiceinit)
-    try:
-        cmd = f"setcs sourcepath = ( {models_path} {stdcell_path} {io_path} )"
-        sim.command(cmd)
-    except NgspiceError as e:
-        logging.warning(f"Failed to set sourcepath: {e}")
+    sim.command(f"setcs sourcepath = ( {pdk().ngspice_models_dir} {pdk().stdcell_spice_dir} {pdk().iocell_spice_dir} )")
 
     # Load OSDI models using absolute paths resolved in Python
-    psp103_path = osdi_path / "psp103_nqs.osdi"
-    if psp103_path.exists():
-        try:
-            sim.command(f"osdi '{psp103_path.resolve()}'")
-        except NgspiceError as e:
-            logging.warning(f"Failed to load OSDI model {psp103_path.resolve()}: {e}")
+    osdi_files = [
+        pdk().ngspice_osdi_dir / "psp103_nqs.osdi",
+        pdk().ngspice_osdi_dir / "r3_cmc.osdi",
+        pdk().ngspice_osdi_dir / "mosvar.osdi",
+    ]
 
-    r3_cmc_path = osdi_path / "r3_cmc.osdi"
-    if r3_cmc_path.exists():
-        try:
-            sim.command(f"osdi '{r3_cmc_path.resolve()}'")
-        except NgspiceError as e:
-            logging.warning(f"Failed to load OSDI model {r3_cmc_path.resolve()}: {e}")
+    for osdi_file in osdi_files:
+        sim.command(f"osdi '{check_file(osdi_file)}'")
 
-    mosvar_path = osdi_path / "mosvar.osdi"
-    if mosvar_path.exists():
-        try:
-            sim.command(f"osdi '{mosvar_path.resolve()}'")
-        except NgspiceError as e:
-            logging.warning(f"Failed to load OSDI model {mosvar_path.resolve()}: {e}")
-
-def setup_ihp_sg13g2(netlister):
-    # Register simulation setup commands
-    netlister.require_sim_setup(setup_ihp_sg13g2_commands)
-
+def netlister_setup(netlister):
     # Load corner library with typical corner
-    netlister.add(".lib", f"\"{_IHP_SG13G2_MODEL_FULL_PATH}\" mos_tt")
+    model_lib = pdk().ngspice_models_dir / "cornerMOSlv.lib"
+    netlister.add(".lib", f"\"{model_lib}\" mos_tt")
 
     # Add options from .spiceinit
     netlister.add(".option", "tnom=28")
     netlister.add(".option", "warn=1")
     netlister.add(".option", "maxwarns=10")
-    netlister.add(".option", "savecurrents")
+    #netlister.add(".option", "savecurrents")
 
 class Mos(Cell):
     l = Parameter(R)  #: Length
@@ -95,7 +66,8 @@ class Mos(Cell):
     ng = Parameter(int, default=1)  #: Number of gate fingers
 
     def netlist_ngspice(self, netlister, inst, schematic):
-        netlister.require_setup(setup_ihp_sg13g2)
+        netlister.require_netlist_setup(netlister_setup)
+        netlister.require_ngspice_setup(ngspice_setup)
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
         netlister.add(
             netlister.name_obj(inst, schematic, prefix="x"),

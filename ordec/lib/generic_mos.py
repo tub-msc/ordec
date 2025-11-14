@@ -25,7 +25,7 @@ class Mos(Cell):
     w = Parameter(R, default=R('1u'))
 
     def netlist_ngspice(self, netlister, inst, schematic):
-        netlister.require_setup(setup_generic_mos)
+        netlister.require_netlist_setup(setup_generic_mos)
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
         netlister.add(
             netlister.name_obj(inst, schematic, prefix="m"),

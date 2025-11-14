@@ -608,11 +608,7 @@ class SimBase(Cell):
             backend=hl_backend,
         )
 
-        with Ngspice.launch(backend=hl_backend) as sim:
-            # Execute simulation setup hooks (e.g., for IHP technology)
-            for hook in highlevel_sim.sim_setup_hooks:
-                hook(sim)
-
+        with highlevel_sim.launch_ngspice() as sim:
             sim.load_netlist(highlevel_sim.netlister.out())
 
             data_queue = sim.tran_async(
