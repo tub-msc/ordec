@@ -9,7 +9,7 @@ from public import public
 from ..core import *
 from ..schematic import helpers
 from ..ord1.implicit_processing import schematic_routing
-from ..sim2.ngspice_common import NgspiceError
+from ..sim.ngspice_common import NgspiceError
 from . import generic_mos
 
 def _get_ihp_pdk_path():

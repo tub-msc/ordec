@@ -5,9 +5,9 @@ from dataclasses import dataclass
 
 from ..schematic import helpers
 from ..core import *
-from ..sim2.sim_hierarchy import HighlevelSim, SimHierarchy
-from ..sim2.ngspice import Ngspice
-from ..sim2.ngspice_common import SignalKind, SignalArray
+from ..sim.sim_hierarchy import HighlevelSim, SimHierarchy
+from ..sim.ngspice import Ngspice
+from ..sim.ngspice_common import SignalKind, SignalArray
 
 from .generic_mos import Or2, Nmos, Pmos, Ringosc, Inv
 from .base import Gnd, NoConn, Res, Vdc, Idc, Cap, SinusoidalVoltageSource

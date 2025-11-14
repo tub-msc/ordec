@@ -46,7 +46,7 @@ def ord1_to_py(source_data: str) -> ast.Module:
     """
     module = ast.parse(
         "from ordec.core import *\n" +
-        "from ordec.sim2.sim_hierarchy import HighlevelSim\n"+
+        "from ordec.sim.sim_hierarchy import HighlevelSim\n"+
         "from ordec.ord1.implicit_processing import symbol_process, preprocess, PostProcess, postprocess\n" +
         "from ordec.ord1.prelim_schem_instance import PrelimSchemInstance\n")
     x = load_ord_from_string(source_data)

@@ -58,11 +58,15 @@ ordec =  "ordec.server:main"
 [tool.setuptools]
 packages = [
     "ordec",
+    "ordec.core",
+    "ordec.layout",
     "ordec.lib",
     "ordec.lib.examples",
     "ordec.lib.ord_test",
     "ordec.ord1",
-    "ordec.sim2",
+    "ordec.ord2",
+    "ordec.schematic",
+    "ordec.sim",
 ]
 
 [tool.setuptools.package-data]

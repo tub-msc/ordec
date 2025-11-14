@@ -11,10 +11,10 @@ import os
 from ordec.core import *
 from ordec import Rational as R
 from ordec.lib.base import Vdc, Res, Cap, Gnd
-from ordec.sim2.ngspice import Ngspice, NgspiceBackend
-from ordec.sim2.sim_hierarchy import SimHierarchy, HighlevelSim
+from ordec.sim.ngspice import Ngspice, NgspiceBackend
+from ordec.sim.sim_hierarchy import SimHierarchy, HighlevelSim
 from ordec.widgets import AnimatedFnWidget, VdcSliderWidget
-from ordec.sim2.ngspice_ffi import NgspiceFFI
+from ordec.sim.ngspice_ffi import NgspiceFFI
 
 
 class InteractiveRCCircuit(Cell):

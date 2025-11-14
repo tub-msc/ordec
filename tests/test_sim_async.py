@@ -10,8 +10,8 @@ from ordec.core import *
 from ordec.lib import test as lib_test
 from ordec.lib.test import RCAlterTestbench
 from ordec.core.rational import R
-from ordec.sim2.sim_hierarchy import SimHierarchy, HighlevelSim
-from ordec.sim2.ngspice import Ngspice
+from ordec.sim.sim_hierarchy import SimHierarchy, HighlevelSim
+from ordec.sim.ngspice import Ngspice
 
 @pytest.mark.parametrize("backend", ["subprocess", "ffi", "mp"])
 def test_highlevel_async_tran_basic(backend):
@@ -147,7 +147,7 @@ def test_sky130_streaming_with_savecurrents(backend):
 
 @pytest.mark.libngspice
 def test_sky130_netlist_savecurrents_option():
-    from ordec.sim2.sim_hierarchy import SimHierarchy, HighlevelSim
+    from ordec.sim.sim_hierarchy import SimHierarchy, HighlevelSim
 
     h = lib_test.InvSkyTb(vin=R(2.5))
 
