@@ -1,17 +1,13 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-#standard imports
-
 import numpy as np
 import heapq
 import sys
 import hashlib
 import math
 
-#ordec imports
-
-from ordec.core import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire, Rect4R
+from ..core import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire, Rect4R
 
 SHORTCUT_ENABLED = True
 cache = {}

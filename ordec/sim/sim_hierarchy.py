@@ -8,7 +8,8 @@ import time
 from ..core import *
 from ..core.rational import R
 from ..core.schema import SimType
-from .ngspice import Ngspice, Netlister
+from .ngspice import Ngspice
+from ..schematic.netlister import Netlister
 from .ngspice_common import SignalKind
 
 
@@ -95,8 +96,8 @@ class AlterSession:
 
     def op(self):
         self.highlevel_sim.simhier.sim_type = SimType.DC
-        for hook in self.highlevel_sim.sim_setup_hooks:
-            hook(self.ngspice_sim)
+        #for hook in self.highlevel_sim.sim_setup_hooks:
+        #    hook(self.ngspice_sim)
 
         for vtype, name, subname, value in self.ngspice_sim.op():
             if vtype == "voltage":
@@ -164,19 +165,19 @@ class HighlevelSim:
             name = self.netlister.name_hier_simobj(sn)
             self.str_to_simobj[name] = sn
 
-        # Collect simulation setup hooks from netlister if present
-        self.sim_setup_hooks = []
-        if hasattr(self.netlister, "_sim_setup_hooks"):
-            self.sim_setup_hooks = list(self.netlister._sim_setup_hooks)
-
         self._active_sim = None
+
+    @contextmanager
+    def launch_ngspice(self):
+        with Ngspice.launch(debug=False, backend=self.backend) as sim:
+            for func in self.netlister.ngspice_setup_funcs:
+                func(sim)
+            yield sim
 
     def op(self):
         self.simhier.sim_type = SimType.DC
-        with Ngspice.launch(debug=False, backend=self.backend) as sim:
-            for hook in self.sim_setup_hooks:
-                hook(sim)
-
+        
+        with self.launch_ngspice() as sim:
             sim.load_netlist(self.netlister.out())
             for vtype, name, subname, value in sim.op():
                 if vtype == "voltage":
@@ -208,10 +209,7 @@ class HighlevelSim:
     ):
         """Common simulation execution logic for tran and ac analyses."""
         self.simhier.sim_type = sim_type
-        with Ngspice.launch(debug=False, backend=self.backend) as sim:
-            for hook in self.sim_setup_hooks:
-                hook(sim)
-
+        with self.launch_ngspice() as sim:
             # ngspice docs says AC does not support savecurrents
             if sim_type == SimType.AC and self.backend in ("ffi", "mp"):
                 temp_netlister = Netlister(enable_savecurrents=False)
@@ -423,12 +421,8 @@ class HighlevelSim:
     @contextmanager
     def alter_session(self, backend=None, debug=False):
         use_backend = backend or self.backend
-        with Ngspice.launch(debug=debug, backend=use_backend) as ngspice_sim:
-            # Execute simulation setup hooks (e.g., for IHP technology)
-            for hook in self.sim_setup_hooks:
-                hook(ngspice_sim)
-
+        with self.launch_ngspice() as sim:
             try:
-                yield AlterSession(self, ngspice_sim)
+                yield AlterSession(self, sim)
             finally:
                 self._active_sim = None

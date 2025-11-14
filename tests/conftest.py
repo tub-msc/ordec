@@ -4,6 +4,8 @@
 import pytest
 from ordec import Subgraph
 
+# TODO: --upgrade-golden-files and --update-ord-files are currently not used.
+
 def pytest_addoption(parser):
     parser.addoption(
         "--update-golden-files",

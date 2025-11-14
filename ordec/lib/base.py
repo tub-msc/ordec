@@ -4,7 +4,7 @@
 from public import public
 
 from ..core import *
-from .. import helpers
+from ..schematic import helpers
 
 # Passives
 # ========

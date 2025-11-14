@@ -3,11 +3,11 @@
 
 from dataclasses import dataclass
 
-from .. import helpers
+from ..schematic import helpers
 from ..core import *
-from ..sim2.sim_hierarchy import HighlevelSim, SimHierarchy
-from ..sim2.ngspice import Ngspice
-from ..sim2.ngspice_common import SignalKind, SignalArray
+from ..sim.sim_hierarchy import HighlevelSim, SimHierarchy
+from ..sim.ngspice import Ngspice
+from ..sim.ngspice_common import SignalKind, SignalArray
 
 from .generic_mos import Or2, Nmos, Pmos, Ringosc, Inv
 from .base import Gnd, NoConn, Res, Vdc, Idc, Cap, SinusoidalVoltageSource
@@ -608,11 +608,7 @@ class SimBase(Cell):
             backend=hl_backend,
         )
 
-        with Ngspice.launch(backend=hl_backend) as sim:
-            # Execute simulation setup hooks (e.g., for IHP technology)
-            for hook in highlevel_sim.sim_setup_hooks:
-                hook(sim)
-
+        with highlevel_sim.launch_ngspice() as sim:
             sim.load_netlist(highlevel_sim.netlister.out())
 
             data_queue = sim.tran_async(

@@ -7,11 +7,11 @@ import argparse
 from lark.indenter import PythonIndenter
 from .ord2_transformer import Ord2Transformer
 import ast
+import importlib.resources
 
-
-lark_fn = Path(__file__).parent / "ord2.lark"
-parser = Lark.open(
-    lark_fn,
+parser = Lark.open_from_package(
+    __name__,
+    "ord2.lark",
     parser="lalr",
     postlex=PythonIndenter(),
     start="file_input",
