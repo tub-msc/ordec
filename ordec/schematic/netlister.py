@@ -107,12 +107,15 @@ class Netlister:
                 f(self, inst, s)
         return subckt_dep
 
-    def netlist_hier(self, top: Schematic):
+    def netlist_hier(self, top: Schematic, top_as_subckt: bool=False):
         self.add(".title", self.name_obj(top.cell))
         if self.enable_savecurrents:
             self.add(".option", "savecurrents")
 
-        subckt_dep = self.netlist_schematic(top)
+        if top_as_subckt:
+            subckt_dep = {top}
+        else:
+            subckt_dep = self.netlist_schematic(top)
         subckt_done = set()
         while len(subckt_dep - subckt_done) > 0:
             symbol = next(iter(subckt_dep - subckt_done))
