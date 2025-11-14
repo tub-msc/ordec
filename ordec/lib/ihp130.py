@@ -7,7 +7,7 @@ from pathlib import Path
 from public import public
 
 from ..core import *
-from .. import helpers
+from ..schematic import helpers
 from ..ord1.implicit_processing import schematic_routing
 from ..sim2.ngspice_common import NgspiceError
 from . import generic_mos

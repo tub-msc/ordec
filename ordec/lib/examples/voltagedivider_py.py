@@ -1,5 +1,5 @@
 from ordec.core import *
-from ordec import helpers
+from ordec.schematic import helpers
 from ordec.sim2.sim_hierarchy import HighlevelSim
 from ordec.lib import Res, Gnd, Vdc
 

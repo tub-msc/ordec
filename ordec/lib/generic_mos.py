@@ -4,7 +4,7 @@
 from public import public
 
 from ..core import *
-from .. import helpers
+from ..schematic import helpers
  
 def setup_generic_mos(netlister):
     vt0 = 1.0

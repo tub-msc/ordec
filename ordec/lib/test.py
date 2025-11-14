@@ -3,7 +3,7 @@
 
 from dataclasses import dataclass
 
-from .. import helpers
+from ..schematic import helpers
 from ..core import *
 from ..sim2.sim_hierarchy import HighlevelSim, SimHierarchy
 from ..sim2.ngspice import Ngspice
