@@ -8,7 +8,8 @@ import time
 from ..core import *
 from ..core.rational import R
 from ..core.schema import SimType
-from .ngspice import Ngspice, Netlister
+from .ngspice import Ngspice
+from ..schematic.netlister import Netlister
 from .ngspice_common import SignalKind
 
 

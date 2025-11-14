@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-import logging
 from pathlib import Path
 from public import public
 import functools
