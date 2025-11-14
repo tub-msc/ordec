@@ -19,8 +19,7 @@ def load_ord_from_string(ord_string):
     :return: ast of the parsed string
     """
     # Load the grammar file
-    lark_fn = Path(__file__).parent / "ord_grammar.lark"
-    parser = Lark.open(lark_fn, parser="lalr", lexer="basic", postlex=TreeIndenter())
+    parser = Lark.open_from_package(__name__, "ord_grammar.lark", parser="lalr", lexer="basic", postlex=TreeIndenter())
     
     # Parse the string directly
     parsed = parser.parse(ord_string + "\n")
