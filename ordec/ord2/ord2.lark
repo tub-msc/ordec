@@ -373,7 +373,11 @@ celldef: "cell" name ":" suite
 cell_func_def: "cell_func" name ":" suite
 context_body: ":" suite
               | "(" simple_stmt? ")" _NEWLINE
-context_element: name name context_body
+context_element: name context_target context_body
+?context_target: context_target "." name -> getattr
+		| context_target "[" test "]" -> getitem
+   	       	| name -> var
+		
 dotted_atom: dots name
 path_stmt: "path" name
 net_stmt: "net" name

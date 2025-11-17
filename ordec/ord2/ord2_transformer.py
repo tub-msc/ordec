@@ -3,6 +3,7 @@
 
 # standard imports
 import ast
+import copy
 
 # ordec imports
 from .python_transformer import PythonTransformer
@@ -138,13 +139,52 @@ class Ord2Transformer(PythonTransformer):
         )
         return ast.Expr(ast.BinOp(lhs, ast.Mod(), rhs))
 
+
+    def extract_path(self, nodes):
+        # Base: Name(id)
+        if isinstance(nodes, ast.Name):
+            return ((nodes.id, False),)
+
+        # Attribute(value, attr)
+        elif isinstance(nodes, ast.Attribute):
+            return self.extract_path(nodes.value) + ((nodes.attr, False),)
+
+        # Subscript(value, slice)
+        elif isinstance(nodes, ast.Subscript):
+            if isinstance(nodes.slice, ast.Name):
+                key = nodes.slice.id
+            else:
+                key = getattr(nodes.slice, 'value', nodes.slice)
+            return self.extract_path(nodes.value) + ((key, True),)
+
+    @staticmethod
+    def path_to_ast(path):
+        result = []
+        for value, from_subscript in path:
+            if from_subscript:
+                if isinstance(value, str) and value.isidentifier():
+                    node = ast.Name(id=value, ctx=ast.Load())
+                else:
+                    node = ast.Constant(value=value)
+            else:
+                node = ast.Constant(value=value)
+
+            result.append(node)
+        return result
+
+
     def context_element(self, nodes):
         context_type = nodes[0]
         context_name = nodes[1]
         context_body = nodes[2] if len(nodes) > 2 else None
         inout = ''
 
-        lhs = self.ast_name(context_name, ctx=ast.Store())
+        context_name_tuple = self.extract_path(context_name)
+        context_name_tuple = self.path_to_ast(context_name_tuple)
+                
+        lhs = copy.copy(context_name)
+        path_node = None
+        self._set_ctx(lhs, ast.Store())
         if context_type in ["inout", "input", "output"]:
             match context_type:
                 case "inout":
@@ -153,14 +193,18 @@ class Ord2Transformer(PythonTransformer):
                     inout = "In"
                 case _:
                     inout = "Out"
-            rhs = ast.Call(
-                func=self.ast_attribute(self.ast_name("ctx"), "add"),
-                args=[
-                    ast.Tuple(
-                        elts=[ast.Constant(value=value) for value in context_name.split('.')],
-                        ctx=ast.Load()
-                    ),
-                    ast.Call(
+            if len(context_name_tuple) > 1:
+                path_node = context_name.value
+
+            args = []
+            args.append(ast.Tuple(elts=context_name_tuple, ctx=ast.Load()))
+            func = self.ast_attribute(self.ast_name("ctx"), "add")
+            
+            if path_node:
+                func = self.ast_attribute(self.ast_name("ctx"), "add_pathnode")
+                args.append(path_node)
+                
+            args.append(ast.Call(
                         func=self.ast_name("Pin"),
                         keywords=[
                             ast.keyword(
@@ -173,20 +217,21 @@ class Ord2Transformer(PythonTransformer):
                         ],
                         args=[]
                     )
-                ],
-                keywords=[]
             )
+            rhs = ast.Call(func=func, args=args, keywords=[])
+            
         elif context_type == "port":
-            rhs = ast.Call(
-                func=self.ast_attribute(self.ast_name("ctx"),'add_port_normal'),
-                args=[
-                    ast.Tuple(
-                        elts=[ast.Constant(value=value) for value in context_name.split('.')],
-                        ctx=ast.Load()
-                    ),
-                ],
-                keywords=[]
-            )
+            if len(context_name_tuple) > 1:
+                path_node = context_name.value
+
+            args = [ast.Tuple(elts=context_name_tuple, ctx=ast.Load())]
+            if path_node:
+                args.append(path_node)
+                func = self.ast_attribute(self.ast_name("ctx"), "add_port_pathnode")
+            else:
+                func = self.ast_attribute(self.ast_name("ctx"),"add_port_normal")
+                
+            rhs = ast.Call(func=func, args=args, keywords=[])
         else:
 
             resolver_lambda = ast.Lambda(
@@ -214,14 +259,17 @@ class Ord2Transformer(PythonTransformer):
                         )
                     )
 
-            rhs = ast.Call(
-                func=self.ast_attribute(self.ast_name("ctx"), "add"),
-                args=[
-                    ast.Tuple(
-                        elts=[ast.Constant(value=value) for value in context_name.split('.')],
-                        ctx=ast.Load()
-                    ),
-                    ast.Call(
+            args = []
+            args.append(ast.Tuple(elts=context_name_tuple, ctx=ast.Load()))
+            
+            if len(context_name_tuple) > 1:
+                path_node = context_name.value
+                func = self.ast_attribute(self.ast_name("ctx"), "add_pathnode")
+                args.append(path_node)
+            else:
+                func=self.ast_attribute(self.ast_name("ctx"), "add")
+                
+            args.append(ast.Call(
                         func=self.ast_name("SchemInstanceUnresolved"),
                         keywords=[
                             ast.keyword(
@@ -230,20 +278,16 @@ class Ord2Transformer(PythonTransformer):
                             )
                         ],
                         args=[]
-                    )
-                ],
-                keywords=[]
+                )
             )
-        assignment = ast.Assign([lhs], rhs)
-
-        if context_type == "port":
-            with_root_value = ast.Call(
-                func=self.ast_attribute(self.ast_name("ctx"), attr='get_symbol_port'),
-                args=[self.ast_name(context_name)],
-                keywords=[]
-            )
+            rhs = ast.Call(func=func, args=args, keywords=[])
+                                        
+        if path_node:
+            assignment = ast.Expr(rhs)
         else:
-            with_root_value = self.ast_name(context_name)
+            assignment = ast.Assign([lhs], rhs)
+
+        
         with_stmt = ast.With(
             items=[
                 ast.withitem(
@@ -253,7 +297,7 @@ class Ord2Transformer(PythonTransformer):
                         keywords=[
                             ast.keyword(
                                 arg="root",
-                                value=with_root_value
+                                value=context_name
                             )
                         ]
                     )
@@ -320,6 +364,19 @@ class Ord2Transformer(PythonTransformer):
         )
         return ast.Assign([lhs], rhs)
 
+
+    def path_stmt(self, nodes):
+        path = nodes[0]
+        lhs = self.ast_name(path, ctx=ast.Store())
+        rhs = ast.Call(
+             func=self.ast_attribute(
+                 self.ast_name("ctx"),
+                 "add_path"),
+             args=[ast.Constant(value=path)],
+             keywords=[]
+            )
+        return ast.Assign([lhs], rhs)
+        
 
     def _flatten(self, items):
         flat = []
