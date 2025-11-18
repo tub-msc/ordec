@@ -313,12 +313,16 @@ class Ord2Transformer(PythonTransformer):
         for _ in range(depth - 1):
             node = self.ast_attribute(node,"parent")
 
-        node = self.ast_attribute(node, value, ctx=ast.Store())
+        if value:
+            node = self.ast_attribute(node, value)
         return node
 
     def dotted_atom(self, nodes):
         if len(nodes) == 1:
-            return nodes
+            depth = nodes[0]
+            if depth == 3:
+                return ast.Constant(value=Ellipsis)
+            return self.depth_helper(None, depth)
         else:
            depth = nodes[0]
            value = nodes[1]

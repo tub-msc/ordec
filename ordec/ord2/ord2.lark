@@ -238,7 +238,6 @@ AWAIT: "await"
           | atom_expr "." name            -> getattr
           | atom_expr? ".$" name           -> getparam
           | atom
-          | dotted_atom
 
 ?atom: "(" yield_expr ")"
      | "(" _tuple_inner? ")" -> tuple
@@ -253,7 +252,7 @@ AWAIT: "await"
      | number
      | string_concat
      | "(" test ")"
-     | "..." -> ellipsis
+     | dotted_atom // "..." -> ellipsis
      | "None"    -> const_none
      | "True"    -> const_true
      | "False"   -> const_false
@@ -378,7 +377,7 @@ context_element: name context_target context_body
 		| context_target "[" test "]" -> getitem
    	       	| name -> var
 		
-dotted_atom: dots name
+dotted_atom: dots name?
 path_stmt: "path" name
 net_stmt: "net" name
 
