@@ -19,6 +19,7 @@ class Ord2Transformer(PythonTransformer):
         return ast.Attribute(value=value, attr=attr, ctx=ctx)
 
     def celldef(self, nodes):
+        """ Definition of a ORDeC cell class"""
         cell_name = nodes[0]
         suite = nodes[1]
         base = self.ast_name('Cell')
@@ -33,6 +34,7 @@ class Ord2Transformer(PythonTransformer):
         )
 
     def RATIONAL(self, token):
+        """ Rational numbers with SI suffix (100n, 20u)"""
         si_suffixes = ('a','f','p','n','u','m','k','M','G','T')
         if token.endswith(si_suffixes) or '/' in token:
             token = ast.Constant(token.value)
@@ -46,9 +48,9 @@ class Ord2Transformer(PythonTransformer):
             return ast.Constant(value=number)
 
     def cell_func_def(self, nodes):
+        """ Funcdef for cell (cell_func schematic:\n suite)"""
         func_name = nodes[0]
         suite = nodes[1]
-        # Create suite assignment rhs
 
         keywords = list()
         keywords.append(ast.keyword(arg="cell", value=self.ast_name("self")))
@@ -100,9 +102,7 @@ class Ord2Transformer(PythonTransformer):
             ],
             body=suite
         )
-        # insert assignment before first inner content
 
-        # Combine to function definition
         func_def = ast.FunctionDef(
             name=func_name,
             args=ast.arguments(
@@ -121,7 +121,7 @@ class Ord2Transformer(PythonTransformer):
         return func_def
 
     def connect_stmt(self, nodes):
-        # Attr because of the dotted_atom
+        """ connect stmt x -- b"""
         connect_lhs = nodes[0].attr
         connect_rhs = nodes[1]
         lhs = nodes[0].value
@@ -141,6 +141,8 @@ class Ord2Transformer(PythonTransformer):
 
 
     def extract_path(self, nodes):
+        # Extract string tuple from nested attributes
+
         # Base: Name(id)
         if isinstance(nodes, ast.Name):
             return ((nodes.id, False),)
@@ -159,6 +161,7 @@ class Ord2Transformer(PythonTransformer):
 
     @staticmethod
     def path_to_ast(path):
+        """ Convert string tuple to ast.Tuple"""
         result = []
         for value, from_subscript in path:
             if from_subscript:
@@ -174,6 +177,7 @@ class Ord2Transformer(PythonTransformer):
 
 
     def context_element(self, nodes):
+        """ context_element (name name:\n    suite)"""
         context_type = nodes[0]
         context_name = nodes[1]
         context_body = nodes[2] if len(nodes) > 2 else None
@@ -185,6 +189,7 @@ class Ord2Transformer(PythonTransformer):
         lhs = copy.copy(context_name)
         path_node = None
         self._set_ctx(lhs, ast.Store())
+        # Case for symbol statements
         if context_type in ["inout", "input", "output"]:
             match context_type:
                 case "inout":
@@ -219,7 +224,7 @@ class Ord2Transformer(PythonTransformer):
                     )
             )
             rhs = ast.Call(func=func, args=args, keywords=[])
-            
+        # Case for port statements
         elif context_type == "port":
             if len(context_name_tuple) > 1:
                 path_node = context_name.value
@@ -232,8 +237,8 @@ class Ord2Transformer(PythonTransformer):
                 func = self.ast_attribute(self.ast_name("ctx"),"add_port_normal")
                 
             rhs = ast.Call(func=func, args=args, keywords=[])
+        # Case for instantiating sub-cells
         else:
-
             resolver_lambda = ast.Lambda(
                         args=ast.arguments(
                             posonlyargs=[],
@@ -281,13 +286,13 @@ class Ord2Transformer(PythonTransformer):
                 )
             )
             rhs = ast.Call(func=func, args=args, keywords=[])
-                                        
+
         if path_node:
             assignment = ast.Expr(rhs)
         else:
             assignment = ast.Assign([lhs], rhs)
 
-        
+        # Combine to context-with stmt
         with_stmt = ast.With(
             items=[
                 ast.withitem(
@@ -308,6 +313,7 @@ class Ord2Transformer(PythonTransformer):
         return [assignment, with_stmt]
 
     def depth_helper(self, value, depth=1):
+        """ Access parent attributes depending on the dotted depth"""
         node = self.ast_attribute(self.ast_name("ctx"), "root")
 
         for _ in range(depth - 1):
@@ -318,6 +324,7 @@ class Ord2Transformer(PythonTransformer):
         return node
 
     def dotted_atom(self, nodes):
+        """ Dotted name (..x) or ellipsis (...) """
         if len(nodes) == 1:
             depth = nodes[0]
             if depth == 3:
@@ -329,12 +336,14 @@ class Ord2Transformer(PythonTransformer):
            return self.depth_helper(value, depth)
 
     def getparam(self, nodes):
+        """ get/set param (.$l = 100n) """
         if len(nodes) == 2:
+            # assignment
             target = nodes[0]
             attr = nodes[1]
             ctx = ast.Load()
         else:
-            # without lhs
+            # only dotted access
             attr = nodes[0]
             ctx = ast.Store()
             target = self.ast_attribute(
@@ -349,13 +358,15 @@ class Ord2Transformer(PythonTransformer):
         )
 
     def net_stmt(self, nodes):
+        """ Add net (net x)"""
         net_name = nodes[0]
         lhs = self.ast_name(net_name, ctx=ast.Store())
         rhs = ast.Call(
             func=self.ast_attribute(self.ast_name("ctx"), "add"),
             args=[
                 ast.Tuple(
-                    elts=[ast.Constant(value=value) for value in net_name.split('.')],
+                    elts=[ast.Constant(value=value)
+                          for value in net_name.split('.')],
                     ctx=ast.Load()
                 ),
                 ast.Call(
@@ -370,6 +381,7 @@ class Ord2Transformer(PythonTransformer):
 
 
     def path_stmt(self, nodes):
+        """ Add path (path x) """
         path = nodes[0]
         lhs = self.ast_name(path, ctx=ast.Store())
         rhs = ast.Call(
@@ -383,9 +395,10 @@ class Ord2Transformer(PythonTransformer):
         
 
     def _flatten(self, items):
+        """ Flatten the body of the context element suite"""
         flat = []
         for item in items:
-            if isinstance(item, list):   # child returned multiple stmts
+            if isinstance(item, list):
                 flat.extend(item)
             else:
                 flat.append(item)

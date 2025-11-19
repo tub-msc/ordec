@@ -374,8 +374,8 @@ context_body: ":" suite
               | "(" simple_stmt? ")" _NEWLINE
 context_element: name context_target context_body
 ?context_target: context_target "." name -> getattr
-		| context_target "[" test "]" -> getitem
-   	       	| name -> var
+		       | context_target "[" test "]" -> getitem
+   	           | name -> var
 		
 dotted_atom: dots name?
 path_stmt: "path" name

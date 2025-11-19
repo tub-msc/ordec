@@ -144,6 +144,16 @@ testdata = [
         refdir / "ordtest_strongarmliop_sch.svg"),
     testcase(ord_lambda('.lib.ord_test.strongarm_structured', 'Strongarm', 'schematic'),
         refdir / "ordtest_strongarmstructured_sch.svg"),
+
+    # Test cells from lib.ord_test.ord2_test
+    # ----------------------------------------------------------------
+
+    testcase(ord_lambda('.lib.ord_test.ord2_test.inverter', 'Inv', 'schematic'),
+        refdir / "ordtest_ord2test_inverter_sch.svg"),
+    testcase(ord_lambda('.lib.ord_test.ord2_test.nand', 'Nand', 'schematic'),
+        refdir / "ordtest_ord2test_nand_sch.svg"),
+    testcase(ord_lambda('.lib.ord_test.ord2_test.reg', 'MultibitReg_Arrays', 'schematic', bits=3),
+        refdir / "ordtest_ord2test_reg_sch.svg"),
 ]
 
 @pytest.mark.parametrize("testcase", testdata, ids=lambda t: t.ref_file.with_suffix("").name)

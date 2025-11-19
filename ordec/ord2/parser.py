@@ -10,6 +10,18 @@ import ast
 
 
 def format_error(code, line, column, window=2):
+    """
+    Function which formats the error message with correct
+    position and window size
+
+    Args:
+        code (str): String containing ORD code
+        line (int): Error line number
+        column (int): Error line column
+        window (int): Window size of the occurred error
+    Returns:
+        Error message
+    """
     lines = code.splitlines()
     error_line = line - 1
     start = error_line - window
@@ -28,7 +40,17 @@ def format_error(code, line, column, window=2):
     return "\n".join(error)
 
 
-def parse_with_errors(parser, code: str):
+def parse_with_errors(parser, code):
+    """
+    Function which parses an ORD string with improved
+    error messages
+
+    Args:
+        parser: ORD Lark parser
+        code (str): String containing ORD code
+    Returns:
+        AST of the parsed string
+    """
     try:
         return parser.parse(code + "\n")
     except UnexpectedToken as e:
