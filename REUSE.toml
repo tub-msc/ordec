@@ -99,6 +99,7 @@ path = [
     "docs/cell_lib/base.py",
     "docs/screenshot_demo.png",
     "examples/README.md",
+    "examples/interactive_rc_circuit/README.md",
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"

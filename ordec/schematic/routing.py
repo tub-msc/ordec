@@ -11,8 +11,8 @@ import math
 
 #ordec imports
 
-from ordec.core import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire, Rect4R
-from ordec.helpers import recursive_getitem
+from ..core import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire, Rect4R
+from .helpers import recursive_getitem
 
 SHORTCUT_ENABLED = True
 cache = {}

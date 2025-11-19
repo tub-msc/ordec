@@ -2,81 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import re
-from collections import namedtuple
-from contextlib import contextmanager
-from enum import Enum
-from typing import Iterator, Optional, Callable, Generator
-
-import numpy as np
-
 from ..core import *
-from .ngspice_ffi import NgspiceFFI
-from .ngspice_subprocess import NgspiceSubprocess
-from .ngspice_mp import NgspiceIsolatedFFI
-
-class NgspiceBackend(Enum):
-    """Available NgSpice backend types."""
-
-    SUBPROCESS = "subprocess"
-    FFI = "ffi"
-    MP = "mp"
-
-
-class Ngspice:
-    @staticmethod
-    def launch(debug: bool=False, backend: NgspiceBackend = NgspiceBackend.SUBPROCESS):
-        if isinstance(backend, str):
-            backend = NgspiceBackend(backend.lower())
-
-        if debug:
-            print(f"[Ngspice] Using backend: {backend.value}")
-
-        backend_class = {
-            NgspiceBackend.FFI: NgspiceFFI,
-            NgspiceBackend.SUBPROCESS: NgspiceSubprocess,
-            NgspiceBackend.MP: NgspiceIsolatedFFI,
-        }[backend]
-
-        return backend_class.launch(debug=debug)
-
-    def __init__(self):
-        raise TypeError("Please call Ngspice.launch(), instantiation of Ngspice is not supported!")
-
-
-RawVariable = namedtuple("RawVariable", ["name", "unit"])
-
-def parse_raw(fn):
-    info = {}
-    info_vars = []
-
-    with open(fn, "rb") as f:
-        for i in range(100):
-            l = f.readline()[:-1].decode("ascii")
-
-            if l.startswith("\t"):
-                _, var_idx, var_name, var_unit = l.split("\t")
-                assert int(var_idx) == len(info_vars)
-                info_vars.append(RawVariable(var_name, var_unit))
-            else:
-                lhs, rhs = l.split(":", 1)
-                info[lhs] = rhs.strip()
-                if lhs == "Binary":
-                    break
-        assert len(info_vars) == int(info["No. Variables"])
-        no_points = int(info["No. Points"])
-
-        dtype = np.dtype(
-            {
-                "names": [v.name for v in info_vars],
-                "formats": [np.float64] * len(info_vars),
-            }
-        )
-
-        np.set_printoptions(precision=5)
-
-        data = np.fromfile(f, dtype=dtype, count=no_points)
-    return data
-
 
 def basename_escape(obj):
     if isinstance(obj, Cell):
@@ -85,7 +11,6 @@ def basename_escape(obj):
         basename = "_".join(obj.full_path_list())
         return re.sub(r"[^a-zA-Z0-9]", "_", basename).lower()
 
-
 class Netlister:
     def __init__(self, enable_savecurrents: bool = True):
         self.obj_of_name = {}
@@ -93,21 +18,22 @@ class Netlister:
         self.spice_cards = []
         self.cur_line = 0
         self.indent = 0
-        self.setup_funcs = set()
+        self.netlist_setup_funcs = set()
+        self.ngspice_setup_funcs = set()
         self.enable_savecurrents = enable_savecurrents
-        self._sim_setup_hooks = []
 
-    def require_setup(self, setup_func):
-        self.setup_funcs.add(setup_func)
+    def require_netlist_setup(self, func):
+        self.netlist_setup_funcs.add(func)
 
-    def require_sim_setup(self, sim_setup_func):
-        """Register a function to be called during simulation setup.
+    def require_ngspice_setup(self, func):
+        """
+        Register a function to be called during simulation setup.
 
         The function should accept a single argument: the Ngspice instance.
         This is useful for PDK-specific setup commands that need to be
         executed on the simulator instance rather than in the netlist.
         """
-        self._sim_setup_hooks.append(sim_setup_func)
+        self.ngspice_setup_funcs.add(func)
 
     def out(self):
         return "\n".join(self.spice_cards) + "\n.end\n"
@@ -181,12 +107,15 @@ class Netlister:
                 f(self, inst, s)
         return subckt_dep
 
-    def netlist_hier(self, top: Schematic):
+    def netlist_hier(self, top: Schematic, top_as_subckt: bool=False):
         self.add(".title", self.name_obj(top.cell))
         if self.enable_savecurrents:
             self.add(".option", "savecurrents")
 
-        subckt_dep = self.netlist_schematic(top)
+        if top_as_subckt:
+            subckt_dep = {top}
+        else:
+            subckt_dep = self.netlist_schematic(top)
         subckt_done = set()
         while len(subckt_dep - subckt_done) > 0:
             symbol = next(iter(subckt_dep - subckt_done))
@@ -203,5 +132,5 @@ class Netlister:
             subckt_done.add(symbol)
 
         self.cur_line = 1
-        for setup_func in self.setup_funcs:
+        for setup_func in self.netlist_setup_funcs:
             setup_func(self)

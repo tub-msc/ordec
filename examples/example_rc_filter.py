@@ -11,9 +11,9 @@ from io import BytesIO
 from ordec.core import *
 from ordec import Rational as R
 from ordec.lib.base import PulseVoltageSource, Res, Cap, Gnd
-from ordec.sim2.ngspice_ffi import NgspiceFFI
-from ordec.sim2.ngspice import Ngspice, NgspiceBackend
-from ordec.sim2.sim_hierarchy import SimHierarchy, HighlevelSim
+from ordec.sim.ngspice_ffi import NgspiceFFI
+from ordec.sim.ngspice import Ngspice, NgspiceBackend
+from ordec.sim.sim_hierarchy import SimHierarchy, HighlevelSim
 
 
 def plot_sixel(time_data, voltage_in, voltage_out, title="RC Circuit Response"):

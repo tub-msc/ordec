@@ -3,34 +3,35 @@
 
 import re
 import pytest
-from ordec.sim2.ngspice import Ngspice, Netlister
-from ordec.sim2.ngspice_common import NgspiceError, NgspiceFatalError
+from ordec.sim.ngspice import Ngspice
+from ordec.schematic.netlister import Netlister
+from ordec.sim.ngspice_common import NgspiceError, NgspiceFatalError
 from ordec import Rational as R
 from ordec.lib import test as lib_test
 from ordec.core import *
-from ordec.sim2.sim_hierarchy import SimHierarchy, HighlevelSim
+from ordec.sim.sim_hierarchy import SimHierarchy, HighlevelSim
 from ordec.lib.test import RCAlterTestbench
 
-sim2_backends = [
+sim_backends = [
     pytest.param('subprocess', marks=[]),
     pytest.param('ffi', marks=[pytest.mark.libngspice]),
     pytest.param('mp', marks=[pytest.mark.libngspice]),
 ]
 
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_ngspice_illegal_netlist_1(backend):
     with Ngspice.launch(debug=True, backend=backend) as sim:
         with pytest.raises(NgspiceFatalError, match=".*Error: Mismatch of .subckt ... .ends statements!.*"):
             sim.load_netlist(".title test\n.ends\n.end")
 
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_ngspice_illegal_netlist_2(backend):
     with Ngspice.launch(debug=True, backend=backend) as sim:
         with pytest.raises(NgspiceError, match=".*unknown subckt: x0 1 2 3 invalid.*"):
             sim.load_netlist(".title test\nx0 1 2 3 invalid\n.end")
 
 @pytest.mark.skip(reason="Ngspice seems to hang here.")
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_ngspice_illegal_netlist_3(backend):
     broken_netlist = """.title test
     MN0 d 0 0 0 N1 w=hello
@@ -41,14 +42,14 @@ def test_ngspice_illegal_netlist_3(backend):
 
 # TODO: Not all problems seem to currently be caught and raises in Python as exception at the moment (see sky130 with Rational params).
 
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_ngspice_version(backend):
     with Ngspice.launch(debug=True, backend=backend) as sim:
         version_str = sim.command("version -f")
         version_number = int(re.search(r"\*\* ngspice-([0-9]+)(.[0-9]+)?\s+", version_str).group(1))
         assert version_number >= 39
 
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_ngspice_op_no_auto_gnd(backend):
     netlist_voltage_divider = """.title voltage divider netlist
     V1 in 0 3
@@ -76,14 +77,14 @@ def test_ngspice_op_no_auto_gnd(backend):
     assert op['a'] == 2.0
     assert op['gnd'] == 1.0
 
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_sim_dc_flat(backend):
     h = lib_test.ResdivFlatTb(backend=backend).sim_dc
     assert h.a.dc_voltage == 0.33333333333333337
     assert h.b.dc_voltage == 0.6666666666666667
 
 
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_sim_dc_hier(backend):
     h = lib_test.ResdivHierTb(backend=backend).sim_dc
     assert abs(h.r.dc_voltage - 0.3589743589743596) < 1e-10
@@ -97,29 +98,29 @@ def test_generic_mos_netlister():
     assert netlist.count('.model nmosgeneric NMOS level=1') == 1
     assert netlist.count('.model pmosgeneric PMOS level=1') == 1
 
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_generic_mos_nmos_sourcefollower(backend):
     assert lib_test.NmosSourceFollowerTb(vin=R(2), backend=backend).sim_dc.o.dc_voltage == 0.6837722116612965
     assert lib_test.NmosSourceFollowerTb(vin=R(3), backend=backend).sim_dc.o.dc_voltage == 1.6837721784225057
 
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_generic_mos_inv(backend):
     assert lib_test.InvTb(vin=R(0), backend=backend).sim_dc.o.dc_voltage == 4.9999999698343345
     assert lib_test.InvTb(vin=R('2.5'), backend=backend).sim_dc.o.dc_voltage == 2.500000017115547
     assert lib_test.InvTb(vin=R(5), backend=backend).sim_dc.o.dc_voltage == 3.131249965532494e-08
 
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_sky_mos_inv(backend):
     assert abs(lib_test.InvSkyTb(vin=R(0), backend=backend).sim_dc.o.dc_voltage - 4.999999973187308) < 1e-10
     assert abs(lib_test.InvSkyTb(vin=R('2.5'), backend=backend).sim_dc.o.dc_voltage - 1.9806063550640076) < 1e-10
     assert abs(lib_test.InvSkyTb(vin=R(5), backend=backend).sim_dc.o.dc_voltage - 0.00012158997833462999) < 1e-10
 
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_ihp_mos_inv_vin0(backend):
     h_0 = lib_test.InvIhpTb(vin=R(0), backend=backend).sim_dc
     assert h_0.o.dc_voltage == pytest.approx(4.999573)
 
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_ihp_mos_inv_vin5(backend):
     h_5 = lib_test.InvIhpTb(vin=R(5), backend=backend).sim_dc
     assert h_5.o.dc_voltage == pytest.approx(0.00024556, abs=1e-5)
@@ -194,7 +195,7 @@ C1 out 0 1uF IC=0
             except queue.Empty:
                 break
 
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_webdata(backend):
     # Test DC webdata
     h_dc = lib_test.ResdivFlatTb(backend=backend).sim_dc
@@ -211,7 +212,7 @@ def test_webdata(backend):
     assert 'voltages' in data
     assert 'currents' in data
 
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_sim_ac_rc_filter(backend):
     import math
     import numpy as np
@@ -240,7 +241,7 @@ def test_sim_ac_rc_filter(backend):
     assert np.isclose(vout_mag, 1/math.sqrt(2), atol=1e-2)
 
 
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_highlevel_alter_op(backend):
     """Test alter with op"""
 
@@ -268,7 +269,7 @@ def test_highlevel_alter_op(backend):
         final_voltage = node.vout.dc_voltage
         assert abs(final_voltage - 3.0) < 0.01, f"Final voltage should be ~3V, got {final_voltage}V"
 
-@pytest.mark.parametrize("backend", sim2_backends)
+@pytest.mark.parametrize("backend", sim_backends)
 def test_sim_ac_rc_filter_wrdata(backend):
     import math
     import numpy as np
