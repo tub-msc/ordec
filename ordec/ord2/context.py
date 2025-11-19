@@ -6,8 +6,8 @@ from contextvars import ContextVar, Token
 
 # ordec imports
 from ..core import *
-from ..routing import schematic_routing
-from .. import helpers
+from ..schematic.routing import schematic_routing
+from ..schematic import helpers
 
 _ctx_var = ContextVar("ctx", default=None)
 class _CtxWrapper:

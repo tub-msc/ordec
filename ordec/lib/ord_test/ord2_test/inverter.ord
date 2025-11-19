@@ -1,6 +1,6 @@
 # -*- version: ord2 -*-
 from ordec.core import *
-from ordec import helpers
+from ordec.schematic import helpers
 from ordec.lib.generic_mos import Nmos,Pmos
 from ordec.ord2.context import ctx, OrdContext
 from public import public
