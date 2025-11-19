@@ -1019,7 +1019,7 @@ class RCAlterTestbench(Cell):
 
 @generate_func
 def layoutgl_example() -> Layout:
-    from ordec.layout.ihp130 import SG13G2
+    from ordec.lib.ihp130 import SG13G2
     layers = SG13G2().layers
     l = Layout(ref_layers=layers)
 

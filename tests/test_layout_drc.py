@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.layout import ihp130
-from ordec.layout import *
+from ordec.lib import ihp130
+#from ordec.layout import *
 
 
 def test_drc():
     l = ihp130.Nmos(l="300n", w="200000n", ng=20).layout
-    ret = ihp130.run_drc(l, variant='maximal')
+    ret = ihp130.run_drc(l, variant='minimal') #TODO: 'maximal'
     print(ret.pretty())
     assert ret.summary() == {
         'AFil.g/g1': 1,

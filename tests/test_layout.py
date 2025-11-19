@@ -7,7 +7,7 @@ from pathlib import Path
 import importlib.resources
 import pytest
 
-from ordec.layout.ihp130 import SG13G2
+from ordec.lib.ihp130 import SG13G2
 from ordec.layout.gds_in import GdsReaderException
 from ordec.layout import *
 from ordec.core import *
