@@ -213,15 +213,15 @@ class Nmos(Cell):
 def run_drc(l: Layout, variant='maximal'):
     if variant not in ('minimal', 'maximal'):
         raise ValueError("variant must be either 'minimal' or 'maximal'.")
-    ihp130_root = Path(os.environ['ORDEC_PDK_IHP_SG13G2'])
-    script = ihp130_root / "libs.tech/klayout/tech/drc/sg13g2_minimal.lydrc"
+    from ..lib.ihp130 import pdk
+
 
     with tempfile.TemporaryDirectory() as cwd_str:
         cwd = Path(cwd_str)
         with open(cwd / "layout.gds", "wb") as f:
             name_of_layout = write_gds(l, f)
 
-        klayout.run(script, cwd,
+        klayout.run(pdk().klayout_drc_deck, cwd,
             in_gds="layout.gds",
             report_file="drc.xml",
             log_file="drc.log",
@@ -230,3 +230,59 @@ def run_drc(l: Layout, variant='maximal'):
 
         log = (cwd / "drc.log").read_text() # currently ignored
         return klayout.parse_rdb(cwd / "drc.xml", name_of_layout)
+
+@public
+def run_lvs(layout: Layout, schematic: Schematic):
+    layout = layout.freeze()
+    schematic = schematic.freeze()
+
+    nl = Netlister(lvs=True)
+    nl.netlist_hier(schematic, top_as_subckt=True)
+    #tmp_tmp = Path.cwd() / 'tmp/tmp'
+    #tmp_tmp.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory() as cwd_str:
+        tmp_dir = Path(cwd_str)
+
+        # The LVS script sometimes creates files in the parent directory of the
+        # input data. To avoid issues connected to this, use a subdirectory for
+        # all files.
+        cwd = tmp_ddir / 'lvs'
+        cwd.mkdir(exist_ok=True)
+
+        path_schematic = cwd / 'schematic.cir'
+        path_layout = cwd / 'layout.gds'
+
+        print(nl.out())
+        path_schematic.write_text(nl.out())
+
+        with open(path_layout, "wb") as f:
+            write_gds(layout, f)
+
+        klayout.run(
+            ihp130.pdk().klayout_lvs_deck,
+            str(cwd),
+            run_mode='deep',
+            no_net_names='false',
+            spice_comments='false',
+            net_only='false',
+            top_lvl_pins='true',
+            no_simplify='false',
+            no_series_res='false',
+            no_parallel_res='false',
+            combine_devices='false',
+            purge='false',
+            purge_nets='false',
+            verbose='false',
+            report='out.lvsdb',
+            log='out.log',
+            target_netlist='extracted.cir',
+
+            topcell='MyInv', # TODO
+            input='myinv.gds',
+            schematic='schematic.cir',
+            
+            #topcell='sg13g2_inv_1',
+            #input='sg13g2_inv_1.gds',
+            #schematic='sg13g2_inv_1.cdl',
+            )
