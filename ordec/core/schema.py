@@ -291,6 +291,29 @@ class SchemInstanceConn(Node):
 
     ref_pin_idx = CombinedIndex([ref, there], unique=True)
 
+
+class SchemInstanceUnresolvedCursor(tuple):
+    """Cursor to go through connections of a unresolved schem instance"""
+    def __repr__(self):
+        return f"{type(self).__name__}{tuple.__repr__(self)}"
+
+    def __eq__(self, other):
+        return type(self) == type(other) and super().__eq__(other)
+
+    def __getitem__(self, name):
+        if isinstance(name, (int, str)):
+            return self.__getattr__(name)
+        else:
+            return super().__getitem__(name)
+
+    def __getattr__(self, name):
+        return SchemInstanceUnresolvedCursor(self+(name,))
+
+    def __wire_op__(self, here):
+        conn = tuple.__getitem__(self, 0) % \
+            SchemInstanceUnresolvedConn(here=here, there=self[1:])
+        return conn
+    
 @public
 class SchemInstanceUnresolved(Node):
     """A instance of a Symbol that is not determined yet."""
@@ -318,6 +341,11 @@ class SchemInstanceUnresolved(Node):
     def loc_transform(self):
         return self.pos.transl() * self.orientation
 
+    def __getitem__(self, name):
+        return self.__getattr__(name)
+
+    def __getattr__(self, name):
+        return SchemInstanceUnresolvedCursor((self, name))
 
 @public
 class SchemInstanceUnresolvedConn(Node):

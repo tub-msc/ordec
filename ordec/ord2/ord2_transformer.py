@@ -122,23 +122,12 @@ class Ord2Transformer(PythonTransformer):
 
     def connect_stmt(self, nodes):
         """ connect stmt x -- b"""
-        connect_lhs = nodes[0].attr
+        connect_lhs = nodes[0]
         connect_rhs = nodes[1]
-        lhs = nodes[0].value
-
-        keywords=list()
-        keywords.append(ast.keyword(arg="here", value=connect_rhs))
-        keywords.append(ast.keyword(arg="there",
-                                    value=self.tuple([ast.Constant(value)
-                                                      for value in connect_lhs.split('.')])
-                                    )
-        )
-        rhs = ast.Call(func=self.ast_name("SchemInstanceUnresolvedConn"),
-                       args=[],
-                       keywords=keywords
-        )
-        return ast.Expr(ast.BinOp(lhs, ast.Mod(), rhs))
-
+        call = ast.Call(func=self.ast_attribute(connect_lhs, attr="__wire_op__"),
+                        args=[connect_rhs],
+                        keywords=[])
+        return ast.Expr(value=call)
 
     def extract_path(self, nodes):
         # Extract string tuple from nested attributes
