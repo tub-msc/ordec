@@ -72,9 +72,9 @@ class MyInv(Cell):
         l % LayoutRect(layer=layers.Metal1.pin, rect=(800, 100, 1570, 260))
         l % LayoutLabel(layer=layers.Metal1.pin, pos=(850, 150), text="vss")
 
-        l % LayoutRect(layer=layers.Metal1, rect=(2140, 1100, 2300, 2650))
-        l % LayoutRect(layer=layers.Metal1.pin, rect=(2140, 1100, 2300, 2650))
-        l % LayoutLabel(layer=layers.Metal1.pin, pos=(2190, 1150), text="y")
+        #l % LayoutRect(layer=layers.Metal1, rect=(2140, 1100, 2300, 2650))
+        #l % LayoutRect(layer=layers.Metal1.pin, rect=(2140, 1100, 2300, 2650))
+        #l % LayoutLabel(layer=layers.Metal1.pin, pos=(2190, 1150), text="y")
         
         l % LayoutRect(layer=layers.NWell, rect=(-240, 2250, 2680, 4115))
 
@@ -90,10 +90,11 @@ class MyInv(Cell):
 
 if __name__ == "__main__":
     layout = MyInv().layout
-    with open("out.gds", "wb") as f:
-        write_gds(layout, f)
+    #with open("out.gds", "wb") as f:
+    #    write_gds(layout, f)
     
-    r=ihp130.run_drc(layout)
-    print(r.pretty())
+    #r=ihp130.run_drc(layout)
+    #print(r.pretty())
 
-    ihp130.run_lvs(layout, MyInv().schematic)
+    ret=ihp130.run_lvs(layout, MyInv().schematic, use_tempdir=False)
+    print(ret)

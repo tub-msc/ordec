@@ -11,7 +11,7 @@ from ..core import *
 from ..schematic import helpers
 from ..schematic.netlister import Netlister
 from . import generic_mos
-from .pdk_common import PdkDict, check_dir, check_file
+from .pdk_common import PdkDict, check_dir, check_file, rundir
 from ..layout.makevias import makevias
 from ..layout.gds_out import write_gds
 from ..layout import klayout
@@ -281,7 +281,7 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
 class Mos(Cell):
     l = Parameter(R)  #: Length
     w = Parameter(R)  #: Width
-    m = Parameter(int, default=1)  #: Multiplier (number of devices in parallel)
+    m = Parameter(int, default=1)  #: Multiplier, i. e. number of devices with separate Activ areas in parallel)
     ng = Parameter(int, default=1)  #: Number of gate fingers
 
     def netlist_ngspice(self, netlister, inst, schematic):
@@ -305,6 +305,8 @@ class Nmos(Mos, generic_mos.Nmos):
 
     @generate
     def layout(self) -> Layout:
+        if self.m != 1:
+            raise ParameterError("m != 1 not supported for layout.")
         return layoutgen_mos(self, self.l, self.w, self.ng, nwell=False)
 
 @public
@@ -313,6 +315,8 @@ class Pmos(Mos, generic_mos.Pmos):
 
     @generate
     def layout(self) -> Layout:
+        if self.m != 1:
+            raise ParameterError("m != 1 not supported for layout.")
         return layoutgen_mos(self, self.l, self.w, self.ng, nwell=True)
 
 def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
@@ -390,14 +394,15 @@ class Ptap(Cell):
 
 
 @public
-def run_drc(l: Layout, variant='maximal'):
+def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
     if variant not in ('minimal', 'maximal'):
         raise ValueError("variant must be either 'minimal' or 'maximal'.")
 
-    with tempfile.TemporaryDirectory() as cwd_str:
-        cwd = Path(cwd_str)
+    with rundir('drc', use_tempdir) as cwd:
         with open(cwd / "layout.gds", "wb") as f:
             name_of_layout = write_gds(l, f)
+
+        (cwd / 'drc.log').unlink(missing_ok=True)
 
         klayout.run(pdk().klayout_drc_deck[variant], cwd,
             in_gds="layout.gds",
@@ -410,31 +415,31 @@ def run_drc(l: Layout, variant='maximal'):
         return klayout.parse_rdb(cwd / "drc.xml", name_of_layout)
 
 @public
-def run_lvs(layout: Layout, schematic: Schematic):
+def run_lvs(layout: Layout, schematic: Schematic, use_tempdir: bool=True) -> bool:
+    """
+    Returns:
+        True if LVS is clean, else False.
+    """
     #layout = layout.freeze()
     #schematic = schematic.freeze()
 
     nl = Netlister(lvs=True)
     nl.netlist_hier(schematic, top_as_subckt=True)
 
-    # if True:
-    #     cwd = Path.cwd() / 'lvs'
-    with tempfile.TemporaryDirectory(delete=False) as tmp_dir_str:
+    
+    with rundir('lvs', use_tempdir) as cwd:
         # The LVS script sometimes creates files in the parent directory of the
         # input data. To avoid issues connected to this, use a subdirectory for
         # all files.
-        cwd = Path(tmp_dir_str) / 'lvs'
-
+        cwd = cwd / 'lvs'
         cwd.mkdir(exist_ok=True)
 
-        path_schematic = cwd / 'schematic.cir'
-        path_layout = cwd / 'layout.gds'
+        (cwd / 'schematic.cir').write_text(nl.out())
 
-        print(nl.out())
-        path_schematic.write_text(nl.out())
+        (cwd / 'out.log').unlink(missing_ok=True)
 
-        #with open(path_layout, "wb") as f:
-        #    name_of_layout = write_gds(layout, f)
+        with open(cwd / 'layout.gds', "wb") as f:
+            name_of_layout = write_gds(layout, f)
 
         klayout.run(
             pdk().klayout_lvs_deck,
@@ -457,8 +462,7 @@ def run_lvs(layout: Layout, schematic: Schematic):
             topcell=name_of_layout[layout],
             input='layout.gds',
             schematic='schematic.cir',
-            
-            #topcell='sg13g2_inv_1',
-            #input='sg13g2_inv_1.gds',
-            #schematic='sg13g2_inv_1.cdl',
             )
+
+        log = (cwd / "out.log").read_text()
+        return log.find("INFO : Congratulations! Netlists match.") >= 0
