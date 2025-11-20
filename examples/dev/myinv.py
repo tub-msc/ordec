@@ -46,3 +46,7 @@ class MyInv(Cell):
         schematic_routing(s)
 
         return s
+
+@generate_func
+def layout_test():
+    return ihp130.Nmos(l="130n", w="10u", ng=10).layout

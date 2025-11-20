@@ -246,6 +246,19 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, pmos: bool) -
 
     s.constrain(l.activ.rect.ux == x_cur + 70)
 
+    if pmos:
+        l.psd = LayoutRect(layer=layers.pSD)
+        s.constrain(l.psd.rect.cx == l.activ.rect.cx)
+        s.constrain(l.psd.rect.cy == l.activ.rect.cy)
+        s.constrain(l.psd.rect.ux == l.activ.rect.ux + 180)
+        s.constrain(l.psd.rect.uy == l.activ.rect.uy + 300)
+
+        l.nwell = LayoutRect(layer=layers.NWell)
+        s.constrain(l.nwell.rect.cx == l.activ.rect.cx)
+        s.constrain(l.nwell.rect.cy == l.activ.rect.cy)
+        s.constrain(l.nwell.rect.ux == l.activ.rect.ux + 310)
+        s.constrain(l.nwell.rect.uy == l.activ.rect.uy + 385)
+
     s.solve()
 
     for i in range(num_gates + 1):
@@ -255,9 +268,6 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, pmos: bool) -
             margin=Vec2I(50, 50),
             cols=1,
             )
-
-    if pmos:
-        raise NotImplementedError()
         
     return l
 
