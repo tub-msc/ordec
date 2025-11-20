@@ -45,8 +45,8 @@ SPDX-License-Identifier = "CC0-1.0"
 [[annotations]]
 # ORD test code:
 path = [
-    "ordec/lib/ord_test/*.ord",
-    "ordec/lib/ord_test/ord2_test/*.ord"
+    "ordec/lib/ord1_test/*.ord",
+    "ordec/lib/ord2_test/*.ord"
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"
