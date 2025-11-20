@@ -243,6 +243,12 @@ def recursive_getitem(obj, tup):
     else:
         return recursive_getitem(obj[tup[0]], tup[1:])
 
+def recursive_setitem(obj, tup, value):
+    if len(tup) == 1:
+        obj[tup[0]] = value
+    else:
+        return recursive_setitem(obj[tup[0]], tup[1:], value)
+
 def resolve_instances(schematic: Schematic):
     """
     Resolves all SchemInstanceUnresolved objects, replacing them by

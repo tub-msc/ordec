@@ -52,7 +52,7 @@ eval_input: testlist _NEWLINE*
 
 decorator: "@" dotted_name [ "(" [arguments] ")" ] _NEWLINE
 decorators: decorator+
-decorated: decorators (classdef | funcdef | async_funcdef)
+decorated: decorators (classdef | celldef | funcdef | cell_func_def | async_funcdef)
 
 async_funcdef: "async" funcdef
 funcdef: "def" name "(" [parameters] ")" ["->" test] ":" suite
@@ -83,8 +83,20 @@ lambda_kwparams: "**" name ","?
 
 
 ?stmt: simple_stmt | compound_stmt
-?simple_stmt: small_stmt (";" small_stmt)* [";"] _NEWLINE
-?small_stmt: (expr_stmt | assign_stmt | del_stmt | pass_stmt | flow_stmt | import_stmt | global_stmt | nonlocal_stmt | assert_stmt)
+?simple_stmt: small_stmt (";" small_stmt)* [";"] _NEWLINE?
+?small_stmt: (expr_stmt
+            | assign_stmt
+            | del_stmt
+            | pass_stmt
+            | flow_stmt
+            | import_stmt
+            | global_stmt
+            | nonlocal_stmt
+            | assert_stmt
+            | connect_stmt
+            | path_stmt
+            | net_stmt)
+
 expr_stmt: testlist_star_expr
 assign_stmt: annassign | augassign | assign
 
@@ -120,7 +132,8 @@ nonlocal_stmt: "nonlocal" name ("," name)*
 assert_stmt: "assert" test ["," test]
 
 ?compound_stmt: if_stmt | while_stmt | for_stmt | try_stmt | match_stmt
-              | with_stmt | funcdef | classdef | decorated | async_stmt
+              | with_stmt | funcdef | classdef | celldef | decorated | async_stmt | cell_func_def
+              | context_element
 async_stmt: "async" (funcdef | with_stmt | for_stmt)
 if_stmt: "if" test ":" suite elifs ["else" ":" suite]
 elifs: elif_*
@@ -216,14 +229,14 @@ star_expr: "*" expr
 // sake of a __future__ import described in PEP 401 (which really works :-)
 !comp_op: "<"|">"|"=="|">="|"<="|"<>"|"!="|"in"| /not\s+in/ | "is" | /is\s+not/
 
-
 ?power: await_expr ("**" factor)?
 ?await_expr: AWAIT? atom_expr
 AWAIT: "await"
 
 ?atom_expr: atom_expr "(" [arguments] ")"      -> funccall
-          | atom_expr "[" subscriptlist "]"  -> getitem
-          | atom_expr "." name               -> getattr
+          | atom_expr "[" subscriptlist "]"    -> getitem
+          | atom_expr "." name            -> getattr
+          | atom_expr? ".$" name           -> getparam
           | atom
 
 ?atom: "(" yield_expr ")"
@@ -239,11 +252,10 @@ AWAIT: "await"
      | number
      | string_concat
      | "(" test ")"
-     | "..." -> ellipsis
+     | dotted_atom // "..." -> ellipsis
      | "None"    -> const_none
      | "True"    -> const_true
      | "False"   -> const_false
-
 
 ?string_concat: string+
 
@@ -291,7 +303,7 @@ encoding_decl: name
 yield_expr: "yield" [testlist]
           | "yield" "from" test -> yield_from
 
-number: DEC_NUMBER | HEX_NUMBER | BIN_NUMBER | OCT_NUMBER | FLOAT_NUMBER | IMAG_NUMBER
+number: HEX_NUMBER | BIN_NUMBER | OCT_NUMBER | IMAG_NUMBER | RATIONAL
 string: STRING | LONG_STRING | f_string
 
 f_string: FSTRING_DOUBLE_START f_string_content_double* FSTRING_DOUBLE_END
@@ -347,8 +359,27 @@ BIN_NUMBER.2: "0" ("b" | "B") ("_"?  "0".."1"                       )+
 _EXP: ("e"|"E") ["+" | "-"] _SPECIAL_DEC
 DECIMAL: "." _SPECIAL_DEC | _SPECIAL_DEC "." _SPECIAL_DEC?
 FLOAT_NUMBER: _SPECIAL_DEC _EXP | DECIMAL _EXP?
-IMAG_NUMBER: (_SPECIAL_DEC      | FLOAT_NUMBER) ("J" | "j")
+IMAG_NUMBER.2: (_SPECIAL_DEC      | FLOAT_NUMBER) ("J" | "j")
 
+// ORD DEFINITIONS
+SI: /[afpnumkMGT]/
+RATIONAL: DEC_NUMBER SLASH DEC_NUMBER
+        | DEC_NUMBER SI?
+        | FLOAT_NUMBER SI?
+
+connect_stmt: testlist_star_expr "--" testlist_star_expr
+celldef: "cell" name ":" suite
+cell_func_def: "cell_func" name ":" suite
+context_body: ":" suite
+              | "(" simple_stmt? ")" _NEWLINE
+context_element: name context_target context_body
+?context_target: context_target "." name -> getattr
+		       | context_target "[" test "]" -> getitem
+   	           | name -> var
+		
+dotted_atom: dots name?
+path_stmt: "path" name
+net_stmt: "net" name
 
 // Comma-separated list (with an optional trailing comma)
 cs_list{item}: item ("," item)* ","?

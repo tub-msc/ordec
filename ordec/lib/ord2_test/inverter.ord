@@ -1,0 +1,40 @@
+# -*- version: ord2 -*-
+from ordec.core import *
+from ordec.schematic import helpers
+from ordec.lib.generic_mos import Nmos,Pmos
+from ordec.ord2.context import ctx, OrdContext
+from public import public
+
+cell Inv:
+    cell_func symbol:
+        inout vdd(.align=Orientation.North)
+        inout vss(.align=Orientation.South)
+        input a(.align=Orientation.West)
+        output y(.align=Orientation.East)
+
+    cell_func schematic:
+        port vdd(.pos=(2,13); .align=Orientation.North)
+        port vss(.pos=(2,1); .align=Orientation.South)
+        port y (.pos=(9,7); .align=Orientation.West)
+        port a (.pos=(1,7); .align=Orientation.East)
+
+        Nmos pd:
+            .s -- vss.ref
+            #ctx.root % SchemInstanceUnresolvedConn(here=vss, there=('s',))
+            #dot().s.__wire__
+            #print(.s)
+            .b -- vss.ref
+            .d -- y.ref
+            .pos = (3,2)
+        Pmos pu:
+            .s -- vdd.ref
+            .b -- vdd.ref
+            .d -- y.ref
+            .pos = (3,8)
+            .$l = 400n
+        #print(pu.s)
+
+        pd.$l = 350u
+
+        for instance in pu, pd:
+            instance.g -- a.ref

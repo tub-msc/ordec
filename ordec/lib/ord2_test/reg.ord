@@ -1,0 +1,36 @@
+# -*- version: ord2 -*-
+from ordec.core import *
+from ordec.schematic import helpers
+from ordec.lib.test import DFF
+from ordec.ord2.context import ctx, OrdContext
+from public import public
+
+cell MultibitReg_Arrays:
+    bits = Parameter(int)
+    cell_func symbol:
+        input vdd(.align=Orientation.North)
+        input vss(.align=Orientation.South)
+        path d
+        path q
+        for i in range(self.bits):
+            input d[i](.align=Orientation.West)
+            output q[i](.align=Orientation.East)
+        input clk(.align=Orientation.West)
+
+    cell_func schematic:
+        port vss(.pos=(1,0); .align=Orientation.East)
+        port vdd(.pos=(1,1); .align=Orientation.East)
+        port clk(.pos=(1,2); .align=Orientation.East)
+        path d
+        path q
+        path I
+        for i in range(self.bits):
+            port d[i](.pos=(4, 5 + 8 * i); .align=Orientation.East)
+            port q[i](.pos=(14, 5 + 8 * i); .align=Orientation.West)
+            DFF I[i]:
+                .vss -- vss.ref
+                .vdd -- vdd.ref
+                .clk -- clk.ref
+                .d -- d[i].ref
+                .q -- q[i].ref
+            I[i].pos = (6, 3 + 8 * i)
