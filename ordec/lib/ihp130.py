@@ -9,6 +9,7 @@ import functools
 
 from ..core import *
 from ..schematic import helpers
+from ..schematic.netlister import Netlister
 from . import generic_mos
 from .pdk_common import PdkDict, check_dir, check_file
 from ..layout.makevias import makevias
@@ -111,6 +112,11 @@ class SG13G2(Cell):
             style_fill=rgb_color("#268c6b"),
             )
 
+        s.nBuLay = Layer(
+            gdslayer_shapes=GdsLayer(layer=32, data_type=0),
+            style_fill=rgb_color("#8c8ca6"),
+            )
+
         # Metal stack
         # -----------
 
@@ -191,7 +197,7 @@ class SG13G2(Cell):
 
         return s
 
-def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, pmos: bool) -> Layout:
+def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) -> Layout:
     # See also: ihp-sg13g2/libs.tech/klayout/python/sg13g2_pycell_lib/ihp/nmos_code.py
     layers = SG13G2().layers
     l = Layout(ref_layers=layers, cell=cell)
@@ -230,7 +236,7 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, pmos: bool) -
         s.constrain(poly.rect.cy == l.activ.rect.cy)
         s.constrain(poly.rect.width == L)
         s.constrain(poly.rect.lx == x_cur)
-        s.constrain(poly.rect.ly + 100 == l.activ.rect.ly)
+        s.constrain(poly.rect.ly + 180 == l.activ.rect.ly)
         s.constrain(poly.rect.ly == 0)
         x_cur = poly.rect.ux + 140
 
@@ -246,7 +252,7 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, pmos: bool) -
 
     s.constrain(l.activ.rect.ux == x_cur + 70)
 
-    if pmos:
+    if nwell:
         l.psd = LayoutRect(layer=layers.pSD)
         s.constrain(l.psd.rect.cx == l.activ.rect.cx)
         s.constrain(l.psd.rect.cy == l.activ.rect.cy)
@@ -272,6 +278,117 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, pmos: bool) -
     return l
 
 
+class Mos(Cell):
+    l = Parameter(R)  #: Length
+    w = Parameter(R)  #: Width
+    m = Parameter(int, default=1)  #: Multiplier (number of devices in parallel)
+    ng = Parameter(int, default=1)  #: Number of gate fingers
+
+    def netlist_ngspice(self, netlister, inst, schematic):
+        netlister.require_netlist_setup(netlister_setup)
+        netlister.require_ngspice_setup(ngspice_setup)
+        pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
+        netlister.add(
+            netlister.name_obj(inst, schematic, prefix="M" if netlister.lvs else "x"),
+            netlister.portmap(inst, pins),
+            self.model_name,
+            *helpers.spice_params({
+                'l': self.l,
+                'w': self.w,
+                'm': self.m,
+                'ng': self.ng,
+            }))
+
+@public
+class Nmos(Mos, generic_mos.Nmos):
+    model_name = "sg13_lv_nmos"
+
+    @generate
+    def layout(self) -> Layout:
+        return layoutgen_mos(self, self.l, self.w, self.ng, nwell=False)
+
+@public
+class Pmos(Mos, generic_mos.Pmos):
+    model_name = "sg13_lv_pmos"
+
+    @generate
+    def layout(self) -> Layout:
+        return layoutgen_mos(self, self.l, self.w, self.ng, nwell=True)
+
+def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell)
+    s = Solver(l)
+
+    L = int(length/R("1n"))
+    W = int(width/R("1n"))
+
+
+    l.activ = LayoutRect(layer=layers.Activ)
+    s.constrain(l.activ.rect.height == W)
+    s.constrain(l.activ.rect.width == L)
+    s.constrain(l.activ.rect.lx == 0)
+    s.constrain(l.activ.rect.ly == 0)
+
+    l.m1 = LayoutRect(layer=layers.Metal1)
+    s.constrain(l.m1.rect.cx == l.activ.rect.cx)
+    s.constrain(l.m1.rect.cy == l.activ.rect.cy)
+    s.constrain(l.m1.rect.ux + 200 == l.activ.rect.ux)
+    s.constrain(l.m1.rect.uy + 150 == l.activ.rect.uy)
+
+    # TODO: add Metal1 pin?!
+
+    if nwell:
+        l.nwell = LayoutRect(layer=layers.NWell)
+        s.constrain(l.nwell.rect.cx == l.activ.rect.cx)
+        s.constrain(l.nwell.rect.cy == l.activ.rect.cy)
+        s.constrain(l.nwell.rect.ux == l.activ.rect.ux + 240)
+        s.constrain(l.nwell.rect.uy == l.activ.rect.uy + 240)
+
+        l.nbulay = LayoutRect(layer=layers.nBuLay)
+        s.constrain(l.nbulay.rect.lx == l.nwell.rect.lx)
+        s.constrain(l.nbulay.rect.ly == l.nwell.rect.ly)
+        s.constrain(l.nbulay.rect.ux == l.nwell.rect.ux)
+        s.constrain(l.nbulay.rect.uy == l.nwell.rect.uy)
+
+
+    else:
+        l.psd = LayoutRect(layer=layers.pSD)
+        s.constrain(l.psd.rect.cx == l.activ.rect.cx)
+        s.constrain(l.psd.rect.cy == l.activ.rect.cy)
+        s.constrain(l.psd.rect.ux == l.activ.rect.ux + 30)
+        s.constrain(l.psd.rect.uy == l.activ.rect.uy + 30)
+
+    s.solve()
+
+    makevias(l, l.m1.rect, layers.Cont, 
+        size=Vec2I(160, 160),
+        spacing=Vec2I(200, 200),
+        margin=Vec2I(0, 0),
+        )
+
+    return l
+
+
+@public
+class Ntap(Cell):
+    l = Parameter(R)  #: Length
+    w = Parameter(R)  #: Width
+
+    @generate
+    def layout(self) -> Layout:
+        return layoutgen_tap(self, self.l, self.w, nwell=True)
+
+@public
+class Ptap(Cell):
+    l = Parameter(R)  #: Length
+    w = Parameter(R)  #: Width
+
+    @generate
+    def layout(self) -> Layout:
+        return layoutgen_tap(self, self.l, self.w, nwell=False)
+
+
 @public
 def run_drc(l: Layout, variant='maximal'):
     if variant not in ('minimal', 'maximal'):
@@ -294,21 +411,20 @@ def run_drc(l: Layout, variant='maximal'):
 
 @public
 def run_lvs(layout: Layout, schematic: Schematic):
-    layout = layout.freeze()
-    schematic = schematic.freeze()
+    #layout = layout.freeze()
+    #schematic = schematic.freeze()
 
     nl = Netlister(lvs=True)
     nl.netlist_hier(schematic, top_as_subckt=True)
-    #tmp_tmp = Path.cwd() / 'tmp/tmp'
-    #tmp_tmp.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory() as cwd_str:
-        tmp_dir = Path(cwd_str)
-
+    # if True:
+    #     cwd = Path.cwd() / 'lvs'
+    with tempfile.TemporaryDirectory(delete=False) as tmp_dir_str:
         # The LVS script sometimes creates files in the parent directory of the
         # input data. To avoid issues connected to this, use a subdirectory for
         # all files.
-        cwd = tmp_ddir / 'lvs'
+        cwd = Path(tmp_dir_str) / 'lvs'
+
         cwd.mkdir(exist_ok=True)
 
         path_schematic = cwd / 'schematic.cir'
@@ -317,11 +433,11 @@ def run_lvs(layout: Layout, schematic: Schematic):
         print(nl.out())
         path_schematic.write_text(nl.out())
 
-        with open(path_layout, "wb") as f:
-            write_gds(layout, f)
+        #with open(path_layout, "wb") as f:
+        #    name_of_layout = write_gds(layout, f)
 
         klayout.run(
-            ihp130.pdk().klayout_lvs_deck,
+            pdk().klayout_lvs_deck,
             str(cwd),
             run_mode='deep',
             no_net_names='false',
@@ -338,50 +454,11 @@ def run_lvs(layout: Layout, schematic: Schematic):
             report='out.lvsdb',
             log='out.log',
             target_netlist='extracted.cir',
-
-            topcell='MyInv', # TODO
-            input='myinv.gds',
+            topcell=name_of_layout[layout],
+            input='layout.gds',
             schematic='schematic.cir',
             
             #topcell='sg13g2_inv_1',
             #input='sg13g2_inv_1.gds',
             #schematic='sg13g2_inv_1.cdl',
             )
-
-
-class Mos(Cell):
-    l = Parameter(R)  #: Length
-    w = Parameter(R)  #: Width
-    m = Parameter(int, default=1)  #: Multiplier (number of devices in parallel)
-    ng = Parameter(int, default=1)  #: Number of gate fingers
-
-    def netlist_ngspice(self, netlister, inst, schematic):
-        netlister.require_netlist_setup(netlister_setup)
-        netlister.require_ngspice_setup(ngspice_setup)
-        pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
-        netlister.add(
-            netlister.name_obj(inst, schematic, prefix="x"),
-            netlister.portmap(inst, pins),
-            self.model_name,
-            *helpers.spice_params({
-                'l': self.l,
-                'w': self.w,
-                'm': self.m,
-                'ng': self.ng,
-            }))
-
-@public
-class Nmos(Mos, generic_mos.Nmos):
-    model_name = "sg13_lv_nmos"
-
-    @generate
-    def layout(self) -> Layout:
-        return layoutgen_mos(self, self.l, self.w, self.ng, pmos=False)
-
-@public
-class Pmos(Mos, generic_mos.Pmos):
-    model_name = "sg13_lv_pmos"
-
-    @generate
-    def layout(self) -> Layout:
-        return layoutgen_mos(self, self.l, self.w, self.ng, pmos=True)

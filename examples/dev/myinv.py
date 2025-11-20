@@ -3,7 +3,9 @@ from ordec.lib import ihp130
 from ordec.schematic.routing import schematic_routing
 from ordec.schematic.netlister import Netlister
 from ordec.layout import klayout
+from ordec.layout.gds_out import write_gds
 from pathlib import Path
+
 
 class MyInv(Cell):
     @generate
@@ -47,6 +49,51 @@ class MyInv(Cell):
 
         return s
 
-@generate_func
-def layout_test():
-    return ihp130.Nmos(l="130n", w="10u", ng=10).layout
+    @generate
+    def layout(self):
+        layers = ihp130.SG13G2().layers
+        l = Layout(ref_layers=layers, cell=self)
+
+        ntap = ihp130.Ntap(l="1u", w="1u")
+        ptap = ihp130.Ptap(l="1u", w="1u")
+        nmos = ihp130.Nmos(w="1u", l="130n")
+        pmos = ihp130.Pmos(w="1u", l="130n")
+
+        l % LayoutInstance(ref=ntap.layout, pos=(0, 2500))
+        l % LayoutInstance(ref=ptap.layout, pos=(0, -50))
+        l % LayoutInstance(ref=nmos.layout, pos=(1500, -80))
+        l % LayoutInstance(ref=pmos.layout, pos=(1500, 2470))
+
+        l % LayoutRect(layer=layers.Metal1, rect=(800, 2650, 1570, 2810))
+        l % LayoutRect(layer=layers.Metal1.pin, rect=(800, 2650, 1570, 2810))
+        l % LayoutLabel(layer=layers.Metal1.pin, pos=(850, 2700), text="vdd")
+         
+        l % LayoutRect(layer=layers.Metal1, rect=(800, 100, 1570, 260))
+        l % LayoutRect(layer=layers.Metal1.pin, rect=(800, 100, 1570, 260))
+        l % LayoutLabel(layer=layers.Metal1.pin, pos=(850, 150), text="vss")
+
+        l % LayoutRect(layer=layers.Metal1, rect=(2140, 1100, 2300, 2650))
+        l % LayoutRect(layer=layers.Metal1.pin, rect=(2140, 1100, 2300, 2650))
+        l % LayoutLabel(layer=layers.Metal1.pin, pos=(2190, 1150), text="y")
+        
+        l % LayoutRect(layer=layers.NWell, rect=(-240, 2250, 2680, 4115))
+
+        l % LayoutRect(layer=layers.GatPoly, rect=(1870, 1200, 2000, 2470))
+        l % LayoutRect(layer=layers.GatPoly, rect=(1500, 1400, 2000, 1850))
+        l % LayoutRect(layer=layers.Cont, rect=(1600, 1500, 1760, 1660))
+        l % LayoutRect(layer=layers.Metal1, rect=(500, 1500, 1900, 1660))
+
+        l % LayoutRect(layer=layers.Metal1.pin, rect=(500, 1500, 1900, 1660))
+        l % LayoutLabel(layer=layers.Metal1.pin, pos=(700,1580), text="a")
+
+        return l
+
+if __name__ == "__main__":
+    layout = MyInv().layout
+    with open("out.gds", "wb") as f:
+        write_gds(layout, f)
+    
+    r=ihp130.run_drc(layout)
+    print(r.pretty())
+
+    ihp130.run_lvs(layout, MyInv().schematic)
