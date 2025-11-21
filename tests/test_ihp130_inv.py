@@ -63,12 +63,14 @@ class Inv(Cell):
         nmos = ihp130.Nmos(w="1u", l="130n")
         pmos = ihp130.Pmos(w="1u", l="130n")
 
-        l % LayoutInstance(ref=ntap.layout, pos=(200, 2600))
-        l % LayoutInstance(ref=ptap.layout, pos=(200, 50))
-        l % LayoutInstance(ref=nmos.layout, pos=(1500, -80))
-        l % LayoutInstance(ref=pmos.layout, pos=(1500, 2470))
+        l.ntap =  LayoutInstance(ref=ntap.layout, pos=(200, 2600))
+        l.ptap =  LayoutInstance(ref=ptap.layout, pos=(200, 50))
+        l.nmos =  LayoutInstance(ref=nmos.layout, pos=(1500, -80))
+        l.pmos =  LayoutInstance(ref=pmos.layout, pos=(1500, 2470))
 
-        l % LayoutRect(layer=layers.Metal1, rect=(800, 2650, 1570, 2810))
+        # Example use of the new LayoutInstanceSubcursor:
+        l % LayoutRect(layer=layers.Metal1, rect=(l.ntap.m1.rect.ux, l.ntap.m1.rect.ly, l.pmos.sd[0].rect.lx, l.ntap.m1.rect.ly + 160))
+
         l % LayoutRect(layer=layers.Metal1.pin, rect=(800, 2650, 1570, 2810))
         l % LayoutLabel(layer=layers.Metal1.pin, pos=(850, 2700), text="vdd")
          
