@@ -1,13 +1,17 @@
+# SPDX-FileCopyrightText: 2025 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Tests basic DRC + LVS in IHP130.
+"""
+
 from ordec.core import *
 from ordec.lib import ihp130
 from ordec.schematic.routing import schematic_routing
-from ordec.schematic.netlister import Netlister
-from ordec.layout import klayout
-from ordec.layout.gds_out import write_gds
-from pathlib import Path
 
+class Inv(Cell):
+    lvs_variant = Parameter(str, default='clean')
 
-class MyInv(Cell):
     @generate
     def symbol(self):
         s = Symbol(cell=self)
@@ -72,9 +76,10 @@ class MyInv(Cell):
         l % LayoutRect(layer=layers.Metal1.pin, rect=(800, 100, 1570, 260))
         l % LayoutLabel(layer=layers.Metal1.pin, pos=(850, 150), text="vss")
 
-        #l % LayoutRect(layer=layers.Metal1, rect=(2140, 1100, 2300, 2650))
-        #l % LayoutRect(layer=layers.Metal1.pin, rect=(2140, 1100, 2300, 2650))
-        #l % LayoutLabel(layer=layers.Metal1.pin, pos=(2190, 1150), text="y")
+        if self.lvs_variant!="missing_y":
+            l % LayoutRect(layer=layers.Metal1, rect=(2140, 1100, 2300, 2650))
+            l % LayoutRect(layer=layers.Metal1.pin, rect=(2140, 1100, 2300, 2650))
+            l % LayoutLabel(layer=layers.Metal1.pin, pos=(2190, 1150), text="y")
         
         l % LayoutRect(layer=layers.NWell, rect=(-240, 2250, 2680, 4115))
 
@@ -88,13 +93,30 @@ class MyInv(Cell):
 
         return l
 
-if __name__ == "__main__":
-    layout = MyInv().layout
-    #with open("out.gds", "wb") as f:
-    #    write_gds(layout, f)
-    
-    #r=ihp130.run_drc(layout)
-    #print(r.pretty())
+def test_lvs_clean():
+    assert ihp130.run_lvs(Inv().layout, Inv().schematic)
 
-    ret=ihp130.run_lvs(layout, MyInv().schematic, use_tempdir=False)
-    print(ret)
+def test_lvs_missing_y():
+    c = Inv(lvs_variant="missing_y")
+    assert not ihp130.run_lvs(c.layout, c.schematic)
+
+def test_drc_clean():
+    res = ihp130.run_drc(Inv().layout)
+
+    assert res.summary() == {
+        'AFil.g/g1': 1,
+        'GFil.g': 1,
+        'M1.j/k': 1,
+        'M2.j/k': 1,
+        'M3.j/k': 1,
+        'M4.j/k': 1,
+        'M5.j/k': 1,
+        'M1Fil.h/k': 1,
+        'M2Fil.h/k': 1,
+        'M3Fil.h/k': 1,
+        'M4Fil.h/k': 1,
+        'M5Fil.h/k': 1,
+        'TM1.c/d': 1,
+        'TM2.c/d': 1
+    }
+
