@@ -213,8 +213,31 @@ class Nmos(Cell):
 def run_drc(l: Layout, variant='maximal'):
     if variant not in ('minimal', 'maximal'):
         raise ValueError("variant must be either 'minimal' or 'maximal'.")
-    ihp130_root = Path(os.environ['ORDEC_PDK_IHP_SG13G2'])
-    script = ihp130_root / "libs.tech/klayout/tech/drc/sg13g2_minimal.lydrc"
+    project_root = Path(__file__).resolve().parents[2]
+    home_root = Path.home() / "ihp-sg13g2"
+
+    env_root = os.environ.get("ORDEC_PDK_IHP_SG13G2")
+    fallback_roots = [
+        Path(env_root) if env_root else None,
+        project_root / "ihp-sg13g2",
+        home_root,
+    ]
+
+    ihp130_root = None
+    for candidate in fallback_roots:
+        if candidate and candidate.exists():
+            ihp130_root = candidate
+            break
+
+    if ihp130_root is None:
+        raise KeyError(
+            "ORDEC_PDK_IHP_SG13G2 not set and no PDK found at "
+            f"{project_root / 'ihp-sg13g2'} or {home_root}"
+        )
+
+    script = ihp130_root / f"libs.tech/klayout/tech/drc/sg13g2_{variant}.lydrc"
+    if not script.is_file():
+        raise FileNotFoundError(f"DRC script not found: {script}")
 
     with tempfile.TemporaryDirectory() as cwd_str:
         cwd = Path(cwd_str)

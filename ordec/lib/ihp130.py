@@ -14,11 +14,25 @@ from .pdk_common import PdkDict, check_dir, check_file
 @functools.cache
 def pdk() -> PdkDict:
     """Returns dictionary-like object with import PDK paths."""
-    try:
-        root = os.environ["ORDEC_PDK_IHP_SG13G2"]
-    except KeyError:
-        raise Exception("PDK requires environment variable ORDEC_PDK_IHP_SG13G2 to be set.")
-    pdk = PdkDict(root=check_dir(Path(root).resolve()))
+    env_root = os.environ.get("ORDEC_PDK_IHP_SG13G2")
+    project_root = Path(__file__).resolve().parents[2]
+    fallback_paths = [
+        Path(env_root) if env_root else None,
+        project_root / "ihp-sg13g2",
+        Path.home() / "ihp-sg13g2",
+    ]
+
+    for candidate in fallback_paths:
+        if candidate and candidate.exists():
+            root = candidate
+            break
+    else:
+        raise Exception(
+            "PDK requires environment variable ORDEC_PDK_IHP_SG13G2 to be set "
+            f"or a PDK checkout at {project_root / 'ihp-sg13g2'} (or ~/ihp-sg13g2)."
+        )
+
+    pdk = PdkDict(root=check_dir(root.resolve()))
 
     pdk.ngspice_models_dir = check_dir(pdk.root / "libs.tech/ngspice/models")
     pdk.ngspice_osdi_dir   = check_dir(pdk.root / "libs.tech/ngspice/osdi")

@@ -15,11 +15,25 @@ from .pdk_common import PdkDict, check_dir, check_file
 @functools.cache
 def pdk() -> PdkDict:
     """Returns dictionary-like object with import PDK paths."""
-    try:
-        root = os.environ["ORDEC_PDK_SKY130A"]
-    except KeyError:
-        raise Exception("PDK requires environment variable ORDEC_PDK_SKY130A to be set.")
-    pdk = PdkDict(root=check_dir(Path(root).resolve()))
+    env_root = os.environ.get("ORDEC_PDK_SKY130A")
+    project_root = Path(__file__).resolve().parents[2]
+    fallback_paths = [
+        Path(env_root) if env_root else None,
+        project_root / "sky130A",
+        Path.home() / "sky130A",
+    ]
+
+    for candidate in fallback_paths:
+        if candidate and candidate.exists():
+            root = candidate
+            break
+    else:
+        raise Exception(
+            "PDK requires environment variable ORDEC_PDK_SKY130A to be set "
+            f"or a PDK checkout at {project_root / 'sky130A'} (or ~/sky130A)."
+        )
+
+    pdk = PdkDict(root=check_dir(root.resolve()))
 
     corners = ['ff', 'fs', 'leak', 'sf', 'ss', 'tt', 'wafer']
     pdk.ngspice_deck = {
