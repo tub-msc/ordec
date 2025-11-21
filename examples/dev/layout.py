@@ -1,34 +1,25 @@
 import os
 from pathlib import Path
 
-import ordec.layout.ihp130 as ihp130
+from ordec.lib import ihp130
 from ordec.extlibrary import ExtLibrary
-from ordec.layout.helpers import expand_geom, flatten, expand_instancearrays
+from ordec.layout.helpers import expand_geom
 from ordec.layout.makevias import makevias
 from ordec.core import *
 
-ihp_path = Path(os.getenv("ORDEC_PDK_IHP_SG13G2"))
-
 @generate_func
 def layout_xor() -> Layout:
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = ihp130.SG13G2().layers
     lib = ExtLibrary()
-    lib.read_gds(ihp_path / "libs.ref/sg13g2_stdcell/gds/sg13g2_stdcell.gds", tech_layers)
+    lib.read_gds(ihp130.pdk().root / "libs.ref/sg13g2_stdcell/gds/sg13g2_stdcell.gds", tech_layers)
     return lib['sg13g2_xor2_1'].layout
 
 @generate_func
 def layout_dff() -> Layout:
-    tech_layers = ordec.layout.SG13G2().layers
+    tech_layers = ihp130.SG13G2().layers
     lib = ExtLibrary()
-    lib.read_gds(ihp_path / "libs.ref/sg13g2_stdcell/gds/sg13g2_stdcell.gds", tech_layers)
+    lib.read_gds(ihp130.pdk().root / "libs.ref/sg13g2_stdcell/gds/sg13g2_stdcell.gds", tech_layers)
     return lib['sg13g2_sdfrbpq_2'].layout
-
-@generate_func
-def layout_ota() -> Layout:
-    gds_fn = "../ordec2/example_layouts/OTA_flat.gds"
-    top = "OTA"
-    layouts = ordec.layout.read_gds(gds_fn, ordec.layout.SG13G2().layers, top)
-    return layouts[top]
 
 @generate_func
 def layout_expand_geom() -> Layout:
@@ -120,7 +111,7 @@ def test_gds_aref() -> Layout:
 
 @generate_func
 def test_ihp130_nmos() -> Layout:
-    return ihp130.Nmos(l="300n", w="200000n", ng=20).layout.thaw()
+    return ihp130.Nmos(l="300n", w="200000n", ng=20).layout
 
 @generate_func
 def test_makevias() -> Layout:
@@ -133,3 +124,7 @@ def test_makevias() -> Layout:
     makevias(l, a.rect, layers.Via1, Vec2I(80, 80), Vec2I(50, 50), Vec2I(0,0))
 
     return l
+
+@generate_func
+def test_tap() -> Layout:
+    return ihp130.Ptap(l="0.97u", w="0.98u").layout

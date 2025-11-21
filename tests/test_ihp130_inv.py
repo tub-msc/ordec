@@ -58,13 +58,13 @@ class Inv(Cell):
         layers = ihp130.SG13G2().layers
         l = Layout(ref_layers=layers, cell=self)
 
-        ntap = ihp130.Ntap(l="1u", w="1u")
-        ptap = ihp130.Ptap(l="1u", w="1u")
+        ntap = ihp130.Ntap(l="0.7u", w="0.7u")
+        ptap = ihp130.Ptap(l="0.7u", w="0.7u")
         nmos = ihp130.Nmos(w="1u", l="130n")
         pmos = ihp130.Pmos(w="1u", l="130n")
 
-        l % LayoutInstance(ref=ntap.layout, pos=(0, 2500))
-        l % LayoutInstance(ref=ptap.layout, pos=(0, -50))
+        l % LayoutInstance(ref=ntap.layout, pos=(200, 2600))
+        l % LayoutInstance(ref=ptap.layout, pos=(200, 50))
         l % LayoutInstance(ref=nmos.layout, pos=(1500, -80))
         l % LayoutInstance(ref=pmos.layout, pos=(1500, 2470))
 
@@ -77,14 +77,14 @@ class Inv(Cell):
         l % LayoutLabel(layer=layers.Metal1.pin, pos=(850, 150), text="vss")
 
         if self.lvs_variant!="missing_y":
-            l % LayoutRect(layer=layers.Metal1, rect=(2140, 1100, 2300, 2650))
-            l % LayoutRect(layer=layers.Metal1.pin, rect=(2140, 1100, 2300, 2650))
+            l % LayoutRect(layer=layers.Metal1, rect=(2080, 1100, 2240, 2650))
+            l % LayoutRect(layer=layers.Metal1.pin, rect=(2080, 1100, 2240, 2650))
             l % LayoutLabel(layer=layers.Metal1.pin, pos=(2190, 1150), text="y")
         
         l % LayoutRect(layer=layers.NWell, rect=(-240, 2250, 2680, 4115))
 
-        l % LayoutRect(layer=layers.GatPoly, rect=(1870, 1200, 2000, 2470))
-        l % LayoutRect(layer=layers.GatPoly, rect=(1500, 1400, 2000, 1850))
+        l % LayoutRect(layer=layers.GatPoly, rect=(1840, 1200, 1970, 2470))
+        l % LayoutRect(layer=layers.GatPoly, rect=(1500, 1400, 1970, 1850))
         l % LayoutRect(layer=layers.Cont, rect=(1600, 1500, 1760, 1660))
         l % LayoutRect(layer=layers.Metal1, rect=(500, 1500, 1900, 1660))
 
@@ -105,6 +105,7 @@ def test_drc_clean():
 
     assert res.summary() == {
         'AFil.g/g1': 1,
+        'AFil.g2/g3': 1,
         'GFil.g': 1,
         'M1.j/k': 1,
         'M2.j/k': 1,
@@ -120,3 +121,6 @@ def test_drc_clean():
         'TM2.c/d': 1
     }
 
+if __name__=="__main__":
+    # Generate GDS + schematic netlist for manual inspection:
+    ihp130.run_lvs(Inv().layout, Inv().schematic, use_tempdir=False)

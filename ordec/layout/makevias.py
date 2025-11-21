@@ -13,7 +13,7 @@ def makevias(layout: Layout,
         spacing: Vec2I,
         margin: Vec2I=None,
         rows: int=None,
-        cols: int=None):
+        cols: int=None) -> Rect4I:
     """
     Generates via array in given rectangle area.
 
@@ -51,3 +51,5 @@ def makevias(layout: Layout,
         for row in range(rows):
             y = y_start + (size.y+spacing.y)*row
             via = layout % LayoutRect(layer=layer, rect=Rect4I(x, y, x+size.x, y+size.y))
+
+    return Rect4I(x_start, y_start, via.rect.ux, via.rect.uy)

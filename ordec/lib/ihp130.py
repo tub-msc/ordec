@@ -198,7 +198,13 @@ class SG13G2(Cell):
         return s
 
 def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) -> Layout:
-    # See also: ihp-sg13g2/libs.tech/klayout/python/sg13g2_pycell_lib/ihp/nmos_code.py
+    """
+    Layout generation function shared for Nmos and Pmos cells.
+
+    Notice: Placement of Cont vias differs slightly from the foundry-provieded PCell.
+
+    See also: ihp-sg13g2/libs.tech/klayout/python/sg13g2_pycell_lib/ihp/nmos_code.py
+    """
     layers = SG13G2().layers
     l = Layout(ref_layers=layers, cell=cell)
     s = Solver(l)
@@ -209,8 +215,10 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
     l.mkpath('polys')
     l.mkpath('sd')
 
+    activ_ext = None
+
     def add_sd(i):
-        nonlocal l, s, x_cur
+        nonlocal l, s, x_cur, activ_ext
         l.sd[i] = LayoutRect(layer=layers.Metal1)
         sd = l.sd[i]
         s.constrain(sd.rect.width == 160)
@@ -230,7 +238,7 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
 
     def add_poly(i):
         nonlocal l, s, x_cur
-        x_cur += 140
+        x_cur += 110
         l.polys[i] = LayoutRect(layer=layers.GatPoly)
         poly = l.polys[i]
         s.constrain(poly.rect.cy == l.activ.rect.cy)
@@ -238,7 +246,7 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
         s.constrain(poly.rect.lx == x_cur)
         s.constrain(poly.rect.ly + 180 == l.activ.rect.ly)
         s.constrain(poly.rect.ly == 0)
-        x_cur = poly.rect.ux + 140
+        x_cur = poly.rect.ux + 110
 
     l.activ = LayoutRect(layer=layers.Activ)
     s.constrain(l.activ.rect.height == W)
@@ -259,11 +267,15 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
         s.constrain(l.psd.rect.ux == l.activ.rect.ux + 180)
         s.constrain(l.psd.rect.uy == l.activ.rect.uy + 300)
 
+        if activ_ext is None:
+            max_activ = l.activ
+        else:
+            max_activ = activ_ext
         l.nwell = LayoutRect(layer=layers.NWell)
         s.constrain(l.nwell.rect.cx == l.activ.rect.cx)
-        s.constrain(l.nwell.rect.cy == l.activ.rect.cy)
+        s.constrain(l.nwell.rect.cy == max_activ.rect.cy)
         s.constrain(l.nwell.rect.ux == l.activ.rect.ux + 310)
-        s.constrain(l.nwell.rect.uy == l.activ.rect.uy + 385)
+        s.constrain(l.nwell.rect.uy == max_activ.rect.uy + 310)
 
     s.solve()
 
@@ -327,7 +339,6 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     L = int(length/R("1n"))
     W = int(width/R("1n"))
 
-
     l.activ = LayoutRect(layer=layers.Activ)
     s.constrain(l.activ.rect.height == W)
     s.constrain(l.activ.rect.width == L)
@@ -335,10 +346,6 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     s.constrain(l.activ.rect.ly == 0)
 
     l.m1 = LayoutRect(layer=layers.Metal1)
-    s.constrain(l.m1.rect.cx == l.activ.rect.cx)
-    s.constrain(l.m1.rect.cy == l.activ.rect.cy)
-    s.constrain(l.m1.rect.ux + 200 == l.activ.rect.ux)
-    s.constrain(l.m1.rect.uy + 150 == l.activ.rect.uy)
 
     # TODO: add Metal1 pin?!
 
@@ -365,11 +372,13 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
 
     s.solve()
 
-    makevias(l, l.m1.rect, layers.Cont, 
+    vias_rect = makevias(l, l.activ.rect, layers.Cont, 
         size=Vec2I(160, 160),
-        spacing=Vec2I(200, 200),
-        margin=Vec2I(0, 0),
+        spacing=Vec2I(180, 180),
+        margin=Vec2I(70, 70),
         )
+    # Shrink M1 to via stack, with 50 nm extension north and south:
+    l.m1.rect = (vias_rect.lx, vias_rect.ly - 50, vias_rect.ux, vias_rect.uy + 50)
 
     return l
 
@@ -425,14 +434,11 @@ def run_lvs(layout: Layout, schematic: Schematic, use_tempdir: bool=True) -> boo
 
     nl = Netlister(lvs=True)
     nl.netlist_hier(schematic, top_as_subckt=True)
-
     
     with rundir('lvs', use_tempdir) as cwd:
-        # The LVS script sometimes creates files in the parent directory of the
-        # input data. To avoid issues connected to this, use a subdirectory for
-        # all files.
-        cwd = cwd / 'lvs'
-        cwd.mkdir(exist_ok=True)
+        # Note: The LVS script sometimes creates files in the parent directory
+        # of the input data. This seems to be fixed with the current LVS
+        # options, though. If the issue returns, add here: cwd = cwd / 'lvs'
 
         (cwd / 'schematic.cir').write_text(nl.out())
 

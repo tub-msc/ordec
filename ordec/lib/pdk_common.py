@@ -21,7 +21,9 @@ def rundir(name: str, use_tempdir: bool):
         with tempfile.TemporaryDirectory() as cwd_str:
             yield Path(cwd_str)
     else:
-        yield Path.cwd() / name
+        d = Path.cwd() / name
+        d.mkdir(exist_ok=True)
+        yield d
 
 
 class PdkDict(dict):
