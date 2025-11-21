@@ -91,10 +91,12 @@ class NgspiceSubprocess(NgspiceBase):
         self.p: Popen[bytes] = p
         self.debug = debug
         self.cwd = cwd
+        self._command_lock = threading.Lock()
         self._async_queue: Optional[queue.Queue] = None
         self._async_thread: Optional[threading.Thread] = None
         self._async_lock = threading.Lock()
         self._async_halt_requested = False
+        self._async_halt_ack = threading.Event()
         self._async_resume_event = threading.Event()
         self._async_current_time = 0.0
         self._data_points_sent = 0
@@ -119,7 +121,27 @@ class NgspiceSubprocess(NgspiceBase):
         except NgspiceError as exc:
             raise NgspiceConfigError("Failed to configure ngspice precision") from exc
 
-    def command(self, command: str) -> str:
+    def _set_running_flag(self, running: bool) -> None:
+        """Update the running flag under the async lock to keep state atomic."""
+        with self._async_lock:
+            self._is_running = running
+
+    def _get_running_flag(self) -> bool:
+        """Read the running flag under the async lock."""
+        with self._async_lock:
+            return self._is_running
+
+    def _send_bg_halt_unlocked(self) -> None:
+        """Send bg_halt without waiting for marker; assumes command lock is held."""
+        if self.p.poll() is not None:
+            return
+        if self.p.stdin:
+            if self.debug:
+                _debug("Issuing bg_halt while a command is in flight")
+            self.p.stdin.write(b"bg_halt\n")
+            self.p.stdin.flush()
+
+    def _run_command_locked(self, command: str, interruptible: bool = False) -> str:
         """Executes ngspice command and returns string output from ngspice process."""
         if self.p.poll() is not None:
             raise NgspiceFatalError("ngspice process has terminated unexpectedly.")
@@ -138,6 +160,7 @@ class NgspiceSubprocess(NgspiceBase):
 
         out = []
         line_count = 0
+        halt_sent = False
         while True:
             if self.debug:
                 _debug(f"Waiting for line {line_count}...")
@@ -151,7 +174,9 @@ class NgspiceSubprocess(NgspiceBase):
                 out_flat = "".join(out)
                 if self.debug:
                     _debug(f"EOF detected, ngspice terminated")
-                raise NgspiceFatalError(f"ngspice terminated abnormally:\n{out_flat}")
+                raise NgspiceFatalError(
+                    f"ngspice terminated abnormally:\n{out_flat}"
+                )
 
             # Strip ALL occurrences of "ngspice 123 -> " from the line on all platforms
             # Preserve newlines when stripping prompts
@@ -176,6 +201,10 @@ class NgspiceSubprocess(NgspiceBase):
                     _debug(f"Found FINISHED marker, breaking")
                 break
 
+            if interruptible and self._async_halt_requested and not halt_sent:
+                self._send_bg_halt_unlocked()
+                halt_sent = True
+
             # Skip empty lines that are just prompts
             if l.strip() == b"":
                 continue
@@ -186,12 +215,15 @@ class NgspiceSubprocess(NgspiceBase):
 
         out_flat = "".join(out)
         if self.debug:
-            _debug(
-                f"Received result from ngspice ({self.p.pid}): {repr(out_flat)}"
-            )
+            _debug(f"Received result from ngspice ({self.p.pid}): {repr(out_flat)}")
 
         check_errors(out_flat)
         return out_flat
+
+    def command(self, command: str, *, interruptible: bool = False) -> str:
+        """Executes ngspice command and returns string output from ngspice process."""
+        with self._command_lock:
+            return self._run_command_locked(command, interruptible=interruptible)
 
     def load_netlist(self, netlist: str, no_auto_gnd: bool = True):
         netlist_fn = self.cwd / "netlist.sp"
@@ -386,7 +418,8 @@ class NgspiceSubprocess(NgspiceBase):
         self._async_current_time = 0.0
         self._data_points_sent = 0
         self._last_vector_length = 0
-        self._is_running = False
+        self._async_halt_ack.clear()
+        self._set_running_flag(False)
         self._wrdata_file = None
         self._wrdata_last_row = 0
         self._wrdata_vectors = []
@@ -402,20 +435,33 @@ class NgspiceSubprocess(NgspiceBase):
 
     def is_running(self) -> bool:
         """Check if simulation is running."""
-        return self._is_running and self._async_thread is not None and self._async_thread.is_alive()
+        running_flag = self._get_running_flag()
+        return running_flag and self._async_thread is not None and self._async_thread.is_alive()
 
     def safe_halt_simulation(
         self, max_attempts: int = 3, wait_time: float = 0.2
     ) -> bool:
         """Halt simulation by setting halt flag and clearing resume event."""
-        if self._async_thread is None:
+        if self._async_thread is None or not self._async_thread.is_alive():
             return True
 
         with self._async_lock:
             self._async_halt_requested = True
             self._async_resume_event.clear()
+            self._async_halt_ack.clear()
 
-        self.command("bg_halt")
+        self._async_halt_ack.wait(timeout=wait_time)
+
+        issued_directly = False
+        if self._command_lock.acquire(blocking=False):
+            try:
+                self._run_command_locked("bg_halt")
+                issued_directly = True
+            finally:
+                self._command_lock.release()
+
+        if self.debug and not issued_directly:
+            _debug("bg_halt will be issued by running step command")
 
         deadline = time.time() + (max_attempts * wait_time)
         poll_interval = min(0.05, wait_time / 5) if wait_time else 0.05
@@ -435,7 +481,7 @@ class NgspiceSubprocess(NgspiceBase):
         with self._async_lock:
             self._async_halt_requested = False
             self._async_resume_event.set()
-            self._is_running = True
+            self._async_halt_ack.clear()
 
         if self.debug:
             _debug("Resume requested")
@@ -447,10 +493,14 @@ class NgspiceSubprocess(NgspiceBase):
     ) -> bool:
         """Resume simulation safely with retry logic."""
         for attempt in range(max_attempts):
-            result = self.resume_simulation(timeout=wait_time)
-            if result:
-                return True
-            time.sleep(wait_time)
+            self.resume_simulation(timeout=wait_time)
+
+            deadline = time.time() + wait_time
+            poll_interval = min(0.05, wait_time / 5) if wait_time else 0.05
+            while time.time() < deadline:
+                if self.is_running():
+                    return True
+                time.sleep(poll_interval)
         return False
 
     def _is_header_line(self, line, expected_headers):
@@ -665,7 +715,8 @@ class NgspiceSubprocess(NgspiceBase):
                 self.command(f"stop after {chunk_steps}")
                 tran_cmd = f"tran {tstep_str} {tstop if tstop else tstep * 1000}"
                 self.command(tran_cmd)
-                self._is_running = True
+                self._set_running_flag(True)
+                self._async_halt_ack.clear()
                 self._async_resume_event.set()  # Initially running
             except NgspiceError as e:
                 error_data = {"error": f"Simulation failed to start: {str(e)}"}
@@ -676,25 +727,29 @@ class NgspiceSubprocess(NgspiceBase):
             simulation_complete = False
             while not simulation_complete:
                 if self._async_halt_requested:
-                    with self._async_lock:
-                        self._is_running = False
+                    self._set_running_flag(False)
+                    self._async_halt_ack.set()
 
                     if self.debug:
                         _debug(f"Simulation halted, waiting for resume...")
 
                     resumed = self._async_resume_event.wait(timeout=0.5)
 
-                    with self._async_lock:
-                        if self._async_halt_requested and not resumed:
-                            continue
-                        elif self._async_halt_requested:
-                            if self.debug:
-                                _debug(f"Exiting due to halt without resume")
-                            break
-                        else:
-                            self._is_running = True
-                            if self.debug:
-                                _debug(f"Simulation resumed")
+                    if self._async_halt_requested and not resumed:
+                        continue
+
+                    if self._async_halt_requested:
+                        if self.debug:
+                            _debug(f"Exiting due to halt without resume")
+                        break
+
+                    self._async_halt_ack.clear()
+                    self._set_running_flag(True)
+                    if self.debug:
+                        _debug(f"Simulation resumed")
+
+                if self._async_halt_requested:
+                    continue
 
                 try:
                     samples = self._fetch_new_samples_via_wrdata()
@@ -711,7 +766,9 @@ class NgspiceSubprocess(NgspiceBase):
 
                 if not self._async_halt_requested:
                     try:
-                        step_output = self.command(f"step {chunk_steps}")
+                        if self._async_halt_requested:
+                            continue
+                        step_output = self.command(f"step {chunk_steps}", interruptible=True)
                         if "simulation interrupted" not in step_output.lower():
                             if self.debug:
                                 _debug("Simulation completed, getting final data")
@@ -745,8 +802,7 @@ class NgspiceSubprocess(NgspiceBase):
 
                 time.sleep(min(throttle_interval, 0.05))
 
-            with self._async_lock:
-                self._is_running = False
+            self._set_running_flag(False)
 
             if not self._async_halt_requested:
                 if self.debug:
@@ -758,8 +814,7 @@ class NgspiceSubprocess(NgspiceBase):
                 self._async_queue.put({"status": "halted"})
 
         except Exception as e:
-            with self._async_lock:
-                self._is_running = False
+            self._set_running_flag(False)
             if self.debug:
                 _debug(f"Exception in chunked simulation: {e}")
             error_data = {"error": f"Simulation error: {str(e)}"}
