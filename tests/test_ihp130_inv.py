@@ -56,7 +56,8 @@ class Inv(Cell):
     @generate
     def layout(self):
         layers = ihp130.SG13G2().layers
-        l = Layout(ref_layers=layers, cell=self)
+        l = Layout(ref_layers=layers, cell=self, symbol=self.symbol)
+        s = Solver(l)
 
         ntap = ihp130.Ntap(l="0.7u", w="0.7u")
         ptap = ihp130.Ptap(l="0.7u", w="0.7u")
@@ -69,30 +70,30 @@ class Inv(Cell):
         l.pmos =  LayoutInstance(ref=pmos.layout, pos=(1500, 2470))
 
         # Example use of the new LayoutInstanceSubcursor:
-        l % LayoutRect(layer=layers.Metal1, rect=(l.ntap.m1.rect.ux, l.ntap.m1.rect.ly, l.pmos.sd[0].rect.lx, l.ntap.m1.rect.ly + 160))
+        l.m1_vdd = LayoutRect(layer=layers.Metal1)
+        s.constrain(l.m1_vdd.rect.lx == l.ntap.m1.rect.ux)
+        s.constrain(l.m1_vdd.rect.ly == l.ntap.m1.rect.ly)
+        s.constrain(l.m1_vdd.rect.ux == l.pmos.sd[0].rect.lx)
+        s.constrain(l.m1_vdd.rect.uy == l.ntap.m1.rect.ly + 160)
+        l.m1_vdd % LayoutPin(pin=self.symbol.vdd)
 
-        l % LayoutRect(layer=layers.Metal1.pin, rect=(800, 2650, 1570, 2810))
-        l % LayoutLabel(layer=layers.Metal1.pin, pos=(850, 2700), text="vdd")
-         
-        l % LayoutRect(layer=layers.Metal1, rect=(800, 100, 1570, 260))
-        l % LayoutRect(layer=layers.Metal1.pin, rect=(800, 100, 1570, 260))
-        l % LayoutLabel(layer=layers.Metal1.pin, pos=(850, 150), text="vss")
+        l.m1_vss = LayoutRect(layer=layers.Metal1, rect=(800, 100, 1570, 260))
+        l.m1_vss % LayoutPin(pin=self.symbol.vss)
 
         if self.lvs_variant!="missing_y":
-            l % LayoutRect(layer=layers.Metal1, rect=(2080, 1100, 2240, 2650))
-            l % LayoutRect(layer=layers.Metal1.pin, rect=(2080, 1100, 2240, 2650))
-            l % LayoutLabel(layer=layers.Metal1.pin, pos=(2190, 1150), text="y")
+            l.m1_y = LayoutRect(layer=layers.Metal1, rect=(2080, 1100, 2240, 2650))
+            l.m1_y % LayoutPin(pin=self.symbol.y)
         
         l % LayoutRect(layer=layers.NWell, rect=(-240, 2250, 2680, 4115))
 
         l % LayoutRect(layer=layers.GatPoly, rect=(1840, 1200, 1970, 2470))
         l % LayoutRect(layer=layers.GatPoly, rect=(1500, 1400, 1970, 1850))
         l % LayoutRect(layer=layers.Cont, rect=(1600, 1500, 1760, 1660))
-        l % LayoutRect(layer=layers.Metal1, rect=(500, 1500, 1900, 1660))
+        
+        l.m1_a = LayoutRect(layer=layers.Metal1, rect=(500, 1500, 1900, 1660))
+        l.m1_a % LayoutPin(pin=self.symbol.a)
 
-        l % LayoutRect(layer=layers.Metal1.pin, rect=(500, 1500, 1900, 1660))
-        l % LayoutLabel(layer=layers.Metal1.pin, pos=(700,1580), text="a")
-
+        s.solve()
         return l
 
 def test_lvs_clean():

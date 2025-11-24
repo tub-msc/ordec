@@ -217,10 +217,10 @@ def test_subgraph_matches():
     s5 = Symbol()
     a_cursor = s5 % Pin(pintype=PinType.In, pos=Vec2R(0, 2))
     with s5.updater() as u:
-        NPath(name='a', ref=a_cursor.nid).insert_into(u)
+        NPath(name='a', ref=a_cursor.nid).insert_into(u, u.nid_generate())
     y_cursor = s5 % Pin(pintype=PinType.Out, pos=Vec2R(4, 2))
     with s5.updater() as u:
-        NPath(name='y', ref=y_cursor.nid).insert_into(u)
+        NPath(name='y', ref=y_cursor.nid).insert_into(u, u.nid_generate())
     assert s5.matches(ref)
 
     # 3. create subgraph using implicit Node:
@@ -241,8 +241,8 @@ def test_funcinserter():
     })
 
     s = MyHead()
-    def f(sgu):
-        alice_nid = sgu.nid_generate()
+    def f(sgu, primary_nid):
+        alice_nid = primary_nid
         bob_nid = sgu.nid_generate()
         sgu.add_single(Person(best_friend=bob_nid), alice_nid)
         sgu.add_single(Person(best_friend=alice_nid), bob_nid)
@@ -264,7 +264,7 @@ def test_nid_generator():
 
     # Adding a node changes nid_alloc. The new node will have nid=2.
     with s.updater() as u:
-        MyNode(label='hello').insert_into(u)
+        MyNode(label='hello').insert_into(u, u.nid_generate())
     assert s.subgraph.nid_alloc == range(2, 2**32)
     assert len(s.subgraph.nodes) == 2
     assert s.subgraph.nodes[1].label == 'hello'
@@ -289,31 +289,31 @@ def test_updater():
 
     # This updater has no effect on s, because commit is set to False manually:
     with s.updater() as u:
-        MyNode(label='hello').insert_into(u)
-        MyNode(label='world').insert_into(u)
-        MyNode(label='foo').insert_into(u)
-        MyNode(label='bar').insert_into(u)
+        MyNode(label='hello').insert_into(u, u.nid_generate())
+        MyNode(label='world').insert_into(u, u.nid_generate())
+        MyNode(label='foo').insert_into(u, u.nid_generate())
+        MyNode(label='bar').insert_into(u, u.nid_generate())
         u.commit = False    
     assert s.subgraph.internally_equal(s_orig.subgraph)
 
     # This updater has no effect on s, because a constraint check fails:
     with pytest.raises(DanglingLocalRef):
         with s.updater() as u:
-            NPath(parent=None, name='a', ref=100).insert_into(u)
+            NPath(parent=None, name='a', ref=100).insert_into(u, u.nid_generate())
     assert s.subgraph.internally_equal(s_orig.subgraph)
 
     # This updater mutates s, as commit is True (default) and no constraint check fails:
     with s.updater() as u:
-        MyNode(label='hello').insert_into(u)
-        MyNode(label='world').insert_into(u)
-        MyNode(label='foo').insert_into(u)
-        MyNode(label='bar').insert_into(u)
+        MyNode(label='hello').insert_into(u, u.nid_generate())
+        MyNode(label='world').insert_into(u, u.nid_generate())
+        MyNode(label='foo').insert_into(u, u.nid_generate())
+        MyNode(label='bar').insert_into(u, u.nid_generate())
     assert not s.subgraph.internally_equal(s_orig.subgraph)
     assert s.subgraph.nid_alloc.start == 5
 
     s = s_orig.copy()
     with s.updater() as u:
-        MyNode(label='hello').insert_into(u)
+        MyNode(label='hello').insert_into(u, u.nid_generate())
 
     #TODO?
 

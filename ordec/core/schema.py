@@ -76,10 +76,10 @@ class Symbol(SubgraphRoot):
     cell = Attr(Cell)
 
     def portmap(self, **kwargs):
-        def inserter_func(main, sgu):
-            main_nid = main.set(symbol=self.subgraph).insert_into(sgu)
+        def inserter_func(main, sgu, primary_nid):
+            main_nid = main.set(symbol=self.subgraph).insert_into(sgu, primary_nid)
             for k, v in kwargs.items():
-                SchemInstanceConn(ref=main_nid, here=v.nid, there=self[k].nid).insert_into(sgu)
+                SchemInstanceConn(ref=main_nid, here=v.nid, there=self[k].nid).insert_into(sgu, sgu.nid_generate())
             return main_nid
         return inserter_func
 
@@ -141,10 +141,10 @@ class GenericPoly(Node):
         if vertices is None:
             return main
         else:
-            def inserter_func(sgu):
-                main_nid = main.insert_into(sgu)
+            def inserter_func(sgu, primary_nid):
+                main_nid = main.insert_into(sgu, primary_nid)
                 for i, v in enumerate(vertices):
-                    cls.vertex_cls(ref=main_nid, order=i, pos=v).insert_into(sgu)
+                    cls.vertex_cls(ref=main_nid, order=i, pos=v).insert_into(sgu, sgu.nid_generate())
                 return main_nid
             return FuncInserter(inserter_func)
 
@@ -152,10 +152,10 @@ class GenericPoly(Node):
         polyvecs = self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid))
         return [polyvec.pos for polyvec in polyvecs]
 
-    def remove_node(self):
-        for vertex in self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid)):
-            vertex.remove()
-        return super().remove_node()
+    def remove_node(self, sgu: 'SubgraphUpdater'):
+        for vertex_nid in self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid), wrap_cursor=False):
+            sgu.remove_nid(vertex_nid)
+        return super().remove_node(sgu)
 
 class GenericPolyR(GenericPoly):
     """Base class for polygon or polygonal chain classes (rational numbers)."""
@@ -293,7 +293,7 @@ class SchemInstanceConn(Node):
 
 @public
 class SchemInstanceUnresolved(Node):
-    """A instance of a Symbol that is not determined yet."""
+    """An instance of a Symbol that is not determined yet."""
     in_subgraphs = [Schematic]
 
     pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
@@ -475,6 +475,7 @@ class Layer(NonLeafNode):
 @public
 class Layout(SubgraphRoot):
     cell = Attr(Cell)
+    symbol = SubgraphRef(Symbol)
     ref_layers = SubgraphRef(LayerStack, optional=False)
 
     def webdata(self):
@@ -648,6 +649,28 @@ class LayoutInstanceArray(LayoutInstance):
 
     vec_col = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
     vec_row = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+
+@public
+class LayoutPin(Node):
+    """
+    A LayoutPin associates a particular shape with a Pin of the layout's symbol.
+    The advantages to a plain LayoutLabel are: (a) the LayoutPin maintains a
+    semantic connection to the symbol, and (b) the LayoutPin can be added to
+    a non-pin layer, and a corresponding pin layer shape is created
+    automatically by expand_pins (in write_gds or the web viewer).
+
+    Currently, the associated shape must be a LayoutPoly, LayoutRectPoly or
+    LayoutRect. LayoutPath or LayoutRectPath are not supported.
+    """
+    in_subgraphs = [Layout]
+
+    ref = LocalRef(LayoutPoly|LayoutRectPoly|LayoutPath,
+        refcheck_custom=lambda val: issubclass(val, (LayoutPoly, LayoutRectPoly, LayoutRect)),
+        )
+    pin = ExternalRef(Pin,
+        of_subgraph=lambda c: c.root.symbol,
+        optional=False,
+        )
 
 # Misc
 # ----
