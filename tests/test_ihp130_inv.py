@@ -74,23 +74,54 @@ class Inv(Cell):
         s.constrain(l.m1_vdd.rect.lx == l.ntap.m1.rect.ux)
         s.constrain(l.m1_vdd.rect.ly == l.ntap.m1.rect.ly)
         s.constrain(l.m1_vdd.rect.ux == l.pmos.sd[0].rect.lx)
-        s.constrain(l.m1_vdd.rect.uy == l.ntap.m1.rect.ly + 160)
+        s.constrain(l.m1_vdd.rect.height == 160)
         l.m1_vdd % LayoutPin(pin=self.symbol.vdd)
 
-        l.m1_vss = LayoutRect(layer=layers.Metal1, rect=(800, 100, 1570, 260))
+        l.m1_vss = LayoutRect(layer=layers.Metal1)
+        s.constrain(l.m1_vss.rect.lx == l.ptap.m1.rect.ux)
+        s.constrain(l.m1_vss.rect.ly == l.ptap.m1.rect.ly)
+        s.constrain(l.m1_vss.rect.ux == l.nmos.sd[0].rect.lx)
+        s.constrain(l.m1_vss.rect.height == 160)
         l.m1_vss % LayoutPin(pin=self.symbol.vss)
 
         if self.lvs_variant!="missing_y":
-            l.m1_y = LayoutRect(layer=layers.Metal1, rect=(2080, 1100, 2240, 2650))
+            l.m1_y = LayoutRect(layer=layers.Metal1)
+            s.constrain(l.m1_y.rect.lx == l.nmos.sd[1].rect.lx)
+            s.constrain(l.m1_y.rect.ly == l.nmos.sd[1].rect.uy)
+            s.constrain(l.m1_y.rect.ux == l.nmos.sd[1].rect.ux)
+            s.constrain(l.m1_y.rect.uy == l.pmos.sd[1].rect.ly)
             l.m1_y % LayoutPin(pin=self.symbol.y)
         
-        l % LayoutRect(layer=layers.NWell, rect=(-240, 2250, 2680, 4115))
+        l.nwell = LayoutRect(layer=layers.NWell)
+        s.constrain(l.nwell.rect.lx == l.ntap.nwell.rect.lx)
+        s.constrain(l.nwell.rect.ly == l.pmos.nwell.rect.ly)
+        s.constrain(l.nwell.rect.ux == l.pmos.nwell.rect.ux)
+        s.constrain(l.nwell.rect.uy == l.pmos.nwell.rect.uy)
 
-        l % LayoutRect(layer=layers.GatPoly, rect=(1840, 1200, 1970, 2470))
-        l % LayoutRect(layer=layers.GatPoly, rect=(1500, 1400, 1970, 1850))
-        l % LayoutRect(layer=layers.Cont, rect=(1600, 1500, 1760, 1660))
-        
-        l.m1_a = LayoutRect(layer=layers.Metal1, rect=(500, 1500, 1900, 1660))
+
+        l.polybar = LayoutRect(layer=layers.GatPoly)
+        s.constrain(l.polybar.rect.lx == l.nmos.poly[0].rect.lx)
+        s.constrain(l.polybar.rect.ly == l.nmos.poly[0].rect.uy)
+        s.constrain(l.polybar.rect.ux == l.nmos.poly[0].rect.ux)
+        s.constrain(l.polybar.rect.uy == l.pmos.poly[0].rect.ly)
+
+
+        l.polyext = LayoutRect(layer=layers.GatPoly)
+        s.constrain(l.polyext.rect.height == 500)
+        s.constrain(l.polyext.rect.width == 500)
+        s.constrain(l.polyext.rect.ux == l.polybar.rect.lx)
+        s.constrain(l.polyext.rect.cy == l.polybar.rect.cy)
+        l.polycont = LayoutRect(layer=layers.Cont)
+        s.constrain(l.polycont.rect.height == 160)
+        s.constrain(l.polycont.rect.width == 160)
+        s.constrain(l.polycont.rect.cx == l.polyext.rect.cx)
+        s.constrain(l.polycont.rect.cy == l.polyext.rect.cy)
+
+        l.m1_a = LayoutRect(layer=layers.Metal1)
+        s.constrain(l.m1_a.rect.ly == l.polycont.rect.ly)
+        s.constrain(l.m1_a.rect.uy == l.polycont.rect.uy)
+        s.constrain(l.m1_a.rect.ux == l.polycont.rect.ux + 200)
+        s.constrain(l.m1_a.rect.width == 1500)
         l.m1_a % LayoutPin(pin=self.symbol.a)
 
         s.solve()

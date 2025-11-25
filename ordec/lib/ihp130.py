@@ -212,7 +212,7 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
     L = int(length/R("1n"))
     W = int(width/R("1n") / num_gates)
 
-    l.mkpath('polys')
+    l.mkpath('poly')
     l.mkpath('sd')
 
     activ_ext = None
@@ -239,8 +239,8 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
     def add_poly(i):
         nonlocal l, s, x_cur
         x_cur += 110
-        l.polys[i] = LayoutRect(layer=layers.GatPoly)
-        poly = l.polys[i]
+        l.poly[i] = LayoutRect(layer=layers.GatPoly)
+        poly = l.poly[i]
         s.constrain(poly.rect.cy == l.activ.rect.cy)
         s.constrain(poly.rect.width == L)
         s.constrain(poly.rect.lx == x_cur)
