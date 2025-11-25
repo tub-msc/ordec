@@ -4,7 +4,7 @@
 import pytest
 
 from ordec.core import *
-from ordec.layout.ihp130 import SG13G2
+from ordec.lib.ihp130 import SG13G2
 from ordec.core.constraints import Variable, LinearTerm
 
 def test_equalities():

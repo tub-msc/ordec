@@ -31,7 +31,19 @@ class ModelViolation(OrdbException):
 class Inserter(ABC):
     __slots__=()
     @abstractmethod
-    def insert_into(self, sgu):
+    def insert_into(self, sgu: 'SubgraphUpdater', primary_nid: int):
+        """
+        Args:
+            sgu: SubgraphUpdater for insertion.
+            primary_nid: Hint about which node ID should be used to insert
+                the primary (or only) node that is inserted. If more than one
+                node is inserted by the inserter, sgu.nid_generate() is used
+                to generate the further needed node IDs.
+                (Note: An more beautiful solution might be something like:
+                itertools.starmap(sgu.nid_generate, itertools.repeat(())) as the
+                default value and itertools.chain(custom_primary_nid, 
+                itertools.starmap(sgu.nid_generate, itertools.repeat(()))).
+        """
         pass
 
 @public
@@ -572,10 +584,8 @@ class NodeTuple(tuple):
         for ns in self.indices:
             ns.check_constraints(sgu, self, nid)
 
-
-
-    def insert_into(self, sgu):
-        return sgu.add_single(self, sgu.nid_generate())
+    def insert_into(self, sgu, primary_nid):
+        return sgu.add_single(self, primary_nid)
 
     def __eq__(self, other):
         return type(self)==type(other) and tuple.__eq__(self, other)
@@ -808,31 +818,34 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
 
     def remove(self):
         """Removes selected node from subgraph, including NPath if applicable."""
-        if self.npath_nid is not None:
-            self.subgraph.remove_nid(self.npath_nid)
-        self.remove_node()
+        with self.subgraph.updater() as sgu:
+            if self.npath_nid is not None:
+                sgu.remove_nid(self.npath_nid)
+            self.remove_node(sgu)
 
-    def remove_node(self):
+    def remove_node(self, sgu: 'SubgraphUpdater'):
         """Removes selected node from subgraph, *exluding* potential NPath."""
         if self.nid is not None:
-            self.subgraph.remove_nid(self.nid)
+            sgu.remove_nid(self.nid)
 
     def replace(self, inserter: Inserter):
         """
-        Replaces the current node with a one newly inserted by provided inserter.
-
-        In case the current node has an associated NPath, this NPath is updated
-        to point to the newly inserted node.
+        Replaces the current node with a one newly inserted by provided inserter,
+        reusing the nid as primary_nid to the inserter. By reusing the nid,
+        existing NPaths and LocalRefs should be left intact.
         """
         if self.npath_nid is not None:
             children = self.subgraph.all(NPath.idx_parent.query(self.npath_nid), wrap_cursor=False)
             if len(list(children)) > 0:
                 raise OrdbException("Cannot replace non-leaf node that has children.")
+                # TODO: This error should really be raised by NPath.idx_parent, and only in case
+                # a non-leaf node is replaced by a leaf node.
+                # Apart from that, there are other data inconsistencies that could currently
+                # be introduced by replace() but that are not caught anywhere?!
+
         with self.subgraph.updater() as u:
-            new_nid = inserter.insert_into(u)
-        if self.npath_nid is not None:
-            self.subgraph.update(self.npath.set(ref=new_nid), self.npath_nid)
-        self.remove_node()
+            self.remove_node(u)
+            new_nid = inserter.insert_into(u, self.nid)
 
     def __mod__(self, node: Inserter) -> 'Node':
         """
@@ -845,8 +858,8 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
             nid_new = self.subgraph.add(node.set(ref=self.nid))
         else:
             # Complex case:
-            def inserter_func(sgu):
-                main_nid = node.insert_into(sgu)
+            def inserter_func(sgu, primary_nid):
+                main_nid = node.insert_into(sgu, primary_nid)
                 sgu.update(sgu.nodes[main_nid].set(ref=self.nid), main_nid)
                 return main_nid
             nid_new = self.subgraph.add(FuncInserter(inserter_func))
@@ -909,7 +922,7 @@ class NonLeafNode(Node, build_node=False):
                 # Create a new NPath without associated node.
                 v_nid = None
             else:
-                v_nid = v.insert_into(u)
+                v_nid = v.insert_into(u, u.nid_generate())
             self._mkpath_addnode(k, v_nid, u)
 
     def __getitem__(self, k):
@@ -940,7 +953,7 @@ class NonLeafNode(Node, build_node=False):
         if self.nid not in (None, 0):
             if self.npath_nid is None:
                 raise OrdbException("Cannot add node at cursor without NPath.")
-        NPath.Tuple(parent=self.npath_nid, name=k, ref=ref).insert_into(u)
+        NPath.Tuple(parent=self.npath_nid, name=k, ref=ref).insert_into(u, u.nid_generate())
 
 @public
 class FrozenNode(Node, build_node=False):
@@ -1109,7 +1122,7 @@ class SubgraphUpdater:
         self.nid_gen_counter += 1
         return ret
 
-    def add_single(self, node: NodeTuple, nid: int, check_nid: bool=True) -> int:
+    def add_single(self, node: NodeTuple, nid: int, check_nid: bool=False) -> int:
         """
         Args:
             relaxed: Set to True to relax nid insertion order.
@@ -1438,7 +1451,7 @@ class Subgraph(ABC):
     def add(self, node: Inserter) -> int:
         """Inserts node and returns nid."""
         with self.updater() as u:
-            return node.insert_into(u)
+            return node.insert_into(u, u.nid_generate())
 
 @public
 class FrozenSubgraph(Subgraph):

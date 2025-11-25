@@ -76,10 +76,10 @@ class Symbol(SubgraphRoot):
     cell = Attr(Cell)
 
     def portmap(self, **kwargs):
-        def inserter_func(main, sgu):
-            main_nid = main.set(symbol=self.subgraph).insert_into(sgu)
+        def inserter_func(main, sgu, primary_nid):
+            main_nid = main.set(symbol=self.subgraph).insert_into(sgu, primary_nid)
             for k, v in kwargs.items():
-                SchemInstanceConn(ref=main_nid, here=v.nid, there=self[k].nid).insert_into(sgu)
+                SchemInstanceConn(ref=main_nid, here=v.nid, there=self[k].nid).insert_into(sgu, sgu.nid_generate())
             return main_nid
         return inserter_func
 
@@ -141,10 +141,10 @@ class GenericPoly(Node):
         if vertices is None:
             return main
         else:
-            def inserter_func(sgu):
-                main_nid = main.insert_into(sgu)
+            def inserter_func(sgu, primary_nid):
+                main_nid = main.insert_into(sgu, primary_nid)
                 for i, v in enumerate(vertices):
-                    cls.vertex_cls(ref=main_nid, order=i, pos=v).insert_into(sgu)
+                    cls.vertex_cls(ref=main_nid, order=i, pos=v).insert_into(sgu, sgu.nid_generate())
                 return main_nid
             return FuncInserter(inserter_func)
 
@@ -152,10 +152,10 @@ class GenericPoly(Node):
         polyvecs = self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid))
         return [polyvec.pos for polyvec in polyvecs]
 
-    def remove_node(self):
-        for vertex in self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid)):
-            vertex.remove()
-        return super().remove_node()
+    def remove_node(self, sgu: 'SubgraphUpdater'):
+        for vertex_nid in self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid), wrap_cursor=False):
+            sgu.remove_nid(vertex_nid)
+        return super().remove_node(sgu)
 
 class GenericPolyR(GenericPoly):
     """Base class for polygon or polygonal chain classes (rational numbers)."""
@@ -316,7 +316,7 @@ class SchemInstanceUnresolvedCursor(tuple):
     
 @public
 class SchemInstanceUnresolved(Node):
-    """A instance of a Symbol that is not determined yet."""
+    """An instance of a Symbol that is not determined yet."""
 
     class ParamWrapper:
         def __init__(self, inst):
@@ -517,6 +517,7 @@ class Layer(NonLeafNode):
 @public
 class Layout(SubgraphRoot):
     cell = Attr(Cell)
+    symbol = SubgraphRef(Symbol)
     ref_layers = SubgraphRef(LayerStack, optional=False)
 
     def webdata(self):
@@ -606,6 +607,58 @@ class LayoutRect(Node):
     rect = ConstrainableAttr(Rect4I, placeholder=MissingRect4, factory=coerce_tuple(Rect4I, 4))
 
 @public
+class LayoutInstanceSubcursor(tuple):
+    """Cursor to go through layout instances, transforming coordinates."""
+    def __repr__(self):
+        return f"{type(self).__name__}{tuple.__repr__(self)}"
+
+    def hierarchy(self):
+        return tuple.__getitem__(self, slice(0, -1))
+
+    def transform_stack(self):
+        tran = TD4I()
+        for inst in self.hierarchy():
+            tran *= inst.loc_transform()
+        return tran
+
+    def node(self):
+        return tuple.__getitem__(self, -1)
+
+    def __getitem__(self, name):
+        inner_ret = self.node()[name]
+        if isinstance(inner_ret, LayoutInstanceSubcursor):
+            return LayoutInstanceSubcursor(self.hierarchy() + inner_ret)
+        else:
+            return LayoutInstanceSubcursor(self.hierarchy() + (inner_ret, ))
+
+    @property
+    def parent(self):
+        node = self.node()
+
+        if node == node.subgraph.root_cursor:
+            hier = self.hierarchy()
+            if len(hier) == 1:
+                # Leave the subcursor if we are at the first hierarchy level:
+                return hier[0]
+            else:
+                # Otherwise, just drop the last part of the hierarchy:
+                return LayoutInstanceSubcursor(hier)
+        else:
+            return self.__getattr('parent')
+
+    def __getattr__(self, name):
+        inner_ret = getattr(self.node(), name)
+        if isinstance(inner_ret, (Rect4I, Vec2I)):
+            return self.transform_stack() * inner_ret
+        elif isinstance(inner_ret, Node):
+            return LayoutInstanceSubcursor(self.hierarchy() + (inner_ret, ))
+        elif isinstance(inner_ret, LayoutInstanceSubcursor):
+            return LayoutInstanceSubcursor(self.hierarchy() + inner_ret)
+        else:
+            return inner_ret
+
+
+@public
 class LayoutInstance(Node):
     """Hierarchical layout instance, equivalent to GDS SRef."""
 
@@ -614,6 +667,15 @@ class LayoutInstance(Node):
     pos = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
     orientation = Attr(D4, default=D4.R0)
     ref = SubgraphRef(Layout, optional=False) #: Can be a Layout or a frame (which is also a Layout)...
+
+    def subcursor(self):
+        return LayoutInstanceSubcursor((self, self.ref))
+
+    def __getitem__(self, name):
+        return self.subcursor()[name]
+
+    def __getattr__(self, name):
+        return getattr(self.subcursor(), name)
 
     def loc_transform(self):
         return self.pos.transl() * self.orientation
@@ -629,6 +691,28 @@ class LayoutInstanceArray(LayoutInstance):
 
     vec_col = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
     vec_row = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+
+@public
+class LayoutPin(Node):
+    """
+    A LayoutPin associates a particular shape with a Pin of the layout's symbol.
+    The advantages to a plain LayoutLabel are: (a) the LayoutPin maintains a
+    semantic connection to the symbol, and (b) the LayoutPin can be added to
+    a non-pin layer, and a corresponding pin layer shape is created
+    automatically by expand_pins (in write_gds or the web viewer).
+
+    Currently, the associated shape must be a LayoutPoly, LayoutRectPoly or
+    LayoutRect. LayoutPath or LayoutRectPath are not supported.
+    """
+    in_subgraphs = [Layout]
+
+    ref = LocalRef(LayoutPoly|LayoutRectPoly|LayoutPath,
+        refcheck_custom=lambda val: issubclass(val, (LayoutPoly, LayoutRectPoly, LayoutRect)),
+        )
+    pin = ExternalRef(Pin,
+        of_subgraph=lambda c: c.root.symbol,
+        optional=False,
+        )
 
 # Misc
 # ----

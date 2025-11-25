@@ -310,3 +310,35 @@ def expand_instancearrays(layout: Layout):
                     ref=ainst.ref,
                 )
         ainst.remove()
+
+
+@public
+def expand_pins(layout: Layout):
+    """
+    For a given layout, removes LayoutPin objects and adds according LayoutPoly
+    and LayoutLabel instances.
+
+    Expects that all LayoutRect and LayoutRectPoly objects have already been
+    expanded into LayoutPoly objects (e.g. through expand_geom).
+    """
+    # TODO: Add "Directory" type argument for generating labels
+    for pin in layout.all(LayoutPin):
+        if not isinstance(pin.ref, LayoutPoly):
+            raise Exception(f"expand_pins expects LayoutPoly instead of {type(pin.ref)}. Run expand_geom() ahead of time!")
+
+        vertices = pin.ref.vertices()
+
+        center = sum(vertices, start=Vec2I(0, 0)) // len(vertices)
+
+        layout % LayoutPoly(
+            layer=pin.ref.layer.pin,
+            vertices=vertices,
+            )
+        layout % LayoutLabel(
+            layer=pin.ref.layer.pin,
+            pos=center,
+            text=pin.pin.full_path_str(), # TODO: Do a Directory lookup here!
+            )
+
+        print(pin.ref)
+        pin.remove()
