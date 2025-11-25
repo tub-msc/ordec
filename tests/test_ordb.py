@@ -621,6 +621,19 @@ def test_full_path():
     assert s.array[123456789].full_path_str() == 'array[123456789]'
     assert repr(s.array[123456789]) == 'PathNode.Mutable(path=array[123456789])'
 
+def test_add_pathnode():
+    """Test the creation of paths using PathNode() instead of mkpath()."""
+    a = MyHead()
+    a.hello = PathNode()
+    a.hello[123] = PathNode()
+
+    b = MyHead()
+    b.mkpath('hello')
+    b.hello.mkpath(123)
+
+    assert a.freeze() == b.freeze()
+
+
 def test_cursor_paths_unique():
     s = MyHead()
     s.mkpath('sub')

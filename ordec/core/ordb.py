@@ -905,7 +905,11 @@ class NonLeafNode(Node, build_node=False):
 
     def __setitem__(self, k, v):
         with self.subgraph.updater() as u:
-            v_nid = v.insert_into(u)
+            if v == PathNode.Tuple():
+                # Create a new NPath without associated node.
+                v_nid = None
+            else:
+                v_nid = v.insert_into(u)
             self._mkpath_addnode(k, v_nid, u)
 
     def __getitem__(self, k):
@@ -922,7 +926,12 @@ class NonLeafNode(Node, build_node=False):
         self.__getitem__(k).remove()
 
     def mkpath(self, k: str|int, ref=None):
-        """Create empty NPath 'k' below selected node."""
+        """
+        Create empty NPath 'k' below selected node.
+
+        The same action can be accomplished by assigning PathNode() as a new
+        item or attribute of the NonLeafNode.
+        """
         with self.subgraph.updater() as u:
             self._mkpath_addnode(k, ref, u)
             
@@ -1558,6 +1567,8 @@ class PathNode(NonLeafNode):
     """
     PathNode represents an empty path of a subgraph. Its selected nid is None,
     but it selects some path_nid.
+
+    PathNode.Tuple has always length zero and is never inserted into a subgraph.
     """
 
 @public
