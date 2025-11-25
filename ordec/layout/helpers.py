@@ -330,12 +330,14 @@ def expand_pins(layout: Layout):
 
         center = sum(vertices, start=Vec2I(0, 0)) // len(vertices)
 
+        pinlayer = pin.ref.layer.pinlayer()
+
         layout % LayoutPoly(
-            layer=pin.ref.layer.pin,
+            layer=pinlayer,
             vertices=vertices,
             )
         layout % LayoutLabel(
-            layer=pin.ref.layer.pin,
+            layer=pinlayer,
             pos=center,
             text=pin.pin.full_path_str(), # TODO: Do a Directory lookup here!
             )

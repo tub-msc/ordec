@@ -502,7 +502,20 @@ class Layer(NonLeafNode):
 
     style_fill = Attr(RGBColor)
     style_stroke = Attr(RGBColor)
-    style_crossrect = Attr(bool, default=False)
+    style_crossrect = Attr(bool, optional=False, default=False)
+
+    #: Indicates whether the present layer is suitable for pin shapes / text.
+    #: This flag affects the behavior of the pinlayer() method.
+    is_pinlayer = Attr(bool, optional=False, default=False) 
+
+    def pinlayer(self):
+        if self.is_pinlayer:
+            return self
+        else:
+            l = self.pin
+            if not l.is_pinlayer:
+                raise Exception(f"{l} is found at 'pin' path but does not have is_pinlayer set.")
+            return l
 
     gdslayer_text_index = Index(gdslayer_text, unique=True)
     gdslayer_shapes_index = Index(gdslayer_shapes, unique=True)

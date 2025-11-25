@@ -94,6 +94,7 @@ class SG13G2(Cell):
         s.GatPoly.pin = Layer(
             gdslayer_shapes=GdsLayer(layer=5, data_type=2),
             style_fill=rgb_color("#bf4026"),
+            is_pinlayer=True,
             )
         
         s.Cont = Layer(
@@ -129,6 +130,7 @@ class SG13G2(Cell):
                 gdslayer_text=GdsLayer(layer=layer, data_type=25),
                 gdslayer_shapes=GdsLayer(layer=layer, data_type=2),
                 style_fill=color,
+                is_pinlayer=True,
             )
 
         def addvia(name, layer, color):
