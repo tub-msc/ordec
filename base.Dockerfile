@@ -24,6 +24,11 @@ RUN wget -q https://netcologne.dl.sourceforge.net/project/ngspice/ng-spice-rewor
     tar xf ngspice-45.2.tar.gz && \
     rm ngspice-45.2.tar.gz && \
     mv ngspice-45.2 ngspice-src
+RUN wget -q https://www.klayout.org/downloads/source/klayout-0.30.5.tar.gz && \
+    echo "7646acc1d81a5176dc577b297b96aabfa8515b17d264a9b85c9231a937ba42b7 klayout-0.30.5.tar.gz" | sha256sum -c && \
+    tar xf klayout-0.30.5.tar.gz && \
+    rm klayout-0.30.5.tar.gz && \
+    mv klayout-0.30.5 klayout-src
 
 WORKDIR /home/app/openvaf
 RUN wget -q https://openva.fra1.cdn.digitaloceanspaces.com/openvaf_23_5_0_linux_amd64.tar.gz && \
@@ -36,7 +41,7 @@ RUN wget -q https://openva.fra1.cdn.digitaloceanspaces.com/openvaf_23_5_0_linux_
 WORKDIR /home/app/IHP-Open-PDK
 RUN git init && \
     git remote add origin https://github.com/IHP-GmbH/IHP-Open-PDK.git && \
-    git fetch --depth 1 origin 0854e9bcd558b68c573149038b4c95706314e2f1 && \
+    git fetch --depth 1 origin 488ba975fc7836fe75a871c9cc5969650cc90acc && \
     git checkout FETCH_HEAD && \
     git submodule update --init --recursive && \
     rm -r ihp-sg13g2/libs.doc ihp-sg13g2/libs.tech/openems .git
@@ -56,7 +61,7 @@ RUN wget -q "https://github.com/efabless/volare/releases/download/sky130-fa87f8f
 # Stage 2: Build Ngspice
 # ======================
 
-FROM debian:trixie AS ordec-cbuild
+FROM debian:trixie AS ordec-build-ngspice
 
 # Set ngspice_multibuild to "on" to enable triple ngspice build (for future testing).
 ARG ngspice_multibuild="off"
@@ -114,7 +119,36 @@ RUN if [ ${ngspice_multibuild} != off ]; then \
     make install; \
     fi
 
-# Stage 3: ORDeC base image
+# Stage 3: Build KLayout
+# ======================
+
+FROM debian:trixie AS ordec-build-klayout
+
+RUN useradd -ms /bin/bash app && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        qmake6 \
+        ruby-dev \
+        python3-dev \
+        zlib1g-dev \
+        qt6-base-dev \
+        qt6-svg-dev \
+        qt6-5compat-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+USER app
+WORKDIR /home/app
+
+# Three variants are possible. See docs/dev/ngspice_pipe_mode.rst for details.
+
+COPY --chown=app --from=ordec-fetch /home/app/klayout-src /home/app/klayout-src
+
+WORKDIR /home/app/klayout-src
+
+RUN ./build.sh -qmake qmake6 -nolibgit2 -nolstream -without-qtbinding -option -j`nproc --ignore=1` -prefix /home/app/klayout 
+#  -without-qt-designer -without-qtbinding -without-qt-uitools 
+
+# Stage 4: ORDeC base image
 # =========================
 
 FROM debian:trixie AS ordec-base
@@ -131,18 +165,27 @@ RUN useradd -ms /bin/bash app && \
         npm \
         git \
         binutils \
-        klayout \
+        zlib1g \
+        libqt6widgets6 \
+        libqt6svg6 \
+        libqt6core5compat6 \
+        libqt6network6 \
+        libqt6printsupport6 \
+        libqt6xml6 \
+        libruby \
+        libpython3.13 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 USER app
 WORKDIR /home/app
 
-COPY --chown=app --from=ordec-cbuild /home/app/ngspice /home/app/ngspice
+COPY --chown=app --from=ordec-build-ngspice /home/app/ngspice /home/app/ngspice
+COPY --chown=app --from=ordec-build-klayout /home/app/klayout /home/app/klayout
 COPY --chown=app --from=ordec-fetch /home/app/openvaf /home/app/openvaf
 COPY --chown=app --from=ordec-fetch /home/app/IHP-Open-PDK /home/app/IHP-Open-PDK
 COPY --chown=app --from=ordec-fetch /home/app/skywater /home/app/skywater
 
-ENV PATH="/home/app/openvaf:/home/app/ngspice/min/bin:$PATH"
-ENV LD_LIBRARY_PATH="/home/app/ngspice/shared/lib"
+ENV PATH="/home/app/openvaf:/home/app/ngspice/min/bin:/home/app/klayout:$PATH"
+ENV LD_LIBRARY_PATH="/home/app/ngspice/shared/lib:/home/app/klayout"
 ENV ORDEC_PDK_SKY130A="/home/app/skywater/sky130A"
 ENV ORDEC_PDK_SKY130B="/home/app/skywater/sky130B"
 ENV ORDEC_PDK_IHP_SG13G2="/home/app/IHP-Open-PDK/ihp-sg13g2"
