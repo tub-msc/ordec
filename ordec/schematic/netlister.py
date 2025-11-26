@@ -108,15 +108,35 @@ class Netlister:
                 f(self, inst, s)
         return subckt_dep
 
-    def netlist_hier(self, top: Schematic, top_as_subckt: bool=False):
+    def netlist_hier(self, top: Schematic):
+        """For testbenches, top-level is outside SPICE subckt."""
+        if not isinstance(top, Schematic):
+            raise TypeError(f"netlist_hier requires Schematic, not {type(top)}.")
+
         self.add(".title", self.name_obj(top.cell))
         if self.enable_savecurrents:
             self.add(".option", "savecurrents")
+        subckt_dep = self.netlist_schematic(top)
+        self.netlist_hier_deps(subckt_dep)
+        self.add_setup()
 
-        if top_as_subckt:
-            subckt_dep = {top}
-        else:
-            subckt_dep = self.netlist_schematic(top)
+    def netlist_hier_symbol(self, top: Symbol):
+        """For LVS, top-level is just another SPICE subckt, no circuit outside a SPICE subckt."""
+
+        if not isinstance(top, Symbol):
+            raise TypeError(f"netlist_hier requires Symbol, not {type(top)}.")
+
+        self.add(".title", self.name_obj(top.cell))
+        self.netlist_hier_deps({top})
+        self.add_setup()
+         
+
+    def add_setup(self):
+        self.cur_line = 1
+        for setup_func in self.netlist_setup_funcs:
+            setup_func(self)
+
+    def netlist_hier_deps(self, subckt_dep):
         subckt_done = set()
         while len(subckt_dep - subckt_done) > 0:
             symbol = next(iter(subckt_dep - subckt_done))
@@ -131,7 +151,3 @@ class Netlister:
             self.indent -= 4
             self.add(".ends", self.name_obj(symbol.cell))
             subckt_done.add(symbol)
-
-        self.cur_line = 1
-        for setup_func in self.netlist_setup_funcs:
-            setup_func(self)

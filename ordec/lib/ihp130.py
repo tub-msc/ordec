@@ -25,15 +25,14 @@ def pdk() -> PdkDict:
         raise Exception("PDK requires environment variable ORDEC_PDK_IHP_SG13G2 to be set.")
     pdk = PdkDict(root=check_dir(Path(root).resolve()))
 
-    pdk.ngspice_models_dir =  check_dir(pdk.root / "libs.tech/ngspice/models")
-    pdk.ngspice_osdi_dir   =  check_dir(pdk.root / "libs.tech/ngspice/osdi")
-    pdk.stdcell_spice_dir  =  check_dir(pdk.root / "libs.ref/sg13g2_stdcell/spice")
-    pdk.iocell_spice_dir   =  check_dir(pdk.root / "libs.ref/sg13g2_io/spice")
-    pdk.klayout_lvs_deck   = check_file(pdk.root / "libs.tech/klayout/tech/lvs/sg13g2.lvs")
-    pdk.klayout_drc_deck   = {
-        'minimal':           check_file(pdk.root / "libs.tech/klayout/tech/drc/sg13g2_minimal.lydrc"),
-        'maximal':           check_file(pdk.root / "libs.tech/klayout/tech/drc/sg13g2_maximal.lydrc"),
-    }
+    pdk.ngspice_models_dir       =  check_dir(pdk.root / "libs.tech/ngspice/models")
+    pdk.ngspice_osdi_dir         =  check_dir(pdk.root / "libs.tech/ngspice/osdi")
+    pdk.stdcell_spice_dir        =  check_dir(pdk.root / "libs.ref/sg13g2_stdcell/spice")
+    pdk.iocell_spice_dir         =  check_dir(pdk.root / "libs.ref/sg13g2_io/spice")
+    pdk.klayout_lvs_deck         = check_file(pdk.root / "libs.tech/klayout/tech/lvs/sg13g2.lvs")
+    pdk.klayout_drc_decks_dir    =  check_dir(pdk.root / "libs.tech/klayout/tech/drc/rule_decks")
+    pdk.klayout_drc_mod_json     = check_file(pdk.root / "libs.tech/klayout/python/sg13g2_pycell_lib/sg13g2_tech_mod.json")
+    pdk.klayout_drc_default_json = check_file(pdk.root / "libs.tech/klayout/tech/drc/rule_decks/sg13g2_tech_default.json")
 
     return pdk
 
@@ -403,30 +402,74 @@ class Ptap(Cell):
     def layout(self) -> Layout:
         return layoutgen_tap(self, self.l, self.w, nwell=False)
 
+# klayout-new -b -r '/home/tobias/workspace/ordec/lvs/drc_run_2025_11_26_13_11_34/main.drc'
+#     -rd drc_json_default='/home/tobias/workspace/IHP-Open-PDK/ihp-sg13g2/libs.tech/klayout/tech/drc/rule_decks/sg13g2_tech_default.json'
+#     -rd         drc_json='/home/tobias/workspace/IHP-Open-PDK/ihp-sg13g2/libs.tech/klayout/python/sg13g2_pycell_lib/sg13g2_tech_mod.json'
+
+
+def drc_build_main_deck():
+    drc_decks_dir = pdk().klayout_drc_decks_dir
+    drc_deck = []
+    drc_deck.append((drc_decks_dir / 'main.drc').read_text())
+    for fn in drc_decks_dir.glob("*.drc"):
+        if fn.stem in ('antenna', 'density', 'sg13g2_maximal', 'main', 'layers_def', 'tail'):
+            continue
+        drc_deck.append(fn.read_text())
+    drc_deck.append((drc_decks_dir / 'tail.drc').read_text())
+
+    return "\n".join(drc_deck)
 
 @public
 def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
     if variant not in ('minimal', 'maximal'):
         raise ValueError("variant must be either 'minimal' or 'maximal'.")
 
+    drc_decks_dir = pdk().klayout_drc_decks_dir
+
     with rundir('drc', use_tempdir) as cwd:
         with open(cwd / "layout.gds", "wb") as f:
             name_of_layout = write_gds(l, f)
 
-        (cwd / 'drc.log').unlink(missing_ok=True)
+        klayout_shared_opts = dict(
+            thr=str(os.cpu_count()), # Number of threads for density checks
+            drc_json_default=pdk().klayout_drc_default_json,
+            drc_json=pdk().klayout_drc_mod_json,
+            topcell=name_of_layout[l],
+            input="layout.gds",
+            run_mode="deep",
+            precheck_drc="false",
+            disable_extra_rules="false",
+            no_feol="false",
+            no_beol="false",
+            no_offgrid="false",
+            density="true",
+        )
 
-        klayout.run(pdk().klayout_drc_deck[variant], cwd,
-            in_gds="layout.gds",
-            report_file="drc.xml",
-            log_file="drc.log",
-            cell=name_of_layout[l],
+        (cwd / 'main.log').unlink(missing_ok=True)
+        (cwd / 'main.drc').write_text(drc_build_main_deck())
+        (cwd / 'layers_def.drc').write_text((drc_decks_dir / 'layers_def.drc').read_text())
+
+        klayout.run(cwd / 'main.drc', cwd,
+            report="main.lyrdb",
+            log="main.log",
+            table_name="main",
+            **klayout_shared_opts
             )
 
-        log = (cwd / "drc.log").read_text() # currently ignored
-        return klayout.parse_rdb(cwd / "drc.xml", name_of_layout)
+        # (cwd / 'density.log').unlink(missing_ok=True)
+        # klayout.run(drc_decks_dir / 'density.drc', cwd,
+        #    report="density.lyrdb",
+        #    log="density.log",
+        #    table_name="density",
+        #    **klayout_shared_opts
+        #    )
+    
+        log = (cwd / "main.log").read_text() # currently ignored
+        return klayout.parse_rdb(cwd / "main.lyrdb", name_of_layout)
+
 
 @public
-def run_lvs(layout: Layout, schematic: Schematic, use_tempdir: bool=True) -> bool:
+def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> bool:
     """
     Returns:
         True if LVS is clean, else False.
@@ -435,7 +478,7 @@ def run_lvs(layout: Layout, schematic: Schematic, use_tempdir: bool=True) -> boo
     #schematic = schematic.freeze()
 
     nl = Netlister(lvs=True)
-    nl.netlist_hier(schematic, top_as_subckt=True)
+    nl.netlist_hier_symbol(symbol)
     
     with rundir('lvs', use_tempdir) as cwd:
         # Note: The LVS script sometimes creates files in the parent directory
@@ -473,4 +516,9 @@ def run_lvs(layout: Layout, schematic: Schematic, use_tempdir: bool=True) -> boo
             )
 
         log = (cwd / "out.log").read_text()
-        return log.find("INFO : Congratulations! Netlists match.") >= 0
+        if log.find("INFO : Congratulations! Netlists match.") >= 0:
+            return True
+        elif log.find("ERROR : Netlists don't match") >= 0:
+            return False
+        else:
+            raise Exception("Failed to evaluate LVS log file.")

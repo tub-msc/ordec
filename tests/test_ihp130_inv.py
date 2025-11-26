@@ -10,7 +10,7 @@ from ordec.lib import ihp130
 from ordec.schematic.routing import schematic_routing
 
 class Inv(Cell):
-    lvs_variant = Parameter(str, default='clean')
+    variant = Parameter(str, default='clean')
 
     @generate
     def symbol(self):
@@ -74,17 +74,22 @@ class Inv(Cell):
         s.constrain(l.m1_vdd.rect.lx == l.ntap.m1.rect.ux)
         s.constrain(l.m1_vdd.rect.ly == l.ntap.m1.rect.ly)
         s.constrain(l.m1_vdd.rect.ux == l.pmos.sd[0].rect.lx)
-        s.constrain(l.m1_vdd.rect.height == 160)
-        l.m1_vdd % LayoutPin(pin=self.symbol.vdd)
+        s.constrain(l.m1_vdd.rect.height == (100 if self.variant=='thin_m1' else 160))
 
         l.m1_vss = LayoutRect(layer=layers.Metal1)
         s.constrain(l.m1_vss.rect.lx == l.ptap.m1.rect.ux)
         s.constrain(l.m1_vss.rect.ly == l.ptap.m1.rect.ly)
         s.constrain(l.m1_vss.rect.ux == l.nmos.sd[0].rect.lx)
-        s.constrain(l.m1_vss.rect.height == 160)
-        l.m1_vss % LayoutPin(pin=self.symbol.vss)
+        s.constrain(l.m1_vss.rect.height == (100 if self.variant=='thin_m1' else 160))
 
-        if self.lvs_variant!="missing_y":
+        if self.variant=="vss_vdd_pins_swapped":
+            l.m1_vss % LayoutPin(pin=self.symbol.vdd)
+            l.m1_vdd % LayoutPin(pin=self.symbol.vss)
+        else:
+            l.m1_vss % LayoutPin(pin=self.symbol.vss)
+            l.m1_vdd % LayoutPin(pin=self.symbol.vdd)
+
+        if self.variant!="missing_y":
             l.m1_y = LayoutRect(layer=layers.Metal1)
             s.constrain(l.m1_y.rect.lx == l.nmos.sd[1].rect.lx)
             s.constrain(l.m1_y.rect.ly == l.nmos.sd[1].rect.uy)
@@ -98,19 +103,18 @@ class Inv(Cell):
         s.constrain(l.nwell.rect.ux == l.pmos.nwell.rect.ux)
         s.constrain(l.nwell.rect.uy == l.pmos.nwell.rect.uy)
 
-
         l.polybar = LayoutRect(layer=layers.GatPoly)
         s.constrain(l.polybar.rect.lx == l.nmos.poly[0].rect.lx)
         s.constrain(l.polybar.rect.ly == l.nmos.poly[0].rect.uy)
         s.constrain(l.polybar.rect.ux == l.nmos.poly[0].rect.ux)
         s.constrain(l.polybar.rect.uy == l.pmos.poly[0].rect.ly)
 
-
         l.polyext = LayoutRect(layer=layers.GatPoly)
         s.constrain(l.polyext.rect.height == 500)
         s.constrain(l.polyext.rect.width == 500)
         s.constrain(l.polyext.rect.ux == l.polybar.rect.lx)
         s.constrain(l.polyext.rect.cy == l.polybar.rect.cy)
+
         l.polycont = LayoutRect(layer=layers.Cont)
         s.constrain(l.polycont.rect.height == 160)
         s.constrain(l.polycont.rect.width == 160)
@@ -128,33 +132,25 @@ class Inv(Cell):
         return l
 
 def test_lvs_clean():
-    assert ihp130.run_lvs(Inv().layout, Inv().schematic)
+    assert ihp130.run_lvs(Inv().layout, Inv().symbol)
 
 def test_lvs_missing_y():
-    c = Inv(lvs_variant="missing_y")
-    assert not ihp130.run_lvs(c.layout, c.schematic)
+    c = Inv(variant="missing_y")
+    assert not ihp130.run_lvs(c.layout, c.symbol)
+
+def test_lvs_vss_vdd_pins_swapped():
+    c = Inv(variant="vss_vdd_pins_swapped")
+    assert not ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True)
 
 def test_drc_clean():
-    res = ihp130.run_drc(Inv().layout)
+    res = ihp130.run_drc(Inv().layout, use_tempdir=True)
+    assert res.summary() == {}
 
-    assert res.summary() == {
-        'AFil.g/g1': 1,
-        'AFil.g2/g3': 1,
-        'GFil.g': 1,
-        'M1.j/k': 1,
-        'M2.j/k': 1,
-        'M3.j/k': 1,
-        'M4.j/k': 1,
-        'M5.j/k': 1,
-        'M1Fil.h/k': 1,
-        'M2Fil.h/k': 1,
-        'M3Fil.h/k': 1,
-        'M4Fil.h/k': 1,
-        'M5Fil.h/k': 1,
-        'TM1.c/d': 1,
-        'TM2.c/d': 1
-    }
+
+def test_drc_violation():
+    res = ihp130.run_drc(Inv(variant="thin_m1").layout, use_tempdir=True)
+    assert res.summary() == {'M1.a': 2}
 
 if __name__=="__main__":
     # Generate GDS + schematic netlist for manual inspection:
-    ihp130.run_lvs(Inv().layout, Inv().schematic, use_tempdir=False)
+    ihp130.run_lvs(Inv().layout, Inv().symbol, use_tempdir=True)
