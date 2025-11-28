@@ -171,7 +171,9 @@ class NoConn(Cell):
         return s
 
     def netlist_ngspice(self, netlister, inst, schematic):
-        pass
+        # We need to name the instance, else sim_hierarchy.py raises an error at some point.
+        netlister.name_obj(inst, schematic)
+        # But nothing is added to the netlist.
 
 # Voltage & current sources
 # =========================

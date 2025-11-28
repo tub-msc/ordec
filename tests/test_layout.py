@@ -679,8 +679,8 @@ def test_write_gds():
             return l
 
     # To generate reference file:           
-    # with open("out.gds", "wb") as f:
-    #     write_gds(Top().layout, f)
+    #with open("out.gds", "wb") as f:
+    #    write_gds(Top().layout, f)
 
     assert gds_str_from_layout(Top().layout) == gds_str_from_file(gds_dir / 'test_write_gds.gds')
 
@@ -692,7 +692,7 @@ def test_write_gds_without_cell():
     l = l.freeze()
 
     reference = gds_str_from_file(gds_dir / 'test_write_gds_without_cell.gds')
-    reference = re.sub(r"\'__[0-9a-f]+\'", f"'__{id(l.subgraph):x}'", reference)
+    reference = re.sub(r"\'__subgraph[0-9a-f]+\'", f"'__subgraph{id(l.subgraph):x}'", reference)
 
     assert gds_str_from_layout(l) == reference
 

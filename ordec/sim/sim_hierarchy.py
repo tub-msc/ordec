@@ -148,7 +148,9 @@ class HighlevelSim:
         self.top = top
         self.backend = backend
 
-        self.netlister = Netlister(enable_savecurrents=enable_savecurrents)
+        self.directory = Directory()
+
+        self.netlister = Netlister(self.directory, enable_savecurrents=enable_savecurrents)
         self.netlister.netlist_hier(self.top)
 
         self.simhier = simhier
@@ -211,8 +213,9 @@ class HighlevelSim:
         self.simhier.sim_type = sim_type
         with self.launch_ngspice() as sim:
             # ngspice docs says AC does not support savecurrents
+            # TODO: Make savecurrents-related stuff nicer.
             if sim_type == SimType.AC and self.backend in ("ffi", "mp"):
-                temp_netlister = Netlister(enable_savecurrents=False)
+                temp_netlister = Netlister(self.directory, enable_savecurrents=False)
                 temp_netlister.netlist_hier(self.top)
                 netlist = temp_netlister.out()
             else:

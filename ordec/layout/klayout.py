@@ -80,7 +80,7 @@ class DrcReport:
         return summary
 
 
-def parse_rdb(filename, name_of_layout) -> DrcReport:
+def parse_rdb(filename, directory: Directory) -> DrcReport:
     """
     Parses a KLayout XML result database file (RDB). At the moment, this is
     built for IHP130 DRC only.
@@ -89,7 +89,6 @@ def parse_rdb(filename, name_of_layout) -> DrcReport:
     """
     out = DrcReport(categories=[])
     category_by_name = {}
-    layout_of_name = {v: k for k, v in name_of_layout.items()}
 
     tree = ET.parse(filename)
 
@@ -104,8 +103,8 @@ def parse_rdb(filename, name_of_layout) -> DrcReport:
         category = item.find('category').text
         category = re.sub(r"(^')|('$)", "", category)
         category = category_by_name[category]
-        layout = item.find('cell').text
-        layout = layout_of_name[layout]
+        layout_name = item.find('cell').text
+        layout = directory.subgraph_of_name(layout_name, Layout.Frozen)
         values = [v.text for v in item.iter('value')]
         result = DrcResult(category=category, layout=layout, values=values)
         category.results.append(result)

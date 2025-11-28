@@ -1,20 +1,11 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-import re
 from ..core import *
 
-def basename_escape(obj):
-    if isinstance(obj, Cell):
-        return obj.escaped_name().lower()
-    else:
-        basename = "_".join(obj.full_path_list())
-        return re.sub(r"[^a-zA-Z0-9]", "_", basename).lower()
-
 class Netlister:
-    def __init__(self, enable_savecurrents: bool = True, lvs: bool = False):
-        self.obj_of_name = {}
-        self.name_of_obj = {}
+    def __init__(self, directory: Directory, enable_savecurrents: bool = True, lvs: bool = False):
+        self.directory = directory
         self.spice_cards = []
         self.cur_line = 0
         self.indent = 0
@@ -22,6 +13,11 @@ class Netlister:
         self.ngspice_setup_funcs = set()
         self.enable_savecurrents = enable_savecurrents
         self.lvs = lvs
+
+    def name_obj(self, obj, domain=None, prefix=""):
+        if domain != obj.root:
+            raise Exception(f"XX: {type(obj)}")
+        return self.directory.name_node(obj, prefix=prefix)
 
     def require_netlist_setup(self, func):
         self.netlist_setup_funcs.add(func)
@@ -49,30 +45,16 @@ class Netlister:
         self.spice_cards.insert(self.cur_line, " " * self.indent + " ".join(args_flat))
         self.cur_line += 1
 
-    def name_obj(self, obj, domain=None, prefix=""):
-        try:
-            return self.name_of_obj[obj]
-        except KeyError:
-            basename = prefix + basename_escape(obj)
-            name = basename
-            suffix = 0
-            while (domain, name) in self.obj_of_name:
-                name = f"{basename}{suffix}"
-                suffix += 1
-            self.obj_of_name[domain, name] = obj
-            self.name_of_obj[obj] = name
-            return name
-
     def name_hier_simobj(self, sn):
         c = sn
         if not isinstance(c, SimInstance):
-            ret = [self.name_obj(sn.eref, sn.eref.subgraph)]
+            ret = [self.directory.name_node(sn.eref)]
         else:
             ret = []
 
         while not isinstance(c, SimHierarchy):
             if isinstance(c, SimInstance):
-                ret.insert(0, self.name_obj(c.eref, c.eref.subgraph))
+                ret.insert(0, self.directory.existing_name_node(c.eref))
             c = c.parent
         return ".".join(ret)
 
@@ -85,7 +67,7 @@ class Netlister:
             conn = inst.subgraph.one(
                 SchemInstanceConn.ref_pin_idx.query((inst.nid, pin.nid))
             )
-            ret.append(self.name_of_obj[conn.here])
+            ret.append(self.name_obj(conn.here, conn.here.root))
         return ret
 
     def netlist_schematic(self, s: Schematic):
@@ -102,7 +84,7 @@ class Netlister:
                 self.add(
                     self.name_obj(inst, s, prefix="x"),
                     self.portmap(inst, pins),
-                    self.name_obj(inst.symbol.cell),
+                    self.directory.name_subgraph(inst.symbol),
                 )
             else:
                 f(self, inst, s)
@@ -113,7 +95,7 @@ class Netlister:
         if not isinstance(top, Schematic):
             raise TypeError(f"netlist_hier requires Schematic, not {type(top)}.")
 
-        self.add(".title", self.name_obj(top.cell))
+        self.add(".title", self.directory.name_subgraph(top))
         if self.enable_savecurrents:
             self.add(".option", "savecurrents")
         subckt_dep = self.netlist_schematic(top)
@@ -126,7 +108,7 @@ class Netlister:
         if not isinstance(top, Symbol):
             raise TypeError(f"netlist_hier requires Symbol, not {type(top)}.")
 
-        self.add(".title", self.name_obj(top.cell))
+        self.add(".title", self.directory.name_subgraph(top))
         self.netlist_hier_deps({top})
         self.add_setup()
          
@@ -143,11 +125,11 @@ class Netlister:
             schematic = symbol.cell.schematic
             self.add(
                 ".subckt",
-                self.name_obj(symbol.cell),
+                self.directory.name_subgraph(symbol),
                 [self.name_obj(pin, symbol) for pin in self.pinlist(symbol)],
             )
             self.indent += 4
             subckt_dep |= self.netlist_schematic(schematic)
             self.indent -= 4
-            self.add(".ends", self.name_obj(symbol.cell))
+            self.add(".ends", self.directory.name_subgraph(symbol))
             subckt_done.add(symbol)

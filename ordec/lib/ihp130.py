@@ -426,15 +426,17 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
 
     drc_decks_dir = pdk().klayout_drc_decks_dir
 
+    directory = Directory()
+
     with rundir('drc', use_tempdir) as cwd:
         with open(cwd / "layout.gds", "wb") as f:
-            name_of_layout = write_gds(l, f)
+            write_gds(l, f, directory)
 
         klayout_shared_opts = dict(
             thr=str(os.cpu_count()), # Number of threads for density checks
             drc_json_default=pdk().klayout_drc_default_json,
             drc_json=pdk().klayout_drc_mod_json,
-            topcell=name_of_layout[l],
+            topcell=directory.name_subgraph(l),
             input="layout.gds",
             run_mode="deep",
             precheck_drc="false",
@@ -465,7 +467,7 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
         #    )
     
         log = (cwd / "main.log").read_text() # currently ignored
-        return klayout.parse_rdb(cwd / "main.lyrdb", name_of_layout)
+        return klayout.parse_rdb(cwd / "main.lyrdb", directory)
 
 
 @public
@@ -477,7 +479,8 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> bool:
     #layout = layout.freeze()
     #schematic = schematic.freeze()
 
-    nl = Netlister(lvs=True)
+    directory = Directory()
+    nl = Netlister(directory, lvs=True)
     nl.netlist_hier_symbol(symbol)
     
     with rundir('lvs', use_tempdir) as cwd:
@@ -490,7 +493,7 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> bool:
         (cwd / 'out.log').unlink(missing_ok=True)
 
         with open(cwd / 'layout.gds', "wb") as f:
-            name_of_layout = write_gds(layout, f)
+            name_of_layout = write_gds(layout, f, directory=directory)
 
         klayout.run(
             pdk().klayout_lvs_deck,
@@ -510,7 +513,7 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> bool:
             report='out.lvsdb',
             log='out.log',
             target_netlist='extracted.cir',
-            topcell=name_of_layout[layout],
+            topcell=directory.name_subgraph(layout),
             input='layout.gds',
             schematic='schematic.cir',
             )

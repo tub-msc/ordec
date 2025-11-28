@@ -313,7 +313,7 @@ def expand_instancearrays(layout: Layout):
 
 
 @public
-def expand_pins(layout: Layout):
+def expand_pins(layout: Layout, directory: Directory):
     """
     For a given layout, removes LayoutPin objects and adds according LayoutPoly
     and LayoutLabel instances.
