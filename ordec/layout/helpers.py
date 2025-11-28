@@ -339,8 +339,7 @@ def expand_pins(layout: Layout, directory: Directory):
         layout % LayoutLabel(
             layer=pinlayer,
             pos=center,
-            text=pin.pin.full_path_str(), # TODO: Do a Directory lookup here!
+            text=directory.name_node(pin.pin),
             )
 
-        print(pin.ref)
         pin.remove()

@@ -12,6 +12,9 @@ class Directory:
     """
     Creates and maintains a set of unique names for cells and objects within
     subgraphs.
+
+    For compatibility with case-insensitive tools, names are lowercase-only.
+    Names contain only a-z, 0-9 and underscore (_) characters.
     """
 
     def __init__(self):
