@@ -233,6 +233,7 @@ class Schematic(SubgraphRoot):
 class Net(Node):
     in_subgraphs = [Schematic]
     pin = ExternalRef(Pin, of_subgraph=lambda c: c.root.symbol)
+    route = Attr(bool, default=True)
 
 @public
 class SchemPort(Node):

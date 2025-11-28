@@ -456,7 +456,12 @@ class SchematicRenderer(Renderer):
         path.attrib['class'] = 'tapPoint'
         
         if not (is_default_supply or is_default_ground):
-            label = p.ref.full_path_str()
+            if p.ref.npath_nid is not None:
+                label = p.ref.full_path_str()
+            elif p.npath_nid is not None:
+                label = p.full_path_str()
+            else:
+                label = f"??{p.ref.nid}"
             self.draw_label(label, tran,
                 space=self.port_text_space, valign=VAlign.Middle,
                 svg_class="tapPointLabel")

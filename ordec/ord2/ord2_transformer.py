@@ -174,9 +174,10 @@ class Ord2Transformer(PythonTransformer):
 
         context_name_tuple = self.extract_path(context_name)
         context_name_tuple = self.path_to_ast(context_name_tuple)
-                
-        lhs = copy.copy(context_name)
         path_node = None
+        if len(context_name_tuple) > 1:
+            path_node = context_name.value
+        lhs = copy.copy(context_name)
         self._set_ctx(lhs, ast.Store())
         # Case for symbol statements
         if context_type in ["inout", "input", "output"]:
@@ -187,17 +188,11 @@ class Ord2Transformer(PythonTransformer):
                     inout = "In"
                 case _:
                     inout = "Out"
-            if len(context_name_tuple) > 1:
-                path_node = context_name.value
 
             args = []
-            args.append(ast.Tuple(elts=context_name_tuple, ctx=ast.Load()))
             func = self.ast_attribute(self.ast_name("ctx"), "add")
-            
-            if path_node:
-                func = self.ast_attribute(self.ast_name("ctx"), "add_pathnode")
-                args.append(path_node)
-                
+
+            args.append(ast.Tuple(elts=context_name_tuple, ctx=ast.Load()))
             args.append(ast.Call(
                         func=self.ast_name("Pin"),
                         keywords=[
@@ -215,17 +210,11 @@ class Ord2Transformer(PythonTransformer):
             rhs = ast.Call(func=func, args=args, keywords=[])
         # Case for port statements
         elif context_type == "port":
-            if len(context_name_tuple) > 1:
-                path_node = context_name.value
-
+ 
             args = [ast.Tuple(elts=context_name_tuple, ctx=ast.Load())]
-            if path_node:
-                args.append(path_node)
-                func = self.ast_attribute(self.ast_name("ctx"), "add_port_pathnode")
-            else:
-                func = self.ast_attribute(self.ast_name("ctx"),"add_port_normal")
-                
+            func = self.ast_attribute(self.ast_name("ctx"),"add_port")
             rhs = ast.Call(func=func, args=args, keywords=[])
+
         # Case for instantiating sub-cells
         else:
             resolver_lambda = ast.Lambda(
@@ -254,15 +243,8 @@ class Ord2Transformer(PythonTransformer):
                     )
 
             args = []
+            func=self.ast_attribute(self.ast_name("ctx"), "add")                
             args.append(ast.Tuple(elts=context_name_tuple, ctx=ast.Load()))
-            
-            if len(context_name_tuple) > 1:
-                path_node = context_name.value
-                func = self.ast_attribute(self.ast_name("ctx"), "add_pathnode")
-                args.append(path_node)
-            else:
-                func=self.ast_attribute(self.ast_name("ctx"), "add")
-                
             args.append(ast.Call(
                         func=self.ast_name("SchemInstanceUnresolved"),
                         keywords=[
@@ -371,13 +353,24 @@ class Ord2Transformer(PythonTransformer):
 
     def path_stmt(self, nodes):
         """ Add path (path x) """
-        path = nodes[0]
-        lhs = self.ast_name(path, ctx=ast.Store())
+        path_name = nodes[0]
+        lhs = self.ast_name(path_name, ctx=ast.Store())
         rhs = ast.Call(
-             func=self.ast_attribute(
+            func=self.ast_attribute(
                  self.ast_name("ctx"),
-                 "add_path"),
-             args=[ast.Constant(value=path)],
+                 "add"),
+            args=[
+                ast.Tuple(
+                    elts=[ast.Constant(value=value)
+                          for value in path_name.split('.')],
+                    ctx=ast.Load()
+                ),
+                ast.Call(
+                    func=self.ast_name("PathNode"),
+                    keywords=[],
+                    args=[]
+                )
+            ],
              keywords=[]
             )
         return ast.Assign([lhs], rhs)
