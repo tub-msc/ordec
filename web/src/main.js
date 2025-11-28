@@ -72,8 +72,6 @@ class Editor {
             fontSize: "12pt"
         });
         this.editor.session.on('change', (delta) => this.changed(delta));
-
-        window.ordecClient.editor = this;
     }
 
     loadSrc(src) {
@@ -118,8 +116,6 @@ async function getInitData() {
     return await response.json();
 }
 
-window.ordecClient = new OrdecClient(getSourceType(), [], setStatus);
-
 const layout = new GoldenLayout(document.querySelector("#workspace"));
 layout.layoutConfig.settings.showPopoutIcon = false;
 layout.resizeWithContainerAutomatically = true;
@@ -136,9 +132,15 @@ function getResultViewers() {
     return ret;
 }
 
-layout.addEventListener('stateChanged', () => {
-    window.ordecClient.resultViewers = getResultViewers();
-});
+function getEditor() {
+    let ret;
+    layout.root.getAllContentItems().forEach(e => {
+        if(e.componentName == 'editor') {
+            ret = e.component;
+        }
+    });
+    return ret;
+}
 
 document.querySelector("#newresview").onclick = () => {
     layout.addComponent('result', undefined, 'Result View');
@@ -154,17 +156,6 @@ document.querySelector("#savejson").onclick = () => {
     dlAnchorElem.setAttribute("target", "_blank");
     dlAnchorElem.click();
 };
-
-document.querySelector("#refresh").onclick = () => {
-    window.ordecClient.connect();
-};
-
-sourceTypeSelect.onchange = () => {
-    window.ordecClient.srctype = getSourceType();
-    console.log('ordecClient.connect() triggered by source type selector.');
-    window.ordecClient.connect();
-};
-
 
 
 if(queryLocal) {
@@ -199,6 +190,8 @@ if(queryLocal) {
         uistate.header = {popout: false};
 
         layout.loadLayout(uistate);
+        // ordecClient is initialized only once we have loaded our layout using loadLayout:
+        window.ordecClient = new OrdecClient(getSourceType(), getResultViewers(), setStatus);
         window.ordecClient.localModule = local.module;
         window.ordecClient.connect();
     } else {
@@ -215,13 +208,32 @@ if(queryLocal) {
     const initData = await getInitData();
     initData.uistate.header = {popout: false};
     sourceTypeSelect.value = initData.srctype;
-    window.ordecClient.srctype = initData.srctype;
     layout.loadLayout(initData.uistate);
-
-    window.ordecClient.editor.loadSrc(initData.src);
+    
+    // ordecClient is initialized only once we have loaded our layout using loadLayout:
+    window.ordecClient = new OrdecClient(getSourceType(), getResultViewers(), setStatus);
+    window.ordecClient.srctype = initData.srctype;
+    
+    const editor = getEditor();
+    editor.loadSrc(initData.src);
     // 1st request, caused by loadSrc, is with refreshTimeout = 0.
-    window.ordecClient.editor.refreshTimeout = 500; 
+    editor.refreshTimeout = 500; 
 }
+
+layout.addEventListener('stateChanged', () => {
+     window.ordecClient.resultViewers = getResultViewers();
+     window.ordecClient.resultViewers.forEach(rv => rv.updateViewListIfMissing());
+});
+
+document.querySelector("#refresh").onclick = () => {
+    window.ordecClient.connect();
+};
+
+sourceTypeSelect.onchange = () => {
+    window.ordecClient.srctype = getSourceType();
+    console.log('ordecClient.connect() triggered by source type selector.');
+    window.ordecClient.connect();
+};
 
 fetch('/api/version').then(response => response.json()).then(data => {
     document.querySelector('#version').innerText = data['version'];

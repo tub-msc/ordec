@@ -122,7 +122,8 @@ export class ResultViewer {
         if (state['view']) {
             this.restoreSelectedView = state['view'];
         }
-        this.updateGlobalState();
+        //this.updateGlobalState();
+        this.viewListInitialized = false;
     }
 
     refreshOnClick() {
@@ -220,6 +221,13 @@ export class ResultViewer {
             }
         });
         this.viewSelected = prevOptVal;
+        this.viewListInitialized = true;
+    }
+
+    updateViewListIfMissing() {
+        if(!this.viewListInitialized) {
+            this.updateViewList();
+        }
     }
 
     updateGlobalExceptionState() {
