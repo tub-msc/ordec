@@ -9,9 +9,17 @@ export class OrdecClient {
         this.reqPending = false;
         this.srctype = srctype;
         this.src = ""; // set by Editor from the outside
-        this.resultViewers = resultViewers;
+        this.registerResultViewers(resultViewers);
         this.setStatus = setStatus;
         this.localModule = null; // Set to module name when in localModule mode.
+    }
+
+    registerResultViewers(resultViewers) {
+        // Ensures that each x in this.resultViewers has x.client set.
+        resultViewers.forEach(rv => {
+            rv.registerClient(this);
+        });
+        this.resultViewers = resultViewers;
     }
 
     connect() {
@@ -40,12 +48,12 @@ export class OrdecClient {
             msg['views'].forEach(view => {
                 this.views.set(view.name, view);
             });
-            this.resultViewers.forEach(rv => rv.updateGlobalState());
+            this.resultViewers.forEach(rv => rv.updateViewListAndException());
             this.requestNextView();
         } else if (msg['msg'] == 'exception') {
             this.exception = msg['exception'];
             this.setStatus('exception');
-            this.resultViewers.forEach(rv => rv.updateGlobalState());
+            this.resultViewers.forEach(rv => rv.updateViewListAndException());
             this.requestNextView();
         } else if (msg['msg'] == 'view') {
             this.nextView.updateView(msg);

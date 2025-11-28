@@ -73,26 +73,24 @@ class Editor {
         });
     }
 
-    registerChangeHandler() {
-        this.editor.session.on('change', (delta) => this.changed(delta));
+    registerChangeHandler(client) {
+        this.editor.session.on('change', (delta) => {
+            // After the user has modified the example code, he must confirm
+            // when he wants to close the browser window.
+            window.onbeforeunload = unloadMsg;
+            
+            window.clearTimeout(this.timeout);
+            this.timeout = window.setTimeout(() => {
+                console.log('ordecClient.connect() triggered by editor change.');
+                client.src = this.editor.getValue();
+                client.connect();
+            }, this.refreshTimeout);
+        });
     }
 
     loadSrc(src) {
         this.editor.setValue(src);
         this.editor.clearSelection();
-    }
-
-    changed(delta) {
-        // After the user has modified the example code, he must confirm
-        // when he wants to close the browser window.
-        window.onbeforeunload = unloadMsg;
-        
-        window.clearTimeout(this.timeout);
-        this.timeout = window.setTimeout(() => {
-            console.log('ordecClient.connect() triggered by editor change.');
-            window.ordecClient.src = this.editor.getValue();
-            window.ordecClient.connect();
-        }, this.refreshTimeout);
     }
 }
 
@@ -153,6 +151,7 @@ document.querySelector("#savejson").onclick = () => {
     dlAnchorElem.click();
 };
 
+let client;
 
 if(queryLocal) {
     // If queryLocal is set, the web UI is used in **local mode**.
@@ -186,10 +185,10 @@ if(queryLocal) {
         uistate.header = {popout: false};
 
         layout.loadLayout(uistate);
-        // ordecClient is initialized only once we have loaded our layout using loadLayout:
-        window.ordecClient = new OrdecClient(getSourceType(), getResultViewers(), setStatus);
-        window.ordecClient.localModule = local.module;
-        window.ordecClient.connect();
+        // client is initialized only once we have loaded our layout using loadLayout:
+        client = new OrdecClient(getSourceType(), getResultViewers(), setStatus);
+        client.localModule = local.module;
+        client.connect();
     } else {
         console.error("HMAC authentication of 'local' parameter failed.");
     }
@@ -206,34 +205,36 @@ if(queryLocal) {
     sourceTypeSelect.value = initData.srctype;
     layout.loadLayout(initData.uistate);
     
-    // ordecClient is initialized only once we have loaded our layout using loadLayout:
-    window.ordecClient = new OrdecClient(getSourceType(), getResultViewers(), setStatus);
-    window.ordecClient.srctype = initData.srctype;
-    window.ordecClient.src = initData.src;
+    // client is initialized only once we have loaded our layout using loadLayout:
+    client = new OrdecClient(getSourceType(), getResultViewers(), setStatus);
+    client.srctype = initData.srctype;
+    client.src = initData.src;
     
     const editor = getEditor();
     editor.loadSrc(initData.src);
 
-    window.ordecClient.connect();
+    client.connect();
      
     // Starting now, changes of editor source will trigger connect():   
-    editor.registerChangeHandler(); 
+    editor.registerChangeHandler(client); 
 }
 
 layout.addEventListener('stateChanged', () => {
-     window.ordecClient.resultViewers = getResultViewers();
-     window.ordecClient.resultViewers.forEach(rv => rv.updateViewListIfMissing());
+    client.registerResultViewers(getResultViewers());
 });
 
 document.querySelector("#refresh").onclick = () => {
-    window.ordecClient.connect();
+    client.connect();
 };
 
 sourceTypeSelect.onchange = () => {
-    window.ordecClient.srctype = getSourceType();
+    client.srctype = getSourceType();
     console.log('ordecClient.connect() triggered by source type selector.');
-    window.ordecClient.connect();
+    client.connect();
 };
+
+// Make the OrdecClient object easy to access for automated testing & browser-based debugging:
+window.ordecClient = client;
 
 fetch('/api/version').then(response => response.json()).then(data => {
     document.querySelector('#version').innerText = data['version'];

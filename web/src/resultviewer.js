@@ -129,7 +129,7 @@ export class ResultViewer {
     refreshOnClick() {
         this.refreshRequestedByUser = true;
         this.showRefreshOverlay('refreshing');
-        window.ordecClient.requestNextView();
+        this.client.requestNextView();
     }
 
     showRefreshOverlay(config) {
@@ -149,7 +149,7 @@ export class ResultViewer {
     }
 
     viewInfo() {
-        let info = window.ordecClient.views.get(this.viewSelected);
+        let info = this.client.views.get(this.viewSelected);
         if(info) {
             return info;
         } else {
@@ -178,28 +178,24 @@ export class ResultViewer {
         this.resetResContent();
         this.resContent.focus(); // tab focus on resContent
         this.view = null;
-        window.ordecClient.requestNextView();
-
-
+        this.client.requestNextView();
     }
 
     invalidate() {
         this.viewUpToDate = false;
         this.refreshRequestedByUser = false;
 
-        if(!this.viewSelected) {
+        this.updateOverlay();
+    }
+
+    updateOverlay() {
+        if((!this.viewSelected) || this.viewUpToDate) {
             this.showRefreshOverlay(null);
         } else if(this.viewInfo().auto_refresh && !ResultViewer.refreshAll) {
             this.showRefreshOverlay("refreshing");
         } else {
             this.showRefreshOverlay("refreshable");
         }
-    }
-
-    updateGlobalState() {
-        this.invalidate();
-        this.updateViewList();
-        this.updateGlobalExceptionState();
     }
 
     updateViewList() {
@@ -211,7 +207,7 @@ export class ResultViewer {
             prevOptVal = this.restoreSelectedView;
         }
         vs.innerHTML = "<option disabled selected value>--- Select result from list ---</option>";
-        window.ordecClient.views.forEach(view => {
+        this.client.views.forEach(view => {
             var option = document.createElement("option");
             option.innerText = view.name;
             option.value = view.name;
@@ -224,20 +220,21 @@ export class ResultViewer {
         this.viewListInitialized = true;
     }
 
-    updateViewListIfMissing() {
-        if(!this.viewListInitialized) {
-            this.updateViewList();
+    updateViewListAndException() {
+        this.updateViewList();
+        if (this.client.exception) {
+            // In this case, the exception was generated during module evaluation:
+            this.showRefreshOverlay(null);
+            this.showException(this.client.exception);
+        } else {
+            this.invalidate();
+            this.updateOverlay();
         }
     }
 
-    updateGlobalExceptionState() {
-        if (window.ordecClient.exception) {
-            this.showRefreshOverlay(null);
-            this.showException(window.ordecClient.exception);
-        } else {
-            // this.resException.style.display = 'none';
-            // this.resContent.style.display = 'block';
-        }
+    registerClient(client) {
+        this.client = client;
+        this.updateViewList();
     }
 
     showException(text) {
@@ -258,6 +255,7 @@ export class ResultViewer {
         this.showRefreshOverlay(null);
 
         if(msg.exception) {
+            // In this case, the exception was generated during view generation:
             this.showException(msg.exception);
         } else {
             this.showException(null);
@@ -273,6 +271,8 @@ export class ResultViewer {
                 this.view.update(msg.data);
             }
         }
+
+        this.updateOverlay();
     }
 
     testInfo() {
