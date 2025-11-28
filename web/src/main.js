@@ -60,7 +60,7 @@ function unloadMsg() {
 
 class Editor {
     constructor(container, state) {
-        this.refreshTimeout = 0;
+        this.refreshTimeout = 500;
         this.container = container;
         this.resizeWithContainerAutomatically = true;
 
@@ -71,6 +71,9 @@ class Editor {
             fontFamily: "Inconsolata",
             fontSize: "12pt"
         });
+    }
+
+    registerChangeHandler() {
         this.editor.session.on('change', (delta) => this.changed(delta));
     }
 
@@ -79,24 +82,17 @@ class Editor {
         this.editor.clearSelection();
     }
 
-
     changed(delta) {
-        if(this.refreshTimeout <= 0) {
+        // After the user has modified the example code, he must confirm
+        // when he wants to close the browser window.
+        window.onbeforeunload = unloadMsg;
+        
+        window.clearTimeout(this.timeout);
+        this.timeout = window.setTimeout(() => {
+            console.log('ordecClient.connect() triggered by editor change.');
             window.ordecClient.src = this.editor.getValue();
-            console.log('ordecClient.connect() triggered by editor change (no timeout).');
             window.ordecClient.connect();
-        } else {
-            // After the user has modified the example code, he must confirm
-            // when he wants to close the browser window.
-            window.onbeforeunload = unloadMsg;
-            
-            window.clearTimeout(this.timeout);
-            this.timeout = window.setTimeout(() => {
-                console.log('ordecClient.connect() triggered by editor change.');
-                window.ordecClient.src = this.editor.getValue();
-                window.ordecClient.connect();
-            }, this.refreshTimeout);
-        }
+        }, this.refreshTimeout);
     }
 }
 
@@ -213,11 +209,15 @@ if(queryLocal) {
     // ordecClient is initialized only once we have loaded our layout using loadLayout:
     window.ordecClient = new OrdecClient(getSourceType(), getResultViewers(), setStatus);
     window.ordecClient.srctype = initData.srctype;
+    window.ordecClient.src = initData.src;
     
     const editor = getEditor();
     editor.loadSrc(initData.src);
-    // 1st request, caused by loadSrc, is with refreshTimeout = 0.
-    editor.refreshTimeout = 500; 
+
+    window.ordecClient.connect();
+     
+    // Starting now, changes of editor source will trigger connect():   
+    editor.registerChangeHandler(); 
 }
 
 layout.addEventListener('stateChanged', () => {
