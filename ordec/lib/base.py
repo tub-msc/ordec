@@ -48,7 +48,7 @@ class Res(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst, schematic):
+    def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, prefix="r"), netlister.portmap(inst, pins), f'r={self.r.compat_str()}')
 
@@ -82,7 +82,7 @@ class Cap(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst, schematic):
+    def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
         netlist_str = f'c={self.c.compat_str()}'
         if self.ic is not None:
@@ -122,7 +122,7 @@ class Ind(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst, schematic):
+    def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, prefix="l"), netlister.portmap(inst, pins), f'l={self.l.compat_str()}')
 
@@ -150,7 +150,7 @@ class Gnd(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst, schematic):
+    def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p]
         netlister.add(netlister.name_obj(inst, prefix="v"), netlister.portmap(inst, pins), '0', f'dc 0')
 
@@ -170,7 +170,7 @@ class NoConn(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst, schematic):
+    def netlist_ngspice(self, netlister, inst):
         # We need to name the instance, else sim_hierarchy.py raises an error at some point.
         netlister.name_obj(inst)
         # But nothing is added to the netlist.
@@ -220,7 +220,7 @@ class Vdc(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst, schematic):
+    def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, prefix="v"), netlister.portmap(inst, pins) , f'dc {self.dc.compat_str()}')
 
@@ -267,7 +267,7 @@ class Idc(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst, schematic):
+    def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, prefix="i"), netlister.portmap(inst, pins) , f'dc {self.dc.compat_str()}')
 
@@ -317,7 +317,7 @@ class PieceWiseLinearVoltageSource(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst, schematic):
+    def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
         V_list = self.V
@@ -383,7 +383,7 @@ class PulseVoltageSource(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst, schematic):
+    def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
         pulse_values = (
@@ -442,7 +442,7 @@ class SinusoidalVoltageSource(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst, schematic):
+    def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
         # Required parameters - will raise KeyError if not present
@@ -510,7 +510,7 @@ class PieceWiseLinearCurrentSource(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst, schematic):
+    def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
         I_list = self.I
@@ -581,7 +581,7 @@ class PulseCurrentSource(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst, schematic):
+    def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
         pulse_values = (
@@ -650,7 +650,7 @@ class SinusoidalCurrentSource(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst, schematic):
+    def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
         amplitude = self.amplitude

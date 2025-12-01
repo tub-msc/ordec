@@ -85,7 +85,7 @@ class Netlister:
                     self.directory.name_subgraph(inst.symbol),
                 )
             else:
-                f(self, inst, s)
+                f(self, inst)
         return subckt_dep
 
     def netlist_hier(self, top: Schematic):

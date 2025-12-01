@@ -297,7 +297,7 @@ class Mos(Cell):
     m = Parameter(int, default=1)  #: Multiplier, i. e. number of devices with separate Activ areas in parallel)
     ng = Parameter(int, default=1)  #: Number of gate fingers
 
-    def netlist_ngspice(self, netlister, inst, schematic):
+    def netlist_ngspice(self, netlister, inst):
         netlister.require_netlist_setup(netlister_setup)
         netlister.require_ngspice_setup(ngspice_setup)
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
