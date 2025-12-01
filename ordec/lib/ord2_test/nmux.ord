@@ -41,7 +41,7 @@ cell N_TO_1:
         vss.ref.route = False
 
         # Output port
-        port y(.align=Orientation.West; .pos=(signal_count * 8 + 8, 0))
+        port y(.align=Orientation.West; .pos=(signal_count * 8 + 8, 6 * ((self.N - 1) // 2)))
 
         path d_in
         path s_in
@@ -54,8 +54,7 @@ cell N_TO_1:
             px = -5
             py = (i * 6) + 2
             port d_in[i](.align=Orientation.East; .pos=(px, py))
-            inc = i+1
-            port d_in[inc](.align=Orientation.East; .pos=(px, py+1))
+            port d_in[i + 1](.align=Orientation.East; .pos=(px, py+1))
 
         # Place select ports horizontally along the bottom
         for i in range(signal_count):
@@ -70,11 +69,12 @@ cell N_TO_1:
         current_number = self.N
 
         # Level 0 (connect data ports)
-        nets[0] = PathNode()
-        mux[0] = PathNode()
+        path nets[0]
+        path mux[0]
+
 
         for j in range(0, current_number, 2):
-            nets[0][j//2] = Net()
+            net nets[0][j//2]
 
             pos_x = 0
             pos_y = (j // 2) * 12
@@ -87,19 +87,19 @@ cell N_TO_1:
                 .y -- nets[0][j//2]
                 .s -- s_in[0].ref
                 .pos = (pos_x, pos_y)
-
+            
         current_number >>= 1
-
+        
         # Intermediate levels
         for level in range(1, signal_count - 1):
-            nets[level] = PathNode()
-            mux[level] = PathNode()
+            path nets[level]
+            path mux[level]
 
             for j in range(0, current_number, 2):
-                nets[level][j//2] = Net()
+                net nets[level][j//2]
 
                 pos_x = level * 10
-                pos_y = (j // 2) * 12
+                pos_y = 6 * (j + (self.N - current_number) // 2)
 
                 Mux2 mux[level][j]:
                     .vss -- vss.ref
@@ -115,10 +115,10 @@ cell N_TO_1:
 
         # Last MUX
         last = signal_count - 1
-        nets[last] = PathNode()
-        mux[last] = PathNode()
+        path nets[last]
+        path mux[last]
         px = last * 10
-        py = 0
+        py = 6 * ((self.N - 1) // 2)
 
         Mux2 mux[last][0]:
             .vss -- vss.ref

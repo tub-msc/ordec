@@ -374,12 +374,12 @@ context_body: ":" suite
               | "(" simple_stmt? ")" _NEWLINE
 context_element: name context_target context_body
 ?context_target: context_target "." name -> getattr
-		       | context_target "[" test "]" -> getitem
+		       | context_target "[" subscriptlist "]" -> getitem
    	           | name -> var
 		
 dotted_atom: dots name?
-path_stmt: "path" name
-net_stmt: "net" name
+path_stmt: "path" context_target ("," context_target)*
+net_stmt: "net" context_target ("," context_target)*
 
 // Comma-separated list (with an optional trailing comma)
 cs_list{item}: item ("," item)* ","?

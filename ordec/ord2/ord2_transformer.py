@@ -130,40 +130,21 @@ class Ord2Transformer(PythonTransformer):
         return ast.Expr(value=call)
 
     def extract_path(self, nodes):
-        # Extract string tuple from nested attributes
+        """Extract string list from nested attributes"""
 
         # Base: Name(id)
         if isinstance(nodes, ast.Name):
-            return ((nodes.id, False),)
+            return [ast.Constant(nodes.id)]
 
         # Attribute(value, attr)
         elif isinstance(nodes, ast.Attribute):
-            return self.extract_path(nodes.value) + ((nodes.attr, False),)
+            return self.extract_path(nodes.value) + [ast.Constant(nodes.attr)]
 
         # Subscript(value, slice)
         elif isinstance(nodes, ast.Subscript):
-            if isinstance(nodes.slice, ast.Name):
-                key = nodes.slice.id
-            else:
-                key = getattr(nodes.slice, 'value', nodes.slice)
-            return self.extract_path(nodes.value) + ((key, True),)
-
-    @staticmethod
-    def path_to_ast(path):
-        """ Convert string tuple to ast.Tuple"""
-        result = []
-        for value, from_subscript in path:
-            if from_subscript:
-                if isinstance(value, str) and value.isidentifier():
-                    node = ast.Name(id=value, ctx=ast.Load())
-                else:
-                    node = ast.Constant(value=value)
-            else:
-                node = ast.Constant(value=value)
-
-            result.append(node)
-        return result
-
+            if isinstance(nodes.slice, str) and nodes.slice.isidentifier():
+                return self.extract_path(nodes.value) + [self.ast_name(nodes.slice)]
+            return self.extract_path(nodes.value) + [nodes.slice]
 
     def context_element(self, nodes):
         """ context_element (name name:\n    suite)"""
@@ -173,7 +154,6 @@ class Ord2Transformer(PythonTransformer):
         inout = ''
 
         context_name_tuple = self.extract_path(context_name)
-        context_name_tuple = self.path_to_ast(context_name_tuple)
         path_node = None
         if len(context_name_tuple) > 1:
             path_node = context_name.value
@@ -328,53 +308,41 @@ class Ord2Transformer(PythonTransformer):
             ), attr, ctx=ctx
         )
 
+    def net_and_path_stmt_helper(self, nodes, stmt):
+        """Helper for similar code from net and path statements"""
+        stmt_list = list()
+        for name in nodes:
+            context_name_tuple = self.extract_path(name)
+            name_length = len(context_name_tuple)
+            rhs = ast.Call(
+                func=self.ast_attribute(
+                    self.ast_name("ctx"),
+                    "add"),
+                args=[
+                    ast.Tuple(elts=context_name_tuple, ctx=ast.Load()),
+                    ast.Call(
+                        func=self.ast_name(stmt),
+                        keywords=[],
+                        args=[]
+                    )
+                ],
+                keywords=[]
+            )
+            if name_length < 2:
+                lhs = copy.copy(name)
+                self._set_ctx(lhs, ast.Store())
+                stmt_list.append(ast.Assign([lhs], rhs))
+            else:
+                stmt_list.append(ast.Expr(rhs))
+        return stmt_list
+
     def net_stmt(self, nodes):
         """ Add net (net x)"""
-        net_name = nodes[0]
-        lhs = self.ast_name(net_name, ctx=ast.Store())
-        rhs = ast.Call(
-            func=self.ast_attribute(self.ast_name("ctx"), "add"),
-            args=[
-                ast.Tuple(
-                    elts=[ast.Constant(value=value)
-                          for value in net_name.split('.')],
-                    ctx=ast.Load()
-                ),
-                ast.Call(
-                    func=self.ast_name("Net"),
-                    keywords=[],
-                    args=[]
-                )
-            ],
-            keywords=[]
-        )
-        return ast.Assign([lhs], rhs)
-
+        return self.net_and_path_stmt_helper(nodes, "Net")
 
     def path_stmt(self, nodes):
         """ Add path (path x) """
-        path_name = nodes[0]
-        lhs = self.ast_name(path_name, ctx=ast.Store())
-        rhs = ast.Call(
-            func=self.ast_attribute(
-                 self.ast_name("ctx"),
-                 "add"),
-            args=[
-                ast.Tuple(
-                    elts=[ast.Constant(value=value)
-                          for value in path_name.split('.')],
-                    ctx=ast.Load()
-                ),
-                ast.Call(
-                    func=self.ast_name("PathNode"),
-                    keywords=[],
-                    args=[]
-                )
-            ],
-             keywords=[]
-            )
-        return ast.Assign([lhs], rhs)
-        
+        return self.net_and_path_stmt_helper(nodes, "PathNode")
 
     def _flatten(self, items):
         """ Flatten the body of the context element suite"""
