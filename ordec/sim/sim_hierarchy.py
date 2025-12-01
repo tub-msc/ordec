@@ -21,7 +21,7 @@ def build_hier_symbol(simhier, symbol):
         node = simhier
         for part in parts[:-1]:
             if not hasattr(node, part):
-                setattr(node, part, SimHierarchy())
+                node.mkpath(part)
             node = getattr(node, part)
         setattr(node, parts[-1], SimNet(eref=pin))
 
@@ -34,7 +34,7 @@ def build_hier_schematic(simhier, schematic):
         node = simhier
         for part in parts[:-1]:
             if not hasattr(node, part):
-                setattr(node, part, SimHierarchy())
+                node.mkpath(part)
             node = getattr(node, part)
         setattr(node, parts[-1], SimNet(eref=net))
 
@@ -44,7 +44,7 @@ def build_hier_schematic(simhier, schematic):
         node = simhier
         for part in parts[:-1]:
             if not hasattr(node, part):
-                setattr(node, part, SimHierarchy())
+                node.mkpath(part)
             node = getattr(node, part)
         setattr(node, parts[-1], SimInstance(eref=inst))
         subnode = getattr(node, parts[-1])

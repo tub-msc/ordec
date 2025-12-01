@@ -234,6 +234,8 @@ class Net(Node):
     in_subgraphs = [Schematic]
     pin = ExternalRef(Pin, of_subgraph=lambda c: c.root.symbol)
 
+    pin_idx = Index(pin)
+
 @public
 class SchemPort(Node):
     """

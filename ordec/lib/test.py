@@ -763,9 +763,13 @@ class ResdivHier1(Cell):
     def symbol(self):
         s = Symbol(cell=self)
 
-        s.t = Pin(pintype=PinType.Inout, align=Orientation.North)
-        s.r = Pin(pintype=PinType.Inout, align=Orientation.East)
-        s.b = Pin(pintype=PinType.Inout, align=Orientation.South)
+        # Use paths to test path hierarchy handling:
+        s.mkpath('inputs')
+        s.mkpath('outputs')       
+
+        s.inputs.t = Pin(pintype=PinType.Inout, align=Orientation.North)
+        s.outputs.r = Pin(pintype=PinType.Inout, align=Orientation.East)
+        s.inputs.b = Pin(pintype=PinType.Inout, align=Orientation.South)
         helpers.symbol_place_pins(s, vpadding=2, hpadding=2)
 
         return s
@@ -774,12 +778,18 @@ class ResdivHier1(Cell):
     def schematic(self):
         s = Schematic(cell=self, symbol=self.symbol)
 
-        s.t = Net(pin=self.symbol.t)
-        s.r = Net(pin=self.symbol.r)
-        s.b = Net(pin=self.symbol.b)
+        s.t = Net(pin=self.symbol.inputs.t)
+        s.r = Net(pin=self.symbol.outputs.r)
+        s.b = Net(pin=self.symbol.inputs.b)
+
+        # Use paths to test path hierarchy handling:
+        s.mkpath('sub')
+        s.mkpath('sub2')
+        s.sub.mkpath('subsub')
+
         s.tr = Net()
         s.br = Net()
-        s.m = Net()
+        s.sub.subsub.m = Net()
 
         s.t % SchemPort(pos=Vec2R(7, 11), align=Orientation.South)
         s.r % SchemPort(pos=Vec2R(15, 5), align=Orientation.West)
@@ -789,14 +799,15 @@ class ResdivHier1(Cell):
         sym_2 = ResdivHier2(r=R(200)).symbol
 
         # s % SchemInstance(pos=Vec2R(5, 0), ref=sym_1, portmap={sym_1.t: s.m, sym_1.b:s.gnd, sym_1.r:s.br})
-        s.I0 = SchemInstance(sym_1.portmap(t=s.m, b=s.b, r=s.br), pos=Vec2R(5, 0))
-        s.I1 = SchemInstance(sym_2.portmap(t=s.t, b=s.m, r=s.tr), pos=Vec2R(5, 6))
-        s.I2 = SchemInstance(sym_1.portmap(t=s.tr, b=s.br, r=s.r), pos=Vec2R(10, 3))
+        
+        s.I0 = SchemInstance(sym_1.portmap(t=s.sub.subsub.m, b=s.b, r=s.br), pos=Vec2R(5, 0))
+        s.I1 = SchemInstance(sym_2.portmap(t=s.t, b=s.sub.subsub.m, r=s.tr), pos=Vec2R(5, 6))
+        s.sub2.I2 = SchemInstance(sym_1.portmap(t=s.tr, b=s.br, r=s.r), pos=Vec2R(10, 3))
 
         s.outline = Rect4R(lx=5, ly=-1, ux=15, uy=12)
 
         s.b % SchemWire(vertices=[Vec2R(7, -1), Vec2R(7, 0)])
-        s.m % SchemWire(vertices=[Vec2R(7, 4), Vec2R(7, 6)])
+        s.sub.subsub.m % SchemWire(vertices=[Vec2R(7, 4), Vec2R(7, 6)])
         s.t % SchemWire(vertices=[Vec2R(7, 10), Vec2R(7, 11)])
         s.tr % SchemWire(vertices=[Vec2R(9, 8), Vec2R(12, 8), Vec2R(12, 7)])
         s.br % SchemWire(vertices=[Vec2R(9, 2), Vec2R(12, 2), Vec2R(12, 3)])
@@ -816,9 +827,13 @@ class ResdivHierTb(SimBase):
         s.r = Net()
         s.gnd = Net()
 
-        s.I0 = SchemInstance(
-            ResdivHier1().symbol.portmap(t=s.t, b=s.gnd, r=s.r), pos=Vec2R(5, 0)
-        )
+        hier1sym = ResdivHier1().symbol
+        # Cannot use portmap() here, as the symbol has hierarchical pin paths.
+        s.I0 = SchemInstance(symbol=hier1sym, pos=Vec2R(5, 0))
+        s.I0 % SchemInstanceConn(here=s.t,   there=hier1sym.inputs.t)
+        s.I0 % SchemInstanceConn(here=s.gnd, there=hier1sym.inputs.b)
+        s.I0 % SchemInstanceConn(here=s.r,   there=hier1sym.outputs.r)
+
         s.I1 = SchemInstance(NoConn().symbol.portmap(a=s.r), pos=Vec2R(10, 0))
         s.I2 = SchemInstance(
             Vdc(dc=R(1)).symbol.portmap(m=s.gnd, p=s.t_ac), pos=Vec2R(0, 0)

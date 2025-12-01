@@ -124,7 +124,13 @@ class Netlister:
             self.add(
                 ".subckt",
                 self.directory.name_subgraph(symbol),
-                [self.name_obj(pin) for pin in self.pinlist(symbol)],
+                # For the .subckt line, the internal net names are used rather
+                # than the external pin names. This is needed to make sure the
+                # connections work even when there is a mismatch between the
+                # pin and net names. Moreover, the pin names might even be
+                # assigned to something else within the Schematic context.
+                [self.name_obj(schematic.one(Net.pin_idx.query(pin.nid)))
+                    for pin in self.pinlist(symbol)]
             )
             self.indent += 4
             subckt_dep |= self.netlist_schematic(schematic)
