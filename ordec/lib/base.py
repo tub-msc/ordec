@@ -50,7 +50,7 @@ class Res(Cell):
 
     def netlist_ngspice(self, netlister, inst, schematic):
         pins = [inst.symbol.p, inst.symbol.m]
-        netlister.add(netlister.name_obj(inst, schematic, prefix="r"), netlister.portmap(inst, pins), f'r={self.r.compat_str()}')
+        netlister.add(netlister.name_obj(inst, prefix="r"), netlister.portmap(inst, pins), f'r={self.r.compat_str()}')
 
     @classmethod
     def discoverable_instances(cls):
@@ -87,7 +87,7 @@ class Cap(Cell):
         netlist_str = f'c={self.c.compat_str()}'
         if self.ic is not None:
             netlist_str += f' ic={self.ic.compat_str()}'
-        netlister.add(netlister.name_obj(inst, schematic, prefix="c"), netlister.portmap(inst, pins), netlist_str)
+        netlister.add(netlister.name_obj(inst, prefix="c"), netlister.portmap(inst, pins), netlist_str)
 
     @classmethod
     def discoverable_instances(cls):
@@ -124,7 +124,7 @@ class Ind(Cell):
 
     def netlist_ngspice(self, netlister, inst, schematic):
         pins = [inst.symbol.p, inst.symbol.m]
-        netlister.add(netlister.name_obj(inst, schematic, prefix="l"), netlister.portmap(inst, pins), f'l={self.l.compat_str()}')
+        netlister.add(netlister.name_obj(inst, prefix="l"), netlister.portmap(inst, pins), f'l={self.l.compat_str()}')
 
     @classmethod
     def discoverable_instances(cls):
@@ -152,7 +152,7 @@ class Gnd(Cell):
 
     def netlist_ngspice(self, netlister, inst, schematic):
         pins = [inst.symbol.p]
-        netlister.add(netlister.name_obj(inst, schematic, prefix="v"), netlister.portmap(inst, pins), '0', f'dc 0')
+        netlister.add(netlister.name_obj(inst, prefix="v"), netlister.portmap(inst, pins), '0', f'dc 0')
 
 @public
 class NoConn(Cell):
@@ -172,7 +172,7 @@ class NoConn(Cell):
 
     def netlist_ngspice(self, netlister, inst, schematic):
         # We need to name the instance, else sim_hierarchy.py raises an error at some point.
-        netlister.name_obj(inst, schematic)
+        netlister.name_obj(inst)
         # But nothing is added to the netlist.
 
 # Voltage & current sources
@@ -222,7 +222,7 @@ class Vdc(Cell):
 
     def netlist_ngspice(self, netlister, inst, schematic):
         pins = [inst.symbol.p, inst.symbol.m]
-        netlister.add(netlister.name_obj(inst, schematic, prefix="v"), netlister.portmap(inst, pins) , f'dc {self.dc.compat_str()}')
+        netlister.add(netlister.name_obj(inst, prefix="v"), netlister.portmap(inst, pins) , f'dc {self.dc.compat_str()}')
 
     @classmethod
     def discoverable_instances(cls):
@@ -269,7 +269,7 @@ class Idc(Cell):
 
     def netlist_ngspice(self, netlister, inst, schematic):
         pins = [inst.symbol.p, inst.symbol.m]
-        netlister.add(netlister.name_obj(inst, schematic, prefix="i"), netlister.portmap(inst, pins) , f'dc {self.dc.compat_str()}')
+        netlister.add(netlister.name_obj(inst, prefix="i"), netlister.portmap(inst, pins) , f'dc {self.dc.compat_str()}')
 
     @classmethod
     def discoverable_instances(cls):
@@ -328,7 +328,7 @@ class PieceWiseLinearVoltageSource(Cell):
         pwl_args = " ".join([f"{v.compat_str()}" for t, v_val in V_rational for v in (t, v_val)])
 
         netlister.add(
-            netlister.name_obj(inst, schematic, prefix="v"),
+            netlister.name_obj(inst, prefix="v"),
             netlister.portmap(inst, pins),
             f'PWL({pwl_args})'
         )
@@ -396,7 +396,7 @@ class PulseVoltageSource(Cell):
         )
 
         netlister.add(
-            netlister.name_obj(inst, schematic, prefix="v"),
+            netlister.name_obj(inst, prefix="v"),
             netlister.portmap(inst, pins),
             pulse_values
         )
@@ -459,7 +459,7 @@ class SinusoidalVoltageSource(Cell):
         dc_spec = f'dc {offset.compat_str()}'
 
         netlister.add(
-            netlister.name_obj(inst, schematic, prefix="v"),
+            netlister.name_obj(inst, prefix="v"),
             netlister.portmap(inst, pins),
             f'{dc_spec} {ac_spec} {tran_spec}'
         )
@@ -521,7 +521,7 @@ class PieceWiseLinearCurrentSource(Cell):
         pwl_values = " ".join([f"{val.compat_str()}" for t, v_val in I_rational for val in (t, v_val)])
 
         netlister.add(
-            netlister.name_obj(inst, schematic, prefix="i"),
+            netlister.name_obj(inst, prefix="i"),
             netlister.portmap(inst, pins),
             f'PWL({pwl_values})'
         )
@@ -594,7 +594,7 @@ class PulseCurrentSource(Cell):
         )
 
         netlister.add(
-            netlister.name_obj(inst, schematic, prefix="i"),
+            netlister.name_obj(inst, prefix="i"),
             netlister.portmap(inst, pins),
             pulse_values
         )
@@ -662,7 +662,7 @@ class SinusoidalCurrentSource(Cell):
         damping = self.damping_factor
 
         netlister.add(
-            netlister.name_obj(inst, schematic, prefix="i"),
+            netlister.name_obj(inst, prefix="i"),
             netlister.portmap(inst, pins),
             f'SIN({offset.compat_str()} {amplitude.compat_str()} {frequency.compat_str()} {delay.compat_str()} {damping.compat_str()})'
         )

@@ -51,7 +51,7 @@ class Mos(Cell):
         netlister.require_netlist_setup(netlist_setup)
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
         netlister.add(
-            netlister.name_obj(inst, schematic, prefix="x"),
+            netlister.name_obj(inst, prefix="x"),
             netlister.portmap(inst, pins),
             self.model_name,
             *helpers.spice_params({

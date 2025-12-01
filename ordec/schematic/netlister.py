@@ -14,10 +14,8 @@ class Netlister:
         self.enable_savecurrents = enable_savecurrents
         self.lvs = lvs
 
-    def name_obj(self, obj, domain=None, prefix=""):
-        if domain != obj.root:
-            raise Exception(f"XX: {type(obj)}")
-        return self.directory.name_node(obj, prefix=prefix)
+    def name_obj(self, obj: Node, prefix: str = "") -> str:
+        return self.directory.name_node(obj, prefix)
 
     def require_netlist_setup(self, func):
         self.netlist_setup_funcs.add(func)
@@ -67,12 +65,12 @@ class Netlister:
             conn = inst.subgraph.one(
                 SchemInstanceConn.ref_pin_idx.query((inst.nid, pin.nid))
             )
-            ret.append(self.name_obj(conn.here, conn.here.root))
+            ret.append(self.name_obj(conn.here))
         return ret
 
     def netlist_schematic(self, s: Schematic):
         for net in s.all(Net):
-            self.name_obj(net, s)
+            self.name_obj(net)
 
         subckt_dep = set()
         for inst in s.all(SchemInstance):
@@ -82,7 +80,7 @@ class Netlister:
                 pins = self.pinlist(inst.symbol)
                 subckt_dep.add(inst.symbol)
                 self.add(
-                    self.name_obj(inst, s, prefix="x"),
+                    self.name_obj(inst, prefix="x"),
                     self.portmap(inst, pins),
                     self.directory.name_subgraph(inst.symbol),
                 )
@@ -126,7 +124,7 @@ class Netlister:
             self.add(
                 ".subckt",
                 self.directory.name_subgraph(symbol),
-                [self.name_obj(pin, symbol) for pin in self.pinlist(symbol)],
+                [self.name_obj(pin) for pin in self.pinlist(symbol)],
             )
             self.indent += 4
             subckt_dep |= self.netlist_schematic(schematic)
