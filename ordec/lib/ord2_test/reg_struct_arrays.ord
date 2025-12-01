@@ -11,8 +11,8 @@ cell MultibitReg_StructOfArrays:
         input vdd(.align=Orientation.North)
         input vss(.align=Orientation.South)
         path bit
-        bit.d = PathNode()
-        bit.q = PathNode()
+        path bit.d
+        path bit.q
         for i in range(self.bits):
             input bit.d[i](.align=Orientation.West)
             output bit.q[i](.align=Orientation.East)

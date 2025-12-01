@@ -10,10 +10,9 @@ cell MultibitReg_ArrayOfStructs:
     cell_func symbol:
         input vdd(.align=Orientation.North)
         input vss(.align=Orientation.South)
-        #.bit = PathNode()
 	path bit
 	for i in range(self.bits):
-            bit[i] = PathNode()
+            path bit[i]
             input bit[i].d(.align=Orientation.West)
             output bit[i].q(.align=Orientation.East)
         input clk(.align=Orientation.West)
