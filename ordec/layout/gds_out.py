@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import io
-from typing import IO
+from typing import IO, Optional
 from public import public
 from gdsii.library import Library
 from gdsii.structure import Structure
@@ -26,24 +26,8 @@ def d4_to_gds(d4: D4) -> tuple[float,int]:
     }[d4]
 
 class GdsGenerator:
-    def name_of_layout(self, layout: Layout):
-        try:
-            return self.layout_names[layout].encode('ascii')
-        except KeyError:
-            if layout.cell is None:
-                basename = f"__{id(layout.subgraph):x}"
-            else:
-                basename = layout.cell.escaped_name()
-            name = basename
-            suffix = 0
-            while name in self.layout_names:
-                name = f"{basename}_{suffix}"
-                suffix += 1
-            self.layout_names[layout] = name
-            return name.encode('ascii')
-
     def layout_to_struc(self, layout: Layout):
-        struc = Structure(name=self.name_of_layout(layout))
+        struc = Structure(name=self.directory.name_subgraph(layout).encode('ascii'))
 
         if layout.ref_layers != self.layers:
             raise ValueError(f"ref_layers mismatch during write_gds: {layout.ref_layers!r} != {self.layers!r}")
@@ -53,7 +37,7 @@ class GdsGenerator:
         expand_rectpolys(layout)
         expand_rectpaths(layout)
         expand_rects(layout)
-        expand_pins(layout)
+        expand_pins(layout, directory=self.directory)
 
         layouts_want = set()
 
@@ -87,7 +71,7 @@ class GdsGenerator:
         for inst in layout.all(LayoutInstance):
             layouts_want.add(inst.ref)
             e = elements.SRef(
-                struct_name=self.name_of_layout(inst.ref),
+                struct_name=self.directory.name_subgraph(inst.ref).encode('ascii'),
                 xy=[inst.pos],
             )
             e.angle, e.strans = d4_to_gds(inst.orientation)
@@ -99,7 +83,7 @@ class GdsGenerator:
             pos_col_end = insta.pos + insta.cols*insta.vec_col
             pos_row_end = insta.pos + insta.rows*insta.vec_row
             e = elements.ARef(
-                struct_name=self.name_of_layout(insta.ref),
+                struct_name=self.directory.name_subgraph(insta.ref).encode('ascii'),
                 xy=[pos_origin, pos_col_end, pos_row_end],
                 cols=insta.cols,
                 rows=insta.rows,
@@ -111,7 +95,8 @@ class GdsGenerator:
         self.lib.append(struc)
         return layouts_want
 
-    def __init__(self, layers: LayerStack):
+    def __init__(self, directory: Directory, layers: LayerStack):
+        self.directory = directory
         self.layout_names = {}
         self.layers = layers
         self.lib = Library(
@@ -141,13 +126,15 @@ class GdsGenerator:
         self.lib.save(file)
 
 @public
-def write_gds(layout: Layout, file: IO[bytes]) -> dict[str,Layout]:
+def write_gds(layout: Layout, file: IO[bytes], directory: Optional[Directory] = None):
     """Write layout 'layout' as GDS binary data to file-like object 'file'."""
 
-    g = GdsGenerator(layout.ref_layers)
+    if directory is None:
+        directory = Directory()
+
+    g = GdsGenerator(directory, layout.ref_layers)
     g.add_layout(layout)
     g.save(file)
-    return g.layout_names
     
 
 @public

@@ -679,8 +679,8 @@ def test_write_gds():
             return l
 
     # To generate reference file:           
-    # with open("out.gds", "wb") as f:
-    #     write_gds(Top().layout, f)
+    #with open("out.gds", "wb") as f:
+    #    write_gds(Top().layout, f)
 
     assert gds_str_from_layout(Top().layout) == gds_str_from_file(gds_dir / 'test_write_gds.gds')
 
@@ -692,7 +692,7 @@ def test_write_gds_without_cell():
     l = l.freeze()
 
     reference = gds_str_from_file(gds_dir / 'test_write_gds_without_cell.gds')
-    reference = re.sub(r"\'__[0-9a-f]+\'", f"'__{id(l.subgraph):x}'", reference)
+    reference = re.sub(r"\'__subgraph[0-9a-f]+\'", f"'__subgraph{id(l.subgraph):x}'", reference)
 
     assert gds_str_from_layout(l) == reference
 
@@ -707,7 +707,6 @@ def test_write_gds_layers_mismatch():
     top % LayoutInstance(pos=(0, 0), ref=sub)
     top = top.freeze()
 
-    print(layers == layers_other)
     with pytest.raises(ValueError, match="ref_layers mismatch during write_gds"):
         gds_str_from_layout(top)
 
@@ -736,3 +735,32 @@ def test_layoutinstance_subcursor():
     assert layout3.layout2_inst.layout1_inst.myrect.rect == \
         layout3.layout2_inst.loc_transform() * \
         layout2.layout1_inst.loc_transform() * layout1.myrect.rect
+
+def test_expand_pins():
+    sym = Symbol()
+    sym.my_pin = Pin()
+    sym.mkpath('my')
+    sym.my.pin = Pin()
+    sym = sym.freeze()
+
+    layers = SG13G2().layers
+
+    layout = Layout(ref_layers=layers, symbol=sym)
+
+    r1 = layout % LayoutRect(layer=layers.Metal1, rect=(0,0,100,100))
+    r1 % LayoutPin(pin=sym.my_pin)
+
+    r2 = layout % LayoutRect(layer=layers.Metal1, rect=(200,0,300,100))
+    r2 % LayoutPin(pin=sym.my.pin)
+
+    expand_rects(layout)
+    expand_pins(layout, Directory())
+
+    labels = []
+    for lbl in layout.all(LayoutLabel):
+        labels.append((lbl.pos, lbl.text))
+
+    labels.sort()
+    assert labels == [(Vec2I(50, 50), "my_pin"), (Vec2I(250, 50), "my_pin0")]
+
+

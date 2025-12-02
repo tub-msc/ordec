@@ -260,7 +260,10 @@ class SubgraphRef(Attr):
     """
     
     def read_hook(self, value, cursor):
-        return value.root_cursor
+        if value is None:
+            return None
+        else:
+            return value.root_cursor
 
     def factory(self, val: 'FrozenSubgraph|SubgraphRoot|NoneType'):
         if val is None:

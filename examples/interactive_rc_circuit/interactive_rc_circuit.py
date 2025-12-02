@@ -210,8 +210,11 @@ class InteractiveSimulation:
                         for signal_name, voltage_value in data.items():
                             if signal_name == "time":
                                 continue
-                            if signal_name in highlevel_sim.str_to_simobj:
-                                simnet = highlevel_sim.str_to_simobj[signal_name]
+                            try:
+                                simnet = highlevel_sim.hier_simobj_of_name(signal_name)
+                            except Exception as e:
+                                print(f"Info: dropping {signal_name} due to {e!r}")
+                            else:
                                 net_name = simnet.eref.full_path_str().split(".")[-1]
 
                                 if net_name == "vin":
