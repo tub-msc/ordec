@@ -7,3 +7,4 @@ from .ordb import *
 from .schema import *
 from .cell import *
 from .constraints import *
+from .directory import *

@@ -4,7 +4,7 @@
 from enum import Enum
 import math
 from functools import partial
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 import re
 from public import public
 
@@ -235,6 +235,8 @@ class Net(Node):
     pin = ExternalRef(Pin, of_subgraph=lambda c: c.root.symbol)
     route = Attr(bool, default=True) # Controls whether the Net is routed by schematic_routing
 
+    pin_idx = Index(pin)
+
 @public
 class SchemPort(Node):
     """
@@ -419,6 +421,66 @@ def parent_siminstance(c: Node) -> Node:
         c = c.parent
     return c
 
+
+class SimHierarchySubcursor(tuple):
+    """
+    Cursor to intuitively traverse Schematics and Symbols in a SimHierarchy.
+
+    This is a 3-tuple (simhierarchy, siminst, node). simhierarchy references
+    the SimHierarchy in which we are navigating. At the top-level schematic,
+    siminst is None, elsewhere it points to the current SimInstance. node
+    is where we are in the current inst.
+    """
+    def __repr__(self):
+        return f"{type(self).__name__}{tuple.__repr__(self)}"
+
+    @property
+    def simhierarchy(self):
+        return tuple.__getitem__(self, 0)
+
+    @property
+    def siminst(self):
+        return tuple.__getitem__(self, 1)
+    
+    @property
+    def node(self):
+        return tuple.__getitem__(self, 2)
+
+    def child(self, inner_child): # lol
+        """
+        Converts the inner (= node's) child to a contextually meaningful return
+        value.
+        """
+        if isinstance(inner_child, SchemInstance):
+            return self.simhierarchy.one(SimInstance.parent_eref_idx.query((
+                None if self.siminst is None else self.siminst.nid,
+                inner_child.nid)))
+        elif isinstance(inner_child, (Pin, Net, SchemPort)):
+            # Coerce SchemPort to Net:
+            if isinstance(inner_child, SchemPort):
+                inner_child = inner_child.ref
+            if isinstance(inner_child, Pin) \
+                and self.siminst is not None \
+                and self.siminst.schematic is not None:
+                # Special case: Symbol subcursor is used, but Schematic is
+                # available. In this case, we need the nid from the Schematic!
+                inner_child = self.siminst.schematic.one(Net.pin_idx.query(inner_child.nid))
+            return self.simhierarchy.one(SimNet.parent_eref_idx.query((
+                None if self.siminst is None else self.siminst.nid,
+                inner_child.nid)))
+        elif isinstance(inner_child, Node) and inner_child.root == self.node.root:
+            # inner_child is likely a PathNode.
+            return SimHierarchySubcursor((self.simhierarchy, self.siminst, inner_child))
+        else:
+            # Oh, it looks like we have just read an attribute!
+            return inner_child
+
+    def __getitem__(self, name):
+        return self.child(self.node[name])
+    
+    def __getattr__(self, name):
+        return self.child(getattr(self.node, name))
+
 @public
 class SimHierarchy(SubgraphRoot):
     schematic = SubgraphRef(Schematic)
@@ -426,6 +488,34 @@ class SimHierarchy(SubgraphRoot):
     sim_type = Attr(SimType)
     time = Attr(tuple)
     freq = Attr(tuple)
+
+    def __setitem__(self, k, v):
+        raise TypeError("Insert with path not supported in SimHierarchy.")
+
+    def __delitem__(self, k):
+        raise TypeError("Deletion of path not supported in SimHierarchy.")
+
+    # No need to override setattr__ and __delattr__. The ones in SubgraphRoot
+    # will play nicely with the __setitem__ and __delitem__ methods defined here.
+
+    def __getitem__(self, name):
+        return self.subcursor()[name]
+
+    def __getattr__(self, name):
+        return getattr(self.subcursor(), name)
+
+    def subcursor(self):
+        return SimHierarchySubcursor((self, None, self.schematic))
+
+    def schematic_or_symbol_at(self, inst: Optional['SimInstance']):
+        """Helper function for of_subgraph of SimNet.eref and SimInstance.eref."""
+        if inst is None:
+            return self.schematic
+        elif inst.schematic is None:
+            # When SimInstance has no schematic, the eref nids point to the Symbol.
+            return inst.eref.symbol
+        else:
+            return inst.schematic
 
     def _get_sim_data(self, voltage_attr, current_attr):
         """Helper to extract voltage and current data for different simulation types."""
@@ -471,6 +561,10 @@ class SimHierarchy(SubgraphRoot):
 @public
 class SimNet(Node):
     in_subgraphs = [SimHierarchy]
+    
+    parent_inst = LocalRef('SimInstance', optional=True,
+        refcheck_custom=lambda val: issubclass(val, SimInstance))
+
     trans_voltage = Attr(tuple)
     trans_current = Attr(tuple)
     ac_voltage = Attr(tuple)
@@ -478,24 +572,65 @@ class SimNet(Node):
     dc_voltage = Attr(float)
 
     eref = ExternalRef(Net|Pin,
-        of_subgraph=lambda c: parent_siminstance(c).schematic,
+        of_subgraph=lambda c: c.root.schematic_or_symbol_at(c.parent_inst),
         optional=False,
         )
 
+    def full_path_list(self) -> list[str|int]:
+        if self.parent_inst is None:
+            parent_path = []
+        else:
+            parent_path = self.parent_inst.full_path_list()
+        return parent_path + self.eref.full_path_list()
+
+    parent_eref_idx = CombinedIndex([parent_inst, eref], unique=True)
+
 @public
-class SimInstance(NonLeafNode):
+class SimInstance(Node):
     in_subgraphs = [SimHierarchy]
+
+    parent_inst = LocalRef('SimInstance', optional=True,
+        refcheck_custom=lambda val: issubclass(val, SimInstance))
+
     trans_current = Attr(tuple)
     ac_current = Attr(tuple)
     dc_current = Attr(float)
 
-    schematic = SubgraphRef(Symbol|Schematic,
+    schematic = SubgraphRef(Schematic,
         typecheck_custom=lambda v: isinstance(v, (Symbol, Schematic)),
+        optional=True,
         )
     eref = ExternalRef(SchemInstance,
-        of_subgraph=lambda c: parent_siminstance(c.parent).schematic,
+        of_subgraph=lambda c: c.root.schematic_or_symbol_at(c.parent_inst),
         optional=False,
         )
+
+    parent_eref_idx = CombinedIndex([parent_inst, eref], unique=True)
+
+    def subcursor(self):
+        if self.schematic is None:
+            return self.subcursor_symbol()
+        else:
+            return self.subcursor_schematic()
+
+    def subcursor_schematic(self):
+        return SimHierarchySubcursor((self.root, self, self.schematic))
+
+    def subcursor_symbol(self):
+        return SimHierarchySubcursor((self.root, self, self.eref.symbol))
+
+    def __getitem__(self, name):
+        return self.subcursor()[name]
+
+    def __getattr__(self, name):
+        return getattr(self.subcursor(), name)
+
+    def full_path_list(self) -> list[str|int]:
+        if self.parent_inst is None:
+            parent_path = []
+        else:
+            parent_path = self.parent_inst.full_path_list()
+        return parent_path + self.eref.full_path_list()
 
 # LayerStack
 # ----------
@@ -513,7 +648,20 @@ class Layer(NonLeafNode):
 
     style_fill = Attr(RGBColor)
     style_stroke = Attr(RGBColor)
-    style_crossrect = Attr(bool, default=False)
+    style_crossrect = Attr(bool, optional=False, default=False)
+
+    #: Indicates whether the present layer is suitable for pin shapes / text.
+    #: This flag affects the behavior of the pinlayer() method.
+    is_pinlayer = Attr(bool, optional=False, default=False) 
+
+    def pinlayer(self):
+        if self.is_pinlayer:
+            return self
+        else:
+            l = self.pin
+            if not l.is_pinlayer:
+                raise Exception(f"{l} is found at 'pin' path but does not have is_pinlayer set.")
+            return l
 
     gdslayer_text_index = Index(gdslayer_text, unique=True)
     gdslayer_shapes_index = Index(gdslayer_shapes, unique=True)

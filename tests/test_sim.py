@@ -91,7 +91,7 @@ def test_sim_dc_hier(backend):
     assert abs(h.I0.I1.m.dc_voltage - 0.5897435897435901) < 1e-10
 
 def test_generic_mos_netlister():
-    nl = Netlister()
+    nl = Netlister(Directory())
     nl.netlist_hier(lib_test.NmosSourceFollowerTb(vin=R(2)).schematic)
     netlist = nl.out()
 

@@ -60,7 +60,7 @@ function unloadMsg() {
 
 class Editor {
     constructor(container, state) {
-        this.refreshTimeout = 0;
+        this.refreshTimeout = 500;
         this.container = container;
         this.resizeWithContainerAutomatically = true;
 
@@ -71,23 +71,10 @@ class Editor {
             fontFamily: "Inconsolata",
             fontSize: "12pt"
         });
-        this.editor.session.on('change', (delta) => this.changed(delta));
-
-        window.ordecClient.editor = this;
     }
 
-    loadSrc(src) {
-        this.editor.setValue(src);
-        this.editor.clearSelection();
-    }
-
-
-    changed(delta) {
-        if(this.refreshTimeout <= 0) {
-            window.ordecClient.src = this.editor.getValue();
-            console.log('ordecClient.connect() triggered by editor change (no timeout).');
-            window.ordecClient.connect();
-        } else {
+    registerChangeHandler(client) {
+        this.editor.session.on('change', (delta) => {
             // After the user has modified the example code, he must confirm
             // when he wants to close the browser window.
             window.onbeforeunload = unloadMsg;
@@ -95,10 +82,15 @@ class Editor {
             window.clearTimeout(this.timeout);
             this.timeout = window.setTimeout(() => {
                 console.log('ordecClient.connect() triggered by editor change.');
-                window.ordecClient.src = this.editor.getValue();
-                window.ordecClient.connect();
+                client.src = this.editor.getValue();
+                client.connect();
             }, this.refreshTimeout);
-        }
+        });
+    }
+
+    loadSrc(src) {
+        this.editor.setValue(src);
+        this.editor.clearSelection();
     }
 }
 
@@ -118,8 +110,6 @@ async function getInitData() {
     return await response.json();
 }
 
-window.ordecClient = new OrdecClient(getSourceType(), [], setStatus);
-
 const layout = new GoldenLayout(document.querySelector("#workspace"));
 layout.layoutConfig.settings.showPopoutIcon = false;
 layout.resizeWithContainerAutomatically = true;
@@ -136,9 +126,15 @@ function getResultViewers() {
     return ret;
 }
 
-layout.addEventListener('stateChanged', () => {
-    window.ordecClient.resultViewers = getResultViewers();
-});
+function getEditor() {
+    let ret;
+    layout.root.getAllContentItems().forEach(e => {
+        if(e.componentName == 'editor') {
+            ret = e.component;
+        }
+    });
+    return ret;
+}
 
 document.querySelector("#newresview").onclick = () => {
     layout.addComponent('result', undefined, 'Result View');
@@ -155,17 +151,7 @@ document.querySelector("#savejson").onclick = () => {
     dlAnchorElem.click();
 };
 
-document.querySelector("#refresh").onclick = () => {
-    window.ordecClient.connect();
-};
-
-sourceTypeSelect.onchange = () => {
-    window.ordecClient.srctype = getSourceType();
-    console.log('ordecClient.connect() triggered by source type selector.');
-    window.ordecClient.connect();
-};
-
-
+let client;
 
 if(queryLocal) {
     // If queryLocal is set, the web UI is used in **local mode**.
@@ -199,8 +185,10 @@ if(queryLocal) {
         uistate.header = {popout: false};
 
         layout.loadLayout(uistate);
-        window.ordecClient.localModule = local.module;
-        window.ordecClient.connect();
+        // client is initialized only once we have loaded our layout using loadLayout:
+        client = new OrdecClient(getSourceType(), getResultViewers(), setStatus);
+        client.localModule = local.module;
+        client.connect();
     } else {
         console.error("HMAC authentication of 'local' parameter failed.");
     }
@@ -215,13 +203,38 @@ if(queryLocal) {
     const initData = await getInitData();
     initData.uistate.header = {popout: false};
     sourceTypeSelect.value = initData.srctype;
-    window.ordecClient.srctype = initData.srctype;
     layout.loadLayout(initData.uistate);
+    
+    // client is initialized only once we have loaded our layout using loadLayout:
+    client = new OrdecClient(getSourceType(), getResultViewers(), setStatus);
+    client.srctype = initData.srctype;
+    client.src = initData.src;
+    
+    const editor = getEditor();
+    editor.loadSrc(initData.src);
 
-    window.ordecClient.editor.loadSrc(initData.src);
-    // 1st request, caused by loadSrc, is with refreshTimeout = 0.
-    window.ordecClient.editor.refreshTimeout = 500; 
+    client.connect();
+     
+    // Starting now, changes of editor source will trigger connect():   
+    editor.registerChangeHandler(client); 
 }
+
+layout.addEventListener('stateChanged', () => {
+    client.registerResultViewers(getResultViewers());
+});
+
+document.querySelector("#refresh").onclick = () => {
+    client.connect();
+};
+
+sourceTypeSelect.onchange = () => {
+    client.srctype = getSourceType();
+    console.log('ordecClient.connect() triggered by source type selector.');
+    client.connect();
+};
+
+// Make the OrdecClient object easy to access for automated testing & browser-based debugging:
+window.ordecClient = client;
 
 fetch('/api/version').then(response => response.json()).then(data => {
     document.querySelector('#version').innerText = data['version'];

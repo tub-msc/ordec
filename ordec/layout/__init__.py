@@ -16,6 +16,7 @@ __all__ = [
     'expand_rectpaths',
     'expand_rects',
     'expand_geom',
+    'expand_pins',
     'flatten',
     'expand_instancearrays',
     'write_gds',

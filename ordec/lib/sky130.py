@@ -47,11 +47,11 @@ class Mos(Cell):
     sb = Parameter(R, default=R(0)) #: Distance between OD edge to Poly (other side)
     sd = Parameter(R, default=R(0)) #: Distance between neighboring fingers
 
-    def netlist_ngspice(self, netlister, inst, schematic):
+    def netlist_ngspice(self, netlister, inst):
         netlister.require_netlist_setup(netlist_setup)
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
         netlister.add(
-            netlister.name_obj(inst, schematic, prefix="x"),
+            netlister.name_obj(inst, prefix="x"),
             netlister.portmap(inst, pins),
             self.model_name,
             *helpers.spice_params({

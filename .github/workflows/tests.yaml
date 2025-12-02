@@ -11,7 +11,7 @@ jobs:
     name: pytest
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/tub-msc/ordec-base:sha-1ce9da0
+      image: ghcr.io/tub-msc/ordec-base:sha-25e992e
       options: --user root
     steps:
       - name: check out repository

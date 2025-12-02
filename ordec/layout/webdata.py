@@ -11,6 +11,9 @@ def webdata(layout: Layout.Frozen):
     For a given layout, generate and return JSON-serializable data
     for ORDeC's web viewer (layout-gl.js).
     """
+
+    directory = Directory()
+
     weblayers_list = []
     weblayers_dict = {}
 
@@ -18,7 +21,7 @@ def webdata(layout: Layout.Frozen):
     layout = layout.mutable_copy()
     flatten(layout)
     expand_geom(layout)
-    expand_pins(layout)
+    expand_pins(layout, directory)
     layout = layout.freeze()
 
     def get_weblayer(layer):
