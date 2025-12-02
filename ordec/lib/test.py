@@ -26,9 +26,7 @@ class SignalValue:
 
 
 class TranResult:
-    def __init__(
-        self, data_dict, sim_hierarchy, netlister, progress, signal_kinds=None
-    ):
+    def __init__(self, data_dict, sim_hierarchy, netlister, progress, signal_kinds=None):
         self._data = data_dict
         self._node = sim_hierarchy
         self._netlister = netlister
@@ -45,17 +43,15 @@ class TranResult:
             net_name = netlister.name_hier_simobj(net)
             if net_name in data_dict and net_name != "time":
                 net_kind = signal_kinds.get(net_name, SignalKind.VOLTAGE)
-                self.__dict__[net.npath.name] = SignalValue(
-                    value=data_dict[net_name], kind=net_kind
-                )
+                setattr(self, net.full_path_list()[-1],
+                    SignalValue(value=data_dict[net_name], kind=net_kind))
 
         for inst in sim_hierarchy.all(SimInstance):
             inst_name = netlister.name_hier_simobj(inst)
             if inst_name in data_dict:
                 inst_kind = signal_kinds.get(inst_name, SignalKind.CURRENT)
-                self.__dict__[inst.npath.name] = SignalValue(
-                    value=data_dict[inst_name], kind=inst_kind
-                )
+                setattr(self, inst.full_path_list()[-1],
+                    SignalValue(value=data_dict[inst_name], kind=inst_kind))
 
 
 class RotateTest(Cell):

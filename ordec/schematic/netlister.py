@@ -43,18 +43,42 @@ class Netlister:
         self.spice_cards.insert(self.cur_line, " " * self.indent + " ".join(args_flat))
         self.cur_line += 1
 
-    def name_hier_simobj(self, sn):
-        c = sn
-        if not isinstance(c, SimInstance):
-            ret = [self.directory.name_node(sn.eref)]
-        else:
-            ret = []
+    def name_hier_simobj(self, simobj: SimInstance|SimNet) -> str:
+        if not isinstance(simobj, (SimInstance, SimNet)):
+            raise TypeError("Expected SimInstance or SimNet.")
 
-        while not isinstance(c, SimHierarchy):
-            if isinstance(c, SimInstance):
-                ret.insert(0, self.directory.existing_name_node(c.eref))
-            c = c.parent
+        node = simobj
+        ret = []
+        while node is not None:
+            if isinstance(node.eref, Pin):
+                ret.insert(0, self.directory.name_node(node.eref))
+            else:
+                ret.insert(0, self.directory.existing_name_node(node.eref))
+            node = node.parent_inst
+
         return ".".join(ret)
+
+    def hier_simobj_of_name(self, simhier: SimHierarchy, name: str) -> SimInstance|SimNet:
+        cur_schematic_or_symbol = simhier.schematic
+        cur_parent_inst = None
+        must_be_end = False
+        for part in name.split("."):
+            if must_be_end:
+                raise ValueError("Another path component found after terminal SimNet.")
+            node = self.directory.node_of_name(cur_schematic_or_symbol, part)
+            if isinstance(node, SchemInstance):
+                simnode = simhier.one(SimInstance.parent_eref_idx.query(
+                    (None if cur_parent_inst is None else cur_parent_inst.nid, node.nid)))
+                cur_parent_inst = simnode
+                cur_schematic_or_symbol = simhier.schematic_or_symbol_at(simnode)
+            elif isinstance(node, (Net, Pin)):
+                simnode = simhier.one(SimNet.parent_eref_idx.query(
+                    (None if cur_parent_inst is None else cur_parent_inst.nid, node.nid)))
+                must_be_end = True
+            else:
+                assert False, f"Unexpected node returned from lookup: {node!r}"
+
+        return simnode
 
     def pinlist(self, sym: Symbol):
         return list(sym.all(Pin))

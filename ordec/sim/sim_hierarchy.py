@@ -13,48 +13,28 @@ from ..schematic.netlister import Netlister
 from .ngspice_common import SignalKind
 
 
-def build_hier_symbol(simhier, symbol):
-    simhier.schematic = symbol
-    for pin in symbol.all(Pin):
-        full = pin.full_path_str()
-        parts = full.split(".")
-        node = simhier
-        for part in parts[:-1]:
-            if not hasattr(node, part):
-                node.mkpath(part)
-            node = getattr(node, part)
-        setattr(node, parts[-1], SimNet(eref=pin))
-
-
-def build_hier_schematic(simhier, schematic):
+def build_hier_schematic(simhier: SimHierarchy, schematic: Schematic):
     simhier.schematic = schematic
+
+    build_hier_schematic_recursive(simhier, schematic, None)
+
+def build_hier_schematic_recursive(simhier: SimHierarchy, schematic: Schematic, parent_inst: Optional[SimInstance]):
     for net in schematic.all(Net):
-        full = net.full_path_str()
-        parts = full.split(".")
-        node = simhier
-        for part in parts[:-1]:
-            if not hasattr(node, part):
-                node.mkpath(part)
-            node = getattr(node, part)
-        setattr(node, parts[-1], SimNet(eref=net))
+        simhier % SimNet(eref=net, parent_inst=parent_inst)
 
-    for inst in schematic.all(SchemInstance):
-        full = inst.full_path_str()
-        parts = full.split(".")
-        node = simhier
-        for part in parts[:-1]:
-            if not hasattr(node, part):
-                node.mkpath(part)
-            node = getattr(node, part)
-        setattr(node, parts[-1], SimInstance(eref=inst))
-        subnode = getattr(node, parts[-1])
+    for scheminst in schematic.all(SchemInstance):
+        inst = simhier % SimInstance(eref=scheminst, parent_inst=parent_inst)
         try:
-            subschematic = inst.symbol.cell.schematic
+            subschematic = scheminst.symbol.cell.schematic
         except AttributeError:
-            build_hier_symbol(subnode, inst.symbol)
+            build_hier_symbol(simhier, scheminst.symbol, inst)
         else:
-            build_hier_schematic(subnode, subschematic)
+            inst.schematic = subschematic
+            build_hier_schematic_recursive(simhier, subschematic, inst)
 
+def build_hier_symbol(simhier: SimHierarchy, symbol: Symbol, parent_inst: SimInstance):
+    for pin in symbol.all(Pin):
+        simhier % SimNet(eref=pin, parent_inst=parent_inst)
 
 class AlterSession:
     def __init__(self, highlevel_sim, ngspice_sim):
@@ -153,6 +133,8 @@ class HighlevelSim:
         self.netlister = Netlister(self.directory, enable_savecurrents=enable_savecurrents)
         self.netlister.netlist_hier(self.top)
 
+        print(self.netlister.out())
+
         self.simhier = simhier
         # build hierarchical simulation nodes
         build_hier_schematic(self.simhier, self.top)
@@ -166,6 +148,9 @@ class HighlevelSim:
         for sn in simhier.all(SimInstance):
             name = self.netlister.name_hier_simobj(sn)
             self.str_to_simobj[name] = sn
+
+        #for k, v in self.str_to_simobj.items():
+        #    print(k, type(v).__name__)
 
         self._active_sim = None
 
@@ -184,19 +169,25 @@ class HighlevelSim:
             for vtype, name, subname, value in sim.op():
                 if vtype == "voltage":
                     try:
-                        simnet = self.str_to_simobj[name]
-                        simnet.dc_voltage = value
+                        simnet = self.hier_simobj_of_name(name)
                     except KeyError:
                         # ignore internal nodes we don't map
                         continue
+                    else:
+                        simnet.dc_voltage = value
                 elif vtype == "current":
                     if subname not in ("id", "branch", "i"):
                         continue
                     try:
-                        siminstance = self.str_to_simobj[name]
-                        siminstance.dc_current = value
+                        siminstance = self.hier_simobj_of_name(name)
                     except KeyError:
                         continue
+                    else:
+                        siminstance.dc_current = value
+
+    def hier_simobj_of_name(self, name: str) -> SimInstance|SimNet:
+        return self.netlister.hier_simobj_of_name(self.simhier, name)
+
 
     def _run_simulation(
         self,
@@ -232,7 +223,7 @@ class HighlevelSim:
                 try:
                     # Check if this is a voltage signal (node voltage)
                     if signal_array.kind == SignalKind.VOLTAGE:
-                        simnet = self.str_to_simobj[name]
+                        simnet = self.hier_simobj_of_name(name)
                         process_signal_func(
                             simnet,
                             voltage_attr,
@@ -246,7 +237,7 @@ class HighlevelSim:
                             device_name = name.split("[")[0][
                                 1:
                             ]  # Remove @ and get device part
-                            siminstance = self.str_to_simobj[device_name]
+                            siminstance = self.hier_simobj_of_name(device_name)
                             process_signal_func(
                                 siminstance,
                                 current_attr,
@@ -255,7 +246,7 @@ class HighlevelSim:
                         elif name.endswith("#branch"):
                             # Branch current like "vi3#branch" - extract branch name
                             branch_name = name.replace("#branch", "")
-                            siminstance = self.str_to_simobj[branch_name]
+                            siminstance = self.hier_simobj_of_name(name)
                             process_signal_func(
                                 siminstance,
                                 current_attr,

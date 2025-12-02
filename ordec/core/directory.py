@@ -116,3 +116,6 @@ class Directory:
         """
 
         return self.name_of_obj[node]
+
+    def node_of_name(self, root: SubgraphRoot, name: str) -> Node:
+        return self.obj_of_name[root, name]
