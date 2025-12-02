@@ -435,27 +435,40 @@ class SimHierarchySubcursor(tuple):
     def node(self):
         return tuple.__getitem__(self, 2)
 
-    def __getitem__(self, name):
-        inner_ret = self.node[name]
-        return SimHierarchySubcursor((self.simhierarchy, self.siminst, inner_ret))
-
-    def __getattr__(self, name):
-        inner_ret = getattr(self.node, name)
-        if isinstance(inner_ret, SchemInstance):
+    def child(self, inner_child): # lol
+        """
+        Converts the inner (= node's) child to a contextually meaningful return
+        value.
+        """
+        if isinstance(inner_child, SchemInstance):
             return self.simhierarchy.one(SimInstance.parent_eref_idx.query((
                 None if self.siminst is None else self.siminst.nid,
-                inner_ret.nid)))
-        elif isinstance(inner_ret, (Pin, Net, SchemPort)):
+                inner_child.nid)))
+        elif isinstance(inner_child, (Pin, Net, SchemPort)):
             # Coerce SchemPort to Net:
-            if isinstance(inner_ret, SchemPort):
-                inner_ret = inner_ret.ref
+            if isinstance(inner_child, SchemPort):
+                inner_child = inner_child.ref
+            if isinstance(inner_child, Pin) \
+                and self.siminst is not None \
+                and self.siminst.schematic is not None:
+                # Special case: Symbol subcursor is used, but Schematic is
+                # available. In this case, we need the nid from the Schematic!
+                inner_child = self.siminst.schematic.one(Net.pin_idx.query(inner_child.nid))
             return self.simhierarchy.one(SimNet.parent_eref_idx.query((
                 None if self.siminst is None else self.siminst.nid,
-                inner_ret.nid)))
-        elif isinstance(inner_ret, Node):
-            # inner_ret is likely a PathNode.
-            return SimHierarchySubcursor((self.simhierarchy, self.siminst, inner_ret))
+                inner_child.nid)))
+        elif isinstance(inner_child, Node) and inner_child.root == self.node.root:
+            # inner_child is likely a PathNode.
+            return SimHierarchySubcursor((self.simhierarchy, self.siminst, inner_child))
+        else:
+            # Oh, it looks like we have just read an attribute!
+            return inner_child
 
+    def __getitem__(self, name):
+        return self.child(self.node[name])
+    
+    def __getattr__(self, name):
+        return self.child(getattr(self.node, name))
 
 @public
 class SimHierarchy(SubgraphRoot):

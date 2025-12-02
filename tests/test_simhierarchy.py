@@ -39,13 +39,14 @@ def test_navigate_siminstances():
     assert siminst_I0.eref == simhier.schematic.I0
     assert siminst_I0.parent_inst == None
     # Ensure that the .subcursor() call can be omitted:
-    assert simhier.I0 == siminst_I0
+    assert siminst_I0 == simhier.I0 == simhier['I0']
     assert siminst_I0.full_path_list() == ['I0']
 
     assert isinstance(simhier.I0.sub2, SimHierarchySubcursor)
     assert simhier.I0.sub2.simhierarchy == simhier
     assert simhier.I0.sub2.siminst == simhier.I0
     assert simhier.I0.sub2.node == lib_test.ResdivHier1().schematic.sub2
+    assert simhier.I0.sub2 == simhier['I0']['sub2'] == simhier.I0.sub2
 
     siminst_I0_I2 = simhier.I0.sub2.I2
     assert isinstance(siminst_I0_I2, SimInstance)
@@ -69,6 +70,14 @@ def test_navigate_simnets_nets():
     assert simnet_I0_I2_t.parent_inst == simhier.I0.sub2.I2
     assert simnet_I0_I2_t.full_path_list() == ['I0', 'sub2', 'I2', 't']
 
+    # Make sure that we can navigate with a symbol subcursor as well, even
+    # if the schematic subcursor is available:
+    assert simnet_I0_I2_t == simhier.I0.sub2.I2.subcursor_symbol().t
+
+    # This is more interesting in a case where the pin name in the symbol
+    # differs from the net name in the schemtic: 
+    assert simhier.I0.subcursor_symbol().inputs.b == simhier.I0.b
+
 def test_navigate_simnets_pins():
     """Test navigation to SimNets pointing to Pins."""
     simhier = my_simhier()
@@ -84,4 +93,3 @@ def test_navigate_simnets_pins():
     assert simnet_I0_I2_I1_m.eref == Res(r=R(100)).symbol.m
     assert simnet_I0_I2_I1_m.parent_inst == simhier.I0.sub2.I2.I1
     assert simnet_I0_I2_I1_m.full_path_list() == ['I0', 'sub2', 'I2', 'I1', 'm']
-

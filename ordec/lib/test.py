@@ -738,9 +738,8 @@ class ResdivHier2(Cell):
 
         s.I0 = SchemInstance(sym_res.portmap(m=s.b, p=s.m), pos=Vec2R(0, 1))
         s.I1 = SchemInstance(sym_res.portmap(m=s.m, p=s.t), pos=Vec2R(0, 7))
-        s.I2 = SchemInstance(
-            sym_res.portmap(m=s.r, p=s.m), pos=Vec2R(9, 4), orientation=Orientation.R90
-        )
+        s.I2 = SchemInstance(sym_res.portmap(m=s.r, p=s.m), pos=Vec2R(9, 4),
+            orientation=Orientation.R90)
 
         s.outline = Rect4R(lx=0, ly=0, ux=10, uy=12)
 
