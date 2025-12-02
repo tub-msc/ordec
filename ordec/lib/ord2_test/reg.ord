@@ -28,9 +28,9 @@ cell MultibitReg_Arrays:
             port d[i](.pos=(4, 5 + 8 * i); .align=Orientation.East)
             port q[i](.pos=(14, 5 + 8 * i); .align=Orientation.West)
             DFF I[i]:
-                .vss -- vss.ref
-                .vdd -- vdd.ref
-                .clk -- clk.ref
-                .d -- d[i].ref
-                .q -- q[i].ref
+                .vss -- vss
+                .vdd -- vdd
+                .clk -- clk
+                .d -- d[i]
+                .q -- q[i]
             I[i].pos = (6, 3 + 8 * i)

@@ -22,8 +22,8 @@ cell Nand:
 
         net net_conn
 
-        Nmos n1(.pos=(10,2); .d -- net_conn; .s -- vss.ref; .b -- vss.ref; .g -- a.ref)
-        Nmos n2(.pos=(10,10); .d -- y.ref; .s -- net_conn; .b -- vss.ref; .g -- b.ref)
-        Pmos p1(.pos=(5,18); .d -- y.ref; .s -- vdd.ref; .b -- vdd.ref; .g -- a.ref)
-        Pmos p2(.pos=(15,18); .d -- y.ref; .s -- vdd.ref; .b -- vdd.ref; .g -- b.ref)
+        Nmos n1(.pos=(10,2); .d -- net_conn; .s -- vss; .b -- vss; .g -- a)
+        Nmos n2(.pos=(10,10); .d -- y; .s -- net_conn; .b -- vss; .g -- b)
+        Pmos p1(.pos=(5,18); .d -- y; .s -- vdd; .b -- vdd; .g -- a)
+        Pmos p2(.pos=(15,18); .d -- y; .s -- vdd; .b -- vdd; .g -- b)
 

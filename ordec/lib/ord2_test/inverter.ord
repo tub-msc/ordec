@@ -19,17 +19,17 @@ cell Inv:
         port a (.pos=(1,7); .align=Orientation.East)
 
         Nmos pd:
-            .s -- vss.ref
+            .s -- vss
             #ctx.root % SchemInstanceUnresolvedConn(here=vss, there=('s',))
             #dot().s.__wire__
             #print(.s)
-            .b -- vss.ref
-            .d -- y.ref
+            .b -- vss
+            .d -- y
             .pos = (3,2)
         Pmos pu:
-            .s -- vdd.ref
-            .b -- vdd.ref
-            .d -- y.ref
+            .s -- vdd
+            .b -- vdd
+            .d -- y
             .pos = (3,8)
             .$l = 400n
         #print(pu.s)
@@ -37,4 +37,4 @@ cell Inv:
         pd.$l = 350u
 
         for instance in pu, pd:
-            instance.g -- a.ref
+            instance.g -- a

@@ -43,14 +43,10 @@ cell N_TO_1:
         # Output port
         port y(.align=Orientation.West; .pos=(signal_count * 8 + 8, 6 * ((self.N - 1) // 2)))
 
-        path d_in
-        path s_in
-        path mux
-        path nets
+        path d_in, s_in, mux, nets
 
         # Place data input ports vertically
         for i in range(0, self.N, 2):
-            pass
             px = -5
             py = (i * 6) + 2
             port d_in[i](.align=Orientation.East; .pos=(px, py))
@@ -69,9 +65,7 @@ cell N_TO_1:
         current_number = self.N
 
         # Level 0 (connect data ports)
-        path nets[0]
-        path mux[0]
-
+        path nets[0], mux[0]
 
         for j in range(0, current_number, 2):
             net nets[0][j//2]
@@ -80,20 +74,19 @@ cell N_TO_1:
             pos_y = (j // 2) * 12
 
             Mux2 mux[0][j]:
-                .vss -- vss.ref
-                .vdd -- vdd.ref
-                .a -- d_in[j].ref
-                .b -- d_in[j+1].ref
+                .vss -- vss
+                .vdd -- vdd
+                .a -- d_in[j]
+                .b -- d_in[j+1]
                 .y -- nets[0][j//2]
-                .s -- s_in[0].ref
+                .s -- s_in[0]
                 .pos = (pos_x, pos_y)
             
         current_number >>= 1
         
         # Intermediate levels
         for level in range(1, signal_count - 1):
-            path nets[level]
-            path mux[level]
+            path nets[level], mux[level]
 
             for j in range(0, current_number, 2):
                 net nets[level][j//2]
@@ -102,12 +95,12 @@ cell N_TO_1:
                 pos_y = 6 * (j + (self.N - current_number) // 2)
 
                 Mux2 mux[level][j]:
-                    .vss -- vss.ref
-                    .vdd -- vdd.ref
+                    .vss -- vss
+                    .vdd -- vdd
                     .a -- nets[level-1][j]
                     .b -- nets[level-1][j+1]
                     .y -- nets[level][j//2]
-                    .s -- s_in[level].ref
+                    .s -- s_in[level]
                     .pos = (pos_x, pos_y)
 
             current_number >>= 1
@@ -115,16 +108,15 @@ cell N_TO_1:
 
         # Last MUX
         last = signal_count - 1
-        path nets[last]
-        path mux[last]
+        path nets[last], mux[last]
         px = last * 10
         py = 6 * ((self.N - 1) // 2)
 
         Mux2 mux[last][0]:
-            .vss -- vss.ref
-            .vdd -- vdd.ref
+            .vss -- vss
+            .vdd -- vdd
             .a -- nets[last - 1][0]
             .b -- nets[last - 1][1]
-            .y -- y.ref
-            .s -- s_in[last].ref
+            .y -- y
+            .s -- s_in[last]
             .pos = (px, py)
