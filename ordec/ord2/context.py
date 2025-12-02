@@ -32,14 +32,17 @@ class OrdContext:
         self.parent = None
 
     def __enter__(self):
+        """Enter context, set context variable and save parent"""
         self._token = _ctx_var.set(self)
         if self._token.old_value is not Token.MISSING:
             self.parent = self._token.old_value
         else:
+            # Case for the top-level context
             self.parent = self._explicit_parent
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit context and reset context variable"""
         _ctx_var.reset(self._token)
 
     def add(self, name_tuple, ref):
@@ -48,7 +51,7 @@ class OrdContext:
         return helpers.recursive_getitem(self.root, name_tuple)
 
     def add_port(self, name_tuple):
-        """ Add a port to a non path context"""
+        """ Add a port to the current context"""
         pin = helpers.recursive_getitem(self.root.symbol, name_tuple)
         subgraph_root = self.root
         while not isinstance(subgraph_root, SubgraphRoot):

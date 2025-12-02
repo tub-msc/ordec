@@ -67,7 +67,7 @@ class Ord2Transformer(PythonTransformer):
             args=[],
             keywords=keywords
         )
-
+        # Build the ORD context call
         ord_context_call = ast.Call(
             func=self.ast_name('OrdContext'),
             args=[],
@@ -82,7 +82,7 @@ class Ord2Transformer(PythonTransformer):
                 )
             ]
         )
-
+        # Call the corresponding context postprocess function implicitly
         return_value = ast.Return(
                 ast.Call(
                 func=self.ast_attribute(self.ast_name('ctx'),
@@ -102,7 +102,8 @@ class Ord2Transformer(PythonTransformer):
             ],
             body=suite
         )
-
+        # Wrap with statement with context in a decorated function call
+        # --> See Python implementation
         func_def = ast.FunctionDef(
             name=func_name,
             args=ast.arguments(
@@ -145,6 +146,8 @@ class Ord2Transformer(PythonTransformer):
             if isinstance(nodes.slice, str) and nodes.slice.isidentifier():
                 return self.extract_path(nodes.value) + [self.ast_name(nodes.slice)]
             return self.extract_path(nodes.value) + [nodes.slice]
+        else:
+            raise Exception(f"Incompatible path type: {nodes!r}")
 
     def context_element(self, nodes):
         """ context_element (name name:\n    suite)"""
@@ -237,7 +240,7 @@ class Ord2Transformer(PythonTransformer):
                 )
             )
             rhs = ast.Call(func=func, args=args, keywords=[])
-
+        # Path accesses must not be assigned
         if path_node:
             assignment = ast.Expr(rhs)
         else:
@@ -312,6 +315,7 @@ class Ord2Transformer(PythonTransformer):
         """Helper for similar code from net and path statements"""
         stmt_list = list()
         for name in nodes:
+            # Names can be attributes or subscript accesses
             context_name_tuple = self.extract_path(name)
             name_length = len(context_name_tuple)
             rhs = ast.Call(
@@ -328,12 +332,13 @@ class Ord2Transformer(PythonTransformer):
                 ],
                 keywords=[]
             )
-            if name_length < 2:
+            # Path access must not be assigned
+            if name_length > 1:
+                stmt_list.append(ast.Expr(rhs))
+            else:
                 lhs = copy.copy(name)
                 self._set_ctx(lhs, ast.Store())
                 stmt_list.append(ast.Assign([lhs], rhs))
-            else:
-                stmt_list.append(ast.Expr(rhs))
         return stmt_list
 
     def net_stmt(self, nodes):

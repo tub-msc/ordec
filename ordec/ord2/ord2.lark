@@ -380,6 +380,7 @@ context_element: name context_target context_body
 dotted_atom: dots name?
 path_stmt: "path" context_target ("," context_target)*
 net_stmt: "net" context_target ("," context_target)*
+// END OF ORD DEFINITIONS
 
 // Comma-separated list (with an optional trailing comma)
 cs_list{item}: item ("," item)* ","?

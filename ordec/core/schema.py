@@ -348,19 +348,19 @@ class SchemInstanceUnresolved(Node):
     def __getattr__(self, name):
         return SchemInstanceUnresolvedCursor((self, name))
 
-class LocalRefPortOrNet(LocalRef):
-    """LocalRef(Net) that also accepts SchemPort and extracts its Net."""
-
-    def factory(self, val):
-        # Convert SchemPort to  Net
-        if isinstance(val, SchemPort):
-            val = val.ref  
-        # Convert Net to nid (LocalRef)
-        return super().factory(val)
-
 @public
 class SchemInstanceUnresolvedConn(Node):
     """Unresolved SchemInstanceConn."""
+    
+    class LocalRefPortOrNet(LocalRef):
+        """LocalRef(Net) that also accepts SchemPort and extracts its Net."""
+        def factory(self, val):
+            # Convert SchemPort to  Net
+            if isinstance(val, SchemPort):
+                val = val.ref  
+                # Convert Net to nid (LocalRef)
+            return super().factory(val)
+        
     in_subgraphs = [Schematic]
 
     ref = LocalRef(SchemInstanceUnresolved, optional=False)
