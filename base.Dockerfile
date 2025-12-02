@@ -181,6 +181,6 @@ RUN pip install --no-cache-dir \
 
 WORKDIR /home/app/ordec/web
 COPY --chown=app web/package.json web/package-lock.json .
-RUN npm install && npm cache clean --force
+RUN npm ci && npm cache clean --force
 
 WORKDIR /home/app

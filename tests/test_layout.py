@@ -7,7 +7,7 @@ from pathlib import Path
 import importlib.resources
 import pytest
 
-from ordec.layout.ihp130 import SG13G2
+from ordec.lib.ihp130 import SG13G2
 from ordec.layout.gds_in import GdsReaderException
 from ordec.layout import *
 from ordec.core import *
@@ -711,3 +711,28 @@ def test_write_gds_layers_mismatch():
     with pytest.raises(ValueError, match="ref_layers mismatch during write_gds"):
         gds_str_from_layout(top)
 
+def test_layoutinstance_subcursor():
+    layers = SG13G2().layers
+
+    layout1 = Layout(ref_layers=layers)
+    layout1.myrect = LayoutRect(
+        layer=layers.Metal1,
+        rect=Rect4I(100, 500, 200, 700),
+    )
+    layout1 = layout1.freeze()
+
+    layout2 = Layout(ref_layers=layers)
+    layout2.layout1_inst = LayoutInstance(pos=(1000, 2000), orientation=D4.R90, ref=layout1)
+    layout2 = layout2.freeze()
+
+    assert layout2.layout1_inst.myrect.parent == layout2.layout1_inst.subcursor()
+    assert layout2.layout1_inst.myrect.rect == layout2.layout1_inst.loc_transform() * layout1.myrect.rect
+    assert layout2.layout1_inst.subcursor().parent == layout2.layout1_inst
+
+    layout3 = Layout(ref_layers=layers)
+    layout3.layout2_inst = LayoutInstance(pos=(50, 50), orientation=D4.MX, ref=layout2)
+    layout3 = layout3.freeze()
+
+    assert layout3.layout2_inst.layout1_inst.myrect.rect == \
+        layout3.layout2_inst.loc_transform() * \
+        layout2.layout1_inst.loc_transform() * layout1.myrect.rect

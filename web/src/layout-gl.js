@@ -142,11 +142,7 @@ export class LayoutGL {
         const scaleX = this.canvas.width / w;
         const scaleY = this.canvas.height / h;
         const scale = Math.min(scaleX, scaleY);
-        let newZoom = d3.zoomIdentity;
-
-        newZoom.k = scale;
-        newZoom.x = -(lx*newZoom.k);
-        newZoom.y = (uy*newZoom.k);
+        let newZoom = new d3.ZoomTransform(scale, -lx*scale, uy*scale);
 
         if(scaleX > scaleY) {
             // center horizontally

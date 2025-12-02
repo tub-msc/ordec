@@ -3,7 +3,7 @@
 
 from public import public
 from ..core import *
-from .helpers import expand_geom, flatten
+from .helpers import flatten, expand_geom, expand_pins
 
 @public
 def webdata(layout: Layout.Frozen):
@@ -18,6 +18,7 @@ def webdata(layout: Layout.Frozen):
     layout = layout.mutable_copy()
     flatten(layout)
     expand_geom(layout)
+    expand_pins(layout)
     layout = layout.freeze()
 
     def get_weblayer(layer):

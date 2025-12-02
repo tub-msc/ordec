@@ -4,9 +4,8 @@
 """
 Comparing symbol + schematic images to reference images.
 
-To copy test results in as reference:
-
-    cp /tmp/pytest-of-$USER/pytest-current/test_renderview*/*.svg tests/renderview_ref
+To copy test results into the renderview_ref directory, run pytest with
+--update-ref option.
 """
 
 import pytest
@@ -159,7 +158,7 @@ testdata = [
 ]
 
 @pytest.mark.parametrize("testcase", testdata, ids=lambda t: t.ref_file.with_suffix("").name)
-def test_renderview(testcase, tmp_path):
+def test_renderview(testcase, tmp_path, update_ref):
     view = testcase.viewgen()
 
     render_opts = dict(
@@ -171,6 +170,9 @@ def test_renderview(testcase, tmp_path):
     svg = render(view, **render_opts).svg()
     (tmp_path / testcase.ref_file.name).write_bytes(svg) # Write output to tmp_path for user.
 
+    if update_ref:
+        testcase.ref_file.write_bytes(svg)
+    
     svg_ref = testcase.ref_file.read_bytes()
 
     # Pytest is better at string diffs than at byte diffs:

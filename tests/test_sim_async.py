@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import asyncio
 import pytest
 import re
 import time
@@ -409,15 +410,59 @@ def test_async_alter_resume(backend):
             return {
                 "voltage_steps": completed_steps,
                 "steps_with_data": steps_with_data,
-                "total_data_points": len(all_data)
+                "total_data_points": len(all_data),
             }
-
-    import asyncio
 
     result = asyncio.run(run_comprehensive_test())
     assert result["voltage_steps"] >= 4, f"Should complete 4 voltage steps, got {result['voltage_steps']}"
     assert result["steps_with_data"] >= 2, f"Should have data for at least 2 voltage steps, got {result['steps_with_data']}"
     assert result["total_data_points"] > 0, "Should collect data points"
+
+
+@pytest.mark.libngspice
+@pytest.mark.parametrize("backend", ["subprocess", "ffi", "mp"])
+def test_async_alter_resume_stress_smoke(backend):
+    """Run multiple short alter/resume cycles to shake out race conditions."""
+    circuit = RCAlterTestbench()
+    node = SimHierarchy()
+    sim = HighlevelSim(circuit.schematic, node, backend=backend)
+
+    async def collect_points(data_queue, target_points: int, timeout: float = 2.0):
+        collected = 0
+        deadline = time.time() + timeout
+        while collected < target_points and time.time() < deadline:
+            try:
+                data_point = data_queue.get_nowait()
+                if isinstance(data_point, dict) and "data" in data_point:
+                    collected += 1
+            except queue.Empty:
+                await asyncio.sleep(0.005)
+        return collected
+
+    async def run_short_session(iteration: int):
+        with sim.alter_session(backend=backend) as alter:
+            data_queue = alter.start_async_tran("0.05u", "0.2m")
+            voltage_sequence = [1.1 + 0.2 * iteration, 1.6 + 0.1 * iteration, 1.2 + 0.3 * iteration]
+
+            points_seen = await collect_points(data_queue, 1, timeout=2.0)
+            completed_steps = 0
+
+            for voltage in voltage_sequence:
+                assert alter.halt_simulation(timeout=1.0), "Simulation should halt cleanly"
+                alter.alter_component(circuit.schematic.v1, dc=voltage)
+                assert alter.resume_simulation(timeout=1.0), "Simulation should resume cleanly"
+
+                points_seen += await collect_points(data_queue, 2, timeout=2.0)
+                completed_steps += 1
+
+            return {"steps": completed_steps, "points": points_seen}
+
+    session_results = []
+    for i in range(2):
+        session_results.append(asyncio.run(run_short_session(i)))
+
+    assert all(res["steps"] == 3 for res in session_results)
+    assert all(res["points"] >= 3 for res in session_results)
 
 
 @pytest.mark.libngspice

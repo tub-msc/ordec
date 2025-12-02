@@ -95,7 +95,7 @@ pip install -e .[test]
 # Install npm dependencies
 echo "Installing npm dependencies..."
 cd web
-npm install
+npm ci
 
 echo "Setup completed successfully!"
 echo "You can now use:"

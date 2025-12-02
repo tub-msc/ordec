@@ -52,10 +52,10 @@ While the Docker-based demo runs using a single web server, it is recommended to
 First, launch the frontend (using Vite_)::
 
     cd web/
-    npm install
+    npm ci
     npm run dev
 
-:code:`npm install` is only needed at the first launch. In this setup, the Vite frontend server acts as proxy to the backend server on port 8100, which has to be run separately::
+:code:`npm ci` is only needed at the first launch. In this setup, the Vite frontend server acts as proxy to the backend server on port 8100, which has to be run separately::
     
     ordec -b
 

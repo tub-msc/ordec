@@ -8,28 +8,16 @@ from ordec import Subgraph
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--update-golden-files",
+        "--update-ref",
         action="store_true",
         default=False,
-        help="Update the golden files for snapshot tests.",
-    )
-    parser.addoption(
-        "--update-ord-files",
-        action="store_true",
-        default=False,
-        help="Update the converted ORD schematics."
+        help="Update reference files, e.g. for renderview_ref.",
     )
 
 @pytest.fixture
-def update_golden(request):
+def update_ref(request):
     """Fixture to check if --update-golden-files flag is set."""
-    return request.config.getoption("--update-golden-files")
-
-
-@pytest.fixture
-def update_ord(request):
-    """Fixture to check if --update-ord-files flag is set."""
-    return request.config.getoption("--update-ord-files")
+    return request.config.getoption("--update-ref")
 
 def pytest_assertrepr_compare(op, left, right):
     if isinstance(left, Subgraph) and isinstance(right, Subgraph) and op == "==":
