@@ -82,7 +82,7 @@ class AlterSession:
         for vtype, name, subname, value in self.ngspice_sim.op():
             if vtype == "voltage":
                 try:
-                    simnet = self.highlevel_sim.str_to_simobj[name]
+                    simnet = self.highlevel_sim.hier_simobj_of_name(name)
                     simnet.dc_voltage = value
                 except KeyError:
                     # ignore internal nodes we can't map
@@ -91,7 +91,7 @@ class AlterSession:
                 if subname not in ("id", "branch", "i"):
                     continue
                 try:
-                    siminstance = self.highlevel_sim.str_to_simobj[name]
+                    siminstance = self.highlevel_sim.hier_simobj_of_name(name)
                     siminstance.dc_current = value
                 except KeyError:
                     continue
@@ -138,19 +138,6 @@ class HighlevelSim:
         self.simhier = simhier
         # build hierarchical simulation nodes
         build_hier_schematic(self.simhier, self.top)
-
-        # map netlister names to sim objects for quick lookup
-        self.str_to_simobj = {}
-        for sn in simhier.all(SimNet):
-            name = self.netlister.name_hier_simobj(sn)
-            self.str_to_simobj[name] = sn
-
-        for sn in simhier.all(SimInstance):
-            name = self.netlister.name_hier_simobj(sn)
-            self.str_to_simobj[name] = sn
-
-        #for k, v in self.str_to_simobj.items():
-        #    print(k, type(v).__name__)
 
         self._active_sim = None
 
