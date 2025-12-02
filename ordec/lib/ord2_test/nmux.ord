@@ -9,7 +9,7 @@ from public import public
 import math
 
 
-cell N_TO_1:
+cell Nto1:
     N = Parameter(int)
 
     cell_func symbol:
