@@ -533,7 +533,12 @@ class OrdecTransformer(Transformer):
                     convert_to_ast_name_load("postprocess_data"),
                     "routing"
                 ),
-                convert_to_ast_constant(net_name)),
+                convert_to_ast_attribute_load(
+                    convert_to_ast_attribute_load(
+                        convert_to_ast_name_load("node"),
+                        net_name),
+                    "nid"
+                )),
             convert_to_ast_constant(state)
         )
         return routing_net_state
