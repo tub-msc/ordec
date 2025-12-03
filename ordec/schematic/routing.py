@@ -747,6 +747,10 @@ def schematic_routing(node, outline=None, routing=None):
     # mapping between net and name
     array_mapping_list = dict()
 
+    #======================
+    # Build Cells and Ports
+    #======================
+
     for instance in node.all(SchemInstance):
         instance_transform = instance.loc_transform()
         # Add instance for cells
@@ -754,131 +758,113 @@ def schematic_routing(node, outline=None, routing=None):
         pos = Vec2R(x=symbol_size.lx + offset_x, y=symbol_size.ly + offset_y)
         x_size = symbol_size.ux - symbol_size.lx
         y_size = symbol_size.uy - symbol_size.ly
-        instance_name = instance.full_path_str()
-        # print("CELL_POS: ", pos.x, pos.y)
+        instance_nid = str(instance.nid)
         # Add inner connections for the cell (symbol)
         inner_connections = dict()
         for pin in instance.symbol.all(Pin):
             alignment = (instance.orientation * pin.align).unflip().lefdef()
             inner_pos = instance_transform * pin.pos
-            # pin arrays have pin connections with names as ints
-            # get the parent name to get a unique assignment
-            if type(pin.full_path_str()) == int:
-                inner_name = str(pin.parent.full_path_str()) + '.' +  str(pin.full_path_str())
-            else:
-                inner_name = str(pin.full_path_str())
+            # Get the parent instance name to get a unique assignment
+            pin_nid = str(pin.nid)
             inner_x = int(inner_pos.x)
             inner_y = int(inner_pos.y)
-            # print("INNER_POS: ", inner_x, inner_y)
-            inner_connections[inner_name] = (inner_x + offset_x,
+            inner_connections[pin_nid] = (inner_x + offset_x,
                                              inner_y + offset_y,
                                              alignment,
-                                             instance_name)
-        # add to cells dictionary
-        cells[instance_name] = Cell(int(pos.x),
+                                             instance_nid)
+        # Add to cells dictionary
+        cells[instance_nid] = Cell(int(pos.x),
                                     int(pos.y),
                                     int(x_size) + 1,
                                     int(y_size) + 1,
-                                    instance_name,
+                                    instance_nid,
                                     inner_connections)
     for instance in node.all(SchemPort):
         # Add instances for ports
         port_alignment = instance.align.lefdef()
         pos = instance.pos
         # Check if port has npath
-        
-        if instance.ref.npath:
-            name = '.'.join([str(path) for path in instance.ref.full_path_list()])
-        else:
-            name = '.'.join([str(path) for path in instance.full_path_list()] + ['ref'])
-        # net and name mapping for pinarrays
-        array_mapping_list[instance.ref] = name
-        # add to ports dictionary
+        net_nid = str(instance.ref.nid)
+        # Mapping to seperate ports form inner nets
+        array_mapping_list[instance.ref] = net_nid
+        # Add to ports dictionary
         inner_x = int(pos.x)
         inner_y = int(pos.y)
         route = instance.ref.route
-        ports[name] = Port(inner_x + offset_x,
+        ports[net_nid] = Port(inner_x + offset_x,
                            inner_y + offset_y,
-                           name,
+                           net_nid,
                            port_alignment,
                            route)
+
+    #======================
+    # Determine connections
+    #======================
 
     # Get the connections defined via the portmap
     connections = list()
     inter_instance_connections = list()
     for instance in node.all(SchemInstance):
-        instance_name = instance.full_path_str()
+        instance_nid = str(instance.nid)
         # Connections of Cells and ports
         for conn in instance.conns():
             inner_connection = conn.there
             connected_to = conn.here
-            # pin arrays have pin connections with names as ints
-            # get the parent name to get a unique assignment
-            if type(inner_connection.full_path_str()) == int:
-
-                inner_connection_name = (str(inner_connection.parent.full_path_str()) + '.' +
-                                         str(inner_connection.full_path_str()))
+            # Get the instance name to get a unique assignment
+            inner_connection_nid = str(inner_connection.nid)
+            connected_nid = array_mapping_list.get(connected_to, None)
+            connection_position = cells[instance_nid].connections[inner_connection_nid]
+            # Only if the ports have the connection and if it's not an inter cell connection
+            if connected_nid in ports.keys():
+                # ORD1 in dictionry
+                if routing.get(int(connected_nid) if connected_nid.isdigit() else connected_nid, True):
+                    # ORD2 in schema
+                    if ports[connected_nid].route:
+                        connections.append((ports[connected_nid], connection_position))
+                # Connection not in ports <=> inter instance connection
             else:
-                inner_connection_name = str(inner_connection.full_path_str())
-            # Currently only working for ports to instances not instances to instances
-            connected_name = array_mapping_list.get(connected_to, None)
-            connection_position = cells[instance_name].connections[inner_connection_name]
-            # only if the ports have the connection and if it's not an inter cell connection
-            if connected_name in ports.keys():
-                if routing.get(connected_name.removeprefix("port_"), True) is not False:
-                    if ports[connected_name].route:
-                        connections.append((ports[connected_name], connection_position))
-                # print("normal_conn", connected_name, connection_position)
-                # connection not in ports <=> inter instance connection
-            else:
-                # get the connection position
-                connected_name = '.'.join([str(path) for path in connected_to.full_path_list()])
-                if connected_name not in inter_instance_connections:
-                    # Create the new port for first appearance and save the inter instance connection
-                    inter_instance_connections.append(connected_name)
-                    ports[connected_name] = Port(int(connection_position[0]),
+                connected_nid = str(connected_to.nid)
+                if connected_nid not in inter_instance_connections:
+                    # Create the inner port on first appearance and save the inter instance connection
+                    inter_instance_connections.append(connected_nid)
+                    ports[connected_nid] = Port(int(connection_position[0]),
                                                  int(connection_position[1]),
-                                                 connected_name, connection_position[2])
-                    # print("save", connected_name, connection_position)
-                    array_mapping_list[connected_to] = connected_name
+                                                 connected_nid, connection_position[2])
+                    array_mapping_list[connected_to] = connected_nid
                 else:
                     # Save the path after the inter instance connection is established
-                    # print("append", connected_name, connection_position)
-                    if ports[connected_name].route:
-                        connections.append((ports[connected_name], connection_position))
+                    if ports[connected_nid].route:
+                        connections.append((ports[connected_nid], connection_position))
 
+    #=====================================================
     # Calculate the vertices and add them to the schematic
+    #=====================================================
+    
     vertices_dict = calculate_vertices(outline, cells, ports, connections)
-    i = 0
+    named_vertice_counter = 0
     for name, vertices_lists in vertices_dict.items():
         # Example: node.vss % SchemWire(vertices=[Vec2R(x=6, y=1), Vec2R(x=6, y=2)])
         for vertices in vertices_lists:
-            # Set the vertices from the ports
-            # Case for internal nets
-            split_name = name.split('.')
-            #print(split_name)
-            converted_name =tuple([int(value) if value.isdigit() else value for value in split_name])
-            if converted_name[-1] == 'ref':
-                schem_part = recursive_getitem(node, converted_name[:-1]).ref
-            else:
-                schem_part = recursive_getitem(node, converted_name)
+            schem_element = node.cursor_at(int(name) if name.isdigit() else name)
             converted_vertices = list()
-            if isinstance(schem_part, Net):
+            # Case for inner nets
+            if isinstance(schem_element, Net):
                 for vert in vertices:
                     # Remove the offset
                     converted_vertice = Vec2R(x=vert[0] - offset_x, y=vert[1] - offset_y)
                     outline = outline.extend(converted_vertice)
                     converted_vertices.append(converted_vertice)
-                schem_part % SchemWire(vertices=converted_vertices)
-            # case for external ports
+                schem_element % SchemWire(vertices=converted_vertices)
+            # Case for external ports
             else:
                 for vert in vertices:
                     # Remove the offset
                     converted_vertice = Vec2R(x=vert[0] - offset_x, y=vert[1] - offset_y)
                     outline = outline.extend(converted_vertice)
                     converted_vertices.append(converted_vertice)
-                setattr(schem_part.ref, f"vert_{i}", SchemWire(vertices=converted_vertices))
-            i += 1
+                setattr(schem_element.ref, f"vert_{named_vertice_counter}",
+                        SchemWire(vertices=converted_vertices))
+            named_vertice_counter += 1
     return outline
 
 
