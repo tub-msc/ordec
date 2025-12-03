@@ -1,0 +1,20 @@
+# -*- version: ord2 -*-
+from ordec.core import *
+from ordec.schematic import helpers
+from ordec.lib.generic_mos import Nmos,Pmos
+from ordec.ord2.context import ctx, OrdContext
+from public import public
+
+cell MultibitReg_StructOfArrays:
+    bits = Parameter(int)
+    cell_func symbol:
+        input vdd(.align=Orientation.North)
+        input vss(.align=Orientation.South)
+        path bit
+        path bit.d
+        path bit.q
+        for i in range(self.bits):
+            input bit.d[i](.align=Orientation.West)
+            output bit.q[i](.align=Orientation.East)
+        input clk(.align=Orientation.West)
+

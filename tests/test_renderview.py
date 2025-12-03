@@ -153,6 +153,8 @@ testdata = [
         refdir / "ord2test_nand_sch.svg"),
     testcase(ord_lambda('.lib.ord2_test.reg', 'MultibitReg_Arrays', 'schematic', bits=3),
         refdir / "ord2test_reg_sch.svg"),
+    testcase(ord_lambda('.lib.ord2_test.nmux', 'Nto1', 'schematic', N=8),
+        refdir / "ord2test_nmux_sch.svg"),
 ]
 
 @pytest.mark.parametrize("testcase", testdata, ids=lambda t: t.ref_file.with_suffix("").name)

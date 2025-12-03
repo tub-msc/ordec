@@ -32,14 +32,17 @@ class OrdContext:
         self.parent = None
 
     def __enter__(self):
+        """Enter context, set context variable and save parent"""
         self._token = _ctx_var.set(self)
         if self._token.old_value is not Token.MISSING:
             self.parent = self._token.old_value
         else:
+            # Case for the top-level context
             self.parent = self._explicit_parent
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit context and reset context variable"""
         _ctx_var.reset(self._token)
 
     def add(self, name_tuple, ref):
@@ -47,44 +50,25 @@ class OrdContext:
         helpers.recursive_setitem(self.root, name_tuple, ref)
         return helpers.recursive_getitem(self.root, name_tuple)
 
-    def add_path(self, name):
-        """ Add a path to the current context"""
-        self.root.mkpath(name)
-        return list()
-
-    def add_port_normal(self, name):
-        """ Add a port to a non path context"""
-        pin = helpers.recursive_getitem(ctx.root.symbol, name)
-        net = self.add(name, Net(pin=pin))
-        port = net % SchemPort()
+    def add_port(self, name_tuple):
+        """ Add a port to the current context"""
+        pin = helpers.recursive_getitem(self.root.symbol, name_tuple)
+        subgraph_root = self.root
+        while not isinstance(subgraph_root, SubgraphRoot):
+            subgraph_root = subgraph_root.parent
+        port = self.add(name_tuple, SchemPort(ref=subgraph_root % Net(pin=pin)))
         return port
-
-    def add_port_pathnode(self, name, node_list):
-        """ Add a port to a path context"""
-        pin = helpers.recursive_getitem(ctx.root.symbol, name)
-        net = self.add(name, Net(pin=pin))
-        node_list.insert(name[-1], net % SchemPort())
-
-    def add_pathnode(self, name, node_list, value):
-        """ Add a value to a path context"""
-        ref = self.add(name, value)
-        node_list.insert(name[-1], ref)
-
-    def get_symbol_port(self, net):
-        """ Get the symbol port for a Net if connected"""
-        for port in self.root.all(SchemPort):
-            if port.ref == net:
-                return port
-        return None
 
     def symbol_postprocess(self):
         """ Postprocess call when returning from symbol"""
-        helpers.symbol_place_pins(ctx.root, vpadding=2, hpadding=2)
-        return ctx.root
+        helpers.symbol_place_pins(self.root, vpadding=2, hpadding=2)
+        return self.root
 
     def schematic_postprocess(self):
         """ Postprocess call when returning from schematic"""
-        helpers.resolve_instances(ctx.root)
-        ctx.root.outline = schematic_routing(ctx.root)
-        helpers.schem_check(ctx.root, add_conn_points=True, add_terminal_taps=True)
-        return ctx.root
+        helpers.resolve_instances(self.root)
+        self.root.outline = schematic_routing(self.root)
+        #from ordec.schematic.routing import adjust_outline_initial
+        #self.root.outline = adjust_outline_initial(self.root, Rect4R(lx=0, ly=0, ux=0, uy=0))
+        helpers.schem_check(self.root, add_conn_points=True, add_terminal_taps=True)
+        return self.root

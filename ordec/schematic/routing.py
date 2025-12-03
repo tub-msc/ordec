@@ -19,11 +19,12 @@ cache = {}
 
 # Port class with direction
 class Port:
-    def __init__(self, x, y, name, direction):
+    def __init__(self, x, y, name, direction, route=True):
         self.x = x
         self.y = y
         self.name = name
         self.direction = direction
+        self.route = route
         # Cell class with connection points and their directions
 
     def __str__(self):
@@ -763,7 +764,7 @@ def schematic_routing(node, outline=None, routing=None):
             # pin arrays have pin connections with names as ints
             # get the parent name to get a unique assignment
             if type(pin.full_path_str()) == int:
-                inner_name = str(pin.parent.full_path_str()) + str(pin.full_path_str())
+                inner_name = str(pin.parent.full_path_str()) + '.' +  str(pin.full_path_str())
             else:
                 inner_name = str(pin.full_path_str())
             inner_x = int(inner_pos.x)
@@ -784,16 +785,23 @@ def schematic_routing(node, outline=None, routing=None):
         # Add instances for ports
         port_alignment = instance.align.lefdef()
         pos = instance.pos
-        name = ".".join([str(value) for value in instance.ref.full_path_list()])
+        # Check if port has npath
+        
+        if instance.ref.npath:
+            name = '.'.join([str(path) for path in instance.ref.full_path_list()])
+        else:
+            name = '.'.join([str(path) for path in instance.full_path_list()] + ['ref'])
         # net and name mapping for pinarrays
         array_mapping_list[instance.ref] = name
         # add to ports dictionary
         inner_x = int(pos.x)
         inner_y = int(pos.y)
+        route = instance.ref.route
         ports[name] = Port(inner_x + offset_x,
                            inner_y + offset_y,
                            name,
-                           port_alignment)
+                           port_alignment,
+                           route)
 
     # Get the connections defined via the portmap
     connections = list()
@@ -808,7 +816,7 @@ def schematic_routing(node, outline=None, routing=None):
             # get the parent name to get a unique assignment
             if type(inner_connection.full_path_str()) == int:
 
-                inner_connection_name = (str(inner_connection.parent.full_path_str()) +
+                inner_connection_name = (str(inner_connection.parent.full_path_str()) + '.' +
                                          str(inner_connection.full_path_str()))
             else:
                 inner_connection_name = str(inner_connection.full_path_str())
@@ -818,12 +826,13 @@ def schematic_routing(node, outline=None, routing=None):
             # only if the ports have the connection and if it's not an inter cell connection
             if connected_name in ports.keys():
                 if routing.get(connected_name.removeprefix("port_"), True) is not False:
-                    connections.append((ports[connected_name], connection_position))
+                    if ports[connected_name].route:
+                        connections.append((ports[connected_name], connection_position))
                 # print("normal_conn", connected_name, connection_position)
                 # connection not in ports <=> inter instance connection
             else:
                 # get the connection position
-                connected_name = connected_to.full_path_str()
+                connected_name = '.'.join([str(path) for path in connected_to.full_path_list()])
                 if connected_name not in inter_instance_connections:
                     # Create the new port for first appearance and save the inter instance connection
                     inter_instance_connections.append(connected_name)
@@ -835,7 +844,8 @@ def schematic_routing(node, outline=None, routing=None):
                 else:
                     # Save the path after the inter instance connection is established
                     # print("append", connected_name, connection_position)
-                    connections.append((ports[connected_name], connection_position))
+                    if ports[connected_name].route:
+                        connections.append((ports[connected_name], connection_position))
 
     # Calculate the vertices and add them to the schematic
     vertices_dict = calculate_vertices(outline, cells, ports, connections)
@@ -846,8 +856,12 @@ def schematic_routing(node, outline=None, routing=None):
             # Set the vertices from the ports
             # Case for internal nets
             split_name = name.split('.')
-            converted_name = [int(value) if value.isdigit() else value for value in split_name]
-            schem_part = recursive_getitem(node, tuple(converted_name))
+            #print(split_name)
+            converted_name =tuple([int(value) if value.isdigit() else value for value in split_name])
+            if converted_name[-1] == 'ref':
+                schem_part = recursive_getitem(node, converted_name[:-1]).ref
+            else:
+                schem_part = recursive_getitem(node, converted_name)
             converted_vertices = list()
             if isinstance(schem_part, Net):
                 for vert in vertices:

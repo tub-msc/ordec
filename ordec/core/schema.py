@@ -233,6 +233,7 @@ class Schematic(SubgraphRoot):
 class Net(Node):
     in_subgraphs = [Schematic]
     pin = ExternalRef(Pin, of_subgraph=lambda c: c.root.symbol)
+    route = Attr(bool, default=True) # Controls whether the Net is routed by schematic_routing
 
     pin_idx = Index(pin)
 
@@ -352,12 +353,22 @@ class SchemInstanceUnresolved(Node):
 @public
 class SchemInstanceUnresolvedConn(Node):
     """Unresolved SchemInstanceConn."""
+    
+    class LocalRefPortOrNet(LocalRef):
+        """LocalRef(Net) that also accepts SchemPort and extracts its Net."""
+        def factory(self, val):
+            # Convert SchemPort to  Net
+            if isinstance(val, SchemPort):
+                val = val.ref  
+                # Convert Net to nid (LocalRef)
+            return super().factory(val)
+        
     in_subgraphs = [Schematic]
 
     ref = LocalRef(SchemInstanceUnresolved, optional=False)
     ref_idx = Index(ref)
 
-    here = LocalRef(Net, optional=False)
+    here = LocalRefPortOrNet(Net, optional=False)
     there = Attr(tuple, optional=False) #: Tuple of str or int = requested path in future symbol
 
 @public
