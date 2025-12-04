@@ -68,12 +68,12 @@ class Netlister:
             node = self.directory.node_of_name(cur_schematic_or_symbol, part)
             if isinstance(node, SchemInstance):
                 simnode = simhier.one(SimInstance.parent_eref_idx.query(
-                    (None if cur_parent_inst is None else cur_parent_inst.nid, node.nid)))
+                    (cur_parent_inst, node)))
                 cur_parent_inst = simnode
                 cur_schematic_or_symbol = simhier.schematic_or_symbol_at(simnode)
             elif isinstance(node, (Net, Pin)):
                 simnode = simhier.one(SimNet.parent_eref_idx.query(
-                    (None if cur_parent_inst is None else cur_parent_inst.nid, node.nid)))
+                    (cur_parent_inst, node)))
                 must_be_end = True
             else:
                 assert False, f"Unexpected node returned from lookup: {node!r}"
@@ -87,7 +87,7 @@ class Netlister:
         ret = []
         for pin in pins:
             conn = inst.subgraph.one(
-                SchemInstanceConn.ref_pin_idx.query((inst.nid, pin.nid))
+                SchemInstanceConn.ref_pin_idx.query((inst, pin))
             )
             ret.append(self.name_obj(conn.here))
         return ret
@@ -153,7 +153,7 @@ class Netlister:
                 # connections work even when there is a mismatch between the
                 # pin and net names. Moreover, the pin names might even be
                 # assigned to something else within the Schematic context.
-                [self.name_obj(schematic.one(Net.pin_idx.query(pin.nid)))
+                [self.name_obj(schematic.one(Net.pin_idx.query(pin)))
                     for pin in self.pinlist(symbol)]
             )
             self.indent += 4

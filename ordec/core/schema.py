@@ -149,11 +149,11 @@ class GenericPoly(Node):
             return FuncInserter(inserter_func)
 
     def vertices(self) -> 'list[Vec2R | Vec2I]':
-        polyvecs = self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid))
+        polyvecs = self.subgraph.all(self.vertex_cls.ref_idx.query(self))
         return [polyvec.pos for polyvec in polyvecs]
 
     def remove_node(self, sgu: 'SubgraphUpdater'):
-        for vertex_nid in self.subgraph.all(self.vertex_cls.ref_idx.query(self.nid), wrap_cursor=False):
+        for vertex_nid in self.subgraph.all(self.vertex_cls.ref_idx.query(self), wrap_cursor=False):
             sgu.remove_nid(vertex_nid)
         return super().remove_node(sgu)
 
@@ -279,7 +279,7 @@ class SchemInstance(Node):
         return self.pos.transl() * self.orientation
 
     def conns(self):
-        return self.subgraph.all(SchemInstanceConn.ref_idx.query(self.nid))
+        return self.subgraph.all(SchemInstanceConn.ref_idx.query(self))
 
 @public
 class SchemInstanceConn(Node):
@@ -443,9 +443,8 @@ class SimHierarchySubcursor(tuple):
         value.
         """
         if isinstance(inner_child, SchemInstance):
-            return self.simhierarchy.one(SimInstance.parent_eref_idx.query((
-                None if self.siminst is None else self.siminst.nid,
-                inner_child.nid)))
+            return self.simhierarchy.one(SimInstance.parent_eref_idx.query(
+                (self.siminst, inner_child)))
         elif isinstance(inner_child, (Pin, Net, SchemPort)):
             # Coerce SchemPort to Net:
             if isinstance(inner_child, SchemPort):
@@ -455,10 +454,9 @@ class SimHierarchySubcursor(tuple):
                 and self.siminst.schematic is not None:
                 # Special case: Symbol subcursor is used, but Schematic is
                 # available. In this case, we need the nid from the Schematic!
-                inner_child = self.siminst.schematic.one(Net.pin_idx.query(inner_child.nid))
-            return self.simhierarchy.one(SimNet.parent_eref_idx.query((
-                None if self.siminst is None else self.siminst.nid,
-                inner_child.nid)))
+                inner_child = self.siminst.schematic.one(Net.pin_idx.query(inner_child))
+            return self.simhierarchy.one(SimNet.parent_eref_idx.query(
+                (self.siminst, inner_child)))
         elif isinstance(inner_child, Node) and inner_child.root == self.node.root:
             # inner_child is likely a PathNode.
             return SimHierarchySubcursor((self.simhierarchy, self.siminst, inner_child))

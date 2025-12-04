@@ -114,7 +114,7 @@ for airport in earth.all(Airport):
 #
 # We can use these indices to query all flights originating at a particular airport:
 
-for flight in earth.all(Flight.origin_idx.query(earth.cdg.nid)):
+for flight in earth.all(Flight.origin_idx.query(earth.cdg)):
     print(flight)
 
 # ## Principle 3: Hierarchical tree organization
@@ -164,10 +164,10 @@ earth2.subgraph.nodes is earth.subgraph.nodes
 
 # The new flight is part of earth2, but not of the original earth:
 
-list(earth2.all(Flight.origin_idx.query(earth.united_kingdom.man.nid)))
+list(earth2.all(Flight.origin_idx.query(earth.united_kingdom.man)))
 
 
-# list(earth.all(Flight.origin_idx.query(earth.united_kingdom.man.nid)))
+# list(earth.all(Flight.origin_idx.query(earth.united_kingdom.man)))
 
 # One critical part of the persistent data structure PMap is that the insertion of the new flight into the nodes PMap created the new PMap earth2.nodes (1) without copying the entire previous earth.nodes and (2) while still preserving the immutability of earth.nodes.
 #

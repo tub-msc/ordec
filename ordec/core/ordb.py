@@ -387,9 +387,9 @@ class Index(GenericIndex):
                 assert vals == pvector((self.index_value(node, nid), ))
 
     def query(self, key) -> IndexQuery:
-        """
-        Returns IndexQuery object for equivalence query with key.
-        """
+        """Returns IndexQuery object for equivalence query with key."""
+        if isinstance(key, Node):
+            key = key.nid
         return IndexQuery(IndexKey(self, key))
 
 @public
@@ -403,6 +403,12 @@ class CombinedIndex(Index):
 
     def index_key(self, node, nid):
         return IndexKey(self, tuple((node[node._attrdesc_by_attr[a].index] for a in self.attrs)))
+
+    def query(self, key) -> IndexQuery:
+        """Returns IndexQuery object for equivalence query with key."""
+        key = tuple((elem.nid if isinstance(elem, Node) else elem for elem in key))
+        return IndexQuery(IndexKey(self, key))
+
 
 class NTypeIndex(Index):
     def __init__(self):

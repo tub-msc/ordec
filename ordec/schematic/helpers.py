@@ -144,7 +144,7 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
     for net in node.all(Net):
         terminals_of_net[net] = []
 
-        for tap in node.all(SchemTapPoint.ref_idx.query(net.nid)):
+        for tap in node.all(SchemTapPoint.ref_idx.query(net)):
             g.add_biedge(tap.pos, net)
             if tap.pos in net_at:
                 if net_at[tap.pos] != net:
@@ -152,7 +152,7 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
             else:
                 net_at[tap.pos] = net
 
-        for poly in node.all(SchemWire.ref_idx.query(net.nid)):
+        for poly in node.all(SchemWire.ref_idx.query(net)):
             vertices = poly.vertices()
             for a, b in itertools.pairwise(vertices):
                 g.add_biedge(a, b)
@@ -163,7 +163,7 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
                 else:
                     net_at[pos] = net
 
-        for p in node.all(SchemConnPoint.ref_idx.query(net.nid)):
+        for p in node.all(SchemConnPoint.ref_idx.query(net)):
             if p.pos in conn_point_at:
                 raise SchematicError(f"Overlapping SchemConnPoints at {p.pos}.")
             if (p.pos not in net_at) or (net_at[p.pos] != net):
@@ -183,7 +183,7 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
         if len(pins_stray) > 0:
             raise SchematicError(f"Stray pins {pins_stray} in portmap of {inst}.")
         assert pins_expected == pins_found
-        for conn in node.all(SchemInstanceConn.ref_idx.query(inst.nid)):
+        for conn in node.all(SchemInstanceConn.ref_idx.query(inst)):
             add_terminal(PinOfInstance(conn))
 
     # Check whether wiring is valid:
@@ -227,7 +227,7 @@ def add_conn_points(s: Schematic):
     for net in s.all(Net):
         pos_single = set()
         pos_multi = set()
-        for wire in s.all(SchemWire.ref_idx.query(net.nid)):
+        for wire in s.all(SchemWire.ref_idx.query(net)):
             for pos in wire.vertices():
                 if pos in pos_single:
                     pos_multi.add(pos)
@@ -263,7 +263,7 @@ def resolve_instances(schematic: Schematic):
     for ui in schematic.all(SchemInstanceUnresolved):
         with schematic.subgraph.updater() as sgu:
             param_dict = {}
-            for param in schematic.all(SchemInstanceUnresolvedParameter.ref_idx.query(ui.nid)):
+            for param in schematic.all(SchemInstanceUnresolvedParameter.ref_idx.query(ui)):
                 param_dict[param.name] = param.value
                 sgu.remove_nid(param.nid)
 
@@ -277,7 +277,7 @@ def resolve_instances(schematic: Schematic):
 
             sgu.remove_nid(ui.nid)
 
-            for uc in schematic.all(SchemInstanceUnresolvedConn.ref_idx.query(ui.nid)):
+            for uc in schematic.all(SchemInstanceUnresolvedConn.ref_idx.query(ui)):
                 pin = recursive_getitem(symbol, uc.there)
                 if not isinstance(pin, Pin):
                     raise SchematicError("Unresolved attribute {uc.there!r} did not resolve to Pin.")
