@@ -304,17 +304,24 @@ class SchemInstanceUnresolvedCursor(tuple):
         return type(self) == type(other) and super().__eq__(other)
 
     def __getitem__(self, name):
-        if isinstance(name, (int, str)):
-            return self.__getattr__(name)
-        else:
-            return super().__getitem__(name)
-
-    def __getattr__(self, name):
         return SchemInstanceUnresolvedCursor(self+(name,))
+        
+    def __getattr__(self, name):
+        return self.__getitem__(name)
+
+    @property
+    def instanceunresolved(self):
+        # self[0], but wihtout calling SchemInstanceUnresolvedCursor.__getitem__
+        return tuple.__getitem__(self, 0)
+
+    @property
+    def instancepath(self):
+        # self[1:], but without calling SchemInstanceUnresolvedCursor.__getitem__
+        return tuple.__getitem__(self, slice(1,None))
 
     def __wire_op__(self, here):
-        conn = tuple.__getitem__(self, 0) % \
-            SchemInstanceUnresolvedConn(here=here, there=self[1:])
+        conn = self.instanceunresolved % \
+            SchemInstanceUnresolvedConn(here=here, there=self.instancepath)
         return conn
     
 @public
