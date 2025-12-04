@@ -217,8 +217,8 @@ class LocalRef(Attr):
         optional: Specifies whether the reference can be None.
     """
 
-    def __init__(self, refs_ntype: type, optional: bool=True, refcheck_custom: Callable=None):
-        super().__init__(type=int, optional=optional)
+    def __init__(self, refs_ntype: type, optional: bool=True, factory: Callable=None, refcheck_custom: Callable=None):
+        super().__init__(type=int, optional=optional, factory=factory)
         self.refs_ntype = refs_ntype
 
         if refcheck_custom:
@@ -232,6 +232,8 @@ class LocalRef(Attr):
     def factory(self, val: 'int|Node|NoneType'):
         if val is None:
             return val
+        if self.custom_factory:
+            val = self.custom_factory(val)
         if isinstance(val, Node):
             val = val.nid
         if not isinstance(val, int):
