@@ -7,13 +7,13 @@ from public import public
 
 cell MultibitReg_ArrayOfStructs:
     bits = Parameter(int)
-    cell_func symbol:
+    gendef symbol:
         input vdd(.align=Orientation.North)
         input vss(.align=Orientation.South)
-	path bit
-	for i in range(self.bits):
-	    path bit[i]
-        input bit[i].d(.align=Orientation.West)
-        output bit[i].q(.align=Orientation.East)
-    input clk(.align=Orientation.West)
+        path bit
+        for i in range(self.bits):
+            path bit[i]
+            input bit[i].d(.align=Orientation.West)
+            output bit[i].q(.align=Orientation.East)
+        input clk(.align=Orientation.West)
 

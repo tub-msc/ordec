@@ -8,7 +8,7 @@ from ordec.schematic.routing import schematic_routing
 from public import public
 
 cell Mux2:
-    cell_func symbol:
+    gendef symbol:
         output y(.align=Orientation.East)
         input a(.align=Orientation.West)
         input b(.align=Orientation.West)
@@ -16,7 +16,7 @@ cell Mux2:
         inout vss(.align=Orientation.South)
         input s(.align=Orientation.West)
 
-    cell_func schematic:
+    gendef schematic:
         port y(.align=Orientation.West; .pos=(21, 18))
         port a(.align=Orientation.East; .pos=(1, 11))
         port b(.align=Orientation.East; .pos=(1, 10))

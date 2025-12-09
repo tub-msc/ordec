@@ -52,7 +52,7 @@ eval_input: testlist _NEWLINE*
 
 decorator: "@" dotted_name [ "(" [arguments] ")" ] _NEWLINE
 decorators: decorator+
-decorated: decorators (classdef | celldef | funcdef | cell_func_def | async_funcdef)
+decorated: decorators (classdef | celldef | funcdef | gendef | async_funcdef)
 
 async_funcdef: "async" funcdef
 funcdef: "def" name "(" [parameters] ")" ["->" test] ":" suite
@@ -132,7 +132,7 @@ nonlocal_stmt: "nonlocal" name ("," name)*
 assert_stmt: "assert" test ["," test]
 
 ?compound_stmt: if_stmt | while_stmt | for_stmt | try_stmt | match_stmt
-              | with_stmt | funcdef | classdef | celldef | decorated | async_stmt | cell_func_def
+              | with_stmt | funcdef | classdef | celldef | decorated | async_stmt | gendef
               | context_element
 async_stmt: "async" (funcdef | with_stmt | for_stmt)
 if_stmt: "if" test ":" suite elifs ["else" ":" suite]
@@ -369,7 +369,7 @@ RATIONAL: DEC_NUMBER SLASH DEC_NUMBER
 
 connect_stmt: testlist_star_expr "--" testlist_star_expr
 celldef: "cell" name ":" suite
-cell_func_def: "cell_func" name ":" suite
+gendef: "gendef" name ":" suite
 context_body: ":" suite
               | "(" simple_stmt? ")" _NEWLINE
 context_element: name context_target context_body
