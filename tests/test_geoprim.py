@@ -220,6 +220,19 @@ def test_Rect4I():
         assert v not in myrect
         assert myrect.extend(v) == extended
 
+def test_td4i_mul_rect4i():
+    """Checks that the new TD4.__mul__ handles Rect... objects properly."""
+    W, S, E, N = 1, 2, 3, 4
+    R = Rect4I(W, S, E, N)
+    O = Vec2I(10, 10)
+    for d4 in D4:
+        tran = TD4I(d4=d4, transl=O)
+        tl = tran * Vec2I(W, S)
+        tu = tran * Vec2I(E, N)
+        lx, ux = sorted([tl.x, tu.x])
+        ly, uy = sorted([tl.y, tu.y])
+        assert tran * R == Rect4I(lx, ly, ux, uy)
+
 def test_mix_types():
     # Even though I highly discourage mixing ordec.geoprim's integer and
     # rational types, in the spirit of Python it should be possible to mix

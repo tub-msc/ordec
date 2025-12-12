@@ -6,104 +6,14 @@ from public import public
 from itertools import chain
 import numpy as np
 from .geoprim import *
+from .ordb import Attr
+from .geoprim import TD4, Vec2Generic, Rect4Generic
 from .rational import *
 
+@dataclass(frozen=True, eq=True)
 class MissingAttrVal:
-    __slots__=('nid', 'attr')
-
-    def __init__(self, cursor, attr):
-        self.nid = cursor.nid
-        self.attr = attr
-
-    def __repr__(self):
-        return f"{type(self).__name__}(nid{self.nid}.{self.attr.name})"
-
-    def __hash__(self):
-        return hash((self.nid, self.attr))
-
-    def __eq__(self, other):
-        if type(other) == type(self):
-            return self.nid == other.nid and self.attr == other.attr
-        else:
-            return False
-
-    def __bool__(self):
-        # Some level of compatibility with None:
-        return False
-
-    def solution_value(self, value_of_var):
-        values = [value_of_var.get(variable, 0) for variable in self.variables()]
-        return self.solution_cls(*values)
-
-class MissingRect4(MissingAttrVal):
-    __slots__=()
-
-    solution_cls = Rect4I
-
-    def variables(self):
-        return (
-            Variable(self, 0),
-            Variable(self, 1),
-            Variable(self, 2),
-            Variable(self, 3),
-            )
-
-    @property
-    def lx(self):
-        return Variable(self, 0).term()
-
-    @property
-    def ly(self):
-        return Variable(self, 1).term()
-
-    @property
-    def ux(self):
-        return Variable(self, 2).term()
-
-    @property
-    def uy(self):
-        return Variable(self, 3).term()
-
-    @property
-    def cx(self):
-        return 0.5*self.lx + 0.5*self.ux
-
-    @property
-    def cy(self):
-        return 0.5*self.ly + 0.5*self.uy
-
-    @property
-    def width(self):
-        return self.ux - self.lx
-
-    @property
-    def height(self):
-        return self.uy - self.ly
-
-    def is_square(self, size=None):
-        if size is None:
-            return self.width == self.height
-        else:
-            return (self.width == self.height) & (self.width == size)
-
-class MissingVec2(MissingAttrVal):
-    __slots__=()
-
-    solution_cls = Vec2I
-
-    def variables(self):
-        return (
-            Variable(self, 0),
-            Variable(self, 1),
-            )
-
-    @property
-    def x(self):
-        return Variable(self, 0).term()
-
-    @property
-    def y(self):
-        return Variable(self, 1).term()
+    nid: int
+    attr: Attr
 
 def coerce_term(x):
     if isinstance(x, (float, int)):
@@ -117,17 +27,21 @@ class Variable:
     Represents scalar integer or rational variable whose value is to be
     determined using a solver.
     """
-    mav: MissingAttrVal
+    nid: int
+    attr: Attr
     subid: int
 
     def __repr__(self):
         return f"{type(self).__name__}({self})"
 
     def __str__(self):
-        return f"nid{self.mav.nid}.{self.mav.attr.name}.{self.subid}"
+        return f"nid{self.nid}.{self.attr.name}.{self.subid}"
 
     def term(self):
         return LinearTerm((self,), (1.0,), 0.0)
+
+    def mav(self):
+        return MissingAttrVal(self.nid, self.attr)
 
 @dataclass(frozen=True)
 class LinearTerm:
@@ -204,6 +118,107 @@ class LinearTerm:
             and (self.variables == other.variables) \
             and (self.coefficients == other.coefficients) \
             and (self.constant == other.constant)
+
+@public
+class Vec2LinearTerm(Vec2Generic):
+    """
+    Point in 2D space.
+
+    Attributes:
+        x (LinearTerm): x coordinate
+        y (LinearTerm): y coordinate
+    """
+
+    __slots__ = ()
+
+    def __new__(cls, x, y):
+        x = coerce_term(x)
+        y = coerce_term(y)
+        if not (isinstance(x, LinearTerm) and isinstance(y, LinearTerm)):
+            raise TypeError(f"x and y must be LinearTerm instances, got {type(x)} and {type(y)}.")
+        return tuple.__new__(cls, (x, y))
+
+    @classmethod
+    def make_placeholder(cls, cursor, attr):
+        return cls(
+            Variable(cursor.nid, attr, 0).term(),
+            Variable(cursor.nid, attr, 1).term(),
+        )
+
+    @classmethod
+    def make_solution(cls, mav, value_of_var):
+        values = [value_of_var.get(Variable(mav.nid, mav.attr, subid), 0)
+            for subid in range(2)]
+        return Vec2I(*values)
+
+    def transl(self) -> 'TD4LinearTerm':
+        return TD4LinearTerm(transl=self)
+
+@public
+class Rect4LinearTerm(Rect4Generic):
+    __slots__=()
+    vector_cls = Vec2LinearTerm
+
+    def __new__(cls, lx, ly, ux, uy):
+        lx = coerce_term(lx)
+        ly = coerce_term(ly)
+        ux = coerce_term(ux)
+        uy = coerce_term(uy)
+
+        if not isinstance(lx, LinearTerm):
+            raise TypeError(f"lx must be LinearTerm instance, got {type(lx)}.")
+        if not isinstance(ly, LinearTerm):
+            raise TypeError(f"ly must be LinearTerm instance, got {type(ly)}.")
+        if not isinstance(ux, LinearTerm):
+            raise TypeError(f"ux must be LinearTerm instance, got {type(ux)}.")
+        if not isinstance(uy, LinearTerm):
+            raise TypeError(f"uy must be LinearTerm instance, got {type(uy)}.")
+
+        return tuple.__new__(cls, (lx, ly, ux, uy))
+
+
+    #solution_cls = Rect4I
+
+    @classmethod
+    def make_placeholder(cls, cursor, attr):
+        return cls(
+            Variable(cursor.nid, attr, 0).term(),
+            Variable(cursor.nid, attr, 1).term(),
+            Variable(cursor.nid, attr, 2).term(),
+            Variable(cursor.nid, attr, 3).term(),
+        )
+
+    @classmethod
+    def make_solution(cls, mav, value_of_var):
+        values = [value_of_var.get(Variable(mav.nid, mav.attr, subid), 0)
+            for subid in range(4)]
+        return Rect4I(*values)
+
+
+    def is_square(self, size=None):
+        if size is None:
+            return self.width == self.height
+        else:
+            return (self.width == self.height) & (self.width == size)
+
+@public
+class TD4LinearTerm(TD4):
+    """LinearTerm version of TD4"""
+    __slots__ = ()
+    vec_cls = Vec2LinearTerm
+    rect_cls = Rect4LinearTerm
+
+    def __rmul__(self, other):
+        if isinstance(other, TD4I):
+            return TD4LinearTerm(transl=self.vec_cls(coerce_term(other.transl.x), coerce_term(other.transl.y)), d4=other.d4) * self
+        else:
+            return NotImplemented
+
+    def __mul__(self, other):
+        if(isinstance(other, Rect4I)):
+            other = Rect4LinearTerm(other.lx, other.ly, other.ux, other.uy)
+
+        return super().__mul__(other)
 
 class Constraint:
     __slots__=()
@@ -305,7 +320,9 @@ class Solver:
 
         value_of_var = {variable: int(value) for variable, value in zip(variables, res.x)}
 
-        mavs = {variable.mav for variable in variables}
+        mavs = {variable.mav() for variable in variables}
         for mav in mavs:
             node = self.subgraph.cursor_at(mav.nid, lookup_npath=False)
-            node.update_byattr(mav.attr, mav.solution_value(value_of_var))
+            #print(self.subgraph.tables())
+            #print(node, self.subgraph)
+            node.update_byattr(mav.attr, mav.attr.placeholder.make_solution(mav, value_of_var))

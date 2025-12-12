@@ -101,6 +101,14 @@ class Rect4Generic(tuple):
     def uy(self):
         return self[3]
 
+    @property
+    def cx(self):
+        return 0.5*self.lx + 0.5*self.ux
+
+    @property
+    def cy(self):
+        return 0.5*self.ly + 0.5*self.uy
+
     def tofloat(self):
         return float(self.lx), float(self.ly), float(self.ux), float(self.uy)
 
@@ -239,10 +247,17 @@ class TD4(tuple):
         elif isinstance(other, self.rect_cls):
             tl = self * self.vec_cls(other.lx, other.ly)
             tu = self * self.vec_cls(other.ux, other.uy)
+            east, south, west, north = tl.x, tl.y, tu.x, tu.y
 
-            lx, ux = sorted([tl.x, tu.x])
-            ly, uy = sorted([tl.y, tu.y])
-            return self.rect_cls(lx=lx, ly=ly, ux=ux, uy=uy)
+            # In an earlier version, east, west were swapped if needed using
+            # sorted(). Since this does not work for LinearTerms whose values
+            # are not fixed yet, they are now swapped based on self.d4:
+            if self.d4.value.negx:
+                east, west = west, east
+            if self.d4.value.negy:
+                north, south = south, north
+
+            return self.rect_cls(lx=east, ly=south, ux=west, uy=north)
         elif isinstance(other, D4):
             return self * type(self)(d4=other)
         elif isinstance(other, type(self)):
@@ -251,7 +266,9 @@ class TD4(tuple):
                 d4=self.d4 * other.d4,
             )
         else:
-            raise TypeError(f"Unsupported type for {type(self).__name__} multiplication")
+            # This allows __rmul__ methods, e.g. TD4LinearTerm.__rmul__, to handle the case:
+            return NotImplemented
+            #raise TypeError(f"Type {type(other).__name__} is unsupported for {type(self).__name__} multiplication.")
 
     def __add__(self, other):
         raise TypeError("TD4 cannot be added.")

@@ -12,7 +12,7 @@ from .rational import R
 from .geoprim import *
 from .ordb import *
 from .cell import Cell
-from .constraints import MissingRect4, MissingVec2
+from .constraints import *
 
 @public
 class PinType(Enum):
@@ -686,7 +686,8 @@ class LayoutLabel(Node):
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
-    pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2), placeholder=MissingVec2)
+    pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
+        placeholder=Vec2LinearTerm)
     text = Attr(str)
 
 @public
@@ -759,7 +760,8 @@ class LayoutRect(Node):
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
-    rect = ConstrainableAttr(Rect4I, placeholder=MissingRect4, factory=coerce_tuple(Rect4I, 4))
+    rect = ConstrainableAttr(Rect4I, factory=coerce_tuple(Rect4I, 4),
+        placeholder=Rect4LinearTerm)
 
 @public
 class LayoutInstanceSubcursor(tuple):
@@ -819,7 +821,8 @@ class LayoutInstance(Node):
 
     in_subgraphs = [Layout]
 
-    pos = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+    pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
+        placeholder=Vec2LinearTerm)
     orientation = Attr(D4, default=D4.R0)
     ref = SubgraphRef(Layout, optional=False) #: Can be a Layout or a frame (which is also a Layout)...
 

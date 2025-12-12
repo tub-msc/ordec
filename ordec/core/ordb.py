@@ -155,9 +155,10 @@ class ConstrainableAttr(Attr):
     def __init__(self, type: type, placeholder, **kwargs):
         super().__init__(type, **kwargs)
         self.placeholder = placeholder
+
     def read_hook(self, value, cursor):
         if value is None:
-            return self.placeholder(cursor, self)
+            return self.placeholder.make_placeholder(cursor, self)
         return value
 
 

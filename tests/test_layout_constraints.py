@@ -149,3 +149,36 @@ def test_multiconstraint():
     s.solve()
 
     assert l.activ.rect == Rect4I(lx=100, ly=100, ux=250, uy=250)
+
+
+def test_layoutinstance_subcursor_constraints():
+    """
+    Tests whether LayoutInstanceSubcursors of LayoutInstance with undefined
+    position (=None) can be used for building constraints.
+    Tests with all possible orientations.
+    """
+    layers = SG13G2().layers
+
+    layout1 = Layout(ref_layers=layers)
+    layout1.myrect = LayoutRect(
+        layer=layers.Metal1,
+        rect=Rect4I(100, 500, 200, 700),
+    )
+    layout1 = layout1.freeze()
+
+    for orientation in D4:
+        layout2 = Layout(ref_layers=layers)
+        layout2.layout1_inst = LayoutInstance(orientation=orientation, ref=layout1)
+
+        assert isinstance(layout2.layout1_inst.myrect.rect, Rect4LinearTerm)
+        s = Solver(layout2)
+        s.constrain(layout2.layout1_inst.myrect.rect.lx == 1000)
+        s.constrain(layout2.layout1_inst.myrect.rect.ly == 900)
+
+        s.solve()
+        #print(layout2.layout1_inst.myrect.rect.lx, layout2.layout1_inst.myrect.rect.ly)
+        #print(layout2.layout1_inst.pos)
+
+        assert layout2.layout1_inst.myrect.rect.lx == 1000
+        assert layout2.layout1_inst.myrect.rect.ly == 900
+
