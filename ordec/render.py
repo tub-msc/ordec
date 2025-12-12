@@ -349,10 +349,10 @@ class SchematicRenderer(Renderer):
         params_str = "\n".join(s.cell.params_list())
 
         self.draw_label(type(s.cell).__name__,
-            rect.north_east().transl() * D4.R90, svg_class="cellName")
-        self.draw_label(params_str, rect.south_east().transl() * D4.R90,
+            rect.northeast.transl() * D4.R90, svg_class="cellName")
+        self.draw_label(params_str, rect.southeast.transl() * D4.R90,
             valign=VAlign.Bottom, svg_class="params")
-        self.draw_label(inst_name, rect.north_west().transl() * D4.MX90,
+        self.draw_label(inst_name, rect.northwest.transl() * D4.MX90,
             svg_class="instanceName")
         
         for poly in s.all(SymbolPoly):

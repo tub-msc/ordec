@@ -209,3 +209,16 @@ def test_solve_wrong_subgraph():
 
     with pytest.raises(SolverError, match="Solver found Variables of unexpected subgraph"):
         s.solve()
+
+def test_vec2_constraint():
+    layers = SG13G2().layers
+
+    layout = Layout(ref_layers=layers)
+    layout.r1 = LayoutRect(layer=layers.Metal1)
+    layout.r2 = LayoutRect(layer=layers.Metal2)
+
+    s = Solver(layout)
+    print (layout.r1.rect.center - layout.r2.rect.center)
+    s.constrain(layout.r1.rect.center == layout.r2.rect.center)
+
+    # ... TODO
