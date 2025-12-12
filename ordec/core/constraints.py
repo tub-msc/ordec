@@ -4,11 +4,50 @@
 from dataclasses import dataclass
 from public import public
 from itertools import chain
+from abc import ABC, abstractmethod
 import numpy as np
 from .geoprim import *
-from .ordb import ConstrainableAttr, ConstrainableAttrPlaceholder
+from .ordb import Attr
 from .geoprim import TD4, Vec2Generic, Rect4Generic
 from .rational import *
+
+class ConstrainableAttrPlaceholder(ABC):
+    """
+    Abstract base class for classes that implement placeholder values
+    for ConstrainableAttrs. The placeholder values (i.e. instances of
+    ConstrainableAttrPlaceholder subclasses) are returned by ConstrainableAttr
+    when the underlying DB value is None.
+    """
+    __slots__ = ()
+
+    @classmethod
+    @abstractmethod
+    def make_placeholder(cls, cursor: 'Node', attr: 'ConstrainableAttr'):
+        pass
+
+    @classmethod
+    @abstractmethod
+    def make_solution(cls, mav: 'MissingAttrVal', value_of_var: dict['Variable', int]):
+        pass
+
+@public
+class ConstrainableAttr(Attr):
+    """
+    An attribute that can be constrained. When the underlying attribute value
+    in the database is None, it is considered undefined / variable. In this
+    case, the attribute's read hook returns a placeholder object instead of
+    None. When the underlying attribute value in the databse is not None, the
+    attribute acts like a regular attribute.
+    """
+    def __init__(self, type: type, placeholder: ConstrainableAttrPlaceholder, **kwargs):
+        super().__init__(type, **kwargs)
+        self.placeholder = placeholder
+
+    def read_hook(self, value, cursor):
+        if value is None:
+            return self.placeholder.make_placeholder(cursor, self)
+        return value
+
 
 @dataclass(frozen=True, eq=True)
 class MissingAttrVal:
@@ -176,9 +215,6 @@ class Rect4LinearTerm(Rect4Generic, ConstrainableAttrPlaceholder):
 
         return tuple.__new__(cls, (lx, ly, ux, uy))
 
-
-    #solution_cls = Rect4I
-
     @classmethod
     def make_placeholder(cls, cursor, attr):
         return cls(
@@ -193,7 +229,6 @@ class Rect4LinearTerm(Rect4Generic, ConstrainableAttrPlaceholder):
         values = [value_of_var.get(Variable(mav.nid, mav.attr, subid), 0)
             for subid in range(4)]
         return Rect4I(*values)
-
 
     def is_square(self, size=None):
         if size is None:
