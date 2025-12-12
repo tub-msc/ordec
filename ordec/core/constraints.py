@@ -7,7 +7,7 @@ from itertools import chain
 from abc import ABC, abstractmethod
 import numpy as np
 from .geoprim import *
-from .ordb import Attr
+from .ordb import Attr, MutableSubgraph
 from .geoprim import TD4, Vec2Generic, Rect4Generic
 from .rational import *
 
@@ -51,6 +51,7 @@ class ConstrainableAttr(Attr):
 
 @dataclass(frozen=True, eq=True)
 class MissingAttrVal:
+    subgraph: MutableSubgraph
     nid: int
     attr: ConstrainableAttr
 
@@ -66,9 +67,14 @@ class Variable:
     Represents scalar integer or rational variable whose value is to be
     determined using a solver.
     """
+    subgraph: MutableSubgraph
     nid: int
     attr: ConstrainableAttr
     subid: int
+
+    def __post_init__(self):
+        if not self.subgraph.mutable:
+            raise ValueError("Subgraph of Variable must be mutable.")
 
     def __repr__(self):
         return f"{type(self).__name__}({self})"
@@ -80,7 +86,7 @@ class Variable:
         return LinearTerm((self,), (1.0,), 0.0)
 
     def mav(self):
-        return MissingAttrVal(self.nid, self.attr)
+        return MissingAttrVal(self.subgraph, self.nid, self.attr)
 
 @dataclass(frozen=True)
 class LinearTerm:
@@ -180,13 +186,13 @@ class Vec2LinearTerm(Vec2Generic, ConstrainableAttrPlaceholder):
     @classmethod
     def make_placeholder(cls, cursor, attr):
         return cls(
-            Variable(cursor.nid, attr, 0).term(),
-            Variable(cursor.nid, attr, 1).term(),
+            Variable(cursor.subgraph, cursor.nid, attr, 0).term(),
+            Variable(cursor.subgraph, cursor.nid, attr, 1).term(),
         )
 
     @classmethod
     def make_solution(cls, mav, value_of_var):
-        values = [value_of_var.get(Variable(mav.nid, mav.attr, subid), 0)
+        values = [value_of_var.get(Variable(mav.subgraph, mav.nid, mav.attr, subid), 0)
             for subid in range(2)]
         return Vec2I(*values)
 
@@ -218,15 +224,15 @@ class Rect4LinearTerm(Rect4Generic, ConstrainableAttrPlaceholder):
     @classmethod
     def make_placeholder(cls, cursor, attr):
         return cls(
-            Variable(cursor.nid, attr, 0).term(),
-            Variable(cursor.nid, attr, 1).term(),
-            Variable(cursor.nid, attr, 2).term(),
-            Variable(cursor.nid, attr, 3).term(),
+            Variable(cursor.subgraph, cursor.nid, attr, 0).term(),
+            Variable(cursor.subgraph, cursor.nid, attr, 1).term(),
+            Variable(cursor.subgraph, cursor.nid, attr, 2).term(),
+            Variable(cursor.subgraph, cursor.nid, attr, 3).term(),
         )
 
     @classmethod
     def make_solution(cls, mav, value_of_var):
-        values = [value_of_var.get(Variable(mav.nid, mav.attr, subid), 0)
+        values = [value_of_var.get(Variable(mav.subgraph, mav.nid, mav.attr, subid), 0)
             for subid in range(4)]
         return Rect4I(*values)
 
@@ -334,6 +340,11 @@ class Solver:
         variables = set()
         for e in chain(self.equalities, self.inequalities):
             variables |= set(e.term.variables)
+
+        for v in variables:
+            if v.subgraph != self.subgraph.subgraph:
+                raise SolverError(f"Solver found Variables of unexpected subgraph {v.subgraph}.")
+
         variables = tuple(variables)
         n_variables = len(variables)
         idx_of_var = {variable: index for index, variable in enumerate(variables)}

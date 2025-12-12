@@ -182,3 +182,30 @@ def test_layoutinstance_subcursor_constraints():
         assert layout2.layout1_inst.myrect.rect.lx == 1000
         assert layout2.layout1_inst.myrect.rect.ly == 900
 
+def test_variable_on_frozen_subgraph():
+    layers = SG13G2().layers
+
+    layout1 = Layout(ref_layers=layers)
+    layout1.myrect = LayoutRect(layer=layers.Metal1)
+    layout1 = layout1.freeze()
+
+    with pytest.raises(ValueError, match="Subgraph of Variable must be mutable."):
+        layout1.myrect.rect
+
+def test_solve_wrong_subgraph():
+    layers = SG13G2().layers
+
+    layout1 = Layout(ref_layers=layers)
+    layout1.myrect = LayoutRect(layer=layers.Metal1)
+
+    layout2 = Layout(ref_layers=layers)
+    layout2.myrect = LayoutRect(layer=layers.Metal1)
+
+    s = Solver(layout2)
+    s.constrain(layout1.myrect.rect.lx == 1)
+    s.constrain(layout1.myrect.rect.ux == 2)
+    s.constrain(layout1.myrect.rect.ly == 3)
+    s.constrain(layout1.myrect.rect.uy == 4)
+
+    with pytest.raises(SolverError, match="Solver found Variables of unexpected subgraph"):
+        s.solve()
