@@ -210,9 +210,7 @@ class TD4(tuple):
 
     Attributes:
         transl (Vec2R / Vec2I): translation vector
-        flipxy (bool): flip x/y coordinates
-        negx (bool): negate x coordinate
-        negy (bool): negate y coordinate
+        d4 (D4): rotation / flip setting
     """
 
     __slots__ = ()
