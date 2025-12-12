@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from abc import ABC, ABCMeta, abstractmethod
 import bisect
 import string
+from abc import ABC
 from public import public
 
 @public
@@ -151,8 +152,38 @@ class Attr:
         return value
 
 @public
+class ConstrainableAttrPlaceholder(ABC):
+    """
+    Abstract base class for classes that implement placeholder values
+    for ConstrainableAttrs. The placeholder values (i.e. instances of
+    ConstrainableAttrPlaceholder subclasses) are returned by ConstrainableAttr
+    when the underlying DB value is None.
+    """
+    __slots__ = ()
+
+    @classmethod
+    @abstractmethod
+    def make_placeholder(cls, cursor: 'Node', attr: 'ConstrainableAttr'):
+        pass
+
+    @classmethod
+    @abstractmethod
+    def make_solution(cls, mav, value_of_var):
+        """
+        Questionable whether this belongs here, since its semantics are
+        only defined in constraints.py.
+        """
+
+@public
 class ConstrainableAttr(Attr):
-    def __init__(self, type: type, placeholder, **kwargs):
+    """
+    An attribute that can be constrained. When the underlying attribute value
+    in the database is None, it is considered undefined / variable. In this
+    case, the attribute's read hook returns a placeholder object instead of
+    None. When the underlying attribute value in the databse is not None, the
+    attribute acts like a regular attribute.
+    """
+    def __init__(self, type: type, placeholder: ConstrainableAttrPlaceholder, **kwargs):
         super().__init__(type, **kwargs)
         self.placeholder = placeholder
 

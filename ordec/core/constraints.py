@@ -6,14 +6,14 @@ from public import public
 from itertools import chain
 import numpy as np
 from .geoprim import *
-from .ordb import Attr
+from .ordb import ConstrainableAttr, ConstrainableAttrPlaceholder
 from .geoprim import TD4, Vec2Generic, Rect4Generic
 from .rational import *
 
 @dataclass(frozen=True, eq=True)
 class MissingAttrVal:
     nid: int
-    attr: Attr
+    attr: ConstrainableAttr
 
 def coerce_term(x):
     if isinstance(x, (float, int)):
@@ -28,7 +28,7 @@ class Variable:
     determined using a solver.
     """
     nid: int
-    attr: Attr
+    attr: ConstrainableAttr
     subid: int
 
     def __repr__(self):
@@ -120,7 +120,7 @@ class LinearTerm:
             and (self.constant == other.constant)
 
 @public
-class Vec2LinearTerm(Vec2Generic):
+class Vec2LinearTerm(Vec2Generic, ConstrainableAttrPlaceholder):
     """
     Point in 2D space.
 
@@ -155,7 +155,7 @@ class Vec2LinearTerm(Vec2Generic):
         return TD4LinearTerm(transl=self)
 
 @public
-class Rect4LinearTerm(Rect4Generic):
+class Rect4LinearTerm(Rect4Generic, ConstrainableAttrPlaceholder):
     __slots__=()
     vector_cls = Vec2LinearTerm
 
