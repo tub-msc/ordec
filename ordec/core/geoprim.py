@@ -151,11 +151,11 @@ class Rect4Generic(tuple):
         return self.vector_cls(self.ux, self.ly)
     
     @property
-    def extent_x(self):
+    def x_extent(self):
         return self.vector_cls(self.lx, self.ux)
     
     @property
-    def extent_y(self):
+    def y_extent(self):
         return self.vector_cls(self.ly, self.uy)
 
     @property

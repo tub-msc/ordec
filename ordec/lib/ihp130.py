@@ -222,19 +222,16 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
         nonlocal l, s, x_cur, activ_ext
         l.sd[i] = LayoutRect(layer=layers.Metal1)
         sd = l.sd[i]
+        s.constrain(sd.rect.west == (x_cur, l.activ.rect.cy))
         s.constrain(sd.rect.width == 160)
-        s.constrain(sd.rect.cy == l.activ.rect.cy)
-        s.constrain(sd.rect.lx == x_cur)
         if W >= 300:
             s.constrain(sd.rect.height == W)
         else:
             s.constrain(sd.rect.height == 260)
 
             activ_ext = l % LayoutRect(layer=layers.Activ)
-            s.constrain(activ_ext.rect.cx == sd.rect.cx)
-            s.constrain(activ_ext.rect.cy == sd.rect.cy)
-            s.constrain(activ_ext.rect.width == 300)
-            s.constrain(activ_ext.rect.height == 300)
+            s.constrain(activ_ext.rect.center == sd.rect.center)
+            s.constrain(activ_ext.rect.size == (300, 300))
         x_cur = sd.rect.ux    
 
     def add_poly(i):
@@ -242,10 +239,8 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
         x_cur += 110
         l.poly[i] = LayoutRect(layer=layers.GatPoly)
         poly = l.poly[i]
-        s.constrain(poly.rect.cy == l.activ.rect.cy)
-        s.constrain(poly.rect.width == L)
-        s.constrain(poly.rect.lx == x_cur)
-        s.constrain(poly.rect.ly + 180 == l.activ.rect.ly)
+        s.constrain(poly.rect.west == (x_cur, l.activ.rect.cy))
+        s.constrain(poly.rect.size == (L, l.activ.rect.height + 360))
         s.constrain(poly.rect.ly == 0)
         x_cur = poly.rect.ux + 110
 
@@ -263,18 +258,15 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
 
     if nwell:
         l.psd = LayoutRect(layer=layers.pSD)
-        s.constrain(l.psd.rect.cx == l.activ.rect.cx)
-        s.constrain(l.psd.rect.cy == l.activ.rect.cy)
-        s.constrain(l.psd.rect.ux == l.activ.rect.ux + 180)
-        s.constrain(l.psd.rect.uy == l.activ.rect.uy + 300)
+        s.constrain(l.psd.rect.center == l.activ.rect.center)
+        s.constrain(l.psd.rect.size == l.activ.rect.size + Vec2I(360, 600))
 
         if activ_ext is None:
             max_activ = l.activ
         else:
             max_activ = activ_ext
         l.nwell = LayoutRect(layer=layers.NWell)
-        s.constrain(l.nwell.rect.cx == l.activ.rect.cx)
-        s.constrain(l.nwell.rect.cy == max_activ.rect.cy)
+        s.constrain(l.nwell.rect.center == l.activ.rect.center)
         s.constrain(l.nwell.rect.ux == l.activ.rect.ux + 310)
         s.constrain(l.nwell.rect.uy == max_activ.rect.uy + 310)
 
@@ -341,10 +333,8 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     W = int(width/R("1n"))
 
     l.activ = LayoutRect(layer=layers.Activ)
-    s.constrain(l.activ.rect.height == W)
-    s.constrain(l.activ.rect.width == L)
-    s.constrain(l.activ.rect.lx == 0)
-    s.constrain(l.activ.rect.ly == 0)
+    s.constrain(l.activ.rect.size == (L, W))
+    s.constrain(l.activ.rect.southwest == (0, 0))
 
     l.m1 = LayoutRect(layer=layers.Metal1)
 
@@ -352,24 +342,15 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
 
     if nwell:
         l.nwell = LayoutRect(layer=layers.NWell)
-        s.constrain(l.nwell.rect.cx == l.activ.rect.cx)
-        s.constrain(l.nwell.rect.cy == l.activ.rect.cy)
-        s.constrain(l.nwell.rect.ux == l.activ.rect.ux + 240)
-        s.constrain(l.nwell.rect.uy == l.activ.rect.uy + 240)
+        s.constrain(l.nwell.rect.center == l.activ.rect.center)
+        s.constrain(l.nwell.rect.size == l.activ.rect.size + Vec2I(480, 480))
 
         l.nbulay = LayoutRect(layer=layers.nBuLay)
-        s.constrain(l.nbulay.rect.lx == l.nwell.rect.lx)
-        s.constrain(l.nbulay.rect.ly == l.nwell.rect.ly)
-        s.constrain(l.nbulay.rect.ux == l.nwell.rect.ux)
-        s.constrain(l.nbulay.rect.uy == l.nwell.rect.uy)
-
-
+        s.constrain(l.nbulay.rect == l.nwell.rect)
     else:
         l.psd = LayoutRect(layer=layers.pSD)
-        s.constrain(l.psd.rect.cx == l.activ.rect.cx)
-        s.constrain(l.psd.rect.cy == l.activ.rect.cy)
-        s.constrain(l.psd.rect.ux == l.activ.rect.ux + 30)
-        s.constrain(l.psd.rect.uy == l.activ.rect.uy + 30)
+        s.constrain(l.psd.rect.center == l.activ.rect.center)
+        s.constrain(l.psd.rect.size == l.activ.rect.size + Vec2I(60, 60))
 
     s.solve()
 
