@@ -10,6 +10,19 @@ from public import public
 from collections import namedtuple
 
 class Vec2Generic(tuple):
+    """
+    2D vector, typically representing a point in 2D space.
+
+    Attributes:
+        x: x coordinate
+        y: y coordinate
+    """
+
+    def __new__(self, x, y):
+        # This __new__ method exists only for the Sphinx docs.
+        # Subclasses must overwrite it.
+        raise NotImplementedError()
+
     __slots__ = ()
 
     @property
@@ -44,14 +57,7 @@ class Vec2Generic(tuple):
 
 @public
 class Vec2R(Vec2Generic):
-    """
-    Point in 2D space.
-
-    Attributes:
-        x (Rational): x coordinate
-        y (Rational): y coordinate
-    """
-
+    """2D vector with rational (:class:`ordec.core.rational.R`) components."""
     __slots__ = ()
 
     def __new__(cls, x, y):
@@ -65,9 +71,7 @@ class Vec2R(Vec2Generic):
 
 @public
 class Vec2I(Vec2Generic):
-    """
-    Like Vec2R, but with integer coordinates.
-    """
+    """2D vector with integer components."""
 
     __slots__ = ()
 
@@ -83,7 +87,22 @@ class Vec2I(Vec2Generic):
         return Vec2I(self.x // other, self.y // other)
 
 class Rect4Generic(tuple):
+    """
+    Rectangle in 2D space.
+
+    Attributes:
+        lx: lower x coordinate
+        ly: lower y coordinate
+        ux: upper x coordinate
+        uy: upper y coordinate
+    """
     __slots__ = ()
+
+
+    def __new__(self, lx, ly, ux, uy):
+        # This __new__ method exists only for the Sphinx docs.
+        # Subclasses must overwrite it.
+        raise NotImplementedError()
 
     @property
     def lx(self):
@@ -197,20 +216,11 @@ class Rect4Generic(tuple):
 
 @public
 class Rect4R(Rect4Generic):
-    """
-    Rectangle in 2D space.
-
-    Attributes:
-        lx (Rational): lower x coordinate
-        ly (Rational): lower y coordinate
-        ux (Rational): upper x coordinate
-        uy (Rational): upper y coordinate
-    """
-
+    """2D rectangle with rational (:class:`ordec.core.rational.R`) components."""
     __slots__ = ()
     vector_cls = Vec2R
 
-    def __new__(cls, lx, ly, ux, uy):
+    def __new__(cls, lx: R, ly: R, ux: R, uy: R):
         lx = R(lx)
         ly = R(ly)
         ux = R(ux)
@@ -226,10 +236,11 @@ class Rect4R(Rect4Generic):
 
 @public
 class Rect4I(Rect4Generic):
+    """2D rectangle with integer components."""
     __slots__ = ()
     vector_cls = Vec2I
 
-    def __new__(cls, lx, ly, ux, uy):
+    def __new__(cls, lx: int, ly: int, ux: int, uy: int):
         lx = int(lx)
         ly = int(ly)
         ux = int(ux)

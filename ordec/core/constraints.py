@@ -176,7 +176,7 @@ class Vec2LinearTerm(Vec2Generic, ConstrainableAttrPlaceholder):
 
     __slots__ = ()
 
-    def __new__(cls, x, y):
+    def __new__(cls, x: LinearTerm, y: LinearTerm):
         x = coerce_term(x)
         y = coerce_term(y)
         if not (isinstance(x, LinearTerm) and isinstance(y, LinearTerm)):
@@ -215,7 +215,7 @@ class Rect4LinearTerm(Rect4Generic, ConstrainableAttrPlaceholder):
     __slots__=()
     vector_cls = Vec2LinearTerm
 
-    def __new__(cls, lx, ly, ux, uy):
+    def __new__(cls, lx: LinearTerm, ly: LinearTerm, ux: LinearTerm, uy: LinearTerm):
         lx = coerce_term(lx)
         ly = coerce_term(ly)
         ux = coerce_term(ux)

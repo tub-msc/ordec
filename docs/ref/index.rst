@@ -10,6 +10,7 @@ User Reference
    schema
    geoprim
    rational
+   constraints
    extlibrary
    layout
 
