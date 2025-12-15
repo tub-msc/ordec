@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import './style.css'
+import './ord_style.css'
 
 import {
     GoldenLayout,
@@ -14,6 +15,8 @@ import 'ace-builds/src-noconflict/ace'
 import "ace-builds/src-noconflict/mode-python";
 import "ace-builds/src-noconflict/theme-github";
 import "ace-builds/src-noconflict/ext-language_tools";
+
+import { OrdMode } from "./ord_mode.js";
 
 import { authenticateLocalQuery } from './auth.js';
 
@@ -38,6 +41,13 @@ ResultViewer.refreshAll = Boolean(urlParams.get('refreshall'));
 const queryLocal = urlParams.get('local');
 const queryHmac = urlParams.get('hmac');
 
+function setEditorMode(editor, sourceType) {
+    if (sourceType === "ord") {
+        editor.session.setMode(new OrdMode());
+    } else {
+        editor.session.setMode("ace/mode/python");
+    }
+}
 
 function getSourceType() {
     return sourceTypeSelect.options[sourceTypeSelect.selectedIndex].value;
@@ -66,7 +76,7 @@ class Editor {
 
         this.editor = ace.edit(container.element);
         this.editor.setTheme("ace/theme/github");
-        this.editor.session.setMode("ace/mode/python");
+        setEditorMode(this.editor, getSourceType());
         this.editor.setOptions({
             fontFamily: "Inconsolata",
             fontSize: "12pt"
@@ -228,7 +238,14 @@ document.querySelector("#refresh").onclick = () => {
 };
 
 sourceTypeSelect.onchange = () => {
-    client.srctype = getSourceType();
+    const sourceType = getSourceType();
+    client.srctype = sourceType;
+
+    const editor = getEditor();
+    if (editor) {
+        setEditorMode(editor.editor, sourceType);
+    }
+
     console.log('ordecClient.connect() triggered by source type selector.');
     client.connect();
 };
