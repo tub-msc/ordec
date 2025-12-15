@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import './style.css'
-import './ord_style.css'
+import './ace_ord_style.css'
 
 import {
     GoldenLayout,
@@ -16,7 +16,7 @@ import "ace-builds/src-noconflict/mode-python";
 import "ace-builds/src-noconflict/theme-github";
 import "ace-builds/src-noconflict/ext-language_tools";
 
-import { OrdMode } from "./ord_mode.js";
+import { OrdMode } from "./ace_ord_mode.js";
 
 import { authenticateLocalQuery } from './auth.js';
 
