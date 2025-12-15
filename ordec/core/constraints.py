@@ -146,18 +146,18 @@ class LinearTerm:
         return self + (-other)
 
     def __le__(self, other):
-        return Inequality(self - other)
+        return LessThanOrEqualsZero(self - other)
 
     def __ge__(self, other):
-        return Inequality(-(self - other))
+        return LessThanOrEqualsZero(-(self - other))
 
     def __eq__(self, other):
-        return Equality(self - other)
+        return EqualsZero(self - other)
 
     def same_as(self, other) -> bool:
         """
         Returns whether self and other is the identical term. Sort of a
-        replacement for __eq__, since __eq__ returns Equality objects.
+        replacement for __eq__, since __eq__ returns EqualsZero objects.
         """
         return type(self) == type(other) \
             and (self.variables == other.variables) \
@@ -208,7 +208,7 @@ class Vec2LinearTerm(Vec2Generic, ConstrainableAttrPlaceholder):
         else:
             raise TypeError("Vec2LinearTerm equation (==) expects Vec2Generic or 2-tuple on right-hand side.")
 
-        return Equality(self.x - other_x) & Equality(self.y - other_y)
+        return EqualsZero(self.x - other_x) & EqualsZero(self.y - other_y)
 
 @public
 class Rect4LinearTerm(Rect4Generic, ConstrainableAttrPlaceholder):
@@ -264,10 +264,10 @@ class Rect4LinearTerm(Rect4Generic, ConstrainableAttrPlaceholder):
         else:
             raise TypeError("Rect4LinearTerm equation (==) expects Rect4Generic or 4-tuple on right-hand side.")
 
-        return Equality(self.lx - other_lx) \
-            & Equality(self.ly - other_ly) \
-            & Equality(self.ux - other_ux) \
-            & Equality(self.uy - other_uy)
+        return EqualsZero(self.lx - other_lx) \
+            & EqualsZero(self.ly - other_ly) \
+            & EqualsZero(self.ux - other_ux) \
+            & EqualsZero(self.uy - other_uy)
 
     def contains(self, other) -> 'MultiConstraint':
         """
@@ -283,10 +283,10 @@ class Rect4LinearTerm(Rect4Generic, ConstrainableAttrPlaceholder):
         else:
             raise TypeError("Rect4LinearTerm.contains expects Rect4Generic or 4-tuple on right-hand side.")
 
-        return Inequality(self.lx - other_lx) & \
-            Inequality(self.ly - other_ly) & \
-            Inequality(other_ux - self.ux) & \
-            Inequality(other_uy - self.uy)
+        return LessThanOrEqualsZero(self.lx - other_lx) & \
+            LessThanOrEqualsZero(self.ly - other_ly) & \
+            LessThanOrEqualsZero(other_ux - self.ux) & \
+            LessThanOrEqualsZero(other_uy - self.uy)
 
 
 @public
@@ -331,7 +331,7 @@ class MultiConstraint:
 
 
 @dataclass(frozen=True, eq=False)
-class Inequality(Constraint):
+class LessThanOrEqualsZero(Constraint):
     """term <= 0"""
     term: LinearTerm
 
@@ -339,7 +339,7 @@ class Inequality(Constraint):
         return type(self) == type(other) and self.term.same_as(other.term)
 
 @dataclass(frozen=True, eq=False)
-class Equality(Constraint):
+class EqualsZero(Constraint):
     """term == 0"""
     term: LinearTerm
 
@@ -374,12 +374,12 @@ class Solver:
         if isinstance(constraint, MultiConstraint):
             for elem in constraint.constraints:
                 self.constrain(elem)
-        elif isinstance(constraint, Equality):
+        elif isinstance(constraint, EqualsZero):
             self.equalities.append(constraint)
-        elif isinstance(constraint, Inequality):
+        elif isinstance(constraint, LessThanOrEqualsZero):
             self.inequalities.append(constraint)
         else:
-            raise TypeError("constrain() expects Inequality or Equality.")
+            raise TypeError("constrain() expects LessThanOrEqualsZero or EqualsZero.")
 
     def solve(self):
         from scipy.optimize import linprog
