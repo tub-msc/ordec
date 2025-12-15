@@ -112,14 +112,55 @@ class Rect4Generic(tuple):
     def tofloat(self):
         return float(self.lx), float(self.ly), float(self.ux), float(self.uy)
 
-    def south_east(self):
-        return self.vector_cls(self.ux, self.ly)
-    def south_west(self):
-        return self.vector_cls(self.lx, self.ly)
-    def north_east(self):
-        return self.vector_cls(self.ux, self.uy)
-    def north_west(self):
+    # Create vectors from rectangles:
+
+    @property
+    def northwest(self):
         return self.vector_cls(self.lx, self.uy)
+
+    @property
+    def north(self):
+        return self.vector_cls(self.cx, self.uy)
+
+    @property
+    def northeast(self):
+        return self.vector_cls(self.ux, self.uy)
+    
+    @property
+    def west(self):
+        return self.vector_cls(self.lx, self.cy)
+    
+    @property
+    def center(self):
+        return self.vector_cls(self.cx, self.cy)
+    
+    @property
+    def east(self):
+        return self.vector_cls(self.ux, self.cy)
+    
+    @property
+    def southwest(self):
+        return self.vector_cls(self.lx, self.ly)
+    
+    @property
+    def south(self):
+        return self.vector_cls(self.cx, self.ly)
+    
+    @property
+    def southeast(self):
+        return self.vector_cls(self.ux, self.ly)
+    
+    @property
+    def extent_x(self):
+        return self.vector_cls(self.lx, self.ux)
+    
+    @property
+    def extent_y(self):
+        return self.vector_cls(self.ly, self.uy)
+
+    @property
+    def size(self):
+        return self.vector_cls(self.width, self.height)
 
     def __contains__(self, point):
         if not isinstance(point, (Vec2R, Vec2I)):

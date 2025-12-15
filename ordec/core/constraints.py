@@ -199,6 +199,17 @@ class Vec2LinearTerm(Vec2Generic, ConstrainableAttrPlaceholder):
     def transl(self) -> 'TD4LinearTerm':
         return TD4LinearTerm(transl=self)
 
+    def __eq__(self, other):
+        if isinstance(other, Vec2Generic):
+            other_x = other.x
+            other_y = other.y
+        elif isinstance(other, tuple) and len(other) == 2:
+            other_x, other_y = other
+        else:
+            raise TypeError("Vec2LinearTerm equation (==) expects Vec2Generic or 2-tuple on right-hand side.")
+
+        return Equality(self.x - other_x) & Equality(self.y - other_y)
+
 @public
 class Rect4LinearTerm(Rect4Generic, ConstrainableAttrPlaceholder):
     __slots__=()
@@ -241,6 +252,42 @@ class Rect4LinearTerm(Rect4Generic, ConstrainableAttrPlaceholder):
             return self.width == self.height
         else:
             return (self.width == self.height) & (self.width == size)
+
+    def __eq__(self, other):
+        if isinstance(other, Rect4Generic):
+            other_lx = other.lx
+            other_ly = other.ly
+            other_ux = other.ux
+            other_uy = other.uy
+        elif isinstance(other, tuple) and len(other) == 4:
+            other_lx, other_ly, other_ux, other_uy = other
+        else:
+            raise TypeError("Rect4LinearTerm equation (==) expects Rect4Generic or 4-tuple on right-hand side.")
+
+        return Equality(self.lx - other_lx) \
+            & Equality(self.ly - other_ly) \
+            & Equality(self.ux - other_ux) \
+            & Equality(self.uy - other_uy)
+
+    def contains(self, other) -> 'MultiConstraint':
+        """
+        Sadly, Python's 'in' operator coerces to booleans, so we cannt use it for our purpose here.
+        """
+        if isinstance(other, Rect4Generic):
+            other_lx = other.lx
+            other_ly = other.ly
+            other_ux = other.ux
+            other_uy = other.uy
+        elif isinstance(other, tuple) and len(other) == 4:
+            other_lx, other_ly, other_ux, other_uy = other
+        else:
+            raise TypeError("Rect4LinearTerm.contains expects Rect4Generic or 4-tuple on right-hand side.")
+
+        return Inequality(self.lx - other_lx) & \
+            Inequality(self.ly - other_ly) & \
+            Inequality(other_ux - self.ux) & \
+            Inequality(other_uy - self.uy)
+
 
 @public
 class TD4LinearTerm(TD4):

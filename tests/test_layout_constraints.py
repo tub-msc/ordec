@@ -209,3 +209,67 @@ def test_solve_wrong_subgraph():
 
     with pytest.raises(SolverError, match="Solver found Variables of unexpected subgraph"):
         s.solve()
+
+def test_vec2_constraints_eq():
+    layers = SG13G2().layers
+
+    layout = Layout(ref_layers=layers)
+    layout.r1 = LayoutRect(layer=layers.Metal1)
+    layout.r2 = LayoutRect(layer=layers.Metal2)
+    
+    s = Solver(layout)
+    s.constrain(layout.r1.rect.center == layout.r2.rect.center)
+    s.constrain(layout.r1.rect.size == (100, 100))
+    s.constrain(layout.r2.rect.size == (300, 400))
+    s.constrain(layout.r1.rect.southwest == (1000, -1000))
+    s.solve()
+
+    assert layout.r1.rect == Rect4I(lx=1000, ly=-1000, ux=1100, uy=-900)
+    assert layout.r2.rect == Rect4I(lx=900, ly=-1150, ux=1200, uy=-750)
+
+def test_rect4_constraints_eq():
+    layers = SG13G2().layers
+
+    layout = Layout(ref_layers=layers)
+    layout.r1 = LayoutRect(layer=layers.Metal1)
+    layout.r2 = LayoutRect(layer=layers.Metal2)
+    layout.r3 = LayoutRect(layer=layers.Metal3)
+
+    s = Solver(layout)
+    s.constrain(layout.r1.rect.lx == 100)
+    s.constrain(layout.r1.rect.ly == 200)
+    s.constrain(layout.r1.rect.ux == 300)
+    s.constrain(layout.r1.rect.uy == 400)
+    s.constrain(layout.r2.rect == layout.r1.rect)
+    s.constrain(layout.r3.rect == (10, 20, 30, 40))
+    s.solve()
+
+    assert layout.r2.rect == Rect4I(100, 200, 300, 400)
+    assert layout.r3.rect == Rect4I(10, 20, 30, 40)
+
+def test_rect4_constraints_contains():
+    layers = SG13G2().layers
+
+    layout = Layout(ref_layers=layers)
+    layout.r1 = LayoutRect(layer=layers.Metal1)
+    layout.r2 = LayoutRect(layer=layers.Metal1)
+    layout.r3 = LayoutRect(layer=layers.Metal1)
+
+    layout.r4 = LayoutRect(layer=layers.Metal2)
+
+    s = Solver(layout)
+    s.constrain(layout.r1.rect.size == (100, 100))
+    s.constrain(layout.r2.rect.size == (100, 100))
+    s.constrain(layout.r3.rect.size == (100, 100))
+
+    s.constrain(layout.r1.rect.southwest == (1000, -1000))
+    s.constrain(layout.r2.rect.southwest == (1600, -900))
+    s.constrain(layout.r3.rect.southwest == (1300, -500))
+
+    s.constrain(layout.r4.rect.contains(layout.r1.rect))
+    s.constrain(layout.r4.rect.contains(layout.r2.rect))
+    s.constrain(layout.r4.rect.contains(layout.r3.rect))
+
+    s.solve()
+
+    assert layout.r4.rect == Rect4I(lx=1000, ly=-1000, ux=1700, uy=-400)        
