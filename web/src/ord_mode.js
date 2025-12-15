@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 ORDeC contributors
+// SPDX-License-Identifier: Apache-2.0
+
 import ace from "ace-builds/src-noconflict/ace";
 import "ace-builds/src-noconflict/mode-python";
 
