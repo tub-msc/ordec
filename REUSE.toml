@@ -75,7 +75,7 @@ path = [
     "web/app.html",
     "web/index.html",
     "web/src/style.css",
-    "web/src/ace_ord_style.css",
+    "web/src/ace-ord-style.css",
     "web/public/ordec_icon.svg",
     "web/public/ordec_logo.svg",
 ]
