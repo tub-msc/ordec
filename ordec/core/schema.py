@@ -787,15 +787,77 @@ class LayoutInstanceSubcursor(tuple):
 
     def transform_stack(self):
         tran = TD4I()
-        for inst in self.hierarchy():
-            tran *= inst.loc_transform()
+        for elem in self.hierarchy():
+            if isinstance(elem, TD4I):
+                tran *= elem
+            elif isinstance(elem, LayoutInstance):
+                tran *= elem.loc_transform()
+            else:
+                raise TypeError(f"Unexpected element {elem!r} found in LayoutInstanceSubcursor hierarchy.")
         return tran
 
     def node(self):
         return tuple.__getitem__(self, -1)
 
-    def __getitem__(self, name):
-        inner_ret = self.node()[name]
+    def needs_instancearray_index(self) -> bool:
+        h = self.hierarchy()
+        # If there is a LayoutInstanceArray in the hierarchy without a preceding
+        # TD4I, we lack an index to the LayoutInstanceArray.
+        return isinstance(h[-1], LayoutInstanceArray) \
+            and (len(h) < 2 or not isinstance(h[-2], TD4I))
+
+    def add_instancearray_index(self, key) -> 'LayoutInstanceSubcursor':
+        array = self.hierarchy()[-1]
+        if isinstance(key, tuple):
+            if (array.cols is None) or (array.rows is None):
+                raise IndexError("Got 2D index to 1D LayoutInstanceArray.")
+            col, row = key
+        elif isinstance(key, int):
+            if (array.cols is None) and (array.rows is None):
+                raise ValueError("LayoutInstanceArray has both cols and rows set to None.")
+            elif array.cols is None:
+                col = None
+                row = key
+            elif array.rows is None:
+                col = key
+                row = None
+            else:
+                raise IndexError("LayoutInstanceArray expected [i, j] index.")
+        else:
+            raise IndexError("LayoutInstanceArray expected [i] or [i, j] index.")
+
+        # This is written in a weird way to make it supposedly work with
+        # LinearTerm-based classes.
+        trans = []
+        if col is not None:
+            # This neat trick gives us the range checking + negative-index logic:
+            col = range(array.cols)[col]
+            #if col not in range(array.cols):
+            #    raise IndexError(f"col = {col} out of {range(array.cols)!r}.")
+            trans.append((array.vec_col * col).transl())
+        if row is not None:
+            row = range(array.rows)[row]
+            #if row not in range(array.rows):
+            #    raise IndexError(f"row = {row} out of {range(array.rows)!r}.")
+            trans.append((array.vec_row * row).transl())
+        if len(trans) == 2:
+            tran = trans[0] * trans[1]
+        else:
+            (tran, ) = trans
+
+        # We insert the array element transformation (tran: TD4I) _before_
+        # the LayoutInstanceArray element, because it needs to be applied
+        # before the LayoutInstanceArray's loc_transform() transformation.
+        # (The difference only shows up when the LayoutInstanceArray has
+        # an orientation other than R0.)
+        return LayoutInstanceSubcursor(self.hierarchy()[:-1]
+            + (tran, self.hierarchy()[-1], self.node()))
+
+    def __getitem__(self, key):
+        if self.needs_instancearray_index():
+            return self.add_instancearray_index(key)
+        
+        inner_ret = self.node()[key]
         if isinstance(inner_ret, LayoutInstanceSubcursor):
             return LayoutInstanceSubcursor(self.hierarchy() + inner_ret)
         else:
@@ -818,6 +880,8 @@ class LayoutInstanceSubcursor(tuple):
 
     def __getattr__(self, name):
         inner_ret = getattr(self.node(), name)
+        if self.needs_instancearray_index():
+            raise AttributeError("Missing index [] for LayoutInstanceArray.")
         if isinstance(inner_ret, (Rect4I, Vec2I)):
             return self.transform_stack() * inner_ret
         elif isinstance(inner_ret, Node):
@@ -855,10 +919,20 @@ class LayoutInstanceArray(LayoutInstance):
 
     in_subgraphs = [Layout]
 
+    #: Number of columns or None (=1 column). If None, LayoutInstanceSubcursor
+    #:  indices are collaposed to row-only.
     cols = Attr(int)
+
+    #: Number of rows or None (=1 row). If None, LayoutInstanceSubcursor
+    #: indices are collaposed to column-only.
     rows = Attr(int)
 
+    #: Vector separating instances in adjacent columns. None value is permitted
+    #: only if cols is None, too.
     vec_col = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+
+    #: Vector separating instances in adjacent rows. None value is permitted
+    #: only if cols is None, too.
     vec_row = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
 
 @public
