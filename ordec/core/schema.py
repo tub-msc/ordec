@@ -25,14 +25,14 @@ class PinType(Enum):
 
 @public
 class GdsLayer(NamedTuple):
-    layer: int
-    data_type: int
+    layer: int #: GDS layer number (0...65535)
+    data_type: int #: GDS data type number (0...65535)
 
 @public
 class RGBColor(NamedTuple):
-    r: int
-    g: int
-    b: int
+    r: int #: red component (0...255)
+    g: int #: red green (0...255)
+    b: int #: red blue (0...255)
 
     def __str__(self):
         return f"#{self.r:02X}{self.g:02X}{self.b:02X}"
@@ -45,14 +45,18 @@ def rgb_color(s) -> RGBColor:
 
 @public
 class PathEndType(Enum):
-    """Could also be named 'linecap'."""
-    FLUSH = 0
+    """
+    Could also be named 'linecap'.
+    Custom end sizes (GDS code 1) are not supported at the moment.
+    """
+    FLUSH = 0 #: 
     SQUARE = 2
 
 @public
 class RectDirection(Enum):
-    VERTICAL = 0
-    HORIZONTAL = 1
+    """Used by :class:`LayoutRectPoly` and :class:`LayoutRectPath`."""
+    VERTICAL = 0 #: Indicates that shape is encoded with vertical edge first, horizontal edge second.
+    HORIZONTAL = 1  #: Indicates that shape is encoded with horizontal edge first, vertical edge second.
 
 def coerce_tuple(target_type, tuple_length):
     def func(val):
@@ -93,9 +97,7 @@ class Symbol(SubgraphRoot):
 
 @public
 class Pin(Node):
-    """
-    Pins are single wire connections exposed through a symbol.
-    """
+    """Pins are single wire connections exposed through a symbol."""
     in_subgraphs = [Symbol]
 
     pintype = Attr(PinType, default=PinType.Inout)
@@ -650,7 +652,12 @@ class Layer(NonLeafNode):
     #: This flag affects the behavior of the pinlayer() method.
     is_pinlayer = Attr(bool, optional=False, default=False) 
 
-    def pinlayer(self):
+    def pinlayer(self) -> 'Layer':
+        """
+        Returns the layer on which pin shapes corresponding to the current
+        layer should be placed. This could be the layer itself, or its .pin
+        child (e.g. Metal1.pin).
+        """
         if self.is_pinlayer:
             return self
         else:
@@ -662,8 +669,7 @@ class Layer(NonLeafNode):
     gdslayer_text_index = Index(gdslayer_text, unique=True)
     gdslayer_shapes_index = Index(gdslayer_shapes, unique=True)
 
-    def inline_css(self):
-
+    def inline_css(self) -> str:
          return f"fill:{self.style_fill};stroke:{self.style_stroke};"
 
 # Layout
@@ -671,9 +677,14 @@ class Layer(NonLeafNode):
 
 @public
 class Layout(SubgraphRoot):
+    """
+    Subgraph containing integrated circuit layout elements, possibly including
+    hierarchical instances of other Layout subgraphs.
+    """
+
     cell = Attr(Cell)
-    symbol = SubgraphRef(Symbol)
-    ref_layers = SubgraphRef(LayerStack, optional=False)
+    symbol = SubgraphRef(Symbol) #: All LayoutPins in this subgraph reference this symbol.
+    ref_layers = SubgraphRef(LayerStack, optional=False) #: All .layer attributes of nodes in this subgraph reference this LayerStack.
 
     def webdata(self):
         from ..layout import webdata
@@ -683,6 +694,10 @@ class Layout(SubgraphRoot):
 
 @public
 class LayoutLabel(Node):
+    """
+    Arbitrary text label, equivalent to GDS TEXT element. When entering layouts,
+    prefer :class:`LayoutPin` to raw LayoutLabels.
+    """
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
@@ -706,9 +721,7 @@ class LayoutPoly(GenericPolyI, MixinClosedPolygon):
 
 @public
 class LayoutPath(GenericPolyI, MixinPolygonalChain):
-    """
-    Layout path (polygonal chain with width).
-    """
+    """Layout path (polygonal chain with width)."""
     in_subgraphs = [Layout]
 
     endtype = Attr(PathEndType, default=PathEndType.FLUSH, optional=False)
@@ -814,11 +827,9 @@ class LayoutInstanceSubcursor(tuple):
         else:
             return inner_ret
 
-
 @public
 class LayoutInstance(Node):
     """Hierarchical layout instance, equivalent to GDS SRef."""
-
     in_subgraphs = [Layout]
 
     pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),

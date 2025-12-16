@@ -81,3 +81,73 @@ Simulation hierarchy
 .. autoclass:: SimInstance
    :members: 
    :undoc-members:
+
+Technology definitions
+----------------------
+
+.. autoclass:: GdsLayer
+   :members: 
+   :undoc-members:
+
+.. autoclass:: RGBColor
+   :members: 
+   :undoc-members:
+
+.. autoclass:: LayerStack
+   :members: 
+   :undoc-members:
+
+.. autoclass:: Layer
+   :members: 
+   :undoc-members:
+
+Layout
+------
+
+.. autoclass:: Layout
+   :members: 
+   :undoc-members:
+
+.. autoclass:: LayoutLabel
+   :members: 
+   :undoc-members:
+
+.. autoclass:: LayoutPoly
+   :members: 
+   :undoc-members:
+
+.. autoclass:: LayoutPath
+   :members: 
+   :undoc-members:
+
+.. autoclass:: LayoutRectPoly
+   :members: 
+   :undoc-members:
+
+.. autoclass:: LayoutRectPath
+   :members: 
+   :undoc-members:
+
+.. autoclass:: LayoutRect
+   :members: 
+   :undoc-members:
+
+.. autoclass:: LayoutInstance
+   :members: 
+   :undoc-members:
+
+.. autoclass:: LayoutInstanceArray
+   :members: 
+   :undoc-members:
+
+.. autoclass:: LayoutPin
+   :members: 
+   :undoc-members:
+
+.. autoclass:: PathEndType
+   :members: 
+   :undoc-members:
+
+.. autoclass:: RectDirection
+   :members: 
+   :undoc-members:
