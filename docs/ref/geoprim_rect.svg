@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="450" height="250" viewBox="-20 -10 180 100" fill="none">
+  <rect x="0" y="0" height="70" width="150" stroke="red" fill="silver" /> 
+  <path d="M 0 70 l 0 8" stroke="red" />
+  <path d="M 150 70 l 0 8" stroke="red" />
+  <path d="M 0 0 l -8 0" stroke="red" />
+  <path d="M 0 70 l -8 0" stroke="red" />
+  <text x="-9" y="0" fill="red" text-anchor="end" dominant-baseline="middle" font-size="7">.uy</text>
+  <text x="-9" y="70" fill="red" text-anchor="end" dominant-baseline="middle" font-size="7">.ly</text>
+  <text x="0" y="79" fill="red" text-anchor="middle" dominant-baseline="hanging" font-size="7">.lx</text>
+  <text x="150" y="79" fill="red" text-anchor="middle" dominant-baseline="hanging" font-size="7">.ly</text>
+
+  <g transform="translate(0 0)">
+    <circle r="2" cx="0" cy="0" fill="black" />
+    <text x="2" y="-3" fill="black" text-anchor="start" dominant-baseline="auto" font-size="7">.northeast</text>
+  </g>
+  <g transform="translate(75 0)">
+    <circle r="2" cx="0" cy="0" fill="black" />
+    <text x="0" y="-3" fill="black" text-anchor="middle" dominant-baseline="auto" font-size="7">.north</text>
+  </g>
+  <g transform="translate(150 0)">
+    <circle r="2" cx="" cy="0" fill="black" />
+    <text x="-2" y="-3" fill="black" text-anchor="end" dominant-baseline="auto" font-size="7">.northwest</text>
+  </g>
+  <g transform="translate(0 35)">
+    <circle r="2" cx="0" cy="0" fill="black" />
+    <text x="2" y="-3" fill="black" text-anchor="start" dominant-baseline="auto" font-size="7">.east</text>
+  </g>
+  <g transform="translate(75 35)">
+    <circle r="2" cx="0" cy="0" fill="black" />
+    <text x="0" y="-3" fill="black" text-anchor="middle" dominant-baseline="auto" font-size="7">.center</text>
+  </g>
+  <g transform="translate(150 35)">
+    <circle r="2" cx="" cy="0" fill="black" />
+    <text x="-2" y="-3" fill="black" text-anchor="end" dominant-baseline="auto" font-size="7">.west</text>
+  </g>
+  <g transform="translate(0 70)">
+    <circle r="2" cx="0" cy="0" fill="black" />
+    <text x="2" y="-3" fill="black" text-anchor="start" dominant-baseline="auto" font-size="7">.southeast</text>
+  </g>
+  <g transform="translate(75 70)">
+    <circle r="2" cx="0" cy="0" fill="black" />
+    <text x="0" y="-3" fill="black" text-anchor="middle" dominant-baseline="auto" font-size="7">.south</text>
+  </g>
+  <g transform="translate(150 70)">
+    <circle r="2" cx="" cy="0" fill="black" />
+    <text x="-2" y="-3" fill="black" text-anchor="end" dominant-baseline="auto" font-size="7">.southwest</text>
+  </g>
+</svg>

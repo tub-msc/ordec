@@ -25,6 +25,10 @@ Rectangle types
   :exclude-members: __init__, __new__
   :members:
 
+  .. figure:: geoprim_rect.svg
+
+    "Geographic" helper methods, each returning a 2D vector.
+
 .. autoclass:: Rect4R
   :exclude-members: __init__, __new__, vector_cls
   :members:

@@ -11,11 +11,7 @@ from collections import namedtuple
 
 class Vec2Generic(tuple):
     """
-    2D vector, typically representing a point in 2D space.
-
-    Attributes:
-        x: x coordinate
-        y: y coordinate
+    2D vector, typically representing a point / vertex in 2D space.
     """
 
     def __new__(self, x, y):
@@ -27,13 +23,16 @@ class Vec2Generic(tuple):
 
     @property
     def x(self):
+        """x scalar component."""
         return self[0]
 
     @property
     def y(self):
+        """y scalar component."""
         return self[1]
 
-    def tofloat(self):
+    def tofloat(self) -> tuple[float, float]:
+        """Returns (x, y) tuple of floats."""
         return float(self.x), float(self.y)
 
     def __add__(self, other):
@@ -64,9 +63,9 @@ class Vec2R(Vec2Generic):
         x = R(x)
         y = R(y)
         return tuple.__new__(cls, (x, y))
-
     
-    def transl(self) -> 'TD4':
+    def transl(self) -> 'TD4R':
+        """Returns translation by vector."""
         return TD4R(transl=self)
 
 @public
@@ -81,23 +80,15 @@ class Vec2I(Vec2Generic):
         return tuple.__new__(cls, (x, y))
 
     def transl(self) -> 'TD4':
+        """Returns translation by vector."""
         return TD4I(transl=self)
 
     def __floordiv__(self, other):
         return Vec2I(self.x // other, self.y // other)
 
 class Rect4Generic(tuple):
-    """
-    Rectangle in 2D space.
-
-    Attributes:
-        lx: lower x coordinate
-        ly: lower y coordinate
-        ux: upper x coordinate
-        uy: upper y coordinate
-    """
+    """Rectangle in 2D space."""
     __slots__ = ()
-
 
     def __new__(self, lx, ly, ux, uy):
         # This __new__ method exists only for the Sphinx docs.
@@ -106,98 +97,130 @@ class Rect4Generic(tuple):
 
     @property
     def lx(self):
+        """lower x coordinate."""
         return self[0]
 
     @property
     def ly(self):
+        """lower y coordinate."""
         return self[1]
 
     @property
     def ux(self):
+        """upper x coordinate."""
         return self[2]
 
     @property
     def uy(self):
+        """upper y coordinate."""
         return self[3]
 
     @property
     def cx(self):
+        """x coodinate centered between lx and ux."""
         return 0.5*self.lx + 0.5*self.ux
 
     @property
     def cy(self):
+        """y coodinate centered between ly and uy."""
         return 0.5*self.ly + 0.5*self.uy
 
-    def tofloat(self):
-        return float(self.lx), float(self.ly), float(self.ux), float(self.uy)
+    @property
+    def height(self):
+        """height scalar (uy - ly)."""
+        return self.uy - self.ly
 
-    # Create vectors from rectangles:
+    @property
+    def width(self):
+        """height scalar (ux - lx)."""
+        return self.ux - self.lx
+
+    def tofloat(self) -> tuple[float, float, float, float]:
+        """Returns (lx, ly, ux, uy) tuple of floats."""
+        return float(self.lx), float(self.ly), float(self.ux), float(self.uy)
 
     @property
     def northwest(self):
+        """(lx, uy) vector."""
         return self.vector_cls(self.lx, self.uy)
 
     @property
     def north(self):
+        """(cx, uy) vector."""
         return self.vector_cls(self.cx, self.uy)
 
     @property
     def northeast(self):
+        """(ux, uy) vector."""
         return self.vector_cls(self.ux, self.uy)
     
     @property
     def west(self):
+        """(lx, cy) vector."""
         return self.vector_cls(self.lx, self.cy)
     
     @property
     def center(self):
+        """(cx, cy) vector."""
         return self.vector_cls(self.cx, self.cy)
     
     @property
     def east(self):
+        """(ux, cy) vector."""
         return self.vector_cls(self.ux, self.cy)
     
     @property
     def southwest(self):
+        """(lx, ly) vector."""
         return self.vector_cls(self.lx, self.ly)
     
     @property
     def south(self):
+        """(cx, ly) vector."""
         return self.vector_cls(self.cx, self.ly)
     
     @property
     def southeast(self):
+        """(ux, ly) vector."""
         return self.vector_cls(self.ux, self.ly)
     
     @property
     def x_extent(self):
+        """(lx, ux) vector."""
         return self.vector_cls(self.lx, self.ux)
     
     @property
     def y_extent(self):
+        """(ly, uy) vector."""
         return self.vector_cls(self.ly, self.uy)
 
     @property
     def size(self):
+        """(width, height) vector."""
         return self.vector_cls(self.width, self.height)
 
-    def __contains__(self, point):
-        if not isinstance(point, (Vec2R, Vec2I)):
+    def __contains__(self, vertex) -> bool:
+        """Returns whether vertex is located inside rectangle."""
+        if not isinstance(vertex, (Vec2R, Vec2I)):
             raise TypeError("Left-hand side of 'in' supports only Vec2R/Vec2I.")
-        return point.x >= self.lx \
-            and point.x <= self.ux \
-            and point.y >= self.ly \
-            and point.y <= self.uy
+        return vertex.x >= self.lx \
+            and vertex.x <= self.ux \
+            and vertex.y >= self.ly \
+            and vertex.y <= self.uy
 
-    def extend(self, point):
-        if point in self:
+    def extend(self, vertex):
+        """
+        Returns the smallest rectangle that contains both the original
+        rectangle and the provided vertex.
+        """
+        if vertex in self:
             return self
         else:
             return type(self)(
-                lx=min(self.lx, point.x),
-                ly=min(self.ly, point.y),
-                ux=max(self.ux, point.x),
-                uy=max(self.uy, point.y),
+                lx=min(self.lx, vertex.x),
+                ly=min(self.ly, vertex.y),
+                ux=max(self.ux, vertex.x),
+                uy=max(self.uy, vertex.y),
             )
 
     def __add__(self, other):
@@ -205,14 +228,6 @@ class Rect4Generic(tuple):
 
     def __repr__(self):
         return f"{type(self).__name__}(lx={self.lx!r}, ly={self.ly!r}, ux={self.ux!r}, uy={self.uy!r})"
-
-    @property
-    def height(self):
-        return self.uy - self.ly
-
-    @property
-    def width(self):
-        return self.ux - self.lx
 
 @public
 class Rect4R(Rect4Generic):
@@ -259,12 +274,7 @@ class TD4(tuple):
     Transformation group supporting 2D translation, X/Y mirroring and 90° rotations.
     Multiply instances of this class with a :class:`Vec2R`, :class:`Rect4R` or :class:`TD4`
     to apply the transformation.
-
-    Attributes:
-        transl (Vec2R / Vec2I): translation vector
-        d4 (D4): rotation / flip setting
     """
-
     __slots__ = ()
 
     def __new__(cls, transl=None, d4=None):
@@ -276,10 +286,12 @@ class TD4(tuple):
 
     @property
     def transl(self):
+        """Translation vector."""
         return self[0]
 
     @property
-    def d4(self):
+    def d4(self) -> 'D4':
+        """Rotation / flip setting."""
         return self[1]
 
     def __mul__(self, other):
@@ -324,7 +336,7 @@ class TD4(tuple):
         raise TypeError("TD4 cannot be added.")
 
     def det(self) -> int:
-        """Returns 1 if handedness is preserved, -1 if flipped."""
+        """Returns determinant: 1 if handedness is preserved, -1 if flipped."""
         return self.d4.det()
 
     def arc(self, angle_start: R, angle_end: R) -> (R, R):
@@ -384,34 +396,20 @@ class TD4I(TD4):
     vec_cls = Vec2I
     rect_cls = Rect4I
 
-
 D4Tuple = namedtuple('D4Tuple', ['flipxy', 'negx', 'negy'])
 
 @public
 class D4(Enum):
-    """
-    Dihedral group D4, supporting X/Y mirroring and 90° rotations.
+    """Dihedral group D4, supporting X/Y mirroring and 90° rotations."""
 
-    Attributes:
-        R0: rotation by 0° (identity element)
-        R90: rotation by 90°
-        R180: rotation by 180°
-        R270: rotation by 270°
-        MX: mirror along X axis (flipping Y coordinate)
-        MY: mirror along Y axis (flipping X coordinate)
-        MX90: mirror along X axis, followed by 90° rotation
-        MY90: mirror along Y axis, followed by 90° rotation
-    """
-
-
-    R0   = D4Tuple(flipxy=False, negx=False, negy=False)
-    R90  = D4Tuple(flipxy=True,  negx=True,  negy=False)
-    R180 = D4Tuple(flipxy=False, negx=True,  negy=True)
-    R270 = D4Tuple(flipxy=True,  negx=False, negy=True)
-    MX   = D4Tuple(flipxy=False, negx=False, negy=True)
-    MY   = D4Tuple(flipxy=False, negx=True,  negy=False)
-    MX90 = D4Tuple(flipxy=True,  negx=False, negy=False)
-    MY90 = D4Tuple(flipxy=True,  negx=True,  negy=True)
+    R0   = D4Tuple(flipxy=False, negx=False, negy=False) #: rotation by 0° (identity element)
+    R90  = D4Tuple(flipxy=True,  negx=True,  negy=False) #: rotation by 90°
+    R180 = D4Tuple(flipxy=False, negx=True,  negy=True) #: rotation by 180°
+    R270 = D4Tuple(flipxy=True,  negx=False, negy=True) #: rotation by 270°
+    MX   = D4Tuple(flipxy=False, negx=False, negy=True) #: mirror along X axis (flipping Y coordinate)
+    MY   = D4Tuple(flipxy=False, negx=True,  negy=False) #: mirror along Y axis (flipping X coordinate)
+    MX90 = D4Tuple(flipxy=True,  negx=False, negy=False) #: mirror along X axis, followed by 90° rotation
+    MY90 = D4Tuple(flipxy=True,  negx=True,  negy=True) #: mirror along Y axis, followed by 90° rotation
 
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'
@@ -438,7 +436,7 @@ class D4(Enum):
     def unflip(self) -> "D4":
         """
         Return D4 element with non-flipped handedness (det=1), preserving
-        Vec2R(0, 1).
+        the vertex (x=0, y=1).
         """
         if self.det() < 0:
             return D4(self.flip())
@@ -446,13 +444,11 @@ class D4(Enum):
             return self
 
     def det(self) -> int:
-        """Returns 1 if handedness is preserved, -1 if flipped."""
+        """Returns determinant: 1 if handedness is preserved, -1 if flipped."""
         return -1 if self.value.flipxy ^ self.value.negx ^ self.value.negy else 1
 
     def inv(self) -> "D4":
-        """
-        Returns D4 such that x.inv()*x == x*x.inv() == D4.R0.
-        """
+        """Returns D4 such that x.inv()*x == x*x.inv() == D4.R0."""
         return {
             D4.R0: D4.R0,
             D4.R90: D4.R270,
@@ -465,7 +461,7 @@ class D4(Enum):
         }[self]
 
     def flip(self) -> "Self":
-        """Returns TD4 with flipped handedness, preserving the point (0, 1)."""
+        """Returns TD4 with flipped handedness, preserving the vertex (0, 1)."""
         if self.value.flipxy:
             return type(self)(D4Tuple(
                 flipxy=self.value.flipxy,
@@ -499,6 +495,5 @@ class D4(Enum):
     FlippedSouth = MY
     FlippedWest = MX90
     FlippedEast = MY90
-
 
 public(Orientation = D4) # alias
