@@ -6,14 +6,14 @@ from ordec.ord2.context import ctx, OrdContext
 from public import public
 
 cell Nand:
-    gendef symbol:
+    viewgen symbol:
         output y(.align=Orientation.East)
         input a(.align=Orientation.West)
         input b(.align=Orientation.West)
         inout vdd(.align=Orientation.North)
         inout vss(.align=Orientation.South)
 
-    gendef schematic:
+    viewgen schematic:
         port y(.align=Orientation.West; .pos=(25,6))
         port a(.align=Orientation.East; .pos=(1,4))
         port b(.align=Orientation.East; .pos=(1,17))

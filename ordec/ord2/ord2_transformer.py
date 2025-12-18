@@ -47,8 +47,8 @@ class Ord2Transformer(PythonTransformer):
                 number = int(number, 10)
             return ast.Constant(value=number)
 
-    def gendef(self, nodes):
-        """ Funcdef for cell (gendef schematic:\n suite)"""
+    def viewgen(self, nodes):
+        """ Funcdef for cell (viewgen schematic:\n suite)"""
         func_name = nodes[0]
         suite = nodes[1]
 
@@ -62,7 +62,7 @@ class Ord2Transformer(PythonTransformer):
                 )
             )
 
-        gendef_call = ast.Call(
+        viewgen_call = ast.Call(
             func=self.ast_name(func_name.title()),
             args=[],
             keywords=keywords
@@ -74,7 +74,7 @@ class Ord2Transformer(PythonTransformer):
             keywords=[
                 ast.keyword(
                     arg='root',
-                    value=gendef_call
+                    value=viewgen_call
                 ),
                 ast.keyword(
                     arg='parent',

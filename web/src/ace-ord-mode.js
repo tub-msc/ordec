@@ -14,7 +14,7 @@ class OrdHighlightRules extends PythonHighlightRules {
         this.$rules.start.unshift(
         	{
         		token: "keyword.control.ord",
-                regex: "\\b(cell|gendef)\\b"
+                regex: "\\b(cell|viewgen)\\b"
         	},
             {
                 token: "keyword.definition.ord",

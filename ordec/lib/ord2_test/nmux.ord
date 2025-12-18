@@ -12,7 +12,7 @@ import math
 cell Nto1:
     N = Parameter(int)
 
-    gendef symbol:
+    viewgen symbol:
         path d_in
         path s_in
         inout vdd(.align=Orientation.North)
@@ -29,7 +29,7 @@ cell Nto1:
             input s_in[i](.align=Orientation.West)
 
 
-    gendef schematic:
+    viewgen schematic:
         signal_count = int(math.log(self.N, 2))
         x_spacing = 12
         y_spacing = 5

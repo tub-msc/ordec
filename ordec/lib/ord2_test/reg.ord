@@ -7,7 +7,7 @@ from public import public
 
 cell MultibitReg_Arrays:
     bits = Parameter(int)
-    gendef symbol:
+    viewgen symbol:
         input vdd(.align=Orientation.North)
         input vss(.align=Orientation.South)
         path d
@@ -17,7 +17,7 @@ cell MultibitReg_Arrays:
             output q[i](.align=Orientation.East)
         input clk(.align=Orientation.West)
 
-    gendef schematic:
+    viewgen schematic:
         port vss(.pos=(1,0); .align=Orientation.East)
         port vdd(.pos=(1,1); .align=Orientation.East)
         port clk(.pos=(1,2); .align=Orientation.East)

@@ -7,7 +7,7 @@ from public import public
 
 cell MultibitReg_ArrayOfStructs:
     bits = Parameter(int)
-    gendef symbol:
+    viewgen symbol:
         input vdd(.align=Orientation.North)
         input vss(.align=Orientation.South)
         path bit
