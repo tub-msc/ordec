@@ -119,6 +119,11 @@ def test_Vec2R():
     with pytest.raises(AttributeError):
         v.x = 123
 
+    assert Vec2R(1,2) + Vec2R(3,4) == Vec2R(4,6)
+    assert Vec2R(1,2) - Vec2R(3,4) == Vec2R(-2,-2)
+    assert Vec2R(1,2) + (3,4) == Vec2R(4,6)
+    assert Vec2R(1,2) - (3,4) == Vec2R(-2,-2)
+
     assert repr(v) == "Vec2R(R('1.'), R('2.'))"
 
 def test_Vec2I():
