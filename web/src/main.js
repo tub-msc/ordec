@@ -41,14 +41,6 @@ ResultViewer.refreshAll = Boolean(urlParams.get('refreshall'));
 const queryLocal = urlParams.get('local');
 const queryHmac = urlParams.get('hmac');
 
-function setEditorMode(editor, sourceType) {
-    if (sourceType === "ord") {
-        editor.session.setMode(new OrdMode());
-    } else {
-        editor.session.setMode("ace/mode/python");
-    }
-}
-
 function getSourceType() {
     return sourceTypeSelect.options[sourceTypeSelect.selectedIndex].value;
 }
@@ -76,7 +68,7 @@ class Editor {
 
         this.editor = ace.edit(container.element);
         this.editor.setTheme("ace/theme/github");
-        setEditorMode(this.editor, getSourceType());
+        this.updateMode();
         this.editor.setOptions({
             fontFamily: "Inconsolata",
             fontSize: "12pt"
@@ -101,6 +93,14 @@ class Editor {
     loadSrc(src) {
         this.editor.setValue(src);
         this.editor.clearSelection();
+    }
+
+    updateMode() {
+        if (getSourceType() == "ord") {
+            this.editor.session.setMode(new OrdMode());
+        } else {
+            this.editor.session.setMode("ace/mode/python");
+        }
     }
 }
 
@@ -241,10 +241,7 @@ sourceTypeSelect.onchange = () => {
     const sourceType = getSourceType();
     client.srctype = sourceType;
 
-    const editor = getEditor();
-    if (editor) {
-        setEditorMode(editor.editor, sourceType);
-    }
+    getEditor().updateMode();
 
     console.log('ordecClient.connect() triggered by source type selector.');
     client.connect();
