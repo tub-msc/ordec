@@ -150,17 +150,6 @@ class Attr:
     def read_hook(self, value, cursor):
         return value
 
-@public
-class ConstrainableAttr(Attr):
-    def __init__(self, type: type, placeholder, **kwargs):
-        super().__init__(type, **kwargs)
-        self.placeholder = placeholder
-    def read_hook(self, value, cursor):
-        if value is None:
-            return self.placeholder(cursor, self)
-        return value
-
-
 @dataclass(frozen=True, eq=False)
 class NodeTupleAttrDescriptor:
     ntype: type

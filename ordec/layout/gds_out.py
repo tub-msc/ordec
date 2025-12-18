@@ -80,13 +80,26 @@ class GdsGenerator:
         for insta in layout.all(LayoutInstanceArray):
             layouts_want.add(insta.ref)
             pos_origin = insta.pos
-            pos_col_end = insta.pos + insta.cols*insta.vec_col
-            pos_row_end = insta.pos + insta.rows*insta.vec_row
+            
+            if insta.cols is None:
+                cols = 1
+                pos_col_end = insta.pos
+            else:
+                cols = insta.cols
+                pos_col_end = insta.pos + cols*insta.vec_col
+            
+            if insta.rows is None:
+                rows = 1
+                pos_row_end = insta.pos
+            else:
+                rows = insta.rows
+                pos_row_end = insta.pos + rows*insta.vec_row
+
             e = elements.ARef(
                 struct_name=self.directory.name_subgraph(insta.ref).encode('ascii'),
                 xy=[pos_origin, pos_col_end, pos_row_end],
-                cols=insta.cols,
-                rows=insta.rows,
+                cols=cols,
+                rows=rows,
             )
             e.angle, e.strans = d4_to_gds(insta.orientation)
 

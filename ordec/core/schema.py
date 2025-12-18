@@ -12,7 +12,7 @@ from .rational import R
 from .geoprim import *
 from .ordb import *
 from .cell import Cell
-from .constraints import MissingRect4, MissingVec2
+from .constraints import *
 
 @public
 class PinType(Enum):
@@ -25,14 +25,14 @@ class PinType(Enum):
 
 @public
 class GdsLayer(NamedTuple):
-    layer: int
-    data_type: int
+    layer: int #: GDS layer number (0...65535)
+    data_type: int #: GDS data type number (0...65535)
 
 @public
 class RGBColor(NamedTuple):
-    r: int
-    g: int
-    b: int
+    r: int #: red component (0...255)
+    g: int #: red green (0...255)
+    b: int #: red blue (0...255)
 
     def __str__(self):
         return f"#{self.r:02X}{self.g:02X}{self.b:02X}"
@@ -45,14 +45,18 @@ def rgb_color(s) -> RGBColor:
 
 @public
 class PathEndType(Enum):
-    """Could also be named 'linecap'."""
-    FLUSH = 0
+    """
+    Could also be named 'linecap'.
+    Custom end sizes (GDS code 1) are not supported at the moment.
+    """
+    FLUSH = 0 #: 
     SQUARE = 2
 
 @public
 class RectDirection(Enum):
-    VERTICAL = 0
-    HORIZONTAL = 1
+    """Used by :class:`LayoutRectPoly` and :class:`LayoutRectPath`."""
+    VERTICAL = 0 #: Indicates that shape is encoded with vertical edge first, horizontal edge second.
+    HORIZONTAL = 1  #: Indicates that shape is encoded with horizontal edge first, vertical edge second.
 
 def coerce_tuple(target_type, tuple_length):
     def func(val):
@@ -93,9 +97,7 @@ class Symbol(SubgraphRoot):
 
 @public
 class Pin(Node):
-    """
-    Pins are single wire connections exposed through a symbol.
-    """
+    """Pins are single wire connections exposed through a symbol."""
     in_subgraphs = [Symbol]
 
     pintype = Attr(PinType, default=PinType.Inout)
@@ -650,7 +652,12 @@ class Layer(NonLeafNode):
     #: This flag affects the behavior of the pinlayer() method.
     is_pinlayer = Attr(bool, optional=False, default=False) 
 
-    def pinlayer(self):
+    def pinlayer(self) -> 'Layer':
+        """
+        Returns the layer on which pin shapes corresponding to the current
+        layer should be placed. This could be the layer itself, or its .pin
+        child (e.g. Metal1.pin).
+        """
         if self.is_pinlayer:
             return self
         else:
@@ -662,8 +669,7 @@ class Layer(NonLeafNode):
     gdslayer_text_index = Index(gdslayer_text, unique=True)
     gdslayer_shapes_index = Index(gdslayer_shapes, unique=True)
 
-    def inline_css(self):
-
+    def inline_css(self) -> str:
          return f"fill:{self.style_fill};stroke:{self.style_stroke};"
 
 # Layout
@@ -671,9 +677,14 @@ class Layer(NonLeafNode):
 
 @public
 class Layout(SubgraphRoot):
+    """
+    Subgraph containing integrated circuit layout elements, possibly including
+    hierarchical instances of other Layout subgraphs.
+    """
+
     cell = Attr(Cell)
-    symbol = SubgraphRef(Symbol)
-    ref_layers = SubgraphRef(LayerStack, optional=False)
+    symbol = SubgraphRef(Symbol) #: All LayoutPins in this subgraph reference this symbol.
+    ref_layers = SubgraphRef(LayerStack, optional=False) #: All .layer attributes of nodes in this subgraph reference this LayerStack.
 
     def webdata(self):
         from ..layout import webdata
@@ -683,10 +694,15 @@ class Layout(SubgraphRoot):
 
 @public
 class LayoutLabel(Node):
+    """
+    Arbitrary text label, equivalent to GDS TEXT element. When entering layouts,
+    prefer :class:`LayoutPin` to raw LayoutLabels.
+    """
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
-    pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2), placeholder=MissingVec2)
+    pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
+        placeholder=Vec2LinearTerm)
     text = Attr(str)
 
 @public
@@ -705,9 +721,7 @@ class LayoutPoly(GenericPolyI, MixinClosedPolygon):
 
 @public
 class LayoutPath(GenericPolyI, MixinPolygonalChain):
-    """
-    Layout path (polygonal chain with width).
-    """
+    """Layout path (polygonal chain with width)."""
     in_subgraphs = [Layout]
 
     endtype = Attr(PathEndType, default=PathEndType.FLUSH, optional=False)
@@ -759,7 +773,8 @@ class LayoutRect(Node):
     in_subgraphs = [Layout]
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
-    rect = ConstrainableAttr(Rect4I, placeholder=MissingRect4, factory=coerce_tuple(Rect4I, 4))
+    rect = ConstrainableAttr(Rect4I, factory=coerce_tuple(Rect4I, 4),
+        placeholder=Rect4LinearTerm)
 
 @public
 class LayoutInstanceSubcursor(tuple):
@@ -772,15 +787,77 @@ class LayoutInstanceSubcursor(tuple):
 
     def transform_stack(self):
         tran = TD4I()
-        for inst in self.hierarchy():
-            tran *= inst.loc_transform()
+        for elem in self.hierarchy():
+            if isinstance(elem, TD4I):
+                tran *= elem
+            elif isinstance(elem, LayoutInstance):
+                tran *= elem.loc_transform()
+            else:
+                raise TypeError(f"Unexpected element {elem!r} found in LayoutInstanceSubcursor hierarchy.")
         return tran
 
     def node(self):
         return tuple.__getitem__(self, -1)
 
-    def __getitem__(self, name):
-        inner_ret = self.node()[name]
+    def needs_instancearray_index(self) -> bool:
+        h = self.hierarchy()
+        # If there is a LayoutInstanceArray in the hierarchy without a preceding
+        # TD4I, we lack an index to the LayoutInstanceArray.
+        return isinstance(h[-1], LayoutInstanceArray) \
+            and (len(h) < 2 or not isinstance(h[-2], TD4I))
+
+    def add_instancearray_index(self, key) -> 'LayoutInstanceSubcursor':
+        array = self.hierarchy()[-1]
+        if isinstance(key, tuple):
+            if (array.cols is None) or (array.rows is None):
+                raise IndexError("Got 2D index to 1D LayoutInstanceArray.")
+            col, row = key
+        elif isinstance(key, int):
+            if (array.cols is None) and (array.rows is None):
+                raise ValueError("LayoutInstanceArray has both cols and rows set to None.")
+            elif array.cols is None:
+                col = None
+                row = key
+            elif array.rows is None:
+                col = key
+                row = None
+            else:
+                raise IndexError("LayoutInstanceArray expected [i, j] index.")
+        else:
+            raise IndexError("LayoutInstanceArray expected [i] or [i, j] index.")
+
+        # This is written in a weird way to make it supposedly work with
+        # LinearTerm-based classes.
+        trans = []
+        if col is not None:
+            # This neat trick gives us the range checking + negative-index logic:
+            col = range(array.cols)[col]
+            #if col not in range(array.cols):
+            #    raise IndexError(f"col = {col} out of {range(array.cols)!r}.")
+            trans.append((array.vec_col * col).transl())
+        if row is not None:
+            row = range(array.rows)[row]
+            #if row not in range(array.rows):
+            #    raise IndexError(f"row = {row} out of {range(array.rows)!r}.")
+            trans.append((array.vec_row * row).transl())
+        if len(trans) == 2:
+            tran = trans[0] * trans[1]
+        else:
+            (tran, ) = trans
+
+        # We insert the array element transformation (tran: TD4I) _before_
+        # the LayoutInstanceArray element, because it needs to be applied
+        # before the LayoutInstanceArray's loc_transform() transformation.
+        # (The difference only shows up when the LayoutInstanceArray has
+        # an orientation other than R0.)
+        return LayoutInstanceSubcursor(self.hierarchy()[:-1]
+            + (tran, self.hierarchy()[-1], self.node()))
+
+    def __getitem__(self, key):
+        if self.needs_instancearray_index():
+            return self.add_instancearray_index(key)
+        
+        inner_ret = self.node()[key]
         if isinstance(inner_ret, LayoutInstanceSubcursor):
             return LayoutInstanceSubcursor(self.hierarchy() + inner_ret)
         else:
@@ -803,6 +880,8 @@ class LayoutInstanceSubcursor(tuple):
 
     def __getattr__(self, name):
         inner_ret = getattr(self.node(), name)
+        if self.needs_instancearray_index():
+            raise AttributeError("Missing index [] for LayoutInstanceArray.")
         if isinstance(inner_ret, (Rect4I, Vec2I)):
             return self.transform_stack() * inner_ret
         elif isinstance(inner_ret, Node):
@@ -812,14 +891,13 @@ class LayoutInstanceSubcursor(tuple):
         else:
             return inner_ret
 
-
 @public
 class LayoutInstance(Node):
     """Hierarchical layout instance, equivalent to GDS SRef."""
-
     in_subgraphs = [Layout]
 
-    pos = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+    pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
+        placeholder=Vec2LinearTerm)
     orientation = Attr(D4, default=D4.R0)
     ref = SubgraphRef(Layout, optional=False) #: Can be a Layout or a frame (which is also a Layout)...
 
@@ -841,10 +919,20 @@ class LayoutInstanceArray(LayoutInstance):
 
     in_subgraphs = [Layout]
 
+    #: Number of columns or None (=1 column). If None, LayoutInstanceSubcursor
+    #:  indices are collaposed to row-only.
     cols = Attr(int)
+
+    #: Number of rows or None (=1 row). If None, LayoutInstanceSubcursor
+    #: indices are collaposed to column-only.
     rows = Attr(int)
 
+    #: Vector separating instances in adjacent columns. None value is permitted
+    #: only if cols is None, too.
     vec_col = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+
+    #: Vector separating instances in adjacent rows. None value is permitted
+    #: only if cols is None, too.
     vec_row = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
 
 @public

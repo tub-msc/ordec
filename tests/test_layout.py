@@ -728,13 +728,89 @@ def test_layoutinstance_subcursor():
     assert layout2.layout1_inst.myrect.rect == layout2.layout1_inst.loc_transform() * layout1.myrect.rect
     assert layout2.layout1_inst.subcursor().parent == layout2.layout1_inst
 
-    layout3 = Layout(ref_layers=layers)
+    layout3 = Layout(ref_layers=layers) 
     layout3.layout2_inst = LayoutInstance(pos=(50, 50), orientation=D4.MX, ref=layout2)
     layout3 = layout3.freeze()
 
     assert layout3.layout2_inst.layout1_inst.myrect.rect == \
         layout3.layout2_inst.loc_transform() * \
         layout2.layout1_inst.loc_transform() * layout1.myrect.rect
+
+def test_layoutinstancearray_subcursor():
+    """
+    Tests the handling of LayoutInstanceArrays by LayoutInstanceSubcursor.
+    """
+    layers = SG13G2().layers
+
+    layout1 = Layout(ref_layers=layers)
+    layout1.myrect = LayoutRect(
+        layer=layers.Metal1,
+        rect=Rect4I(100, 500, 200, 700),
+    )
+    layout1 = layout1.freeze()
+
+    
+    layout2 = Layout(ref_layers=layers)
+    # I1 has columns AND rows:
+    layout2.I1 = LayoutInstanceArray(
+        pos=(1000, 2000), orientation=D4.R90, ref=layout1,
+        cols=5, rows=7, vec_col=Vec2I(900, 0), vec_row=Vec2I(0, 900))
+    # I2 has only columns:
+    layout2.I2 = LayoutInstanceArray(
+        pos=(1000, 2000), orientation=D4.R90, ref=layout1,
+        cols=5, vec_col=Vec2I(900, 0))
+    # I3 has only rows:
+    layout2.I3 = LayoutInstanceArray(
+        pos=(1000, 2000), orientation=D4.R90, ref=layout1,
+        rows=7, vec_row=Vec2I(0, 900))
+    layout2 = layout2.freeze()
+
+    # Test I1:
+
+    with pytest.raises(AttributeError, match=r"Missing index \[\] for LayoutInstanceArray"):
+        layout2.I1.myrect.rect
+    with pytest.raises(IndexError):
+        layout2.I1[0, -8]
+    with pytest.raises(IndexError):
+        layout2.I1[6, 0]
+    with pytest.raises(IndexError):
+        layout2.I1[2]
+
+    assert layout2.I1[0,0].myrect.rect == \
+        layout2.I1.loc_transform() * layout1.myrect.rect
+    assert layout2.I1[1,0].myrect.rect == \
+        layout2.I1.vec_col.transl() * layout2.I1[0,0].myrect.rect
+    assert layout2.I1[0,2].myrect.rect == \
+        (layout2.I1.vec_row*2).transl() * layout2.I1[0,0].myrect.rect
+    assert layout2.I1[4, 2].myrect.rect == \
+        (layout2.I1.vec_col*4).transl() * (layout2.I1.vec_row*2).transl() * \
+        layout2.I1[0,0].myrect.rect
+    # Check negative-index logic:
+    assert layout2.I1[4, 6].myrect.rect == layout2.I1[-1, -1].myrect.rect
+
+    # Test I2:
+
+    with pytest.raises(IndexError):
+        layout2.I2[6]
+    with pytest.raises(IndexError):
+        layout2.I2[0, 0]
+
+    assert layout2.I2[0].myrect.rect == \
+        layout2.I2.loc_transform() * layout1.myrect.rect
+    assert layout2.I2[2].myrect.rect == \
+        (layout2.I1.vec_col * 2).transl() * layout2.I2[0].myrect.rect
+
+    # Test I3:
+
+    with pytest.raises(IndexError):
+        layout2.I3[11]
+    with pytest.raises(IndexError):
+        layout2.I3[0, 0]
+
+    assert layout2.I3[0].myrect.rect == \
+        layout2.I3.loc_transform() * layout1.myrect.rect
+    assert layout2.I3[6].myrect.rect == \
+        (layout2.I3.vec_row * 6).transl() * layout2.I3[0].myrect.rect
 
 def test_expand_pins():
     sym = Symbol()
