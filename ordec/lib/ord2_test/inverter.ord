@@ -6,13 +6,13 @@ from ordec.ord2.context import ctx, OrdContext
 from public import public
 
 cell Inv:
-    cell_func symbol:
+    gendef symbol:
         inout vdd(.align=Orientation.North)
         inout vss(.align=Orientation.South)
         input a(.align=Orientation.West)
         output y(.align=Orientation.East)
 
-    cell_func schematic:
+    gendef schematic:
         port vdd(.pos=(2,13); .align=Orientation.North)
         port vss(.pos=(2,1); .align=Orientation.South)
         port y (.pos=(9,7); .align=Orientation.West)
@@ -20,9 +20,6 @@ cell Inv:
 
         Nmos pd:
             .s -- vss
-            #ctx.root % SchemInstanceUnresolvedConn(here=vss, there=('s',))
-            #dot().s.__wire__
-            #print(.s)
             .b -- vss
             .d -- y
             .pos = (3,2)
@@ -32,7 +29,6 @@ cell Inv:
             .d -- y
             .pos = (3,8)
             .$l = 400n
-        #print(pu.s)
 
         pd.$l = 350u
 

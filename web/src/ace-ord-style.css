@@ -1,0 +1,19 @@
+/* Style definitions for the ORD mode */
+
+.ace_keyword.ace_operator.ace_ord {
+    color: #7da17f;
+    font-weight: bold;
+}
+
+.ace_keyword.ace_control.ace_ord {
+    color: #005cc5;
+}
+
+.ace_keyword.ace_definition.ace_ord {
+    color: #d73a49;
+}
+
+.ace_punctuation.ace_dot.ace_ord {
+    color: #c96bbe;
+    font-weight: bold;
+}
