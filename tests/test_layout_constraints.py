@@ -41,8 +41,7 @@ def test_inequalities():
     s = Solver(l)
     s.constrain(l.r1.rect.height >= 500)
     s.constrain(l.r1.rect.width >= 150)
-    s.constrain(l.r1.rect.lx == 100)
-    s.constrain(l.r1.rect.ly == -100)
+    s.constrain(l.r1.rect.southwest == (100, -100))
 
     s.constrain(l.r2.rect.lx >= l.r1.rect.ux + 150)
     s.constrain(l.r2.rect.width == -l.r1.rect.height + 800)

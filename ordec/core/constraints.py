@@ -67,10 +67,10 @@ class Variable:
     Represents scalar integer or rational variable whose value is to be
     determined using a solver.
     """
-    subgraph: MutableSubgraph
-    nid: int
-    attr: ConstrainableAttr
-    subid: int
+    subgraph: MutableSubgraph #: Subgraph to which the variable belongs.
+    nid: int #: The nid of the node to which the variable belongs.
+    attr: ConstrainableAttr #: The attribute to which the variable belongs.
+    subid: int #: Using the subid, multiple variables can be associated with one attribute. For example the subids (0, 1, 2, 3) for (lx, ly, ux, uy) of a constrainable Rect4 attribute.
 
     def __post_init__(self):
         if not self.subgraph.mutable:
@@ -90,9 +90,14 @@ class Variable:
 
 @dataclass(frozen=True)
 class LinearTerm:
-    variables: tuple[Variable]
-    coefficients: tuple[float]
-    constant: float
+    """
+    Represents the linear term:
+    (sum over n of coefficient_n * variable_n) + constant
+    """
+
+    variables: tuple[Variable] #: Tuple of all variables of the term.
+    coefficients: tuple[float] #: Tuple of all coefficients of the term, must have the same length as the variables tuple.
+    constant: float #: Constant value of the term.
 
     def __repr__(self):
         assert len(self.variables) == len(self.coefficients)
@@ -332,18 +337,22 @@ class MultiConstraint:
 
 @dataclass(frozen=True, eq=False)
 class LessThanOrEqualsZero(Constraint):
-    """term <= 0"""
-    term: LinearTerm
+    """Inequality constraint of the form: term <= 0"""
+    term: LinearTerm #: Constrained term.
 
     def __eq__(self, other):
+        # To compare constraints, Term.same_as must be used rather than Term.__eq__.
+        # This comparison is very strict (e.g., a + b is not the same_as b + a).
         return type(self) == type(other) and self.term.same_as(other.term)
 
 @dataclass(frozen=True, eq=False)
 class EqualsZero(Constraint):
-    """term == 0"""
-    term: LinearTerm
+    """Equality constraint of the form: term == 0"""
+    term: LinearTerm #: Constrained term.
 
     def __eq__(self, other):
+        # To compare constraints, Term.same_as must be used rather than Term.__eq__.
+        # This comparison is very strict (e.g., a + b is not the same_as b + a).
         return type(self) == type(other) and self.term.same_as(other.term)
 
 @public
@@ -365,12 +374,17 @@ def constraints_to_Ab(constraints: list[Constraint], n_variables: int, idx_of_va
 
 @public
 class Solver:
-    def __init__(self, subgraph):
+    """
+    Collects and solves constraints for a set of :class:`ConstrainableAttr`
+    attributes of specified subgraph.
+    """
+    def __init__(self, subgraph: 'SubgraphRoot'):
         self.equalities = []
         self.inequalities = []
         self.subgraph = subgraph
 
     def constrain(self, constraint: Constraint|MultiConstraint):
+        """Add constraint that must be satisfied by the solution."""
         if isinstance(constraint, MultiConstraint):
             for elem in constraint.constraints:
                 self.constrain(elem)
@@ -382,6 +396,12 @@ class Solver:
             raise TypeError("constrain() expects LessThanOrEqualsZero or EqualsZero.")
 
     def solve(self):
+        """
+        Using linear programming, calculates a solution that satisfies all
+        specified constraints. The solution values are then written to all
+        affected :class:`ConstrainableAttr` attributes.
+        """
+
         from scipy.optimize import linprog
 
         variables = set()
@@ -401,7 +421,8 @@ class Solver:
 
         c = np.zeros(n_variables, dtype=np.float64)
         # (c * variables) is minimized. By subtracting each row of A_ub, the
-        # speicified 
+        # speicified inequalities are optimized towards equality. Each
+        # inequality is given the same weight in this process.
         for x in A_ub:
             c -= x
 
