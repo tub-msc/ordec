@@ -20,7 +20,7 @@ RUN python3 -m build .
 # Stage 2
 # -------
 
-FROM debian:bookworm AS ordec
+FROM debian:trixie AS ordec
 
 RUN useradd -ms /bin/bash app && \
     apt-get update && \
