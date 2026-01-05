@@ -4,6 +4,7 @@
 from typing import Self
 from functools import partial
 import re
+import threading
 from pyrsistent import freeze, PMap
 from public import public
 from .ordb import MutableNode
@@ -63,9 +64,11 @@ class generate(ViewGenerator):
         if obj is None: # for the class: return self
             return self
         else: # for instances: create view if not present yet, return view
-            if self not in obj.cached_subgraphs:
-                obj.cached_subgraphs[self] = self.func_eval(obj)    
-            return obj.cached_subgraphs[self]
+            # Thread-safe lazy evaluation: acquire lock before check-then-act
+            with obj.cached_results_lock:
+                if self not in obj.cached_results:
+                    obj.cached_results[self] = self.func_eval(obj)
+                return obj.cached_results[self]
 
     def __set__(self, cursor, value):
         raise TypeError("ViewGenerator cannot be set.")
@@ -90,13 +93,16 @@ class generate_func(ViewGenerator):
     def __init__(self, *args, **kwargs):
         self.result = None
         self.evaluated = False
+        self.lock = threading.RLock()  # Protect result/evaluated from concurrent access
         return super().__init__(*args, **kwargs)
 
     def __call__(self):
-        if not self.evaluated:
-            self.result = self.func_eval()
-            self.evaluated = True
-        return self.result
+        # Thread-safe lazy evaluation: acquire lock before check-then-act
+        with self.lock:
+            if not self.evaluated:
+                self.result = self.func_eval()
+                self.evaluated = True
+            return self.result
 
 @public
 class ParameterError(Exception):
@@ -197,6 +203,7 @@ class MetaCell(type):
 
     def __init__(cls, name, bases, attrs):
         cls.instances = {}
+        cls.instances_lock = threading.RLock()  # Protect instances dict from concurrent access
 
         attrs.setdefault('__annotations__', {})
         for k, v in cls._class_params.items():
@@ -250,15 +257,17 @@ class MetaCell(type):
     def __call__(cls, *args, **kwargs):
         #print(f"__call__ called with {cls}, {args}, {kwargs}")
 
-        params = cls._process_params(args, kwargs)        
+        params = cls._process_params(args, kwargs)
 
-        if params in cls.instances:
-            return cls.instances[params]
-        else:
-            obj = cls.__new__(cls, params)
-            cls.instances[params] = obj
-            cls.__init__(obj, params)
-            return obj
+        # Thread-safe singleton pattern: acquire lock before check-then-act
+        with cls.instances_lock:
+            if params in cls.instances:
+                return cls.instances[params]
+            else:
+                obj = cls.__new__(cls, params)
+                cls.instances[params] = obj
+                cls.__init__(obj, params)
+                return obj
 
 @public
 class Cell(metaclass=MetaCell):
@@ -272,7 +281,8 @@ class Cell(metaclass=MetaCell):
     """
     def __init__(self, params: PMap):
         self.params = params
-        self.cached_subgraphs = {}
+        self.cached_results = {}
+        self.cached_results_lock = threading.RLock()  # Protect cached_results from concurrent access
     
     @classmethod
     def params_preprocess(cls, args, kwargs):
