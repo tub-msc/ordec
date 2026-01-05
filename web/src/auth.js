@@ -18,11 +18,16 @@ export const session = {
 export async function authenticateLocalQuery(queryLocal, queryHmac) {
     let valid;
     if(session.authHmacBypass) {
-        // This workaround is **for the testing environment only**.
+        // SECURITY WARNING: This workaround is **for the testing environment only**.
         // For some reason, the localhost in the testing environment might
         // be treated as insecure origin, causing window.crypto.subtle to be
         // unavailable.
         // In this testing environment, CSRF is not an issue.
+        //
+        // This bypass should NEVER be enabled in production use.
+        // It can only be activated by setting localStorage.ordecHmacBypass,
+        // which requires same-origin access (not possible from external sites).
+        console.warn("SECURITY WARNING: HMAC bypass is enabled. This should only be used in testing environments.");
         valid = true;
     } else {
         const hmacAuthKeyCrypto = await window.crypto.subtle.importKey(
