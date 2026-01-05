@@ -64,6 +64,7 @@ from urllib.parse import urlparse, parse_qs, quote_plus
 import threading
 import signal
 import importlib
+from contextlib import contextmanager
 import importlib.resources
 import tarfile
 import secrets
@@ -130,14 +131,96 @@ def discover_views(conn_globals, recursive=True, modules_visited=None):
             
     return views
 
+class RWLock:
+    """
+    Readers-Writer lock with writer priority.
+
+    Multiple readers can acquire the lock simultaneously, but writers get
+    exclusive access. Writers have priority: when a writer is waiting, new
+    readers are blocked to prevent writer starvation.
+
+    Usage:
+        rwlock = RWLock()
+
+        with rwlock.read():
+            # Multiple threads can be here simultaneously
+            pass
+
+        with rwlock.write():
+            # Only one thread can be here, with exclusive access
+            pass
+    """
+    def __init__(self):
+        self._readers = 0           # Number of active readers
+        self._writers = 0           # Number of active writers (0 or 1)
+        self._waiting_writers = 0   # Number of writers waiting to acquire
+        self._lock = threading.Lock()  # Protects the counters
+        self._readers_ok = threading.Condition(self._lock)  # Readers wait here
+        self._writers_ok = threading.Condition(self._lock)  # Writers wait here
+
+    class _ReadContext:
+        """Context manager for read lock"""
+        def __init__(self, rwlock):
+            self.rwlock = rwlock
+
+        def __enter__(self):
+            with self.rwlock._lock:
+                # Wait if there are active writers or waiting writers (writer priority)
+                while self.rwlock._writers > 0 or self.rwlock._waiting_writers > 0:
+                    self.rwlock._readers_ok.wait()
+                self.rwlock._readers += 1
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            with self.rwlock._lock:
+                self.rwlock._readers -= 1
+                # If last reader leaving and writers are waiting, wake one
+                if self.rwlock._readers == 0 and self.rwlock._waiting_writers > 0:
+                    self.rwlock._writers_ok.notify()
+
+    class _WriteContext:
+        """Context manager for write lock"""
+        def __init__(self, rwlock):
+            self.rwlock = rwlock
+
+        def __enter__(self):
+            with self.rwlock._lock:
+                self.rwlock._waiting_writers += 1
+                # Wait until no readers and no writers
+                while self.rwlock._readers > 0 or self.rwlock._writers > 0:
+                    self.rwlock._writers_ok.wait()
+                self.rwlock._waiting_writers -= 1
+                self.rwlock._writers += 1
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            with self.rwlock._lock:
+                self.rwlock._writers -= 1
+                # Wake all waiting writers first (writer priority)
+                if self.rwlock._waiting_writers > 0:
+                    self.rwlock._writers_ok.notify()
+                else:
+                    # No waiting writers, wake all readers
+                    self.rwlock._readers_ok.notify_all()
+
+    def read(self):
+        """Returns a context manager for acquiring a read lock"""
+        return self._ReadContext(self)
+
+    def write(self):
+        """Returns a context manager for acquiring a write lock"""
+        return self._WriteContext(self)
+
 class ConnectionHandler:
     def __init__(self, key, sysmodules_orig):
         self.sysmodules_orig = set(sysmodules_orig.keys())
         self.key = key
-        self.import_lock = threading.Lock()
-        # import_lock is not perfect. Ideally, we would have a RW lock which
-        # ensure that no other thread is evaluating view requests when import_lock
-        # is acquired.
+        self.import_lock = RWLock()
+        # import_lock makes sure that there is never more than one thread in the
+        # initial build_cells / build_localmodule phase and that during this
+        # initial phase, no query_view operations are in process.
+        # In RWLock's logic, query_view is the resource reader and the initial
+        # build_cells / build_localmodule phase is the resource writer. 
 
     def query_view(self, view_name, conn_globals):
         msg_ret = {
@@ -146,7 +229,7 @@ class ConnectionHandler:
         }
 
         try:
-            with self.import_lock:
+            with self.import_lock.read():
                 view = eval(view_name, conn_globals, conn_globals)
                 viewtype, data = view.webdata()
             msg_ret['type'] = viewtype
@@ -161,9 +244,11 @@ class ConnectionHandler:
         if source_type == 'ord':
             # Having the import here enables auto-reloading of ord.
             code = compile(ord_to_py(source_data), "<string>", "exec")
-            exec(code, conn_globals, conn_globals)
+            with self.import_lock.write():
+                exec(code, conn_globals, conn_globals)
         elif source_type == 'python':
-            exec(source_data, conn_globals, conn_globals)
+            with self.import_lock.write():
+                exec(source_data, conn_globals, conn_globals)
         else:
             raise NotImplementedError(f'source_type {source_type} not implemented')
         return conn_globals
@@ -174,7 +259,7 @@ class ConnectionHandler:
         before the first build_cells or build_localmodule call. This ensures that
         re-imports read the sources freshly.
 
-        Only call this method with self.import_lock acquired.
+        Only call this method with self.import_lock acquired as writer.
         """
         for k in list(sys.modules.keys()):
             if k not in self.sysmodules_orig:
@@ -194,7 +279,7 @@ class ConnectionHandler:
         return ret
 
     def build_localmodule(self, localmodule: str):
-        with self.import_lock:
+        with self.import_lock.write():
             self.purge_modules()
             module = importlib.import_module(localmodule)
             conn_globals = module.__dict__
