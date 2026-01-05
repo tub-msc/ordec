@@ -308,10 +308,20 @@ def background_inotify(watch_files, pipe_inotify_abort_r, websocket, websocket_l
 def build_response(status: http.HTTPStatus=http.HTTPStatus.OK, mime_type: str='text/plain', data: bytes=None):
     if data is None:
         data = status.name.encode("ascii")
+
+    headers = {
+        "Content-Type": mime_type,
+        "Content-Length": str(len(data)),
+        # Security headers for defense-in-depth:
+        "X-Frame-Options": "DENY",  # Prevent clickjacking
+        "X-Content-Type-Options": "nosniff",  # Prevent MIME-sniffing
+        "Referrer-Policy": "no-referrer",  # Prevent token leakage in Referer header
+    }
+
     return Response(
         int(status),
         status.name,
-        Headers(**{"Content-Type": mime_type, "Content-Length": str(len(data)), }),
+        Headers(**headers),
         data,
     )
 
