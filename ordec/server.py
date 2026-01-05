@@ -231,18 +231,22 @@ class ConnectionHandler:
                 'exception': traceback.format_exc(),
             }))
             return
-    
+        
         websocket.send(json.dumps({
             'msg': 'viewlist',
             'views': discover_views(conn_globals),
         }))
+
+        # Create websocket send lock to prevent concurrent sends from corrupting messages
+        # (e.g., main thread sending view data while inotify thread sends change notification)
+        websocket_lock = threading.Lock()
 
         if watch_files:
             pipe_inotify_abort_r_fd, pipe_inotify_abort_w_fd = os.pipe()
             pipe_inotify_abort_r = os.fdopen(pipe_inotify_abort_r_fd, 'r')
             pipe_inotify_abort_w = os.fdopen(pipe_inotify_abort_w_fd, 'w')
             watch_thread = threading.Thread(target=background_inotify,
-                args=(watch_files, pipe_inotify_abort_r, websocket), daemon=True)
+                args=(watch_files, pipe_inotify_abort_r, websocket, websocket_lock), daemon=True)
             watch_thread.start()
         try:
             for msg_raw in websocket:
@@ -251,12 +255,13 @@ class ConnectionHandler:
                 view_name = msg['view']
 
                 msg_ret = self.query_view(view_name, conn_globals)
-                websocket.send(json.dumps(msg_ret))
+                with websocket_lock:
+                    websocket.send(json.dumps(msg_ret))
         finally:
             if watch_files:
                 pipe_inotify_abort_w.write("abort!")
                 pipe_inotify_abort_w.flush()
-                # "abort!" is just a dummy message to trigger select() and 
+                # "abort!" is just a dummy message to trigger select() and
                 # stop the inotify thread. See "Gracefully exit a blocking read()"
                 # in the inotify_simple documentation.
 
@@ -267,7 +272,7 @@ class ConnectionHandler:
 
         print(f"{remote}: websocket connection ended")
 
-def background_inotify(watch_files, pipe_inotify_abort_r, websocket):
+def background_inotify(watch_files, pipe_inotify_abort_r, websocket, websocket_lock):
     # This has be to a separate thread, because the file websocket.socket
     # is done in yet another separate thread. I would have preferred a single
     # thread per websocket that uses select.select. Now, we have three threads
@@ -289,7 +294,8 @@ def background_inotify(watch_files, pipe_inotify_abort_r, websocket):
             break
         if inotify in readable:
             for m in inotify.read(timeout=0):
-                websocket.send(json.dumps({'msg':'localmodule_changed'}))
+                with websocket_lock:
+                    websocket.send(json.dumps({'msg':'localmodule_changed'}))
                 # Currently multiple localmodule_changed messages are
                 # potentially sent to the client. Alternatively, the
                 # background_inotify thread could terminate after the first
