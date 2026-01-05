@@ -94,6 +94,7 @@ SPDX-License-Identifier = "CC0-1.0"
 # Documentation files:
 path = [
     "README.md",
+    "AGENTS.md",
     "docs/**/*.rst",
     "docs/**/*.svg",
     "docs/ref/ordb_demo.py",
