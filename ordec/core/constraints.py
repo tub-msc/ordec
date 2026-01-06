@@ -367,11 +367,11 @@ class UnderconstrainedError(SolverError):
     Attributes:
         ambiguity_info: Information about the degrees of freedom and null space
     """
-    def __init__(self, ambiguity_info: 'AmbiguityInfo', variables: tuple['Variable']):
+    def __init__(self, ambiguity_info: 'AmbiguityInfo'):
         self.ambiguity_info = ambiguity_info
         super().__init__(
             "System is underconstrained; solution is ambiguous.\n" +
-            ambiguity_info.describe_freedom(variables))
+            ambiguity_info.describe_freedom())
 
 @dataclass
 class AmbiguityInfo:
@@ -381,14 +381,14 @@ class AmbiguityInfo:
     This object is only created when the solution is NOT unique, indicating
     missing constraints that leave degrees of freedom.
     """
-    n_variables: int #: Total number of variables in the problem
+    variables: tuple[Variable] #: Variables in the problem
     constraint_rank: int #: Rank of the active constraint matrix
     degrees_of_freedom: int #: Number of remaining unconstrained degrees of freedom
     #: Null space basis vectors. Each column represents a direction
     #: in which the solution can vary while remaining optimal.
     null_space: np.ndarray
 
-    def describe_freedom(self, variables: tuple[Variable]) -> str:
+    def describe_freedom(self) -> str:
         """
         Generate a human-readable description of the degrees of freedom
         (i.e. which variables are underconstrained).
@@ -398,7 +398,7 @@ class AmbiguityInfo:
         for i in range(self.null_space.shape[1]):
             vec = self.null_space[:, i]
             # Find variables with significant coefficients in this null space vector
-            significant = [(var, coef) for var, coef in zip(variables, vec) if abs(coef) > 1e-6]
+            significant = [(var, coef) for var, coef in zip(self.variables, vec) if abs(coef) > 1e-6]
 
             if significant:
                 terms = [f"{coef:.3f}*{var}" for var, coef in significant]
@@ -406,7 +406,7 @@ class AmbiguityInfo:
 
         return '\n'.join(lines)
 
-def check_solution_uniqueness(res, A_eq, A_ub, b_ub, n_variables) -> AmbiguityInfo | None:
+def check_solution_uniqueness(res, A_eq, A_ub, b_ub, variables: tuple[Variable]) -> AmbiguityInfo | None:
     """
     Check if the linear programming solution is unique using rank analysis.
 
@@ -421,12 +421,14 @@ def check_solution_uniqueness(res, A_eq, A_ub, b_ub, n_variables) -> AmbiguityIn
         A_eq: Equality constraint matrix
         A_ub: Inequality constraint matrix
         b_ub: Inequality constraint bounds
-        n_variables: Number of variables
+        variables: Tuple of Variable objects in the problem
 
     Returns:
         None if solution is unique, AmbiguityInfo if solution has degrees of freedom
     """
     from scipy.linalg import null_space
+
+    n_variables = len(variables)
 
     # Build active constraint matrix
     active_parts = []
@@ -454,7 +456,7 @@ def check_solution_uniqueness(res, A_eq, A_ub, b_ub, n_variables) -> AmbiguityIn
     if active_matrix.shape[0] == 0:
         # No constraints - completely unconstrained
         return AmbiguityInfo(
-            n_variables=n_variables,
+            variables=variables,
             constraint_rank=0,
             degrees_of_freedom=n_variables,
             null_space=np.eye(n_variables)
@@ -468,7 +470,7 @@ def check_solution_uniqueness(res, A_eq, A_ub, b_ub, n_variables) -> AmbiguityIn
 
     # Solution is not unique!
     return AmbiguityInfo(
-        n_variables=n_variables,
+        variables=variables,
         constraint_rank=rank,
         degrees_of_freedom=dof,
         null_space=null_space(active_matrix, rcond=1e-10)
@@ -559,10 +561,10 @@ class Solver:
 
         # Check solution uniqueness unless explicitly allowed to be ambiguous
         if not allow_ambiguous:
-            ambiguity_info = check_solution_uniqueness(res, A_eq, A_ub, b_ub, n_variables)
+            ambiguity_info = check_solution_uniqueness(res, A_eq, A_ub, b_ub, variables)
 
             if ambiguity_info is not None:
-                raise UnderconstrainedError(ambiguity_info, variables)
+                raise UnderconstrainedError(ambiguity_info)
 
         value_of_var = {variable: int(value) for variable, value in zip(variables, res.x)}
 
