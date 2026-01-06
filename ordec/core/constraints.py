@@ -359,6 +359,20 @@ class EqualsZero(Constraint):
 class SolverError(Exception):
     pass
 
+@public
+class UnderconstrainedError(SolverError):
+    """
+    Raised when a constraint system is underconstrained (has multiple optimal solutions).
+
+    Attributes:
+        ambiguity_info: Information about the degrees of freedom and null space
+    """
+    def __init__(self, ambiguity_info: 'AmbiguityInfo', variables: tuple['Variable']):
+        self.ambiguity_info = ambiguity_info
+        super().__init__(
+            "System is underconstrained; solution is ambiguous.\n" +
+            ambiguity_info.describe_freedom(variables))
+
 @dataclass
 class AmbiguityInfo:
     """
@@ -548,9 +562,7 @@ class Solver:
             ambiguity_info = check_solution_uniqueness(res, A_eq, A_ub, b_ub, n_variables)
 
             if ambiguity_info is not None:
-                raise SolverError(
-                    f"System is underconstrained; solution is ambiguous.\n"
-                    + ambiguity_info.describe_freedom(variables))
+                raise UnderconstrainedError(ambiguity_info, variables)
 
         value_of_var = {variable: int(value) for variable, value in zip(variables, res.x)}
 

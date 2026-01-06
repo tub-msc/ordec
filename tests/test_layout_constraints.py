@@ -5,7 +5,7 @@ import pytest
 
 from ordec.core import *
 from ordec.lib.ihp130 import SG13G2
-from ordec.core.constraints import Variable, LinearTerm, Constraint, SolverError
+from ordec.core.constraints import Variable, LinearTerm, Constraint, UnderconstrainedError
 
 def test_equalities():
     layers = SG13G2().layers
@@ -31,20 +31,53 @@ def test_equalities():
     assert l.activ.rect == Rect4I(lx=100, ly=-100, ux=600, uy=50)
     assert l.poly.rect == Rect4I(lx=300, ly=-175, ux=400, uy=125)
 
-def test_underconstrained():
+def test_underconstrained_1():
     layers = SG13G2().layers
     l = Layout(ref_layers=layers)
 
     l.activ = LayoutRect(layer=layers.Activ)
-    
-    s = Solver(l)
 
+    s = Solver(l)
     s.constrain(l.activ.rect.width == 500)
     s.constrain(l.activ.rect.height == 150)
     s.constrain(l.activ.rect.lx == 100)
+    # Missing constraint for ly - system is underconstrained.
 
-    with pytest.raises(SolverError, match="underconstrained"):
+    with pytest.raises(UnderconstrainedError) as exc_info:
         s.solve()
+
+    err = exc_info.value
+    assert err.ambiguity_info.degrees_of_freedom == 1  # ly is free (and uy follows since height is fixed)
+    assert err.ambiguity_info.constraint_rank == 3  # 3 independent constraints
+    assert err.ambiguity_info.null_space.shape == (4, 1)  # 4 variables, 1 degree of freedom
+
+def test_underconstrained_2():
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers)
+
+    l.r1 = LayoutRect(layer=layers.Metal1)
+    l.r2 = LayoutRect(layer=layers.Metal1)
+    l.r3 = LayoutRect(layer=layers.Metal1)
+
+    s = Solver(l)
+
+    # l.r1.rect.lx not constrained.
+    s.constrain(l.r1.rect.ly == 0)
+    s.constrain(l.r1.rect.height >= 100)
+    s.constrain(l.r1.rect.width >= 200)
+
+    s.constrain(l.r2.rect.lx >= l.r1.rect.ux)
+    s.constrain(l.r2.rect.ly <= l.r1.rect.lx)
+    s.constrain(l.r2.rect.width == l.r2.rect.height)
+    # l.r2.rect.width and .height not properly constrained.
+
+    with pytest.raises(UnderconstrainedError) as exc_info:
+        s.solve()
+
+    err = exc_info.value
+    assert err.ambiguity_info.degrees_of_freedom == 2
+    assert err.ambiguity_info.constraint_rank == 6
+    assert err.ambiguity_info.null_space.shape == (8, 2) # 8 variables, 2 degree of freedom
 
 def test_inequalities():
     layers = SG13G2().layers
