@@ -137,6 +137,60 @@ When generating or modifying code:
   - References to external standards or documentation
   - Threading/synchronization concerns
 
+### Indentation and Formatting
+**Single-step indentation rule**: Indentation should never advance by more than one tab (4 spaces) between consecutive lines. This applies to:
+- All Python code (function definitions, class definitions, control structures, etc.)
+- Docstring continuation lines after field labels (`Args:`, `Returns:`, `Raises:`, parameter names)
+
+**Correct examples:**
+```python
+# Code indentation
+def example():
+    if condition:
+        result = some_function(
+            arg1,
+            arg2,
+            arg3
+        )
+
+# Docstring indentation
+def example_function(param1, param2):
+    """
+    Brief description of function.
+
+    Args:
+        param1: First parameter description that may span
+            multiple lines uses single tab for continuation.
+        param2: Second parameter.
+
+    Returns:
+        Description of return value that continues
+        on next line needs no additional tab.
+
+    Raises:
+        ValueError: When something goes wrong and this
+            description continues on next line.
+    """
+    pass
+```
+
+**Incorrect** (avoid multi-level indentation jumps):
+```python
+# DON'T DO THIS - Code:
+def example():
+    if condition:
+        result = some_function(
+                     arg1,  # Jumps too far
+                     arg2,
+                     arg3
+                 )
+
+# DON'T DO THIS - Docstrings:
+    Args:
+        param1: First parameter description that may span
+                multiple lines - DO NOT align with text above.
+```
+
 ## Architecture
 
 ### Core Data Model (ORDB)

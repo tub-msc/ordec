@@ -5,7 +5,7 @@ import pytest
 
 from ordec.core import *
 from ordec.lib.ihp130 import SG13G2
-from ordec.core.constraints import Variable, LinearTerm, Constraint
+from ordec.core.constraints import Variable, LinearTerm, Constraint, SolverError
 
 def test_equalities():
     layers = SG13G2().layers
@@ -30,6 +30,21 @@ def test_equalities():
 
     assert l.activ.rect == Rect4I(lx=100, ly=-100, ux=600, uy=50)
     assert l.poly.rect == Rect4I(lx=300, ly=-175, ux=400, uy=125)
+
+def test_underconstrained():
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers)
+
+    l.activ = LayoutRect(layer=layers.Activ)
+    
+    s = Solver(l)
+
+    s.constrain(l.activ.rect.width == 500)
+    s.constrain(l.activ.rect.height == 150)
+    s.constrain(l.activ.rect.lx == 100)
+
+    with pytest.raises(SolverError, match="underconstrained"):
+        s.solve()
 
 def test_inequalities():
     layers = SG13G2().layers

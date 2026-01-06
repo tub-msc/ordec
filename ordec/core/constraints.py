@@ -359,6 +359,107 @@ class EqualsZero(Constraint):
 class SolverError(Exception):
     pass
 
+@dataclass
+class AmbiguityInfo:
+    """
+    Information about solution ambiguity when multiple optimal solutions exist.
+
+    This object is only created when the solution is NOT unique, indicating
+    missing constraints that leave degrees of freedom.
+    """
+    n_variables: int #: Total number of variables in the problem
+    constraint_rank: int #: Rank of the active constraint matrix
+    degrees_of_freedom: int #: Number of remaining unconstrained degrees of freedom
+    #: Null space basis vectors. Each column represents a direction
+    #: in which the solution can vary while remaining optimal.
+    null_space: np.ndarray
+
+    def describe_freedom(self, variables: tuple[Variable]) -> str:
+        """
+        Generate a human-readable description of the degrees of freedom
+        (i.e. which variables are underconstrained).
+        """
+        lines = [f"{self.degrees_of_freedom} degree(s) of freedom remaining:"]
+
+        for i in range(self.null_space.shape[1]):
+            vec = self.null_space[:, i]
+            # Find variables with significant coefficients in this null space vector
+            significant = [(var, coef) for var, coef in zip(variables, vec) if abs(coef) > 1e-6]
+
+            if significant:
+                terms = [f"{coef:.3f}*{var}" for var, coef in significant]
+                lines.append(f"  Direction {i+1}: {' + '.join(terms)} can vary freely.")
+
+        return '\n'.join(lines)
+
+def check_solution_uniqueness(res, A_eq, A_ub, b_ub, n_variables) -> AmbiguityInfo | None:
+    """
+    Check if the linear programming solution is unique using rank analysis.
+
+    Builds the active constraint matrix (equality constraints plus inequality
+    constraints with zero slack) and computes its rank. If the rank equals
+    the number of variables, the solution is unique and None is returned.
+    Otherwise, computes the null space to identify directions of freedom and
+    returns an AmbiguityInfo object.
+
+    Args:
+        res: Result from scipy.optimize.linprog
+        A_eq: Equality constraint matrix
+        A_ub: Inequality constraint matrix
+        b_ub: Inequality constraint bounds
+        n_variables: Number of variables
+
+    Returns:
+        None if solution is unique, AmbiguityInfo if solution has degrees of freedom
+    """
+    from scipy.linalg import null_space
+
+    # Build active constraint matrix
+    active_parts = []
+
+    # Equality constraints are always active
+    if A_eq.size > 0:
+        active_parts.append(A_eq)
+
+    # Find inequality constraints that are active (slack ≈ 0)
+    if A_ub.size > 0:
+        slack = b_ub - A_ub @ res.x
+        tolerance = 1e-7
+        active_mask = np.abs(slack) < tolerance
+
+        if np.any(active_mask):
+            active_parts.append(A_ub[active_mask])
+
+    # Build active constraint matrix
+    if active_parts:
+        active_matrix = np.vstack(active_parts)
+    else:
+        # No active constraints - completely unconstrained
+        active_matrix = np.zeros((0, n_variables), dtype=np.float64)
+
+    if active_matrix.shape[0] == 0:
+        # No constraints - completely unconstrained
+        return AmbiguityInfo(
+            n_variables=n_variables,
+            constraint_rank=0,
+            degrees_of_freedom=n_variables,
+            null_space=np.eye(n_variables)
+        )
+
+    # Compute rank of active constraints
+    rank = np.linalg.matrix_rank(active_matrix, tol=1e-10)
+    dof = max(0, n_variables - rank)
+    if dof == 0:
+        return None # Solution is unique!
+
+    # Solution is not unique!
+    return AmbiguityInfo(
+        n_variables=n_variables,
+        constraint_rank=rank,
+        degrees_of_freedom=dof,
+        null_space=null_space(active_matrix, rcond=1e-10)
+    )
+
 def constraints_to_Ab(constraints: list[Constraint], n_variables: int, idx_of_var: dict[Variable,int]):
     A = np.zeros((len(constraints), n_variables), dtype=np.float64)
     b = np.zeros(len(constraints), dtype=np.float64)
@@ -395,11 +496,21 @@ class Solver:
         else:
             raise TypeError("constrain() expects LessThanOrEqualsZero or EqualsZero.")
 
-    def solve(self):
+    def solve(self, allow_ambiguous: bool=False):
         """
         Using linear programming, calculates a solution that satisfies all
         specified constraints. The solution values are then written to all
         affected :class:`ConstrainableAttr` attributes.
+
+        Args:
+            allow_ambiguous: If False (default), checks that the solution is unique.
+                Raises SolverError if multiple optimal solutions exist,
+                indicating missing constraints. If True, skips uniqueness
+                checking and allows ambiguous solutions.
+
+        Raises:
+            SolverError: If the LP solver fails, or if allow_ambiguous=False and
+                the solution is not unique (has degrees of freedom).
         """
 
         from scipy.optimize import linprog
@@ -431,6 +542,15 @@ class Solver:
 
         if not res.success:
             raise SolverError(res.message)
+
+        # Check solution uniqueness unless explicitly allowed to be ambiguous
+        if not allow_ambiguous:
+            ambiguity_info = check_solution_uniqueness(res, A_eq, A_ub, b_ub, n_variables)
+
+            if ambiguity_info is not None:
+                raise SolverError(
+                    f"System is underconstrained; solution is ambiguous.\n"
+                    + ambiguity_info.describe_freedom(variables))
 
         value_of_var = {variable: int(value) for variable, value in zip(variables, res.x)}
 
