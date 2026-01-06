@@ -20,8 +20,9 @@ This page lists related open-source projects.
   - focus on PCB design
 
 - `Qucs <https://qucs.sourceforge.net/index.html>`_: Quite universal circuit simulator
-- `Qucs-S <https://ra3xdh.github.io/>`_ Qucs with SPICE
+- `Qucs-S <https://ra3xdh.github.io/>`_: Qucs with SPICE
 - `Xic <http://www.wrcad.com/xictools/index.html>`_
+- `Revolution EDA <https://reveda.eu/>`_: symbol, schematic & layout editing, new project (2023)
   
 **Textual Schematic Capture:**
 
@@ -54,6 +55,7 @@ This page lists related open-source projects.
 
 - `Magic <http://opencircuitdesign.com/magic/>`_: Famous layout tool by John Ousterhout, first release 1983.
 - `Xic <http://www.wrcad.com/xictools/index.html>`_
+- `Revolution EDA <https://reveda.eu/>`_: symbol, schematic & layout editing, new project (2023)
 
 **Textual Layout Generation:**
 
