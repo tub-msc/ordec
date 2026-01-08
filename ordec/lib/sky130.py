@@ -19,7 +19,14 @@ def pdk() -> PdkDict:
         root = os.environ["ORDEC_PDK_SKY130A"]
     except KeyError:
         raise Exception("PDK requires environment variable ORDEC_PDK_SKY130A to be set.")
-    pdk = PdkDict(root=check_dir(Path(root).resolve()))
+    root_path = Path(root).resolve()
+    if not (root_path / "libs.tech").is_dir():
+        for candidate in ("sky130A", "sky130B"):
+            candidate_path = root_path / candidate
+            if (candidate_path / "libs.tech").is_dir():
+                root_path = candidate_path
+                break
+    pdk = PdkDict(root=check_dir(root_path))
 
     corners = ['ff', 'fs', 'leak', 'sf', 'ss', 'tt', 'wafer']
     pdk.ngspice_deck = {
