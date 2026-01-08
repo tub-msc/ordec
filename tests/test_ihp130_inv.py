@@ -44,10 +44,10 @@ class Inv(Cell):
         s.pd = SchemInstance(nmos.portmap(s=s.vss, b=s.vss, g=s.a, d=s.y), pos=(3, 2))
         s.pu = SchemInstance(pmos.portmap(s=s.vdd, b=s.vdd, g=s.a, d=s.y), pos=(3, 8))
 
-        s.vdd % SchemPort(pos=(2, 13), align=Orientation.East, ref=self.symbol.vdd)
-        s.vss % SchemPort(pos=(2, 1), align=Orientation.East, ref=self.symbol.vss)
-        s.a % SchemPort(pos=(1, 7), align=Orientation.East, ref=self.symbol.a)
-        s.y % SchemPort(pos=(9, 7), align=Orientation.West, ref=self.symbol.y)
+        s.vdd % SchemPort(pos=(2, 13), align=Orientation.East)
+        s.vss % SchemPort(pos=(2, 1), align=Orientation.East)
+        s.a % SchemPort(pos=(1, 7), align=Orientation.East)
+        s.y % SchemPort(pos=(9, 7), align=Orientation.West)
         
         schematic_routing(s)
 
