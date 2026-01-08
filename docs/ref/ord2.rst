@@ -20,13 +20,115 @@ ORD2 Contexts
 
 The dotted syntax of ORD, which accesses the parent element, requires having a reference to the parent element. This structure therefore necessitates that statements and expressions inside a context block have a reference to the parent even after transformation of ORD back to Python. This logic is implemented with the so-called :class:`OrdContext`. It uses the Python with environment together with a context variable :class:`ContextVar` to always maintain a reference without requiring information about the parent during transformation. With ORD, we try to keep the transformation logic as minimal as possible and leverage the power of Python to supply the necessary constructs during execution.
 
-.. code-block:: python
+.. code-block::
 
 	# Type 1
 	port xyz:
 		.pos=(1,2)
 	# Type 2
 	port xyz(.pos=(1,2)
+
+To present how the context works and how the conversion between ORD to Python looks like please look at the following two examples. Every time a context element (example: viewgen, port or a schematic instance) is defined, the element is saved as a local variable and the context is opened. The dotted
+access is converted into a `ctx.root`. If multiple dots are written before the identifier the dots are
+converted to `ctx.root(.parent)*`.
+
+**ORD code**
+
+.. code-block:: 
+
+	cell Inv:
+	    viewgen symbol:
+	        inout vdd(.align=Orientation.North)
+	        inout vss(.align=Orientation.South)
+	        input a(.align=Orientation.West)
+	        output y(.align=Orientation.East)
+
+	    viewgen schematic:
+	        port vdd(.pos=(2,13); .align=Orientation.North)
+	        port vss(.pos=(2,1); .align=Orientation.South)
+	        port y (.pos=(9,7); .align=Orientation.West)
+	        port a (.pos=(1,7); .align=Orientation.East)
+
+	        Nmos pd:
+	            .s -- vss
+	            .b -- vss
+	            .d -- y
+	            .pos = (3,2)
+	            .$l = 400n
+	        Pmos pu:
+	            .s -- vdd
+	            .b -- vdd
+	            .d -- y
+	            .pos = (3,8)
+	            .$l = 400n
+
+	        pd.$l = 350u
+
+	        for instance in pu, pd:
+	            instance.g -- a
+
+
+**Python code**
+
+.. code-block:: python
+
+	class Inv(Cell):
+	    @generate
+	    def symbol(self) -> Symbol:
+	        with OrdContext(root=Symbol(cell=self), parent=self):
+	            vdd = ctx.add(('vdd',), Pin(pintype=PinType.Inout))
+	            with OrdContext(root=vdd):
+	                ctx.root.align = Orientation.North
+	            vss = ctx.add(('vss',), Pin(pintype=PinType.Inout))
+	            with OrdContext(root=vss):
+	                ctx.root.align = Orientation.South
+	            a = ctx.add(('a',), Pin(pintype=PinType.In))
+	            with OrdContext(root=a):
+	                ctx.root.align = Orientation.West
+	            y = ctx.add(('y',), Pin(pintype=PinType.Out))
+	            with OrdContext(root=y):
+	                ctx.root.align = Orientation.East
+	            return ctx.symbol_postprocess()
+
+	    @generate
+	    def schematic(self) -> Schematic:
+	        with OrdContext(root=Schematic(cell=self, symbol=self.symbol), parent=self):
+	            vss = ctx.add_port(('vss',))
+	            with OrdContext(root=vss):
+	                ctx.root.pos = (2,1)
+	                ctx.root.align = Orientation.South
+	            vdd = ctx.add_port(('vdd',))
+	            with OrdContext(root=vdd):
+	                ctx.root.pos = (2,13)
+	                ctx.root.align = Orientation.North
+	            y = ctx.add_port(('y',))
+	            with OrdContext(root=y):
+	                ctx.root.pos = (9,7)
+	                ctx.root.align = Orientation.West
+	            a = ctx.add_port(('a',))
+	            with OrdContext(root=a):
+	                ctx.root.pos = (1,7)
+	                ctx.root.align = Orientation.East
+	      
+	            pd = ctx.add(('pd',), SchemInstanceUnresolved(resolver = lambda **params: Nmos(**params).symbol))
+	            with OrdContext (root=pd):
+	                ctx.root.s.__wire_op__(vss.ref)
+	                ctx.root.b.__wire_op__(vss.ref)
+	                ctx.root.d.__wire_op__(y.ref)
+	                ctx.root.pos = (3,2)
+	                ctx.root.params.l = R('400n')
+
+	            pu = ctx.add(('pu',), SchemInstanceUnresolved(resolver = lambda **params: Pmos(**params).symbol))
+	            with OrdContext (root=pu):
+	                ctx.root.s.__wire_op__(vdd.ref)
+	                ctx.root.b.__wire_op__(vdd.ref)
+	                ctx.root.d.__wire_op__(y.ref)
+	                ctx.root.pos = (3,8)
+	                ctx.root.params.l = R('400n')
+	                
+	            for instance in pu, pd:
+	                instance.g.__wire_op__(a.ref)
+	            return ctx.schematic_postprocess()
 
 
 The following summary shows the must important functions and classes of ORD2 please, refer to the Python codebase for more background information and details
