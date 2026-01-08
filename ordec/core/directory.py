@@ -99,7 +99,7 @@ class Directory:
         if node.npath_nid is None:
             basename = f"__nid{node.nid}"
         else:
-            basename = "_".join(node.full_path_list())
+            basename = "_".join([str(e) for e in node.full_path_list()])
             basename = re.sub(r"[^a-zA-Z0-9]", "_", basename).lower()
 
         basename = prefix + basename
