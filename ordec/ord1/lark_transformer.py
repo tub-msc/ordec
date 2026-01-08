@@ -30,6 +30,9 @@ PORT_OFFSET_X_DEFAULT = 0
 STRUCTURED_LIOP = True
 
 class OrdecTransformer(Transformer):
+    """
+    Transform the ORD code to ORDeC Python code
+    """
     def __init__(self):
         # port refs, Layout: name = (position_x, position_y)
         self.port_positions = dict()

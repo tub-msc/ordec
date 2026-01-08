@@ -15,8 +15,10 @@ def load_ord_from_string(ord_string):
     """
     Function which parses an ORD string and returns the parsed result.
 
-    :param ord_string: string containing ORD code
-    :return: ast of the parsed string
+    Args:
+        ord_string (str): string containing ORD code
+    Returns:
+        ast.AST: ast of the parsed string
     """
     # Load the grammar file
     parser = Lark.open_from_package(__name__, "ord_grammar.lark", parser="lalr", lexer="basic", postlex=TreeIndenter())
@@ -41,7 +43,8 @@ def ord1_to_py(source_data: str) -> ast.Module:
     """
     Compile ORD to Python
 
-    :param source_data: ORD source code
+    Args:
+        source_data (str) : ORD source code
     """
     module = ast.parse(
         "from ordec.core import *\n" +

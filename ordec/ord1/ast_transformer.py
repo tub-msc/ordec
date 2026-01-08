@@ -10,12 +10,13 @@ from ..ord1.ast_conversion import convert_to_ast_assignment, convert_to_ast_name
     convert_to_ast_constant, convert_to_ast_tuple_load, convert_to_ast_keyword, convert_to_ast_dict, \
     convert_to_ast_attribute_load, convert_to_ast_function_def
 
-
 def flatten_list(nested_list):
     """
     Function which flattens a nested list on one level
-    :param nested_list: list to be flattened
-    :returns: flat list
+    Args:
+        nested_list (list): list to be flattened
+    Returns: 
+        list: flattened list
     """
     flat_list = []
     for sub_element in nested_list:
@@ -35,8 +36,12 @@ class SchematicModifier(ast.NodeTransformer):
         """
         Function which modifies the function_def ast
         -   Add missing statements which where not possible to add on the first transformation
-        :param node: current ast node
-        :returns: converted node
+        
+        Args:
+            node (ast.Node): current function node
+        
+        Returns:
+            ast.Node: converted function node
         """
         if node.name == "schematic":
 
@@ -131,8 +136,10 @@ class SchematicModifier(ast.NodeTransformer):
     def visit_ClassDef(self, node):
         """
         Function which modifies the class def of cell by adding the dc simulation
-        :param node: current ast node
-        :returns: converted node
+        Args:
+            node (ast.Node): current class node
+        Returns:
+            ast.Node: converted class node
         """
         node_init = ast.Assign(
             targets=[ast.Name(id='node', ctx=ast.Store())],

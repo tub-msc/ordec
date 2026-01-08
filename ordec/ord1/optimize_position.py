@@ -175,16 +175,18 @@ def get_pos_with_constraints(constraints, instances):
     Information which we need to calculate the position:
         - instance list (keyword (if instance not port), type)
         - constrain (first_input, second_input, offset)
-        --> if a input is a tuple with multiple entries, it is a child of a instance not a port
+        - if a input is a tuple with multiple entries, it is a child of a instance not a port
     How to calculate the positions:
         - First setup everything in their own column (for loop)
         - Maybe reserve the first column for ports and put them there in rows
-            --> Then look at the constraints, if there is one above each other
-                pop from column and place below/above it
-            --> if left or right just swap in the column section
-    :param constraints: the constraints from the parsing
-    :param instances: instances with (name, type, size)
-    :returns instance_positions: dict of instances with their position
+            - Then look at the constraints, if there is one above each other pop from column and place below/above it
+            - if left or right just swap in the column section
+
+    Args:
+        constraints (list): the constraints from the parsing
+        instances (tuple): instances with (name, type, size)
+    Returns:
+        dict: instances with their position
     """
     G = Geo()
     # maps names to geo elements

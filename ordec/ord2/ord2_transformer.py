@@ -10,6 +10,11 @@ from .python_transformer import PythonTransformer
 
 
 class Ord2Transformer(PythonTransformer):
+    """
+    The Ord2Transformer handles Ord specific sytnax and converts it
+    back to valid Python ORDeC code. It inherits from the PythonTransformer
+    for full support of the Python syntax. 
+    """
 
     @staticmethod
     def ast_name(identifier, ctx=ast.Load()):
@@ -29,7 +34,7 @@ class Ord2Transformer(PythonTransformer):
             bases=[base],
             keywords=[],
             body=suite,
-            decorator_list=[self.ast_name("public")],
+            decorator_list=[], #self.ast_name("public")
             type_params=[]
         )
 

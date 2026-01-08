@@ -20,8 +20,11 @@ class PostProcess:
 def symbol_process(node):
     """
     Function which adds node transformations to the symbol function
-    :param node: current node instance
-    :returns: None
+
+    Args:
+        node (: current node instance
+    Returns:
+        None
     """
     helpers.symbol_place_pins(node, vpadding=2, hpadding=2)
 
@@ -29,11 +32,14 @@ def symbol_process(node):
 def preprocess(self, node, outline, port_positions):
     """
     Function which preprocesses the schematic transformation
-    :param self: self cell reference
-    :param node: current node instance
-    :param outline: outline parameters of the schematic
-    :param port_positions: port ref dictionary
-    :returns: None
+
+    Args:
+        self (Cell): self cell reference
+        node (Node): current node instance
+        outline (Vec2R): outline parameters of the schematic
+        port_positions (dict): port ref dictionary
+    Returns:
+        None
     """
     """Add ref to symbol"""
     node.symbol = self.symbol
@@ -63,11 +69,14 @@ def preprocess(self, node, outline, port_positions):
 def add_positions_from_constraints(constraints, outline, called_instances, node):
     """
     Add positions from constraints if the user defined them
-    :param constraints: constraints as a list of tuples
-    :param outline: outline coordinates
-    :param called_instances: instances in the schematic
-    :param node: current node
-    :returns: None
+
+    Args:
+        constraints (list): constraints as a list of tuples
+        outline (Vec2R): outline coordinates
+        called_instances (dict): instances in the schematic
+        node (Node): current node
+    Returns:
+        None
     """
     positioned_instances = set()
     # check if not just a net for branching
@@ -110,9 +119,12 @@ def add_positions_from_constraints(constraints, outline, called_instances, node)
 def prelim_to_real_instance(called_instances, node):
     """
     Convert preliminary to real instances
-    :param called_instances: schematic instances
-    :param node: current node
-    :returns: None
+
+    Args:
+        called_instances (dict): schematic instances
+        node (Node): current node
+    Returns:
+        None
     """
     for _, prelim_instance in called_instances.items():
         if prelim_instance is not None:
@@ -122,8 +134,11 @@ def adjust_outline_after_instanciation(node, outline):
     """
     Adjust the outline according to the schematic instances
 
-    :param node: node instance
-    :param outline: current outline
+    Args:
+        node (Node): node instance
+        outline (Vec2R): current outline
+    Returns:
+        Vec2R: Converted outline
     """
     for instance in node.all(SchemInstance):
         instance_transform = instance.loc_transform()
@@ -138,11 +153,14 @@ def adjust_outline_after_instanciation(node, outline):
 def postprocess(self, node, outline, postprocess_data: PostProcess):
     """
     Function which postprocesses the schematic transformation
-    :param self: self cell reference
-    :param node: current node instance
-    :param outline: outline of the grid
-    :param postprocess_data: dataclass for postprocess
-    :returns: None
+
+    Args:
+        self (Cell): self cell reference
+        node (Node): current node instance
+        outline (Vec2R): outline of the grid
+        postprocess_data (Postprocess): dataclass for postprocess
+    Returns:
+        None
     """
     # Convert preliminary instances to real instances
     prelim_to_real_instance(postprocess_data.called_instances,

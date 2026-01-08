@@ -7,7 +7,8 @@ import ast
 
 class PythonTransformer(Transformer):
     """
-    Transformer that transforms parsed Python code back into a Python AST.
+    Transformer that transforms any Python code back into a Python AST.
+    This Class represents the base of the ORD language
     """
 
     # Variables
