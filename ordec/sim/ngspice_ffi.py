@@ -232,6 +232,9 @@ class NgspiceFFI(NgspiceBase):
                     if should_flush:
                         self._flush_buffer()
                         self._last_buffer_flush_time = current_time
+                        if self.debug:
+                            self._debug_flush_count += 1
+                            self._debug_points_flushed += len(self._data_buffer)
             else:
                 data_point = self._process_data_point(vec_data, vec_count, current_time)
                 if data_point:
@@ -273,11 +276,14 @@ class NgspiceFFI(NgspiceBase):
             signal_kinds = {}
             for vec_name in data_points:
                 if vec_name != "time":
-                    vec_info = self._get_vector_info(vec_name)
-                    if vec_info:
-                        signal_kinds[vec_name] = SignalKind.from_vtype(
-                            int(vec_info.v_type)
-                        )
+                    kind = self._vector_kind_cache.get(vec_name)
+                    if kind is None:
+                        vec_info = self._get_vector_info(vec_name)
+                        if vec_info:
+                            kind = SignalKind.from_vtype(int(vec_info.v_type))
+                            self._vector_kind_cache[vec_name] = kind
+                    if kind:
+                        signal_kinds[vec_name] = kind
 
             return {
                 "timestamp": current_time,
@@ -303,6 +309,9 @@ class NgspiceFFI(NgspiceBase):
 
         for data_point in self._data_buffer:
             self._send_data_point(data_point)
+
+        if self.debug:
+            self._debug_points_flushed += len(self._data_buffer)
 
         self._data_buffer.clear()
 
@@ -369,6 +378,8 @@ class NgspiceFFI(NgspiceBase):
 
             if is_not_running and self._buffer_enabled:
                 self._flush_buffer()
+                if self.debug:
+                    self._debug_flush_count += 1
 
         except Exception:
             if self.debug:
@@ -523,7 +534,7 @@ class NgspiceFFI(NgspiceBase):
 
         return result
 
-    def _setup_async_parameters(self, buffer_size: int = 10, disable_buffering: bool = False):
+    def _setup_async_parameters(self, buffer_size: int = 10, disable_buffering: bool = True):
         self._buffer_size = buffer_size
         self._buffer_enabled = not disable_buffering
         self._data_buffer = []
@@ -533,6 +544,11 @@ class NgspiceFFI(NgspiceBase):
         self._fallback_executed = False
         self._normal_callbacks_received = 0
         self._simulation_start_time = time.time()
+        # Debug counters to observe async behavior; reset per run.
+        self._debug_flush_count = 0
+        self._debug_points_flushed = 0
+        # Cache vector kinds to avoid repeated ngspice queries per sample.
+        self._vector_kind_cache: dict[str, SignalKind] = {}
 
     def _parse_tstop_parameter(self, tstop):
         if tstop is not None:
@@ -551,7 +567,7 @@ class NgspiceFFI(NgspiceBase):
         return " ".join(cmd_args_list)
 
     def tran_async(
-        self, tstep, tstop=None, *extra_args, buffer_size: int = 10, disable_buffering: bool = False, fallback_sampling_ratio: int = 100
+        self, tstep, tstop=None, *extra_args, buffer_size: int = 10, disable_buffering: bool = True, fallback_sampling_ratio: int = 100
     ) -> "queue.Queue[dict]":
         self._setup_async_parameters(buffer_size, disable_buffering)
         self._fallback_sampling_ratio = fallback_sampling_ratio
@@ -561,7 +577,7 @@ class NgspiceFFI(NgspiceBase):
         cmd_args = self._build_tran_command(tstep, tstop, extra_args)
         self.command(f"bg_tran {cmd_args}")
 
-        simulation_started = self._wait_for_simulation_start(timeout=5.0)
+        simulation_started = self._wait_for_simulation_start(timeout=10.0)
         if not simulation_started:
             raise NgspiceError("Background simulation failed to start")
 
@@ -749,7 +765,7 @@ class NgspiceFFI(NgspiceBase):
                     logging.debug("Fallback traceback: %s", traceback.format_exc())
                 raise
 
-    def _wait_for_simulation_start(self, timeout: float) -> bool:
+    def _wait_for_simulation_start(self, timeout: float = 10.0) -> bool:
         timeout_time = time.time() + timeout
         simulation_started = False
 
