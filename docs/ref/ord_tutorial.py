@@ -64,7 +64,7 @@ cell Inv:
 
 # ## 2. Viewgen
 # 
-# Cell specific functions described by the ORDB format are always defined using the `viewgen` keyword. 
+# Cell specific generator functions described by the ORDeC datascheme are defined using the `viewgen` keyword. 
 # They can be simulation views, schematics, symbols or layouts. Currently **schematics** and **symbols** are fully
 # implemented in the ORD language! 
 
@@ -76,8 +76,8 @@ cell Inv:
 # -
 
 # The view can be displayed with a simple function call. In the case of a symbol the resulting
-# symbol gets displayed. But you don't need to worry about how you execute the ORD code yourself.
-# Just use ORDeC's built-in web-interface! You can select the different views in the drop-down menu.
+# symbol gets displayed. But you don't need to worry about how to execute the ORD code yourself.
+# Just use ORDeC's built-in web-interface {doc}`../webui`!
 
 Inv().symbol 
 
@@ -147,7 +147,7 @@ Inv().schematic
 # or also **dotted notation**. Whenever an ORD specific element is defined a **context** gets opened.
 # This context can be defined with the braces like `port vdd()` or with the colon plus an indent `Nmos pd:`.
 # Those definitions are identical in the ORD language.
-# Everything below inside this context can reference the parent object by using a leading `.`. The contexts 
+# Everything inside this context can reference the parent object by using a leading `.`. The contexts 
 # are hierarcically structured so even mulitiple leading dots are possible to access parent contexts.
 #
 # ```python
@@ -169,12 +169,11 @@ Inv().schematic
 # Ports defined in the symbol must be placed in the schematic aswell. This is done using the `port` keyword,
 # the name of the port `vdd` and the attributes position and align.
 
-
 # ### 4.3 Subcells
 #
 # Subcells are the key components in the design of the schematic, they must be imported from the file
 # system using a normal Python-style import `from ordec.lib.generic_mos import Nmos, Pmos`. Those imported
-# cells can be ORD or Python based cells. 
+# cells can be ORD or Python based. 
 
 # ### 4.4 Connections
 #
@@ -183,7 +182,7 @@ Inv().schematic
 
 # ### 4.5 Nets
 #
-# In the case of the inverter every port is only instance inside the schematic is connected to a port.
+# In the case of the inverter every instance inside the schematic is connected to a port.
 # But other designs might require connections between subcells or also branches. This logic can be implemented
 # by internal `nets`. The **Nand** is an example circuit where a net is needed to connected the two Nmos transistors.
 
@@ -251,7 +250,7 @@ cell MultibitReg_ArrayOfStructs:
 # -
 
 # Parameters for subcells are set using the dollar `$` operator.
-# In this case we set the length `l` to 100n and the width `w` to 200n.
+# In this case we set the length of the transistors `l` to 100n and the width `w` to 200n.
 # ORD supports all common SI suffixes for cell parameters
 # (a=atto, f=femto, n=nano, u=micro, m=milli, k=kilo, M=Mega, G=Giga, T=Terra)
 
@@ -320,8 +319,12 @@ Inv().symbol
 #
 # Every module written in ORD can be imported like a normal Python file through the ORD importer!
 
+# +
+# Get the ORDeC importer
 import ordec.importer
+# Import your ORD file!
 import ordec.lib.ord2_test.inverter
+# -
 
 # ## 7. ORD version
 #
@@ -331,3 +334,7 @@ import ordec.lib.ord2_test.inverter
 # +
 # -*- version: ord2 -*-
 # -
+
+# I hope this short tutorial gave you some insights on how to get started
+# writing ORD code! Feel free to check out the ORD examples `ordec.lib.ord2_test` for more information. 
+# Happy ORD coding!
