@@ -23,12 +23,7 @@ def pdk() -> PdkDict:
         root = os.environ["ORDEC_PDK_IHP_SG13G2"]
     except KeyError:
         raise Exception("PDK requires environment variable ORDEC_PDK_IHP_SG13G2 to be set.")
-    root_path = Path(root).resolve()
-    if not (root_path / "libs.tech").is_dir():
-        candidate_path = root_path / "ihp-sg13g2"
-        if (candidate_path / "libs.tech").is_dir():
-            root_path = candidate_path
-    pdk = PdkDict(root=check_dir(root_path))
+    pdk = PdkDict(root=check_dir(Path(root).resolve()))
 
     pdk.ngspice_models_dir       =  check_dir(pdk.root / "libs.tech/ngspice/models")
     pdk.ngspice_osdi_dir         =  check_dir(pdk.root / "libs.tech/ngspice/osdi")

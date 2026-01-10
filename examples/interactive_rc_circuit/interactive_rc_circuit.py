@@ -50,6 +50,10 @@ class InteractiveRCCircuit(Cell):
 
 
 class InteractiveSimulation:
+    PLOT_THROTTLE_SECONDS = 1.0 / 60.0
+    DATA_THROTTLE_SECONDS = 1.0 / 60.0
+    DATA_MAX_READS_PER_CYCLE = 200
+
     def __init__(self, circuit, plot_widget, vdc_slider, plot_all_signals=False):
         self.circuit = circuit
         self.plot_widget = plot_widget
@@ -68,6 +72,7 @@ class InteractiveSimulation:
         self._vcd_signal_chars = {}
         self._vcd_header_buffer = []
         self._vcd_initial_values = []
+        self._last_plot_time = 0.0
         self.vdc_slider.observe(self._on_voltage_change, names="value")
 
     def _on_voltage_change(self, change):
@@ -169,8 +174,12 @@ class InteractiveSimulation:
                         break
 
                     time_point = data["time"]
+                    now = time.time()
+                    plot_this_point = (
+                        now - self._last_plot_time >= self.PLOT_THROTTLE_SECONDS
+                    )
 
-                    if self.plot_all_signals:
+                    if self.plot_all_signals and plot_this_point:
                         for signal_name, signal_value in data.items():
                             if signal_name == "time":
                                 continue
@@ -203,7 +212,7 @@ class InteractiveSimulation:
                             self.plot_widget.add_points(
                                 signal_name, [time_point], [signal_value]
                             )
-                    else:
+                    elif plot_this_point:
                         vin_voltage = None
                         vout_voltage = None
 
@@ -230,6 +239,8 @@ class InteractiveSimulation:
                         self.plot_widget.add_points(
                             "vout", [time_point], [vout_voltage]
                         )
+                    if plot_this_point:
+                        self._last_plot_time = now
 
                     await asyncio.sleep(0.01)
 
@@ -248,6 +259,8 @@ class InteractiveSimulation:
 
         data_queue = self.alter_session.start_async_tran(time_step, sim_time)
         start_time = time.time()
+        last_yield_time = 0.0
+        latest_filtered = None
 
         sim_duration = float(R(sim_time))
 
@@ -255,30 +268,41 @@ class InteractiveSimulation:
 
         while self.is_running and (time.time() - start_time) < timeout:
             try:
-                data_point = data_queue.get_nowait()
+                reads = 0
+                while reads < self.DATA_MAX_READS_PER_CYCLE:
+                    data_point = data_queue.get_nowait()
+                    reads += 1
 
-                if isinstance(data_point, dict) and "data" in data_point:
-                    data = data_point["data"]
+                    if isinstance(data_point, dict) and "data" in data_point:
+                        data = data_point["data"]
 
-                    if self.plot_all_signals:
-                        filtered_data = {
-                            k: v for k, v in data.items() if "#branch" not in k
-                        }
-                    else:
-                        filtered_data = {
-                            k: v
-                            for k, v in data.items()
-                            if not k.startswith("@") and "#branch" not in k
-                        }
+                        if self.plot_all_signals:
+                            filtered_data = {
+                                k: v for k, v in data.items() if "#branch" not in k
+                            }
+                        else:
+                            filtered_data = {
+                                k: v
+                                for k, v in data.items()
+                                if not k.startswith("@") and "#branch" not in k
+                            }
 
-                    if "time" in filtered_data:
-                        yield filtered_data
+                        if "time" in filtered_data:
+                            latest_filtered = filtered_data
 
             except queue.Empty:
-                await asyncio.sleep(0.01)
-                continue
+                pass
             except Exception as e:
                 break
+
+            now = time.time()
+            if (
+                latest_filtered is not None
+                and now - last_yield_time >= self.DATA_THROTTLE_SECONDS
+            ):
+                yield latest_filtered
+                latest_filtered = None
+                last_yield_time = now
 
             await asyncio.sleep(0.001)
 
@@ -437,3 +461,4 @@ if __name__ == "__main__":
 InteractiveRCCircuit().schematic
 
 interactive_sim.start_vcd_recording("test.vcd")
+

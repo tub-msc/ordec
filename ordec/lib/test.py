@@ -17,7 +17,6 @@ from . import ihp130
 import queue as _queue
 import time as _time
 import concurrent.futures as _futures
-import os
 
 
 @dataclass
@@ -49,18 +48,16 @@ class TranResult:
             for attr_name, sim_name, default_kind in mappings:
                 if sim_name == "time" and sim_name in data_dict:
                     kind = signal_kinds.get(sim_name, SignalKind.TIME)
-                    self.__dict__["time"] = SignalValue(value=data_dict[sim_name], kind=kind)
+                    self.time = SignalValue(value=data_dict[sim_name], kind=kind)
                     continue
                 if sim_name in data_dict:
                     kind = signal_kinds.get(sim_name, default_kind)
-                    self.__dict__[attr_name] = SignalValue(
-                        value=data_dict[sim_name], kind=kind
-                    )
+                    setattr(self, attr_name, SignalValue(value=data_dict[sim_name], kind=kind))
             return
 
         if "time" in data_dict:
             time_kind = signal_kinds.get("time", SignalKind.TIME)
-            self.__dict__["time"] = SignalValue(value=data_dict["time"], kind=time_kind)
+            self.time = SignalValue(value=data_dict["time"], kind=time_kind)
 
         for net in sim_hierarchy.all(SimNet):
             net_name = netlister.name_hier_simobj(net)
@@ -470,11 +467,7 @@ def stream_from_queue(simbase, sim, data_queue, highlevel_sim, node, callback):
         attr_name = inst.full_path_list()[-1]
         mappings.append((attr_name, highlevel_sim.netlister.name_hier_simobj(inst), SignalKind.CURRENT))
 
-    delay = float(os.getenv("ORDEC_STREAM_SLEEP", "0"))
-
     while True:
-        if delay > 0:
-            _time.sleep(delay)
         try:
             data_point = data_queue.get(timeout=0.05)
         except _queue.Empty:

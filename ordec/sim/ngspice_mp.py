@@ -10,7 +10,7 @@ import queue  # For queue.Empty exception
 import threading
 import time
 
-from .ngspice_common import NgspiceTransientResult, NgspiceBase, NgspiceError
+from .ngspice_common import NgspiceTransientResult, NgspiceBase
 
 _ASYNC_SIM_SENTINEL = "---ASYNC_SIM_SENTINEL---"
 
