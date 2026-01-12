@@ -28,7 +28,7 @@ The dotted syntax of ORD, which accesses the parent element, requires having a r
 	# Type 2
 	port xyz(.pos=(1,2)
 
-To present how the ORD context works and how the conversion between ORD to Python looks like please take a look at the following two examples. Every time a context element (viewgen, port or a schematic instance) is defined, the element is saved as a local variable and a `with` context is opened. The dotted
+To present how the ORD context works and how the conversion between ORD to Python looks like please take a look at the following two examples. Every time a context element (viewgen, port or a schematic instance) is defined, the element is saved as a local variable `ctx` and a `with` context is opened. The dotted
 access is converted into a `ctx.root`. If multiple dots are written prior to the identifier the dots are
 converted to `ctx.root(.parent)*`. Accesses outside the context are still possible through the local variable. A access like this is visible when looking at the for loop. 
 
@@ -129,7 +129,7 @@ converted to `ctx.root(.parent)*`. Accesses outside the context are still possib
 	            return ctx.schematic_postprocess()
 
 
-The following summary shows the must important functions and classes of ORD2 please, refer to the Python codebase for more background information and details
+The following summary shows the must important functions and classes of ORD2. Please refer to the Python codebase for more background information and details
 
 
 Parser

@@ -1,7 +1,7 @@
 :mod:`ordec.ord1` --- ORD1 language reference
 =============================================
 
-ORD1 is the initial version of the IC design language in the ORDeC project. It was used to evaluate a text-based entry language for IC design within the ORDeC platform. ORD1 uses a standalone grammar different from Python, which results in a complex transformation to the Python target language. This version is no longer maintained because several compiler problems, like scoping and liveness of variables, would require a more complex semantic backend that interferes with our one-pass ORD-to-Python compiler approach. Nevertheless, this version gave us various insights on how we want to further integrate the ORD language in future versions. The examples in the project which use ORD1 are still working.
+ORD1 is the initial version of the IC design language in the ORDeC project. It was used to evaluate a text-based entry language for IC design within the ORDeC platform. ORD1 uses a standalone grammar different from Python, which results in a complex transformation to the Python target language. ORD1 is no longer maintained because several compiler problems, like scoping and liveness of variables, would require a more complex semantic backend that interferes with our one-pass ORD-to-Python compiler approach. Nevertheless, this version gave us various insights on how we want to further integrate the ORD language in future versions. The examples in the project which use ORD1 are still working.
 
 .. automodule:: ordec.ord1
 
