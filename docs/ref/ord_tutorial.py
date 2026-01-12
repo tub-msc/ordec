@@ -89,7 +89,7 @@ Inv().symbol
 # ## 3. Symbol
 #
 # The symbol represents the **outer connections** of the cell when importing it into another top level
-# module. The keywords `inout`,`input` and `output` are used to set the direciton of the Ports.
+# module. The keywords `inout`, `input` and `output` are used to set the direction of the Ports.
 # The alignment describes the orientation of the symbol. 
 
 # + 
@@ -152,7 +152,7 @@ Inv().schematic
 # This context can be defined with the braces like `port vdd()` or with the Python-style block based notation `Nmos pd:`.
 # Those definitions are identical in the ORD language.
 # Everything inside this context can reference the parent object by using a leading `.`. The contexts 
-# are hierarcically structured so even mulitiple leading dots are possible to access parent contexts.
+# are hierarchically structured, so even multiple leading dots are possible to access parent contexts.
 #
 # ```python
 # # Type 1
@@ -170,8 +170,8 @@ Inv().schematic
 
 # ### 4.2 Ports
 #
-# Ports defined in the symbol must be placed in the schematic aswell. This is done using the `port` keyword,
-# the name of the port `vdd` and the attributes position and alignment.
+# Ports defined in the symbol must be placed in the schematic as well. This is done using the `port` keyword,
+# the name of the port `vdd`, and the attributes position and alignment.
 
 # ### 4.3 Subcells
 #
@@ -186,9 +186,9 @@ Inv().schematic
 
 # ### 4.5 Nets
 #
-# In the case of the inverter every instance inside the schematic is connected to a port.
-# But other designs might require connections between subcells or also branches. This logic can be implemented
-# by internal `nets`. The **Nand** is an example circuit where a net is needed to connected the two Nmos transistors.
+# In the case of the inverter, every instance inside the schematic is connected to a port.
+# But other designs might require connections between subcells or branches. This logic can be implemented
+# by internal `nets`. The **Nand** is an example circuit where a net is needed to connect the two Nmos transistors.
 
 # + 
 %%ord
@@ -297,11 +297,11 @@ Inv().schematic
 # ## 5. Python support
 #
 # ORD is not a standalone language. It is a language extension (superset) of Python!
-# ORD is capable to run and include any Python code which has the advantage that Python functionalities
-# can be used directly inside ORD. Furthermore, ORDeC features which are not yet
-# implemented in ORD itself, can just be written as Python components inside an ORD file :)
+# ORD is capable of running and including any Python code, which has the advantage that Python functionalities
+# can be used directly inside ORD. Furthermore, ORDeC features that are not yet
+# implemented in ORD itself can be written as Python components inside an ORD file :)
 # But it is not a problem if you are not used to Python. ORD as described here doesn't
-# require understanding complex Python language features, but some knowledge definetly helps
+# require understanding complex Python language features, but some knowledge definitely helps
 # getting started!
 
 # +
@@ -341,6 +341,6 @@ from ordec.lib.ord2_test.inverter import Inv
 # -*- version: ord2 -*-
 # -
 
-# I hope this short tutorial gave you some insights on how to get started
+# I hope this short tutorial gave you some insights into how to get started
 # writing ORD code! Feel free to check out the ORD examples `ordec.lib.ord2_test` for more information. 
 # Happy ORD coding!
