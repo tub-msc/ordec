@@ -20,7 +20,7 @@
 #
 # # ORD Tutorial
 #
-# ORD (Open Rapid Design) is ORDeC's hardware description language for IC design. 
+# ORD (Open Rapid Design) is ORDeC's **hardware description language for IC design**. 
 # It is designed to make custom IC design more software-like and text-based, 
 # as an alternative to traditional GUI-based tools.
 # Follow this link for the full ORD language reference: {doc}`ord2`.
@@ -54,9 +54,9 @@ if ip is not None:
     ip.register_magics(OrdMagics)
 # -
 
-# ## 1. Cell definition
+# ## 1. Cell
 #
-# A `cell` is the root of an ORD file. It acts as the base of the design you
+# A `cell` is the **root** of an ORD file. It acts as the base of the design you
 # want to create. The name of the cell should describe the inner behavior of the design {doc}`cell_and_generate`.
 
 # + 
@@ -69,7 +69,7 @@ cell Inv:
 # ## 2. Viewgen
 # 
 # Cell-specific generator functions described by the ORDeC data schema are defined using the `viewgen` keyword. 
-# They can be simulation views, schematics, symbols, or layouts. Currently, **schematics** and **symbols** are fully
+# They can be simulation, schematic, symbol, or layout views. Currently, **schematic** and **symbol** views are fully
 # implemented in the ORD language! 
 
 # + 
@@ -145,13 +145,13 @@ cell Inv:
 Inv().schematic
 # -
 
-# ### 4.1 Relative access (Dotted notation)
+# ### 4.1 Relative access
 #
 # You might have already recognized a specific feature of the ORD language called **relative access**
 # or **dotted notation**. Whenever an ORD-specific element is defined, a **context** is opened.
 # This context can be defined with the braces like `port vdd()` or with the Python-style block based notation `Nmos pd:`.
 # Both definitions are identical in the ORD language.
-# Everything inside this context can reference the parent object by using a leading `.`. The contexts 
+# Every statement or expression inside this context can reference the parent object by using a leading `.`. The contexts 
 # are hierarchically structured, so even multiple leading dots are possible to access parent contexts.
 #
 # ```python
@@ -177,12 +177,13 @@ Inv().schematic
 #
 # Subcells are the key components in the design of the schematic, they must be imported from the file
 # system using a normal Python-style import `from ordec.lib.generic_mos import Nmos, Pmos`. The imported
-# cells can be ORD- or Python-based. 
+# cells can be ORD- or Python-based. Referencing cells without the import is also possible, if the 
+# other cell is defined in the same source file. 
 
 # ### 4.4 Connections
 #
 # Connections between elements are another unique feature of the ORD language. 
-# They use the `--` symbol and should always be connected from an instance to a port or to a net.
+# They use the `--` operator and should always be connected from an instance to a `port` or `net`.
 
 # ### 4.5 Nets
 #
@@ -222,7 +223,7 @@ Nand().schematic
 #
 # ORDeC uses hierarchical subgraphs to add elements to a schematic. 
 # When defining elements in the schematic, they become children of the schematic subgraph. 
-# Further nesting of elements can be achieved using *paths*. These open a new subgraph 
+# Further nesting of elements can be achieved using `paths`. Paths open a new subgraph 
 # layer where elements can be added using indices. 
 # This enables definition of **list-like** elements, which are especially powerful in 
 # combination with the parametrization feature of ORDeC.
@@ -232,9 +233,9 @@ Nand().schematic
 # path bit[i]
 # ```
 
-# ### 4.7 Cell parameters
+# ### 4.7 Parametrization
 #
-# Cells can be parametrized to make them reusable and adjust to new applications.
+# **Cells can be parametrized** to make them reusable and adjust to new applications.
 # This enables customizable cells like, in this case, a register with a variable number of bits.
 
 # + 
@@ -252,7 +253,7 @@ cell MultibitReg_ArrayOfStructs:
         input clk(.align=Orientation.West)
 # -
 
-# Parameters for subcells are set using the dollar `$` operator.
+# **Parameters for subcells** are set using the dollar `$` operator.
 # In this example, we set the length of the transistors `l` to 100n and the width `w` to 200n.
 # ORD supports all common SI suffixes for cell parameters that use the `Rational` class type {doc}`rational`.
 # (a=atto, f=femto, n=nano, u=micro, m=milli, k=kilo, M=Mega, G=Giga, T=Tera)
@@ -296,7 +297,7 @@ Inv().schematic
 
 # ## 5. Python support
 #
-# ORD is not a standalone language. It is a language extension (superset) of Python!
+# ORD is not a standalone language. It is a **language extension (superset) of Python**!
 # ORD is capable of running and including any Python code, which has the advantage that Python functionalities
 # can be used directly inside ORD. Furthermore, ORDeC features that are not yet
 # implemented in ORD itself can be written as Python components inside an ORD file :)
@@ -321,9 +322,9 @@ cell Inv:
 Inv().symbol
 # -
 
-# ## 6. Import ORD files
+# ## 6. Import ORD
 #
-# Every module written in ORD can be imported like a normal Python file through the ORD importer!
+# Every module written in ORD can be **imported like a Python module** through the ORD importer!
 
 # +
 # Get the ORDeC importer
@@ -335,12 +336,14 @@ from ordec.lib.ord2_test.inverter import Inv
 # ## 7. ORD version
 #
 # A header in the ORD file is used to decide which ORD language version the code is written in.
-# The header should be placed in line one. The default version is currently version one if the version header is not present.
+# The header should be placed in the **first line**. The **default** version is currently **version one** if the version header is not present.
 
 # +
 # -*- version: ord2 -*-
 # -
 
 # I hope this short tutorial gave you some insights into how to get started
-# writing ORD code! Feel free to check out the ORD examples `ordec.lib.ord2_test` for more information. 
-# Happy ORD coding!
+# writing ORD code! Feel free to check out the ORD examples `ordec.lib.ord2_test` 
+# by importing and adjusting them in the web interface. 
+# 
+# **Happy ORD coding!**
