@@ -29,7 +29,7 @@
 # It covers all the main structures and features that ORD currently offers 
 # and will be extended in the future as ORD gains more features. The inverter 
 # will be the most referenced design throughout the tutorial, since it is 
-# easy to understand and work with. Since ORD1 is no longer maintained, 
+# well-known and easy to get started with. Since ORD1 is no longer maintained, 
 # all examples are written in ORD2. 
 
 # + tags=["remove-input"]
@@ -56,8 +56,8 @@ if ip is not None:
 
 # ## 1. Cell definition
 #
-# A `cell` is the root of a ORD file, it acts as the base of the design you
-# want to create. The name of the cell should describe the inner behaviour of the design {doc}`cell_and_generate`.
+# A `cell` is the root of an ORD file. It acts as the base of the design you
+# want to create. The name of the cell should describe the inner behavior of the design {doc}`cell_and_generate`.
 
 # + 
 %%ord
@@ -68,8 +68,8 @@ cell Inv:
 
 # ## 2. Viewgen
 # 
-# Cell specific generator functions described by the ORDeC datascheme are defined using the `viewgen` keyword. 
-# They can be simulation views, schematics, symbols or layouts. Currently **schematics** and **symbols** are fully
+# Cell-specific generator functions described by the ORDeC data schema are defined using the `viewgen` keyword. 
+# They can be simulation views, schematics, symbols, or layouts. Currently, **schematics** and **symbols** are fully
 # implemented in the ORD language! 
 
 # + 
@@ -79,9 +79,9 @@ cell Inv:
     	pass
 # -
 
-# The view can be displayed with a simple function call. In the case of a symbol the resulting
-# symbol gets displayed. But you don't need to worry about how to execute the ORD code yourself.
-# Just use ORDeC's built-in web-interface {doc}`../webui`!
+# The view can be displayed with a simple function call. For a symbol, the resulting
+# symbol gets displayed. However, you don't need to worry about how to execute the ORD code yourself.
+# Just use ORDeC's built-in web interface {doc}`../webui`!
 
 Inv().symbol 
 
@@ -90,7 +90,7 @@ Inv().symbol
 #
 # The symbol represents the **outer connections** of the cell when importing it into another top level
 # module. The keywords `inout`, `input` and `output` are used to set the direction of the Ports.
-# The alignment describes the orientation of the symbol. 
+# The alignment describes the orientation of the port in the symbol. 
 
 # + 
 %%ord
@@ -107,8 +107,8 @@ Inv().symbol
 
 # ## 4. Schematic
 # 
-# The schematic represents the **inner behaviour** of the cell and how the ports of the symbol are wired. 
-# It supports multiple kinds of components which are explained in the following paragraphs.
+# The schematic represents the **inner behavior** of the cell and how the ports of the symbol are wired. 
+# It supports multiple kinds of components that are explained in the following paragraphs.
 
 # + 
 %%ord
@@ -147,10 +147,10 @@ Inv().schematic
 
 # ### 4.1 Relative access (Dotted notation)
 #
-# You might have already recognized a specific feature of the ORD language which we call **relative access**
-# or also **dotted notation**. Whenever an ORD specific element is defined a **context** is opened.
+# You might have already recognized a specific feature of the ORD language called **relative access**
+# or **dotted notation**. Whenever an ORD-specific element is defined, a **context** is opened.
 # This context can be defined with the braces like `port vdd()` or with the Python-style block based notation `Nmos pd:`.
-# Those definitions are identical in the ORD language.
+# Both definitions are identical in the ORD language.
 # Everything inside this context can reference the parent object by using a leading `.`. The contexts 
 # are hierarchically structured, so even multiple leading dots are possible to access parent contexts.
 #
@@ -186,9 +186,9 @@ Inv().schematic
 
 # ### 4.5 Nets
 #
-# In the case of the inverter, every instance inside the schematic is connected to a port.
-# But other designs might require connections between subcells or branches. This logic can be implemented
-# by internal `nets`. The **Nand** is an example circuit where a net is needed to connect the two Nmos transistors.
+# In the case of the inverter, every instance inside the schematic is connected directly to a port.
+# However, other designs might require connections between subcells or branches. This logic can be implemented
+# using internal `nets`. The **Nand** is an example circuit where a net is needed to connect the two Nmos transistors.
 
 # + 
 %%ord
@@ -221,10 +221,10 @@ Nand().schematic
 # ### 4.6 Paths
 #
 # ORDeC uses hierarchical subgraphs to add elements to a schematic. 
-# When defining elements in the schematic they become children of the schematic subgraph. 
-# Further nesting of elements can be achieved using *paths*. Those open a new subgraph 
-# layer where elements can be added by using indices. 
-# This enables definition of **list** like elements which are especially powerful in 
+# When defining elements in the schematic, they become children of the schematic subgraph. 
+# Further nesting of elements can be achieved using *paths*. These open a new subgraph 
+# layer where elements can be added using indices. 
+# This enables definition of **list-like** elements, which are especially powerful in 
 # combination with the parametrization feature of ORDeC.
 
 # ```python
@@ -235,7 +235,7 @@ Nand().schematic
 # ### 4.7 Cell parameters
 #
 # Cells can be parametrized to make them reusable and adjust to new applications.
-# This enables customizable cells like in this case a register with variable amount of bits.
+# This enables customizable cells like, in this case, a register with a variable number of bits.
 
 # + 
 %%ord
@@ -253,9 +253,9 @@ cell MultibitReg_ArrayOfStructs:
 # -
 
 # Parameters for subcells are set using the dollar `$` operator.
-# In this example we set the length of the transistors `l` to 100n and the width `w` to 200n.
-# ORD supports all common SI suffixes for cell parameters which use the `Rational` class type {doc}`rational`.
-# (a=atto, f=femto, n=nano, u=micro, m=milli, k=kilo, M=Mega, G=Giga, T=Terra)
+# In this example, we set the length of the transistors `l` to 100n and the width `w` to 200n.
+# ORD supports all common SI suffixes for cell parameters that use the `Rational` class type {doc}`rational`.
+# (a=atto, f=femto, n=nano, u=micro, m=milli, k=kilo, M=Mega, G=Giga, T=Tera)
 
 # +
 %%ord
