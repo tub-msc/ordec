@@ -178,7 +178,8 @@ Inv().schematic
 # Subcells are the key components in the design of the schematic, they must be imported from the file
 # system using a normal Python-style import `from ordec.lib.generic_mos import Nmos, Pmos`. The imported
 # cells can be ORD- or Python-based. Referencing cells without the import is also possible, if the 
-# other cell is defined in the same source file. 
+# other cell is defined in the same source file. Attributes of subcells are the port connections, the 
+# parameters and the position in the schematic. 
 
 # ### 4.4 Connections
 #
