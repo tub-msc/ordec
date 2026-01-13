@@ -259,6 +259,44 @@ class SchemWire(GenericPolyR, MixinPolygonalChain):
     ref = LocalRef(Net, optional=False)
     ref_idx = Index(ref)
 
+class SchemInstanceSubcursor(tuple):
+    """
+    Cursor providing transformed access to Symbol contents from SchemInstance.
+    Transforms Symbol-space coordinates to Schematic-space based on the
+    instance's position and orientation.
+    """
+    def __repr__(self):
+        return f"{type(self).__name__}{tuple.__repr__(self)}"
+
+    def inst(self):
+        """Returns the SchemInstance."""
+        return tuple.__getitem__(self, 0)
+
+    def node(self):
+        """Returns the current symbol-space node."""
+        return tuple.__getitem__(self, 1)
+
+    def transform(self):
+        """Returns the instance's loc_transform (TD4R or TD4LinearTerm)."""
+        return self.inst().loc_transform()
+
+    def __getitem__(self, key):
+        """Support indexing into pin hierarchies (e.g., inst['d'][0].pos)."""
+        return SchemInstanceSubcursor((self.inst(), self.node()[key]))
+
+    def __getattr__(self, name):
+        inner_ret = getattr(self.node(), name)
+        if isinstance(inner_ret, (Rect4R, Vec2R)):
+            # Transform symbol-space coordinates to schematic-space
+            # Returns Rect4LinearTerm/Vec2LinearTerm if inst.pos is None,
+            # or Rect4R/Vec2R if inst.pos is defined
+            return self.transform() * inner_ret
+        elif isinstance(inner_ret, Node):
+            return SchemInstanceSubcursor((self.inst(), inner_ret))
+        else:
+            return inner_ret
+
+
 @public
 class SchemInstance(Node):
     """
@@ -266,7 +304,8 @@ class SchemInstance(Node):
     """
     in_subgraphs = [Schematic]
 
-    pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
+        factory=coerce_tuple(Vec2R, 2))
     orientation = Attr(D4, default=D4.R0)
     symbol = SubgraphRef(Symbol, optional=False)
 
@@ -278,7 +317,20 @@ class SchemInstance(Node):
             return FuncInserter(partial(connect, main))
 
     def loc_transform(self):
-        return self.pos.transl() * self.orientation
+        pos = self.pos
+        if isinstance(pos, Vec2LinearTerm):
+            return TD4LinearTerm(transl=pos, d4=self.orientation)
+        else:
+            return pos.transl() * self.orientation
+
+    def subcursor(self):
+        return SchemInstanceSubcursor((self, self.symbol))
+
+    def __getitem__(self, name):
+        return self.subcursor()[name]
+
+    def __getattr__(self, name):
+        return getattr(self.subcursor(), name)
 
     def conns(self):
         return self.subgraph.all(SchemInstanceConn.ref_idx.query(self))

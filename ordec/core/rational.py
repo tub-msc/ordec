@@ -130,10 +130,16 @@ class Rational(fractions.Fraction):
             return super().__format__(spec)
 
     def __mul__(self, other):
-        return type(self)(super().__mul__(other))
+        result = super().__mul__(other)
+        if result is NotImplemented:
+            return NotImplemented
+        return type(self)(result)
 
     def __add__(self, other):
-        return type(self)(super().__add__(other))
+        result = super().__add__(other)
+        if result is NotImplemented:
+            return NotImplemented
+        return type(self)(result)
 
     def __radd__(self, other):
         return self.__add__(other)

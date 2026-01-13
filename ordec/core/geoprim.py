@@ -38,14 +38,20 @@ class Vec2Generic(tuple):
     def __add__(self, other):
         if type(other) == tuple and len(other) == 2:
             # For convenience, accept self + (1, 2) in place of self + VecX(1, 2):
-            return type(self)(self.x+other[0], self.y+other[1])    
-        return type(self)(self.x+other.x, self.y+other.y)
+            return type(self)(self.x+other[0], self.y+other[1])
+        try:
+            return type(self)(self.x+other.x, self.y+other.y)
+        except TypeError:
+            return NotImplemented
 
     def __sub__(self, other):
         if type(other) == tuple and len(other) == 2:
             # For convenience, accept self - (1, 2) in place of self - VecX(1, 2):
-            return type(self)(self.x-other[0], self.y-other[1])    
-        return type(self)(self.x-other.x, self.y-other.y)
+            return type(self)(self.x-other[0], self.y-other[1])
+        try:
+            return type(self)(self.x-other.x, self.y-other.y)
+        except TypeError:
+            return NotImplemented
 
     def __neg__(self):
         return type(self)(-self.x, -self.y)

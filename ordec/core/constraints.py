@@ -38,10 +38,14 @@ class ConstrainableAttr(Attr):
     case, the attribute's read hook returns a placeholder object instead of
     None. When the underlying attribute value in the databse is not None, the
     attribute acts like a regular attribute.
+
+    The target_type is inferred from the type parameter: Vec2R/Rect4R use R,
+    Vec2I/Rect4I use int.
     """
     def __init__(self, type: type, placeholder: ConstrainableAttrPlaceholder, **kwargs):
         super().__init__(type, **kwargs)
         self.placeholder = placeholder
+        self.target_type = R if type in (Vec2R, Rect4R) else int
 
     def read_hook(self, value, cursor):
         if value is None:
@@ -56,7 +60,7 @@ class MissingAttrVal:
     attr: ConstrainableAttr
 
 def coerce_term(x):
-    if isinstance(x, (float, int)):
+    if isinstance(x, (float, int, R)):
         return LinearTerm((), (), float(x))
     else:
         return x
@@ -199,10 +203,21 @@ class Vec2LinearTerm(Vec2Generic, ConstrainableAttrPlaceholder):
     def make_solution(cls, mav, value_of_var):
         values = [value_of_var.get(Variable(mav.subgraph, mav.nid, mav.attr, subid), 0)
             for subid in range(2)]
-        return Vec2I(*values)
+        if mav.attr.target_type == R:
+            return Vec2R(*[R(v).limit_denominator() for v in values])
+        else:
+            return Vec2I(*[int(v) for v in values])
 
     def transl(self) -> 'TD4LinearTerm':
         return TD4LinearTerm(transl=self)
+
+    def __rmul__(self, other):
+        return Vec2LinearTerm(other * self.x, other * self.y)
+
+    def __radd__(self, other):
+        if isinstance(other, Vec2Generic):
+            return Vec2LinearTerm(other.x + self.x, other.y + self.y)
+        return NotImplemented
 
     def __eq__(self, other):
         if isinstance(other, Vec2Generic):
@@ -250,7 +265,10 @@ class Rect4LinearTerm(Rect4Generic, ConstrainableAttrPlaceholder):
     def make_solution(cls, mav, value_of_var):
         values = [value_of_var.get(Variable(mav.subgraph, mav.nid, mav.attr, subid), 0)
             for subid in range(4)]
-        return Rect4I(*values)
+        if mav.attr.target_type == R:
+            return Rect4R(*[R(v).limit_denominator() for v in values])
+        else:
+            return Rect4I(*[int(v) for v in values])
 
     def is_square(self, size=None):
         if size is None:
@@ -296,21 +314,28 @@ class Rect4LinearTerm(Rect4Generic, ConstrainableAttrPlaceholder):
 
 @public
 class TD4LinearTerm(TD4):
-    """LinearTerm version of TD4"""
+    """LinearTerm version of TD4, supports both integer and Rational types."""
     __slots__ = ()
     vec_cls = Vec2LinearTerm
     rect_cls = Rect4LinearTerm
 
     def __rmul__(self, other):
-        if isinstance(other, TD4I):
-            return TD4LinearTerm(transl=self.vec_cls(coerce_term(other.transl.x), coerce_term(other.transl.y)), d4=other.d4) * self
+        if isinstance(other, (TD4I, TD4R)):
+            return TD4LinearTerm(
+                transl=self.vec_cls(coerce_term(other.transl.x), coerce_term(other.transl.y)),
+                d4=other.d4
+            ) * self
         else:
             return NotImplemented
 
     def __mul__(self, other):
-        if(isinstance(other, Rect4I)):
-            other = Rect4LinearTerm(other.lx, other.ly, other.ux, other.uy)
-
+        if isinstance(other, (Rect4I, Rect4R)):
+            other = Rect4LinearTerm(
+                coerce_term(other.lx), coerce_term(other.ly),
+                coerce_term(other.ux), coerce_term(other.uy)
+            )
+        elif isinstance(other, (Vec2I, Vec2R)):
+            other = Vec2LinearTerm(coerce_term(other.x), coerce_term(other.y))
         return super().__mul__(other)
 
 class Constraint:
@@ -566,7 +591,8 @@ class Solver:
             if ambiguity_info is not None:
                 raise UnderconstrainedError(ambiguity_info)
 
-        value_of_var = {variable: int(value) for variable, value in zip(variables, res.x)}
+        # Keep float values here; int/R conversion happens in make_solution
+        value_of_var = {variable: value for variable, value in zip(variables, res.x)}
 
         mavs = {variable.mav() for variable in variables}
         for mav in mavs:
