@@ -3,7 +3,6 @@ from ordec.core import *
 from ordec.schematic import helpers
 from ordec.lib.test import DFF
 from ordec.ord2.context import ctx, OrdContext
-from public import public
 
 cell MultibitReg_Arrays:
     bits = Parameter(int)

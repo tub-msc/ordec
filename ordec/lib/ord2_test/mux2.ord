@@ -5,7 +5,6 @@ from ordec.schematic import helpers
 from ordec.lib.generic_mos import Nmos,Pmos,Inv
 from ordec.ord2.context import ctx, OrdContext
 from ordec.schematic.routing import schematic_routing
-from public import public
 
 cell Mux2:
     viewgen symbol:
