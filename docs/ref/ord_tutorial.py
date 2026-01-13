@@ -18,7 +18,7 @@
 
 # (ord_tutorial)=
 #
-# # ORD Tutorial
+# # ORD Language Tutorial
 #
 # ORD (Open Rapid Design) is ORDeC's **hardware description language for IC design**. 
 # It is designed to make custom IC design more software-like and text-based, 
@@ -224,7 +224,7 @@ Nand().schematic
 #
 # ORDeC uses hierarchical subgraphs to add elements to a schematic. 
 # When defining elements in the schematic, they become children of the schematic subgraph. 
-# Further nesting of elements can be achieved using `paths`. Paths open a new subgraph 
+# Further nesting of elements can be achieved using `path` elements. Paths open a new subgraph 
 # layer where elements can be added using indices. 
 # This enables definition of **list-like** elements, which are especially powerful in 
 # combination with the parametrization feature of ORDeC.

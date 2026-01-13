@@ -22,7 +22,7 @@ def symbol_process(node):
     Function which adds node transformations to the symbol function
 
     Args:
-        node (: current node instance
+        node (Node): current node instance
     Returns:
         None
     """

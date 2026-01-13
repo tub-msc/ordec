@@ -6,8 +6,8 @@ User Reference
    :caption: Contents:
 
    ordb
-   ord1
    ord2
+   ord1
    cell_and_generate
    schema
    geoprim
