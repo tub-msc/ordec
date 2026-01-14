@@ -840,7 +840,9 @@ def schematic_routing(node, outline=None, routing=None):
     # Calculate the vertices and add them to the schematic
     #=====================================================
     
-    vertices_dict = calculate_vertices(outline, cells, ports, connections)
+    vertices_dict = dict()
+    if len(connections) > 0:
+        vertices_dict = calculate_vertices(outline, cells, ports, connections)
     named_vertice_counter = 0
     for name, vertices_lists in vertices_dict.items():
         # Example: node.vss % SchemWire(vertices=[Vec2R(x=6, y=1), Vec2R(x=6, y=2)])
