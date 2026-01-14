@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "xordb"
+version = "0.1.0"
+edition = "2021"
+description = "xORDB - aXellerated ORDB backend in Rust"
+license = "Apache-2.0"
+
+[lib]
+name = "xordb"
+# cdylib for Python extension, rlib for Rust tests
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["extension-module"]
+extension-module = ["pyo3/extension-module"]
+
+[dependencies]
+# Python bindings
+pyo3 = { version = "0.22" }
+
+# Immutable persistent data structures (similar to pyrsistent)
+imbl = "3"
+
+# For thread-safe schema registry
+once_cell = "1"
+
+[dev-dependencies]
+# For running tests, we need to link against Python
+pyo3 = { version = "0.22", features = ["auto-initialize"] }

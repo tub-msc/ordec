@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "xordb"
+version = "0.1.0"
+description = "xORDB - aXellerated ORDB backend in Rust"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Development Status :: 3 - Alpha",
+]
+
+[tool.maturin]
+# Build as a Python extension module
+features = ["pyo3/extension-module"]
+# Module is installed as top-level 'xordb' package
+# This keeps it simple and allows installing independently of ordec

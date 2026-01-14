@@ -613,6 +613,24 @@ class NodeTuple(tuple):
 # Register NodeTuple as virtual subclass of Inserter. Combining tuple and ABC seems like it could cause problems.
 Inserter.register(NodeTuple)
 
+# Schema registration for Rust backend - collects classes during module load,
+# then registers them all once the implementation is defined at module end.
+_pending_rust_registrations: list = []
+
+def _register_rust_schema(cls: type) -> None:
+    """Queue a class for Rust schema registration."""
+    _pending_rust_registrations.append(cls)
+
+# Forward declaration - replaced at end of module
+def _create_mutable_subgraph():
+    """Stub - replaced by real implementation after all classes defined."""
+    return MutableSubgraph()
+
+# Forward declaration for ntype class registration
+def _register_ntype_class_if_available(cls: type) -> None:
+    """Stub - replaced by real implementation after all classes defined."""
+    pass
+
 class NodeMeta(type):
     @staticmethod
     def _collect_raw_attrs(d, bases):
@@ -683,6 +701,12 @@ class NodeMeta(type):
             cls.Tuple.__module__ = cls.__module__
             cls.Mutable.__module__ = cls.__module__
             cls.Frozen.__module__ = cls.__module__
+
+            # Register schema with Rust backend if available
+            _register_rust_schema(cls)
+
+            # Also register ntype class for reconstruction (needed by RustNodeMap)
+            _register_ntype_class_if_available(cls.Tuple)
 
         return super().__init__(name, bases, attrs)
 
@@ -978,7 +1002,8 @@ class SubgraphRoot(NonLeafNode):
 
     def __new__(cls, **kwargs):
         # __new__ calls super().__new__ via SubgraphRoot.Tuple(), but wraps the result in a Subgraph object.
-        sg = MutableSubgraph()
+        # Use factory function to get appropriate backend (Python or Rust)
+        sg = _create_mutable_subgraph()
         with sg.updater() as u:
             u.add_single(cls.Tuple(**kwargs), nid=0) # SubgraphRoots always have nid = 0
         return sg.root_cursor
@@ -1618,3 +1643,494 @@ class NPath(Node):
     idx_path_of = Index(ref, unique=True)
 
     in_subgraphs = [SubgraphRoot]
+
+
+# Rust-accelerated backend (optional)
+# ------------------------------------
+# When xordb is installed, it provides high-performance implementations
+# of the storage layer using Rust's imbl crate for persistent data structures.
+# Install with: pip install /path/to/xordb/target/wheels/*.whl
+
+def _get_attr_kind(attr: Attr) -> str:
+    """Determine the kind string for an Attr for Rust schema registration."""
+    if isinstance(attr, LocalRef):
+        return "localref"
+    elif isinstance(attr, SubgraphRef):
+        return "subgraphref"
+    elif isinstance(attr, ExternalRef):
+        return "externalref"
+    elif attr.type == int:
+        return "int"
+    elif attr.type == str:
+        return "str"
+    else:
+        return "pyobject"
+
+def _get_index_kind(index: GenericIndex) -> str:
+    """Determine the kind string for an Index for Rust schema registration."""
+    if isinstance(index, NPathIndex):
+        return "npath"
+    elif isinstance(index, LocalRefIndex):
+        return "localref"
+    elif isinstance(index, CombinedIndex):
+        return "combined"
+    elif isinstance(index, NTypeIndex):
+        return "ntype"
+    else:
+        return "simple"
+
+def _register_rust_schema_impl(cls: type) -> None:
+    """Register a Node class schema with the Rust backend if available."""
+    try:
+        import xordb
+        if not hasattr(xordb, 'is_rust_backend'):
+            return  # Namespace package, not Rust extension
+    except ImportError:
+        return  # Rust backend not available
+
+    # Use id of the Tuple class as a stable identifier
+    ntype_id = id(cls.Tuple)
+
+    # Build attribute list: (name, kind, index, optional)
+    attrs = []
+    localref_indices = []
+    for i, (name, attr) in enumerate(cls._raw_attrs.items()):
+        kind = _get_attr_kind(attr)
+        attrs.append((name, kind, i, attr.optional))
+        if isinstance(attr, LocalRef):
+            localref_indices.append(i)
+
+    # Build index list: (index_id, kind, attr_indices, unique, sortkey_attr)
+    indexes = []
+    for index in cls.Tuple.indices:
+        index_id = id(index)
+        kind = _get_index_kind(index)
+
+        # Determine which attribute indices this index covers
+        if isinstance(index, CombinedIndex):
+            attr_indices = [
+                cls.Tuple._attrdesc_by_attr[a].index
+                for a in index.attrs
+            ]
+        elif hasattr(index, 'attr'):
+            attr_indices = [cls.Tuple._attrdesc_by_attr[index.attr].index]
+        else:
+            attr_indices = []
+
+        unique = getattr(index, 'unique', False)
+
+        # Handle sortkey - convert to attribute index if it's a simple attr lookup
+        sortkey_attr = None
+        if hasattr(index, 'sortkey') and index.sortkey is not None:
+            # Try to detect simple attribute-based sortkeys
+            # For now, we don't extract complex lambdas
+            pass
+
+        indexes.append((index_id, kind, attr_indices, unique, sortkey_attr))
+
+    # Register with Rust backend
+    xordb.register_ntype(
+        ntype_id=ntype_id,
+        name=cls.__name__,
+        attrs=attrs,
+        indexes=indexes,
+        localref_indices=localref_indices,
+    )
+
+# Registry mapping ntype_id -> NodeTuple class for reconstruction
+# (defined early so _process_pending_rust_registrations can use it)
+_ntype_registry: dict[int, type] = {}
+
+def _register_ntype_class(cls: type) -> None:
+    """Register a NodeTuple class for reconstruction from Rust store."""
+    _ntype_registry[id(cls)] = cls
+
+def _get_ntype_class(ntype_id: int) -> type:
+    """Look up NodeTuple class by ntype_id."""
+    return _ntype_registry.get(ntype_id)
+
+# Process all pending registrations now that the implementation is defined
+def _process_pending_rust_registrations():
+    """Register all Node classes that were defined during module import."""
+    # First register ntype classes for reconstruction (always needed)
+    for cls in _pending_rust_registrations:
+        if hasattr(cls, 'Tuple'):
+            _register_ntype_class(cls.Tuple)
+
+    # Then register schemas with Rust backend if available
+    try:
+        import xordb
+        # Verify it's the actual Rust extension, not a namespace package
+        if not hasattr(xordb, 'is_rust_backend'):
+            _pending_rust_registrations.clear()
+            return
+    except ImportError:
+        _pending_rust_registrations.clear()
+        return  # Rust backend not available
+
+    for cls in _pending_rust_registrations:
+        _register_rust_schema_impl(cls)
+    _pending_rust_registrations.clear()
+
+# Replace the stub with the real implementation for future classes
+_register_rust_schema = _register_rust_schema_impl
+
+# Process all classes defined during module import
+_process_pending_rust_registrations()
+
+def _rust_backend_available() -> bool:
+    """Check if the Rust-accelerated backend is available."""
+    try:
+        import xordb
+        return hasattr(xordb, 'is_rust_backend') and xordb.is_rust_backend()
+    except ImportError:
+        return False
+
+def _rust_backend_version() -> str | None:
+    """Get the Rust backend version, or None if not available."""
+    try:
+        import xordb
+        if not hasattr(xordb, 'version'):
+            return None
+        return xordb.version()
+    except ImportError:
+        return None
+
+
+class RustNodeMap:
+    """
+    Adapter providing a dict-like interface over Rust MutableSubgraph/FrozenSubgraph.
+
+    This bridges the gap between Python's NodeTuple objects and the Rust
+    subgraph's (ntype_id, attrs_tuple) representation.
+    """
+
+    def __init__(self, store):
+        """
+        Args:
+            store: Either xordb.MutableSubgraph or xordb.FrozenSubgraph
+        """
+        self._store = store
+
+    def __getitem__(self, nid: int) -> NodeTuple:
+        """Get a NodeTuple by nid."""
+        result = self._store.get_node(nid)
+        if result is None:
+            raise KeyError(nid)
+        ntype_id, attrs = result
+        return self._reconstruct_nodetuple(ntype_id, attrs)
+
+    def __setitem__(self, nid: int, node: NodeTuple) -> None:
+        """Store a NodeTuple at nid."""
+        ntype_id = id(type(node))
+        attrs = tuple(tuple.__iter__(node))
+        self._store.set_node(nid, ntype_id, attrs)
+
+    def __delitem__(self, nid: int) -> None:
+        """Remove a node by nid."""
+        self._store.remove_node(nid)
+
+    def __contains__(self, nid: int) -> bool:
+        """Check if nid exists."""
+        return self._store.contains_nid(nid)
+
+    def __len__(self) -> int:
+        """Get number of nodes."""
+        return self._store.node_count()
+
+    def __iter__(self):
+        """Iterate over nids."""
+        for nid, _ in self._store.iter_nids():
+            yield nid
+
+    def get(self, nid: int, default=None):
+        """Get a NodeTuple by nid, returning default if not found."""
+        try:
+            return self[nid]
+        except KeyError:
+            return default
+
+    def keys(self):
+        """Return nids."""
+        return (nid for nid, _ in self._store.iter_nids())
+
+    def values(self):
+        """Return NodeTuples."""
+        for nid, ntype_id in self._store.iter_nids():
+            _, attrs = self._store.get_node(nid)
+            yield self._reconstruct_nodetuple(ntype_id, attrs)
+
+    def items(self):
+        """Return (nid, NodeTuple) pairs."""
+        for nid, ntype_id in self._store.iter_nids():
+            _, attrs = self._store.get_node(nid)
+            yield nid, self._reconstruct_nodetuple(ntype_id, attrs)
+
+    def set(self, nid: int, node: NodeTuple) -> 'RustNodeMap':
+        """Return a new map with the node set (for pyrsistent compatibility)."""
+        # For mutable stores, we modify in place but return self
+        # For frozen stores, this shouldn't be called
+        self[nid] = node
+        return self
+
+    def remove(self, nid: int) -> 'RustNodeMap':
+        """Return a new map with the nid removed (for pyrsistent compatibility)."""
+        del self[nid]
+        return self
+
+    def _reconstruct_nodetuple(self, ntype_id: int, attrs: tuple) -> NodeTuple:
+        """Reconstruct a NodeTuple from ntype_id and raw attribute values."""
+        tuple_cls = _get_ntype_class(ntype_id)
+        if tuple_cls is None:
+            raise RuntimeError(f"Unknown ntype_id: {ntype_id}")
+        # Bypass NodeTuple.__new__ by using tuple.__new__ directly
+        return tuple.__new__(tuple_cls, attrs)
+
+
+class RustIndexMap:
+    """
+    Adapter providing a dict-like interface over Rust store's index.
+
+    This provides pyrsistent PMap-compatible interface for index queries.
+    """
+
+    def __init__(self, store):
+        self._store = store
+
+    def __getitem__(self, key):
+        """Get index values for a key."""
+        # The key is an IndexKey from Python
+        if isinstance(key, IndexKey):
+            return self._query_indexkey(key)
+        elif isinstance(key, type) and issubclass(key, NodeTuple):
+            # NType query
+            ntype_id = id(key)
+            nids = self._store.index_query(0, "ntype", ntype_id)
+            from pyrsistent import pvector
+            return pvector(nids)
+        elif isinstance(key, int):
+            # LocalRef backref query (nid -> referencing nodes)
+            # This is used for dangling reference checks
+            if self._store.is_referenced(key):
+                from pyrsistent import pset
+                return pset([key])  # Placeholder - actual backrefs
+            raise KeyError(key)
+        else:
+            raise KeyError(key)
+
+    def get(self, key, default=None):
+        """Get index values, returning default if not found."""
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __contains__(self, key) -> bool:
+        """Check if key has any index entries."""
+        try:
+            result = self[key]
+            return len(result) > 0
+        except KeyError:
+            return False
+
+    def _query_indexkey(self, key: IndexKey):
+        """Query using an IndexKey."""
+        from pyrsistent import pvector
+        index = key.index
+        value = key.value
+
+        if isinstance(index, NTypeIndex):
+            # Should not happen - NType uses the type itself as key
+            return pvector()
+        elif isinstance(index, LocalRefIndex):
+            # LocalRef index uses the referenced nid as key
+            if isinstance(value, int):
+                nids = self._store.index_query(id(index), "localref", value)
+                from pyrsistent import pset
+                return pset(IndexKey(index, nid) for nid in nids)
+            return pvector()
+        elif isinstance(index, CombinedIndex):
+            # Combined index uses tuple of values
+            nids = self._store.index_query(id(index), "combined", value)
+            return pvector(nids)
+        else:
+            # Simple index
+            nids = self._store.index_query(id(index), "simple", value)
+            return pvector(nids)
+
+    def set(self, key, value) -> 'RustIndexMap':
+        """Set is handled by node operations, not directly."""
+        # Index updates happen automatically in the Rust store
+        return self
+
+    def remove(self, key) -> 'RustIndexMap':
+        """Remove is handled by node operations, not directly."""
+        return self
+
+
+# Update _register_rust_schema_impl to also register the ntype class
+_original_register_rust_schema_impl = _register_rust_schema_impl
+
+def _register_rust_schema_impl_with_registry(cls: type) -> None:
+    """Register schema with Rust and also register class for reconstruction."""
+    _register_ntype_class(cls.Tuple)
+    _original_register_rust_schema_impl(cls)
+
+_register_rust_schema_impl = _register_rust_schema_impl_with_registry
+_register_rust_schema = _register_rust_schema_impl
+
+# Re-register all pending classes with the updated function
+# (They were already registered with Rust, now register for reconstruction)
+for cls in list(_pending_rust_registrations):
+    _register_ntype_class(cls.Tuple)
+
+
+# Configuration for Rust backend
+# --------------------------------
+import os
+
+# Set ORDEC_USE_RUST_BACKEND=1 to enable Rust-accelerated storage
+_USE_RUST_BACKEND = os.environ.get('ORDEC_USE_RUST_BACKEND', '0') == '1'
+
+def _use_rust_backend() -> bool:
+    """Check if Rust backend should be used for storage."""
+    return _USE_RUST_BACKEND and _rust_backend_available()
+
+def set_rust_backend(enabled: bool) -> None:
+    """Enable or disable Rust backend (affects new subgraphs only)."""
+    global _USE_RUST_BACKEND
+    _USE_RUST_BACKEND = enabled
+
+
+class RustBackedMutableSubgraph(MutableSubgraph):
+    """
+    MutableSubgraph implementation using Rust-accelerated storage.
+
+    This subclass replaces the pyrsistent-based node storage with
+    the Rust xordb.MutableSubgraph while keeping Python's index
+    management for compatibility.
+    """
+    __slots__ = ('_rust_subgraph',)
+
+    def __init__(self):
+        import xordb
+        self._rust_subgraph = xordb.MutableSubgraph()
+        self._nodes = RustNodeMap(self._rust_subgraph)
+        self._index = pmap()  # Keep Python index for now
+        self._root_cursor = None
+        self._nid_alloc = range(0, 2**32)
+
+    def mutate(self, nodes, index, nid_alloc):
+        # For Rust backend, nodes might be RustNodeMap or regular pmap
+        if isinstance(nodes, RustNodeMap):
+            self._nodes = nodes
+            self._rust_subgraph = nodes._store
+        else:
+            # Converting from Python pmap to Rust subgraph
+            import xordb
+            self._rust_subgraph = xordb.MutableSubgraph()
+            self._nodes = RustNodeMap(self._rust_subgraph)
+            for nid, node in nodes.items():
+                self._nodes[nid] = node
+        self._index = index
+        self._nid_alloc = nid_alloc
+        if self._root_cursor is None:
+            self._root_cursor = self.cursor_at(0)
+
+    def freeze(self):
+        return RustBackedFrozenSubgraph(self)
+
+    def __copy__(self):
+        ret = RustBackedMutableSubgraph()
+        # Copy the Rust subgraph
+        ret._rust_subgraph = self._rust_subgraph.copy()
+        ret._nodes = RustNodeMap(ret._rust_subgraph)
+        ret._index = self._index
+        ret._nid_alloc = self._nid_alloc
+        ret._root_cursor = ret.cursor_at(0) if 0 in ret._nodes else None
+        return ret
+
+    def copy(self):
+        return self.__copy__()
+
+    @property
+    def nodes(self):
+        return self._nodes
+
+    @property
+    def rust_subgraph(self):
+        """Access to underlying Rust subgraph (for advanced use)."""
+        return self._rust_subgraph
+
+
+class RustBackedFrozenSubgraph(FrozenSubgraph):
+    """
+    FrozenSubgraph implementation using Rust-accelerated storage.
+    """
+    __slots__ = ('_rust_subgraph',)
+
+    def __init__(self, subgraph):
+        if isinstance(subgraph, RustBackedMutableSubgraph):
+            self._rust_subgraph = subgraph._rust_subgraph.freeze()
+            self._nodes = RustNodeMap(self._rust_subgraph)
+        else:
+            # Converting from Python-backed subgraph
+            import xordb
+            rust_subgraph = xordb.MutableSubgraph()
+            for nid, node in subgraph.nodes.items():
+                ntype_id = id(type(node))
+                attrs = tuple(tuple.__iter__(node))
+                rust_subgraph.set_node(nid, ntype_id, attrs)
+            self._rust_subgraph = rust_subgraph.freeze()
+            self._nodes = RustNodeMap(self._rust_subgraph)
+        self._index = subgraph.index
+        self._nid_alloc = subgraph.nid_alloc
+        self._root_cursor = self.cursor_at(0)
+
+    def thaw(self):
+        ret = RustBackedMutableSubgraph()
+        ret._rust_subgraph = self._rust_subgraph.thaw()
+        ret._nodes = RustNodeMap(ret._rust_subgraph)
+        ret._index = self._index
+        ret._nid_alloc = self._nid_alloc
+        ret._root_cursor = ret.cursor_at(0)
+        return ret
+
+    def __eq__(self, other):
+        if isinstance(other, RustBackedFrozenSubgraph):
+            return (self._rust_subgraph == other._rust_subgraph) and (self.nid_alloc == other.nid_alloc)
+        elif isinstance(other, FrozenSubgraph):
+            # Compare with Python-backed frozen subgraph
+            return (dict(self.nodes.items()) == dict(other.nodes.items())) and (self.nid_alloc == other.nid_alloc)
+        return False
+
+    def __hash__(self):
+        return hash((self._rust_subgraph, self.nid_alloc))
+
+    @property
+    def nodes(self):
+        return self._nodes
+
+    @property
+    def rust_subgraph(self):
+        """Access to underlying Rust subgraph (for advanced use)."""
+        return self._rust_subgraph
+
+
+# Factory function to create the appropriate subgraph type
+def create_mutable_subgraph() -> MutableSubgraph:
+    """Create a new MutableSubgraph using the configured backend."""
+    if _use_rust_backend():
+        return RustBackedMutableSubgraph()
+    return MutableSubgraph()
+
+# Replace the stub with the real implementation
+_create_mutable_subgraph = create_mutable_subgraph
+
+# Replace the ntype class registration stub
+def _register_ntype_class_if_available_impl(cls: type) -> None:
+    """Register a NodeTuple class for reconstruction from Rust store."""
+    _register_ntype_class(cls)
+
+_register_ntype_class_if_available = _register_ntype_class_if_available_impl
+
