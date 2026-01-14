@@ -628,12 +628,12 @@ def draw_connections(grid, connections, width, height, ports, cells):
                     path_list = list()
                     for shortcut in shortcut_start_points:
                         # extend except for first and last element (start/end)
-                        if not shortcut[1:-1]:
-                            raise IndexError(f"Shortcut doesn't have valid branch point to connect nid:{start_name}")
                         path_list.extend(shortcut[1:-1])
                     if end_new in path_list:
                         # if already in path_list no reason to do an a-star
                         path = [end_new]
+                    elif not path_list:
+                        raise IndexError(f"Shortcut doesn't have valid branch point to connect nid:{start_name}")
                     else:
                         # Call reverse A* from end point to all start points
                         path = reverse_a_star(grid, path_list, end_new, width, height, ports,
