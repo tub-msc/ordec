@@ -617,47 +617,53 @@ def draw_connections(grid, connections, width, height, ports, cells):
         transformed_start_dir = direction_moves[start_dir]
         transformed_end_dir = direction_moves[end_dir]
 
-        # check if there already is a path from this port/cell connection
-        shortcut_available = False
-        if SHORTCUT_ENABLED:
-            if len(port_drawing_dict[start_name]) != 0:
-                shortcut_available = True
-                shortcut_start_points = port_drawing_dict[start_name]
-                path_list = list()
-                for shortcut in shortcut_start_points:
-                    # extend except for first and last element (start/end)
-                    path_list.extend(shortcut[1:-1])
-                if end_new in path_list:
-                    # if already in path_list no reason to do an a-star
-                    path = [end_new]
+        # Check if the start and end can be directly connected
+        if start != end_new and end != start_new:
+            # check if there already is a path from this port/cell connection
+            shortcut_available = False
+            if SHORTCUT_ENABLED:
+                if len(port_drawing_dict[start_name]) != 0:
+                    shortcut_available = True
+                    shortcut_start_points = port_drawing_dict[start_name]
+                    path_list = list()
+                    for shortcut in shortcut_start_points:
+                        # extend except for first and last element (start/end)
+                        if not shortcut[1:-1]:
+                            raise IndexError(f"Shortcut doesn't have valid branch point to connect nid:{start_name}")
+                        path_list.extend(shortcut[1:-1])
+                    if end_new in path_list:
+                        # if already in path_list no reason to do an a-star
+                        path = [end_new]
+                    else:
+                        # Call reverse A* from end point to all start points
+                        path = reverse_a_star(grid, path_list, end_new, width, height, ports,
+                                                   straight_lines, start_name, transformed_end_dir, cell_names,
+                                              name_endpoint_mapping)
                 else:
-                    # Call reverse A* from end point to all start points
-                    path = reverse_a_star(grid, path_list, end_new, width, height, ports,
-                                               straight_lines, start_name, transformed_end_dir, cell_names,
-                                          name_endpoint_mapping)
+                    # No shortcut available, calculate the normal path
+                    path = a_star(grid, start_new, end_new, width, height, ports,
+                                       straight_lines, start_name, transformed_start_dir, cell_names,
+                                  name_endpoint_mapping)
+
             else:
-                # No shortcut available, calculate the normal path
+                # Normal path calculation if shortcutting is disabled
                 path = a_star(grid, start_new, end_new, width, height, ports,
                                    straight_lines, start_name, transformed_start_dir, cell_names,
                               name_endpoint_mapping)
 
+            if not path and start_new != end_new:
+                print(f"Failed to connect {start_new} to {end_new}. Adding terminal taps ...")
+                continue
+
+            # Add the final connection step if needed
+            if start_dir and not shortcut_available:
+                # only append if no shortcut available
+                path.insert(0, start)
+                path.insert(1, start_new)
+            if end_dir:
+                path.append(end)
         else:
-            # Normal path calculation if shortcutting is disabled
-            path = a_star(grid, start_new, end_new, width, height, ports,
-                               straight_lines, start_name, transformed_start_dir, cell_names,
-                          name_endpoint_mapping)
-
-        if not path and start_new != end_new:
-            print(f"Failed to connect {start_new} to {end_new}. Adding terminal taps ...")
-            continue
-
-        # Add the final connection step if needed
-        if start_dir and not shortcut_available:
-            # only append if no shortcut available
-            path.insert(0, start)
-            path.insert(1, start_new)
-        if end_dir:
-            path.append(end)
+            path = [start, end]
 
         port_drawing_dict[start_name].append(path)
         # save all the straight lines
@@ -669,7 +675,6 @@ def draw_connections(grid, connections, width, height, ports, cells):
         for (x, y) in path:
             if grid[y][x] == '.':
                 grid[y][x] = '+'
-
 
     for key, value in port_drawing_dict.items():
         if SHORTCUT_ENABLED:
