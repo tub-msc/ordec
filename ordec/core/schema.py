@@ -248,7 +248,8 @@ class SchemPort(Node):
 
     ref = LocalRef(Net, optional=False)
     ref_idx = Index(ref)
-    pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
+        factory=coerce_tuple(Vec2R, 2))
     align = Attr(D4, default=D4.R0)
 
 @public
@@ -349,7 +350,7 @@ class SchemInstanceConn(Node):
     ref_pin_idx = CombinedIndex([ref, there], unique=True)
 
 
-class SchemInstanceUnresolvedCursor(tuple):
+class SchemInstanceUnresolvedSubcursor(tuple):
     """Cursor to go through connections of a unresolved schem instance"""
     def __repr__(self):
         return f"{type(self).__name__}{tuple.__repr__(self)}"
@@ -359,9 +360,24 @@ class SchemInstanceUnresolvedCursor(tuple):
 
     def __getitem__(self, name):
         return SchemInstanceUnresolvedCursor(self+(name,))
-        
-    def __getattr__(self, name):
-        return self.__getitem__(name)
+    
+    def __getattribute__(self, name):
+        # Upgrade cursor on failed attribute access
+        try:
+            return super().__getattribute__(name)
+        except AttributeError:
+            upgraded_cursor = self._upgrade_cursor()
+            return getattr(upgraded_cursor, name)
+
+    def _upgrade_cursor(self):
+        # Convert this unresolved cursor into a resolved SchemInstanceSubcursor
+        node = self.instanceunresolved.resolver()
+        for step in self.instancepath:
+            if isinstance(step, int):
+                node = node[step]
+            else:
+                node = getattr(node, step)
+        return SchemInstanceSubcursor((self.instanceunresolved, node))
 
     @property
     def instanceunresolved(self):
@@ -393,7 +409,8 @@ class SchemInstanceUnresolved(Node):
 
     in_subgraphs = [Schematic]
 
-    pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
+        factory=coerce_tuple(Vec2R, 2))
     orientation = Attr(D4, default=D4.R0)
 
     resolver = Attr(object) # closure?
@@ -409,7 +426,7 @@ class SchemInstanceUnresolved(Node):
         return self.__getattr__(name)
 
     def __getattr__(self, name):
-        return SchemInstanceUnresolvedCursor((self, name))
+        return SchemInstanceUnresolvedSubcursor((self, name))
 
 @public
 class SchemInstanceUnresolvedConn(Node):
