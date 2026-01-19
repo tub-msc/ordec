@@ -1,3 +1,4 @@
+# -*- version: ord1 -*-
 from ordec.lib.ord1_test.d_latch import D_latch
 from ordec.lib.ord1_test.inv_all_features import Inv
 

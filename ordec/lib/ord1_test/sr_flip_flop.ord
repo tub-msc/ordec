@@ -1,3 +1,4 @@
+# -*- version: ord1 -*-
 from ordec.lib.ord1_test.nand import Nand
 
 cell SR_flip_flop:

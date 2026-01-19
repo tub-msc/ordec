@@ -1,3 +1,4 @@
+# -*- version: ord1 -*-
 from ordec.lib import Nmos, Pmos
 from ordec.lib import Gnd, Vdc
 
