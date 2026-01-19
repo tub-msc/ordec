@@ -14,6 +14,10 @@
     <circle cx="12.0" cy="5.0" r="0.1625" class="connPoint" />
     <circle cx="7.0" cy="5.0" r="0.1625" class="connPoint" />
     <circle cx="2.0" cy="5.0" r="0.1625" class="connPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 27.0 8.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 27.65 8.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vout1</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 27.0 9.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 27.65 9.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vout2</text>
     <g>
       <rect x="23.0" y="6.0" width="4.0" height="6.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 26.875 11.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">DiffPair</text>
