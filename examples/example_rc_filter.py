@@ -341,3 +341,5 @@ def run_rc_square_wave_simulation_with_vcd():
 
 if __name__ == "__main__":
     run_rc_square_wave_simulation_with_vcd()
+
+
