@@ -149,6 +149,8 @@ testdata = [
 
     testcase(ord_lambda('.lib.ord2_test.inverter', 'Inv', 'schematic'),
         refdir / "ord2test_inverter_sch.svg"),
+    testcase(ord_lambda('.lib.ord2_test.inverter_constraints', 'Inv', 'schematic'),
+        refdir / "ord2test_inverter_constraints_sch.svg"),
     testcase(ord_lambda('.lib.ord2_test.nand', 'Nand', 'schematic'),
         refdir / "ord2test_nand_sch.svg"),
     testcase(ord_lambda('.lib.ord2_test.reg', 'MultibitReg_Arrays', 'schematic', bits=3),

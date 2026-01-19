@@ -359,7 +359,7 @@ class SchemInstanceUnresolvedSubcursor(tuple):
         return type(self) == type(other) and super().__eq__(other)
 
     def __getitem__(self, name):
-        return SchemInstanceUnresolvedCursor(self+(name,))
+        return SchemInstanceUnresolvedSubcursor(self+(name,))
     
     def __getattribute__(self, name):
         # Upgrade cursor on failed attribute access
