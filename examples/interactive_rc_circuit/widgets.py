@@ -1157,3 +1157,68 @@ class VdcSliderWidget(anywidget.AnyWidget):
     min = traitlets.Float(-2.0).tag(sync=True)
     max = traitlets.Float(5.0).tag(sync=True)
     step = traitlets.Float(0.1).tag(sync=True)
+
+
+class PlaybackControlWidget(anywidget.AnyWidget):
+    """Simple play/resume control for driving simulations."""
+
+    _esm = """
+    function render({ model, el }) {
+        const container = document.createElement("div");
+        container.style.display = "flex";
+        container.style.alignItems = "center";
+        container.style.gap = "10px";
+        container.style.padding = "15px";
+        container.style.fontFamily = "Arial, sans-serif";
+        container.style.background = "#f8f9fa";
+        container.style.border = "1px solid #dee2e6";
+        container.style.borderRadius = "8px";
+        container.style.height = "100%";
+
+        const title = document.createElement("div");
+        title.textContent = "Playback";
+        title.style.fontWeight = "bold";
+        title.style.color = "#495057";
+        title.style.marginRight = "6px";
+
+        const toggleBtn = document.createElement("button");
+        toggleBtn.textContent = "Play";
+        toggleBtn.style.padding = "6px 12px";
+        toggleBtn.style.borderRadius = "6px";
+        toggleBtn.style.border = "1px solid #ced4da";
+        toggleBtn.style.background = "#ffffff";
+        toggleBtn.style.cursor = "pointer";
+
+        let isPlaying = model.get("is_playing");
+
+        function sendCommand(action) {
+            const payload = {
+                action,
+                nonce: Date.now().toString(36) + Math.random().toString(36).slice(2)
+            };
+            model.set("command", JSON.stringify(payload));
+            model.save_changes();
+        }
+
+        toggleBtn.addEventListener("click", () => {
+            sendCommand("toggle");
+        });
+
+        function syncButtonState() {
+            isPlaying = model.get("is_playing");
+            toggleBtn.textContent = isPlaying ? "Pause" : "Play";
+        }
+
+        model.on("change:is_playing", syncButtonState);
+        syncButtonState();
+
+        container.appendChild(title);
+        container.appendChild(toggleBtn);
+        el.appendChild(container);
+    }
+
+    export default { render };
+    """
+
+    command = traitlets.Unicode("").tag(sync=True)
+    is_playing = traitlets.Bool(False).tag(sync=True)

@@ -7,6 +7,8 @@ import anywidget
 import traitlets
 from IPython.display import display
 import os
+import json
+import ipywidgets as ipywidgets
 
 from ordec.core import *
 from ordec import Rational as R
@@ -14,7 +16,7 @@ from ordec.lib.base import Vdc, Res, Cap, Gnd
 from ordec.sim.ngspice import Ngspice, NgspiceBackend
 from ordec.sim.sim_hierarchy import SimHierarchy, HighlevelSim
 from ordec.sim.ngspice_ffi import NgspiceFFI
-from widgets import AnimatedFnWidget, VdcSliderWidget
+from widgets import AnimatedFnWidget, VdcSliderWidget, PlaybackControlWidget
 
 
 class InteractiveRCCircuit(Cell):
@@ -50,11 +52,17 @@ class InteractiveRCCircuit(Cell):
 
 
 class InteractiveSimulation:
-    def __init__(self, circuit, plot_widget, vdc_slider, plot_all_signals=False):
+    PLOT_THROTTLE_SECONDS = 1.0 / 60.0
+    DATA_THROTTLE_SECONDS = 1.0 / 60.0
+
+    def __init__(
+        self, circuit, plot_widget, vdc_slider, plot_all_signals=False, playback_widget=None
+    ):
         self.circuit = circuit
         self.plot_widget = plot_widget
         self.vdc_slider = vdc_slider
         self.plot_all_signals = plot_all_signals
+        self.playback_widget = playback_widget
         self.alter_session = None
         self.is_running = False
         self._is_updating = False
@@ -68,7 +76,13 @@ class InteractiveSimulation:
         self._vcd_signal_chars = {}
         self._vcd_header_buffer = []
         self._vcd_initial_values = []
+        self._last_plot_time = 0.0
+        self._last_sim_time = "10m"
+        self._last_time_step = "1u"
         self.vdc_slider.observe(self._on_voltage_change, names="value")
+        if self.playback_widget is not None:
+            self.playback_widget.observe(self._on_playback_command, names="command")
+            self.playback_widget.is_playing = False
 
     def _on_voltage_change(self, change):
         new_voltage = change["new"]
@@ -110,12 +124,42 @@ class InteractiveSimulation:
         finally:
             self._is_updating = False
 
+    def _on_playback_command(self, change):
+        raw_command = change.get("new", "")
+        if not raw_command:
+            return
+        try:
+            payload = json.loads(raw_command)
+        except Exception:
+            return
+
+        action = payload.get("action")
+        if action == "toggle":
+            if not self.is_running:
+                asyncio.create_task(
+                    self.start_simulation(
+                        sim_time=self._last_sim_time, time_step=self._last_time_step
+                    )
+                )
+            elif self.alter_session and self.alter_session.is_running():
+                self.alter_session.halt_simulation(timeout=1.0)
+                if self.playback_widget is not None:
+                    self.playback_widget.is_playing = False
+            elif self.alter_session and not self.alter_session.is_running():
+                self.alter_session.resume_simulation(timeout=2.0)
+                if self.playback_widget is not None:
+                    self.playback_widget.is_playing = True
+
     async def start_simulation(self, sim_time="10m", time_step="1u"):
         if self.is_running:
             return
 
         try:
             self.is_running = True
+            if self.playback_widget is not None:
+                self.playback_widget.is_playing = True
+            self._last_sim_time = sim_time
+            self._last_time_step = time_step
 
             sim_hierarchy = SimHierarchy()
             highlevel_sim = HighlevelSim(
@@ -169,8 +213,12 @@ class InteractiveSimulation:
                         break
 
                     time_point = data["time"]
+                    now = time.time()
+                    plot_this_point = (
+                        now - self._last_plot_time >= self.PLOT_THROTTLE_SECONDS
+                    )
 
-                    if self.plot_all_signals:
+                    if self.plot_all_signals and plot_this_point:
                         for signal_name, signal_value in data.items():
                             if signal_name == "time":
                                 continue
@@ -203,7 +251,7 @@ class InteractiveSimulation:
                             self.plot_widget.add_points(
                                 signal_name, [time_point], [signal_value]
                             )
-                    else:
+                    elif plot_this_point:
                         vin_voltage = None
                         vout_voltage = None
 
@@ -230,6 +278,8 @@ class InteractiveSimulation:
                         self.plot_widget.add_points(
                             "vout", [time_point], [vout_voltage]
                         )
+                    if plot_this_point:
+                        self._last_plot_time = now
 
                     await asyncio.sleep(0.01)
 
@@ -242,12 +292,16 @@ class InteractiveSimulation:
             raise
         finally:
             self.is_running = False
+            if self.playback_widget is not None:
+                self.playback_widget.is_playing = False
 
     async def _run_async_simulation(self, time_step, sim_time, highlevel_sim):
         import queue
 
         data_queue = self.alter_session.start_async_tran(time_step, sim_time)
         start_time = time.time()
+        last_yield_time = 0.0
+        latest_filtered = None
 
         sim_duration = float(R(sim_time))
 
@@ -255,35 +309,46 @@ class InteractiveSimulation:
 
         while self.is_running and (time.time() - start_time) < timeout:
             try:
-                data_point = data_queue.get_nowait()
+                while True:
+                    data_point = data_queue.get_nowait()
 
-                if isinstance(data_point, dict) and "data" in data_point:
-                    data = data_point["data"]
+                    if isinstance(data_point, dict) and "data" in data_point:
+                        data = data_point["data"]
 
-                    if self.plot_all_signals:
-                        filtered_data = {
-                            k: v for k, v in data.items() if "#branch" not in k
-                        }
-                    else:
-                        filtered_data = {
-                            k: v
-                            for k, v in data.items()
-                            if not k.startswith("@") and "#branch" not in k
-                        }
+                        if self.plot_all_signals:
+                            filtered_data = {
+                                k: v for k, v in data.items() if "#branch" not in k
+                            }
+                        else:
+                            filtered_data = {
+                                k: v
+                                for k, v in data.items()
+                                if not k.startswith("@") and "#branch" not in k
+                            }
 
-                    if "time" in filtered_data:
-                        yield filtered_data
+                        if "time" in filtered_data:
+                            latest_filtered = filtered_data
 
             except queue.Empty:
-                await asyncio.sleep(0.01)
-                continue
+                pass
             except Exception as e:
                 break
+
+            now = time.time()
+            if (
+                latest_filtered is not None
+                and now - last_yield_time >= self.DATA_THROTTLE_SECONDS
+            ):
+                yield latest_filtered
+                latest_filtered = None
+                last_yield_time = now
 
             await asyncio.sleep(0.001)
 
     def stop_simulation(self):
         self.is_running = False
+        if self.playback_widget is not None:
+            self.playback_widget.is_playing = False
 
     def start_vcd_recording(
         self, filename="interactive_simulation.vcd", timescale="1u"
@@ -400,6 +465,7 @@ def main(plot_all_signals=False):
     circuit = InteractiveRCCircuit(vdc_initial=1.0, resistance=1000, capacitance=1e-6)
 
     vdc_slider = VdcSliderWidget(value=1.0, min=-5.0, max=5.0, step=0.1)
+    playback_widget = PlaybackControlWidget()
 
     plot_widget = AnimatedFnWidget(
         update_interval_ms=50,
@@ -413,10 +479,10 @@ def main(plot_all_signals=False):
     )
 
     interactive_sim = InteractiveSimulation(
-        circuit, plot_widget, vdc_slider, plot_all_signals
+        circuit, plot_widget, vdc_slider, plot_all_signals, playback_widget
     )
 
-    display(vdc_slider)
+    display(ipywidgets.HBox([vdc_slider, playback_widget]))
     display(plot_widget)
 
     async def run_demo():

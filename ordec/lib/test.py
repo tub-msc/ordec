@@ -26,7 +26,15 @@ class SignalValue:
 
 
 class TranResult:
-    def __init__(self, data_dict, sim_hierarchy, netlister, progress, signal_kinds=None):
+    def __init__(
+        self,
+        data_dict,
+        sim_hierarchy,
+        netlister,
+        progress,
+        signal_kinds=None,
+        mappings=None,
+    ):
         self._data = data_dict
         self._node = sim_hierarchy
         self._netlister = netlister
@@ -35,9 +43,21 @@ class TranResult:
         # Use provided signal_kinds or fall back to heuristics
         signal_kinds = signal_kinds or {}
 
+        # Precomputed mappings allow us to avoid repeated name lookups.
+        if mappings:
+            for attr_name, sim_name, default_kind in mappings:
+                if sim_name == "time" and sim_name in data_dict:
+                    kind = signal_kinds.get(sim_name, SignalKind.TIME)
+                    self.time = SignalValue(value=data_dict[sim_name], kind=kind)
+                    continue
+                if sim_name in data_dict:
+                    kind = signal_kinds.get(sim_name, default_kind)
+                    setattr(self, attr_name, SignalValue(value=data_dict[sim_name], kind=kind))
+            return
+
         if "time" in data_dict:
             time_kind = signal_kinds.get("time", SignalKind.TIME)
-            self.__dict__["time"] = SignalValue(value=data_dict["time"], kind=time_kind)
+            self.time = SignalValue(value=data_dict["time"], kind=time_kind)
 
         for net in sim_hierarchy.all(SimNet):
             net_name = netlister.name_hier_simobj(net)
@@ -431,124 +451,98 @@ class RingoscTb(Cell):
 
 # not reentrant
 def stream_from_queue(simbase, sim, data_queue, highlevel_sim, node, callback):
-    fallback_grace_period = 2.0
-    completion_time = None
-
-    def get_data_with_timeout(timeout):
-        try:
-            return data_queue.get(timeout=timeout)
-        except _queue.Empty:
-            return None
-
-    def check_simulation_status():
-        return sim.is_running()
-
-    def process_data_point(data_point, last_progress):
-        # Handle MP backend sentinel
-        if data_point == "---ASYNC_SIM_SENTINEL---":
-            return ("sentinel", None, last_progress)
-
-        if not isinstance(data_point, dict):
-            return ("ignore", None, last_progress)
-        
-        if "status" in data_point or "error" in data_point:
-            if data_point.get("status") in ("completed", "halted"):
-                return ("sentinel", None, last_progress)
-            return ("ignore", None, last_progress)
-
-        if callback:
-            callback(data_point)
-
-        data = data_point.get("data", {})
-        signal_kinds = data_point.get("signal_kinds", {})
-        
-        progress = data_point.get("progress", 0.0)
-
-        simbase._sim_tran_last_progress = last_progress
-
-        tr = TranResult(
-            data,
-            node,
-            highlevel_sim.netlister,
-            progress,
-            signal_kinds,
-        )
-        return ("result", tr, last_progress)
-
-    def drain_remaining_items(last_progress, max_items=10):
-        results = []
-        remaining_items = 0
-        while remaining_items < max_items:
-            try:
-                data_point = data_queue.get_nowait()
-                kind, payload, last_progress = process_data_point(
-                    data_point, last_progress
-                )
-                if kind == "sentinel":
-                    return ("sentinel", last_progress, results)
-                if kind == "result":
-                    results.append(payload)
-                remaining_items += 1
-            except _queue.Empty:
-                break
-        return ("done", last_progress, results)
+    # Minimal grace window to let fallback or buffered points land after ngspice stops.
+    callbacks = getattr(sim, "_normal_callbacks_received", 0)
+    fallback_grace_period = 0.1 if callbacks > 0 else 0.5
 
     last_progress = 0.0
+    completion_time = None
 
-    with _futures.ThreadPoolExecutor(max_workers=2) as executor:
-        while True:
-            data_future = executor.submit(get_data_with_timeout, 0.05)
-            status_future = executor.submit(check_simulation_status)
+    # Precompute mappings from sim objects to attribute names to avoid per-sample lookups.
+    mappings = [("time", "time", SignalKind.TIME)]
+    for net in node.all(SimNet):
+        attr_name = net.full_path_list()[-1]
+        mappings.append((attr_name, highlevel_sim.netlister.name_hier_simobj(net), SignalKind.VOLTAGE))
+    for inst in node.all(SimInstance):
+        attr_name = inst.full_path_list()[-1]
+        mappings.append((attr_name, highlevel_sim.netlister.name_hier_simobj(inst), SignalKind.CURRENT))
 
-            data_available = False
+    while True:
+        try:
+            data_point = data_queue.get(timeout=0.05)
+        except _queue.Empty:
+            data_point = None
 
-            try:
-                done_futures = _futures.as_completed(
-                    [data_future, status_future], timeout=0.1
-                )
-                for future in done_futures:
-                    if future == data_future:
-                        data_point = future.result()
-                        if data_point is not None:
-                            data_available = True
+        if data_point is not None:
+            # Handle MP backend sentinel
+            if data_point == "---ASYNC_SIM_SENTINEL---":
+                return
 
-                            kind, payload, last_progress = process_data_point(
-                                data_point, last_progress
-                            )
+            if not isinstance(data_point, dict):
+                continue
 
-                            if kind == "sentinel":
-                                return
+            if "status" in data_point or "error" in data_point:
+                if data_point.get("status") in ("completed", "halted"):
+                    return
+                continue
 
-                            if kind == "result":
-                                yield payload
+            if callback:
+                callback(data_point)
 
-                    elif future == status_future:
-                        is_running = future.result()
-                        if not is_running and completion_time is None:
-                            completion_time = _time.time()
+            data = data_point.get("data", {})
+            signal_kinds = data_point.get("signal_kinds", {})
+            
+            progress = data_point.get("progress", 0.0)
 
-            except _futures.TimeoutError:
-                if not sim.is_running() and completion_time is None:
-                    completion_time = _time.time()
+            simbase._sim_tran_last_progress = last_progress
 
-            if not data_future.done():
-                data_future.cancel()
-            if not status_future.done():
-                status_future.cancel()
+            yield TranResult(
+                data,
+                node,
+                highlevel_sim.netlister,
+                progress,
+                signal_kinds,
+                mappings,
+            )
+            last_progress = progress
 
-            if not data_available:
-                if completion_time is not None:
-                    if _time.time() - completion_time >= fallback_grace_period:
-                        state, last_progress, results = drain_remaining_items(
-                            last_progress
-                        )
-                        if state == "sentinel":
+        # Check for completion and drain any remaining items after grace period.
+        if not sim.is_running():
+            if completion_time is None:
+                completion_time = _time.time()
+            if _time.time() - completion_time >= fallback_grace_period:
+                while True:
+                    try:
+                        data_point = data_queue.get_nowait()
+                    except _queue.Empty:
+                        return
+
+                    if data_point == "---ASYNC_SIM_SENTINEL---":
+                        return
+
+                    if not isinstance(data_point, dict):
+                        continue
+
+                    if "status" in data_point or "error" in data_point:
+                        if data_point.get("status") in ("completed", "halted"):
                             return
-                        for tr in results:
-                            yield tr
-                        break
-                elif not sim.is_running():
-                    completion_time = _time.time()
+                        continue
+
+                    if callback:
+                        callback(data_point)
+
+                    data = data_point.get("data", {})
+                    signal_kinds = data_point.get("signal_kinds", {})
+                    progress = data_point.get("progress", 0.0)
+                    simbase._sim_tran_last_progress = last_progress
+                    yield TranResult(
+                        data,
+                        node,
+                        highlevel_sim.netlister,
+                        progress,
+                        signal_kinds,
+                    )
+                    last_progress = progress
 
 
 class SimBase(Cell):
@@ -584,7 +578,7 @@ class SimBase(Cell):
         enable_savecurrents=True,
         backend=None,
         fallback_sampling_ratio=100,
-        disable_buffering=False,
+        disable_buffering=True,
     ):
         """Run async transient simulation.
 
@@ -628,6 +622,46 @@ class SimBase(Cell):
         chosen_backend = backend if backend is not None else self.backend
         sim = HighlevelSim(self.schematic, s, backend=chosen_backend, **kwargs)
         sim.tran(tstep, tstop)
+        return s
+
+
+class LargeRingoscTb(SimBase):
+    """51-stage ring oscillator testbench."""
+
+    stages = Parameter(int, default=51)
+
+    @generate
+    def schematic(self):
+        s = Schematic(cell=self)
+
+        s.vdd = Net()
+        s.vss = Net()
+
+        # Precreate stage nets and expose them as attributes for easier probing.
+        net_names = [f"y{idx}" for idx in range(self.stages)]
+        for name in net_names:
+            s[name] = Net()
+
+        inv_sym = Inv().symbol
+
+        # Connect in a ring: each inverter drives the next, last feeds first.
+        for idx in range(self.stages):
+            a_name = net_names[idx - 1] if idx > 0 else net_names[-1]
+            y_name = net_names[idx]
+            a_net = s[a_name]
+            y_net = s[y_name]
+            pos = Vec2R(4 * idx, 2)
+            inst = SchemInstance(inv_sym.portmap(vdd=s.vdd, vss=s.vss, a=a_net, y=y_net), pos=pos)
+            setattr(s, f"inv{idx}", inst)
+
+        # Supply and reference
+        vdc = Vdc(dc=R("5")).symbol
+        s.vsup = SchemInstance(vdc.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, -2))
+        gnd = Gnd().symbol
+        s.g = SchemInstance(gnd.portmap(p=s.vss), pos=Vec2R(-4, -2))
+
+        s.outline = Rect4R(lx=-6, ly=-6, ux=4 * self.stages + 2, uy=8)
+
         return s
 
 

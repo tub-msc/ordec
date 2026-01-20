@@ -398,7 +398,7 @@ class NgspiceSubprocess(NgspiceBase):
         *extra_args,
         throttle_interval: float = 0.1,
         buffer_size: int = 10,
-        disable_buffering: bool = False,
+        disable_buffering: bool = True,
         disable_throttling: bool = False,
         fallback_sampling_ratio: int = 100,
     ) -> "queue.Queue[dict]":
