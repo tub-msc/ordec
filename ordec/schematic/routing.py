@@ -709,23 +709,30 @@ def calculate_vertices(outline, cells, ports, connections):
     return vertices
 
 
-def adjust_outline_initial(node, outline):
+def adjust_outline_initial(node):
     """
     Adjust the outline according to the schematic instances
 
     :param node: node instance
     :param outline: current outline
     """
-
+    outline = None
     for port in node.all(SchemPort):
-        outline = outline.extend(port.pos)
+        if outline:
+            outline = outline.extend(port.pos)
+        else:
+            outline = Rect4R(lx=port.pos.x, ly=port.pos.y,
+                             ux=port.pos.x, uy=port.pos.y)
     for instance in node.all(SchemInstance):
         instance_transform = instance.loc_transform()
         instance_geometry = instance_transform * instance.symbol.outline
-        low_pos = Vec2R(x=instance_geometry.lx , y=instance_geometry.ly)
-        up_pos = Vec2R(x=instance_geometry.ux , y=instance_geometry.uy)
-        outline = outline.extend(low_pos)
-        outline = outline.extend(up_pos)
+        if outline:
+            low_pos = Vec2R(x=instance_geometry.lx , y=instance_geometry.ly)
+            up_pos = Vec2R(x=instance_geometry.ux , y=instance_geometry.uy)
+            outline = outline.extend(low_pos)
+            outline = outline.extend(up_pos)
+        else:
+            outline = instance_geometry
     return outline
 
 def schematic_routing(node, outline=None, routing=None):
@@ -740,8 +747,7 @@ def schematic_routing(node, outline=None, routing=None):
     if routing is None:
         routing = dict()
     if outline is None:
-        outline = Rect4R(lx=0, ly=0, ux=0, uy=0)
-        outline = adjust_outline_initial(node, outline)
+        outline = adjust_outline_initial(node)
     width = int(outline.ux - outline.lx)
     height = int(outline.uy - outline.ly)
     # Calculate offset for positive coordinates while routing

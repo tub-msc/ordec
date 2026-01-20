@@ -29,13 +29,13 @@ cell Inv:
         pu.$w = 200n
             
         solver = Solver(ctx.root)
-        solver.constrain(vss.pos == Vec2R(2, 1))
-        solver.constrain(vdd.pos == vss.pos + Vec2R(0, 12))
+        solver.constrain(vss.pos == (2, 1))
+        solver.constrain(vdd.pos == vss.pos + (0, 12))
         solver.constrain(y.pos.y == pd.d.pos.y + 1)
         solver.constrain(y.pos.x == pd.b.pos.x + 2)
-        solver.constrain(a.pos == vss.pos + Vec2R(0, 6))
-        solver.constrain(pd.pos == vss.pos + Vec2R(2, 1))
-        solver.constrain(pd.outline.north + Vec2R(0, 2) == pu.outline.south)
+        solver.constrain(a.pos == vss.pos + (0, 6))
+        solver.constrain(pd.pos == vss.pos + (2, 1))
+        solver.constrain(pd.outline.north + (0, 2) == pu.outline.south)
         solver.solve()
 
         for instance in pu, pd:
