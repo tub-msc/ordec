@@ -28,5 +28,5 @@ def ord_to_py(source_data: str) -> ast.Module:
     elif ord_version == "ord1":
         module = ord1_to_py(source_data)
     else:
-        module = ord1_to_py(source_data)
+        module = ord2_to_py(source_data)
     return module

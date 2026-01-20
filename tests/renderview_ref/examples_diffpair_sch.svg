@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="665.0px" height="805.0px" viewBox="-1.0 -1.0 19.0 23.0">
+<svg xmlns="http://www.w3.org/2000/svg" width="630.0px" height="805.0px" viewBox="0.0 -1.0 18.0 23.0">
   <style type="text/css">svg { stroke-linecap: butt; stroke-linejoin: bevel; } text { font-size: 11pt; font-family: "Inconsolata", monospace; font-stretch: 75%; } .instanceName { font-weight: bold; fill: #f00; } .pinLabel, .pinArrow { fill: #f00; } .params, .cellName { fill: #80b380; } .symbolOutline { stroke: #80b380; } .symbolPoly { stroke: #000; } .symbolOutline, .symbolPoly, .schemWire, .tapPoint { fill: none; stroke-width: 0.1; } .grid { fill: #ccc; } .schemWire, .tapPoint { stroke: #cc0; } .schemWire { stroke-linecap: square; } .connPoint, .tapPointLabel { fill: #cc0; } .portArrow, .portLabel { fill: #39f; }</style>
   <g transform="matrix(1 0 0 -1 0 21.0)">
     <path d="M5.0 3.0 L7.0 3.0" class="schemWire" />
@@ -16,13 +16,13 @@
     <path d="M17.0 14.0 L16.0 14.0 L5.0 14.0 L5.0 12.0" class="schemWire" />
     <path d="M5.0 14.0 L5.0 16.0" class="schemWire" />
     <path d="M1.0 13.0 L16.0 13.0 L16.0 10.0 L15.0 10.0" class="schemWire" />
+    <circle cx="9.0" cy="6.0" r="0.1625" class="connPoint" />
     <circle cx="5.0" cy="21.0" r="0.1625" class="connPoint" />
+    <circle cx="6.0" cy="0.0" r="0.1625" class="connPoint" />
     <circle cx="9.0" cy="0.0" r="0.1625" class="connPoint" />
     <circle cx="8.0" cy="10.0" r="0.1625" class="connPoint" />
-    <circle cx="6.0" cy="0.0" r="0.1625" class="connPoint" />
     <circle cx="5.0" cy="14.0" r="0.1625" class="connPoint" />
     <circle cx="13.0" cy="15.0" r="0.1625" class="connPoint" />
-    <circle cx="9.0" cy="6.0" r="0.1625" class="connPoint" />
     <g>
       <rect x="7.0" y="1.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 10.875 4.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Nmos</text>

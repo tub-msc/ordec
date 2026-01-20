@@ -139,7 +139,7 @@ def test_scheminstance_unresolved_hierarchical_path():
 
     resolver = lambda **params: lib_test.MultibitReg_StructOfArrays(**params).symbol
 
-    s.myinst = SchemInstanceUnresolved(resolver=resolver)
+    s.myinst = SchemInstanceUnresolved(resolver=resolver, pos=(0, 0))
 
     s.myinst % SchemInstanceUnresolvedParameter(name='bits', value=4)
     conn_u = s.myinst % SchemInstanceUnresolvedConn(here=s.mynet, there=('data', 'd', 3))

@@ -38,6 +38,10 @@ def test_funcdef_return_type():
     ord_string = "def f() -> int:\n    return 1"
     compare_asts(ord_string)
 
+def test_funcdef_oneline():
+    ord_string = "def f(): x = 1; return x"
+    compare_asts(ord_string)
+
 def test_funcdef_posargs():
     ord_string = "def f(a, /, b):\n    return 'Hello'"
     compare_asts(ord_string)
