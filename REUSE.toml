@@ -6,6 +6,7 @@ path = [
     "docs/Makefile",
     "docs/make.bat",
     "web/package-lock.json",
+    "xordb/Cargo.lock",
     "tests/renderview_ref/*.svg",
 ]
 SPDX-FileCopyrightText = "NONE"
@@ -15,6 +16,7 @@ SPDX-License-Identifier = "CC0-1.0"
 # Boilerplate files:
 path = [
     ".gitignore",
+    "xordb/.gitignore",
     "docs/.gitignore",
     "web/.gitignore",
     ".dockerignore",
@@ -94,6 +96,7 @@ SPDX-License-Identifier = "CC0-1.0"
 # Documentation files:
 path = [
     "README.md",
+    "xordb/README.md",
     "AGENTS.md",
     "docs/**/*.rst",
     "docs/**/*.svg",

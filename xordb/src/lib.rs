@@ -3,51 +3,85 @@
 
 //! xORDB - aXellerated ORDB backend in Rust.
 //!
-//! This module provides high-performance implementations of ORDB's core
-//! data structures using Rust's `imbl` crate for persistent immutable
-//! collections.
+//! This crate provides native Rust types for IC design schema entities,
+//! with compile-time type safety and efficient persistent data structures.
+//!
+//! # Architecture
+//!
+//! - `rational`: Rational number type with SI prefix support
+//! - `geoprim`: 2D geometric primitives (Vec2R, Rect4R, D4, TD4R)
+//! - `subgraph`: Generic subgraph storage infrastructure
+//! - `symbol`: Symbol schema types and SymbolSubgraph
 
-use pyo3::prelude::*;
+pub mod geoprim;
+pub mod rational;
+pub mod subgraph;
+pub mod symbol;
 
-mod attr;
-mod index;
-mod schema;
-mod store;
+// Re-export commonly used types
+pub use geoprim::{D4, PinType, Rect4R, RectError, TD4R, Vec2R};
+pub use rational::{ParseRationalError, Rational};
+pub use subgraph::{FrozenSubgraph, LocalRef, Nid, NodeTypeId, Subgraph, SubgraphNode};
+pub use symbol::{
+    FrozenSymbolSubgraph, Pin, PolyVec2R, Symbol, SymbolArc, SymbolNode, SymbolPoly,
+    SymbolSubgraph,
+};
 
-pub use attr::AttrValue;
-pub use index::{IndexKey, IndexValue};
-pub use schema::{AttrKind, AttrSchema, IndexKind, IndexSchema, NTypeSchema, SchemaRegistry};
-pub use store::{FrozenSubgraph, MutableSubgraph};
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// Check if Rust backend is available (always true when this module loads).
-#[pyfunction]
-fn is_rust_backend() -> bool {
-    true
-}
+    #[test]
+    fn test_create_symbol() {
+        let outline = Rect4R::new(
+            Rational::from_integer(0),
+            Rational::from_integer(0),
+            Rational::from_integer(100),
+            Rational::from_integer(50),
+        )
+        .unwrap();
 
-/// Get version information.
-#[pyfunction]
-fn version() -> &'static str {
-    env!("CARGO_PKG_VERSION")
-}
+        let mut sg = SymbolSubgraph::with_root(Symbol::new(outline).with_caption("NMOS"));
 
-/// Python module definition.
-#[pymodule]
-fn xordb(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    // Module-level functions
-    m.add_function(wrap_pyfunction!(is_rust_backend, m)?)?;
-    m.add_function(wrap_pyfunction!(version, m)?)?;
+        // Add pins
+        let _in_pin = sg.insert(
+            Pin::new(Vec2R::new(Rational::from_integer(0), Rational::from_integer(25)))
+                .with_pintype(PinType::In),
+        );
+        let _out_pin = sg.insert(
+            Pin::new(Vec2R::new(
+                Rational::from_integer(100),
+                Rational::from_integer(25),
+            ))
+            .with_pintype(PinType::Out),
+        );
 
-    // Schema registration and lookup
-    m.add_function(wrap_pyfunction!(schema::register_ntype, m)?)?;
-    m.add_function(wrap_pyfunction!(schema::get_schema_info, m)?)?;
-    m.add_function(wrap_pyfunction!(schema::get_ntype_id, m)?)?;
-    m.add_function(wrap_pyfunction!(schema::get_schema, m)?)?;
-    m.add_function(wrap_pyfunction!(schema::get_type_names, m)?)?;
+        // Add a decorative polygon
+        let poly_nid = sg.insert(SymbolPoly::new());
+        let poly_ref = LocalRef::new(poly_nid);
 
-    // Core classes
-    m.add_class::<MutableSubgraph>()?;
-    m.add_class::<FrozenSubgraph>()?;
+        sg.insert(PolyVec2R::new(
+            poly_ref,
+            0,
+            Vec2R::new(Rational::from_integer(10), Rational::from_integer(10)),
+        ));
+        sg.insert(PolyVec2R::new(
+            poly_ref,
+            1,
+            Vec2R::new(Rational::from_integer(90), Rational::from_integer(10)),
+        ));
+        sg.insert(PolyVec2R::new(
+            poly_ref,
+            2,
+            Vec2R::new(Rational::from_integer(90), Rational::from_integer(40)),
+        ));
 
-    Ok(())
+        assert_eq!(sg.root().unwrap().caption, Some("NMOS".to_string()));
+        assert_eq!(sg.all_pins().count(), 2);
+        assert_eq!(sg.poly_vertex_positions(poly_nid).len(), 3);
+
+        // Freeze and verify
+        let frozen = sg.freeze();
+        assert_eq!(frozen.all_pins().count(), 2);
+    }
 }
