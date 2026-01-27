@@ -198,7 +198,9 @@ class SG13G2(Cell):
 
         return s
 
-def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) -> Layout:
+def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
+    contact_sd_odd: bool, contact_sd_even: bool
+    ) -> Layout:
     """
     Layout generation function shared for Nmos and Pmos cells.
 
@@ -273,6 +275,9 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
     s.solve()
 
     for i in range(num_gates + 1):
+        if (not contact_sd_even) if i % 2 == 0 else (not contact_sd_odd):
+            del l.sd[i]
+            continue
         makevias(l, l.sd[i].rect, layers.Cont, 
             size=Vec2I(160, 160),
             spacing=Vec2I(180, 180),
@@ -288,6 +293,9 @@ class Mos(Cell):
     w = Parameter(R)  #: Width
     m = Parameter(int, default=1)  #: Multiplier, i. e. number of devices with separate Activ areas in parallel)
     ng = Parameter(int, default=1)  #: Number of gate fingers
+
+    contact_sd_odd = Parameter(bool, default=True) #: Add contact + Metal1 to odd-numbered source/drains
+    contact_sd_even = Parameter(bool, default=True) #: Add contact + Metal1 to even-numbered source/drains
 
     def netlist_ngspice(self, netlister, inst):
         netlister.require_netlist_setup(netlister_setup)
@@ -312,7 +320,8 @@ class Nmos(Mos, generic_mos.Nmos):
     def layout(self) -> Layout:
         if self.m != 1:
             raise ParameterError("m != 1 not supported for layout.")
-        return layoutgen_mos(self, self.l, self.w, self.ng, nwell=False)
+        return layoutgen_mos(self, self.l, self.w, self.ng, nwell=False,
+            contact_sd_odd=self.contact_sd_odd, contact_sd_even=self.contact_sd_even)
 
 @public
 class Pmos(Mos, generic_mos.Pmos):
@@ -322,7 +331,8 @@ class Pmos(Mos, generic_mos.Pmos):
     def layout(self) -> Layout:
         if self.m != 1:
             raise ParameterError("m != 1 not supported for layout.")
-        return layoutgen_mos(self, self.l, self.w, self.ng, nwell=True)
+        return layoutgen_mos(self, self.l, self.w, self.ng, nwell=True,
+            contact_sd_odd=self.contact_sd_odd, contact_sd_even=self.contact_sd_even)
 
 def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     layers = SG13G2().layers
