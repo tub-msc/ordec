@@ -138,10 +138,17 @@ class MixinClosedPolygon:
 class GenericPoly(Node):
     in_subgraphs = [Symbol]
 
-    def __new__(cls, vertices:list[Vec2R]=None, **kwargs):
+    def __new__(cls, vertices:list[Vec2R|Vec2I]=None, **kwargs):
         main = super().__new__(cls, **kwargs)
         if vertices is None:
             return main
+        elif isinstance(vertices, int):
+            def inserter_func(sgu, primary_nid):
+                main_nid = main.insert_into(sgu, primary_nid)
+                for i in range(vertices):
+                    cls.vertex_cls(ref=main_nid, order=i).insert_into(sgu, sgu.nid_generate())
+                return main_nid
+            return FuncInserter(inserter_func)
         else:
             def inserter_func(sgu, primary_nid):
                 main_nid = main.insert_into(sgu, primary_nid)
@@ -158,6 +165,10 @@ class GenericPoly(Node):
         for vertex_nid in self.subgraph.all(self.vertex_cls.ref_idx.query(self), wrap_cursor=False):
             sgu.remove_nid(vertex_nid)
         return super().remove_node(sgu)
+
+    def __getitem__(self, idx: int):
+        return self.vertices()[idx]
+
 
 class GenericPolyR(GenericPoly):
     """Base class for polygon or polygonal chain classes (rational numbers)."""
@@ -1035,7 +1046,7 @@ class PolyVec2R(Node):
     in_subgraphs = [Symbol, Schematic]
     ref    = LocalRef(GenericPolyR, optional=False)
     order   = Attr(int, optional=False) #: Order of the point in the polygonal chain
-    pos     = Attr(Vec2R, optional=False, factory=coerce_tuple(Vec2R, 2))
+    pos     = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
 
     ref_idx = Index(ref, sortkey=lambda node: node.order)
 
@@ -1045,7 +1056,8 @@ class PolyVec2I(Node):
     in_subgraphs = [Layout]
     ref    = LocalRef(GenericPolyI, optional=False)
     order   = Attr(int, optional=False) #: Order of the point in the polygonal chain
-    pos     = Attr(Vec2I, optional=False, factory=coerce_tuple(Vec2I, 2))
+    pos     = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
+        placeholder=Vec2LinearTerm)
 
     ref_idx = Index(ref, sortkey=lambda node: node.order)
 
