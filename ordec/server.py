@@ -211,6 +211,44 @@ class RWLock:
         """Returns a context manager for acquiring a write lock"""
         return self._WriteContext(self)
 
+class ImportTracker:
+    """
+    Context manager that tracks all file paths accessed during imports.
+
+    Installs itself as a meta path finder to intercept find_spec calls.
+    Even if an import fails (e.g., SyntaxError), all files that were
+    located before the failure are recorded. This would not be possible by
+    inspecting sys.modules alone.
+    """
+
+    def __init__(self):
+        self.files = []
+
+    def __enter__(self):
+        self.files = []
+        sys.meta_path.insert(0, self)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.meta_path.remove(self)
+        return False  # Don't suppress exceptions
+
+    def find_spec(self, fullname, path, target=None):
+        # Delegate to other finders and record the file path
+        for finder in sys.meta_path:
+            if finder is self:
+                continue
+            find_spec_method = getattr(finder, 'find_spec', None)
+            if find_spec_method is None:
+                continue
+            spec = find_spec_method(fullname, path, target)
+            if spec is not None:
+                # Record file path (ignore non-file origins)
+                if spec.origin and spec.has_location:
+                    self.files.append(spec.origin)
+                return spec
+        return None
+
 class ConnectionHandler:
     def __init__(self, key, sysmodules_orig):
         self.sysmodules_orig = set(sysmodules_orig.keys())
@@ -241,17 +279,24 @@ class ConnectionHandler:
 
     def build_cells(self, source_type: str, source_data: str) -> (dict, dict):
         conn_globals = {}
+        exc = None
         if source_type == 'ord':
             # Having the import here enables auto-reloading of ord.
             code = compile(ord_to_py(source_data), "<string>", "exec")
             with self.import_lock.write():
-                exec(code, conn_globals, conn_globals)
+                try:
+                    exec(code, conn_globals, conn_globals)
+                except Exception as e:
+                    exc = e
         elif source_type == 'python':
             with self.import_lock.write():
-                exec(source_data, conn_globals, conn_globals)
+                try:
+                    exec(source_data, conn_globals, conn_globals)
+                except Exception as e:
+                    exc = e
         else:
             raise NotImplementedError(f'source_type {source_type} not implemented')
-        return conn_globals
+        return conn_globals, exc
 
     def purge_modules(self):
         """
@@ -266,24 +311,21 @@ class ConnectionHandler:
                 #print(f"Unloading {k}...")
                 del sys.modules[k]
 
-    def watch_files(self):
-        ret = []
-        for k, v in sys.modules.items():
-            if k not in self.sysmodules_orig:
-                try:
-                    fn = v.__file__
-                    if fn:
-                        ret.append(fn)
-                except AttributeError:
-                    pass
-        return ret
-
     def build_localmodule(self, localmodule: str):
+        exc = None
         with self.import_lock.write():
             self.purge_modules()
-            module = importlib.import_module(localmodule)
-            conn_globals = module.__dict__
-            return conn_globals, self.watch_files()
+            with ImportTracker() as tracker:
+                try:
+                    module = importlib.import_module(localmodule)
+                except Exception as e:
+                    exc = e
+                    conn_globals = {}
+                else:
+                    conn_globals = module.__dict__
+
+            # Use tracked files - includes all files found even if import failed
+            return conn_globals, tracker.files, exc
 
     def handle_connection(self, websocket):
         remote = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
@@ -301,26 +343,26 @@ class ConnectionHandler:
 
         # First message - read design input / build cells:
 
-        try:
-            if msg_first['msg'] == 'source':
-                #print(f"Received source of type {source_type}.")
-                conn_globals = self.build_cells(msg_first['srctype'], msg_first['src'])
-                watch_files = []
-            elif msg_first['msg'] == 'localmodule':
-                conn_globals, watch_files = self.build_localmodule(msg_first['module'])
-            else:
-                raise Exception("Excpected 'source' or 'localmodule' message.")
-        except:
+        if msg_first['msg'] == 'source':
+            #print(f"Received source of type {source_type}.")
+            conn_globals, exc = self.build_cells(msg_first['srctype'], msg_first['src'])
+            watch_files = []
+        elif msg_first['msg'] == 'localmodule':
+            conn_globals, watch_files, exc = self.build_localmodule(msg_first['module'])
+        else:
+            raise Exception("Excpected 'source' or 'localmodule' message.")
+        
+        if exc:
+            exc_str = ''.join(traceback.format_exception(exc))
             websocket.send(json.dumps({
                 'msg': 'exception',
-                'exception': traceback.format_exc(),
+                'exception': exc_str,
             }))
-            return
-        
-        websocket.send(json.dumps({
-            'msg': 'viewlist',
-            'views': discover_views(conn_globals),
-        }))
+        else: 
+            websocket.send(json.dumps({
+                'msg': 'viewlist',
+                'views': discover_views(conn_globals),
+            }))
 
         # Create websocket send lock to prevent concurrent sends from corrupting messages
         # (e.g., main thread sending view data while inotify thread sends change notification)

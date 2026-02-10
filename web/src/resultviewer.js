@@ -227,6 +227,7 @@ export class ResultViewer {
             this.showRefreshOverlay(null);
             this.showException(this.client.exception);
         } else {
+            this.showException(null);
             this.invalidate();
             this.updateOverlay();
         }
