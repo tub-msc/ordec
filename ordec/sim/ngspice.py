@@ -1,12 +1,15 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 from collections import namedtuple
 from enum import Enum
 import numpy as np
 
 from ..core import *
 from .ngspice_subprocess import NgspiceSubprocess
+
+logger = logging.getLogger(__name__)
 
 class NgspiceBackend(Enum):
     """Available NgSpice backend types."""
@@ -15,18 +18,17 @@ class NgspiceBackend(Enum):
 
 class Ngspice:
     @staticmethod
-    def launch(debug: bool=False, backend: NgspiceBackend = NgspiceBackend.SUBPROCESS):
+    def launch(backend: NgspiceBackend = NgspiceBackend.SUBPROCESS):
         if isinstance(backend, str):
             backend = NgspiceBackend(backend.lower())
 
-        if debug:
-            print(f"[Ngspice] Using backend: {backend.value}")
+        logger.debug(f"Using backend: {backend.value}")
 
         backend_class = {
             NgspiceBackend.SUBPROCESS: NgspiceSubprocess,
         }[backend]
 
-        return backend_class.launch(debug=debug)
+        return backend_class.launch()
 
     def __init__(self):
         raise TypeError("Please call Ngspice.launch(), instantiation of Ngspice is not supported!")

@@ -143,7 +143,7 @@ class HighlevelSim:
 
     @contextmanager
     def launch_ngspice(self):
-        with Ngspice.launch(debug=False, backend=self.backend) as sim:
+        with Ngspice.launch(backend=self.backend) as sim:
             for func in self.netlister.ngspice_setup_funcs:
                 func(sim)
             yield sim

@@ -8,17 +8,17 @@ import string
 import sys
 import tempfile
 import shutil
-import queue
-import threading
-import time
+import logging
 from collections import namedtuple
 from contextlib import contextmanager
 from pathlib import Path
 from subprocess import Popen, PIPE, STDOUT
 from typing import Iterator, Optional
-
 import numpy as np
+
 from ..core.rational import Rational as R
+
+logger = logging.getLogger(__name__)
 
 from .ngspice_common import (
     NgspiceValue,
@@ -38,12 +38,6 @@ from .ngspice_common import (
 NgspiceVector = namedtuple(
     "NgspiceVector", ["name", "quantity", "dtype", "length", "rest"]
 )
-
-_DEBUG_PREFIX = "[ngspice-cli]"
-
-
-def _debug(message: str) -> None:
-    print(f"{_DEBUG_PREFIX} {message}")
 
 
 def is_numeric_row(row_data):
@@ -70,7 +64,7 @@ def is_numeric_row(row_data):
 class NgspiceSubprocess(NgspiceBase):
     @classmethod
     @contextmanager
-    def launch(cls, debug: bool):
+    def launch(cls):
         # Choose the correct ngspice executable for the platform
         if sys.platform == "win32":
             # On Windows, prefer ngspice_con if available, fall back to ngspice
@@ -78,26 +72,18 @@ class NgspiceSubprocess(NgspiceBase):
         else:
             ngspice_exe = "ngspice"
 
-        if debug:
-            _debug(f"Using ngspice executable: {ngspice_exe}")
-            _debug(f"Platform: {sys.platform}")
+        logger.debug(f"Using ngspice executable: {ngspice_exe}")
 
         with tempfile.TemporaryDirectory() as cwd_str:
-            if debug:
-                _debug(f"Starting ngspice with command: {[ngspice_exe, '-p']}")
-                _debug(f"Working directory: {cwd_str}")
-
             p: Popen[bytes] = Popen(
                 [ngspice_exe, "-p"], stdin=PIPE, stdout=PIPE, stderr=STDOUT, cwd=cwd_str
             )
-            if debug:
-                _debug(f"Process started with PID: {p.pid}")
+            logger.debug(f"Process started with PID: {p.pid}")
 
             try:
-                yield cls(p, debug=debug, cwd=Path(cwd_str))
+                yield cls(p, cwd=Path(cwd_str))
             finally:
-                if debug:
-                    _debug(f"Cleaning up process {p.pid}")
+                logger.debug(f"Cleaning up process {p.pid}")
                 try:
                     p.send_signal(signal.SIGTERM)
                     if p.stdin:
@@ -108,11 +94,9 @@ class NgspiceSubprocess(NgspiceBase):
                 except (ProcessLookupError, BrokenPipeError, TimeoutError):
                     pass  # Process may have already terminated
 
-    def __init__(self, p: Popen, debug: bool, cwd: Path):
+    def __init__(self, p: Popen, cwd: Path):
         self.p: Popen[bytes] = p
-        self.debug = debug
         self.cwd = cwd
-        self._command_lock = threading.Lock()
 
         self._configure_precision()
 
@@ -120,8 +104,7 @@ class NgspiceSubprocess(NgspiceBase):
         """Configure ngspice numeric precision settings."""
 
         try:
-            if self.debug:
-                _debug("Configuring ngspice numeric precision")
+            logger.debug("Configuring ngspice numeric precision")
             # Increase the number of digits printed in tabular outputs.
             self.command("set numdgt=16")
             # Ensure computed scalar values use the same precision.
@@ -133,38 +116,30 @@ class NgspiceSubprocess(NgspiceBase):
         """Executes ngspice command and returns string output from ngspice process."""
         if self.p.poll() is not None:
             raise NgspiceFatalError("ngspice process has terminated unexpectedly.")
-        if self.debug:
-            _debug(f"Sending command to ngspice ({self.p.pid}): {command}")
+        logger.debug(f"Sending command to ngspice ({self.p.pid}): {command}")
 
         if self.p.stdin:
             # Send the command followed by echo marker on separate lines
             full_input = f"{command}\necho FINISHED\n"
-            if self.debug:
-                _debug(f"Writing to stdin: {repr(full_input)}")
+            logger.debug(f"Writing to stdin: {repr(full_input)}")
             self.p.stdin.write(full_input.encode("ascii"))
             self.p.stdin.flush()
-            if self.debug:
-                _debug(f"Stdin flushed")
+            logger.debug("Stdin flushed")
 
         out = []
         line_count = 0
         halt_sent = False
         while True:
-            if self.debug:
-                _debug(f"Waiting for line {line_count}...")
+            logger.debug(f"Waiting for line {line_count}...")
             l = self.p.stdout.readline()
             line_count += 1
-            if self.debug:
-                _debug(f"Received line {line_count} from ngspice: {repr(l)}")
+            logger.debug(f"Received line {line_count} from ngspice: {repr(l)}")
 
             # Check for EOF first
             if l == b"":  # readline() returns the empty byte string only on EOF.
                 out_flat = "".join(out)
-                if self.debug:
-                    _debug(f"EOF detected, ngspice terminated")
-                raise NgspiceFatalError(
-                    f"ngspice terminated abnormally:\n{out_flat}"
-                )
+                logger.debug("EOF detected, ngspice terminated")
+                raise NgspiceFatalError(f"ngspice terminated abnormally:\n{out_flat}")
 
             # Strip ALL occurrences of "ngspice 123 -> " from the line on all platforms
             # Preserve newlines when stripping prompts
@@ -172,10 +147,7 @@ class NgspiceSubprocess(NgspiceBase):
                 m = re.match(rb"ngspice [0-9]+ -> (.*)", l)
                 if not m:
                     break
-                if self.debug:
-                    _debug(
-                        f"Stripping prompt from line: {repr(l)} -> {repr(m.group(1))}"
-                    )
+                logger.debug(f"Stripping prompt from line: {repr(l)} -> {repr(m.group(1))}")
                 stripped_content = m.group(1)
                 # Preserve the newline if the original line had one
                 if l.endswith(b"\n") and not stripped_content.endswith(b"\n"):
@@ -185,8 +157,7 @@ class NgspiceSubprocess(NgspiceBase):
 
             # Check for our finish marker
             if l.rstrip() == b"FINISHED":
-                if self.debug:
-                    _debug(f"Found FINISHED marker, breaking")
+                logger.debug("Found FINISHED marker, breaking")
                 break
 
             # Skip empty lines that are just prompts
@@ -194,12 +165,10 @@ class NgspiceSubprocess(NgspiceBase):
                 continue
 
             out.append(l.decode("ascii"))
-            if self.debug:
-                _debug(f"Added to output: {repr(l.decode('ascii'))}")
+            logger.debug(f"Added to output: {repr(l.decode('ascii'))}")
 
         out_flat = "".join(out)
-        if self.debug:
-            _debug(f"Received result from ngspice ({self.p.pid}): {repr(out_flat)}")
+        logger.debug(f"Received result from ngspice ({self.p.pid}): {repr(out_flat)}")
 
         check_errors(out_flat)
         return out_flat
@@ -207,8 +176,7 @@ class NgspiceSubprocess(NgspiceBase):
     def load_netlist(self, netlist: str, no_auto_gnd: bool = True):
         netlist_fn = self.cwd / "netlist.sp"
         netlist_fn.write_text(netlist)
-        if self.debug:
-            _debug(f"Written netlist: \n {netlist}")
+        logger.debug(f"Written netlist: \n {netlist}")
         if no_auto_gnd:
             self.command("set no_auto_gnd")
         check_errors(self.command(f"source {netlist_fn}"))
