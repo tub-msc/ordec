@@ -1,6 +1,6 @@
 # -*- version: ord1 -*-
-from ordec.lib.ord1_test.inv_all_features import Inv
-from ordec.lib.ord1_test.mux2_structured import Mux2
+from tests.lib.ord1.inv_all_features import Inv
+from tests.lib.ord1.mux2_structured import Mux2
 
 cell D_latch:
     symbol:

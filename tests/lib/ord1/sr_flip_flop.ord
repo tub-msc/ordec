@@ -1,5 +1,5 @@
 # -*- version: ord1 -*-
-from ordec.lib.ord1_test.nand import Nand
+from tests.lib.ord1.nand import Nand
 
 cell SR_flip_flop:
     symbol:

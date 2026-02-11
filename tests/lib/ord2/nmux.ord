@@ -2,7 +2,7 @@
 
 from ordec.core import *
 from ordec.schematic import helpers
-from ordec.lib.ord2_test.mux2 import Mux2
+from .mux2 import Mux2
 from ordec.ord2.context import ctx, OrdContext
 from ordec.schematic.routing import schematic_routing
 import math

@@ -1,6 +1,6 @@
 # -*- version: ord1 -*-
-from ordec.lib.ord1_test.inv_all_features import Inv
-from ordec.lib.ord1_test.sr_flip_flop import SR_flip_flop
+from tests.lib.ord1.inv_all_features import Inv
+from tests.lib.ord1.sr_flip_flop import SR_flip_flop
 
 cell D_latch:
     symbol:
