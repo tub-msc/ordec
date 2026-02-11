@@ -32,7 +32,6 @@ from .ngspice_common import (
     SignalKind,
     SignalArray,
     NgspiceBase,
-    NgspiceConfigError,
 )
 
 NgspiceVector = namedtuple(
@@ -103,15 +102,12 @@ class NgspiceSubprocess(NgspiceBase):
     def _configure_precision(self) -> None:
         """Configure ngspice numeric precision settings."""
 
-        try:
-            logger.debug("Configuring ngspice numeric precision")
-            # Increase the number of digits printed in tabular outputs.
-            self.command("set numdgt=16")
-            # Ensure computed scalar values use the same precision.
-            self.command("set csnumprec=16")
-        except NgspiceError as exc:
-            raise NgspiceConfigError("Failed to configure ngspice precision") from exc
-
+        logger.debug("Configuring ngspice numeric precision")
+        # Increase the number of digits printed in tabular outputs.
+        self.command("set numdgt=16")
+        # Ensure computed scalar values use the same precision.
+        self.command("set csnumprec=16")
+    
     def command(self, command: str) -> str:
         """Executes ngspice command and returns string output from ngspice process."""
         if self.p.poll() is not None:
@@ -124,16 +120,11 @@ class NgspiceSubprocess(NgspiceBase):
             logger.debug(f"Writing to stdin: {repr(full_input)}")
             self.p.stdin.write(full_input.encode("ascii"))
             self.p.stdin.flush()
-            logger.debug("Stdin flushed")
 
         out = []
-        line_count = 0
-        halt_sent = False
         while True:
-            logger.debug(f"Waiting for line {line_count}...")
             l = self.p.stdout.readline()
-            line_count += 1
-            logger.debug(f"Received line {line_count} from ngspice: {repr(l)}")
+            logger.debug(f"Received line from ngspice: {repr(l)}")
 
             # Check for EOF first
             if l == b"":  # readline() returns the empty byte string only on EOF.

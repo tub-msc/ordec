@@ -77,12 +77,6 @@ class NgspiceFatalError(NgspiceError):
     pass
 
 
-class NgspiceConfigError(NgspiceError):
-    """Raised when backend configuration fails."""
-
-    pass
-
-
 class NgspiceTable:
     def __init__(self, name):
         self.name = name
