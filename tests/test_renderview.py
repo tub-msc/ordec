@@ -18,7 +18,7 @@ from importlib import import_module
 import ordec.importer
 from ordec import lib
 from ordec.render import render
-from ordec.lib import test as libtest
+from .lib import schematics as libtest
 
 @dataclass
 class RenderViewTestcase:
@@ -62,8 +62,8 @@ testdata = [
     testcase(lambda: lib.Or2().symbol,
         refdir / "lib_or2_sym.svg"),
 
-    # Test cells from lib.test
-    # ------------------------
+    # Test cells from tests.lib.schematics
+    # ------------------------------------
 
     testcase(lambda: libtest.RotateTest().schematic,
         refdir / "libtest_rotatetest_sch.svg"),
