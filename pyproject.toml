@@ -62,8 +62,6 @@ packages = [
     "ordec.layout",
     "ordec.lib",
     "ordec.lib.examples",
-    "ordec.lib.ord1_test",
-    "ordec.lib.ord2_test",
     "ordec.ord1",
     "ordec.ord2",
     "ordec.schematic",
