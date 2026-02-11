@@ -6,17 +6,12 @@ from enum import Enum
 import numpy as np
 
 from ..core import *
-from .ngspice_ffi import NgspiceFFI
 from .ngspice_subprocess import NgspiceSubprocess
-from .ngspice_mp import NgspiceIsolatedFFI
 
 class NgspiceBackend(Enum):
     """Available NgSpice backend types."""
 
     SUBPROCESS = "subprocess"
-    FFI = "ffi"
-    MP = "mp"
-
 
 class Ngspice:
     @staticmethod
@@ -28,9 +23,7 @@ class Ngspice:
             print(f"[Ngspice] Using backend: {backend.value}")
 
         backend_class = {
-            NgspiceBackend.FFI: NgspiceFFI,
             NgspiceBackend.SUBPROCESS: NgspiceSubprocess,
-            NgspiceBackend.MP: NgspiceIsolatedFFI,
         }[backend]
 
         return backend_class.launch(debug=debug)

@@ -10,12 +10,9 @@ from ordec import Rational as R
 from .lib import sim as lib_test
 from ordec.core import *
 from ordec.sim.sim_hierarchy import SimHierarchy, HighlevelSim
-from .lib.sim import RCAlterTestbench
 
 sim_backends = [
     pytest.param('subprocess', marks=[]),
-    pytest.param('ffi', marks=[pytest.mark.libngspice]),
-    pytest.param('mp', marks=[pytest.mark.libngspice]),
 ]
 
 @pytest.mark.parametrize("backend", sim_backends)
@@ -127,73 +124,12 @@ def test_ihp_mos_inv_vin5(backend):
 
 @pytest.mark.parametrize("backend,golden_a,golden_b,atol", [
     ('subprocess', 0.3333333, 0.6666667, 1e-6),
-    pytest.param('ffi', 0.33333333333333337, 0.6666666666666667, 1e-9, marks=pytest.mark.libngspice),
-    pytest.param('mp', 0.33333333333333337, 0.6666666666666667, 1e-9, marks=pytest.mark.libngspice),
 ])
 def test_sim_tran_flat(backend, golden_a, golden_b, atol):
     h = lib_test.ResdivFlatTb(backend=backend).sim_tran("0.1u", "1u")
     assert len(h.time) > 0
     assert abs(h.a.trans_voltage[-1] - golden_a) < atol
     assert abs(h.b.trans_voltage[-1] - golden_b) < atol
-
-@pytest.mark.libngspice
-@pytest.mark.parametrize("backend", ["ffi"])  # FFI backend required for precise timing control
-def test_async_halt_and_alter(backend):
-    """Test async simulation with halt and alter functionality using queue-based API"""
-    import time
-    import queue
-
-    netlist = """.title Halt alter test
-V1 in 0 DC 1
-R1 in out 1k
-C1 out 0 1uF IC=0
-.end
-"""
-
-    with Ngspice.launch(debug=False, backend=backend) as sim:
-        sim.load_netlist(netlist)
-
-        # Start async simulation - returns queue instead of generator
-        data_queue = sim.tran_async("5u", "10m")
-        assert isinstance(data_queue, queue.Queue), "tran_async should return Queue object"
-
-        # Wait for startup
-        timeout = time.time() + 3.0
-        while not sim.is_running() and time.time() < timeout:
-            time.sleep(0.01)
-
-        if not sim.is_running():
-            pytest.skip("Background simulation failed to start")
-
-        # Let simulation run briefly to collect some data
-        time.sleep(0.2)
-
-        # Test safe halt with proper timing - this addresses the critical issue that
-        # bg_halt is not instantaneous and can fail silently
-        halt_success = sim.safe_halt_simulation(max_attempts=3, wait_time=0.2)
-        assert halt_success, "Halt should succeed"
-        assert not sim.is_running(), "Simulation should be stopped after halt"
-
-        # Verify component state before alter
-        show_before = sim.command("show r1")
-        assert "1000" in show_before, "Should show original 1k resistance"
-
-        # Test alter command - this only works when simulation is properly halted
-        alter_result = sim.command("alter r1 resistance=2000")
-
-        # Verify alter worked by checking component parameters
-        show_after = sim.command("show r1")
-        assert "2000" in show_after, "Should show altered 2k resistance"
-
-        # Verify we can collect some queue data (demonstrates queue benefits)
-        data_count = 0
-        while not data_queue.empty() and data_count < 5:
-            try:
-                data_point = data_queue.get_nowait()
-                assert 'data' in data_point, "Queue data should have expected structure"
-                data_count += 1
-            except queue.Empty:
-                break
 
 @pytest.mark.parametrize("backend", sim_backends)
 def test_webdata(backend):
@@ -239,35 +175,6 @@ def test_sim_ac_rc_filter(backend):
 
     # At the -3dB point, the magnitude should be 1/sqrt(2)
     assert np.isclose(vout_mag, 1/math.sqrt(2), atol=1e-2)
-
-
-@pytest.mark.parametrize("backend", sim_backends)
-def test_highlevel_alter_op(backend):
-    """Test alter with op"""
-
-    tb = RCAlterTestbench()
-    node = SimHierarchy()
-    sim = HighlevelSim(tb.schematic, node, backend=backend)
-
-    with sim.alter_session(backend=backend) as alter:
-        # Test altering VDC voltage multiple times
-        vdc_values = [1.0, 2.0, 5.0, 0.5]
-        
-        for vdc_value in vdc_values:
-            alter.alter_component(tb.schematic.v1, dc=vdc_value)
-            alter.op()
-            voltage = node.vout.dc_voltage
-            # In this DC circuit, output should equal input voltage
-            assert abs(voltage - vdc_value) < 0.01, f"DC output should be ~{vdc_value}V, got {voltage}V"
-
-        # Test altering capacitor capacitance
-        alter.alter_component(tb.schematic.c1, capacitance='2u')
-        
-        # Verify we can still alter VDC after capacitor change
-        alter.alter_component(tb.schematic.v1, dc=3.0)
-        alter.op()
-        final_voltage = node.vout.dc_voltage
-        assert abs(final_voltage - 3.0) < 0.01, f"Final voltage should be ~3V, got {final_voltage}V"
 
 @pytest.mark.parametrize("backend", sim_backends)
 def test_sim_ac_rc_filter_wrdata(backend):
