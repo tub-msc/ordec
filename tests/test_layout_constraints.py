@@ -79,6 +79,26 @@ def test_underconstrained_2():
     assert err.ambiguity_info.constraint_rank == 6
     assert err.ambiguity_info.null_space.shape == (8, 2) # 8 variables, 2 degree of freedom
 
+def test_missing_variables():
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers)
+
+    l.activ = LayoutRect(layer=layers.Activ)
+
+    # For l.activ.rect, ly und uy have constraints, but lx and ux have non constraints.
+
+    s = Solver(l)
+    s.constrain(l.activ.rect.ly == 100)
+    s.constrain(l.activ.rect.uy == 200)
+
+    with pytest.raises(UnderconstrainedError) as exc_info:
+        s.solve()
+
+    err = exc_info.value
+    assert err.ambiguity_info.degrees_of_freedom == 2
+    assert err.ambiguity_info.constraint_rank == 2
+    assert err.ambiguity_info.null_space.shape == (4, 2)
+
 def test_inequalities():
     layers = SG13G2().layers
     l = Layout(ref_layers=layers) 
@@ -150,20 +170,6 @@ def test_no_solution():
     with pytest.raises(SolverError):
         s.solve()
 
-def test_missing_variables():
-    layers = SG13G2().layers
-    l = Layout(ref_layers=layers)
-
-    l.activ = LayoutRect(layer=layers.Activ)
-
-    # For l.activ.rect, ly und uy have constraints, but lx and ux have non constraints.
-
-    s = Solver(l)
-    s.constrain(l.activ.rect.ly == 100)
-    s.constrain(l.activ.rect.uy == 200)
-    s.solve()
-
-    assert l.activ.rect == Rect4I(0, 100, 0, 200)
 
 def test_vec2():
     layers = SG13G2().layers

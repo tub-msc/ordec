@@ -30,6 +30,17 @@ class ConstrainableAttrPlaceholder(ABC):
     def make_solution(cls, mav: 'MissingAttrVal', value_of_var: dict['Variable', int]):
         pass
 
+    @classmethod
+    @abstractmethod
+    def subids(cls):
+        pass
+
+    @classmethod
+    def collect_values(cls, mav, value_of_var):
+        """Collect solved values for all subids of an attribute."""
+        return [value_of_var[Variable(mav.subgraph, mav.nid, mav.attr, subid)]
+            for subid in cls.subids()]
+
 @public
 class ConstrainableAttr(Attr):
     """
@@ -185,6 +196,10 @@ class Vec2LinearTerm(Vec2Generic, ConstrainableAttrPlaceholder):
 
     __slots__ = ()
 
+    @classmethod
+    def subids(cls):
+        return range(2)
+
     def __new__(cls, x: LinearTerm, y: LinearTerm):
         x = coerce_term(x)
         y = coerce_term(y)
@@ -201,8 +216,7 @@ class Vec2LinearTerm(Vec2Generic, ConstrainableAttrPlaceholder):
 
     @classmethod
     def make_solution(cls, mav, value_of_var):
-        values = [value_of_var.get(Variable(mav.subgraph, mav.nid, mav.attr, subid), 0)
-            for subid in range(2)]
+        values = cls.collect_values(mav, value_of_var)
         if mav.attr.target_type == R:
             return Vec2R(*[R(v).limit_denominator() for v in values])
         else:
@@ -235,6 +249,10 @@ class Rect4LinearTerm(Rect4Generic, ConstrainableAttrPlaceholder):
     __slots__=()
     vector_cls = Vec2LinearTerm
 
+    @classmethod
+    def subids(cls):
+        return range(4)
+
     def __new__(cls, lx: LinearTerm, ly: LinearTerm, ux: LinearTerm, uy: LinearTerm):
         lx = coerce_term(lx)
         ly = coerce_term(ly)
@@ -263,8 +281,7 @@ class Rect4LinearTerm(Rect4Generic, ConstrainableAttrPlaceholder):
 
     @classmethod
     def make_solution(cls, mav, value_of_var):
-        values = [value_of_var.get(Variable(mav.subgraph, mav.nid, mav.attr, subid), 0)
-            for subid in range(4)]
+        values = cls.collect_values(mav, value_of_var)
         if mav.attr.target_type == R:
             return Rect4R(*[R(v).limit_denominator() for v in values])
         else:
@@ -564,6 +581,14 @@ class Solver:
             if v.subgraph != self.subgraph.subgraph:
                 raise SolverError(f"Solver found Variables of unexpected subgraph {v.subgraph}.")
 
+        # Expand variable set to include all subids for each affected
+        # attribute, so that check_solution_uniqueness can detect variables
+        # that are completely missing from constraints.
+        mavs = {v.mav() for v in variables}
+        for mav in mavs:
+            for subid in mav.attr.placeholder.subids():
+                variables.add(Variable(mav.subgraph, mav.nid, mav.attr, subid))
+
         variables = tuple(variables)
         n_variables = len(variables)
         idx_of_var = {variable: index for index, variable in enumerate(variables)}
@@ -594,9 +619,6 @@ class Solver:
         # Keep float values here; int/R conversion happens in make_solution
         value_of_var = {variable: value for variable, value in zip(variables, res.x)}
 
-        mavs = {variable.mav() for variable in variables}
         for mav in mavs:
             node = self.subgraph.cursor_at(mav.nid, lookup_npath=False)
-            #print(self.subgraph.tables())
-            #print(node, self.subgraph)
             node.update_byattr(mav.attr, mav.attr.placeholder.make_solution(mav, value_of_var))
