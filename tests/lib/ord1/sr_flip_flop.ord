@@ -1,4 +1,7 @@
 # -*- version: ord1 -*-
+# SPDX-FileCopyrightText: 2025 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
 from tests.lib.ord1.nand import Nand
 
 cell SR_flip_flop:

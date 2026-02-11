@@ -1,4 +1,7 @@
 # -*- version: ord1 -*-
+# SPDX-FileCopyrightText: 2025 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
 from tests.lib.ord1.inv_all_features import Inv
 from tests.lib.ord1.sr_flip_flop import SR_flip_flop
 
