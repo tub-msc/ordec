@@ -110,8 +110,6 @@ class NgspiceSubprocess(NgspiceBase):
     
     def command(self, command: str) -> str:
         """Executes ngspice command and returns string output from ngspice process."""
-        if self.p.poll() is not None:
-            raise NgspiceFatalError("ngspice process has terminated unexpectedly.")
         logger.debug(f"Sending command to ngspice ({self.p.pid}): {command}")
 
         if self.p.stdin:
