@@ -3,16 +3,16 @@
 
 from dataclasses import dataclass
 
-from ..schematic import helpers
-from ..core import *
-from ..sim.sim_hierarchy import HighlevelSim, SimHierarchy
-from ..sim.ngspice import Ngspice
-from ..sim.ngspice_common import SignalKind, SignalArray
+from ordec.schematic import helpers
+from ordec.core import *
+from ordec.sim.sim_hierarchy import HighlevelSim, SimHierarchy
+from ordec.sim.ngspice import Ngspice
+from ordec.sim.ngspice_common import SignalKind, SignalArray
 
-from .generic_mos import Or2, Nmos, Pmos, Ringosc, Inv
-from .base import Gnd, NoConn, Res, Vdc, Idc, Cap, SinusoidalVoltageSource
-from . import sky130
-from . import ihp130
+from ordec.lib.generic_mos import Or2, Nmos, Pmos, Ringosc, Inv
+from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, SinusoidalVoltageSource
+from ordec.lib import sky130
+from ordec.lib import ihp130
 
 import queue as _queue
 import time as _time
