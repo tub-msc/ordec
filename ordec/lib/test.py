@@ -71,47 +71,6 @@ class TranResult:
                 setattr(self, inst.full_path_list()[-1],
                     SignalValue(value=data_dict[inst_name], kind=inst_kind))
 
-
-
-class RingoscTb(Cell):
-    @generate
-    def schematic(self):
-        s = Schematic(cell=self)
-
-        s.vdd = Net()
-        s.vss = Net()
-        s.y = Net()
-
-        vac = SinusoidalVoltageSource(amplitude=R(1), frequency=R(1)).symbol
-        s.i0 = SchemInstance(
-            pos=Vec2R(0, 2), ref=vac, portmap={vac.m: s.vss, vac.p: s.vdd}
-        )
-
-        ro = Ringosc().symbol
-        s.dut = SchemInstance(
-            pos=Vec2R(5, 2), ref=ro, portmap={ro.vdd: s.vdd, ro.vss: s.vss, ro.y: s.y}
-        )
-
-        nc = NoConn().symbol
-        s.i1 = SchemInstance(pos=Vec2R(10, 2), ref=nc, portmap={nc.a: s.y})
-
-        g = Gnd().symbol
-        s.i2 = SchemInstance(pos=Vec2R(0, -4), ref=g, portmap={g.p: s.vss})
-
-        # s.ref = self.symbol
-
-        s.outline = Rect4R(lx=0, ly=-4, ux=15, uy=7)
-
-        s.vss % SchemWire(vertices=[Vec2R(2, 2), Vec2R(2, 1), Vec2R(2, 0)])
-        s.vss % SchemWire(vertices=[Vec2R(2, 1), Vec2R(7, 1), Vec2R(7, 2)])
-        s.vdd % SchemWire(vertices=[Vec2R(2, 6), Vec2R(2, 7), Vec2R(7, 7), Vec2R(7, 6)])
-        s.y % SchemWire(vertices=[Vec2R(9, 4), Vec2R(10, 4)])
-
-        helpers.schem_check(s, add_conn_points=True)
-
-        return s
-
-
 # not reentrant
 def stream_from_queue(simbase, sim, data_queue, highlevel_sim, node, callback):
     # Minimal grace window to let fallback or buffered points land after ngspice stops.
@@ -286,47 +245,6 @@ class SimBase(Cell):
         sim = HighlevelSim(self.schematic, s, backend=chosen_backend, **kwargs)
         sim.tran(tstep, tstop)
         return s
-
-
-class LargeRingoscTb(SimBase):
-    """51-stage ring oscillator testbench."""
-
-    stages = Parameter(int, default=51)
-
-    @generate
-    def schematic(self):
-        s = Schematic(cell=self)
-
-        s.vdd = Net()
-        s.vss = Net()
-
-        # Precreate stage nets and expose them as attributes for easier probing.
-        net_names = [f"y{idx}" for idx in range(self.stages)]
-        for name in net_names:
-            s[name] = Net()
-
-        inv_sym = Inv().symbol
-
-        # Connect in a ring: each inverter drives the next, last feeds first.
-        for idx in range(self.stages):
-            a_name = net_names[idx - 1] if idx > 0 else net_names[-1]
-            y_name = net_names[idx]
-            a_net = s[a_name]
-            y_net = s[y_name]
-            pos = Vec2R(4 * idx, 2)
-            inst = SchemInstance(inv_sym.portmap(vdd=s.vdd, vss=s.vss, a=a_net, y=y_net), pos=pos)
-            setattr(s, f"inv{idx}", inst)
-
-        # Supply and reference
-        vdc = Vdc(dc=R("5")).symbol
-        s.vsup = SchemInstance(vdc.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, -2))
-        gnd = Gnd().symbol
-        s.g = SchemInstance(gnd.portmap(p=s.vss), pos=Vec2R(-4, -2))
-
-        s.outline = Rect4R(lx=-6, ly=-6, ux=4 * self.stages + 2, uy=8)
-
-        return s
-
 
 class RcFilterTb(SimBase):
     r = Parameter(R, default=R(1e3))
