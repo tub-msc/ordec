@@ -31,37 +31,6 @@ class SignalKind(Enum):
         self.vtype_value = vtype_value
         self.description = description
 
-    @classmethod
-    def from_vtype(cls, vtype: int):
-        for kind in cls:
-            if vtype == kind.vtype_value:
-                return kind
-        return cls.OTHER
-
-    def get_vtype_value(self) -> int:
-        return self.vtype_value
-
-    def get_description(self) -> str:
-        return self.description
-
-    def match(self) -> tuple[int, str]:
-        return (self.vtype_value, self.description)
-
-    def is_time(self) -> bool:
-        return self is SignalKind.TIME
-
-    def is_frequency(self) -> bool:
-        return self is SignalKind.FREQUENCY
-
-    def is_voltage(self) -> bool:
-        return self is SignalKind.VOLTAGE
-
-    def is_current(self) -> bool:
-        return self is SignalKind.CURRENT
-
-    def is_other(self) -> bool:
-        return self is SignalKind.OTHER
-
 
 @dataclass
 class SignalArray:
