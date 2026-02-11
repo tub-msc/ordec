@@ -9,7 +9,7 @@ instead.
 
 import pytest
 from ordec.core import *
-from ordec.lib import test as lib_test
+from .lib import schematics as lib_test
 from ordec.lib import Nmos
 from ordec.schematic.helpers import SchematicError, resolve_instances
 

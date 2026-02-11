@@ -8,8 +8,8 @@ import time
 import queue
 from contextlib import contextmanager
 from ordec.core import *
-from ordec.lib import test as lib_test
-from ordec.lib.test import RCAlterTestbench
+from .lib import sim as lib_test
+from .lib.sim import RCAlterTestbench
 from ordec.core.rational import R
 from ordec.sim.sim_hierarchy import SimHierarchy, HighlevelSim
 from ordec.sim.ngspice import Ngspice

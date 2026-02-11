@@ -7,10 +7,10 @@ from ordec.sim.ngspice import Ngspice
 from ordec.schematic.netlister import Netlister
 from ordec.sim.ngspice_common import NgspiceError, NgspiceFatalError
 from ordec import Rational as R
-from ordec.lib import test as lib_test
+from .lib import sim as lib_test
 from ordec.core import *
 from ordec.sim.sim_hierarchy import SimHierarchy, HighlevelSim
-from ordec.lib.test import RCAlterTestbench
+from .lib.sim import RCAlterTestbench
 
 sim_backends = [
     pytest.param('subprocess', marks=[]),

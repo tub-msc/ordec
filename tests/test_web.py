@@ -284,7 +284,7 @@ def test_layoutgl(web):
     """Fuzzy visual testing of web layout viewer (layout-gl.js)."""
     web.resize_viewport()
         
-    qs_local = web.key.query_string_local("ordec.lib.test", "layoutgl_example()")
+    qs_local = web.key.query_string_local("tests.lib.layoutgl_example", "layoutgl_example()")
     web.driver.get(web.url + f'app.html?refreshall=true&{qs_local}')
 
     web.wait_for_ready()

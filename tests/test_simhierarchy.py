@@ -6,7 +6,7 @@ from ordec.core import *
 from ordec.sim.sim_hierarchy import SimHierarchy, build_hier_schematic
 from ordec.lib.base import Gnd, Res
 from ordec.core.schema import SimHierarchySubcursor
-from ordec.lib import test as lib_test
+from .lib import sim as lib_test
 
 def my_simhier():
     schematic = lib_test.ResdivHierTb().schematic

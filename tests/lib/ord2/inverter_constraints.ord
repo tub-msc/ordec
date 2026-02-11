@@ -1,0 +1,46 @@
+# -*- version: ord2 -*-
+# SPDX-FileCopyrightText: 2025 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from ordec.schematic import helpers
+from ordec.lib.generic_mos import Nmos,Pmos
+from ordec.ord2.context import ctx, OrdContext
+
+cell Inv:
+    viewgen symbol:
+        inout vdd(.align=Orientation.North)
+        inout vss(.align=Orientation.South)
+        input a(.align=Orientation.West)
+        output y(.align=Orientation.East)
+
+    viewgen schematic:
+        port vdd(.align=Orientation.North)
+        port vss(.align=Orientation.South)
+        port y (.align=Orientation.West)
+        port a (.align=Orientation.East)
+
+        Nmos pd:
+            .s -- vss
+            .b -- vss
+            .d -- y
+        Pmos pu:
+            .s -- vdd
+            .b -- vdd
+            .d -- y
+            .$l = 400n
+        pu.$w = 200n
+            
+        solver = Solver(ctx.root)
+        solver.constrain(vss.pos == (2, 1))
+        solver.constrain(vdd.pos == vss.pos + (0, 12))
+        solver.constrain(y.pos.y == pd.d.pos.y + 1)
+        solver.constrain(y.pos.x == pd.b.pos.x + 2)
+        solver.constrain(a.pos == vss.pos + (0, 6))
+        solver.constrain(pd.pos == vss.pos + (2, 1))
+        solver.constrain(pd.outline.north + (0, 2) == pu.outline.south)
+        solver.solve()
+
+        for instance in pu, pd:
+            instance.g -- a
+

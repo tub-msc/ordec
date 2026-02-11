@@ -1,0 +1,126 @@
+# -*- version: ord2 -*-
+# SPDX-FileCopyrightText: 2025 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from ordec.schematic import helpers
+from .mux2 import Mux2
+from ordec.ord2.context import ctx, OrdContext
+from ordec.schematic.routing import schematic_routing
+import math
+
+
+cell Nto1:
+    N = Parameter(int)
+
+    viewgen symbol:
+        path d_in
+        path s_in
+        inout vdd(.align=Orientation.North)
+        inout vss(.align=Orientation.South)
+        output y(.align=Orientation.East)
+
+        # Data inputs
+        for i in range(self.N):
+            input d_in[i](.align=Orientation.West)
+
+        # Select inputs
+        signal_count = int(math.log(self.N, 2))
+        for i in range(signal_count):
+            input s_in[i](.align=Orientation.West)
+
+
+    viewgen schematic:
+        signal_count = int(math.log(self.N, 2))
+        x_spacing = 12
+        y_spacing = 5
+
+        # ------------------------------------------------------------
+        # Port layout
+        # ------------------------------------------------------------
+        port vdd(.align=Orientation.South; .pos=(-x_spacing, y_spacing * self.N))
+        port vss(.align=Orientation.North; .pos=(-x_spacing, -y_spacing))
+        vdd.ref.route = False
+        vss.ref.route = False
+
+        # Output port
+        port y(.align=Orientation.West; .pos=(signal_count * x_spacing, 
+                                              y_spacing * ((self.N - 1) // 2)))
+
+        path d_in, s_in, mux, nets
+
+        # Place data input ports vertically
+        for i in range(0, self.N, 2):
+            px = -x_spacing
+            py = (i * y_spacing) + 2
+            port d_in[i](.align=Orientation.East; .pos=(px, py))
+            port d_in[i + 1](.align=Orientation.East; .pos=(px, py+1))
+
+        # Place select ports horizontally along the bottom
+        for i in range(signal_count):
+            px = (i * x_spacing) - 2
+            py = -y_spacing
+            port s_in[i](.align=Orientation.North; .pos=(px, py))
+
+
+        # ------------------------------------------------------------
+        # MUX tree generation
+        # ------------------------------------------------------------
+        current_number = self.N
+
+        # Level 0 (connect data ports)
+        path nets[0], mux[0]
+
+        for j in range(0, current_number, 2):
+            net nets[0][j//2]
+
+            pos_x = 0
+            pos_y = j * y_spacing
+
+            Mux2 mux[0][j]:
+                .vss -- vss
+                .vdd -- vdd
+                .a -- d_in[j]
+                .b -- d_in[j+1]
+                .y -- nets[0][j//2]
+                .s -- s_in[0]
+                .pos = (pos_x, pos_y)
+            
+        current_number >>= 1
+        
+        # Intermediate levels
+        for level in range(1, signal_count - 1):
+            path nets[level], mux[level]
+
+            for j in range(0, current_number, 2):
+                net nets[level][j//2]
+
+                pos_x = level * x_spacing
+                pos_y = y_spacing * (j + (self.N - current_number) // 2)
+
+                Mux2 mux[level][j]:
+                    .vss -- vss
+                    .vdd -- vdd
+                    .a -- nets[level-1][j]
+                    .b -- nets[level-1][j+1]
+                    .y -- nets[level][j//2]
+                    .s -- s_in[level]
+                    .pos = (pos_x, pos_y)
+
+            current_number >>= 1
+
+
+        # Last MUX
+        last = signal_count - 1
+        path nets[last], mux[last]
+        px = last * x_spacing
+        py = y_spacing * ((self.N - 1) // 2)
+
+        Mux2 mux[last][0]:
+            .vss -- vss
+            .vdd -- vdd
+            .a -- nets[last - 1][0]
+            .b -- nets[last - 1][1]
+            .y -- y
+            .s -- s_in[last]
+            .pos = (px, py)

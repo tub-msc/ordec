@@ -1,0 +1,23 @@
+# -*- version: ord1 -*-
+# SPDX-FileCopyrightText: 2025 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.lib import Nmos, Pmos
+
+cell Inv:
+    symbol:
+        output y
+        input a
+        inout vdd
+        inout vss
+    schematic:
+
+        structured:
+            parallel:
+                a
+                series:
+                    vdd
+                    Pmos p1 (s -- vdd, b -- vdd, d -- y, g -- a)
+                    Nmos n1 (s -- vss, b -- vss, d -- y, g -- a)
+                    vss
+                y
