@@ -56,6 +56,9 @@ def check_symbol(res_viewer):
 def check_sim_dc(res_viewer):
     assert res_viewer.html.find('<table') >= 0
 
+def check_sim_tran(res_viewer):
+    assert res_viewer.html.find('simplot-container') >= 0
+
 def check_min_size(min_width, min_height):
     def func(res_viewer):
         assert res_viewer.width >= min_width
@@ -83,6 +86,10 @@ testcases_integrated = {
         'DiffPair().schematic': [check_schematic, check_min_size(300, 100)],
         'DiffPairTb().schematic': [check_schematic, check_min_size(300, 100)],
         'DiffPairTb().sim_dc': [check_sim_dc, check_min_size(300, 100)],
+    },
+    "rc_curve_py": {
+        'RC().schematic': [check_schematic, check_min_size(300, 100)],
+        'RC().sim_tran': [check_sim_tran, check_min_size(300, 100)],
     },
 }
 
