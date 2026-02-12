@@ -14,6 +14,16 @@ from collections import defaultdict
 from ..core import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire, Rect4R
 
 SHORTCUT_ENABLED = True
+
+# Grid cell type constants (int8 encoding)
+# Values < GRID_BLOCKED are passable
+GRID_EMPTY = 0    # passable empty cell
+GRID_ROUTED = 1   # passable routed path
+GRID_DIR = 2      # passable direction marker (turn restriction)
+GRID_BLOCKED = 3  # impassable cell body
+GRID_PIN = 4      # impassable cell pin
+GRID_PORT = 5     # impassable port
+
 _cache = {}
 _straight_line_change_count = defaultdict(int)
 def mark_changed(start_name):
@@ -81,26 +91,32 @@ def place_cells_and_ports(grid, cells, ports, width, height):
     :param height: Height of the schematic
     """
 
+    name_grid = {}  # sparse dict: (x, y) -> string name (for cell pins/ports)
+
     # Place cells
     for cell in cells:
         x, y = cell.x, cell.y
         for i in range(cell.x_size):
             for j in range(cell.y_size):
-                grid[y + j][x + i] = cell.name
+                grid[y + j][x + i] = GRID_BLOCKED
         for name, (cx, cy, direction, _) in cell.connections.items():
-            grid[cy][cx] = f"{cell.name}.{name}"
+            grid[cy][cx] = GRID_PIN
+            name_grid[(cx, cy)] = f"{cell.name}.{name}"
             if 0 <= cy < height and 0 <= cx < width:
                 direction_offset_x = direction_moves[direction][0] + cx
                 direction_offset_y = direction_moves[direction][1] + cy
-                grid[direction_offset_y][direction_offset_x] = "__dir"
+                grid[direction_offset_y][direction_offset_x] = GRID_DIR
 
     # Place ports
     for port in ports:
         if 0 <= port.y < height and 0 <= port.x < width:
-            grid[port.y][port.x] = port.name
+            grid[port.y][port.x] = GRID_PORT
+            name_grid[(port.x, port.y)] = port.name
             direction_offset_x = direction_moves[port.direction][0] + port.x
             direction_offset_y = direction_moves[port.direction][1] + port.y
-            grid[direction_offset_y][direction_offset_x] = "__dir"
+            grid[direction_offset_y][direction_offset_x] = GRID_DIR
+
+    return name_grid
 
 def adjust_start_end_for_direction(start, start_dir, end, end_dir):
     """Adjust the start and end points to ensure proper direction handling.
@@ -195,20 +211,18 @@ def _heuristic(point1, point2):
     """Heuristic function: Manhattan distance."""
     return abs(point1[0] - point2[0]) + abs(point1[1] - point2[1])
 
-def a_star(grid, start, end, width, height, port_names, straight_lines,
-           start_name, start_dir, cell_names, endpoint_mapping):
+def a_star(grid, start, end, width, height, straight_lines,
+           start_name, start_dir, endpoint_mapping):
     """Perform A* for new connections between port and endpoint
 
-    :param grid: Schematic grid
+    :param grid: Schematic grid (int8 array)
     :param start: Point to start from
     :param end: Point to reach
     :param width: Width of the schematic
     :param height: Height of the schematic
-    :param port_names: Ports in the schematic
     :param straight_lines: Already calculated paths
     :param start_name: Name of the starting port
     :param start_dir: Direction to start from
-    :param cell_names: Names of schematic cells
     :param endpoint_mapping: Mapping for potential endpoints
     :returns: Calculated path
     """
@@ -249,19 +263,17 @@ def a_star(grid, start, end, width, height, port_names, straight_lines,
 
             # Check if inside the grid
             if 0 <= neighbor[0] < width and 0 <= neighbor[1] < height:
-                current_element = grid[neighbor[1]][neighbor[0]]
 
-                # If the new cell is "__dir", disallow movement **only if turning**
-                current_cell = grid[current[1]][current[0]]
-                if (current_cell == "__dir" and
+                # If the current cell is a direction marker, disallow turning
+                if (grid[current[1]][current[0]] == GRID_DIR and
                         current_direction is not None and
                         current_direction != new_direction and
                         current != start and # Turn at start is fine
                         current not in endpoint_mapping[start_name]):
                     continue  # Skip this move if it would turn at "__dir"
 
-                # Not allowed to cross a cell or a port
-                if (current_element.split('.')[0] not in cell_names) and (current_element not in port_names):
+                # Not allowed to cross a cell body, pin, or port
+                if grid[neighbor[1]][neighbor[0]] < GRID_BLOCKED:
                     # Add a penalty for changing direction
                     remaining_distance = _heuristic(current, end)
                     if current_direction and current_direction != new_direction:
@@ -289,20 +301,18 @@ def a_star(grid, start, end, width, height, port_names, straight_lines,
     return []  # Return empty if no path found
 
 
-def reverse_a_star(grid, start_points, end, width, height, port_names, straight_lines, start_name, end_dir, cell_names,
+def reverse_a_star(grid, start_points, end, width, height, straight_lines, start_name, end_dir,
                    endpoint_mapping):
     """Perform reverse A* from the end point to all start points.
 
-    :param grid: Schematic grid
+    :param grid: Schematic grid (int8 array)
     :param start_points: Points to reach
     :param end: Endpoint to start from
     :param width: Width of the schematic
     :param height: Height of the schematic
-    :param port_names: Ports in the schematic
     :param straight_lines: Already calculated paths
     :param start_name: Name of the starting port
     :param end_dir: Direction to end with
-    :param cell_names: Names of schematic cells
     :param endpoint_mapping: Mapping for potential endpoints
     :returns: Calculated path
     """
@@ -366,11 +376,9 @@ def reverse_a_star(grid, start_points, end, width, height, port_names, straight_
 
             # Check if inside the grid
             if 0 <= neighbor[0] < width and 0 <= neighbor[1] < height:
-                current_element = grid[neighbor[1]][neighbor[0]]
 
-                # If the new cell is "__dir", disallow movement **only if turning**
-                current_cell = grid[current[1]][current[0]]
-                if (current_cell == "__dir" and
+                # If the current cell is a direction marker, disallow turning
+                if (grid[current[1]][current[0]] == GRID_DIR and
                         current_direction is not None and
                         current_direction != new_direction and
                         # Turn at start is fine
@@ -378,9 +386,8 @@ def reverse_a_star(grid, start_points, end, width, height, port_names, straight_
                         current in endpoint_mapping[start_name]):
                     continue  # Skip this move if it would turn at "__dir"
 
-                # Not allowed to cross a cell or a port
-                if ((current_element.split('.')[0] not in cell_names) and
-                        (current_element not in port_names)):
+                # Not allowed to cross a cell body, pin, or port
+                if grid[neighbor[1]][neighbor[0]] < GRID_BLOCKED:
                     # Add a penalty for changing direction
                     remaining_distance = _heuristic(current, end)
                     if current_direction and current_direction != new_direction:
@@ -509,12 +516,13 @@ def transform_to_pairs(list_of_lists, straights):
     return straights
 
 
-def sort_connections(connections):
+def sort_connections(connections, name_grid=None):
     """
     Sort connections by distance.
     Lower distance --> higher priority
 
     :param connections: Connections between subcells
+    :param name_grid: Sparse dict mapping (x, y) -> string name
     :returns: Prioritised connections
     """
     # Helper function to calculate Euclidean distance
@@ -533,7 +541,7 @@ def sort_connections(connections):
             start_name = start.name
             start = (start.x, start.y)
         elif isinstance(start, tuple) and len(start) == 4:  # Cell connection
-            start_name = grid[start[1]][start[0]]
+            start_name = name_grid.get((start[0], start[1]), "") if name_grid else ""
             start = (start[0], start[1])
 
         # Get the end which defines the endpoint
@@ -556,26 +564,24 @@ def sort_connections(connections):
 
 
 # Draw all connections with paths
-def draw_connections(grid, connections, width, height, ports, cells):
+def draw_connections(grid, connections, width, height, ports, cells, name_grid=None):
     """
     Main logic for routing and evaluation of results
 
-    :param grid: Schematic grid
+    :param grid: Schematic grid (int8 array)
     :param connections: Connections between subcells
     :param width: width of the schematic
     :param height: height of the schematic
     :param ports: Ports in the schematic
     :param cells: Cells in the schematic
+    :param name_grid: Sparse dict mapping (x, y) -> string name
     :returns: Calculated vertices for routes
     """
     _cache.clear()
     _straight_line_change_count.clear()
     port_drawing_dict = defaultdict(list)
     straight_lines = defaultdict(list)
-    # Get the cell names to avoid them on the path
-    cell_names = frozenset(cell.name for cell in cells)
-    name_endpoint_mapping, sorted_connections = sort_connections(connections)
-    port_name_set = {port.name for port in ports}
+    name_endpoint_mapping, sorted_connections = sort_connections(connections, name_grid)
 
     for start, end in sorted_connections:
         # start and end direction and name of the starting point
@@ -589,7 +595,7 @@ def draw_connections(grid, connections, width, height, ports, cells):
             start_dir = start.direction
             start = (start.x, start.y)
         elif isinstance(start, tuple) and len(start) == 4:  # Cell connection
-            start_name = grid[start[1]][start[0]]
+            start_name = name_grid.get((start[0], start[1]), "") if name_grid else ""
             start_dir = start[2]
             start = (start[0], start[1])
 
@@ -626,19 +632,19 @@ def draw_connections(grid, connections, width, height, ports, cells):
                         raise IndexError(f"Shortcut doesn't have valid branch point to connect nid:{start_name}")
                     else:
                         # Call reverse A* from end point to all start points
-                        path = reverse_a_star(grid, path_list, end_new, width, height, port_name_set,
-                                                   straight_lines, start_name, transformed_end_dir, cell_names,
+                        path = reverse_a_star(grid, path_list, end_new, width, height,
+                                              straight_lines, start_name, transformed_end_dir,
                                               name_endpoint_mapping)
                 else:
                     # No shortcut available, calculate the normal path
-                    path = a_star(grid, start_new, end_new, width, height, port_name_set,
-                                       straight_lines, start_name, transformed_start_dir, cell_names,
+                    path = a_star(grid, start_new, end_new, width, height,
+                                  straight_lines, start_name, transformed_start_dir,
                                   name_endpoint_mapping)
 
             else:
                 # Normal path calculation if shortcutting is disabled
-                path = a_star(grid, start_new, end_new, width, height, port_name_set,
-                                   straight_lines, start_name, transformed_start_dir, cell_names,
+                path = a_star(grid, start_new, end_new, width, height,
+                              straight_lines, start_name, transformed_start_dir,
                               name_endpoint_mapping)
 
             if not path and start_new != end_new:
@@ -664,8 +670,8 @@ def draw_connections(grid, connections, width, height, ports, cells):
         mark_changed(start_name)
         # Draw the path on the grid
         for (x, y) in path:
-            if grid[y][x] == '.':
-                grid[y][x] = '+'
+            if grid[y][x] == GRID_EMPTY:
+                grid[y][x] = GRID_ROUTED
 
     for key, value in port_drawing_dict.items():
         if SHORTCUT_ENABLED:
@@ -688,15 +694,16 @@ def calculate_vertices(outline, cells, ports, connections):
     """
     width = int(outline.ux - outline.lx) * 2
     height = int(outline.uy - outline.ly) * 2
-    grid = np.full((height, width), '.', dtype="<U100")
-    grid[:] = '.'
-    place_cells_and_ports(grid, list(cells.values()), list(ports.values()), width, height)
-    # reversed_grid = np.flipud(grid)
+    grid = np.zeros((height, width), dtype=np.int8)
+    name_grid = place_cells_and_ports(grid, list(cells.values()), list(ports.values()), width, height)
+    # _GRID_SYMBOLS = {GRID_EMPTY: '.', GRID_ROUTED: '+', GRID_DIR: 'D',
+    #                  GRID_BLOCKED: '#', GRID_PIN: 'P', GRID_PORT: 'O'}
     # cell_width = 5
-    # for row in reversed_grid:
-    #     print(''.join(f"{cell:<{cell_width}}" for cell in row))
+    # for ry in range(height - 1, -1, -1):
+    #     print(''.join(f"{name_grid.get((x, ry), _GRID_SYMBOLS.get(grid[ry][x], '?')):<{cell_width}}"
+    #                   for x in range(width)))
     vertices = draw_connections(grid, connections, width, height,
-                                list(ports.values()), list(cells.values()))
+                                list(ports.values()), list(cells.values()), name_grid)
     return vertices
 
 
@@ -886,7 +893,7 @@ if __name__ == "__main__":
     # center in the bigger canvas and stay within positive coordinates
     offset_x = (GRID_WIDTH  // 2) - lx
     offset_y = (GRID_HEIGHT // 2) - ly
-    grid = np.full((height, width), '.', dtype="<U100")
+    grid = np.zeros((height, width), dtype=np.int8)
 
     # Sample cells with positions (bottom-left corner) and size
     cells = [
@@ -913,12 +920,12 @@ if __name__ == "__main__":
         (ports[2], cells[1].connections['S']),
     ]
 
-
-    grid[:] = '.'
-    place_cells_and_ports(grid, cells, ports, width, height)
-    draw_connections(grid, connections, width, height, ports, cells)
-    # Set the print options for a fixed width of 5 characters per value
-    reversed_grid = np.flipud(grid)
+    name_grid = place_cells_and_ports(grid, cells, ports, width, height)
+    draw_connections(grid, connections, width, height, ports, cells, name_grid)
+    # Print grid with readable names
+    _GRID_SYMBOLS = {GRID_EMPTY: '.', GRID_ROUTED: '+', GRID_DIR: 'D',
+                     GRID_BLOCKED: '#', GRID_PIN: 'P', GRID_PORT: 'O'}
     cell_width = 5
-    for row in reversed_grid:
-        print(''.join(f"{cell:<{cell_width}}" for cell in row))
+    for ry in range(height - 1, -1, -1):
+        print(''.join(f"{name_grid.get((x, ry), _GRID_SYMBOLS.get(grid[ry][x], '?')):<{cell_width}}"
+                      for x in range(width)))
