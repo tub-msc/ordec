@@ -6,16 +6,19 @@
 import numpy as np
 import heapq
 import sys
-import hashlib
 import math
+from collections import defaultdict
 
 #ordec imports
 
 from ..core import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire, Rect4R
-from .helpers import recursive_getitem
 
 SHORTCUT_ENABLED = True
-cache = {}
+_cache = {}
+_straight_line_change_count = defaultdict(int)
+def mark_changed(start_name):
+  global _straight_line_change_count
+  _straight_line_change_count[start_name] += 1
 
 # Port class with direction
 class Port:
@@ -64,6 +67,7 @@ direction_moves = {
     'E': (1, 0),
     'W': (-1, 0),
 }
+DIRECTION_OFFSETS = tuple(direction_moves.values())
 
 # Place cells and ports on the grid
 def place_cells_and_ports(grid, cells, ports, width, height):
@@ -121,76 +125,78 @@ def adjust_start_end_for_direction(start, start_dir, end, end_dir):
 
     return start, end
 
-
-def compute_hash(straight_lines, start_name):
-    """Compute a hash of straight_lines (excluding start_name) to detect changes.
-
-    :param straight_lines: Already calculated paths as vertices
-    :param start_name: Name of the current start
-    :returns: Current hash
-    """
-    relevant_data = {key: value for key, value in straight_lines.items() if key != start_name}
-    return hashlib.md5(str(sorted(relevant_data.items())).encode()).hexdigest()
+def dependency_versions(start_name):
+    """Version signature of all straight lines except start_name."""
+    if not _straight_line_change_count:
+        return 0
+    versions = sum([v for k, v in _straight_line_change_count.items() if k != start_name])
+    return versions
 
 def preprocess_straight_lines(straight_lines, start_name):
-    """Preprocess straight lines into a set of blocked movements, including corner-touch prevention,
-    while allowing orthogonal crossings.
-
-    :param straight_lines: Already calculated paths as vertices
-    :param start_name: Name of the current start
-    :returns: Currently blocked movements
+    """Preprocess straight lines into a set of blocked movements, including
+    corner-touch prevention, while allowing orthogonal crossings.
     """
-    global cache
+    global _cache
+    dep_version = dependency_versions(start_name)
 
-    new_hash = compute_hash(straight_lines, start_name)
-    # Only compute new blocked segments if something changed
-    if start_name in cache and cache[start_name]["hash"] == new_hash:
-        return cache[start_name]["blocked_moves"]
+    entry = _cache.get(start_name)
+    if entry and entry["dep_version"] == dep_version:
+        return entry["blocked_moves"]
 
     blocked_moves = set()
     corner_nodes = set()
 
     for key, value in straight_lines.items():
-        if key != start_name:
-            # Get start and end
-            for line_start, line_end in value:
-                x1, y1 = line_start
-                x2, y2 = line_end
+        if key == start_name:
+            continue
 
-                # Vertical
-                if x1 == x2:
-                    y_start, y_end = sorted([y1, y2])
-                    for y in range(y_start, y_end):
-                        a, b = (x1, y), (x1, y + 1)
-                        blocked_moves.add((a, b))
-                        blocked_moves.add((b, a))
-                # Horizontal
-                elif y1 == y2:
-                    x_start, x_end = sorted([x1, x2])
-                    for x in range(x_start, x_end):
-                        a, b = (x, y1), (x + 1, y1)
-                        blocked_moves.add((a, b))
-                        blocked_moves.add((b, a))
+        for line_start, line_end in value:
+            x1, y1 = line_start
+            x2, y2 = line_end
 
-                # Check if it's part of a corner
-                # If line is not a terminal line (has predecessor or successor), then mark endpoints as corners
-                if len(value) > 1:
-                    corner_nodes.add(line_start)
-                    corner_nodes.add(line_end)
+            # Vertical
+            if x1 == x2:
+                y_start, y_end = sorted((y1, y2))
+                for y in range(y_start, y_end):
+                    a, b = (x1, y), (x1, y + 1)
+                    blocked_moves.add((a, b))
+                    blocked_moves.add((b, a))
 
-    # For corner points, block all movement into and out of the node
-    for node in corner_nodes:
-        x, y = node
-        for dx, dy in direction_moves.values():
-            neighbor = (x + dx, y + dy)
-            blocked_moves.add((node, neighbor))
-            blocked_moves.add((neighbor, node))
+            # Horizontal
+            elif y1 == y2:
+                x_start, x_end = sorted((x1, x2))
+                for x in range(x_start, x_end):
+                    a, b = (x, y1), (x + 1, y1)
+                    blocked_moves.add((a, b))
+                    blocked_moves.add((b, a))
 
-    cache[start_name] = {"hash": new_hash, "blocked_moves": blocked_moves}
+            # Corner detection
+            if len(value) > 1:
+                corner_nodes.add(line_start)
+                corner_nodes.add(line_end)
+
+    # Block movement through corner nodes
+    for x, y in corner_nodes:
+        for dx, dy in DIRECTION_OFFSETS:
+            n = (x + dx, y + dy)
+            blocked_moves.add(((x, y), n))
+            blocked_moves.add((n, (x, y)))
+
+    _cache[start_name] = {
+        "dep_version": dep_version,
+        "blocked_moves": blocked_moves,
+    }
     return blocked_moves
 
+def _is_segment_blocked(start_point, end_point, blocked_moves):
+    return (start_point, end_point) in blocked_moves
 
-def a_star(grid, start, end, width, height, ports, straight_lines, start_name, start_dir, cell_names, endpoint_mapping):
+def _heuristic(point1, point2):
+    """Heuristic function: Manhattan distance."""
+    return abs(point1[0] - point2[0]) + abs(point1[1] - point2[1])
+
+def a_star(grid, start, end, width, height, port_names, straight_lines,
+           start_name, start_dir, cell_names, endpoint_mapping):
     """Perform A* for new connections between port and endpoint
 
     :param grid: Schematic grid
@@ -198,7 +204,7 @@ def a_star(grid, start, end, width, height, ports, straight_lines, start_name, s
     :param end: Point to reach
     :param width: Width of the schematic
     :param height: Height of the schematic
-    :param ports: Ports in the schematic
+    :param port_names: Ports in the schematic
     :param straight_lines: Already calculated paths
     :param start_name: Name of the starting port
     :param start_dir: Direction to start from
@@ -206,19 +212,10 @@ def a_star(grid, start, end, width, height, ports, straight_lines, start_name, s
     :param endpoint_mapping: Mapping for potential endpoints
     :returns: Calculated path
     """
-    def is_segment_blocked(start_point, end_point, blocked_moves):
-        return (start_point, end_point) in blocked_moves
-
-    def heuristic(point1, point2):
-        """Heuristic function: Manhattan distance."""
-        return abs(point1[0] - point2[0]) + abs(point1[1] - point2[1])
 
     use_dynamic_penalty = True
     # Preprocess straight lines into a set of blocked points
     blocked_segments = preprocess_straight_lines(straight_lines, start_name)
-
-    # Preprocess ports into a set for faster lookups
-    port_names = [port.name for port in ports]
 
     open_set = []  # Priority queue for A*
     heapq.heappush(open_set, (0, start, start_dir))  # Include direction in the tuple (direction starts as None)
@@ -226,7 +223,7 @@ def a_star(grid, start, end, width, height, ports, straight_lines, start_name, s
 
     came_from = {}
     g_score = {start: 0}
-    f_score = {start: heuristic(start, end)}
+    f_score = {start: _heuristic(start, end)}
 
     while open_set:
         _, current, current_direction = heapq.heappop(open_set)
@@ -242,12 +239,12 @@ def a_star(grid, start, end, width, height, ports, straight_lines, start_name, s
             return path
 
         # Explore neighbors
-        for dx, dy in direction_moves.values():
+        for dx, dy in DIRECTION_OFFSETS:
             neighbor = (current[0] + dx, current[1] + dy)
             new_direction = (dx, dy)
 
             # Check if the path to the neighbor is blocked by straight lines
-            if is_segment_blocked(current, neighbor, blocked_segments):
+            if _is_segment_blocked(current, neighbor, blocked_segments):
                 continue
 
             # Check if inside the grid
@@ -255,7 +252,8 @@ def a_star(grid, start, end, width, height, ports, straight_lines, start_name, s
                 current_element = grid[neighbor[1]][neighbor[0]]
 
                 # If the new cell is "__dir", disallow movement **only if turning**
-                if (grid[current[1]][current[0]] == "__dir" and
+                current_cell = grid[current[1]][current[0]]
+                if (current_cell == "__dir" and
                         current_direction is not None and
                         current_direction != new_direction and
                         current != start and # Turn at start is fine
@@ -263,9 +261,9 @@ def a_star(grid, start, end, width, height, ports, straight_lines, start_name, s
                     continue  # Skip this move if it would turn at "__dir"
 
                 # Not allowed to cross a cell or a port
-                if (not current_element.startswith(cell_names)) and (current_element not in port_names):
+                if (current_element.split('.')[0] not in cell_names) and (current_element not in port_names):
                     # Add a penalty for changing direction
-                    remaining_distance = heuristic(current, end)
+                    remaining_distance = _heuristic(current, end)
                     if current_direction and current_direction != new_direction:
                         if use_dynamic_penalty:
                             direction_change_penalty = remaining_distance * 0.5
@@ -281,7 +279,7 @@ def a_star(grid, start, end, width, height, ports, straight_lines, start_name, s
                     if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
                         came_from[neighbor] = current
                         g_score[neighbor] = tentative_g_score
-                        f_score[neighbor] = tentative_g_score + heuristic(neighbor, end)
+                        f_score[neighbor] = tentative_g_score + _heuristic(neighbor, end)
 
                         # Only add neighbor to the heap if not already present
                         if neighbor not in open_set_track:
@@ -291,7 +289,7 @@ def a_star(grid, start, end, width, height, ports, straight_lines, start_name, s
     return []  # Return empty if no path found
 
 
-def reverse_a_star(grid, start_points, end, width, height, ports, straight_lines, start_name, end_dir, cell_names,
+def reverse_a_star(grid, start_points, end, width, height, port_names, straight_lines, start_name, end_dir, cell_names,
                    endpoint_mapping):
     """Perform reverse A* from the end point to all start points.
 
@@ -300,7 +298,7 @@ def reverse_a_star(grid, start_points, end, width, height, ports, straight_lines
     :param end: Endpoint to start from
     :param width: Width of the schematic
     :param height: Height of the schematic
-    :param ports: Ports in the schematic
+    :param port_names: Ports in the schematic
     :param straight_lines: Already calculated paths
     :param start_name: Name of the starting port
     :param end_dir: Direction to end with
@@ -309,27 +307,19 @@ def reverse_a_star(grid, start_points, end, width, height, ports, straight_lines
     :returns: Calculated path
     """
 
-    def is_segment_blocked(start_point, end_point, blocked_moves):
-        return (start_point, end_point) in blocked_moves
-
-    def heuristic(point1, point2):
-        """Heuristic function: Manhattan distance."""
-        return abs(point1[0] - point2[0]) + abs(point1[1] - point2[1])
-
     use_dynamic_penalty = True
     # Preprocess straight lines into a set of blocked points
     blocked_segments = preprocess_straight_lines(straight_lines, start_name)
 
     open_set = []  # Priority queue for A* (heap)
     heapq.heappush(open_set, (0, end, end_dir))  # Start A* search from the end point
-    port_names = [port.name for port in ports]
 
     came_from = {}
     g_score = {end: 0}
     min_distance = sys.maxsize
     start_point_min = start_points[0]
     for start_point in start_points:
-        distance = heuristic(end, start_point)
+        distance = _heuristic(end, start_point)
         if distance < min_distance:
             start_point_min = start_point
             min_distance = distance
@@ -366,12 +356,12 @@ def reverse_a_star(grid, start_points, end, width, height, ports, straight_lines
             continue  # After finding a valid path, continue to explore others
 
         # Explore neighbors
-        for dx, dy in direction_moves.values():
+        for dx, dy in DIRECTION_OFFSETS:
             neighbor = (current[0] + dx, current[1] + dy)
             new_direction = (dx, dy)
 
             # Check if the path to the neighbor is blocked by straight lines
-            if is_segment_blocked(current, neighbor, blocked_segments):
+            if _is_segment_blocked(current, neighbor, blocked_segments):
                 continue
 
             # Check if inside the grid
@@ -379,7 +369,8 @@ def reverse_a_star(grid, start_points, end, width, height, ports, straight_lines
                 current_element = grid[neighbor[1]][neighbor[0]]
 
                 # If the new cell is "__dir", disallow movement **only if turning**
-                if (grid[current[1]][current[0]] == "__dir" and
+                current_cell = grid[current[1]][current[0]]
+                if (current_cell == "__dir" and
                         current_direction is not None and
                         current_direction != new_direction and
                         # Turn at start is fine
@@ -388,10 +379,10 @@ def reverse_a_star(grid, start_points, end, width, height, ports, straight_lines
                     continue  # Skip this move if it would turn at "__dir"
 
                 # Not allowed to cross a cell or a port
-                if ((not current_element.startswith(cell_names)) and
-                        current_element not in port_names):
+                if ((current_element.split('.')[0] not in cell_names) and
+                        (current_element not in port_names)):
                     # Add a penalty for changing direction
-                    remaining_distance = heuristic(current, end)
+                    remaining_distance = _heuristic(current, end)
                     if current_direction and current_direction != new_direction:
                         if use_dynamic_penalty:
                             direction_change_penalty = remaining_distance * 0.5
@@ -407,7 +398,7 @@ def reverse_a_star(grid, start_points, end, width, height, ports, straight_lines
                     if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
                         came_from[neighbor] = current
                         g_score[neighbor] = tentative_g_score
-                        f_score[neighbor] = tentative_g_score + heuristic(neighbor, start_point_min)
+                        f_score[neighbor] = tentative_g_score + _heuristic(neighbor, start_point_min)
 
                         # Only add neighbor to the heap if not already present
                         if neighbor not in open_set_track:
@@ -469,7 +460,7 @@ def keep_corners_and_edges(lines):
     result = []
     first_line = True
     # start of consecutive lines
-    starters = [line[0] for line in lines[1:]]
+    starters = {line[0] for line in lines[1:]}
 
     for line in lines:
         if len(line) <= 2:  # If the line has two or fewer points, include all points
@@ -577,11 +568,14 @@ def draw_connections(grid, connections, width, height, ports, cells):
     :param cells: Cells in the schematic
     :returns: Calculated vertices for routes
     """
-    port_drawing_dict = dict()
-    straight_lines = dict()
+    _cache.clear()
+    _straight_line_change_count.clear()
+    port_drawing_dict = defaultdict(list)
+    straight_lines = defaultdict(list)
     # Get the cell names to avoid them on the path
-    cell_names = tuple([cell.name for cell in cells])
+    cell_names = frozenset(cell.name for cell in cells)
     name_endpoint_mapping, sorted_connections = sort_connections(connections)
+    port_name_set = {port.name for port in ports}
 
     for start, end in sorted_connections:
         # start and end direction and name of the starting point
@@ -592,14 +586,10 @@ def draw_connections(grid, connections, width, height, ports, cells):
         # Get the start which defines the drawing dictionary
         if isinstance(start, Port):
             start_name = start.name
-            if start_name not in port_drawing_dict.keys():
-                port_drawing_dict[start_name] = []
             start_dir = start.direction
             start = (start.x, start.y)
         elif isinstance(start, tuple) and len(start) == 4:  # Cell connection
             start_name = grid[start[1]][start[0]]
-            if start_name not in port_drawing_dict.keys():
-                port_drawing_dict[start_name] = []
             start_dir = start[2]
             start = (start[0], start[1])
 
@@ -636,18 +626,18 @@ def draw_connections(grid, connections, width, height, ports, cells):
                         raise IndexError(f"Shortcut doesn't have valid branch point to connect nid:{start_name}")
                     else:
                         # Call reverse A* from end point to all start points
-                        path = reverse_a_star(grid, path_list, end_new, width, height, ports,
+                        path = reverse_a_star(grid, path_list, end_new, width, height, port_name_set,
                                                    straight_lines, start_name, transformed_end_dir, cell_names,
                                               name_endpoint_mapping)
                 else:
                     # No shortcut available, calculate the normal path
-                    path = a_star(grid, start_new, end_new, width, height, ports,
+                    path = a_star(grid, start_new, end_new, width, height, port_name_set,
                                        straight_lines, start_name, transformed_start_dir, cell_names,
                                   name_endpoint_mapping)
 
             else:
                 # Normal path calculation if shortcutting is disabled
-                path = a_star(grid, start_new, end_new, width, height, ports,
+                path = a_star(grid, start_new, end_new, width, height, port_name_set,
                                    straight_lines, start_name, transformed_start_dir, cell_names,
                               name_endpoint_mapping)
 
@@ -671,6 +661,7 @@ def draw_connections(grid, connections, width, height, ports, cells):
         if start_name not in straight_lines.keys():
             straight_lines[start_name] = []
         straight_lines[start_name] = transform_to_pairs(current_path_stripped, straight_lines[start_name])
+        mark_changed(start_name)
         # Draw the path on the grid
         for (x, y) in path:
             if grid[y][x] == '.':
