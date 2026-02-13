@@ -3,7 +3,7 @@
 
 import sphinx.util.inspect
 import inspect
-from sphinx.ext.autodoc import Documenter, PropertyDocumenter, ClassDocumenter, _get_render_mode
+from sphinx.ext.autodoc import Documenter, PropertyDocumenter, ClassDocumenter
 from sphinx.util.typing import get_type_hints, restify, stringify_annotation
 
 from .core import *
@@ -50,9 +50,12 @@ class ViewgenDocumenter(Documenter):
 
         rettype = self._return_annotation()
         if rettype is not inspect.Parameter.empty:
-            mode = _get_render_mode(self.config.autodoc_typehints_format)
-            short_literals = self.config.python_display_short_literal_types
-            objrepr = stringify_annotation(rettype, mode, short_literals=short_literals)
+            # Map config value to stringify_annotation mode
+            # Config accepts: 'short', 'fully-qualified'
+            # stringify_annotation accepts: 'smart', 'fully-qualified', 'fully-qualified-except-typing'
+            config_format = getattr(self.config, 'autodoc_typehints_format', 'short')
+            mode = 'smart' if config_format == 'short' else config_format
+            objrepr = stringify_annotation(rettype, mode)
             self.add_line('   :type: ' + objrepr, sourcename)
 
     def document_members(self, all_members: bool = False) -> None:
