@@ -10,7 +10,7 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'ORDeC'
-copyright = '2025, ORDeC Contributors'
+copyright = 'ORDeC Contributors'
 author = 'ORDeC Contributors'
 
 # -- General configuration ---------------------------------------------------
@@ -27,6 +27,9 @@ extensions = [
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'conf.py', 'data_model.rst']
+
+# Suppress MyST header level warnings for included README.md file
+suppress_warnings = ['myst.header']
 
 autodoc_default_options = {
 #    'show-inheritance': True,

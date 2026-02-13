@@ -84,5 +84,3 @@ Under the hood
 
 .. autoclass:: ConstrainableAttrPlaceholder
   :members:
-
-.. autoclass:: Variable
