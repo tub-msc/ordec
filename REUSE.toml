@@ -89,7 +89,7 @@ path = [
     "docs/**/*.rst",
     "docs/**/*.svg",
     "docs/ref/ordb_demo.py",
-    "docs/ref/ord_tutorial.py",
+    "docs/ord_tutorial.py",
     "docs/cell_lib/base.py",
     "docs/screenshot_demo.png",
     "examples/README.md",

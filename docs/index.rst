@@ -7,7 +7,7 @@ Welcome to ORDeC's documentation!
 
    readme
    webui
-   ref/ord_tutorial
+   ord_tutorial
    ref/index
    cell_lib/index
    dev/index
