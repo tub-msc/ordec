@@ -197,9 +197,10 @@ export class SimPlot {
             .attr('x1', snappedX).attr('y1', 0)
             .attr('x2', snappedX).attr('y2', this._plotH);
 
-        // Update dot markers
+        // Update dot markers for visible series
+        const visibleSeries = this.series.filter(s => s.visible);
         const dots = this.crosshairG.selectAll('circle.simplot-dot')
-            .data(this.series, d => d.name);
+            .data(visibleSeries, d => d.name);
 
         dots.enter()
             .append('circle')
@@ -219,7 +220,7 @@ export class SimPlot {
         const fmtX = d3.format('.4~s');
         const fmtY = d3.format('.4~s');
         let html = `<span class="simplot-tooltip-x">${this.options.xlabel}: ${fmtX(this.xValues[idx])}</span>`;
-        this.series.forEach(s => {
+        visibleSeries.forEach(s => {
             const v = s.values[idx];
             const vStr = isFinite(v) ? fmtY(v) : '—';
             html += `<span style="color:${s.color}">${s.name}: ${vStr}</span>`;
@@ -238,6 +239,7 @@ export class SimPlot {
         this.series = series.map((s, i) => ({
             ...s,
             color: s.color || SIGNAL_COLORS[i % SIGNAL_COLORS.length],
+            visible: true,
         }));
         this._updateLegend();
         this.currentTransform = d3.zoomIdentity;
@@ -252,11 +254,17 @@ export class SimPlot {
         this.series.forEach(s => {
             const item = document.createElement('span');
             item.classList.add('simplot-legend-item');
+            if (!s.visible) item.classList.add('simplot-legend-hidden');
             const swatch = document.createElement('span');
             swatch.classList.add('simplot-legend-swatch');
             swatch.style.backgroundColor = s.color;
             item.appendChild(swatch);
             item.appendChild(document.createTextNode(s.name));
+            item.addEventListener('click', () => {
+                s.visible = !s.visible;
+                item.classList.toggle('simplot-legend-hidden', !s.visible);
+                this._render();
+            });
             this.legendEl.appendChild(item);
         });
     }
@@ -289,10 +297,10 @@ export class SimPlot {
         }
         const xScale = this.currentTransform.rescaleX(xBase);
 
-        // Y extent from visible x range
+        // Y extent from visible x range for visible series
         const [xLo, xHi] = xScale.domain();
         let yMin = Infinity, yMax = -Infinity;
-        this.series.forEach(s => {
+        this.series.filter(s => s.visible).forEach(s => {
             for (let i = 0; i < s.values.length; i++) {
                 const x = this.xValues[i];
                 if (x >= xLo && x <= xHi) {
@@ -351,8 +359,10 @@ export class SimPlot {
             .x((d, i) => xScale(this.xValues[i]))
             .y(d => yScale(d));
 
+        const visibleSeries = this.series.filter(s => s.visible);
+
         const paths = this.plotClip.selectAll('path.simplot-line')
-            .data(this.series, d => d.name);
+            .data(visibleSeries, d => d.name);
 
         paths.enter()
             .append('path')

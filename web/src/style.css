@@ -196,6 +196,12 @@ pre {
     display: flex;
     align-items: center;
     gap: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+.simplot-legend-hidden {
+    opacity: 0.35;
+    text-decoration: line-through;
 }
 .simplot-legend-swatch {
     display: inline-block;
