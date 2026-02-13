@@ -100,6 +100,7 @@ const viewClassOf = {
 
             const container = document.createElement('div');
             container.classList.add('simplot-container');
+            this.resContent.replaceChildren(container);
 
             const time = msgData.time;
             const voltages = msgData.voltages;
@@ -126,8 +127,6 @@ const viewClassOf = {
                 ));
                 this.plots.push(plot);
             }
-
-            this.resContent.replaceChildren(container);
         }
     },
     acsim: class {
@@ -142,6 +141,7 @@ const viewClassOf = {
 
             const container = document.createElement('div');
             container.classList.add('simplot-container');
+            this.resContent.replaceChildren(container);
 
             const freq = msgData.freq;
             const allSignals = { ...msgData.voltages, ...msgData.currents };
@@ -181,8 +181,6 @@ const viewClassOf = {
                 phasePlot.setData(freq, phaseSeries);
                 this.plots.push(phasePlot);
             }
-
-            this.resContent.replaceChildren(container);
         }
     },
 }
