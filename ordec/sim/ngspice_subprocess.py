@@ -65,9 +65,9 @@ class NgspiceSubprocess(NgspiceBase):
     @contextmanager
     def launch(cls):
         # Choose the correct ngspice executable for the platform
-        if sys.platform == "win32":
+        if sys.platform == "win32" and shutil.which("ngspice_con"):
             # On Windows, prefer ngspice_con if available, fall back to ngspice
-            ngspice_exe = "ngspice_con" if shutil.which("ngspice_con") else "ngspice"
+            ngspice_exe = "ngspice_con"
         else:
             ngspice_exe = "ngspice"
 
@@ -327,7 +327,7 @@ class NgspiceSubprocess(NgspiceBase):
                     elif vec_info.quantity.lower() in ("current", "i"):
                         result.signals[vec_info.name].kind = SignalKind.CURRENT
 
-    def _parse_ac_wrdata(self, file_path: str, vectors: list[str]) -> "NgspiceAcResult":
+    def _parse_ac_wrdata(self, file_path: str, vectors: list[str]) -> NgspiceAcResult:
         """Parses the ASCII output of a wrdata command for AC analysis."""
         result = NgspiceAcResult()
 
@@ -363,7 +363,7 @@ class NgspiceSubprocess(NgspiceBase):
 
         return result
 
-    def ac(self, *args, wrdata_file: Optional[str] = None) -> "NgspiceAcResult":
+    def ac(self, *args, wrdata_file: Optional[str] = None) -> NgspiceAcResult:
         self.command(f"ac {' '.join(args)}")
 
         if wrdata_file is None:

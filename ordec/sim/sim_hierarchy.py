@@ -36,87 +36,6 @@ def build_hier_symbol(simhier: SimHierarchy, symbol: Symbol, parent_inst: SimIns
     for pin in symbol.all(Pin):
         simhier % SimNet(eref=pin, parent_inst=parent_inst)
 
-class AlterSession:
-    def __init__(self, highlevel_sim, ngspice_sim):
-        self.highlevel_sim = highlevel_sim
-        self.ngspice_sim = ngspice_sim
-        highlevel_sim._active_sim = ngspice_sim
-        ngspice_sim.load_netlist(highlevel_sim.netlister.out())
-
-    def alter_component(self, component_instance, **parameters):
-        if not hasattr(component_instance, "eref"):
-            sim_instance = self.highlevel_sim.find_sim_instance_from_schem_instance(
-                component_instance
-            )
-            if not sim_instance:
-                raise ValueError(
-                    f"Could not find simulation instance for component {component_instance!r}"
-                )
-            component_instance = sim_instance
-
-        netlist_name = self.highlevel_sim.get_component_netlist_name(component_instance)
-        for param_name, param_value in parameters.items():
-            alter_cmd = f"alter {netlist_name} {param_name}={param_value}"
-            self.ngspice_sim.command(alter_cmd)
-        return True
-
-    def show_component(self, component_instance):
-        if not hasattr(component_instance, "eref"):
-            sim_instance = self.highlevel_sim.find_sim_instance_from_schem_instance(
-                component_instance
-            )
-            if not sim_instance:
-                raise ValueError(
-                    f"Could not find simulation instance for component {component_instance!r}"
-                )
-            component_instance = sim_instance
-
-        netlist_name = self.highlevel_sim.get_component_netlist_name(component_instance)
-        return self.ngspice_sim.command(f"show {netlist_name}")
-
-    def op(self):
-        self.highlevel_sim.simhier.sim_type = SimType.DC
-        #for hook in self.highlevel_sim.sim_setup_hooks:
-        #    hook(self.ngspice_sim)
-
-        for vtype, name, subname, value in self.ngspice_sim.op():
-            if vtype == "voltage":
-                try:
-                    simnet = self.highlevel_sim.hier_simobj_of_name(name)
-                    simnet.dc_voltage = value
-                except KeyError:
-                    # ignore internal nodes we can't map
-                    continue
-            elif vtype == "current":
-                if subname not in ("id", "branch", "i"):
-                    continue
-                try:
-                    siminstance = self.highlevel_sim.hier_simobj_of_name(name)
-                    siminstance.dc_current = value
-                except KeyError:
-                    continue
-
-    def start_async_tran(self, tstep, tstop, **kwargs):
-        return self.ngspice_sim.tran_async(tstep, tstop, **kwargs)
-
-    def halt_simulation(self, timeout=1.0):
-        if hasattr(self.ngspice_sim, "safe_halt_simulation"):
-            return self.ngspice_sim.safe_halt_simulation(wait_time=timeout)
-        raise NotImplementedError(
-            f"Backend {type(self.ngspice_sim).__name__} does not support safe_halt_simulation"
-        )
-
-    def resume_simulation(self, timeout=2.0):
-        if hasattr(self.ngspice_sim, "safe_resume_simulation"):
-            return self.ngspice_sim.safe_resume_simulation(wait_time=timeout)
-        raise NotImplementedError(
-            f"Backend {type(self.ngspice_sim).__name__} does not support safe_resume_simulation"
-        )
-
-    def is_running(self):
-        return self.ngspice_sim.is_running()
-
-
 class HighlevelSim:
     def __init__(
         self,
@@ -398,12 +317,3 @@ class HighlevelSim:
             if hasattr(sim_instance, "eref") and sim_instance.eref == schem_instance:
                 return sim_instance
         return None
-
-    @contextmanager
-    def alter_session(self, backend=None, debug=False):
-        use_backend = backend or self.backend
-        with self.launch_ngspice() as sim:
-            try:
-                yield AlterSession(self, sim)
-            finally:
-                self._active_sim = None
