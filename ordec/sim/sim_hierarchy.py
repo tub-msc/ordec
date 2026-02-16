@@ -42,10 +42,8 @@ class HighlevelSim:
         top: Schematic,
         simhier: SimHierarchy,
         enable_savecurrents: bool = True,
-        backend: str = "subprocess",
     ):
         self.top = top
-        self.backend = backend
 
         self.directory = Directory()
 
@@ -62,7 +60,7 @@ class HighlevelSim:
 
     @contextmanager
     def launch_ngspice(self):
-        with Ngspice.launch(backend=self.backend) as sim:
+        with Ngspice.launch() as sim:
             for func in self.netlister.ngspice_setup_funcs:
                 func(sim)
             yield sim
@@ -109,16 +107,7 @@ class HighlevelSim:
         """Common simulation execution logic for tran and ac analyses."""
         self.simhier.sim_type = sim_type
         with self.launch_ngspice() as sim:
-            # ngspice docs says AC does not support savecurrents
-            # TODO: Make savecurrents-related stuff nicer.
-            if sim_type == SimType.AC and self.backend in ("ffi", "mp"):
-                temp_netlister = Netlister(self.directory, enable_savecurrents=False)
-                temp_netlister.netlist_hier(self.top)
-                netlist = temp_netlister.out()
-            else:
-                netlist = self.netlister.out()
-            
-            sim.load_netlist(netlist)
+            sim.load_netlist(self.netlister.out())
             data = getattr(sim, sim_method)(*sim_args, **sim_kwargs)
             setattr(
                 self.simhier,

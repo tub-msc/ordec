@@ -7,8 +7,10 @@ from enum import Enum
 from dataclasses import dataclass
 from typing import Dict
 from abc import ABC, abstractmethod
+import numpy as np
 
 NgspiceValue = namedtuple("NgspiceValue", ["type", "name", "subname", "value"])
+RawVariable = namedtuple("RawVariable", ["name", "unit"])
 
 class NgspiceBase(ABC):
     @classmethod
@@ -207,3 +209,38 @@ def check_errors(ngspice_out):
             raise NgspiceFatalError(first_error_msg)
         else:
             raise NgspiceError(first_error_msg)
+
+
+# Note: parse_raw() and RawVariable is currently unused.
+
+def parse_raw(fn):
+    info = {}
+    info_vars = []
+
+    with open(fn, "rb") as f:
+        for i in range(100):
+            l = f.readline()[:-1].decode("ascii")
+
+            if l.startswith("\t"):
+                _, var_idx, var_name, var_unit = l.split("\t")
+                assert int(var_idx) == len(info_vars)
+                info_vars.append(RawVariable(var_name, var_unit))
+            else:
+                lhs, rhs = l.split(":", 1)
+                info[lhs] = rhs.strip()
+                if lhs == "Binary":
+                    break
+        assert len(info_vars) == int(info["No. Variables"])
+        no_points = int(info["No. Points"])
+
+        dtype = np.dtype(
+            {
+                "names": [v.name for v in info_vars],
+                "formats": [np.float64] * len(info_vars),
+            }
+        )
+
+        np.set_printoptions(precision=5)
+
+        data = np.fromfile(f, dtype=dtype, count=no_points)
+    return data

@@ -73,30 +73,27 @@ class TranResult:
 
 
 class SimBase(Cell):
-    backend = Parameter(str, default="subprocess")
-
     @generate
     def sim_hierarchy(self):
         s = SimHierarchy(cell=self)
         # Build SimHierarchy, but runs no simulations.
-        HighlevelSim(self.schematic, s, backend=self.backend)
+        HighlevelSim(self.schematic, s)
         return s
 
     @generate
     def sim_dc(self):
         s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s, backend=self.backend)
+        sim = HighlevelSim(self.schematic, s)
         sim.op()
         return s
 
-    def sim_ac(self, *args, backend=None, **kwargs):
+    def sim_ac(self, *args, **kwargs):
         s = SimHierarchy(cell=self)
-        backend = backend if backend is not None else self.backend
-        sim = HighlevelSim(self.schematic, s, backend=backend)
+        sim = HighlevelSim(self.schematic, s)
         sim.ac(*args, **kwargs)
         return s
 
-    def sim_tran(self, tstep: R, tstop: R, backend=None, **kwargs):
+    def sim_tran(self, tstep: R, tstop: R, **kwargs):
         """Run sync transient simulation.
 
         Args:
@@ -106,8 +103,7 @@ class SimBase(Cell):
         """
 
         s = SimHierarchy(cell=self)
-        chosen_backend = backend if backend is not None else self.backend
-        sim = HighlevelSim(self.schematic, s, backend=chosen_backend, **kwargs)
+        sim = HighlevelSim(self.schematic, s, **kwargs)
         sim.tran(tstep, tstop)
         return s
 
