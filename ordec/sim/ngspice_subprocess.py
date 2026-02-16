@@ -274,8 +274,17 @@ class NgspiceSubprocess(NgspiceBase):
                     value=float(res.group(4)),
                 )
 
-    def tran(self, *args) -> NgspiceTransientResult:
-        self.command(f"tran {' '.join(args)}")
+    def tran(self, tstep: R, tstop: R, tstart: R = R(0), tmax: Optional[R] = None, uic: bool = False) -> NgspiceTransientResult:
+
+        cmd = ['tran',
+            R(tstep).compat_str(),
+            R(tstop).compat_str(),
+            R(tstart).compat_str()]
+        if tmax is not None:
+            cmd.append(R(tmax).compat_str())
+        if uic:
+            cmd.append('uic')
+        self.command(' '.join(cmd))
         print_all_res = "\n".join(self.print_all())
         lines = print_all_res.split("\n")
 

@@ -126,7 +126,7 @@ def test_ihp_mos_inv_vin5(backend):
     ('subprocess', 0.3333333, 0.6666667, 1e-6),
 ])
 def test_sim_tran_flat(backend, golden_a, golden_b, atol):
-    h = lib_test.ResdivFlatTb(backend=backend).sim_tran("0.1u", "1u")
+    h = lib_test.ResdivFlatTb(backend=backend).sim_tran(R('0.1u'), R('1u'))
     assert len(h.time) > 0
     assert abs(h.a.trans_voltage[-1] - golden_a) < atol
     assert abs(h.b.trans_voltage[-1] - golden_b) < atol
@@ -141,7 +141,7 @@ def test_webdata(backend):
     assert 'dc_currents' in data
 
     # Test transient webdata
-    h_tran = lib_test.ResdivFlatTb(backend=backend).sim_tran("0.1u", "1u")
+    h_tran = lib_test.ResdivFlatTb(backend=backend).sim_tran(R('0.1u'), R('1u'))
     sim_type, data = h_tran.webdata()
     assert sim_type == 'transim'
     assert 'time' in data
@@ -153,9 +153,8 @@ def test_sim_ac_rc_filter(backend):
     import math
     import numpy as np
 
-    r_val = 1e3
-    c_val = 1e-9
-    h = lib_test.RcFilterTb(r=R(r_val), c=R(c_val), backend=backend).sim_ac('dec', '10', '1', '1G')
+    tb = lib_test.RcFilterTb(r='1k', c='1n', backend=backend)
+    h = tb.sim_ac('dec', '10', '1', '1G')
 
     # Check that we have results
     assert len(h.freq) > 0
@@ -163,7 +162,7 @@ def test_sim_ac_rc_filter(backend):
     assert len(h.out.ac_voltage) > 0
 
     # Calculate cutoff frequency
-    f_c = 1 / (2 * math.pi * r_val * c_val)
+    f_c = 1 / (2 * math.pi * tb.r * tb.c)
 
     # Find the frequency in the simulation results closest to the cutoff frequency
     freq_array = np.array(h.freq)

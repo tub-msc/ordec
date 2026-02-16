@@ -96,7 +96,7 @@ class SimBase(Cell):
         sim.ac(*args, **kwargs)
         return s
 
-    def sim_tran(self, tstep, tstop, backend=None, **kwargs):
+    def sim_tran(self, tstep: R, tstop: R, backend=None, **kwargs):
         """Run sync transient simulation.
 
         Args:

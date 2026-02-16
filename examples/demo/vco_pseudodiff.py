@@ -655,7 +655,7 @@ class VcoTb(Cell):
 
         s = SimHierarchy(cell=self)
         sim = HighlevelSim(self.schematic, s)
-        sim.tran('1e-11', '30e-9')
+        sim.tran(R('10p'), R('30n'))
         return s
 
 def count_rectangles(l: Layout, flatten: bool):
