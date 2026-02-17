@@ -10,7 +10,8 @@ from ..core.rational import R
 from ..core.schema import SimType
 from .ngspice import Ngspice
 from ..schematic.netlister import Netlister
-from .ngspice_common import Quantity, quantity_from_unit, strip_raw_name
+from ..core.simarray import Quantity
+from .ngspice_common import strip_raw_name
 
 
 def build_hier_schematic(simhier: SimHierarchy, schematic: Schematic):
@@ -100,37 +101,35 @@ class HighlevelSim:
 
         with self.launch_ngspice() as sim:
             sim.load_netlist(self.netlister.out())
-            sim_array, info_vars = getattr(sim, sim_method)(*sim_args, **sim_kwargs)
+            sim_array = getattr(sim, sim_method)(*sim_args, **sim_kwargs)
 
         # Store SimArray and axis field names on the SimHierarchy root
         self.simhier.sim_data = sim_array
-        for var in info_vars:
-            qty = quantity_from_unit(var.unit, var.name)
-            if qty == Quantity.TIME:
-                self.simhier.time_field = var.name
-            elif qty == Quantity.FREQUENCY:
-                self.simhier.freq_field = var.name
+        for f in sim_array.fields:
+            if f.quantity == Quantity.TIME:
+                self.simhier.time_field = f.fid
+            elif f.quantity == Quantity.FREQUENCY:
+                self.simhier.freq_field = f.fid
 
         # Assign field names to SimNet/SimInstance nodes
         field_attr = 'trans_field' if is_tran else 'ac_field'
 
-        for var in info_vars:
-            qty = quantity_from_unit(var.unit, var.name)
-            if qty in (Quantity.TIME, Quantity.FREQUENCY):
+        for f in sim_array.fields:
+            if f.quantity in (Quantity.TIME, Quantity.FREQUENCY):
                 continue
 
-            stripped = strip_raw_name(var.name)
+            stripped = strip_raw_name(f.fid)
             try:
-                if qty == Quantity.VOLTAGE:
+                if f.quantity == Quantity.VOLTAGE:
                     simnet = self.hier_simobj_of_name(stripped)
-                    setattr(simnet, field_attr, var.name)
-                elif qty == Quantity.CURRENT:
+                    setattr(simnet, field_attr, f.fid)
+                elif f.quantity == Quantity.CURRENT:
                     if stripped.startswith("@") and "[" in stripped:
                         device_name = stripped.split("[")[0][1:]
                         siminstance = self.hier_simobj_of_name(device_name)
                     else:
                         siminstance = self.hier_simobj_of_name(stripped)
-                    setattr(siminstance, field_attr, var.name)
+                    setattr(siminstance, field_attr, f.fid)
             except KeyError:
                 continue
 

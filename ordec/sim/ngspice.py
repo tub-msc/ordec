@@ -18,13 +18,12 @@ logger = logging.getLogger(__name__)
 
 from .ngspice_common import (
     NgspiceScalar,
-    Quantity,
     NgspiceError,
     NgspiceFatalError,
     check_errors,
     parse_raw,
 )
-from ..core.simarray import SimArray
+from ..core.simarray import SimArray, Quantity
 
 
 class NgspiceVector(NamedTuple):
@@ -223,14 +222,12 @@ class Ngspice:
                     value=float(res.group(4)),
                 )
 
-    def _write_raw(self):
+    def _write_raw(self) -> SimArray:
         """Write current simulation plot to sim.raw.
 
         Uses explicit non-zero-length vector names to avoid ngspice refusing
         to write when zero-length vectors (e.g. from .option savecurrents)
         are present in the current plot.
-
-        Returns (data, info_vars) from parse_raw().
         """
         valid = [v.name for v in self.vector_info() if v.length > 0]
         if not valid:
@@ -248,13 +245,11 @@ class Ngspice:
         if uic:
             cmd.append('uic')
         self.command(' '.join(cmd))
-        sim_array, info_vars = self._write_raw()
-        return sim_array, info_vars
+        return self._write_raw()
 
-    def ac(self, *args):
+    def ac(self, *args) -> SimArray:
         self.command(f"ac {' '.join(args)}")
-        sim_array, info_vars = self._write_raw()
-        return sim_array, info_vars
+        return self._write_raw()
 
     def vector_info(self) -> Iterator[NgspiceVector]:
         """Wrapper for ngspice's "display" command."""

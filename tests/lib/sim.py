@@ -8,7 +8,7 @@ from ordec.schematic import helpers
 from ordec.schematic.routing import schematic_routing
 from ordec.sim.sim_hierarchy import HighlevelSim, SimHierarchy
 from ordec.sim.ngspice import Ngspice
-from ordec.sim.ngspice_common import Quantity
+from ordec.core.simarray import Quantity
 from ordec.lib.base import PulseVoltageSource
 
 from ordec.lib.generic_mos import Or2, Nmos, Pmos, Ringosc, Inv

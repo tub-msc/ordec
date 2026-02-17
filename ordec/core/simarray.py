@@ -3,11 +3,21 @@
 
 import struct
 from typing import NamedTuple
+from enum import Enum
+
+
+class Quantity(Enum):
+    TIME = 1
+    FREQUENCY = 2
+    VOLTAGE = 3
+    CURRENT = 4
+    OTHER = 99
 
 
 class SimArrayField(NamedTuple):
-    name: str
+    fid: str #: Field ID, unique within a SimArray.
     dtype: str  # 'f8' (float64) or 'c16' (complex128)
+    quantity: Quantity = Quantity.OTHER
 
 
 class SimArray(tuple):
@@ -57,18 +67,18 @@ class SimArray(tuple):
             return 0
         return len(self.data) // rs
 
-    def _field_index(self, name):
+    def _field_index(self, fid):
         for i, f in enumerate(self.fields):
-            if f.name == name:
+            if f.fid == fid:
                 return i
-        raise KeyError(f"No field named {name!r}")
+        raise KeyError(f"No field with fid {fid!r}")
 
-    def column(self, name_or_index):
+    def column(self, fid_or_index):
         """Extract a field as a tuple of Python float or complex values."""
-        if isinstance(name_or_index, str):
-            idx = self._field_index(name_or_index)
+        if isinstance(fid_or_index, str):
+            idx = self._field_index(fid_or_index)
         else:
-            idx = name_or_index
+            idx = fid_or_index
 
         field = self.fields[idx]
         # Calculate byte offset of this field within a record
@@ -108,8 +118,8 @@ class SimArray(tuple):
     def __repr__(self):
         nfields = len(self.fields)
         nrecords = len(self)
-        names = ', '.join(f.name for f in self.fields)
-        return f"SimArray({nrecords} records, fields=[{names}])"
+        fids = ', '.join(f.fid for f in self.fields)
+        return f"SimArray({nrecords} records, fields=[{fids}])"
 
     def to_numpy(self):
         """Convert to numpy structured array."""
@@ -117,8 +127,7 @@ class SimArray(tuple):
 
         dtype_to_np = {'f8': np.float64, 'c16': np.complex128}
         dtype = np.dtype({
-            'names': [f.name for f in self.fields],
+            'names': [f.fid for f in self.fields],
             'formats': [dtype_to_np[f.dtype] for f in self.fields],
         })
         return np.frombuffer(self.data, dtype=dtype).copy()
-

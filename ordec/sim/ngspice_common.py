@@ -4,28 +4,41 @@
 import re
 import struct
 from typing import NamedTuple
-from enum import Enum
 from abc import ABC, abstractmethod
 
-from ..core.simarray import SimArray, SimArrayField
+from ..core.simarray import SimArray, SimArrayField, Quantity
+
+
+def quantity_from_str(s: str, name: str = "") -> Quantity:
+    """Determine Quantity from a rawfile variable unit string,
+    with name-based fallback."""
+    s = s.lower().strip()
+    if s in ("time", "index"):
+        return Quantity.TIME
+    # "frequency grid=3" is how ngspice writes the frequency unit in AC rawfiles.
+    if s.startswith("frequency") or s in ("hz", "hertz"):
+        return Quantity.FREQUENCY
+    if s in ("voltage", "v"):
+        return Quantity.VOLTAGE
+    if s in ("current", "i", "a"):
+        return Quantity.CURRENT
+    # Fall back to name-based heuristics
+    if name.endswith("#branch") or (name.startswith("@") and "[" in name):
+        return Quantity.CURRENT
+    return Quantity.OTHER
 
 
 class NgspiceScalar(NamedTuple):
-    quantity: 'Quantity'
+    quantity: Quantity
     name: str
     subname: str
     value: float
 
-class RawVariable(NamedTuple):
-    name: str
-    unit: str
-
-class Quantity(Enum):
-    TIME = 1
-    FREQUENCY = 2
-    VOLTAGE = 3
-    CURRENT = 4
-    OTHER = 99
+class NgspiceBase(ABC):
+    @classmethod
+    @abstractmethod
+    def launch(cls, debug: bool):
+        pass
 
 
 class NgspiceError(Exception):
@@ -59,25 +72,6 @@ def check_errors(ngspice_out):
             raise NgspiceError(first_error_msg)
 
 
-def quantity_from_unit(unit: str, name: str = "") -> "Quantity":
-    """Determine Quantity from a rawfile variable unit string,
-    with name-based fallback."""
-    unit_lower = unit.lower().strip()
-    if unit_lower in ("time", "index"):
-        return Quantity.TIME
-    # "frequency grid=3" is how ngspice writes the frequency unit in AC rawfiles.
-    if unit_lower.startswith("frequency") or unit_lower in ("hz", "hertz"):
-        return Quantity.FREQUENCY
-    if unit_lower in ("voltage", "v"):
-        return Quantity.VOLTAGE
-    if unit_lower in ("current", "i", "a"):
-        return Quantity.CURRENT
-    # Fall back to name-based heuristics
-    if name.endswith("#branch") or (name.startswith("@") and "[" in name):
-        return Quantity.CURRENT
-    return Quantity.OTHER
-
-
 def strip_raw_name(raw_name: str) -> str:
     """Normalize a rawfile variable name to the plain node/device name.
 
@@ -97,13 +91,13 @@ def strip_raw_name(raw_name: str) -> str:
 def parse_raw(fn):
     """Parse a ngspice binary rawfile.
 
-    Returns (sim_array, info_vars) where sim_array is a SimArray
-    and info_vars is a list of RawVariable namedtuples with .name and .unit.
+    Returns a SimArray whose fields carry name, dtype and quantity metadata.
     Real simulations (tran, op) yield float64 values; AC simulations yield
     complex128 values.
     """
     info = {}
-    info_vars = []
+    var_names = []
+    var_quantities = []
 
     with open(fn, "rb") as f:
         for i in range(100):
@@ -111,14 +105,15 @@ def parse_raw(fn):
 
             if l.startswith("\t"):
                 _, var_idx, var_name, var_unit = l.split("\t")
-                assert int(var_idx) == len(info_vars)
-                info_vars.append(RawVariable(var_name, var_unit))
+                assert int(var_idx) == len(var_names)
+                var_names.append(var_name)
+                var_quantities.append(quantity_from_str(var_unit, var_name))
             else:
                 lhs, rhs = l.split(":", 1)
                 info[lhs] = rhs.strip()
                 if lhs == "Binary":
                     break
-        assert len(info_vars) == int(info["No. Variables"])
+        assert len(var_names) == int(info["No. Variables"])
         no_points = int(info["No. Points"])
 
         # AC simulations store complex-valued vectors; transient/op use real.
@@ -126,12 +121,13 @@ def parse_raw(fn):
         dtype = 'c16' if is_complex else 'f8'
 
         fields = tuple(
-            SimArrayField(v.name, dtype) for v in info_vars
+            SimArrayField(name, dtype, qty)
+            for name, qty in zip(var_names, var_quantities)
         )
 
         # Calculate expected bytes per record
         field_size = 16 if is_complex else 8
-        record_size = field_size * len(info_vars)
+        record_size = field_size * len(var_names)
         expected_bytes = record_size * no_points
 
         data = f.read(expected_bytes)
@@ -140,4 +136,4 @@ def parse_raw(fn):
                 f"Expected {expected_bytes} bytes, got {len(data)}"
             )
 
-    return SimArray(fields, data), info_vars
+    return SimArray(fields, data)

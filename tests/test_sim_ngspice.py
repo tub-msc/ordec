@@ -4,7 +4,8 @@
 import re
 import pytest
 from ordec.sim.ngspice import Ngspice
-from ordec.sim.ngspice_common import NgspiceError, NgspiceFatalError, Quantity
+from ordec.sim.ngspice_common import NgspiceError, NgspiceFatalError
+from ordec.core.simarray import Quantity
 
 def test_ngspice_illegal_netlist_1():
     with Ngspice.launch() as sim:
