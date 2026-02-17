@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import struct
+from numbers import Integral
 from typing import NamedTuple
 from enum import Enum
-
 
 class Quantity(Enum):
     TIME = 1
@@ -18,6 +18,69 @@ class SimArrayField(NamedTuple):
     fid: str #: Field ID, unique within a SimArray.
     dtype: str  # 'f8' (float64) or 'c16' (complex128)
     quantity: Quantity = Quantity.OTHER
+
+    @property
+    def size(self):
+        """Byte size of this field within a record."""
+        try:
+            return {'f8': 8, 'c16': 16}[self.dtype]
+        except KeyError:
+            raise ValueError(f"Unknown field dtype: {self.dtype!r}")
+
+
+class SimColumn:
+    """Lazy strided column view into SimArray packed binary data.
+
+    Reads values on demand from the underlying bytes buffer,
+    avoiding materializing the entire column as a Python tuple.
+    """
+
+    __slots__ = ('_data', '_offset', '_stride', '_length', '_dtype')
+
+    def __init__(self, data, offset, stride, length, dtype):
+        self._data = data
+        self._offset = offset
+        self._stride = stride
+        self._length = length
+        self._dtype = dtype
+
+    def __len__(self):
+        return self._length
+
+    def _unpack(self, i):
+        pos = i * self._stride + self._offset
+        if self._dtype == 'f8':
+            return struct.unpack_from('<d', self._data, pos)[0]
+        else:
+            return complex(*struct.unpack_from('<dd', self._data, pos))
+
+    def __getitem__(self, key):
+        if isinstance(key, Integral):
+            if key < 0:
+                key += self._length
+            if not (0 <= key < self._length):
+                raise IndexError(f"index {key} out of range")
+            return self._unpack(key)
+        elif isinstance(key, slice):
+            return [self._unpack(i) for i in range(*key.indices(self._length))]
+        raise TypeError(f"indices must be integers or slices, not {type(key).__name__}")
+
+    def __iter__(self):
+        for i in range(self._length):
+            yield self._unpack(i)
+
+    def __contains__(self, value):
+        for i in range(self._length):
+            if self._unpack(i) == value:
+                return True
+        return False
+
+    def __bool__(self):
+        return self._length > 0
+
+    def __repr__(self):
+        dtype_name = 'float64' if self._dtype == 'f8' else 'complex128'
+        return f"SimColumn({self._length} {dtype_name} values)"
 
 
 class SimArray(tuple):
@@ -50,15 +113,7 @@ class SimArray(tuple):
     @property
     def record_size(self):
         """Bytes per record."""
-        size = 0
-        for f in self.fields:
-            if f.dtype == 'f8':
-                size += 8
-            elif f.dtype == 'c16':
-                size += 16
-            else:
-                raise ValueError(f"Unknown field dtype: {f.dtype!r}")
-        return size
+        return sum(f.size for f in self.fields)
 
     def __len__(self):
         """Number of records."""
@@ -74,34 +129,16 @@ class SimArray(tuple):
         raise KeyError(f"No field with fid {fid!r}")
 
     def column(self, fid_or_index):
-        """Extract a field as a tuple of Python float or complex values."""
+        """Return a lazy SimColumn view for the given field."""
         if isinstance(fid_or_index, str):
             idx = self._field_index(fid_or_index)
         else:
             idx = fid_or_index
 
         field = self.fields[idx]
-        # Calculate byte offset of this field within a record
-        offset = 0
-        for f in self.fields[:idx]:
-            offset += 8 if f.dtype == 'f8' else 16
+        offset = sum(f.size for f in self.fields[:idx])
 
-        rs = self.record_size
-        n = len(self)
-        data = self.data
-
-        if field.dtype == 'f8':
-            return tuple(
-                struct.unpack_from('<d', data, i * rs + offset)[0]
-                for i in range(n)
-            )
-        elif field.dtype == 'c16':
-            return tuple(
-                complex(*struct.unpack_from('<dd', data, i * rs + offset))
-                for i in range(n)
-            )
-        else:
-            raise ValueError(f"Unknown field dtype: {field.dtype!r}")
+        return SimColumn(self.data, offset, self.record_size, len(self), field.dtype)
 
     def __getitem__(self, key):
         if isinstance(key, str):
