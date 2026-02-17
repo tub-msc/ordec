@@ -211,9 +211,33 @@ def check_errors(ngspice_out):
             raise NgspiceError(first_error_msg)
 
 
-# Note: parse_raw() and RawVariable is currently unused.
+def signal_kind_from_unit(unit: str, name: str = "") -> "SignalKind":
+    """Determine SignalKind from a rawfile variable unit string,
+    with name-based fallback heuristics."""
+    unit_lower = unit.lower().strip()
+    if unit_lower in ("time", "index"):
+        return SignalKind.TIME
+    # "frequency grid=3" is how ngspice writes the frequency unit in AC rawfiles.
+    if unit_lower.startswith("frequency") or unit_lower in ("hz", "hertz"):
+        return SignalKind.FREQUENCY
+    if unit_lower in ("voltage", "v"):
+        return SignalKind.VOLTAGE
+    if unit_lower in ("current", "i", "a"):
+        return SignalKind.CURRENT
+    # Fall back to name-based heuristics
+    if name.endswith("#branch") or (name.startswith("@") and "[" in name):
+        return SignalKind.CURRENT
+    return SignalKind.OTHER
+
 
 def parse_raw(fn):
+    """Parse a ngspice binary rawfile.
+
+    Returns (data, info_vars) where data is a numpy structured array
+    and info_vars is a list of RawVariable namedtuples with .name and .unit.
+    Real simulations (tran, op) yield float64 values; AC simulations yield
+    complex128 values.
+    """
     info = {}
     info_vars = []
 
@@ -233,14 +257,16 @@ def parse_raw(fn):
         assert len(info_vars) == int(info["No. Variables"])
         no_points = int(info["No. Points"])
 
+        # AC simulations store complex-valued vectors; transient/op use real.
+        is_complex = "complex" in info.get("Flags", "").lower()
+        scalar_type = np.complex128 if is_complex else np.float64
+
         dtype = np.dtype(
             {
                 "names": [v.name for v in info_vars],
-                "formats": [np.float64] * len(info_vars),
+                "formats": [scalar_type] * len(info_vars),
             }
         )
 
-        np.set_printoptions(precision=5)
-
         data = np.fromfile(f, dtype=dtype, count=no_points)
-    return data
+    return data, info_vars

@@ -165,7 +165,7 @@ class HighlevelSim:
             tstop,
         )
 
-    def ac(self, *args, wrdata_file: Optional[str] = None):
+    def ac(self, *args):
         def process_complex(simobj, attr_name, values):
             setattr(simobj, attr_name, tuple((c.real, c.imag) for c in values))
 
@@ -177,7 +177,6 @@ class HighlevelSim:
             "ac_current",
             process_complex,
             *args,
-            wrdata_file=wrdata_file,
         )
 
     def _parse_timescale_factor(self, timescale: str) -> float:

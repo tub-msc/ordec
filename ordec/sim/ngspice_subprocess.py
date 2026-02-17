@@ -1,20 +1,17 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-import os
 import re
 import signal
-import string
 import sys
-import tempfile
 import shutil
+import tempfile
 import logging
 from collections import namedtuple
 from contextlib import contextmanager
 from pathlib import Path
 from subprocess import Popen, PIPE, STDOUT
 from typing import Iterator, Optional
-import numpy as np
 
 from ..core.rational import Rational as R
 
@@ -26,39 +23,18 @@ from .ngspice_common import (
     NgspiceFatalError,
     NgspiceTransientResult,
     NgspiceAcResult,
-    NgspiceResultBase,
     check_errors,
-    NgspiceTable,
     SignalKind,
     SignalArray,
     NgspiceBase,
+    parse_raw,
+    signal_kind_from_unit,
 )
 
 NgspiceVector = namedtuple(
     "NgspiceVector", ["name", "quantity", "dtype", "length", "rest"]
 )
 
-
-def is_numeric_row(row_data):
-    """Check if a row contains mostly numeric data."""
-    if not row_data:
-        return False
-
-    numeric_count = 0
-    for item in row_data:
-        try:
-            float(item)
-            numeric_count += 1
-        except ValueError:
-            # First column might be an index (integer)
-            try:
-                int(item)
-                numeric_count += 1
-            except ValueError:
-                pass
-
-    # Consider it numeric if at least 80% of values are numbers
-    return numeric_count >= len(row_data) * 0.8
 
 class NgspiceSubprocess(NgspiceBase):
     @classmethod
@@ -107,6 +83,8 @@ class NgspiceSubprocess(NgspiceBase):
         self.command("set numdgt=16")
         # Ensure computed scalar values use the same precision.
         self.command("set csnumprec=16")
+        # Use binary rawfiles for reliable machine-readable data passing.
+        self.command("set filetype=binary")
     
     def command(self, command: str) -> str:
         """Executes ngspice command and returns string output from ngspice process."""
@@ -169,34 +147,6 @@ class NgspiceSubprocess(NgspiceBase):
         if no_auto_gnd:
             self.command("set no_auto_gnd")
         check_errors(self.command(f"source {netlist_fn}"))
-
-    def print_all(self) -> Iterator[str]:
-        """
-        Tries "print all" first. If it fails due to zero-length vectors, emulate
-        "print all" using display and print but skip zero-length vectors.
-        """
-
-        print_all_res = self.command("print all")
-        # Check if the result contains the warning about zero-length vectors
-        if "is not available or has zero length" in print_all_res:
-            # get list of available vectors and print only valid ones
-            display_output = self.command("display")
-
-            # Parse vector list and print only vectors with length > 0
-            for line in display_output.split("\n"):
-                # Look for vector definitions like "name: type, real, N long"
-                vector_match = re.match(
-                    r"\s*([^:]+):\s*[^,]+,\s*[^,]+,\s*([0-9]+)\s+long", line
-                )
-                if vector_match:
-                    vector_name = vector_match.group(1).strip()
-                    vector_length = int(vector_match.group(2))
-
-                    # Only print vectors that have data (length > 0)
-                    if vector_length > 0:
-                        yield self.command(f"print {vector_name}")
-        else:
-            yield from print_all_res.split("\n")
 
     def _parse_op_results(self) -> Iterator[str]:
         """
@@ -274,8 +224,38 @@ class NgspiceSubprocess(NgspiceBase):
                     value=float(res.group(4)),
                 )
 
-    def tran(self, tstep: R, tstop: R, tstart: R = R(0), tmax: Optional[R] = None, uic: bool = False) -> NgspiceTransientResult:
+    @staticmethod
+    def _strip_raw_name(raw_name: str) -> str:
+        """Normalize a rawfile variable name to the plain node/device name.
 
+        ngspice wraps names in rawfiles: v(node) for voltages, i(device) for
+        currents. The netlister and hierarchy lookup expect bare names.
+        """
+        if raw_name.startswith("v(") and raw_name.endswith(")"):
+            return raw_name[2:-1]
+        if raw_name.startswith("i(") and raw_name.endswith(")"):
+            inner = raw_name[2:-1]
+            if inner.startswith("@"):
+                return inner  # device current: i(@r1[i]) -> @r1[i]
+            return inner + "#branch"  # branch current: i(vi0) -> vi0#branch
+        return raw_name
+
+    def _write_raw(self):
+        """Write current simulation plot to sim.raw.
+
+        Uses explicit non-zero-length vector names to avoid ngspice refusing
+        to write when zero-length vectors (e.g. from .option savecurrents)
+        are present in the current plot.
+
+        Returns (data, info_vars) from parse_raw().
+        """
+        valid = [v.name for v in self.vector_info() if v.length > 0]
+        if not valid:
+            raise NgspiceError("No simulation data: no non-zero-length vectors found")
+        self.command("write sim.raw " + " ".join(valid))
+        return parse_raw(self.cwd / "sim.raw")
+
+    def tran(self, tstep: R, tstop: R, tstart: R = R(0), tmax: Optional[R] = None, uic: bool = False) -> NgspiceTransientResult:
         cmd = ['tran',
             R(tstep).compat_str(),
             R(tstop).compat_str(),
@@ -285,154 +265,31 @@ class NgspiceSubprocess(NgspiceBase):
         if uic:
             cmd.append('uic')
         self.command(' '.join(cmd))
-        print_all_res = "\n".join(self.print_all())
-        lines = print_all_res.split("\n")
+        data, info_vars = self._write_raw()
 
         result = NgspiceTransientResult()
-        tables = {}  # map from header tuple to list of data rows
-        current_headers = None
-
-        for line in lines:
-            line = line.strip()
-            if not line or re.match(r"^-+$", line) or "Transient Analysis" in line:
-                continue
-
-            potential_headers = line.split()
-            is_header = any(
-                h.lower() in ("time", "index") for h in potential_headers
-            ) and not is_numeric_row(potential_headers)
-
-            if is_header:
-                current_headers = tuple(potential_headers)
-                if current_headers not in tables:
-                    tables[current_headers] = []
-            elif current_headers:
-                row_data = line.split()
-                if is_numeric_row(row_data):
-                    # Ensure data row has a compatible number of columns, pad if necessary
-                    if len(row_data) <= len(current_headers):
-                        tables[current_headers].append(row_data)
-
-        for headers, data in tables.items():
-            if data:
-                table = NgspiceTable("transient")
-                table.headers = list(headers)
-                table.data = data
-                result.add_table(table)
-
-        self._update_signal_kinds_from_vector_info(result)
-
+        for var in info_vars:
+            kind = signal_kind_from_unit(var.unit, var.name)
+            values = list(data[var.name])
+            if kind == SignalKind.TIME:
+                result.time = values
+            else:
+                result.signals[self._strip_raw_name(var.name)] = SignalArray(kind=kind, values=values)
         return result
 
-    def _update_signal_kinds_from_vector_info(self, result):
-        vectors_info = self.vector_info()
-        for vec_info in vectors_info:
-            if vec_info.name in result.signals:
-                if hasattr(vec_info, "quantity") and vec_info.quantity:
-                    if vec_info.quantity.lower() in ("time", "index"):
-                        result.signals[vec_info.name].kind = SignalKind.TIME
-                    elif vec_info.quantity.lower() in ("voltage", "v"):
-                        result.signals[vec_info.name].kind = SignalKind.VOLTAGE
-                    elif vec_info.quantity.lower() in ("current", "i"):
-                        result.signals[vec_info.name].kind = SignalKind.CURRENT
-
-    def _parse_ac_wrdata(self, file_path: str, vectors: list[str]) -> NgspiceAcResult:
-        """Parses the ASCII output of a wrdata command for AC analysis."""
-        result = NgspiceAcResult()
-
-        try:
-            data = np.loadtxt(file_path)
-        except (IOError, ValueError):
-            return result
-
-        if data.ndim == 1:
-            # Handle case with only one row of data by reshaping it
-            data = data.reshape(1, -1)
-
-        if data.shape[0] == 0:
-            return result
-
-        result.freq = list(data[:, 0])
-
-        # Subsequent columns are grouped in threes: freq, real, imag.
-        for i, vec_name in enumerate(vectors):
-            # The block for vector `i` starts at column i*3
-            real_col_idx = i * 3 + 1
-            imag_col_idx = i * 3 + 2
-
-            if data.shape[1] > imag_col_idx:
-                real_parts = data[:, real_col_idx]
-                imag_parts = data[:, imag_col_idx]
-
-                complex_data = [complex(r, i) for r, i in zip(real_parts, imag_parts)]
-                kind = result.categorize_signal(vec_name)
-                result.signals[vec_name] = SignalArray(kind=kind, values=complex_data)
-
-        self._update_signal_kinds_from_vector_info(result)
-
-        return result
-
-    def ac(self, *args, wrdata_file: Optional[str] = None) -> NgspiceAcResult:
+    def ac(self, *args) -> NgspiceAcResult:
         self.command(f"ac {' '.join(args)}")
+        data, info_vars = self._write_raw()
 
-        if wrdata_file is None:
-            # Original logic using print all
-            print_all_res = "".join(self.print_all())
-            result = NgspiceAcResult()
-
-            sections = re.split(r"AC Analysis\s+.*\n\s*-{60,}", print_all_res)
-
-            for section in sections:
-                if not section.strip():
-                    continue
-
-                lines = section.strip().split("\n")
-                header_line = lines[0]
-                data_lines = lines[1:]
-
-                headers = header_line.split()
-                if len(headers) < 2:
-                    continue
-
-                vector_name = headers[-1]
-
-                if "frequency" in headers:
-                    if not result.freq:
-                        for line in data_lines:
-                            match = re.match(r"\s*\d+\s+([\d.eE+-]+)", line)
-                            if match:
-                                result.freq.append(float(match.group(1)))
-
-                signal_data = []
-                for line in data_lines:
-                    match = re.search(r"([\d.eE+-]+),\s*([\d.eE+-]+)", line)
-                    if match:
-                        real = float(match.group(1))
-                        imag = float(match.group(2))
-                        signal_data.append(complex(real, imag))
-
-                if not signal_data:
-                    continue
-
-                kind = result.categorize_signal(vector_name)
-                result.signals[vector_name] = SignalArray(kind=kind, values=signal_data)
-
-            self._update_signal_kinds_from_vector_info(result)
-
-            return result
-        else:
-            vectors_to_write = [
-                v.name
-                for v in self.vector_info()
-                if v.name != "frequency" and v.length > 0
-            ]
-            if not vectors_to_write:
-                return NgspiceAcResult()  # Return empty result if no vectors
-
-            # Quote vector names to handle special characters
-            vectors_quoted = [f'"{v}"' for v in vectors_to_write]
-            self.command(f"wrdata {wrdata_file} {' '.join(vectors_quoted)}")
-            return self._parse_ac_wrdata(wrdata_file, vectors_to_write)
+        result = NgspiceAcResult()
+        for var in info_vars:
+            kind = signal_kind_from_unit(var.unit, var.name)
+            if kind == SignalKind.FREQUENCY:
+                # Frequency is stored as complex in AC rawfiles; imaginary part is 0.
+                result.freq = list(data[var.name].real)
+            else:
+                result.signals[self._strip_raw_name(var.name)] = SignalArray(kind=kind, values=list(data[var.name]))
+        return result
 
     def vector_info(self) -> Iterator[NgspiceVector]:
         """Wrapper for ngspice's "display" command."""

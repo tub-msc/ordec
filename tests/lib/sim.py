@@ -3,11 +3,13 @@
 
 from dataclasses import dataclass
 
-from ordec.schematic import helpers
 from ordec.core import *
+from ordec.schematic import helpers
+from ordec.schematic.routing import schematic_routing
 from ordec.sim.sim_hierarchy import HighlevelSim, SimHierarchy
 from ordec.sim.ngspice import Ngspice
 from ordec.sim.ngspice_common import SignalKind, SignalArray
+from ordec.lib.base import PulseVoltageSource
 
 from ordec.lib.generic_mos import Or2, Nmos, Pmos, Ringosc, Inv
 from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, SinusoidalVoltageSource
@@ -17,60 +19,6 @@ from ordec.lib import ihp130
 import queue as _queue
 import time as _time
 import concurrent.futures as _futures
-
-@dataclass
-class SignalValue:
-    value: float
-    kind: SignalKind
-
-class TranResult:
-    def __init__(
-        self,
-        data_dict,
-        sim_hierarchy,
-        netlister,
-        progress,
-        signal_kinds=None,
-        mappings=None,
-    ):
-        self._data = data_dict
-        self._node = sim_hierarchy
-        self._netlister = netlister
-        self.progress = progress
-
-        # Use provided signal_kinds or fall back to heuristics
-        signal_kinds = signal_kinds or {}
-
-        # Precomputed mappings allow us to avoid repeated name lookups.
-        if mappings:
-            for attr_name, sim_name, default_kind in mappings:
-                if sim_name == "time" and sim_name in data_dict:
-                    kind = signal_kinds.get(sim_name, SignalKind.TIME)
-                    self.time = SignalValue(value=data_dict[sim_name], kind=kind)
-                    continue
-                if sim_name in data_dict:
-                    kind = signal_kinds.get(sim_name, default_kind)
-                    setattr(self, attr_name, SignalValue(value=data_dict[sim_name], kind=kind))
-            return
-
-        if "time" in data_dict:
-            time_kind = signal_kinds.get("time", SignalKind.TIME)
-            self.time = SignalValue(value=data_dict["time"], kind=time_kind)
-
-        for net in sim_hierarchy.all(SimNet):
-            net_name = netlister.name_hier_simobj(net)
-            if net_name in data_dict and net_name != "time":
-                net_kind = signal_kinds.get(net_name, SignalKind.VOLTAGE)
-                setattr(self, net.full_path_list()[-1],
-                    SignalValue(value=data_dict[net_name], kind=net_kind))
-
-        for inst in sim_hierarchy.all(SimInstance):
-            inst_name = netlister.name_hier_simobj(inst)
-            if inst_name in data_dict:
-                inst_kind = signal_kinds.get(inst_name, SignalKind.CURRENT)
-                setattr(self, inst.full_path_list()[-1],
-                    SignalValue(value=data_dict[inst_name], kind=inst_kind))
-
 
 class SimBase(Cell):
     @generate
@@ -548,26 +496,38 @@ class InvIhpTb(SimBase):
         return s
 
 
-class RCAlterTestbench(Cell):
-    """RC circuit for testing HighlevelSim alter operations"""
-
+class PulsedRC(Cell):
     @generate
     def schematic(self):
-        s = Schematic(cell=self, outline=Rect4R(lx=0, ly=0, ux=10, uy=10))
+        s = Schematic(cell=self)
+        s.vss = Net()
+        s.inp = Net()
+        s.out = Net()
 
-        s.vin = Net()
-        s.vout = Net()
-        s.gnd = Net()
+        res = Res(r=R("100")).symbol
+        cap = Cap(c=R("100n")).symbol
 
-        s.v1 = SchemInstance(
-            Vdc(dc=R(1)).symbol.portmap(p=s.vin, m=s.gnd), pos=Vec2R(0, 5)
-        )
-        s.r1 = SchemInstance(
-            Res(r=R(1000)).symbol.portmap(p=s.vin, m=s.vout), pos=Vec2R(5, 5)
-        )
-        s.c1 = SchemInstance(
-            Cap(c=R("1u")).symbol.portmap(p=s.vout, m=s.gnd), pos=Vec2R(8, 3)
-        )
-        s.gnd_conn = SchemInstance(Gnd().symbol.portmap(p=s.gnd), pos=Vec2R(0, 0))
+        vsrc = PulseVoltageSource(
+            initial_value=R(0),
+            pulsed_value=R(1),
+            rise_time=R("10u"),
+            fall_time=R("10u"),
+            pulse_width=R("15u"),
+            period=R("50u"),
+        ).symbol
 
+        s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
+        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.inp), pos=Vec2R(0, 5))
+        s.res = SchemInstance(res.portmap(m=s.out, p=s.inp), pos=Vec2R(10, 8), orientation = Orientation.West)
+        s.cap = SchemInstance(cap.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
+
+        s.outline = schematic_routing(s)
+        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        return s
+
+    @generate
+    def sim_tran(self):
+        s = SimHierarchy()
+        sim = HighlevelSim(self.schematic, s)
+        sim.tran(R('5u'), R('250u'))
         return s
