@@ -496,6 +496,38 @@ class InvIhpTb(SimBase):
         return s
 
 
+class SineRC(Cell):
+    @generate
+    def schematic(self):
+        s = Schematic(cell=self)
+        s.vss = Net()
+        s.inp = Net()
+        s.out = Net()
+
+        res = Res(r=R("100")).symbol
+        cap = Cap(c=R("100n")).symbol
+
+        vsrc = SinusoidalVoltageSource(
+            amplitude=R(1), frequency=R(1),
+        ).symbol
+
+        s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
+        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.inp), pos=Vec2R(0, 5))
+        s.res = SchemInstance(res.portmap(m=s.out, p=s.inp), pos=Vec2R(10, 8), orientation=Orientation.West)
+        s.cap = SchemInstance(cap.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
+
+        s.outline = schematic_routing(s)
+        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        return s
+
+    @generate
+    def sim_ac(self):
+        s = SimHierarchy()
+        sim = HighlevelSim(self.schematic, s)
+        sim.ac('dec', '10', '1', '1G')
+        return s
+
+
 class PulsedRC(Cell):
     @generate
     def schematic(self):
