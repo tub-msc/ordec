@@ -4,7 +4,7 @@
 import re
 import pytest
 from ordec.sim.ngspice import Ngspice
-from ordec.sim.ngspice_common import NgspiceError, NgspiceFatalError
+from ordec.sim.ngspice_common import NgspiceError, NgspiceFatalError, Quantity
 
 def test_ngspice_illegal_netlist_1():
     with Ngspice.launch() as sim:
@@ -43,7 +43,7 @@ def test_ngspice_op_no_auto_gnd():
     """
 
     def voltages(op):
-        return {name:value for vtype, name, subname, value in op if vtype=='voltage'}
+        return {name:value for qty, name, subname, value in op if qty==Quantity.VOLTAGE}
 
     # Default behavior: net 'gnd' is automatically ground.
     with Ngspice.launch() as sim:

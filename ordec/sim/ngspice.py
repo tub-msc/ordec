@@ -7,18 +7,18 @@ import sys
 import shutil
 import tempfile
 import logging
-from collections import namedtuple
 from contextlib import contextmanager
 from pathlib import Path
 from subprocess import Popen, PIPE, STDOUT
-from typing import Iterator, Optional
+from typing import Iterator, NamedTuple, Optional
 
 from ..core.rational import Rational as R
 
 logger = logging.getLogger(__name__)
 
 from .ngspice_common import (
-    NgspiceValue,
+    NgspiceScalar,
+    Quantity,
     NgspiceError,
     NgspiceFatalError,
     check_errors,
@@ -26,9 +26,13 @@ from .ngspice_common import (
 )
 from ..core.simarray import SimArray
 
-NgspiceVector = namedtuple(
-    "NgspiceVector", ["name", "quantity", "dtype", "length", "rest"]
-)
+
+class NgspiceVector(NamedTuple):
+    name: str
+    quantity: str
+    dtype: str
+    length: int
+    rest: str
 
 
 class Ngspice:
@@ -179,7 +183,7 @@ class Ngspice:
                 if re.match(r"([0-9a-zA-Z_.#]+)\s*=\s*([0-9.\-+e]+)\s*", line):
                     yield line
 
-    def op(self) -> Iterator[NgspiceValue]:
+    def op(self) -> Iterator[NgspiceScalar]:
         self.command("op")
 
         for line in self._parse_op_results():
@@ -189,8 +193,8 @@ class Ngspice:
             # Voltage result - updated regex to handle device names with special chars:
             res = re.match(r"([0-9a-zA-Z_.#]+)\s*=\s*([0-9.\-+e]+)\s*", line)
             if res:
-                yield NgspiceValue(
-                    type="voltage",
+                yield NgspiceScalar(
+                    quantity=Quantity.VOLTAGE,
                     name=res.group(1),
                     subname=None,
                     value=float(res.group(2)),
@@ -199,8 +203,8 @@ class Ngspice:
             # Current result like "vgnd#branch":
             res = re.match(r"([0-9a-zA-Z_.#]+)#branch\s*=\s*([0-9.\-+e]+)\s*", line)
             if res:
-                yield NgspiceValue(
-                    type="current",
+                yield NgspiceScalar(
+                    quantity=Quantity.CURRENT,
                     name=res.group(1),
                     subname="branch",
                     value=float(res.group(2)),
@@ -212,8 +216,8 @@ class Ngspice:
                 line,
             )
             if res:
-                yield NgspiceValue(
-                    type="current",
+                yield NgspiceScalar(
+                    quantity=Quantity.CURRENT,
                     name=res.group(2),
                     subname=res.group(3),
                     value=float(res.group(4)),

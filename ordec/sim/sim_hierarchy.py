@@ -70,8 +70,8 @@ class HighlevelSim:
         
         with self.launch_ngspice() as sim:
             sim.load_netlist(self.netlister.out())
-            for vtype, name, subname, value in sim.op():
-                if vtype == "voltage":
+            for qty, name, subname, value in sim.op():
+                if qty == Quantity.VOLTAGE:
                     try:
                         simnet = self.hier_simobj_of_name(name)
                     except KeyError:
@@ -79,7 +79,7 @@ class HighlevelSim:
                         continue
                     else:
                         simnet.dc_voltage = value
-                elif vtype == "current":
+                elif qty == Quantity.CURRENT:
                     if subname not in ("id", "branch", "i"):
                         continue
                     try:

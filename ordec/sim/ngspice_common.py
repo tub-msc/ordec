@@ -3,14 +3,22 @@
 
 import re
 import struct
-from collections import namedtuple
+from typing import NamedTuple
 from enum import Enum
 from abc import ABC, abstractmethod
 
 from ..core.simarray import SimArray, SimArrayField
 
-NgspiceValue = namedtuple("NgspiceValue", ["type", "name", "subname", "value"])
-RawVariable = namedtuple("RawVariable", ["name", "unit"])
+
+class NgspiceScalar(NamedTuple):
+    quantity: 'Quantity'
+    name: str
+    subname: str
+    value: float
+
+class RawVariable(NamedTuple):
+    name: str
+    unit: str
 
 class Quantity(Enum):
     TIME = 1
