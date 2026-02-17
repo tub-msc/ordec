@@ -2,12 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import re
+import struct
 from collections import namedtuple
 from enum import Enum
-from dataclasses import dataclass
-from typing import Dict
 from abc import ABC, abstractmethod
-import numpy as np
+
+from ..core.simarray import SimArray, SimArrayField
 
 NgspiceValue = namedtuple("NgspiceValue", ["type", "name", "subname", "value"])
 RawVariable = namedtuple("RawVariable", ["name", "unit"])
@@ -18,22 +18,12 @@ class NgspiceBase(ABC):
     def launch(cls, debug: bool):
         pass
 
-    # More abstractmethod could be added here to document (and minimally
-    # enforce) the interface compatilibity between different NgspiceBase
-    # subclasses.
-
 class Quantity(Enum):
     TIME = 1
     FREQUENCY = 2
     VOLTAGE = 3
     CURRENT = 4
     OTHER = 99
-
-
-@dataclass
-class SignalArray:
-    qty: Quantity
-    values: list
 
 
 class NgspiceError(Exception):
@@ -44,143 +34,6 @@ class NgspiceFatalError(NgspiceError):
     pass
 
 
-class NgspiceTable:
-    def __init__(self, name):
-        self.name = name
-        self.headers = []
-        self.data = []
-
-
-class NgspiceResultBase:
-    def __init__(self):
-        # Map signal name -> SignalArray
-        self.signals: Dict[str, SignalArray] = {}
-
-    def categorize_signal(self, signal_name) -> Quantity:
-        if not signal_name:
-            return Quantity.OTHER
-        if signal_name.startswith("@") and "[" in signal_name:
-            return Quantity.CURRENT
-        if signal_name.endswith("#branch"):
-            return Quantity.CURRENT
-        # Treat as node voltage
-        return Quantity.VOLTAGE
-
-    def __getitem__(self, key):
-        """Allow signal access."""
-        return self.get_signal(key)
-
-    def get_signal(self, signal_name):
-        return self.signals.get(signal_name, [])
-
-    def list_signals(self):
-        return list(self.signals.keys())
-
-
-class NgspiceTransientResult(NgspiceResultBase):
-    def __init__(self):
-        super().__init__()
-        self.time: list = []
-        self.tables: list = []
-
-    def add_table(self, table):
-        """Add a table and extract signals into the signals dictionary."""
-        self.tables.append(table)
-
-        if not table.headers or not table.data:
-            return
-
-        # Find time column (usually index 1, but could be elsewhere)
-        time_idx = None
-        for i, header in enumerate(table.headers):
-            if header.lower() == "time":
-                time_idx = i
-                break
-
-        if time_idx is None:
-            return
-
-        # Extract time data if we don't have it yet
-        if not self.time and table.data:
-            # Filter out any rows that might contain header strings
-            valid_time_data = []
-            for row in table.data:
-                if len(row) > time_idx:
-                    try:
-                        time_val = float(row[time_idx])
-                        valid_time_data.append(time_val)
-                    except (ValueError, TypeError):
-                        # Skip rows that can't be converted to float (likely headers)
-                        continue
-            self.time = valid_time_data
-
-        # Extract signal data
-        for i, header in enumerate(table.headers):
-            if header.lower() in ["index", "time"]:
-                continue
-
-            signal_name = header
-            signal_data = []
-
-            for row in table.data:
-                if len(row) > i:
-                    try:
-                        signal_data.append(float(row[i]))
-                    except (ValueError, TypeError, IndexError):
-                        # Skip rows that can't be converted to float or are malformed
-                        continue
-
-            if signal_data:
-                qty = self.categorize_signal(signal_name)
-                self.signals[signal_name] = SignalArray(qty=qty, values=signal_data)
-
-    def categorize_signal(self, signal_name) -> Quantity:
-        if not signal_name:
-            return Quantity.OTHER
-        name = signal_name.lower()
-        if name in ("time", "index"):
-            return Quantity.TIME
-        return super().categorize_signal(signal_name)
-
-    def __getitem__(self, key):
-        if isinstance(key, int):
-            return self.tables[key]
-        else:
-            return self.get_signal(key)
-
-    def __len__(self):
-        return len(self.tables)
-
-    def __iter__(self):
-        return iter(self.tables)
-
-    def plot_signals(self, *signal_names):
-        result = {"time": self.time}
-        for name in signal_names:
-            result[name] = self.get_signal(name)
-        return result
-
-
-class NgspiceAcResult(NgspiceResultBase):
-    def __init__(self):
-        super().__init__()
-        self.freq = []
-
-    def categorize_signal(self, signal_name) -> Quantity:
-        if not signal_name:
-            return Quantity.OTHER
-        name = signal_name.lower()
-        if name in ("frequency", "freq"):
-            return Quantity.FREQUENCY
-        return super().categorize_signal(signal_name)
-
-    def plot_signals(self, *signal_names):
-        result = {"frequency": self.freq}
-        for name in signal_names:
-            result[name] = self.get_signal(name)
-        return result
-
-
 def check_errors(ngspice_out):
     """Helper function to raise NgspiceError in Python from "Error: ..."
     messages in Ngspice's output."""
@@ -189,10 +42,7 @@ def check_errors(ngspice_out):
 
     for line in ngspice_out.split("\n"):
         if "no such vector" in line:
-            # This error can occur when a simulation (like 'op') is run that doesn't
-            # produce any plot output. It's not a fatal error, so we ignore it.
             continue
-        # Handle both "Error: ..." and "stderr Error: ..." formats
         m = re.match(r"(?:stderr )?Error:\s*(.*)", line)
         if m and first_error_msg is None:
             first_error_msg = "Error: " + m.group(1)
@@ -226,10 +76,26 @@ def quantity_from_unit(unit: str, name: str = "") -> "Quantity":
     return Quantity.OTHER
 
 
+def strip_raw_name(raw_name: str) -> str:
+    """Normalize a rawfile variable name to the plain node/device name.
+
+    ngspice wraps names in rawfiles: v(node) for voltages, i(device) for
+    currents. The netlister and hierarchy lookup expect bare names.
+    """
+    if raw_name.startswith("v(") and raw_name.endswith(")"):
+        return raw_name[2:-1]
+    if raw_name.startswith("i(") and raw_name.endswith(")"):
+        inner = raw_name[2:-1]
+        if inner.startswith("@"):
+            return inner  # device current: i(@r1[i]) -> @r1[i]
+        return inner + "#branch"  # branch current: i(vi0) -> vi0#branch
+    return raw_name
+
+
 def parse_raw(fn):
     """Parse a ngspice binary rawfile.
 
-    Returns (data, info_vars) where data is a numpy structured array
+    Returns (sim_array, info_vars) where sim_array is a SimArray
     and info_vars is a list of RawVariable namedtuples with .name and .unit.
     Real simulations (tran, op) yield float64 values; AC simulations yield
     complex128 values.
@@ -255,14 +121,21 @@ def parse_raw(fn):
 
         # AC simulations store complex-valued vectors; transient/op use real.
         is_complex = "complex" in info.get("Flags", "").lower()
-        scalar_type = np.complex128 if is_complex else np.float64
+        dtype = 'c16' if is_complex else 'f8'
 
-        dtype = np.dtype(
-            {
-                "names": [v.name for v in info_vars],
-                "formats": [scalar_type] * len(info_vars),
-            }
+        fields = tuple(
+            SimArrayField(v.name, dtype) for v in info_vars
         )
 
-        data = np.fromfile(f, dtype=dtype, count=no_points)
-    return data, info_vars
+        # Calculate expected bytes per record
+        field_size = 16 if is_complex else 8
+        record_size = field_size * len(info_vars)
+        expected_bytes = record_size * no_points
+
+        data = f.read(expected_bytes)
+        if len(data) != expected_bytes:
+            raise ValueError(
+                f"Expected {expected_bytes} bytes, got {len(data)}"
+            )
+
+    return SimArray(fields, data), info_vars

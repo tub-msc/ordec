@@ -13,6 +13,7 @@ from .geoprim import *
 from .ordb import *
 from .cell import Cell
 from .constraints import *
+from .simarray import SimArray
 
 @public
 class PinType(Enum):
@@ -564,8 +565,26 @@ class SimHierarchy(SubgraphRoot):
     schematic = SubgraphRef(Schematic)
     cell = Attr(Cell)
     sim_type = Attr(SimType)
-    time = Attr(tuple)
-    freq = Attr(tuple)
+    sim_data = Attr(SimArray) #: Packed simulation result data shared by all SimNet/SimInstance nodes.
+    time_field = Attr(str) #: Column name in sim_data for the time axis (transient), or None.
+    freq_field = Attr(str) #: Column name in sim_data for the frequency axis (AC), or None.
+
+    @property
+    def time(self):
+        if self.sim_data is None or self.time_field is None:
+            return None
+        return self.sim_data.column(self.time_field)
+
+    @property
+    def freq(self):
+        if self.sim_data is None or self.freq_field is None:
+            return None
+        col = self.sim_data.column(self.freq_field)
+        # AC rawfiles store frequency as complex with zero imaginary part;
+        # return real values for consumer convenience.
+        if col and isinstance(col[0], complex):
+            return tuple(v.real for v in col)
+        return col
 
     def __setitem__(self, k, v):
         raise TypeError("Insert with path not supported in SimHierarchy.")
@@ -613,6 +632,13 @@ class SimHierarchy(SubgraphRoot):
             return 'transim', {'time': self.time, 'voltages': voltages, 'currents': currents}
         elif self.sim_type == SimType.AC:
             voltages, currents = self._get_sim_data('ac_voltage', 'ac_current')
+            # Convert complex tuples to [real, imag] pairs for JSON
+            def complex_to_pairs(vals):
+                if vals is None:
+                    return None
+                return tuple((v.real, v.imag) for v in vals)
+            voltages = {k: complex_to_pairs(v) for k, v in voltages.items()}
+            currents = {k: complex_to_pairs(v) for k, v in currents.items()}
             return 'acsim', {'freq': self.freq, 'voltages': voltages, 'currents': currents}
         elif self.sim_type == SimType.DC:
             def fmt_float(val, unit):
@@ -639,15 +665,27 @@ class SimHierarchy(SubgraphRoot):
 @public
 class SimNet(Node):
     in_subgraphs = [SimHierarchy]
-    
+
     parent_inst = LocalRef('SimInstance', optional=True,
         refcheck_custom=lambda val: issubclass(val, SimInstance))
 
-    trans_voltage = Attr(tuple)
-    trans_current = Attr(tuple)
-    ac_voltage = Attr(tuple)
-    ac_current = Attr(tuple)
+    trans_field = Attr(str) #: Column name in root sim_data for transient voltage.
+    ac_field = Attr(str) #: Column name in root sim_data for AC voltage.
     dc_voltage = Attr(float)
+
+    @property
+    def trans_voltage(self):
+        sd = self.root.sim_data
+        if sd is None or self.trans_field is None:
+            return None
+        return sd.column(self.trans_field)
+
+    @property
+    def ac_voltage(self):
+        sd = self.root.sim_data
+        if sd is None or self.ac_field is None:
+            return None
+        return sd.column(self.ac_field)
 
     eref = ExternalRef(Net|Pin,
         of_subgraph=lambda c: c.root.schematic_or_symbol_at(c.parent_inst),
@@ -670,9 +708,23 @@ class SimInstance(Node):
     parent_inst = LocalRef('SimInstance', optional=True,
         refcheck_custom=lambda val: issubclass(val, SimInstance))
 
-    trans_current = Attr(tuple)
-    ac_current = Attr(tuple)
+    trans_field = Attr(str) #: Column name in root sim_data for transient current.
+    ac_field = Attr(str) #: Column name in root sim_data for AC current.
     dc_current = Attr(float)
+
+    @property
+    def trans_current(self):
+        sd = self.root.sim_data
+        if sd is None or self.trans_field is None:
+            return None
+        return sd.column(self.trans_field)
+
+    @property
+    def ac_current(self):
+        sd = self.root.sim_data
+        if sd is None or self.ac_field is None:
+            return None
+        return sd.column(self.ac_field)
 
     schematic = SubgraphRef(Schematic,
         typecheck_custom=lambda v: isinstance(v, (Symbol, Schematic)),

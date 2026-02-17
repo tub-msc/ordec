@@ -10,7 +10,7 @@ from ..core.rational import R
 from ..core.schema import SimType
 from .ngspice import Ngspice
 from ..schematic.netlister import Netlister
-from .ngspice_common import Quantity
+from .ngspice_common import Quantity, quantity_from_unit, strip_raw_name
 
 
 def build_hier_schematic(simhier: SimHierarchy, schematic: Schematic):
@@ -93,91 +93,52 @@ class HighlevelSim:
         return self.netlister.hier_simobj_of_name(self.simhier, name)
 
 
-    def _run_simulation(
-        self,
-        sim_type,
-        sim_method,
-        time_field,
-        voltage_attr,
-        current_attr,
-        process_signal_func,
-        *sim_args,
-        **sim_kwargs,
-    ):
+    def _run_simulation(self, sim_type, sim_method, *sim_args, **sim_kwargs):
         """Common simulation execution logic for tran and ac analyses."""
         self.simhier.sim_type = sim_type
+        is_tran = sim_type == SimType.TRAN
+
         with self.launch_ngspice() as sim:
             sim.load_netlist(self.netlister.out())
-            data = getattr(sim, sim_method)(*sim_args, **sim_kwargs)
-            setattr(
-                self.simhier,
-                time_field,
-                tuple(data.time if hasattr(data, "time") else data.freq),
-            )
-            for name, signal_array in data.signals.items():
-                try:
-                    # Check if this is a voltage signal (node voltage)
-                    if signal_array.qty == Quantity.VOLTAGE:
-                        simnet = self.hier_simobj_of_name(name)
-                        process_signal_func(
-                            simnet,
-                            voltage_attr,
-                            signal_array.values,
-                        )
-                    # Check if this is a current signal (device current or branch current)
-                    elif signal_array.qty == Quantity.CURRENT:
-                        # Try to find matching SimInstance for device currents
-                        if name.startswith("@") and "[" in name:
-                            # Device current like "@m.xi0.mpd[id]" - extract device name
-                            device_name = name.split("[")[0][
-                                1:
-                            ]  # Remove @ and get device part
-                            siminstance = self.hier_simobj_of_name(device_name)
-                            process_signal_func(
-                                siminstance,
-                                current_attr,
-                                signal_array.values,
-                            )
-                        elif name.endswith("#branch"):
-                            # Branch current like "vi3#branch" - extract branch name
-                            branch_name = name.replace("#branch", "")
-                            siminstance = self.hier_simobj_of_name(name)
-                            process_signal_func(
-                                siminstance,
-                                current_attr,
-                                signal_array.values,
-                            )
-                except KeyError:
-                    continue
+            sim_array, info_vars = getattr(sim, sim_method)(*sim_args, **sim_kwargs)
+
+        # Store SimArray and axis field names on the SimHierarchy root
+        self.simhier.sim_data = sim_array
+        for var in info_vars:
+            qty = quantity_from_unit(var.unit, var.name)
+            if qty == Quantity.TIME:
+                self.simhier.time_field = var.name
+            elif qty == Quantity.FREQUENCY:
+                self.simhier.freq_field = var.name
+
+        # Assign field names to SimNet/SimInstance nodes
+        field_attr = 'trans_field' if is_tran else 'ac_field'
+
+        for var in info_vars:
+            qty = quantity_from_unit(var.unit, var.name)
+            if qty in (Quantity.TIME, Quantity.FREQUENCY):
+                continue
+
+            stripped = strip_raw_name(var.name)
+            try:
+                if qty == Quantity.VOLTAGE:
+                    simnet = self.hier_simobj_of_name(stripped)
+                    setattr(simnet, field_attr, var.name)
+                elif qty == Quantity.CURRENT:
+                    if stripped.startswith("@") and "[" in stripped:
+                        device_name = stripped.split("[")[0][1:]
+                        siminstance = self.hier_simobj_of_name(device_name)
+                    else:
+                        siminstance = self.hier_simobj_of_name(stripped)
+                    setattr(siminstance, field_attr, var.name)
+            except KeyError:
+                continue
 
     def tran(self, tstep, tstop):
-        def process_real(simobj, attr_name, values):
-            setattr(simobj, attr_name, tuple(values))
-
-        self._run_simulation(
-            SimType.TRAN,
-            "tran",
-            "time",
-            "trans_voltage",
-            "trans_current",
-            process_real,
-            tstep,
-            tstop,
-        )
+        self._run_simulation(SimType.TRAN, "tran", tstep, tstop)
 
     def ac(self, *args):
-        def process_complex(simobj, attr_name, values):
-            setattr(simobj, attr_name, tuple((c.real, c.imag) for c in values))
-
-        self._run_simulation(
-            SimType.AC,
-            "ac",
-            "freq",
-            "ac_voltage",
-            "ac_current",
-            process_complex,
-            *args,
-        )
+        self._run_simulation(SimType.AC, "ac", *args)
 
     def _parse_timescale_factor(self, timescale: str) -> float:
         if not isinstance(timescale, str) or not timescale.strip():

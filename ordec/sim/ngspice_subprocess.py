@@ -21,15 +21,11 @@ from .ngspice_common import (
     NgspiceValue,
     NgspiceError,
     NgspiceFatalError,
-    NgspiceTransientResult,
-    NgspiceAcResult,
     check_errors,
-    Quantity,
-    SignalArray,
     NgspiceBase,
     parse_raw,
-    quantity_from_unit,
 )
+from ..core.simarray import SimArray
 
 NgspiceVector = namedtuple(
     "NgspiceVector", ["name", "quantity", "dtype", "length", "rest"]
@@ -224,22 +220,6 @@ class NgspiceSubprocess(NgspiceBase):
                     value=float(res.group(4)),
                 )
 
-    @staticmethod
-    def _strip_raw_name(raw_name: str) -> str:
-        """Normalize a rawfile variable name to the plain node/device name.
-
-        ngspice wraps names in rawfiles: v(node) for voltages, i(device) for
-        currents. The netlister and hierarchy lookup expect bare names.
-        """
-        if raw_name.startswith("v(") and raw_name.endswith(")"):
-            return raw_name[2:-1]
-        if raw_name.startswith("i(") and raw_name.endswith(")"):
-            inner = raw_name[2:-1]
-            if inner.startswith("@"):
-                return inner  # device current: i(@r1[i]) -> @r1[i]
-            return inner + "#branch"  # branch current: i(vi0) -> vi0#branch
-        return raw_name
-
     def _write_raw(self):
         """Write current simulation plot to sim.raw.
 
@@ -255,7 +235,7 @@ class NgspiceSubprocess(NgspiceBase):
         self.command("write sim.raw " + " ".join(valid))
         return parse_raw(self.cwd / "sim.raw")
 
-    def tran(self, tstep: R, tstop: R, tstart: R = R(0), tmax: Optional[R] = None, uic: bool = False) -> NgspiceTransientResult:
+    def tran(self, tstep: R, tstop: R, tstart: R = R(0), tmax: Optional[R] = None, uic: bool = False) -> SimArray:
         cmd = ['tran',
             R(tstep).compat_str(),
             R(tstop).compat_str(),
@@ -265,31 +245,13 @@ class NgspiceSubprocess(NgspiceBase):
         if uic:
             cmd.append('uic')
         self.command(' '.join(cmd))
-        data, info_vars = self._write_raw()
+        sim_array, info_vars = self._write_raw()
+        return sim_array, info_vars
 
-        result = NgspiceTransientResult()
-        for var in info_vars:
-            qty = quantity_from_unit(var.unit, var.name)
-            values = list(data[var.name])
-            if qty == Quantity.TIME:
-                result.time = values
-            else:
-                result.signals[self._strip_raw_name(var.name)] = SignalArray(qty=qty, values=values)
-        return result
-
-    def ac(self, *args) -> NgspiceAcResult:
+    def ac(self, *args):
         self.command(f"ac {' '.join(args)}")
-        data, info_vars = self._write_raw()
-
-        result = NgspiceAcResult()
-        for var in info_vars:
-            qty = quantity_from_unit(var.unit, var.name)
-            if qty == Quantity.FREQUENCY:
-                # Frequency is stored as complex in AC rawfiles; imaginary part is 0.
-                result.freq = list(data[var.name].real)
-            else:
-                result.signals[self._strip_raw_name(var.name)] = SignalArray(qty=qty, values=list(data[var.name]))
-        return result
+        sim_array, info_vars = self._write_raw()
+        return sim_array, info_vars
 
     def vector_info(self) -> Iterator[NgspiceVector]:
         """Wrapper for ngspice's "display" command."""

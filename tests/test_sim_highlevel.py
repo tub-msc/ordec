@@ -117,7 +117,7 @@ def test_sim_ac_rc_filter():
 
     # Check the voltage magnitude at the cutoff frequency
     vout_complex = h.out.ac_voltage[idx]
-    vout_mag = np.sqrt(vout_complex[0]**2 + vout_complex[1]**2)
+    vout_mag = abs(vout_complex)
 
     # At the -3dB point, the magnitude should be 1/sqrt(2)
     assert np.isclose(vout_mag, 1/math.sqrt(2), atol=1e-2)
