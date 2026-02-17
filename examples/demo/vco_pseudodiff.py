@@ -14,7 +14,7 @@ import subprocess
 
 from ordec.core import *
 from ordec.lib import ihp130
-from ordec.lib.base import Res, Cap, Gnd, Vdc, NoConn, PieceWiseLinearVoltageSource
+from ordec.lib.base import Res, Cap, Gnd, Vdc, NoConn, Vpwl
 from ordec.schematic.routing import schematic_routing
 from ordec.schematic.helpers import symbol_place_pins, add_conn_points
 from ordec.sim.sim_hierarchy import HighlevelSim
@@ -636,11 +636,11 @@ class VcoTb(Cell):
         #     m=s.vss,
         #     p=s.vbias,
         #     ), pos=(5,10))
-        s.vbias_src = SchemInstance(PieceWiseLinearVoltageSource([(0, 1.2), (1e-9, 1.2), (30e-9, 0)]).symbol.portmap(
+        s.vbias_src = SchemInstance(Vpwl(((0, 1.2), (1e-9, 1.2), (30e-9, 0))).symbol.portmap(
             m=s.vss,
             p=s.vbias,
             ), pos=(5,10))
-        s.rst_n_src = SchemInstance(PieceWiseLinearVoltageSource([(0, 0), (1e-9, 0), (1.1e-9, 1.2)]).symbol.portmap(
+        s.rst_n_src = SchemInstance(Vpwl(((0, 0), (1e-9, 0), (1.1e-9, 1.2))).symbol.portmap(
             m=s.vss,
             p=s.rst_n,
             ), pos=(10,10))

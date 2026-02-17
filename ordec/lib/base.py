@@ -276,16 +276,9 @@ class Idc(Cell):
         return [cls('1u')]
 
 @public
-class PieceWiseLinearVoltageSource(Cell):
-    """
-    .. warning::
-      Currently not usable.
-
-    Represents a Piecewise Linear Voltage Source.
-    Expects a parameter 'V' which is a list of (time, voltage) tuples.
-    Example: V=[(0, 0), (1e-9, 1.8), (5e-9, 1.8), (6e-9, 0)]
-    """
-    V = Parameter(list)
+class Vpwl(Cell):
+    """Piecewise linear voltage source (SPICE PWL)."""
+    V = Parameter(tuple) #: Tuple of (time, voltage) tuples defining the waveform.
 
     @generate
     def symbol(self) -> Symbol:
@@ -334,22 +327,15 @@ class PieceWiseLinearVoltageSource(Cell):
         )
 
 @public
-class PulseVoltageSource(Cell):
-    """
-    .. warning::
-      Currently not usable.
-
-    Represents a Pulse Voltage Source.
-    Required parameters: pulsed_value.
-    Optional parameters: initial_value, delay_time, rise_time, fall_time, pulse_width, period.
-    """
-    initial_value = Parameter(R, optional=True, default=R(0))
-    pulsed_value = Parameter(R)
-    delay_time = Parameter(R, optional=True, default=R(0))
-    rise_time = Parameter(R, optional=True, default=R(0))
-    fall_time = Parameter(R, optional=True, default=R(0))
-    pulse_width = Parameter(R, optional=True, default=R(0))
-    period = Parameter(R, optional=True, default=R(0))
+class Vpulse(Cell):
+    """Pulse voltage source (SPICE PULSE)."""
+    initial_value = Parameter(R, optional=True, default=R(0)) #: Voltage before pulse.
+    pulsed_value = Parameter(R) #: Voltage during pulse.
+    delay_time = Parameter(R, optional=True, default=R(0)) #: Delay before first pulse.
+    rise_time = Parameter(R, optional=True, default=R(0)) #: Rise time.
+    fall_time = Parameter(R, optional=True, default=R(0)) #: Fall time.
+    pulse_width = Parameter(R, optional=True, default=R(0)) #: Pulse width.
+    period = Parameter(R, optional=True, default=R(0)) #: Repetition period.
 
     @generate
     def symbol(self) -> Symbol:
@@ -402,17 +388,13 @@ class PulseVoltageSource(Cell):
         )
 
 @public
-class SinusoidalVoltageSource(Cell):
-    """
-    Represents a Sinusoidal Voltage Source.
-    Requires parameters: amplitude, frequency.
-    Optional parameters: offset, delay, damping_factor.
-    """
-    offset = Parameter(R, optional=True, default=R(0))
-    amplitude = Parameter(R)
-    frequency = Parameter(R)
-    delay = Parameter(R, optional=True, default=R(0))
-    damping_factor = Parameter(R, optional=True, default=R(0))
+class Vsin(Cell):
+    """Sinusoidal voltage source (SPICE SIN). Netlists with both AC and transient specifications."""
+    offset = Parameter(R, optional=True, default=R(0)) #: DC offset.
+    amplitude = Parameter(R) #: Peak amplitude.
+    frequency = Parameter(R) #: Frequency in Hz.
+    delay = Parameter(R, optional=True, default=R(0)) #: Delay before start of sinusoid.
+    damping_factor = Parameter(R, optional=True, default=R(0)) #: Exponential damping factor.
 
     @generate
     def symbol(self) -> Symbol:
@@ -465,13 +447,9 @@ class SinusoidalVoltageSource(Cell):
         )
 
 @public
-class PieceWiseLinearCurrentSource(Cell):
-    """
-    Represents a Piecewise Linear Current Source.
-    Expects a parameter 'I' which is a list of (time, current) tuples.
-    Example: I=[(0, 0), (1e-9, 1.8), (5e-9, 1.8), (6e-9, 0)]
-    """
-    I = Parameter(list)
+class Ipwl(Cell):
+    """Piecewise linear current source (SPICE PWL)."""
+    I = Parameter(tuple) #: Tuple of (time, current) tuples defining the waveform.
 
     @generate
     def symbol(self) -> Symbol:
@@ -527,19 +505,15 @@ class PieceWiseLinearCurrentSource(Cell):
         )
 
 @public
-class PulseCurrentSource(Cell):
-    """
-    Represents a Pulse Current Source.
-    Required parameters: initial_value, pulsed_value.
-    Optional parameters: delay_time, rise_time, fall_time, pulse_width, period.
-    """
-    initial_value = Parameter(R)
-    pulsed_value = Parameter(R)
-    delay_time = Parameter(R, optional=True, default=R(0))
-    rise_time = Parameter(R, optional=True, default=R(0))
-    fall_time = Parameter(R, optional=True, default=R(0))
-    pulse_width = Parameter(R, optional=True, default=R(0))
-    period = Parameter(R, optional=True, default=R(0))
+class Ipulse(Cell):
+    """Pulse current source (SPICE PULSE)."""
+    initial_value = Parameter(R) #: Current before pulse.
+    pulsed_value = Parameter(R) #: Current during pulse.
+    delay_time = Parameter(R, optional=True, default=R(0)) #: Delay before first pulse.
+    rise_time = Parameter(R, optional=True, default=R(0)) #: Rise time.
+    fall_time = Parameter(R, optional=True, default=R(0)) #: Fall time.
+    pulse_width = Parameter(R, optional=True, default=R(0)) #: Pulse width.
+    period = Parameter(R, optional=True, default=R(0)) #: Repetition period.
 
     @generate
     def symbol(self) -> Symbol:
@@ -600,17 +574,13 @@ class PulseCurrentSource(Cell):
         )
 
 @public
-class SinusoidalCurrentSource(Cell):
-    """
-    Represents a Sinusoidal Current Source.
-    Required parameters: amplitude, frequency.
-    Optional parameters: offset, delay, damping_factor.
-    """
-    offset = Parameter(R, optional=True, default=R(0))
-    amplitude = Parameter(R)
-    frequency = Parameter(R)
-    delay = Parameter(R, optional=True, default=R(0))
-    damping_factor = Parameter(R, optional=True, default=R(0))
+class Isin(Cell):
+    """Sinusoidal current source (SPICE SIN)."""
+    offset = Parameter(R, optional=True, default=R(0)) #: DC offset.
+    amplitude = Parameter(R) #: Peak amplitude.
+    frequency = Parameter(R) #: Frequency in Hz.
+    delay = Parameter(R, optional=True, default=R(0)) #: Delay before start of sinusoid.
+    damping_factor = Parameter(R, optional=True, default=R(0)) #: Exponential damping factor.
 
     @generate
     def symbol(self) -> Symbol:

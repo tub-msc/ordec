@@ -9,10 +9,10 @@ from ordec.schematic.routing import schematic_routing
 from ordec.sim.sim_hierarchy import HighlevelSim, SimHierarchy
 from ordec.sim.ngspice import Ngspice
 from ordec.core.simarray import Quantity
-from ordec.lib.base import PulseVoltageSource
+from ordec.lib.base import Vpulse
 
 from ordec.lib.generic_mos import Or2, Nmos, Pmos, Ringosc, Inv
-from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, SinusoidalVoltageSource
+from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, Vsin
 from ordec.lib import sky130
 from ordec.lib import ihp130
 
@@ -67,7 +67,7 @@ class RcFilterTb(SimBase):
         s.out = Net()
         s.vss = Net()
 
-        vac = SinusoidalVoltageSource(
+        vac = Vsin(
             amplitude=R(1), frequency=R(1)
         ).symbol  # frequency is a dummy value
         res = Res(r=self.r).symbol
@@ -104,7 +104,7 @@ class ResdivFlatTb(SimBase):
         s.b = Net()
 
         sym_vdc = Vdc(dc=R(1)).symbol
-        sym_vac = SinusoidalVoltageSource(amplitude=R(1), frequency=R("1e6")).symbol
+        sym_vac = Vsin(amplitude=R(1), frequency=R("1e6")).symbol
         sym_gnd = Gnd().symbol
         sym_res = Res(r=R(100)).symbol
 
@@ -258,7 +258,7 @@ class ResdivHierTb(SimBase):
             Vdc(dc=R(1)).symbol.portmap(m=s.gnd, p=s.t_ac), pos=Vec2R(0, 0)
         )
         s.I2_ac = SchemInstance(
-            SinusoidalVoltageSource(amplitude=R(1), frequency=R("1e6")).symbol.portmap(m=s.t_ac, p=s.t), pos=Vec2R(0, 6)
+            Vsin(amplitude=R(1), frequency=R("1e6")).symbol.portmap(m=s.t_ac, p=s.t), pos=Vec2R(0, 6)
         )
         s.I3 = SchemInstance(Gnd().symbol.portmap(p=s.gnd), pos=Vec2R(0, -6))
 
@@ -303,7 +303,7 @@ class NmosSourceFollowerTb(SimBase):
             Vdc(dc=vin).symbol.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
         )
         s.I3_ac = SchemInstance(
-            SinusoidalVoltageSource(amplitude=R(1), frequency=R("1e6")).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
+            Vsin(amplitude=R(1), frequency=R("1e6")).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
         )
         s.I4 = SchemInstance(
             Idc(dc=R("5u")).symbol.portmap(m=s.vss, p=s.o), pos=Vec2R(11, 6)
@@ -341,7 +341,7 @@ class InvTb(SimBase):
             Vdc(dc=vin).symbol.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
         )
         s.I4_ac = SchemInstance(
-            SinusoidalVoltageSource(amplitude=R(1), frequency=R("1e6")).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
+            Vsin(amplitude=R(1), frequency=R("1e6")).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
         )
 
         s.outline = Rect4R(lx=0, ly=0, ux=20, uy=14)
@@ -370,7 +370,7 @@ class InvSkyTb(SimBase):
         sym_gnd = Gnd().symbol
         sym_vdc_vdd = Vdc(dc=R("5")).symbol
         sym_vdc_in = Vdc(dc=vin).symbol
-        sym_vac_in = SinusoidalVoltageSource(amplitude=R(1), frequency=R("1e6")).symbol
+        sym_vac_in = Vsin(amplitude=R(1), frequency=R("1e6")).symbol
 
         s.i_inv = SchemInstance(
             sym_inv.portmap(vdd=s.vdd, vss=s.vss, a=s.i, y=s.o), pos=Vec2R(11, 9)
@@ -477,7 +477,7 @@ class InvIhpTb(SimBase):
         sym_gnd = Gnd().symbol
         sym_vdc_vdd = Vdc(dc=R("5")).symbol
         sym_vdc_in = Vdc(dc=vin).symbol
-        sym_vac_in = SinusoidalVoltageSource(amplitude=R(1), frequency=R("1e6")).symbol
+        sym_vac_in = Vsin(amplitude=R(1), frequency=R("1e6")).symbol
 
         s.i_inv = SchemInstance(
             sym_inv.portmap(vdd=s.vdd, vss=s.vss, a=s.i, y=s.o), pos=Vec2R(11, 9)
@@ -507,7 +507,7 @@ class SineRC(Cell):
         res = Res(r=R("100")).symbol
         cap = Cap(c=R("100n")).symbol
 
-        vsrc = SinusoidalVoltageSource(
+        vsrc = Vsin(
             amplitude=R(1), frequency=R(1),
         ).symbol
 
@@ -539,7 +539,7 @@ class PulsedRC(Cell):
         res = Res(r=R("100")).symbol
         cap = Cap(c=R("100n")).symbol
 
-        vsrc = PulseVoltageSource(
+        vsrc = Vpulse(
             initial_value=R(0),
             pulsed_value=R(1),
             rise_time=R("10u"),

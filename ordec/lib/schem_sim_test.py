@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from ..core import *
-from . import Nmos, Pmos, Inv, And2, Or2, Ringosc, Vdc, Res, Cap, Ind, SinusoidalVoltageSource, Gnd, PieceWiseLinearVoltageSource, SinusoidalCurrentSource
+from . import Nmos, Pmos, Inv, And2, Or2, Ringosc, Vdc, Res, Cap, Ind, Vsin, Gnd, Vpwl, Isin
 from .. import helpers
 
 class TestCell1(Cell):
@@ -115,7 +115,7 @@ class LowPassFilterTB(Cell):
         s.gnd = Net()
         s.out = Net()
 
-        # Instantiate SinusoidalVoltageSource
+        # Instantiate Vsin
         sinusoidal_params = {
             'offset': R(0),
             'amplitude': R(5),
@@ -123,7 +123,7 @@ class LowPassFilterTB(Cell):
             'delay': R(0),
             'damping_factor': R(0)
         }
-        sinusoidal_source = SinusoidalVoltageSource(**sinusoidal_params).symbol
+        sinusoidal_source = Vsin(**sinusoidal_params).symbol
         s.sinusoidal = SchemInstance(
             pos=Vec2R(2, 5),
             ref=sinusoidal_source,
@@ -169,7 +169,7 @@ class LowPassFilterTB(Cell):
 
 class PieceWiseVoltageLinearTB(Cell):
     """
-    Testbench for the PieceWiseLinearVoltageSource.
+    Testbench for the Vpwl.
     Connects the PWL source across a resistor to ground.
     Uses string representations for R().
     """
@@ -181,15 +181,15 @@ class PieceWiseVoltageLinearTB(Cell):
         s.gnd = Net()
 
         # (time_seconds, voltage_volts)
-        pwl_points = [
-            (R("0"), R("0")),  
-            (R("1m"), R("1")), 
-            (R("2m"), R("1")), 
-            (R("3m"), R("0")), 
-            (R("4m"), R("0"))  
-        ]
+        pwl_points = (
+            (R("0"), R("0")),
+            (R("1m"), R("1")),
+            (R("2m"), R("1")),
+            (R("3m"), R("0")),
+            (R("4m"), R("0")),
+        )
 
-        pwl_source_ref = PieceWiseLinearVoltageSource(V=pwl_points).symbol
+        pwl_source_ref = Vpwl(V=pwl_points).symbol
         s.pwl_source = SchemInstance(
             pos=Vec2R(2, 5),
             ref=pwl_source_ref,
@@ -220,7 +220,7 @@ class PieceWiseVoltageLinearTB(Cell):
         return s
 
 class TestSineCurrentSourceTB(Cell):
-    """Testbench for the SinusoidalCurrentSource."""
+    """Testbench for the Isin."""
     @generate
     def schematic(self):
         s.gnd = Net()
@@ -232,7 +232,7 @@ class TestSineCurrentSourceTB(Cell):
             'frequency': R("1k"), # 1kHz frequency
             'delay': R(0)
         }
-        sine_current_ref = SinusoidalCurrentSource(**sine_current_params).symbol
+        sine_current_ref = Isin(**sine_current_params).symbol
         s.sine_current = SchemInstance(
             pos=Vec2R(2, 5),
             ref=sine_current_ref,

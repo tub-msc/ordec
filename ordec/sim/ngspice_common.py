@@ -88,7 +88,7 @@ def strip_raw_name(raw_name: str) -> str:
     return raw_name
 
 
-def parse_raw(fn):
+def parse_raw(fn) -> SimArray:
     """Parse a ngspice binary rawfile.
 
     Returns a SimArray whose fields carry name, dtype and quantity metadata.

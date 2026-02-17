@@ -3,7 +3,7 @@
 
 from ordec.core import *
 from ordec.schematic import helpers
-from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, SinusoidalVoltageSource
+from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, Vsin
 from ordec.lib.generic_mos import Or2, Nmos, Pmos, Ringosc, Inv
 
 class RotateTest(Cell):
