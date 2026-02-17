@@ -82,6 +82,15 @@ class SimColumn:
         dtype_name = 'float64' if self._dtype == 'f8' else 'complex128'
         return f"SimColumn({self._length} {dtype_name} values)"
 
+    def dump(self):
+        """Return a string like '[1.234e-05, 5.678e+00]' for test reference data."""
+        def fmt(v):
+            if isinstance(v, complex):
+                sign = '+' if v.imag >= 0 else ''
+                return f"({fmt(v.real)}{sign}{fmt(v.imag)}j)"
+            return f"{v:.3e}"
+        return '[' + ', '.join(fmt(self._unpack(i)) for i in range(self._length)) + ']'
+
 
 class SimArray(tuple):
     """Immutable, hashable structured array for simulation data.
