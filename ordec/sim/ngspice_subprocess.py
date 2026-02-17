@@ -24,11 +24,11 @@ from .ngspice_common import (
     NgspiceTransientResult,
     NgspiceAcResult,
     check_errors,
-    SignalKind,
+    Quantity,
     SignalArray,
     NgspiceBase,
     parse_raw,
-    signal_kind_from_unit,
+    quantity_from_unit,
 )
 
 NgspiceVector = namedtuple(
@@ -269,12 +269,12 @@ class NgspiceSubprocess(NgspiceBase):
 
         result = NgspiceTransientResult()
         for var in info_vars:
-            kind = signal_kind_from_unit(var.unit, var.name)
+            qty = quantity_from_unit(var.unit, var.name)
             values = list(data[var.name])
-            if kind == SignalKind.TIME:
+            if qty == Quantity.TIME:
                 result.time = values
             else:
-                result.signals[self._strip_raw_name(var.name)] = SignalArray(kind=kind, values=values)
+                result.signals[self._strip_raw_name(var.name)] = SignalArray(qty=qty, values=values)
         return result
 
     def ac(self, *args) -> NgspiceAcResult:
@@ -283,12 +283,12 @@ class NgspiceSubprocess(NgspiceBase):
 
         result = NgspiceAcResult()
         for var in info_vars:
-            kind = signal_kind_from_unit(var.unit, var.name)
-            if kind == SignalKind.FREQUENCY:
+            qty = quantity_from_unit(var.unit, var.name)
+            if qty == Quantity.FREQUENCY:
                 # Frequency is stored as complex in AC rawfiles; imaginary part is 0.
                 result.freq = list(data[var.name].real)
             else:
-                result.signals[self._strip_raw_name(var.name)] = SignalArray(kind=kind, values=list(data[var.name]))
+                result.signals[self._strip_raw_name(var.name)] = SignalArray(qty=qty, values=list(data[var.name]))
         return result
 
     def vector_info(self) -> Iterator[NgspiceVector]:

@@ -10,7 +10,7 @@ from ..core.rational import R
 from ..core.schema import SimType
 from .ngspice import Ngspice
 from ..schematic.netlister import Netlister
-from .ngspice_common import SignalKind
+from .ngspice_common import Quantity
 
 
 def build_hier_schematic(simhier: SimHierarchy, schematic: Schematic):
@@ -117,7 +117,7 @@ class HighlevelSim:
             for name, signal_array in data.signals.items():
                 try:
                     # Check if this is a voltage signal (node voltage)
-                    if signal_array.kind == SignalKind.VOLTAGE:
+                    if signal_array.qty == Quantity.VOLTAGE:
                         simnet = self.hier_simobj_of_name(name)
                         process_signal_func(
                             simnet,
@@ -125,7 +125,7 @@ class HighlevelSim:
                             signal_array.values,
                         )
                     # Check if this is a current signal (device current or branch current)
-                    elif signal_array.kind == SignalKind.CURRENT:
+                    elif signal_array.qty == Quantity.CURRENT:
                         # Try to find matching SimInstance for device currents
                         if name.startswith("@") and "[" in name:
                             # Device current like "@m.xi0.mpd[id]" - extract device name

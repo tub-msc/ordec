@@ -22,21 +22,17 @@ class NgspiceBase(ABC):
     # enforce) the interface compatilibity between different NgspiceBase
     # subclasses.
 
-class SignalKind(Enum):
-    TIME = (1, "time")
-    FREQUENCY = (2, "frequency")
-    VOLTAGE = (3, "voltage")
-    CURRENT = (4, "current")
-    OTHER = (99, "other")
-
-    def __init__(self, vtype_value: int, description: str):
-        self.vtype_value = vtype_value
-        self.description = description
+class Quantity(Enum):
+    TIME = 1
+    FREQUENCY = 2
+    VOLTAGE = 3
+    CURRENT = 4
+    OTHER = 99
 
 
 @dataclass
 class SignalArray:
-    kind: SignalKind
+    qty: Quantity
     values: list
 
 
@@ -60,15 +56,15 @@ class NgspiceResultBase:
         # Map signal name -> SignalArray
         self.signals: Dict[str, SignalArray] = {}
 
-    def categorize_signal(self, signal_name) -> SignalKind:
+    def categorize_signal(self, signal_name) -> Quantity:
         if not signal_name:
-            return SignalKind.OTHER
+            return Quantity.OTHER
         if signal_name.startswith("@") and "[" in signal_name:
-            return SignalKind.CURRENT
+            return Quantity.CURRENT
         if signal_name.endswith("#branch"):
-            return SignalKind.CURRENT
+            return Quantity.CURRENT
         # Treat as node voltage
-        return SignalKind.VOLTAGE
+        return Quantity.VOLTAGE
 
     def __getitem__(self, key):
         """Allow signal access."""
@@ -135,15 +131,15 @@ class NgspiceTransientResult(NgspiceResultBase):
                         continue
 
             if signal_data:
-                kind = self.categorize_signal(signal_name)
-                self.signals[signal_name] = SignalArray(kind=kind, values=signal_data)
+                qty = self.categorize_signal(signal_name)
+                self.signals[signal_name] = SignalArray(qty=qty, values=signal_data)
 
-    def categorize_signal(self, signal_name) -> SignalKind:
+    def categorize_signal(self, signal_name) -> Quantity:
         if not signal_name:
-            return SignalKind.OTHER
+            return Quantity.OTHER
         name = signal_name.lower()
         if name in ("time", "index"):
-            return SignalKind.TIME
+            return Quantity.TIME
         return super().categorize_signal(signal_name)
 
     def __getitem__(self, key):
@@ -170,12 +166,12 @@ class NgspiceAcResult(NgspiceResultBase):
         super().__init__()
         self.freq = []
 
-    def categorize_signal(self, signal_name) -> SignalKind:
+    def categorize_signal(self, signal_name) -> Quantity:
         if not signal_name:
-            return SignalKind.OTHER
+            return Quantity.OTHER
         name = signal_name.lower()
         if name in ("frequency", "freq"):
-            return SignalKind.FREQUENCY
+            return Quantity.FREQUENCY
         return super().categorize_signal(signal_name)
 
     def plot_signals(self, *signal_names):
@@ -211,23 +207,23 @@ def check_errors(ngspice_out):
             raise NgspiceError(first_error_msg)
 
 
-def signal_kind_from_unit(unit: str, name: str = "") -> "SignalKind":
-    """Determine SignalKind from a rawfile variable unit string,
-    with name-based fallback heuristics."""
+def quantity_from_unit(unit: str, name: str = "") -> "Quantity":
+    """Determine Quantity from a rawfile variable unit string,
+    with name-based fallback."""
     unit_lower = unit.lower().strip()
     if unit_lower in ("time", "index"):
-        return SignalKind.TIME
+        return Quantity.TIME
     # "frequency grid=3" is how ngspice writes the frequency unit in AC rawfiles.
     if unit_lower.startswith("frequency") or unit_lower in ("hz", "hertz"):
-        return SignalKind.FREQUENCY
+        return Quantity.FREQUENCY
     if unit_lower in ("voltage", "v"):
-        return SignalKind.VOLTAGE
+        return Quantity.VOLTAGE
     if unit_lower in ("current", "i", "a"):
-        return SignalKind.CURRENT
+        return Quantity.CURRENT
     # Fall back to name-based heuristics
     if name.endswith("#branch") or (name.startswith("@") and "[" in name):
-        return SignalKind.CURRENT
-    return SignalKind.OTHER
+        return Quantity.CURRENT
+    return Quantity.OTHER
 
 
 def parse_raw(fn):
