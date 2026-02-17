@@ -22,7 +22,6 @@ from .ngspice_common import (
     NgspiceError,
     NgspiceFatalError,
     check_errors,
-    NgspiceBase,
     parse_raw,
 )
 from ..core.simarray import SimArray
@@ -32,7 +31,7 @@ NgspiceVector = namedtuple(
 )
 
 
-class NgspiceSubprocess(NgspiceBase):
+class Ngspice:
     @classmethod
     @contextmanager
     def launch(cls):

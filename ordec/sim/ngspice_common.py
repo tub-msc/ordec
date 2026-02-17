@@ -12,12 +12,6 @@ from ..core.simarray import SimArray, SimArrayField
 NgspiceValue = namedtuple("NgspiceValue", ["type", "name", "subname", "value"])
 RawVariable = namedtuple("RawVariable", ["name", "unit"])
 
-class NgspiceBase(ABC):
-    @classmethod
-    @abstractmethod
-    def launch(cls, debug: bool):
-        pass
-
 class Quantity(Enum):
     TIME = 1
     FREQUENCY = 2
