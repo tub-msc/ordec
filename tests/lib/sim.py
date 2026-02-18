@@ -9,10 +9,9 @@ from ordec.schematic.routing import schematic_routing
 from ordec.sim.sim_hierarchy import HighlevelSim, SimHierarchy
 from ordec.sim.ngspice import Ngspice
 from ordec.core.simarray import Quantity
-from ordec.lib.base import Vpulse
 
 from ordec.lib.generic_mos import Or2, Nmos, Pmos, Ringosc, Inv
-from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, Vsin
+from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, Vsin, Ipwl, Ipulse, Isin, Vpulse, Vpwl
 from ordec.lib import sky130
 from ordec.lib import ihp130
 
@@ -563,3 +562,106 @@ class PulsedRC(Cell):
         sim = HighlevelSim(self.schematic, s)
         sim.tran(R('5u'), R('250u'))
         return s
+
+class SourceTb(Cell):
+    demo_pwl_points = (
+        (R("0u"), R("0")),
+        (R("35u"), R("1")),
+        (R("90u"), R("0")),
+        (R("120u"), R("0.5")),
+        (R("210u"), R("0")),
+        (R("250u"), R("1")),
+    )
+
+    def add_source_instance(self, s: Schematic):
+        raise NotImplementedError
+
+    @generate
+    def schematic(self):
+        s = Schematic(cell=self)
+        s.vss = Net()
+        s.out = Net()
+
+        res = Res(r=R("1k")).symbol
+
+        s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
+        self.add_source_instance(s)
+        s.res = SchemInstance(res.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
+
+        s.outline = schematic_routing(s)
+        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        return s
+
+    @generate
+    def sim_tran(self):
+        s = SimHierarchy()
+        sim = HighlevelSim(self.schematic, s)
+        sim.tran(R('5u'), R('250u'))
+        return s
+
+
+class VpwlTb(SourceTb):
+    def add_source_instance(self, s: Schematic):
+        vsrc = Vpwl(V=self.demo_pwl_points).symbol
+        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.out), pos=Vec2R(0, 5))
+
+
+class IpwlTb(SourceTb):
+    def add_source_instance(self, s: Schematic):
+        isrc = Ipwl(I=self.demo_pwl_points).symbol
+        # Source oriented so positive Ipwl values produce positive resistor current.
+        s.isrc = SchemInstance(isrc.portmap(p=s.vss, m=s.out), pos=Vec2R(0, 5))
+
+
+class VpulseTb(SourceTb):
+    def add_source_instance(self, s: Schematic):
+        vsrc = Vpulse(
+            initial_value=R("0"),
+            pulsed_value=R("1"),
+            delay_time=R("0u"),
+            rise_time=R("10u"),
+            fall_time=R("10u"),
+            pulse_width=R("15u"),
+            period=R("50u"),
+        ).symbol
+        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.out), pos=Vec2R(0, 5))
+
+
+class IpulseTb(SourceTb):
+    def add_source_instance(self, s: Schematic):
+        isrc = Ipulse(
+            initial_value=R("0m"),
+            pulsed_value=R("1m"),
+            delay_time=R("0u"),
+            rise_time=R("10u"),
+            fall_time=R("10u"),
+            pulse_width=R("15u"),
+            period=R("50u"),
+        ).symbol
+        # Source oriented so positive Ipulse values produce positive resistor current.
+        s.isrc = SchemInstance(isrc.portmap(p=s.vss, m=s.out), pos=Vec2R(0, 5))
+
+
+class VsinTb(SourceTb):
+    def add_source_instance(self, s: Schematic):
+        vsrc = Vsin(
+            offset=R("0.2"),
+            amplitude=R("0.8"),
+            frequency=R("20k"),
+            delay=R("0u"),
+            damping_factor=R("0"),
+        ).symbol
+        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.out), pos=Vec2R(0, 5))
+
+
+class IsinTb(SourceTb):
+    def add_source_instance(self, s: Schematic):
+        isrc = Isin(
+            offset=R("0.5m"),
+            amplitude=R("0.5m"),
+            frequency=R("20k"),
+            delay=R("0u"),
+            damping_factor=R("0"),
+        ).symbol
+        # Source oriented so positive Isin values produce positive resistor current.
+        s.isrc = SchemInstance(isrc.portmap(p=s.vss, m=s.out), pos=Vec2R(0, 5))

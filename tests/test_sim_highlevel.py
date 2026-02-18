@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
+import math
 from ordec.schematic.netlister import Netlister
 from ordec import Rational as R
 from .lib import sim as lib_test
@@ -25,7 +26,6 @@ def assert_simcolumn(col, expected, tol=0.01):
             assert rel <= tol, (
                 f"[{i}] {got:.3e} differs from {exp:.3e} by {rel:.1%} (tol {tol:.1%})"
             )
-
 
 def test_sim_dc_flat():
     h = lib_test.ResdivFlatTb().sim_dc
@@ -100,6 +100,116 @@ def test_sim_pulsedrc_tran():
         
         fig.savefig("pulsedrc_tran.svg")
         plt.close(fig)
+
+def expected_pwl_value(t):
+    points = [(float(tp), float(vp)) for tp, vp in lib_test.SourceTb.demo_pwl_points]
+    if t <= points[0][0]:
+        return points[0][1]
+    if t >= points[-1][0]:
+        return points[-1][1]
+    for i in range(len(points) - 1):
+        t0, v0 = points[i]
+        t1, v1 = points[i + 1]
+        if t0 <= t <= t1:
+            if t1 == t0:
+                return v1
+            alpha = (t - t0) / (t1 - t0)
+            return v0 + alpha * (v1 - v0)
+    return points[-1][1]
+
+
+def expected_pulse_value(t, src):
+    initial_value = float(src.initial_value)
+    pulsed_value = float(src.pulsed_value)
+    delay_time = float(src.delay_time)
+    rise_time = float(src.rise_time)
+    fall_time = float(src.fall_time)
+    pulse_width = float(src.pulse_width)
+    period = float(src.period)
+
+    tau = (t - delay_time) % period
+
+    if rise_time > 0 and tau < rise_time:
+        alpha = tau / rise_time
+        return initial_value + alpha * (pulsed_value - initial_value)
+
+    if tau < rise_time + pulse_width:
+        return pulsed_value
+
+    if fall_time > 0 and tau < rise_time + pulse_width + fall_time:
+        alpha = (tau - rise_time - pulse_width) / fall_time
+        return pulsed_value + alpha * (initial_value - pulsed_value)
+
+    return initial_value
+
+
+def expected_sin_value(t, src):
+    offset = float(src.offset)
+    amplitude = float(src.amplitude)
+    frequency = float(src.frequency)
+    delay = float(src.delay)
+    damping_factor = float(src.damping_factor)
+
+    if t < delay:
+        return offset
+    td = t - delay
+    return offset + amplitude * math.sin(2 * math.pi * frequency * td) * math.exp(-damping_factor * td)
+
+
+def test_sim_vpwltb_tran():
+    tb = lib_test.VpwlTb()
+    h = tb.sim_tran
+
+    for t, out_v in zip(h.time, h.out.trans_voltage):
+        assert out_v == pytest.approx(expected_pwl_value(t), abs=1e-6)
+
+
+def test_sim_ipwltb_tran():
+    tb = lib_test.IpwlTb()
+    h = tb.sim_tran
+
+    for t, res_i in zip(h.time, h.res.trans_current):
+        assert res_i == pytest.approx(expected_pwl_value(t), abs=1e-8)
+
+
+def test_sim_vpulsetb_tran():
+    tb = lib_test.VpulseTb()
+    h = tb.sim_tran
+    src = tb.schematic.vsrc.symbol.cell
+
+    for t, out_v in zip(h.time, h.out.trans_voltage):
+        expected = expected_pulse_value(t, src)
+        assert out_v == pytest.approx(expected, abs=1e-6)
+
+
+def test_sim_ipulsetb_tran():
+    tb = lib_test.IpulseTb()
+    h = tb.sim_tran
+    src = tb.schematic.isrc.symbol.cell
+
+    for t, res_i in zip(h.time, h.res.trans_current):
+        expected = expected_pulse_value(t, src)
+        assert res_i == pytest.approx(expected, abs=1e-8)
+
+
+def test_sim_vsintb_tran():
+    tb = lib_test.VsinTb()
+    h = tb.sim_tran
+    src = tb.schematic.vsrc.symbol.cell
+
+    for t, out_v in zip(h.time, h.out.trans_voltage):
+        expected = expected_sin_value(t, src)
+        assert out_v == pytest.approx(expected, abs=1e-6)
+
+
+def test_sim_isintb_tran():
+    tb = lib_test.IsinTb()
+    h = tb.sim_tran
+    src = tb.schematic.isrc.symbol.cell
+
+    for t, res_i in zip(h.time, h.res.trans_current):
+        expected = expected_sin_value(t, src)
+        assert res_i == pytest.approx(expected, abs=1e-8)
 
 
 def test_sim_sinerc_ac():
