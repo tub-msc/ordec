@@ -51,9 +51,8 @@ class ResdivFlatTb(Cell):
 
     @generate
     def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s)
-        sim.op()
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).op()
         return s
 
 class ResdivHier2(Cell):
@@ -200,9 +199,8 @@ class ResdivHierTb(Cell):
 
     @generate
     def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s)
-        sim.op()
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).op()
         return s
 
 class NmosSourceFollowerTb(Cell):
@@ -248,9 +246,8 @@ class NmosSourceFollowerTb(Cell):
 
     @generate
     def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s)
-        sim.op()
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).op()
         return s
 
 class InvTb(Cell):
@@ -289,9 +286,8 @@ class InvTb(Cell):
 
     @generate
     def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s)
-        sim.op()
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).op()
         return s
 
 class InvSkyTb(Cell):
@@ -333,9 +329,8 @@ class InvSkyTb(Cell):
 
     @generate
     def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s)
-        sim.op()
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).op()
         return s
 
 class IhpInv(Cell):
@@ -446,9 +441,8 @@ class InvIhpTb(Cell):
 
     @generate
     def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s)
-        sim.op()
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).op()
         return s
 
 class SineRC(Cell):
@@ -477,9 +471,8 @@ class SineRC(Cell):
 
     @generate
     def sim_ac(self):
-        s = SimHierarchy()
-        sim = HighlevelSim(self.schematic, s)
-        sim.ac('dec', '10', '1', '1G')
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).ac('dec', '10', '1', '1G')
         return s
 
 
@@ -514,9 +507,8 @@ class PulsedRC(Cell):
 
     @generate
     def sim_tran(self):
-        s = SimHierarchy()
-        sim = HighlevelSim(self.schematic, s)
-        sim.tran(R('5u'), R('250u'))
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).tran(R('5u'), R('250u'))
         return s
 
 class SourceTb(Cell):
@@ -550,9 +542,8 @@ class SourceTb(Cell):
 
     @generate
     def sim_tran(self):
-        s = SimHierarchy()
-        sim = HighlevelSim(self.schematic, s)
-        sim.tran(R('5u'), R('250u'))
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).tran(R('5u'), R('250u'))
         return s
 
 

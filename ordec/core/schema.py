@@ -614,6 +614,37 @@ class SimHierarchy(SubgraphRoot):
         else:
             return inst.schematic
 
+    @classmethod
+    def from_schematic(cls, schematic: Schematic):
+        """
+        Create a simulation hierarchy from a schematic. The returned
+        SimHierarchy can be used to run simulations with HighlevelSim.
+        """
+        simhier = cls()
+        simhier.schematic = schematic
+        simhier.cell = schematic.cell
+
+        def add_sym(sym: Symbol, parent: 'SimInstance'):
+            for pin in sym.all(Pin):
+                simhier % SimNet(eref=pin, parent_inst=parent)
+
+        def add_sch(sch: Schematic, parent: Optional['SimInstance']):
+            for net in sch.all(Net):
+                simhier % SimNet(eref=net, parent_inst=parent)
+
+            for scheminst in sch.all(SchemInstance):
+                inst = simhier % SimInstance(eref=scheminst, parent_inst=parent)
+                try:
+                    subsch = scheminst.symbol.cell.schematic
+                except AttributeError:
+                    add_sym(scheminst.symbol, inst)
+                else:
+                    inst.schematic = subsch
+                    add_sch(subsch, inst)
+
+        add_sch(schematic, None)
+        return simhier
+
     def _get_sim_data(self, voltage_attr, current_attr):
         """Helper to extract voltage and current data for different simulation types."""
         voltages = {}

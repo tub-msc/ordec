@@ -30,7 +30,6 @@ class VoltageDivider(Cell):
 
     @generate(auto_refresh=False)
     def sim_dc(self):
-        s = SimHierarchy()
-        sim = HighlevelSim(self.schematic, s)
-        sim.op()
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).op()
         return s

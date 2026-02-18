@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Optional
 from contextlib import contextmanager
 import time
 
@@ -13,51 +12,15 @@ from ..schematic.netlister import Netlister
 from ..core.simarray import Quantity
 from .ngspice_common import strip_raw_name
 
-
-def build_hier_schematic(simhier: SimHierarchy, schematic: Schematic):
-    simhier.schematic = schematic
-
-    build_hier_schematic_recursive(simhier, schematic, None)
-
-def build_hier_schematic_recursive(simhier: SimHierarchy, schematic: Schematic, parent_inst: Optional[SimInstance]):
-    for net in schematic.all(Net):
-        simhier % SimNet(eref=net, parent_inst=parent_inst)
-
-    for scheminst in schematic.all(SchemInstance):
-        inst = simhier % SimInstance(eref=scheminst, parent_inst=parent_inst)
-        try:
-            subschematic = scheminst.symbol.cell.schematic
-        except AttributeError:
-            build_hier_symbol(simhier, scheminst.symbol, inst)
-        else:
-            inst.schematic = subschematic
-            build_hier_schematic_recursive(simhier, subschematic, inst)
-
-def build_hier_symbol(simhier: SimHierarchy, symbol: Symbol, parent_inst: SimInstance):
-    for pin in symbol.all(Pin):
-        simhier % SimNet(eref=pin, parent_inst=parent_inst)
-
 class HighlevelSim:
-    def __init__(
-        self,
-        top: Schematic,
-        simhier: SimHierarchy,
-        enable_savecurrents: bool = True,
-    ):
-        self.top = top
+    def __init__(self, simhier: SimHierarchy, enable_savecurrents: bool = True):
+        self.simhier = simhier
+        self.top = self.simhier.schematic
 
         self.directory = Directory()
 
         self.netlister = Netlister(self.directory, enable_savecurrents=enable_savecurrents)
         self.netlister.netlist_hier(self.top)
-
-        print(self.netlister.out())
-
-        self.simhier = simhier
-        # build hierarchical simulation nodes
-        build_hier_schematic(self.simhier, self.top)
-
-        self._active_sim = None
 
     @contextmanager
     def launch_ngspice(self):

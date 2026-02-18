@@ -72,7 +72,6 @@ cell Nand2Tb:
 
     @generate
     def sim_dc(self):
-        node = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, node)
-        sim.op()
+        node = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(node).op()
         return node
