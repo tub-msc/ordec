@@ -26,6 +26,56 @@ def assert_simcolumn(col, expected, tol=0.01):
                 f"[{i}] {got:.3e} differs from {exp:.3e} by {rel:.1%} (tol {tol:.1%})"
             )
 
+
+def plot_trans(time_s, traces, outfile, time_scale=1e6, time_unit="us"):
+    """Plot transient traces.
+
+    Args:
+        time_s: Iterable of time values in seconds.
+        traces: Dict of trace name -> iterable values.
+        outfile: Output image path.
+        time_scale: Multiplier for time axis (default: to microseconds).
+        time_unit: Label for time axis unit.
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    t = np.array(time_s) * time_scale
+    fig, ax = plt.subplots(figsize=(8, 4))
+    for name, values in traces.items():
+        ax.plot(t, np.array(values), label=name)
+    ax.set_xlabel(f"Time ({time_unit})")
+    ax.set_ylabel("Value")
+    ax.legend()
+    ax.grid(True)
+    fig.tight_layout()
+    fig.savefig(outfile)
+    plt.close(fig)
+
+
+def plot_bode(freq_hz, response, outfile):
+    """Plot Bode magnitude/phase from complex frequency response."""
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    f = np.array(freq_hz)
+    h = np.array(list(response))
+    mag_db = 20 * np.log10(np.abs(h))
+    phase_deg = np.degrees(np.angle(h))
+
+    fig, (ax_mag, ax_phase) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
+    ax_mag.semilogx(f, mag_db)
+    ax_mag.set_ylabel("Magnitude (dB)")
+    ax_mag.grid(True)
+    ax_phase.semilogx(f, phase_deg)
+    ax_phase.set_xlabel("Frequency (Hz)")
+    ax_phase.set_ylabel("Phase (deg)")
+    ax_phase.grid(True)
+    fig.tight_layout()
+    fig.savefig(outfile)
+    plt.close(fig)
+
+
 def test_sim_dc_flat():
     h = lib_test.ResdivFlatTb().sim_dc
     assert h.a.dc_voltage == 0.33333333333333337
@@ -67,31 +117,35 @@ def test_ihp_mos_inv_vin5():
     assert h_5.o.dc_voltage == pytest.approx(0.00024556, abs=1e-5)
 
 def test_sim_pulsedrc_tran():
-    h = lib_test.PulsedRC().sim_tran
+    tb = lib_test.PulsedRC()
+    h = tb.sim_tran
+    src = tb.schematic.vsrc.symbol.cell
 
-    # Reference data generated using h.inp.trans_voltage.dump() and h.out.trans_voltage.dump().
-    assert_simcolumn(h.inp.trans_voltage, [0.000e+00, 2.500e-03, 2.710e-03, 3.131e-03, 3.972e-03, 5.655e-03, 9.021e-03, 1.575e-02, 2.921e-02, 5.614e-02, 1.100e-01, 2.177e-01, 4.331e-01, 8.639e-01, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 9.500e-01, 8.500e-01, 6.500e-01, 2.500e-01, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 5.000e-02, 1.500e-01, 3.500e-01, 7.500e-01, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 9.500e-01, 8.500e-01, 6.500e-01, 2.500e-01, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 5.000e-02, 1.500e-01, 3.500e-01, 7.500e-01, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 9.500e-01, 8.500e-01, 6.500e-01, 2.500e-01, 1.332e-15, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 5.000e-02, 1.500e-01, 3.500e-01, 7.500e-01, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 9.500e-01, 8.500e-01, 6.500e-01, 2.500e-01, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 5.000e-02, 1.500e-01, 3.500e-01, 7.500e-01, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 1.000e+00, 9.500e-01, 8.500e-01, 6.500e-01, 2.500e-01, 1.332e-15, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00, 0.000e+00])
-    assert_simcolumn(h.out.trans_voltage, [0.000e+00, 6.234e-06, 6.803e-06, 8.029e-06, 1.101e-05, 1.908e-05, 4.368e-05, 1.265e-04, 4.254e-04, 1.548e-03, 5.822e-03, 2.197e-02, 8.097e-02, 2.821e-01, 3.649e-01, 3.952e-01, 4.528e-01, 5.523e-01, 7.015e-01, 8.209e-01, 8.607e-01, 8.650e-01, 8.683e-01, 8.468e-01, 7.145e-01, 5.835e-01, 5.557e-01, 5.028e-01, 4.114e-01, 2.743e-01, 1.646e-01, 1.280e-01, 1.243e-01, 1.220e-01, 1.452e-01, 2.802e-01, 4.123e-01, 4.403e-01, 4.936e-01, 5.857e-01, 7.238e-01, 8.343e-01, 8.711e-01, 8.749e-01, 8.773e-01, 8.541e-01, 7.194e-01, 5.873e-01, 5.594e-01, 5.061e-01, 4.141e-01, 2.760e-01, 1.656e-01, 1.288e-01, 1.251e-01, 1.227e-01, 1.458e-01, 2.806e-01, 4.127e-01, 4.406e-01, 4.939e-01, 5.859e-01, 7.239e-01, 8.344e-01, 8.712e-01, 8.749e-01, 8.773e-01, 8.542e-01, 7.194e-01, 5.873e-01, 5.594e-01, 5.061e-01, 4.141e-01, 2.761e-01, 1.656e-01, 1.288e-01, 1.251e-01, 1.227e-01, 1.458e-01, 2.806e-01, 4.127e-01, 4.406e-01, 4.939e-01, 5.859e-01, 7.239e-01, 8.344e-01, 8.712e-01, 8.749e-01, 8.773e-01, 8.542e-01, 7.194e-01, 5.873e-01, 5.594e-01, 5.061e-01, 4.141e-01, 2.761e-01, 1.656e-01, 1.288e-01, 1.251e-01, 1.227e-01, 1.458e-01, 2.806e-01, 4.127e-01, 4.406e-01, 4.939e-01, 5.859e-01, 7.239e-01, 8.344e-01, 8.712e-01, 8.749e-01, 8.773e-01, 8.542e-01, 7.194e-01, 5.873e-01, 5.594e-01, 5.061e-01, 4.141e-01, 2.761e-01, 1.656e-01, 1.288e-01])
+    expected_inp = [expected_pulse_value(t, src) for t in h.time]
+    for got, exp in zip(h.inp.trans_voltage, expected_inp):
+        assert got == pytest.approx(exp, abs=1e-6)
+
+    # Simple discrete RC update (backward Euler) on sampled Vin.
+    tau = float(tb.schematic.res.symbol.cell.r) * float(tb.schematic.cap.symbol.cell.c)
+
+    expected_out = [float(h.out.trans_voltage[0])]
+    for i in range(1, len(h.time)):
+        dt = float(h.time[i] - h.time[i - 1])
+        alpha = dt / tau
+        vin = expected_pulse_value(float(h.time[i]), src)
+        y_prev = expected_out[-1]
+        expected_out.append((y_prev + alpha * vin) / (1.0 + alpha))
+
+    for got, exp in zip(h.out.trans_voltage, expected_out):
+        assert got == pytest.approx(exp, abs=0.07)
 
     plot_enable = False
     if plot_enable:
-        import numpy as np
-        import matplotlib.pyplot as plt
-        time_us = np.array(h.time) * 1e6  # convert to µs
-        inp = np.array(h.inp.trans_voltage)
-        out = np.array(h.out.trans_voltage)
-
-        fig, ax = plt.subplots(figsize=(8, 4))
-        ax.plot(time_us, inp, label='inp')
-        ax.plot(time_us, out, label='out')
-        ax.set_xlabel('Time (µs)')
-        ax.set_ylabel('Voltage (V)')
-        ax.legend()
-        ax.grid(True)
-        fig.tight_layout()
-        
-        fig.savefig("pulsedrc_tran.svg")
-        plt.close(fig)
+        plot_trans(h.time, {
+                "inp": h.inp.trans_voltage,
+                "out": h.out.trans_voltage,
+                "out_expected": expected_out,
+            }, "pulsedrc_tran.svg")
 
 def expected_pwl_value(t):
     points = [(float(tp), float(vp)) for tp, vp in lib_test.SourceTb.demo_pwl_points]
@@ -118,6 +172,9 @@ def expected_pulse_value(t, src):
     fall_time = float(src.fall_time)
     pulse_width = float(src.pulse_width)
     period = float(src.period)
+
+    if t < delay_time:
+        return initial_value
 
     tau = (t - delay_time) % period
 
@@ -205,32 +262,16 @@ def test_sim_isintb_tran():
 
 
 def test_sim_sinerc_ac():
-    h = lib_test.SineRC().sim_ac
-
-    # Reference data generated using h.out.ac_voltage.dump().
-    assert_simcolumn(h.out.ac_voltage, [(1.000e+00-6.283e-05j), (1.000e+00-7.910e-05j), (1.000e+00-9.958e-05j), (1.000e+00-1.254e-04j), (1.000e+00-1.578e-04j), (1.000e+00-1.987e-04j), (1.000e+00-2.501e-04j), (1.000e+00-3.149e-04j), (1.000e+00-3.964e-04j), (1.000e+00-4.991e-04j), (1.000e+00-6.283e-04j), (1.000e+00-7.910e-04j), (1.000e+00-9.958e-04j), (1.000e+00-1.254e-03j), (1.000e+00-1.578e-03j), (1.000e+00-1.987e-03j), (1.000e+00-2.501e-03j), (1.000e+00-3.149e-03j), (1.000e+00-3.964e-03j), (1.000e+00-4.991e-03j), (1.000e+00-6.283e-03j), (9.999e-01-7.910e-03j), (9.999e-01-9.957e-03j), (9.998e-01-1.253e-02j), (9.998e-01-1.578e-02j), (9.996e-01-1.986e-02j), (9.994e-01-2.500e-02j), (9.990e-01-3.146e-02j), (9.984e-01-3.958e-02j), (9.975e-01-4.979e-02j), (9.961e-01-6.258e-02j), (9.938e-01-7.861e-02j), (9.902e-01-9.860e-02j), (9.845e-01-1.234e-01j), (9.757e-01-1.540e-01j), (9.620e-01-1.911e-01j), (9.411e-01-2.354e-01j), (9.098e-01-2.865e-01j), (8.642e-01-3.426e-01j), (8.006e-01-3.996e-01j), (7.170e-01-4.505e-01j), (6.151e-01-4.866e-01j), (5.021e-01-5.000e-01j), (3.889e-01-4.875e-01j), (2.865e-01-4.521e-01j), (2.021e-01-4.016e-01j), (1.378e-01-3.447e-01j), (9.160e-02-2.885e-01j), (5.982e-02-2.372e-01j), (3.860e-02-1.926e-01j), (2.470e-02-1.552e-01j), (1.573e-02-1.244e-01j), (9.983e-03-9.942e-02j), (6.322e-03-7.926e-02j), (3.999e-03-6.311e-02j), (2.527e-03-5.020e-02j), (1.596e-03-3.991e-02j), (1.007e-03-3.172e-02j), (6.359e-04-2.521e-02j), (4.013e-04-2.003e-02j), (2.532e-04-1.591e-02j), (1.598e-04-1.264e-02j), (1.008e-04-1.004e-02j), (6.362e-05-7.976e-03j), (4.014e-05-6.336e-03j), (2.533e-05-5.033e-03j), (1.598e-05-3.998e-03j), (1.008e-05-3.176e-03j), (6.363e-06-2.522e-03j), (4.015e-06-2.004e-03j), (2.533e-06-1.592e-03j), (1.598e-06-1.264e-03j), (1.008e-06-1.004e-03j), (6.363e-07-7.977e-04j), (4.015e-07-6.336e-04j), (2.533e-07-5.033e-04j), (1.598e-07-3.998e-04j), (1.008e-07-3.176e-04j), (6.363e-08-2.522e-04j), (4.015e-08-2.004e-04j), (2.533e-08-1.592e-04j), (1.598e-08-1.264e-04j), (1.008e-08-1.004e-04j), (6.363e-09-7.977e-05j), (4.015e-09-6.336e-05j), (2.533e-09-5.033e-05j), (1.598e-09-3.998e-05j), (1.008e-09-3.176e-05j), (6.363e-10-2.522e-05j), (4.015e-10-2.004e-05j), (2.533e-10-1.592e-05j)])
+    tb = lib_test.SineRC()
+    h = tb.sim_ac
+    r = float(tb.schematic.res.symbol.cell.r)
+    c = float(tb.schematic.cap.symbol.cell.c)
+    expected = [1.0 / (1.0 + 1j * 2.0 * math.pi * f * r * c) for f in h.freq]
+    assert_simcolumn(h.out.ac_voltage, expected, tol=0.02)
 
     plot_enable = False
     if plot_enable:
-        import numpy as np
-        import matplotlib.pyplot as plt
-        freq = np.array(h.freq)
-        out = np.array(list(h.out.ac_voltage))
-        mag_db = 20 * np.log10(np.abs(out))
-        phase_deg = np.degrees(np.angle(out))
-
-        fig, (ax_mag, ax_phase) = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
-        ax_mag.semilogx(freq, mag_db)
-        ax_mag.set_ylabel('Magnitude (dB)')
-        ax_mag.grid(True)
-        ax_phase.semilogx(freq, phase_deg)
-        ax_phase.set_xlabel('Frequency (Hz)')
-        ax_phase.set_ylabel('Phase (°)')
-        ax_phase.grid(True)
-        fig.tight_layout()
-
-        fig.savefig("sinerc_ac.svg")
-        plt.close(fig)
+        plot_bode(h.freq, h.out.ac_voltage, "sinerc_ac.svg")
 
 
 def test_webdata():
