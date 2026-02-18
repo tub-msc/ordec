@@ -6,7 +6,7 @@ from ordec.ord2.context import ctx, OrdContext
 # Library imports
 from ordec.lib import Vdc, Res, Gnd
 # Simulation imports
-from ordec.sim.sim_hierarchy import HighlevelSim
+from ordec.sim import HighlevelSim
 
 cell VoltageDivider:
     viewgen symbol:

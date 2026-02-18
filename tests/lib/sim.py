@@ -4,7 +4,7 @@
 from ordec.core import *
 from ordec.schematic import helpers
 from ordec.schematic.routing import schematic_routing
-from ordec.sim.sim_hierarchy import HighlevelSim, SimHierarchy
+from ordec.sim import HighlevelSim
 
 from ordec.lib.generic_mos import Nmos, Inv
 from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, Vsin, Ipwl, Ipulse, Isin, Vpulse, Vpwl

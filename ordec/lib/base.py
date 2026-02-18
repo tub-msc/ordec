@@ -166,7 +166,7 @@ class NoConn(Cell):
         return s
 
     def netlist_ngspice(self, netlister, inst):
-        # We need to name the instance, else sim_hierarchy.py raises an error at some point.
+        # We need to name the instance, else highlevel.py raises an error at some point.
         netlister.name_obj(inst)
         # But nothing is added to the netlist.
 

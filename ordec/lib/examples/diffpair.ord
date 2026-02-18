@@ -7,7 +7,7 @@ from ordec.ord2.context import ctx, OrdContext
 from ordec.lib import Nmos, Res
 from ordec.lib import Gnd, Vdc
 # Simulation imports
-from ordec.sim.sim_hierarchy import HighlevelSim
+from ordec.sim import HighlevelSim
 
 cell DiffPair:
     viewgen symbol:

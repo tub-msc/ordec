@@ -1,6 +1,6 @@
 from ordec.core import *
 from ordec.schematic import helpers
-from ordec.sim.sim_hierarchy import HighlevelSim
+from ordec.sim import HighlevelSim
 from ordec.lib import Res, Gnd, Vdc
 
 class VoltageDivider(Cell):
