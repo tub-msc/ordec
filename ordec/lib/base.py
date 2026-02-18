@@ -13,8 +13,7 @@ from ..schematic import helpers
 class Res(Cell):
     """Ideal resistor"""
     r = Parameter(R) #: Resistance in ohm
-    alt_symbol = Parameter(bool, optional=True) #: Use box symbol instead of zigzag symbol
-
+    
     @generate
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
@@ -22,7 +21,9 @@ class Res(Cell):
         s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
 
-        if self.alt_symbol:
+        use_box_symbol = False
+
+        if use_box_symbol:
             # Box symbol
             s % SymbolPoly(vertices=[Vec2R(1.5, 3), Vec2R(2.5, 3), Vec2R(2.5, 1), Vec2R(1.5, 1), Vec2R(1.5, 3)])
             s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)])
@@ -105,19 +106,13 @@ class Ind(Cell):
         s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
 
-        #Kondensator
-        #s % SymbolPoly(vertices=[Vec2R(1.25, 1.8), Vec2R(2.75, 1.8)])
-        #s % SymbolPoly(vertices=[Vec2R(1.25, 2.2), Vec2R(2.75, 2.2)])
         r=0.35
         s % SymbolArc(pos=Vec2R(2, 3-r), radius=R(r), angle_start=R(-0.25), angle_end=R(0.25))
         s % SymbolArc(pos=Vec2R(2, 3-(3*r)), radius=R(r), angle_start=R(-0.25), angle_end=R(0.25))
         s % SymbolArc(pos=Vec2R(2, 3-(5*r)), radius=R(r), angle_start=R(-0.25), angle_end=R(0.25))
 
-        #Linien
         s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)])
         s % SymbolPoly(vertices=[Vec2R(2, 3-(6*r)), Vec2R(2, 0)])
-
-        #s % SymbolPoly(vertices=[Vec2R(1.6, 1.05), Vec2R(2, 1.25), Vec2R(1.6, 1.45)])
 
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
@@ -135,18 +130,16 @@ class Ind(Cell):
 
 @public
 class Gnd(Cell):
-    """Global ground tie"""
+    """Global ground connection"""
     @generate
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
 
-        #Linien
         s % SymbolPoly(vertices=[Vec2R(2, 2.5), Vec2R(2, 4)])
         s % SymbolPoly(vertices=[Vec2R(1, 2.5), Vec2R(3, 2.5), Vec2R(2, 1),Vec2R(1, 2.5)])
 
-        #s % SymbolPoly(vertices=[Vec2R(1.6, 1.05), Vec2R(2, 1.25), Vec2R(1.6, 1.45)])
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
@@ -182,7 +175,6 @@ class NoConn(Cell):
 class Vdc(Cell):
     """DC voltage source"""
     dc = Parameter(R) #: DC voltage in volt
-    alt_symbol = Parameter(bool, optional=True) #: Use alternative symbol
 
     @generate
     def symbol(self) -> Symbol:
@@ -198,24 +190,12 @@ class Vdc(Cell):
         s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)])
         s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)])
 
-        if self.alt_symbol:
-            #Pfeil
-            s % SymbolPoly(vertices=[Vec2R(0.5, 1), Vec2R(0.5, 3)])
-            s % SymbolPoly(vertices=[Vec2R(0.5, 3)+Vec2R(-0.2, -0.2), Vec2R(0.5, 3)])
-            s % SymbolPoly(vertices=[Vec2R(0.5, 3)+Vec2R(0.2, -0.2), Vec2R(0.5, 3)])
-
-            #+/-
-            s % SymbolPoly(vertices=[Vec2R(1.5, 2.1), Vec2R(2.5, 2.1)])
-            s % SymbolPoly(vertices=[Vec2R(1.5, 1.9), Vec2R(1.8, 1.9)])
-            s % SymbolPoly(vertices=[Vec2R(1.9, 1.9), Vec2R(2.1, 1.9)])
-            s % SymbolPoly(vertices=[Vec2R(2.2, 1.9), Vec2R(2.5, 1.9)])
-            #s % SymbolPoly(vertices=[Vec2R(1.6, 1.05), Vec2R(2, 1.25), Vec2R(1.6, 1.45)])
-        else:
-            #+
-            s % SymbolPoly(vertices=[Vec2R(2, 2.2), Vec2R(2, 2.8)])
-            s % SymbolPoly(vertices=[Vec2R(1.7, 2.5), Vec2R(2.3, 2.5)])
-            #-
-            s % SymbolPoly(vertices=[Vec2R(1.65, 1.5), Vec2R(2.35, 1.5)])
+        
+        #+
+        s % SymbolPoly(vertices=[Vec2R(2, 2.2), Vec2R(2, 2.8)])
+        s % SymbolPoly(vertices=[Vec2R(1.7, 2.5), Vec2R(2.3, 2.5)])
+        #-
+        s % SymbolPoly(vertices=[Vec2R(1.65, 1.5), Vec2R(2.35, 1.5)])
 
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
@@ -232,7 +212,6 @@ class Vdc(Cell):
 class Idc(Cell):
     """DC current source"""
     dc = Parameter(R) #: DC current in ampere
-    alt_symbol = Parameter(bool, optional=True) #: Use alternative symbol
 
     @generate
     def symbol(self) -> Symbol:
@@ -240,29 +219,15 @@ class Idc(Cell):
 
         s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
+    
+        s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)])
+        s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)])
+        s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
 
-        if self.alt_symbol:
-             #Kreis
-            s % SymbolArc(pos=Vec2R(2, 4-2*0.7), radius=R(7,10))
-            s % SymbolArc(pos=Vec2R(2, 0+2*0.7), radius=R(7,10))
-
-            #Linien
-            s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)])
-            s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)])
-            #Pfeil
-            s % SymbolPoly(vertices=[Vec2R(0.5, 1), Vec2R(0.5, 3)])
-            s % SymbolPoly(vertices=[Vec2R(0.5, 1)+Vec2R(-0.2, 0.2), Vec2R(0.5, 1)])
-            s % SymbolPoly(vertices=[Vec2R(0.5, 1)+Vec2R(0.2, 0.2), Vec2R(0.5, 1)])
-
-        else:
-            s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)])
-            s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)])
-            s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
-
-            # Pfeil:
-            b = Vec2R(2, 1.25)
-            s % SymbolPoly(vertices=[b, Vec2R(2, 2.75)])
-            s % SymbolPoly(vertices=[b + Vec2R(-0.5, 0.5), b, b + Vec2R(0.5, 0.5)])
+        # Arrow:
+        b = Vec2R(2, 1.25)
+        s % SymbolPoly(vertices=[b, Vec2R(2, 2.75)])
+        s % SymbolPoly(vertices=[b + Vec2R(-0.5, 0.5), b, b + Vec2R(0.5, 0.5)])
 
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
