@@ -7,7 +7,6 @@ from ordec.schematic.netlister import Netlister
 from ordec import Rational as R
 from .lib import sim as lib_test
 from ordec.core import *
-from ordec.sim.sim_hierarchy import SimHierarchy, HighlevelSim
 
 def assert_simcolumn(col, expected, tol=0.01):
     """Assert that a SimColumn matches expected values within relative tolerance.

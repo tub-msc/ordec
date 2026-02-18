@@ -1,23 +1,15 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from dataclasses import dataclass
-
 from ordec.core import *
 from ordec.schematic import helpers
 from ordec.schematic.routing import schematic_routing
 from ordec.sim.sim_hierarchy import HighlevelSim, SimHierarchy
-from ordec.sim.ngspice import Ngspice
-from ordec.core.simarray import Quantity
 
-from ordec.lib.generic_mos import Or2, Nmos, Pmos, Ringosc, Inv
+from ordec.lib.generic_mos import Nmos, Inv
 from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, Vsin, Ipwl, Ipulse, Isin, Vpulse, Vpwl
 from ordec.lib import sky130
 from ordec.lib import ihp130
-
-import queue as _queue
-import time as _time
-import concurrent.futures as _futures
 
 class SimBase(Cell):
     @generate
