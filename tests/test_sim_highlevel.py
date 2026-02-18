@@ -34,8 +34,8 @@ def test_sim_dc_flat():
 
 def test_sim_dc_hier():
     h = lib_test.ResdivHierTb().sim_dc
-    assert abs(h.r.dc_voltage - 0.3589743589743596) < 1e-10
-    assert abs(h.I0.I1.m.dc_voltage - 0.5897435897435901) < 1e-10
+    assert h.r.dc_voltage == pytest.approx(0.3589743589743596, abs=1e-10)
+    assert h.I0.I1.m.dc_voltage == pytest.approx(0.5897435897435901, abs=1e-10)
 
 def test_generic_mos_netlister():
     nl = Netlister(Directory())
@@ -55,9 +55,9 @@ def test_generic_mos_inv():
     assert lib_test.InvTb(vin=R(5)).sim_dc.o.dc_voltage == 3.131249965532494e-08
 
 def test_sky_mos_inv():
-    assert abs(lib_test.InvSkyTb(vin=R(0)).sim_dc.o.dc_voltage - 4.999999973187308) < 1e-10
-    assert abs(lib_test.InvSkyTb(vin=R('2.5')).sim_dc.o.dc_voltage - 1.9806063550640076) < 1e-10
-    assert abs(lib_test.InvSkyTb(vin=R(5)).sim_dc.o.dc_voltage - 0.00012158997833462999) < 1e-10
+    assert lib_test.InvSkyTb(vin=R(0)).sim_dc.o.dc_voltage == pytest.approx(4.999999973187308, abs=1e-10)
+    assert lib_test.InvSkyTb(vin=R('2.5')).sim_dc.o.dc_voltage == pytest.approx(1.9806063550640076, abs=1e-10)
+    assert lib_test.InvSkyTb(vin=R(5)).sim_dc.o.dc_voltage == pytest.approx(0.00012158997833462999, abs=1e-10)
 
 def test_ihp_mos_inv_vin0():
     h_0 = lib_test.InvIhpTb(vin=R(0)).sim_dc
@@ -70,8 +70,8 @@ def test_ihp_mos_inv_vin5():
 def test_sim_tran_flat():
     h = lib_test.ResdivFlatTb().sim_tran(R('0.1u'), R('1u'))
     assert len(h.time) > 0
-    assert abs(h.a.trans_voltage[-1] - 0.3333333) < 1e-6
-    assert abs(h.b.trans_voltage[-1] - 0.6666667) < 1e-6
+    assert h.a.trans_voltage[-1] == pytest.approx(0.3333333, abs=1e-6)
+    assert h.b.trans_voltage[-1] == pytest.approx(0.6666667, abs=1e-6)
 
 
 def test_sim_pulsedrc_tran():
