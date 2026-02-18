@@ -66,13 +66,6 @@ def test_ihp_mos_inv_vin5():
     h_5 = lib_test.InvIhpTb(vin=R(5)).sim_dc
     assert h_5.o.dc_voltage == pytest.approx(0.00024556, abs=1e-5)
 
-def test_sim_tran_flat():
-    h = lib_test.ResdivFlatTb().sim_tran(R('0.1u'), R('1u'))
-    assert len(h.time) > 0
-    assert h.a.trans_voltage[-1] == pytest.approx(0.3333333, abs=1e-6)
-    assert h.b.trans_voltage[-1] == pytest.approx(0.6666667, abs=1e-6)
-
-
 def test_sim_pulsedrc_tran():
     h = lib_test.PulsedRC().sim_tran
 
@@ -249,8 +242,7 @@ def test_webdata():
     assert 'dc_currents' in data
 
     # Test transient webdata
-    h_tran = lib_test.ResdivFlatTb().sim_tran(R('0.1u'), R('1u'))
-    sim_type, data = h_tran.webdata()
+    sim_type, data = lib_test.PulsedRC().sim_tran.webdata()
     assert sim_type == 'transim'
     assert 'time' in data
     assert 'voltages' in data

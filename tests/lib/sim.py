@@ -11,42 +11,7 @@ from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, Vsin, Ipwl, Ipulse, 
 from ordec.lib import sky130
 from ordec.lib import ihp130
 
-class SimBase(Cell):
-    @generate
-    def sim_hierarchy(self):
-        s = SimHierarchy(cell=self)
-        # Build SimHierarchy, but runs no simulations.
-        HighlevelSim(self.schematic, s)
-        return s
-
-    @generate
-    def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s)
-        sim.op()
-        return s
-
-    def sim_ac(self, *args, **kwargs):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s)
-        sim.ac(*args, **kwargs)
-        return s
-
-    def sim_tran(self, tstep: R, tstop: R, **kwargs):
-        """Run sync transient simulation.
-
-        Args:
-            tstep: Time step for the simulation
-            tstop: Stop time for the simulation
-            enable_savecurrents: If True (default), enables .option savecurrents
-        """
-
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s, **kwargs)
-        sim.tran(tstep, tstop)
-        return s
-
-class ResdivFlatTb(SimBase):
+class ResdivFlatTb(Cell):
     @generate
     def schematic(self):
         s = Schematic(cell=self)
@@ -84,6 +49,12 @@ class ResdivFlatTb(SimBase):
 
         return s
 
+    @generate
+    def sim_dc(self):
+        s = SimHierarchy(cell=self)
+        sim = HighlevelSim(self.schematic, s)
+        sim.op()
+        return s
 
 class ResdivHier2(Cell):
     r = Parameter(R)
@@ -190,7 +161,7 @@ class ResdivHier1(Cell):
         return s
 
 
-class ResdivHierTb(SimBase):
+class ResdivHierTb(Cell):
     @generate
     def schematic(self):
         s = Schematic(cell=self)
@@ -227,8 +198,14 @@ class ResdivHierTb(SimBase):
         helpers.schem_check(s, add_conn_points=True)
         return s
 
+    @generate
+    def sim_dc(self):
+        s = SimHierarchy(cell=self)
+        sim = HighlevelSim(self.schematic, s)
+        sim.op()
+        return s
 
-class NmosSourceFollowerTb(SimBase):
+class NmosSourceFollowerTb(Cell):
     """Nmos (generic_mos) source follower with optional parameter vin."""
 
     vin = Parameter(R, optional=True, default=R(2))
@@ -269,8 +246,14 @@ class NmosSourceFollowerTb(SimBase):
 
         return s
 
+    @generate
+    def sim_dc(self):
+        s = SimHierarchy(cell=self)
+        sim = HighlevelSim(self.schematic, s)
+        sim.op()
+        return s
 
-class InvTb(SimBase):
+class InvTb(Cell):
     vin = Parameter(R, optional=True, default=R(0))
 
     @generate
@@ -304,8 +287,14 @@ class InvTb(SimBase):
 
         return s
 
+    @generate
+    def sim_dc(self):
+        s = SimHierarchy(cell=self)
+        sim = HighlevelSim(self.schematic, s)
+        sim.op()
+        return s
 
-class InvSkyTb(SimBase):
+class InvSkyTb(Cell):
     vin = Parameter(R, optional=True, default=R(0))
 
     @generate
@@ -342,6 +331,12 @@ class InvSkyTb(SimBase):
 
         return s
 
+    @generate
+    def sim_dc(self):
+        s = SimHierarchy(cell=self)
+        sim = HighlevelSim(self.schematic, s)
+        sim.op()
+        return s
 
 class IhpInv(Cell):
     @generate
@@ -412,7 +407,7 @@ class IhpInv(Cell):
         return s
 
 
-class InvIhpTb(SimBase):
+class InvIhpTb(Cell):
     vin = Parameter(R, optional=True, default=R(0))
 
     @generate
@@ -449,6 +444,12 @@ class InvIhpTb(SimBase):
 
         return s
 
+    @generate
+    def sim_dc(self):
+        s = SimHierarchy(cell=self)
+        sim = HighlevelSim(self.schematic, s)
+        sim.op()
+        return s
 
 class SineRC(Cell):
     @generate
