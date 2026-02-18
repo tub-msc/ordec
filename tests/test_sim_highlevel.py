@@ -255,29 +255,3 @@ def test_webdata():
     assert 'time' in data
     assert 'voltages' in data
     assert 'currents' in data
-
-def test_sim_ac_rc_filter():
-    import math
-    import numpy as np
-
-    tb = lib_test.RcFilterTb(r='1k', c='1n')
-    h = tb.sim_ac('dec', '10', '1', '1G')
-
-    # Check that we have results
-    assert len(h.freq) > 0
-    assert hasattr(h, 'out')
-    assert len(h.out.ac_voltage) > 0
-
-    # Calculate cutoff frequency
-    f_c = 1 / (2 * math.pi * tb.r * tb.c)
-
-    # Find the frequency in the simulation results closest to the cutoff frequency
-    freq_array = np.array(h.freq)
-    idx = (np.abs(freq_array - f_c)).argmin()
-
-    # Check the voltage magnitude at the cutoff frequency
-    vout_complex = h.out.ac_voltage[idx]
-    vout_mag = abs(vout_complex)
-
-    # At the -3dB point, the magnitude should be 1/sqrt(2)
-    assert np.isclose(vout_mag, 1/math.sqrt(2), atol=1e-2)

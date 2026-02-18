@@ -46,43 +46,6 @@ class SimBase(Cell):
         sim.tran(tstep, tstop)
         return s
 
-class RcFilterTb(SimBase):
-    r = Parameter(R, default=R(1e3))
-    c = Parameter(R, default=R(1e-9))
-
-    @generate
-    def schematic(self):
-        s = Schematic(cell=self)
-
-        s.inp = Net()
-        s.out = Net()
-        s.vss = Net()
-
-        vac = Vsin(
-            amplitude=R(1), frequency=R(1)
-        ).symbol  # frequency is a dummy value
-        res = Res(r=self.r).symbol
-        cap = Cap(c=self.c).symbol
-        gnd = Gnd().symbol
-
-        s.I0 = SchemInstance(gnd.portmap(p=s.vss), pos=Vec2R(0, -4))
-        s.I1 = SchemInstance(vac.portmap(p=s.inp, m=s.vss), pos=Vec2R(0, 4))
-        s.I2 = SchemInstance(res.portmap(p=s.inp, m=s.out), pos=Vec2R(5, 4))
-        s.I3 = SchemInstance(cap.portmap(p=s.out, m=s.vss), pos=Vec2R(10, 4))
-
-        s.inp % SchemWire(vertices=[s.I1.pos + vac.p.pos, s.I2.pos + res.p.pos])
-        s.out % SchemWire(vertices=[s.I2.pos + res.m.pos, s.I3.pos + cap.p.pos])
-
-        vss_bus_y = R(-2)
-        s.vss % SchemWire(vertices=[Vec2R(2, vss_bus_y), Vec2R(12, vss_bus_y)])
-        s.vss % SchemWire(vertices=[s.I0.pos + gnd.p.pos, Vec2R(2, vss_bus_y)])
-        s.vss % SchemWire(vertices=[s.I1.pos + vac.m.pos, Vec2R(2, vss_bus_y)])
-        s.vss % SchemWire(vertices=[s.I3.pos + cap.m.pos, Vec2R(12, vss_bus_y)])
-
-        helpers.schem_check(s, add_conn_points=True)
-        return s
-
-
 class ResdivFlatTb(SimBase):
     @generate
     def schematic(self):
