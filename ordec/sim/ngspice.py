@@ -88,12 +88,11 @@ class Ngspice:
         """Executes ngspice command and returns string output from ngspice process."""
         logger.debug(f"Sending command to ngspice ({self.p.pid}): {command}")
 
-        if self.p.stdin:
-            # Send the command followed by echo marker on separate lines
-            full_input = f"{command}\necho FINISHED\n"
-            logger.debug(f"Writing to stdin: {repr(full_input)}")
-            self.p.stdin.write(full_input.encode("ascii"))
-            self.p.stdin.flush()
+        # Send the command followed by echo marker on separate lines.
+        full_input = f"{command}\necho FINISHED\n"
+        logger.debug(f"Writing to stdin: {repr(full_input)}")
+        self.p.stdin.write(full_input.encode("ascii"))
+        self.p.stdin.flush()
 
         out = []
         while True:
@@ -106,19 +105,10 @@ class Ngspice:
                 logger.debug("EOF detected, ngspice terminated")
                 raise NgspiceFatalError(f"ngspice terminated abnormally:\n{out_flat}")
 
-            # Strip ALL occurrences of "ngspice 123 -> " from the line on all platforms
-            # Preserve newlines when stripping prompts
-            while True:
-                m = re.match(rb"ngspice [0-9]+ -> (.*)", l)
-                if not m:
-                    break
-                logger.debug(f"Stripping prompt from line: {repr(l)} -> {repr(m.group(1))}")
-                stripped_content = m.group(1)
-                # Preserve the newline if the original line had one
-                if l.endswith(b"\n") and not stripped_content.endswith(b"\n"):
-                    l = stripped_content + b"\n"
-                else:
-                    l = stripped_content
+            # Strip "ngspice 123 -> " prompt prefix(es).
+            m = re.match(rb"(ngspice [0-9]+ -> )+(.*)$", l, flags=re.DOTALL)
+            if m:
+                l = m.group(2)
 
             # Check for our finish marker
             if l.rstrip() == b"FINISHED":
@@ -129,8 +119,20 @@ class Ngspice:
             if l.strip() == b"":
                 continue
 
-            out.append(l.decode("ascii"))
-            logger.debug(f"Added to output: {repr(l.decode('ascii'))}")
+            line = l.decode("ascii")
+            out.append(line)
+            logger.debug(f"Added to output: {repr(line)}")
+
+            # Some parser errors trigger an interactive ngspice prompt, which
+            # would otherwise hang this reader waiting for FINISHED forever.
+            if l.endswith(b"Run Spice anyway? y/n ?\n"):
+                self.p.stdin.write(b"n\n")
+                self.p.stdin.flush()
+                out_flat = "".join(out)
+                raise NgspiceError(
+                    "ngspice requested interactive input after netlist error:\n"
+                    + out_flat)
+
 
         out_flat = "".join(out)
         logger.debug(f"Received result from ngspice ({self.p.pid}): {repr(out_flat)}")
