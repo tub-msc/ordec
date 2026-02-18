@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import math
+
 from public import public
 
 from ..core import *
@@ -365,7 +367,6 @@ class Vsin(Cell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        import numpy as np # TODO: Get rid of numpy dependency
         s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
 
@@ -375,7 +376,7 @@ class Vsin(Cell):
         s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)]) # To negative pin 'm'
 
         sine_wave_points = [
-            Vec2R(1.2 + 0.1 * t, 2.0 + 0.6 * np.sin(np.pi * t / 4))
+            Vec2R(1.2 + 0.1 * t, 2.0 + 0.6 * math.sin(math.pi * t / 4))
             for t in range(17)
         ]
         s % SymbolPoly(vertices=sine_wave_points)
@@ -551,7 +552,6 @@ class Isin(Cell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        import numpy as np # TODO: Get rid of numpy dependency
         s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
 
@@ -564,7 +564,7 @@ class Isin(Cell):
 
         # Sinusoidal symbol
         sine_wave_points = [
-            Vec2R(1.2 + 0.1 * t, 1.9 + 0.6 * np.sin(np.pi * t / 4))
+            Vec2R(1.2 + 0.1 * t, 1.9 + 0.6 * math.sin(math.pi * t / 4))
             for t in range(17)
         ]
         s % SymbolPoly(vertices=sine_wave_points)
