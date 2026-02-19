@@ -14,6 +14,12 @@ from ..core import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire, Rect4R
 
 SHORTCUT_ENABLED = True
 
+try:
+    from ._routing_fast import a_star_fast, reverse_a_star_fast
+    _USE_CYTHON = True
+except ImportError:
+    _USE_CYTHON = False
+
 
 # Grid cell type constants (int8 encoding)
 # Values < GRID_BLOCKED are passable
@@ -252,8 +258,13 @@ def a_star(grid, start, end, width, height, straight_lines,
     """
 
     blocked_segments = preprocess_straight_lines(straight_lines, start_name)
+    endpoint_set = endpoint_mapping[start_name]
+    if _USE_CYTHON:
+        return a_star_fast(grid, start, end, width, height,
+                           blocked_segments, endpoint_set, start_dir)
+
     blocked_masks = _build_blocked_move_masks(blocked_segments, height)
-    endpoint_keys = _point_keys(endpoint_mapping[start_name], height)
+    endpoint_keys = _point_keys(endpoint_set, height)
 
     end_x, end_y = end
     start_key = start[0] * height + start[1]
@@ -352,8 +363,13 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     """
 
     blocked_segments = preprocess_straight_lines(straight_lines, start_name)
+    endpoint_set = endpoint_mapping[start_name]
+    if _USE_CYTHON:
+        return reverse_a_star_fast(grid, start_points, end, width, height,
+                                   blocked_segments, endpoint_set, end_dir)
+
     blocked_masks = _build_blocked_move_masks(blocked_segments, height)
-    endpoint_keys = _point_keys(endpoint_mapping[start_name], height)
+    endpoint_keys = _point_keys(endpoint_set, height)
 
     end_x, end_y = end
     end_key = end_x * height + end_y

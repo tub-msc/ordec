@@ -51,6 +51,9 @@ test = [
 extra = [
     "black>=23.1.0",
 ]
+fast = [
+    "Cython>=3.0",
+]
 
 [project.scripts]
 ordec =  "ordec.server:main"
@@ -73,6 +76,7 @@ packages = [
 [tool.setuptools.package-data]
 "ordec" = ["webdist.tar"]
 "ordec.lib.examples" = ["*.json"]
+"ordec.schematic" = ["*.pyx"]
 
 [tool.setuptools_scm]
 version_scheme = "release-branch-semver"
