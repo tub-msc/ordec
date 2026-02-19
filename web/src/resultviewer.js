@@ -5,6 +5,7 @@
 
 import * as d3 from "d3";
 import { LayoutGL } from './layout-gl.js';
+import { SimPlot } from './simplot.js';
 
 let idCounter = 0;
 export function generateId() {
@@ -86,7 +87,102 @@ const viewClassOf = {
                 table2
             );
         }
-    }
+    },
+    transim: class {
+        constructor(resContent) {
+            this.resContent = resContent;
+            this.plots = [];
+        }
+
+        update(msgData) {
+            this.plots.forEach(p => p.destroy());
+            this.plots = [];
+
+            const container = document.createElement('div');
+            container.classList.add('simplot-container');
+            this.resContent.replaceChildren(container);
+
+            const time = msgData.time;
+            const voltages = msgData.voltages;
+            const currents = msgData.currents;
+
+            if (Object.keys(voltages).length > 0) {
+                const plot = new SimPlot(container, {
+                    xlabel: 'Time (s)',
+                    ylabel: 'Voltage (V)',
+                });
+                plot.setData(time, Object.entries(voltages).map(
+                    ([name, values]) => ({ name, values })
+                ));
+                this.plots.push(plot);
+            }
+
+            if (Object.keys(currents).length > 0) {
+                const plot = new SimPlot(container, {
+                    xlabel: 'Time (s)',
+                    ylabel: 'Current (A)',
+                });
+                plot.setData(time, Object.entries(currents).map(
+                    ([name, values]) => ({ name, values })
+                ));
+                this.plots.push(plot);
+            }
+        }
+    },
+    acsim: class {
+        constructor(resContent) {
+            this.resContent = resContent;
+            this.plots = [];
+        }
+
+        update(msgData) {
+            this.plots.forEach(p => p.destroy());
+            this.plots = [];
+
+            const container = document.createElement('div');
+            container.classList.add('simplot-container');
+            this.resContent.replaceChildren(container);
+
+            const freq = msgData.freq;
+            const allSignals = { ...msgData.voltages, ...msgData.currents };
+
+            if (Object.keys(allSignals).length > 0) {
+                const magSeries = [];
+                const phaseSeries = [];
+
+                for (const [name, complexValues] of Object.entries(allSignals)) {
+                    magSeries.push({
+                        name,
+                        values: complexValues.map(([re, im]) =>
+                            20 * Math.log10(Math.sqrt(re * re + im * im))
+                        ),
+                    });
+                    phaseSeries.push({
+                        name,
+                        values: complexValues.map(([re, im]) =>
+                            Math.atan2(im, re) * 180 / Math.PI
+                        ),
+                    });
+                }
+
+                const magPlot = new SimPlot(container, {
+                    xlabel: 'Frequency (Hz)',
+                    ylabel: 'Magnitude (dB)',
+                    xscale: 'log',
+                });
+                magPlot.setData(freq, magSeries);
+                this.plots.push(magPlot);
+
+                const phasePlot = new SimPlot(container, {
+                    xlabel: 'Frequency (Hz)',
+                    ylabel: 'Phase (\u00B0)',
+                    xscale: 'log',
+                });
+                phasePlot.setData(freq, phaseSeries);
+                this.plots.push(phasePlot);
+            }
+        }
+    },
 }
 
 export class ResultViewer {

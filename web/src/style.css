@@ -163,6 +163,103 @@ pre {
 .ordb-table table {
     border-collapse:collapse;
 }
+
+.simplot-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    background-color: #1a1a1a;
+}
+.simplot {
+    flex: 1;
+    min-height: 150px;
+    display: flex;
+    flex-direction: column;
+}
+.simplot svg {
+    flex: 1;
+    background-color: #111;
+}
+.simplot-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 4px 8px;
+    font-size: 14px;
+    font-family: 'Inconsolata', monospace;
+    color: #ccc;
+    background-color: #1a1a1a;
+    border-bottom: 1px solid #333;
+}
+.simplot-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+.simplot-legend-hidden {
+    opacity: 0.35;
+    text-decoration: line-through;
+}
+.simplot-legend-swatch {
+    display: inline-block;
+    width: 14px;
+    height: 3px;
+}
+.simplot + .simplot {
+    border-top: 1px solid #333;
+}
+.simplot-axis line, .simplot-axis path {
+    stroke: #555;
+}
+.simplot-axis text {
+    font-size: 13px;
+    font-family: 'Inconsolata', monospace;
+    fill: #999;
+}
+.simplot-axis-label {
+    font-size: 14px;
+    font-family: 'Inconsolata', monospace;
+    fill: #bbb;
+}
+.simplot-grid line {
+    stroke: #2a2a2a;
+    stroke-dasharray: 2,2;
+}
+.simplot-grid path {
+    stroke: none;
+}
+.simplot-tooltip {
+    display: none;
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding: 4px 8px;
+    background-color: rgba(0, 0, 0, 0.85);
+    border: 1px solid #444;
+    border-radius: 3px;
+    font-family: 'Inconsolata', monospace;
+    font-size: 13px;
+    color: #ccc;
+    pointer-events: none;
+    z-index: 3;
+    display: none;
+    flex-direction: column;
+    gap: 1px;
+}
+.simplot-tooltip span {
+    display: block;
+    white-space: nowrap;
+}
+.simplot-tooltip-x {
+    color: #888;
+    border-bottom: 1px solid #333;
+    padding-bottom: 2px;
+    margin-bottom: 1px;
+}
+
 .layout {
     background-color: #000;
 }
