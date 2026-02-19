@@ -57,11 +57,10 @@ export class SimPlot {
 
         this._setupSvg();
 
-        let resizeTimer;
+        this._resizeTimer = null;
         this.resizeObserver = new ResizeObserver(() => {
-            clearTimeout(resizeTimer);
-            // Wait before resizing to improve computational load
-            resizeTimer = setTimeout(() => this._render(), 30);
+            clearTimeout(this._resizeTimer);
+            this._resizeTimer = setTimeout(() => this._render(), 30);
         });
         this.resizeObserver.observe(this.wrapper);
     }
@@ -402,6 +401,7 @@ export class SimPlot {
     }
 
     destroy() {
+        clearTimeout(this._resizeTimer);
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
