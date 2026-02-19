@@ -57,6 +57,7 @@ import argparse
 import http
 import json
 import traceback
+import queue
 from pathlib import Path
 from types import ModuleType
 import mimetypes
@@ -76,6 +77,7 @@ import tempfile
 import sys
 import os
 import select
+import errno
 
 import inotify_simple
 from websockets.sync.server import serve
@@ -653,7 +655,21 @@ def main():
     # to terminate the whole thing with a single Ctrl+C.
     # A future version of the websockets library might make this workaround
     # unnecessary.
-    threading.Thread(target=server_thread, args=(hostname, port, static_handler, key), daemon=True).start()
+    startup_queue = queue.Queue(maxsize=1)
+    threading.Thread(
+        target=server_thread,
+        args=(hostname, port, static_handler, key, startup_queue),
+        daemon=True,
+    ).start()
+
+    # Wait until the server thread has either successfully bound or failed.
+    startup_error = startup_queue.get()
+    if startup_error is not None:
+        if isinstance(startup_error, OSError) and startup_error.errno == errno.EADDRINUSE:
+            print(f"ERROR: Address already in use: {hostname}:{port}")
+        else:
+            print(f"ERROR: Failed to start server on {hostname}:{port}: {startup_error}")
+        raise SystemExit(1)
 
     print(f"To start ORDeC, navigate to: {user_url}")
 
@@ -672,8 +688,17 @@ def main():
         if launch_html:
             launch_html.close() # Deletes the temporary file.
 
-def server_thread(hostname, port, static_handler, key):
+def server_thread(hostname, port, static_handler, key, startup_queue):
     c = ConnectionHandler(key=key, sysmodules_orig=sys.modules)
-    with serve(c.handle_connection, hostname, port, process_request=static_handler.process_request) as server:
-        #print(f"Listening on {hostname}, port {port}")
-        server.serve_forever()
+    startup_notified = False
+    try:
+        with serve(c.handle_connection, hostname, port, process_request=static_handler.process_request) as server:
+            startup_queue.put(None)
+            startup_notified = True
+            #print(f"Listening on {hostname}, port {port}")
+            server.serve_forever()
+    except Exception as e:
+        # If startup fails (e.g. EADDRINUSE), report to main thread and return.
+        if not startup_notified:
+            startup_queue.put(e)
+        raise

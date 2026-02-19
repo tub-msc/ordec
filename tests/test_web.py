@@ -8,6 +8,7 @@ Important: You have to run 'npm run build' in web/ before running the tests.
 import pytest
 import threading
 import time
+import queue
 from pathlib import Path
 from urllib.parse import urlparse
 from dataclasses import dataclass
@@ -138,11 +139,14 @@ def web():
     web_dist_path = (Path(__file__).parent.parent/'web'/'dist').resolve()
     tar = server.anonymous_tar(web_dist_path)
     static_handler = server.StaticHandler(tar)
+    startup_queue = queue.Queue(maxsize=1)
 
     t = threading.Thread(target=server.server_thread,
-        args=('127.0.0.1', port, static_handler, key), daemon=True)
+        args=('127.0.0.1', port, static_handler, key, startup_queue), daemon=True)
     t.start()
-    time.sleep(0.2) # Delay for server startup
+    startup_error = startup_queue.get()
+    if startup_error is not None:
+        raise RuntimeError(f"Test server failed to start: {startup_error}")
 
     with webdriver.Chrome(options=webdriver_options) as driver:
         web = WebInfo(
