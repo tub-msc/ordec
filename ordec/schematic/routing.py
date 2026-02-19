@@ -6,7 +6,6 @@
 import numpy as np
 import heapq
 import sys
-import math
 from collections import defaultdict
 
 #ordec imports
@@ -14,6 +13,7 @@ from collections import defaultdict
 from ..core import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire, Rect4R
 
 SHORTCUT_ENABLED = True
+
 
 # Grid cell type constants (int8 encoding)
 # Values < GRID_BLOCKED are passable
@@ -78,6 +78,13 @@ direction_moves = {
     'W': (-1, 0),
 }
 DIRECTION_OFFSETS = tuple(direction_moves.values())
+DIR_NONE = -1
+DIR_TO_INT = {
+    (0, 1): 0,
+    (0, -1): 1,
+    (1, 0): 2,
+    (-1, 0): 3,
+}
 
 # Place cells and ports on the grid
 def place_cells_and_ports(grid, cells, ports, width, height):
@@ -145,8 +152,7 @@ def dependency_versions(start_name):
     """Version signature of all straight lines except start_name."""
     if not _straight_line_change_count:
         return 0
-    versions = sum([v for k, v in _straight_line_change_count.items() if k != start_name])
-    return versions
+    return sum(v for k, v in _straight_line_change_count.items() if k != start_name)
 
 def preprocess_straight_lines(straight_lines, start_name):
     """Preprocess straight lines into a set of blocked movements, including
@@ -204,12 +210,30 @@ def preprocess_straight_lines(straight_lines, start_name):
     }
     return blocked_moves
 
-def _is_segment_blocked(start_point, end_point, blocked_moves):
-    return (start_point, end_point) in blocked_moves
 
-def _heuristic(point1, point2):
-    """Heuristic function: Manhattan distance."""
-    return abs(point1[0] - point2[0]) + abs(point1[1] - point2[1])
+def _build_blocked_move_masks(blocked_segments, height):
+    """Encode blocked moves as per-node direction bitmasks."""
+    blocked_masks = {}
+    for start_point, end_point in blocked_segments:
+        sx, sy = start_point
+        ex, ey = end_point
+        dx = ex - sx
+        dy = ey - sy
+
+        if dx == 0:
+            direction_id = 0 if dy > 0 else 1
+        elif dy == 0:
+            direction_id = 2 if dx > 0 else 3
+        else:
+            continue
+
+        start_key = sx * height + sy
+        blocked_masks[start_key] = blocked_masks.get(start_key, 0) | (1 << direction_id)
+    return blocked_masks
+
+
+def _point_keys(points, height):
+    return {x * height + y for x, y in points}
 
 def a_star(grid, start, end, width, height, straight_lines,
            start_name, start_dir, endpoint_mapping):
@@ -227,78 +251,88 @@ def a_star(grid, start, end, width, height, straight_lines,
     :returns: Calculated path
     """
 
-    use_dynamic_penalty = True
-    # Preprocess straight lines into a set of blocked points
     blocked_segments = preprocess_straight_lines(straight_lines, start_name)
+    blocked_masks = _build_blocked_move_masks(blocked_segments, height)
+    endpoint_keys = _point_keys(endpoint_mapping[start_name], height)
 
-    open_set = []  # Priority queue for A*
-    heapq.heappush(open_set, (0, start, start_dir))  # Include direction in the tuple (direction starts as None)
-    open_set_track = {start}  # Set to track elements in the open_set
+    end_x, end_y = end
+    start_key = start[0] * height + start[1]
+    end_key = end_x * height + end_y
+    start_direction = DIR_TO_INT.get(start_dir, DIR_NONE)
 
-    came_from = {}
-    g_score = {start: 0}
-    f_score = {start: _heuristic(start, end)}
+    grid_size = width * height
+    inf_score = float("inf")
+    g_score = [inf_score] * grid_size
+    came_from = [-1] * grid_size
+    in_open = bytearray(grid_size)
+    g_score[start_key] = 0.0
+    in_open[start_key] = 1
+
+    h_start = abs(start[0] - end_x) + abs(start[1] - end_y)
+    open_set = [(h_start, start_key, start_direction)]
+
+    heappush = heapq.heappush
+    heappop = heapq.heappop
+    blocked_get = blocked_masks.get
+    endpoint_contains = endpoint_keys.__contains__
+    d_offsets = DIRECTION_OFFSETS
 
     while open_set:
-        _, current, current_direction = heapq.heappop(open_set)
-        open_set_track.remove(current)  # Remove current from the open set
+        _, current_key, current_direction = heappop(open_set)
+        in_open[current_key] = 0
 
-        if current == end:
-            # Reconstruct the path on reaching the end
+        if current_key == end_key:
             path = []
-            while current in came_from:
-                path.append(current)
-                current = came_from[current]
+            key = current_key
+            while came_from[key] != -1:
+                path.append((key // height, key % height))
+                key = came_from[key]
             path.reverse()
             return path
 
-        # Explore neighbors
-        for dx, dy in DIRECTION_OFFSETS:
-            neighbor = (current[0] + dx, current[1] + dy)
-            new_direction = (dx, dy)
+        cx = current_key // height
+        cy = current_key % height
+        remaining_distance = abs(cx - end_x) + abs(cy - end_y)
+        block_mask = blocked_get(current_key, 0)
+        current_g_score = g_score[current_key]
 
-            # Check if the path to the neighbor is blocked by straight lines
-            if _is_segment_blocked(current, neighbor, blocked_segments):
+        for direction_id, (dx, dy) in enumerate(d_offsets):
+            if block_mask & (1 << direction_id):
                 continue
 
-            # Check if inside the grid
-            if 0 <= neighbor[0] < width and 0 <= neighbor[1] < height:
+            nx = cx + dx
+            ny = cy + dy
+            if nx < 0 or nx >= width or ny < 0 or ny >= height:
+                continue
 
-                # If the current cell is a direction marker, disallow turning
-                if (grid[current[1]][current[0]] == GRID_DIR and
-                        current_direction is not None and
-                        current_direction != new_direction and
-                        current != start and # Turn at start is fine
-                        current not in endpoint_mapping[start_name]):
-                    continue  # Skip this move if it would turn at "__dir"
+            if (grid[cy, cx] == GRID_DIR and
+                    current_direction != DIR_NONE and
+                    current_direction != direction_id and
+                    current_key != start_key and
+                    not endpoint_contains(current_key)):
+                continue
 
-                # Not allowed to cross a cell body, pin, or port
-                if grid[neighbor[1]][neighbor[0]] < GRID_BLOCKED:
-                    # Add a penalty for changing direction
-                    remaining_distance = _heuristic(current, end)
-                    if current_direction and current_direction != new_direction:
-                        if use_dynamic_penalty:
-                            direction_change_penalty = remaining_distance * 0.5
-                            if direction_change_penalty < 10:
-                                direction_change_penalty = 10
-                        else:
-                            direction_change_penalty = 10
-                    else:
-                        direction_change_penalty = 0
-                    tentative_g_score = g_score[current] + 1 + direction_change_penalty
+            if grid[ny, nx] >= GRID_BLOCKED:
+                continue
 
-                    # Save the path if it is better than the previous one
-                    if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
-                        came_from[neighbor] = current
-                        g_score[neighbor] = tentative_g_score
-                        f_score[neighbor] = tentative_g_score + _heuristic(neighbor, end)
+            if current_direction != DIR_NONE and current_direction != direction_id:
+                direction_change_penalty = remaining_distance * 0.5
+                if direction_change_penalty < 10:
+                    direction_change_penalty = 10
+            else:
+                direction_change_penalty = 0
 
-                        # Only add neighbor to the heap if not already present
-                        if neighbor not in open_set_track:
-                            heapq.heappush(open_set, (f_score[neighbor], neighbor, new_direction))
-                            open_set_track.add(neighbor)
+            tentative_g_score = current_g_score + 1 + direction_change_penalty
+            neighbor_key = nx * height + ny
+            if tentative_g_score < g_score[neighbor_key]:
+                came_from[neighbor_key] = current_key
+                g_score[neighbor_key] = tentative_g_score
+                if not in_open[neighbor_key]:
+                    f_score = tentative_g_score + abs(nx - end_x) + abs(ny - end_y)
+                    heappush(open_set, (f_score, neighbor_key, direction_id))
+                    in_open[neighbor_key] = 1
 
-    return []  # Return empty if no path found
+    return []
 
 
 def reverse_a_star(grid, start_points, end, width, height, straight_lines, start_name, end_dir,
@@ -317,100 +351,107 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     :returns: Calculated path
     """
 
-    use_dynamic_penalty = True
-    # Preprocess straight lines into a set of blocked points
     blocked_segments = preprocess_straight_lines(straight_lines, start_name)
+    blocked_masks = _build_blocked_move_masks(blocked_segments, height)
+    endpoint_keys = _point_keys(endpoint_mapping[start_name], height)
 
-    open_set = []  # Priority queue for A* (heap)
-    heapq.heappush(open_set, (0, end, end_dir))  # Start A* search from the end point
+    end_x, end_y = end
+    end_key = end_x * height + end_y
+    end_direction = DIR_TO_INT.get(end_dir, DIR_NONE)
+    start_points_keys = _point_keys(start_points, height)
 
-    came_from = {}
-    g_score = {end: 0}
     min_distance = sys.maxsize
     start_point_min = start_points[0]
-    for start_point in start_points:
-        distance = _heuristic(end, start_point)
+    for sp in start_points:
+        distance = abs(end_x - sp[0]) + abs(end_y - sp[1])
         if distance < min_distance:
-            start_point_min = start_point
+            start_point_min = sp
             min_distance = distance
-    f_score = {end: min_distance}  # Estimate distance from end to start
-    open_set_track = {end}  # Set for quick lookup of elements in the open set
+    spm_x, spm_y = start_point_min
+
+    grid_size = width * height
+    inf_score = float("inf")
+    g_score = [inf_score] * grid_size
+    came_from = [-1] * grid_size
+    in_open = bytearray(grid_size)
+    g_score[end_key] = 0.0
+    in_open[end_key] = 1
+    open_set = [(min_distance, end_key, end_direction)]
+
+    heappush = heapq.heappush
+    heappop = heapq.heappop
+    blocked_get = blocked_masks.get
+    endpoint_contains = endpoint_keys.__contains__
+    start_point_contains = start_points_keys.__contains__
+    d_offsets = DIRECTION_OFFSETS
 
     best_path = []
     best_path_length = sys.maxsize
 
     while open_set:
-        _, current, current_direction = heapq.heappop(open_set)
-        open_set_track.remove(current)  # Remove current from the open set set
+        _, current_key, current_direction = heappop(open_set)
+        in_open[current_key] = 0
 
-        current_path_length = g_score[current]
-        # If the current path length is already greater than the best found so far, skip this node
+        current_path_length = g_score[current_key]
         if current_path_length >= best_path_length:
             continue
 
-
-        # If we reach one of the start points, return the path
-        if current in start_points:
+        if start_point_contains(current_key):
             path = []
-            while current in came_from:
-                path.append(current)
-                current = came_from[current]
-            path.append(current)  # Add the start point itself to the path
+            key = current_key
+            while came_from[key] != -1:
+                path.append((key // height, key % height))
+                key = came_from[key]
+            path.append((key // height, key % height))
 
-            # If this path is better than the previous, update the best path
             current_path_length = len(path)
             if current_path_length < best_path_length:
                 best_path = path
                 best_path_length = current_path_length
 
-            continue  # After finding a valid path, continue to explore others
+            continue
 
-        # Explore neighbors
-        for dx, dy in DIRECTION_OFFSETS:
-            neighbor = (current[0] + dx, current[1] + dy)
-            new_direction = (dx, dy)
+        cx = current_key // height
+        cy = current_key % height
+        remaining_distance = abs(cx - end_x) + abs(cy - end_y)
+        block_mask = blocked_get(current_key, 0)
+        current_g_score = g_score[current_key]
 
-            # Check if the path to the neighbor is blocked by straight lines
-            if _is_segment_blocked(current, neighbor, blocked_segments):
+        for direction_id, (dx, dy) in enumerate(d_offsets):
+            if block_mask & (1 << direction_id):
                 continue
 
-            # Check if inside the grid
-            if 0 <= neighbor[0] < width and 0 <= neighbor[1] < height:
+            nx = cx + dx
+            ny = cy + dy
+            if nx < 0 or nx >= width or ny < 0 or ny >= height:
+                continue
 
-                # If the current cell is a direction marker, disallow turning
-                if (grid[current[1]][current[0]] == GRID_DIR and
-                        current_direction is not None and
-                        current_direction != new_direction and
-                        # Turn at start is fine
-                        current != end and
-                        current in endpoint_mapping[start_name]):
-                    continue  # Skip this move if it would turn at "__dir"
+            if (grid[cy, cx] == GRID_DIR and
+                    current_direction != DIR_NONE and
+                    current_direction != direction_id and
+                    current_key != end_key and
+                    endpoint_contains(current_key)):
+                continue
 
-                # Not allowed to cross a cell body, pin, or port
-                if grid[neighbor[1]][neighbor[0]] < GRID_BLOCKED:
-                    # Add a penalty for changing direction
-                    remaining_distance = _heuristic(current, end)
-                    if current_direction and current_direction != new_direction:
-                        if use_dynamic_penalty:
-                            direction_change_penalty = remaining_distance * 0.5
-                            if direction_change_penalty < 10:
-                                direction_change_penalty = 10
-                        else:
-                            direction_change_penalty = 10
-                    else:
-                        direction_change_penalty = 0
-                    tentative_g_score = g_score[current] + 1 + direction_change_penalty
+            if grid[ny, nx] >= GRID_BLOCKED:
+                continue
 
-                    # Save the path if it is better than the previous one
-                    if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
-                        came_from[neighbor] = current
-                        g_score[neighbor] = tentative_g_score
-                        f_score[neighbor] = tentative_g_score + _heuristic(neighbor, start_point_min)
+            if current_direction != DIR_NONE and current_direction != direction_id:
+                direction_change_penalty = remaining_distance * 0.5
+                if direction_change_penalty < 10:
+                    direction_change_penalty = 10
+            else:
+                direction_change_penalty = 0
 
-                        # Only add neighbor to the heap if not already present
-                        if neighbor not in open_set_track:
-                            heapq.heappush(open_set, (f_score[neighbor], neighbor, new_direction))
-                            open_set_track.add(neighbor)
+            tentative_g_score = current_g_score + 1 + direction_change_penalty
+            neighbor_key = nx * height + ny
+            if tentative_g_score < g_score[neighbor_key]:
+                came_from[neighbor_key] = current_key
+                g_score[neighbor_key] = tentative_g_score
+                if not in_open[neighbor_key]:
+                    f_score = tentative_g_score + abs(nx - spm_x) + abs(ny - spm_y)
+                    heappush(open_set, (f_score, neighbor_key, direction_id))
+                    in_open[neighbor_key] = 1
 
     return best_path
 
@@ -525,9 +566,12 @@ def sort_connections(connections, name_grid=None):
     :param name_grid: Sparse dict mapping (x, y) -> string name
     :returns: Prioritised connections
     """
-    # Helper function to calculate Euclidean distance
-    def euclidean_distance(point1, point2):
-        return math.sqrt((point1[0] - point2[0])**2 + (point1[1] - point2[1])**2)
+    # Helper function to calculate squared Euclidean distance.
+    # sqrt() is monotonic, so squared distance preserves sorting order.
+    def euclidean_distance_sq(point1, point2):
+        dx = point1[0] - point2[0]
+        dy = point1[1] - point2[1]
+        return dx * dx + dy * dy
 
     # Draw all connections with paths
     sorted_connections = []
@@ -550,10 +594,10 @@ def sort_connections(connections, name_grid=None):
         elif isinstance(end, tuple) and len(end) == 4:  # Cell connection
             end = (end[0], end[1])
 
-        distance = euclidean_distance(start, end)
+        distance = euclidean_distance_sq(start, end)
         sorted_connections.append((distance, connection))
-        name_endpoint_mapping.setdefault(start_name, [])
-        name_endpoint_mapping[start_name].append(end)
+        name_endpoint_mapping.setdefault(start_name, set())
+        name_endpoint_mapping[start_name].add(end)
 
     # Sort by distance
     sorted_connections.sort(key=lambda x: x[0])
