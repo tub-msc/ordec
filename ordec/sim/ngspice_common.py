@@ -2,71 +2,43 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import re
-from collections import namedtuple
-from enum import Enum
-from dataclasses import dataclass
-from typing import Dict
+import struct
+from typing import NamedTuple
 from abc import ABC, abstractmethod
 
-NgspiceValue = namedtuple("NgspiceValue", ["type", "name", "subname", "value"])
+from ..core.simarray import SimArray, SimArrayField, Quantity
+
+
+def quantity_from_str(s: str, name: str = "") -> Quantity:
+    """Determine Quantity from a rawfile variable unit string,
+    with name-based fallback."""
+    s = s.lower().strip()
+    if s in ("time", "index"):
+        return Quantity.TIME
+    # "frequency grid=3" is how ngspice writes the frequency unit in AC rawfiles.
+    if s.startswith("frequency") or s in ("hz", "hertz"):
+        return Quantity.FREQUENCY
+    if s in ("voltage", "v"):
+        return Quantity.VOLTAGE
+    if s in ("current", "i", "a"):
+        return Quantity.CURRENT
+    # Fall back to name-based heuristics
+    if name.endswith("#branch") or (name.startswith("@") and "[" in name):
+        return Quantity.CURRENT
+    return Quantity.OTHER
+
+
+class NgspiceScalar(NamedTuple):
+    quantity: Quantity
+    name: str
+    subname: str
+    value: float
 
 class NgspiceBase(ABC):
     @classmethod
     @abstractmethod
     def launch(cls, debug: bool):
         pass
-
-    # More abstractmethod could be added here to document (and minimally
-    # enforce) the interface compatilibity between different NgspiceBase
-    # subclasses.
-
-class SignalKind(Enum):
-    TIME = (1, "time")
-    FREQUENCY = (2, "frequency")
-    VOLTAGE = (3, "voltage")
-    CURRENT = (4, "current")
-    OTHER = (99, "other")
-
-    def __init__(self, vtype_value: int, description: str):
-        self.vtype_value = vtype_value
-        self.description = description
-
-    @classmethod
-    def from_vtype(cls, vtype: int):
-        for kind in cls:
-            if vtype == kind.vtype_value:
-                return kind
-        return cls.OTHER
-
-    def get_vtype_value(self) -> int:
-        return self.vtype_value
-
-    def get_description(self) -> str:
-        return self.description
-
-    def match(self) -> tuple[int, str]:
-        return (self.vtype_value, self.description)
-
-    def is_time(self) -> bool:
-        return self is SignalKind.TIME
-
-    def is_frequency(self) -> bool:
-        return self is SignalKind.FREQUENCY
-
-    def is_voltage(self) -> bool:
-        return self is SignalKind.VOLTAGE
-
-    def is_current(self) -> bool:
-        return self is SignalKind.CURRENT
-
-    def is_other(self) -> bool:
-        return self is SignalKind.OTHER
-
-
-@dataclass
-class SignalArray:
-    kind: SignalKind
-    values: list
 
 
 class NgspiceError(Exception):
@@ -77,149 +49,6 @@ class NgspiceFatalError(NgspiceError):
     pass
 
 
-class NgspiceConfigError(NgspiceError):
-    """Raised when backend configuration fails."""
-
-    pass
-
-
-class NgspiceTable:
-    def __init__(self, name):
-        self.name = name
-        self.headers = []
-        self.data = []
-
-
-class NgspiceResultBase:
-    def __init__(self):
-        # Map signal name -> SignalArray
-        self.signals: Dict[str, SignalArray] = {}
-
-    def categorize_signal(self, signal_name) -> SignalKind:
-        if not signal_name:
-            return SignalKind.OTHER
-        if signal_name.startswith("@") and "[" in signal_name:
-            return SignalKind.CURRENT
-        if signal_name.endswith("#branch"):
-            return SignalKind.CURRENT
-        # Treat as node voltage
-        return SignalKind.VOLTAGE
-
-    def __getitem__(self, key):
-        """Allow signal access."""
-        return self.get_signal(key)
-
-    def get_signal(self, signal_name):
-        return self.signals.get(signal_name, [])
-
-    def list_signals(self):
-        return list(self.signals.keys())
-
-
-class NgspiceTransientResult(NgspiceResultBase):
-    def __init__(self):
-        super().__init__()
-        self.time: list = []
-        self.tables: list = []
-
-    def add_table(self, table):
-        """Add a table and extract signals into the signals dictionary."""
-        self.tables.append(table)
-
-        if not table.headers or not table.data:
-            return
-
-        # Find time column (usually index 1, but could be elsewhere)
-        time_idx = None
-        for i, header in enumerate(table.headers):
-            if header.lower() == "time":
-                time_idx = i
-                break
-
-        if time_idx is None:
-            return
-
-        # Extract time data if we don't have it yet
-        if not self.time and table.data:
-            # Filter out any rows that might contain header strings
-            valid_time_data = []
-            for row in table.data:
-                if len(row) > time_idx:
-                    try:
-                        time_val = float(row[time_idx])
-                        valid_time_data.append(time_val)
-                    except (ValueError, TypeError):
-                        # Skip rows that can't be converted to float (likely headers)
-                        continue
-            self.time = valid_time_data
-
-        # Extract signal data
-        for i, header in enumerate(table.headers):
-            if header.lower() in ["index", "time"]:
-                continue
-
-            signal_name = header
-            signal_data = []
-
-            for row in table.data:
-                if len(row) > i:
-                    try:
-                        signal_data.append(float(row[i]))
-                    except (ValueError, TypeError, IndexError):
-                        # Skip rows that can't be converted to float or are malformed
-                        continue
-
-            if signal_data:
-                kind = self.categorize_signal(signal_name)
-                self.signals[signal_name] = SignalArray(kind=kind, values=signal_data)
-
-    def categorize_signal(self, signal_name) -> SignalKind:
-        if not signal_name:
-            return SignalKind.OTHER
-        name = signal_name.lower()
-        if name in ("time", "index"):
-            return SignalKind.TIME
-        return super().categorize_signal(signal_name)
-
-    def __getitem__(self, key):
-        if isinstance(key, int):
-            return self.tables[key]
-        else:
-            return self.get_signal(key)
-
-    def __len__(self):
-        return len(self.tables)
-
-    def __iter__(self):
-        return iter(self.tables)
-
-    def plot_signals(self, *signal_names):
-        result = {"time": self.time}
-        for name in signal_names:
-            result[name] = self.get_signal(name)
-        return result
-
-
-class NgspiceAcResult(NgspiceResultBase):
-    def __init__(self):
-        super().__init__()
-        self.freq = []
-
-    def categorize_signal(self, signal_name) -> SignalKind:
-        if not signal_name:
-            return SignalKind.OTHER
-        name = signal_name.lower()
-        if name in ("frequency", "freq"):
-            return SignalKind.FREQUENCY
-        return super().categorize_signal(signal_name)
-
-    def plot_signals(self, *signal_names):
-        result = {"frequency": self.freq}
-        for name in signal_names:
-            result[name] = self.get_signal(name)
-        return result
-
-
 def check_errors(ngspice_out):
     """Helper function to raise NgspiceError in Python from "Error: ..."
     messages in Ngspice's output."""
@@ -228,10 +57,7 @@ def check_errors(ngspice_out):
 
     for line in ngspice_out.split("\n"):
         if "no such vector" in line:
-            # This error can occur when a simulation (like 'op') is run that doesn't
-            # produce any plot output. It's not a fatal error, so we ignore it.
             continue
-        # Handle both "Error: ..." and "stderr Error: ..." formats
         m = re.match(r"(?:stderr )?Error:\s*(.*)", line)
         if m and first_error_msg is None:
             first_error_msg = "Error: " + m.group(1)
@@ -244,3 +70,70 @@ def check_errors(ngspice_out):
             raise NgspiceFatalError(first_error_msg)
         else:
             raise NgspiceError(first_error_msg)
+
+
+def strip_raw_name(raw_name: str) -> str:
+    """Normalize a rawfile variable name to the plain node/device name.
+
+    ngspice wraps names in rawfiles: v(node) for voltages, i(device) for
+    currents. The netlister and hierarchy lookup expect bare names.
+    """
+    if raw_name.startswith("v(") and raw_name.endswith(")"):
+        return raw_name[2:-1]
+    if raw_name.startswith("i(") and raw_name.endswith(")"):
+        inner = raw_name[2:-1]
+        if inner.startswith("@"):
+            return inner  # device current: i(@r1[i]) -> @r1[i]
+        return inner + "#branch"  # branch current: i(vi0) -> vi0#branch
+    return raw_name
+
+
+def parse_raw(fn) -> SimArray:
+    """Parse a ngspice binary rawfile.
+
+    Returns a SimArray whose fields carry name, dtype and quantity metadata.
+    Real simulations (tran, op) yield float64 values; AC simulations yield
+    complex128 values.
+    """
+    info = {}
+    var_names = []
+    var_quantities = []
+
+    with open(fn, "rb") as f:
+        for i in range(100):
+            l = f.readline()[:-1].decode("ascii")
+
+            if l.startswith("\t"):
+                _, var_idx, var_name, var_unit = l.split("\t")
+                assert int(var_idx) == len(var_names)
+                var_names.append(var_name)
+                var_quantities.append(quantity_from_str(var_unit, var_name))
+            else:
+                lhs, rhs = l.split(":", 1)
+                info[lhs] = rhs.strip()
+                if lhs == "Binary":
+                    break
+        assert len(var_names) == int(info["No. Variables"])
+        no_points = int(info["No. Points"])
+
+        # AC simulations store complex-valued vectors; transient/op use real.
+        is_complex = "complex" in info.get("Flags", "").lower()
+        dtype = 'c16' if is_complex else 'f8'
+
+        fields = tuple(
+            SimArrayField(name, dtype, qty)
+            for name, qty in zip(var_names, var_quantities)
+        )
+
+        # Calculate expected bytes per record
+        field_size = 16 if is_complex else 8
+        record_size = field_size * len(var_names)
+        expected_bytes = record_size * no_points
+
+        data = f.read(expected_bytes)
+        if len(data) != expected_bytes:
+            raise ValueError(
+                f"Expected {expected_bytes} bytes, got {len(data)}"
+            )
+
+    return SimArray(fields, data)

@@ -1,289 +1,17 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from dataclasses import dataclass
-
-from ordec.schematic import helpers
 from ordec.core import *
-from ordec.sim.sim_hierarchy import HighlevelSim, SimHierarchy
-from ordec.sim.ngspice import Ngspice
-from ordec.sim.ngspice_common import SignalKind, SignalArray
+from ordec.schematic import helpers
+from ordec.schematic.routing import schematic_routing
+from ordec.sim import HighlevelSim
 
-from ordec.lib.generic_mos import Or2, Nmos, Pmos, Ringosc, Inv
-from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, SinusoidalVoltageSource
+from ordec.lib.generic_mos import Nmos, Inv
+from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, Vsin, Ipwl, Ipulse, Isin, Vpulse, Vpwl
 from ordec.lib import sky130
 from ordec.lib import ihp130
 
-import queue as _queue
-import time as _time
-import concurrent.futures as _futures
-
-@dataclass
-class SignalValue:
-    value: float
-    kind: SignalKind
-
-class TranResult:
-    def __init__(
-        self,
-        data_dict,
-        sim_hierarchy,
-        netlister,
-        progress,
-        signal_kinds=None,
-        mappings=None,
-    ):
-        self._data = data_dict
-        self._node = sim_hierarchy
-        self._netlister = netlister
-        self.progress = progress
-
-        # Use provided signal_kinds or fall back to heuristics
-        signal_kinds = signal_kinds or {}
-
-        # Precomputed mappings allow us to avoid repeated name lookups.
-        if mappings:
-            for attr_name, sim_name, default_kind in mappings:
-                if sim_name == "time" and sim_name in data_dict:
-                    kind = signal_kinds.get(sim_name, SignalKind.TIME)
-                    self.time = SignalValue(value=data_dict[sim_name], kind=kind)
-                    continue
-                if sim_name in data_dict:
-                    kind = signal_kinds.get(sim_name, default_kind)
-                    setattr(self, attr_name, SignalValue(value=data_dict[sim_name], kind=kind))
-            return
-
-        if "time" in data_dict:
-            time_kind = signal_kinds.get("time", SignalKind.TIME)
-            self.time = SignalValue(value=data_dict["time"], kind=time_kind)
-
-        for net in sim_hierarchy.all(SimNet):
-            net_name = netlister.name_hier_simobj(net)
-            if net_name in data_dict and net_name != "time":
-                net_kind = signal_kinds.get(net_name, SignalKind.VOLTAGE)
-                setattr(self, net.full_path_list()[-1],
-                    SignalValue(value=data_dict[net_name], kind=net_kind))
-
-        for inst in sim_hierarchy.all(SimInstance):
-            inst_name = netlister.name_hier_simobj(inst)
-            if inst_name in data_dict:
-                inst_kind = signal_kinds.get(inst_name, SignalKind.CURRENT)
-                setattr(self, inst.full_path_list()[-1],
-                    SignalValue(value=data_dict[inst_name], kind=inst_kind))
-
-# not reentrant
-def stream_from_queue(simbase, sim, data_queue, highlevel_sim, node, callback):
-    # Minimal grace window to let fallback or buffered points land after ngspice stops.
-    callbacks = getattr(sim, "_normal_callbacks_received", 0)
-    fallback_grace_period = 0.1 if callbacks > 0 else 0.5
-
-    last_progress = 0.0
-    completion_time = None
-
-    # Precompute mappings from sim objects to attribute names to avoid per-sample lookups.
-    mappings = [("time", "time", SignalKind.TIME)]
-    for net in node.all(SimNet):
-        attr_name = net.full_path_list()[-1]
-        mappings.append((attr_name, highlevel_sim.netlister.name_hier_simobj(net), SignalKind.VOLTAGE))
-    for inst in node.all(SimInstance):
-        attr_name = inst.full_path_list()[-1]
-        mappings.append((attr_name, highlevel_sim.netlister.name_hier_simobj(inst), SignalKind.CURRENT))
-
-    while True:
-        try:
-            data_point = data_queue.get(timeout=0.05)
-        except _queue.Empty:
-            data_point = None
-
-        if data_point is not None:
-            # Handle MP backend sentinel
-            if data_point == "---ASYNC_SIM_SENTINEL---":
-                return
-
-            if not isinstance(data_point, dict):
-                continue
-
-            if "status" in data_point or "error" in data_point:
-                if data_point.get("status") in ("completed", "halted"):
-                    return
-                continue
-
-            if callback:
-                callback(data_point)
-
-            data = data_point.get("data", {})
-            signal_kinds = data_point.get("signal_kinds", {})
-            
-            progress = data_point.get("progress", 0.0)
-
-            simbase._sim_tran_last_progress = last_progress
-
-            yield TranResult(
-                data,
-                node,
-                highlevel_sim.netlister,
-                progress,
-                signal_kinds,
-                mappings,
-            )
-            last_progress = progress
-
-        # Check for completion and drain any remaining items after grace period.
-        if not sim.is_running():
-            if completion_time is None:
-                completion_time = _time.time()
-            if _time.time() - completion_time >= fallback_grace_period:
-                while True:
-                    try:
-                        data_point = data_queue.get_nowait()
-                    except _queue.Empty:
-                        return
-
-                    if data_point == "---ASYNC_SIM_SENTINEL---":
-                        return
-
-                    if not isinstance(data_point, dict):
-                        continue
-
-                    if "status" in data_point or "error" in data_point:
-                        if data_point.get("status") in ("completed", "halted"):
-                            return
-                        continue
-
-                    if callback:
-                        callback(data_point)
-
-                    data = data_point.get("data", {})
-                    signal_kinds = data_point.get("signal_kinds", {})
-                    progress = data_point.get("progress", 0.0)
-                    simbase._sim_tran_last_progress = last_progress
-                    yield TranResult(
-                        data,
-                        node,
-                        highlevel_sim.netlister,
-                        progress,
-                        signal_kinds,
-                    )
-                    last_progress = progress
-
-
-class SimBase(Cell):
-    backend = Parameter(str, default="subprocess")
-
-    @generate
-    def sim_hierarchy(self):
-        s = SimHierarchy(cell=self)
-        # Build SimHierarchy, but runs no simulations.
-        HighlevelSim(self.schematic, s, backend=self.backend)
-        return s
-
-    @generate
-    def sim_dc(self):
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s, backend=self.backend)
-        sim.op()
-        return s
-
-    def sim_ac(self, *args, backend=None, **kwargs):
-        s = SimHierarchy(cell=self)
-        backend = backend if backend is not None else self.backend
-        sim = HighlevelSim(self.schematic, s, backend=backend)
-        sim.ac(*args, **kwargs)
-        return s
-
-    def sim_tran_async(
-        self,
-        tstep,
-        tstop,
-        callback=None,
-        buffer_size=10,
-        enable_savecurrents=True,
-        backend=None,
-        fallback_sampling_ratio=100,
-        disable_buffering=True,
-    ):
-        """Run async transient simulation.
-
-        Args:
-            tstep: Time step for the simulation
-            tstop: Stop time for the simulation
-            callback: Optional callback function for data updates
-            buffer_size: Number of data points to buffer before sending
-        """
-
-        node = SimHierarchy()
-        hl_backend = backend if backend is not None else self.backend
-        highlevel_sim = HighlevelSim(
-            self.schematic,
-            node,
-            enable_savecurrents=enable_savecurrents,
-            backend=hl_backend,
-        )
-
-        with highlevel_sim.launch_ngspice() as sim:
-            sim.load_netlist(highlevel_sim.netlister.out())
-
-            data_queue = sim.tran_async(
-                tstep, tstop, buffer_size=buffer_size, fallback_sampling_ratio=fallback_sampling_ratio, disable_buffering=disable_buffering
-            )
-
-            yield from stream_from_queue(
-                self, sim, data_queue, highlevel_sim, node, callback
-            )
-
-    def sim_tran(self, tstep, tstop, backend=None, **kwargs):
-        """Run sync transient simulation.
-
-        Args:
-            tstep: Time step for the simulation
-            tstop: Stop time for the simulation
-            enable_savecurrents: If True (default), enables .option savecurrents
-        """
-
-        s = SimHierarchy(cell=self)
-        chosen_backend = backend if backend is not None else self.backend
-        sim = HighlevelSim(self.schematic, s, backend=chosen_backend, **kwargs)
-        sim.tran(tstep, tstop)
-        return s
-
-class RcFilterTb(SimBase):
-    r = Parameter(R, default=R(1e3))
-    c = Parameter(R, default=R(1e-9))
-
-    @generate
-    def schematic(self):
-        s = Schematic(cell=self)
-
-        s.inp = Net()
-        s.out = Net()
-        s.vss = Net()
-
-        vac = SinusoidalVoltageSource(
-            amplitude=R(1), frequency=R(1)
-        ).symbol  # frequency is a dummy value
-        res = Res(r=self.r).symbol
-        cap = Cap(c=self.c).symbol
-        gnd = Gnd().symbol
-
-        s.I0 = SchemInstance(gnd.portmap(p=s.vss), pos=Vec2R(0, -4))
-        s.I1 = SchemInstance(vac.portmap(p=s.inp, m=s.vss), pos=Vec2R(0, 4))
-        s.I2 = SchemInstance(res.portmap(p=s.inp, m=s.out), pos=Vec2R(5, 4))
-        s.I3 = SchemInstance(cap.portmap(p=s.out, m=s.vss), pos=Vec2R(10, 4))
-
-        s.inp % SchemWire(vertices=[s.I1.pos + vac.p.pos, s.I2.pos + res.p.pos])
-        s.out % SchemWire(vertices=[s.I2.pos + res.m.pos, s.I3.pos + cap.p.pos])
-
-        vss_bus_y = R(-2)
-        s.vss % SchemWire(vertices=[Vec2R(2, vss_bus_y), Vec2R(12, vss_bus_y)])
-        s.vss % SchemWire(vertices=[s.I0.pos + gnd.p.pos, Vec2R(2, vss_bus_y)])
-        s.vss % SchemWire(vertices=[s.I1.pos + vac.m.pos, Vec2R(2, vss_bus_y)])
-        s.vss % SchemWire(vertices=[s.I3.pos + cap.m.pos, Vec2R(12, vss_bus_y)])
-
-        helpers.schem_check(s, add_conn_points=True)
-        return s
-
-
-class ResdivFlatTb(SimBase):
+class ResdivFlatTb(Cell):
     @generate
     def schematic(self):
         s = Schematic(cell=self)
@@ -295,7 +23,7 @@ class ResdivFlatTb(SimBase):
         s.b = Net()
 
         sym_vdc = Vdc(dc=R(1)).symbol
-        sym_vac = SinusoidalVoltageSource(amplitude=R(1), frequency=R("1e6")).symbol
+        sym_vac = Vsin(amplitude=R(1), frequency=R("1e6")).symbol
         sym_gnd = Gnd().symbol
         sym_res = Res(r=R(100)).symbol
 
@@ -321,6 +49,11 @@ class ResdivFlatTb(SimBase):
 
         return s
 
+    @generate
+    def sim_dc(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).op()
+        return s
 
 class ResdivHier2(Cell):
     r = Parameter(R)
@@ -427,7 +160,7 @@ class ResdivHier1(Cell):
         return s
 
 
-class ResdivHierTb(SimBase):
+class ResdivHierTb(Cell):
     @generate
     def schematic(self):
         s = Schematic(cell=self)
@@ -449,7 +182,7 @@ class ResdivHierTb(SimBase):
             Vdc(dc=R(1)).symbol.portmap(m=s.gnd, p=s.t_ac), pos=Vec2R(0, 0)
         )
         s.I2_ac = SchemInstance(
-            SinusoidalVoltageSource(amplitude=R(1), frequency=R("1e6")).symbol.portmap(m=s.t_ac, p=s.t), pos=Vec2R(0, 6)
+            Vsin(amplitude=R(1), frequency=R("1e6")).symbol.portmap(m=s.t_ac, p=s.t), pos=Vec2R(0, 6)
         )
         s.I3 = SchemInstance(Gnd().symbol.portmap(p=s.gnd), pos=Vec2R(0, -6))
 
@@ -464,8 +197,13 @@ class ResdivHierTb(SimBase):
         helpers.schem_check(s, add_conn_points=True)
         return s
 
+    @generate
+    def sim_dc(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).op()
+        return s
 
-class NmosSourceFollowerTb(SimBase):
+class NmosSourceFollowerTb(Cell):
     """Nmos (generic_mos) source follower with optional parameter vin."""
 
     vin = Parameter(R, optional=True, default=R(2))
@@ -494,7 +232,7 @@ class NmosSourceFollowerTb(SimBase):
             Vdc(dc=vin).symbol.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
         )
         s.I3_ac = SchemInstance(
-            SinusoidalVoltageSource(amplitude=R(1), frequency=R("1e6")).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
+            Vsin(amplitude=R(1), frequency=R("1e6")).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
         )
         s.I4 = SchemInstance(
             Idc(dc=R("5u")).symbol.portmap(m=s.vss, p=s.o), pos=Vec2R(11, 6)
@@ -506,8 +244,13 @@ class NmosSourceFollowerTb(SimBase):
 
         return s
 
+    @generate
+    def sim_dc(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).op()
+        return s
 
-class InvTb(SimBase):
+class InvTb(Cell):
     vin = Parameter(R, optional=True, default=R(0))
 
     @generate
@@ -532,7 +275,7 @@ class InvTb(SimBase):
             Vdc(dc=vin).symbol.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
         )
         s.I4_ac = SchemInstance(
-            SinusoidalVoltageSource(amplitude=R(1), frequency=R("1e6")).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
+            Vsin(amplitude=R(1), frequency=R("1e6")).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
         )
 
         s.outline = Rect4R(lx=0, ly=0, ux=20, uy=14)
@@ -541,8 +284,13 @@ class InvTb(SimBase):
 
         return s
 
+    @generate
+    def sim_dc(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).op()
+        return s
 
-class InvSkyTb(SimBase):
+class InvSkyTb(Cell):
     vin = Parameter(R, optional=True, default=R(0))
 
     @generate
@@ -561,7 +309,7 @@ class InvSkyTb(SimBase):
         sym_gnd = Gnd().symbol
         sym_vdc_vdd = Vdc(dc=R("5")).symbol
         sym_vdc_in = Vdc(dc=vin).symbol
-        sym_vac_in = SinusoidalVoltageSource(amplitude=R(1), frequency=R("1e6")).symbol
+        sym_vac_in = Vsin(amplitude=R(1), frequency=R("1e6")).symbol
 
         s.i_inv = SchemInstance(
             sym_inv.portmap(vdd=s.vdd, vss=s.vss, a=s.i, y=s.o), pos=Vec2R(11, 9)
@@ -579,6 +327,11 @@ class InvSkyTb(SimBase):
 
         return s
 
+    @generate
+    def sim_dc(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).op()
+        return s
 
 class IhpInv(Cell):
     @generate
@@ -649,7 +402,7 @@ class IhpInv(Cell):
         return s
 
 
-class InvIhpTb(SimBase):
+class InvIhpTb(Cell):
     vin = Parameter(R, optional=True, default=R(0))
 
     @generate
@@ -668,7 +421,7 @@ class InvIhpTb(SimBase):
         sym_gnd = Gnd().symbol
         sym_vdc_vdd = Vdc(dc=R("5")).symbol
         sym_vdc_in = Vdc(dc=vin).symbol
-        sym_vac_in = SinusoidalVoltageSource(amplitude=R(1), frequency=R("1e6")).symbol
+        sym_vac_in = Vsin(amplitude=R(1), frequency=R("1e6")).symbol
 
         s.i_inv = SchemInstance(
             sym_inv.portmap(vdd=s.vdd, vss=s.vss, a=s.i, y=s.o), pos=Vec2R(11, 9)
@@ -686,27 +439,176 @@ class InvIhpTb(SimBase):
 
         return s
 
+    @generate
+    def sim_dc(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).op()
+        return s
 
-class RCAlterTestbench(Cell):
-    """RC circuit for testing HighlevelSim alter operations"""
+class SineRC(Cell):
+    @generate
+    def schematic(self):
+        s = Schematic(cell=self)
+        s.vss = Net()
+        s.inp = Net()
+        s.out = Net()
+
+        res = Res(r=R("100")).symbol
+        cap = Cap(c=R("100n")).symbol
+
+        vsrc = Vsin(
+            amplitude=R(1), frequency=R(1),
+        ).symbol
+
+        s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
+        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.inp), pos=Vec2R(0, 5))
+        s.res = SchemInstance(res.portmap(m=s.out, p=s.inp), pos=Vec2R(10, 8), orientation=Orientation.West)
+        s.cap = SchemInstance(cap.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
+
+        s.outline = schematic_routing(s)
+        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        return s
+
+    @generate
+    def sim_ac(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).ac('dec', '10', '1', '1G')
+        return s
+
+
+class PulsedRC(Cell):
+    @generate
+    def schematic(self):
+        s = Schematic(cell=self)
+        s.vss = Net()
+        s.inp = Net()
+        s.out = Net()
+
+        res = Res(r=R("100")).symbol
+        cap = Cap(c=R("100n")).symbol
+
+        vsrc = Vpulse(
+            initial_value=R(0),
+            pulsed_value=R(1),
+            rise_time=R("10u"),
+            fall_time=R("10u"),
+            pulse_width=R("15u"),
+            period=R("50u"),
+        ).symbol
+
+        s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
+        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.inp), pos=Vec2R(0, 5))
+        s.res = SchemInstance(res.portmap(m=s.out, p=s.inp), pos=Vec2R(10, 8), orientation = Orientation.West)
+        s.cap = SchemInstance(cap.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
+
+        s.outline = schematic_routing(s)
+        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        return s
+
+    @generate
+    def sim_tran(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).tran(R('5u'), R('250u'))
+        return s
+
+class SourceTb(Cell):
+    demo_pwl_points = (
+        (R("0u"), R("0")),
+        (R("35u"), R("1")),
+        (R("90u"), R("0")),
+        (R("120u"), R("0.5")),
+        (R("210u"), R("0")),
+        (R("250u"), R("1")),
+    )
+
+    def add_source_instance(self, s: Schematic):
+        raise NotImplementedError
 
     @generate
     def schematic(self):
-        s = Schematic(cell=self, outline=Rect4R(lx=0, ly=0, ux=10, uy=10))
+        s = Schematic(cell=self)
+        s.vss = Net()
+        s.out = Net()
 
-        s.vin = Net()
-        s.vout = Net()
-        s.gnd = Net()
+        res = Res(r=R("1k")).symbol
 
-        s.v1 = SchemInstance(
-            Vdc(dc=R(1)).symbol.portmap(p=s.vin, m=s.gnd), pos=Vec2R(0, 5)
-        )
-        s.r1 = SchemInstance(
-            Res(r=R(1000)).symbol.portmap(p=s.vin, m=s.vout), pos=Vec2R(5, 5)
-        )
-        s.c1 = SchemInstance(
-            Cap(c=R("1u")).symbol.portmap(p=s.vout, m=s.gnd), pos=Vec2R(8, 3)
-        )
-        s.gnd_conn = SchemInstance(Gnd().symbol.portmap(p=s.gnd), pos=Vec2R(0, 0))
+        s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
+        self.add_source_instance(s)
+        s.res = SchemInstance(res.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
 
+        s.outline = schematic_routing(s)
+        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
+
+    @generate
+    def sim_tran(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).tran(R('5u'), R('250u'))
+        return s
+
+
+class VpwlTb(SourceTb):
+    def add_source_instance(self, s: Schematic):
+        vsrc = Vpwl(V=self.demo_pwl_points).symbol
+        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.out), pos=Vec2R(0, 5))
+
+
+class IpwlTb(SourceTb):
+    def add_source_instance(self, s: Schematic):
+        isrc = Ipwl(I=self.demo_pwl_points).symbol
+        # Source oriented so positive Ipwl values produce positive resistor current.
+        s.isrc = SchemInstance(isrc.portmap(p=s.vss, m=s.out), pos=Vec2R(0, 5))
+
+
+class VpulseTb(SourceTb):
+    def add_source_instance(self, s: Schematic):
+        vsrc = Vpulse(
+            initial_value=R("0"),
+            pulsed_value=R("1"),
+            delay_time=R("0u"),
+            rise_time=R("10u"),
+            fall_time=R("10u"),
+            pulse_width=R("15u"),
+            period=R("50u"),
+        ).symbol
+        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.out), pos=Vec2R(0, 5))
+
+
+class IpulseTb(SourceTb):
+    def add_source_instance(self, s: Schematic):
+        isrc = Ipulse(
+            initial_value=R("0m"),
+            pulsed_value=R("1m"),
+            delay_time=R("0u"),
+            rise_time=R("10u"),
+            fall_time=R("10u"),
+            pulse_width=R("15u"),
+            period=R("50u"),
+        ).symbol
+        # Source oriented so positive Ipulse values produce positive resistor current.
+        s.isrc = SchemInstance(isrc.portmap(p=s.vss, m=s.out), pos=Vec2R(0, 5))
+
+
+class VsinTb(SourceTb):
+    def add_source_instance(self, s: Schematic):
+        vsrc = Vsin(
+            offset=R("0.2"),
+            amplitude=R("0.8"),
+            frequency=R("20k"),
+            delay=R("0u"),
+            damping_factor=R("0"),
+        ).symbol
+        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.out), pos=Vec2R(0, 5))
+
+
+class IsinTb(SourceTb):
+    def add_source_instance(self, s: Schematic):
+        isrc = Isin(
+            offset=R("0.5m"),
+            amplitude=R("0.5m"),
+            frequency=R("20k"),
+            delay=R("0u"),
+            damping_factor=R("0"),
+        ).symbol
+        # Source oriented so positive Isin values produce positive resistor current.
+        s.isrc = SchemInstance(isrc.portmap(p=s.vss, m=s.out), pos=Vec2R(0, 5))

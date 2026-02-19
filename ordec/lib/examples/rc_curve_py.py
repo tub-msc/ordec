@@ -1,8 +1,8 @@
 from ordec.core import *
 from ordec.schematic import helpers
-from ordec.sim.sim_hierarchy import HighlevelSim
+from ordec.sim import HighlevelSim
 from ordec.schematic.routing import schematic_routing
-from ordec.lib import Res, Cap, Gnd, PulseVoltageSource, SinusoidalVoltageSource
+from ordec.lib import Res, Cap, Gnd, Vpulse, Vsin
 
 class RC(Cell):
     pulse_source = True
@@ -19,7 +19,7 @@ class RC(Cell):
 
 
         if self.pulse_source:
-            vcc = PulseVoltageSource(
+            vcc = Vpulse(
                 initial_value=R(0),
                 pulsed_value=R(1),
                 rise_time=R("1n"),
@@ -27,7 +27,7 @@ class RC(Cell):
                 period=R("2"),
             ).symbol
         else:
-            vcc = SinusoidalVoltageSource(
+            vcc = Vsin(
                 amplitude=R(1),
                 frequency=R("1k")
             ).symbol
@@ -44,22 +44,21 @@ class RC(Cell):
 
     @generate(auto_refresh=False)
     def sim_dc(self):
-        s = SimHierarchy()
-        sim = HighlevelSim(self.schematic, s)
+        s = SimHierarchy.from_schematic(self.schematic)
+        sim = HighlevelSim(s)
         sim.op()
         return s
 
     @generate
     def sim_tran(self):
-        s = SimHierarchy()
-        sim = HighlevelSim(self.schematic, s)
+        s = SimHierarchy.from_schematic(self.schematic)
+        sim = HighlevelSim(s)
         sim.tran('10u', '50m')
         return s
 
     @generate
     def sim_ac(self):
-        s = SimHierarchy()
-        sim = HighlevelSim(self.schematic, s)
+        s = SimHierarchy.from_schematic(self.schematic)
+        sim = HighlevelSim(s)
         sim.ac('dec', '10', '1', '10meg')
         return s
-

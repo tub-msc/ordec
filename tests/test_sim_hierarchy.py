@@ -3,16 +3,14 @@
 
 import pytest
 from ordec.core import *
-from ordec.sim.sim_hierarchy import SimHierarchy, build_hier_schematic
+from ordec.sim.highlevel import SimHierarchy
 from ordec.lib.base import Gnd, Res
 from ordec.core.schema import SimHierarchySubcursor
 from .lib import sim as lib_test
 
 def my_simhier():
     schematic = lib_test.ResdivHierTb().schematic
-    simhier = SimHierarchy()
-    build_hier_schematic(simhier, schematic)
-    return simhier
+    return SimHierarchy.from_schematic(schematic)
 
 def test_setattr_setitem_delattr_delitem():
     simhier = my_simhier()

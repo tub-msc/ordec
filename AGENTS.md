@@ -96,11 +96,10 @@ pytest -k "test_ordb"
 
 # Run tests with specific markers
 pytest -m web           # Web interface tests
-pytest -m libngspice    # Tests requiring libngspice
 
-# Fast testing: skip web and libngspice tests (saves significant time)
+# Fast testing: skip web tests (saves significant time)
 # Use this when changes don't affect web interface or ngspice integration
-pytest -m "not web and not libngspice"
+pytest -m "not web"
 ```
 
 ### Web UI Development
@@ -242,12 +241,24 @@ Each schema type is a Node subclass with Attr declarations and indexes.
 - Directory tracks node naming
 - Setup functions for PDK-specific initialization
 
-**Ngspice** (ordec/sim/): Multiple backend modes
-- ngspice_subprocess.py: Subprocess communication
-- ngspice_ffi.py: FFI using libngspice
-- ngspice_mp.py: Multiprocessing wrapper
+**SimArray** (ordec/core/simarray.py): Immutable, hashable structured array for simulation data
+- Tuple subclass holding `(fields, data)` where fields describe columns and data is packed binary
+- Supports `column(name)` to extract a field as a tuple of float/complex values
+- No numpy dependency for core operations; `to_numpy()` available for convenience
 
-**SimHierarchy** (ordec/sim/sim_hierarchy.py): Flattened simulation hierarchy for result analysis
+**Ngspice** (ordec/sim/):
+- ngspice_subprocess.py: Subprocess-based ngspice communication
+- ngspice_common.py: Shared utilities — `parse_raw()` reads binary rawfiles into SimArray,
+  `quantity_from_unit()` classifies variables, `strip_raw_name()` unwraps ngspice `v()`/`i()` wrappers
+
+**SimHierarchy** (ordec/sim/sim_hierarchy.py, ordec/core/schema.py):
+- Flattened simulation hierarchy with SimInstance and SimNet nodes
+- SimHierarchy stores the full simulation result as a single `SimArray` (`sim_data` attr)
+  plus `time_field`/`freq_field` identifying the independent variable column
+- Individual SimNet/SimInstance nodes store only a `trans_field`/`ac_field` string
+  naming their column in the shared SimArray; `@property` methods (`trans_voltage`,
+  `ac_voltage`, `trans_current`, `ac_current`) resolve values on access via `self.root.sim_data`
+- DC results remain as scalar `Attr(float)` on SimNet (`dc_voltage`) and SimInstance (`dc_current`)
 
 ### Layout
 
@@ -318,7 +329,7 @@ Each schema type is a Node subclass with Attr declarations and indexes.
 1. Create test_*.py in tests/ directory
 2. Use pytest conventions (test_* functions)
 3. Import from ordec.core or specific modules
-4. Use markers (@pytest.mark.web, @pytest.mark.libngspice) if needed
+4. Use markers (@pytest.mark.web etc.) if needed
 
 ### Working with ORDB data
 1. Create SubgraphRoot instance (e.g., Schematic())
