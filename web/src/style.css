@@ -249,6 +249,46 @@ pre {
     flex-direction: column;
     gap: 1px;
 }
+
+.report-view {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 0px;
+}
+.report-element {
+    width: 100%;
+    padding-top: 5px;
+    padding-left: 10px;
+    padding-right: 10px;
+}
+.report-element + .report-element {
+    border-top: 1px solid #cfcfcf;
+}
+.report-preformatted {
+    margin: 0;
+    font-family: 'Inconsolata', monospace;
+    white-space: pre;
+    overflow-x: auto;
+}
+.report-markdown code {
+    font-family: 'Inconsolata', monospace;
+}
+.report-markdown h1,
+.report-markdown h2,
+.report-markdown h3,
+.report-markdown h4,
+.report-markdown h5,
+.report-markdown h6 {
+    margin-top: 0.2em;
+    margin-bottom: 0.25em;
+}
+.report-svg {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+}
 .simplot-tooltip span {
     display: block;
     white-space: nowrap;

@@ -221,7 +221,12 @@ class Renderer:
     #     return f'<img src="{self.svg_url()}" />'
 
     def webdata(self):
-        return 'svg', {'inner': self.inner_svg().decode('ascii'), 'viewbox': self.viewbox}
+        return 'svg', {
+            'inner': self.inner_svg().decode('ascii'),
+            'viewbox': self.viewbox,
+            'width': self.root.attrib.get('width'),
+            'height': self.root.attrib.get('height'),
+        }
 
     def png(self) -> bytes:
         """

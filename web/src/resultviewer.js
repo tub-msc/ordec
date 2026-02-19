@@ -13,6 +13,53 @@ export function generateId() {
     return "idgen" + idCounter;
 }
 
+const reportElementClassOf = {
+    markdown: class {
+        constructor(container) {
+            this.container = container;
+        }
+
+        update(msgData) {
+            const section = document.createElement('div');
+            section.classList.add('report-markdown');
+            section.innerHTML = msgData.html || '';
+            this.container.replaceChildren(section);
+        }
+    },
+    preformatted_text: class {
+        constructor(container) {
+            this.container = container;
+        }
+
+        update(msgData) {
+            const pre = document.createElement('pre');
+            pre.classList.add('report-preformatted');
+            pre.innerText = msgData.text || '';
+            this.container.replaceChildren(pre);
+        }
+    },
+    svg: class {
+        constructor(container) {
+            this.container = container;
+        }
+
+        update(msgData) {
+            const svg = d3.create("svg")
+                .attr("class", "report-svg")
+                .attr("viewBox", msgData.viewbox);
+            if (msgData.width) {
+                svg.attr("width", msgData.width);
+            }
+            if (msgData.height) {
+                svg.attr("height", msgData.height);
+            }
+
+            svg.append("g").html(msgData.inner || '');
+            this.container.replaceChildren(svg.node());
+        }
+    },
+};
+
 const viewClassOf = {
     html: class {
         constructor(resContent) {
@@ -54,6 +101,39 @@ const viewClassOf = {
             svg.call(zoom.on("zoom", (x) => this.zoomed(x)));
 
             this.resContent.replaceChildren(svg.node());
+        }
+    },
+    report: class {
+        constructor(resContent) {
+            this.resContent = resContent;
+        }
+
+        update(msgData) {
+            const report = document.createElement('div');
+            report.classList.add('report-view');
+
+            (msgData.elements || []).forEach(elementData => {
+                const elementRoot = document.createElement('div');
+                elementRoot.classList.add('report-element');
+                report.appendChild(elementRoot);
+
+                const elementClass =
+                    reportElementClassOf[elementData.element_type];
+
+                if (!elementClass) {
+                    const pre = document.createElement('pre');
+                    pre.innerText =
+                        'no handler found for report element type '
+                        + elementData.element_type;
+                    elementRoot.replaceChildren(pre);
+                    return;
+                }
+
+                const renderer = new elementClass(elementRoot);
+                renderer.update(elementData);
+            });
+
+            this.resContent.replaceChildren(report);
         }
     },
     layout_gl: LayoutGL,
