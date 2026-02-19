@@ -57,7 +57,12 @@ export class SimPlot {
 
         this._setupSvg();
 
-        this.resizeObserver = new ResizeObserver(() => this._render());
+        let resizeTimer;
+        this.resizeObserver = new ResizeObserver(() => {
+            clearTimeout(resizeTimer);
+            // Wait before resizing to improve computational load
+            resizeTimer = setTimeout(() => this._render(), 30);
+        });
         this.resizeObserver.observe(this.wrapper);
     }
 
@@ -180,7 +185,9 @@ export class SimPlot {
     }
 
     _onMouseMove(event) {
-        if (!this._xScale || !this.xValues || !this.series.length) return;
+        if (!this._xScale || !this.xValues) return;
+        const visibleSeries = this.series.filter(s => s.visible);
+        if (!visibleSeries.length) return;
 
         const [mx] = d3.pointer(event, this.plotArea.node());
         const xVal = this._xScale.invert(mx);
@@ -205,7 +212,6 @@ export class SimPlot {
             .attr('x2', snappedX).attr('y2', this._plotH);
 
         // Update dot markers for visible series
-        const visibleSeries = this.series.filter(s => s.visible);
         const dots = this.crosshairG.selectAll('circle.simplot-dot')
             .data(visibleSeries, d => d.name);
 
@@ -320,18 +326,22 @@ export class SimPlot {
             }
         });
         if (!isFinite(yMin)) { yMin = -1; yMax = 1; }
-        const yPad = (yMax - yMin) * 0.05 || 0.5;
 
-        // Apply Y zoom: scale around auto center, then apply pan offset
-        const yCenter = (yMin + yMax) / 2 + this._yPanOffset;
-        const yHalfRange = ((yMax - yMin) / 2 + yPad) / this._yZoomScale;
-
+        // Apply Y zoom/pan, working in log space for log scale
         let yScale;
         if (this.options.yscale === 'log') {
+            const logMin = Math.log10(Math.max(yMin, 1e-30));
+            const logMax = Math.log10(Math.max(yMax, 1e-29));
+            const logPad = (logMax - logMin) * 0.05 || 0.5;
+            const logCenter = (logMin + logMax) / 2 + this._yPanOffset;
+            const logHalfRange = ((logMax - logMin) / 2 + logPad) / this._yZoomScale;
             yScale = d3.scaleLog()
-                .domain([Math.max(yMin, 1e-30), yMax])
+                .domain([10 ** (logCenter - logHalfRange), 10 ** (logCenter + logHalfRange)])
                 .range([h, 0]);
         } else {
+            const yPad = (yMax - yMin) * 0.05 || 0.5;
+            const yCenter = (yMin + yMax) / 2 + this._yPanOffset;
+            const yHalfRange = ((yMax - yMin) / 2 + yPad) / this._yZoomScale;
             yScale = d3.scaleLinear()
                 .domain([yCenter - yHalfRange, yCenter + yHalfRange])
                 .range([h, 0]);
