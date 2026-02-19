@@ -17,6 +17,13 @@ const SIGNAL_COLORS = [
     '#ff6699', // pink
 ];
 
+function signalColor(i) {
+    if (i < SIGNAL_COLORS.length) return SIGNAL_COLORS[i];
+    // Distinct colors beyond the common signal colors (golden angle)
+    const hue = (i * 137.508) % 360;
+    return `hsl(${hue}, 100%, 60%)`;
+}
+
 export class SimPlot {
     constructor(container, options = {}) {
         this.options = {
@@ -55,7 +62,7 @@ export class SimPlot {
     }
 
     _setupSvg() {
-        this.clipId = 'clip-' + Math.random().toString(36).substr(2, 9);
+        this.clipId = 'clip-' + Math.random().toString(36).slice(2, 11);
         this.svg.append('defs').append('clipPath')
             .attr('id', this.clipId)
             .append('rect');
@@ -238,7 +245,7 @@ export class SimPlot {
         this.xValues = xValues;
         this.series = series.map((s, i) => ({
             ...s,
-            color: s.color || SIGNAL_COLORS[i % SIGNAL_COLORS.length],
+            color: s.color || signalColor(i),
             visible: true,
         }));
         this._updateLegend();
