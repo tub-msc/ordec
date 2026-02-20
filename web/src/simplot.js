@@ -31,6 +31,9 @@ export class SimPlot {
             ylabel: options.ylabel || '',
             xscale: options.xscale || 'linear',
             yscale: options.yscale || 'linear',
+            fixedHeight: options.fixedHeight || null,
+            onXDomainChange: options.onXDomainChange || null,
+            onCrosshairXChange: options.onCrosshairXChange || null,
         };
 
         this.xValues = null;
@@ -38,10 +41,18 @@ export class SimPlot {
         this.currentTransform = d3.zoomIdentity;
         this._yZoomScale = 1;
         this._yPanOffset = 0;
+        this._crosshairIndex = null;
+        this._suppressXDomainChange = false;
+        this._suppressCrosshairChange = false;
 
         // DOM structure: wrapper > [legend, svg]
         this.wrapper = document.createElement('div');
         this.wrapper.classList.add('simplot');
+        if (this.options.fixedHeight !== null) {
+            this.wrapper.style.width = '100%';
+            this.wrapper.style.flex = '0 0 auto';
+            this.wrapper.style.height = SimPlot._normalizeCssSize(this.options.fixedHeight);
+        }
         container.appendChild(this.wrapper);
 
         this.legendEl = document.createElement('div');
@@ -49,6 +60,12 @@ export class SimPlot {
         this.wrapper.appendChild(this.legendEl);
 
         this.svg = d3.select(this.wrapper).append('svg');
+
+        this.defaultZoomBtn = document.createElement('button');
+        this.defaultZoomBtn.type = 'button';
+        this.defaultZoomBtn.classList.add('simplot-default-zoom');
+        this.defaultZoomBtn.innerText = 'Default zoom';
+        this.defaultZoomBtn.addEventListener('click', () => this.resetZoom());
 
         // Crosshair tooltip
         this.tooltipEl = document.createElement('div');
@@ -127,6 +144,7 @@ export class SimPlot {
             .on('zoom', (event) => {
                 this.currentTransform = event.transform;
                 this._render();
+                this._emitXDomainChange();
             });
         this.svg.call(this.zoom);
 
@@ -169,48 +187,75 @@ export class SimPlot {
         });
 
         // Double-click → reset both axes
-        this.svg.on('dblclick', () => {
-            this.currentTransform = d3.zoomIdentity;
-            this.svg.call(this.zoom.transform, d3.zoomIdentity);
-            this._yZoomScale = 1;
-            this._yPanOffset = 0;
-            this._render();
-        });
+        this.svg.on('dblclick', () => this.resetZoom());
 
         // Current scales (updated in _render, used by crosshair)
         this._xScale = null;
         this._yScale = null;
+        this._xBase = null;
+        this._plotW = 0;
         this._plotH = 0;
     }
 
-    _onMouseMove(event) {
-        if (!this._xScale || !this.xValues) return;
-        const visibleSeries = this.series.filter(s => s.visible);
-        if (!visibleSeries.length) return;
+    static _normalizeCssSize(size) {
+        if (typeof size === 'number') {
+            return `${size}px`;
+        }
+        return size;
+    }
 
-        const [mx] = d3.pointer(event, this.plotArea.node());
-        const xVal = this._xScale.invert(mx);
+    setSyncCallbacks({ onXDomainChange = null, onCrosshairXChange = null } = {}) {
+        this.options.onXDomainChange = onXDomainChange;
+        this.options.onCrosshairXChange = onCrosshairXChange;
+    }
 
-        // Binary search for nearest data index
+    getXDomain() {
+        if (!this._xScale) return null;
+        return this._xScale.domain().slice();
+    }
+
+    _emitXDomainChange() {
+        if (this._suppressXDomainChange || !this.options.onXDomainChange || !this._xScale) {
+            return;
+        }
+        this.options.onXDomainChange(this._xScale.domain().slice());
+    }
+
+    _emitCrosshairXChange(xValue) {
+        if (this._suppressCrosshairChange || !this.options.onCrosshairXChange) {
+            return;
+        }
+        this.options.onCrosshairXChange(xValue);
+    }
+
+    _nearestXIndex(xValue) {
         const bisect = d3.bisector(d => d).left;
-        let idx = bisect(this.xValues, xVal);
+        let idx = bisect(this.xValues, xValue);
         if (idx > 0 && idx < this.xValues.length) {
-            // Pick the closer neighbor
-            if (Math.abs(this.xValues[idx - 1] - xVal) < Math.abs(this.xValues[idx] - xVal)) {
+            if (Math.abs(this.xValues[idx - 1] - xValue) < Math.abs(this.xValues[idx] - xValue)) {
                 idx = idx - 1;
             }
         }
-        idx = Math.max(0, Math.min(this.xValues.length - 1, idx));
+        return Math.max(0, Math.min(this.xValues.length - 1, idx));
+    }
 
+    _showCrosshairAtIndex(idx) {
+        if (!this._xScale || !this._yScale || !this.xValues) return;
+        const visibleSeries = this.series.filter(s => s.visible);
+        if (!visibleSeries.length) {
+            this.crosshairG.style('display', 'none');
+            this.tooltipEl.style.display = 'none';
+            return;
+        }
+
+        this._crosshairIndex = idx;
         const snappedX = this._xScale(this.xValues[idx]);
 
-        // Position crosshair line
         this.crosshairG.style('display', null);
         this.crosshairLine
             .attr('x1', snappedX).attr('y1', 0)
             .attr('x2', snappedX).attr('y2', this._plotH);
 
-        // Update dot markers for visible series
         const dots = this.crosshairG.selectAll('circle.simplot-dot')
             .data(visibleSeries, d => d.name);
 
@@ -228,7 +273,6 @@ export class SimPlot {
 
         dots.exit().remove();
 
-        // Build tooltip text
         const fmtX = d3.format('.4~s');
         const fmtY = d3.format('.4~s');
         let html = `<span class="simplot-tooltip-x">${this.options.xlabel}: ${fmtX(this.xValues[idx])}</span>`;
@@ -241,9 +285,83 @@ export class SimPlot {
         this.tooltipEl.style.display = 'flex';
     }
 
+    _onMouseMove(event) {
+        if (!this._xScale || !this.xValues) return;
+
+        const [mx] = d3.pointer(event, this.plotArea.node());
+        const xVal = this._xScale.invert(mx);
+        const idx = this._nearestXIndex(xVal);
+        this._showCrosshairAtIndex(idx);
+        this._emitCrosshairXChange(this.xValues[idx]);
+    }
+
     _onMouseLeave() {
+        this.clearCrosshair();
+    }
+
+    _withCrosshairSuppression(suppressEvent, fn) {
+        this._suppressCrosshairChange = suppressEvent;
+        try {
+            fn();
+        } finally {
+            this._suppressCrosshairChange = false;
+        }
+    }
+
+    setXDomain(domain, { suppressEvent = false } = {}) {
+        if (!this._xBase || !this._plotW || !domain || domain.length !== 2) return;
+        let [x0, x1] = domain.map(Number);
+        if (!isFinite(x0) || !isFinite(x1)) return;
+        if (x1 < x0) {
+            [x0, x1] = [x1, x0];
+        }
+        if (this.options.xscale === 'log') {
+            x0 = Math.max(x0, 1e-30);
+            x1 = Math.max(x1, x0 * 1.000001);
+        } else if (Math.abs(x1 - x0) < 1e-30) {
+            return;
+        }
+
+        const r0 = this._xBase(x0);
+        const r1 = this._xBase(x1);
+        if (!isFinite(r0) || !isFinite(r1) || Math.abs(r1 - r0) < 1e-12) return;
+
+        const k = this._plotW / (r1 - r0);
+        const tx = -k * r0;
+        const transform = d3.zoomIdentity.translate(tx, 0).scale(k);
+
+        this.currentTransform = transform;
+        this._suppressXDomainChange = suppressEvent;
+        try {
+            this.svg.call(this.zoom.transform, transform);
+        } finally {
+            this._suppressXDomainChange = false;
+        }
+    }
+
+    setCrosshairX(xValue, { suppressEvent = false } = {}) {
+        if (!this.xValues || !this._xScale) return;
+        const idx = this._nearestXIndex(xValue);
+        this._withCrosshairSuppression(suppressEvent, () => {
+            this._showCrosshairAtIndex(idx);
+            this._emitCrosshairXChange(this.xValues[idx]);
+        });
+    }
+
+    clearCrosshair({ suppressEvent = false } = {}) {
+        this._crosshairIndex = null;
         this.crosshairG.style('display', 'none');
         this.tooltipEl.style.display = 'none';
+        this._withCrosshairSuppression(suppressEvent, () => {
+            this._emitCrosshairXChange(null);
+        });
+    }
+
+    resetZoom() {
+        this.currentTransform = d3.zoomIdentity;
+        this._yZoomScale = 1;
+        this._yPanOffset = 0;
+        this.svg.call(this.zoom.transform, d3.zoomIdentity);
     }
 
     setData(xValues, series) {
@@ -258,11 +376,11 @@ export class SimPlot {
         this._yZoomScale = 1;
         this._yPanOffset = 0;
         this.svg.call(this.zoom.transform, d3.zoomIdentity);
-        this._render();
     }
 
     _updateLegend() {
         this.legendEl.innerHTML = '';
+        this.legendEl.appendChild(this.defaultZoomBtn);
         this.series.forEach(s => {
             const item = document.createElement('span');
             item.classList.add('simplot-legend-item');
@@ -394,10 +512,15 @@ export class SimPlot {
         // Store scales for crosshair interaction
         this._xScale = xScale;
         this._yScale = yScale;
+        this._xBase = xBase;
+        this._plotW = w;
         this._plotH = h;
 
         // Size the hover rect to cover plot area
         this.hoverRect.attr('width', w).attr('height', h);
+        if (this._crosshairIndex !== null) {
+            this._showCrosshairAtIndex(this._crosshairIndex);
+        }
     }
 
     destroy() {

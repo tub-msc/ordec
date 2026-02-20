@@ -85,6 +85,104 @@ class Svg(ReportElement):
         }
 
 @public
+class Plot2D(ReportElement):
+    """2D plot element rendered with the frontend simulation plot component."""
+
+    def __init__(
+        self,
+        x: Iterable[float],
+        series: (
+            dict[str, Iterable[float]]
+            | Iterable[tuple[str, Iterable[float]]]
+        ),
+        *,
+        xlabel: str = "",
+        ylabel: str = "",
+        xscale: str = "linear",
+        yscale: str = "linear",
+        height: int | float | str = 260,
+        plot_group: str | None = None,
+    ):
+        self.x = [float(v) for v in x]
+        self._validate_x(self.x)
+        self.series = self._normalize_series(series, len(self.x))
+        self.xlabel = xlabel
+        self.ylabel = ylabel
+        self.xscale = self._validate_scale(xscale, "xscale")
+        self.yscale = self._validate_scale(yscale, "yscale")
+        self.height = self._normalize_height(height)
+        self.plot_group = plot_group
+
+    @staticmethod
+    def _validate_x(x: list[float]):
+        if len(x) < 2:
+            raise ValueError("x must contain at least two values")
+        for i in range(1, len(x)):
+            if x[i] < x[i - 1]:
+                raise ValueError("x values must be sorted in ascending order")
+
+    @staticmethod
+    def _normalize_series(
+        series: (
+            dict[str, Iterable[float]]
+            | Iterable[tuple[str, Iterable[float]]]
+        ),
+        expected_len: int,
+    ) -> list[dict]:
+        if isinstance(series, dict):
+            pairs = list(series.items())
+        else:
+            pairs = list(series)
+
+        normalized = []
+        for name, values in pairs:
+            vals = [float(v) for v in values]
+            if len(vals) != expected_len:
+                raise ValueError(
+                    f"Series {name!r} has length {len(vals)}, expected "
+                    f"{expected_len}"
+                )
+            normalized.append({
+                "name": str(name),
+                "values": vals,
+            })
+
+        if not normalized:
+            raise ValueError("Plot2D requires at least one series")
+        return normalized
+
+    @staticmethod
+    def _validate_scale(scale: str, name: str) -> str:
+        if scale not in ("linear", "log"):
+            raise ValueError(f"{name} must be 'linear' or 'log'")
+        return scale
+
+    @staticmethod
+    def _normalize_height(height: int | float | str) -> str:
+        if isinstance(height, str):
+            if not height.strip():
+                raise ValueError("height string must not be empty")
+            return height
+        if not isinstance(height, (int, float)):
+            raise TypeError("height must be int, float or string")
+        if height <= 0:
+            raise ValueError("height must be greater than zero")
+        return f"{height:g}px"
+
+    def element_webdata(self) -> dict:
+        return {
+            "element_type": "plot2d",
+            "x": self.x,
+            "series": self.series,
+            "xlabel": self.xlabel,
+            "ylabel": self.ylabel,
+            "xscale": self.xscale,
+            "yscale": self.yscale,
+            "height": self.height,
+            "plot_group": self.plot_group,
+        }
+
+@public
 class Report:
     """
     Represents a list of vertically stacked report elements.
