@@ -264,12 +264,10 @@ def a_star(grid, start, end, width, height, straight_lines,
     inf_score = float("inf")
     g_score = [inf_score] * grid_size
     came_from = [-1] * grid_size
-    in_open = bytearray(grid_size)
     g_score[start_key] = 0.0
-    in_open[start_key] = 1
 
     h_start = abs(start[0] - end_x) + abs(start[1] - end_y)
-    open_set = [(h_start, start_key, start_direction)]
+    open_set = [(h_start, start_key, start_direction, 0.0)]
 
     heappush = heapq.heappush
     heappop = heapq.heappop
@@ -278,8 +276,9 @@ def a_star(grid, start, end, width, height, straight_lines,
     d_offsets = DIRECTION_OFFSETS
 
     while open_set:
-        _, current_key, current_direction = heappop(open_set)
-        in_open[current_key] = 0
+        _, current_key, current_direction, popped_g_score = heappop(open_set)
+        if popped_g_score > g_score[current_key]:
+            continue
 
         if current_key == end_key:
             path = []
@@ -327,10 +326,9 @@ def a_star(grid, start, end, width, height, straight_lines,
             if tentative_g_score < g_score[neighbor_key]:
                 came_from[neighbor_key] = current_key
                 g_score[neighbor_key] = tentative_g_score
-                if not in_open[neighbor_key]:
-                    f_score = tentative_g_score + abs(nx - end_x) + abs(ny - end_y)
-                    heappush(open_set, (f_score, neighbor_key, direction_id))
-                    in_open[neighbor_key] = 1
+                f_score = tentative_g_score + abs(nx - end_x) + abs(ny - end_y)
+                heappush(open_set, (f_score, neighbor_key, direction_id,
+                                    tentative_g_score))
 
     return []
 
@@ -373,10 +371,8 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     inf_score = float("inf")
     g_score = [inf_score] * grid_size
     came_from = [-1] * grid_size
-    in_open = bytearray(grid_size)
     g_score[end_key] = 0.0
-    in_open[end_key] = 1
-    open_set = [(min_distance, end_key, end_direction)]
+    open_set = [(min_distance, end_key, end_direction, 0.0)]
 
     heappush = heapq.heappush
     heappop = heapq.heappop
@@ -389,8 +385,9 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     best_path_length = sys.maxsize
 
     while open_set:
-        _, current_key, current_direction = heappop(open_set)
-        in_open[current_key] = 0
+        _, current_key, current_direction, popped_g_score = heappop(open_set)
+        if popped_g_score > g_score[current_key]:
+            continue
 
         current_path_length = g_score[current_key]
         if current_path_length >= best_path_length:
@@ -448,10 +445,9 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
             if tentative_g_score < g_score[neighbor_key]:
                 came_from[neighbor_key] = current_key
                 g_score[neighbor_key] = tentative_g_score
-                if not in_open[neighbor_key]:
-                    f_score = tentative_g_score + abs(nx - spm_x) + abs(ny - spm_y)
-                    heappush(open_set, (f_score, neighbor_key, direction_id))
-                    in_open[neighbor_key] = 1
+                f_score = tentative_g_score + abs(nx - spm_x) + abs(ny - spm_y)
+                heappush(open_set, (f_score, neighbor_key, direction_id,
+                                    tentative_g_score))
 
     return best_path
 

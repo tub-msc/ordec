@@ -7,21 +7,21 @@
     <path d="M14.0 13.0 L12.0 13.0" class="schemWire" />
     <path d="M4.0 21.0 L6.0 21.0" class="schemWire" />
     <path d="M14.0 21.0 L12.0 21.0" class="schemWire" />
-    <path d="M1.0 2.0 L2.0 2.0 L2.0 6.0 L3.0 6.0 L6.0 6.0" class="schemWire" />
-    <path d="M3.0 6.0 L3.0 14.0 L6.0 14.0" class="schemWire" />
-    <path d="M3.0 14.0 L3.0 22.0 L6.0 22.0" class="schemWire" />
-    <path d="M1.0 0.0 L2.0 0.0 L9.0 0.0 L9.0 2.0 L9.0 3.0" class="schemWire" />
-    <path d="M9.0 2.0 L13.0 2.0 L13.0 10.0 L9.0 10.0 L9.0 11.0" class="schemWire" />
-    <path d="M13.0 10.0 L13.0 18.0 L9.0 18.0 L9.0 19.0" class="schemWire" />
-    <path d="M1.0 1.0 L2.0 1.0 L5.0 1.0 L5.0 9.0 L9.0 9.0 L9.0 8.0" class="schemWire" />
-    <path d="M5.0 9.0 L5.0 17.0 L9.0 17.0 L9.0 16.0" class="schemWire" />
-    <path d="M5.0 17.0 L5.0 25.0 L9.0 25.0 L9.0 24.0" class="schemWire" />
-    <circle cx="9.0" cy="2.0" r="0.1625" class="connPoint" />
-    <circle cx="13.0" cy="10.0" r="0.1625" class="connPoint" />
-    <circle cx="5.0" cy="9.0" r="0.1625" class="connPoint" />
-    <circle cx="5.0" cy="17.0" r="0.1625" class="connPoint" />
-    <circle cx="3.0" cy="6.0" r="0.1625" class="connPoint" />
-    <circle cx="3.0" cy="14.0" r="0.1625" class="connPoint" />
+    <path d="M1.0 2.0 L2.0 2.0 L5.0 2.0 L5.0 6.0 L6.0 6.0" class="schemWire" />
+    <path d="M5.0 6.0 L5.0 14.0 L6.0 14.0" class="schemWire" />
+    <path d="M5.0 14.0 L5.0 22.0 L6.0 22.0" class="schemWire" />
+    <path d="M1.0 0.0 L2.0 0.0 L9.0 0.0 L9.0 3.0" class="schemWire" />
+    <path d="M2.0 0.0 L2.0 10.0 L9.0 10.0 L9.0 11.0" class="schemWire" />
+    <path d="M2.0 10.0 L2.0 18.0 L9.0 18.0 L9.0 19.0" class="schemWire" />
+    <path d="M1.0 1.0 L2.0 1.0 L3.0 1.0 L3.0 9.0 L9.0 9.0 L9.0 8.0" class="schemWire" />
+    <path d="M3.0 9.0 L3.0 17.0 L9.0 17.0 L9.0 16.0" class="schemWire" />
+    <path d="M3.0 17.0 L3.0 25.0 L9.0 25.0 L9.0 24.0" class="schemWire" />
+    <circle cx="2.0" cy="0.0" r="0.1625" class="connPoint" />
+    <circle cx="2.0" cy="10.0" r="0.1625" class="connPoint" />
+    <circle cx="3.0" cy="9.0" r="0.1625" class="connPoint" />
+    <circle cx="3.0" cy="17.0" r="0.1625" class="connPoint" />
+    <circle cx="5.0" cy="6.0" r="0.1625" class="connPoint" />
+    <circle cx="5.0" cy="14.0" r="0.1625" class="connPoint" />
     <g>
       <rect x="6.0" y="3.0" width="6.0" height="5.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 11.875 7.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">DFF</text>
