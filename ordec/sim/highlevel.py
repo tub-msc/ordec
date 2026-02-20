@@ -91,7 +91,11 @@ class HighlevelSim:
                         device_name = stripped.split("[")[0][1:]
                         siminstance = self.hier_simobj_of_name(device_name)
                     else:
-                        siminstance = self.hier_simobj_of_name(stripped)
+                        # Raw branch currents use names like "i(vsrc)" and are
+                        # normalized to "vsrc#branch"; strip suffix for lookup.
+                        siminstance = self.hier_simobj_of_name(
+                            stripped.removesuffix("#branch")
+                        )
                     setattr(siminstance, field_attr, f.fid)
             except KeyError:
                 continue

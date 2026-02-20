@@ -663,34 +663,40 @@ class VcoTb(Cell):
     @generate
     def report_tran(self):
         sim = self.sim_tran
-        sim_type, sim_data = sim.webdata()
-        if sim_type != "transim":
-            raise RuntimeError(f"Unexpected sim view type: {sim_type!r}")
 
-        voltages = sim_data["voltages"]
-        main_names = sorted(
-            name for name in voltages.keys()
-            if name.startswith("out_p.") or name.startswith("out_n.")
-        )
-        if not main_names:
-            main_names = sorted(voltages.keys())[:4]
-
-        series = {
-            name: voltages[name]
-            for name in main_names
-        }
-
-        return Report([
-            Markdown("## VCO transient main waveforms"),
-            Plot2D(
-                x=sim_data["time"],
-                series=series,
+        elements = [Markdown("## VCO transient main waveforms")]
+        for i in range(2):
+            elements.append(Plot2D(
+                x=sim.time,
+                series={
+                    sim.out_n[i].full_path_str(): sim.out_n[i].trans_voltage,
+                    sim.out_p[i].full_path_str(): sim.out_p[i].trans_voltage,
+                },
                 xlabel="Time (s)",
                 ylabel="Voltage (V)",
-                height=280,
+                height=180,
                 plot_group="vco_tran",
-            ),
-        ])
+                ))
+        elements.append(Plot2D(
+            x=sim.time,
+            series={
+                'rst_n': sim.rst_n.trans_voltage,
+                'vbias': sim.vbias.trans_voltage,
+            },
+            xlabel="Time (s)",
+            ylabel="Voltage (V)",
+            height=120,
+            plot_group="vco_tran",
+            ))
+        elements.append(Plot2D(
+            x=sim.time,
+            series={'vdd_src': [-x for x in sim.vdd_src.trans_current]},
+            xlabel="Time (s)",
+            ylabel="Current (A)",
+            height=120,
+            plot_group="vco_tran",
+            ))
+        return Report(elements)
 
 def count_rectangles(l: Layout, flatten: bool):
     l = l.mutable_copy()
