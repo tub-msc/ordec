@@ -13,11 +13,11 @@
     <path d="M31.0 21.0 L39.0 21.0 L39.0 22.0" class="schemWire" />
     <path d="M21.0 8.0 L21.0 7.0 L21.0 6.0 L26.0 6.0 L26.0 5.0" class="schemWire" />
     <path d="M26.0 6.0 L31.0 6.0 L31.0 8.0" class="schemWire" />
-    <path d="M10.0 10.0 L19.0 10.0" class="schemWire" />
     <path d="M5.0 22.0 L5.0 21.0 L5.0 13.0 L21.0 13.0 L21.0 14.0" class="schemWire" />
     <path d="M21.0 13.0 L21.0 12.0" class="schemWire" />
     <path d="M47.0 22.0 L47.0 21.0 L47.0 13.0 L31.0 13.0 L31.0 14.0" class="schemWire" />
     <path d="M31.0 13.0 L31.0 12.0" class="schemWire" />
+    <path d="M10.0 10.0 L19.0 10.0" class="schemWire" />
     <path d="M10.0 7.0 L34.0 7.0 L34.0 10.0 L33.0 10.0" class="schemWire" />
     <circle cx="21.0" cy="21.0" r="0.1625" class="connPoint" />
     <circle cx="28.0" cy="19.0" r="0.1625" class="connPoint" />

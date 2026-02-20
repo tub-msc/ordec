@@ -1,8 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="2275.0px" height="1190.0px" viewBox="-5.0 -1.0 65.0 34.0">
   <style type="text/css">svg { stroke-linecap: butt; stroke-linejoin: bevel; } text { font-size: 11pt; font-family: "Inconsolata", monospace; font-stretch: 75%; } .instanceName { font-weight: bold; fill: #f00; } .pinLabel, .pinArrow { fill: #f00; } .params, .cellName { fill: #80b380; } .symbolOutline { stroke: #80b380; } .symbolPoly { stroke: #000; } .symbolOutline, .symbolPoly, .schemWire, .tapPoint { fill: none; stroke-width: 0.1; } .grid { fill: #ccc; } .schemWire, .tapPoint { stroke: #cc0; } .schemWire { stroke-linecap: square; } .connPoint, .tapPointLabel { fill: #cc0; } .portArrow, .portLabel { fill: #39f; }</style>
   <g transform="matrix(1 0 0 -1 0 32.0)">
-    <path d="M41.0 15.0 L41.0 14.0 L41.0 11.0" class="schemWire" />
-    <path d="M41.0 14.0 L57.0 14.0 L57.0 22.0" class="schemWire" />
     <path d="M39.0 23.0 L38.0 23.0 L38.0 21.0 L38.0 17.0 L39.0 17.0" class="schemWire" />
     <path d="M38.0 23.0 L38.0 30.0 L39.0 30.0" class="schemWire" />
     <path d="M38.0 21.0 L25.0 21.0 L25.0 19.0" class="schemWire" />
@@ -13,6 +11,8 @@
     <path d="M28.0 20.0 L41.0 20.0 L41.0 19.0" class="schemWire" />
     <path d="M41.0 20.0 L41.0 21.0 L41.0 28.0" class="schemWire" />
     <path d="M41.0 21.0 L49.0 21.0 L49.0 22.0" class="schemWire" />
+    <path d="M41.0 15.0 L41.0 14.0 L41.0 11.0" class="schemWire" />
+    <path d="M41.0 14.0 L57.0 14.0 L57.0 22.0" class="schemWire" />
     <path d="M25.0 7.0 L25.0 6.0 L30.0 6.0 L41.0 6.0 L41.0 7.0" class="schemWire" />
     <path d="M30.0 6.0 L30.0 27.0 L33.0 27.0 L33.0 26.0" class="schemWire" />
     <path d="M9.0 22.0 L9.0 21.0 L9.0 14.0 L25.0 14.0 L25.0 15.0" class="schemWire" />

@@ -1,20 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="630.0px" height="805.0px" viewBox="0.0 -1.0 18.0 23.0">
   <style type="text/css">svg { stroke-linecap: butt; stroke-linejoin: bevel; } text { font-size: 11pt; font-family: "Inconsolata", monospace; font-stretch: 75%; } .instanceName { font-weight: bold; fill: #f00; } .pinLabel, .pinArrow { fill: #f00; } .params, .cellName { fill: #80b380; } .symbolOutline { stroke: #80b380; } .symbolPoly { stroke: #000; } .symbolOutline, .symbolPoly, .schemWire, .tapPoint { fill: none; stroke-width: 0.1; } .grid { fill: #ccc; } .schemWire, .tapPoint { stroke: #cc0; } .schemWire { stroke-linecap: square; } .connPoint, .tapPointLabel { fill: #cc0; } .portArrow, .portLabel { fill: #39f; }</style>
   <g transform="matrix(1 0 0 -1 0 21.0)">
-    <path d="M5.0 3.0 L7.0 3.0" class="schemWire" />
-    <path d="M1.0 10.0 L3.0 10.0" class="schemWire" />
+    <path d="M1.0 0.0 L2.0 0.0 L6.0 0.0 L9.0 0.0 L9.0 1.0" class="schemWire" />
+    <path d="M9.0 0.0 L12.0 0.0 L12.0 3.0 L11.0 3.0" class="schemWire" />
+    <path d="M6.0 0.0 L6.0 6.0 L8.0 6.0 L8.0 10.0 L7.0 10.0" class="schemWire" />
+    <path d="M8.0 10.0 L11.0 10.0" class="schemWire" />
     <path d="M1.0 21.0 L2.0 21.0 L5.0 21.0 L5.0 20.0" class="schemWire" />
     <path d="M5.0 21.0 L13.0 21.0 L13.0 20.0" class="schemWire" />
     <path d="M17.0 15.0 L16.0 15.0 L13.0 15.0 L13.0 16.0" class="schemWire" />
     <path d="M13.0 15.0 L13.0 12.0" class="schemWire" />
     <path d="M9.0 5.0 L9.0 6.0 L9.0 7.0 L5.0 7.0 L5.0 8.0" class="schemWire" />
     <path d="M9.0 7.0 L13.0 7.0 L13.0 8.0" class="schemWire" />
-    <path d="M1.0 0.0 L2.0 0.0 L6.0 0.0 L9.0 0.0 L9.0 1.0" class="schemWire" />
-    <path d="M9.0 0.0 L12.0 0.0 L12.0 3.0 L11.0 3.0" class="schemWire" />
-    <path d="M6.0 0.0 L6.0 6.0 L8.0 6.0 L8.0 10.0 L7.0 10.0" class="schemWire" />
-    <path d="M8.0 10.0 L11.0 10.0" class="schemWire" />
     <path d="M17.0 14.0 L16.0 14.0 L5.0 14.0 L5.0 12.0" class="schemWire" />
     <path d="M5.0 14.0 L5.0 16.0" class="schemWire" />
+    <path d="M5.0 3.0 L7.0 3.0" class="schemWire" />
+    <path d="M1.0 10.0 L3.0 10.0" class="schemWire" />
     <path d="M1.0 13.0 L16.0 13.0 L16.0 10.0 L15.0 10.0" class="schemWire" />
     <circle cx="9.0" cy="7.0" r="0.1625" class="connPoint" />
     <circle cx="5.0" cy="21.0" r="0.1625" class="connPoint" />

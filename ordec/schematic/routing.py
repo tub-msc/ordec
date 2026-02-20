@@ -12,7 +12,31 @@ from collections import defaultdict
 
 from ..core import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire, Rect4R
 
-SHORTCUT_ENABLED = True
+"""Routing constraints and heuristics used by this module.
+
+Constraints:
+- Cell bodies, pins, and ports are blocked. Routed tracks and direction markers
+  stay passable.
+- Direction marker cells (`GRID_DIR`) restrict turning near terminal escape
+  points unless the move stays aligned.
+- Existing straight segments of other nets are converted into blocked moves,
+  including corner-touch prevention.
+- Routing first tries local search windows and falls back to full-grid search.
+
+Heuristics:
+- A* uses Manhattan distance.
+- Direction changes are penalized to prefer cleaner tracks.
+- Optional congestion/history penalties discourage reuse of busy routed cells.
+- Shortcut mode connects new branches to existing net paths via reverse A* and
+  disables congestion cost for that shortcut search.
+- A one-step rip-up/reroute retry is allowed when enabled.
+"""
+
+SHORTCUT_ENABLED = True       # Enable branch-to-existing-path shortcut routing.
+MAX_RIPUP_REROUTE = 1         # Number of previous routes to temporarily rip up.
+CONGESTION_PENALTY = 2.0      # Extra cost multiplier per routed-cell reuse.
+ROUTED_BASE_PENALTY = 0.25    # Base cost for stepping onto an already routed cell.
+WINDOW_MARGIN_STEPS = (4, 10) # Local A* window margins tried before full-grid.
 
 
 # Grid cell type constants (int8 encoding)
@@ -77,9 +101,9 @@ direction_moves = {
     'E': (1, 0),
     'W': (-1, 0),
 }
-DIRECTION_OFFSETS = tuple(direction_moves.values())
-DIR_NONE = -1
-DIR_TO_INT = {
+DIRECTION_OFFSETS = tuple(direction_moves.values())  # Neighbor expansion order for A*.
+DIR_NONE = -1  # Sentinel for "no previous move direction".
+DIR_TO_INT = {  # Map direction vectors to compact integer IDs.
     (0, 1): 0,
     (0, -1): 1,
     (1, 0): 2,
@@ -241,8 +265,24 @@ def _build_blocked_move_masks(blocked_segments, height):
 def _point_keys(points, height):
     return {x * height + y for x, y in points}
 
+
+def _window_from_points(points, width, height, margin):
+    """Create a clamped search window around points."""
+    min_x = min(p[0] for p in points) - margin
+    max_x = max(p[0] for p in points) + margin
+    min_y = min(p[1] for p in points) - margin
+    max_y = max(p[1] for p in points) + margin
+    return (
+        max(0, min_x),
+        min(width - 1, max_x),
+        max(0, min_y),
+        min(height - 1, max_y),
+    )
+
 def a_star(grid, start, end, width, height, straight_lines,
-           start_name, start_dir, endpoint_mapping):
+           start_name, start_dir, endpoint_mapping,
+           route_cell_usage=None, search_window=None,
+           use_congestion=True):
     """Perform A* for new connections between port and endpoint
 
     :param grid: Schematic grid (int8 array)
@@ -254,6 +294,9 @@ def a_star(grid, start, end, width, height, straight_lines,
     :param start_name: Name of the starting port
     :param start_dir: Direction to start from
     :param endpoint_mapping: Mapping of start name to endpoint key set
+    :param route_cell_usage: Dict with routed cell usage counts
+    :param search_window: Optional (min_x, max_x, min_y, max_y) bounds
+    :param use_congestion: Whether to apply congestion/history penalties
     :returns: Calculated path
     """
 
@@ -281,6 +324,10 @@ def a_star(grid, start, end, width, height, straight_lines,
     blocked_get = blocked_masks.get
     endpoint_contains = endpoint_keys.__contains__
     d_offsets = DIRECTION_OFFSETS
+    route_usage_get = route_cell_usage.get if route_cell_usage is not None else None
+    has_search_window = search_window is not None
+    if has_search_window:
+        min_x, max_x, min_y, max_y = search_window
 
     while open_set:
         _, current_key, current_direction, popped_g_score = heappop(open_set)
@@ -310,6 +357,8 @@ def a_star(grid, start, end, width, height, straight_lines,
             ny = cy + dy
             if nx < 0 or nx >= width or ny < 0 or ny >= height:
                 continue
+            if has_search_window and (nx < min_x or nx > max_x or ny < min_y or ny > max_y):
+                continue
 
             if (grid[cy, cx] == GRID_DIR and
                     current_direction != DIR_NONE and
@@ -328,7 +377,16 @@ def a_star(grid, start, end, width, height, straight_lines,
             else:
                 direction_change_penalty = 0
 
-            tentative_g_score = current_g_score + 1 + direction_change_penalty
+            congestion_penalty = 0.0
+            if use_congestion:
+                if route_usage_get is not None:
+                    usage = route_usage_get((nx, ny), 0)
+                    if usage > 0:
+                        congestion_penalty = ROUTED_BASE_PENALTY + (usage * CONGESTION_PENALTY)
+                elif grid[ny, nx] == GRID_ROUTED:
+                    congestion_penalty = ROUTED_BASE_PENALTY
+
+            tentative_g_score = current_g_score + 1 + direction_change_penalty + congestion_penalty
             neighbor_key = nx * height + ny
             if tentative_g_score < g_score[neighbor_key]:
                 came_from[neighbor_key] = current_key
@@ -341,7 +399,8 @@ def a_star(grid, start, end, width, height, straight_lines,
 
 
 def reverse_a_star(grid, start_points, end, width, height, straight_lines, start_name, end_dir,
-                   endpoint_mapping):
+                   endpoint_mapping, route_cell_usage=None, search_window=None,
+                   use_congestion=True):
     """Perform reverse A* from the end point to all start points.
 
     :param grid: Schematic grid (int8 array)
@@ -353,6 +412,9 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     :param start_name: Name of the starting port
     :param end_dir: Direction to end with
     :param endpoint_mapping: Mapping of start name to endpoint key set
+    :param route_cell_usage: Dict with routed cell usage counts
+    :param search_window: Optional (min_x, max_x, min_y, max_y) bounds
+    :param use_congestion: Whether to apply congestion/history penalties
     :returns: Calculated path
     """
 
@@ -388,9 +450,13 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     endpoint_contains = endpoint_keys.__contains__
     start_point_contains = start_points_keys.__contains__
     d_offsets = DIRECTION_OFFSETS
+    route_usage_get = route_cell_usage.get if route_cell_usage is not None else None
+    has_search_window = search_window is not None
+    if has_search_window:
+        min_x, max_x, min_y, max_y = search_window
 
     best_path = []
-    best_path_length = sys.maxsize
+    best_path_score = sys.maxsize
 
     while open_set:
         _, current_key, current_direction, popped_g_score = heappop(open_set)
@@ -398,7 +464,7 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
             continue
 
         current_path_length = g_score[current_key]
-        if current_path_length >= best_path_length:
+        if current_path_length >= best_path_score:
             continue
 
         if start_point_contains(current_key):
@@ -409,10 +475,10 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
                 key = came_from[key]
             path.append((key // height, key % height))
 
-            current_path_length = len(path)
-            if current_path_length < best_path_length:
+            current_path_score = len(path)
+            if current_path_score < best_path_score:
                 best_path = path
-                best_path_length = current_path_length
+                best_path_score = current_path_score
 
             continue
 
@@ -429,6 +495,8 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
             nx = cx + dx
             ny = cy + dy
             if nx < 0 or nx >= width or ny < 0 or ny >= height:
+                continue
+            if has_search_window and (nx < min_x or nx > max_x or ny < min_y or ny > max_y):
                 continue
 
             if (grid[cy, cx] == GRID_DIR and
@@ -448,7 +516,16 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
             else:
                 direction_change_penalty = 0
 
-            tentative_g_score = current_g_score + 1 + direction_change_penalty
+            congestion_penalty = 0.0
+            if use_congestion:
+                if route_usage_get is not None:
+                    usage = route_usage_get((nx, ny), 0)
+                    if usage > 0:
+                        congestion_penalty = ROUTED_BASE_PENALTY + (usage * CONGESTION_PENALTY)
+                elif grid[ny, nx] == GRID_ROUTED:
+                    congestion_penalty = ROUTED_BASE_PENALTY
+
+            tentative_g_score = current_g_score + 1 + direction_change_penalty + congestion_penalty
             neighbor_key = nx * height + ny
             if tentative_g_score < g_score[neighbor_key]:
                 came_from[neighbor_key] = current_key
@@ -563,8 +640,8 @@ def transform_to_pairs(list_of_lists, straights):
 
 def sort_connections(connections, name_grid=None):
     """
-    Sort connections by distance.
-    Lower distance --> higher priority
+    Sort connections by routing difficulty.
+    Higher fanout and longer distances are routed first.
 
     :param connections: Connections between subcells
     :param name_grid: Sparse dict mapping (x, y) -> string name
@@ -577,11 +654,10 @@ def sort_connections(connections, name_grid=None):
         dy = point1[1] - point2[1]
         return dx * dx + dy * dy
 
-    # Draw all connections with paths
-    sorted_connections = []
+    sortable_connections = []
     name_endpoint_mapping = dict()
 
-    for connection in connections:
+    for index, connection in enumerate(connections):
         start, end = connection
         # Get the start which defines the drawing dictionary
         start_name = ""
@@ -599,15 +675,25 @@ def sort_connections(connections, name_grid=None):
             end = (end[0], end[1])
 
         distance = euclidean_distance_sq(start, end)
-        sorted_connections.append((distance, connection))
+        sortable_connections.append((start_name, distance, index, connection))
         name_endpoint_mapping.setdefault(start_name, set())
         name_endpoint_mapping[start_name].add(end)
 
-    # Sort by distance
-    sorted_connections.sort(key=lambda x: x[0])
+    fanout_by_start = {
+        start_name: len(endpoints)
+        for start_name, endpoints in name_endpoint_mapping.items()
+    }
 
-    # Return the sorted connections without the distance
-    return name_endpoint_mapping, [connection for _, connection in sorted_connections]
+    # Fanout-aware ordering: higher fanout first, then shorter distance.
+    sortable_connections.sort(
+        key=lambda item: (
+            -fanout_by_start[item[0]],
+            item[1],
+            item[2],
+        )
+    )
+
+    return name_endpoint_mapping, [item[3] for item in sortable_connections]
 
 
 
@@ -629,11 +715,138 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
     _straight_line_change_count.clear()
     port_drawing_dict = defaultdict(list)
     straight_lines = defaultdict(list)
+    route_cell_usage = {}
+    routed_entries = []
     name_endpoint_mapping, sorted_connections = sort_connections(connections, name_grid)
     endpoint_key_mapping = {
         start_name: _point_keys(endpoints, height)
         for start_name, endpoints in name_endpoint_mapping.items()
     }
+
+    def append_path(start_name, path):
+        port_drawing_dict[start_name].append(path)
+        current_path_stripped = keep_corners_and_edges([path])
+        if start_name not in straight_lines:
+            straight_lines[start_name] = []
+        straight_lines[start_name] = transform_to_pairs(
+            current_path_stripped, straight_lines[start_name]
+        )
+        mark_changed(start_name)
+
+    def rebuild_straight_lines(start_name):
+        paths = port_drawing_dict[start_name]
+        if paths:
+            straight_lines[start_name] = transform_to_pairs(
+                keep_corners_and_edges(paths), []
+            )
+        else:
+            straight_lines[start_name] = []
+        mark_changed(start_name)
+
+    def apply_path_to_grid(path):
+        path_cells = []
+        for (x, y) in path:
+            if grid[y][x] == GRID_EMPTY:
+                grid[y][x] = GRID_ROUTED
+                route_cell_usage[(x, y)] = route_cell_usage.get((x, y), 0) + 1
+                path_cells.append((x, y))
+            elif grid[y][x] == GRID_ROUTED:
+                route_cell_usage[(x, y)] = route_cell_usage.get((x, y), 0) + 1
+                path_cells.append((x, y))
+        return path_cells
+
+    def remove_path_from_grid(path_cells):
+        for (x, y) in path_cells:
+            usage = route_cell_usage.get((x, y), 0)
+            if usage <= 1:
+                route_cell_usage.pop((x, y), None)
+                if grid[y][x] == GRID_ROUTED:
+                    grid[y][x] = GRID_EMPTY
+            else:
+                route_cell_usage[(x, y)] = usage - 1
+
+    def route_forward_with_window(start_new, end_new, start_name, transformed_start_dir,
+                                  use_congestion=True):
+        points = [start_new, end_new]
+        for margin in WINDOW_MARGIN_STEPS:
+            search_window = _window_from_points(points, width, height, margin)
+            path = a_star(grid, start_new, end_new, width, height,
+                          straight_lines, start_name, transformed_start_dir,
+                          endpoint_key_mapping, route_cell_usage,
+                          search_window=search_window,
+                          use_congestion=use_congestion)
+            if path:
+                return path
+        return a_star(grid, start_new, end_new, width, height,
+                      straight_lines, start_name, transformed_start_dir,
+                      endpoint_key_mapping, route_cell_usage,
+                      search_window=None,
+                      use_congestion=use_congestion)
+
+    def route_reverse_with_window(path_list, end_new, start_name, transformed_end_dir,
+                                  use_congestion=True):
+        points = list(path_list)
+        points.append(end_new)
+        for margin in WINDOW_MARGIN_STEPS:
+            search_window = _window_from_points(points, width, height, margin)
+            path = reverse_a_star(grid, path_list, end_new, width, height,
+                                  straight_lines, start_name, transformed_end_dir,
+                                  endpoint_key_mapping, route_cell_usage,
+                                  search_window=search_window,
+                                  use_congestion=use_congestion)
+            if path:
+                return path
+        return reverse_a_star(grid, path_list, end_new, width, height,
+                              straight_lines, start_name, transformed_end_dir,
+                              endpoint_key_mapping, route_cell_usage,
+                              search_window=None,
+                              use_congestion=use_congestion)
+
+    def try_route_connection(start, end, start_dir, end_dir, start_name):
+        start_new, end_new = adjust_start_end_for_direction(start, start_dir, end, end_dir)
+        transformed_start_dir = direction_moves[start_dir]
+        transformed_end_dir = direction_moves[end_dir]
+
+        if start != end_new and end != start_new:
+            shortcut_available = False
+            if SHORTCUT_ENABLED and len(port_drawing_dict[start_name]) != 0:
+                shortcut_available = True
+                shortcut_start_points = port_drawing_dict[start_name]
+                path_list = list()
+                for shortcut in shortcut_start_points:
+                    # extend except for first and last element (start/end)
+                    path_list.extend(shortcut[1:-1])
+                if end_new in path_list:
+                    path = [end_new]
+                elif not path_list:
+                    raise IndexError(f"Shortcut doesn't have valid branch point to connect nid:{start_name}")
+                else:
+                    path = route_reverse_with_window(
+                        path_list, end_new, start_name, transformed_end_dir,
+                        use_congestion=False
+                    )
+                    if not path:
+                        path = route_forward_with_window(
+                            start_new, end_new, start_name, transformed_start_dir,
+                            use_congestion=False
+                        )
+            else:
+                path = route_forward_with_window(
+                    start_new, end_new, start_name, transformed_start_dir
+                )
+
+            if not path and start_new != end_new:
+                return None, start_new, end_new
+
+            if start_dir and not shortcut_available:
+                path.insert(0, start)
+                path.insert(1, start_new)
+            if end_dir:
+                path.append(end)
+        else:
+            path = [start, end]
+
+        return path, start_new, end_new
 
     for start, end in sorted_connections:
         # start and end direction and name of the starting point
@@ -659,71 +872,69 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
             end_dir = end[2]
             end = (end[0], end[1])
 
-        # Adjust start and end positions for directions
-        start_new, end_new = adjust_start_end_for_direction(start, start_dir, end, end_dir)
-        # print(f"Trying connection: {start_new} ({start_dir}) -> {end_new} ({end_dir})")
-        transformed_start_dir = direction_moves[start_dir]
-        transformed_end_dir = direction_moves[end_dir]
+        path, start_new, end_new = try_route_connection(start, end, start_dir, end_dir, start_name)
+        if path is None and MAX_RIPUP_REROUTE > 0 and routed_entries:
+            previous_entry = routed_entries.pop()
+            previous_start_name = previous_entry["start_name"]
+            if port_drawing_dict[previous_start_name]:
+                port_drawing_dict[previous_start_name].pop()
+            rebuild_straight_lines(previous_start_name)
+            remove_path_from_grid(previous_entry["path_cells"])
 
-        # Check if the start and end can be directly connected
-        if start != end_new and end != start_new:
-            # check if there already is a path from this port/cell connection
-            shortcut_available = False
-            if SHORTCUT_ENABLED:
-                if len(port_drawing_dict[start_name]) != 0:
-                    shortcut_available = True
-                    shortcut_start_points = port_drawing_dict[start_name]
-                    path_list = list()
-                    for shortcut in shortcut_start_points:
-                        # extend except for first and last element (start/end)
-                        path_list.extend(shortcut[1:-1])
-                    if end_new in path_list:
-                        # if already in path_list no reason to do an a-star
-                        path = [end_new]
-                    elif not path_list:
-                        raise IndexError(f"Shortcut doesn't have valid branch point to connect nid:{start_name}")
-                    else:
-                        # Call reverse A* from end point to all start points
-                        path = reverse_a_star(grid, path_list, end_new, width, height,
-                                              straight_lines, start_name, transformed_end_dir,
-                                              endpoint_key_mapping)
-                else:
-                    # No shortcut available, calculate the normal path
-                    path = a_star(grid, start_new, end_new, width, height,
-                                  straight_lines, start_name, transformed_start_dir,
-                                  endpoint_key_mapping)
+            path, start_new, end_new = try_route_connection(start, end, start_dir, end_dir, start_name)
+            if path is not None:
+                path_cells = apply_path_to_grid(path)
+                append_path(start_name, path)
+                routed_entries.append({
+                    "start": start,
+                    "end": end,
+                    "start_dir": start_dir,
+                    "end_dir": end_dir,
+                    "start_name": start_name,
+                    "path": path,
+                    "path_cells": path_cells,
+                })
 
-            else:
-                # Normal path calculation if shortcutting is disabled
-                path = a_star(grid, start_new, end_new, width, height,
-                              straight_lines, start_name, transformed_start_dir,
-                              endpoint_key_mapping)
+                previous_path, _, _ = try_route_connection(
+                    previous_entry["start"],
+                    previous_entry["end"],
+                    previous_entry["start_dir"],
+                    previous_entry["end_dir"],
+                    previous_start_name,
+                )
+                if previous_path is not None:
+                    previous_cells = apply_path_to_grid(previous_path)
+                    append_path(previous_start_name, previous_path)
+                    previous_entry["path"] = previous_path
+                    previous_entry["path_cells"] = previous_cells
+                    routed_entries.append(previous_entry)
+                    continue
 
-            if not path and start_new != end_new:
-                print(f"Failed to connect {start_new} to {end_new}. Adding terminal taps ...")
-                continue
+                if port_drawing_dict[start_name]:
+                    port_drawing_dict[start_name].pop()
+                rebuild_straight_lines(start_name)
+                remove_path_from_grid(path_cells)
 
-            # Add the final connection step if needed
-            if start_dir and not shortcut_available:
-                # only append if no shortcut available
-                path.insert(0, start)
-                path.insert(1, start_new)
-            if end_dir:
-                path.append(end)
-        else:
-            path = [start, end]
+            restore_cells = apply_path_to_grid(previous_entry["path"])
+            append_path(previous_start_name, previous_entry["path"])
+            previous_entry["path_cells"] = restore_cells
+            routed_entries.append(previous_entry)
 
-        port_drawing_dict[start_name].append(path)
-        # save all the straight lines
-        current_path_stripped = keep_corners_and_edges([path])
-        if start_name not in straight_lines.keys():
-            straight_lines[start_name] = []
-        straight_lines[start_name] = transform_to_pairs(current_path_stripped, straight_lines[start_name])
-        mark_changed(start_name)
-        # Draw the path on the grid
-        for (x, y) in path:
-            if grid[y][x] == GRID_EMPTY:
-                grid[y][x] = GRID_ROUTED
+        if path is None:
+            print(f"Failed to connect {start_new} to {end_new}. Adding terminal taps ...")
+            continue
+
+        path_cells = apply_path_to_grid(path)
+        append_path(start_name, path)
+        routed_entries.append({
+            "start": start,
+            "end": end,
+            "start_dir": start_dir,
+            "end_dir": end_dir,
+            "start_name": start_name,
+            "path": path,
+            "path_cells": path_cells,
+        })
 
     for key, value in port_drawing_dict.items():
         if SHORTCUT_ENABLED:

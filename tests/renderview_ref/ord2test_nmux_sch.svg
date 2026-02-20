@@ -1,14 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1750.0px" height="1645.0px" viewBox="-13.0 -6.0 50.0 47.0">
   <style type="text/css">svg { stroke-linecap: butt; stroke-linejoin: bevel; } text { font-size: 11pt; font-family: "Inconsolata", monospace; font-stretch: 75%; } .instanceName { font-weight: bold; fill: #f00; } .pinLabel, .pinArrow { fill: #f00; } .params, .cellName { fill: #80b380; } .symbolOutline { stroke: #80b380; } .symbolPoly { stroke: #000; } .symbolOutline, .symbolPoly, .schemWire, .tapPoint { fill: none; stroke-width: 0.1; } .grid { fill: #ccc; } .schemWire, .tapPoint { stroke: #cc0; } .schemWire { stroke-linecap: square; } .connPoint, .tapPointLabel { fill: #cc0; } .portArrow, .portLabel { fill: #39f; }</style>
   <g transform="matrix(1 0 0 -1 0 35.0)">
-    <path d="M4.0 22.0 L12.0 22.0" class="schemWire" />
-    <path d="M4.0 12.0 L10.0 12.0 L10.0 13.0 L12.0 13.0" class="schemWire" />
-    <path d="M36.0 15.0 L29.0 15.0 L29.0 17.0 L28.0 17.0" class="schemWire" />
-    <path d="M16.0 22.0 L23.0 22.0 L23.0 18.0 L24.0 18.0" class="schemWire" />
     <path d="M-2.0 -5.0 L-2.0 -4.0 L-2.0 4.0 L-1.0 4.0 L0.0 4.0" class="schemWire" />
     <path d="M-1.0 4.0 L-1.0 14.0 L0.0 14.0" class="schemWire" />
     <path d="M-1.0 14.0 L-1.0 24.0 L0.0 24.0" class="schemWire" />
     <path d="M-1.0 24.0 L-1.0 34.0 L0.0 34.0" class="schemWire" />
+    <path d="M10.0 -5.0 L10.0 -4.0 L10.0 14.0 L11.0 14.0 L12.0 14.0" class="schemWire" />
+    <path d="M11.0 14.0 L11.0 24.0 L12.0 24.0" class="schemWire" />
+    <path d="M4.0 22.0 L12.0 22.0" class="schemWire" />
+    <path d="M4.0 12.0 L9.0 12.0 L9.0 13.0 L12.0 13.0" class="schemWire" />
+    <path d="M36.0 15.0 L29.0 15.0 L29.0 17.0 L28.0 17.0" class="schemWire" />
+    <path d="M16.0 22.0 L23.0 22.0 L23.0 18.0 L24.0 18.0" class="schemWire" />
     <path d="M16.0 12.0 L23.0 12.0 L23.0 17.0 L24.0 17.0" class="schemWire" />
     <path d="M-12.0 2.0 L0.0 2.0" class="schemWire" />
     <path d="M-12.0 3.0 L0.0 3.0" class="schemWire" />
@@ -18,15 +20,13 @@
     <path d="M-12.0 23.0 L0.0 23.0" class="schemWire" />
     <path d="M-12.0 32.0 L0.0 32.0" class="schemWire" />
     <path d="M-12.0 33.0 L0.0 33.0" class="schemWire" />
-    <path d="M4.0 32.0 L11.0 32.0 L11.0 23.0 L12.0 23.0" class="schemWire" />
+    <path d="M4.0 32.0 L10.0 32.0 L10.0 23.0 L12.0 23.0" class="schemWire" />
     <path d="M4.0 2.0 L11.0 2.0 L11.0 12.0 L12.0 12.0" class="schemWire" />
-    <path d="M10.0 -5.0 L10.0 -4.0 L10.0 11.0 L9.0 11.0 L9.0 14.0 L10.0 14.0 L12.0 14.0" class="schemWire" />
-    <path d="M10.0 14.0 L10.0 24.0 L12.0 24.0" class="schemWire" />
     <path d="M22.0 -5.0 L22.0 19.0 L24.0 19.0" class="schemWire" />
     <circle cx="-1.0" cy="4.0" r="0.1625" class="connPoint" />
     <circle cx="-1.0" cy="14.0" r="0.1625" class="connPoint" />
     <circle cx="-1.0" cy="24.0" r="0.1625" class="connPoint" />
-    <circle cx="10.0" cy="14.0" r="0.1625" class="connPoint" />
+    <circle cx="11.0" cy="14.0" r="0.1625" class="connPoint" />
     <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 -12.0 40.0)" class="tapPoint" />
     <text transform="matrix(0 0.045 0.045 0 -12.0 39.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">??1</text>
     <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 -12.0 -5.0)" class="tapPoint" />
