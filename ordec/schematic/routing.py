@@ -154,7 +154,7 @@ def dependency_versions(start_name):
         return 0
     return sum(v for k, v in _straight_line_change_count.items() if k != start_name)
 
-def preprocess_straight_lines(straight_lines, start_name):
+def preprocess_straight_lines(straight_lines, start_name, height):
     """Preprocess straight lines into a set of blocked movements, including
     corner-touch prevention, while allowing orthogonal crossings.
     """
@@ -163,7 +163,11 @@ def preprocess_straight_lines(straight_lines, start_name):
 
     entry = _cache.get(start_name)
     if entry and entry["dep_version"] == dep_version:
-        return entry["blocked_moves"]
+        blocked_masks = entry["blocked_masks"].get(height)
+        if blocked_masks is None:
+            blocked_masks = _build_blocked_move_masks(entry["blocked_moves"], height)
+            entry["blocked_masks"][height] = blocked_masks
+        return entry["blocked_moves"], blocked_masks
 
     blocked_moves = set()
     corner_nodes = set()
@@ -204,11 +208,13 @@ def preprocess_straight_lines(straight_lines, start_name):
             blocked_moves.add(((x, y), n))
             blocked_moves.add((n, (x, y)))
 
+    blocked_masks = _build_blocked_move_masks(blocked_moves, height)
     _cache[start_name] = {
         "dep_version": dep_version,
         "blocked_moves": blocked_moves,
+        "blocked_masks": {height: blocked_masks},
     }
-    return blocked_moves
+    return blocked_moves, blocked_masks
 
 
 def _build_blocked_move_masks(blocked_segments, height):
@@ -247,13 +253,14 @@ def a_star(grid, start, end, width, height, straight_lines,
     :param straight_lines: Already calculated paths
     :param start_name: Name of the starting port
     :param start_dir: Direction to start from
-    :param endpoint_mapping: Mapping for potential endpoints
+    :param endpoint_mapping: Mapping of start name to endpoint key set
     :returns: Calculated path
     """
 
-    blocked_segments = preprocess_straight_lines(straight_lines, start_name)
-    blocked_masks = _build_blocked_move_masks(blocked_segments, height)
-    endpoint_keys = _point_keys(endpoint_mapping[start_name], height)
+    _, blocked_masks = preprocess_straight_lines(
+        straight_lines, start_name, height
+    )
+    endpoint_keys = endpoint_mapping[start_name]
 
     end_x, end_y = end
     start_key = start[0] * height + start[1]
@@ -345,13 +352,14 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     :param straight_lines: Already calculated paths
     :param start_name: Name of the starting port
     :param end_dir: Direction to end with
-    :param endpoint_mapping: Mapping for potential endpoints
+    :param endpoint_mapping: Mapping of start name to endpoint key set
     :returns: Calculated path
     """
 
-    blocked_segments = preprocess_straight_lines(straight_lines, start_name)
-    blocked_masks = _build_blocked_move_masks(blocked_segments, height)
-    endpoint_keys = _point_keys(endpoint_mapping[start_name], height)
+    _, blocked_masks = preprocess_straight_lines(
+        straight_lines, start_name, height
+    )
+    endpoint_keys = endpoint_mapping[start_name]
 
     end_x, end_y = end
     end_key = end_x * height + end_y
@@ -622,6 +630,10 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
     port_drawing_dict = defaultdict(list)
     straight_lines = defaultdict(list)
     name_endpoint_mapping, sorted_connections = sort_connections(connections, name_grid)
+    endpoint_key_mapping = {
+        start_name: _point_keys(endpoints, height)
+        for start_name, endpoints in name_endpoint_mapping.items()
+    }
 
     for start, end in sorted_connections:
         # start and end direction and name of the starting point
@@ -674,18 +686,18 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
                         # Call reverse A* from end point to all start points
                         path = reverse_a_star(grid, path_list, end_new, width, height,
                                               straight_lines, start_name, transformed_end_dir,
-                                              name_endpoint_mapping)
+                                              endpoint_key_mapping)
                 else:
                     # No shortcut available, calculate the normal path
                     path = a_star(grid, start_new, end_new, width, height,
                                   straight_lines, start_name, transformed_start_dir,
-                                  name_endpoint_mapping)
+                                  endpoint_key_mapping)
 
             else:
                 # Normal path calculation if shortcutting is disabled
                 path = a_star(grid, start_new, end_new, width, height,
                               straight_lines, start_name, transformed_start_dir,
-                              name_endpoint_mapping)
+                              endpoint_key_mapping)
 
             if not path and start_new != end_new:
                 print(f"Failed to connect {start_new} to {end_new}. Adding terminal taps ...")
