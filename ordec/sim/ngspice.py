@@ -10,7 +10,7 @@ import logging
 from contextlib import contextmanager
 from pathlib import Path
 from subprocess import Popen, PIPE, STDOUT
-from typing import Iterator, NamedTuple, Optional
+from typing import Iterator, NamedTuple, Optional, Literal
 
 from ..core.rational import Rational as R
 
@@ -249,22 +249,29 @@ class Ngspice:
         self.command(' '.join(cmd))
         return self._write_raw()
 
-    def ac(self, *args) -> SimArray:
-        self.command(f"ac {' '.join(args)}")
+    def ac(self, scheme: Literal["dec", "oct", "lin"], n: int, fstart: R, fstop: R) -> SimArray:
+        """Runs Ngspice's 'ac' command for AC small-signal analysis."""
+        if scheme not in ('dec', 'oct', 'lin'):
+            raise TypeError("scheme must be 'dec', 'oct' or 'lin'.1`")
+        self.command(" ".join([
+            'ac',
+            scheme,
+            str(n),
+            R(fstart).compat_str(),
+            R(fstop).compat_str(),
+            ]))
         return self._write_raw()
 
     def dc(self, source_name: str, vstart: R, vstop: R, vstep: R) -> SimArray:
-        self.command(
-            "dc "
-            + " ".join(
-                [
-                    source_name,
-                    R(vstart).compat_str(),
-                    R(vstop).compat_str(),
-                    R(vstep).compat_str(),
-                ]
-            )
-        )
+        """Runs Ngspice's 'dc' command for a DC voltage sweep. For a
+        single-point DC simulation, use the op() method (operating point)."""
+        self.command(" ".join([
+            'dc',
+            source_name,
+            R(vstart).compat_str(),
+            R(vstop).compat_str(),
+            R(vstep).compat_str(),
+            ]))
         return self._write_raw()
 
     def vector_info(self) -> Iterator[NgspiceVector]:
