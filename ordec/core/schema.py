@@ -645,14 +645,18 @@ class SimHierarchy(SubgraphRoot):
         add_sch(schematic, None)
         return simhier
 
-    def _get_sim_data(self, voltage_attr, current_attr):
+    def _get_sim_data(self, voltage_attr, current_attr, top_level_only=True):
         """Helper to extract voltage and current data for different simulation types."""
         voltages = {}
         for sn in self.all(SimNet):
+            if top_level_only and sn.parent_inst is not None:
+                continue
             if (voltage_val := getattr(sn, voltage_attr, None)) is not None:
                 voltages[sn.full_path_str()] = voltage_val
         currents = {}
         for si in self.all(SimInstance):
+            if top_level_only and si.parent_inst is not None:
+                continue
             if (current_val := getattr(si, current_attr, None)) is not None:
                 currents[si.full_path_str()] = current_val
         return voltages, currents
