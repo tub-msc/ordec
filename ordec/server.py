@@ -247,9 +247,15 @@ class ImportTracker:
                 continue
             spec = find_spec_method(fullname, path, target)
             if spec is not None:
-                # Record file path (ignore non-file origins)
-                if spec.origin and spec.has_location:
-                    self.files.append(spec.origin)
+                # Record file path for both regular modules and .ord modules.
+                origin = getattr(spec, "origin", None)
+                if isinstance(origin, str) and os.path.isfile(origin):
+                    self.files.append(origin)
+                else:
+                    loader = getattr(spec, "loader", None)
+                    ord_path = getattr(loader, "ord_path", None)
+                    if isinstance(ord_path, str) and os.path.isfile(ord_path):
+                        self.files.append(ord_path)
                 return spec
         return None
 
@@ -334,8 +340,9 @@ class ConnectionHandler:
                 else:
                     conn_globals = module.__dict__
 
-            # Use tracked files - includes all files found even if import failed
-            return conn_globals, tracker.files, exc
+            # Use tracked files - includes all files found even if import failed.
+            # Keep first-seen order, drop duplicates.
+            return conn_globals, list(dict.fromkeys(tracker.files)), exc
 
     def handle_connection(self, websocket):
         remote = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
