@@ -17,7 +17,8 @@ from ordec.lib import ihp130
 from ordec.lib.base import Res, Cap, Gnd, Vdc, NoConn, Vpwl
 from ordec.schematic.routing import schematic_routing
 from ordec.schematic.helpers import symbol_place_pins, add_conn_points
-from ordec.sim.sim_hierarchy import HighlevelSim
+from ordec.sim import HighlevelSim
+from ordec.report import Report, Plot2D, Markdown
 from ordec.layout.makevias import makevias
 from ordec.layout import write_gds, gds_str_from_layout
 from ordec.layout import helpers
@@ -650,13 +651,46 @@ class VcoTb(Cell):
 
         return s
 
+    @generate
     def sim_tran(self):
         """Run sync transient simulation."""
 
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s)
+        s = SimHierarchy.from_schematic(self.schematic)
+        sim = HighlevelSim(s)
         sim.tran(R('10p'), R('30n'))
         return s
+
+    @generate
+    def report_tran(self):
+        sim = self.sim_tran
+        sim_type, sim_data = sim.webdata()
+        if sim_type != "transim":
+            raise RuntimeError(f"Unexpected sim view type: {sim_type!r}")
+
+        voltages = sim_data["voltages"]
+        main_names = sorted(
+            name for name in voltages.keys()
+            if name.startswith("out_p.") or name.startswith("out_n.")
+        )
+        if not main_names:
+            main_names = sorted(voltages.keys())[:4]
+
+        series = {
+            name: voltages[name]
+            for name in main_names
+        }
+
+        return Report([
+            Markdown("## VCO transient main waveforms"),
+            Plot2D(
+                x=sim_data["time"],
+                series=series,
+                xlabel="Time (s)",
+                ylabel="Voltage (V)",
+                height=280,
+                plot_group="vco_tran",
+            ),
+        ])
 
 def count_rectangles(l: Layout, flatten: bool):
     l = l.mutable_copy()
