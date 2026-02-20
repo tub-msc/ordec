@@ -3,6 +3,7 @@
 
 import sys
 import os
+import ast
 from importlib.abc import Loader, MetaPathFinder
 from importlib.util import spec_from_loader
 from .language import ord_to_py
@@ -24,7 +25,9 @@ class OrdLoader(Loader):
 
     def exec_module(self, module):
         module.__dict__['__file__'] = self.ord_path
-        code = compile(ord_to_py(self.source_text), "<string>", "exec")
+        ord_module = ord_to_py(self.source_text)
+        module.__dict__['__ord_py_source__'] = ast.unparse(ord_module)
+        code = compile(ord_module, "<string>", "exec")
         exec(code, module.__dict__, module.__dict__)
 
 class OrdMetaPathFinder(MetaPathFinder):

@@ -54,6 +54,7 @@ Furthermore, there are two modes in which you can use the ORDeC web UI:
 """
 
 import argparse
+import ast
 import http
 import json
 import traceback
@@ -130,7 +131,8 @@ def discover_views(conn_globals, recursive=True, modules_visited=None):
                 for member_name, member in generate_members:
                     name = f'{instance!r}.{member_name}'
                     views.append({'name': name} | member.info_dict())
-            
+    if "__ord_py_source__" in conn_globals:
+        views.append({"name": "__ord_py_source__", "auto_refresh": True})
     return views
 
 class RWLock:
@@ -271,6 +273,10 @@ class ConnectionHandler:
         try:
             with self.import_lock.read():
                 view = eval(view_name, conn_globals, conn_globals)
+                if isinstance(view, str):
+                    # Mainly for __ord_py_source__:
+                    from .report import PreformattedText, Report
+                    view = Report([PreformattedText(view)])
                 viewtype, data = view.webdata()
             msg_ret['type'] = viewtype
             msg_ret['data'] = data
@@ -284,7 +290,9 @@ class ConnectionHandler:
         exc = None
         if source_type == 'ord':
             # Having the import here enables auto-reloading of ord.
-            code = compile(ord_to_py(source_data), "<string>", "exec")
+            ord_module = ord_to_py(source_data)
+            conn_globals["__ord_py_source__"] = ast.unparse(ord_module)
+            code = compile(ord_module, "<string>", "exec")
             with self.import_lock.write():
                 try:
                     exec(code, conn_globals, conn_globals)
