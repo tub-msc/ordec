@@ -647,92 +647,9 @@ class SimHierarchy(SubgraphRoot):
         add_sch(schematic, None)
         return simhier
 
-    def _get_sim_data(self, voltage_attr, current_attr, top_level_only=True):
-        """Helper to extract voltage and current data for different simulation types."""
-        voltages = {}
-        for sn in self.all(SimNet):
-            if top_level_only and sn.parent_inst is not None:
-                continue
-            if (voltage_val := getattr(sn, voltage_attr, None)) is not None:
-                voltages[sn.full_path_str()] = voltage_val
-        currents = {}
-        for si in self.all(SimInstance):
-            if top_level_only and si.parent_inst is not None:
-                continue
-            if (current_val := getattr(si, current_attr, None)) is not None:
-                currents[si.full_path_str()] = current_val
-        return voltages, currents
-
     def webdata(self):
-        def json_seq(values):
-            if values is None:
-                return None
-            return tuple(values)
-
-        if self.sim_type == SimType.TRAN:
-            voltages, currents = self._get_sim_data('trans_voltage', 'trans_current')
-            voltages = {k: json_seq(v) for k, v in voltages.items()}
-            currents = {k: json_seq(v) for k, v in currents.items()}
-            return 'transim', {
-                'time': json_seq(self.time),
-                'voltages': voltages,
-                'currents': currents
-            }
-        elif self.sim_type == SimType.AC:
-            voltages, currents = self._get_sim_data('ac_voltage', 'ac_current')
-            # Convert complex tuples to [real, imag] pairs for JSON
-            def complex_to_pairs(vals):
-                if vals is None:
-                    return None
-                return tuple((v.real, v.imag) for v in vals)
-            voltages = {k: complex_to_pairs(v) for k, v in voltages.items()}
-            currents = {k: complex_to_pairs(v) for k, v in currents.items()}
-            return 'acsim', {
-                'freq': json_seq(self.freq),
-                'voltages': voltages,
-                'currents': currents
-            }
-        elif self.sim_type == SimType.DCSWEEP:
-            if self.sim_data is None or self.sweep_field is None:
-                return "dcsweep", {
-                    "sweep": None,
-                    "sweep_name": self.sweep_field,
-                    "voltages": {},
-                    "currents": {},
-                }
-            voltages, currents = self._get_sim_data(
-                "dc_sweep_voltage",
-                "dc_sweep_current",
-            )
-            voltages = {k: json_seq(v) for k, v in voltages.items()}
-            currents = {k: json_seq(v) for k, v in currents.items()}
-            return "dcsweep", {
-                "sweep": json_seq(self.sim_data.column(self.sweep_field)),
-                "sweep_name": self.sweep_field,
-                "voltages": voltages,
-                "currents": currents,
-            }
-        elif self.sim_type == SimType.DC:
-            def fmt_float(val, unit):
-                x=str(R(f"{val:.03e}"))+unit
-                x=re.sub(r"([0-9])([a-zA-Z])", r"\1 \2", x)
-                x=x.replace("u", "μ")
-                x=re.sub(r"e([+-]?[0-9]+)", r"×10<sup>\1</sup>", x)
-                return x
-
-            dc_voltages = []
-            for sn in self.all(SimNet):
-                if sn.dc_voltage is None:
-                    continue
-                dc_voltages.append([sn.full_path_str(), fmt_float(sn.dc_voltage, "V")])
-            dc_currents = []
-            for si in self.all(SimInstance):
-                if si.dc_current is None:
-                    continue
-                dc_currents.append([si.full_path_str(), fmt_float(si.dc_current, "A")])
-            return 'dcsim', {'dc_voltages': dc_voltages, 'dc_currents': dc_currents}
-        else:
-            return 'nosim', {}
+        from ..sim.webdata import webdata
+        return webdata(self)
 
 @public
 class SimNet(Node):
