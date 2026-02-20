@@ -291,6 +291,48 @@ const viewClassOf = {
             );
         }
     },
+    dcsweep: class {
+        constructor(resContent) {
+            this.resContent = resContent;
+            this.plots = [];
+        }
+
+        update(msgData) {
+            this.plots.forEach(p => p.destroy());
+            this.plots = [];
+
+            const container = document.createElement('div');
+            container.classList.add('simplot-container');
+            this.resContent.replaceChildren(container);
+
+            const sweep = msgData.sweep;
+            const sweepName = msgData.sweep_name || "Sweep";
+            const voltages = msgData.voltages;
+            const currents = msgData.currents;
+
+            if (Object.keys(voltages).length > 0) {
+                const plot = new SimPlot(container, {
+                    xlabel: sweepName,
+                    ylabel: "Voltage (V)",
+                });
+                plot.setData(sweep, Object.entries(voltages).map(
+                    ([name, values]) => ({ name, values })
+                ));
+                this.plots.push(plot);
+            }
+
+            if (Object.keys(currents).length > 0) {
+                const plot = new SimPlot(container, {
+                    xlabel: sweepName,
+                    ylabel: "Current (A)",
+                });
+                plot.setData(sweep, Object.entries(currents).map(
+                    ([name, values]) => ({ name, values })
+                ));
+                this.plots.push(plot);
+            }
+        }
+    },
     transim: class {
         constructor(resContent) {
             this.resContent = resContent;
@@ -506,6 +548,7 @@ export class ResultViewer {
             prevOptVal = this.restoreSelectedView;
         }
         vs.innerHTML = "<option disabled selected value>--- Select result from list ---</option>";
+        let selectedVal = null;
         this.client.views.forEach(view => {
             var option = document.createElement("option");
             option.innerText = view.name;
@@ -513,9 +556,10 @@ export class ResultViewer {
             vs.appendChild(option)
             if (view.name == prevOptVal) {
                 option.selected = true;
+                selectedVal = view.name;
             }
         });
-        this.viewSelected = prevOptVal;
+        this.viewSelected = selectedVal;
         this.viewListInitialized = true;
     }
 

@@ -253,6 +253,20 @@ class Ngspice:
         self.command(f"ac {' '.join(args)}")
         return self._write_raw()
 
+    def dc(self, source_name: str, vstart: R, vstop: R, vstep: R) -> SimArray:
+        self.command(
+            "dc "
+            + " ".join(
+                [
+                    source_name,
+                    R(vstart).compat_str(),
+                    R(vstop).compat_str(),
+                    R(vstep).compat_str(),
+                ]
+            )
+        )
+        return self._write_raw()
+
     def vector_info(self) -> Iterator[NgspiceVector]:
         """Wrapper for ngspice's "display" command."""
         display_output = self.command("display")

@@ -375,7 +375,12 @@ export class SimPlot {
         this.currentTransform = d3.zoomIdentity;
         this._yZoomScale = 1;
         this._yPanOffset = 0;
-        this.svg.call(this.zoom.transform, d3.zoomIdentity);
+        // Render once before calling zoom.transform so Chromium doesn't try
+        // to resolve relative SVG lengths during default zoom extent lookup.
+        this._render();
+        if (this._plotW > 0 && this._plotH > 0) {
+            this.svg.call(this.zoom.transform, d3.zoomIdentity);
+        }
     }
 
     _updateLegend() {

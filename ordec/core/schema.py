@@ -496,6 +496,7 @@ class SimType(Enum):
     DC = 'dc'
     TRAN = 'tran'
     AC = 'ac'
+    DCSWEEP = 'dcsweep'
 
 def parent_siminstance(c: Node) -> Node:
     while not isinstance(c, (SimInstance, SimHierarchy)):
@@ -568,6 +569,7 @@ class SimHierarchy(SubgraphRoot):
     sim_data = Attr(SimArray) #: Packed simulation result data shared by all SimNet/SimInstance nodes.
     time_field = Attr(str) #: Column name in sim_data for the time axis (transient), or None.
     freq_field = Attr(str) #: Column name in sim_data for the frequency axis (AC), or None.
+    sweep_field = Attr(str) #: Column name in sim_data for the DC sweep axis, or None.
 
     @property
     def time(self):
@@ -690,6 +692,26 @@ class SimHierarchy(SubgraphRoot):
                 'voltages': voltages,
                 'currents': currents
             }
+        elif self.sim_type == SimType.DCSWEEP:
+            if self.sim_data is None or self.sweep_field is None:
+                return "dcsweep", {
+                    "sweep": None,
+                    "sweep_name": self.sweep_field,
+                    "voltages": {},
+                    "currents": {},
+                }
+            voltages, currents = self._get_sim_data(
+                "dc_sweep_voltage",
+                "dc_sweep_current",
+            )
+            voltages = {k: json_seq(v) for k, v in voltages.items()}
+            currents = {k: json_seq(v) for k, v in currents.items()}
+            return "dcsweep", {
+                "sweep": json_seq(self.sim_data.column(self.sweep_field)),
+                "sweep_name": self.sweep_field,
+                "voltages": voltages,
+                "currents": currents,
+            }
         elif self.sim_type == SimType.DC:
             def fmt_float(val, unit):
                 x=str(R(f"{val:.03e}"))+unit
@@ -721,6 +743,7 @@ class SimNet(Node):
 
     trans_field = Attr(str) #: Column name in root sim_data for transient voltage.
     ac_field = Attr(str) #: Column name in root sim_data for AC voltage.
+    dc_sweep_field = Attr(str) #: Column name in root sim_data for DC sweep voltage.
     dc_voltage = Attr(float)
 
     @property
@@ -736,6 +759,13 @@ class SimNet(Node):
         if sd is None or self.ac_field is None:
             return None
         return sd.column(self.ac_field)
+
+    @property
+    def dc_sweep_voltage(self):
+        sd = self.root.sim_data
+        if sd is None or self.dc_sweep_field is None:
+            return None
+        return sd.column(self.dc_sweep_field)
 
     eref = ExternalRef(Net|Pin,
         of_subgraph=lambda c: c.root.schematic_or_symbol_at(c.parent_inst),
@@ -760,6 +790,7 @@ class SimInstance(Node):
 
     trans_field = Attr(str) #: Column name in root sim_data for transient current.
     ac_field = Attr(str) #: Column name in root sim_data for AC current.
+    dc_sweep_field = Attr(str) #: Column name in root sim_data for DC sweep current.
     dc_current = Attr(float)
 
     @property
@@ -775,6 +806,13 @@ class SimInstance(Node):
         if sd is None or self.ac_field is None:
             return None
         return sd.column(self.ac_field)
+
+    @property
+    def dc_sweep_current(self):
+        sd = self.root.sim_data
+        if sd is None or self.dc_sweep_field is None:
+            return None
+        return sd.column(self.dc_sweep_field)
 
     schematic = SubgraphRef(Schematic,
         typecheck_custom=lambda v: isinstance(v, (Symbol, Schematic)),

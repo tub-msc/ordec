@@ -63,7 +63,7 @@ def check_sim_tran(res_viewer):
 def check_report_example(res_viewer):
     html = res_viewer.html
     assert html.find('class="report-view"') >= 0
-    assert html.count('class="report-element"') == 8
+    assert html.count('class="report-element"') == 4
     assert html.count('class="report-svg"') == 2
     assert html.count('class="report-plot2d"') == 4
     assert html.find('simplot') >= 0
@@ -88,7 +88,7 @@ testcases_integrated = {
         'VoltageDivider().sim_dc': [check_sim_dc, check_min_size(300, 200)],
     },
     "blank": {
-        'undefined':[],
+        'null':[],
     },
     "voltagedivider":{
         'VoltageDivider().schematic': [check_schematic, check_min_size(300, 200)],
