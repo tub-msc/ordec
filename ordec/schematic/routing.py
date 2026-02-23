@@ -13,6 +13,7 @@ from dataclasses import dataclass
 #ordec imports
 
 from ..core import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire, Rect4R
+from ..render import Renderer
 
 """Routing constraints and heuristics used by this module.
 
@@ -988,6 +989,10 @@ def adjust_outline_initial(node):
     Returns:
         Rect4R: Adjusted outline bounding all elements.
     """
+    # Character width in schematic units (11pt Inconsolata 75% stretch * scale 0.045)
+    label_char_width = 0.3
+    port_text_space = Renderer.port_text_space
+
     outline = None
     for port in node.all(SchemPort):
         if outline:
@@ -995,6 +1000,12 @@ def adjust_outline_initial(node):
         else:
             outline = Rect4R(lx=port.pos.x, ly=port.pos.y,
                              ux=port.pos.x, uy=port.pos.y)
+        # Extend outline to fit port label text
+        label = port.ref.pin.full_path_str()
+        text_width = len(label) * label_char_width
+        total = port_text_space + text_width
+        direction = port.align * Vec2R(0, -1)
+        outline = outline.extend(port.pos + direction * total)
     for instance in node.all(SchemInstance):
         instance_transform = instance.loc_transform()
         instance_geometry = instance_transform * instance.symbol.outline
