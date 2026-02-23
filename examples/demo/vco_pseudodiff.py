@@ -704,6 +704,48 @@ def count_rectangles(l: Layout, flatten: bool):
         helpers.flatten(l)
     return gds_str_from_layout(l).count("BOUNDARY") + gds_str_from_layout(l).count("PATH")
 
+@generate_func
+def report_analog_design():
+    # Count transistors:
+    transistor_table = []
+    hier = SimHierarchy.from_schematic(Vco().schematic)
+    for inst in hier.all(SimInstance):
+        if type(inst.eref.cell).__name__ in ('Nmos', 'Pmos'):
+            transistor_table.append(f'| {inst.full_path_str()} | {repr(inst.eref.cell)} |')
+    transistor_count = len(transistor_table)
+
+    # Count rectangles:
+    layout = VcoRing().layout.mutable_copy()
+    helpers.flatten(layout)
+
+    rect_count = 0
+    for rect in layout.all(LayoutRect):
+        rect_count += 1
+    for path in layout.all(LayoutPath):
+        vertex_count = len(path.vertices())
+        if vertex_count < 2:
+            continue
+        rect_count += (vertex_count - 1)
+
+    return Report([
+        Markdown("# Analog design report: Pseudo-differential voltage-controlled ring oscillator"),
+        #Svg(Vco().symbol),
+        Markdown(
+            "## Transistor count (schematic)\n"
+            f"There are **{transistor_count}** transistors in the example design.\n"
+            "\n"
+            " | Instance Name | Reference |\n"
+            "| -- | -- |\n"
+            + '\n'.join(transistor_table) +
+            "\n"
+            "## Rectangle count (layout)\n"
+            f"The layout comprises **{rect_count}** rectangles.\n"
+            "\n"
+            "(This is only the VcoRing part.)"
+
+        )
+    ])
+
 if __name__ == "__main__":
     with open("out.gds", "wb") as f:
         write_gds(VcoRing().layout, f)
