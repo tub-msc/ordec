@@ -19,7 +19,7 @@ from ordec.lib.base import Res, Cap, Gnd, Vdc, NoConn, Vpwl
 from ordec.schematic.routing import schematic_routing
 from ordec.schematic.helpers import symbol_place_pins, add_conn_points
 from ordec.sim import HighlevelSim
-from ordec.report import Report, Plot2D, Markdown
+from ordec.report import Report, Plot2D, Markdown, PreformattedText
 from ordec.layout.makevias import makevias
 from ordec.layout import write_gds, gds_str_from_layout
 from ordec.layout import helpers
@@ -662,23 +662,26 @@ def report_analog_design():
             continue
         rect_count += (vertex_count - 1)
 
+    netlist = HighlevelSim(SimHierarchy.from_schematic(Vco().schematic)).netlister.out()
+
     return Report([
         Markdown("# Analog design report: Pseudo-differential voltage-controlled ring oscillator"),
         #Svg(Vco().symbol),
         Markdown(
-            "## Transistor count (schematic)\n"
-            f"There are **{transistor_count}** transistors in the example design.\n"
-            "\n"
-            " | Instance Name | Reference |\n"
-            "| -- | -- |\n"
-            + '\n'.join(transistor_table) +
-            "\n"
-            "## Rectangle count (layout)\n"
-            f"The layout comprises **{rect_count}** rectangles.\n"
-            "\n"
-            "(This is only the VcoRing part.)"
-
-        )
+            f"## Transistor count (schematic){chr(10)}"
+            f"There are **{transistor_count}** transistors in the example design.{chr(10)}"
+            f"{chr(10)}"
+            f" | Instance Name | Reference |{chr(10)}"
+            f"| -- | -- |{chr(10)}"
+            + f'{chr(10)}'.join(transistor_table) +
+            f"{chr(10)}"
+            f"## Rectangle count (layout){chr(10)}"
+            f"The layout comprises **{rect_count}** rectangles.{chr(10)}"
+            f"{chr(10)}"
+            f"(This is only the VcoRing part.){chr(10)}"
+            f"## Vco netlist"
+        ),
+        PreformattedText(netlist)
     ])
 
 if __name__ == "__main__":

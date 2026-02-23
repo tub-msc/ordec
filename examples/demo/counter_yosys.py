@@ -1,4 +1,6 @@
-#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
 from notcl import TclTool
 from pathlib import Path
 import tempfile
