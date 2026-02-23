@@ -3,7 +3,7 @@ module counter(
     input wire rst_ni,
     input wire down_i,
     input wire en_i,
-    output reg [15:0] val_o
+    output reg [7:0] val_o
 );
 
     always @(posedge clk_i, negedge rst_ni) begin

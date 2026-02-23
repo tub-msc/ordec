@@ -90,6 +90,7 @@ from . import importer
 from .version import version
 from .core.cell import Cell, generate, generate_func
 from .language import ord_to_py
+from .extlibrary import ExtLibrary
 
 class ServerKey:
     def __init__(self):
@@ -110,6 +111,7 @@ def discover_views(conn_globals, recursive=True, modules_visited=None):
     if modules_visited is None:
         modules_visited = set()
     views = []
+
     for k, v in conn_globals.items():
         if isinstance(v, ModuleType) and recursive:
             if v in modules_visited:
@@ -129,8 +131,37 @@ def discover_views(conn_globals, recursive=True, modules_visited=None):
                     
             for instance in v.discoverable_instances():
                 for member_name, member in generate_members:
-                    name = f'{instance!r}.{member_name}'
-                    views.append({'name': name} | member.info_dict())
+                    views.append({'name': f'{instance!r}.{member_name}'} | member.info_dict())
+        elif isinstance(v, Cell):
+            for member_name in dir(type(v)):
+                member = getattr(type(v), member_name)
+                if isinstance(member, generate):
+                    views.append({'name': f"{k}.{member_name}"} | member.info_dict())
+        elif isinstance(v, ExtLibrary):
+            view_maps = {}
+            for view_name, attr in (
+                ('layout', 'layout_funcs'),
+                ('frame', 'frame_funcs'),
+                ('symbol', 'symbol_funcs'),
+                ('schematic', 'schematic_funcs')):
+                fmap = getattr(v, attr, None)
+                if isinstance(fmap, dict):
+                    view_maps[view_name] = fmap
+
+            cell_names = {name for fmap in view_maps.values() for name in fmap}
+
+            for cell_name in sorted(cell_names):
+                cell_expr = f"{k}[{cell_name!r}]"
+                cell = v[cell_name]
+                if not isinstance(cell, Cell):
+                    continue
+                for view_name, fmap in view_maps.items():
+                    if cell_name not in fmap:
+                        continue
+                    member = getattr(type(cell), view_name, None)
+                    if isinstance(member, generate):
+                        views.append({'name': f"{cell_expr}.{view_name}"} | member.info_dict())
+
     if "__ord_py_source__" in conn_globals:
         views.append({"name": "__ord_py_source__", "auto_refresh": True})
     return views
