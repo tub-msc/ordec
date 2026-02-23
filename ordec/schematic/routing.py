@@ -23,8 +23,6 @@ Constraints:
   points unless the move stays aligned.
 - Existing straight segments of other nets are converted into blocked moves,
   including corner-touch prevention.
-- Routing first tries local search windows and falls back to full-grid search.
-
 Heuristics:
 - A* uses Manhattan distance.
 - Direction changes are penalized to prefer cleaner tracks.
@@ -38,7 +36,6 @@ SHORTCUT_ENABLED = True       # Enable branch-to-existing-path shortcut routing.
 MAX_RIPUP_REROUTE = 1         # Number of previous routes to temporarily rip up.
 CONGESTION_PENALTY = 2.0      # Extra cost multiplier per routed-cell reuse.
 ROUTED_BASE_PENALTY = 0.25    # Base cost for stepping onto an already routed cell.
-WINDOW_MARGIN_STEPS = (4, 10) # Local A* window margins tried before full-grid.
 
 
 # Grid cell type constants (int8 encoding)
@@ -298,33 +295,9 @@ def _point_keys(points, height):
     return {x * height + y for x, y in points}
 
 
-def _window_from_points(points, width, height, margin):
-    """Create a clamped search window around points.
-
-    Args:
-        points (list): List of (x, y) points to enclose.
-        width (int): Grid width.
-        height (int): Grid height.
-        margin (int): Margin to add around the bounding box.
-
-    Returns:
-        tuple: (min_x, max_x, min_y, max_y) clamped to grid bounds.
-    """
-    min_x = min(p[0] for p in points) - margin
-    max_x = max(p[0] for p in points) + margin
-    min_y = min(p[1] for p in points) - margin
-    max_y = max(p[1] for p in points) + margin
-    return (
-        max(0, min_x),
-        min(width - 1, max_x),
-        max(0, min_y),
-        min(height - 1, max_y),
-    )
-
 def a_star(grid, start, end, width, height, straight_lines,
            start_name, start_dir, endpoint_mapping,
-           route_cell_usage=None, search_window=None,
-           use_congestion=True):
+           route_cell_usage=None, use_congestion=True):
     """Perform A* pathfinding between a start and end point.
 
     Args:
@@ -338,7 +311,6 @@ def a_star(grid, start, end, width, height, straight_lines,
         start_dir (tuple): Direction vector to start from.
         endpoint_mapping (dict): Mapping of start name to endpoint key set.
         route_cell_usage (dict, optional): Routed cell usage counts.
-        search_window (tuple, optional): (min_x, max_x, min_y, max_y) bounds.
         use_congestion (bool): Whether to apply congestion/history penalties.
 
     Returns:
@@ -365,10 +337,6 @@ def a_star(grid, start, end, width, height, straight_lines,
     # Priority queue: (f_score, node_key, direction_id, g_score)
     h_start = abs(start[0] - end_x) + abs(start[1] - end_y)
     open_set = [(h_start, start_key, start_direction, 0.0)]
-
-    has_search_window = search_window is not None
-    if has_search_window:
-        min_x, max_x, min_y, max_y = search_window
 
     while open_set:
         _, current_key, current_direction, popped_g_score = heapq.heappop(open_set)
@@ -401,8 +369,6 @@ def a_star(grid, start, end, width, height, straight_lines,
             nx = cx + dx
             ny = cy + dy
             if nx < 0 or nx >= width or ny < 0 or ny >= height:
-                continue
-            if has_search_window and (nx < min_x or nx > max_x or ny < min_y or ny > max_y):
                 continue
 
             # Direction markers enforce straight escape from pins/ports:
@@ -449,8 +415,7 @@ def a_star(grid, start, end, width, height, straight_lines,
 
 
 def reverse_a_star(grid, start_points, end, width, height, straight_lines, start_name, end_dir,
-                   endpoint_mapping, route_cell_usage=None, search_window=None,
-                   use_congestion=True):
+                   endpoint_mapping, route_cell_usage=None, use_congestion=True):
     """Perform reverse A* from the end point towards any of the start points.
 
     Args:
@@ -464,7 +429,6 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
         end_dir (tuple): Direction vector to end with.
         endpoint_mapping (dict): Mapping of start name to endpoint key set.
         route_cell_usage (dict, optional): Routed cell usage counts.
-        search_window (tuple, optional): (min_x, max_x, min_y, max_y) bounds.
         use_congestion (bool): Whether to apply congestion/history penalties.
 
     Returns:
@@ -498,10 +462,6 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     came_from = [-1] * grid_size
     g_score[end_key] = 0.0
     open_set = [(min_distance, end_key, end_direction, 0.0)]
-
-    has_search_window = search_window is not None
-    if has_search_window:
-        min_x, max_x, min_y, max_y = search_window
 
     # Track the best path found so far; search continues to find shorter ones
     best_path = []
@@ -546,8 +506,6 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
             nx = cx + dx
             ny = cy + dy
             if nx < 0 or nx >= width or ny < 0 or ny >= height:
-                continue
-            if has_search_window and (nx < min_x or nx > max_x or ny < min_y or ny > max_y):
                 continue
 
             if (grid[cy, cx] == GRID_DIR and
@@ -827,44 +785,6 @@ def draw_connections(grid, connections, width, height, name_grid=None):
             else:
                 route_cell_usage[(x, y)] = usage - 1
 
-    def route_forward_with_window(start_new, end_new, start_name, transformed_start_dir,
-                                  use_congestion=True):
-        # Try progressively larger search windows before falling back to full grid
-        points = [start_new, end_new]
-        for margin in WINDOW_MARGIN_STEPS:
-            search_window = _window_from_points(points, width, height, margin)
-            path = a_star(grid, start_new, end_new, width, height,
-                          straight_lines, start_name, transformed_start_dir,
-                          endpoint_key_mapping, route_cell_usage,
-                          search_window=search_window,
-                          use_congestion=use_congestion)
-            if path:
-                return path
-        return a_star(grid, start_new, end_new, width, height,
-                      straight_lines, start_name, transformed_start_dir,
-                      endpoint_key_mapping, route_cell_usage,
-                      search_window=None,
-                      use_congestion=use_congestion)
-
-    def route_reverse_with_window(path_list, end_new, start_name, transformed_end_dir,
-                                  use_congestion=True):
-        points = list(path_list)
-        points.append(end_new)
-        for margin in WINDOW_MARGIN_STEPS:
-            search_window = _window_from_points(points, width, height, margin)
-            path = reverse_a_star(grid, path_list, end_new, width, height,
-                                  straight_lines, start_name, transformed_end_dir,
-                                  endpoint_key_mapping, route_cell_usage,
-                                  search_window=search_window,
-                                  use_congestion=use_congestion)
-            if path:
-                return path
-        return reverse_a_star(grid, path_list, end_new, width, height,
-                              straight_lines, start_name, transformed_end_dir,
-                              endpoint_key_mapping, route_cell_usage,
-                              search_window=None,
-                              use_congestion=use_congestion)
-
     def try_route_connection(start, end, start_dir, end_dir, start_name):
         start_new, end_new = adjust_start_end_for_direction(start, start_dir, end, end_dir)
         transformed_start_dir = direction_moves[start_dir]
@@ -889,20 +809,26 @@ def draw_connections(grid, connections, width, height, name_grid=None):
                     raise IndexError(f"Shortcut doesn't have valid branch point to connect nid:{start_name}")
                 else:
                     # Try reverse A* from endpoint to any existing path point
-                    path = route_reverse_with_window(
-                        path_list, end_new, start_name, transformed_end_dir,
+                    path = reverse_a_star(
+                        grid, path_list, end_new, width, height,
+                        straight_lines, start_name, transformed_end_dir,
+                        endpoint_key_mapping, route_cell_usage,
                         use_congestion=False
                     )
                     # Fall back to forward A* if reverse search fails
                     if not path:
-                        path = route_forward_with_window(
-                            start_new, end_new, start_name, transformed_start_dir,
+                        path = a_star(
+                            grid, start_new, end_new, width, height,
+                            straight_lines, start_name, transformed_start_dir,
+                            endpoint_key_mapping, route_cell_usage,
                             use_congestion=False
                         )
             else:
                 # First connection for this net, standard forward A*
-                path = route_forward_with_window(
-                    start_new, end_new, start_name, transformed_start_dir
+                path = a_star(
+                    grid, start_new, end_new, width, height,
+                    straight_lines, start_name, transformed_start_dir,
+                    endpoint_key_mapping, route_cell_usage
                 )
 
             if not path and start_new != end_new:
