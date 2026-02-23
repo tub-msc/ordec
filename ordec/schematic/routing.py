@@ -138,7 +138,8 @@ def place_cells_and_ports(grid, cells, ports, width, height):
             if 0 <= cy < height and 0 <= cx < width:
                 direction_offset_x = direction_moves[direction][0] + cx
                 direction_offset_y = direction_moves[direction][1] + cy
-                grid[direction_offset_y][direction_offset_x] = GRID_DIR
+                if 0 <= direction_offset_y < height and 0 <= direction_offset_x < width:
+                    grid[direction_offset_y][direction_offset_x] = GRID_DIR
 
     # Place ports
     for port in ports:
@@ -147,7 +148,8 @@ def place_cells_and_ports(grid, cells, ports, width, height):
             name_grid[(port.x, port.y)] = port.name
             direction_offset_x = direction_moves[port.direction][0] + port.x
             direction_offset_y = direction_moves[port.direction][1] + port.y
-            grid[direction_offset_y][direction_offset_x] = GRID_DIR
+            if 0 <= direction_offset_y < height and 0 <= direction_offset_x < width:
+                grid[direction_offset_y][direction_offset_x] = GRID_DIR
 
     return name_grid
 
@@ -321,18 +323,12 @@ def a_star(grid, start, end, width, height, straight_lines,
     h_start = abs(start[0] - end_x) + abs(start[1] - end_y)
     open_set = [(h_start, start_key, start_direction, 0.0)]
 
-    heappush = heapq.heappush
-    heappop = heapq.heappop
-    blocked_get = blocked_masks.get
-    endpoint_contains = endpoint_keys.__contains__
-    d_offsets = DIRECTION_OFFSETS
-    route_usage_get = route_cell_usage.get if route_cell_usage is not None else None
     has_search_window = search_window is not None
     if has_search_window:
         min_x, max_x, min_y, max_y = search_window
 
     while open_set:
-        _, current_key, current_direction, popped_g_score = heappop(open_set)
+        _, current_key, current_direction, popped_g_score = heapq.heappop(open_set)
         if popped_g_score > g_score[current_key]:
             continue
 
@@ -348,10 +344,10 @@ def a_star(grid, start, end, width, height, straight_lines,
         cx = current_key // height
         cy = current_key % height
         remaining_distance = abs(cx - end_x) + abs(cy - end_y)
-        block_mask = blocked_get(current_key, 0)
+        block_mask = blocked_masks.get(current_key, 0)
         current_g_score = g_score[current_key]
 
-        for direction_id, (dx, dy) in enumerate(d_offsets):
+        for direction_id, (dx, dy) in enumerate(DIRECTION_OFFSETS):
             if block_mask & (1 << direction_id):
                 continue
 
@@ -366,7 +362,7 @@ def a_star(grid, start, end, width, height, straight_lines,
                     current_direction != DIR_NONE and
                     current_direction != direction_id and
                     current_key != start_key and
-                    not endpoint_contains(current_key)):
+                    current_key not in endpoint_keys):
                 continue
 
             if grid[ny, nx] >= GRID_BLOCKED:
@@ -381,8 +377,8 @@ def a_star(grid, start, end, width, height, straight_lines,
 
             congestion_penalty = 0.0
             if use_congestion:
-                if route_usage_get is not None:
-                    usage = route_usage_get((nx, ny), 0)
+                if route_cell_usage is not None:
+                    usage = route_cell_usage.get((nx, ny), 0)
                     if usage > 0:
                         congestion_penalty = ROUTED_BASE_PENALTY + (usage * CONGESTION_PENALTY)
                 elif grid[ny, nx] == GRID_ROUTED:
@@ -394,8 +390,8 @@ def a_star(grid, start, end, width, height, straight_lines,
                 came_from[neighbor_key] = current_key
                 g_score[neighbor_key] = tentative_g_score
                 f_score = tentative_g_score + abs(nx - end_x) + abs(ny - end_y)
-                heappush(open_set, (f_score, neighbor_key, direction_id,
-                                    tentative_g_score))
+                heapq.heappush(open_set, (f_score, neighbor_key, direction_id,
+                                          tentative_g_score))
 
     return []
 
@@ -446,13 +442,6 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     g_score[end_key] = 0.0
     open_set = [(min_distance, end_key, end_direction, 0.0)]
 
-    heappush = heapq.heappush
-    heappop = heapq.heappop
-    blocked_get = blocked_masks.get
-    endpoint_contains = endpoint_keys.__contains__
-    start_point_contains = start_points_keys.__contains__
-    d_offsets = DIRECTION_OFFSETS
-    route_usage_get = route_cell_usage.get if route_cell_usage is not None else None
     has_search_window = search_window is not None
     if has_search_window:
         min_x, max_x, min_y, max_y = search_window
@@ -461,7 +450,7 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     best_path_score = sys.maxsize
 
     while open_set:
-        _, current_key, current_direction, popped_g_score = heappop(open_set)
+        _, current_key, current_direction, popped_g_score = heapq.heappop(open_set)
         if popped_g_score > g_score[current_key]:
             continue
 
@@ -469,7 +458,7 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
         if current_path_length >= best_path_score:
             continue
 
-        if start_point_contains(current_key):
+        if current_key in start_points_keys:
             path = []
             key = current_key
             while came_from[key] != -1:
@@ -487,10 +476,10 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
         cx = current_key // height
         cy = current_key % height
         remaining_distance = abs(cx - end_x) + abs(cy - end_y)
-        block_mask = blocked_get(current_key, 0)
+        block_mask = blocked_masks.get(current_key, 0)
         current_g_score = g_score[current_key]
 
-        for direction_id, (dx, dy) in enumerate(d_offsets):
+        for direction_id, (dx, dy) in enumerate(DIRECTION_OFFSETS):
             if block_mask & (1 << direction_id):
                 continue
 
@@ -505,7 +494,7 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
                     current_direction != DIR_NONE and
                     current_direction != direction_id and
                     current_key != end_key and
-                    endpoint_contains(current_key)):
+                    current_key in endpoint_keys):
                 continue
 
             if grid[ny, nx] >= GRID_BLOCKED:
@@ -520,8 +509,8 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
 
             congestion_penalty = 0.0
             if use_congestion:
-                if route_usage_get is not None:
-                    usage = route_usage_get((nx, ny), 0)
+                if route_cell_usage is not None:
+                    usage = route_cell_usage.get((nx, ny), 0)
                     if usage > 0:
                         congestion_penalty = ROUTED_BASE_PENALTY + (usage * CONGESTION_PENALTY)
                 elif grid[ny, nx] == GRID_ROUTED:
@@ -533,8 +522,8 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
                 came_from[neighbor_key] = current_key
                 g_score[neighbor_key] = tentative_g_score
                 f_score = tentative_g_score + abs(nx - spm_x) + abs(ny - spm_y)
-                heappush(open_set, (f_score, neighbor_key, direction_id,
-                                    tentative_g_score))
+                heapq.heappush(open_set, (f_score, neighbor_key, direction_id,
+                                          tentative_g_score))
 
     return best_path
 
@@ -611,7 +600,7 @@ def keep_corners_and_edges(lines):
         for i in range(start_index, len(line) - 1):
             if is_corner(line[i - 1], line[i], line[i + 1]):
                 filtered_line.append(line[i])
-            # definetly safe the consecutive starts
+            # definitely save the consecutive starts
             elif line[i] in starters:
                 filtered_line.append(line[i])
         filtered_line.append(line[-1])  # Always keep the last element
@@ -976,7 +965,7 @@ def adjust_outline_initial(node):
     Adjust the outline according to the schematic instances
 
     :param node: node instance
-    :param outline: current outline
+    :returns: Adjusted outline
     """
     outline = None
     for port in node.all(SchemPort):
@@ -1003,7 +992,7 @@ def schematic_routing(node, outline=None, routing=None):
     :param node: current node
     :param outline: outline coordinates
     :param routing: port dict if routing should be done
-    :returns: None
+    :returns: Adjusted outline
     """
     # Get all the connections of ports and instances
     if routing is None:
@@ -1088,7 +1077,7 @@ def schematic_routing(node, outline=None, routing=None):
             connected_nid = array_mapping_list.get(connected_to, None)
             connection_position = cells[instance_nid].connections[inner_connection_nid]
             # Only if the ports have the connection and if it's not an inter cell connection
-            if connected_nid in ports.keys():
+            if connected_nid in ports:
                 # ORD1 in dictionry
                 if routing.get(int(connected_nid) if connected_nid.isdigit() else connected_nid, True):
                     # ORD2 in schema
