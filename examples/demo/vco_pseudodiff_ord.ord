@@ -14,6 +14,7 @@ import subprocess
 
 from ordec.core import *
 from ordec.lib import ihp130
+from ordec.lib.ihp130 import Nmos, Pmos
 from ordec.lib.base import Res, Cap, Gnd, Vdc, NoConn, Vpwl
 from ordec.schematic.routing import schematic_routing
 from ordec.schematic.helpers import symbol_place_pins, add_conn_points
@@ -22,73 +23,51 @@ from ordec.report import Report, Plot2D, Markdown
 from ordec.layout.makevias import makevias
 from ordec.layout import write_gds, gds_str_from_layout
 from ordec.layout import helpers
+from ordec.ord2.context import ctx, OrdContext
 
-class VcoHalfStage(Cell):
-    @generate
-    def symbol(self):
-        s = Symbol(cell=self)
+cell VcoHalfStage:
+    width = Parameter(R, default=300n)
+    length = Parameter(R, default=130n)
 
-        s.vdd_st = Pin(pintype=PinType.Inout, align=Orientation.North)
-        s.vss_st = Pin(pintype=PinType.Inout, align=Orientation.South)
-        s.vdd = Pin(pintype=PinType.Inout, align=Orientation.North)
-        s.vss = Pin(pintype=PinType.Inout, align=Orientation.South)
+    viewgen symbol:
+        inout vdd_st(.align=Orientation.North)
+        inout vss_st(.align=Orientation.South)
+        inout vdd(.align=Orientation.North)
+        inout vss(.align=Orientation.South)
 
-        s.rst_n = Pin(pintype=PinType.In, align=Orientation.West)
-        s.inp = Pin(pintype=PinType.In, align=Orientation.West)
-        s.fb  = Pin(pintype=PinType.In, align=Orientation.East)
-        s.out = Pin(pintype=PinType.Out, align=Orientation.East)
-        s.out_n = Pin(pintype=PinType.Out, align=Orientation.East)
+        input rst_n(.align=Orientation.West)
+        input inp(.align=Orientation.West)
+        input fb(.align=Orientation.East)
+        output out(.align=Orientation.East)
+        output out_n(.align=Orientation.East)
 
-        symbol_place_pins(s, vpadding=2, hpadding=2)
-        return s
+    viewgen schematic:
+        net b
 
-    @generate
-    def schematic(self):
-        s = Schematic(cell=self, symbol=self.symbol, outline=(0,4,31,26))
+        port vdd_st(.align=Orientation.East; .pos=(1,24))
+        port vdd(.align=Orientation.East; .pos=(1,26))
+        port vss_st(.align=Orientation.East; .pos=(1,6))
+        port vss(.align=Orientation.East; .pos=(1,4))
+        port inp(.align=Orientation.East; .pos=(1,21))
+        port rst_n(.align=Orientation.East; .pos=(1,9))
+        port fb(.align=Orientation.East; .pos=(15,15))
+        port out(.align=Orientation.West; .pos=(24,18))
+        port out_n(.align=Orientation.West; .pos=(30,18))
 
-        s.vdd_st = Net(pin=self.symbol.vdd_st)
-        s.vss_st = Net(pin=self.symbol.vss_st)
-        s.vdd = Net(pin=self.symbol.vdd)
-        s.vss = Net(pin=self.symbol.vss)
-        s.rst_n = Net(pin=self.symbol.rst_n)
-        s.inp = Net(pin=self.symbol.inp)
-        s.fb = Net(pin=self.symbol.fb)
-        s.out = Net(pin=self.symbol.out)
-        s.out_n = Net(pin=self.symbol.out_n)
+        Pmos m1(.s -- vdd_st; .b -- vdd; .g -- inp; .d -- out; .pos=(3, 19))
+        Nmos m2(.s -- b; .b -- vss; .g -- inp; .d -- out; .pos=(3, 13))
+        Nmos m3(.s -- vss_st; .b -- vss; .g -- rst_n; .d -- b; .pos=(3, 7))
+        Pmos m4(.s -- vdd_st; .b -- vdd; .g -- rst_n; .d -- out; .pos=(10, 19))
 
-        s.b = Net()
+        Pmos m5(.s -- vdd_st; .b -- vdd; .g -- fb; .d -- out; .pos=(17, 19))
+        Nmos m6(.s -- vss_st; .b -- vss; .g -- fb; .d -- out; .pos=(17, 13))
 
-        nmos = ihp130.Nmos(w="300n", l="130n").symbol
-        pmos = ihp130.Pmos(w="300n", l="130n").symbol
+        Pmos m7(.s -- vdd; .b -- vdd; .g -- out; .d -- out_n; .pos=(25, 19))
+        Nmos m8(.s -- vss; .b -- vss; .g -- out; .d -- out_n; .pos=(25, 13))
 
-        s.m1 = SchemInstance(pmos.portmap(s=s.vdd_st, b=s.vdd, g=s.inp, d=s.out), pos=(3, 19))
-        s.m2 = SchemInstance(nmos.portmap(s=s.b, b=s.vss, g=s.inp, d=s.out), pos=(3, 13))
-        s.m3 = SchemInstance(nmos.portmap(s=s.vss_st, b=s.vss, g=s.rst_n, d=s.b), pos=(3, 7))
-        s.m4 = SchemInstance(pmos.portmap(s=s.vdd_st, b=s.vdd, g=s.rst_n, d=s.out), pos=(10, 19))
-
-        s.m5 = SchemInstance(pmos.portmap(s=s.vdd_st, b=s.vdd, g=s.fb, d=s.out), pos=(17, 19))
-        s.m6 = SchemInstance(nmos.portmap(s=s.vss_st, b=s.vss, g=s.fb, d=s.out), pos=(17, 13))
-
-        s.m7 = SchemInstance(pmos.portmap(s=s.vdd, b=s.vdd, g=s.out, d=s.out_n), pos=(25, 19))
-        s.m8 = SchemInstance(nmos.portmap(s=s.vss, b=s.vss, g=s.out, d=s.out_n), pos=(25, 13))
-
-        #s.m2 = SchemInstance(pmos.portmap(s=s.t, b=s.vdd, g=s.inp, d=s.out), pos=(3, 13))
-        #s.m2 = SchemInstance(pmos.portmap(s=s.t, b=s.vdd, g=s.inp, d=s.out), pos=(3, 13))
-
-        s.vdd_st % SchemPort(pos=(1,24), align=Orientation.East)
-        s.vdd % SchemPort(pos=(1,26), align=Orientation.East)
-        s.vss_st % SchemPort(pos=(1,6), align=Orientation.East)
-        s.vss % SchemPort(pos=(1,4), align=Orientation.East)
-        s.inp % SchemPort(pos=(1,21), align=Orientation.East)
-        s.rst_n % SchemPort(pos=(1,9), align=Orientation.East)
-        s.fb % SchemPort(pos=(15,15), align=Orientation.East)
-        s.out % SchemPort(pos=(24,18), align=Orientation.West)
-        s.out_n % SchemPort(pos=(30,18), align=Orientation.West)
-        
-        schematic_routing(s)
-        add_conn_points(s)
-
-        return s
+        for mos in m1, m2, m3, m4, m5, m6, m7, m8:
+            mos.$w = self.width
+            mos.$l = self.length
 
     @generate
     def layout(self):
@@ -231,87 +210,70 @@ class VcoHalfStage(Cell):
         s.solve()
         return l    
 
-class VcoRing(Cell):
-    @generate
-    def symbol(self):
-        s = Symbol(cell=self)
+cell VcoRing:
+    viewgen symbol:
+        inout vdd_st(.align=Orientation.North)
+        inout vss_st(.align=Orientation.South)
+        inout vdd(.align=Orientation.North)
+        inout vss(.align=Orientation.South)
+        input rst_n(.align=Orientation.West)
 
-        s.vdd_st = Pin(pintype=PinType.Inout, align=Orientation.North)
-        s.vss_st = Pin(pintype=PinType.Inout, align=Orientation.South)
-        s.vdd = Pin(pintype=PinType.Inout, align=Orientation.North)
-        s.vss = Pin(pintype=PinType.Inout, align=Orientation.South)
-        s.rst_n = Pin(pintype=PinType.In, align=Orientation.West)
-
-        s.mkpath('out_n')
-        s.mkpath('out_p')
+        path out_p, out_n
         for i in range(2):
-            s.out_p[i] = Pin(pintype=PinType.Out, align=Orientation.East)
-            s.out_n[i] = Pin(pintype=PinType.Out, align=Orientation.East)
+            output out_p[i](.align=Orientation.East)
+            output out_n[i](.align=Orientation.East)
 
-        symbol_place_pins(s, vpadding=2, hpadding=2)
-        return s
 
-    @generate
-    def schematic(self):
-        s = Schematic(cell=self, symbol=self.symbol, outline=(0,0,23,22))
+    viewgen schematic:
+        port vdd_st(.pos=(1,21); .align=Orientation.East)
+        port vdd   (.pos=(1,22); .align=Orientation.East)
+        port vss_st(.pos=(1,1) ; .align=Orientation.East)
+        port vss   (.pos=(1,0) ; .align=Orientation.East)
+        port rst_n (.pos=(1,10); .align=Orientation.East)
 
-        s.vdd_st = Net(pin=self.symbol.vdd_st, route=False)
-        s.vss_st = Net(pin=self.symbol.vss_st, route=False)
-        s.vdd = Net(pin=self.symbol.vdd, route=False)
-        s.vss = Net(pin=self.symbol.vss, route=False)
-        s.rst_n = Net(pin=self.symbol.rst_n)
+        path out_p, out_n
 
-        s.mkpath("stage_p")
-        s.mkpath("stage_n")
-        s.mkpath("int_n")
-        s.mkpath("int_p")
-        s.mkpath("out_n")
-        s.mkpath("out_p")
+        vdd_st.ref.route = False
+        vss_st.ref.route = False
+        vdd.ref.route = False
+        vss.ref.route = False
+
+        path int_p, int_n
         for i in range(2):
-            s.int_n[i] = Net()
-            s.int_p[i] = Net()
-            s.out_n[i] = Net(pin=self.symbol.out_n[i])
-            s.out_p[i] = Net(pin=self.symbol.out_p[i])
+            net int_p[i]
+            net int_n[i]
 
+        path stage_p, stage_n
 
         for i in range(2):
-            xoffset = 10*i
-            s.stage_p[i] = SchemInstance(VcoHalfStage().symbol.portmap(
-                out=s.int_p[i],
-                fb=s.int_n[i],
-                vdd=s.vdd,
-                out_n=s.out_p[i],
-                vdd_st=s.vdd_st,
-                vss=s.vss,
-                vss_st=s.vss_st,
-                rst_n=s.rst_n if i % 2 == 0 else s.vdd,
-                inp=s.int_p[i-1] if i > 0 else s.int_n[1],
-                ), pos=(5+xoffset,13))
-            s.stage_n[i] = SchemInstance(VcoHalfStage().symbol.portmap(
-                out=s.int_n[i],
-                fb=s.int_p[i],
-                out_n=s.out_n[i],
-                vdd=s.vdd,
-                vdd_st=s.vdd_st,
-                vss=s.vss,
-                vss_st=s.vss_st,
-                rst_n=s.rst_n if i % 2 == 1 else s.vdd,
-                inp=s.int_n[i-1] if i > 0 else s.int_p[1],
-                ), pos=(5+xoffset,3))
+            xoffset = 10 * i
+            port out_p[i](.pos=(12 + xoffset, 17); .align=Orientation.West)
+            port out_n[i](.pos=(12 + xoffset,  7); .align=Orientation.West)
 
-            s.out_p[i] % SchemPort(pos=(xoffset+12,17), align=Orientation.West)
-            s.out_n[i] % SchemPort(pos=(xoffset+12,7), align=Orientation.West)
+            VcoHalfStage stage_p[i]:
+                .out    -- int_p[i]
+                .fb     -- int_n[i]
+                .vdd    -- vdd
+                .out_n  -- out_p[i]
+                .vdd_st -- vdd_st
+                .vss    -- vss
+                .vss_st -- vss_st
+                .rst_n  -- (rst_n if (i % 2) == 0 else vdd)
+                .inp    -- (int_p[i-1] if i > 0 else int_n[1])
+                .pos = (5 + xoffset, 13)
 
-        s.vdd_st % SchemPort(pos=(1,21), align=Orientation.East)
-        s.vdd % SchemPort(pos=(1,22), align=Orientation.East)
-        s.vss_st % SchemPort(pos=(1,1), align=Orientation.East)
-        s.vss % SchemPort(pos=(1,0), align=Orientation.East)
-        s.rst_n % SchemPort(pos=(1,10), align=Orientation.East)
+            VcoHalfStage stage_n[i]:
+                .out    -- int_n[i]
+                .fb     -- int_p[i]
+                .out_n  -- out_n[i]
+                .vdd    -- vdd
+                .vdd_st -- vdd_st
+                .vss    -- vss
+                .vss_st -- vss_st
+                .rst_n  -- (rst_n if (i % 2) == 1 else vdd)
+                .inp    -- (int_n[i-1] if i > 0 else int_p[1])
+                .pos = (5 + xoffset, 3)
 
-        schematic_routing(s)
-        add_conn_points(s)
-
-        return s
 
     @generate
     def layout(self):
@@ -495,161 +457,134 @@ class VcoRing(Cell):
 
         return l
 
-class Vco(Cell):
-    @generate
-    def symbol(self):
-        s = Symbol(cell=self)
+cell Vco:
+    width = Parameter(R, default=300n)
+    length = Parameter(R, default=130n)
+    viewgen symbol:
+        inout vdd(.align=Orientation.North)
+        inout vss(.align=Orientation.South)
 
-        s.vdd = Pin(pintype=PinType.Inout, align=Orientation.North)
-        s.vss = Pin(pintype=PinType.Inout, align=Orientation.South)
+        input rst_n(.align=Orientation.West)
+        input vbias(.align=Orientation.West)
 
-        s.rst_n = Pin(pintype=PinType.In, align=Orientation.West)
-        s.vbias = Pin(pintype=PinType.In, align=Orientation.West)
-        s.mkpath('out_n')
-        s.mkpath('out_p')
+        path out_p, out_n
         for i in range(2):
-            s.out_p[i] = Pin(pintype=PinType.Out, align=Orientation.East)
-            s.out_n[i] = Pin(pintype=PinType.Out, align=Orientation.East)
+            output out_p[i](.align=Orientation.East)
+            output out_n[i](.align=Orientation.East)
 
-        symbol_place_pins(s, vpadding=2, hpadding=2)
-        return s
+    viewgen schematic:
+        port vdd  (.pos=(4,21); .align=Orientation.East)
+        port vss  (.pos=(4,0) ; .align=Orientation.East)
+        port rst_n(.pos=(13,9); .align=Orientation.East)
+        port vbias(.pos=(4,6) ; .align=Orientation.East)
 
-    @generate
-    def schematic(self):
-        s = Schematic(cell=self, symbol=self.symbol, outline=(-2,-2,34,30))
+        net vss_st
+        net vdd_st
+        net cm_mid
 
-        s.vdd = Net(pin=self.symbol.vdd)
-        s.vss = Net(pin=self.symbol.vss)
-
-        s.rst_n = Net(pin=self.symbol.rst_n)
-        s.vbias = Net(pin=self.symbol.vbias)
-
-        s.vss_st = Net()
-        s.vdd_st = Net()
-        s.cm_mid = Net()
-
-        s.mkpath('out_n')
-        s.mkpath('out_p')
-        
+        path out_p, out_n
         for i in range(2):
-            s.out_p[i] = Net(pin=self.symbol.out_p[i])
-            s.out_n[i] = Net(pin=self.symbol.out_n[i])
+            port out_p[i](.pos=(22, 9 + 2 * i); .align=Orientation.West)
+            port out_n[i](.pos=(22,10 + 2 * i); .align=Orientation.West)
 
-        nmos = ihp130.Nmos(w="300n", l="130n").symbol
-        pmos = ihp130.Pmos(w="300n", l="130n").symbol
-
-        s.ring = SchemInstance(VcoRing().symbol.portmap(
-            vss=s.vss,
-            vdd=s.vdd,
-            vss_st=s.vss_st,
-            vdd_st=s.vdd_st,
-            rst_n=s.rst_n,
-        ), pos=(15,7))
+        VcoRing ring:
+            .vss     -- vss
+            .vdd     -- vdd
+            .vss_st  -- vss_st
+            .vdd_st  -- vdd_st
+            .rst_n   -- rst_n
+            .pos = (15, 7)
 
         for i in range(2):
-            s.ring % SchemInstanceConn(here=s.out_n[i], there=VcoRing().symbol.out_n[i])
-            s.ring % SchemInstanceConn(here=s.out_p[i], there=VcoRing().symbol.out_p[i])
-            s.out_p[i] % SchemPort(pos=(22, 9+2*i), align=Orientation.West)
-            s.out_n[i] % SchemPort(pos=(22, 10+2*i), align=Orientation.West)
+            ring.out_n[i] -- out_n[i]
+            ring.out_p[i] -- out_p[i]
 
-        s.m1 = SchemInstance(nmos.portmap(
-            d=s.vss_st,
-            s=s.vss,
-            b=s.vss,
-            g=s.vbias,
-            ), pos=(15, 1))
+        Nmos m1:
+            .d -- vss_st
+            .s -- vss
+            .b -- vss
+            .g -- vbias
+            .pos = (15, 1)
 
-        s.m2 = SchemInstance(pmos.portmap(
-            d=s.vdd_st,
-            s=s.vdd,
-            b=s.vdd,
-            g=s.cm_mid,
-            ), pos=(15, 16))
+        Pmos m2:
+            .d -- vdd_st
+            .s -- vdd
+            .b -- vdd
+            .g -- cm_mid
+            .pos = (15, 16)
 
-        s.m3 = SchemInstance(pmos.portmap(
-            d=s.cm_mid,
-            g=s.cm_mid,
-            s=s.vdd,
-            b=s.vdd,
-            ), pos=(11, 16), orientation=Orientation.MY)
+        Pmos m3:
+            .d -- cm_mid
+            .g -- cm_mid
+            .s -- vdd
+            .b -- vdd
+            .pos = (11, 16)
+            .orientation = Orientation.FlippedSouth
 
-        s.m4 = SchemInstance(nmos.portmap(
-            d=s.cm_mid,
-            s=s.vss,
-            b=s.vss,
-            g=s.vbias,
-            ), pos=(7, 1))
-        
-        s.rst_n % SchemPort(pos=(13,9), align=Orientation.East)
-        s.vdd % SchemPort(pos=(4,21), align=Orientation.East)
-        s.vss % SchemPort(pos=(4,0), align=Orientation.East)
-        s.vbias % SchemPort(pos=(4,6), align=Orientation.East)
+        Nmos m4:
+            .d -- cm_mid
+            .s -- vss
+            .b -- vss
+            .g -- vbias
+            .pos = (7, 1)
 
-        schematic_routing(s)
-        add_conn_points(s)
+        for mos in m1, m2, m3, m4:
+            mos.$l = self.length
+            mos.$w = self.width
 
-        return s
+cell VcoTb:
+    viewgen symbol:
+        pass
+    viewgen schematic:
+        net vdd, vss, vbias, rst_n
 
-class VcoTb(Cell):
-    
-    @generate
-    def schematic(self):
-        s = Schematic(cell=self, outline=(0,0,40,20))
+        path out_p, out_n, nc
 
-        s.vss = Net()
-        s.vdd = Net()
-        s.vbias = Net()
-        s.rst_n = Net()
+        Vco dut:
+            .vss -- vss
+            .vdd -- vdd
+            .vbias -- vbias
+            .rst_n -- rst_n
+            .pos = (17, 6)
 
-        s.mkpath('out_n')
-        s.mkpath('out_p')
-        s.mkpath('nc')
-
-        vco = Vco().symbol
-        s.dut = SchemInstance(vco.portmap(
-            vss=s.vss,
-            vdd=s.vdd,
-            vbias=s.vbias,
-            rst_n=s.rst_n,
-            ), pos=(17,6))
         for i in range(2):
-            s.out_n[i] = Net()
-            s.out_p[i] = Net()
+            net out_n[i]
+            net out_p[i]
 
-            s.dut % SchemInstanceConn(here=s.out_n[i], there=vco.out_n[i])
-            s.dut % SchemInstanceConn(here=s.out_p[i], there=vco.out_p[i])
-            s.nc[2*i+0] = SchemInstance(NoConn().symbol.portmap(
-                a=s.out_n[i],
-                ), pos=(22+5*i, 6), orientation=Orientation.R270)
-            s.nc[2*i+1] = SchemInstance(NoConn().symbol.portmap(
-                a=s.out_p[i],
-                ), pos=(26+5*i, 17), orientation=Orientation.R90)
+            dut.out_n[i] -- out_n[i]
+            dut.out_p[i] -- out_p[i]
 
+            NoConn nc[2 * i + 0]:
+                .a -- out_n[i]
+                .pos = (22 + 5 * i, 6)
+                .orientation = Orientation.East
 
-        s.Gnd = SchemInstance(Gnd().symbol.portmap(
-            p=s.vss,
-            ), pos=(0,0))
-        s.vdd_src = SchemInstance(Vdc('1.2').symbol.portmap(
-            m=s.vss,
-            p=s.vdd,
-            ), pos=(0,10))
-        # s.vbias_src = SchemInstance(Vdc('0.5').symbol.portmap(
-        #     m=s.vss,
-        #     p=s.vbias,
-        #     ), pos=(5,10))
-        s.vbias_src = SchemInstance(Vpwl(((0, 1.2), (1e-9, 1.2), (30e-9, 0))).symbol.portmap(
-            m=s.vss,
-            p=s.vbias,
-            ), pos=(5,10))
-        s.rst_n_src = SchemInstance(Vpwl(((0, 0), (1e-9, 0), (1.1e-9, 1.2))).symbol.portmap(
-            m=s.vss,
-            p=s.rst_n,
-            ), pos=(10,10))
+            NoConn nc[2 * i + 1]:
+                .a -- out_p[i]
+                .pos = (26 + 5 * i, 17)
+                .orientation = Orientation.West
 
-        schematic_routing(s)
-        add_conn_points(s)
+        Gnd gnd:
+            .p -- vss
+            .pos = (0, 0)
 
-        return s
+        Vdc vdd_src:
+            .m -- vss
+            .p -- vdd
+            .pos = (0, 10)
+            .$dc = 1.2
+
+        Vpwl vbias_src:
+            .m -- vss
+            .p -- vbias
+            .pos = (5, 10)
+            .$V = ((0, 1.2), (1n, 1.2), (30n, 0))
+
+        Vpwl rst_n_src:
+            .m -- vss
+            .p -- rst_n
+            .pos = (10, 10)
+            .$V = ((0, 0), (1n, 0), (1.1n, 1.2))
 
     @generate
     def sim_tran(self):

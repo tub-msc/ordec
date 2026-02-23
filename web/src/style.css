@@ -316,7 +316,13 @@ pre {
     padding-bottom: 2px;
     margin-bottom: 1px;
 }
-
+.report-markdown table {
+    border-collapse: collapse;
+}
+.report-markdown table td, .report-markdown table th {
+    border:1px solid black;
+    padding:2px;
+}
 .layout {
     background-color: #000;
 }
