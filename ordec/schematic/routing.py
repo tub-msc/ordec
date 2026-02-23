@@ -202,6 +202,7 @@ def preprocess_straight_lines(straight_lines, start_name, height):
         tuple: (blocked_moves set, blocked_masks dict).
     """
     global _cache
+    # Cache is keyed by net name and invalidated when other nets change
     dep_version = dependency_versions(start_name)
 
     entry = _cache.get(start_name)
@@ -223,7 +224,8 @@ def preprocess_straight_lines(straight_lines, start_name, height):
             x1, y1 = line_start
             x2, y2 = line_end
 
-            # Vertical
+            # Block movement along existing segments in both directions
+            # to prevent parallel overlap, while orthogonal crossings remain allowed
             if x1 == x2:
                 y_start, y_end = sorted((y1, y2))
                 for y in range(y_start, y_end):
@@ -239,12 +241,13 @@ def preprocess_straight_lines(straight_lines, start_name, height):
                     blocked_moves.add((a, b))
                     blocked_moves.add((b, a))
 
-            # Corner detection
+            # Collect corner nodes where segments meet, these need
+            # all-direction blocking to prevent diagonal touch violations
             if len(value) > 1:
                 corner_nodes.add(line_start)
                 corner_nodes.add(line_end)
 
-    # Block movement through corner nodes
+    # Block all movement through corner nodes to prevent touching
     for x, y in corner_nodes:
         for dx, dy in DIRECTION_OFFSETS:
             n = (x + dx, y + dy)
@@ -270,6 +273,7 @@ def _build_blocked_move_masks(blocked_segments, height):
     Returns:
         dict: Mapping of node key to direction bitmask.
     """
+    # Each node key maps to a 4-bit mask: bit 0=N, 1=S, 2=E, 3=W
     blocked_masks = dict()
     for start_point, end_point in blocked_segments:
         sx, sy = start_point
@@ -277,12 +281,13 @@ def _build_blocked_move_masks(blocked_segments, height):
         dx = ex - sx
         dy = ey - sy
 
+        # Map movement delta to direction bit index
         if dx == 0:
             direction_id = 0 if dy > 0 else 1
         elif dy == 0:
             direction_id = 2 if dx > 0 else 3
         else:
-            continue
+            continue  # skip non-cardinal moves (shouldn't occur)
 
         start_key = sx * height + sy
         blocked_masks[start_key] = blocked_masks.get(start_key, 0) | (1 << direction_id)
@@ -350,12 +355,14 @@ def a_star(grid, start, end, width, height, straight_lines,
     end_key = end_x * height + end_y
     start_direction = DIR_TO_INT.get(start_dir, DIR_NONE)
 
+    # Flat arrays indexed by node key (x * height + y) for O(1) lookup
     grid_size = width * height
     inf_score = float("inf")
     g_score = [inf_score] * grid_size
     came_from = [-1] * grid_size
     g_score[start_key] = 0.0
 
+    # Priority queue: (f_score, node_key, direction_id, g_score)
     h_start = abs(start[0] - end_x) + abs(start[1] - end_y)
     open_set = [(h_start, start_key, start_direction, 0.0)]
 
@@ -365,9 +372,11 @@ def a_star(grid, start, end, width, height, straight_lines,
 
     while open_set:
         _, current_key, current_direction, popped_g_score = heapq.heappop(open_set)
+        # Skip stale entries: a better path to this node was already found
         if popped_g_score > g_score[current_key]:
             continue
 
+        # Goal reached: reconstruct path by walking came_from chain
         if current_key == end_key:
             path = []
             key = current_key
@@ -377,6 +386,7 @@ def a_star(grid, start, end, width, height, straight_lines,
             path.reverse()
             return path
 
+        # Decode flat key back to 2D coordinates
         cx = current_key // height
         cy = current_key % height
         remaining_distance = abs(cx - end_x) + abs(cy - end_y)
@@ -384,6 +394,7 @@ def a_star(grid, start, end, width, height, straight_lines,
         current_g_score = g_score[current_key]
 
         for direction_id, (dx, dy) in enumerate(DIRECTION_OFFSETS):
+            # Skip if this direction is blocked by an existing route segment
             if block_mask & (1 << direction_id):
                 continue
 
@@ -394,6 +405,8 @@ def a_star(grid, start, end, width, height, straight_lines,
             if has_search_window and (nx < min_x or nx > max_x or ny < min_y or ny > max_y):
                 continue
 
+            # Direction markers enforce straight escape from pins/ports:
+            # only allow turning if we're at the start or an endpoint
             if (grid[cy, cx] == GRID_DIR and
                     current_direction != DIR_NONE and
                     current_direction != direction_id and
@@ -404,6 +417,8 @@ def a_star(grid, start, end, width, height, straight_lines,
             if grid[ny, nx] >= GRID_BLOCKED:
                 continue
 
+            # Penalize direction changes proportional to remaining distance
+            # to encourage straight runs near the destination
             if current_direction != DIR_NONE and current_direction != direction_id:
                 direction_change_penalty = remaining_distance * 0.5
                 if direction_change_penalty < 10:
@@ -411,6 +426,7 @@ def a_star(grid, start, end, width, height, straight_lines,
             else:
                 direction_change_penalty = 0
 
+            # Discourage reuse of cells already occupied by other routes
             congestion_penalty = 0.0
             if use_congestion:
                 if route_cell_usage is not None:
@@ -465,6 +481,8 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     end_direction = DIR_TO_INT.get(end_dir, DIR_NONE)
     start_points_keys = _point_keys(start_points, height)
 
+    # Use the closest start point for the heuristic estimate.
+    # This may be inadmissible for farther start points but keeps search fast.
     min_distance = sys.maxsize
     start_point_min = start_points[0]
     for sp in start_points:
@@ -485,6 +503,7 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     if has_search_window:
         min_x, max_x, min_y, max_y = search_window
 
+    # Track the best path found so far; search continues to find shorter ones
     best_path = []
     best_path_score = sys.maxsize
 
@@ -493,10 +512,12 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
         if popped_g_score > g_score[current_key]:
             continue
 
+        # Prune paths that can't beat the current best
         current_path_length = g_score[current_key]
         if current_path_length >= best_path_score:
             continue
 
+        # Reached one of the target start points, record if shortest so far
         if current_key in start_points_keys:
             path = []
             key = current_key
@@ -810,6 +831,7 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
 
     def route_forward_with_window(start_new, end_new, start_name, transformed_start_dir,
                                   use_congestion=True):
+        # Try progressively larger search windows before falling back to full grid
         points = [start_new, end_new]
         for margin in WINDOW_MARGIN_STEPS:
             search_window = _window_from_points(points, width, height, margin)
@@ -852,28 +874,35 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
 
         if start != end_new and end != start_new:
             shortcut_available = False
+            # Shortcut mode: if this net already has routed paths, try to
+            # branch off an existing path via reverse A* instead of routing
+            # all the way back to the original start
             if SHORTCUT_ENABLED and len(port_drawing_dict[start_name]) != 0:
                 shortcut_available = True
                 shortcut_start_points = port_drawing_dict[start_name]
+                # Collect interior points of existing paths as branch candidates
                 path_list = list()
                 for shortcut in shortcut_start_points:
-                    # extend except for first and last element (start/end)
                     path_list.extend(shortcut[1:-1])
                 if end_new in path_list:
+                    # Endpoint already lies on an existing path --> trivial connection
                     path = [end_new]
                 elif not path_list:
                     raise IndexError(f"Shortcut doesn't have valid branch point to connect nid:{start_name}")
                 else:
+                    # Try reverse A* from endpoint to any existing path point
                     path = route_reverse_with_window(
                         path_list, end_new, start_name, transformed_end_dir,
                         use_congestion=False
                     )
+                    # Fall back to forward A* if reverse search fails
                     if not path:
                         path = route_forward_with_window(
                             start_new, end_new, start_name, transformed_start_dir,
                             use_congestion=False
                         )
             else:
+                # First connection for this net, standard forward A*
                 path = route_forward_with_window(
                     start_new, end_new, start_name, transformed_start_dir
                 )
@@ -881,12 +910,14 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
             if not path and start_new != end_new:
                 return None, start_new, end_new
 
+            # Prepend the original pin and its escape point for non-shortcut paths
             if start_dir and not shortcut_available:
                 path.insert(0, start)
                 path.insert(1, start_new)
             if end_dir:
                 path.append(end)
         else:
+            # Start and end are adjacent --> direct connection
             path = [start, end]
 
         return path, start_new, end_new
@@ -916,6 +947,10 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
             end = (end.x, end.y)
 
         path, start_new, end_new = try_route_connection(start, end, start_dir, end_dir, start_name)
+
+        # Rip-up/reroute: if routing failed, temporarily remove the previous
+        # route and retry. If both can be rerouted, keep the new arrangement;
+        # otherwise restore the original route.
         if path is None and MAX_RIPUP_REROUTE > 0 and routed_entries:
             previous_entry = routed_entries.pop()
             previous_start_name = previous_entry["start_name"]
@@ -924,6 +959,7 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
             rebuild_straight_lines(previous_start_name)
             remove_path_from_grid(previous_entry["path_cells"])
 
+            # Retry current connection with the previous route removed
             path, start_new, end_new = try_route_connection(start, end, start_dir, end_dir, start_name)
             if path is not None:
                 path_cells = apply_path_to_grid(path)
@@ -938,6 +974,7 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
                     "path_cells": path_cells,
                 })
 
+                # Try to reroute the previously ripped-up connection
                 previous_path, _, _ = try_route_connection(
                     previous_entry["start"],
                     previous_entry["end"],
@@ -946,6 +983,7 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
                     previous_start_name,
                 )
                 if previous_path is not None:
+                    # Both succeeded --> keep the new arrangement
                     previous_cells = apply_path_to_grid(previous_path)
                     append_path(previous_start_name, previous_path)
                     previous_entry["path"] = previous_path
@@ -953,11 +991,13 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
                     routed_entries.append(previous_entry)
                     continue
 
+                # Previous route failed to reroute, undo current and restore
                 if port_drawing_dict[start_name]:
                     port_drawing_dict[start_name].pop()
                 rebuild_straight_lines(start_name)
                 remove_path_from_grid(path_cells)
 
+            # Restore the original previous route
             restore_cells = apply_path_to_grid(previous_entry["path"])
             append_path(previous_start_name, previous_entry["path"])
             previous_entry["path_cells"] = restore_cells
@@ -979,6 +1019,7 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
             "path_cells": path_cells,
         })
 
+    # Post-process: reduce full paths to corner/edge vertices for rendering
     for key, value in port_drawing_dict.items():
         if SHORTCUT_ENABLED:
             current_path = keep_corners_and_edges(port_drawing_dict[key])
