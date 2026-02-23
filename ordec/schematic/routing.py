@@ -114,14 +114,17 @@ DIR_TO_INT = {  # Map direction vectors to compact integer IDs.
 
 # Place cells and ports on the grid
 def place_cells_and_ports(grid, cells, ports, width, height):
-    """
-    Place cells and ports initially on the schematic grid
+    """Place cells and ports initially on the schematic grid.
 
-    :param grid: Schematic grid
-    :param cells: Cells in the schematic
-    :param ports: Ports in the schematic
-    :param width: Width of the schematic
-    :param height: Height of the schematic
+    Args:
+        grid (np.ndarray): Schematic grid.
+        cells (list): Cells in the schematic.
+        ports (list): Ports in the schematic.
+        width (int): Width of the schematic.
+        height (int): Height of the schematic.
+
+    Returns:
+        dict: Sparse mapping of (x, y) to string name for cell pins/ports.
     """
 
     name_grid = dict()  # sparse dict: (x, y) -> string name (for cell pins/ports)
@@ -154,14 +157,16 @@ def place_cells_and_ports(grid, cells, ports, width, height):
     return name_grid
 
 def adjust_start_end_for_direction(start, start_dir, end, end_dir):
-    """Adjust the start and end points to ensure proper direction handling.
-    --> Start and end with the second element in the path
+    """Adjust start and end points by stepping one cell in their direction.
 
-    :param start: Start point
-    :param start_dir: Direction of the start port
-    :param end: End point
-    :param end_dir: Direction of the end port
-    :returns: New start and end
+    Args:
+        start (tuple): Start point (x, y).
+        start_dir (str): Direction of the start port.
+        end (tuple): End point (x, y).
+        end_dir (str): Direction of the end port.
+
+    Returns:
+        tuple: Adjusted (start, end) points.
     """
 
     # Adjust the start point based on start_dir
@@ -177,14 +182,24 @@ def adjust_start_end_for_direction(start, start_dir, end, end_dir):
     return start, end
 
 def dependency_versions(start_name):
-    """Version signature of all straight lines except start_name."""
+    """Return a version signature of all straight lines except ``start_name``."""
     if not _straight_line_change_count:
         return 0
     return sum(v for k, v in _straight_line_change_count.items() if k != start_name)
 
 def preprocess_straight_lines(straight_lines, start_name, height):
-    """Preprocess straight lines into a set of blocked movements, including
-    corner-touch prevention, while allowing orthogonal crossings.
+    """Preprocess straight lines into blocked movements with corner-touch prevention.
+
+    Allows orthogonal crossings. Results are cached per ``start_name`` and
+    invalidated when dependency versions change.
+
+    Args:
+        straight_lines (dict): Already routed paths keyed by net name.
+        start_name (str): Name of the net currently being routed (excluded).
+        height (int): Grid height used for key encoding.
+
+    Returns:
+        tuple: (blocked_moves set, blocked_masks dict).
     """
     global _cache
     dep_version = dependency_versions(start_name)
@@ -246,7 +261,15 @@ def preprocess_straight_lines(straight_lines, start_name, height):
 
 
 def _build_blocked_move_masks(blocked_segments, height):
-    """Encode blocked moves as per-node direction bitmasks."""
+    """Encode blocked moves as per-node direction bitmasks.
+
+    Args:
+        blocked_segments (set): Set of (start_point, end_point) tuples.
+        height (int): Grid height used for key encoding.
+
+    Returns:
+        dict: Mapping of node key to direction bitmask.
+    """
     blocked_masks = dict()
     for start_point, end_point in blocked_segments:
         sx, sy = start_point
@@ -271,7 +294,17 @@ def _point_keys(points, height):
 
 
 def _window_from_points(points, width, height, margin):
-    """Create a clamped search window around points."""
+    """Create a clamped search window around points.
+
+    Args:
+        points (list): List of (x, y) points to enclose.
+        width (int): Grid width.
+        height (int): Grid height.
+        margin (int): Margin to add around the bounding box.
+
+    Returns:
+        tuple: (min_x, max_x, min_y, max_y) clamped to grid bounds.
+    """
     min_x = min(p[0] for p in points) - margin
     max_x = max(p[0] for p in points) + margin
     min_y = min(p[1] for p in points) - margin
@@ -287,21 +320,24 @@ def a_star(grid, start, end, width, height, straight_lines,
            start_name, start_dir, endpoint_mapping,
            route_cell_usage=None, search_window=None,
            use_congestion=True):
-    """Perform A* for new connections between port and endpoint
+    """Perform A* pathfinding between a start and end point.
 
-    :param grid: Schematic grid (int8 array)
-    :param start: Point to start from
-    :param end: Point to reach
-    :param width: Width of the schematic
-    :param height: Height of the schematic
-    :param straight_lines: Already calculated paths
-    :param start_name: Name of the starting port
-    :param start_dir: Direction to start from
-    :param endpoint_mapping: Mapping of start name to endpoint key set
-    :param route_cell_usage: Dict with routed cell usage counts
-    :param search_window: Optional (min_x, max_x, min_y, max_y) bounds
-    :param use_congestion: Whether to apply congestion/history penalties
-    :returns: Calculated path
+    Args:
+        grid (np.ndarray): Schematic grid (int8 array).
+        start (tuple): Point to start from (x, y).
+        end (tuple): Point to reach (x, y).
+        width (int): Width of the schematic.
+        height (int): Height of the schematic.
+        straight_lines (dict): Already calculated paths.
+        start_name (str): Name of the starting port.
+        start_dir (tuple): Direction vector to start from.
+        endpoint_mapping (dict): Mapping of start name to endpoint key set.
+        route_cell_usage (dict, optional): Routed cell usage counts.
+        search_window (tuple, optional): (min_x, max_x, min_y, max_y) bounds.
+        use_congestion (bool): Whether to apply congestion/history penalties.
+
+    Returns:
+        list: Calculated path as list of (x, y) tuples, or empty list on failure.
     """
 
     _, blocked_masks = preprocess_straight_lines(
@@ -399,21 +435,24 @@ def a_star(grid, start, end, width, height, straight_lines,
 def reverse_a_star(grid, start_points, end, width, height, straight_lines, start_name, end_dir,
                    endpoint_mapping, route_cell_usage=None, search_window=None,
                    use_congestion=True):
-    """Perform reverse A* from the end point to all start points.
+    """Perform reverse A* from the end point towards any of the start points.
 
-    :param grid: Schematic grid (int8 array)
-    :param start_points: Points to reach
-    :param end: Endpoint to start from
-    :param width: Width of the schematic
-    :param height: Height of the schematic
-    :param straight_lines: Already calculated paths
-    :param start_name: Name of the starting port
-    :param end_dir: Direction to end with
-    :param endpoint_mapping: Mapping of start name to endpoint key set
-    :param route_cell_usage: Dict with routed cell usage counts
-    :param search_window: Optional (min_x, max_x, min_y, max_y) bounds
-    :param use_congestion: Whether to apply congestion/history penalties
-    :returns: Calculated path
+    Args:
+        grid (np.ndarray): Schematic grid (int8 array).
+        start_points (list): Target points to reach.
+        end (tuple): Endpoint to start search from (x, y).
+        width (int): Width of the schematic.
+        height (int): Height of the schematic.
+        straight_lines (dict): Already calculated paths.
+        start_name (str): Name of the starting port.
+        end_dir (tuple): Direction vector to end with.
+        endpoint_mapping (dict): Mapping of start name to endpoint key set.
+        route_cell_usage (dict, optional): Routed cell usage counts.
+        search_window (tuple, optional): (min_x, max_x, min_y, max_y) bounds.
+        use_congestion (bool): Whether to apply congestion/history penalties.
+
+    Returns:
+        list: Shortest path found as list of (x, y) tuples, or empty list.
     """
 
     _, blocked_masks = preprocess_straight_lines(
@@ -530,12 +569,15 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
 
 
 def shorten_lists(list_of_lists):
-    """
-    Shortens each list by removing overlapping prefixes with the previous list.
-    The first list remains unchanged. (Important for intersecting paths)
+    """Shorten lists by removing overlapping prefixes with the first list.
 
-    :param list_of_lists: Lists to shorten
-    :returns: Shortened lists
+    The first list remains unchanged. Important for intersecting paths.
+
+    Args:
+        list_of_lists (list): Lists to shorten.
+
+    Returns:
+        list: Shortened lists with shared prefixes removed.
     """
     if not list_of_lists:
         return []
@@ -564,12 +606,13 @@ def shorten_lists(list_of_lists):
 
 
 def keep_corners_and_edges(lines):
-    """
-    Full paths are unnecessary for the routing.
-    Only filter for the vertices.
+    """Filter full paths down to corners and edge points only.
 
-    :param lines: Calculated paths
-    :returns: vertices
+    Args:
+        lines (list): Calculated paths as lists of (x, y) tuples.
+
+    Returns:
+        list: Paths reduced to corner and edge vertices.
     """
     def is_corner(prev, curr, next_item):
         # A corner exists if there is a direction change
@@ -610,13 +653,17 @@ def keep_corners_and_edges(lines):
 
 
 def transform_to_pairs(list_of_lists, straights):
-    """
-    Transforms each list in the input into a list of consecutive pairs.
-    For example: [(2, 1), (5, 1), (5, 2)] -> [((2, 1), (5, 1)), ((5, 1), (5, 2))]
+    """Transform point lists into consecutive pairs and append to straights.
 
-    :param list_of_lists: List of tuple lists
-    :param straights: Straight paths
-    :returns: Straights
+    Example: ``[(2, 1), (5, 1), (5, 2)]`` becomes
+    ``[((2, 1), (5, 1)), ((5, 1), (5, 2))]``.
+
+    Args:
+        list_of_lists (list): List of point lists.
+        straights (list): Accumulator list to append pairs to.
+
+    Returns:
+        list: The straights list with new pairs appended.
     """
 
     for lst in list_of_lists:
@@ -629,13 +676,17 @@ def transform_to_pairs(list_of_lists, straights):
 
 
 def sort_connections(connections, name_grid=None):
-    """
-    Sort connections by routing difficulty.
-    Higher fanout and longer distances are routed first.
+    """Sort connections by routing difficulty.
 
-    :param connections: Connections between subcells
-    :param name_grid: Sparse dict mapping (x, y) -> string name
-    :returns: Prioritised connections
+    Higher fanout nets are routed first, then shorter distances within
+    the same fanout group.
+
+    Args:
+        connections (list): Connections between subcells.
+        name_grid (dict, optional): Sparse mapping of (x, y) to string name.
+
+    Returns:
+        tuple: (name_endpoint_mapping, sorted_connections).
     """
     # Helper function to calculate squared Euclidean distance.
     # sqrt() is monotonic, so squared distance preserves sorting order.
@@ -689,17 +740,19 @@ def sort_connections(connections, name_grid=None):
 
 # Draw all connections with paths
 def draw_connections(grid, connections, width, height, ports, cells, name_grid=None):
-    """
-    Main logic for routing and evaluation of results
+    """Route all connections and return the calculated vertices.
 
-    :param grid: Schematic grid (int8 array)
-    :param connections: Connections between subcells
-    :param width: width of the schematic
-    :param height: height of the schematic
-    :param ports: Ports in the schematic
-    :param cells: Cells in the schematic
-    :param name_grid: Sparse dict mapping (x, y) -> string name
-    :returns: Calculated vertices for routes
+    Args:
+        grid (np.ndarray): Schematic grid (int8 array).
+        connections (list): Connections between subcells.
+        width (int): Width of the schematic.
+        height (int): Height of the schematic.
+        ports (list): Ports in the schematic.
+        cells (list): Cells in the schematic.
+        name_grid (dict, optional): Sparse mapping of (x, y) to string name.
+
+    Returns:
+        dict: Drawing dict mapping net name to list of vertex paths.
     """
     _cache.clear()
     _straight_line_change_count.clear()
@@ -936,14 +989,16 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
 
 
 def calculate_vertices(outline, cells, ports, connections):
-    """
-    Place elements on a grid and perform the a-star routing
+    """Place elements on a grid and perform A* routing.
 
-    :param outline: Current schematic outline
-    :param cells: Cells in the schematic
-    :param ports: Ports in the schematic
-    :param connections: Connections between subcells
-    :returns: Calculated vertices of routes
+    Args:
+        outline (Rect4R): Current schematic outline.
+        cells (dict): Cells in the schematic.
+        ports (dict): Ports in the schematic.
+        connections (list): Connections between subcells.
+
+    Returns:
+        dict: Calculated vertices of routes keyed by net name.
     """
     width = int(outline.ux - outline.lx) * 2
     height = int(outline.uy - outline.ly) * 2
@@ -961,11 +1016,13 @@ def calculate_vertices(outline, cells, ports, connections):
 
 
 def adjust_outline_initial(node):
-    """
-    Adjust the outline according to the schematic instances
+    """Compute an initial outline enclosing all ports and instances.
 
-    :param node: node instance
-    :returns: Adjusted outline
+    Args:
+        node: Node instance containing schematic elements.
+
+    Returns:
+        Rect4R: Adjusted outline bounding all elements.
     """
     outline = None
     for port in node.all(SchemPort):
@@ -987,12 +1044,16 @@ def adjust_outline_initial(node):
     return outline
 
 def schematic_routing(node, outline=None, routing=None):
-    """
-    Calculate the vertices for routing via a-star pathfinding
-    :param node: current node
-    :param outline: outline coordinates
-    :param routing: port dict if routing should be done
-    :returns: Adjusted outline
+    """Calculate routing vertices via A* pathfinding and attach wires to the node.
+
+    Args:
+        node: Current node containing schematic elements.
+        outline (Rect4R, optional): Outline coordinates. Computed if not given.
+        routing (dict, optional): Port routing overrides. Keys are port IDs,
+            values are booleans enabling/disabling routing.
+
+    Returns:
+        Rect4R: Adjusted outline extended to cover all routed wires.
     """
     # Get all the connections of ports and instances
     if routing is None:
