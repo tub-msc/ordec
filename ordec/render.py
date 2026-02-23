@@ -44,6 +44,8 @@ class Renderer:
     pin_text_space = 0.125
     port_text_space = 0.15 + 0.5
     pixel_per_unit = 35
+    # character width in schematic units (11pt Inconsolata 75% stretch * scale 0.045)
+    label_char_width = 0.3
     conn_point_radius = 0.1625
     css = ""
 
@@ -311,8 +313,20 @@ class SchematicRenderer(Renderer):
             self.draw_grid(s.outline)
         self.draw_symbol(s, TD4R())
 
+    def _port_label_endpoint(self, port) -> Vec2R:
+        """Estimate the farthest point of a port label in schematic coordinates."""
+        label = port.ref.pin.full_path_str()
+        text_width = len(label) * self.label_char_width
+        total = self.port_text_space + text_width
+        direction = port.align * Vec2R(0, -1)
+        return port.pos + direction * total
+
     def render_schematic(self, s: Schematic):
-        self.setup_canvas(s.outline)
+        outline = s.outline
+        for port in s.all(SchemPort):
+            outline = outline.extend(self._port_label_endpoint(port))
+
+        self.setup_canvas(outline)
         if self.enable_grid:
             self.draw_grid(s.outline)
 
