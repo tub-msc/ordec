@@ -25,3 +25,8 @@ cell VoltageDivider:
         node = SimHierarchy.from_schematic(self.schematic)
         HighlevelSim(node).op()
         return node
+
+    @generate
+    def netlist(self) -> str:
+        """Example of how to view SPICE netlist in web UI."""
+        return HighlevelSim(SimHierarchy.from_schematic(self.schematic)).netlister.out()

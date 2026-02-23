@@ -13,6 +13,161 @@ export function generateId() {
     return "idgen" + idCounter;
 }
 
+class ReportPlotGroups {
+    constructor() {
+        this.groups = new Map();
+        this.groupNameOfPlot = new Map();
+    }
+
+    _applyCrosshair(plot, crosshairX) {
+        if (crosshairX === null) {
+            plot.clearCrosshair({ suppressEvent: true });
+        } else {
+            plot.setCrosshairX(crosshairX, { suppressEvent: true });
+        }
+    }
+
+    register(plot, groupName) {
+        if (!groupName) return;
+        let group = this.groups.get(groupName);
+        if (!group) {
+            group = {
+                plots: new Set(),
+                xDomain: null,
+                crosshairX: undefined,
+            };
+            this.groups.set(groupName, group);
+        }
+
+        group.plots.add(plot);
+        this.groupNameOfPlot.set(plot, groupName);
+        plot.setSyncCallbacks({
+            onXDomainChange: (xDomain) => this._onXDomainChange(groupName, plot, xDomain),
+            onCrosshairXChange: (crosshairX) => this._onCrosshairXChange(groupName, plot, crosshairX),
+        });
+        if (!group.xDomain) {
+            group.xDomain = plot.getXDomain();
+        }
+
+        if (group.xDomain) {
+            plot.setXDomain(group.xDomain, { suppressEvent: true });
+        }
+        if (group.crosshairX !== undefined) {
+            this._applyCrosshair(plot, group.crosshairX);
+        }
+    }
+
+    unregister(plot) {
+        const groupName = this.groupNameOfPlot.get(plot);
+        if (!groupName) return;
+        this.groupNameOfPlot.delete(plot);
+
+        const group = this.groups.get(groupName);
+        if (!group) return;
+        group.plots.delete(plot);
+        if (group.plots.size === 0) {
+            this.groups.delete(groupName);
+        }
+    }
+
+    _onXDomainChange(groupName, sourcePlot, xDomain) {
+        const group = this.groups.get(groupName);
+        if (!group) return;
+        group.xDomain = xDomain;
+        group.plots.forEach(plot => {
+            if (plot !== sourcePlot) {
+                plot.setXDomain(xDomain, { suppressEvent: true });
+            }
+        });
+    }
+
+    _onCrosshairXChange(groupName, sourcePlot, crosshairX) {
+        const group = this.groups.get(groupName);
+        if (!group) return;
+        group.crosshairX = crosshairX;
+        group.plots.forEach(plot => {
+            if (plot === sourcePlot) return;
+            this._applyCrosshair(plot, crosshairX);
+        });
+    }
+}
+
+function simpleReportElementClass(renderNode) {
+    return class {
+        constructor(container) {
+            this.container = container;
+        }
+
+        update(msgData) {
+            this.container.replaceChildren(renderNode(msgData));
+        }
+    };
+}
+
+const reportElementClassOf = {
+    markdown: simpleReportElementClass((msgData) => {
+        const section = document.createElement('div');
+        section.classList.add('report-markdown');
+        section.innerHTML = msgData.html;
+        return section;
+    }),
+    preformatted_text: simpleReportElementClass((msgData) => {
+        const pre = document.createElement('pre');
+        pre.classList.add('report-preformatted');
+        pre.innerText = msgData.text;
+        return pre;
+    }),
+    svg: simpleReportElementClass((msgData) => {
+        const svg = d3.create("svg")
+            .attr("class", "report-svg")
+            .attr("viewBox", msgData.viewbox);
+        svg.attr("width", msgData.width);
+        svg.attr("height", msgData.height);
+        svg.append("g").html(msgData.inner);
+        return svg.node();
+    }),
+    plot2d: class {
+        constructor(container, reportContext) {
+            this.container = container;
+            this.reportContext = reportContext;
+            this.plot = null;
+        }
+
+        update(msgData) {
+            this.destroy();
+
+            const root = document.createElement('div');
+            root.classList.add('report-plot2d');
+            this.container.replaceChildren(root);
+
+            this.plot = new SimPlot(root, {
+                xlabel: msgData.xlabel,
+                ylabel: msgData.ylabel,
+                xscale: msgData.xscale,
+                yscale: msgData.yscale,
+                fixedHeight: msgData.height,
+            });
+
+            this.plot.setData(msgData.x, msgData.series);
+            if (this.reportContext) {
+                this.reportContext.plotGroups.register(
+                    this.plot,
+                    msgData.plot_group
+                );
+            }
+        }
+
+        destroy() {
+            if (!this.plot) return;
+            if (this.reportContext) {
+                this.reportContext.plotGroups.unregister(this.plot);
+            }
+            this.plot.destroy();
+            this.plot = null;
+        }
+    },
+};
+
 const viewClassOf = {
     html: class {
         constructor(resContent) {
@@ -56,6 +211,54 @@ const viewClassOf = {
             this.resContent.replaceChildren(svg.node());
         }
     },
+    report: class {
+        constructor(resContent) {
+            this.resContent = resContent;
+            this.renderers = [];
+        }
+
+        update(msgData) {
+            this.renderers.forEach(renderer => {
+                if (typeof renderer.destroy === 'function') {
+                    renderer.destroy();
+                }
+            });
+            this.renderers = [];
+
+            const report = document.createElement('div');
+            report.classList.add('report-view');
+            const reportContext = {
+                plotGroups: new ReportPlotGroups(),
+            };
+
+            (msgData.elements || []).forEach(elementData => {
+                const elementRoot = document.createElement('div');
+                elementRoot.classList.add('report-element');
+                if (elementData.element_type === 'plot2d') {
+                    elementRoot.classList.add('report-element-plot2d');
+                }
+                report.appendChild(elementRoot);
+
+                const elementClass =
+                    reportElementClassOf[elementData.element_type];
+
+                if (!elementClass) {
+                    const pre = document.createElement('pre');
+                    pre.innerText =
+                        'no handler found for report element type '
+                        + elementData.element_type;
+                    elementRoot.replaceChildren(pre);
+                    return;
+                }
+
+                const renderer = new elementClass(elementRoot, reportContext);
+                renderer.update(elementData);
+                this.renderers.push(renderer);
+            });
+
+            this.resContent.replaceChildren(report);
+        }
+    },
     layout_gl: LayoutGL,
     dcsim: class {
         constructor(resContent) {
@@ -86,6 +289,48 @@ const viewClassOf = {
                 document.createElement('br'),
                 table2
             );
+        }
+    },
+    dcsweep: class {
+        constructor(resContent) {
+            this.resContent = resContent;
+            this.plots = [];
+        }
+
+        update(msgData) {
+            this.plots.forEach(p => p.destroy());
+            this.plots = [];
+
+            const container = document.createElement('div');
+            container.classList.add('simplot-container');
+            this.resContent.replaceChildren(container);
+
+            const sweep = msgData.sweep;
+            const sweepName = msgData.sweep_name || "Sweep";
+            const voltages = msgData.voltages;
+            const currents = msgData.currents;
+
+            if (Object.keys(voltages).length > 0) {
+                const plot = new SimPlot(container, {
+                    xlabel: sweepName,
+                    ylabel: "Voltage (V)",
+                });
+                plot.setData(sweep, Object.entries(voltages).map(
+                    ([name, values]) => ({ name, values })
+                ));
+                this.plots.push(plot);
+            }
+
+            if (Object.keys(currents).length > 0) {
+                const plot = new SimPlot(container, {
+                    xlabel: sweepName,
+                    ylabel: "Current (A)",
+                });
+                plot.setData(sweep, Object.entries(currents).map(
+                    ([name, values]) => ({ name, values })
+                ));
+                this.plots.push(plot);
+            }
         }
     },
     transim: class {
@@ -303,6 +548,7 @@ export class ResultViewer {
             prevOptVal = this.restoreSelectedView;
         }
         vs.innerHTML = "<option disabled selected value>--- Select result from list ---</option>";
+        let selectedVal = null;
         this.client.views.forEach(view => {
             var option = document.createElement("option");
             option.innerText = view.name;
@@ -310,9 +556,10 @@ export class ResultViewer {
             vs.appendChild(option)
             if (view.name == prevOptVal) {
                 option.selected = true;
+                selectedVal = view.name;
             }
         });
-        this.viewSelected = prevOptVal;
+        this.viewSelected = selectedVal;
         this.viewListInitialized = true;
     }
 

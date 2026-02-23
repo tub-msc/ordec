@@ -58,9 +58,8 @@ class HighlevelSim:
 
 
     def _run_simulation(self, sim_type, sim_method, *sim_args, **sim_kwargs):
-        """Common simulation execution logic for tran and ac analyses."""
+        """Common simulation execution logic for tran/ac/dc-sweep analyses."""
         self.simhier.sim_type = sim_type
-        is_tran = sim_type == SimType.TRAN
 
         with self.launch_ngspice() as sim:
             sim.load_netlist(self.netlister.out())
@@ -73,12 +72,24 @@ class HighlevelSim:
                 self.simhier.time_field = f.fid
             elif f.quantity == Quantity.FREQUENCY:
                 self.simhier.freq_field = f.fid
+        if sim_type == SimType.DCSWEEP:
+            if not sim_array.fields:
+                raise ValueError("DC sweep returned no fields")
+            # First field in ngspice DC rawfiles is the swept source value.
+            self.simhier.sweep_field = sim_array.fields[0].fid
 
-        # Assign field names to SimNet/SimInstance nodes
-        field_attr = 'trans_field' if is_tran else 'ac_field'
+        # Assign field names to SimNet/SimInstance nodes.
+        field_attr_by_sim_type = {
+            SimType.TRAN: "trans_field",
+            SimType.AC: "ac_field",
+            SimType.DCSWEEP: "dc_sweep_field",
+        }
+        field_attr = field_attr_by_sim_type[sim_type]
 
         for f in sim_array.fields:
             if f.quantity in (Quantity.TIME, Quantity.FREQUENCY):
+                continue
+            if sim_type == SimType.DCSWEEP and f.fid == self.simhier.sweep_field:
                 continue
 
             stripped = strip_raw_name(f.fid)
@@ -91,7 +102,11 @@ class HighlevelSim:
                         device_name = stripped.split("[")[0][1:]
                         siminstance = self.hier_simobj_of_name(device_name)
                     else:
-                        siminstance = self.hier_simobj_of_name(stripped)
+                        # Raw branch currents use names like "i(vsrc)" and are
+                        # normalized to "vsrc#branch"; strip suffix for lookup.
+                        siminstance = self.hier_simobj_of_name(
+                            stripped.removesuffix("#branch")
+                        )
                     setattr(siminstance, field_attr, f.fid)
             except KeyError:
                 continue
@@ -101,6 +116,22 @@ class HighlevelSim:
 
     def ac(self, *args):
         self._run_simulation(SimType.AC, "ac", *args)
+
+    def dc_sweep(self, source, vstart, vstop, step_count: int):
+        if step_count < 2:
+            raise ValueError("step_count must be >= 2")
+        source_name = self.directory.existing_name_node(source)
+        vstart = R(vstart)
+        vstop = R(vstop)
+        vstep = (vstop - vstart) / R(step_count - 1)
+        self._run_simulation(
+            SimType.DCSWEEP,
+            "dc",
+            source_name,
+            vstart,
+            vstop,
+            vstep,
+        )
 
     def _parse_timescale_factor(self, timescale: str) -> float:
         if not isinstance(timescale, str) or not timescale.strip():

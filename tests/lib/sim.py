@@ -258,7 +258,6 @@ class InvTb(Cell):
         s = Schematic(cell=self)
         s.vdd = Net()
         s.i = Net()
-        s.i_ac = Net()
         s.o = Net()
         s.vss = Net()
         vin = self.vin
@@ -272,13 +271,10 @@ class InvTb(Cell):
             Vdc(dc=R("5")).symbol.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 6)
         )
         s.I4 = SchemInstance(
-            Vdc(dc=vin).symbol.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
-        )
-        s.I4_ac = SchemInstance(
-            Vsin(amplitude=R(1), frequency=R("1e6")).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
+            Vdc(dc=vin).symbol.portmap(m=s.vss, p=s.i), pos=Vec2R(5, 6)
         )
 
-        s.outline = Rect4R(lx=0, ly=0, ux=20, uy=14)
+        s.outline = schematic_routing(s)
 
         helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
 
@@ -288,6 +284,17 @@ class InvTb(Cell):
     def sim_dc(self):
         s = SimHierarchy.from_schematic(self.schematic)
         HighlevelSim(s).op()
+        return s
+
+    @generate
+    def sim_dc_sweep(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).dc_sweep(
+            self.schematic.I4,
+            R(0),
+            R(self.schematic.I3.symbol.cell.dc),
+            251,
+        )
         return s
 
 class InvSkyTb(Cell):

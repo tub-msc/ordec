@@ -7,7 +7,7 @@ from ..core import *
 from ..schematic import helpers
  
 def setup_generic_mos(netlister):
-    vt0 = 1.0
+    vt0 = 0.4
     common_args = [
         'KP=2.0e-5', # Transconductance parameter
         'LAMBDA=0.0', # Channel length modulation parameter

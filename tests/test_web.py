@@ -60,6 +60,17 @@ def check_sim_dc(res_viewer):
 def check_sim_tran(res_viewer):
     assert res_viewer.html.find('simplot-container') >= 0
 
+def check_report_example(res_viewer):
+    html = res_viewer.html
+    assert html.find('class="report-view"') >= 0
+    assert html.count('class="report-element"') == 4
+    assert html.count('class="report-svg"') == 2
+    assert html.count('class="report-plot2d"') == 4
+    assert html.find('simplot') >= 0
+    assert html.find('Report Example') >= 0
+    assert html.find('bold') >= 0
+    assert html.find('alpha') >= 0
+
 def check_min_size(min_width, min_height):
     def func(res_viewer):
         assert res_viewer.width >= min_width
@@ -77,7 +88,7 @@ testcases_integrated = {
         'VoltageDivider().sim_dc': [check_sim_dc, check_min_size(300, 200)],
     },
     "blank": {
-        'undefined':[],
+        'null':[],
     },
     "voltagedivider":{
         'VoltageDivider().schematic': [check_schematic, check_min_size(300, 200)],
@@ -97,6 +108,9 @@ testcases_integrated = {
 testcases_local = {
     "ordec.lib.examples.voltagedivider": testcases_integrated['voltagedivider'],
     "ordec.lib.examples.voltagedivider_py": testcases_integrated['voltagedivider_py'],
+    "tests.lib.report": {
+        'report_example()': [check_report_example],
+    },
     # Further tests in local mode case be added here (for specific features of the webui).
 }
 

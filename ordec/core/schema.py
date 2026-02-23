@@ -496,6 +496,7 @@ class SimType(Enum):
     DC = 'dc'
     TRAN = 'tran'
     AC = 'ac'
+    DCSWEEP = 'dcsweep'
 
 def parent_siminstance(c: Node) -> Node:
     while not isinstance(c, (SimInstance, SimHierarchy)):
@@ -568,6 +569,7 @@ class SimHierarchy(SubgraphRoot):
     sim_data = Attr(SimArray) #: Packed simulation result data shared by all SimNet/SimInstance nodes.
     time_field = Attr(str) #: Column name in sim_data for the time axis (transient), or None.
     freq_field = Attr(str) #: Column name in sim_data for the frequency axis (AC), or None.
+    sweep_field = Attr(str) #: Column name in sim_data for the DC sweep axis, or None.
 
     @property
     def time(self):
@@ -645,68 +647,9 @@ class SimHierarchy(SubgraphRoot):
         add_sch(schematic, None)
         return simhier
 
-    def _get_sim_data(self, voltage_attr, current_attr):
-        """Helper to extract voltage and current data for different simulation types."""
-        voltages = {}
-        for sn in self.all(SimNet):
-            if (voltage_val := getattr(sn, voltage_attr, None)) is not None:
-                voltages[sn.full_path_str()] = voltage_val
-        currents = {}
-        for si in self.all(SimInstance):
-            if (current_val := getattr(si, current_attr, None)) is not None:
-                currents[si.full_path_str()] = current_val
-        return voltages, currents
-
     def webdata(self):
-        def json_seq(values):
-            if values is None:
-                return None
-            return tuple(values)
-
-        if self.sim_type == SimType.TRAN:
-            voltages, currents = self._get_sim_data('trans_voltage', 'trans_current')
-            voltages = {k: json_seq(v) for k, v in voltages.items()}
-            currents = {k: json_seq(v) for k, v in currents.items()}
-            return 'transim', {
-                'time': json_seq(self.time),
-                'voltages': voltages,
-                'currents': currents
-            }
-        elif self.sim_type == SimType.AC:
-            voltages, currents = self._get_sim_data('ac_voltage', 'ac_current')
-            # Convert complex tuples to [real, imag] pairs for JSON
-            def complex_to_pairs(vals):
-                if vals is None:
-                    return None
-                return tuple((v.real, v.imag) for v in vals)
-            voltages = {k: complex_to_pairs(v) for k, v in voltages.items()}
-            currents = {k: complex_to_pairs(v) for k, v in currents.items()}
-            return 'acsim', {
-                'freq': json_seq(self.freq),
-                'voltages': voltages,
-                'currents': currents
-            }
-        elif self.sim_type == SimType.DC:
-            def fmt_float(val, unit):
-                x=str(R(f"{val:.03e}"))+unit
-                x=re.sub(r"([0-9])([a-zA-Z])", r"\1 \2", x)
-                x=x.replace("u", "μ")
-                x=re.sub(r"e([+-]?[0-9]+)", r"×10<sup>\1</sup>", x)
-                return x
-
-            dc_voltages = []
-            for sn in self.all(SimNet):
-                if sn.dc_voltage is None:
-                    continue
-                dc_voltages.append([sn.full_path_str(), fmt_float(sn.dc_voltage, "V")])
-            dc_currents = []
-            for si in self.all(SimInstance):
-                if si.dc_current is None:
-                    continue
-                dc_currents.append([si.full_path_str(), fmt_float(si.dc_current, "A")])
-            return 'dcsim', {'dc_voltages': dc_voltages, 'dc_currents': dc_currents}
-        else:
-            return 'nosim', {}
+        from ..sim.webdata import webdata
+        return webdata(self)
 
 @public
 class SimNet(Node):
@@ -717,6 +660,7 @@ class SimNet(Node):
 
     trans_field = Attr(str) #: Column name in root sim_data for transient voltage.
     ac_field = Attr(str) #: Column name in root sim_data for AC voltage.
+    dc_sweep_field = Attr(str) #: Column name in root sim_data for DC sweep voltage.
     dc_voltage = Attr(float)
 
     @property
@@ -732,6 +676,13 @@ class SimNet(Node):
         if sd is None or self.ac_field is None:
             return None
         return sd.column(self.ac_field)
+
+    @property
+    def dc_sweep_voltage(self):
+        sd = self.root.sim_data
+        if sd is None or self.dc_sweep_field is None:
+            return None
+        return sd.column(self.dc_sweep_field)
 
     eref = ExternalRef(Net|Pin,
         of_subgraph=lambda c: c.root.schematic_or_symbol_at(c.parent_inst),
@@ -756,6 +707,7 @@ class SimInstance(Node):
 
     trans_field = Attr(str) #: Column name in root sim_data for transient current.
     ac_field = Attr(str) #: Column name in root sim_data for AC current.
+    dc_sweep_field = Attr(str) #: Column name in root sim_data for DC sweep current.
     dc_current = Attr(float)
 
     @property
@@ -771,6 +723,13 @@ class SimInstance(Node):
         if sd is None or self.ac_field is None:
             return None
         return sd.column(self.ac_field)
+
+    @property
+    def dc_sweep_current(self):
+        sd = self.root.sim_data
+        if sd is None or self.dc_sweep_field is None:
+            return None
+        return sd.column(self.dc_sweep_field)
 
     schematic = SubgraphRef(Schematic,
         typecheck_custom=lambda v: isinstance(v, (Symbol, Schematic)),

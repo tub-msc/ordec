@@ -17,7 +17,8 @@ from ordec.lib import ihp130
 from ordec.lib.base import Res, Cap, Gnd, Vdc, NoConn, Vpwl
 from ordec.schematic.routing import schematic_routing
 from ordec.schematic.helpers import symbol_place_pins, add_conn_points
-from ordec.sim.sim_hierarchy import HighlevelSim
+from ordec.sim import HighlevelSim
+from ordec.report import Report, Plot2D, Markdown
 from ordec.layout.makevias import makevias
 from ordec.layout import write_gds, gds_str_from_layout
 from ordec.layout import helpers
@@ -650,13 +651,52 @@ class VcoTb(Cell):
 
         return s
 
+    @generate
     def sim_tran(self):
         """Run sync transient simulation."""
 
-        s = SimHierarchy(cell=self)
-        sim = HighlevelSim(self.schematic, s)
+        s = SimHierarchy.from_schematic(self.schematic)
+        sim = HighlevelSim(s)
         sim.tran(R('10p'), R('30n'))
         return s
+
+    @generate
+    def report_tran(self):
+        sim = self.sim_tran
+
+        elements = [Markdown("## VCO transient main waveforms")]
+        for i in range(2):
+            elements.append(Plot2D(
+                x=sim.time,
+                series={
+                    sim.out_n[i].full_path_str(): sim.out_n[i].trans_voltage,
+                    sim.out_p[i].full_path_str(): sim.out_p[i].trans_voltage,
+                },
+                xlabel="Time (s)",
+                ylabel="Voltage (V)",
+                height=180,
+                plot_group="vco_tran",
+                ))
+        elements.append(Plot2D(
+            x=sim.time,
+            series={
+                'rst_n': sim.rst_n.trans_voltage,
+                'vbias': sim.vbias.trans_voltage,
+            },
+            xlabel="Time (s)",
+            ylabel="Voltage (V)",
+            height=120,
+            plot_group="vco_tran",
+            ))
+        elements.append(Plot2D(
+            x=sim.time,
+            series={'vdd_src': [-x for x in sim.vdd_src.trans_current]},
+            xlabel="Time (s)",
+            ylabel="Current (A)",
+            height=120,
+            plot_group="vco_tran",
+            ))
+        return Report(elements)
 
 def count_rectangles(l: Layout, flatten: bool):
     l = l.mutable_copy()

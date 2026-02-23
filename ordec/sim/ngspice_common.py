@@ -100,20 +100,35 @@ def parse_raw(fn) -> SimArray:
     var_quantities = []
 
     with open(fn, "rb") as f:
-        for i in range(100):
-            l = f.readline()[:-1].decode("ascii")
+        while True:
+            line = f.readline()
+            if not line:
+                raise ValueError("Unexpected EOF while reading rawfile header")
+            l = line.rstrip(b"\n").decode("ascii")
 
             if l.startswith("\t"):
-                _, var_idx, var_name, var_unit = l.split("\t")
+                parts = l.split("\t")
+                if len(parts) != 4:
+                    raise ValueError(f"Malformed variable line in rawfile: {l!r}")
+                _, var_idx, var_name, var_unit = parts
                 assert int(var_idx) == len(var_names)
                 var_names.append(var_name)
                 var_quantities.append(quantity_from_str(var_unit, var_name))
             else:
+                if ":" not in l:
+                    raise ValueError(f"Malformed header line in rawfile: {l!r}")
                 lhs, rhs = l.split(":", 1)
                 info[lhs] = rhs.strip()
                 if lhs == "Binary":
                     break
-        assert len(var_names) == int(info["No. Variables"])
+
+        if "No. Variables" not in info or "No. Points" not in info:
+            raise ValueError("Missing required rawfile header fields")
+        if len(var_names) != int(info["No. Variables"]):
+            raise ValueError(
+                f"Rawfile variable count mismatch: parsed {len(var_names)}, "
+                f"header says {info['No. Variables']}"
+            )
         no_points = int(info["No. Points"])
 
         # AC simulations store complex-valued vectors; transient/op use real.

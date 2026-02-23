@@ -176,10 +176,24 @@ pre {
     min-height: 150px;
     display: flex;
     flex-direction: column;
+    position: relative;
 }
 .simplot svg {
     flex: 1;
     background-color: #111;
+}
+.simplot-default-zoom {
+    padding: 2px 7px;
+    border: 1px solid #555;
+    border-radius: 3px;
+    background-color: rgba(20, 20, 20, 0.9);
+    color: #ccc;
+    font-family: 'Inconsolata', monospace;
+    font-size: 12px;
+    cursor: pointer;
+}
+.simplot-default-zoom:hover {
+    background-color: rgba(40, 40, 40, 0.95);
 }
 .simplot-legend {
     display: flex;
@@ -249,6 +263,49 @@ pre {
     flex-direction: column;
     gap: 1px;
 }
+
+.report-view {
+    display: flex;
+    flex-direction: column;
+    padding: 0px;
+}
+.report-element {
+    width: 100%;
+    padding: 5px 10px;
+}
+.report-element-plot2d {
+    padding: 0;
+}
+.report-element + .report-element {
+    border-top: 1px solid #cfcfcf;
+}
+.report-preformatted {
+    margin: 0;
+    font-family: 'Inconsolata', monospace;
+    white-space: pre;
+    overflow-x: auto;
+}
+.report-markdown code {
+    font-family: 'Inconsolata', monospace;
+}
+.report-markdown h1,
+.report-markdown h2,
+.report-markdown h3,
+.report-markdown h4,
+.report-markdown h5,
+.report-markdown h6 {
+    margin-top: 0.2em;
+    margin-bottom: 0.25em;
+}
+.report-svg {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+}
+.report-plot2d {
+    width: 100%;
+}
 .simplot-tooltip span {
     display: block;
     white-space: nowrap;
@@ -272,5 +329,4 @@ pre {
     right:3px;
     background-color:#000;
     color:#fff;
-
 }
