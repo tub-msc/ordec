@@ -760,7 +760,7 @@ def sort_connections(connections, name_grid=None):
 
 
 # Draw all connections with paths
-def draw_connections(grid, connections, width, height, ports, cells, name_grid=None):
+def draw_connections(grid, connections, width, height, name_grid=None):
     """Route all connections and return the calculated vertices.
 
     Args:
@@ -768,8 +768,6 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
         connections (list): Connections between subcells.
         width (int): Width of the schematic.
         height (int): Height of the schematic.
-        ports (list): Ports in the schematic.
-        cells (list): Cells in the schematic.
         name_grid (dict, optional): Sparse mapping of (x, y) to string name.
 
     Returns:
@@ -1020,7 +1018,7 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
         })
 
     # Post-process: reduce full paths to corner/edge vertices for rendering
-    for key, value in port_drawing_dict.items():
+    for key in port_drawing_dict:
         if SHORTCUT_ENABLED:
             current_path = keep_corners_and_edges(port_drawing_dict[key])
         else:
@@ -1051,8 +1049,7 @@ def calculate_vertices(outline, cells, ports, connections):
     # for ry in range(height - 1, -1, -1):
     #     print(''.join(f"{name_grid.get((x, ry), _GRID_SYMBOLS.get(grid[ry][x], '?')):<{cell_width}}"
     #                   for x in range(width)))
-    vertices = draw_connections(grid, connections, width, height,
-                                list(ports.values()), list(cells.values()), name_grid)
+    vertices = draw_connections(grid, connections, width, height, name_grid)
     return vertices
 
 
@@ -1276,7 +1273,7 @@ if __name__ == "__main__":
     ]
 
     name_grid = place_cells_and_ports(grid, cells, ports, width, height)
-    draw_connections(grid, connections, width, height, ports, cells, name_grid)
+    draw_connections(grid, connections, width, height, name_grid)
     # Print grid with readable names
     _GRID_SYMBOLS = {GRID_EMPTY: '.', GRID_ROUTED: '+', GRID_DIR: 'D',
                      GRID_BLOCKED: '#', GRID_PIN: 'P', GRID_PORT: 'O'}
