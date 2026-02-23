@@ -3,12 +3,12 @@
   <g transform="matrix(1 0 0 -1 0 22.0)">
     <path d="M8.0 12.0 L9.0 12.0 L9.0 17.0 L10.0 17.0" class="schemWire" />
     <path d="M9.0 12.0 L9.0 5.0 L10.0 5.0" class="schemWire" />
-    <path d="M14.0 16.0 L21.0 16.0" class="schemWire" />
-    <path d="M14.0 5.0 L21.0 5.0" class="schemWire" />
     <path d="M33.0 16.0 L32.0 16.0 L26.0 16.0 L25.0 16.0" class="schemWire" />
-    <path d="M26.0 16.0 L26.0 13.0 L18.0 13.0 L18.0 4.0 L21.0 4.0" class="schemWire" />
+    <path d="M26.0 16.0 L26.0 13.0 L19.0 13.0 L19.0 4.0 L21.0 4.0" class="schemWire" />
     <path d="M33.0 6.0 L32.0 6.0 L26.0 6.0 L26.0 4.0 L25.0 4.0" class="schemWire" />
     <path d="M26.0 6.0 L26.0 8.0 L20.0 8.0 L20.0 17.0 L21.0 17.0" class="schemWire" />
+    <path d="M14.0 16.0 L21.0 16.0" class="schemWire" />
+    <path d="M14.0 5.0 L21.0 5.0" class="schemWire" />
     <path d="M1.0 16.0 L10.0 16.0" class="schemWire" />
     <path d="M1.0 6.0 L10.0 6.0" class="schemWire" />
     <circle cx="9.0" cy="12.0" r="0.1625" class="connPoint" />
