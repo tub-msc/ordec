@@ -7,6 +7,8 @@ import numpy as np
 import heapq
 import sys
 from collections import defaultdict
+from typing import NamedTuple
+from dataclasses import dataclass
 
 #ordec imports
 
@@ -54,18 +56,19 @@ def mark_changed(start_name):
     global _straight_line_change_count
     _straight_line_change_count[start_name] += 1
 
-# RoutingPort class with direction
-class RoutingPort:
-    def __init__(self, x, y, name, direction, route=True):
-        self.x = x
-        self.y = y
-        self.name = name
-        self.direction = direction
-        self.route = route
+class CellPin(NamedTuple):
+    x: int
+    y: int
+    direction: str
+    cell_name: str
 
-    def __str__(self):
-        ret_str = f"X={self.x}; Y={self.y}; Name={self.name}; Direction={self.direction}"
-        return ret_str
+@dataclass
+class RoutingPort:
+    x: int
+    y: int
+    name: str
+    direction: str
+    route: bool = True
 
 class RoutingCell:
     def __init__(self, x, y, x_size, y_size, name, connections=None):
@@ -76,10 +79,10 @@ class RoutingCell:
         self.name = name
         if connections is None:
             self.connections = dict(
-                S=(x + x_size // 2, y, 'S', self.name),
-                N=(x + x_size // 2, y + y_size - 1, 'N', self.name),
-                W=(x, y + y_size // 2, 'W', self.name),
-                E=(x + x_size - 1, y + y_size // 2, 'E', self.name),
+                S=CellPin(x + x_size // 2, y, 'S', self.name),
+                N=CellPin(x + x_size // 2, y + y_size - 1, 'N', self.name),
+                W=CellPin(x, y + y_size // 2, 'W', self.name),
+                E=CellPin(x + x_size - 1, y + y_size // 2, 'E', self.name),
             )
         else:
             # dict with name, position and direction
@@ -87,9 +90,9 @@ class RoutingCell:
 
     def __str__(self):
         ret_str = f"X= {self.x} Y= {self.y} X_SIZE= {self.x_size} Y_SIZE= {self.y_size} NAME= {self.name}\n"
-        for connection_name, tuple_values in self.connections.items():
-           ret_str += f"Name: {connection_name} Inner_x: {tuple_values[0]} " \
-                        f"Inner_y: {tuple_values[1]} Orientation: {tuple_values[2]}\n"
+        for connection_name, pin in self.connections.items():
+           ret_str += f"Name: {connection_name} Inner_x: {pin.x} " \
+                        f"Inner_y: {pin.y} Orientation: {pin.direction}\n"
         return ret_str
 
 
@@ -662,15 +665,15 @@ def sort_connections(connections, name_grid=None):
         if isinstance(start, RoutingPort):
             start_name = start.name
             start = (start.x, start.y)
-        elif isinstance(start, tuple) and len(start) == 4:  # Cell connection
-            start_name = name_grid.get((start[0], start[1]), "") if name_grid else ""
-            start = (start[0], start[1])
+        elif isinstance(start, CellPin):
+            start_name = name_grid.get((start.x, start.y), "") if name_grid else ""
+            start = (start.x, start.y)
 
         # Get the end which defines the endpoint
         if isinstance(end, RoutingPort):
             end = (end.x, end.y)
-        elif isinstance(end, tuple) and len(end) == 4:  # Cell connection
-            end = (end[0], end[1])
+        elif isinstance(end, CellPin):
+            end = (end.x, end.y)
 
         distance = euclidean_distance_sq(start, end)
         sortable_connections.append((start_name, distance, index, connection))
@@ -857,18 +860,18 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
             start_name = start.name
             start_dir = start.direction
             start = (start.x, start.y)
-        elif isinstance(start, tuple) and len(start) == 4:  # Cell connection
-            start_name = name_grid.get((start[0], start[1]), "") if name_grid else ""
-            start_dir = start[2]
-            start = (start[0], start[1])
+        elif isinstance(start, CellPin):
+            start_name = name_grid.get((start.x, start.y), "") if name_grid else ""
+            start_dir = start.direction
+            start = (start.x, start.y)
 
         # Get the end which the defines the endpoint
         if isinstance(end, RoutingPort):
             end_dir = end.direction
             end = (end.x, end.y)
-        elif isinstance(end, tuple) and len(end) == 4:  # Cell connection
-            end_dir = end[2]
-            end = (end[0], end[1])
+        elif isinstance(end, CellPin):
+            end_dir = end.direction
+            end = (end.x, end.y)
 
         path, start_new, end_new = try_route_connection(start, end, start_dir, end_dir, start_name)
         if path is None and MAX_RIPUP_REROUTE > 0 and routed_entries:
@@ -1038,10 +1041,10 @@ def schematic_routing(node, outline=None, routing=None):
             pin_nid = str(pin.nid)
             inner_x = int(inner_pos.x)
             inner_y = int(inner_pos.y)
-            inner_connections[pin_nid] = (inner_x + offset_x,
-                                             inner_y + offset_y,
-                                             alignment,
-                                             instance_nid)
+            inner_connections[pin_nid] = CellPin(inner_x + offset_x,
+                                                   inner_y + offset_y,
+                                                   alignment,
+                                                   instance_nid)
         # Add to cells dictionary
         cells[instance_nid] = RoutingCell(int(pos.x),
                                     int(pos.y),
@@ -1097,9 +1100,9 @@ def schematic_routing(node, outline=None, routing=None):
                 if connected_nid not in inter_instance_connections:
                     # Create the inner port on first appearance and save the inter instance connection
                     inter_instance_connections.append(connected_nid)
-                    ports[connected_nid] = RoutingPort(int(connection_position[0]),
-                                                 int(connection_position[1]),
-                                                 connected_nid, connection_position[2])
+                    ports[connected_nid] = RoutingPort(int(connection_position.x),
+                                                 int(connection_position.y),
+                                                 connected_nid, connection_position.direction)
                     array_mapping_list[connected_to] = connected_nid
                 else:
                     # Save the path after the inter instance connection is established
