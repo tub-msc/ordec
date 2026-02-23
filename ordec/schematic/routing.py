@@ -48,27 +48,26 @@ GRID_BLOCKED = 3  # impassable cell body
 GRID_PIN = 4      # impassable cell pin
 GRID_PORT = 5     # impassable port
 
-_cache = {}
+_cache = dict()
 _straight_line_change_count = defaultdict(int)
 def mark_changed(start_name):
-  global _straight_line_change_count
-  _straight_line_change_count[start_name] += 1
+    global _straight_line_change_count
+    _straight_line_change_count[start_name] += 1
 
-# Port class with direction
-class Port:
+# RoutingPort class with direction
+class RoutingPort:
     def __init__(self, x, y, name, direction, route=True):
         self.x = x
         self.y = y
         self.name = name
         self.direction = direction
         self.route = route
-        # Cell class with connection points and their directions
 
     def __str__(self):
         ret_str = f"X={self.x}; Y={self.y}; Name={self.name}; Direction={self.direction}"
         return ret_str
 
-class Cell:
+class RoutingCell:
     def __init__(self, x, y, x_size, y_size, name, connections=None):
         self.x = x
         self.y = y
@@ -76,12 +75,12 @@ class Cell:
         self.y_size = y_size
         self.name = name
         if connections is None:
-            self.connections = {
-                'S': (x + x_size // 2, y, 'S', self.name),
-                'N': (x + x_size // 2, y + y_size - 1, 'N', self.name),
-                'W': (x, y + y_size // 2, 'W', self.name),
-                'E': (x + x_size - 1, y + y_size // 2, 'E', self.name),
-            }
+            self.connections = dict(
+                S=(x + x_size // 2, y, 'S', self.name),
+                N=(x + x_size // 2, y + y_size - 1, 'N', self.name),
+                W=(x, y + y_size // 2, 'W', self.name),
+                E=(x + x_size - 1, y + y_size // 2, 'E', self.name),
+            )
         else:
             # dict with name, position and direction
             self.connections = connections
@@ -122,7 +121,7 @@ def place_cells_and_ports(grid, cells, ports, width, height):
     :param height: Height of the schematic
     """
 
-    name_grid = {}  # sparse dict: (x, y) -> string name (for cell pins/ports)
+    name_grid = dict()  # sparse dict: (x, y) -> string name (for cell pins/ports)
 
     # Place cells
     for cell in cells:
@@ -243,7 +242,7 @@ def preprocess_straight_lines(straight_lines, start_name, height):
 
 def _build_blocked_move_masks(blocked_segments, height):
     """Encode blocked moves as per-node direction bitmasks."""
-    blocked_masks = {}
+    blocked_masks = dict()
     for start_point, end_point in blocked_segments:
         sx, sy = start_point
         ex, ey = end_point
@@ -552,7 +551,6 @@ def shorten_lists(list_of_lists):
     shortened_lists = [list_of_lists[0]]  # Keep the first list as-is
 
     for i in range(1, len(list_of_lists)):
-        #previous_list = list_of_lists[i-1]
         first_list = list_of_lists[0]
         current_list = list_of_lists[i]
 
@@ -661,7 +659,7 @@ def sort_connections(connections, name_grid=None):
         start, end = connection
         # Get the start which defines the drawing dictionary
         start_name = ""
-        if isinstance(start, Port):
+        if isinstance(start, RoutingPort):
             start_name = start.name
             start = (start.x, start.y)
         elif isinstance(start, tuple) and len(start) == 4:  # Cell connection
@@ -669,7 +667,7 @@ def sort_connections(connections, name_grid=None):
             start = (start[0], start[1])
 
         # Get the end which defines the endpoint
-        if isinstance(end, Port):
+        if isinstance(end, RoutingPort):
             end = (end.x, end.y)
         elif isinstance(end, tuple) and len(end) == 4:  # Cell connection
             end = (end[0], end[1])
@@ -715,7 +713,7 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
     _straight_line_change_count.clear()
     port_drawing_dict = defaultdict(list)
     straight_lines = defaultdict(list)
-    route_cell_usage = {}
+    route_cell_usage = dict()
     routed_entries = []
     name_endpoint_mapping, sorted_connections = sort_connections(connections, name_grid)
     endpoint_key_mapping = {
@@ -855,7 +853,7 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
         start_name = None
 
         # Get the start which defines the drawing dictionary
-        if isinstance(start, Port):
+        if isinstance(start, RoutingPort):
             start_name = start.name
             start_dir = start.direction
             start = (start.x, start.y)
@@ -865,7 +863,7 @@ def draw_connections(grid, connections, width, height, ports, cells, name_grid=N
             start = (start[0], start[1])
 
         # Get the end which the defines the endpoint
-        if isinstance(end, Port):
+        if isinstance(end, RoutingPort):
             end_dir = end.direction
             end = (end.x, end.y)
         elif isinstance(end, tuple) and len(end) == 4:  # Cell connection
@@ -1045,7 +1043,7 @@ def schematic_routing(node, outline=None, routing=None):
                                              alignment,
                                              instance_nid)
         # Add to cells dictionary
-        cells[instance_nid] = Cell(int(pos.x),
+        cells[instance_nid] = RoutingCell(int(pos.x),
                                     int(pos.y),
                                     int(x_size) + 1,
                                     int(y_size) + 1,
@@ -1063,7 +1061,7 @@ def schematic_routing(node, outline=None, routing=None):
         inner_x = int(pos.x)
         inner_y = int(pos.y)
         route = instance.ref.route
-        ports[net_nid] = Port(inner_x + offset_x,
+        ports[net_nid] = RoutingPort(inner_x + offset_x,
                            inner_y + offset_y,
                            net_nid,
                            port_alignment,
@@ -1099,7 +1097,7 @@ def schematic_routing(node, outline=None, routing=None):
                 if connected_nid not in inter_instance_connections:
                     # Create the inner port on first appearance and save the inter instance connection
                     inter_instance_connections.append(connected_nid)
-                    ports[connected_nid] = Port(int(connection_position[0]),
+                    ports[connected_nid] = RoutingPort(int(connection_position[0]),
                                                  int(connection_position[1]),
                                                  connected_nid, connection_position[2])
                     array_mapping_list[connected_to] = connected_nid
@@ -1125,17 +1123,17 @@ def schematic_routing(node, outline=None, routing=None):
             if isinstance(schem_element, Net):
                 for vert in vertices:
                     # Remove the offset
-                    converted_vertice = Vec2R(x=vert[0] - offset_x, y=vert[1] - offset_y)
-                    outline = outline.extend(converted_vertice)
-                    converted_vertices.append(converted_vertice)
+                    converted_vertex = Vec2R(x=vert[0] - offset_x, y=vert[1] - offset_y)
+                    outline = outline.extend(converted_vertex)
+                    converted_vertices.append(converted_vertex)
                 schem_element % SchemWire(vertices=converted_vertices)
             # Case for external ports
             else:
                 for vert in vertices:
                     # Remove the offset
-                    converted_vertice = Vec2R(x=vert[0] - offset_x, y=vert[1] - offset_y)
-                    outline = outline.extend(converted_vertice)
-                    converted_vertices.append(converted_vertice)
+                    converted_vertex = Vec2R(x=vert[0] - offset_x, y=vert[1] - offset_y)
+                    outline = outline.extend(converted_vertex)
+                    converted_vertices.append(converted_vertex)
                 setattr(schem_element.ref, f"vert_{named_vertice_counter}",
                         SchemWire(vertices=converted_vertices))
             named_vertice_counter += 1
@@ -1160,15 +1158,15 @@ if __name__ == "__main__":
 
     # Sample cells with positions (bottom-left corner) and size
     cells = [
-        Cell(4 + offset_x, 2 + offset_y, 5, 5, "pd"),
-        Cell(4 + offset_x, 10 + offset_y, 5, 5, "pu")
+        RoutingCell(4 + offset_x, 2 + offset_y, 5, 5, "pd"),
+        RoutingCell(4 + offset_x, 10 + offset_y, 5, 5, "pu")
     ]
 
     ports = [
-        Port(-1 + offset_x, -5 + offset_y, "vss", 'E'),
-        Port(1 + offset_x, 15 + offset_y, "vdd", 'E'),
-        Port(10 + offset_x, 8 + offset_y, "y", 'W'),
-        Port(1 + offset_x, 8 + offset_y, "a", 'E')
+        RoutingPort(-1 + offset_x, -5 + offset_y, "vss", 'E'),
+        RoutingPort(1 + offset_x, 15 + offset_y, "vdd", 'E'),
+        RoutingPort(10 + offset_x, 8 + offset_y, "y", 'W'),
+        RoutingPort(1 + offset_x, 8 + offset_y, "a", 'E')
     ]
 
     # Connections list for drawing paths
