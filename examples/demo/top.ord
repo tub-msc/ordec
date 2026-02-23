@@ -9,8 +9,7 @@ from ordec.ord2.context import ctx, OrdContext
 
 from ordec.lib import NoConn
 from counter_yosys import extlib, report_digital_design
-from vco_pseudodiff_ord import Vco, VcoHalfStage, VcoRing, VcoTb, report_analog_design
-
+from vco_pseudodiff import Vco, VcoHalfStage, VcoRing, VcoTb, report_analog_design
 
 cell Top:
     viewgen symbol:
@@ -70,5 +69,3 @@ cell Top:
         #helpers.resolve_instances(ctx.root)
         #ctx.root.outline = schematic_routing(ctx.root)
         #return ctx.root
-
-
