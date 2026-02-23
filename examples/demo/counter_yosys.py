@@ -40,18 +40,6 @@ def synthesize(source_files: Iterable[Path], top: str, lib: Path, enable_slang: 
             yosys.write_verilog(Path(tmpdir) / 'out.v')
         return (Path(tmpdir) / 'out.v').read_text()
 
-def read_verilog(verilog_str):
-    """
-    Returns unpacked JSON from Yosys.
-    """
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        (Path(tmpdir) / 'in.v').write_text(verilog_str)
-        with Yosys() as yosys:
-            yosys('yosys -import')
-            yosys.read_verilog(Path(tmpdir) / 'in.v')
-            yosys.write_json(Path(tmpdir) / 'out.json')
-        return json.loads((Path(tmpdir) / 'out.json').read_text())
 
 stdcell_root = Path(os.getenv('ORDEC_PDK_IHP_SG13G2')) / 'libs.ref/sg13g2_stdcell'
 liberty = stdcell_root / 'lib/sg13g2_stdcell_typ_1p20V_25C.lib'
