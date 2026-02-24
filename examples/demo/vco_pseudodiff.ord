@@ -19,9 +19,9 @@ from ordec.lib.base import Res, Cap, Gnd, Vdc, NoConn, Vpwl
 from ordec.schematic.routing import schematic_routing
 from ordec.schematic.helpers import symbol_place_pins, add_conn_points
 from ordec.sim import HighlevelSim
-from ordec.report import Report, Plot2D, Markdown, PreformattedText
+from ordec.report import *
 from ordec.layout.makevias import makevias
-from ordec.layout import write_gds, gds_str_from_layout
+from ordec.layout import write_gds
 from ordec.layout import helpers
 from ordec.ord2.context import ctx, OrdContext
 
@@ -633,12 +633,6 @@ cell VcoTb:
             ))
         return Report(elements)
 
-def count_rectangles(l: Layout, flatten: bool):
-    l = l.mutable_copy()
-    if flatten:
-        helpers.flatten(l)
-    return gds_str_from_layout(l).count("BOUNDARY") + gds_str_from_layout(l).count("PATH")
-
 @generate_func
 def report_analog_design():
     # Count transistors:
@@ -664,21 +658,23 @@ def report_analog_design():
 
     netlist = HighlevelSim(SimHierarchy.from_schematic(Vco().schematic)).netlister.out()
 
+    nl = chr(10) # TODO: Fix ORD2 string literal bug
+
     return Report([
         Markdown("# Analog design report: Pseudo-differential voltage-controlled ring oscillator"),
-        #Svg(Vco().symbol),
+        Svg.from_view(Vco().symbol),
         Markdown(
-            f"## Transistor count (schematic){chr(10)}"
-            f"There are **{transistor_count}** transistors in the example design.{chr(10)}"
-            f"{chr(10)}"
-            f" | Instance Name | Reference |{chr(10)}"
-            f"| -- | -- |{chr(10)}"
-            + f'{chr(10)}'.join(transistor_table) +
-            f"{chr(10)}"
-            f"## Rectangle count (layout){chr(10)}"
-            f"The layout comprises **{rect_count}** rectangles.{chr(10)}"
-            f"{chr(10)}"
-            f"(This is only the VcoRing part.){chr(10)}"
+            f"## Transistor count (schematic){nl}"
+            f"There are **{transistor_count}** transistors in the example design.{nl}"
+            f"{nl}"
+            f" | Instance Name | Reference |{nl}"
+            f"| -- | -- |{nl}"
+            + f'{nl}'.join(transistor_table) +
+            f"{nl}"
+            f"## Rectangle count (layout){nl}"
+            f"The layout comprises **{rect_count}** rectangles.{nl}"
+            f"{nl}"
+            f"(This is only the VcoRing part.){nl}"
             f"## Vco netlist"
         ),
         PreformattedText(netlist)
@@ -688,8 +684,6 @@ if __name__ == "__main__":
     with open("out.gds", "wb") as f:
         write_gds(VcoRing().layout, f)
         #write_gds(VcoHalfStage().layout, f)
-
-    print("Number of rectangles:", count_rectangles(VcoRing().layout, True))
 
     #os.system("python3 $ORDEC_PDK_IHP_SG13G2/libs.tech/klayout/tech/drc/run_drc.py --path out.gds --no_density --run_dir=drc_out")
     #os.system("klayout out.gds -m drc_out/out_vcoring_full.lyrdb")

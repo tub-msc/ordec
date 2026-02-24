@@ -5,13 +5,16 @@
 from ordec.core import *
 from ordec.schematic import helpers
 from ordec.ord2.context import ctx, OrdContext
-#from ordec.schematic.routing import schematic_routing
-
 from ordec.lib import NoConn
+
 from counter_yosys import extlib, report_digital_design
 from vco_pseudodiff import Vco, VcoHalfStage, VcoRing, VcoTb, report_analog_design
 
 cell Top:
+    """
+    This is an example mixed-signal design to demonstrate ORDeC. It consists of
+    a custom-built Vco and a synthesized digital counter.
+    """
     viewgen symbol:
         inout vdd(.align=Orientation.North)
         inout vss(.align=Orientation.South)
@@ -24,11 +27,10 @@ cell Top:
         path ctr
         for i in range(8):
             output ctr[i](.align=Orientation.East)
+
     viewgen schematic:
         net clk
-        net nc0
-        net nc1
-        net nc2
+        net nc0, nc1, nc2
 
         port vdd(.align=Orientation.South; .pos=(0,20))
         port rst_n(.align=Orientation.East; .pos=(0,7))
@@ -52,6 +54,7 @@ cell Top:
             .vdd -- vdd
             .vbias -- vbias
 
+        # TODO: We want merge the following two lines into a single line.
         counter = lambda: extlib['counter']
         counter digital_part:
             .pos=(15,10)
@@ -65,7 +68,3 @@ cell Top:
         NoConn I2(.pos = (15,5); .a -- nc0)
         NoConn I1(.pos = (15,0); .a -- nc1)
         NoConn I0(.pos = (15,-5); .a -- nc2)
-
-        #helpers.resolve_instances(ctx.root)
-        #ctx.root.outline = schematic_routing(ctx.root)
-        #return ctx.root

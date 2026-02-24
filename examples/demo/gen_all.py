@@ -4,10 +4,9 @@
 import ordec.importer
 from top import *
 
-# For time measurement
+# Run this module to find out how long it takes to generate the following views:
 
 SimHierarchy.from_schematic(Vco().schematic)
 Top().schematic
 extlib['counter'].schematic
-
 VcoRing().layout

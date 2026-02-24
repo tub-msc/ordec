@@ -6,7 +6,6 @@ from pathlib import Path
 import tempfile
 import json
 import os
-from typing import Iterable
 from ordec.extlibrary import ExtLibrary
 from ordec.core import *
 from ordec.report import *
@@ -15,14 +14,20 @@ class Yosys(TclTool):
     def cmdline(self):
         return ["yosys", "-c", self.script_name()]
 
-
-def synthesize(source_files: Iterable[Path], top: str, lib: Path, enable_slang: bool=False) -> str:
+def synthesize(source_files: list[Path], top: str, lib: Path, enable_slang: bool=False) -> str:
     """
-    Returns Verilog netlist as string.
+    Synthesize the given top module in the source files using the specified
+    liberty (lib) file. Returns resulting Verilog netlist as string.
+
+    The flag enable_slang enables SystemVerilog support using the
+    `yosys-slang <https://github.com/povik/yosys-slang>`_ extension.
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         with Yosys() as yosys:
+            if enable_slang:
+                yosys("yosys plugin -i slang")
             yosys('yosys -import')
+
             if enable_slang:
                 yosys.read_slang(*list(source_files), top=top)
             else:
@@ -40,14 +45,18 @@ def synthesize(source_files: Iterable[Path], top: str, lib: Path, enable_slang: 
             yosys.write_verilog(Path(tmpdir) / 'out.v')
         return (Path(tmpdir) / 'out.v').read_text()
 
-
+# Standard cell library setup:
 stdcell_root = Path(os.getenv('ORDEC_PDK_IHP_SG13G2')) / 'libs.ref/sg13g2_stdcell'
-liberty = stdcell_root / 'lib/sg13g2_stdcell_typ_1p20V_25C.lib'
-lef = stdcell_root / 'lef/sg13g2_stdcell.lef'
+stdcell_liberty = stdcell_root / 'lib/sg13g2_stdcell_typ_1p20V_25C.lib'
+stdcell_lef = stdcell_root / 'lef/sg13g2_stdcell.lef'
+
+# Input RTL design:
+rtl_sources = [Path(__file__).parent/'counter.v']
+rtl_top = 'counter'
 
 extlib = ExtLibrary()
-extlib.read_lef(lef)
-verilog = synthesize([Path(__file__).parent/'counter.v'], 'counter', liberty)
+extlib.read_lef(stdcell_lef)
+verilog = synthesize(rtl_sources, rtl_top, stdcell_liberty, enable_slang=True)
 extlib.read_verilog(verilog)
 
 @generate_func
@@ -64,7 +73,7 @@ def report_digital_design():
         stdcell_table.append(f"| {count} | {ref_name} |") 
     return Report([
         Markdown("# Digital design report: 8 bit counter"),
-        #Svg(Vco().symbol),
+        Svg.from_view(extlib['counter'].symbol),
         Markdown(
             "## Standard cell count (schematic)\n"
             f"There are **{stdcell_count}** standard cells in the example design.\n"
@@ -74,8 +83,3 @@ def report_digital_design():
             + '\n'.join(stdcell_table)
         )
     ])
-
-if __name__ == "__main__":
-    # For timing
-    extlib['counter'].symbol
-    extlib['counter'].schematic
