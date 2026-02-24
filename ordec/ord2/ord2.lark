@@ -291,7 +291,7 @@ stararg: "*" test
 kwargs: "**" test
 ?argvalue: test ("=" test)?
 
-comprehension{comp_result}: comp_result comp_fors [comp_if]
+comprehension{comp_result}: comp_result comp_fors comp_if*
 comp_fors: comp_for+
 comp_for: [ASYNC] "for" exprlist "in" or_test
 ASYNC: "async"
@@ -317,8 +317,9 @@ f_string_content_single: FSTRING_TEXT_SINGLE
                        | f_expression_single
                        | "{{" -> literal_open_brace
                        | "}}" -> literal_close_brace
-f_expression_double: "{" test conversion? format_spec_double? "}"
-f_expression_single: "{" test conversion? format_spec_single? "}"
+f_expression_double: "{" test debug_eq? conversion? format_spec_double? "}"
+f_expression_single: "{" test debug_eq? conversion? format_spec_single? "}"
+debug_eq: "="
 format_spec_single: ":" (FSTRING_TEXT_SINGLE | "{" test "}")+
 format_spec_double: ":" (FSTRING_TEXT_DOUBLE | "{" test "}")+
 conversion: "!" /[rsa]/i

@@ -330,8 +330,16 @@ def test_list_comprehension():
     ord_string = "[x * 2 for x in range(5) if x % 2 == 0]"
     compare_asts(ord_string)
 
+def test_list_comprehension_multiple_ifs():
+    ord_string = "[x for x in range(10) if x > 1 if x < 8]"
+    compare_asts(ord_string)
+
 def test_dict_comprehension():
     ord_string = "{x: x**2 for x in range(5)}"
+    compare_asts(ord_string)
+
+def test_dict_comprehension_multiple_ifs():
+    ord_string = "{x: x**2 for x in range(10) if x > 1 if x < 8}"
     compare_asts(ord_string)
 
 def test_set_comprehension():
@@ -536,6 +544,18 @@ def test_f_string_single_quote():
 
 def test_f_string_spec_double():
     ord_string = "f\"{test!r}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug():
+    ord_string = "f\"{value=}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug_with_conversion():
+    ord_string = "f\"{value=!r}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug_with_spec():
+    ord_string = "f\"{value=:>10}\""
     compare_asts(ord_string)
 
 def test_f_string_escaped_call():

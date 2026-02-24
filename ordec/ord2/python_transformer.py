@@ -630,10 +630,9 @@ class PythonTransformer(Transformer):
         # comprehension
         comp_result = nodes[0]
         comp_fors = nodes[1]
-        comp_if = nodes[2] if len(nodes) > 2 else None
 
-        # Add the optional if to the last inst in the chain
-        if comp_if:
+        # Attach all trailing comprehension filters to the last for-clause
+        for comp_if in nodes[2:]:
             comp_fors[-1].ifs.append(comp_if)
         return comp_result, comp_fors
 
@@ -809,7 +808,14 @@ class PythonTransformer(Transformer):
 
     def f_string(self, nodes):
         is_raw = isinstance(nodes[0], str) and "r" in nodes[0].lower()
-        values = self.merge_adjacent_strings(nodes[1:-1])
+        values_raw = []
+        for item in nodes[1:-1]:
+            if isinstance(item, tuple) and len(item) == 3 and item[0] == "debug_fexpr":
+                values_raw.append(ast.Constant(value=item[1]))
+                values_raw.append(item[2])
+            else:
+                values_raw.append(item)
+        values = self.merge_adjacent_strings(values_raw)
         joined = ast.JoinedStr(values=values)
         return self._normalize_joined_str(joined, decode_literals=not is_raw)
 
@@ -823,20 +829,32 @@ class PythonTransformer(Transformer):
         expr_node = nodes[0]
         conversion = -1
         format_spec = None
+        debug_eq = None
 
         for node in nodes[1:]:
             # check for the conversion
             if isinstance(node, str):
                 conv_map = {"r": ord('r'), "s": ord('s'), "a": ord('a')}
                 conversion = conv_map[node.lower()]
+            elif isinstance(node, tuple) and len(node) == 2 and node[0] == "debug_eq":
+                debug_eq = node[1]
             elif isinstance(node, ast.AST):
                 format_spec = node
 
-        return ast.FormattedValue(
+        if debug_eq is not None and conversion == -1 and format_spec is None:
+            conversion = ord("r")
+
+        formatted_value = ast.FormattedValue(
             value=expr_node,
             conversion=conversion,
             format_spec=format_spec
         )
+        if debug_eq is not None:
+            return "debug_fexpr", f"{ast.unparse(expr_node)}{debug_eq}", formatted_value
+        return formatted_value
+
+    def debug_eq(self, nodes):
+        return "debug_eq", "="
 
     def conversion(self, token):
         return token[0]
