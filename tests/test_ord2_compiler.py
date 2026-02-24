@@ -518,12 +518,32 @@ def test_f_string_escaped_call():
     ord_string = "f\"Value: {{{print(3 + 4)}}}\""
     compare_asts(ord_string)
 
+def test_f_string_escape_newline():
+    ord_string = "f\"line1\\n{value}\\nline2\""
+    compare_asts(ord_string)
+
+def test_raw_f_string_escape_newline():
+    ord_string = "fr\"line1\\n{value}\\nline2\""
+    compare_asts(ord_string)
+
 def test_string_concat():
     ord_string = "'Hello ' + 'World'"
     compare_asts(ord_string)
 
 def test_string_concat_implicit():
     ord_string = "'Hello ' 'World'"
+    compare_asts(ord_string)
+
+def test_string_escape_single_quote():
+    ord_string = "x = 'a\\'b'"
+    compare_asts(ord_string)
+
+def test_bytes_escape_hex():
+    ord_string = "x = b'\\xff'"
+    compare_asts(ord_string)
+
+def test_long_string_escape_newline():
+    ord_string = "x = '''line1\\nline2'''"
     compare_asts(ord_string)
 
 def test_string_mod():
