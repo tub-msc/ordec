@@ -210,6 +210,18 @@ def test_with_as():
     ord_string = "with open('file.txt') as f:\n    data = f.read()"
     compare_asts(ord_string)
 
+def test_with_as_tuple_target():
+    ord_string = "with ctx() as (a, b):\n    pass"
+    compare_asts(ord_string)
+
+def test_with_as_attribute_target():
+    ord_string = "with ctx() as a.b:\n    pass"
+    compare_asts(ord_string)
+
+def test_with_as_subscript_target():
+    ord_string = "with ctx() as a[0]:\n    pass"
+    compare_asts(ord_string)
+
 def test_async_with():
     ord_string = "async with lock:\n    await do_work()"
     compare_asts(ord_string)
@@ -284,6 +296,18 @@ def test_lambda_arg():
 
 def test_lambda_arg_keyword():
     ord_string = "f = lambda x, y=2: x + y"
+    compare_asts(ord_string)
+
+def test_lambda_posonly():
+    ord_string = "f = lambda x, /, y: x + y"
+    compare_asts(ord_string)
+
+def test_lambda_posonly_with_defaults():
+    ord_string = "f = lambda x=1, /, y=2: x + y"
+    compare_asts(ord_string)
+
+def test_lambda_posonly_with_kwonly():
+    ord_string = "f = lambda x, /, *, y: x + y"
     compare_asts(ord_string)
 
 def test_lambda_keyword_after_star():
@@ -588,4 +612,12 @@ def test_slice_and_step():
 
 def test_comment():
     ord_string = "# This is a comment"
+    compare_asts(ord_string)
+
+def test_match_mapping_attr_key():
+    ord_string = "match x:\n    case {Color.RED: y}:\n        pass"
+    compare_asts(ord_string)
+
+def test_match_mapping_singleton_keys():
+    ord_string = "match x:\n    case {True: y, None: z}:\n        pass"
     compare_asts(ord_string)

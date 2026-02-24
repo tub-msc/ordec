@@ -1402,22 +1402,36 @@ class PythonTransformer(Transformer):
         return {"kwarg": ast.arg(arg=argument, annotation=None)}
 
     def lambda_params(self, nodes):
+        posonlyargs = []
         args = []
         defaults = []
         vararg = None
         kwonlyargs = []
         kw_defaults = []
         kwarg = None
+        normal_params = []
+
+        def unpack_param(param, target_list):
+            if isinstance(param, tuple) and isinstance(param[0], ast.arg):
+                target_list.append(param[0])
+                defaults.append(param[1])
+            elif isinstance(param, ast.arg):
+                target_list.append(param)
+                defaults.append(None)
+            elif isinstance(param, str):
+                target_list.append(ast.arg(arg=param, annotation=None))
+                defaults.append(None)
 
         # construct the parameters
         for node in nodes:
             if isinstance(node, tuple) and isinstance(node[0], ast.arg):
                 # lambda_paramvalue with optional default
-                args.append(node[0])
-                defaults.append(node[1])
+                normal_params.append(node)
+            elif isinstance(node, str) and node == "/":
+                normal_params.append(node)
             elif isinstance(node, str):
-                # name -> positional arg, no default
-                args.append(ast.arg(arg=node, annotation=None))
+                # bare name -> positional arg, no default
+                normal_params.append(node)
             elif isinstance(node, ast.arguments):
                 if node.vararg:
                     vararg = node.vararg
@@ -1428,8 +1442,24 @@ class PythonTransformer(Transformer):
             elif isinstance(node, dict) and "kwarg" in node:
                 kwarg = node["kwarg"]
 
+        slash_index = normal_params.index("/") if "/" in normal_params else -1
+        if slash_index != -1:
+            params_pos = normal_params[:slash_index]
+            params_args = normal_params[slash_index + 1:]
+        else:
+            params_pos = []
+            params_args = normal_params
+
+        for param in params_pos:
+            unpack_param(param, posonlyargs)
+        for param in params_args:
+            unpack_param(param, args)
+
+        while defaults and defaults[0] is None:
+            defaults.pop(0)
+
         return ast.arguments(
-            posonlyargs=[],
+            posonlyargs=posonlyargs,
             args=args,
             vararg=vararg,
             kwonlyargs=kwonlyargs,
@@ -1514,16 +1544,24 @@ class PythonTransformer(Transformer):
         # literal/attribute + as_pattern)
         return nodes[0], nodes[1]
 
+    @staticmethod
+    def _mapping_key_to_expr(key):
+        if isinstance(key, ast.MatchValue):
+            return key.value
+        if isinstance(key, ast.MatchSingleton):
+            return ast.Constant(value=key.value)
+        return key
+
     def mapping_pattern(self, nodes):
         # nodes = list of mapping_item_pattern
-        keys = [k.value for k, v in nodes]
+        keys = [self._mapping_key_to_expr(k) for k, v in nodes]
         patterns = [v for k, v in nodes]
         return ast.MatchMapping(keys=keys, patterns=patterns, rest=None)
 
     def mapping_star_pattern(self, nodes):
         # nodes[-1] = NAME for **rest
         # nodes[:-1] = mapping_item_pattern
-        keys = [k.value for k, v in nodes[:-1]]
+        keys = [self._mapping_key_to_expr(k) for k, v in nodes[:-1]]
         patterns = [v for k, v in nodes[:-1]]
         rest_name = nodes[-1][1] if isinstance(nodes[-1], tuple) else nodes[-1]
         return ast.MatchMapping(keys=keys, patterns=patterns, rest=rest_name)
