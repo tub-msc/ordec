@@ -148,7 +148,7 @@ class PythonTransformer(Transformer):
 
     IMAG_NUMBER = lambda self, token: ast.Constant(value=complex(token.value))
     FLOAT_NUMBER = lambda self, token: ast.Constant(value=float(token.value))
-    DECIMAL = lambda self, token: ast.Constant(value=float(token.value))
+    DECIMAL = lambda self, token: ast.Constant(value=int(token.value, 10))
     NAME = lambda self, token: token.value
     ASYNC = lambda self, token: token.value
     AWAIT = lambda self, token: token.value

@@ -45,11 +45,11 @@ class Ord2Transformer(PythonTransformer):
             token = ast.Constant(token.value)
             return ast.Call(func=self.ast_name("R"), args=[token], keywords=[])
         else:
-            if '.' in token:
-                number = float(token)
+            token_value = token.value.replace("_", "")
+            if "." in token_value or "e" in token_value.lower():
+                number = float(token_value)
             else:
-                number = token.value.replace("_", "")
-                number = int(number, 10)
+                number = int(token_value, 10)
             return ast.Constant(value=number)
 
     def viewgen(self, nodes):

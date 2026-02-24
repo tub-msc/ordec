@@ -550,6 +550,10 @@ def test_binary_number():
     ord_string = "0b1010"
     compare_asts(ord_string)
 
+def test_scientific_notation_float():
+    ord_string = "1e-9"
+    compare_asts(ord_string)
+
 def test_slice():
     ord_string = "lst[1:2]"
     compare_asts(ord_string)
