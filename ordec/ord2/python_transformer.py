@@ -5,6 +5,7 @@
 from lark import Transformer, v_args
 import ast
 import unicodedata
+import sys
 
 class PythonTransformer(Transformer):
     """
@@ -868,9 +869,13 @@ class PythonTransformer(Transformer):
         inner = segment[1:-1]
         eq_index = inner.rfind("=")
 
-        marker_index = self._find_top_level_marker(inner)
-        if marker_index != -1 and marker_index < eq_index:
-            return inner[:marker_index]
+        # CPython changed debug-fstring prefix extraction in 3.13:
+        # legacy versions truncate at top-level !/: before the final debug '=',
+        # while 3.13+ keeps the full expression text.
+        if sys.version_info < (3, 13):
+            marker_index = self._find_top_level_marker(inner)
+            if marker_index != -1 and marker_index < eq_index:
+                return inner[:marker_index]
 
         after_eq = eq_index + 1
         while after_eq < len(inner) and inner[after_eq] in " \t":

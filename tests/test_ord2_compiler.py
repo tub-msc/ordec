@@ -3,12 +3,22 @@
 
 from ordec.ord2.parser import ord2_to_py
 import ast
+from lark.exceptions import VisitError
+import pytest
 
 def compare_asts(ord2_code_string):
     or2_ast = ord2_to_py(ord2_code_string)
     python_ast = ast.parse(ord2_code_string)
     assert (ast.dump(or2_ast) ==
             ast.dump(python_ast))
+
+def compare_syntax_errors(ord2_code_string):
+    with pytest.raises(SyntaxError):
+        ast.parse(ord2_code_string)
+    with pytest.raises((SyntaxError, VisitError)) as error:
+        ord2_to_py(ord2_code_string)
+    if isinstance(error.value, VisitError):
+        assert isinstance(error.value.orig_exc, SyntaxError)
 
 def test_class_empty():
     ord_string = "class A():\n   pass"
@@ -225,6 +235,14 @@ def test_with_as_subscript_target():
 def test_with_as_list_target():
     ord_string = "with ctx() as [a, *b]:\n    pass"
     compare_asts(ord_string)
+
+def test_with_as_invalid_call_target():
+    ord_string = "with ctx() as f():\n    pass"
+    compare_syntax_errors(ord_string)
+
+def test_with_as_invalid_expression_target():
+    ord_string = "with ctx() as (a + b):\n    pass"
+    compare_syntax_errors(ord_string)
 
 def test_async_with():
     ord_string = "async with lock:\n    await do_work()"
@@ -578,6 +596,14 @@ def test_f_string_debug_not_equal_edge():
     ord_string = "f\"{x!=y=}\""
     compare_asts(ord_string)
 
+def test_f_string_debug_ifexpr_not_equal():
+    ord_string = "f\"{x if y!=z else t=}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug_subscript_not_equal():
+    ord_string = "f\"{a[1!=2]=}\""
+    compare_asts(ord_string)
+
 def test_f_string_escaped_call():
     ord_string = "f\"Value: {{{print(3 + 4)}}}\""
     compare_asts(ord_string)
@@ -606,9 +632,33 @@ def test_bytes_escape_hex():
     ord_string = "x = b'\\xff'"
     compare_asts(ord_string)
 
+def test_bytes_escape_unicode_literal():
+    ord_string = "x = b'\\\\u0041'"
+    compare_asts(ord_string)
+
 def test_long_string_escape_newline():
     ord_string = "x = '''line1\\nline2'''"
     compare_asts(ord_string)
+
+def test_string_escape_hex_invalid():
+    ord_string = "x = '\\x4'"
+    compare_syntax_errors(ord_string)
+
+def test_string_escape_unicode_short_invalid():
+    ord_string = "x = '\\u12'"
+    compare_syntax_errors(ord_string)
+
+def test_string_escape_unicode_name_invalid():
+    ord_string = "x = '\\N{NO_SUCH_NAME}'"
+    compare_syntax_errors(ord_string)
+
+def test_bytes_escape_hex_invalid():
+    ord_string = "x = b'\\x4'"
+    compare_syntax_errors(ord_string)
+
+def test_bytes_non_ascii_invalid():
+    ord_string = "x = b'ä'"
+    compare_syntax_errors(ord_string)
 
 def test_string_mod():
     ord_string = "'Hello %s %s' % (1,2)"
