@@ -78,6 +78,20 @@ def test_gds_path(endtype):
     expected_endtype = getattr(PathEndType, endtype.upper())
     assert path.endtype == expected_endtype
 
+def test_gds_path_custom():
+    tech_layers = SG13G2().layers
+    lib = ExtLibrary()
+    lib.read_gds(gds_dir / 'test_path_custom.gds', tech_layers)
+    layout = lib['TOP'].layout
+    paths = list(layout.all(LayoutPath))
+    assert len(paths) == 1
+    path = paths[0]
+    assert path.layer == tech_layers.Metal1
+    assert path.vertices() == [Vec2I(0, 0), Vec2I(0, 500), Vec2I(500, 500)]
+    assert path.endtype == PathEndType.CUSTOM
+    assert path.ext_bgn == 50
+    assert path.ext_end == 100
+
 def test_gds_path_round_unsupported():
     tech_layers = SG13G2().layers
     lib = ExtLibrary()
@@ -374,6 +388,27 @@ def test_expand_paths_lshapes():
                 Vec2I(y*50, x*50),
                 Vec2I(y*50, y*550),
             ]
+
+def test_expand_paths_custom():
+    """Tests expand_paths with PathEndType.CUSTOM."""
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers)
+    l % LayoutPath(
+        width=100,
+        endtype=PathEndType.CUSTOM,
+        ext_bgn=30,
+        ext_end=70,
+        layer=layers.Metal1,
+        vertices=[Vec2I(0, 0), Vec2I(500, 0)],
+    )
+    expand_paths(l)
+    poly = l.one(LayoutPoly)
+    assert poly.vertices() == [
+        Vec2I(570, 50),
+        Vec2I(-30, 50),
+        Vec2I(-30, -50),
+        Vec2I(570, -50),
+    ]
 
 def test_expand_paths_complex():
     layers = SG13G2().layers

@@ -48,10 +48,10 @@ def rgb_color(s) -> RGBColor:
 class PathEndType(Enum):
     """
     Could also be named 'linecap'.
-    Custom end sizes (GDS code 1) are not supported at the moment.
     """
-    FLUSH = 0 #: 
-    SQUARE = 2
+    FLUSH = 0 #: Path begins/ends right at the vertex 
+    SQUARE = 2 #: Path extended by half width beyond start/end vertex
+    CUSTOM = 4 #: Path extended by custom lengths beyond start/end vertex
 
 @public
 class RectDirection(Enum):
@@ -862,6 +862,8 @@ class LayoutPath(GenericPolyI, MixinPolygonalChain):
     in_subgraphs = [Layout]
 
     endtype = Attr(PathEndType, default=PathEndType.FLUSH, optional=False)
+    ext_bgn = Attr(int) #: Mandatory if endtype is PathEndType.CUSTOM, else ignored.
+    ext_end = Attr(int) #: Mandatory if endtype is PathEndType.CUSTOM, else ignored.
     width = Attr(int)
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 
@@ -901,6 +903,8 @@ class LayoutRectPath(GenericPolyI):
 
     start_direction = Attr(RectDirection, default=RectDirection.HORIZONTAL)
     endtype = Attr(PathEndType, default=PathEndType.FLUSH)
+    ext_bgn = Attr(int) #: Mandatory if endtype is PathEndType.CUSTOM, else ignored.
+    ext_end = Attr(int) #: Mandatory if endtype is PathEndType.CUSTOM, else ignored.
     width = Attr(int)
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 

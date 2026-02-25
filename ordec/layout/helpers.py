@@ -93,11 +93,15 @@ def path_to_poly_vertices(path: LayoutPath) -> list[Vec2I]:
             direction = rectilinear_direction(succ - cur)
             if path.endtype == PathEndType.SQUARE:
                 extension = -halfwidth*direction
+            elif path.endtype == PathEndType.CUSTOM:
+                extension = -path.ext_bgn*direction
         elif succ is None:
             # cur is last vertex of path
             direction = rectilinear_direction(cur - pred)
             if path.endtype == PathEndType.SQUARE:
                 extension = halfwidth*direction
+            elif path.endtype == PathEndType.CUSTOM:
+                extension = path.ext_end*direction
         else:
             # cur has both a predecessor and a successor
             direction = rectilinear_direction(succ - cur) + rectilinear_direction(cur - pred)
@@ -178,6 +182,8 @@ def expand_rectpaths(layout: Layout):
             vertices=rpath_to_path_vertices(rpath),
             endtype=rpath.endtype,
             width=rpath.width,
+            ext_bgn=rpath.ext_bgn,
+            ext_end=rpath.ext_end,
             ))
 
 @public
@@ -260,6 +266,8 @@ def flatten_instance(dst: Layout, src: Layout, tran: TD4I, first_level: bool):
             width=src_e.width,
             endtype=src_e.endtype,
             vertices=[tran * v for v in src_e.vertices()],
+            ext_bgn = src_e.ext_bgn,
+            ext_end = src_e.ext_end,
         )
 
     for src_e in src.all(LayoutRectPoly):
@@ -276,6 +284,8 @@ def flatten_instance(dst: Layout, src: Layout, tran: TD4I, first_level: bool):
             width=src_e.width,
             endtype=src_e.endtype,
             vertices=[tran * v for v in src_e.vertices()],
+            ext_bgn = src_e.ext_bgn,
+            ext_end = src_e.ext_end,
         )
 
     for src_e in src.all(LayoutRect):
