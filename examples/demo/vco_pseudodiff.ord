@@ -149,7 +149,7 @@ cell VcoHalfStage:
         l.outbar_h = LayoutRect(layer=layers.Metal1)
         l.outbar_h % LayoutPin(pin=self.symbol.out)
         s.constrain(l.outbar_h.rect.cy == l.polycont[3].rect.cy)
-        s.constrain(l.outbar_h.rect.height == 200)
+        s.constrain(l.outbar_h.rect.height == 210)
         s.constrain(l.outbar_h.rect.lx == l.m1.sd[0].rect.lx)
         s.constrain(l.outbar_h.rect.ux == l.polycont[3].rect.ux + 500)
 
@@ -167,7 +167,7 @@ cell VcoHalfStage:
         s.constrain(l.outbar_outn.rect.ly == l.m7.sd[1].rect.ly)
         s.constrain(l.outbar_outn.rect.lx >= l.m7.sd[1].rect.ux)
         s.constrain(l.outbar_outn.rect.lx >= l.outbar_h.rect.ux + 200)
-        s.constrain(l.outbar_outn.rect.width == 160)
+        s.constrain(l.outbar_outn.rect.width == 210)
 
         l.outbar_outn % LayoutPin(pin=self.symbol.out_n)
 
@@ -379,42 +379,42 @@ cell VcoRing:
         s.constrain(v.rect.size == Vec2I(190, 190))
         s.constrain(v.rect.center == l.stage_p[0].rst_n.rect.center)
           
-        l.outv_p0 = LayoutPath(2, layer=layers.Metal2, width=200, endtype=PathEndType.SQUARE)
+        l.outv_p0 = LayoutPath(2, layer=layers.Metal2, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)
         s.constrain(l.outv_p0[0] == l.stage_n[0].fb.rect.center)
         s.constrain(l.outv_p0[1].x == l.outv_p0[0].x)
         s.constrain(l.outv_p0[1].y == l.stage_p[0].outbar_h.rect.cy)
 
-        l.outv_n0 = LayoutPath(3, layer=layers.Metal2, width=200, endtype=PathEndType.SQUARE)
+        l.outv_n0 = LayoutPath(3, layer=layers.Metal2, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)
         s.constrain(l.outv_n0[0] == l.stage_p[0].fb.rect.center)
-        s.constrain(l.outv_n0[2] == l.stage_n[0].outbar_h.rect.west + (100, 0))
+        s.constrain(l.outv_n0[2] == l.stage_n[0].outbar_h.rect.west + (150, 0))
         s.constrain(l.outv_n0[1] == (l.outv_n0[2].x, l.outv_n0[0].y))
 
-        l.outv_p1 = LayoutPath(2, layer=layers.Metal2, width=200, endtype=PathEndType.SQUARE)
+        l.outv_p1 = LayoutPath(2, layer=layers.Metal2, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)
         s.constrain(l.outv_p1[0] == l.stage_n[1].fb.rect.center)
         s.constrain(l.outv_p1[1].x == l.outv_p1[0].x)
         s.constrain(l.outv_p1[1].y == l.stage_p[1].outbar_h.rect.cy)
 
-        l.outv_n1 = LayoutPath(3, layer=layers.Metal2, width=200, endtype=PathEndType.SQUARE)
+        l.outv_n1 = LayoutPath(3, layer=layers.Metal2, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)
         s.constrain(l.outv_n1[0] == l.stage_p[1].fb.rect.center)
-        s.constrain(l.outv_n1[2] == l.stage_n[1].outbar_h.rect.east - (100,0))
+        s.constrain(l.outv_n1[2] == l.stage_n[1].outbar_h.rect.east - (150,0))
         s.constrain(l.outv_n1[1] == (l.outv_n1[2].x, l.outv_n1[0].y))
 
-        l.outh_n0 = LayoutPath(2, layer=layers.Metal3, width=200, endtype=PathEndType.SQUARE)
+        l.outh_n0 = LayoutPath(2, layer=layers.Metal3, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)
         s.constrain(l.outh_n0[0] == l.outv_n0[2])
         s.constrain(l.outh_n0[1].y == l.outh_n0[0].y)
         s.constrain(l.outh_n0[1].x == l.stage_n[1].inp.rect.cx)
 
-        l.outh_p0 = LayoutPath(2, layer=layers.Metal3, width=200, endtype=PathEndType.SQUARE)
+        l.outh_p0 = LayoutPath(2, layer=layers.Metal3, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)
         s.constrain(l.outh_p0[0] == l.outv_p0[1])
         s.constrain(l.outh_p0[1].y == l.outh_p0[0].y)
         s.constrain(l.outh_p0[1].x == l.stage_p[1].inp.rect.cx)
 
-        l.outh_n1 = LayoutPath(2, layer=layers.Metal3, width=200, endtype=PathEndType.SQUARE)
+        l.outh_n1 = LayoutPath(2, layer=layers.Metal3, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)
         s.constrain(l.outh_n1[0].x == l.outv_p1[0].x)
         s.constrain(l.outh_n1[0].y == l.outh_n0[0].y + 500)
         s.constrain(l.outh_n1[1] == (l.stage_n[0].inp.rect.cx, l.outh_n1[0].y))
 
-        l.outh_p1 = LayoutPath(2, layer=layers.Metal3, width=200, endtype=PathEndType.SQUARE)
+        l.outh_p1 = LayoutPath(2, layer=layers.Metal3, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)
         s.constrain(l.outh_p1[0].x == l.outv_n1[2].x)
         s.constrain(l.outh_p1[0].y == l.outh_p0[0].y - 500)
         s.constrain(l.outh_p1[1].y == l.outh_p1[0].y)
@@ -427,7 +427,7 @@ cell VcoRing:
             ]:
             s.constrain(end.x == inp.rect.cx)
 
-            p = l % LayoutPath(2, layer=layers.Metal2, width=200, endtype=PathEndType.SQUARE)
+            p = l % LayoutPath(2, layer=layers.Metal2, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)
             s.constrain(p[0] == inp.rect.center)
             s.constrain(p[1] == end)
 
@@ -679,11 +679,3 @@ def report_analog_design():
         ),
         PreformattedText(netlist)
     ])
-
-if __name__ == "__main__":
-    with open("out.gds", "wb") as f:
-        write_gds(VcoRing().layout, f)
-        #write_gds(VcoHalfStage().layout, f)
-
-    #os.system("python3 $ORDEC_PDK_IHP_SG13G2/libs.tech/klayout/tech/drc/run_drc.py --path out.gds --no_density --run_dir=drc_out")
-    #os.system("klayout out.gds -m drc_out/out_vcoring_full.lyrdb")
