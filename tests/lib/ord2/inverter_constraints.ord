@@ -5,7 +5,7 @@
 from ordec.core import *
 from ordec.schematic import helpers
 from ordec.lib.generic_mos import Nmos,Pmos
-from ordec.ord2.context import ctx, OrdContext
+from ordec.ord2.context import OrdContext
 
 cell Inv:
     viewgen symbol:
@@ -31,7 +31,7 @@ cell Inv:
             .$l = 400n
         pu.$w = 200n
             
-        solver = Solver(ctx.root)
+        solver = Solver(OrdContext.ctx.root)
         solver.constrain(vss.pos == (2, 1))
         solver.constrain(vdd.pos == vss.pos + (0, 12))
         solver.constrain(y.pos.y == pd.d.pos.y + 1)

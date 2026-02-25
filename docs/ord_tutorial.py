@@ -35,7 +35,7 @@
 # + tags=["remove-input"]
 from ordec.core import * 
 from ordec.schematic import helpers
-from ordec.ord2.context import ctx, OrdContext
+from ordec.ord2.context import OrdContext
 from IPython.core.magic import Magics, magics_class, line_cell_magic
 from IPython.display import Code
 

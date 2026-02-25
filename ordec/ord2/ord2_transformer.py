@@ -23,6 +23,9 @@ class Ord2Transformer(PythonTransformer):
     def ast_attribute(value, attr, ctx=ast.Load()):
         return ast.Attribute(value=value, attr=attr, ctx=ctx)
 
+    def ast_ctx(self):
+        return self.ast_attribute(self.ast_name("OrdContext"), "ctx")
+
     def celldef(self, nodes):
         """ Definition of a ORDeC cell class"""
         cell_name = nodes[0]
@@ -90,7 +93,7 @@ class Ord2Transformer(PythonTransformer):
         # Call the corresponding context postprocess function implicitly
         return_value = ast.Return(
                 ast.Call(
-                func=self.ast_attribute(self.ast_name('ctx'),
+                func=self.ast_attribute(self.ast_ctx(),
                                     func_name + "_postprocess",
                 ),
                 args=[],
@@ -187,7 +190,7 @@ class Ord2Transformer(PythonTransformer):
                     inout = "Out"
 
             args = []
-            func = self.ast_attribute(self.ast_name("ctx"), "add")
+            func = self.ast_attribute(self.ast_ctx(), "add")
 
             args.append(ast.Tuple(elts=context_name_tuple, ctx=ast.Load()))
             args.append(ast.Call(
@@ -209,7 +212,7 @@ class Ord2Transformer(PythonTransformer):
         elif context_type_name == "port":
  
             args = [ast.Tuple(elts=context_name_tuple, ctx=ast.Load())]
-            func = self.ast_attribute(self.ast_name("ctx"),"add_port")
+            func = self.ast_attribute(self.ast_ctx(),"add_port")
             rhs = ast.Call(func=func, args=args, keywords=[])
 
         # Case for instantiating sub-cells
@@ -240,7 +243,7 @@ class Ord2Transformer(PythonTransformer):
                     )
 
             args = []
-            func=self.ast_attribute(self.ast_name("ctx"), "add")                
+            func=self.ast_attribute(self.ast_ctx(), "add")
             args.append(ast.Tuple(elts=context_name_tuple, ctx=ast.Load()))
             args.append(ast.Call(
                         func=self.ast_name("SchemInstanceUnresolved"),
@@ -282,7 +285,7 @@ class Ord2Transformer(PythonTransformer):
 
     def depth_helper(self, value, depth=1):
         """ Access parent attributes depending on the dotted depth"""
-        node = self.ast_attribute(self.ast_name("ctx"), "root")
+        node = self.ast_attribute(self.ast_ctx(), "root")
 
         for _ in range(depth - 1):
             node = self.ast_attribute(node,"parent")
@@ -315,7 +318,7 @@ class Ord2Transformer(PythonTransformer):
             attr = nodes[0]
             ctx = ast.Store()
             target = self.ast_attribute(
-                self.ast_name("ctx"),
+                self.ast_ctx(),
                 "root"
             )
         return self.ast_attribute(
@@ -334,7 +337,7 @@ class Ord2Transformer(PythonTransformer):
             name_length = len(context_name_tuple)
             rhs = ast.Call(
                 func=self.ast_attribute(
-                    self.ast_name("ctx"),
+                    self.ast_ctx(),
                     "add"),
                 args=[
                     ast.Tuple(elts=context_name_tuple, ctx=ast.Load()),

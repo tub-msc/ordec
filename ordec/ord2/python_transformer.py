@@ -71,10 +71,6 @@ class PythonTransformer(Transformer):
         'is not': ast.IsNot,
     }
 
-    def __init__(self, source_text=""):
-        super().__init__()
-        self.source_text = source_text
-
     STRING_ESCAPE_MAP = {
         "\\": "\\",
         "'": "'",
@@ -100,6 +96,10 @@ class PythonTransformer(Transformer):
         "t": 9,
         "v": 11,
     }
+
+    def __init__(self, source_text=""):
+        super().__init__()
+        self.source_text = source_text
 
     # Helpers
     # -------
