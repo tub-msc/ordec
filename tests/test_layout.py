@@ -422,6 +422,21 @@ def test_path_infer_custom_endtype():
             endtype=PathEndType.Square,
             vertices=[Vec2I(0, 0), Vec2I(500, 0)])
 
+def test_layoutpoly_vertex_count():
+    """Test GenericPoly.__new__ with an integer vertex count.
+
+    LayoutPoly(n, ...) creates the polygon node plus n empty PolyVec2I
+    nodes (no pos set), whose positions can then be set via constraints.
+    """
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers)
+    l.poly = LayoutPoly(3, layer=layers.Metal1)
+
+    # Three PolyVec2I nodes should exist with correct order and no pos:
+    verts = list(l.all(PolyVec2I))
+    assert len(verts) == 3
+    assert all(isinstance(v.pos, Vec2LinearTerm) for v in verts)
+
 def test_expand_paths_complex():
     layers = SG13G2().layers
     
