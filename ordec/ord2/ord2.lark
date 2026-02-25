@@ -383,7 +383,8 @@ celldef: "cell" name ":" suite
 viewgen: "viewgen" name ":" suite
 context_body: ":" suite
               | "(" simple_stmt? ")" _NEWLINE
-context_element: name context_target context_body
+context_element: atom_expr context_target context_body
+
 ?context_target: context_target "." name -> getattr
 		       | context_target "[" subscriptlist "]" -> getitem
    	           | name -> var

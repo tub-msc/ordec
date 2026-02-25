@@ -155,10 +155,19 @@ class Ord2Transformer(PythonTransformer):
             raise Exception(f"Incompatible path type: {nodes!r}")
 
     def context_element(self, nodes):
-        """ context_element (name name:\n    suite)"""
+        """ context_element (context_type context_target:\n    suite)"""
         context_type = nodes[0]
         context_name = nodes[1]
         context_body = nodes[2] if len(nodes) > 2 else None
+        if isinstance(context_type, str):
+            context_type_name = context_type
+            context_type_expr = ast.Name(id=context_type, ctx=ast.Load())
+        elif isinstance(context_type, ast.Name):
+            context_type_name = context_type.id
+            context_type_expr = context_type
+        else:
+            context_type_name = None
+            context_type_expr = context_type
         inout = ''
 
         context_name_tuple = self.extract_path(context_name)
@@ -168,8 +177,8 @@ class Ord2Transformer(PythonTransformer):
         lhs = copy.copy(context_name)
         self._set_ctx(lhs, ast.Store())
         # Case for symbol statements
-        if context_type in ["inout", "input", "output"]:
-            match context_type:
+        if context_type_name in ["inout", "input", "output"]:
+            match context_type_name:
                 case "inout":
                     inout = "Inout"
                 case "input":
@@ -197,7 +206,7 @@ class Ord2Transformer(PythonTransformer):
             )
             rhs = ast.Call(func=func, args=args, keywords=[])
         # Case for port statements
-        elif context_type == "port":
+        elif context_type_name == "port":
  
             args = [ast.Tuple(elts=context_name_tuple, ctx=ast.Load())]
             func = self.ast_attribute(self.ast_name("ctx"),"add_port")
@@ -218,7 +227,7 @@ class Ord2Transformer(PythonTransformer):
                         ),
                         body=self.ast_attribute(
                             ast.Call(
-                                func=self.ast_name(context_type),
+                                func=context_type_expr,
                                 args=[],
                                 keywords=[
                                     ast.keyword(
