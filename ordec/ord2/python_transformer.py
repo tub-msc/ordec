@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # standard imports
-from lark import Transformer
+from lark import Transformer, v_args
 import ast
 import unicodedata
 
@@ -69,6 +69,10 @@ class PythonTransformer(Transformer):
         'is': ast.Is,
         'is not': ast.IsNot,
     }
+
+    def __init__(self, source_text=""):
+        super().__init__()
+        self.source_text = source_text
 
     STRING_ESCAPE_MAP = {
         "\\": "\\",
@@ -819,13 +823,16 @@ class PythonTransformer(Transformer):
         joined = ast.JoinedStr(values=values)
         return self._normalize_joined_str(joined, decode_literals=not is_raw)
 
-    def f_expression_single(self, nodes):
-        return self.f_expression(nodes)
+    @v_args(meta=True)
+    def f_expression_single(self, meta, nodes):
+        # v_args gives function access to meta information (propagate_position)
+        return self.f_expression(nodes, meta=meta)
 
-    def f_expression_double(self, nodes):
-        return self.f_expression(nodes)
+    @v_args(meta=True)
+    def f_expression_double(self, meta, nodes):
+        return self.f_expression(nodes, meta=meta)
 
-    def f_expression(self, nodes):
+    def f_expression(self, nodes, meta=None):
         expr_node = nodes[0]
         conversion = -1
         format_spec = None
@@ -850,8 +857,60 @@ class PythonTransformer(Transformer):
             format_spec=format_spec
         )
         if debug_eq is not None:
-            return "debug_fexpr", f"{ast.unparse(expr_node)}{debug_eq}", formatted_value
+            return "debug_fexpr", self._debug_prefix_from_source(meta), formatted_value
         return formatted_value
+
+    def _debug_prefix_from_source(self, meta):
+        # Parser additions:
+        # - propagate_positions=True provides start_pos/end_pos on f_expression nodes.
+        # - source_text contains the parsed source.
+        segment = self.source_text[meta.start_pos:meta.end_pos]
+        inner = segment[1:-1]
+        eq_index = inner.rfind("=")
+
+        marker_index = self._find_top_level_marker(inner)
+        if marker_index != -1 and marker_index < eq_index:
+            return inner[:marker_index]
+
+        after_eq = eq_index + 1
+        while after_eq < len(inner) and inner[after_eq] in " \t":
+            after_eq += 1
+        return inner[:after_eq]
+
+    @staticmethod
+    def _find_top_level_marker(text):
+        # Find the first top-level debug-fstring marker ('!' conversion or ':' format),
+        # skipping nested brackets and quoted strings.
+        depth = 0
+        quote = None
+        escaped = False
+
+        for i, char in enumerate(text):
+            if quote is not None:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = None
+                continue
+
+            if char in ("'", '"'):
+                quote = char
+                continue
+
+            if char in "([{":
+                depth += 1
+                continue
+
+            if char in ")]}" and depth > 0:
+                depth -= 1
+                continue
+
+            if depth == 0 and char in ("!", ":"):
+                return i
+
+        return -1
 
     def debug_eq(self, nodes):
         return "debug_eq", "="

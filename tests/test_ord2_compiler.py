@@ -222,6 +222,10 @@ def test_with_as_subscript_target():
     ord_string = "with ctx() as a[0]:\n    pass"
     compare_asts(ord_string)
 
+def test_with_as_list_target():
+    ord_string = "with ctx() as [a, *b]:\n    pass"
+    compare_asts(ord_string)
+
 def test_async_with():
     ord_string = "async with lock:\n    await do_work()"
     compare_asts(ord_string)
@@ -556,6 +560,22 @@ def test_f_string_debug_with_conversion():
 
 def test_f_string_debug_with_spec():
     ord_string = "f\"{value=:>10}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug_with_spaces():
+    ord_string = "f\"{value = !r}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug_parenthesized():
+    ord_string = "f\"{(x+y)=}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug_spacing_preserved():
+    ord_string = "f\"{x   +   y=}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug_not_equal_edge():
+    ord_string = "f\"{x!=y=}\""
     compare_asts(ord_string)
 
 def test_f_string_escaped_call():
