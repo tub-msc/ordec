@@ -66,16 +66,16 @@ class GdsGenerator:
                 xy=path.vertices()
             )
             e.width = path.width
-            if path.endtype == PathEndType.CUSTOM:
+            if path.endtype == PathEndType.Custom:
                 e.path_type = 4
                 if (path.ext_bgn is None) or (path.ext_end is None):
-                    raise ValueError("Encountered path with PathEndType.CUSTOM"
+                    raise ValueError("Encountered path with PathEndType.Custom"
                         " with ext_bgn or ext_end of None.")
                 e.bgn_extn = path.ext_bgn
                 e.end_extn = path.ext_end
-            elif path.endtype == PathEndType.FLUSH:
+            elif path.endtype == PathEndType.Flush:
                 e.path_type = 0
-            elif path.endtype == PathEndType.SQUARE:
+            elif path.endtype == PathEndType.Square:
                 e.path_type = 2
             else:
                 raise ValueError(f"Unexpected path.endtype {path.endtype!r}.")

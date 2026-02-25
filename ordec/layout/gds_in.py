@@ -36,11 +36,11 @@ def gds_to_d4(angle: float|None, strans: int|None) -> D4:
 
 def gds_pathtype_to_endtype(path_type: int) -> PathEndType:
     if path_type == 0:
-        return PathEndType.FLUSH
+        return PathEndType.Flush
     elif path_type == 2:
-        return PathEndType.SQUARE
+        return PathEndType.Square
     elif path_type == 4:
-        return PathEndType.CUSTOM
+        return PathEndType.Custom
     elif path_type == 1:
         raise GdsReaderException("GDS Path with path_type=1 (round ends) not supported.")
     else:
@@ -95,7 +95,7 @@ def read_gds_structure(structure: Structure, layers: LayerStack, unit: R, extlib
                 raise GdsReaderException(f"Invalid GDS data: Path {elem} has less than 3 vertices!")
             vertices=[conv_xy(xy) for xy in elem.xy]
             endtype = gds_pathtype_to_endtype(elem.path_type)
-            if endtype == PathEndType.CUSTOM:
+            if endtype == PathEndType.Custom:
                 layout % LayoutPath(layer=layer, vertices=vertices, endtype=endtype,
                     ext_bgn=0 if elem.bgn_extn is None else elem.bgn_extn,
                     ext_end=0 if elem.end_extn is None else elem.end_extn)

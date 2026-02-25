@@ -30,7 +30,7 @@ def layout_expand_geom() -> Layout:
         for y in (1, -1):
             l % LayoutPath(
                 width=100,
-                endtype=PathEndType.FLUSH,
+                endtype=PathEndType.Flush,
                 layer=layers.Metal1,
                 vertices=[
                     Vec2I(x*100, y*500),
@@ -41,7 +41,7 @@ def layout_expand_geom() -> Layout:
 
             l % LayoutPath(
                 width=50,
-                endtype=PathEndType.SQUARE,
+                endtype=PathEndType.Square,
                 layer=layers.Metal2,
                 vertices=[
                     Vec2I(x*500, y*100),
@@ -52,7 +52,7 @@ def layout_expand_geom() -> Layout:
 
     l % LayoutPath(
         width=100,
-        endtype=PathEndType.FLUSH,
+        endtype=PathEndType.Flush,
         layer=layers.Metal3,
         vertices=[
             Vec2I(0, 0),
@@ -82,7 +82,7 @@ def layout_expand_geom() -> Layout:
 
     l % LayoutRectPath(
         width=80,
-        endtype=PathEndType.SQUARE,
+        endtype=PathEndType.Square,
         layer=layers.Metal5,
         vertices = [
             Vec2I(0,0),
@@ -90,7 +90,7 @@ def layout_expand_geom() -> Layout:
             Vec2I(-400,600),
             Vec2I(100,100),
         ],
-        start_direction=RectDirection.HORIZONTAL,
+        start_direction=RectDirection.Horizontal,
     )
 
     return l

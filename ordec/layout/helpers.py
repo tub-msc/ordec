@@ -91,16 +91,16 @@ def path_to_poly_vertices(path: LayoutPath) -> list[Vec2I]:
         if pred is None:
             # cur is first vertex of path
             direction = rectilinear_direction(succ - cur)
-            if path.endtype == PathEndType.SQUARE:
+            if path.endtype == PathEndType.Square:
                 extension = -halfwidth*direction
-            elif path.endtype == PathEndType.CUSTOM:
+            elif path.endtype == PathEndType.Custom:
                 extension = -path.ext_bgn*direction
         elif succ is None:
             # cur is last vertex of path
             direction = rectilinear_direction(cur - pred)
-            if path.endtype == PathEndType.SQUARE:
+            if path.endtype == PathEndType.Square:
                 extension = halfwidth*direction
-            elif path.endtype == PathEndType.CUSTOM:
+            elif path.endtype == PathEndType.Custom:
                 extension = path.ext_end*direction
         else:
             # cur has both a predecessor and a successor
@@ -135,7 +135,7 @@ def rpoly_to_poly_vertices(rpoly: LayoutRectPoly) -> Iterable[Vec2I]:
     it = iter(rpoly.vertices())
     last = next(it)
     for pos in chain(it, (last,)):
-        if start_direction == RectDirection.HORIZONTAL:
+        if start_direction == RectDirection.Horizontal:
             yield Vec2I(pos.x, last.y)
         else:
             yield Vec2I(last.x, pos.y)
@@ -161,7 +161,7 @@ def rpath_to_path_vertices(rpath: LayoutRectPath) -> Iterable[Vec2I]:
     yield pos0
     last = pos0
     for pos in it:
-        if start_direction == RectDirection.HORIZONTAL:
+        if start_direction == RectDirection.Horizontal:
             intermediate = Vec2I(pos.x, last.y)
         else:
             intermediate = Vec2I(last.x, pos.y)
