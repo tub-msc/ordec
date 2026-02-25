@@ -107,8 +107,8 @@ class ResdivHier1(Cell):
         s = Symbol(cell=self)
 
         # Use paths to test path hierarchy handling:
-        s.mkpath('inputs')
-        s.mkpath('outputs')       
+        s.inputs = PathNode()
+        s.outputs = PathNode()
 
         s.inputs.t = Pin(pintype=PinType.Inout, align=Orientation.North)
         s.outputs.r = Pin(pintype=PinType.Inout, align=Orientation.East)
@@ -126,9 +126,9 @@ class ResdivHier1(Cell):
         s.b = Net(pin=self.symbol.inputs.b)
 
         # Use paths to test path hierarchy handling:
-        s.mkpath('sub')
-        s.mkpath('sub2')
-        s.sub.mkpath('subsub')
+        s.sub = PathNode()
+        s.sub2 = PathNode()
+        s.sub.subsub = PathNode()
 
         s.tr = Net()
         s.br = Net()

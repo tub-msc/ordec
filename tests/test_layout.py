@@ -75,8 +75,22 @@ def test_gds_path(endtype):
         Vec2I(0, 500),
         Vec2I(500, 500),
     ]
-    expected_endtype = getattr(PathEndType, endtype.upper())
+    expected_endtype = getattr(PathEndType, endtype.capitalize())
     assert path.endtype == expected_endtype
+
+def test_gds_path_custom():
+    tech_layers = SG13G2().layers
+    lib = ExtLibrary()
+    lib.read_gds(gds_dir / 'test_path_custom.gds', tech_layers)
+    layout = lib['TOP'].layout
+    paths = list(layout.all(LayoutPath))
+    assert len(paths) == 1
+    path = paths[0]
+    assert path.layer == tech_layers.Metal1
+    assert path.vertices() == [Vec2I(0, 0), Vec2I(0, 500), Vec2I(500, 500)]
+    assert path.endtype == PathEndType.Custom
+    assert path.ext_bgn == 50
+    assert path.ext_end == 100
 
 def test_gds_path_round_unsupported():
     tech_layers = SG13G2().layers
@@ -231,19 +245,19 @@ def test_flatten():
     )
     path_orig = sublayout % LayoutPath(
         layer=layers.Metal2,
-        endtype=PathEndType.SQUARE,
+        endtype=PathEndType.Square,
         width=150,
         vertices=[(0, 0), (1000, 0), (1000, 1000)],
     )
     rpoly_orig = sublayout % LayoutRectPoly(
         layer=layers.Metal3,
-        start_direction=RectDirection.VERTICAL,
+        start_direction=RectDirection.Vertical,
         vertices=[(0, 0), (250, 250), (500, 500)],
     )
     rpath_orig = sublayout % LayoutRectPath(
         layer=layers.Metal4,
-        start_direction=RectDirection.VERTICAL,
-        endtype=PathEndType.SQUARE,
+        start_direction=RectDirection.Vertical,
+        endtype=PathEndType.Square,
         width=200,
         vertices=[(0, 0), (-1000, 1000), (500, 500)],
     )
@@ -318,7 +332,7 @@ def test_flatten():
 
 def test_expand_paths_lshapes():
     """
-    Tests expand_paths with PathEndType.SQUARE and PathEndType.FLUSH
+    Tests expand_paths with PathEndType.Square and PathEndType.Flush
     for L shapes with different orientations.
     """
     
@@ -328,7 +342,7 @@ def test_expand_paths_lshapes():
             l_flush = Layout(ref_layers=layers)
             l_flush % LayoutPath(
                 width=100,
-                endtype=PathEndType.FLUSH,
+                endtype=PathEndType.Flush,
                 layer=layers.Metal1,
                 vertices=[
                     Vec2I(x*500, 0),
@@ -338,9 +352,9 @@ def test_expand_paths_lshapes():
             )
 
             l_square = l_flush.copy()
-            l_square.one(LayoutPath).endtype = PathEndType.SQUARE
+            l_square.one(LayoutPath).endtype = PathEndType.Square
 
-            # Test path to poly with PathEndType.FLUSH:
+            # Test path to poly with PathEndType.Flush:
             expand_paths(l_flush)
 
             assert len(list(l_flush.all(LayoutPath))) == 0
@@ -360,7 +374,7 @@ def test_expand_paths_lshapes():
             ]
             assert poly_orientation(poly.vertices()) == 'ccw'
 
-            # Test path to poly with PathEndType.SQUARE:
+            # Test path to poly with PathEndType.Square:
             expand_paths(l_square)
 
             polys = list(l_square.all(LayoutPoly))
@@ -375,13 +389,61 @@ def test_expand_paths_lshapes():
                 Vec2I(y*50, y*550),
             ]
 
+def test_expand_paths_custom():
+    """Tests expand_paths with PathEndType.Custom."""
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers)
+    l % LayoutPath(
+        width=100,
+        endtype=PathEndType.Custom,
+        ext_bgn=30,
+        ext_end=70,
+        layer=layers.Metal1,
+        vertices=[Vec2I(0, 0), Vec2I(500, 0)],
+    )
+    expand_paths(l)
+    poly = l.one(LayoutPoly)
+    assert poly.vertices() == [
+        Vec2I(570, 50),
+        Vec2I(-30, 50),
+        Vec2I(-30, -50),
+        Vec2I(570, -50),
+    ]
+
+def test_path_infer_custom_endtype():
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers)
+    p = l % LayoutPath(width=100, ext_bgn=30, ext_end=70, layer=layers.Metal1,
+        vertices=[Vec2I(0, 0), Vec2I(500, 0)])
+    assert p.endtype == PathEndType.Custom
+
+    with pytest.raises(ValueError, match="PathEndType must be Custom"):
+        l % LayoutPath(width=100, ext_bgn=30, ext_end=70, layer=layers.Metal1,
+            endtype=PathEndType.Square,
+            vertices=[Vec2I(0, 0), Vec2I(500, 0)])
+
+def test_layoutpoly_vertex_count():
+    """Test GenericPoly.__new__ with an integer vertex count.
+
+    LayoutPoly(n, ...) creates the polygon node plus n empty PolyVec2I
+    nodes (no pos set), whose positions can then be set via constraints.
+    """
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers)
+    l.poly = LayoutPoly(3, layer=layers.Metal1)
+
+    # Three PolyVec2I nodes should exist with correct order and no pos:
+    verts = list(l.all(PolyVec2I))
+    assert len(verts) == 3
+    assert all(isinstance(v.pos, Vec2LinearTerm) for v in verts)
+
 def test_expand_paths_complex():
     layers = SG13G2().layers
     
     l = Layout(ref_layers=layers)
     l.path = LayoutPath(
         width=100,
-        endtype=PathEndType.FLUSH,
+        endtype=PathEndType.Flush,
         layer=layers.Metal3,
         vertices=[
             Vec2I(0, 0),
@@ -428,7 +490,7 @@ def test_expand_paths_straight_segment():
     l = Layout(ref_layers=layers)
     l.path = LayoutPath(
         width=100,
-        endtype=PathEndType.FLUSH,
+        endtype=PathEndType.Flush,
         layer=layers.Metal1,
         vertices=[
             Vec2I(0, 0),
@@ -475,7 +537,7 @@ def test_expand_paths_invalid():
         l = Layout(ref_layers=layers)
         l % LayoutPath(
             width=100,
-            endtype=PathEndType.FLUSH,
+            endtype=PathEndType.Flush,
             layer=layers.Metal1,
             vertices=vertices,
         )
@@ -494,7 +556,7 @@ def test_expand_rectpoly():
             Vec2I(100, 100),
             Vec2I(50, 50),
         ],
-        start_direction=RectDirection.HORIZONTAL,
+        start_direction=RectDirection.Horizontal,
     )
     l.rpoly_v = LayoutRectPoly(
         layer=layers.Metal1,
@@ -503,7 +565,7 @@ def test_expand_rectpoly():
             Vec2I(-100, 100),
             Vec2I(-50, 50),
         ],
-        start_direction=RectDirection.VERTICAL,
+        start_direction=RectDirection.Vertical,
     )
 
     expand_rectpolys(l)
@@ -540,8 +602,8 @@ def test_expand_rectpath():
             Vec2I(50, 50),
         ],
         width=10,
-        endtype=PathEndType.SQUARE,
-        start_direction=RectDirection.HORIZONTAL,
+        endtype=PathEndType.Square,
+        start_direction=RectDirection.Horizontal,
     )
     l.rpath_h2 = LayoutRectPath(
         layer=layers.Metal1,
@@ -551,8 +613,8 @@ def test_expand_rectpath():
             Vec2I(100, 50),
         ],
         width=10,
-        endtype=PathEndType.SQUARE,
-        start_direction=RectDirection.HORIZONTAL,
+        endtype=PathEndType.Square,
+        start_direction=RectDirection.Horizontal,
     )
     l.rpath_h3 = LayoutRectPath(
         layer=layers.Metal1,
@@ -562,8 +624,8 @@ def test_expand_rectpath():
             Vec2I(50, 100),
         ],
         width=10,
-        endtype=PathEndType.SQUARE,
-        start_direction=RectDirection.HORIZONTAL,
+        endtype=PathEndType.Square,
+        start_direction=RectDirection.Horizontal,
     )
     l.rpath_v = LayoutRectPath(
         layer=layers.Metal1,
@@ -573,8 +635,8 @@ def test_expand_rectpath():
             Vec2I(50, 50),
         ],
         width=10,
-        endtype=PathEndType.SQUARE,
-        start_direction=RectDirection.VERTICAL,
+        endtype=PathEndType.Square,
+        start_direction=RectDirection.Vertical,
     )
 
     expand_rectpaths(l)
@@ -588,7 +650,7 @@ def test_expand_rectpath():
         Vec2I(50, 50),
     ]
     assert l.rpath_h.width == 10
-    assert l.rpath_h.endtype == PathEndType.SQUARE
+    assert l.rpath_h.endtype == PathEndType.Square
 
     assert isinstance(l.rpath_h2, LayoutPath)
     assert l.rpath_h2.vertices() == [
@@ -662,7 +724,7 @@ def test_write_gds():
                 layer=layers.GatPoly,
                 vertices=[(0, 0), (500, 0), (500, 500), (500, 1200)],
                 width=100,
-                endtype=PathEndType.SQUARE,
+                endtype=PathEndType.Square,
             )
             l % LayoutInstance(pos=(-100, -100), orientation=D4.MY, ref=Sub().layout)
             l % LayoutInstance(pos=(-400, -400), orientation=D4.R0, ref=Sub().layout)
@@ -815,7 +877,7 @@ def test_layoutinstancearray_subcursor():
 def test_expand_pins():
     sym = Symbol()
     sym.my_pin = Pin()
-    sym.mkpath('my')
+    sym.my = PathNode()
     sym.my.pin = Pin()
     sym = sym.freeze()
 

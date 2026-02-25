@@ -121,9 +121,9 @@ for flight in earth.all(Flight.origin_idx.query(earth.cdg)):
 
 # You might have already noted that our subgraph "earth" was automatically populated with some NPath nodes. These NPath nodes define a hierarchical tree structure for named nodes. When we added the airports, NPath nodes were added at the root of this tree (parent=None).
 #
-# Using Subgraph.mkpath(), we can create arbitrary intermediate layers in this path tree. Let's add some airports with hierarchical organization:
+# Using PathNode(), we can create arbitrary intermediate layers in this path tree. Let's add some airports with hierarchical organization:
 
-earth.mkpath("united_kingdom")
+earth.united_kingdom = PathNode()
 earth.united_kingdom.man = Airport(label="Manchester Airport", year_opened=1938)
 x = earth.united_kingdom.man
 print(x)
@@ -134,7 +134,7 @@ x.full_path_str()
 
 # At the root of the tree, path segments mut be strings starting with a letter. Beyond the root, integers can also be used. In this context, the paths must be accessed using the item operator "[]" in Python:
 
-earth.united_kingdom.mkpath('london')
+earth.united_kingdom.london = PathNode()
 earth.united_kingdom.london[0] = Airport(label="Heathrow Airport", year_opened=1929)
 earth.united_kingdom.london[1] = Airport(label="London City Airport", year_opened=1987)
 x = earth.united_kingdom.london[0]

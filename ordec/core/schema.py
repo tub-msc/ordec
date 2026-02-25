@@ -15,6 +15,9 @@ from .cell import Cell
 from .constraints import *
 from .simarray import SimArray
 
+# Enums
+# -----
+
 @public
 class PinType(Enum):
     In = 'in'
@@ -23,6 +26,30 @@ class PinType(Enum):
 
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'
+
+@public
+class PathEndType(Enum):
+    """
+    Could also be named 'linecap'.
+    """
+    Flush = 0 #: Path begins/ends right at the vertex
+    Square = 2 #: Path extended by half width beyond start/end vertex
+    Custom = 4 #: Path extended by custom lengths beyond start/end vertex
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+@public
+class RectDirection(Enum):
+    """Used by :class:`LayoutRectPoly` and :class:`LayoutRectPath`."""
+    Vertical = 0 #: Indicates that shape is encoded with vertical edge first, horizontal edge second.
+    Horizontal = 1  #: Indicates that shape is encoded with horizontal edge first, vertical edge second.
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+# NamedTuples
+# -----------
 
 @public
 class GdsLayer(NamedTuple):
@@ -43,21 +70,6 @@ def rgb_color(s) -> RGBColor:
     if not re.match("#[0-9a-fA-F]{6}", s):
         raise ValueError("rgb_color expects string like '#0012EF'.")
     return RGBColor(int(s[1:3], 16), int(s[3:5], 16), int(s[5:7], 16))
-
-@public
-class PathEndType(Enum):
-    """
-    Could also be named 'linecap'.
-    Custom end sizes (GDS code 1) are not supported at the moment.
-    """
-    FLUSH = 0 #: 
-    SQUARE = 2
-
-@public
-class RectDirection(Enum):
-    """Used by :class:`LayoutRectPoly` and :class:`LayoutRectPath`."""
-    VERTICAL = 0 #: Indicates that shape is encoded with vertical edge first, horizontal edge second.
-    HORIZONTAL = 1  #: Indicates that shape is encoded with horizontal edge first, vertical edge second.
 
 def coerce_tuple(target_type, tuple_length):
     def func(val):
@@ -139,7 +151,20 @@ class MixinClosedPolygon:
 class GenericPoly(Node):
     in_subgraphs = [Symbol]
 
-    def __new__(cls, vertices:list[Vec2R|Vec2I]=None, **kwargs):
+    def __new__(cls, vertices:list[Vec2R|Vec2I]|int=None, **kwargs):
+        """
+        Construct a polygon or polygonal chain node, optionally with vertices.
+
+        Args:
+            vertices: Vertex specification, one of three forms:
+                - ``None``: create the poly node only, no vertex nodes (add
+                    vertices later via attribute assignment or constraints).
+                - ``list[Vec2R|Vec2I]``: create the poly node and insert one
+                    vertex node per list element with positions set.
+                - ``int``: create the poly node and insert that many vertex
+                    nodes with no positions set, for constraint-based layout.
+            **kwargs: Additional attributes passed to the underlying Node.
+        """
         main = super().__new__(cls, **kwargs)
         if vertices is None:
             return main
@@ -856,14 +881,29 @@ class LayoutPoly(GenericPolyI, MixinClosedPolygon):
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 
+class LayoutPathBase(GenericPolyI):
+    endtype = Attr(PathEndType, default=PathEndType.Flush, optional=False)
+    ext_bgn = Attr(int) #: Mandatory if endtype is PathEndType.Custom, else ignored.
+    ext_end = Attr(int) #: Mandatory if endtype is PathEndType.Custom, else ignored.
+    width = Attr(int)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+
+    def __new__(cls, *args, **kwargs):
+        if (kwargs.get('ext_bgn') is not None) or (kwargs.get('ext_end') is not None):
+            try:
+                if kwargs['endtype'] != PathEndType.Custom:
+                    raise ValueError("When ext_bgn or ext_end is specified,"
+                        " PathEndType must be Custom.")
+            except KeyError:
+                # Inferred PathEndType:
+                kwargs['endtype'] = PathEndType.Custom
+        return super().__new__(cls, *args, **kwargs)
+
 @public
-class LayoutPath(GenericPolyI, MixinPolygonalChain):
+class LayoutPath(LayoutPathBase, MixinPolygonalChain):
     """Layout path (polygonal chain with width)."""
     in_subgraphs = [Layout]
 
-    endtype = Attr(PathEndType, default=PathEndType.FLUSH, optional=False)
-    width = Attr(int)
-    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 
 @public
 class LayoutRectPoly(GenericPolyI):
@@ -882,11 +922,11 @@ class LayoutRectPoly(GenericPolyI):
     """
     in_subgraphs = [Layout]
 
-    start_direction = Attr(RectDirection, default=RectDirection.HORIZONTAL)
+    start_direction = Attr(RectDirection, default=RectDirection.Horizontal)
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 
 @public
-class LayoutRectPath(GenericPolyI):
+class LayoutRectPath(LayoutPathBase):
     """
     Compact rectilinear path. Each vertex is connected to its successor
     through two segments. The first segment in start_direction, the second
@@ -899,10 +939,7 @@ class LayoutRectPath(GenericPolyI):
     """
     in_subgraphs = [Layout]
 
-    start_direction = Attr(RectDirection, default=RectDirection.HORIZONTAL)
-    endtype = Attr(PathEndType, default=PathEndType.FLUSH)
-    width = Attr(int)
-    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+    start_direction = Attr(RectDirection, default=RectDirection.Horizontal)
 
 @public
 class LayoutRect(Node):

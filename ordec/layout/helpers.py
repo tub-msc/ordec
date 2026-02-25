@@ -91,13 +91,17 @@ def path_to_poly_vertices(path: LayoutPath) -> list[Vec2I]:
         if pred is None:
             # cur is first vertex of path
             direction = rectilinear_direction(succ - cur)
-            if path.endtype == PathEndType.SQUARE:
+            if path.endtype == PathEndType.Square:
                 extension = -halfwidth*direction
+            elif path.endtype == PathEndType.Custom:
+                extension = -path.ext_bgn*direction
         elif succ is None:
             # cur is last vertex of path
             direction = rectilinear_direction(cur - pred)
-            if path.endtype == PathEndType.SQUARE:
+            if path.endtype == PathEndType.Square:
                 extension = halfwidth*direction
+            elif path.endtype == PathEndType.Custom:
+                extension = path.ext_end*direction
         else:
             # cur has both a predecessor and a successor
             direction = rectilinear_direction(succ - cur) + rectilinear_direction(cur - pred)
@@ -131,7 +135,7 @@ def rpoly_to_poly_vertices(rpoly: LayoutRectPoly) -> Iterable[Vec2I]:
     it = iter(rpoly.vertices())
     last = next(it)
     for pos in chain(it, (last,)):
-        if start_direction == RectDirection.HORIZONTAL:
+        if start_direction == RectDirection.Horizontal:
             yield Vec2I(pos.x, last.y)
         else:
             yield Vec2I(last.x, pos.y)
@@ -157,7 +161,7 @@ def rpath_to_path_vertices(rpath: LayoutRectPath) -> Iterable[Vec2I]:
     yield pos0
     last = pos0
     for pos in it:
-        if start_direction == RectDirection.HORIZONTAL:
+        if start_direction == RectDirection.Horizontal:
             intermediate = Vec2I(pos.x, last.y)
         else:
             intermediate = Vec2I(last.x, pos.y)
@@ -178,6 +182,8 @@ def expand_rectpaths(layout: Layout):
             vertices=rpath_to_path_vertices(rpath),
             endtype=rpath.endtype,
             width=rpath.width,
+            ext_bgn=rpath.ext_bgn,
+            ext_end=rpath.ext_end,
             ))
 
 @public
@@ -260,6 +266,8 @@ def flatten_instance(dst: Layout, src: Layout, tran: TD4I, first_level: bool):
             width=src_e.width,
             endtype=src_e.endtype,
             vertices=[tran * v for v in src_e.vertices()],
+            ext_bgn = src_e.ext_bgn,
+            ext_end = src_e.ext_end,
         )
 
     for src_e in src.all(LayoutRectPoly):
@@ -276,6 +284,8 @@ def flatten_instance(dst: Layout, src: Layout, tran: TD4I, first_level: bool):
             width=src_e.width,
             endtype=src_e.endtype,
             vertices=[tran * v for v in src_e.vertices()],
+            ext_bgn = src_e.ext_bgn,
+            ext_end = src_e.ext_end,
         )
 
     for src_e in src.all(LayoutRect):

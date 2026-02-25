@@ -36,13 +36,13 @@ def gds_to_d4(angle: float|None, strans: int|None) -> D4:
 
 def gds_pathtype_to_endtype(path_type: int) -> PathEndType:
     if path_type == 0:
-        return PathEndType.FLUSH
+        return PathEndType.Flush
     elif path_type == 2:
-        return PathEndType.SQUARE
+        return PathEndType.Square
+    elif path_type == 4:
+        return PathEndType.Custom
     elif path_type == 1:
         raise GdsReaderException("GDS Path with path_type=1 (round ends) not supported.")
-    elif path_type == 4:
-        raise GdsReaderException("GDS Path with path_type=4 (custom square ends) not supported.")
     else:
         raise GdsReaderException(f"Invalid GDS data: path_type={path_type}.")
 
@@ -90,15 +90,17 @@ def read_gds_structure(structure: Structure, layers: LayerStack, unit: R, extlib
                 text=elem.string.decode('ascii'),
                 )
         elif isinstance(elem, elements.Path):
-            layer = lookup_layer(elem.layer, elem.data_type, text=False)    
+            layer = lookup_layer(elem.layer, elem.data_type, text=False)
             if len(elem.xy) < 1:
                 raise GdsReaderException(f"Invalid GDS data: Path {elem} has less than 3 vertices!")
             vertices=[conv_xy(xy) for xy in elem.xy]
-            layout % LayoutPath(
-                layer=layer,
-                vertices=vertices,
-                endtype=gds_pathtype_to_endtype(elem.path_type),
-                )
+            endtype = gds_pathtype_to_endtype(elem.path_type)
+            if endtype == PathEndType.Custom:
+                layout % LayoutPath(layer=layer, vertices=vertices, endtype=endtype,
+                    ext_bgn=0 if elem.bgn_extn is None else elem.bgn_extn,
+                    ext_end=0 if elem.end_extn is None else elem.end_extn)
+            else:
+                layout % LayoutPath(layer=layer, vertices=vertices, endtype=endtype)
         elif isinstance(elem, elements.SRef):
             if elem.mag not in (1.0, None):
                 raise GdsReaderException("SRef with magnification != 1.0 not supported.")

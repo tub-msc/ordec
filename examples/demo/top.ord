@@ -1,0 +1,70 @@
+# -*- version: ord2 -*-
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from ordec.schematic import helpers
+from ordec.ord2.context import ctx, OrdContext
+from ordec.lib import NoConn
+
+from counter_yosys import extlib, report_digital_design
+from vco_pseudodiff import Vco, VcoHalfStage, VcoRing, VcoTb, report_analog_design
+
+cell Top:
+    """
+    This is an example mixed-signal design to demonstrate ORDeC. It consists of
+    a custom-built Vco and a synthesized digital counter.
+    """
+    viewgen symbol:
+        inout vdd(.align=Orientation.North)
+        inout vss(.align=Orientation.South)
+
+        input rst_n(.align=Orientation.West)
+        input vbias(.align=Orientation.West)
+        input en(.align=Orientation.West)
+        input down(.align=Orientation.West)
+
+        path ctr
+        for i in range(8):
+            output ctr[i](.align=Orientation.East)
+
+    viewgen schematic:
+        net clk
+        net nc0, nc1, nc2
+
+        port vdd(.align=Orientation.South; .pos=(0,20))
+        port rst_n(.align=Orientation.East; .pos=(0,7))
+        port vbias(.align=Orientation.East; .pos=(0,8))
+        port en(.align=Orientation.East; .pos=(0,15))
+        port down(.align=Orientation.East; .pos=(0,14))
+        port vss(.align=Orientation.North; .pos=(0,0))
+
+        path ctr
+        for i in range(8):
+            port ctr[i](.align=Orientation.West; .pos=(21,12+i))
+
+        Vco analog_part:
+            .pos=(5,5)
+            .rst_n -- rst_n
+            .out_p[0] -- clk
+            .out_n[0] -- nc2
+            .out_p[1] -- nc1
+            .out_n[1] -- nc0
+            .vss -- vss
+            .vdd -- vdd
+            .vbias -- vbias
+
+        # TODO: We want merge the following two lines into a single line.
+        counter = lambda: extlib['counter']
+        counter digital_part:
+            .pos=(15,10)
+            .rst_ni -- rst_n
+            .clk_i -- clk
+            .en_i -- en
+            .down_i -- down
+            for i in range(8):
+                .val_o[i] -- ctr[i]
+
+        NoConn I2(.pos = (15,5); .a -- nc0)
+        NoConn I1(.pos = (15,0); .a -- nc1)
+        NoConn I0(.pos = (15,-5); .a -- nc2)

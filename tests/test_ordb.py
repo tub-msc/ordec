@@ -556,7 +556,7 @@ def test_cursor_paths():
         label = Attr(str)
 
     s = MyHead()
-    s.mkpath('sub')
+    s.sub = PathNode()
 
     npath_nid = s.sub.npath_nid
     npath  = s.sub.npath
@@ -569,7 +569,7 @@ def test_cursor_paths():
     with pytest.raises(AttributeError):
         s.undefined
 
-    s.sub.mkpath('sub')
+    s.sub.sub = PathNode()
     npath2 = s.sub.sub.npath
     assert (npath2.name, npath2.parent, npath2.ref) == ('sub', npath_nid, None)
 
@@ -602,19 +602,19 @@ def test_full_path():
     s = MyHead()
     assert s.full_path_list() == []
     assert s.full_path_str() == "root_cursor"
-    s.mkpath('hello')
+    s.hello = PathNode()
     assert s.hello.full_path_list() == ['hello']
     assert s.hello.full_path_str() == 'hello'
     assert repr(s.hello) == 'PathNode.Mutable(path=hello)'
-    s.hello.mkpath('world')
+    s.hello.world = PathNode()
     assert s.hello.world.full_path_list() == ['hello', 'world']
     assert s.hello.world.full_path_str() == 'hello.world'
     assert repr(s.hello.world) == 'PathNode.Mutable(path=hello.world)'
 
-    s.mkpath('array')
-    s.array.mkpath(0)
-    s.array.mkpath(123456789)
-    s.array[0].mkpath('sub')
+    s.array = PathNode()
+    s.array[0] = PathNode()
+    s.array[123456789] = PathNode()
+    s.array[0].sub = PathNode()
     assert s.array[0].sub.full_path_list() == ['array', 0, 'sub']
     assert s.array[0].sub.full_path_str() == 'array[0].sub'
     assert repr(s.array[0].sub) == 'PathNode.Mutable(path=array[0].sub)'
@@ -622,27 +622,27 @@ def test_full_path():
     assert repr(s.array[123456789]) == 'PathNode.Mutable(path=array[123456789])'
 
 def test_add_pathnode():
-    """Test the creation of paths using PathNode() instead of mkpath()."""
+    """Test that two equivalent PathNode() constructions produce equal results."""
     a = MyHead()
     a.hello = PathNode()
     a.hello[123] = PathNode()
 
     b = MyHead()
-    b.mkpath('hello')
-    b.hello.mkpath(123)
+    b.hello = PathNode()
+    b.hello[123] = PathNode()
 
     assert a.freeze() == b.freeze()
 
 
 def test_cursor_paths_unique():
     s = MyHead()
-    s.mkpath('sub')
+    s.sub = PathNode()
     s.node1 = MyNode()
 
     s2 = s.copy()
 
     with pytest.raises(OrdbException, match=r"Path exists"):
-        s2.mkpath('sub')
+        s2.sub = PathNode()
     assert s2.matches(s) # Make sure no partial insertion was done.
 
     with pytest.raises(OrdbException, match=r"Path exists"):
@@ -650,7 +650,7 @@ def test_cursor_paths_unique():
     assert s2.matches(s) # Make sure no partial insertion was done.
 
     with pytest.raises(OrdbException, match=r"Path exists"):
-        s2.mkpath('node1')
+        s2.node1 = PathNode()
     assert s2.matches(s) # Make sure no partial insertion was done.
 
     with pytest.raises(OrdbException, match=r"Path exists"):
@@ -892,7 +892,7 @@ def test_replace_nonleaf_to_leaf():
     s = MyHead()
     s.x = NodeA()
     s.y = NodeA()
-    s.y.mkpath('sub')
+    s.y.sub = PathNode()
     assert len(list(s.all(NodeA))) == 2
     s.x.replace(NodeB())
     assert len(list(s.all(NodeA))) == 1
