@@ -145,14 +145,12 @@ cell VcoHalfStage:
         l.inp % LayoutPin(pin=self.symbol.inp)
         l.fb % LayoutPin(pin=self.symbol.fb)
 
-
         l.outbar_h = LayoutRect(layer=layers.Metal1)
         l.outbar_h % LayoutPin(pin=self.symbol.out)
         s.constrain(l.outbar_h.rect.cy == l.polycont[3].rect.cy)
         s.constrain(l.outbar_h.rect.height == 210)
         s.constrain(l.outbar_h.rect.lx == l.m1.sd[0].rect.lx)
         s.constrain(l.outbar_h.rect.ux == l.polycont[3].rect.ux + 500)
-
 
         l.outbar_vmain = LayoutRect(layer=layers.Metal1)
         s.constrain(l.outbar_vmain.rect.contains(l.m3.sd[1].rect))
@@ -208,7 +206,7 @@ cell VcoHalfStage:
             s.constrain(l.nwell.rect.contains(m.nwell.rect))
 
         s.solve()
-        return l    
+        return l
 
 cell VcoRing:
     viewgen symbol:
@@ -330,31 +328,14 @@ cell VcoRing:
 
         s.constrain(l.stage_p[0].pos==(0,0))
 
-        r = l % LayoutRect(layer=layers.Metal2)
-        s.constrain(r.rect.south == l.stage_n[0].rst_n.rect.south)
-        s.constrain(r.rect.width == 200)
-        s.constrain(r.rect.uy == l.stage_n[0].vddbar.rect.uy + 40)
+        # Connect rst_n of stage_n[0] and stage_p[1] to VDD:
+        l.mkpath('rsttie')
+        for i, stage in enumerate([l.stage_n[0], l.stage_p[1]]):
+            l.rsttie[i] = LayoutRectPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150, endtype=PathEndType.CUSTOM)
+            s.constrain(l.rsttie[i][0] == stage.rst_n.rect.center)
+            s.constrain(l.rsttie[i][1] == (l.rsttie[i][0].x, stage.vddbar.rect.cy))
 
-        v = l % LayoutRect(layer=layers.Via1)
-        s.constrain(v.rect.size == Vec2I(190, 190))
-        s.constrain(v.rect.north == r.rect.north - (0,50))
-
-        v = l % LayoutRect(layer=layers.Via1)
-        s.constrain(v.rect.size == Vec2I(190, 190))
-        s.constrain(v.rect.center == l.stage_n[0].rst_n.rect.center)
-
-        r = l % LayoutRect(layer=layers.Metal2)
-        s.constrain(r.rect.north == l.stage_p[1].rst_n.rect.north)
-        s.constrain(r.rect.width == 200)
-        s.constrain(r.rect.ly == l.stage_n[1].vddbar.rect.ly - 40)
-
-        v = l % LayoutRect(layer=layers.Via1)
-        s.constrain(v.rect.size == Vec2I(190, 190))
-        s.constrain(v.rect.south == r.rect.south + (0,50))
-
-        v = l % LayoutRect(layer=layers.Via1)
-        s.constrain(v.rect.size == Vec2I(190, 190))
-        s.constrain(v.rect.center == l.stage_p[1].rst_n.rect.center)
+        # Connect rst_n of stage_n[1] and stage_p[0] to own rst_n:
 
         l.rst_n = LayoutRect(layer=layers.Metal2)
         s.constrain(l.rst_n.rect.width == 200)
@@ -378,7 +359,9 @@ cell VcoRing:
         v = l % LayoutRect(layer=layers.Via1)
         s.constrain(v.rect.size == Vec2I(190, 190))
         s.constrain(v.rect.center == l.stage_p[0].rst_n.rect.center)
-          
+
+        # Connect out and fb pins of halfstage pairs on Metal2:
+
         l.outv_p0 = LayoutPath(2, layer=layers.Metal2, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)
         s.constrain(l.outv_p0[0] == l.stage_n[0].fb.rect.center)
         s.constrain(l.outv_p0[1].x == l.outv_p0[0].x)
@@ -398,6 +381,8 @@ cell VcoRing:
         s.constrain(l.outv_n1[0] == l.stage_p[1].fb.rect.center)
         s.constrain(l.outv_n1[2] == l.stage_n[1].outbar_h.rect.east - (150,0))
         s.constrain(l.outv_n1[1] == (l.outv_n1[2].x, l.outv_n1[0].y))
+
+        # Connect stage[0] inputs/outputs with stage[1] inputs/outputs:
 
         l.outh_n0 = LayoutPath(2, layer=layers.Metal3, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)
         s.constrain(l.outh_n0[0] == l.outv_n0[2])
@@ -431,6 +416,8 @@ cell VcoRing:
             s.constrain(p[0] == inp.rect.center)
             s.constrain(p[1] == end)
 
+        # Add Via1 rectangles:
+
         for vertex in [
                 l.outv_p0[0], l.outv_p0[1],
                 l.outv_n0[0], l.outv_n0[2],
@@ -438,10 +425,14 @@ cell VcoRing:
                 l.outv_n1[0], l.outv_n1[2],
                 l.stage_n[0].inp.rect.center, l.stage_p[0].inp.rect.center,
                 l.stage_n[1].inp.rect.center, l.stage_p[1].inp.rect.center,
+                l.rsttie[0][0], l.rsttie[0][1],
+                l.rsttie[1][0], l.rsttie[1][1],
             ]:
             via = l % LayoutRect(layer=layers.Via1)
             s.constrain(via.rect.size == (190, 190))
             s.constrain(via.rect.center == vertex)
+
+        # Add Via2 rectangles:
 
         for vertex in [
                 l.outh_p0[0], l.outh_p0[1],
