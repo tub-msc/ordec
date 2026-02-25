@@ -104,7 +104,7 @@ cell VcoHalfStage:
             s.constrain(right_nmos.sd[0].rect.center == left_nmos.sd[1].rect.center)
             s.constrain(right_pmos.sd[0].rect.center == left_pmos.sd[1].rect.center)
 
-        l.mkpath('poly')
+        l.poly = PathNode()
         for idx, insts in enumerate(grid):
             l.poly[idx] = LayoutRect(layer=layers.GatPoly) 
             for inst in insts:
@@ -116,7 +116,7 @@ cell VcoHalfStage:
             ('south', 'east', 'fb'),
             ('north', 'west', False),
         )
-        l.mkpath('polycont')
+        l.polycont = PathNode()
         polycont_m1={}
         for idx, (vert_spec, horiz_spec, add_m1) in enumerate(polycont_spec):
             polyext = l % LayoutRect(layer=layers.GatPoly)
@@ -280,10 +280,10 @@ cell VcoRing:
         l = Layout(ref_layers=layers, cell=self, symbol=self.symbol)
         s = Solver(l)
 
-        l.mkpath('stage_n')
-        l.mkpath('stage_p')
-        l.mkpath('out_n')
-        l.mkpath('out_p')
+        l.stage_n = PathNode()
+        l.stage_p = PathNode()
+        l.out_n = PathNode()
+        l.out_p = PathNode()
 
         l.nwell = LayoutRect(layer=layers.NWell)
        
@@ -331,7 +331,7 @@ cell VcoRing:
         s.constrain(l.stage_p[0].pos==(0,0))
 
         # Connect rst_n of stage_n[0] and stage_p[1] to VDD:
-        l.mkpath('rsttie')
+        l.rsttie = PathNode()
         for i, stage in enumerate([l.stage_n[0], l.stage_p[1]]):
             l.rsttie[i] = LayoutRectPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150, endtype=PathEndType.CUSTOM)
             s.constrain(l.rsttie[i][0] == stage.rst_n.rect.center)
@@ -361,8 +361,8 @@ cell VcoRing:
 
         # Connect out and fb pins of halfstage pairs on Metal2:
 
-        l.mkpath('outv_p')
-        l.mkpath('outv_n')
+        l.outv_p = PathNode()
+        l.outv_n = PathNode()
 
         for i in range(2):
             l.outv_p[i] = LayoutPath(2, layer=layers.Metal2, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)

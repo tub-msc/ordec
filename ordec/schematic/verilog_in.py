@@ -93,7 +93,7 @@ def create_symbol(extlib, name, port_spec: OrderedDict[str, tuple[str, int]]) ->
         if width == 1:
             sym[port_name] = p
         else:
-            sym.mkpath(port_name)
+            sym[port_name] = PathNode()
             for i in range(width):
                 sym[port_name][i] = p
     symbol_place_pins(sym, hpadding=3, vpadding=2)

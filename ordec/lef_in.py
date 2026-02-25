@@ -133,7 +133,7 @@ def create_symbol(extlib: 'ExtLibrary', name: str, port_spec: OrderedDict[str, t
         if width == 1:
             sym[port_name] = Pin(**pin_kwargs)
         else:
-            sym.mkpath(port_name)
+            sym[port_name] = PathNode()
             for i in range(width):
                 sym[port_name][i] = Pin(**pin_kwargs)
     symbol_place_pins(sym, hpadding=3, vpadding=2)

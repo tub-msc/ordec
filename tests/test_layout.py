@@ -850,7 +850,7 @@ def test_layoutinstancearray_subcursor():
 def test_expand_pins():
     sym = Symbol()
     sym.my_pin = Pin()
-    sym.mkpath('my')
+    sym.my = PathNode()
     sym.my.pin = Pin()
     sym = sym.freeze()
 

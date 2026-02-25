@@ -22,8 +22,8 @@ class MultiPinSymbol(Cell):
     @generate
     def symbol(self):
         s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 2 + self.bits))
-        s.mkpath("d")
-        s.mkpath("q")
+        s.d = PathNode()
+        s.q = PathNode()
         for i in range(self.bits):
             s.d[i] = Pin(pos=Vec2R(0, 1 + i), pintype=PinType.In, align=D4.West)
             s.q[i] = Pin(pos=Vec2R(4, 1 + i), pintype=PinType.Out, align=D4.East)

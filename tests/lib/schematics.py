@@ -109,8 +109,8 @@ class MultibitReg_Arrays(Cell):
 
         s.vss = Pin(pintype=PinType.In, align=Orientation.South)
         s.vdd = Pin(pintype=PinType.In, align=Orientation.North)
-        s.mkpath("d")
-        s.mkpath("q")
+        s.d = PathNode()
+        s.q = PathNode()
         for i in range(self.bits):
             s.d[i] = Pin(pintype=PinType.In, align=Orientation.West)
             s.q[i] = Pin(pintype=PinType.Out, align=Orientation.East)
@@ -126,9 +126,9 @@ class MultibitReg_Arrays(Cell):
         s.vss = Net(pin=self.symbol.vss)
         s.vdd = Net(pin=self.symbol.vdd)
         s.clk = Net(pin=self.symbol.clk)
-        s.mkpath("d")
-        s.mkpath("q")
-        s.mkpath("I")
+        s.d = PathNode()
+        s.q = PathNode()
+        s.I = PathNode()
 
         s.vss % SchemPort(pos=Vec2R(1, 0), align=Orientation.East)
         s.vdd % SchemPort(pos=Vec2R(1, 1), align=Orientation.East)
@@ -169,9 +169,9 @@ class MultibitReg_ArrayOfStructs(Cell):
 
         s.vss = Pin(pintype=PinType.In, align=Orientation.South)
         s.vdd = Pin(pintype=PinType.In, align=Orientation.North)
-        s.mkpath("bit")
+        s.bit = PathNode()
         for i in range(self.bits):
-            s.bit.mkpath(i)
+            s.bit[i] = PathNode()
             s.bit[i].d = Pin(pintype=PinType.In, align=Orientation.West)
             s.bit[i].q = Pin(pintype=PinType.Out, align=Orientation.East)
         s.clk = Pin(pintype=PinType.In, align=Orientation.West)
@@ -189,9 +189,9 @@ class MultibitReg_StructOfArrays(Cell):
 
         s.vss = Pin(pintype=PinType.In, align=Orientation.South)
         s.vdd = Pin(pintype=PinType.In, align=Orientation.North)
-        s.mkpath("data")
-        s.data.mkpath("d")
-        s.data.mkpath("q")
+        s.data = PathNode()
+        s.data.d = PathNode()
+        s.data.q = PathNode()
         for i in range(self.bits):
             s.data.d[i] = Pin(pintype=PinType.In, align=Orientation.West)
             s.data.q[i] = Pin(pintype=PinType.Out, align=Orientation.East)

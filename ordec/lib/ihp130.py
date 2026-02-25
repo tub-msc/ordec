@@ -213,8 +213,8 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
     L = int(length/R("1n"))
     W = int(width/R("1n") / num_gates)
 
-    l.mkpath('poly')
-    l.mkpath('sd')
+    l.poly = PathNode()
+    l.sd = PathNode()
 
     activ_ext = None
 

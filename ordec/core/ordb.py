@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from abc import ABC, ABCMeta, abstractmethod
 import bisect
 import string
+import warnings
 from public import public
 
 @public
@@ -942,12 +943,16 @@ class NonLeafNode(Node, build_node=False):
         """
         Create empty NPath 'k' below selected node.
 
-        The same action can be accomplished by assigning PathNode() as a new
-        item or attribute of the NonLeafNode.
+        .. deprecated::
+            Use ``x.name = PathNode()`` (string key) or ``x[i] = PathNode()`` (integer key) instead.
         """
+        warnings.warn(
+            "mkpath() is deprecated. Use 'x.name = PathNode()' or 'x[i] = PathNode()' instead.",
+            DeprecationWarning,
+            stacklevel=2)
         with self.subgraph.updater() as u:
             self._mkpath_addnode(k, ref, u)
-            
+
     def _mkpath_addnode(self, k, ref, u: 'SubgraphUpdater'):
         """Creates NPath node below current cursor. NPath node is empty when ref=None."""
         if self.nid not in (None, 0):
