@@ -410,6 +410,18 @@ def test_expand_paths_custom():
         Vec2I(570, -50),
     ]
 
+def test_path_infer_custom_endtype():
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers)
+    p = l % LayoutPath(width=100, ext_bgn=30, ext_end=70, layer=layers.Metal1,
+        vertices=[Vec2I(0, 0), Vec2I(500, 0)])
+    assert p.endtype == PathEndType.CUSTOM
+
+    with pytest.raises(ValueError, match="PathEndType must be CUSTOM"):
+        l % LayoutPath(width=100, ext_bgn=30, ext_end=70, layer=layers.Metal1,
+            endtype=PathEndType.SQUARE,
+            vertices=[Vec2I(0, 0), Vec2I(500, 0)])
+
 def test_expand_paths_complex():
     layers = SG13G2().layers
     

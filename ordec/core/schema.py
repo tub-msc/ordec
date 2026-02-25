@@ -139,7 +139,20 @@ class MixinClosedPolygon:
 class GenericPoly(Node):
     in_subgraphs = [Symbol]
 
-    def __new__(cls, vertices:list[Vec2R|Vec2I]=None, **kwargs):
+    def __new__(cls, vertices:list[Vec2R|Vec2I]|int=None, **kwargs):
+        """
+        Construct a polygon or polygonal chain node, optionally with vertices.
+
+        Args:
+            vertices: Vertex specification, one of three forms:
+                - ``None``: create the poly node only, no vertex nodes (add
+                    vertices later via attribute assignment or constraints).
+                - ``list[Vec2R|Vec2I]``: create the poly node and insert one
+                    vertex node per list element with positions set.
+                - ``int``: create the poly node and insert that many vertex
+                    nodes with no positions set, for constraint-based layout.
+            **kwargs: Additional attributes passed to the underlying Node.
+        """
         main = super().__new__(cls, **kwargs)
         if vertices is None:
             return main
@@ -856,16 +869,29 @@ class LayoutPoly(GenericPolyI, MixinClosedPolygon):
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 
-@public
-class LayoutPath(GenericPolyI, MixinPolygonalChain):
-    """Layout path (polygonal chain with width)."""
-    in_subgraphs = [Layout]
-
+class LayoutPathBase(GenericPolyI):
     endtype = Attr(PathEndType, default=PathEndType.FLUSH, optional=False)
     ext_bgn = Attr(int) #: Mandatory if endtype is PathEndType.CUSTOM, else ignored.
     ext_end = Attr(int) #: Mandatory if endtype is PathEndType.CUSTOM, else ignored.
     width = Attr(int)
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+
+    def __new__(cls, *args, **kwargs):
+        if (kwargs.get('ext_bgn') is not None) or (kwargs.get('ext_end') is not None):
+            try:
+                if kwargs['endtype'] != PathEndType.CUSTOM:
+                    raise ValueError("When ext_bgn or ext_end is specified,"
+                        " PathEndType must be CUSTOM.")
+            except KeyError:
+                # Inferred PathEndType:
+                kwargs['endtype'] = PathEndType.CUSTOM
+        return super().__new__(cls, *args, **kwargs)
+
+@public
+class LayoutPath(LayoutPathBase, MixinPolygonalChain):
+    """Layout path (polygonal chain with width)."""
+    in_subgraphs = [Layout]
+
 
 @public
 class LayoutRectPoly(GenericPolyI):
@@ -888,7 +914,7 @@ class LayoutRectPoly(GenericPolyI):
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 
 @public
-class LayoutRectPath(GenericPolyI):
+class LayoutRectPath(LayoutPathBase):
     """
     Compact rectilinear path. Each vertex is connected to its successor
     through two segments. The first segment in start_direction, the second
@@ -902,11 +928,6 @@ class LayoutRectPath(GenericPolyI):
     in_subgraphs = [Layout]
 
     start_direction = Attr(RectDirection, default=RectDirection.HORIZONTAL)
-    endtype = Attr(PathEndType, default=PathEndType.FLUSH)
-    ext_bgn = Attr(int) #: Mandatory if endtype is PathEndType.CUSTOM, else ignored.
-    ext_end = Attr(int) #: Mandatory if endtype is PathEndType.CUSTOM, else ignored.
-    width = Attr(int)
-    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 
 @public
 class LayoutRect(Node):

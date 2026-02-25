@@ -333,7 +333,7 @@ cell VcoRing:
         # Connect rst_n of stage_n[0] and stage_p[1] to VDD:
         l.rsttie = PathNode()
         for i, stage in enumerate([l.stage_n[0], l.stage_p[1]]):
-            l.rsttie[i] = LayoutRectPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150, endtype=PathEndType.CUSTOM)
+            l.rsttie[i] = LayoutRectPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
             s.constrain(l.rsttie[i][0] == stage.rst_n.rect.center)
             s.constrain(l.rsttie[i][1] == (l.rsttie[i][0].x, stage.vddbar.rect.cy))
             vias[layers.Via1] += [l.rsttie[i][0], l.rsttie[i][1]]
@@ -365,13 +365,13 @@ cell VcoRing:
         l.outv_n = PathNode()
 
         for i in range(2):
-            l.outv_p[i] = LayoutPath(2, layer=layers.Metal2, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)
+            l.outv_p[i] = LayoutPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
             s.constrain(l.outv_p[i][0] == l.stage_n[i].fb.rect.center)
             s.constrain(l.outv_p[i][1].x == l.outv_p[i][0].x)
             s.constrain(l.outv_p[i][1].y == l.stage_p[i].outbar_h.rect.cy)
             vias[layers.Via1] += [l.outv_p[i][0], l.outv_p[0][1]]
 
-            l.outv_n[i] = LayoutPath(3, layer=layers.Metal2, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)
+            l.outv_n[i] = LayoutPath(3, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
             s.constrain(l.outv_n[i][0] == l.stage_p[i].fb.rect.center)
             if i == 0:
                 s.constrain(l.outv_n[i][2] == l.stage_n[i].outbar_h.rect.west + (150, 0))
@@ -388,13 +388,13 @@ cell VcoRing:
             (l.stage_n[0].inp, (l.outv_p[1][0].x, l.outv_n[0][2].y + 500)),
             (l.stage_p[0].inp, (l.outv_n[1][2].x, l.outv_p[0][1].y - 500))]:
 
-            m3_horiz = l % LayoutPath(2, layer=layers.Metal3, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)
+            m3_horiz = l % LayoutPath(2, layer=layers.Metal3, width=200, ext_bgn=150, ext_end=150)
             s.constrain(m3_horiz[0] == out)
             s.constrain(m3_horiz[1].y == m3_horiz[0].y)
             s.constrain(m3_horiz[1].x == inp.rect.cx)
             vias[layers.Via2] += [m3_horiz[0], m3_horiz[1]]
 
-            m2_vert = l % LayoutPath(2, layer=layers.Metal2, width=200, endtype=PathEndType.CUSTOM, ext_bgn=150, ext_end=150)
+            m2_vert = l % LayoutPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
             s.constrain(m2_vert[0] == inp.rect.center)
             s.constrain(m2_vert[1] == m3_horiz[1])
             vias[layers.Via1].append(m2_vert[0])
