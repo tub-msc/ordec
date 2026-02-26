@@ -95,7 +95,8 @@ lambda_kwparams: "**" name ","?
             | assert_stmt
             | connect_stmt
             | path_stmt
-            | net_stmt)
+            | net_stmt
+            | constrain_stmt)
 
 expr_stmt: testlist_star_expr
 assign_stmt: annassign | augassign | assign
@@ -380,7 +381,8 @@ RATIONAL: DEC_NUMBER SLASH DEC_NUMBER
 
 connect_stmt: testlist_star_expr "--" testlist_star_expr
 celldef: "cell" name ":" suite
-viewgen: "viewgen" name ":" suite
+viewgen: "viewgen" name ["(" [arguments] ")"] ":" suite
+constrain_stmt: "!" test
 context_body: ":" suite
 context_element: atom_expr context_target context_body
 

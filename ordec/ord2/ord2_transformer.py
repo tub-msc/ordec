@@ -64,17 +64,40 @@ class Ord2Transformer(PythonTransformer):
     def viewgen(self, nodes):
         """ Funcdef for cell (viewgen schematic:\n suite)"""
         func_name = nodes[0]
-        suite = nodes[1]
+        if len(nodes) == 3:
+            viewgen_args = nodes[1]
+            suite = nodes[2]
+        else:
+            viewgen_args = []
+            suite = nodes[1]
+
+        # Extract keyword arguments
+        kwarg_assignments = []
+        for arg in viewgen_args:
+            if isinstance(arg, tuple) and arg[0] == "argvalue":
+                kwarg_assignments.append(
+                    ast.Assign(
+                        targets=[self.ast_name(arg[1].id, ctx=ast.Store())],
+                        value=arg[2]
+                    )
+                )
 
         keywords = list()
         keywords.append(ast.keyword(arg="cell", value=self.ast_name("self")))
-        if func_name == "schematic":
+        if func_name in ("schematic", "layout"):
             keywords.append(
                 ast.keyword(
                     arg="symbol",
                     value=self.ast_attribute(self.ast_name("self"), attr="symbol")
                 )
             )
+        # For layout viewgens, map layers kwarg to ref_layers
+        if func_name == "layout":
+            for arg in viewgen_args:
+                if isinstance(arg, tuple) and arg[0] == "argvalue" and arg[1].id == "layers":
+                    keywords.append(
+                        ast.keyword(arg="ref_layers", value=self.ast_name("layers"))
+                    )
 
         viewgen_call = ast.Call(
             func=self.ast_core(func_name.title()),
@@ -96,6 +119,27 @@ class Ord2Transformer(PythonTransformer):
                 )
             ]
         )
+        # Solver must be added to layout viewgen
+        if func_name == "layout":
+            solver_create = ast.Assign(
+                targets=[self.ast_name("__ordec_solver__", ctx=ast.Store())],
+                value=ast.Call(
+                    func=self.ast_core("Solver"),
+                    args=[self.ast_attribute(self.ast_ctx(), "root")],
+                    keywords=[]
+                )
+            )
+            solver_solve = ast.Expr(
+                ast.Call(
+                    func=self.ast_attribute(
+                        self.ast_name("__ordec_solver__"), "solve"
+                    ),
+                    args=[],
+                    keywords=[]
+                )
+            )
+            suite = [solver_create] + suite + [solver_solve]
+
         # Call the corresponding context postprocess function implicitly
         return_value = ast.Return(
                 ast.Call(
@@ -118,6 +162,7 @@ class Ord2Transformer(PythonTransformer):
         )
         # Wrap with statement with context in a decorated function call
         # --> See Python implementation
+        func_body = kwarg_assignments + [with_context]
         func_def = ast.FunctionDef(
             name=func_name,
             args=ast.arguments(
@@ -128,7 +173,7 @@ class Ord2Transformer(PythonTransformer):
                 kwarg=None,
                 defaults=[]
             ),
-            body=[with_context],
+            body=func_body,
             decorator_list=[self.ast_core("generate")],
             returns=self.ast_core(func_name.title()),
             type_params=[]
@@ -143,6 +188,18 @@ class Ord2Transformer(PythonTransformer):
                         args=[connect_rhs],
                         keywords=[])
         return ast.Expr(value=call)
+
+    def constrain_stmt(self, nodes):
+        """ ! x >= 200 """
+        return ast.Expr(
+            ast.Call(
+                func=self.ast_attribute(
+                    self.ast_name("__ordec_solver__"), "constrain"
+                ),
+                args=[nodes[0]],
+                keywords=[]
+            )
+        )
 
     def extract_path(self, nodes):
         """Extract string list from nested attributes"""

@@ -66,6 +66,10 @@ class OrdContext:
         helpers.symbol_place_pins(self.root, vpadding=2, hpadding=2)
         return self.root
 
+    def layout_postprocess(self):
+        """ Postprocess call when returning from layout"""
+        return self.root
+
     def schematic_postprocess(self):
         """ Postprocess call when returning from schematic"""
         helpers.resolve_instances(self.root)
