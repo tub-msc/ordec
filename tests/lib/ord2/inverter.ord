@@ -7,16 +7,16 @@ from ordec.lib.generic_mos import Nmos,Pmos
 
 cell Inv:
     viewgen symbol:
-        inout vdd(.align=Orientation.North)
-        inout vss(.align=Orientation.South)
-        input a(.align=Orientation.West)
-        output y(.align=Orientation.East)
+        inout vdd: .align=Orientation.North
+        inout vss: .align=Orientation.South
+        input a: .align=Orientation.West
+        output y: .align=Orientation.East
 
     viewgen schematic:
-        port vdd(.pos=(2,13); .align=Orientation.North)
-        port vss(.pos=(2,1); .align=Orientation.South)
-        port y (.pos=(9,7); .align=Orientation.West)
-        port a (.pos=(1,7); .align=Orientation.East)
+        port vdd: .pos=(2,13); .align=Orientation.North
+        port vss: .pos=(2,1); .align=Orientation.South
+        port y : .pos=(9,7); .align=Orientation.West
+        port a : .pos=(1,7); .align=Orientation.East
 
         Nmos pd:
             .s -- vss

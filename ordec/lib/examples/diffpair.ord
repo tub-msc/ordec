@@ -9,28 +9,28 @@ from ordec.sim import HighlevelSim
 
 cell DiffPair:
     viewgen symbol:
-        input vdd(.align = Orientation.North) 
-        input vss(.align = Orientation.South)  
-        input vin1(.align = Orientation.West)  
-        input vin2(.align = Orientation.West)  
-        input vbias(.align = Orientation.West)  
-        output vout1(.align = Orientation.East)  
-        output vout2(.align = Orientation.East)  
+        input vdd: .align = Orientation.North
+        input vss: .align = Orientation.South
+        input vin1: .align = Orientation.West
+        input vin2: .align = Orientation.West
+        input vbias: .align = Orientation.West
+        output vout1: .align = Orientation.East
+        output vout2: .align = Orientation.East
     viewgen schematic:
         net s
-        port vdd(.pos=(1,21); .align = Orientation.East)
-        port vss(.pos=(1,0); .align = Orientation.East)
-        port vin1(.pos=(1,10); .align = Orientation.East)
-        port vin2(.pos=(1,13); .align = Orientation.East)
-        port vbias(.pos=(5,3); .align = Orientation.East)
-        port vout1(.pos=(17,14); .align = Orientation.West)
-        port vout2(.pos=(17,15); .align = Orientation.West)
+        port vdd: .pos=(1,21); .align = Orientation.East
+        port vss: .pos=(1,0); .align = Orientation.East
+        port vin1: .pos=(1,10); .align = Orientation.East
+        port vin2: .pos=(1,13); .align = Orientation.East
+        port vbias: .pos=(5,3); .align = Orientation.East
+        port vout1: .pos=(17,14); .align = Orientation.West
+        port vout2: .pos=(17,15); .align = Orientation.West
 
-        Nmos M3(.pos=(7,1); .s -- vss; .g -- vbias; .d -- s)
-        Nmos M1(.pos=(3,8); .s -- s; .d -- vout1; .g -- vin1)
-        Nmos M2(.pos=(15,8); .orientation = Orientation.FlippedSouth; .s -- s; .d -- vout2; .g -- vin2)
-        Res R1(.pos=(3,16); .m -- vout1; .p -- vdd)
-        Res R2(.pos=(11,16);  .m -- vout2; .p -- vdd)
+        Nmos M3: .pos=(7,1); .s -- vss; .g -- vbias; .d -- s
+        Nmos M1: .pos=(3,8); .s -- s; .d -- vout1; .g -- vin1
+        Nmos M2: .pos=(15,8); .orientation = Orientation.FlippedSouth; .s -- s; .d -- vout2; .g -- vin2
+        Res R1: .pos=(3,16); .m -- vout1; .p -- vdd
+        Res R2: .pos=(11,16);  .m -- vout2; .p -- vdd
         
         for m in M1, M2, M3:
             m.b -- vss
@@ -62,12 +62,12 @@ cell DiffPairTb:
             .vout1 -- vout1
             .vout2 -- vout2
 
-        Gnd gnd(.pos=(0,0); .p -- vss)
+        Gnd gnd: .pos=(0,0); .p -- vss
 
-        Vdc src_vdd(.pos=(0,6); .m -- vss; .p -- vdd;    .$dc=R("5"))
-        Vdc src_vbias(.pos=(5,6);.m -- vss; .p -- vbias;.$dc=R("1.5"))
-        Vdc src_vin2(.pos=(10,6); .m -- vss; .p -- vin2; .$dc=R("3.05"))
-        Vdc src_vin1(.pos=(15,6); .m -- vss; .p -- vin1; .$dc=R("2.95"))
+        Vdc src_vdd: .pos=(0,6); .m -- vss; .p -- vdd;    .$dc=R("5")
+        Vdc src_vbias: .pos=(5,6);.m -- vss; .p -- vbias;.$dc=R("1.5")
+        Vdc src_vin2: .pos=(10,6); .m -- vss; .p -- vin2; .$dc=R("3.05")
+        Vdc src_vin1: .pos=(15,6); .m -- vss; .p -- vin1; .$dc=R("2.95")
 
     @generate
     def sim_dc(self):

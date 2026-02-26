@@ -8,13 +8,13 @@ from ordec.lib.generic_mos import Nmos,Pmos
 cell MultibitReg_StructOfArrays:
     bits = Parameter(int)
     viewgen symbol:
-        input vdd(.align=Orientation.North)
-        input vss(.align=Orientation.South)
+        input vdd: .align=Orientation.North
+        input vss: .align=Orientation.South
         path bit
         path bit.d
         path bit.q
         for i in range(self.bits):
-            input bit.d[i](.align=Orientation.West)
-            output bit.q[i](.align=Orientation.East)
-        input clk(.align=Orientation.West)
+            input bit.d[i]: .align=Orientation.West
+            output bit.q[i]: .align=Orientation.East
+        input clk: .align=Orientation.West
 

@@ -8,25 +8,25 @@ from ..schematics import DFF
 cell MultibitReg_Arrays:
     bits = Parameter(int)
     viewgen symbol:
-        input vdd(.align=Orientation.North)
-        input vss(.align=Orientation.South)
+        input vdd: .align=Orientation.North
+        input vss: .align=Orientation.South
         path d
         path q
         for i in range(self.bits):
-            input d[i](.align=Orientation.West)
-            output q[i](.align=Orientation.East)
-        input clk(.align=Orientation.West)
+            input d[i]: .align=Orientation.West
+            output q[i]: .align=Orientation.East
+        input clk: .align=Orientation.West
 
     viewgen schematic:
-        port vss(.pos=(1,0); .align=Orientation.East)
-        port vdd(.pos=(1,1); .align=Orientation.East)
-        port clk(.pos=(1,2); .align=Orientation.East)
+        port vss: .pos=(1,0); .align=Orientation.East
+        port vdd: .pos=(1,1); .align=Orientation.East
+        port clk: .pos=(1,2); .align=Orientation.East
         path d
         path q
         path I
         for i in range(self.bits):
-            port d[i](.pos=(4, 5 + 8 * i); .align=Orientation.East)
-            port q[i](.pos=(14, 5 + 8 * i); .align=Orientation.West)
+            port d[i]: .pos=(4, 5 + 8 * i); .align=Orientation.East
+            port q[i]: .pos=(14, 5 + 8 * i); .align=Orientation.West
             DFF I[i]:
                 .vss -- vss
                 .vdd -- vdd
