@@ -1,7 +1,5 @@
 # -*- version: ord2 -*-
 from ordec.core import *
-from ordec.schematic import helpers
-from ordec.ord2.context import OrdContext
 
 # Library imports
 from ordec.lib import Vdc, Res, Gnd

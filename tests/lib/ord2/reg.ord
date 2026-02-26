@@ -3,9 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from ordec.core import *
-from ordec.schematic import helpers
 from ..schematics import DFF
-from ordec.ord2.context import OrdContext
 
 cell MultibitReg_Arrays:
     bits = Parameter(int)

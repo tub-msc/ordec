@@ -3,9 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from ordec.core import *
-from ordec.schematic import helpers
 from .mux2 import Mux2
-from ordec.ord2.context import OrdContext
 from ordec.schematic.routing import schematic_routing
 import math
 

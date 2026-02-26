@@ -23,14 +23,20 @@ class Ord2Transformer(PythonTransformer):
     def ast_attribute(value, attr, ctx=ast.Load()):
         return ast.Attribute(value=value, attr=attr, ctx=ctx)
 
+    def ast_core(self, attr):
+        return self.ast_attribute(self.ast_name("__ordec_core__"), attr)
+
+    def ast_ord_context(self, attr):
+        return self.ast_attribute(self.ast_name("__ord_context__"), attr)
+
     def ast_ctx(self):
-        return self.ast_attribute(self.ast_name("OrdContext"), "ctx")
+        return self.ast_attribute(self.ast_ord_context("OrdContext"), "ctx")
 
     def celldef(self, nodes):
         """ Definition of a ORDeC cell class"""
         cell_name = nodes[0]
         suite = nodes[1]
-        base = self.ast_name('Cell')
+        base = self.ast_core("Cell")
 
         return ast.ClassDef(
             name=cell_name,
@@ -46,7 +52,7 @@ class Ord2Transformer(PythonTransformer):
         si_suffixes = ('a','f','p','n','u','m','k','M','G','T')
         if token.endswith(si_suffixes) or '/' in token:
             token = ast.Constant(token.value)
-            return ast.Call(func=self.ast_name("R"), args=[token], keywords=[])
+            return ast.Call(func=self.ast_core("R"), args=[token], keywords=[])
         else:
             token_value = token.value.replace("_", "")
             if "." in token_value or "e" in token_value.lower():
@@ -71,13 +77,13 @@ class Ord2Transformer(PythonTransformer):
             )
 
         viewgen_call = ast.Call(
-            func=self.ast_name(func_name.title()),
+            func=self.ast_core(func_name.title()),
             args=[],
             keywords=keywords
         )
         # Build the ORD context call
         ord_context_call = ast.Call(
-            func=self.ast_name('OrdContext'),
+            func=self.ast_ord_context("OrdContext"),
             args=[],
             keywords=[
                 ast.keyword(
@@ -123,8 +129,8 @@ class Ord2Transformer(PythonTransformer):
                 defaults=[]
             ),
             body=[with_context],
-            decorator_list=[self.ast_name("generate")],
-            returns=self.ast_name(func_name.title()),
+            decorator_list=[self.ast_core("generate")],
+            returns=self.ast_core(func_name.title()),
             type_params=[]
         )
         return func_def
@@ -194,12 +200,12 @@ class Ord2Transformer(PythonTransformer):
 
             args.append(ast.Tuple(elts=context_name_tuple, ctx=ast.Load()))
             args.append(ast.Call(
-                        func=self.ast_name("Pin"),
+                        func=self.ast_core("Pin"),
                         keywords=[
                             ast.keyword(
                                 arg="pintype",
                                 value=self.ast_attribute(
-                                    self.ast_name("PinType"),
+                                    self.ast_core("PinType"),
                                     inout
                                 )
                             )
@@ -246,7 +252,7 @@ class Ord2Transformer(PythonTransformer):
             func=self.ast_attribute(self.ast_ctx(), "add")
             args.append(ast.Tuple(elts=context_name_tuple, ctx=ast.Load()))
             args.append(ast.Call(
-                        func=self.ast_name("SchemInstanceUnresolved"),
+                        func=self.ast_core("SchemInstanceUnresolved"),
                         keywords=[
                             ast.keyword(
                                 arg="resolver",
@@ -268,7 +274,7 @@ class Ord2Transformer(PythonTransformer):
             items=[
                 ast.withitem(
                     context_expr=ast.Call(
-                        func=self.ast_name("OrdContext"),
+                        func=self.ast_ord_context("OrdContext"),
                         args=[],
                         keywords=[
                             ast.keyword(
@@ -342,7 +348,7 @@ class Ord2Transformer(PythonTransformer):
                 args=[
                     ast.Tuple(elts=context_name_tuple, ctx=ast.Load()),
                     ast.Call(
-                        func=self.ast_name(stmt),
+                        func=self.ast_core(stmt),
                         keywords=[],
                         args=[]
                     )

@@ -1,7 +1,5 @@
 # -*- version: ord2 -*-
 from ordec.core import *
-from ordec.schematic import helpers
-from ordec.ord2.context import OrdContext
 
 # Libary imports
 from ordec.lib import Nmos, Pmos
