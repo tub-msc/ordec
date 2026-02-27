@@ -35,7 +35,7 @@
 # + tags=["remove-input"]
 from ordec.core import * 
 from ordec.schematic import helpers
-from ordec.ord2.context import OrdContext, routing, schem_check
+from ordec.ord2.context import OrdContext
 from IPython.core.magic import Magics, magics_class, line_cell_magic
 from IPython.display import Code
 
@@ -351,6 +351,8 @@ from ordec.lib.examples.nand2 import Nand2
 
 # +
 %%ord
+from ordec.ord2.context import routing, schem_check
+
 cell Inv:
     viewgen schematic:
     	# Here is your schematic code!

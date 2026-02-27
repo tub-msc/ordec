@@ -29,7 +29,7 @@ dependencies = [
     "inotify-simple>=1.3.0",
     "python-gdsii>=0.2.1",
     "sc-leflib>=0.5.1",
-    "notcl>0.4.1"
+    "notcl>=0.4.1"
 ]
 dynamic = ["version"]
 license = "Apache-2.0"
