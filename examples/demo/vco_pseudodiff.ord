@@ -26,7 +26,7 @@ cell VcoHalfStage:
     width = Parameter(R, default=300n)
     length = Parameter(R, default=130n)
 
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         inout vdd_st: .align=Orientation.North
         inout vss_st: .align=Orientation.South
         inout vdd: .align=Orientation.North
@@ -38,7 +38,7 @@ cell VcoHalfStage:
         output out: .align=Orientation.East
         output out_n: .align=Orientation.East
 
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         net b
 
         port vdd_st: .align=Orientation.East; .pos=(1,24)
@@ -67,7 +67,7 @@ cell VcoHalfStage:
             mos.$l = self.length
 
 
-    viewgen layout(layers=ihp130.SG13G2().layers):
+    viewgen layout(layers=ihp130.SG13G2().layers) -> Layout:
         pmos = self.schematic.m1.symbol.cell
         nmos = self.schematic.m2.symbol.cell
 
@@ -199,7 +199,7 @@ cell VcoHalfStage:
             ! .nwell.rect.contains(m.nwell.rect)
 
 cell VcoRing:
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         inout vdd_st: .align=Orientation.North
         inout vss_st: .align=Orientation.South
         inout vdd: .align=Orientation.North
@@ -212,7 +212,7 @@ cell VcoRing:
             output out_n[i]: .align=Orientation.East
 
 
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         port vdd_st: .pos=(1,21); .align=Orientation.East
         port vdd: .pos=(1,22); .align=Orientation.East
         port vss_st: .pos=(1,1); .align=Orientation.East
@@ -263,7 +263,7 @@ cell VcoRing:
                 .pos = (5 + xoffset, 3)
 
 
-    viewgen layout(layers=ihp130.SG13G2().layers):
+    viewgen layout(layers=ihp130.SG13G2().layers) -> Layout:
         path stage_n, stage_p, out_n, out_p
 
         .nwell = LayoutRect(layer=layers.NWell)
@@ -389,7 +389,7 @@ cell VcoRing:
 cell Vco:
     width = Parameter(R, default=300n)
     length = Parameter(R, default=130n)
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         inout vdd: .align=Orientation.North
         inout vss: .align=Orientation.South
 
@@ -401,7 +401,7 @@ cell Vco:
             output out_p[i]: .align=Orientation.East
             output out_n[i]: .align=Orientation.East
 
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         port vdd: .pos=(4,21); .align=Orientation.East
         port vss: .pos=(4,0); .align=Orientation.East
         port rst_n: .pos=(13,9); .align=Orientation.East
@@ -462,9 +462,9 @@ cell Vco:
             mos.$w = self.width
 
 cell VcoTb:
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         pass
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         net vdd, vss, vbias, rst_n
 
         path out_p, out_n, nc

@@ -11,7 +11,7 @@ import math
 cell Nto1:
     N = Parameter(int)
 
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         path d_in
         path s_in
         inout vdd: .align=Orientation.North
@@ -28,7 +28,7 @@ cell Nto1:
             input s_in[i]: .align=Orientation.West
 
 
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         signal_count = int(math.log(self.N, 2))
         x_spacing = 12
         y_spacing = 5

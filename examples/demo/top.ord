@@ -13,7 +13,7 @@ cell Top:
     This is an example mixed-signal design to demonstrate ORDeC. It consists of
     a custom-built Vco and a synthesized digital counter.
     """
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         inout vdd: .align=Orientation.North
         inout vss: .align=Orientation.South
 
@@ -26,7 +26,7 @@ cell Top:
         for i in range(8):
             output ctr[i]: .align=Orientation.East
 
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         net clk
         net nc0, nc1, nc2
 

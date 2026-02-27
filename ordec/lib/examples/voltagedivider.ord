@@ -7,9 +7,9 @@ from ordec.lib import Vdc, Res, Gnd
 from ordec.sim import HighlevelSim
 
 cell VoltageDivider:
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         pass
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         net vss, vdd, a, b
 
         Vdc vdc: .$dc = 1; .m -- vss; .p -- vdd; .pos = (0,6)

@@ -8,13 +8,13 @@ from ordec.lib import Gnd, Vdc
 from ordec.sim import HighlevelSim
 
 cell Nand2:
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         output y: .align=Orientation.East
         input a: .align=Orientation.West
         input b: .align=Orientation.West
         inout vdd: .align=Orientation.North
         inout vss: .align=Orientation.South
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         net x # Between n1 and n2
         port y: .align=Orientation.West; .pos=(17,13)
         port a: .align=Orientation.East; .pos=(1,10)
@@ -45,9 +45,9 @@ cell Nand2:
             t.$l = 500n
 
 cell Nand2Tb:
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         pass
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         net vdd
         net vss
         net a

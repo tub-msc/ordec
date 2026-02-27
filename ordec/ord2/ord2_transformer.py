@@ -62,14 +62,24 @@ class Ord2Transformer(PythonTransformer):
             return ast.Constant(value=number)
 
     def viewgen(self, nodes):
-        """ Funcdef for cell (viewgen schematic:\n suite)"""
+        """ Funcdef for cell (viewgen name -> Type:\n suite)"""
         func_name = nodes[0]
-        if len(nodes) == 3:
+        if len(nodes) == 4:
             viewgen_args = nodes[1]
-            suite = nodes[2]
+            viewgen_type = nodes[2]
+            suite = nodes[3]
         else:
             viewgen_args = []
-            suite = nodes[1]
+            viewgen_type = nodes[1]
+            suite = nodes[2]
+
+        # Validate the return type
+        viewgen_type_lower = viewgen_type.lower()
+        if viewgen_type_lower not in ("symbol", "schematic", "layout"):
+            raise SyntaxError(
+                f"Unknown viewgen return type '{viewgen_type}'. "
+                f"Expected Symbol, Schematic, or Layout."
+            )
 
         # Extract keyword arguments
         kwarg_assignments = []
@@ -84,7 +94,7 @@ class Ord2Transformer(PythonTransformer):
 
         keywords = list()
         keywords.append(ast.keyword(arg="cell", value=self.ast_name("self")))
-        if func_name in ("schematic", "layout"):
+        if viewgen_type_lower in ("schematic", "layout"):
             keywords.append(
                 ast.keyword(
                     arg="symbol",
@@ -92,7 +102,7 @@ class Ord2Transformer(PythonTransformer):
                 )
             )
         # For layout viewgens, map layers kwarg to ref_layers
-        if func_name == "layout":
+        if viewgen_type_lower == "layout":
             for arg in viewgen_args:
                 if isinstance(arg, tuple) and arg[0] == "argvalue" and arg[1].id == "layers":
                     keywords.append(
@@ -100,7 +110,7 @@ class Ord2Transformer(PythonTransformer):
                     )
 
         viewgen_call = ast.Call(
-            func=self.ast_core(func_name.title()),
+            func=self.ast_core(viewgen_type.title()),
             args=[],
             keywords=keywords
         )
@@ -120,7 +130,7 @@ class Ord2Transformer(PythonTransformer):
             ]
         )
         # Solver must be added to layout viewgen
-        if func_name == "layout":
+        if viewgen_type_lower == "layout":
             solver_create = ast.Assign(
                 targets=[self.ast_name("__ordec_solver__", ctx=ast.Store())],
                 value=ast.Call(
@@ -144,7 +154,7 @@ class Ord2Transformer(PythonTransformer):
         return_value = ast.Return(
                 ast.Call(
                 func=self.ast_attribute(self.ast_ctx(),
-                                    func_name + "_postprocess",
+                                    viewgen_type_lower + "_postprocess",
                 ),
                 args=[],
                 keywords=[]
@@ -175,7 +185,7 @@ class Ord2Transformer(PythonTransformer):
             ),
             body=func_body,
             decorator_list=[self.ast_core("generate")],
-            returns=self.ast_core(func_name.title()),
+            returns=self.ast_core(viewgen_type.title()),
             type_params=[]
         )
         return func_def

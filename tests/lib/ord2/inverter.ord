@@ -6,13 +6,13 @@ from ordec.core import *
 from ordec.lib.generic_mos import Nmos,Pmos
 
 cell Inv:
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         inout vdd: .align=Orientation.North
         inout vss: .align=Orientation.South
         input a: .align=Orientation.West
         output y: .align=Orientation.East
 
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         port vdd: .pos=(2,13); .align=Orientation.North
         port vss: .pos=(2,1); .align=Orientation.South
         port y : .pos=(9,7); .align=Orientation.West

@@ -8,7 +8,7 @@ from ordec.lib import Gnd, Vdc
 from ordec.sim import HighlevelSim
 
 cell DiffPair:
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         input vdd: .align = Orientation.North
         input vss: .align = Orientation.South
         input vin1: .align = Orientation.West
@@ -16,7 +16,7 @@ cell DiffPair:
         input vbias: .align = Orientation.West
         output vout1: .align = Orientation.East
         output vout2: .align = Orientation.East
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         net s
         port vdd: .pos=(1,21); .align = Orientation.East
         port vss: .pos=(1,0); .align = Orientation.East
@@ -41,9 +41,9 @@ cell DiffPair:
             r.$r = 250k
             
 cell DiffPairTb:
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         pass
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         net vss
         net vdd
         net vbias

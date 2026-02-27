@@ -7,7 +7,7 @@ from ordec.lib.generic_mos import Nmos,Pmos,Inv
 from ordec.schematic.routing import schematic_routing
 
 cell Mux2:
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         output y: .align=Orientation.East
         input a: .align=Orientation.West
         input b: .align=Orientation.West
@@ -15,7 +15,7 @@ cell Mux2:
         inout vss: .align=Orientation.South
         input s: .align=Orientation.West
 
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         port y: .align=Orientation.West; .pos=(21, 18)
         port a: .align=Orientation.East; .pos=(1, 11)
         port b: .align=Orientation.East; .pos=(1, 10)

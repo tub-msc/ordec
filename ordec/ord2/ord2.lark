@@ -381,7 +381,7 @@ RATIONAL: DEC_NUMBER SLASH DEC_NUMBER
 
 connect_stmt: testlist_star_expr "--" testlist_star_expr
 celldef: "cell" name ":" suite
-viewgen: "viewgen" name ["(" [arguments] ")"] ":" suite
+viewgen: "viewgen" name ["(" [arguments] ")"] "->" name ":" suite
 constrain_stmt: "!" test
 context_body: ":" suite
 context_element: atom_expr context_target context_body
