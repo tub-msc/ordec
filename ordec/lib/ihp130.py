@@ -120,11 +120,15 @@ class SG13G2(Cell):
         # Metal stack
         # -----------
 
+        route_id = 0
         def addmetal(name, layer, color):
+            nonlocal route_id
             setattr(s, name, Layer(
                 gdslayer_shapes=GdsLayer(layer=layer, data_type=0),
                 style_fill=color,
+                route_id=route_id,
             ))
+            route_id += 1
             getattr(s, name).pin = Layer(
                 gdslayer_text=GdsLayer(layer=layer, data_type=25),
                 gdslayer_shapes=GdsLayer(layer=layer, data_type=2),
@@ -133,11 +137,14 @@ class SG13G2(Cell):
             )
 
         def addvia(name, layer, color):
+            nonlocal route_id
             setattr(s, name, Layer(
                 gdslayer_shapes=GdsLayer(layer=layer, data_type=0),
                 style_stroke=color,
                 style_crossrect=True,
+                route_id=route_id,
             ))
+            route_id += 1
 
         addmetal("Metal1", 8, rgb_color("#39bfff"))
         addvia("Via1", 19, rgb_color("#ccccff"))
