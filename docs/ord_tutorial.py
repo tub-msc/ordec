@@ -35,9 +35,9 @@
 # + tags=["remove-input"]
 from ordec.core import * 
 from ordec.schematic import helpers
-from ordec.ord2.context import ctx, OrdContext
 from IPython.core.magic import Magics, magics_class, line_cell_magic
 from IPython.display import Code
+import importlib
 
 @magics_class
 class OrdMagics(Magics):
@@ -46,8 +46,11 @@ class OrdMagics(Magics):
         """Custom magic for ORD language in Jupyter cells."""
         code = cell if cell else line
         from ordec.ord2.parser import ord2_to_py
-        code = compile(ord2_to_py(code), "<string>", "exec")
-        exec(code, self.shell.user_ns)
+        user_ns = self.shell.user_ns
+        user_ns.setdefault("__ordec_core__", importlib.import_module("ordec.core"))
+        user_ns.setdefault("__ord_context__", importlib.import_module("ordec.ord2.context"))
+        py_code = compile(ord2_to_py(code), "<string>", "exec")
+        exec(py_code, user_ns, user_ns)
 
 ip = get_ipython()
 if ip is not None:
@@ -75,7 +78,7 @@ cell Inv:
 # + 
 %%ord 
 cell Inv:
-    viewgen symbol:
+    viewgen symbol -> Symbol:
     	pass
 # -
 
@@ -95,11 +98,11 @@ Inv().symbol
 # + 
 %%ord
 cell Inv:
-    viewgen symbol:
-        inout vdd(.align=Orientation.North)
-        inout vss(.align=Orientation.South)
-        input a(.align=Orientation.West)
-        output y(.align=Orientation.East)
+    viewgen symbol -> Symbol:
+        inout vdd: .align=Orientation.North
+        inout vss: .align=Orientation.South
+        input a: .align=Orientation.West
+        output y: .align=Orientation.East
 # -
 # + tags=["remove-input"]
 Inv().symbol
@@ -115,17 +118,17 @@ Inv().symbol
 from ordec.lib.generic_mos import Nmos, Pmos
 
 cell Inv:
-    viewgen symbol:
-        inout vdd(.align=Orientation.North)
-        inout vss(.align=Orientation.South)
-        input a(.align=Orientation.West)
-        output y(.align=Orientation.East)
+    viewgen symbol -> Symbol:
+        inout vdd: .align=Orientation.North
+        inout vss: .align=Orientation.South
+        input a: .align=Orientation.West
+        output y: .align=Orientation.East
 
-    viewgen schematic:
-        port vdd(.pos=(2,13); .align=Orientation.North)
-        port vss(.pos=(2,1); .align=Orientation.South)
-        port y (.pos=(9,7); .align=Orientation.West)
-        port a (.pos=(1,7); .align=Orientation.East)
+    viewgen schematic -> Schematic:
+        port vdd: .pos=(2,13); .align=Orientation.North
+        port vss: .pos=(2,1); .align=Orientation.South
+        port y: .pos=(9,7); .align=Orientation.West
+        port a: .pos=(1,7); .align=Orientation.East
 
         Nmos pd:
             .s -- vss
@@ -149,22 +152,21 @@ Inv().schematic
 #
 # You might have already recognized a specific feature of the ORD language called **relative access**
 # or **dotted notation**. Whenever an ORD-specific element is defined, a **context** is opened.
-# This context can be defined with the braces like `port vdd()` or with the Python-style block based notation `Nmos pd:`.
-# Both definitions are identical in the ORD language.
+# This context can be defined with the Python-style block based notation `Nmos pd:`.
 # Every statement or expression inside this context can reference the parent object by using a leading `.`. The contexts 
 # are hierarchically structured, so even multiple leading dots are possible to access parent contexts.
 #
 # ```python
-# # Type 1
-# port vdd(.pos=(2,13); .align=Orientation.North)
-# # Type 2
+# # Oneline definition
+# port vdd: .pos=(2,13); .align=Orientation.North
+# # Python-style block definition
 # port vdd:
 #     .pos=(2,13) 
 #     .align=Orientation.North
 # ```
 # Attributes must not be set directly on definition, they can also be set at a later point in the code
 # ```python
-# port vdd(.align=Orientation.North)
+# port vdd: .align=Orientation.North
 # vdd.pos=(2,13)
 # ```
 
@@ -195,26 +197,26 @@ Inv().schematic
 # + 
 %%ord
 cell Nand:
-    viewgen symbol:
-        output y(.align=Orientation.East)
-        input a(.align=Orientation.West)
-        input b(.align=Orientation.West)
-        inout vdd(.align=Orientation.North)
-        inout vss(.align=Orientation.South)
+    viewgen symbol -> Symbol:
+        output y: .align=Orientation.East
+        input a: .align=Orientation.West
+        input b: .align=Orientation.West
+        inout vdd: .align=Orientation.North
+        inout vss: .align=Orientation.South
 
-    viewgen schematic:
-        port y(.align=Orientation.West; .pos=(25,6))
-        port a(.align=Orientation.East; .pos=(1,4))
-        port b(.align=Orientation.East; .pos=(1,17))
-        port vdd(.align=Orientation.East; .pos=(1,23))
-        port vss(.align=Orientation.East; .pos=(1,1))
+    viewgen schematic -> Schematic:
+        port y: .align=Orientation.West; .pos=(25,6)
+        port a: .align=Orientation.East; .pos=(1,4)
+        port b: .align=Orientation.East; .pos=(1,17)
+        port vdd: .align=Orientation.East; .pos=(1,23)
+        port vss: .align=Orientation.East; .pos=(1,1)
 
         net net_conn
 
-        Nmos n1(.pos=(10,2); .d -- net_conn; .s -- vss; .b -- vss; .g -- a)
-        Nmos n2(.pos=(10,10); .d -- y; .s -- net_conn; .b -- vss; .g -- b)
-        Pmos p1(.pos=(5,18); .d -- y; .s -- vdd; .b -- vdd; .g -- a)
-        Pmos p2(.pos=(15,18); .d -- y; .s -- vdd; .b -- vdd; .g -- b)
+        Nmos n1: .pos=(10,2); .d -- net_conn; .s -- vss; .b -- vss; .g -- a
+        Nmos n2: .pos=(10,10); .d -- y; .s -- net_conn; .b -- vss; .g -- b
+        Pmos p1: .pos=(5,18); .d -- y; .s -- vdd; .b -- vdd; .g -- a
+        Pmos p2: .pos=(15,18); .d -- y; .s -- vdd; .b -- vdd; .g -- b
 # -
 # + tags=["remove-input"]
 Nand().schematic
@@ -243,15 +245,15 @@ Nand().schematic
 %%ord
 cell MultibitReg_ArrayOfStructs:
     bits = Parameter(int)
-    viewgen symbol:
-        input vdd(.align=Orientation.North)
-        input vss(.align=Orientation.South)
+    viewgen symbol -> Symbol:
+        input vdd: .align=Orientation.North
+        input vss: .align=Orientation.South
         path bit
         for i in range(self.bits):
             path bit[i]
-            input bit[i].d(.align=Orientation.West)
-            output bit[i].q(.align=Orientation.East)
-        input clk(.align=Orientation.West)
+            input bit[i].d: .align=Orientation.West
+            output bit[i].q: .align=Orientation.East
+        input clk: .align=Orientation.West
 # -
 
 # **Parameters for subcells** are set using the dollar `$` operator.
@@ -262,17 +264,17 @@ cell MultibitReg_ArrayOfStructs:
 # +
 %%ord
 cell Inv:
-    viewgen symbol:
-        inout vdd(.align=Orientation.North)
-        inout vss(.align=Orientation.South)
-        input a(.align=Orientation.West)
-        output y(.align=Orientation.East)
+    viewgen symbol -> Symbol:
+        inout vdd: .align=Orientation.North
+        inout vss: .align=Orientation.South
+        input a: .align=Orientation.West
+        output y: .align=Orientation.East
 
-    viewgen schematic:
-        port vdd(.pos=(2,13); .align=Orientation.North)
-        port vss(.pos=(2,1); .align=Orientation.South)
-        port y (.pos=(9,7); .align=Orientation.West)
-        port a (.pos=(1,7); .align=Orientation.East)
+    viewgen schematic -> Schematic:
+        port vdd: .pos=(2,13); .align=Orientation.North
+        port vss: .pos=(2,1); .align=Orientation.South
+        port y : .pos=(9,7); .align=Orientation.West
+        port a : .pos=(1,7); .align=Orientation.East
 
         Nmos pd:
             .s -- vss
@@ -312,11 +314,11 @@ def add(x, y):
 	return x + y
 
 cell Inv:
-    viewgen symbol:
-        inout vdd(.align=Orientation.North)
-        inout vss(.align=Orientation.South)
-        input a(.align=Orientation.West)
-        output y(.align=Orientation.East)
+    viewgen symbol -> Symbol:
+        inout vdd: .align=Orientation.North
+        inout vss: .align=Orientation.South
+        input a: .align=Orientation.West
+        output y: .align=Orientation.East
         print(f"Result: {add(1, 2)}")
 
 # + tags=["remove-input"]
@@ -341,6 +343,23 @@ from ordec.lib.examples.nand2 import Nand2
 
 # +
 # -*- version: ord2 -*-
+# -
+
+# ## 8. Deactivate checks in ORD files
+#
+# ORD supports disabling **routing** and **schematic checks** within schematics.
+# This is particularly useful during testing and the initial setup of schematic components.
+# It is recommended to re-enable these checks after placing **ports** and **subcells**.
+
+# +
+%%ord
+from ordec.ord2.context import routing, schem_check
+
+cell Inv:
+    viewgen schematic -> Schematic:
+    	# Here is your schematic code!
+        routing(False)
+        schem_check(False)
 # -
 
 # I hope this short tutorial gave you some insights into how to get started

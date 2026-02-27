@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # standard imports
-from lark import Transformer
+from lark import Transformer, v_args
 import ast
+import unicodedata
+import sys
 
 class PythonTransformer(Transformer):
     """
@@ -68,6 +70,36 @@ class PythonTransformer(Transformer):
         'is': ast.Is,
         'is not': ast.IsNot,
     }
+
+    STRING_ESCAPE_MAP = {
+        "\\": "\\",
+        "'": "'",
+        '"': '"',
+        "a": "\a",
+        "b": "\b",
+        "f": "\f",
+        "n": "\n",
+        "r": "\r",
+        "t": "\t",
+        "v": "\v",
+    }
+
+    BYTES_ESCAPE_MAP = {
+        "\\": ord("\\"),
+        "'": ord("'"),
+        '"': ord('"'),
+        "a": 7,
+        "b": 8,
+        "f": 12,
+        "n": 10,
+        "r": 13,
+        "t": 9,
+        "v": 11,
+    }
+
+    def __init__(self, source_text=""):
+        super().__init__()
+        self.source_text = source_text
 
     # Helpers
     # -------
@@ -148,7 +180,7 @@ class PythonTransformer(Transformer):
 
     IMAG_NUMBER = lambda self, token: ast.Constant(value=complex(token.value))
     FLOAT_NUMBER = lambda self, token: ast.Constant(value=float(token.value))
-    DECIMAL = lambda self, token: ast.Constant(value=float(token.value))
+    DECIMAL = lambda self, token: ast.Constant(value=int(token.value, 10))
     NAME = lambda self, token: token.value
     ASYNC = lambda self, token: token.value
     AWAIT = lambda self, token: token.value
@@ -303,7 +335,7 @@ class PythonTransformer(Transformer):
     dotted_as_names = lambda self, nodes: nodes
     import_as_names = lambda self, nodes: nodes
     import_stmt = lambda self, nodes: nodes[0]
-    yield_stmt = lambda self, nodes: nodes[0]
+    yield_stmt = lambda self, nodes: ast.Expr(value=nodes[0])
 
     # Compound Statements
     # -------------------
@@ -603,10 +635,9 @@ class PythonTransformer(Transformer):
         # comprehension
         comp_result = nodes[0]
         comp_fors = nodes[1]
-        comp_if = nodes[2] if len(nodes) > 2 else None
 
-        # Add the optional if to the last inst in the chain
-        if comp_if:
+        # Attach all trailing comprehension filters to the last for-clause
+        for comp_if in nodes[2:]:
             comp_fors[-1].ifs.append(comp_if)
         return comp_result, comp_fors
 
@@ -657,11 +688,11 @@ class PythonTransformer(Transformer):
 
     def yield_expr(self, nodes):
         value = nodes[0] if len(nodes) > 0 else None
-        return ast.Expr(ast.Yield(value))
+        return ast.Yield(value=value)
 
     def yield_from(self, nodes):
         value = nodes[0] if len(nodes) > 0 else None
-        return ast.Expr(ast.YieldFrom(value))
+        return ast.YieldFrom(value=value)
 
     def await_expr(self, nodes):
         return ast.Await(nodes[1])
@@ -723,22 +754,38 @@ class PythonTransformer(Transformer):
     @staticmethod
     def merge_adjacent_strings(items):
         merged_buffer = []
-        temp_buffer = []
+        temp_value = None
+        temp_kind = None
 
         for item in items:
-            # String concat
             if isinstance(item, str):
-                temp_buffer.append(item)
-            # f string
-            elif isinstance(item, ast.Constant):
-                temp_buffer.append(item.value)
-            else:
-                if temp_buffer:
-                    merged_buffer.append(ast.Constant(value="".join(temp_buffer)))
-                    temp_buffer.clear()
-                merged_buffer.append(item)
-        if temp_buffer:
-            merged_buffer.append(ast.Constant(value="".join(temp_buffer)))
+                item = ast.Constant(value=item)
+
+            if isinstance(item, ast.Constant) and isinstance(item.value, (str, bytes)):
+                if temp_value is None:
+                    temp_value = item.value
+                    temp_kind = item.kind
+                # Merge items of the same type directly
+                elif isinstance(item.value, type(temp_value)):
+                    temp_value += item.value
+                    if temp_kind is None:
+                        temp_kind = item.kind
+                # Append if the type differs
+                else:
+                    merged_buffer.append(ast.Constant(value=temp_value, kind=temp_kind))
+                    temp_value = item.value
+                    temp_kind = item.kind
+                continue
+            # Append if not string or bytes
+            if temp_value is not None:
+                merged_buffer.append(ast.Constant(value=temp_value, kind=temp_kind))
+                temp_value = None
+                temp_kind = None
+
+            merged_buffer.append(item)
+
+        if temp_value is not None:
+            merged_buffer.append(ast.Constant(value=temp_value, kind=temp_kind))
         return merged_buffer
 
     def string_concat(self, nodes):
@@ -746,43 +793,132 @@ class PythonTransformer(Transformer):
         # Return if only one value
         if len(merged_string) == 1:
             return merged_string[0]
+
+        if all(isinstance(item, ast.Constant) and isinstance(item.value, (str, bytes)) for item in merged_string):
+            if isinstance(merged_string[0].value, str):
+                return ast.Constant(value="".join(item.value for item in merged_string))
+            return ast.Constant(value=b"".join(item.value for item in merged_string))
+
         return_string = []
         # Merge everything into one joined string
         for string in merged_string:
             if isinstance(string, ast.Constant):
-                return_string.append(string)
-            if isinstance(string, ast.JoinedStr):
+                if isinstance(string.value, str):
+                    return_string.append(string)
+                else:
+                    raise SyntaxError("Cannot concatenate bytes literals with f-strings")
+            elif isinstance(string, ast.JoinedStr):
                 return_string.extend(string.values)
-        return ast.JoinedStr(values=return_string)
+        return self._normalize_joined_str(ast.JoinedStr(values=return_string), decode_literals=False)
 
     def f_string(self, nodes):
-        values = self.merge_adjacent_strings(nodes[1:-1])
-        return ast.JoinedStr(values=values)
+        is_raw = isinstance(nodes[0], str) and "r" in nodes[0].lower()
+        values_raw = []
+        for item in nodes[1:-1]:
+            if isinstance(item, tuple) and len(item) == 3 and item[0] == "debug_fexpr":
+                values_raw.append(ast.Constant(value=item[1]))
+                values_raw.append(item[2])
+            else:
+                values_raw.append(item)
+        values = self.merge_adjacent_strings(values_raw)
+        joined = ast.JoinedStr(values=values)
+        return self._normalize_joined_str(joined, decode_literals=not is_raw)
 
-    def f_expression_single(self, nodes):
-        return self.f_expression(nodes)
+    @v_args(meta=True)
+    def f_expression_single(self, meta, nodes):
+        # v_args gives function access to meta information (propagate_position)
+        return self.f_expression(nodes, meta=meta)
 
-    def f_expression_double(self, nodes):
-        return self.f_expression(nodes)
+    @v_args(meta=True)
+    def f_expression_double(self, meta, nodes):
+        return self.f_expression(nodes, meta=meta)
 
-    def f_expression(self, nodes):
+    def f_expression(self, nodes, meta=None):
         expr_node = nodes[0]
         conversion = -1
         format_spec = None
+        debug_eq = None
 
         for node in nodes[1:]:
             # check for the conversion
             if isinstance(node, str):
                 conv_map = {"r": ord('r'), "s": ord('s'), "a": ord('a')}
                 conversion = conv_map[node.lower()]
+            elif isinstance(node, tuple) and len(node) == 2 and node[0] == "debug_eq":
+                debug_eq = node[1]
             elif isinstance(node, ast.AST):
                 format_spec = node
 
-        return ast.FormattedValue(
+        if debug_eq is not None and conversion == -1 and format_spec is None:
+            conversion = ord("r")
+
+        formatted_value = ast.FormattedValue(
             value=expr_node,
             conversion=conversion,
             format_spec=format_spec
         )
+        if debug_eq is not None:
+            return "debug_fexpr", self._debug_prefix_from_source(meta), formatted_value
+        return formatted_value
+
+    def _debug_prefix_from_source(self, meta):
+        # Parser additions:
+        # - propagate_positions=True provides start_pos/end_pos on f_expression nodes.
+        # - source_text contains the parsed source.
+        segment = self.source_text[meta.start_pos:meta.end_pos]
+        inner = segment[1:-1]
+        eq_index = inner.rfind("=")
+
+        # CPython changed debug-fstring prefix extraction in 3.13:
+        # legacy versions truncate at top-level !/: before the final debug '=',
+        # while 3.13+ keeps the full expression text.
+        if sys.version_info < (3, 13):
+            marker_index = self._find_top_level_marker(inner)
+            if marker_index != -1 and marker_index < eq_index:
+                return inner[:marker_index]
+
+        after_eq = eq_index + 1
+        while after_eq < len(inner) and inner[after_eq] in " \t":
+            after_eq += 1
+        return inner[:after_eq]
+
+    @staticmethod
+    def _find_top_level_marker(text):
+        # Find the first top-level debug-fstring marker ('!' conversion or ':' format),
+        # skipping nested brackets and quoted strings.
+        depth = 0
+        quote = None
+        escaped = False
+
+        for i, char in enumerate(text):
+            if quote is not None:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = None
+                continue
+
+            if char in ("'", '"'):
+                quote = char
+                continue
+
+            if char in "([{":
+                depth += 1
+                continue
+
+            if char in ")]}" and depth > 0:
+                depth -= 1
+                continue
+
+            if depth == 0 and char in ("!", ":"):
+                return i
+
+        return -1
+
+    def debug_eq(self, nodes):
+        return "debug_eq", "="
 
     def conversion(self, token):
         return token[0]
@@ -803,9 +939,41 @@ class PythonTransformer(Transformer):
                 values.append(self.f_expression([node]))
         return ast.JoinedStr(values=values)
 
+    def _normalize_joined_str(self, node, decode_literals):
+        """
+        Merge adjacent literal Constant(str) pieces into one piece
+        and recursively normalize joined strings
+        """
+        normalized_values = []
+        literal_buffer = []
+
+        def flush_literal_buffer():
+            if literal_buffer:
+                normalized_values.append(ast.Constant(value="".join(literal_buffer)))
+                literal_buffer.clear()
+
+        for value in node.values:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                literal = value.value
+                if decode_literals:
+                    literal = self._decode_string_escapes(literal)
+                literal_buffer.append(literal)
+                continue
+
+            flush_literal_buffer()
+            if isinstance(value, ast.FormattedValue) and isinstance(value.format_spec, ast.JoinedStr):
+                value.format_spec = self._normalize_joined_str(
+                    value.format_spec,
+                    decode_literals=decode_literals
+                )
+            normalized_values.append(value)
+
+        flush_literal_buffer()
+        return ast.JoinedStr(values=normalized_values)
+
     def string(self, nodes):
         current_string = nodes[0]
-        if isinstance(current_string, ast.JoinedStr):
+        if isinstance(current_string, (ast.JoinedStr, ast.Constant)):
             return current_string
         else:
             prefix, string = current_string
@@ -818,25 +986,158 @@ class PythonTransformer(Transformer):
             else:
                 return ast.Constant(value=string)
 
-    def STRING(self, token):
-        current_string = token.value
-        string_parts = current_string.split(current_string[-1])
-        if string_parts[0] == '':
-            joined = '\''.join(string_parts[1:-1])
-            return '', joined
+    @staticmethod
+    def _split_string_literal(token_value):
+        """Extract string literal"""
+        quote_start = 0
+        while quote_start < len(token_value) and token_value[quote_start].isalpha():
+            quote_start += 1
+
+        prefix = token_value[:quote_start].lower()
+        if token_value[quote_start:quote_start + 3] in ('"""', "'''"):
+            quote_len = 3
         else:
-            joined = '\''.join(string_parts[1:-1])
-            return string_parts[0], joined
+            quote_len = 1
+
+        content = token_value[quote_start + quote_len:-quote_len]
+        return prefix, content
+
+    @staticmethod
+    def _is_hex_digits(value):
+        return all(ch in "0123456789abcdefABCDEF" for ch in value)
+
+    def _decode_string_escapes(self, value):
+        # Decode Python literal escape sequences so transformed AST constants match Python.
+        decoded = []
+        i = 0
+        while i < len(value):
+            char = value[i]
+            if char != "\\":
+                decoded.append(char)
+                i += 1
+                continue
+
+            if i + 1 >= len(value):
+                decoded.append("\\")
+                i += 1
+                continue
+
+            esc = value[i + 1]
+            if esc == "\n":
+                i += 2
+                continue
+            if esc in self.STRING_ESCAPE_MAP:
+                decoded.append(self.STRING_ESCAPE_MAP[esc])
+                i += 2
+                continue
+            if esc in "01234567":
+                j = i + 1
+                while j < len(value) and j < i + 4 and value[j] in "01234567":
+                    j += 1
+                decoded.append(chr(int(value[i + 1:j], 8)))
+                i = j
+                continue
+            if esc == "x":
+                hex_digits = value[i + 2:i + 4]
+                if len(hex_digits) != 2 or not self._is_hex_digits(hex_digits):
+                    raise SyntaxError("invalid \\x escape sequence")
+                decoded.append(chr(int(hex_digits, 16)))
+                i += 4
+                continue
+            if esc == "u":
+                hex_digits = value[i + 2:i + 6]
+                if len(hex_digits) != 4 or not self._is_hex_digits(hex_digits):
+                    raise SyntaxError("invalid \\u escape sequence")
+                decoded.append(chr(int(hex_digits, 16)))
+                i += 6
+                continue
+            if esc == "U":
+                hex_digits = value[i + 2:i + 10]
+                if len(hex_digits) != 8 or not self._is_hex_digits(hex_digits):
+                    raise SyntaxError("invalid \\U escape sequence")
+                decoded.append(chr(int(hex_digits, 16)))
+                i += 10
+                continue
+            if esc == "N" and i + 2 < len(value) and value[i + 2] == "{":
+                closing_brace = value.find("}", i + 3)
+                if closing_brace == -1:
+                    raise SyntaxError("malformed \\N escape sequence")
+                unicode_name = value[i + 3:closing_brace]
+                try:
+                    decoded.append(unicodedata.lookup(unicode_name))
+                except KeyError as exc:
+                    raise SyntaxError("unknown Unicode character name") from exc
+                i = closing_brace + 1
+                continue
+
+            decoded.append("\\")
+            decoded.append(esc)
+            i += 2
+        return "".join(decoded)
+
+    def _decode_bytes_escapes(self, value):
+        decoded = bytearray()
+        i = 0
+        while i < len(value):
+            char = value[i]
+            if char != "\\":
+                if ord(char) > 0x7F:
+                    raise SyntaxError("bytes literals may only contain ASCII characters")
+                decoded.append(ord(char))
+                i += 1
+                continue
+
+            if i + 1 >= len(value):
+                decoded.append(ord("\\"))
+                i += 1
+                continue
+
+            esc = value[i + 1]
+            if esc == "\n":
+                i += 2
+                continue
+            if esc in self.BYTES_ESCAPE_MAP:
+                decoded.append(self.BYTES_ESCAPE_MAP[esc])
+                i += 2
+                continue
+            if esc in "01234567":
+                j = i + 1
+                while j < len(value) and j < i + 4 and value[j] in "01234567":
+                    j += 1
+                decoded.append(int(value[i + 1:j], 8) & 0xFF)
+                i = j
+                continue
+            if esc == "x":
+                hex_digits = value[i + 2:i + 4]
+                if len(hex_digits) != 2 or not self._is_hex_digits(hex_digits):
+                    raise SyntaxError("invalid \\x escape sequence")
+                decoded.append(int(hex_digits, 16))
+                i += 4
+                continue
+
+            decoded.append(ord("\\"))
+            decoded.append(ord(esc))
+            i += 2
+        return bytes(decoded)
+
+    def STRING(self, token):
+        prefix, content = self._split_string_literal(token.value)
+        is_raw = "r" in prefix
+        is_bytes = "b" in prefix
+
+        if is_bytes:
+            if is_raw:
+                if any(ord(ch) > 0x7F for ch in content):
+                    raise SyntaxError("bytes literals may only contain ASCII characters")
+                return ast.Constant(value=content.encode("ascii"))
+            return ast.Constant(value=self._decode_bytes_escapes(content))
+
+        value = content if is_raw else self._decode_string_escapes(content)
+        kind = "u" if "u" in prefix else None
+        return ast.Constant(value=value, kind=kind)
 
     def LONG_STRING(self, token):
-        current_string = token.value
-        string_parts = current_string.split(current_string[-3:])
-        if string_parts[0] == '':
-            joined = '\''.join(string_parts[1:-1])
-            return '', joined
-        else:
-            joined = '\''.join(string_parts[1:-1])
-            return string_parts[0], joined
+        return self.STRING(token)
 
     def var(self, nodes):
         return ast.Name(id=nodes[0], ctx=ast.Load())
@@ -1183,22 +1484,36 @@ class PythonTransformer(Transformer):
         return {"kwarg": ast.arg(arg=argument, annotation=None)}
 
     def lambda_params(self, nodes):
+        posonlyargs = []
         args = []
         defaults = []
         vararg = None
         kwonlyargs = []
         kw_defaults = []
         kwarg = None
+        normal_params = []
+
+        def unpack_param(param, target_list):
+            if isinstance(param, tuple) and isinstance(param[0], ast.arg):
+                target_list.append(param[0])
+                defaults.append(param[1])
+            elif isinstance(param, ast.arg):
+                target_list.append(param)
+                defaults.append(None)
+            elif isinstance(param, str):
+                target_list.append(ast.arg(arg=param, annotation=None))
+                defaults.append(None)
 
         # construct the parameters
         for node in nodes:
             if isinstance(node, tuple) and isinstance(node[0], ast.arg):
                 # lambda_paramvalue with optional default
-                args.append(node[0])
-                defaults.append(node[1])
+                normal_params.append(node)
+            elif isinstance(node, str) and node == "/":
+                normal_params.append(node)
             elif isinstance(node, str):
-                # name -> positional arg, no default
-                args.append(ast.arg(arg=node, annotation=None))
+                # bare name -> positional arg, no default
+                normal_params.append(node)
             elif isinstance(node, ast.arguments):
                 if node.vararg:
                     vararg = node.vararg
@@ -1209,8 +1524,24 @@ class PythonTransformer(Transformer):
             elif isinstance(node, dict) and "kwarg" in node:
                 kwarg = node["kwarg"]
 
+        slash_index = normal_params.index("/") if "/" in normal_params else -1
+        if slash_index != -1:
+            params_pos = normal_params[:slash_index]
+            params_args = normal_params[slash_index + 1:]
+        else:
+            params_pos = []
+            params_args = normal_params
+
+        for param in params_pos:
+            unpack_param(param, posonlyargs)
+        for param in params_args:
+            unpack_param(param, args)
+
+        while defaults and defaults[0] is None:
+            defaults.pop(0)
+
         return ast.arguments(
-            posonlyargs=[],
+            posonlyargs=posonlyargs,
             args=args,
             vararg=vararg,
             kwonlyargs=kwonlyargs,
@@ -1295,16 +1626,24 @@ class PythonTransformer(Transformer):
         # literal/attribute + as_pattern)
         return nodes[0], nodes[1]
 
+    @staticmethod
+    def _mapping_key_to_expr(key):
+        if isinstance(key, ast.MatchValue):
+            return key.value
+        if isinstance(key, ast.MatchSingleton):
+            return ast.Constant(value=key.value)
+        return key
+
     def mapping_pattern(self, nodes):
         # nodes = list of mapping_item_pattern
-        keys = [k.value for k, v in nodes]
+        keys = [self._mapping_key_to_expr(k) for k, v in nodes]
         patterns = [v for k, v in nodes]
         return ast.MatchMapping(keys=keys, patterns=patterns, rest=None)
 
     def mapping_star_pattern(self, nodes):
         # nodes[-1] = NAME for **rest
         # nodes[:-1] = mapping_item_pattern
-        keys = [k.value for k, v in nodes[:-1]]
+        keys = [self._mapping_key_to_expr(k) for k, v in nodes[:-1]]
         patterns = [v for k, v in nodes[:-1]]
         rest_name = nodes[-1][1] if isinstance(nodes[-1], tuple) else nodes[-1]
         return ast.MatchMapping(keys=keys, patterns=patterns, rest=rest_name)

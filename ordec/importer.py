@@ -4,6 +4,7 @@
 import sys
 import os
 import ast
+import importlib
 from importlib.abc import Loader, MetaPathFinder
 from importlib.util import spec_from_loader
 from .language import ord_to_py
@@ -25,6 +26,10 @@ class OrdLoader(Loader):
 
     def exec_module(self, module):
         module.__dict__['__file__'] = self.ord_path
+        module.__dict__.update({
+            "__ordec_core__": importlib.import_module("ordec.core"),
+            "__ord_context__": importlib.import_module("ordec.ord2.context"),
+        })
         ord_module = ord_to_py(self.source_text)
         module.__dict__['__ord_py_source__'] = ast.unparse(ord_module)
         code = compile(ord_module, "<string>", "exec")

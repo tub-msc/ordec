@@ -3,9 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from ordec.core import *
-from ordec.schematic import helpers
 from .mux2 import Mux2
-from ordec.ord2.context import ctx, OrdContext
 from ordec.schematic.routing import schematic_routing
 import math
 
@@ -13,24 +11,24 @@ import math
 cell Nto1:
     N = Parameter(int)
 
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         path d_in
         path s_in
-        inout vdd(.align=Orientation.North)
-        inout vss(.align=Orientation.South)
-        output y(.align=Orientation.East)
+        inout vdd: .align=Orientation.North
+        inout vss: .align=Orientation.South
+        output y: .align=Orientation.East
 
         # Data inputs
         for i in range(self.N):
-            input d_in[i](.align=Orientation.West)
+            input d_in[i]: .align=Orientation.West
 
         # Select inputs
         signal_count = int(math.log(self.N, 2))
         for i in range(signal_count):
-            input s_in[i](.align=Orientation.West)
+            input s_in[i]: .align=Orientation.West
 
 
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         signal_count = int(math.log(self.N, 2))
         x_spacing = 12
         y_spacing = 5
@@ -38,14 +36,14 @@ cell Nto1:
         # ------------------------------------------------------------
         # Port layout
         # ------------------------------------------------------------
-        port vdd(.align=Orientation.South; .pos=(-x_spacing, y_spacing * self.N))
-        port vss(.align=Orientation.North; .pos=(-x_spacing, -y_spacing))
+        port vdd: .align=Orientation.South; .pos=(-x_spacing, y_spacing * self.N)
+        port vss: .align=Orientation.North; .pos=(-x_spacing, -y_spacing)
         vdd.ref.route = False
         vss.ref.route = False
 
         # Output port
-        port y(.align=Orientation.West; .pos=(signal_count * x_spacing, 
-                                              y_spacing * ((self.N - 1) // 2)))
+        port y: .align=Orientation.West; .pos=(signal_count * x_spacing,
+                                               y_spacing * ((self.N - 1) // 2))
 
         path d_in, s_in, mux, nets
 
@@ -53,14 +51,14 @@ cell Nto1:
         for i in range(0, self.N, 2):
             px = -x_spacing
             py = (i * y_spacing) + 2
-            port d_in[i](.align=Orientation.East; .pos=(px, py))
-            port d_in[i + 1](.align=Orientation.East; .pos=(px, py+1))
+            port d_in[i]: .align=Orientation.East; .pos=(px, py)
+            port d_in[i + 1]: .align=Orientation.East; .pos=(px, py+1)
 
         # Place select ports horizontally along the bottom
         for i in range(signal_count):
             px = (i * x_spacing) - 2
             py = -y_spacing
-            port s_in[i](.align=Orientation.North; .pos=(px, py))
+            port s_in[i]: .align=Orientation.North; .pos=(px, py)
 
 
         # ------------------------------------------------------------

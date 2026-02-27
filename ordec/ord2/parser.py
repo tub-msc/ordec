@@ -91,7 +91,8 @@ parser = Lark.open_from_package(
     parser="lalr",
     postlex=PythonIndenter(),
     start="file_input",
-    maybe_placeholders=False
+    maybe_placeholders=False,
+    propagate_positions=True
 )
 
 def ord2_to_py(ord_string: str) -> ast.Module:
@@ -105,7 +106,7 @@ def ord2_to_py(ord_string: str) -> ast.Module:
     """
     # Parse the string directly
     parsed_result = parse_with_errors(parser, ord_string)
-    ord2_transformer = Ord2Transformer()
+    ord2_transformer = Ord2Transformer(source_text=ord_string + "\n")
     transformed_ast = ord2_transformer.transform(parsed_result)
     ast.fix_missing_locations(transformed_ast)
     return transformed_ast
@@ -141,5 +142,4 @@ if __name__ == "__main__":
     code_obj = compile(transformed, "<ast>", "exec")
     print(ast.unparse(transformed))
     exec(code_obj, globals(), locals())
-
 

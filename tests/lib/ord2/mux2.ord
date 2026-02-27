@@ -3,27 +3,25 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from ordec.core import *
-from ordec.schematic import helpers
 from ordec.lib.generic_mos import Nmos,Pmos,Inv
-from ordec.ord2.context import ctx, OrdContext
 from ordec.schematic.routing import schematic_routing
 
 cell Mux2:
-    viewgen symbol:
-        output y(.align=Orientation.East)
-        input a(.align=Orientation.West)
-        input b(.align=Orientation.West)
-        inout vdd(.align=Orientation.North)
-        inout vss(.align=Orientation.South)
-        input s(.align=Orientation.West)
+    viewgen symbol -> Symbol:
+        output y: .align=Orientation.East
+        input a: .align=Orientation.West
+        input b: .align=Orientation.West
+        inout vdd: .align=Orientation.North
+        inout vss: .align=Orientation.South
+        input s: .align=Orientation.West
 
-    viewgen schematic:
-        port y(.align=Orientation.West; .pos=(21, 18))
-        port a(.align=Orientation.East; .pos=(1, 11))
-        port b(.align=Orientation.East; .pos=(1, 10))
-        port vdd(.align=Orientation.South; .pos=(6, 31))
-        port vss(.align=Orientation.North; .pos=(6, 3))
-        port s(.align=Orientation.East; .pos=(-6, 13))
+    viewgen schematic -> Schematic:
+        port y: .align=Orientation.West; .pos=(21, 18)
+        port a: .align=Orientation.East; .pos=(1, 11)
+        port b: .align=Orientation.East; .pos=(1, 10)
+        port vdd: .align=Orientation.South; .pos=(6, 31)
+        port vss: .align=Orientation.North; .pos=(6, 3)
+        port s: .align=Orientation.East; .pos=(-6, 13)
 
         net p1_p2
         net n1_n2
@@ -32,15 +30,15 @@ cell Mux2:
         
         net s_n
         
-        Inv i1(.y -- s_n; .vdd -- vdd; .vss -- vss; .a -- s; .pos=(-4,22))
+        Inv i1: .y -- s_n; .vdd -- vdd; .vss -- vss; .a -- s; .pos=(-4,22)
 
-        Pmos p1 (.s -- vdd;  .b -- vdd; .d -- p1_p2; .g -- a; .pos=(4, 25))
-        Pmos p2 (.s -- p1_p2; .b -- vdd; .d -- y;    .g -- s_n; .pos=(4, 19))
-        Nmos n2 (.s -- n1_n2; .b -- vss; .d -- y;    .g -- s; .pos=(4, 11))
-        Nmos n1 (.s -- vss;  .b -- vss; .d -- n1_n2; .g -- a; .pos=(4, 5))
+        Pmos p1 : .s -- vdd;  .b -- vdd; .d -- p1_p2; .g -- a; .pos=(4, 25)
+        Pmos p2 : .s -- p1_p2; .b -- vdd; .d -- y;    .g -- s_n; .pos=(4, 19)
+        Nmos n2 : .s -- n1_n2; .b -- vss; .d -- y;    .g -- s; .pos=(4, 11)
+        Nmos n1 : .s -- vss;  .b -- vss; .d -- n1_n2; .g -- a; .pos=(4, 5)
                     
-        Pmos p3 (.s -- vdd; .b -- vdd; .d -- p3_p4; .g -- b; .pos=(15, 25))
-        Pmos p4 (.s -- p3_p4; .b -- vdd; .d -- y;    .g -- s; .pos=(15, 19))
-        Nmos n4 (.s -- n3_n4; .b -- vss; .d -- y;    .g -- s_n; .pos=(15, 11))
-        Nmos n3 (.s -- vss;  .b -- vss; .d -- n3_n4; .g -- b; .pos=(15, 5))
+        Pmos p3 : .s -- vdd; .b -- vdd; .d -- p3_p4; .g -- b; .pos=(15, 25)
+        Pmos p4 : .s -- p3_p4; .b -- vdd; .d -- y;    .g -- s; .pos=(15, 19)
+        Nmos n4 : .s -- n3_n4; .b -- vss; .d -- y;    .g -- s_n; .pos=(15, 11)
+        Nmos n3 : .s -- vss;  .b -- vss; .d -- n3_n4; .g -- b; .pos=(15, 5)
         

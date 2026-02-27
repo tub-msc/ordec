@@ -3,12 +3,22 @@
 
 from ordec.ord2.parser import ord2_to_py
 import ast
+from lark.exceptions import VisitError
+import pytest
 
 def compare_asts(ord2_code_string):
     or2_ast = ord2_to_py(ord2_code_string)
     python_ast = ast.parse(ord2_code_string)
     assert (ast.dump(or2_ast) ==
             ast.dump(python_ast))
+
+def compare_syntax_errors(ord2_code_string):
+    with pytest.raises(SyntaxError):
+        ast.parse(ord2_code_string)
+    with pytest.raises((SyntaxError, VisitError)) as error:
+        ord2_to_py(ord2_code_string)
+    if isinstance(error.value, VisitError):
+        assert isinstance(error.value.orig_exc, SyntaxError)
 
 def test_class_empty():
     ord_string = "class A():\n   pass"
@@ -210,6 +220,30 @@ def test_with_as():
     ord_string = "with open('file.txt') as f:\n    data = f.read()"
     compare_asts(ord_string)
 
+def test_with_as_tuple_target():
+    ord_string = "with ctx() as (a, b):\n    pass"
+    compare_asts(ord_string)
+
+def test_with_as_attribute_target():
+    ord_string = "with ctx() as a.b:\n    pass"
+    compare_asts(ord_string)
+
+def test_with_as_subscript_target():
+    ord_string = "with ctx() as a[0]:\n    pass"
+    compare_asts(ord_string)
+
+def test_with_as_list_target():
+    ord_string = "with ctx() as [a, *b]:\n    pass"
+    compare_asts(ord_string)
+
+def test_with_as_invalid_call_target():
+    ord_string = "with ctx() as f():\n    pass"
+    compare_syntax_errors(ord_string)
+
+def test_with_as_invalid_expression_target():
+    ord_string = "with ctx() as (a + b):\n    pass"
+    compare_syntax_errors(ord_string)
+
 def test_async_with():
     ord_string = "async with lock:\n    await do_work()"
     compare_asts(ord_string)
@@ -286,6 +320,18 @@ def test_lambda_arg_keyword():
     ord_string = "f = lambda x, y=2: x + y"
     compare_asts(ord_string)
 
+def test_lambda_posonly():
+    ord_string = "f = lambda x, /, y: x + y"
+    compare_asts(ord_string)
+
+def test_lambda_posonly_with_defaults():
+    ord_string = "f = lambda x=1, /, y=2: x + y"
+    compare_asts(ord_string)
+
+def test_lambda_posonly_with_kwonly():
+    ord_string = "f = lambda x, /, *, y: x + y"
+    compare_asts(ord_string)
+
 def test_lambda_keyword_after_star():
     ord_string = "f = lambda *args, y=2: y"
     compare_asts(ord_string)
@@ -306,8 +352,16 @@ def test_list_comprehension():
     ord_string = "[x * 2 for x in range(5) if x % 2 == 0]"
     compare_asts(ord_string)
 
+def test_list_comprehension_multiple_ifs():
+    ord_string = "[x for x in range(10) if x > 1 if x < 8]"
+    compare_asts(ord_string)
+
 def test_dict_comprehension():
     ord_string = "{x: x**2 for x in range(5)}"
+    compare_asts(ord_string)
+
+def test_dict_comprehension_multiple_ifs():
+    ord_string = "{x: x**2 for x in range(10) if x > 1 if x < 8}"
     compare_asts(ord_string)
 
 def test_set_comprehension():
@@ -514,8 +568,52 @@ def test_f_string_spec_double():
     ord_string = "f\"{test!r}\""
     compare_asts(ord_string)
 
+def test_f_string_debug():
+    ord_string = "f\"{value=}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug_with_conversion():
+    ord_string = "f\"{value=!r}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug_with_spec():
+    ord_string = "f\"{value=:>10}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug_with_spaces():
+    ord_string = "f\"{value = !r}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug_parenthesized():
+    ord_string = "f\"{(x+y)=}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug_spacing_preserved():
+    ord_string = "f\"{x   +   y=}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug_not_equal_edge():
+    ord_string = "f\"{x!=y=}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug_ifexpr_not_equal():
+    ord_string = "f\"{x if y!=z else t=}\""
+    compare_asts(ord_string)
+
+def test_f_string_debug_subscript_not_equal():
+    ord_string = "f\"{a[1!=2]=}\""
+    compare_asts(ord_string)
+
 def test_f_string_escaped_call():
     ord_string = "f\"Value: {{{print(3 + 4)}}}\""
+    compare_asts(ord_string)
+
+def test_f_string_escape_newline():
+    ord_string = "f\"line1\\n{value}\\nline2\""
+    compare_asts(ord_string)
+
+def test_raw_f_string_escape_newline():
+    ord_string = "fr\"line1\\n{value}\\nline2\""
     compare_asts(ord_string)
 
 def test_string_concat():
@@ -525,6 +623,42 @@ def test_string_concat():
 def test_string_concat_implicit():
     ord_string = "'Hello ' 'World'"
     compare_asts(ord_string)
+
+def test_string_escape_single_quote():
+    ord_string = "x = 'a\\'b'"
+    compare_asts(ord_string)
+
+def test_bytes_escape_hex():
+    ord_string = "x = b'\\xff'"
+    compare_asts(ord_string)
+
+def test_bytes_escape_unicode_literal():
+    ord_string = "x = b'\\\\u0041'"
+    compare_asts(ord_string)
+
+def test_long_string_escape_newline():
+    ord_string = "x = '''line1\\nline2'''"
+    compare_asts(ord_string)
+
+def test_string_escape_hex_invalid():
+    ord_string = "x = '\\x4'"
+    compare_syntax_errors(ord_string)
+
+def test_string_escape_unicode_short_invalid():
+    ord_string = "x = '\\u12'"
+    compare_syntax_errors(ord_string)
+
+def test_string_escape_unicode_name_invalid():
+    ord_string = "x = '\\N{NO_SUCH_NAME}'"
+    compare_syntax_errors(ord_string)
+
+def test_bytes_escape_hex_invalid():
+    ord_string = "x = b'\\x4'"
+    compare_syntax_errors(ord_string)
+
+def test_bytes_non_ascii_invalid():
+    ord_string = "x = b'ä'"
+    compare_syntax_errors(ord_string)
 
 def test_string_mod():
     ord_string = "'Hello %s %s' % (1,2)"
@@ -550,6 +684,10 @@ def test_binary_number():
     ord_string = "0b1010"
     compare_asts(ord_string)
 
+def test_scientific_notation_float():
+    ord_string = "1e-9"
+    compare_asts(ord_string)
+
 def test_slice():
     ord_string = "lst[1:2]"
     compare_asts(ord_string)
@@ -564,4 +702,12 @@ def test_slice_and_step():
 
 def test_comment():
     ord_string = "# This is a comment"
+    compare_asts(ord_string)
+
+def test_match_mapping_attr_key():
+    ord_string = "match x:\n    case {Color.RED: y}:\n        pass"
+    compare_asts(ord_string)
+
+def test_match_mapping_singleton_keys():
+    ord_string = "match x:\n    case {True: y, None: z}:\n        pass"
     compare_asts(ord_string)

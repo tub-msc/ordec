@@ -23,11 +23,20 @@ class Ord2Transformer(PythonTransformer):
     def ast_attribute(value, attr, ctx=ast.Load()):
         return ast.Attribute(value=value, attr=attr, ctx=ctx)
 
+    def ast_core(self, attr):
+        return self.ast_attribute(self.ast_name("__ordec_core__"), attr)
+
+    def ast_ord_context(self, attr):
+        return self.ast_attribute(self.ast_name("__ord_context__"), attr)
+
+    def ast_ctx(self):
+        return self.ast_attribute(self.ast_ord_context("OrdContext"), "ctx")
+
     def celldef(self, nodes):
         """ Definition of a ORDeC cell class"""
         cell_name = nodes[0]
         suite = nodes[1]
-        base = self.ast_name('Cell')
+        base = self.ast_core("Cell")
 
         return ast.ClassDef(
             name=cell_name,
@@ -43,38 +52,71 @@ class Ord2Transformer(PythonTransformer):
         si_suffixes = ('a','f','p','n','u','m','k','M','G','T')
         if token.endswith(si_suffixes) or '/' in token:
             token = ast.Constant(token.value)
-            return ast.Call(func=self.ast_name("R"), args=[token], keywords=[])
+            return ast.Call(func=self.ast_core("R"), args=[token], keywords=[])
         else:
-            if '.' in token:
-                number = float(token)
+            token_value = token.value.replace("_", "")
+            if "." in token_value or "e" in token_value.lower():
+                number = float(token_value)
             else:
-                number = token.value.replace("_", "")
-                number = int(number, 10)
+                number = int(token_value, 10)
             return ast.Constant(value=number)
 
     def viewgen(self, nodes):
-        """ Funcdef for cell (viewgen schematic:\n suite)"""
+        """ Funcdef for cell (viewgen name -> Type:\n suite)"""
         func_name = nodes[0]
-        suite = nodes[1]
+        if len(nodes) == 4:
+            viewgen_args = nodes[1]
+            viewgen_type = nodes[2]
+            suite = nodes[3]
+        else:
+            viewgen_args = []
+            viewgen_type = nodes[1]
+            suite = nodes[2]
+
+        # Validate the return type
+        viewgen_type_lower = viewgen_type.lower()
+        if viewgen_type_lower not in ("symbol", "schematic", "layout"):
+            raise SyntaxError(
+                f"Unknown viewgen return type '{viewgen_type}'. "
+                f"Expected Symbol, Schematic, or Layout."
+            )
+
+        # Extract keyword arguments
+        kwarg_assignments = []
+        for arg in viewgen_args:
+            if isinstance(arg, tuple) and arg[0] == "argvalue":
+                kwarg_assignments.append(
+                    ast.Assign(
+                        targets=[self.ast_name(arg[1].id, ctx=ast.Store())],
+                        value=arg[2]
+                    )
+                )
 
         keywords = list()
         keywords.append(ast.keyword(arg="cell", value=self.ast_name("self")))
-        if func_name == "schematic":
+        if viewgen_type_lower in ("schematic", "layout"):
             keywords.append(
                 ast.keyword(
                     arg="symbol",
                     value=self.ast_attribute(self.ast_name("self"), attr="symbol")
                 )
             )
+        # For layout viewgens, map layers kwarg to ref_layers
+        if viewgen_type_lower == "layout":
+            for arg in viewgen_args:
+                if isinstance(arg, tuple) and arg[0] == "argvalue" and arg[1].id == "layers":
+                    keywords.append(
+                        ast.keyword(arg="ref_layers", value=self.ast_name("layers"))
+                    )
 
         viewgen_call = ast.Call(
-            func=self.ast_name(func_name.title()),
+            func=self.ast_core(viewgen_type.title()),
             args=[],
             keywords=keywords
         )
         # Build the ORD context call
         ord_context_call = ast.Call(
-            func=self.ast_name('OrdContext'),
+            func=self.ast_ord_context("OrdContext"),
             args=[],
             keywords=[
                 ast.keyword(
@@ -87,11 +129,32 @@ class Ord2Transformer(PythonTransformer):
                 )
             ]
         )
+        # Solver must be added to layout viewgen
+        if viewgen_type_lower == "layout":
+            solver_create = ast.Assign(
+                targets=[self.ast_name("__ordec_solver__", ctx=ast.Store())],
+                value=ast.Call(
+                    func=self.ast_core("Solver"),
+                    args=[self.ast_attribute(self.ast_ctx(), "root")],
+                    keywords=[]
+                )
+            )
+            solver_solve = ast.Expr(
+                ast.Call(
+                    func=self.ast_attribute(
+                        self.ast_name("__ordec_solver__"), "solve"
+                    ),
+                    args=[],
+                    keywords=[]
+                )
+            )
+            suite = [solver_create] + suite + [solver_solve]
+
         # Call the corresponding context postprocess function implicitly
         return_value = ast.Return(
                 ast.Call(
-                func=self.ast_attribute(self.ast_name('ctx'),
-                                    func_name + "_postprocess",
+                func=self.ast_attribute(self.ast_ctx(),
+                                    viewgen_type_lower + "_postprocess",
                 ),
                 args=[],
                 keywords=[]
@@ -109,6 +172,7 @@ class Ord2Transformer(PythonTransformer):
         )
         # Wrap with statement with context in a decorated function call
         # --> See Python implementation
+        func_body = kwarg_assignments + [with_context]
         func_def = ast.FunctionDef(
             name=func_name,
             args=ast.arguments(
@@ -119,9 +183,9 @@ class Ord2Transformer(PythonTransformer):
                 kwarg=None,
                 defaults=[]
             ),
-            body=[with_context],
-            decorator_list=[self.ast_name("generate")],
-            returns=self.ast_name(func_name.title()),
+            body=func_body,
+            decorator_list=[self.ast_core("generate")],
+            returns=self.ast_core(viewgen_type.title()),
             type_params=[]
         )
         return func_def
@@ -134,6 +198,18 @@ class Ord2Transformer(PythonTransformer):
                         args=[connect_rhs],
                         keywords=[])
         return ast.Expr(value=call)
+
+    def constrain_stmt(self, nodes):
+        """ ! x >= 200 """
+        return ast.Expr(
+            ast.Call(
+                func=self.ast_attribute(
+                    self.ast_name("__ordec_solver__"), "constrain"
+                ),
+                args=[nodes[0]],
+                keywords=[]
+            )
+        )
 
     def extract_path(self, nodes):
         """Extract string list from nested attributes"""
@@ -155,10 +231,19 @@ class Ord2Transformer(PythonTransformer):
             raise Exception(f"Incompatible path type: {nodes!r}")
 
     def context_element(self, nodes):
-        """ context_element (name name:\n    suite)"""
+        """ context_element (context_type context_target:\n    suite)"""
         context_type = nodes[0]
         context_name = nodes[1]
         context_body = nodes[2] if len(nodes) > 2 else None
+        if isinstance(context_type, str):
+            context_type_name = context_type
+            context_type_expr = ast.Name(id=context_type, ctx=ast.Load())
+        elif isinstance(context_type, ast.Name):
+            context_type_name = context_type.id
+            context_type_expr = context_type
+        else:
+            context_type_name = None
+            context_type_expr = context_type
         inout = ''
 
         context_name_tuple = self.extract_path(context_name)
@@ -168,8 +253,8 @@ class Ord2Transformer(PythonTransformer):
         lhs = copy.copy(context_name)
         self._set_ctx(lhs, ast.Store())
         # Case for symbol statements
-        if context_type in ["inout", "input", "output"]:
-            match context_type:
+        if context_type_name in ["inout", "input", "output"]:
+            match context_type_name:
                 case "inout":
                     inout = "Inout"
                 case "input":
@@ -178,16 +263,16 @@ class Ord2Transformer(PythonTransformer):
                     inout = "Out"
 
             args = []
-            func = self.ast_attribute(self.ast_name("ctx"), "add")
+            func = self.ast_attribute(self.ast_ctx(), "add")
 
             args.append(ast.Tuple(elts=context_name_tuple, ctx=ast.Load()))
             args.append(ast.Call(
-                        func=self.ast_name("Pin"),
+                        func=self.ast_core("Pin"),
                         keywords=[
                             ast.keyword(
                                 arg="pintype",
                                 value=self.ast_attribute(
-                                    self.ast_name("PinType"),
+                                    self.ast_core("PinType"),
                                     inout
                                 )
                             )
@@ -197,10 +282,10 @@ class Ord2Transformer(PythonTransformer):
             )
             rhs = ast.Call(func=func, args=args, keywords=[])
         # Case for port statements
-        elif context_type == "port":
+        elif context_type_name == "port":
  
             args = [ast.Tuple(elts=context_name_tuple, ctx=ast.Load())]
-            func = self.ast_attribute(self.ast_name("ctx"),"add_port")
+            func = self.ast_attribute(self.ast_ctx(),"add_port")
             rhs = ast.Call(func=func, args=args, keywords=[])
 
         # Case for instantiating sub-cells
@@ -218,7 +303,7 @@ class Ord2Transformer(PythonTransformer):
                         ),
                         body=self.ast_attribute(
                             ast.Call(
-                                func=self.ast_name(context_type),
+                                func=context_type_expr,
                                 args=[],
                                 keywords=[
                                     ast.keyword(
@@ -231,10 +316,10 @@ class Ord2Transformer(PythonTransformer):
                     )
 
             args = []
-            func=self.ast_attribute(self.ast_name("ctx"), "add")                
+            func=self.ast_attribute(self.ast_ctx(), "add")
             args.append(ast.Tuple(elts=context_name_tuple, ctx=ast.Load()))
             args.append(ast.Call(
-                        func=self.ast_name("SchemInstanceUnresolved"),
+                        func=self.ast_core("SchemInstanceUnresolved"),
                         keywords=[
                             ast.keyword(
                                 arg="resolver",
@@ -256,7 +341,7 @@ class Ord2Transformer(PythonTransformer):
             items=[
                 ast.withitem(
                     context_expr=ast.Call(
-                        func=self.ast_name("OrdContext"),
+                        func=self.ast_ord_context("OrdContext"),
                         args=[],
                         keywords=[
                             ast.keyword(
@@ -273,7 +358,7 @@ class Ord2Transformer(PythonTransformer):
 
     def depth_helper(self, value, depth=1):
         """ Access parent attributes depending on the dotted depth"""
-        node = self.ast_attribute(self.ast_name("ctx"), "root")
+        node = self.ast_attribute(self.ast_ctx(), "root")
 
         for _ in range(depth - 1):
             node = self.ast_attribute(node,"parent")
@@ -306,7 +391,7 @@ class Ord2Transformer(PythonTransformer):
             attr = nodes[0]
             ctx = ast.Store()
             target = self.ast_attribute(
-                self.ast_name("ctx"),
+                self.ast_ctx(),
                 "root"
             )
         return self.ast_attribute(
@@ -325,12 +410,12 @@ class Ord2Transformer(PythonTransformer):
             name_length = len(context_name_tuple)
             rhs = ast.Call(
                 func=self.ast_attribute(
-                    self.ast_name("ctx"),
+                    self.ast_ctx(),
                     "add"),
                 args=[
                     ast.Tuple(elts=context_name_tuple, ctx=ast.Load()),
                     ast.Call(
-                        func=self.ast_name(stmt),
+                        func=self.ast_core(stmt),
                         keywords=[],
                         args=[]
                     )

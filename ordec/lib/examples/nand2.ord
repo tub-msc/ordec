@@ -1,7 +1,5 @@
 # -*- version: ord2 -*-
 from ordec.core import *
-from ordec.schematic import helpers
-from ordec.ord2.context import ctx, OrdContext
 
 # Libary imports
 from ordec.lib import Nmos, Pmos
@@ -10,23 +8,23 @@ from ordec.lib import Gnd, Vdc
 from ordec.sim import HighlevelSim
 
 cell Nand2:
-    viewgen symbol:
-        output y(.align=Orientation.East)
-        input a(.align=Orientation.West)
-        input b(.align=Orientation.West)
-        inout vdd(.align=Orientation.North)
-        inout vss(.align=Orientation.South)
-    viewgen schematic:
+    viewgen symbol -> Symbol:
+        output y: .align=Orientation.East
+        input a: .align=Orientation.West
+        input b: .align=Orientation.West
+        inout vdd: .align=Orientation.North
+        inout vss: .align=Orientation.South
+    viewgen schematic -> Schematic:
         net x # Between n1 and n2
-        port y(.align=Orientation.West; .pos=(17,13))
-        port a(.align=Orientation.East; .pos=(1,10))
-        port b(.align=Orientation.East; .pos=(1,21))
-        port vdd(.align=Orientation.East; .pos=(1,19))
-        port vss(.align=Orientation.East; .pos=(1,0))
+        port y: .align=Orientation.West; .pos=(17,13)
+        port a: .align=Orientation.East; .pos=(1,10)
+        port b: .align=Orientation.East; .pos=(1,21)
+        port vdd: .align=Orientation.East; .pos=(1,19)
+        port vss: .align=Orientation.East; .pos=(1,0)
 
-        Nmos n1(.pos=(4,1); .s -- vss; .d -- x; .g -- a)
-        Nmos n2(.pos=(4,7);  .s -- x; .d -- y; .g -- b)
-        Pmos p1(.pos=(4,14); .s -- vdd; .d -- y; .g -- a)
+        Nmos n1: .pos=(4,1); .s -- vss; .d -- x; .g -- a
+        Nmos n2: .pos=(4,7);  .s -- x; .d -- y; .g -- b
+        Pmos p1: .pos=(4,14); .s -- vdd; .d -- y; .g -- a
         
         # Alternative way to connect instance:
         Pmos p2:
@@ -47,9 +45,9 @@ cell Nand2:
             t.$l = 500n
 
 cell Nand2Tb:
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         pass
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         net vdd
         net vss
         net a
@@ -64,11 +62,11 @@ cell Nand2Tb:
             .b -- b
             .y -- y
             
-        Gnd gnd(.pos=(0,0); .p -- vss)
+        Gnd gnd: .pos=(0,0); .p -- vss
         
-        Vdc src_vdd(.pos=(0,6); .m -- vss; .p -- vdd; .$dc=5)
-        Vdc src_a(.pos=(10,6); .m -- vss; .p -- a; .$dc=5)
-        Vdc src_b(.pos=(5,6); .m -- vss; .p -- b; .$dc=0)
+        Vdc src_vdd: .pos=(0,6); .m -- vss; .p -- vdd; .$dc=5
+        Vdc src_a: .pos=(10,6); .m -- vss; .p -- a; .$dc=5
+        Vdc src_b: .pos=(5,6); .m -- vss; .p -- b; .$dc=0
 
     @generate
     def sim_dc(self):

@@ -16,99 +16,91 @@ from ordec.core import *
 from ordec.lib import ihp130
 from ordec.lib.ihp130 import Nmos, Pmos
 from ordec.lib.base import Res, Cap, Gnd, Vdc, NoConn, Vpwl
-from ordec.schematic.routing import schematic_routing
-from ordec.schematic.helpers import symbol_place_pins, add_conn_points
 from ordec.sim import HighlevelSim
 from ordec.report import *
 from ordec.layout.makevias import makevias
 from ordec.layout import write_gds
 from ordec.layout import helpers
-from ordec.ord2.context import ctx, OrdContext
 
 cell VcoHalfStage:
     width = Parameter(R, default=300n)
     length = Parameter(R, default=130n)
 
-    viewgen symbol:
-        inout vdd_st(.align=Orientation.North)
-        inout vss_st(.align=Orientation.South)
-        inout vdd(.align=Orientation.North)
-        inout vss(.align=Orientation.South)
+    viewgen symbol -> Symbol:
+        inout vdd_st: .align=Orientation.North
+        inout vss_st: .align=Orientation.South
+        inout vdd: .align=Orientation.North
+        inout vss: .align=Orientation.South
 
-        input rst_n(.align=Orientation.West)
-        input inp(.align=Orientation.West)
-        input fb(.align=Orientation.East)
-        output out(.align=Orientation.East)
-        output out_n(.align=Orientation.East)
+        input rst_n: .align=Orientation.West
+        input inp: .align=Orientation.West
+        input fb: .align=Orientation.East
+        output out: .align=Orientation.East
+        output out_n: .align=Orientation.East
 
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         net b
 
-        port vdd_st(.align=Orientation.East; .pos=(1,24))
-        port vdd(.align=Orientation.East; .pos=(1,26))
-        port vss_st(.align=Orientation.East; .pos=(1,6))
-        port vss(.align=Orientation.East; .pos=(1,4))
-        port inp(.align=Orientation.East; .pos=(1,21))
-        port rst_n(.align=Orientation.East; .pos=(1,9))
-        port fb(.align=Orientation.East; .pos=(15,15))
-        port out(.align=Orientation.West; .pos=(24,18))
-        port out_n(.align=Orientation.West; .pos=(30,18))
+        port vdd_st: .align=Orientation.East; .pos=(1,24)
+        port vdd: .align=Orientation.East; .pos=(1,26)
+        port vss_st: .align=Orientation.East; .pos=(1,6)
+        port vss: .align=Orientation.East; .pos=(1,4)
+        port inp: .align=Orientation.East; .pos=(1,21)
+        port rst_n: .align=Orientation.East; .pos=(1,9)
+        port fb: .align=Orientation.East; .pos=(15,15)
+        port out: .align=Orientation.West; .pos=(24,18)
+        port out_n: .align=Orientation.West; .pos=(30,18)
 
-        Pmos m1(.s -- vdd_st; .b -- vdd; .g -- inp; .d -- out; .pos=(3, 19))
-        Nmos m2(.s -- b; .b -- vss; .g -- inp; .d -- out; .pos=(3, 13))
-        Nmos m3(.s -- vss_st; .b -- vss; .g -- rst_n; .d -- b; .pos=(3, 7))
-        Pmos m4(.s -- vdd_st; .b -- vdd; .g -- rst_n; .d -- out; .pos=(10, 19))
+        Pmos m1: .s -- vdd_st; .b -- vdd; .g -- inp; .d -- out; .pos=(3, 19)
+        Nmos m2: .s -- b; .b -- vss; .g -- inp; .d -- out; .pos=(3, 13)
+        Nmos m3: .s -- vss_st; .b -- vss; .g -- rst_n; .d -- b; .pos=(3, 7)
+        Pmos m4: .s -- vdd_st; .b -- vdd; .g -- rst_n; .d -- out; .pos=(10, 19)
 
-        Pmos m5(.s -- vdd_st; .b -- vdd; .g -- fb; .d -- out; .pos=(17, 19))
-        Nmos m6(.s -- vss_st; .b -- vss; .g -- fb; .d -- out; .pos=(17, 13))
+        Pmos m5: .s -- vdd_st; .b -- vdd; .g -- fb; .d -- out; .pos=(17, 19)
+        Nmos m6: .s -- vss_st; .b -- vss; .g -- fb; .d -- out; .pos=(17, 13)
 
-        Pmos m7(.s -- vdd; .b -- vdd; .g -- out; .d -- out_n; .pos=(25, 19))
-        Nmos m8(.s -- vss; .b -- vss; .g -- out; .d -- out_n; .pos=(25, 13))
+        Pmos m7: .s -- vdd; .b -- vdd; .g -- out; .d -- out_n; .pos=(25, 19)
+        Nmos m8: .s -- vss; .b -- vss; .g -- out; .d -- out_n; .pos=(25, 13)
 
         for mos in m1, m2, m3, m4, m5, m6, m7, m8:
             mos.$w = self.width
             mos.$l = self.length
 
 
-    @generate
-    def layout(self):
-        layers = ihp130.SG13G2().layers
-        l = Layout(ref_layers=layers, cell=self, symbol=self.symbol)
-        s = Solver(l)
-
+    viewgen layout(layers=ihp130.SG13G2().layers) -> Layout:
         pmos = self.schematic.m1.symbol.cell
         nmos = self.schematic.m2.symbol.cell
 
-        l.m1 = LayoutInstance(ref=pmos.layout)
-        l.m2 = LayoutInstance(ref=nmos.layout)
-        
-        l.m3 = LayoutInstance(ref=nmos.layout)
-        l.m4 = LayoutInstance(ref=pmos.layout)
+        .m1 = LayoutInstance(ref=pmos.layout)
+        .m2 = LayoutInstance(ref=nmos.layout)
 
-        l.m5 = LayoutInstance(ref=nmos.layout)
-        l.m6 = LayoutInstance(ref=pmos.layout)
-        
-        l.m7 = LayoutInstance(ref=nmos.layout)
-        l.m8 = LayoutInstance(ref=pmos.layout)
+        .m3 = LayoutInstance(ref=nmos.layout)
+        .m4 = LayoutInstance(ref=pmos.layout)
 
-        grid = ((l.m2, l.m1), (l.m3, l.m4), (l.m5, l.m6), (l.m7, l.m8))
+        .m5 = LayoutInstance(ref=nmos.layout)
+        .m6 = LayoutInstance(ref=pmos.layout)
 
-        s.constrain(l.m1.pos == (0, 0))
-        s.constrain(l.m1.poly[0].rect.cx == l.m2.poly[0].rect.cx)
+        .m7 = LayoutInstance(ref=nmos.layout)
+        .m8 = LayoutInstance(ref=pmos.layout)
 
-        s.constrain(l.m1.activ.rect.ly == l.m2.activ.rect.uy + 1500)
+        grid = ((.m2, .m1), (.m3, .m4), (.m5, .m6), (.m7, .m8))
+
+        ! .m1.pos == (0, 0)
+        ! .m1.poly[0].rect.cx == .m2.poly[0].rect.cx
+
+        ! .m1.activ.rect.ly == .m2.activ.rect.uy + 1500
 
         for left, right in pairwise(grid):
             left_nmos, left_pmos = left
             right_nmos, right_pmos = right
-            s.constrain(right_nmos.sd[0].rect.center == left_nmos.sd[1].rect.center)
-            s.constrain(right_pmos.sd[0].rect.center == left_pmos.sd[1].rect.center)
+            ! right_nmos.sd[0].rect.center == left_nmos.sd[1].rect.center
+            ! right_pmos.sd[0].rect.center == left_pmos.sd[1].rect.center
 
-        l.poly = PathNode()
+        path poly
         for idx, insts in enumerate(grid):
-            l.poly[idx] = LayoutRect(layer=layers.GatPoly) 
+            .poly[idx] = LayoutRect(layer=layers.GatPoly)
             for inst in insts:
-                s.constrain(l.poly[idx].rect.contains(inst.poly[0].rect))
+                ! .poly[idx].rect.contains(inst.poly[0].rect)
 
         polycont_spec = (
             ('south', 'west', 'rst_n'),
@@ -116,119 +108,116 @@ cell VcoHalfStage:
             ('south', 'east', 'fb'),
             ('north', 'west', False),
         )
-        l.polycont = PathNode()
+        path polycont
         polycont_m1={}
         for idx, (vert_spec, horiz_spec, add_m1) in enumerate(polycont_spec):
-            polyext = l % LayoutRect(layer=layers.GatPoly)
-            s.constrain(polyext.rect.size == (300, 300))
+            polyext = . % LayoutRect(layer=layers.GatPoly)
+            ! polyext.rect.size == (300, 300)
             if horiz_spec == 'west':
-                s.constrain(polyext.rect.ux == l.poly[idx].rect.ux)
+                ! polyext.rect.ux == .poly[idx].rect.ux
             else:
                 assert horiz_spec == 'east'
-                s.constrain(polyext.rect.lx == l.poly[idx].rect.lx)
+                ! polyext.rect.lx == .poly[idx].rect.lx
             if vert_spec == 'north':
-                s.constrain(polyext.rect.uy == l.m1.activ.rect.ly - 200)
+                ! polyext.rect.uy == .m1.activ.rect.ly - 200
             else:
                 assert vert_spec == 'south'
-                s.constrain(polyext.rect.ly == l.m2.activ.rect.uy + 200)
-            l.polycont[idx] = LayoutRect(layer=layers.Cont)
-            s.constrain(l.polycont[idx].rect.size == (160, 160))
-            s.constrain(l.polycont[idx].rect.center == polyext.rect.center)
+                ! polyext.rect.ly == .m2.activ.rect.uy + 200
+            .polycont[idx] = LayoutRect(layer=layers.Cont)
+            ! .polycont[idx].rect.size == (160, 160)
+            ! .polycont[idx].rect.center == polyext.rect.center
             if add_m1:
-                setattr(l, add_m1, LayoutRect(layer=layers.Metal1))
-                m1 = getattr(l, add_m1)
-                s.constrain(m1.rect.cx == l.polycont[idx].rect.cx + (-25 if horiz_spec=='west' else 25))
-                s.constrain(m1.rect.width == 210)
-                s.constrain(m1.rect.ly == l.m2.sd[0].rect.uy + 200)
-                s.constrain(m1.rect.height == 600)
+                setattr(., add_m1, LayoutRect(layer=layers.Metal1))
+                m1 = getattr(., add_m1)
+                ! m1.rect.cx == .polycont[idx].rect.cx + (-25 if horiz_spec=='west' else 25)
+                ! m1.rect.width == 210
+                ! m1.rect.ly == .m2.sd[0].rect.uy + 200
+                ! m1.rect.height == 600
 
-        l.rst_n % LayoutPin(pin=self.symbol.rst_n)
-        l.inp % LayoutPin(pin=self.symbol.inp)
-        l.fb % LayoutPin(pin=self.symbol.fb)
+        .rst_n % LayoutPin(pin=self.symbol.rst_n)
+        .inp % LayoutPin(pin=self.symbol.inp)
+        .fb % LayoutPin(pin=self.symbol.fb)
 
-        l.outbar_h = LayoutRect(layer=layers.Metal1)
-        l.outbar_h % LayoutPin(pin=self.symbol.out)
-        s.constrain(l.outbar_h.rect.cy == l.polycont[3].rect.cy)
-        s.constrain(l.outbar_h.rect.height == 210)
-        s.constrain(l.outbar_h.rect.lx == l.m1.sd[0].rect.lx)
-        s.constrain(l.outbar_h.rect.ux == l.polycont[3].rect.ux + 500)
+        .outbar_h = LayoutRect(layer=layers.Metal1)
+        .outbar_h % LayoutPin(pin=self.symbol.out)
+        ! .outbar_h.rect.cy == .polycont[3].rect.cy
+        ! .outbar_h.rect.height == 210
+        ! .outbar_h.rect.lx == .m1.sd[0].rect.lx
+        ! .outbar_h.rect.ux == .polycont[3].rect.ux + 500
 
-        l.outbar_vmain = LayoutRect(layer=layers.Metal1)
-        s.constrain(l.outbar_vmain.rect.contains(l.m3.sd[1].rect))
-        s.constrain(l.outbar_vmain.rect.contains(l.m4.sd[1].rect))
+        .outbar_vmain = LayoutRect(layer=layers.Metal1)
+        ! .outbar_vmain.rect.contains(.m3.sd[1].rect)
+        ! .outbar_vmain.rect.contains(.m4.sd[1].rect)
 
-        l.outbar_vrst = LayoutRect(layer=layers.Metal1)
-        s.constrain(l.outbar_vrst.rect.contains(l.m1.sd[0].rect))
-        s.constrain(l.outbar_vrst.rect.ly == l.outbar_h.rect.ly)
+        .outbar_vrst = LayoutRect(layer=layers.Metal1)
+        ! .outbar_vrst.rect.contains(.m1.sd[0].rect)
+        ! .outbar_vrst.rect.ly == .outbar_h.rect.ly
 
-        l.outbar_outn = LayoutRect(layer=layers.Metal1)
-        s.constrain(l.outbar_outn.rect.uy == l.m8.sd[1].rect.uy)
-        s.constrain(l.outbar_outn.rect.ly == l.m7.sd[1].rect.ly)
-        s.constrain(l.outbar_outn.rect.lx >= l.m7.sd[1].rect.ux)
-        s.constrain(l.outbar_outn.rect.lx >= l.outbar_h.rect.ux + 200)
-        s.constrain(l.outbar_outn.rect.width == 210)
+        .outbar_outn = LayoutRect(layer=layers.Metal1)
+        ! .outbar_outn.rect.uy == .m8.sd[1].rect.uy
+        ! .outbar_outn.rect.ly == .m7.sd[1].rect.ly
+        ! .outbar_outn.rect.lx >= .m7.sd[1].rect.ux
+        ! .outbar_outn.rect.lx >= .outbar_h.rect.ux + 200
+        ! .outbar_outn.rect.width == 210
 
-        l.outbar_outn % LayoutPin(pin=self.symbol.out_n)
+        .outbar_outn % LayoutPin(pin=self.symbol.out_n)
 
-        for sd in (l.m8.sd[1], l.m7.sd[1]):
-            r = l % LayoutRect(layer=layers.Metal1)
-            s.constrain(r.rect.contains(sd.rect))
-            s.constrain(r.rect.ux >= l.outbar_outn.rect.lx)
+        for sd in (.m8.sd[1], .m7.sd[1]):
+            r = . % LayoutRect(layer=layers.Metal1)
+            ! r.rect.contains(sd.rect)
+            ! r.rect.ux >= .outbar_outn.rect.lx
 
-        l.vddbar = LayoutRect(layer=layers.Metal1)
-        l.vddbar % LayoutPin(pin=self.symbol.vdd)
-        s.constrain(l.vddbar.rect.southwest == l.m1.sd[0].rect.northwest + (-500,400))
-        s.constrain(l.vddbar.rect.height == 400)
-        s.constrain(l.vddbar.rect.ux == l.m7.sd[1].rect.ux + 500)
+        .vddbar = LayoutRect(layer=layers.Metal1)
+        .vddbar % LayoutPin(pin=self.symbol.vdd)
+        ! .vddbar.rect.southwest == .m1.sd[0].rect.northwest + (-500,400)
+        ! .vddbar.rect.height == 400
+        ! .vddbar.rect.ux == .m7.sd[1].rect.ux + 500
 
-        for sd in (l.m4.sd[0], l.m8.sd[0]):
-            r = l % LayoutRect(layer=layers.Metal1)
-            s.constrain(r.rect.contains(sd.rect))
-            s.constrain(r.rect.uy == l.vddbar.rect.ly)
+        for sd in (.m4.sd[0], .m8.sd[0]):
+            r = . % LayoutRect(layer=layers.Metal1)
+            ! r.rect.contains(sd.rect)
+            ! r.rect.uy == .vddbar.rect.ly
 
-        l.vssbar = LayoutRect(layer=layers.Metal1)
-        l.vssbar % LayoutPin(pin=self.symbol.vss)
-        s.constrain(l.vssbar.rect.width == l.vddbar.rect.width)
-        s.constrain(l.vssbar.rect.height == 400)
-        s.constrain(l.vssbar.rect.northwest == l.m2.sd[0].rect.southwest - (500,500))
+        .vssbar = LayoutRect(layer=layers.Metal1)
+        .vssbar % LayoutPin(pin=self.symbol.vss)
+        ! .vssbar.rect.width == .vddbar.rect.width
+        ! .vssbar.rect.height == 400
+        ! .vssbar.rect.northwest == .m2.sd[0].rect.southwest - (500,500)
 
-        for sd in (l.m2.sd[0], l.m7.sd[0]):
-            r = l % LayoutRect(layer=layers.Metal1)
-            s.constrain(r.rect.contains(sd.rect))
-            s.constrain(r.rect.ly == l.vssbar.rect.uy)
+        for sd in (.m2.sd[0], .m7.sd[0]):
+            r = . % LayoutRect(layer=layers.Metal1)
+            ! r.rect.contains(sd.rect)
+            ! r.rect.ly == .vssbar.rect.uy
 
-        r = l % LayoutRect(layer=layers.Metal1)
-        s.constrain(r.rect.contains(l.m2.sd[1].rect))
-        s.constrain(r.rect.height == 600)
-        s.constrain(r.rect.uy == l.m2.sd[1].rect.uy)
+        r = . % LayoutRect(layer=layers.Metal1)
+        ! r.rect.contains(.m2.sd[1].rect)
+        ! r.rect.height == 600
+        ! r.rect.uy == .m2.sd[1].rect.uy
 
-        l.nwell = LayoutRect(layer=layers.NWell)
-        for m in (l.m1, l.m4, l.m6, l.m8):
-            s.constrain(l.nwell.rect.contains(m.nwell.rect))
-
-        s.solve()
-        return l
+        .nwell = LayoutRect(layer=layers.NWell)
+        for m in (.m1, .m4, .m6, .m8):
+            ! .nwell.rect.contains(m.nwell.rect)
 
 cell VcoRing:
-    viewgen symbol:
-        inout vdd_st(.align=Orientation.North)
-        inout vss_st(.align=Orientation.South)
-        inout vdd(.align=Orientation.North)
-        inout vss(.align=Orientation.South)
-        input rst_n(.align=Orientation.West)
+    viewgen symbol -> Symbol:
+        inout vdd_st: .align=Orientation.North
+        inout vss_st: .align=Orientation.South
+        inout vdd: .align=Orientation.North
+        inout vss: .align=Orientation.South
+        input rst_n: .align=Orientation.West
 
         path out_p, out_n
         for i in range(2):
-            output out_p[i](.align=Orientation.East)
-            output out_n[i](.align=Orientation.East)
+            output out_p[i]: .align=Orientation.East
+            output out_n[i]: .align=Orientation.East
 
 
-    viewgen schematic:
-        port vdd_st(.pos=(1,21); .align=Orientation.East)
-        port vdd   (.pos=(1,22); .align=Orientation.East)
-        port vss_st(.pos=(1,1) ; .align=Orientation.East)
-        port vss   (.pos=(1,0) ; .align=Orientation.East)
-        port rst_n (.pos=(1,10); .align=Orientation.East)
+    viewgen schematic -> Schematic:
+        port vdd_st: .pos=(1,21); .align=Orientation.East
+        port vdd: .pos=(1,22); .align=Orientation.East
+        port vss_st: .pos=(1,1); .align=Orientation.East
+        port vss: .pos=(1,0); .align=Orientation.East
+        port rst_n: .pos=(1,10); .align=Orientation.East
 
         path out_p, out_n
 
@@ -246,8 +235,8 @@ cell VcoRing:
 
         for i in range(2):
             xoffset = 10 * i
-            port out_p[i](.pos=(12 + xoffset, 17); .align=Orientation.West)
-            port out_n[i](.pos=(12 + xoffset,  7); .align=Orientation.West)
+            port out_p[i]: .pos=(12 + xoffset, 17); .align=Orientation.West
+            port out_n[i]: .pos=(12 + xoffset,  7); .align=Orientation.West
 
             VcoHalfStage stage_p[i]:
                 .out    -- int_p[i]
@@ -274,161 +263,149 @@ cell VcoRing:
                 .pos = (5 + xoffset, 3)
 
 
-    @generate
-    def layout(self):
-        layers = ihp130.SG13G2().layers
-        l = Layout(ref_layers=layers, cell=self, symbol=self.symbol)
-        s = Solver(l)
+    viewgen layout(layers=ihp130.SG13G2().layers) -> Layout:
+        path stage_n, stage_p, out_n, out_p
 
-        l.stage_n = PathNode()
-        l.stage_p = PathNode()
-        l.out_n = PathNode()
-        l.out_p = PathNode()
+        .nwell = LayoutRect(layer=layers.NWell)
 
-        l.nwell = LayoutRect(layer=layers.NWell)
-       
-        l.vdd_st_bar = LayoutRect(layer=layers.Metal1)
-        l.vdd_st_bar % LayoutPin(pin=self.symbol.vdd_st)
+        .vdd_st_bar = LayoutRect(layer=layers.Metal1)
+        .vdd_st_bar % LayoutPin(pin=self.symbol.vdd_st)
 
-        l.vss_st_bar_n = LayoutRect(layer=layers.Metal1)
-        l.vss_st_bar_n % LayoutPin(pin=self.symbol.vss_st)
+        .vss_st_bar_n = LayoutRect(layer=layers.Metal1)
+        .vss_st_bar_n % LayoutPin(pin=self.symbol.vss_st)
 
-        l.vss_st_bar_p = LayoutRect(layer=layers.Metal1)
-        l.vss_st_bar_p % LayoutPin(pin=self.symbol.vss_st)
+        .vss_st_bar_p = LayoutRect(layer=layers.Metal1)
+        .vss_st_bar_p % LayoutPin(pin=self.symbol.vss_st)
 
         for i in range(2):
-            l.stage_p[i] = LayoutInstance(ref=VcoHalfStage().layout, orientation=Orientation.MX)
-            l.stage_n[i] = LayoutInstance(ref=VcoHalfStage().layout)
+            .stage_p[i] = LayoutInstance(ref=VcoHalfStage().layout, orientation=Orientation.MX)
+            .stage_n[i] = LayoutInstance(ref=VcoHalfStage().layout)
             if i == 0:
-                l.stage_p[i].orientation *= Orientation.MY
-                l.stage_n[i].orientation *= Orientation.MY
-            s.constrain(l.stage_n[i].vddbar.rect.southwest == l.stage_p[i].vddbar.rect.southwest)
+                .stage_p[i].orientation *= Orientation.MY
+                .stage_n[i].orientation *= Orientation.MY
+            ! .stage_n[i].vddbar.rect.southwest == .stage_p[i].vddbar.rect.southwest
 
             if i > 0:
-                s.constrain(l.stage_n[i].vddbar.rect.west == l.stage_n[i-1].vddbar.rect.east)
+                ! .stage_n[i].vddbar.rect.west == .stage_n[i-1].vddbar.rect.east
 
-            s.constrain(l.nwell.rect.contains(l.stage_p[i].nwell.rect))
-            s.constrain(l.nwell.rect.contains(l.stage_n[i].nwell.rect))
+            ! .nwell.rect.contains(.stage_p[i].nwell.rect)
+            ! .nwell.rect.contains(.stage_n[i].nwell.rect)
 
-            outbar_n = l.stage_n[i].outbar_outn
-            l.out_n[i] = LayoutRect(layer=outbar_n.layer.nid)
-            s.constrain(l.out_n[i].rect == outbar_n.rect)
-            l.out_n[i] % LayoutPin(pin=self.symbol.out_n[i])
+            outbar_n = .stage_n[i].outbar_outn
+            .out_n[i] = LayoutRect(layer=outbar_n.layer.nid)
+            ! .out_n[i].rect == outbar_n.rect
+            .out_n[i] % LayoutPin(pin=self.symbol.out_n[i])
 
-            outbar_p = l.stage_p[i].outbar_outn
-            l.out_p[i] = LayoutRect(layer=outbar_p.layer.nid)
-            s.constrain(l.out_p[i].rect == outbar_p.rect)
-            l.out_p[i] % LayoutPin(pin=self.symbol.out_p[i])
+            outbar_p = .stage_p[i].outbar_outn
+            .out_p[i] = LayoutRect(layer=outbar_p.layer.nid)
+            ! .out_p[i].rect == outbar_p.rect
+            .out_p[i] % LayoutPin(pin=self.symbol.out_p[i])
 
-            s.constrain(l.vdd_st_bar.rect.contains(l.stage_p[i].vddbar.rect))
-            s.constrain(l.vdd_st_bar.rect.contains(l.stage_n[i].vddbar.rect))
+            ! .vdd_st_bar.rect.contains(.stage_p[i].vddbar.rect)
+            ! .vdd_st_bar.rect.contains(.stage_n[i].vddbar.rect)
 
-            s.constrain(l.vss_st_bar_n.rect.contains(l.stage_n[i].vssbar.rect))
-            s.constrain(l.vss_st_bar_p.rect.contains(l.stage_p[i].vssbar.rect))
+            ! .vss_st_bar_n.rect.contains(.stage_n[i].vssbar.rect)
+            ! .vss_st_bar_p.rect.contains(.stage_p[i].vssbar.rect)
 
         vias = {layers.Via1: [], layers.Via2: []}
 
-        s.constrain(l.stage_p[0].pos==(0,0))
+        ! .stage_p[0].pos == (0,0)
 
         # Connect rst_n of stage_n[0] and stage_p[1] to VDD:
-        l.rsttie = PathNode()
-        for i, stage in enumerate([l.stage_n[0], l.stage_p[1]]):
-            l.rsttie[i] = LayoutRectPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
-            s.constrain(l.rsttie[i][0] == stage.rst_n.rect.center)
-            s.constrain(l.rsttie[i][1] == (l.rsttie[i][0].x, stage.vddbar.rect.cy))
-            vias[layers.Via1] += [l.rsttie[i][0], l.rsttie[i][1]]
+        path rsttie
+        for i, stage in enumerate([.stage_n[0], .stage_p[1]]):
+            .rsttie[i] = LayoutRectPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
+            ! .rsttie[i][0] == stage.rst_n.rect.center
+            ! .rsttie[i][1] == (.rsttie[i][0].x, stage.vddbar.rect.cy)
+            vias[layers.Via1] += [.rsttie[i][0], .rsttie[i][1]]
 
         # Connect rst_n of stage_n[1] and stage_p[0] to own rst_n:
 
-        l.rst_n = LayoutRect(layer=layers.Metal2)
-        s.constrain(l.rst_n.rect.width == 200)
-        s.constrain(l.rst_n.rect.uy == l.stage_p[1].vssbar.rect.uy + 1000)
-        s.constrain(l.rst_n.rect.cx == 0.5*l.stage_p[0].rst_n.rect.cx + 0.5*l.stage_n[1].rst_n.rect.cx)
-        s.constrain(l.rst_n.rect.ly == l.stage_n[1].rst_n.rect.ly)
-        l.rst_n % LayoutPin(pin=self.symbol.rst_n)
+        .rst_n = LayoutRect(layer=layers.Metal2)
+        ! .rst_n.rect.width == 200
+        ! .rst_n.rect.uy == .stage_p[1].vssbar.rect.uy + 1000
+        ! .rst_n.rect.cx == 0.5*.stage_p[0].rst_n.rect.cx + 0.5*.stage_n[1].rst_n.rect.cx
+        ! .rst_n.rect.ly == .stage_n[1].rst_n.rect.ly
+        .rst_n % LayoutPin(pin=self.symbol.rst_n)
 
-        r = l % LayoutRect(layer=layers.Metal2)
-        s.constrain(r.rect.contains(l.stage_n[1].rst_n.rect))
-        s.constrain(r.rect.lx == l.rst_n.rect.ux)
+        r = . % LayoutRect(layer=layers.Metal2)
+        ! r.rect.contains(.stage_n[1].rst_n.rect)
+        ! r.rect.lx == .rst_n.rect.ux
 
-        vias[layers.Via1].append(l.stage_n[1].rst_n.rect.center)
+        vias[layers.Via1].append(.stage_n[1].rst_n.rect.center)
 
-        r = l % LayoutRect(layer=layers.Metal2)
-        s.constrain(r.rect.contains(l.stage_p[0].rst_n.rect))
-        s.constrain(r.rect.ux == l.rst_n.rect.lx)
+        r = . % LayoutRect(layer=layers.Metal2)
+        ! r.rect.contains(.stage_p[0].rst_n.rect)
+        ! r.rect.ux == .rst_n.rect.lx
 
-        vias[layers.Via1].append(l.stage_p[0].rst_n.rect.center)
+        vias[layers.Via1].append(.stage_p[0].rst_n.rect.center)
 
         # Connect out and fb pins of halfstage pairs on Metal2:
 
-        l.outv_p = PathNode()
-        l.outv_n = PathNode()
+        path outv_p, outv_n
 
         for i in range(2):
-            l.outv_p[i] = LayoutPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
-            s.constrain(l.outv_p[i][0] == l.stage_n[i].fb.rect.center)
-            s.constrain(l.outv_p[i][1].x == l.outv_p[i][0].x)
-            s.constrain(l.outv_p[i][1].y == l.stage_p[i].outbar_h.rect.cy)
-            vias[layers.Via1] += [l.outv_p[i][0], l.outv_p[0][1]]
+            .outv_p[i] = LayoutPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
+            ! .outv_p[i][0] == .stage_n[i].fb.rect.center
+            ! .outv_p[i][1].x == .outv_p[i][0].x
+            ! .outv_p[i][1].y == .stage_p[i].outbar_h.rect.cy
+            vias[layers.Via1] += [.outv_p[i][0], .outv_p[0][1]]
 
-            l.outv_n[i] = LayoutPath(3, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
-            s.constrain(l.outv_n[i][0] == l.stage_p[i].fb.rect.center)
+            .outv_n[i] = LayoutPath(3, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
+            ! .outv_n[i][0] == .stage_p[i].fb.rect.center
             if i == 0:
-                s.constrain(l.outv_n[i][2] == l.stage_n[i].outbar_h.rect.west + (150, 0))
+                ! .outv_n[i][2] == .stage_n[i].outbar_h.rect.west + (150, 0)
             else:
-                s.constrain(l.outv_n[i][2] == l.stage_n[i].outbar_h.rect.east - (150,0))
-            s.constrain(l.outv_n[i][1] == (l.outv_n[i][2].x, l.outv_n[i][0].y))
-            vias[layers.Via1] += [l.outv_n[i][0], l.outv_n[i][2]]
+                ! .outv_n[i][2] == .stage_n[i].outbar_h.rect.east - (150,0)
+            ! .outv_n[i][1] == (.outv_n[i][2].x, .outv_n[i][0].y)
+            vias[layers.Via1] += [.outv_n[i][0], .outv_n[i][2]]
 
         # Connect stage[0] inputs/outputs with stage[1] inputs/outputs:
 
         for inp, out in [
-            (l.stage_n[1].inp, l.outv_n[0][2]),
-            (l.stage_p[1].inp, l.outv_p[0][1]),
-            (l.stage_n[0].inp, (l.outv_p[1][0].x, l.outv_n[0][2].y + 500)),
-            (l.stage_p[0].inp, (l.outv_n[1][2].x, l.outv_p[0][1].y - 500))]:
+            (.stage_n[1].inp, .outv_n[0][2]),
+            (.stage_p[1].inp, .outv_p[0][1]),
+            (.stage_n[0].inp, (.outv_p[1][0].x, .outv_n[0][2].y + 500)),
+            (.stage_p[0].inp, (.outv_n[1][2].x, .outv_p[0][1].y - 500))]:
 
-            m3_horiz = l % LayoutPath(2, layer=layers.Metal3, width=200, ext_bgn=150, ext_end=150)
-            s.constrain(m3_horiz[0] == out)
-            s.constrain(m3_horiz[1].y == m3_horiz[0].y)
-            s.constrain(m3_horiz[1].x == inp.rect.cx)
+            m3_horiz = . % LayoutPath(2, layer=layers.Metal3, width=200, ext_bgn=150, ext_end=150)
+            ! m3_horiz[0] == out
+            ! m3_horiz[1].y == m3_horiz[0].y
+            ! m3_horiz[1].x == inp.rect.cx
             vias[layers.Via2] += [m3_horiz[0], m3_horiz[1]]
 
-            m2_vert = l % LayoutPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
-            s.constrain(m2_vert[0] == inp.rect.center)
-            s.constrain(m2_vert[1] == m3_horiz[1])
+            m2_vert = . % LayoutPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
+            ! m2_vert[0] == inp.rect.center
+            ! m2_vert[1] == m3_horiz[1]
             vias[layers.Via1].append(m2_vert[0])
 
         # Add vias:
         for layer, vertices in vias.items():
             for vertex in vertices:
-                via = l % LayoutRect(layer=layer)
-                s.constrain(via.rect.size == (190, 190))
-                s.constrain(via.rect.center == vertex)
-
-        s.solve()
-        return l
+                via = . % LayoutRect(layer=layer)
+                ! via.rect.size == (190, 190)
+                ! via.rect.center == vertex
 
 cell Vco:
     width = Parameter(R, default=300n)
     length = Parameter(R, default=130n)
-    viewgen symbol:
-        inout vdd(.align=Orientation.North)
-        inout vss(.align=Orientation.South)
+    viewgen symbol -> Symbol:
+        inout vdd: .align=Orientation.North
+        inout vss: .align=Orientation.South
 
-        input rst_n(.align=Orientation.West)
-        input vbias(.align=Orientation.West)
+        input rst_n: .align=Orientation.West
+        input vbias: .align=Orientation.West
 
         path out_p, out_n
         for i in range(2):
-            output out_p[i](.align=Orientation.East)
-            output out_n[i](.align=Orientation.East)
+            output out_p[i]: .align=Orientation.East
+            output out_n[i]: .align=Orientation.East
 
-    viewgen schematic:
-        port vdd  (.pos=(4,21); .align=Orientation.East)
-        port vss  (.pos=(4,0) ; .align=Orientation.East)
-        port rst_n(.pos=(13,9); .align=Orientation.East)
-        port vbias(.pos=(4,6) ; .align=Orientation.East)
+    viewgen schematic -> Schematic:
+        port vdd: .pos=(4,21); .align=Orientation.East
+        port vss: .pos=(4,0); .align=Orientation.East
+        port rst_n: .pos=(13,9); .align=Orientation.East
+        port vbias: .pos=(4,6); .align=Orientation.East
 
         net vss_st
         net vdd_st
@@ -436,8 +413,8 @@ cell Vco:
 
         path out_p, out_n
         for i in range(2):
-            port out_p[i](.pos=(22, 9 + 2 * i); .align=Orientation.West)
-            port out_n[i](.pos=(22,10 + 2 * i); .align=Orientation.West)
+            port out_p[i]: .pos=(22, 9 + 2 * i); .align=Orientation.West
+            port out_n[i]: .pos=(22,10 + 2 * i); .align=Orientation.West
 
         VcoRing ring:
             .vss     -- vss
@@ -485,9 +462,9 @@ cell Vco:
             mos.$w = self.width
 
 cell VcoTb:
-    viewgen symbol:
+    viewgen symbol -> Symbol:
         pass
-    viewgen schematic:
+    viewgen schematic -> Schematic:
         net vdd, vss, vbias, rst_n
 
         path out_p, out_n, nc
@@ -610,23 +587,21 @@ def report_analog_design():
 
     netlist = HighlevelSim(SimHierarchy.from_schematic(Vco().schematic)).netlister.out()
 
-    nl = chr(10) # TODO: Fix ORD2 string literal bug
-
     return Report([
         Markdown("# Analog design report: Pseudo-differential voltage-controlled ring oscillator"),
         Svg.from_view(Vco().symbol),
         Markdown(
-            f"## Transistor count (schematic){nl}"
-            f"There are **{transistor_count}** transistors in the example design.{nl}"
-            f"{nl}"
-            f" | Instance Name | Reference |{nl}"
-            f"| -- | -- |{nl}"
-            + f'{nl}'.join(transistor_table) +
-            f"{nl}"
-            f"## Rectangle count (layout){nl}"
-            f"The layout comprises **{rect_count}** rectangles.{nl}"
-            f"{nl}"
-            f"(This is only the VcoRing part.){nl}"
+            f"## Transistor count (schematic)\n"
+            f"There are **{transistor_count}** transistors in the example design.\n"
+            f"\n"
+            f" | Instance Name | Reference |\n"
+            f"| -- | -- |\n"
+            + f'\n'.join(transistor_table) +
+            f"\n"
+            f"## Rectangle count (layout)\n"
+            f"The layout comprises **{rect_count}** rectangles.\n"
+            f"\n"
+            f"(This is only the VcoRing part.)\n"
             f"## Vco netlist"
         ),
         PreformattedText(netlist)
