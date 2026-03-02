@@ -15,6 +15,16 @@ class SRouter:
         self.cur_pos = pos
         self.path = None
         self.path_order = 0
+        self.stack = []
+        self.place_throughrect = True
+
+    def push(self):
+        self.stack.append(self.cur_pos)
+
+    def pop(self):
+        self._end_path()
+        self.place_throughrect = False
+        self.cur_pos = self.stack.pop()
 
     def _add_vertex(self):
         v = self.path % PolyVec2I(order=self.path_order)
@@ -42,16 +52,18 @@ class SRouter:
     def _end_path(self):
         l = self.cur_layer
         if self.path is None:
-            if None in (l.route_via_width, l.route_via_height):
-                raise SRouterException("Cannot draw via-like rect on layer wher"
-                    " route_via_width or route_via_height is None.")
-            r = self.layout % LayoutRect(layer=l)
-            self.solver.constrain(r.rect.center == self.cur_pos)
-            self.solver.constrain(r.rect.size ==
-                (l.route_via_width, l.route_via_height))
+            if self.place_throughrect:
+                if None in (l.route_via_width, l.route_via_height):
+                    raise SRouterException("Cannot draw via-like rect on layer wher"
+                        " route_via_width or route_via_height is None.")
+                r = self.layout % LayoutRect(layer=l)
+                self.solver.constrain(r.rect.center == self.cur_pos)
+                self.solver.constrain(r.rect.size ==
+                    (l.route_via_width, l.route_via_height))
         else:
             self.path = None
             self.path_order = 0
+        self.place_throughrect = True
 
     def layer(self, layer: Layer):
         while self.cur_layer != layer:
