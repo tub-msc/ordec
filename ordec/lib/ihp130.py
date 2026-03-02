@@ -120,11 +120,20 @@ class SG13G2(Cell):
         # Metal stack
         # -----------
 
-        def addmetal(name, layer, color):
+        route_id = 0
+        def addmetal(name, layer, color, route_width=100, route_ext=100, route_via=(100,100)):
+            nonlocal route_id
+            route_via_width, route_via_height = route_via
             setattr(s, name, Layer(
                 gdslayer_shapes=GdsLayer(layer=layer, data_type=0),
                 style_fill=color,
+                route_id=route_id,
+                route_wire_width=route_width,
+                route_wire_ext=route_ext,
+                route_via_width=route_via_width,
+                route_via_height=route_via_height,
             ))
+            route_id += 1
             getattr(s, name).pin = Layer(
                 gdslayer_text=GdsLayer(layer=layer, data_type=25),
                 gdslayer_shapes=GdsLayer(layer=layer, data_type=2),
@@ -132,18 +141,24 @@ class SG13G2(Cell):
                 is_pinlayer=True,
             )
 
-        def addvia(name, layer, color):
+        def addvia(name, layer, color, route_via=(100,100)):
+            nonlocal route_id
+            route_via_width, route_via_height = route_via
             setattr(s, name, Layer(
                 gdslayer_shapes=GdsLayer(layer=layer, data_type=0),
                 style_stroke=color,
                 style_crossrect=True,
+                route_id=route_id,
+                route_via_width=route_via_width,
+                route_via_height=route_via_height,
             ))
+            route_id += 1
 
-        addmetal("Metal1", 8, rgb_color("#39bfff"))
-        addvia("Via1", 19, rgb_color("#ccccff"))
-        addmetal("Metal2", 10, rgb_color("#ccccd9"))
-        addvia("Via2", 29, rgb_color("#ff3736"))
-        addmetal("Metal3", 30, rgb_color("#d80000"))
+        addmetal("Metal1", 8, rgb_color("#39bfff"), route_width=210, route_ext=95+50, route_via=(480, 300))
+        addvia("Via1", 19, rgb_color("#ccccff"), route_via=(190,190))
+        addmetal("Metal2", 10, rgb_color("#ccccd9"), route_width=210, route_ext=95+50, route_via=(480, 300))
+        addvia("Via2", 29, rgb_color("#ff3736"), route_via=(190,190))
+        addmetal("Metal3", 30, rgb_color("#d80000"), route_width=210, route_ext=95+50, route_via=(480, 300))
         addvia("Via3", 49, rgb_color("#9ba940"))
         addmetal("Metal4", 50, rgb_color("#93e837"))
         addvia("Via4", 66, rgb_color("#deac5e"))

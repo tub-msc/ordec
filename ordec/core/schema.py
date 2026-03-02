@@ -814,6 +814,17 @@ class Layer(NonLeafNode):
     #: This flag affects the behavior of the pinlayer() method.
     is_pinlayer = Attr(bool, optional=False, default=False) 
 
+    #: route_id is for SRouter. To route from layer n to layer m (m > n), all
+    #: layers with route_ids x with m > x > n need to be passed. route_ids
+    #: should alternate between metal (even) and vias (odd). This is only
+    #: applicable for the metal stack, not other FEOL layers.
+    route_id = Attr(int, optional=True)
+
+    route_via_width = Attr(int)
+    route_via_height = Attr(int)
+    route_wire_width = Attr(int)
+    route_wire_ext = Attr(int)
+
     def pinlayer(self) -> 'Layer':
         """
         Returns the layer on which pin shapes corresponding to the current
@@ -830,6 +841,7 @@ class Layer(NonLeafNode):
 
     gdslayer_text_index = Index(gdslayer_text, unique=True)
     gdslayer_shapes_index = Index(gdslayer_shapes, unique=True)
+    route_id_index = Index(route_id, unique=True)
 
     def inline_css(self) -> str:
          return f"fill:{self.style_fill};stroke:{self.style_stroke};"
