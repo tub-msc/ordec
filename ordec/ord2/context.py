@@ -6,7 +6,7 @@ from contextvars import ContextVar, Token
 
 # ordec imports
 from ..core import *
-from ..schematic.routing import schematic_routing
+from ..schematic.routing import schematic_routing, adjust_outline_initial
 from ..schematic import helpers
 
 _ctx_var = ContextVar("ctx", default=None)
@@ -17,8 +17,6 @@ class _CtxWrapper:
 
     def __call__(self):
         return _ctx_var.get()
-ctx = _CtxWrapper()
-
 
 class OrdContext:
     """
@@ -26,10 +24,14 @@ class OrdContext:
     ORDB element is alive and accessible via relative
     accesses (dotted notation)
     """
+    ctx = _CtxWrapper()
+
     def __init__(self, root=None, parent=None):
         self.root = root
         self._explicit_parent = parent
         self.parent = None
+        self._run_routing = True
+        self._run_schem_check = True
 
     def __enter__(self):
         """Enter context, set context variable and save parent"""
@@ -64,11 +66,32 @@ class OrdContext:
         helpers.symbol_place_pins(self.root, vpadding=2, hpadding=2)
         return self.root
 
+    def layout_postprocess(self):
+        """ Postprocess call when returning from layout"""
+        return self.root
+
     def schematic_postprocess(self):
         """ Postprocess call when returning from schematic"""
         helpers.resolve_instances(self.root)
-        self.root.outline = schematic_routing(self.root)
-        #from ordec.schematic.routing import adjust_outline_initial
-        #self.root.outline = adjust_outline_initial(self.root, Rect4R(lx=0, ly=0, ux=0, uy=0))
-        helpers.schem_check(self.root, add_conn_points=True, add_terminal_taps=True)
+        if self._run_routing:
+            self.root.outline = schematic_routing(self.root)
+        else:
+            self.root.outline = adjust_outline_initial(self.root)
+        if self._run_schem_check:
+            helpers.schem_check(self.root, add_conn_points=True, add_terminal_taps=True)
         return self.root
+
+def routing(enabled=True):
+    """Enable or disable automatic routing for the current ORD context."""
+    current_context = OrdContext.ctx()
+    if current_context is None:
+        raise RuntimeError("routing() can only be used inside an OrdContext")
+    current_context._run_routing = bool(enabled)
+
+def schem_check(enabled=True):
+    """Enable or disable schematic checks for the current ORD context."""
+    current_context = OrdContext.ctx()
+    if current_context is None:
+        raise RuntimeError("schem_check() can only be used inside an OrdContext")
+    current_context._run_schem_check = bool(enabled)
+

@@ -74,10 +74,10 @@ kwparams: "**" typedparam ","?
 
 lambdef: "lambda" [lambda_params] ":" test
 lambdef_nocond: "lambda" [lambda_params] ":" test_nocond
-lambda_params: lambda_paramvalue ("," lambda_paramvalue)* ["," [lambda_starparams | lambda_kwparams]]
+lambda_params: lambda_paramvalue ("," lambda_paramvalue)* ["," SLASH ("," lambda_paramvalue)*] ["," [lambda_starparams | lambda_kwparams]]
           | lambda_starparams
           | lambda_kwparams
-?lambda_paramvalue: name ("=" test)?
+lambda_paramvalue: name ("=" test)?
 lambda_starparams: "*" [name]  ("," lambda_paramvalue)* ["," [lambda_kwparams]]
 lambda_kwparams: "**" name ","?
 
@@ -95,7 +95,8 @@ lambda_kwparams: "**" name ","?
             | assert_stmt
             | connect_stmt
             | path_stmt
-            | net_stmt)
+            | net_stmt
+            | constrain_stmt)
 
 expr_stmt: testlist_star_expr
 assign_stmt: annassign | augassign | assign
@@ -150,7 +151,17 @@ except_clause: "except" [test ["as" name]] ":" suite
 
 with_stmt: "with" with_items ":" suite
 with_items: with_item ("," with_item)*
-with_item: test ["as" name]
+with_item: test ["as" with_target]
+
+?with_target: with_target "." name -> getattr
+            | with_target "[" subscriptlist "]" -> getitem
+            | name -> var
+            | "(" with_target ")"
+            | "(" _with_target_items ")" -> tuple
+            | "[" _with_target_items "]" -> list
+_with_target_items: with_target_item ("," with_target_item)* ","?
+?with_target_item: with_target
+                 | "*" with_target -> star_expr
 
 match_stmt: "match" test ":" _NEWLINE _INDENT case+ _DEDENT
 
@@ -291,7 +302,7 @@ stararg: "*" test
 kwargs: "**" test
 ?argvalue: test ("=" test)?
 
-comprehension{comp_result}: comp_result comp_fors [comp_if]
+comprehension{comp_result}: comp_result comp_fors comp_if*
 comp_fors: comp_for+
 comp_for: [ASYNC] "for" exprlist "in" or_test
 ASYNC: "async"
@@ -317,8 +328,9 @@ f_string_content_single: FSTRING_TEXT_SINGLE
                        | f_expression_single
                        | "{{" -> literal_open_brace
                        | "}}" -> literal_close_brace
-f_expression_double: "{" test conversion? format_spec_double? "}"
-f_expression_single: "{" test conversion? format_spec_single? "}"
+f_expression_double: "{" test debug_eq? conversion? format_spec_double? "}"
+f_expression_single: "{" test debug_eq? conversion? format_spec_single? "}"
+debug_eq: "="
 format_spec_single: ":" (FSTRING_TEXT_SINGLE | "{" test "}")+
 format_spec_double: ":" (FSTRING_TEXT_DOUBLE | "{" test "}")+
 conversion: "!" /[rsa]/i
@@ -369,10 +381,11 @@ RATIONAL: DEC_NUMBER SLASH DEC_NUMBER
 
 connect_stmt: testlist_star_expr "--" testlist_star_expr
 celldef: "cell" name ":" suite
-viewgen: "viewgen" name ":" suite
+viewgen: "viewgen" name ["(" [arguments] ")"] "->" name ":" suite
+constrain_stmt: "!" test
 context_body: ":" suite
-              | "(" simple_stmt? ")" _NEWLINE
-context_element: name context_target context_body
+context_element: atom_expr context_target context_body
+
 ?context_target: context_target "." name -> getattr
 		       | context_target "[" subscriptlist "]" -> getitem
    	           | name -> var

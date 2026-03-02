@@ -113,6 +113,8 @@ def discover_views(conn_globals, recursive=True, modules_visited=None):
     views = []
 
     for k, v in conn_globals.items():
+        if k.startswith("__"):
+            continue
         if isinstance(v, ModuleType) and recursive:
             if v in modules_visited:
                 continue
@@ -323,7 +325,10 @@ class ConnectionHandler:
         return msg_ret
 
     def build_cells(self, source_type: str, source_data: str) -> (dict, dict):
-        conn_globals = {}
+        conn_globals = {
+            "__ordec_core__": importlib.import_module("ordec.core"),
+            "__ord_context__": importlib.import_module("ordec.ord2.context"),
+        }
         exc = None
         if source_type == 'ord':
             # Having the import here enables auto-reloading of ord.
