@@ -18,19 +18,21 @@ class SRouter:
         self.path = None
         self.path_order = 0
         self.stack = []
-        self.place_throughrect = True
+        self.place_throughrect = False
 
     def _rsl(self) -> RoutingSpecLayer:
         """Look up the RoutingSpecLayer for the current layer."""
         return self.routing_spec.one(RoutingSpecLayer.layer_index.query(self.cur_layer))
 
     def push(self):
-        self.stack.append(self.cur_pos)
+        self.stack.append((self.cur_pos, self.cur_layer))
 
     def pop(self):
-        self._end_path()
+        #self._end_path()
+        self.path = None
+        self.path_order = 0
         self.place_throughrect = False
-        self.cur_pos = self.stack.pop()
+        self.cur_pos, self.cur_layer = self.stack.pop()
 
     def _add_vertex(self):
         v = self.path % PolyVec2I(order=self.path_order)
@@ -54,6 +56,14 @@ class SRouter:
 
         self.cur_pos = pos
         self._add_vertex()
+
+    def move_x(self, x):
+        """Move horizontally, keeping the current y coordinate."""
+        self.move((x, self.cur_pos[1]))
+
+    def move_y(self, y):
+        """Move vertically, keeping the current x coordinate."""
+        self.move((self.cur_pos[0], y))
 
     def _end_path(self):
         if self.path is None:
