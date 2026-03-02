@@ -21,6 +21,7 @@ from ordec.report import *
 from ordec.layout.makevias import makevias
 from ordec.layout import write_gds
 from ordec.layout import helpers
+from ordec.layout import SRouter
 
 cell VcoHalfStage:
     width = Parameter(R, default=300n)
@@ -307,7 +308,7 @@ cell VcoRing:
             ! .vss_st_bar_n.rect.contains(.stage_n[i].vssbar.rect)
             ! .vss_st_bar_p.rect.contains(.stage_p[i].vssbar.rect)
 
-        vias = {layers.Via1: [], layers.Via2: []}
+        vias = {layers.Via1: []}
 
         ! .stage_p[0].pos == (0,0)
 
@@ -340,44 +341,61 @@ cell VcoRing:
 
         vias[layers.Via1].append(.stage_p[0].rst_n.rect.center)
 
+        # RoutingSpec for SRouter (Metal1 through Metal3):
+
+        rs = RoutingSpec(ref_layers=layers)
+        rs % RoutingSpecLayer(layer=layers.Metal1, route_id=0)
+        rs % RoutingSpecLayer(layer=layers.Via1, route_id=1,
+            route_via_width=190, route_via_height=190)
+        rs % RoutingSpecLayer(layer=layers.Metal2, route_id=2,
+            route_wire_width=200, route_wire_ext=150)
+        rs % RoutingSpecLayer(layer=layers.Via2, route_id=3,
+            route_via_width=190, route_via_height=190)
+        rs % RoutingSpecLayer(layer=layers.Metal3, route_id=4,
+            route_wire_width=200, route_wire_ext=150)
+
         # Connect out and fb pins of halfstage pairs on Metal2:
 
-        path outv_p, outv_n
+        outv_p_start = [None, None]
+        outv_p_end = [None, None]
+        outv_n_end = [None, None]
 
         for i in range(2):
-            .outv_p[i] = LayoutPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
-            ! .outv_p[i][0] == .stage_n[i].fb.rect.center
-            ! .outv_p[i][1].x == .outv_p[i][0].x
-            ! .outv_p[i][1].y == .stage_p[i].outbar_h.rect.cy
-            vias[layers.Via1] += [.outv_p[i][0], .outv_p[0][1]]
+            outv_p_start[i] = .stage_n[i].fb.rect.center
+            outv_p_end[i] = (.stage_n[i].fb.rect.cx, .stage_p[i].outbar_h.rect.cy)
+            sr = SRouter(__ordec_solver__.subgraph, __ordec_solver__,
+                layers.Via1, pos=outv_p_start[i], routing_spec=rs)
+            sr.layer(layers.Metal2)
+            sr.move(outv_p_end[i])
+            sr.layer(layers.Metal1)
 
-            .outv_n[i] = LayoutPath(3, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
-            ! .outv_n[i][0] == .stage_p[i].fb.rect.center
+            outv_n_start = .stage_p[i].fb.rect.center
             if i == 0:
-                ! .outv_n[i][2] == .stage_n[i].outbar_h.rect.west + (150, 0)
+                outv_n_end[i] = .stage_n[i].outbar_h.rect.west + (150, 0)
             else:
-                ! .outv_n[i][2] == .stage_n[i].outbar_h.rect.east - (150,0)
-            ! .outv_n[i][1] == (.outv_n[i][2].x, .outv_n[i][0].y)
-            vias[layers.Via1] += [.outv_n[i][0], .outv_n[i][2]]
+                outv_n_end[i] = .stage_n[i].outbar_h.rect.east - (150, 0)
+            sr = SRouter(__ordec_solver__.subgraph, __ordec_solver__,
+                layers.Via1, pos=outv_n_start, routing_spec=rs)
+            sr.layer(layers.Metal2)
+            sr.move((outv_n_end[i][0], outv_n_start[1]))
+            sr.move(outv_n_end[i])
+            sr.layer(layers.Metal1)
 
         # Connect stage[0] inputs/outputs with stage[1] inputs/outputs:
 
         for inp, out in [
-            (.stage_n[1].inp, .outv_n[0][2]),
-            (.stage_p[1].inp, .outv_p[0][1]),
-            (.stage_n[0].inp, (.outv_p[1][0].x, .outv_n[0][2].y + 500)),
-            (.stage_p[0].inp, (.outv_n[1][2].x, .outv_p[0][1].y - 500))]:
+            (.stage_n[1].inp, outv_n_end[0]),
+            (.stage_p[1].inp, outv_p_end[0]),
+            (.stage_n[0].inp, (outv_p_start[1][0], outv_n_end[0][1] + 500)),
+            (.stage_p[0].inp, (outv_n_end[1][0], outv_p_end[0][1] - 500))]:
 
-            m3_horiz = . % LayoutPath(2, layer=layers.Metal3, width=200, ext_bgn=150, ext_end=150)
-            ! m3_horiz[0] == out
-            ! m3_horiz[1].y == m3_horiz[0].y
-            ! m3_horiz[1].x == inp.rect.cx
-            vias[layers.Via2] += [m3_horiz[0], m3_horiz[1]]
-
-            m2_vert = . % LayoutPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
-            ! m2_vert[0] == inp.rect.center
-            ! m2_vert[1] == m3_horiz[1]
-            vias[layers.Via1].append(m2_vert[0])
+            sr = SRouter(__ordec_solver__.subgraph, __ordec_solver__,
+                layers.Metal2, pos=inp.rect.center, routing_spec=rs)
+            sr.move((inp.rect.cx, out[1]))
+            sr.layer(layers.Metal3)
+            sr.move(out)
+            sr.layer(layers.Metal2)
+            vias[layers.Via1].append(inp.rect.center)
 
         # Add vias:
         for layer, vertices in vias.items():
