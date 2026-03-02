@@ -353,3 +353,88 @@ def expand_pins(layout: Layout, directory: Directory):
             )
 
         pin.remove()
+
+def _normalize_poly_vertices(vertices: list[Vec2I]) -> tuple:
+    """Rotate vertex list so the lexicographically smallest (x, y) is first."""
+    if not vertices:
+        return ()
+    pairs = [(v.x, v.y) for v in vertices]
+    min_idx = min(range(len(pairs)), key=lambda i: pairs[i])
+    rotated = pairs[min_idx:] + pairs[:min_idx]
+    return tuple(rotated)
+
+def _poly_key(poly) -> tuple:
+    return (poly.layer.nid, _normalize_poly_vertices(poly.vertices()))
+
+def _label_key(label) -> tuple:
+    return (label.layer.nid, (label.pos.x, label.pos.y), label.text)
+
+def _pin_key(pin) -> tuple:
+    return (pin.pin.nid, _poly_key(pin.ref))
+
+@public
+def compare(layout_a, layout_b) -> str | None:
+    """
+    Compare two layouts for geometric equivalence.
+
+    Flattens and expands both layouts to LayoutPoly/LayoutLabel/LayoutPin,
+    then compares normalized geometry. ORDB path names are ignored.
+
+    Args:
+        layout_a: First Layout to compare.
+        layout_b: Second Layout to compare.
+
+    Returns:
+        None if the layouts are identical, else a str describing the
+        differences.
+    """
+    a = layout_a.mutable_copy()
+    b = layout_b.mutable_copy()
+    flatten(a)
+    flatten(b)
+    expand_geom(a)
+    expand_geom(b)
+
+    polys_a = sorted(_poly_key(p) for p in a.all(LayoutPoly))
+    polys_b = sorted(_poly_key(p) for p in b.all(LayoutPoly))
+
+    labels_a = sorted(_label_key(l) for l in a.all(LayoutLabel))
+    labels_b = sorted(_label_key(l) for l in b.all(LayoutLabel))
+
+    pins_a = sorted(_pin_key(p) for p in a.all(LayoutPin))
+    pins_b = sorted(_pin_key(p) for p in b.all(LayoutPin))
+
+    errors = []
+    if polys_a != polys_b:
+        only_a = [p for p in polys_a if p not in polys_b]
+        only_b = [p for p in polys_b if p not in polys_a]
+        errors.append(
+            f"Polygon mismatch:\n"
+            f"  Only in layout_a ({len(only_a)}):\n"
+            + "".join(f"    layer={p[0]} verts={p[1]}\n" for p in only_a)
+            + f"  Only in layout_b ({len(only_b)}):\n"
+            + "".join(f"    layer={p[0]} verts={p[1]}\n" for p in only_b)
+        )
+    if labels_a != labels_b:
+        only_a = [l for l in labels_a if l not in labels_b]
+        only_b = [l for l in labels_b if l not in labels_a]
+        errors.append(
+            f"Label mismatch:\n"
+            f"  Only in layout_a ({len(only_a)}):\n"
+            + "".join(f"    {l}\n" for l in only_a)
+            + f"  Only in layout_b ({len(only_b)}):\n"
+            + "".join(f"    {l}\n" for l in only_b)
+        )
+    if pins_a != pins_b:
+        only_a = [p for p in pins_a if p not in pins_b]
+        only_b = [p for p in pins_b if p not in pins_a]
+        errors.append(
+            f"Pin mismatch:\n"
+            f"  Only in layout_a ({len(only_a)}):\n"
+            + "".join(f"    pin={p[0]} shape={p[1]}\n" for p in only_a)
+            + f"  Only in layout_b ({len(only_b)}):\n"
+            + "".join(f"    pin={p[0]} shape={p[1]}\n" for p in only_b)
+        )
+    if errors:
+        return "\n".join(errors)
+    return None

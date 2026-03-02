@@ -24,6 +24,7 @@ __all__ = [
     'gds_str',
     'gds_str_from_file',
     'gds_str_from_layout',
+    'compare',
     'SRouter',
     'SRouterException',
 ]
