@@ -8,15 +8,21 @@ class SRouterException(Exception):
 
 class SRouter:
     """Stack router"""
-    def __init__(self, layout: Layout, solver: Solver, layer: Layer, pos: Vec2LinearTerm):
+    def __init__(self, layout: Layout, solver: Solver, layer: Layer,
+        pos: Vec2LinearTerm, routing_spec: RoutingSpec):
         self.layout = layout
         self.solver = solver
+        self.routing_spec = routing_spec
         self.cur_layer = layer
         self.cur_pos = pos
         self.path = None
         self.path_order = 0
         self.stack = []
         self.place_throughrect = True
+
+    def _rsl(self) -> RoutingSpecLayer:
+        """Look up the RoutingSpecLayer for the current layer."""
+        return self.routing_spec.one(RoutingSpecLayer.layer_index.query(self.cur_layer))
 
     def push(self):
         self.stack.append(self.cur_pos)
@@ -33,16 +39,16 @@ class SRouter:
 
     def move(self, pos: Vec2LinearTerm):
         if self.path is None:
-            l = self.cur_layer
-            if None in (l.route_wire_width, l.route_wire_ext):
+            rsl = self._rsl()
+            if None in (rsl.route_wire_width, rsl.route_wire_ext):
                 raise SRouterException("Cannot draw wire on layer where"
                     " route_wire_width or route_wire_ext is None.")
             self.path = self.layout % LayoutPath(
-                layer=l,
-                width=l.route_wire_width,
+                layer=self.cur_layer,
+                width=rsl.route_wire_width,
                 endtype=PathEndType.Custom,
-                ext_bgn=l.route_wire_ext,
-                ext_end=l.route_wire_ext,
+                ext_bgn=rsl.route_wire_ext,
+                ext_end=rsl.route_wire_ext,
                 )
             self._add_vertex()
 
@@ -50,16 +56,16 @@ class SRouter:
         self._add_vertex()
 
     def _end_path(self):
-        l = self.cur_layer
         if self.path is None:
             if self.place_throughrect:
-                if None in (l.route_via_width, l.route_via_height):
+                rsl = self._rsl()
+                if None in (rsl.route_via_width, rsl.route_via_height):
                     raise SRouterException("Cannot draw via-like rect on layer wher"
                         " route_via_width or route_via_height is None.")
-                r = self.layout % LayoutRect(layer=l)
+                r = self.layout % LayoutRect(layer=self.cur_layer)
                 self.solver.constrain(r.rect.center == self.cur_pos)
                 self.solver.constrain(r.rect.size ==
-                    (l.route_via_width, l.route_via_height))
+                    (rsl.route_via_width, rsl.route_via_height))
         else:
             self.path = None
             self.path_order = 0
@@ -68,10 +74,14 @@ class SRouter:
     def layer(self, layer: Layer):
         while self.cur_layer != layer:
             self._end_path()
-            if self.cur_layer.route_id < layer.route_id:
-                route_id_next = self.cur_layer.route_id + 1
+            rsl = self._rsl()
+            if rsl.route_id < self.routing_spec.one(
+                RoutingSpecLayer.layer_index.query(layer)).route_id:
+                route_id_next = rsl.route_id + 1
             else:
-                route_id_next = self.cur_layer.route_id - 1
-            self.cur_layer = layer.root.one(Layer.route_id_index.query(route_id_next))
+                route_id_next = rsl.route_id - 1
+            next_rsl = self.routing_spec.one(
+                RoutingSpecLayer.route_id_index.query(route_id_next))
+            self.cur_layer = next_rsl.layer
 
         self.cur_layer = layer

@@ -8,9 +8,10 @@ from ordec.core import *
 @generate_func
 def layout_basic():
     layers = ihp130.SG13G2().layers
+    rs = ihp130.SG13G2().default_routing_spec
     l = Layout(ref_layers=layers)
     s = Solver(l)
-    sr = SRouter(l, s, layers.Metal1, pos=(0, 0))
+    sr = SRouter(l, s, layers.Metal1, pos=(0, 0), routing_spec=rs)
     sr.move((1000, 0))
     sr.move((1000, 1000))
     sr.layer(layers.Metal3)
@@ -48,9 +49,10 @@ def test_basic():
 def layout_push_pop():
     """T-shaped route: go right, push, go up, pop, go down."""
     layers = ihp130.SG13G2().layers
+    rs = ihp130.SG13G2().default_routing_spec
     l = Layout(ref_layers=layers)
     s = Solver(l)
-    sr = SRouter(l, s, layers.Metal1, pos=(0, 0))
+    sr = SRouter(l, s, layers.Metal1, pos=(0, 0), routing_spec=rs)
     sr.move((1000, 0))
     sr.push()
     sr.move((1000, 1000))
@@ -64,9 +66,10 @@ def layout_push_pop():
 def layout_push_pop_layerchange():
     """T-shaped route: go right, push, go up, pop, go down."""
     layers = ihp130.SG13G2().layers
+    rs = ihp130.SG13G2().default_routing_spec
     l = Layout(ref_layers=layers)
     s = Solver(l)
-    sr = SRouter(l, s, layers.Metal1, pos=(0, 0))
+    sr = SRouter(l, s, layers.Metal1, pos=(0, 0), routing_spec=rs)
     sr.move((1000, 0))
     sr.push()
     sr.move((1000, 1000))
@@ -107,13 +110,3 @@ def test_push_pop_layerchange():
     # M2 path from popped position downward
     (p2,) = [p for p in l.all(LayoutPath) if p.layer == layers.Metal2]
     assert p2.vertices() == [Vec2I(1000, 0), Vec2I(1000, -1000)]
-
-# if __name__=="__main__":
-#     from ordec.layout import write_gds
-#     import os
-#     with open("out.gds", "wb") as f:
-#         write_gds(layout_basic(), f)
-
-#     os.system("rm -rf drc_out")
-#     os.system("python3 $ORDEC_PDK_IHP_SG13G2/libs.tech/klayout/tech/drc/run_drc.py --path out.gds --no_density --run_dir=drc_out")
-#     os.system("klayout out.gds -m drc_out/out_*_full.lyrdb")

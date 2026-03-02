@@ -120,20 +120,11 @@ class SG13G2(Cell):
         # Metal stack
         # -----------
 
-        route_id = 0
-        def addmetal(name, layer, color, route_width=100, route_ext=100, route_via=(100,100)):
-            nonlocal route_id
-            route_via_width, route_via_height = route_via
+        def addmetal(name, layer, color):
             setattr(s, name, Layer(
                 gdslayer_shapes=GdsLayer(layer=layer, data_type=0),
                 style_fill=color,
-                route_id=route_id,
-                route_wire_width=route_width,
-                route_wire_ext=route_ext,
-                route_via_width=route_via_width,
-                route_via_height=route_via_height,
             ))
-            route_id += 1
             getattr(s, name).pin = Layer(
                 gdslayer_text=GdsLayer(layer=layer, data_type=25),
                 gdslayer_shapes=GdsLayer(layer=layer, data_type=2),
@@ -141,24 +132,18 @@ class SG13G2(Cell):
                 is_pinlayer=True,
             )
 
-        def addvia(name, layer, color, route_via=(100,100)):
-            nonlocal route_id
-            route_via_width, route_via_height = route_via
+        def addvia(name, layer, color):
             setattr(s, name, Layer(
                 gdslayer_shapes=GdsLayer(layer=layer, data_type=0),
                 style_stroke=color,
                 style_crossrect=True,
-                route_id=route_id,
-                route_via_width=route_via_width,
-                route_via_height=route_via_height,
             ))
-            route_id += 1
 
-        addmetal("Metal1", 8, rgb_color("#39bfff"), route_width=210, route_ext=95+50, route_via=(480, 300))
-        addvia("Via1", 19, rgb_color("#ccccff"), route_via=(190,190))
-        addmetal("Metal2", 10, rgb_color("#ccccd9"), route_width=210, route_ext=95+50, route_via=(480, 300))
-        addvia("Via2", 29, rgb_color("#ff3736"), route_via=(190,190))
-        addmetal("Metal3", 30, rgb_color("#d80000"), route_width=210, route_ext=95+50, route_via=(480, 300))
+        addmetal("Metal1", 8, rgb_color("#39bfff"))
+        addvia("Via1", 19, rgb_color("#ccccff"))
+        addmetal("Metal2", 10, rgb_color("#ccccd9"))
+        addvia("Via2", 29, rgb_color("#ff3736"))
+        addmetal("Metal3", 30, rgb_color("#d80000"))
         addvia("Via3", 49, rgb_color("#9ba940"))
         addmetal("Metal4", 50, rgb_color("#93e837"))
         addvia("Via4", 66, rgb_color("#deac5e"))
@@ -212,6 +197,50 @@ class SG13G2(Cell):
             )
 
         return s
+
+    @generate
+    def default_routing_spec(self):
+        layers = self.layers
+        rs = RoutingSpec(ref_layers=layers)
+
+        route_id = 0
+        def addmetal(layer, route_width=100, route_ext=100, route_via=(100,100)):
+            nonlocal route_id
+            rs % RoutingSpecLayer(
+                layer=layer,
+                route_id=route_id,
+                route_wire_width=route_width,
+                route_wire_ext=route_ext,
+                route_via_width=route_via[0],
+                route_via_height=route_via[1],
+            )
+            route_id += 1
+
+        def addvia(layer, route_via=(100,100)):
+            nonlocal route_id
+            rs % RoutingSpecLayer(
+                layer=layer,
+                route_id=route_id,
+                route_via_width=route_via[0],
+                route_via_height=route_via[1],
+            )
+            route_id += 1
+
+        addmetal(layers.Metal1, route_width=210, route_ext=95+50, route_via=(480, 300))
+        addvia(layers.Via1, route_via=(190,190))
+        addmetal(layers.Metal2, route_width=210, route_ext=95+50, route_via=(480, 300))
+        addvia(layers.Via2, route_via=(190,190))
+        addmetal(layers.Metal3, route_width=210, route_ext=95+50, route_via=(480, 300))
+        addvia(layers.Via3)
+        addmetal(layers.Metal4)
+        addvia(layers.Via4)
+        addmetal(layers.Metal5)
+        addvia(layers.TopVia1)
+        addmetal(layers.TopMetal1)
+        addvia(layers.TopVia2)
+        addmetal(layers.TopMetal2)
+
+        return rs
 
 def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) -> Layout:
     """
