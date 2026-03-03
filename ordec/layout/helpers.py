@@ -322,6 +322,60 @@ def expand_instancearrays(layout: Layout):
         ainst.remove()
 
 
+def _point_in_polygon(px, py, vertices):
+    """Ray-casting point-in-polygon test. Returns True if (px, py) is inside."""
+    n = len(vertices)
+    inside = False
+    for i in range(n):
+        x1, y1 = vertices[i].x, vertices[i].y
+        x2, y2 = vertices[(i + 1) % n].x, vertices[(i + 1) % n].y
+        if (y1 > py) != (y2 > py):
+            x_intersect = x1 + (py - y1) * (x2 - x1) / (y2 - y1)
+            if px < x_intersect:
+                inside = not inside
+    return inside
+
+def _interior_point(vertices):
+    """
+    Find a point guaranteed to be inside the polygon.
+
+    Uses the centroid if it's inside (covers convex cases). Falls back to a
+    scanline approach for concave polygons where the centroid is outside.
+    """
+    n = len(vertices)
+    cx = sum(v.x for v in vertices) // n
+    cy = sum(v.y for v in vertices) // n
+
+    if _point_in_polygon(cx, cy, vertices):
+        return Vec2I(cx, cy)
+
+    # Scanline at centroid y: find x-intervals inside the polygon
+    y = cy
+    crossings = []
+    for i in range(n):
+        x1, y1 = vertices[i].x, vertices[i].y
+        x2, y2 = vertices[(i + 1) % n].x, vertices[(i + 1) % n].y
+        if (y1 > y) != (y2 > y):
+            x_intersect = x1 + (y - y1) * (x2 - x1) // (y2 - y1)
+            crossings.append(x_intersect)
+
+    crossings.sort()
+    # Pair crossings into inside intervals and pick closest to cx
+    best = None
+    best_dist = None
+    for i in range(0, len(crossings) - 1, 2):
+        mid_x = (crossings[i] + crossings[i + 1]) // 2
+        dist = abs(mid_x - cx)
+        if best_dist is None or dist < best_dist:
+            best = mid_x
+            best_dist = dist
+
+    if best is not None:
+        return Vec2I(best, y)
+
+    # Fallback (shouldn't happen for valid simple polygons)
+    return Vec2I(cx, cy)
+
 @public
 def expand_pins(layout: Layout, directory: Directory):
     """
@@ -344,8 +398,6 @@ def expand_pins(layout: Layout, directory: Directory):
                 f"Run expand_rects/expand_rectpolys/expand_rectpaths first."
             )
 
-        center = sum(vertices, start=Vec2I(0, 0)) // len(vertices)
-
         pinlayer = pin.ref.layer.pinlayer()
 
         layout % LayoutPoly(
@@ -354,7 +406,7 @@ def expand_pins(layout: Layout, directory: Directory):
             )
         layout % LayoutLabel(
             layer=pinlayer,
-            pos=center,
+            pos=_interior_point(vertices),
             text=directory.name_node(pin.pin),
             )
 

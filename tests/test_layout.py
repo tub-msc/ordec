@@ -1000,3 +1000,68 @@ def test_compare_pin_mismatch():
     result = compare(a, b)
     assert result is not None
     assert "Pin mismatch" in result
+
+
+def test_expand_pins_rect():
+    """expand_pins places label at center for a simple rectangle."""
+    sym = Symbol()
+    sym.my_pin = Pin()
+    sym = sym.freeze()
+
+    layers = SG13G2().layers
+    layout = Layout(ref_layers=layers, symbol=sym)
+
+    r = layout % LayoutRect(layer=layers.Metal1, rect=(0, 0, 100, 100))
+    r % LayoutPin(pin=sym.my_pin)
+
+    expand_rects(layout)
+    expand_pins(layout, Directory())
+
+    lbl = list(layout.all(LayoutLabel))[0]
+    assert lbl.pos == Vec2I(50, 50)
+
+
+def test_expand_pins_concave_L():
+    """expand_pins places label inside an L-shaped concave polygon."""
+    sym = Symbol()
+    sym.my_pin = Pin()
+    sym = sym.freeze()
+
+    layers = SG13G2().layers
+    layout = Layout(ref_layers=layers, symbol=sym)
+
+    # L-shape (CCW): centroid (100, 133) falls outside in the notch
+    verts = [
+        Vec2I(0, 0), Vec2I(200, 0), Vec2I(200, 100),
+        Vec2I(100, 100), Vec2I(100, 300), Vec2I(0, 300),
+    ]
+    poly = layout % LayoutPoly(layer=layers.Metal1, vertices=verts)
+    poly % LayoutPin(pin=sym.my_pin)
+
+    expand_pins(layout, Directory())
+
+    lbl = list(layout.all(LayoutLabel))[0]
+    assert lbl.pos == Vec2I(50, 133)
+
+
+def test_expand_pins_concave_U():
+    """expand_pins places label inside a U-shaped concave polygon."""
+    sym = Symbol()
+    sym.my_pin = Pin()
+    sym = sym.freeze()
+
+    layers = SG13G2().layers
+    layout = Layout(ref_layers=layers, symbol=sym)
+
+    # U-shape (CCW): centroid (150, 175) falls outside in the notch
+    verts = [
+        Vec2I(0, 0), Vec2I(300, 0), Vec2I(300, 300), Vec2I(200, 300),
+        Vec2I(200, 100), Vec2I(100, 100), Vec2I(100, 300), Vec2I(0, 300),
+    ]
+    poly = layout % LayoutPoly(layer=layers.Metal1, vertices=verts)
+    poly % LayoutPin(pin=sym.my_pin)
+
+    expand_pins(layout, Directory())
+
+    lbl = list(layout.all(LayoutLabel))[0]
+    assert lbl.pos == Vec2I(50, 175)
