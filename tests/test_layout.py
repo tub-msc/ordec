@@ -902,3 +902,101 @@ def test_expand_pins():
     assert labels == [(Vec2I(50, 50), "my_pin"), (Vec2I(250, 50), "my_pin0")]
 
 
+def test_compare_identical_different_order():
+    """compare() returns None for identical geometry with different vertex/NID ordering."""
+    layers = SG13G2().layers
+
+    a = Layout(ref_layers=layers)
+    a % LayoutRect(layer=layers.Metal1, rect=(0, 0, 100, 200))
+    a % LayoutPoly(layer=layers.Metal2, vertices=[
+        Vec2I(0, 0), Vec2I(300, 0), Vec2I(300, 300), Vec2I(0, 300)])
+    a % LayoutLabel(layer=layers.Metal1, pos=(50, 100), text="A")
+
+    b = Layout(ref_layers=layers)
+    # Reversed insertion order
+    b % LayoutLabel(layer=layers.Metal1, pos=(50, 100), text="A")
+    # Polygon with rotated vertex list (same shape)
+    b % LayoutPoly(layer=layers.Metal2, vertices=[
+        Vec2I(300, 300), Vec2I(0, 300), Vec2I(0, 0), Vec2I(300, 0)])
+    b % LayoutRect(layer=layers.Metal1, rect=(0, 0, 100, 200))
+
+    assert compare(a, b) is None
+
+def test_compare_different_vertices():
+    """compare() detects a rectangle with slightly different vertices."""
+    layers = SG13G2().layers
+
+    a = Layout(ref_layers=layers)
+    a % LayoutRect(layer=layers.Metal1, rect=(0, 0, 100, 200))
+
+    b = Layout(ref_layers=layers)
+    b % LayoutRect(layer=layers.Metal1, rect=(0, 0, 101, 200))
+
+    result = compare(a, b)
+    assert result is not None
+    assert "Polygon mismatch" in result
+
+def test_compare_fewer_objects():
+    """compare() detects when layout_b has fewer geometric objects."""
+    layers = SG13G2().layers
+
+    a = Layout(ref_layers=layers)
+    a % LayoutRect(layer=layers.Metal1, rect=(0, 0, 100, 200))
+    a % LayoutRect(layer=layers.Metal2, rect=(50, 50, 150, 250))
+
+    b = Layout(ref_layers=layers)
+    b % LayoutRect(layer=layers.Metal1, rect=(0, 0, 100, 200))
+
+    result = compare(a, b)
+    assert result is not None
+    assert "Only in layout_a" in result
+
+def test_compare_extra_object():
+    """compare() detects when layout_b has an additional geometric object."""
+    layers = SG13G2().layers
+
+    a = Layout(ref_layers=layers)
+    a % LayoutRect(layer=layers.Metal1, rect=(0, 0, 100, 200))
+
+    b = Layout(ref_layers=layers)
+    b % LayoutRect(layer=layers.Metal1, rect=(0, 0, 100, 200))
+    b % LayoutRect(layer=layers.Metal2, rect=(50, 50, 150, 250))
+
+    result = compare(a, b)
+    assert result is not None
+    assert "Only in layout_b" in result
+
+def test_compare_label_mismatch():
+    """compare() detects differing labels."""
+    layers = SG13G2().layers
+
+    a = Layout(ref_layers=layers)
+    a % LayoutLabel(layer=layers.Metal1, pos=(50, 100), text="A")
+
+    b = Layout(ref_layers=layers)
+    b % LayoutLabel(layer=layers.Metal1, pos=(50, 100), text="B")
+
+    result = compare(a, b)
+    assert result is not None
+    assert "Label mismatch" in result
+
+def test_compare_pin_mismatch():
+    """compare() detects differing LayoutPin nodes."""
+    sym = Symbol()
+    sym.pin_a = Pin()
+    sym.pin_b = Pin()
+    sym = sym.freeze()
+
+    layers = SG13G2().layers
+
+    a = Layout(ref_layers=layers, symbol=sym)
+    r1 = a % LayoutRect(layer=layers.Metal1, rect=(0, 0, 100, 100))
+    r1 % LayoutPin(pin=sym.pin_a)
+
+    b = Layout(ref_layers=layers, symbol=sym)
+    r2 = b % LayoutRect(layer=layers.Metal1, rect=(0, 0, 100, 100))
+    r2 % LayoutPin(pin=sym.pin_b)
+
+    result = compare(a, b)
+    assert result is not None
+    assert "Pin mismatch" in result

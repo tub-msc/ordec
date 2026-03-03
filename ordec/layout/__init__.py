@@ -5,6 +5,7 @@ from .webdata import *
 from .helpers import *
 from .makevias import *
 from .gds_out import *
+from .srouter import SRouter, SRouterException
 
 # Without __all__, Sphinx does not document the imported stuff.
 __all__ = [
@@ -23,4 +24,7 @@ __all__ = [
     'gds_str',
     'gds_str_from_file',
     'gds_str_from_layout',
+    'compare',
+    'SRouter',
+    'SRouterException',
 ]

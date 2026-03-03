@@ -834,6 +834,34 @@ class Layer(NonLeafNode):
     def inline_css(self) -> str:
          return f"fill:{self.style_fill};stroke:{self.style_stroke};"
 
+# RoutingSpec
+# -----------
+
+@public
+class RoutingSpec(SubgraphRoot):
+    """Routing specification for SRouter, decoupled from LayerStack."""
+    ref_layers = SubgraphRef(LayerStack, optional=False)
+
+@public
+class RoutingSpecLayer(Node):
+    """Per-layer routing parameters for SRouter."""
+    in_subgraphs = [RoutingSpec]
+
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+
+    #: route_id determines the routing order. To route from layer n to layer m
+    #: (m > n), all layers with route_ids x where m > x > n must be traversed.
+    #: route_ids should alternate between metal (even) and vias (odd).
+    route_id = Attr(int)
+
+    route_via_width = Attr(int)
+    route_via_height = Attr(int)
+    route_wire_width = Attr(int)
+    route_wire_ext = Attr(int)
+
+    route_id_index = Index(route_id, unique=True)
+    layer_index = Index(layer, unique=True)
+
 # Layout
 # ------
 
@@ -1118,13 +1146,13 @@ class LayoutPin(Node):
     a non-pin layer, and a corresponding pin layer shape is created
     automatically by expand_pins (in write_gds or the web viewer).
 
-    Currently, the associated shape must be a LayoutPoly, LayoutRectPoly or
-    LayoutRect. LayoutPath or LayoutRectPath are not supported.
+    The associated shape can be a LayoutPoly, LayoutRectPoly, LayoutRect,
+    LayoutPath or LayoutRectPath.
     """
     in_subgraphs = [Layout]
 
     ref = LocalRef(LayoutPoly|LayoutRectPoly|LayoutPath,
-        refcheck_custom=lambda val: issubclass(val, (LayoutPoly, LayoutRectPoly, LayoutRect)),
+        refcheck_custom=lambda val: issubclass(val, (LayoutPoly, LayoutRectPoly, LayoutRect, LayoutPath, LayoutRectPath)),
         )
     pin = ExternalRef(Pin,
         of_subgraph=lambda c: c.root.symbol,

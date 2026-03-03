@@ -198,6 +198,51 @@ class SG13G2(Cell):
 
         return s
 
+    @generate
+    def default_routing_spec(self):
+        layers = self.layers
+        rs = RoutingSpec(ref_layers=layers)
+
+        route_id = 0
+        def addmetal(layer, route_width=200, route_ext=100+50, route_via=(480,300)):
+            nonlocal route_id
+            rs % RoutingSpecLayer(
+                layer=layer,
+                route_id=route_id,
+                route_wire_width=route_width,
+                route_wire_ext=route_ext,
+                route_via_width=route_via[0],
+                route_via_height=route_via[1],
+            )
+            route_id += 1
+
+        def addvia(layer, route_via=(190,190)):
+            nonlocal route_id
+            rs % RoutingSpecLayer(
+                layer=layer,
+                route_id=route_id,
+                route_via_width=route_via[0],
+                route_via_height=route_via[1],
+            )
+            route_id += 1
+
+        addmetal(layers.Metal1)
+        addvia(layers.Via1)
+        addmetal(layers.Metal2)
+        addvia(layers.Via2)
+        addmetal(layers.Metal3)
+        # Todo: settings about Metal3 not checked yet.
+        addvia(layers.Via3)
+        addmetal(layers.Metal4)
+        addvia(layers.Via4)
+        addmetal(layers.Metal5)
+        addvia(layers.TopVia1)
+        addmetal(layers.TopMetal1)
+        addvia(layers.TopVia2)
+        addmetal(layers.TopMetal2)
+
+        return rs
+
 def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) -> Layout:
     """
     Layout generation function shared for Nmos and Pmos cells.

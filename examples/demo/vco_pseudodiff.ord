@@ -21,6 +21,7 @@ from ordec.report import *
 from ordec.layout.makevias import makevias
 from ordec.layout import write_gds
 from ordec.layout import helpers
+from ordec.layout import SRouter
 
 cell VcoHalfStage:
     width = Parameter(R, default=300n)
@@ -265,6 +266,8 @@ cell VcoRing:
 
     viewgen layout(layers=ihp130.SG13G2().layers) -> Layout:
         path stage_n, stage_p, out_n, out_p
+        sr = SRouter(__ordec_solver__.subgraph, __ordec_solver__,
+            routing_spec=ihp130.SG13G2().default_routing_spec)
 
         .nwell = LayoutRect(layer=layers.NWell)
 
@@ -307,84 +310,81 @@ cell VcoRing:
             ! .vss_st_bar_n.rect.contains(.stage_n[i].vssbar.rect)
             ! .vss_st_bar_p.rect.contains(.stage_p[i].vssbar.rect)
 
-        vias = {layers.Via1: [], layers.Via2: []}
-
         ! .stage_p[0].pos == (0,0)
 
         # Connect rst_n of stage_n[0] and stage_p[1] to VDD:
-        path rsttie
-        for i, stage in enumerate([.stage_n[0], .stage_p[1]]):
-            .rsttie[i] = LayoutRectPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
-            ! .rsttie[i][0] == stage.rst_n.rect.center
-            ! .rsttie[i][1] == (.rsttie[i][0].x, stage.vddbar.rect.cy)
-            vias[layers.Via1] += [.rsttie[i][0], .rsttie[i][1]]
+        for stage in [.stage_n[0], .stage_p[1]]:
+            sr.move(layers.Metal1, stage.rst_n.rect.center)
+            sr.layer(layers.Metal2)
+            sr.wire_y(stage.vddbar.rect.cy)
+            sr.layer(layers.Metal1)
 
         # Connect rst_n of stage_n[1] and stage_p[0] to own rst_n:
 
-        .rst_n = LayoutRect(layer=layers.Metal2)
-        ! .rst_n.rect.width == 200
-        ! .rst_n.rect.uy == .stage_p[1].vssbar.rect.uy + 1000
-        ! .rst_n.rect.cx == 0.5*.stage_p[0].rst_n.rect.cx + 0.5*.stage_n[1].rst_n.rect.cx
-        ! .rst_n.rect.ly == .stage_n[1].rst_n.rect.ly
-        .rst_n % LayoutPin(pin=self.symbol.rst_n)
+        sr.move(layers.Metal1, .stage_n[1].rst_n.rect.center)
+        sr.layer(layers.Metal2)
+        sr.wire_x(0.5*.stage_p[0].rst_n.rect.cx + 0.5*.stage_n[1].rst_n.rect.cx)
+        sr.wire_y(.stage_p[0].rst_n.rect.cy)
+        sr.push()
+        sr.wire_x(.stage_p[0].rst_n.rect.cx)
+        sr.layer(layers.Metal1)
+        sr.pop()
+        sr.wire_y(.stage_p[0].rst_n.rect.cy+2500)
+        sr.path % LayoutPin(pin=self.symbol.rst_n)
 
-        r = . % LayoutRect(layer=layers.Metal2)
-        ! r.rect.contains(.stage_n[1].rst_n.rect)
-        ! r.rect.lx == .rst_n.rect.ux
+        # Connect matching fb -- out -- inp pins:
 
-        vias[layers.Via1].append(.stage_n[1].rst_n.rect.center)
+        sr.move(layers.Metal1, .stage_n[0].fb.rect.center)
+        sr.layer(layers.Metal2)
+        sr.wire_y(.stage_p[0].outbar_h.rect.cy)
+        sr.push()
+        sr.layer(layers.Metal1)
+        sr.pop()
+        sr.layer(layers.Metal3)
+        sr.wire_x(.stage_p[1].inp.rect.cx)
+        sr.layer(layers.Metal2)
+        sr.wire_y(.stage_p[1].inp.rect.cy)
+        sr.layer(layers.Metal1)
 
-        r = . % LayoutRect(layer=layers.Metal2)
-        ! r.rect.contains(.stage_p[0].rst_n.rect)
-        ! r.rect.ux == .rst_n.rect.lx
+        sr.move(layers.Metal1, .stage_n[1].fb.rect.center)
+        sr.layer(layers.Metal2)
+        sr.wire_y(.stage_n[1].outbar_h.rect.cy + 500)
+        sr.push()
+        sr.wire_y(.stage_p[1].outbar_h.rect.cy)
+        sr.layer(layers.Metal1)
+        sr.pop()
+        sr.layer(layers.Metal3)
+        sr.wire_x(.stage_n[0].inp.rect.cx)
+        sr.layer(layers.Metal2)
+        sr.wire_y(.stage_n[0].inp.rect.cy)
+        sr.layer(layers.Metal1)
 
-        vias[layers.Via1].append(.stage_p[0].rst_n.rect.center)
+        sr.move(layers.Metal1, .stage_p[0].fb.rect.center)
+        sr.layer(layers.Metal2)
+        sr.wire_x(.stage_n[0].outbar_h.rect.lx + 150)
+        sr.wire_y(.stage_n[0].outbar_h.rect.cy)
+        sr.push()
+        sr.layer(layers.Metal1)
+        sr.pop()
+        sr.layer(layers.Metal3)
+        sr.wire_x(.stage_n[1].inp.rect.cx)
+        sr.layer(layers.Metal2)
+        sr.wire_y(.stage_n[1].inp.rect.cy)
+        sr.layer(layers.Metal1)
 
-        # Connect out and fb pins of halfstage pairs on Metal2:
-
-        path outv_p, outv_n
-
-        for i in range(2):
-            .outv_p[i] = LayoutPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
-            ! .outv_p[i][0] == .stage_n[i].fb.rect.center
-            ! .outv_p[i][1].x == .outv_p[i][0].x
-            ! .outv_p[i][1].y == .stage_p[i].outbar_h.rect.cy
-            vias[layers.Via1] += [.outv_p[i][0], .outv_p[0][1]]
-
-            .outv_n[i] = LayoutPath(3, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
-            ! .outv_n[i][0] == .stage_p[i].fb.rect.center
-            if i == 0:
-                ! .outv_n[i][2] == .stage_n[i].outbar_h.rect.west + (150, 0)
-            else:
-                ! .outv_n[i][2] == .stage_n[i].outbar_h.rect.east - (150,0)
-            ! .outv_n[i][1] == (.outv_n[i][2].x, .outv_n[i][0].y)
-            vias[layers.Via1] += [.outv_n[i][0], .outv_n[i][2]]
-
-        # Connect stage[0] inputs/outputs with stage[1] inputs/outputs:
-
-        for inp, out in [
-            (.stage_n[1].inp, .outv_n[0][2]),
-            (.stage_p[1].inp, .outv_p[0][1]),
-            (.stage_n[0].inp, (.outv_p[1][0].x, .outv_n[0][2].y + 500)),
-            (.stage_p[0].inp, (.outv_n[1][2].x, .outv_p[0][1].y - 500))]:
-
-            m3_horiz = . % LayoutPath(2, layer=layers.Metal3, width=200, ext_bgn=150, ext_end=150)
-            ! m3_horiz[0] == out
-            ! m3_horiz[1].y == m3_horiz[0].y
-            ! m3_horiz[1].x == inp.rect.cx
-            vias[layers.Via2] += [m3_horiz[0], m3_horiz[1]]
-
-            m2_vert = . % LayoutPath(2, layer=layers.Metal2, width=200, ext_bgn=150, ext_end=150)
-            ! m2_vert[0] == inp.rect.center
-            ! m2_vert[1] == m3_horiz[1]
-            vias[layers.Via1].append(m2_vert[0])
-
-        # Add vias:
-        for layer, vertices in vias.items():
-            for vertex in vertices:
-                via = . % LayoutRect(layer=layer)
-                ! via.rect.size == (190, 190)
-                ! via.rect.center == vertex
+        sr.move(layers.Metal1, .stage_p[1].fb.rect.center)
+        sr.layer(layers.Metal2)
+        sr.wire_x(.stage_n[1].outbar_h.rect.ux - 150)
+        sr.wire_y(.stage_p[i].outbar_h.rect.cy - 500)
+        sr.push()
+        sr.wire_y(.stage_n[1].outbar_h.rect.cy)
+        sr.layer(layers.Metal1)
+        sr.pop()
+        sr.layer(layers.Metal3)
+        sr.wire_x(.stage_p[0].inp.rect.cx)
+        sr.layer(layers.Metal2)
+        sr.wire_y(.stage_p[0].inp.rect.cy)
+        sr.layer(layers.Metal1)
 
 cell Vco:
     width = Parameter(R, default=300n)
