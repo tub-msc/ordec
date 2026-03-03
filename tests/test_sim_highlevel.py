@@ -128,6 +128,21 @@ def test_ihp_mos_inv_vin5():
     h_5 = lib_test.InvIhpTb(vin=R(5)).sim_dc
     assert h_5.o.dc_voltage == pytest.approx(0.00024556, abs=1e-5)
 
+def test_sky130_nmos_out_of_range():
+    from ordec.sim.ngspice_common import NgspiceError
+    from ordec.lib import sky130
+    from ordec.sim import HighlevelSim
+
+    s = Schematic()
+    s.vss = Net()
+    nmos = sky130.Nmos(l=R("100n"), w=R("250n")).symbol
+    s.i_nmos = SchemInstance(nmos.portmap(g=s.vss, d=s.vss, s=s.vss, b=s.vss), pos=Vec2R(10, 5))
+    s = s.freeze()
+
+    h = SimHierarchy.from_schematic(s)
+    with pytest.raises(NgspiceError, match="circuit not parsed"):
+        HighlevelSim(h).op()
+
 def test_sim_pulsedrc_tran():
     tb = lib_test.PulsedRC()
     h = tb.sim_tran
