@@ -209,6 +209,10 @@ def build_ring_ref():
     l % LayoutRect(layer=layers.Via1, rect=Rect4I(1570, 725, 1760, 915))
     l % LayoutRect(layer=layers.Via1, rect=Rect4I(-900, -3075, -710, -2885))
     l % LayoutRect(layer=layers.Via1, rect=Rect4I(-900, 725, -710, 915))
+    l % LayoutRect(layer=layers.Via1, rect=Rect4I(-1630, -3075, -1440, -2885))
+    l % LayoutRect(layer=layers.Via1, rect=Rect4I(-1630, 725, -1440, 915))
+    l % LayoutRect(layer=layers.Via1, rect=Rect4I(2300, -3075, 2490, -2885))
+    l % LayoutRect(layer=layers.Via1, rect=Rect4I(2300, 725, 2490, 915))
 
     # Via2 rects
     l % LayoutRect(layer=layers.Via2, rect=Rect4I(-2375, -2425, -2185, -2235))

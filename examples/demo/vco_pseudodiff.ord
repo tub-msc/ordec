@@ -266,7 +266,8 @@ cell VcoRing:
 
     viewgen layout(layers=ihp130.SG13G2().layers) -> Layout:
         path stage_n, stage_p, out_n, out_p
-        rs = ihp130.SG13G2().default_routing_spec
+        sr = SRouter(__ordec_solver__.subgraph, __ordec_solver__,
+            routing_spec=ihp130.SG13G2().default_routing_spec)
 
         .nwell = LayoutRect(layer=layers.NWell)
 
@@ -315,25 +316,22 @@ cell VcoRing:
 
         # Connect rst_n of stage_n[0] and stage_p[1] to VDD:
         for stage in [.stage_n[0], .stage_p[1]]:
-            sr = SRouter(__ordec_solver__.subgraph, __ordec_solver__,
-                layers.Metal1, pos=stage.rst_n.rect.center,
-                routing_spec=rs)
+            sr.move(layers.Metal1, stage.rst_n.rect.center)
             sr.layer(layers.Metal2)
-            sr.move_y(stage.vddbar.rect.cy)
+            sr.wire_y(stage.vddbar.rect.cy)
             sr.layer(layers.Metal1)
 
         # Connect rst_n of stage_n[1] and stage_p[0] to own rst_n:
 
-        sr = SRouter(__ordec_solver__.subgraph, __ordec_solver__,
-            layers.Metal1, pos=.stage_n[1].rst_n.rect.center, routing_spec=rs)
+        sr.move(layers.Metal1, .stage_n[1].rst_n.rect.center)
         sr.layer(layers.Metal2)
-        sr.move_x(0.5*.stage_p[0].rst_n.rect.cx + 0.5*.stage_n[1].rst_n.rect.cx)
-        sr.move_y(.stage_p[0].rst_n.rect.cy)
+        sr.wire_x(0.5*.stage_p[0].rst_n.rect.cx + 0.5*.stage_n[1].rst_n.rect.cx)
+        sr.wire_y(.stage_p[0].rst_n.rect.cy)
         sr.push()
-        sr.move_x(.stage_p[0].rst_n.rect.cx)
+        sr.wire_x(.stage_p[0].rst_n.rect.cx)
         sr.layer(layers.Metal1)
         sr.pop()
-        sr.move_y(.stage_p[0].rst_n.rect.cy+2500)
+        sr.wire_y(.stage_p[0].rst_n.rect.cy+2500)
         sr.path % LayoutPin(pin=self.symbol.rst_n)
 
         # Connect out and fb pins of halfstage pairs on Metal2:
@@ -345,10 +343,9 @@ cell VcoRing:
         for i in range(2):
             outv_p_start[i] = .stage_n[i].fb.rect.center
             outv_p_end[i] = (.stage_n[i].fb.rect.cx, .stage_p[i].outbar_h.rect.cy)
-            sr = SRouter(__ordec_solver__.subgraph, __ordec_solver__,
-                layers.Via1, pos=outv_p_start[i], routing_spec=rs)
+            sr.move(layers.Metal1, outv_p_start[i])
             sr.layer(layers.Metal2)
-            sr.move(outv_p_end[i])
+            sr.wire(outv_p_end[i])
             sr.layer(layers.Metal1)
 
             outv_n_start = .stage_p[i].fb.rect.center
@@ -356,11 +353,10 @@ cell VcoRing:
                 outv_n_end[i] = .stage_n[i].outbar_h.rect.west + (150, 0)
             else:
                 outv_n_end[i] = .stage_n[i].outbar_h.rect.east - (150, 0)
-            sr = SRouter(__ordec_solver__.subgraph, __ordec_solver__,
-                layers.Via1, pos=outv_n_start, routing_spec=rs)
+            sr.move(layers.Metal1, outv_n_start)
             sr.layer(layers.Metal2)
-            sr.move((outv_n_end[i][0], outv_n_start[1]))
-            sr.move(outv_n_end[i])
+            sr.wire((outv_n_end[i][0], outv_n_start[1]))
+            sr.wire(outv_n_end[i])
             sr.layer(layers.Metal1)
 
         # Connect stage[0] inputs/outputs with stage[1] inputs/outputs:
@@ -371,11 +367,10 @@ cell VcoRing:
             (.stage_n[0].inp, (outv_p_start[1][0], outv_n_end[0][1] + 500)),
             (.stage_p[0].inp, (outv_n_end[1][0], outv_p_end[0][1] - 500))]:
 
-            sr = SRouter(__ordec_solver__.subgraph, __ordec_solver__,
-                layers.Metal2, pos=inp.rect.center, routing_spec=rs)
-            sr.move((inp.rect.cx, out[1]))
+            sr.move(layers.Metal2, inp.rect.center)
+            sr.wire((inp.rect.cx, out[1]))
             sr.layer(layers.Metal3)
-            sr.move(out)
+            sr.wire(out)
             sr.layer(layers.Metal2)
             vias[layers.Via1].append(inp.rect.center)
 

@@ -8,13 +8,13 @@ class SRouterException(Exception):
 
 class SRouter:
     """Stack router"""
-    def __init__(self, layout: Layout, solver: Solver, layer: Layer,
-        pos: Vec2LinearTerm, routing_spec: RoutingSpec):
+    def __init__(self, layout: Layout, solver: Solver,
+        routing_spec: RoutingSpec):
         self.layout = layout
         self.solver = solver
         self.routing_spec = routing_spec
-        self.cur_layer = layer
-        self.cur_pos = pos
+        self.cur_layer = None
+        self.cur_pos = None
         self.path = None
         self.path_order = 0
         self.stack = []
@@ -34,12 +34,26 @@ class SRouter:
         self.place_throughrect = False
         self.cur_pos, self.cur_layer = self.stack.pop()
 
+    def _check_initialized(self):
+        if self.cur_layer is None:
+            raise SRouterException("Must call move() before wire/layer operations.")
+
     def _add_vertex(self):
         v = self.path % PolyVec2I(order=self.path_order)
         self.solver.constrain(v.pos==self.cur_pos)
         self.path_order += 1
 
-    def move(self, pos: Vec2LinearTerm):
+    def move(self, layer: Layer, pos: Vec2LinearTerm):
+        """Set position and layer without drawing (like SVG 'M')."""
+        self.path = None
+        self.path_order = 0
+        self.place_throughrect = False
+        self.cur_pos = pos
+        self.cur_layer = layer
+
+    def wire(self, pos: Vec2LinearTerm):
+        """Draw a wire to pos (like SVG 'L')."""
+        self._check_initialized()
         if self.path is None:
             rsl = self._rsl()
             if None in (rsl.route_wire_width, rsl.route_wire_ext):
@@ -57,13 +71,13 @@ class SRouter:
         self.cur_pos = pos
         self._add_vertex()
 
-    def move_x(self, x):
-        """Move horizontally, keeping the current y coordinate."""
-        self.move((x, self.cur_pos[1]))
+    def wire_x(self, x):
+        """Draw a horizontal wire (like SVG 'H')."""
+        self.wire((x, self.cur_pos[1]))
 
-    def move_y(self, y):
-        """Move vertically, keeping the current x coordinate."""
-        self.move((self.cur_pos[0], y))
+    def wire_y(self, y):
+        """Draw a vertical wire (like SVG 'V')."""
+        self.wire((self.cur_pos[0], y))
 
     def _end_path(self):
         if self.path is None:
@@ -82,6 +96,7 @@ class SRouter:
         self.place_throughrect = True
 
     def layer(self, layer: Layer):
+        self._check_initialized()
         while self.cur_layer != layer:
             self._end_path()
             rsl = self._rsl()
