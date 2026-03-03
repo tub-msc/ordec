@@ -24,7 +24,7 @@ class OrdLoader(Loader):
 
     def exec_module(self, module):
         module.__dict__['__file__'] = self.ord_path
-        code = compile_ord(self.source_text, module.__dict__)
+        code = compile_ord(self.source_text, module.__dict__, self.ord_path)
         exec(code, module.__dict__, module.__dict__)
 
 class OrdMetaPathFinder(MetaPathFinder):

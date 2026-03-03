@@ -18,12 +18,12 @@ def prepare_ord_globals(g: dict):
     g.setdefault("__ord_context__", importlib.import_module("ordec.ord2.context"))
 
 
-def compile_ord(source_data: str, g: dict):
+def compile_ord(source_data: str, g: dict, filename: str = "<string>"):
     """Compile ORD source, prepare globals, return compiled code object."""
     prepare_ord_globals(g)
     module = ord_to_py(source_data)
     g["__ord_py_source__"] = ast.unparse(module)
-    return compile(module, "<string>", "exec")
+    return compile(module, filename, "exec")
 
 
 def ord_to_py(source_data: str) -> ast.Module:
