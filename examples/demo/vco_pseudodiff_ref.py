@@ -130,11 +130,15 @@ def build_ring_ref():
     r = l % LayoutRect(layer=layers.Metal1, rect=Rect4I(3490, -480, 3700, 1620))
     r % LayoutPin(pin=sym.out_p[1])
 
-    # rst_n Metal2 bar + pin (dump layer=21)
-    r = l % LayoutRect(layer=layers.Metal2, rect=Rect4I(330, -3280, 530, 3520))
+    # rst_n SRouter Metal2 paths (L-shaped route + vertical stub)
+    l % LayoutPath(layer=layers.Metal2, width=200,
+        endtype=PathEndType.Custom, ext_bgn=150, ext_end=150,
+        vertices=[Vec2I(1155, -2980), Vec2I(430, -2980),
+                  Vec2I(430, 820), Vec2I(-295, 820)])
+    r = l % LayoutPath(layer=layers.Metal2, width=200,
+        endtype=PathEndType.Custom, ext_bgn=150, ext_end=150,
+        vertices=[Vec2I(430, 820), Vec2I(430, 3320)])
     r % LayoutPin(pin=sym.rst_n)
-    l % LayoutRect(layer=layers.Metal2, rect=Rect4I(530, -3280, 1260, -2680))
-    l % LayoutRect(layer=layers.Metal2, rect=Rect4I(-400, 520, 330, 1120))
 
     # rsttie RectPaths (dump layer=21 → Metal2)
     l % LayoutRectPath(layer=layers.Metal2, width=200,
@@ -197,13 +201,9 @@ def build_ring_ref():
     l % LayoutRect(layer=layers.Via1, rect=Rect4I(1060, -1175, 1250, -985))
     l % LayoutRect(layer=layers.Via1, rect=Rect4I(1060, -3075, 1250, -2885))
     l % LayoutRect(layer=layers.Via1, rect=Rect4I(-390, 725, -200, 915))
-    l % LayoutRect(layer=layers.Via1, rect=Rect4I(-1630, -3075, -1440, -2885))
     l % LayoutRect(layer=layers.Via1, rect=Rect4I(-1630, 75, -1440, 265))
-    l % LayoutRect(layer=layers.Via1, rect=Rect4I(-1630, 725, -1440, 915))
     l % LayoutRect(layer=layers.Via1, rect=Rect4I(-2375, -2425, -2185, -2235))
-    l % LayoutRect(layer=layers.Via1, rect=Rect4I(2300, -3075, 2490, -2885))
     l % LayoutRect(layer=layers.Via1, rect=Rect4I(2300, 75, 2490, 265))
-    l % LayoutRect(layer=layers.Via1, rect=Rect4I(2300, 725, 2490, 915))
     l % LayoutRect(layer=layers.Via1, rect=Rect4I(3045, -2425, 3235, -2235))
     l % LayoutRect(layer=layers.Via1, rect=Rect4I(1570, -3075, 1760, -2885))
     l % LayoutRect(layer=layers.Via1, rect=Rect4I(1570, 725, 1760, 915))

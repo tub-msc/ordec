@@ -328,15 +328,21 @@ def expand_pins(layout: Layout, directory: Directory):
     For a given layout, removes LayoutPin objects and adds according LayoutPoly
     and LayoutLabel instances.
 
-    Expects that all LayoutRect and LayoutRectPoly objects have already been
-    expanded into LayoutPoly objects (e.g. through expand_geom).
+    Handles LayoutPoly and LayoutPath refs directly. Expects that LayoutRect,
+    LayoutRectPoly and LayoutRectPath objects have already been expanded (e.g.
+    through expand_rects, expand_rectpolys, expand_rectpaths).
     """
-    # TODO: Add "Directory" type argument for generating labels
     for pin in layout.all(LayoutPin):
-        if not isinstance(pin.ref, LayoutPoly):
-            raise Exception(f"expand_pins expects LayoutPoly instead of {type(pin.ref)}. Run expand_geom() ahead of time!")
-
-        vertices = pin.ref.vertices()
+        ref = pin.ref
+        if isinstance(ref, LayoutPoly):
+            vertices = ref.vertices()
+        elif isinstance(ref, LayoutPath):
+            vertices = path_to_poly_vertices(ref)
+        else:
+            raise Exception(
+                f"expand_pins: unsupported ref type {type(ref)}. "
+                f"Run expand_rects/expand_rectpolys/expand_rectpaths first."
+            )
 
         center = sum(vertices, start=Vec2I(0, 0)) // len(vertices)
 

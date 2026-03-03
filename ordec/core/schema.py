@@ -1146,13 +1146,13 @@ class LayoutPin(Node):
     a non-pin layer, and a corresponding pin layer shape is created
     automatically by expand_pins (in write_gds or the web viewer).
 
-    Currently, the associated shape must be a LayoutPoly, LayoutRectPoly or
-    LayoutRect. LayoutPath or LayoutRectPath are not supported.
+    The associated shape can be a LayoutPoly, LayoutRectPoly, LayoutRect,
+    LayoutPath or LayoutRectPath.
     """
     in_subgraphs = [Layout]
 
     ref = LocalRef(LayoutPoly|LayoutRectPoly|LayoutPath,
-        refcheck_custom=lambda val: issubclass(val, (LayoutPoly, LayoutRectPoly, LayoutRect)),
+        refcheck_custom=lambda val: issubclass(val, (LayoutPoly, LayoutRectPoly, LayoutRect, LayoutPath, LayoutRectPath)),
         )
     pin = ExternalRef(Pin,
         of_subgraph=lambda c: c.root.symbol,

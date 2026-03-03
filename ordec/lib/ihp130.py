@@ -204,7 +204,7 @@ class SG13G2(Cell):
         rs = RoutingSpec(ref_layers=layers)
 
         route_id = 0
-        def addmetal(layer, route_width=100, route_ext=100, route_via=(100,100)):
+        def addmetal(layer, route_width=200, route_ext=100+50, route_via=(480,300)):
             nonlocal route_id
             rs % RoutingSpecLayer(
                 layer=layer,
@@ -216,7 +216,7 @@ class SG13G2(Cell):
             )
             route_id += 1
 
-        def addvia(layer, route_via=(100,100)):
+        def addvia(layer, route_via=(190,190)):
             nonlocal route_id
             rs % RoutingSpecLayer(
                 layer=layer,
@@ -226,11 +226,12 @@ class SG13G2(Cell):
             )
             route_id += 1
 
-        addmetal(layers.Metal1, route_width=210, route_ext=95+50, route_via=(480, 300))
-        addvia(layers.Via1, route_via=(190,190))
-        addmetal(layers.Metal2, route_width=210, route_ext=95+50, route_via=(480, 300))
-        addvia(layers.Via2, route_via=(190,190))
-        addmetal(layers.Metal3, route_width=210, route_ext=95+50, route_via=(480, 300))
+        addmetal(layers.Metal1)
+        addvia(layers.Via1)
+        addmetal(layers.Metal2)
+        addvia(layers.Via2)
+        addmetal(layers.Metal3)
+        # Todo: settings about Metal3 not checked yet.
         addvia(layers.Via3)
         addmetal(layers.Metal4)
         addvia(layers.Via4)

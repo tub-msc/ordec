@@ -265,20 +265,8 @@ cell VcoRing:
 
 
     viewgen layout(layers=ihp130.SG13G2().layers) -> Layout:
-        # RoutingSpec for SRouter (Metal1 through Metal3):
-
-        rs = RoutingSpec(ref_layers=layers)
-        rs % RoutingSpecLayer(layer=layers.Metal1, route_id=0)
-        rs % RoutingSpecLayer(layer=layers.Via1, route_id=1,
-            route_via_width=190, route_via_height=190)
-        rs % RoutingSpecLayer(layer=layers.Metal2, route_id=2,
-            route_wire_width=200, route_wire_ext=150)
-        rs % RoutingSpecLayer(layer=layers.Via2, route_id=3,
-            route_via_width=190, route_via_height=190)
-        rs % RoutingSpecLayer(layer=layers.Metal3, route_id=4,
-            route_wire_width=200, route_wire_ext=150)
-
         path stage_n, stage_p, out_n, out_p
+        rs = ihp130.SG13G2().default_routing_spec
 
         .nwell = LayoutRect(layer=layers.NWell)
 
@@ -328,7 +316,8 @@ cell VcoRing:
         # Connect rst_n of stage_n[0] and stage_p[1] to VDD:
         for stage in [.stage_n[0], .stage_p[1]]:
             sr = SRouter(__ordec_solver__.subgraph, __ordec_solver__,
-                layers.Metal1, pos=stage.rst_n.rect.center, routing_spec=rs)
+                layers.Metal1, pos=stage.rst_n.rect.center,
+                routing_spec=rs)
             sr.layer(layers.Metal2)
             sr.move_y(stage.vddbar.rect.cy)
             sr.layer(layers.Metal1)
@@ -345,26 +334,7 @@ cell VcoRing:
         sr.layer(layers.Metal1)
         sr.pop()
         sr.move_y(.stage_p[0].rst_n.rect.cy+2500)
-
-        if False:
-            .rst_n = LayoutRect(layer=layers.Metal2)
-            ! .rst_n.rect.width == 200
-            ! .rst_n.rect.uy == .stage_p[1].vssbar.rect.uy + 1000
-            ! .rst_n.rect.cx == 0.5*.stage_p[0].rst_n.rect.cx + 0.5*.stage_n[1].rst_n.rect.cx
-            ! .rst_n.rect.ly == .stage_n[1].rst_n.rect.ly
-            .rst_n % LayoutPin(pin=self.symbol.rst_n)
-
-            r = . % LayoutRect(layer=layers.Metal2)
-            ! r.rect.contains(.stage_n[1].rst_n.rect)
-            ! r.rect.lx == .rst_n.rect.ux
-
-            vias[layers.Via1].append(.stage_n[1].rst_n.rect.center)
-
-            r = . % LayoutRect(layer=layers.Metal2)
-            ! r.rect.contains(.stage_p[0].rst_n.rect)
-            ! r.rect.ux == .rst_n.rect.lx
-
-            vias[layers.Via1].append(.stage_p[0].rst_n.rect.center)
+        sr.path % LayoutPin(pin=self.symbol.rst_n)
 
         # Connect out and fb pins of halfstage pairs on Metal2:
 
