@@ -54,7 +54,6 @@ Furthermore, there are two modes in which you can use the ORDeC web UI:
 """
 
 import argparse
-import ast
 import http
 import json
 import traceback
@@ -89,7 +88,7 @@ from websockets.exceptions import ConnectionClosedOK
 from . import importer
 from .version import version
 from .core.cell import Cell, generate, generate_func
-from .language import ord_to_py
+from .language import compile_ord
 from .extlibrary import ExtLibrary
 
 class ServerKey:
@@ -325,16 +324,11 @@ class ConnectionHandler:
         return msg_ret
 
     def build_cells(self, source_type: str, source_data: str) -> (dict, dict):
-        conn_globals = {
-            "__ordec_core__": importlib.import_module("ordec.core"),
-            "__ord_context__": importlib.import_module("ordec.ord2.context"),
-        }
+        conn_globals = {}
         exc = None
         if source_type == 'ord':
             # Having the import here enables auto-reloading of ord.
-            ord_module = ord_to_py(source_data)
-            conn_globals["__ord_py_source__"] = ast.unparse(ord_module)
-            code = compile(ord_module, "<string>", "exec")
+            code = compile_ord(source_data, conn_globals)
             with self.import_lock.write():
                 try:
                     exec(code, conn_globals, conn_globals)

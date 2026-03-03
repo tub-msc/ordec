@@ -33,11 +33,11 @@
 # all examples are written in ORD2. 
 
 # + tags=["remove-input"]
-from ordec.core import * 
+from ordec.core import *
 from ordec.schematic import helpers
 from IPython.core.magic import Magics, magics_class, line_cell_magic
 from IPython.display import Code
-import importlib
+from ordec.language import compile_ord
 
 @magics_class
 class OrdMagics(Magics):
@@ -45,11 +45,8 @@ class OrdMagics(Magics):
     def ord(self, line, cell=None):
         """Custom magic for ORD language in Jupyter cells."""
         code = cell if cell else line
-        from ordec.ord2.parser import ord2_to_py
         user_ns = self.shell.user_ns
-        user_ns.setdefault("__ordec_core__", importlib.import_module("ordec.core"))
-        user_ns.setdefault("__ord_context__", importlib.import_module("ordec.ord2.context"))
-        py_code = compile(ord2_to_py(code), "<string>", "exec")
+        py_code = compile_ord(code, user_ns)
         exec(py_code, user_ns, user_ns)
 
 ip = get_ipython()
