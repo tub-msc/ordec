@@ -973,6 +973,28 @@ def test_replace_nonleaf_to_leaf():
     assert len(list(s.all(NodeA))) == 1
     assert isinstance(s.y, NodeA)
 
+def test_nonleafnode_children():
+    class NodeA(NonLeafNode):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    class NodeB(Node):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    s = MyHead()
+    s.branch = NodeA(text='branch')
+    s.branch.a = NodeB(text='A')
+    s.branch.b = NodeB(text='B')
+    s.branch.empty = PathNode()
+
+    children = list(s.branch.children())
+    assert [c.npath.name for c in children] == ['a', 'b', 'empty']
+    assert isinstance(children[0], NodeB)
+    assert isinstance(children[1], NodeB)
+    assert isinstance(children[2], PathNode)
+    assert children[2].nid is None
+
 def test_localref_mandatory():
     class NodeA(Node):
         in_subgraphs=[MyHead]

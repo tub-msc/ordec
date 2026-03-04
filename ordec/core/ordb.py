@@ -1019,6 +1019,12 @@ class NonLeafNode(Node, build_node=False):
                 raise OrdbException("Cannot add node at cursor without NPath.")
         NPath.Tuple(parent=self.npath_nid, name=k, ref=ref).insert_into(u, u.nid_generate())
 
+    def children(self) -> Iterable[Node]:
+        """Iterate over direct children in the NPath hierarchy."""
+        child_npath_nids = self.subgraph.all(NPath.idx_parent.query(self.npath_nid), wrap_cursor=False)
+        return (self.subgraph.cursor_at(self.subgraph.nodes[npath_nid].ref, npath_nid, lookup_npath=False)
+            for npath_nid in child_npath_nids)
+
 @public
 class FrozenNode(Node, build_node=False):
     """Auxiliary base class for auto-generated :attr:`Node.Frozen` classes."""
