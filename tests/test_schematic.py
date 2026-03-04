@@ -71,11 +71,11 @@ def test_schematic_portmap_missing_key():
         lib_test.TestNmosInv(variant='portmap_missing_key', add_conn_points=True, add_terminal_taps=False).schematic
 
 def test_schematic_portmap_stray_key():
-    with pytest.raises(SchematicError, match=r"Stray pins"):
+    with pytest.raises(ModelViolation, match=r"ExternalRef invalid reference"):
         lib_test.TestNmosInv(variant='portmap_stray_key', add_conn_points=True, add_terminal_taps=False).schematic
 
 def test_schematic_portmap_bad_value():
-    with pytest.raises(KeyError):
+    with pytest.raises(DanglingExternalRef):
         lib_test.TestNmosInv(variant='portmap_bad_value', add_conn_points=True, add_terminal_taps=False).schematic
 
 def test_schematic_terminal_multiple_wires():

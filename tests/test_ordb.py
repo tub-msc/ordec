@@ -819,6 +819,68 @@ def test_cursor_externalref():
     assert s3.e1.eref == s1.n1
     assert s3.e2.eref == s2.n1
 
+def test_externalref_validation():
+    class NodeA(Node):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    class NodeB(Node):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    class NodeExtRef(Node):
+        in_subgraphs=[MyHead]
+        subg = SubgraphRef(MyHead)
+        eref = ExternalRef(NodeB, of_subgraph=lambda c: c.subg)
+
+    s_ref = MyHead()
+    s_ref.a = NodeA(text='A')
+    s_ref.b = NodeB(text='B')
+    s_ref = s_ref.freeze()
+
+    # factory accepts Node and int values
+    NodeExtRef(subg=s_ref, eref=s_ref.b)
+    NodeExtRef(subg=s_ref, eref=s_ref.b.nid)
+    with pytest.raises(TypeError):
+        NodeExtRef(subg=s_ref, eref='not-an-int')
+
+    # deferred integrity check for wrong referenced type
+    s = MyHead()
+    with pytest.raises(ModelViolation, match="ExternalRef invalid reference"):
+        s.bad = NodeExtRef(subg=s_ref, eref=s_ref.a)
+
+    # deferred integrity check for dangling reference
+    class NodeExtRefMandatory(Node):
+        in_subgraphs=[MyHead]
+        subg = SubgraphRef(MyHead)
+        eref = ExternalRef(NodeB, of_subgraph=lambda c: c.subg, optional=False)
+
+    s.good = NodeExtRef(subg=s_ref, eref=s_ref.b.nid)
+    s.good2 = NodeExtRefMandatory(subg=s_ref, eref=s_ref.b.nid)
+
+    dangling_ref = 123456
+    with pytest.raises(DanglingExternalRef) as exc_info:
+        s.bad_dangling = NodeExtRefMandatory(subg=s_ref, eref=dangling_ref)
+    assert exc_info.value.nid == dangling_ref
+
+def test_index_externalref_by_node():
+    class NodeExtRef(Node):
+        in_subgraphs=[MyHead]
+        subg = SubgraphRef(MyHead)
+        eref = ExternalRef(MyNode, of_subgraph=lambda c: c.subg)
+        eref_idx = Index(eref)
+
+    s_ref = MyHead()
+    s_ref.n1 = MyNode(label='subgraph')
+    s_ref = s_ref.freeze()
+
+    s = MyHead()
+    s.e1 = NodeExtRef(subg=s_ref, eref=s_ref.n1)
+    s.e2 = NodeExtRef(subg=s_ref, eref=s_ref.n1)
+
+    q = list(s.all(NodeExtRef.eref_idx.query(s_ref.n1)))
+    assert [n.nid for n in q] == [s.e1.nid, s.e2.nid]
+
 def test_typecheck_simple():
     class NodeA(Node):
         in_subgraphs=[MyHead]

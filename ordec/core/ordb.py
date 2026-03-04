@@ -94,6 +94,15 @@ class DanglingLocalRef(ModelViolation):
     """
     nid: int
 
+@public
+@dataclass(eq=True)
+class DanglingExternalRef(ModelViolation):
+    """
+    Exception raised when an :class:`ExternalRef` attribute ends up
+    referencing an inexistent nid in the referenced subgraph.
+    """
+    nid: int
+
 def must_be_type(t):
     if not isinstance(t, type):
         raise TypeError(f"{t} is not type.")
@@ -283,9 +292,6 @@ class ExternalRef(Attr):
     another node. The of_subgraph argument defines which SubgraphRef corresponds
     to the ExternalRef.
 
-    Warning: ExternalRefs are currently not typechecked in the way that
-    LocalRefs are.
-
     Args:
         refs_ntype: The referenced node type.
         of_subgraph: Function receiving the current node as argument and
@@ -299,13 +305,51 @@ class ExternalRef(Attr):
         super().__init__(type=int, optional=optional)
         self.refs_ntype = refs_ntype
         self.of_subgraph = of_subgraph
+        self.refcheck = lambda val: issubclass(val, refs_ntype)
+        self.indices.append(ExternalRefIndex(self))
+
+    def check_ref(self, sgu: 'SubgraphUpdater', node, nid):
+        """
+        Deferred consistency check for one ExternalRef value.
+
+        Resolves the referenced subgraph via :attr:`of_subgraph`, then verifies
+        that the stored nid exists in that subgraph and that the target node
+        type matches :attr:`refs_ntype`.
+        """
+        attrdesc = node._attrdesc_by_attr[self]
+        ref = node[attrdesc.index]
+        if ref is None:
+            assert self.optional
+            return
+
+        cursor = sgu.cursor_at(nid, lookup_npath=False)
+        subgraph_root = self.of_subgraph(cursor)
+        if subgraph_root is None:
+            raise ModelViolation("ExternalRef could not resolve referenced subgraph.")
+        if not isinstance(subgraph_root, SubgraphRoot):
+            raise ModelViolation(
+                f"ExternalRef expected SubgraphRoot from of_subgraph, got {type(subgraph_root).__name__}."
+            )
+        target_subgraph = subgraph_root.subgraph
+        try:
+            target = target_subgraph.nodes[ref]
+        except KeyError:
+            raise DanglingExternalRef(ref) from None
+
+        if not self.refcheck(target._cursor_type):
+            raise ModelViolation(
+                f"ExternalRef invalid reference {attrdesc.name}={ref} ({target._cursor_type.__name__})"
+                f" in {node._cursor_type.__name__}(nid={nid}, ...)"
+            ) from None
 
     def read_hook(self, value, cursor):
+        if value is None:
+            return None
         return self.of_subgraph(cursor).cursor_at(value)
 
     def factory(self, val: 'int|Node|NoneType'):
         if val is None:
-            return
+            return None
         if isinstance(val, Node):
             val = val.nid
         if not isinstance(val, int):
@@ -322,19 +366,18 @@ class Index(GenericIndex):
       
         attr.indices.append(self)
 
-    def index_key(self, node, nid):
+    def index_key(self, node, nid, sgu: 'SubgraphUpdater' = None):
         val = node[node._attrdesc_by_attr[self.attr].index]
         if val is None:
             return None
-        else:
-            return IndexKey(self, val)
+        return IndexKey(self, val)
 
     def index_value(self, node, nid):
         return nid
 
     def index_add(self, sgu: 'SubgraphUpdater', node, nid):
         # This method must not fail on constraint violations!
-        key = self.index_key(node, nid)
+        key = self.index_key(node, nid, sgu)
         if key is None:
             return
         value = self.index_value(node, nid)
@@ -354,7 +397,7 @@ class Index(GenericIndex):
 
     def index_remove(self, sgu: 'SubgraphUpdater', node, nid):
         # This method must not fail on constraint violations!
-        key = self.index_key(node, nid)
+        key = self.index_key(node, nid, sgu)
         if key is None:
             return
         value = self.index_value(node, nid)
@@ -367,7 +410,7 @@ class Index(GenericIndex):
     
     def check_constraints(self, sgu: 'SubgraphUpdater', node, nid):
         if self.unique:
-            key = self.index_key(node, nid)
+            key = self.index_key(node, nid, sgu)
             if not key:
                 return
             vals = sgu.index[key]
@@ -391,7 +434,7 @@ class CombinedIndex(Index):
         for attr in self.attrs:
             attr.indices.append(self)
 
-    def index_key(self, node, nid):
+    def index_key(self, node, nid, sgu: 'SubgraphUpdater' = None):
         return IndexKey(self, tuple((node[node._attrdesc_by_attr[a].index] for a in self.attrs)))
 
     def query(self, key) -> IndexQuery:
@@ -404,7 +447,7 @@ class NTypeIndex(Index):
     def __init__(self):
         self.sortkey = None
 
-    def index_key(self, node, nid):
+    def index_key(self, node, nid, sgu: 'SubgraphUpdater' = None):
         return type(node)
 
     def index_value(self, node, nid):
@@ -419,7 +462,7 @@ class LocalRefIndex(Index):
 
     LocalRefIndex uses pset instead of pvector as its keys cannot be ordered meaningfully.
     """
-    def index_key(self, node, nid):
+    def index_key(self, node, nid, sgu: 'SubgraphUpdater' = None):
         ref = node[node._attrdesc_by_attr[self.attr].index]
         if ref is None:
             return None
@@ -430,7 +473,7 @@ class LocalRefIndex(Index):
         return IndexKey(self, nid)
 
     def index_add(self, sgu: 'SubgraphUpdater', node, nid):
-        key = self.index_key(node, nid)
+        key = self.index_key(node, nid, sgu)
         if key is None:
             return
         value = self.index_value(node, nid)
@@ -439,7 +482,7 @@ class LocalRefIndex(Index):
         sgu.index = sgu.index.set(key, values)
 
     def index_remove(self, sgu: 'SubgraphUpdater', node, nid):
-        key = self.index_key(node, nid)
+        key = self.index_key(node, nid, sgu)
         if key is None:
             return
         value = self.index_value(node, nid)
@@ -467,6 +510,22 @@ class LocalRefIndex(Index):
         
         if not attrdesc.attr.refcheck(target._cursor_type):
             raise ModelViolation(f"LocalRef invalid reference {attrdesc.name}={ref} ({target._cursor_type.__name__}) in {node._cursor_type.__name__}(nid={nid}, ...)") from None
+
+class ExternalRefIndex(GenericIndex):
+    """
+    ExternalRefIndex is meant for integrity checking only.
+    """
+    def __init__(self, attr: ExternalRef):
+        self.attr = attr
+
+    def index_add(self, sgu: 'SubgraphUpdater', node, nid):
+        return
+
+    def index_remove(self, sgu: 'SubgraphUpdater', node, nid):
+        return
+
+    def check_constraints(self, sgu: 'SubgraphUpdater', node, nid):
+        self.attr.check_ref(sgu, node, nid)
 
 class NPathIndex(CombinedIndex):
     def check_constraints(self, sgu: 'SubgraphUpdater', node, nid):
@@ -1059,7 +1118,67 @@ class SubgraphRoot(NonLeafNode):
     def webdata(self):
         return 'html', self.tables(html=True)
 
-class SubgraphUpdater:
+class SubgraphQueryMixin:
+    __slots__ = ()
+
+    def all(self, query: IndexQuery, wrap_cursor: bool = True) -> Iterable[Node|int]:
+        """
+        Run query and return all matching nodes.
+
+        Args:
+            query: Query to run.
+            wrap_cursor: If True, Nodes are returned, else nid ints are returned.
+        """
+        if isinstance(query, type):
+            assert issubclass(query, Node)
+            query = NodeTuple.index_ntype.query(query.Tuple)
+        try:
+            nids = self.index[query.index_key]
+        except KeyError:
+            return ()
+        else:
+            if wrap_cursor:
+                return (self.cursor_at(nid) for nid in nids)
+            else:
+                return nids
+
+    def one(self, query: IndexQuery, wrap_cursor: bool = True) -> Node|int:
+        """
+        Wrapper for :meth:`all` returning exactly one node. If zero or more
+        than one node are found, a :class:`QueryException` is raised.
+        """
+        def single(it):
+            try:
+                r = next(it)
+            except StopIteration:
+                raise QueryException("Query returned less than one element.")
+            try:
+                r = next(it)
+            except StopIteration:
+                return r
+            else:
+                raise QueryException("Query returned more than one element.")
+
+        return single(iter(self.all(query, wrap_cursor)))
+
+    def cursor_at(self, nid: int, npath_nid: NoneType|int = None, lookup_npath: bool = True):
+        if nid is None:
+            # NPath without node
+            assert npath_nid is not None
+            cursor_cls = PathNode
+        else:
+            cursor_cls = self.nodes[nid]._cursor_type
+            if lookup_npath and npath_nid is None:
+                try:
+                    npath_nid = self.one(NPath.idx_path_of.query(nid), wrap_cursor=False)
+                except QueryException:
+                    pass
+        if self.mutable:
+            return cursor_cls.Mutable.raw_cursor(self, nid, npath_nid)
+        else:
+            return cursor_cls.Frozen.raw_cursor(self, nid, npath_nid)
+
+class SubgraphUpdater(SubgraphQueryMixin):
     """
     A SubgraphUpdater collects changes to a subgraph as a kind of
     transaction. The SubgraphUpdater is used in a 'with' context. When this
@@ -1120,6 +1239,14 @@ class SubgraphUpdater:
 
         self.valid = False
 
+    @property
+    def mutable(self):
+        return True
+
+    @property
+    def root_cursor(self) -> Node:
+        return self.cursor_at(0)
+
     def nid_generate(self):
         if self.nid_gen_counter not in self.target_subgraph.nid_alloc:
             raise OrdbException("nid allocation exhausted.")
@@ -1152,8 +1279,8 @@ class SubgraphUpdater:
         self.nid_max_encountered = max(self.nid_max_encountered, nid)
         self.nid_gen_counter = max(self.nid_gen_counter, self.nid_max_encountered+1)
 
-        node.index_add(self, nid) # Update metadata first.
-        self.nodes = self.nodes.set(nid, node) # Then add node.
+        self.nodes = self.nodes.set(nid, node) # Add node first so indexing can resolve node-local context.
+        node.index_add(self, nid) # Then update metadata.
         self.check_nids[nid] = True # Mark node for deferred constraint check.
         # Remove from removed_nids, in case it was removed in same SubgraphUpdater and is now re-added:
         self.removed_nids.pop(nid, None)
@@ -1186,7 +1313,7 @@ class SubgraphUpdater:
         self.check_nids[nid] = True # Mark node for deferred constraint check.
 
 @public
-class Subgraph(ABC):
+class Subgraph(SubgraphQueryMixin, ABC):
     # Using __slots__ to prevent accidental creation of 'stray' attributes.
     __slots__ = (
         '_nodes',
@@ -1318,64 +1445,6 @@ class Subgraph(ABC):
     def dump(self) -> str:
         d = self.node_dict('canonical')
         return 'MutableSubgraph.load({\n' + ''.join([f'\t{k!r}: {v!r},\n' for k, v in d.items()]) + '})'
-
-    def all(self, query: IndexQuery, wrap_cursor:bool=True) -> Iterable[Node|int]:
-        """
-        Run query and return all matching nodes.
-
-        Args:
-            query: Query to run.
-            wrap_cursor: If True, Nodes are returned, else nid ints are returned.
-        """
-        if isinstance(query, type):
-            assert issubclass(query, Node)
-            query = NodeTuple.index_ntype.query(query.Tuple)
-        try:
-            nids = self.index[query.index_key]
-        except KeyError:
-            return ()
-        else:
-            if wrap_cursor:
-                return (self.cursor_at(nid) for nid in nids)
-            else:
-                return nids
-
-    def one(self, query: IndexQuery, wrap_cursor:bool=True) -> Node|int:
-        """
-        Wrapper for :meth:`Subgraph.all` returning exactly one node. If zero or
-        more than one node are found, a :class:`QueryException` is raised.
-        """
-        def single(it):
-            try:
-                r = next(it)
-            except StopIteration:
-                raise QueryException("Query returned less than one element.")
-            try:
-                r = next(it)
-            except StopIteration:
-                return r
-            else:
-                raise QueryException("Query returned more than one element.")
-
-        return single(iter(self.all(query, wrap_cursor)))
-
-    def cursor_at(self, nid: int, npath_nid: NoneType|int=None, lookup_npath: bool=True):
-        if nid is None:
-            # NPath without node
-            assert npath_nid is not None
-            cursor_cls = PathNode
-        else:
-            cursor_cls = self.nodes[nid]._cursor_type
-            if lookup_npath and npath_nid is None:
-                try:
-                    npath_nid = self.one(NPath.idx_path_of.query(nid), wrap_cursor=False)
-                except QueryException:
-                    pass
-        if self.mutable:
-            return cursor_cls.Mutable.raw_cursor(self, nid, npath_nid)
-        else:
-            return cursor_cls.Frozen.raw_cursor(self, nid, npath_nid)
-
 
     # The private _nodes, _index, _nid_alloc and _root_cursor are hidden behind
     # properties to prevent accidental mutation.
