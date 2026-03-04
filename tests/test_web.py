@@ -239,7 +239,7 @@ def request_local(web, module, request_views):
     web.resize_viewport()
     
     qs_local = web.key.query_string_local(module, '')
-    web.driver.get(web.url + f'app.html?refreshall=true&{qs_local}')
+    web.driver.get(web.url + f'app.html?refreshall=true&viewsel_flat=true&{qs_local}')
 
     web.wait_for_ready()
 

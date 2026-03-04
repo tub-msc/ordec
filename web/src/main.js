@@ -37,6 +37,11 @@ if(debug) {
 // Overrides auto_refresh=False behavior for test_web.py:
 ResultViewer.refreshAll = Boolean(urlParams.get('refreshall'));
 
+// add &viewsel_flat=true to use flat <select> instead of hierarchical selector
+if(Boolean(urlParams.get('viewsel_flat'))) {
+    ResultViewer.useHierSelector = false;
+}
+
 // the module= URL paramter is used to work on an external module rather than use the source editor.
 const queryLocal = urlParams.get('local');
 const queryHmac = urlParams.get('hmac');
