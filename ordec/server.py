@@ -87,7 +87,7 @@ from websockets.exceptions import ConnectionClosedOK
 
 from . import importer
 from .version import version
-from .core.cell import Cell, generate, generate_func
+from .core import Cell, generate, generate_func, SubgraphRoot 
 from .language import compile_ord
 from .extlibrary import ExtLibrary
 
@@ -138,6 +138,8 @@ def discover_views(conn_globals, recursive=True, modules_visited=None):
                 member = getattr(type(v), member_name)
                 if isinstance(member, generate):
                     views.append({'name': f"{k}.{member_name}"} | member.info_dict())
+        elif isinstance(v, SubgraphRoot):
+            views.append({'name': k, 'auto_refresh': True})
         elif isinstance(v, ExtLibrary):
             view_maps = {}
             for view_name, attr in (
