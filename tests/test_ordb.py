@@ -151,7 +151,11 @@ def test_subgraph_dump():
     assert s.freeze() == s_restored.freeze()
 
 def test_subgraph_table():
-    ref_table = """Subgraph MyHead.Tuple(label='head label'):
+    ref_table = """Subgraph MyHead.Mutable(0x123):
+  MyHead
+  |   nid | label      |
+  |-------|------------|
+  |     0 | head label |
   MyNode
   |   nid | label   |
   |-------|---------|
@@ -169,7 +173,12 @@ def test_subgraph_table():
     #print(s.tables())
 
     table = s.subgraph.tables()
-    assert re.sub(r"\s*[0-9]+", '<num>', table) == re.sub(r"\s*[0-9]+", '<num>', ref_table)
+
+    def normalize_ids(text: str) -> str:
+        text = re.sub(r"0x[0-9a-fA-F]+", "0x<id>", text)
+        return re.sub(r"\s*[0-9]+", '<num>', text)
+
+    assert normalize_ids(table) == normalize_ids(ref_table)
 
 def test_subgraph_matches():
     ref = MutableSubgraph.load({
@@ -984,5 +993,3 @@ def test_set_byattr():
     # TODO
     with pytest.raises(OrdbException):
         h.a.update_byattr(UnrelatedNode, 'test')
-
-

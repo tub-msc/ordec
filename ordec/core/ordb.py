@@ -1218,21 +1218,26 @@ class Subgraph(ABC):
     def tables(self, html=False) -> str:
         from tabulate import tabulate
 
+        def fmt_val(val):
+            if isinstance(val, Subgraph):
+                return f"{type(val.root_cursor).__qualname__}({hex(id(val))})"
+            return val
+
         if html:
-            ret = [f'<div class="ordb-table"><p><b>Subgraph {self.nodes[0]}:</b></p>']
+            ret = [
+                f'<div class="ordb-table"><p><b>Subgraph {type(self.root_cursor).__qualname__}({hex(id(self))}):</b></p>'
+            ]
         else:
-            ret = [f'Subgraph {self.nodes[0]}:']
+            ret = [f"Subgraph {type(self.root_cursor).__qualname__}({hex(id(self))}):"]
 
         for ntype, nodes in self.iter_tables():
-            if issubclass(ntype._cursor_type, SubgraphRoot):
-                continue
             if html:
                 ret.append(f"<p><i>{ntype._cursor_type.__name__}</i>:</p>")
             else:
                 ret.append(ntype._cursor_type.__name__)
             table = []
             for nid, node in nodes:
-                table.append([nid]+[val for val in tuple.__iter__(node)])
+                table.append([nid] + [fmt_val(val) for val in tuple.__iter__(node)])
 
             ret.append(tabulate(
                 table,
