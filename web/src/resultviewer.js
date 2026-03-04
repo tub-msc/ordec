@@ -537,6 +537,7 @@ export class ResultViewer {
     _onViewSelected(viewName) {
         this.viewSelected = viewName;
         this.container.setState({ view: viewName });
+        this.container.setTitle(viewName);
 
         this.invalidate();
         this.resetResContent();
@@ -549,6 +550,7 @@ export class ResultViewer {
         this.viewSelected = null;
         this.viewUpToDate = false;
         this.view = null;
+        this.container.setTitle('Result View');
         this.showRefreshOverlay(null);
         this.showException(null);
         this.resetResContent();
@@ -610,6 +612,9 @@ export class ResultViewer {
                 }
             });
             this.viewSelected = selectedVal;
+        }
+        if (this.viewSelected) {
+            this.container.setTitle(this.viewSelected);
         }
         this.viewListInitialized = true;
     }
