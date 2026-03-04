@@ -6,6 +6,7 @@
 import * as d3 from "d3";
 import { LayoutGL } from './layout-gl.js';
 import { SimPlot } from './simplot.js';
+import { HierSelector } from './hier-selector.js';
 
 let idCounter = 0;
 export function generateId() {
@@ -432,12 +433,13 @@ const viewClassOf = {
 
 export class ResultViewer {
     static refreshAll = false;
+    static useHierSelector = true;
 
     constructor(container, state) {
         this.container = container;
         container.element.innerHTML = `
             <div class="resview">
-                <div class="resviewhead"><select class="viewsel"></select></div>
+                <div class="resviewhead"></div>
                 <div class="reswrapper">
                     <div class="resoverlay-topleft refreshing"><img src="/loading.gif" /> Refreshing view...</div>
                     <div class="resoverlay-topleft refreshable">View is out of date. <button>Refresh</button></div>
@@ -455,16 +457,34 @@ export class ResultViewer {
         this.resContent = container.element.querySelector(".rescontent");
         this.resWrapper = container.element.querySelector(".reswrapper");
         this.resException = container.element.querySelector(".resexception");
-        this.viewSelector = container.element.querySelector(".viewsel");
+        this.resViewHead = container.element.querySelector(".resviewhead");
         this.viewUpToDate = false;
         this.viewSelected = null;
         this.refreshRequestedByUser = false;
-        this.viewSelector.onchange = () => this.viewSelectorOnChange();
+        this._useHier = ResultViewer.useHierSelector;
+        if (this._useHier) {
+            this.hierSelector = new HierSelector(this.resViewHead, {
+                onSelect: (viewName) => this._onViewSelected(viewName),
+                onDeselect: () => this._onViewDeselected(),
+            });
+            this.viewSelector = null;
+        } else {
+            this._createFlatSelector();
+        }
         if (state['view']) {
             this.restoreSelectedView = state['view'];
         }
         //this.updateGlobalState();
         this.viewListInitialized = false;
+    }
+
+    _createFlatSelector() {
+        const sel = document.createElement('select');
+        sel.classList.add('viewsel');
+        this.resViewHead.appendChild(sel);
+        this.viewSelector = sel;
+        this.viewSelector.onchange = () => this.viewSelectorOnChange();
+        this.hierSelector = null;
     }
 
     refreshOnClick() {
@@ -510,16 +530,28 @@ export class ResultViewer {
     }
 
     viewSelectorOnChange() {
-        this.viewSelected = this.viewSelector.options[this.viewSelector.selectedIndex].value;
-        this.container.setState({
-            view: this.viewSelector.options[this.viewSelector.selectedIndex].value
-        });
-        
+        const viewName = this.viewSelector.options[this.viewSelector.selectedIndex].value;
+        this._onViewSelected(viewName);
+    }
+
+    _onViewSelected(viewName) {
+        this.viewSelected = viewName;
+        this.container.setState({ view: viewName });
+
         this.invalidate();
         this.resetResContent();
-        this.resContent.focus(); // tab focus on resContent
+        this.resContent.focus();
         this.view = null;
         this.client.requestNextView();
+    }
+
+    _onViewDeselected() {
+        this.viewSelected = null;
+        this.viewUpToDate = false;
+        this.view = null;
+        this.showRefreshOverlay(null);
+        this.showException(null);
+        this.resetResContent();
     }
 
     invalidate() {
@@ -540,26 +572,45 @@ export class ResultViewer {
     }
 
     updateViewList() {
-        let vs = this.viewSelector;
-        let prevOptVal;
-        if (vs.selectedIndex > 0) {
-            prevOptVal = vs.options[vs.selectedIndex].value
-        } else {
-            prevOptVal = this.restoreSelectedView;
-        }
-        vs.innerHTML = "<option disabled selected value>--- Select result from list ---</option>";
-        let selectedVal = null;
-        this.client.views.forEach(view => {
-            var option = document.createElement("option");
-            option.innerText = view.name;
-            option.value = view.name;
-            vs.appendChild(option)
-            if (view.name == prevOptVal) {
-                option.selected = true;
-                selectedVal = view.name;
+        // Check if mode toggled at runtime
+        if (this._useHier !== ResultViewer.useHierSelector) {
+            this._useHier = ResultViewer.useHierSelector;
+            this.resViewHead.replaceChildren();
+            if (this._useHier) {
+                this.viewSelector = null;
+                this.hierSelector = new HierSelector(this.resViewHead, {
+                    onSelect: (viewName) => this._onViewSelected(viewName),
+                });
+            } else {
+                this.hierSelector = null;
+                this._createFlatSelector();
             }
-        });
-        this.viewSelected = selectedVal;
+        }
+
+        const viewNames = [];
+        this.client.views.forEach(view => viewNames.push(view.name));
+
+        const prevSelected = this.viewSelected || this.restoreSelectedView;
+
+        if (this._useHier) {
+            this.hierSelector.update(viewNames, prevSelected);
+            this.viewSelected = this.hierSelector.selectedView;
+        } else {
+            let vs = this.viewSelector;
+            vs.innerHTML = "<option disabled selected value>--- Select result from list ---</option>";
+            let selectedVal = null;
+            this.client.views.forEach(view => {
+                var option = document.createElement("option");
+                option.innerText = view.name;
+                option.value = view.name;
+                vs.appendChild(option);
+                if (view.name == prevSelected) {
+                    option.selected = true;
+                    selectedVal = view.name;
+                }
+            });
+            this.viewSelected = selectedVal;
+        }
         this.viewListInitialized = true;
     }
 

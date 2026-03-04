@@ -77,6 +77,7 @@ body {
 }
 .resviewhead select {
     flex-grow:1;
+    min-width:80px;
 }
 .resviewhead {
     display:flex;
