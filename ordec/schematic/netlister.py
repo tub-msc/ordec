@@ -17,6 +17,21 @@ class Netlister:
     def name_obj(self, obj: Node, prefix: str = "") -> str:
         return self.directory.name_node(obj, prefix)
 
+    def name_net(self, net: Net) -> str:
+        """
+        Name a net, preferring its own name. If the net is unnamed but linked
+        to a named symbol pin, reuse that pin name for the net.
+        """
+
+        if (net.npath_nid is None) and (net.pin is not None) and (net.pin.npath_nid is not None):
+            # If the net is unnamed, try to use the symbol's pin path for the name.
+            # This happens especially with ORD2 schematics, where ports are named
+            # and the corresponding nets are not named.
+            pin_name = self.directory.name_node(net.pin)
+            return self.directory.unique_name(pin_name, net, net.root)
+
+        return self.name_obj(net)
+
     def require_netlist_setup(self, func):
         self.netlist_setup_funcs.add(func)
 
@@ -89,12 +104,12 @@ class Netlister:
             conn = inst.subgraph.one(
                 SchemInstanceConn.ref_pin_idx.query((inst, pin))
             )
-            ret.append(self.name_obj(conn.here))
+            ret.append(self.name_net(conn.here))
         return ret
 
     def netlist_schematic(self, s: Schematic):
         for net in s.all(Net):
-            self.name_obj(net)
+            self.name_net(net)
 
         subckt_dep = set()
         for inst in s.all(SchemInstance):
@@ -153,7 +168,7 @@ class Netlister:
                 # connections work even when there is a mismatch between the
                 # pin and net names. Moreover, the pin names might even be
                 # assigned to something else within the Schematic context.
-                [self.name_obj(schematic.one(Net.pin_idx.query(pin)))
+                [self.name_net(schematic.one(Net.pin_idx.query(pin)))
                     for pin in self.pinlist(symbol)]
             )
             self.indent += 4
