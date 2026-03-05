@@ -129,7 +129,18 @@ export class HierSelector {
         this.selects = [];
         this._selectedView = null;
 
-        if (!this.root || this.root.children.size === 0) return;
+        if (!this.root || this.root.children.size === 0) {
+            const select = document.createElement('select');
+            select.classList.add('viewsel');
+            const opt = document.createElement('option');
+            opt.disabled = true;
+            opt.selected = true;
+            opt.textContent = '---- No views found ----';
+            select.appendChild(opt);
+            this.container.appendChild(select);
+            this.selects.push(select);
+            return;
+        }
 
         // Find path to restore selection
         let path = null;
