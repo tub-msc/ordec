@@ -1,0 +1,165 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+
+from ordec.core import *
+from ordec.ord2.context import schem_check
+from ordec.lib import Res, Vdc, Vsin, Gnd, NoConn
+from ordec.lib.ihp130 import Nmos, Pmos
+from ordec.sim import HighlevelSim
+
+cell Opamp:
+    viewgen symbol -> Symbol:
+        input vin_n: .align = Orientation.West
+        input vin_p: .align = Orientation.West
+        output vout: .align = Orientation.East
+        inout vdd: .align = Orientation.North
+        inout vss: .align = Orientation.South
+    viewgen schematic -> Schematic:
+        schem_check(True)
+        net cur, l, b
+        port vin_n: .pos=(19,6); .align=Orientation.West
+        port vin_p: .pos=(5,6); .align=Orientation.East
+        port vout: .pos=(19,9); .align=Orientation.West
+        port vdd: .pos=(0,16); .align=Orientation.South
+        port vss: .pos=(1,-5); .align=Orientation.North
+
+        Pmos M3:
+            .pos=(10,10)
+            .orientation=Orientation.MY
+            .d -- l
+            .g --l 
+
+        Pmos M4:
+            .pos=(14,10)
+            .d -- vout
+            .g -- l
+
+        Nmos M1:
+            .pos=(6,4)
+            .s -- b
+            .d -- l
+            .g -- vin_p
+
+        Nmos M2:
+            .pos=(18,4)
+            .orientation=Orientation.MY
+            .s -- b
+            .d -- vout
+            .g -- vin_n
+
+        Nmos M5:
+            .pos=(10,-3)
+            .s -- vss
+            .d -- b
+            .g -- cur
+
+        Nmos M6:
+            .pos=(3,-3)
+            .orientation=Orientation.MY
+            .s -- vss
+            .d -- cur
+            .g -- cur
+
+        Res R1:
+            .pos=(-1, 10)
+            .$r = 10k
+            .p -- vdd
+            .m -- cur
+
+        for x in M1, M2, M5, M6:
+            x.b -- vss
+            x.$l = 1u
+        for x in M3, M4:
+            x.b -- vdd
+            x.s -- vdd
+
+
+cell Filter:
+    viewgen symbol -> Symbol:
+        input vin: .align = Orientation.West
+        output vout: .align = Orientation.East
+        inout vdd: .align = Orientation.North
+        inout vss: .align = Orientation.South
+    viewgen schematic -> Schematic:
+        port vin: .pos = (0, 11); .align = Orientation.East
+        port vout: .pos = (15, 10); .align = Orientation.West
+        port vss: .pos = (4, -5)
+        port vdd: .pos = (10, 15); .align = Orientation.South
+        net fb
+        Opamp x:
+            .pos = (8,8)
+            .vout -- vout
+            .vin_p -- vin
+            .vin_n -- fb
+            .vss -- vss
+            .vdd -- vdd
+        Res rg:
+            .$r=0k
+            .pos = (5, -3)
+            .p -- fb
+            .m -- vss
+        Res rf:
+            .$r=100k
+            .orientation = Orientation.R90
+            .pos = (12, 2)
+            .p -- fb
+            .m --  vout
+        schem_check(False)
+        
+cell FilterTb:
+    viewgen symbol -> Symbol:
+        pass
+
+    viewgen schematic -> Schematic:
+        net vdd, vss, vin, vout
+        Filter DUT:
+            .vdd -- vdd
+            .vss -- vss
+            .vin -- vin
+            .vout -- vout
+            .pos = (15, 7)
+        
+        Gnd g:
+            .p -- vss
+            .pos = (0, 0)
+        
+        Vdc supply:
+            .m -- vss
+            .p -- vdd
+            .pos = (0, 7)
+            .$dc = '1.2'
+        
+        Vsin sig:
+            .m -- vss
+            .p -- vin
+            .$amplitude = '0.02'
+            .$frequency = '1M'
+            .$offset = '0.5'
+            .pos = (6, 7)
+        
+        NoConn out:
+            .a -- vout
+            .pos = (20, 7)
+
+
+    @generate
+    def sim_ac(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).ac('dec', '100', '100M', '10G')
+        return s
+
+    @generate
+    def sim_tran(self):
+        """Run sync transient simulation."""
+
+        s = SimHierarchy.from_schematic(self.schematic)
+        sim = HighlevelSim(s)
+        sim.tran(R('30n'), R('30u'))
+        return s
+
+    @generate
+    def sim_dc(self):
+        node = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(node).op()
+        return node

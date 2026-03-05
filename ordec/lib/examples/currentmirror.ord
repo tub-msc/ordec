@@ -1,22 +1,63 @@
-from ordec.lib import Nmos, Pmos, Res
-from ordec.lib import Vdc, Idc, Gnd
+from ordec.lib import Nmos, Pmos, Res, Vdc, Isin, Gnd
+from ordec.core import *
+from ordec.ord2.context import schem_check
+from ordec.sim import HighlevelSim
 
 cell CurrentMirror:
-    symbol:
+    viewgen symbol -> Symbol:
         pass
-    schematic:
+    viewgen schematic -> Schematic:
         net vss, vdd, l, r
         
-        Nmos n0(pos=(10,6), d--l, $w=500n, orientation=FlippedSouth)
-        Nmos n1(pos=(14,6), d--r, $w=500n)
+        Nmos n0:
+            .pos=(10,6)
+            .d--l
+            .$w=500n
+            .orientation=Orientation.FlippedSouth
+        Nmos n1:
+            .pos=(14,6)
+            .d--r
+            .$w=1500n
         
         for n in n0, n1:
-            n.$l = 250n
             n.g -- l
             n.s -- vss
             n.b -- vss
         
-        Gnd gnd (pos=(0,0),   p--vss)
-        Idc isrc(pos=(6,12),  p--vdd, m--l,   $dc=10u)
-        Vdc vsrc(pos=(0,9),   p--vdd, m--vss, $dc=5)
-        Res r0  (pos=(14,12), p--vdd, m--r,   $r=10k)
+        Gnd gnd:
+            .pos = (0,0)
+            .p -- vss
+        
+        Isin isrc:
+            .pos=(6,12)
+            .p -- vdd
+            .m --l
+            .$offset=10u
+            .$amplitude=1u
+            .$frequency=1M
+        
+        Vdc vsrc: .pos=(0,9); .p -- vdd; .m -- vss; .$dc=5
+        Res r0: .pos=(14,12); .p--vdd; .m--r; .$r=10k
+        
+        schem_check(True)
+    
+    @generate
+    def sim_dc(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).op()
+        return s
+
+    @generate
+    def sim_ac(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s, enable_savecurrents=True).ac('dec', '100', '100M', '10G')
+        return s
+
+    @generate
+    def sim_tran(self):
+        """Run sync transient simulation."""
+
+        s = SimHierarchy.from_schematic(self.schematic)
+        sim = HighlevelSim(s)
+        sim.tran(R('30n'), R('30u'))
+        return s
