@@ -134,6 +134,7 @@ class Netlister:
 
         self.add(".title", self.directory.name_subgraph(top))
         if self.enable_savecurrents:
+            self.add('.probe', 'alli') 
             self.add(".option", "savecurrents")
         subckt_dep = self.netlist_schematic(top)
         self.netlist_hier_deps(subckt_dep)
