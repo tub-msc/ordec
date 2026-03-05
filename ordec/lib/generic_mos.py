@@ -13,6 +13,9 @@ def setup_generic_mos(netlister):
         'LAMBDA=0.0', # Channel length modulation parameter
         'PHI=0.6', # Surface potential
         'GAMMA=0.0', # Bulk threshold parameter
+        'TOX=10e-9', # Gate oxide thickness (enables Cgs/Cgd)
+        'CBD=10e-15', # Bulk-drain junction capacitance
+        'CBS=10e-15', # Bulk-source junction capacitance
     ]
     netlister.add('.model', 'nmosgeneric', 'NMOS', 'level=1', f'VTO={vt0}', *common_args)
     netlister.add('.model', 'pmosgeneric', 'PMOS', 'level=1', f'VTO={-vt0}', *common_args)
