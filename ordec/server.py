@@ -330,12 +330,16 @@ class ConnectionHandler:
         exc = None
         if source_type == 'ord':
             # Having the import here enables auto-reloading of ord.
-            code = compile_ord(source_data, conn_globals)
-            with self.import_lock.write():
-                try:
-                    exec(code, conn_globals, conn_globals)
-                except Exception as e:
-                    exc = e
+            try:
+                code = compile_ord(source_data, conn_globals)
+            except Exception as e:
+                exc = e
+            else:
+                with self.import_lock.write():
+                    try:
+                        exec(code, conn_globals, conn_globals)
+                    except Exception as e:
+                        exc = e
         elif source_type == 'python':
             with self.import_lock.write():
                 try:
