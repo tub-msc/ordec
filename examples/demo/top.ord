@@ -51,8 +51,8 @@ cell Top:
             .vss -- vss
             .vdd -- vdd
             .vbias -- vbias
-
-        extlib['counter'] digital_part:
+        x = lambda: extlib['counter']
+        x digital_part:
             .pos=(15,10)
             .rst_ni -- rst_n
             .clk_i -- clk

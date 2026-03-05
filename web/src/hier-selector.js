@@ -2,19 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Split a view name into hierarchical segments at "." and "(" boundaries,
+ * Split a view name into hierarchical segments at ".", "(" and "[" boundaries,
  * preserving all characters so that segments.join("") === name.
  *
  * Examples:
  *   "Nand2().schematic"          --> ["Nand2", "()", ".schematic"]
  *   "mylib.VoltageDivider().sch" --> ["mylib", ".VoltageDivider", "()", ".sch"]
- *   "mylib['CellName'].layout"   --> ["mylib['CellName']", ".layout"]
+ *   "mylib['CellName'].layout"   --> ["mylib", "['CellName']", ".layout"]
  *   "__ord_py_source__"          --> ["__ord_py_source__"]
  */
 function splitViewName(name) {
-    // Split before "." and before "(" — but not inside brackets.
-    // We match runs of characters that don't start a new segment.
-    const segments = name.match(/^[^.(]+|\([^)]*\)|\.(?:[^.(]*(?:\[[^\]]*\])*[^.(]*)*/g);
+    // Split before ".", "(" and "[".
+    // Each segment is either a bracket group or a dot-prefixed/plain run
+    // of characters up to the next delimiter.
+    const segments = name.match(/^[^.(\[]+|\([^)]*\)|\[[^\]]*\]|\.[^.(\[]*/g);
     return segments || [name];
 }
 
@@ -47,12 +48,12 @@ function collapseTrie(root) {
         collapseTrie(child);
     }
 
-    // Collapse: if this node has exactly one child, and that child is a non-leaf
-    // (has children), merge them. But keep going in case the merged node can
-    // collapse further.
+    // Collapse: if this node has exactly one child and neither node nor child
+    // is a "dual" node (both leaf and parent), merge them.  Keep going in case
+    // the merged result can collapse further.
     while (root.children.size === 1) {
         const [key, child] = root.children.entries().next().value;
-        if (child.children.size === 0) break; // child is a pure leaf, stop
+        if (root.viewName !== null) break; // root is itself a leaf, stop
         if (child.viewName !== null && child.children.size > 0) break; // child is leaf+parent
         // Merge child into root
         root.children.delete(key);
