@@ -339,6 +339,9 @@ class Vpulse(Cell):
     def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
+        dc_spec = f"dc {self.initial_value.compat_str()}"
+        ac_amp = self.pulsed_value - self.initial_value
+        ac_spec = f"ac {ac_amp.compat_str()}"
         pulse_values = (
             f"PULSE({self.initial_value.compat_str()} {self.pulsed_value.compat_str()} "
             f"{self.delay_time.compat_str()} "
@@ -351,7 +354,7 @@ class Vpulse(Cell):
         netlister.add(
             netlister.name_obj(inst, prefix="v"),
             netlister.portmap(inst, pins),
-            pulse_values
+            f"{dc_spec} {ac_spec} {pulse_values}"
         )
 
 @public
@@ -524,6 +527,9 @@ class Ipulse(Cell):
     def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
+        dc_spec = f"dc {self.initial_value.compat_str()}"
+        ac_amp = self.pulsed_value - self.initial_value
+        ac_spec = f"ac {ac_amp.compat_str()}"
         pulse_values = (
             f"PULSE({self.initial_value.compat_str()} {self.pulsed_value.compat_str()} "
             f"{self.delay_time.compat_str()} "
@@ -536,7 +542,7 @@ class Ipulse(Cell):
         netlister.add(
             netlister.name_obj(inst, prefix="i"),
             netlister.portmap(inst, pins),
-            pulse_values
+            f"{dc_spec} {ac_spec} {pulse_values}"
         )
 
 @public
@@ -591,13 +597,19 @@ class Isin(Cell):
         amplitude = self.amplitude
         frequency = self.frequency
 
-        # The optional parameters can keep using .get() with a default.
         offset = self.offset
         delay = self.delay
         damping = self.damping_factor
 
+        tran_spec = (
+            f"SIN({offset.compat_str()} {amplitude.compat_str()} "
+            f"{frequency.compat_str()} {delay.compat_str()} {damping.compat_str()})"
+        )
+        ac_spec = f"ac {amplitude.compat_str()}"
+        dc_spec = f"dc {offset.compat_str()}"
+
         netlister.add(
             netlister.name_obj(inst, prefix="i"),
             netlister.portmap(inst, pins),
-            f'SIN({offset.compat_str()} {amplitude.compat_str()} {frequency.compat_str()} {delay.compat_str()} {damping.compat_str()})'
+            f"{dc_spec} {ac_spec} {tran_spec}"
         )

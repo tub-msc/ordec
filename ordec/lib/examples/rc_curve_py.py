@@ -60,5 +60,5 @@ class RC(Cell):
     def sim_ac(self):
         s = SimHierarchy.from_schematic(self.schematic)
         sim = HighlevelSim(s)
-        sim.ac('dec', '10', '1', '10meg')
+        sim.ac('dec', '10', '1', '10M')
         return s
