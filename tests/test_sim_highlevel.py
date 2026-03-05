@@ -78,8 +78,8 @@ def plot_bode(freq_hz, response, outfile):
 
 def test_sim_dc_flat():
     h = lib_test.ResdivFlatTb().sim_dc
-    assert h.a.dc_voltage == 0.33333333333333337
-    assert h.b.dc_voltage == 0.6666666666666667
+    assert h.a.dc_voltage == pytest.approx(1.0 / 3.0, abs=1e-12)
+    assert h.b.dc_voltage == pytest.approx(2.0 / 3.0, abs=1e-12)
 
 def test_sim_dc_hier():
     h = lib_test.ResdivHierTb().sim_dc
