@@ -32,9 +32,9 @@ cell CurrentMirror:
             .pos=(6,12)
             .p -- vdd
             .m --l
-            .$offset=10u
-            .$amplitude=1u
-            .$frequency=1M
+            .$dc=10u
+            .$ac=1u
+            .$freq=1M
         
         Vdc vsrc: .pos=(0,9); .p -- vdd; .m -- vss; .$dc=5
         Res r0: .pos=(14,12); .p--vdd; .m--r; .$r=10k

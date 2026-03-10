@@ -23,7 +23,7 @@ class ResdivFlatTb(Cell):
         s.b = Net()
 
         sym_vdc = Vdc(dc=R(1)).symbol
-        sym_vac = Vsin(amplitude=R(1), frequency=R("1e6")).symbol
+        sym_vac = Vsin(ac=R(1), freq=R("1e6")).symbol
         sym_gnd = Gnd().symbol
         sym_res = Res(r=R(100)).symbol
 
@@ -182,7 +182,7 @@ class ResdivHierTb(Cell):
             Vdc(dc=R(1)).symbol.portmap(m=s.gnd, p=s.t_ac), pos=Vec2R(0, 0)
         )
         s.I2_ac = SchemInstance(
-            Vsin(amplitude=R(1), frequency=R("1e6")).symbol.portmap(m=s.t_ac, p=s.t), pos=Vec2R(0, 6)
+            Vsin(ac=R(1), freq=R("1e6")).symbol.portmap(m=s.t_ac, p=s.t), pos=Vec2R(0, 6)
         )
         s.I3 = SchemInstance(Gnd().symbol.portmap(p=s.gnd), pos=Vec2R(0, -6))
 
@@ -232,7 +232,7 @@ class NmosSourceFollowerTb(Cell):
             Vdc(dc=vin).symbol.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
         )
         s.I3_ac = SchemInstance(
-            Vsin(amplitude=R(1), frequency=R("1e6")).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
+            Vsin(ac=R(1), freq=R("1e6")).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
         )
         s.I4 = SchemInstance(
             Idc(dc=R("5u")).symbol.portmap(m=s.vss, p=s.o), pos=Vec2R(11, 6)
@@ -316,7 +316,7 @@ class InvSkyTb(Cell):
         sym_gnd = Gnd().symbol
         sym_vdc_vdd = Vdc(dc=R("5")).symbol
         sym_vdc_in = Vdc(dc=vin).symbol
-        sym_vac_in = Vsin(amplitude=R(1), frequency=R("1e6")).symbol
+        sym_vac_in = Vsin(ac=R(1), freq=R("1e6")).symbol
 
         s.i_inv = SchemInstance(
             sym_inv.portmap(vdd=s.vdd, vss=s.vss, a=s.i, y=s.o), pos=Vec2R(11, 9)
@@ -428,7 +428,7 @@ class InvIhpTb(Cell):
         sym_gnd = Gnd().symbol
         sym_vdc_vdd = Vdc(dc=R("5")).symbol
         sym_vdc_in = Vdc(dc=vin).symbol
-        sym_vac_in = Vsin(amplitude=R(1), frequency=R("1e6")).symbol
+        sym_vac_in = Vsin(ac=R(1), freq=R("1e6")).symbol
 
         s.i_inv = SchemInstance(
             sym_inv.portmap(vdd=s.vdd, vss=s.vss, a=s.i, y=s.o), pos=Vec2R(11, 9)
@@ -464,7 +464,7 @@ class SineRC(Cell):
         cap = Cap(c=R("100n")).symbol
 
         vsrc = Vsin(
-            amplitude=R(1), frequency=R(1),
+            ac=R(1), freq=R(1),
         ).symbol
 
         s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
@@ -599,11 +599,9 @@ class IpulseTb(SourceTb):
 class VsinTb(SourceTb):
     def add_source_instance(self, s: Schematic):
         vsrc = Vsin(
-            offset=R("0.2"),
-            amplitude=R("0.8"),
-            frequency=R("20k"),
-            delay=R("0u"),
-            damping_factor=R("0"),
+            dc=R("0.2"),
+            ac=R("0.8"),
+            freq=R("20k"),
         ).symbol
         s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.out), pos=Vec2R(0, 5))
 
@@ -611,11 +609,9 @@ class VsinTb(SourceTb):
 class IsinTb(SourceTb):
     def add_source_instance(self, s: Schematic):
         isrc = Isin(
-            offset=R("0.5m"),
-            amplitude=R("0.5m"),
-            frequency=R("20k"),
-            delay=R("0u"),
-            damping_factor=R("0"),
+            dc=R("0.5m"),
+            ac=R("0.5m"),
+            freq=R("20k"),
         ).symbol
         # Source oriented so positive Isin values produce positive resistor current.
         s.isrc = SchemInstance(isrc.portmap(p=s.vss, m=s.out), pos=Vec2R(0, 5))

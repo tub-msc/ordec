@@ -360,11 +360,11 @@ class Vpulse(Cell):
 @public
 class Vsin(Cell):
     """Sinusoidal voltage source (SPICE SIN). Netlists with both AC and transient specifications."""
-    offset = Parameter(R, optional=True, default=R(0)) #: DC offset.
-    amplitude = Parameter(R) #: Peak amplitude.
-    frequency = Parameter(R) #: Frequency in Hz.
+    dc = Parameter(R, optional=True, default=R(0)) #: DC offset.
+    ac = Parameter(R) #: Peak amplitude.
+    freq = Parameter(R) #: Frequency in Hz.
     delay = Parameter(R, optional=True, default=R(0)) #: Delay before start of sinusoid.
-    damping_factor = Parameter(R, optional=True, default=R(0)) #: Exponential damping factor.
+    damping = Parameter(R, optional=True, default=R(0)) #: Exponential damping factor.
 
     @generate
     def symbol(self) -> Symbol:
@@ -397,17 +397,17 @@ class Vsin(Cell):
         pins = [inst.symbol.p, inst.symbol.m]
 
         # Required parameters - will raise KeyError if not present
-        amplitude = self.amplitude
-        frequency = self.frequency
+        ac = self.ac
+        freq = self.freq
 
         # Optional parameters with defaults
-        offset = self.offset
+        dc = self.dc
         delay = self.delay
-        damping = self.damping_factor
+        damping = self.damping
 
-        tran_spec = f'SIN({offset.compat_str()} {amplitude.compat_str()} {frequency.compat_str()} {delay.compat_str()} {damping.compat_str()})'
-        ac_spec = f'ac {amplitude.compat_str()}'
-        dc_spec = f'dc {offset.compat_str()}'
+        tran_spec = f'SIN({dc.compat_str()} {ac.compat_str()} {freq.compat_str()} {delay.compat_str()} {damping.compat_str()})'
+        ac_spec = f'ac {ac.compat_str()}'
+        dc_spec = f'dc {dc.compat_str()}'
 
         netlister.add(
             netlister.name_obj(inst, prefix="v"),
@@ -548,11 +548,11 @@ class Ipulse(Cell):
 @public
 class Isin(Cell):
     """Sinusoidal current source (SPICE SIN)."""
-    offset = Parameter(R, optional=True, default=R(0)) #: DC offset.
-    amplitude = Parameter(R) #: Peak amplitude.
-    frequency = Parameter(R) #: Frequency in Hz.
+    dc = Parameter(R, optional=True, default=R(0)) #: DC offset.
+    ac = Parameter(R) #: Peak amplitude.
+    freq = Parameter(R) #: Frequency in Hz.
     delay = Parameter(R, optional=True, default=R(0)) #: Delay before start of sinusoid.
-    damping_factor = Parameter(R, optional=True, default=R(0)) #: Exponential damping factor.
+    damping = Parameter(R, optional=True, default=R(0)) #: Exponential damping factor.
 
     @generate
     def symbol(self) -> Symbol:
@@ -594,19 +594,19 @@ class Isin(Cell):
     def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
-        amplitude = self.amplitude
-        frequency = self.frequency
+        ac = self.ac
+        freq = self.freq
 
-        offset = self.offset
+        dc = self.dc
         delay = self.delay
-        damping = self.damping_factor
+        damping = self.damping
 
         tran_spec = (
-            f"SIN({offset.compat_str()} {amplitude.compat_str()} "
-            f"{frequency.compat_str()} {delay.compat_str()} {damping.compat_str()})"
+            f"SIN({dc.compat_str()} {ac.compat_str()} "
+            f"{freq.compat_str()} {delay.compat_str()} {damping.compat_str()})"
         )
-        ac_spec = f"ac {amplitude.compat_str()}"
-        dc_spec = f"dc {offset.compat_str()}"
+        ac_spec = f"ac {ac.compat_str()}"
+        dc_spec = f"dc {dc.compat_str()}"
 
         netlister.add(
             netlister.name_obj(inst, prefix="i"),

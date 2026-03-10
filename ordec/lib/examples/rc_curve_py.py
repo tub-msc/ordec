@@ -28,8 +28,8 @@ class RC(Cell):
             ).symbol
         else:
             vcc = Vsin(
-                amplitude=R(1),
-                frequency=R("1k")
+                ac=R(1),
+                freq=R("1k")
             ).symbol
 
 
