@@ -13,7 +13,7 @@ cell CurrentMirror:
             .pos=(10,6)
             .d--l
             .$w=500n
-            .orientation=Orientation.FlippedSouth
+            .orientation=FlippedSouth
         Nmos n1:
             .pos=(14,6)
             .d--r

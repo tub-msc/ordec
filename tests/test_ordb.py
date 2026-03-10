@@ -57,12 +57,12 @@ def test_schema_attr_inheritance():
 
 def test_node():
     #n = Node()
-    n = Pin(pintype=PinType.Inout, pos=Vec2R(x=R('2.'), y=R('4.')), align=D4.R180)
+    n = Pin(pintype=PinType.Inout, pos=Vec2R(x=R('2.'), y=R('4.')), align=R180)
     m = n.set(pintype=PinType.Out)
     assert n.pintype == PinType.Inout
     assert m.pintype == PinType.Out
-    assert n.align == D4.R180
-    assert m.align == D4.R180
+    assert n.align == R180
+    assert m.align == R180
 
     with pytest.raises(AttributeError, match='has no attribute'):
         n.hello = 'world'
@@ -107,7 +107,7 @@ def test_node_attrs_hashable():
 def test_attr_default():
     p = Pin(pos=Vec2R(0, 2))
     assert p.pos == Vec2R(0, 2)
-    assert p.align == D4.R0
+    assert p.align == R0
     assert p.pintype == PinType.Inout
 
 def test_attr_undefined():
@@ -117,7 +117,7 @@ def test_attr_undefined():
 def test_subgraph_load():
     with pytest.raises(ModelViolation, match=r"Missing root node"):
         MutableSubgraph.load({
-            100: Pin(pintype=PinType.In, pos=Vec2R(x=R('0.'), y=R('2.')), align=D4.R0),
+            100: Pin(pintype=PinType.In, pos=Vec2R(x=R('0.'), y=R('2.')), align=R0),
         })
 
     with pytest.raises(ModelViolation, match=r"Missing root node"):
@@ -127,9 +127,9 @@ def test_subgraph_load():
 
     s_dict = {
         0: Symbol.Tuple(outline=None, caption=None),
-        100: Pin(pintype=PinType.In, pos=Vec2R(x=R('0.'), y=R('2.')), align=D4.R0),
+        100: Pin(pintype=PinType.In, pos=Vec2R(x=R('0.'), y=R('2.')), align=R0),
         101: NPath(parent=None, name='a', ref=100),
-        102: Pin(pintype=PinType.Out, pos=Vec2R(x=R('4.'), y=R('2.')), align=D4.R0),
+        102: Pin(pintype=PinType.Out, pos=Vec2R(x=R('4.'), y=R('2.')), align=R0),
         103: NPath(parent=None, name='y', ref=102),
     }
     s = MutableSubgraph.load(s_dict).subgraph
@@ -183,9 +183,9 @@ def test_subgraph_table():
 def test_subgraph_matches():
     ref = MutableSubgraph.load({
         0: Symbol.Tuple(outline=None, caption=None),
-        100: Pin.Tuple(pintype=PinType.In, pos=Vec2R(x=R('0.'), y=R('2.')), align=D4.R0),
+        100: Pin.Tuple(pintype=PinType.In, pos=Vec2R(x=R('0.'), y=R('2.')), align=R0),
         101: NPath.Tuple(parent=None, name='a', ref=100),
-        102: Pin.Tuple(pintype=PinType.Out, pos=Vec2R(x=R('4.'), y=R('2.')), align=D4.R0),
+        102: Pin.Tuple(pintype=PinType.Out, pos=Vec2R(x=R('4.'), y=R('2.')), align=R0),
         103: NPath.Tuple(parent=None, name='y', ref=102),
     })
 

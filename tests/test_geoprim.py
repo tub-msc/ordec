@@ -1,25 +1,25 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.core.geoprim import Vec2R, Vec2I, TD4R, TD4I, Rect4R, Rect4I, D4
+from ordec.core.geoprim import *
 from ordec.core.rational import R
 import pytest
 
 def test_D4():
-    assert D4.R0   * D4.R0   == D4.R0
-    assert D4.R90  * D4.R90  == D4.R180
-    assert D4.R180 * D4.R90  == D4.R270
-    assert D4.R270 * D4.R90  == D4.R0
-    assert D4.R180 * D4.R180 == D4.R0
+    assert R0   * R0   == R0
+    assert R90  * R90  == R180
+    assert R180 * R90  == R270
+    assert R270 * R90  == R0
+    assert R180 * R180 == R0
 
-    assert repr(D4.R0) == 'D4.R0'
-    assert str(D4.R0) == 'D4.R0'
+    assert repr(R0) == 'D4.R0'
+    assert str(R0) == 'D4.R0'
 
     flip_pairs = (
-        (D4.R0,   D4.MY),
-        (D4.R90,  D4.MY90),
-        (D4.R180, D4.MX),
-        (D4.R270, D4.MX90),
+        (R0,   MY),
+        (R90,  MY90),
+        (R180, MX),
+        (R270, MX90),
     )
     for a, b in flip_pairs:
         assert a.flip() == b
@@ -30,31 +30,31 @@ def test_D4():
         assert b.unflip() == a
 
     for a in D4:
-        assert a.inv() * a == D4.R0
+        assert a.inv() * a == R0
         assert a * Vec2R(0, 1) == a.flip() * Vec2R(0, 1)
 
 def test_TD4R():
     assert TD4R() * TD4R() == TD4R()
 
-    assert D4.R0 * Vec2R(12, 34) == Vec2R(12, 34)
-    assert D4.R90 * Vec2R(12, 34) == Vec2R(-34, 12)
-    assert D4.R180 * Vec2R(12, 34) == Vec2R(-12, -34)
-    assert D4.R270 * Vec2R(12, 34) == Vec2R(34, -12)
-    assert D4.MY * Vec2R(12, 34) == Vec2R(-12, 34)
-    assert D4.MY90 * Vec2R(12, 34) == Vec2R(-34, -12)
-    assert D4.MX * Vec2R(12, 34) == Vec2R(12, -34)
-    assert D4.MX90 * Vec2R(12, 34) == Vec2R(34, 12)
+    assert R0 * Vec2R(12, 34) == Vec2R(12, 34)
+    assert R90 * Vec2R(12, 34) == Vec2R(-34, 12)
+    assert R180 * Vec2R(12, 34) == Vec2R(-12, -34)
+    assert R270 * Vec2R(12, 34) == Vec2R(34, -12)
+    assert MY * Vec2R(12, 34) == Vec2R(-12, 34)
+    assert MY90 * Vec2R(12, 34) == Vec2R(-34, -12)
+    assert MX * Vec2R(12, 34) == Vec2R(12, -34)
+    assert MX90 * Vec2R(12, 34) == Vec2R(34, 12)
 
     assert Vec2R(77, -9).transl() * Vec2R(1, 5) == Vec2R(78, -4)
     assert Vec2R(-10, 2).transl() * Vec2R(77, -9).transl() * Vec2R(1, 5) == Vec2R(68, -2)
 
-    assert (D4.R90 * Vec2R(77, -9).transl()) * Vec2R(1, 5) == Vec2R(4, 78)
-    assert D4.R90 * (Vec2R(77, -9).transl() * Vec2R(1, 5)) == Vec2R(4, 78)
-    assert Vec2R(77, -9).transl() * (D4.R90 * Vec2R(1, 5)) == Vec2R(72, -8)
-    assert (Vec2R(77, -9).transl() * D4.R90) * Vec2R(1, 5) == Vec2R(72, -8)
+    assert (R90 * Vec2R(77, -9).transl()) * Vec2R(1, 5) == Vec2R(4, 78)
+    assert R90 * (Vec2R(77, -9).transl() * Vec2R(1, 5)) == Vec2R(4, 78)
+    assert Vec2R(77, -9).transl() * (R90 * Vec2R(1, 5)) == Vec2R(72, -8)
+    assert (Vec2R(77, -9).transl() * R90) * Vec2R(1, 5) == Vec2R(72, -8)
 
-    t1 = TD4R(Vec2R(1,2), D4.MX)
-    t2 = TD4R(Vec2R(5,6), D4.R90)
+    t1 = TD4R(Vec2R(1,2), MX)
+    t2 = TD4R(Vec2R(5,6), R90)
     
     assert repr(t1) == "TD4R(transl=Vec2R(R('1.'), R('2.')), d4=D4.MX)"
 
@@ -66,33 +66,33 @@ def test_TD4R():
     with pytest.raises(TypeError):
         t1 + t2
 
-    assert t1.d4 == D4.MX
-    assert t2.d4 == D4.R90
+    assert t1.d4 == MX
+    assert t2.d4 == R90
 
-    assert t1 * t2 == TD4R(Vec2R(6, -4), D4.MY90)
+    assert t1 * t2 == TD4R(Vec2R(6, -4), MY90)
 
 def test_TD4I():
     assert TD4I() * TD4I() == TD4I()
 
-    assert D4.R0 * Vec2I(12, 34) == Vec2I(12, 34)
-    assert D4.R90 * Vec2I(12, 34) == Vec2I(-34, 12)
-    assert D4.R180 * Vec2I(12, 34) == Vec2I(-12, -34)
-    assert D4.R270 * Vec2I(12, 34) == Vec2I(34, -12)
-    assert D4.MY * Vec2I(12, 34) == Vec2I(-12, 34)
-    assert D4.MY90 * Vec2I(12, 34) == Vec2I(-34, -12)
-    assert D4.MX * Vec2I(12, 34) == Vec2I(12, -34)
-    assert D4.MX90 * Vec2I(12, 34) == Vec2I(34, 12)
+    assert R0 * Vec2I(12, 34) == Vec2I(12, 34)
+    assert R90 * Vec2I(12, 34) == Vec2I(-34, 12)
+    assert R180 * Vec2I(12, 34) == Vec2I(-12, -34)
+    assert R270 * Vec2I(12, 34) == Vec2I(34, -12)
+    assert MY * Vec2I(12, 34) == Vec2I(-12, 34)
+    assert MY90 * Vec2I(12, 34) == Vec2I(-34, -12)
+    assert MX * Vec2I(12, 34) == Vec2I(12, -34)
+    assert MX90 * Vec2I(12, 34) == Vec2I(34, 12)
 
     assert Vec2I(77, -9).transl() * Vec2I(1, 5) == Vec2I(78, -4)
     assert Vec2I(-10, 2).transl() * Vec2I(77, -9).transl() * Vec2I(1, 5) == Vec2I(68, -2)
 
-    assert (D4.R90 * Vec2I(77, -9).transl()) * Vec2I(1, 5) == Vec2I(4, 78)
-    assert D4.R90 * (Vec2I(77, -9).transl() * Vec2I(1, 5)) == Vec2I(4, 78)
-    assert Vec2I(77, -9).transl() * (D4.R90 * Vec2I(1, 5)) == Vec2I(72, -8)
-    assert (Vec2I(77, -9).transl() * D4.R90) * Vec2I(1, 5) == Vec2I(72, -8)
+    assert (R90 * Vec2I(77, -9).transl()) * Vec2I(1, 5) == Vec2I(4, 78)
+    assert R90 * (Vec2I(77, -9).transl() * Vec2I(1, 5)) == Vec2I(4, 78)
+    assert Vec2I(77, -9).transl() * (R90 * Vec2I(1, 5)) == Vec2I(72, -8)
+    assert (Vec2I(77, -9).transl() * R90) * Vec2I(1, 5) == Vec2I(72, -8)
 
-    t1 = TD4I(Vec2I(1,2), D4.MX)
-    t2 = TD4I(Vec2I(5,6), D4.R90)
+    t1 = TD4I(Vec2I(1,2), MX)
+    t2 = TD4I(Vec2I(5,6), R90)
     
     assert repr(t1) == "TD4I(transl=Vec2I(1, 2), d4=D4.MX)"
 
@@ -104,10 +104,10 @@ def test_TD4I():
     with pytest.raises(TypeError):
         t1 + t2
 
-    assert t1.d4 == D4.MX
-    assert t2.d4 == D4.R90
+    assert t1.d4 == MX
+    assert t2.d4 == R90
 
-    assert t1 * t2 == TD4R(Vec2I(6, -4), D4.MY90)
+    assert t1 * t2 == TD4R(Vec2I(6, -4), MY90)
 
 def test_Vec2R():
     v = Vec2R(1, 2)

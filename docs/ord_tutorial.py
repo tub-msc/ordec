@@ -96,10 +96,10 @@ Inv().symbol
 %%ord
 cell Inv:
     viewgen symbol -> Symbol:
-        inout vdd: .align=Orientation.North
-        inout vss: .align=Orientation.South
-        input a: .align=Orientation.West
-        output y: .align=Orientation.East
+        inout vdd: .align=North
+        inout vss: .align=South
+        input a: .align=West
+        output y: .align=East
 # -
 # + tags=["remove-input"]
 Inv().symbol
@@ -116,16 +116,16 @@ from ordec.lib.generic_mos import Nmos, Pmos
 
 cell Inv:
     viewgen symbol -> Symbol:
-        inout vdd: .align=Orientation.North
-        inout vss: .align=Orientation.South
-        input a: .align=Orientation.West
-        output y: .align=Orientation.East
+        inout vdd: .align=North
+        inout vss: .align=South
+        input a: .align=West
+        output y: .align=East
 
     viewgen schematic -> Schematic:
-        port vdd: .pos=(2,13); .align=Orientation.North
-        port vss: .pos=(2,1); .align=Orientation.South
-        port y: .pos=(9,7); .align=Orientation.West
-        port a: .pos=(1,7); .align=Orientation.East
+        port vdd: .pos=(2,13); .align=North
+        port vss: .pos=(2,1); .align=South
+        port y: .pos=(9,7); .align=West
+        port a: .pos=(1,7); .align=East
 
         Nmos pd:
             .s -- vss
@@ -155,15 +155,15 @@ Inv().schematic
 #
 # ```python
 # # Oneline definition
-# port vdd: .pos=(2,13); .align=Orientation.North
+# port vdd: .pos=(2,13); .align=North
 # # Python-style block definition
 # port vdd:
 #     .pos=(2,13) 
-#     .align=Orientation.North
+#     .align=North
 # ```
 # Attributes must not be set directly on definition, they can also be set at a later point in the code
 # ```python
-# port vdd: .align=Orientation.North
+# port vdd: .align=North
 # vdd.pos=(2,13)
 # ```
 
@@ -195,18 +195,18 @@ Inv().schematic
 %%ord
 cell Nand:
     viewgen symbol -> Symbol:
-        output y: .align=Orientation.East
-        input a: .align=Orientation.West
-        input b: .align=Orientation.West
-        inout vdd: .align=Orientation.North
-        inout vss: .align=Orientation.South
+        output y: .align=East
+        input a: .align=West
+        input b: .align=West
+        inout vdd: .align=North
+        inout vss: .align=South
 
     viewgen schematic -> Schematic:
-        port y: .align=Orientation.West; .pos=(25,6)
-        port a: .align=Orientation.East; .pos=(1,4)
-        port b: .align=Orientation.East; .pos=(1,17)
-        port vdd: .align=Orientation.East; .pos=(1,23)
-        port vss: .align=Orientation.East; .pos=(1,1)
+        port y: .align=West; .pos=(25,6)
+        port a: .align=East; .pos=(1,4)
+        port b: .align=East; .pos=(1,17)
+        port vdd: .align=East; .pos=(1,23)
+        port vss: .align=East; .pos=(1,1)
 
         net net_conn
 
@@ -243,14 +243,14 @@ Nand().schematic
 cell MultibitReg_ArrayOfStructs:
     bits = Parameter(int)
     viewgen symbol -> Symbol:
-        input vdd: .align=Orientation.North
-        input vss: .align=Orientation.South
+        input vdd: .align=North
+        input vss: .align=South
         path bit
         for i in range(self.bits):
             path bit[i]
-            input bit[i].d: .align=Orientation.West
-            output bit[i].q: .align=Orientation.East
-        input clk: .align=Orientation.West
+            input bit[i].d: .align=West
+            output bit[i].q: .align=East
+        input clk: .align=West
 # -
 
 # **Parameters for subcells** are set using the dollar `$` operator.
@@ -262,16 +262,16 @@ cell MultibitReg_ArrayOfStructs:
 %%ord
 cell Inv:
     viewgen symbol -> Symbol:
-        inout vdd: .align=Orientation.North
-        inout vss: .align=Orientation.South
-        input a: .align=Orientation.West
-        output y: .align=Orientation.East
+        inout vdd: .align=North
+        inout vss: .align=South
+        input a: .align=West
+        output y: .align=East
 
     viewgen schematic -> Schematic:
-        port vdd: .pos=(2,13); .align=Orientation.North
-        port vss: .pos=(2,1); .align=Orientation.South
-        port y : .pos=(9,7); .align=Orientation.West
-        port a : .pos=(1,7); .align=Orientation.East
+        port vdd: .pos=(2,13); .align=North
+        port vss: .pos=(2,1); .align=South
+        port y : .pos=(9,7); .align=West
+        port a : .pos=(1,7); .align=East
 
         Nmos pd:
             .s -- vss
@@ -312,10 +312,10 @@ def add(x, y):
 
 cell Inv:
     viewgen symbol -> Symbol:
-        inout vdd: .align=Orientation.North
-        inout vss: .align=Orientation.South
-        input a: .align=Orientation.West
-        output y: .align=Orientation.East
+        inout vdd: .align=North
+        inout vss: .align=South
+        input a: .align=West
+        output y: .align=East
         print(f"Result: {add(1, 2)}")
 
 # + tags=["remove-input"]

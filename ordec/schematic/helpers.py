@@ -22,20 +22,20 @@ def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     The outline rectangle is furthermore created.
     """
 
-    pin_by_align = {Orientation.South:[], Orientation.North:[], Orientation.West:[], Orientation.East:[]}
+    pin_by_align = {South:[], North:[], West:[], East:[]}
     for pin in node.all(Pin):
         pin_by_align[pin.align].append(pin)
 
-    height=max(len(pin_by_align[Orientation.East]), len(pin_by_align[Orientation.West]))+2*vpadding-1
-    width=max(len(pin_by_align[Orientation.North]), len(pin_by_align[Orientation.South]))+2*hpadding-1
+    height=max(len(pin_by_align[East]), len(pin_by_align[West]))+2*vpadding-1
+    width=max(len(pin_by_align[North]), len(pin_by_align[South]))+2*hpadding-1
 
-    for i, pin in enumerate(pin_by_align[Orientation.South]):
+    for i, pin in enumerate(pin_by_align[South]):
         pin.pos = Vec2R(x=hpadding+i,y=0)
-    for i, pin in enumerate(pin_by_align[Orientation.North]):
+    for i, pin in enumerate(pin_by_align[North]):
         pin.pos = Vec2R(x=hpadding+i,y=height)
-    for i, pin in enumerate(pin_by_align[Orientation.West]):
+    for i, pin in enumerate(pin_by_align[West]):
         pin.pos = Vec2R(x=0,y=vpadding+i)
-    for i, pin in enumerate(pin_by_align[Orientation.East]):
+    for i, pin in enumerate(pin_by_align[East]):
         pin.pos = Vec2R(x=width,y=vpadding+i)
 
     node.outline = Rect4R(lx=0, ly=0, ux=width, uy=height)

@@ -8,20 +8,20 @@ from ordec.schematic.routing import schematic_routing
 
 cell Mux2:
     viewgen symbol -> Symbol:
-        output y: .align=Orientation.East
-        input a: .align=Orientation.West
-        input b: .align=Orientation.West
-        inout vdd: .align=Orientation.North
-        inout vss: .align=Orientation.South
-        input s: .align=Orientation.West
+        output y: .align=East
+        input a: .align=West
+        input b: .align=West
+        inout vdd: .align=North
+        inout vss: .align=South
+        input s: .align=West
 
     viewgen schematic -> Schematic:
-        port y: .align=Orientation.West; .pos=(21, 18)
-        port a: .align=Orientation.East; .pos=(1, 11)
-        port b: .align=Orientation.East; .pos=(1, 10)
-        port vdd: .align=Orientation.South; .pos=(6, 31)
-        port vss: .align=Orientation.North; .pos=(6, 3)
-        port s: .align=Orientation.East; .pos=(-6, 13)
+        port y: .align=West; .pos=(21, 18)
+        port a: .align=East; .pos=(1, 11)
+        port b: .align=East; .pos=(1, 10)
+        port vdd: .align=South; .pos=(6, 31)
+        port vss: .align=North; .pos=(6, 3)
+        port s: .align=East; .pos=(-6, 13)
 
         net p1_p2
         net n1_n2

@@ -11,8 +11,8 @@ class SimpleSymbol(Cell):
     @generate
     def symbol(self):
         s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 6))
-        s.inp = Pin(pos=Vec2R(0, 3), pintype=PinType.In, align=D4.West)
-        s.out = Pin(pos=Vec2R(4, 3), pintype=PinType.Out, align=D4.East)
+        s.inp = Pin(pos=Vec2R(0, 3), pintype=PinType.In, align=West)
+        s.out = Pin(pos=Vec2R(4, 3), pintype=PinType.Out, align=East)
         return s
 
 
@@ -25,8 +25,8 @@ class MultiPinSymbol(Cell):
         s.d = PathNode()
         s.q = PathNode()
         for i in range(self.bits):
-            s.d[i] = Pin(pos=Vec2R(0, 1 + i), pintype=PinType.In, align=D4.West)
-            s.q[i] = Pin(pos=Vec2R(4, 1 + i), pintype=PinType.Out, align=D4.East)
+            s.d[i] = Pin(pos=Vec2R(0, 1 + i), pintype=PinType.In, align=West)
+            s.q[i] = Pin(pos=Vec2R(4, 1 + i), pintype=PinType.Out, align=East)
         return s
 
 
@@ -100,7 +100,7 @@ def test_schem_instance_hierarchical_pins():
 
 def test_schem_instance_with_orientation():
     sch = Schematic()
-    sch.inst1 = SchemInstance(symbol=SimpleSymbol().symbol, orientation=D4.R90)
+    sch.inst1 = SchemInstance(symbol=SimpleSymbol().symbol, orientation=R90)
 
     solver = Solver(sch)
     solver.constrain(sch.inst1.outline.lx == 10)
@@ -114,7 +114,7 @@ def test_schem_instance_with_orientation():
 
 def test_outline_transform():
     sch = Schematic()
-    sch.inst1 = SchemInstance(symbol=SimpleSymbol().symbol, orientation=Orientation.R90)
+    sch.inst1 = SchemInstance(symbol=SimpleSymbol().symbol, orientation=R90)
 
     solver = Solver(sch)
     solver.constrain(sch.inst1.outline.center == Vec2R(3, 4))

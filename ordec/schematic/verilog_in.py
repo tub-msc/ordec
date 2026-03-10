@@ -85,11 +85,11 @@ def create_symbol(extlib, name, port_spec: OrderedDict[str, tuple[str, int]]) ->
     sym = Symbol(caption=name, cell=extlib[name])
     for port_name, (direction, width) in port_spec.items():
         if direction == 'input':
-            p = Pin(pintype=PinType.In, align=Orientation.West)
+            p = Pin(pintype=PinType.In, align=West)
         elif direction == 'output':
-            p = Pin(pintype=PinType.Out, align=Orientation.East)
+            p = Pin(pintype=PinType.Out, align=East)
         else:
-            p = Pin(pintype=PinType.Inout, align=Orientation.North)
+            p = Pin(pintype=PinType.Inout, align=North)
         if width == 1:
             sym[port_name] = p
         else:
@@ -170,25 +170,25 @@ def create_schematic(extlib, module_name, module_data: dict[str, Any]) -> Schema
         bit_to_net[bit] = schematic[path_name]
 
     port_count_by_align = {
-        Orientation.West: 0,
-        Orientation.East: 0,
-        Orientation.North: 0,
-        Orientation.South: 0,
+        West: 0,
+        East: 0,
+        North: 0,
+        South: 0,
     }
 
     def next_port_pos(align: D4) -> Vec2R:
         i = port_count_by_align[align]
         port_count_by_align[align] = i + 1
-        if align == Orientation.West:
+        if align == West:
             return Vec2R(24, 2 * i + 1)
-        if align == Orientation.East:
+        if align == East:
             return Vec2R(0, 2 * i + 1)
-        if align == Orientation.North:
+        if align == North:
             return Vec2R(2 * i + 1, 24)
         return Vec2R(2 * i + 1, 0)
 
     for bit, pin in port_bits.items():
-        schematic % SchemPort(ref=bit_to_net[bit], pos=next_port_pos(pin.align*D4.R180), align=pin.align*D4.R180)
+        schematic % SchemPort(ref=bit_to_net[bit], pos=next_port_pos(pin.align*R180), align=pin.align*R180)
 
     cur_y =0
     for inst_i, (cell_name, cell_data) in enumerate(module_data.get('cells', {}).items()):

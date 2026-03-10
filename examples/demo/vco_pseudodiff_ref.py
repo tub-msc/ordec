@@ -26,14 +26,14 @@ def build_halfstage_ref():
     sym = hs.symbol
 
     # Transistor instances
-    l % LayoutInstance(pos=Vec2I(0, 0), orientation=D4.R0, ref=pmos_layout)
-    l % LayoutInstance(pos=Vec2I(0, -1800), orientation=D4.R0, ref=nmos_layout)
-    l % LayoutInstance(pos=Vec2I(510, -1800), orientation=D4.R0, ref=nmos_layout)
-    l % LayoutInstance(pos=Vec2I(510, 0), orientation=D4.R0, ref=pmos_layout)
-    l % LayoutInstance(pos=Vec2I(1020, -1800), orientation=D4.R0, ref=nmos_layout)
-    l % LayoutInstance(pos=Vec2I(1020, 0), orientation=D4.R0, ref=pmos_layout)
-    l % LayoutInstance(pos=Vec2I(1530, -1800), orientation=D4.R0, ref=nmos_layout)
-    l % LayoutInstance(pos=Vec2I(1530, 0), orientation=D4.R0, ref=pmos_layout)
+    l % LayoutInstance(pos=Vec2I(0, 0), orientation=R0, ref=pmos_layout)
+    l % LayoutInstance(pos=Vec2I(0, -1800), orientation=R0, ref=nmos_layout)
+    l % LayoutInstance(pos=Vec2I(510, -1800), orientation=R0, ref=nmos_layout)
+    l % LayoutInstance(pos=Vec2I(510, 0), orientation=R0, ref=pmos_layout)
+    l % LayoutInstance(pos=Vec2I(1020, -1800), orientation=R0, ref=nmos_layout)
+    l % LayoutInstance(pos=Vec2I(1020, 0), orientation=R0, ref=pmos_layout)
+    l % LayoutInstance(pos=Vec2I(1530, -1800), orientation=R0, ref=nmos_layout)
+    l % LayoutInstance(pos=Vec2I(1530, 0), orientation=R0, ref=pmos_layout)
 
     # Poly gate stripes
     l % LayoutRect(layer=layers.GatPoly, rect=Rect4I(340, -1800, 470, 660))
@@ -113,10 +113,10 @@ def build_ring_ref():
     r % LayoutPin(pin=sym.vss_st)
 
     # HalfStage instances (4 total: 2 stage_p, 2 stage_n)
-    l % LayoutInstance(pos=Vec2I(0, 0), orientation=D4.R180, ref=hs_ref)
-    l % LayoutInstance(pos=Vec2I(0, -2160), orientation=D4.MY, ref=hs_ref)
-    l % LayoutInstance(pos=Vec2I(860, 0), orientation=D4.MX, ref=hs_ref)
-    l % LayoutInstance(pos=Vec2I(860, -2160), orientation=D4.R0, ref=hs_ref)
+    l % LayoutInstance(pos=Vec2I(0, 0), orientation=R180, ref=hs_ref)
+    l % LayoutInstance(pos=Vec2I(0, -2160), orientation=MY, ref=hs_ref)
+    l % LayoutInstance(pos=Vec2I(860, 0), orientation=MX, ref=hs_ref)
+    l % LayoutInstance(pos=Vec2I(860, -2160), orientation=R0, ref=hs_ref)
 
     # out_n vertical Metal1 bars + pins
     r = l % LayoutRect(layer=layers.Metal1, rect=Rect4I(-2840, -3780, -2630, -1680))

@@ -87,14 +87,14 @@ class Renderer:
         align = trans.d4.unflip()
         pos = trans.transl
 
-        if align in (Orientation.West, Orientation.South):
+        if align in (West, South):
             halign = halign.invert()
 
         # g_matrix has same basic translation as trans, but limits rotations of text
         # to 0 or 90 degrees (so that you never have to rotate your head by 180 degrees)
         g_matrix = pos.transl() 
-        if align in (Orientation.South, Orientation.North):  
-             g_matrix *= D4.R90
+        if align in (South, North):  
+             g_matrix *= R90
 
         # Furthermore, g_matrix adds some space (padding):
         if space is None:
@@ -354,10 +354,10 @@ class SchematicRenderer(Renderer):
         params_str = "\n".join(s.cell.params_list())
 
         self.draw_label(type(s.cell).__name__,
-            rect.northeast.transl() * D4.R90, svg_class="cellName")
-        self.draw_label(params_str, rect.southeast.transl() * D4.R90,
+            rect.northeast.transl() * R90, svg_class="cellName")
+        self.draw_label(params_str, rect.southeast.transl() * R90,
             valign=VAlign.Bottom, svg_class="params")
-        self.draw_label(inst_name, rect.northwest.transl() * D4.MX90,
+        self.draw_label(inst_name, rect.northwest.transl() * MX90,
             svg_class="instanceName")
         
         for poly in s.all(SymbolPoly):
@@ -375,7 +375,7 @@ class SchematicRenderer(Renderer):
 
     def draw_pin(self, pin: Pin, trans: TD4R):
         # Flip by 180 degrees, as the text face the opposite of the pin direction:
-        trans_local = trans * pin.pos.transl() * D4.R180 * pin.align
+        trans_local = trans * pin.pos.transl() * R180 * pin.align
 
         self.draw_arrow(ArrowType.Pin, pin.pintype, trans_local)
 
@@ -423,7 +423,7 @@ class SchematicRenderer(Renderer):
         self.draw_arrow(ArrowType.Port, p.ref.pin.pintype, trans)
         
         label = p.ref.pin.full_path_str()
-        self.draw_label(label, trans*D4.R180,
+        self.draw_label(label, trans*R180,
             space=self.port_text_space, halign=HAlign.Left, valign=VAlign.Middle,
             svg_class='portLabel')
 
@@ -567,7 +567,7 @@ class LayoutRenderer(Renderer):
                         self.cur_group.attrib['class'] = 'rescale'
                         p=ET.SubElement(self.cur_group, 'path', d=d)
                         p.attrib['class'] = 'cross'
-                        self.draw_label(label.text, label.pos.transl()*D4.R90, halign=HAlign.Left, valign=VAlign.Top, space=0.0, svg_class="layoutText")
+                        self.draw_label(label.text, label.pos.transl()*R90, halign=HAlign.Left, valign=VAlign.Top, space=0.0, svg_class="layoutText")
 
 
         self.cur_group[:] = sorted(self.cur_group, key=lambda x: x.attrib['class'], reverse=True)

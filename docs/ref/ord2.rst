@@ -38,16 +38,16 @@ converted to `ctx.root(.parent)*`. Accesses outside the context are still possib
 
 	cell Inv:
 	    viewgen symbol:
-	        inout vdd(.align=Orientation.North)
-	        inout vss(.align=Orientation.South)
-	        input a(.align=Orientation.West)
-	        output y(.align=Orientation.East)
+	        inout vdd(.align=North)
+	        inout vss(.align=South)
+	        input a(.align=West)
+	        output y(.align=East)
 
 	    viewgen schematic:
-	        port vdd(.pos=(2,13); .align=Orientation.North)
-	        port vss(.pos=(2,1); .align=Orientation.South)
-	        port y (.pos=(9,7); .align=Orientation.West)
-	        port a (.pos=(1,7); .align=Orientation.East)
+	        port vdd(.pos=(2,13); .align=North)
+	        port vss(.pos=(2,1); .align=South)
+	        port y (.pos=(9,7); .align=West)
+	        port a (.pos=(1,7); .align=East)
 
 	        Nmos pd:
 	            .s -- vss
@@ -76,16 +76,16 @@ converted to `ctx.root(.parent)*`. Accesses outside the context are still possib
 	        with OrdContext(root=Symbol(cell=self), parent=self):
 	            vdd = ctx.add(('vdd',), Pin(pintype=PinType.Inout))
 	            with OrdContext(root=vdd):
-	                ctx.root.align = Orientation.North
+	                ctx.root.align = North
 	            vss = ctx.add(('vss',), Pin(pintype=PinType.Inout))
 	            with OrdContext(root=vss):
-	                ctx.root.align = Orientation.South
+	                ctx.root.align = South
 	            a = ctx.add(('a',), Pin(pintype=PinType.In))
 	            with OrdContext(root=a):
-	                ctx.root.align = Orientation.West
+	                ctx.root.align = West
 	            y = ctx.add(('y',), Pin(pintype=PinType.Out))
 	            with OrdContext(root=y):
-	                ctx.root.align = Orientation.East
+	                ctx.root.align = East
 	            return ctx.symbol_postprocess()
 
 	    @generate
@@ -94,19 +94,19 @@ converted to `ctx.root(.parent)*`. Accesses outside the context are still possib
 	            vss = ctx.add_port(('vss',))
 	            with OrdContext(root=vss):
 	                ctx.root.pos = (2,1)
-	                ctx.root.align = Orientation.South
+	                ctx.root.align = South
 	            vdd = ctx.add_port(('vdd',))
 	            with OrdContext(root=vdd):
 	                ctx.root.pos = (2,13)
-	                ctx.root.align = Orientation.North
+	                ctx.root.align = North
 	            y = ctx.add_port(('y',))
 	            with OrdContext(root=y):
 	                ctx.root.pos = (9,7)
-	                ctx.root.align = Orientation.West
+	                ctx.root.align = West
 	            a = ctx.add_port(('a',))
 	            with OrdContext(root=a):
 	                ctx.root.pos = (1,7)
-	                ctx.root.align = Orientation.East
+	                ctx.root.align = East
 	      
 	            pd = ctx.add(('pd',), SchemInstanceUnresolved(resolver = lambda **params: Nmos(**params).symbol))
 	            with OrdContext (root=pd):

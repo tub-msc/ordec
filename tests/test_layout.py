@@ -118,14 +118,14 @@ def test_gds_sref_d4():
     lib.read_gds(gds_dir / 'test_sref_d4.gds', tech_layers)
 
     expected_pos_orientations = {
-        (Vec2I(0, 0), D4.R0),
-        (Vec2I(6000, 0), D4.R90),
-        (Vec2I(9000, 3000), D4.R180),
-        (Vec2I(10000, 2000), D4.R270),
-        (Vec2I(0, -1000), D4.MX),
-        (Vec2I(10000, -3000), D4.MX90),
-        (Vec2I(9000, -4000), D4.MY),
-        (Vec2I(6000, -1000), D4.MY90),
+        (Vec2I(0, 0), R0),
+        (Vec2I(6000, 0), R90),
+        (Vec2I(9000, 3000), R180),
+        (Vec2I(10000, 2000), R270),
+        (Vec2I(0, -1000), MX),
+        (Vec2I(10000, -3000), MX90),
+        (Vec2I(9000, -4000), MY),
+        (Vec2I(6000, -1000), MY90),
     }
 
     layout = lib['TOP'].layout
@@ -194,7 +194,7 @@ def test_gds_aref():
 
     ainst = layout.one(LayoutInstanceArray)
     assert ainst.pos == Vec2I(10000, 10000)
-    assert ainst.orientation == D4.MX90
+    assert ainst.orientation == MX90
     assert ainst.ref == lib['SUB'].frame
     assert ainst.cols == 3
     assert ainst.rows == 2
@@ -726,12 +726,12 @@ def test_write_gds():
                 width=100,
                 endtype=PathEndType.Square,
             )
-            l % LayoutInstance(pos=(-100, -100), orientation=D4.MY, ref=Sub().layout)
-            l % LayoutInstance(pos=(-400, -400), orientation=D4.R0, ref=Sub().layout)
+            l % LayoutInstance(pos=(-100, -100), orientation=MY, ref=Sub().layout)
+            l % LayoutInstance(pos=(-400, -400), orientation=R0, ref=Sub().layout)
 
             l % LayoutInstanceArray(
                 pos=(0, 2000),
-                orientation=D4.R0,
+                orientation=R0,
                 ref=Sub2().layout,
                 cols=4,
                 rows=2,
@@ -783,7 +783,7 @@ def test_layoutinstance_subcursor():
     layout1 = layout1.freeze()
 
     layout2 = Layout(ref_layers=layers)
-    layout2.layout1_inst = LayoutInstance(pos=(1000, 2000), orientation=D4.R90, ref=layout1)
+    layout2.layout1_inst = LayoutInstance(pos=(1000, 2000), orientation=R90, ref=layout1)
     layout2 = layout2.freeze()
 
     assert layout2.layout1_inst.myrect.parent == layout2.layout1_inst.subcursor()
@@ -791,7 +791,7 @@ def test_layoutinstance_subcursor():
     assert layout2.layout1_inst.subcursor().parent == layout2.layout1_inst
 
     layout3 = Layout(ref_layers=layers) 
-    layout3.layout2_inst = LayoutInstance(pos=(50, 50), orientation=D4.MX, ref=layout2)
+    layout3.layout2_inst = LayoutInstance(pos=(50, 50), orientation=MX, ref=layout2)
     layout3 = layout3.freeze()
 
     assert layout3.layout2_inst.layout1_inst.myrect.rect == \
@@ -815,15 +815,15 @@ def test_layoutinstancearray_subcursor():
     layout2 = Layout(ref_layers=layers)
     # I1 has columns AND rows:
     layout2.I1 = LayoutInstanceArray(
-        pos=(1000, 2000), orientation=D4.R90, ref=layout1,
+        pos=(1000, 2000), orientation=R90, ref=layout1,
         cols=5, rows=7, vec_col=Vec2I(900, 0), vec_row=Vec2I(0, 900))
     # I2 has only columns:
     layout2.I2 = LayoutInstanceArray(
-        pos=(1000, 2000), orientation=D4.R90, ref=layout1,
+        pos=(1000, 2000), orientation=R90, ref=layout1,
         cols=5, vec_col=Vec2I(900, 0))
     # I3 has only rows:
     layout2.I3 = LayoutInstanceArray(
-        pos=(1000, 2000), orientation=D4.R90, ref=layout1,
+        pos=(1000, 2000), orientation=R90, ref=layout1,
         rows=7, vec_row=Vec2I(0, 900))
     layout2 = layout2.freeze()
 
