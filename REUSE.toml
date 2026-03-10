@@ -27,8 +27,14 @@ SPDX-License-Identifier = "CC0-1.0"
 [[annotations]]
 # ordec.lib.examples code:
 path = [
-    "ordec/lib/examples/*.py",
-    "ordec/lib/examples/*.ord",
+    "ordec/lib/examples/amp.ord",
+    "ordec/lib/examples/blank.py",
+    "ordec/lib/examples/currentmirror.ord",
+    "ordec/lib/examples/diffpair.ord",
+    "ordec/lib/examples/nand2.ord",
+    "ordec/lib/examples/rc_curve.py",
+    "ordec/lib/examples/voltagedivider.ord",
+    "ordec/lib/examples/voltagedivider_py.py",
     "ordec/lib/examples/*.uistate.json",
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"

@@ -220,16 +220,16 @@ def expected_pulse_value(t, src):
 
 
 def expected_sin_value(t, src):
-    offset = float(src.offset)
-    amplitude = float(src.amplitude)
-    frequency = float(src.frequency)
+    offset = float(src.dc)
+    amplitude = float(src.ac)
+    frequency = float(src.freq)
     delay = float(src.delay)
-    damping_factor = float(src.damping_factor)
+    damping = float(src.damping)
 
     if t < delay:
         return offset
     td = t - delay
-    return offset + amplitude * math.sin(2 * math.pi * frequency * td) * math.exp(-damping_factor * td)
+    return offset + amplitude * math.sin(2 * math.pi * frequency * td) * math.exp(-damping * td)
 
 
 def test_sim_vpwltb_tran():

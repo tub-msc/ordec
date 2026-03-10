@@ -12,10 +12,10 @@ class Inv(Cell):
     def symbol(self):
         s = Symbol(cell=self)
 
-        s.vdd = Pin(pos=(2, 4), pintype=PinType.Inout, align=Orientation.North)
-        s.vss = Pin(pos=(2, 0), pintype=PinType.Inout, align=Orientation.South)
-        s.a = Pin(pos=(0, 2), pintype=PinType.In, align=Orientation.West)
-        s.y = Pin(pos=(4, 2), pintype=PinType.Out, align=Orientation.East)
+        s.vdd = Pin(pos=(2, 4), pintype=PinType.Inout, align=North)
+        s.vss = Pin(pos=(2, 0), pintype=PinType.Inout, align=South)
+        s.a = Pin(pos=(0, 2), pintype=PinType.In, align=West)
+        s.y = Pin(pos=(4, 2), pintype=PinType.Out, align=East)
 
         s % SymbolPoly(vertices=[(0, 2), (1, 2)])
         s % SymbolPoly(vertices=[(3.25, 2), (4, 2)])
@@ -40,10 +40,10 @@ class Inv(Cell):
         s.pd = SchemInstance(nmos.portmap(s=s.vss, b=s.vss, g=s.a, d=s.y), pos=(3, 2))
         s.pu = SchemInstance(pmos.portmap(s=s.vdd, b=s.vdd, g=s.a, d=s.y), pos=(3, 8))
 
-        s.vdd % SchemPort(pos=(2, 13), align=Orientation.East)
-        s.vss % SchemPort(pos=(2, 1), align=Orientation.East)
-        s.a % SchemPort(pos=(1, 7), align=Orientation.East)
-        s.y % SchemPort(pos=(9, 7), align=Orientation.West)
+        s.vdd % SchemPort(pos=(2, 13), align=East)
+        s.vss % SchemPort(pos=(2, 1), align=East)
+        s.a % SchemPort(pos=(1, 7), align=East)
+        s.y % SchemPort(pos=(9, 7), align=West)
         
         schematic_routing(s)
 

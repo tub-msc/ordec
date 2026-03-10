@@ -20,8 +20,8 @@ class Res(Cell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
+        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         use_box_symbol = False
 
@@ -69,8 +69,8 @@ class Cap(Cell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
+        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         #Kondensator
         s % SymbolPoly(vertices=[Vec2R(1.25, 1.8), Vec2R(2.75, 1.8)])
@@ -105,8 +105,8 @@ class Ind(Cell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
+        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         r=0.35
         s % SymbolArc(pos=Vec2R(2, 3-r), radius=R(r), angle_start=R(-0.25), angle_end=R(0.25))
@@ -137,7 +137,7 @@ class Gnd(Cell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         s % SymbolPoly(vertices=[Vec2R(2, 2.5), Vec2R(2, 4)])
         s % SymbolPoly(vertices=[Vec2R(1, 2.5), Vec2R(3, 2.5), Vec2R(2, 1),Vec2R(1, 2.5)])
@@ -156,7 +156,7 @@ class NoConn(Cell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.a = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=Orientation.West)
+        s.a = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)
 
         s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(2, 2)])
         s % SymbolPoly(vertices=[Vec2R(1.5, 2.5), Vec2R(2.5, 1.5)])
@@ -182,8 +182,8 @@ class Vdc(Cell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
+        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         #Kreis
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
@@ -219,8 +219,8 @@ class Idc(Cell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
+        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
     
         s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)])
         s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)])
@@ -252,8 +252,8 @@ class Vpwl(Cell):
         """ Defines the schematic symbol for the PWL source. """
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
+        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
 
@@ -308,8 +308,8 @@ class Vpulse(Cell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
+        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
 
@@ -360,18 +360,18 @@ class Vpulse(Cell):
 @public
 class Vsin(Cell):
     """Sinusoidal voltage source (SPICE SIN). Netlists with both AC and transient specifications."""
-    offset = Parameter(R, optional=True, default=R(0)) #: DC offset.
-    amplitude = Parameter(R) #: Peak amplitude.
-    frequency = Parameter(R) #: Frequency in Hz.
+    dc = Parameter(R, optional=True, default=R(0)) #: DC offset.
+    ac = Parameter(R) #: Peak amplitude.
+    freq = Parameter(R) #: Frequency in Hz.
     delay = Parameter(R, optional=True, default=R(0)) #: Delay before start of sinusoid.
-    damping_factor = Parameter(R, optional=True, default=R(0)) #: Exponential damping factor.
+    damping = Parameter(R, optional=True, default=R(0)) #: Exponential damping factor.
 
     @generate
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
+        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
 
@@ -397,17 +397,17 @@ class Vsin(Cell):
         pins = [inst.symbol.p, inst.symbol.m]
 
         # Required parameters - will raise KeyError if not present
-        amplitude = self.amplitude
-        frequency = self.frequency
+        ac = self.ac
+        freq = self.freq
 
         # Optional parameters with defaults
-        offset = self.offset
+        dc = self.dc
         delay = self.delay
-        damping = self.damping_factor
+        damping = self.damping
 
-        tran_spec = f'SIN({offset.compat_str()} {amplitude.compat_str()} {frequency.compat_str()} {delay.compat_str()} {damping.compat_str()})'
-        ac_spec = f'ac {amplitude.compat_str()}'
-        dc_spec = f'dc {offset.compat_str()}'
+        tran_spec = f'SIN({dc.compat_str()} {ac.compat_str()} {freq.compat_str()} {delay.compat_str()} {damping.compat_str()})'
+        ac_spec = f'ac {ac.compat_str()}'
+        dc_spec = f'dc {dc.compat_str()}'
 
         netlister.add(
             netlister.name_obj(inst, prefix="v"),
@@ -425,8 +425,8 @@ class Ipwl(Cell):
         """ Defines the schematic symbol for the PWL current source. """
         s = Symbol(cell=self)
 
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
 
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
         s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)]) # To positive pin 'p'
@@ -488,8 +488,8 @@ class Ipulse(Cell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
+        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         # Draw the symbol
         # Circle
@@ -548,18 +548,18 @@ class Ipulse(Cell):
 @public
 class Isin(Cell):
     """Sinusoidal current source (SPICE SIN)."""
-    offset = Parameter(R, optional=True, default=R(0)) #: DC offset.
-    amplitude = Parameter(R) #: Peak amplitude.
-    frequency = Parameter(R) #: Frequency in Hz.
+    dc = Parameter(R, optional=True, default=R(0)) #: DC offset.
+    ac = Parameter(R) #: Peak amplitude.
+    freq = Parameter(R) #: Frequency in Hz.
     delay = Parameter(R, optional=True, default=R(0)) #: Delay before start of sinusoid.
-    damping_factor = Parameter(R, optional=True, default=R(0)) #: Exponential damping factor.
+    damping = Parameter(R, optional=True, default=R(0)) #: Exponential damping factor.
 
     @generate
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
+        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         # Circle
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
@@ -594,19 +594,19 @@ class Isin(Cell):
     def netlist_ngspice(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
-        amplitude = self.amplitude
-        frequency = self.frequency
+        ac = self.ac
+        freq = self.freq
 
-        offset = self.offset
+        dc = self.dc
         delay = self.delay
-        damping = self.damping_factor
+        damping = self.damping
 
         tran_spec = (
-            f"SIN({offset.compat_str()} {amplitude.compat_str()} "
-            f"{frequency.compat_str()} {delay.compat_str()} {damping.compat_str()})"
+            f"SIN({dc.compat_str()} {ac.compat_str()} "
+            f"{freq.compat_str()} {delay.compat_str()} {damping.compat_str()})"
         )
-        ac_spec = f"ac {amplitude.compat_str()}"
-        dc_spec = f"dc {offset.compat_str()}"
+        ac_spec = f"ac {ac.compat_str()}"
+        dc_spec = f"dc {dc.compat_str()}"
 
         netlister.add(
             netlister.name_obj(inst, prefix="i"),

@@ -509,3 +509,21 @@ class D4(Enum):
     FlippedEast = MY90
 
 public(Orientation = D4) # alias
+
+public(North = D4.North)
+public(East = D4.East)
+public(South = D4.South)
+public(West = D4.West)
+public(FlippedNorth = D4.FlippedNorth)
+public(FlippedSouth = D4.FlippedSouth)
+public(FlippedWest = D4.FlippedWest)
+public(FlippedEast = D4.FlippedEast)
+
+public(R0 = D4.R0)
+public(R270 = D4.R270)
+public(R180 = D4.R180)
+public(R90 = D4.R90)
+public(MX = D4.MX)
+public(MY = D4.MY)
+public(MX90 = D4.MX90)
+public(MY90 = D4.MY90)

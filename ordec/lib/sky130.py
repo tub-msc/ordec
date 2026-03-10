@@ -86,10 +86,10 @@ class Inv(Cell):
         s = Symbol(cell=self)
 
         # Define pins for the inverter
-        s.vdd = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=Orientation.North)
-        s.vss = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=Orientation.South)
-        s.a = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=Orientation.West)
-        s.y = Pin(pos=Vec2R(4, 2), pintype=PinType.Out, align=Orientation.East)
+        s.vdd = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.vss = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.a = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)
+        s.y = Pin(pos=Vec2R(4, 2), pintype=PinType.Out, align=East)
 
         # Draw the inverter symbol
         s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(1, 2)])  # Input line
@@ -131,10 +131,10 @@ class Inv(Cell):
         s.pd = SchemInstance(nmos.portmap(s=s.vss, b=s.vss, g=s.a, d=s.y), pos=Vec2R(3, 2))
         s.pu = SchemInstance(pmos.portmap(s=s.vdd, b=s.vdd, g=s.a, d=s.y), pos=Vec2R(3, 8))
 
-        s.vdd % SchemPort(pos=Vec2R(2, 13), align=Orientation.East, ref=self.symbol.vdd)
-        s.vss % SchemPort(pos=Vec2R(2, 1), align=Orientation.East, ref=self.symbol.vss)
-        s.a % SchemPort(pos=Vec2R(1, 7), align=Orientation.East, ref=self.symbol.a)
-        s.y % SchemPort(pos=Vec2R(9, 7), align=Orientation.West, ref=self.symbol.y)
+        s.vdd % SchemPort(pos=Vec2R(2, 13), align=East, ref=self.symbol.vdd)
+        s.vss % SchemPort(pos=Vec2R(2, 1), align=East, ref=self.symbol.vss)
+        s.a % SchemPort(pos=Vec2R(1, 7), align=East, ref=self.symbol.a)
+        s.y % SchemPort(pos=Vec2R(9, 7), align=West, ref=self.symbol.y)
 
         s.vss % SchemWire([Vec2R(2, 1), Vec2R(5, 1), Vec2R(8, 1), Vec2R(8, 4), Vec2R(7, 4)])
         s.vss % SchemWire([Vec2R(5, 1), s.pd.pos + nmos.s.pos])
@@ -156,9 +156,9 @@ class Ringosc(Cell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.vdd = Pin(pintype=PinType.Inout, align=Orientation.North)
-        s.vss = Pin(pintype=PinType.Inout, align=Orientation.South)
-        s.y = Pin(pintype=PinType.Out, align=Orientation.East)
+        s.vdd = Pin(pintype=PinType.Inout, align=North)
+        s.vss = Pin(pintype=PinType.Inout, align=South)
+        s.y = Pin(pintype=PinType.Out, align=East)
 
         helpers.symbol_place_pins(s, vpadding=2, hpadding=2)
         return s
@@ -178,9 +178,9 @@ class Ringosc(Cell):
         s.i1 = SchemInstance(inv.portmap(vdd=s.vdd, vss=s.vss, a=s.y0, y=s.y1), pos=Vec2R(10, 2))
         s.i2 = SchemInstance(inv.portmap(vdd=s.vdd, vss=s.vss, a=s.y1, y=s.y2), pos=Vec2R(16, 2))
 
-        s.vdd % SchemPort(pos=Vec2R(2, 7), align=Orientation.East)
-        s.vss % SchemPort(pos=Vec2R(2, 1), align=Orientation.East)
-        s.y2 % SchemPort(pos=Vec2R(22, 4), align=Orientation.West)
+        s.vdd % SchemPort(pos=Vec2R(2, 7), align=East)
+        s.vss % SchemPort(pos=Vec2R(2, 1), align=East)
+        s.y2 % SchemPort(pos=Vec2R(22, 4), align=West)
 
         s.outline = Rect4R(lx=0, ly=0, ux=24, uy=8)
 
@@ -206,11 +206,11 @@ class And2(Cell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.vdd = Pin(pos=Vec2R(2.5, 5), pintype=PinType.Inout, align=Orientation.North)
-        s.vss = Pin(pos=Vec2R(2.5, 0), pintype=PinType.Inout, align=Orientation.South)
-        s.a = Pin(pos=Vec2R(0, 3), pintype=PinType.In, align=Orientation.West)
-        s.b = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=Orientation.West)
-        s.y = Pin(pos=Vec2R(5, 2.5), pintype=PinType.Out, align=Orientation.East)
+        s.vdd = Pin(pos=Vec2R(2.5, 5), pintype=PinType.Inout, align=North)
+        s.vss = Pin(pos=Vec2R(2.5, 0), pintype=PinType.Inout, align=South)
+        s.a = Pin(pos=Vec2R(0, 3), pintype=PinType.In, align=West)
+        s.b = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)
+        s.y = Pin(pos=Vec2R(5, 2.5), pintype=PinType.Out, align=East)
 
         s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(1, 2)])
         s % SymbolPoly(vertices=[Vec2R(0, 3), Vec2R(1, 3)])
@@ -227,11 +227,11 @@ class Or2(Cell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.vdd = Pin(pos=Vec2R(2.5, 5), pintype=PinType.Inout, align=Orientation.North)
-        s.vss = Pin(pos=Vec2R(2.5, 0), pintype=PinType.Inout, align=Orientation.South)
-        s.a = Pin(pos=Vec2R(0, 3), pintype=PinType.In, align=Orientation.West)
-        s.b = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=Orientation.West)
-        s.y = Pin(pos=Vec2R(5, 2.5), pintype=PinType.Out, align=Orientation.East)
+        s.vdd = Pin(pos=Vec2R(2.5, 5), pintype=PinType.Inout, align=North)
+        s.vss = Pin(pos=Vec2R(2.5, 0), pintype=PinType.Inout, align=South)
+        s.a = Pin(pos=Vec2R(0, 3), pintype=PinType.In, align=West)
+        s.b = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)
+        s.y = Pin(pos=Vec2R(5, 2.5), pintype=PinType.Out, align=East)
 
         s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(1.3, 2)])
         s % SymbolPoly(vertices=[Vec2R(0, 3), Vec2R(1.3, 3)])

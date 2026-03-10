@@ -11,24 +11,24 @@ class RotateTest(Cell):
         s = Schematic(cell=self)
         c = Or2().symbol
 
-        s.R0 = SchemInstance(c.portmap(), pos=Vec2R(1, 1), orientation=Orientation.R0)
+        s.R0 = SchemInstance(c.portmap(), pos=Vec2R(1, 1), orientation=R0)
         s.R90 = SchemInstance(
-            c.portmap(), pos=Vec2R(12, 1), orientation=Orientation.R90
+            c.portmap(), pos=Vec2R(12, 1), orientation=R90
         )
         s.R180 = SchemInstance(
-            c.portmap(), pos=Vec2R(18, 6), orientation=Orientation.R180
+            c.portmap(), pos=Vec2R(18, 6), orientation=R180
         )
         s.R270 = SchemInstance(
-            c.portmap(), pos=Vec2R(19, 6), orientation=Orientation.R270
+            c.portmap(), pos=Vec2R(19, 6), orientation=R270
         )
 
-        s.MY = SchemInstance(c.portmap(), pos=Vec2R(6, 7), orientation=Orientation.MY)
+        s.MY = SchemInstance(c.portmap(), pos=Vec2R(6, 7), orientation=MY)
         s.MY90 = SchemInstance(
-            c.portmap(), pos=Vec2R(12, 12), orientation=Orientation.MY90
+            c.portmap(), pos=Vec2R(12, 12), orientation=MY90
         )
-        s.MX = SchemInstance(c.portmap(), pos=Vec2R(13, 12), orientation=Orientation.MX)
+        s.MX = SchemInstance(c.portmap(), pos=Vec2R(13, 12), orientation=MX)
         s.MX90 = SchemInstance(
-            c.portmap(), pos=Vec2R(19, 7), orientation=Orientation.MX90
+            c.portmap(), pos=Vec2R(19, 7), orientation=MX90
         )
 
         s.outline = Rect4R(lx=0, ly=0, ux=25, uy=13)
@@ -40,10 +40,10 @@ class PortAlignTest(Cell):
     def symbol(self):
         s = Symbol(cell=self)
 
-        s.north = Pin(pintype=PinType.In, align=Orientation.North)
-        s.south = Pin(pintype=PinType.In, align=Orientation.South)
-        s.west = Pin(pintype=PinType.In, align=Orientation.West)
-        s.east = Pin(pintype=PinType.In, align=Orientation.East)
+        s.north = Pin(pintype=PinType.In, align=North)
+        s.south = Pin(pintype=PinType.In, align=South)
+        s.west = Pin(pintype=PinType.In, align=West)
+        s.east = Pin(pintype=PinType.In, align=East)
         helpers.symbol_place_pins(s)
 
         return s
@@ -57,10 +57,10 @@ class PortAlignTest(Cell):
         s.n3 = Net(pin=self.symbol.east)
         s.n4 = Net(pin=self.symbol.west)
 
-        s.n1 % SchemPort(pos=Vec2R(4, 2), align=Orientation.North)
-        s.n2 % SchemPort(pos=Vec2R(4, 6), align=Orientation.South)
-        s.n3 % SchemPort(pos=Vec2R(2, 4), align=Orientation.East)
-        s.n4 % SchemPort(pos=Vec2R(6, 4), align=Orientation.West)
+        s.n1 % SchemPort(pos=Vec2R(4, 2), align=North)
+        s.n2 % SchemPort(pos=Vec2R(4, 6), align=South)
+        s.n3 % SchemPort(pos=Vec2R(2, 4), align=East)
+        s.n4 % SchemPort(pos=Vec2R(6, 4), align=West)
 
         s.outline = Rect4R(lx=0, ly=0, ux=8, uy=8)
         return s
@@ -76,10 +76,10 @@ class TapAlignTest(Cell):
         s.east = Net()
         s.west = Net()
 
-        s.north % SchemTapPoint(pos=Vec2R(4, 6), align=Orientation.North)
-        s.south % SchemTapPoint(pos=Vec2R(4, 2), align=Orientation.South)
-        s.west % SchemTapPoint(pos=Vec2R(2, 4), align=Orientation.West)
-        s.east % SchemTapPoint(pos=Vec2R(6, 4), align=Orientation.East)
+        s.north % SchemTapPoint(pos=Vec2R(4, 6), align=North)
+        s.south % SchemTapPoint(pos=Vec2R(4, 2), align=South)
+        s.west % SchemTapPoint(pos=Vec2R(2, 4), align=West)
+        s.east % SchemTapPoint(pos=Vec2R(6, 4), align=East)
 
         s.outline = Rect4R(lx=0, ly=0, ux=8, uy=8)
         return s
@@ -90,11 +90,11 @@ class DFF(Cell):
     def symbol(self):
         s = Symbol(cell=self)
 
-        s.vss = Pin(pintype=PinType.In, align=Orientation.South)
-        s.vdd = Pin(pintype=PinType.In, align=Orientation.North)
-        s.d = Pin(pintype=PinType.In, align=Orientation.West)
-        s.q = Pin(pintype=PinType.Out, align=Orientation.East)
-        s.clk = Pin(pintype=PinType.In, align=Orientation.West)
+        s.vss = Pin(pintype=PinType.In, align=South)
+        s.vdd = Pin(pintype=PinType.In, align=North)
+        s.d = Pin(pintype=PinType.In, align=West)
+        s.q = Pin(pintype=PinType.Out, align=East)
+        s.clk = Pin(pintype=PinType.In, align=West)
         helpers.symbol_place_pins(s, vpadding=2, hpadding=3)
 
         return s
@@ -107,14 +107,14 @@ class MultibitReg_Arrays(Cell):
     def symbol(self):
         s = Symbol(cell=self)
 
-        s.vss = Pin(pintype=PinType.In, align=Orientation.South)
-        s.vdd = Pin(pintype=PinType.In, align=Orientation.North)
+        s.vss = Pin(pintype=PinType.In, align=South)
+        s.vdd = Pin(pintype=PinType.In, align=North)
         s.d = PathNode()
         s.q = PathNode()
         for i in range(self.bits):
-            s.d[i] = Pin(pintype=PinType.In, align=Orientation.West)
-            s.q[i] = Pin(pintype=PinType.Out, align=Orientation.East)
-        s.clk = Pin(pintype=PinType.In, align=Orientation.West)
+            s.d[i] = Pin(pintype=PinType.In, align=West)
+            s.q[i] = Pin(pintype=PinType.Out, align=East)
+        s.clk = Pin(pintype=PinType.In, align=West)
         helpers.symbol_place_pins(s)
 
         return s
@@ -130,9 +130,9 @@ class MultibitReg_Arrays(Cell):
         s.q = PathNode()
         s.I = PathNode()
 
-        s.vss % SchemPort(pos=Vec2R(1, 0), align=Orientation.East)
-        s.vdd % SchemPort(pos=Vec2R(1, 1), align=Orientation.East)
-        s.clk % SchemPort(pos=Vec2R(1, 2), align=Orientation.East)
+        s.vss % SchemPort(pos=Vec2R(1, 0), align=East)
+        s.vdd % SchemPort(pos=Vec2R(1, 1), align=East)
+        s.clk % SchemPort(pos=Vec2R(1, 2), align=East)
         for i in range(self.bits):
             s.d[i] = Net(pin=self.symbol.d[i])
             s.q[i] = Net(pin=self.symbol.q[i])
@@ -145,12 +145,12 @@ class MultibitReg_Arrays(Cell):
                     q=s.q[i],
                 ),
                 pos=Vec2R(2, 3 + 8 * i),
-                orientation=Orientation.R0,
+                orientation=R0,
             )
 
-            s.d[i] % SchemPort(pos=Vec2R(1, 5 + 8 * i), align=Orientation.East)
+            s.d[i] % SchemPort(pos=Vec2R(1, 5 + 8 * i), align=East)
             s.d[i] % SchemWire(vertices=[Vec2R(1, 5 + 8 * i), Vec2R(2, 5 + 8 * i)])
-            s.q[i] % SchemPort(pos=Vec2R(9, 5 + 8 * i), align=Orientation.West)
+            s.q[i] % SchemPort(pos=Vec2R(9, 5 + 8 * i), align=West)
             s.q[i] % SchemWire(vertices=[Vec2R(8, 5 + 8 * i), Vec2R(9, 5 + 8 * i)])
 
         s.outline = Rect4R(lx=0, ly=0, ux=10, uy=2 + 8 * self.bits)
@@ -167,14 +167,14 @@ class MultibitReg_ArrayOfStructs(Cell):
     def symbol(self):
         s = Symbol(cell=self)
 
-        s.vss = Pin(pintype=PinType.In, align=Orientation.South)
-        s.vdd = Pin(pintype=PinType.In, align=Orientation.North)
+        s.vss = Pin(pintype=PinType.In, align=South)
+        s.vdd = Pin(pintype=PinType.In, align=North)
         s.bit = PathNode()
         for i in range(self.bits):
             s.bit[i] = PathNode()
-            s.bit[i].d = Pin(pintype=PinType.In, align=Orientation.West)
-            s.bit[i].q = Pin(pintype=PinType.Out, align=Orientation.East)
-        s.clk = Pin(pintype=PinType.In, align=Orientation.West)
+            s.bit[i].d = Pin(pintype=PinType.In, align=West)
+            s.bit[i].q = Pin(pintype=PinType.Out, align=East)
+        s.clk = Pin(pintype=PinType.In, align=West)
         helpers.symbol_place_pins(s)
 
         return s
@@ -187,15 +187,15 @@ class MultibitReg_StructOfArrays(Cell):
     def symbol(self):
         s = Symbol(cell=self)
 
-        s.vss = Pin(pintype=PinType.In, align=Orientation.South)
-        s.vdd = Pin(pintype=PinType.In, align=Orientation.North)
+        s.vss = Pin(pintype=PinType.In, align=South)
+        s.vdd = Pin(pintype=PinType.In, align=North)
         s.data = PathNode()
         s.data.d = PathNode()
         s.data.q = PathNode()
         for i in range(self.bits):
-            s.data.d[i] = Pin(pintype=PinType.In, align=Orientation.West)
-            s.data.q[i] = Pin(pintype=PinType.Out, align=Orientation.East)
-        s.clk = Pin(pintype=PinType.In, align=Orientation.West)
+            s.data.d[i] = Pin(pintype=PinType.In, align=West)
+            s.data.q[i] = Pin(pintype=PinType.Out, align=East)
+        s.clk = Pin(pintype=PinType.In, align=West)
         helpers.symbol_place_pins(s)
 
         return s
@@ -212,10 +212,10 @@ class TestNmosInv(Cell):
     def symbol(self):
         s = Symbol(cell=self)
 
-        s.vdd = Pin(pintype=PinType.Inout, align=Orientation.North)
-        s.vss = Pin(pintype=PinType.Inout, align=Orientation.South)
-        s.a = Pin(pintype=PinType.In, align=Orientation.West)
-        s.y = Pin(pintype=PinType.Out, align=Orientation.East)
+        s.vdd = Pin(pintype=PinType.Inout, align=North)
+        s.vss = Pin(pintype=PinType.Inout, align=South)
+        s.a = Pin(pintype=PinType.In, align=West)
+        s.y = Pin(pintype=PinType.Out, align=East)
         helpers.symbol_place_pins(s)
 
         return s
@@ -252,13 +252,13 @@ class TestNmosInv(Cell):
                 nmos.portmap(d=s.vdd, b=s.vss, g=s.vdd, s=s.y), pos=Vec2R(3, 8)
             )
 
-        s.vdd % SchemPort(pos=Vec2R(1, 13), align=Orientation.East)
-        s.vss % SchemPort(pos=Vec2R(1, 1), align=Orientation.East)
-        s.a % SchemPort(pos=Vec2R(1, 4), align=Orientation.East)
+        s.vdd % SchemPort(pos=Vec2R(1, 13), align=East)
+        s.vss % SchemPort(pos=Vec2R(1, 1), align=East)
+        s.a % SchemPort(pos=Vec2R(1, 4), align=East)
         if self.variant == "incorrect_port_conn":
-            s.vss % SchemPort(pos=Vec2R(9, 7), align=Orientation.West)
+            s.vss % SchemPort(pos=Vec2R(9, 7), align=West)
         else:
-            s.y % SchemPort(pos=Vec2R(9, 7), align=Orientation.West)
+            s.y % SchemPort(pos=Vec2R(9, 7), align=West)
 
         if self.variant == "no_wiring":
             s.default_supply = s.vdd
@@ -277,8 +277,8 @@ class TestNmosInv(Cell):
                 s.vss % SchemWire(vertices=[Vec2R(8, 4), Vec2R(8, 1), Vec2R(5, 1)])
 
             if self.variant == "net_partitioned_tapped":
-                s.vss % SchemTapPoint(pos=Vec2R(8, 4), align=Orientation.South)
-                s.vss % SchemTapPoint(pos=Vec2R(5, 1), align=Orientation.East)
+                s.vss % SchemTapPoint(pos=Vec2R(8, 4), align=South)
+                s.vss % SchemTapPoint(pos=Vec2R(5, 1), align=East)
 
             if self.variant == "vdd_bad_wiring":
                 s.vdd % SchemWire(vertices=[Vec2R(1, 13), Vec2R(2, 13)])

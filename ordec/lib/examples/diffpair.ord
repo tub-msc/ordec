@@ -9,26 +9,26 @@ from ordec.sim import HighlevelSim
 
 cell DiffPair:
     viewgen symbol -> Symbol:
-        input vdd: .align = Orientation.North
-        input vss: .align = Orientation.South
-        input vin1: .align = Orientation.West
-        input vin2: .align = Orientation.West
-        input vbias: .align = Orientation.West
-        output vout1: .align = Orientation.East
-        output vout2: .align = Orientation.East
+        input vdd: .align = North
+        input vss: .align = South
+        input vin1: .align = West
+        input vin2: .align = West
+        input vbias: .align = West
+        output vout1: .align = East
+        output vout2: .align = East
     viewgen schematic -> Schematic:
         net s
-        port vdd: .pos=(1,21); .align = Orientation.East
-        port vss: .pos=(1,0); .align = Orientation.East
-        port vin1: .pos=(1,10); .align = Orientation.East
-        port vin2: .pos=(1,13); .align = Orientation.East
-        port vbias: .pos=(5,3); .align = Orientation.East
-        port vout1: .pos=(17,14); .align = Orientation.West
-        port vout2: .pos=(17,15); .align = Orientation.West
+        port vdd: .pos=(1,21); .align = East
+        port vss: .pos=(1,0); .align = East
+        port vin1: .pos=(1,10); .align = East
+        port vin2: .pos=(1,13); .align = East
+        port vbias: .pos=(5,3); .align = East
+        port vout1: .pos=(17,14); .align = West
+        port vout2: .pos=(17,15); .align = West
 
         Nmos M3: .pos=(7,1); .s -- vss; .g -- vbias; .d -- s
         Nmos M1: .pos=(3,8); .s -- s; .d -- vout1; .g -- vin1
-        Nmos M2: .pos=(15,8); .orientation = Orientation.FlippedSouth; .s -- s; .d -- vout2; .g -- vin2
+        Nmos M2: .pos=(15,8); .orientation = FlippedSouth; .s -- s; .d -- vout2; .g -- vin2
         Res R1: .pos=(3,16); .m -- vout1; .p -- vdd
         Res R2: .pos=(11,16);  .m -- vout2; .p -- vdd
         

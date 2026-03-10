@@ -4,53 +4,46 @@
 """
 Experimental voltage-controlled oscillator (VCO) example.
 
-The VCO is a pseudodifferential ping oscillator generating 4 phases with 90
+The VCO is a pseudodifferential ring oscillator generating 4 phases with 90
 degree phase differences.
 """
 
 from itertools import pairwise
-import os
-import subprocess
-
 from ordec.core import *
-from ordec.lib import ihp130
-from ordec.lib.ihp130 import Nmos, Pmos
+from ordec.lib.ihp130 import Nmos, Pmos, SG13G2
 from ordec.lib.base import Res, Cap, Gnd, Vdc, NoConn, Vpwl
 from ordec.sim import HighlevelSim
 from ordec.report import *
-from ordec.layout.makevias import makevias
-from ordec.layout import write_gds
-from ordec.layout import helpers
-from ordec.layout import SRouter
+from ordec.layout import makevias, SRouter
 
 cell VcoHalfStage:
     width = Parameter(R, default=300n)
     length = Parameter(R, default=130n)
 
     viewgen symbol -> Symbol:
-        inout vdd_st: .align=Orientation.North
-        inout vss_st: .align=Orientation.South
-        inout vdd: .align=Orientation.North
-        inout vss: .align=Orientation.South
+        inout vdd_st: .align=North
+        inout vss_st: .align=South
+        inout vdd: .align=North
+        inout vss: .align=South
 
-        input rst_n: .align=Orientation.West
-        input inp: .align=Orientation.West
-        input fb: .align=Orientation.East
-        output out: .align=Orientation.East
-        output out_n: .align=Orientation.East
+        input rst_n: .align=West
+        input inp: .align=West
+        input fb: .align=East
+        output out: .align=East
+        output out_n: .align=East
 
     viewgen schematic -> Schematic:
         net b
 
-        port vdd_st: .align=Orientation.East; .pos=(1,24)
-        port vdd: .align=Orientation.East; .pos=(1,26)
-        port vss_st: .align=Orientation.East; .pos=(1,6)
-        port vss: .align=Orientation.East; .pos=(1,4)
-        port inp: .align=Orientation.East; .pos=(1,21)
-        port rst_n: .align=Orientation.East; .pos=(1,9)
-        port fb: .align=Orientation.East; .pos=(15,15)
-        port out: .align=Orientation.West; .pos=(24,18)
-        port out_n: .align=Orientation.West; .pos=(30,18)
+        port vdd_st: .align=East; .pos=(1,24)
+        port vdd: .align=East; .pos=(1,26)
+        port vss_st: .align=East; .pos=(1,6)
+        port vss: .align=East; .pos=(1,4)
+        port inp: .align=East; .pos=(1,21)
+        port rst_n: .align=East; .pos=(1,9)
+        port fb: .align=East; .pos=(15,15)
+        port out: .align=West; .pos=(24,18)
+        port out_n: .align=West; .pos=(30,18)
 
         Pmos m1: .s -- vdd_st; .b -- vdd; .g -- inp; .d -- out; .pos=(3, 19)
         Nmos m2: .s -- b; .b -- vss; .g -- inp; .d -- out; .pos=(3, 13)
@@ -68,7 +61,7 @@ cell VcoHalfStage:
             mos.$l = self.length
 
 
-    viewgen layout(layers=ihp130.SG13G2().layers) -> Layout:
+    viewgen layout(layers=SG13G2().layers) -> Layout:
         pmos = self.schematic.m1.symbol.cell
         nmos = self.schematic.m2.symbol.cell
 
@@ -201,24 +194,24 @@ cell VcoHalfStage:
 
 cell VcoRing:
     viewgen symbol -> Symbol:
-        inout vdd_st: .align=Orientation.North
-        inout vss_st: .align=Orientation.South
-        inout vdd: .align=Orientation.North
-        inout vss: .align=Orientation.South
-        input rst_n: .align=Orientation.West
+        inout vdd_st: .align=North
+        inout vss_st: .align=South
+        inout vdd: .align=North
+        inout vss: .align=South
+        input rst_n: .align=West
 
         path out_p, out_n
         for i in range(2):
-            output out_p[i]: .align=Orientation.East
-            output out_n[i]: .align=Orientation.East
+            output out_p[i]: .align=East
+            output out_n[i]: .align=East
 
 
     viewgen schematic -> Schematic:
-        port vdd_st: .pos=(1,21); .align=Orientation.East
-        port vdd: .pos=(1,22); .align=Orientation.East
-        port vss_st: .pos=(1,1); .align=Orientation.East
-        port vss: .pos=(1,0); .align=Orientation.East
-        port rst_n: .pos=(1,10); .align=Orientation.East
+        port vdd_st: .pos=(1,21); .align=East
+        port vdd: .pos=(1,22); .align=East
+        port vss_st: .pos=(1,1); .align=East
+        port vss: .pos=(1,0); .align=East
+        port rst_n: .pos=(1,10); .align=East
 
         path out_p, out_n
 
@@ -236,8 +229,8 @@ cell VcoRing:
 
         for i in range(2):
             xoffset = 10 * i
-            port out_p[i]: .pos=(12 + xoffset, 17); .align=Orientation.West
-            port out_n[i]: .pos=(12 + xoffset,  7); .align=Orientation.West
+            port out_p[i]: .pos=(12 + xoffset, 17); .align=West
+            port out_n[i]: .pos=(12 + xoffset,  7); .align=West
 
             VcoHalfStage stage_p[i]:
                 .out    -- int_p[i]
@@ -264,10 +257,10 @@ cell VcoRing:
                 .pos = (5 + xoffset, 3)
 
 
-    viewgen layout(layers=ihp130.SG13G2().layers) -> Layout:
+    viewgen layout(layers=SG13G2().layers) -> Layout:
         path stage_n, stage_p, out_n, out_p
         sr = SRouter(__ordec_solver__.subgraph, __ordec_solver__,
-            routing_spec=ihp130.SG13G2().default_routing_spec)
+            routing_spec=SG13G2().default_routing_spec)
 
         .nwell = LayoutRect(layer=layers.NWell)
 
@@ -281,11 +274,11 @@ cell VcoRing:
         .vss_st_bar_p % LayoutPin(pin=self.symbol.vss_st)
 
         for i in range(2):
-            .stage_p[i] = LayoutInstance(ref=VcoHalfStage().layout, orientation=Orientation.MX)
+            .stage_p[i] = LayoutInstance(ref=VcoHalfStage().layout, orientation=MX)
             .stage_n[i] = LayoutInstance(ref=VcoHalfStage().layout)
             if i == 0:
-                .stage_p[i].orientation *= Orientation.MY
-                .stage_n[i].orientation *= Orientation.MY
+                .stage_p[i].orientation *= MY
+                .stage_n[i].orientation *= MY
             ! .stage_n[i].vddbar.rect.southwest == .stage_p[i].vddbar.rect.southwest
 
             if i > 0:
@@ -390,22 +383,22 @@ cell Vco:
     width = Parameter(R, default=300n)
     length = Parameter(R, default=130n)
     viewgen symbol -> Symbol:
-        inout vdd: .align=Orientation.North
-        inout vss: .align=Orientation.South
+        inout vdd: .align=North
+        inout vss: .align=South
 
-        input rst_n: .align=Orientation.West
-        input vbias: .align=Orientation.West
+        input rst_n: .align=West
+        input vbias: .align=West
 
         path out_p, out_n
         for i in range(2):
-            output out_p[i]: .align=Orientation.East
-            output out_n[i]: .align=Orientation.East
+            output out_p[i]: .align=East
+            output out_n[i]: .align=East
 
     viewgen schematic -> Schematic:
-        port vdd: .pos=(4,21); .align=Orientation.East
-        port vss: .pos=(4,0); .align=Orientation.East
-        port rst_n: .pos=(13,9); .align=Orientation.East
-        port vbias: .pos=(4,6); .align=Orientation.East
+        port vdd: .pos=(4,21); .align=East
+        port vss: .pos=(4,0); .align=East
+        port rst_n: .pos=(13,9); .align=East
+        port vbias: .pos=(4,6); .align=East
 
         net vss_st
         net vdd_st
@@ -413,8 +406,8 @@ cell Vco:
 
         path out_p, out_n
         for i in range(2):
-            port out_p[i]: .pos=(22, 9 + 2 * i); .align=Orientation.West
-            port out_n[i]: .pos=(22,10 + 2 * i); .align=Orientation.West
+            port out_p[i]: .pos=(22, 9 + 2 * i); .align=West
+            port out_n[i]: .pos=(22,10 + 2 * i); .align=West
 
         VcoRing ring:
             .vss     -- vss
@@ -448,7 +441,7 @@ cell Vco:
             .s -- vdd
             .b -- vdd
             .pos = (11, 16)
-            .orientation = Orientation.FlippedSouth
+            .orientation = FlippedSouth
 
         Nmos m4:
             .d -- cm_mid
@@ -486,12 +479,12 @@ cell VcoTb:
             NoConn nc[2 * i + 0]:
                 .a -- out_n[i]
                 .pos = (22 + 5 * i, 6)
-                .orientation = Orientation.East
+                .orientation = East
 
             NoConn nc[2 * i + 1]:
                 .a -- out_p[i]
                 .pos = (26 + 5 * i, 17)
-                .orientation = Orientation.West
+                .orientation = West
 
         Gnd gnd:
             .p -- vss
@@ -561,48 +554,3 @@ cell VcoTb:
             plot_group="vco_tran",
             ))
         return Report(elements)
-
-@generate_func
-def report_analog_design():
-    # Count transistors:
-    transistor_table = []
-    hier = SimHierarchy.from_schematic(Vco().schematic)
-    for inst in hier.all(SimInstance):
-        if type(inst.eref.cell).__name__ in ('Nmos', 'Pmos'):
-            transistor_table.append(f'| {inst.full_path_str()} | {repr(inst.eref.cell)} |')
-    transistor_count = len(transistor_table)
-
-    # Count rectangles:
-    layout = VcoRing().layout.mutable_copy()
-    helpers.flatten(layout)
-
-    rect_count = 0
-    for rect in layout.all(LayoutRect):
-        rect_count += 1
-    for path in layout.all(LayoutPath):
-        vertex_count = len(path.vertices())
-        if vertex_count < 2:
-            continue
-        rect_count += (vertex_count - 1)
-
-    netlist = HighlevelSim(SimHierarchy.from_schematic(Vco().schematic)).netlister.out()
-
-    return Report([
-        Markdown("# Analog design report: Pseudo-differential voltage-controlled ring oscillator"),
-        Svg.from_view(Vco().symbol),
-        Markdown(
-            f"## Transistor count (schematic)\n"
-            f"There are **{transistor_count}** transistors in the example design.\n"
-            f"\n"
-            f" | Instance Name | Reference |\n"
-            f"| -- | -- |\n"
-            + f'\n'.join(transistor_table) +
-            f"\n"
-            f"## Rectangle count (layout)\n"
-            f"The layout comprises **{rect_count}** rectangles.\n"
-            f"\n"
-            f"(This is only the VcoRing part.)\n"
-            f"## Vco netlist"
-        ),
-        PreformattedText(netlist)
-    ])

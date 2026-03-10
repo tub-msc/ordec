@@ -105,7 +105,7 @@ def test_scheminstance_unresolved():
         6: NPath.Tuple(parent=None, name='d', ref=5),
         7: Net.Tuple(pin=None),
         8: NPath.Tuple(parent=None, name='b', ref=7),
-        9: SchemInstance.Tuple(pos=Vec2R(R('1.'), R('2.')), orientation=D4.R0, symbol=Nmos(l='2u', w='5u').symbol),
+        9: SchemInstance.Tuple(pos=Vec2R(R('1.'), R('2.')), orientation=R0, symbol=Nmos(l='2u', w='5u').symbol),
         10: NPath.Tuple(parent=None, name='myinst', ref=9),
         11: SchemInstanceConn.Tuple(ref=9, here=1, there=1),
         12: SchemInstanceConn.Tuple(ref=9, here=3, there=3),
