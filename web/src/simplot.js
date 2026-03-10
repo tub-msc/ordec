@@ -392,6 +392,21 @@ export class SimPlot {
         });
     }
 
+    getZoomState() {
+        return {
+            transform: this.currentTransform,
+            yZoomScale: this._yZoomScale,
+            yPanOffset: this._yPanOffset,
+        };
+    }
+
+    setZoomState(state) {
+        this._yZoomScale = state.yZoomScale;
+        this._yPanOffset = state.yPanOffset;
+        this.currentTransform = state.transform;
+        this.svg.call(this.zoom.transform, state.transform);
+    }
+
     resetZoom() {
         this.currentTransform = d3.zoomIdentity;
         this._yZoomScale = 1;
@@ -415,6 +430,25 @@ export class SimPlot {
         this._render();
         if (this._plotW > 0 && this._plotH > 0) {
             this.svg.call(this.zoom.transform, d3.zoomIdentity);
+        }
+    }
+
+    getHiddenNames() {
+        return new Set(this.series.filter(s => !s.visible).map(s => s.name));
+    }
+
+    setHiddenNames(names) {
+        let changed = false;
+        this.series.forEach(s => {
+            const hide = names.has(s.name);
+            if (s.visible === hide) {
+                s.visible = !hide;
+                changed = true;
+            }
+        });
+        if (changed) {
+            this._updateLegend();
+            this._render();
         }
     }
 

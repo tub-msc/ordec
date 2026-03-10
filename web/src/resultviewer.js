@@ -8,6 +8,33 @@ import { LayoutGL } from './layout-gl.js';
 import { SimPlot } from './simplot.js';
 import { HierSelector } from './hier-selector.js';
 
+// Wire up X axis zoom and crosshair sync across a set of SimPlots.
+function _syncPlotXAxes(plots) {
+    if (plots.length < 2) return;
+    plots.forEach(source => {
+        source.setSyncCallbacks({
+            onXDomainChange: (domain) => {
+                plots.forEach(p => {
+                    if (p !== source) {
+                        p.setXDomain(domain, { suppressEvent: true });
+                    }
+                });
+            },
+            onCrosshairXChange: (xValue) => {
+                plots.forEach(p => {
+                    if (p !== source) {
+                        if (xValue === null) {
+                            p.clearCrosshair({ suppressEvent: true });
+                        } else {
+                            p.setCrosshairX(xValue, { suppressEvent: true });
+                        }
+                    }
+                });
+            },
+        });
+    });
+}
+
 let idCounter = 0;
 export function generateId() {
     idCounter += 1;
@@ -66,9 +93,6 @@ class ReportPlotGroups {
         const group = this.groups.get(groupName);
         if (!group) return;
         group.plots.delete(plot);
-        if (group.plots.size === 0) {
-            this.groups.delete(groupName);
-        }
     }
 
     _onXDomainChange(groupName, sourcePlot, xDomain) {
@@ -132,9 +156,15 @@ const reportElementClassOf = {
             this.container = container;
             this.reportContext = reportContext;
             this.plot = null;
+            this.savedHidden = null;
+            this.savedZoom = null;
         }
 
         update(msgData) {
+            if (this.plot) {
+                this.savedHidden = this.plot.getHiddenNames();
+                this.savedZoom = this.plot.getZoomState();
+            }
             this.destroy();
 
             const root = document.createElement('div');
@@ -150,6 +180,12 @@ const reportElementClassOf = {
             });
 
             this.plot.setData(msgData.x, msgData.series);
+            if (this.savedHidden) {
+                this.plot.setHiddenNames(this.savedHidden);
+            }
+            if (this.savedZoom) {
+                this.plot.setZoomState(this.savedZoom);
+            }
             if (this.reportContext) {
                 this.reportContext.plotGroups.register(
                     this.plot,
@@ -216,23 +252,20 @@ const viewClassOf = {
         constructor(resContent) {
             this.resContent = resContent;
             this.renderers = [];
+            this.reportContext = {
+                plotGroups: new ReportPlotGroups(),
+            };
         }
 
         update(msgData) {
-            this.renderers.forEach(renderer => {
-                if (typeof renderer.destroy === 'function') {
-                    renderer.destroy();
-                }
-            });
+            const elements = msgData.elements || [];
+            const oldRenderers = this.renderers;
             this.renderers = [];
 
             const report = document.createElement('div');
             report.classList.add('report-view');
-            const reportContext = {
-                plotGroups: new ReportPlotGroups(),
-            };
 
-            (msgData.elements || []).forEach(elementData => {
+            elements.forEach((elementData, i) => {
                 const elementRoot = document.createElement('div');
                 elementRoot.classList.add('report-element');
                 if (elementData.element_type === 'plot2d') {
@@ -252,10 +285,30 @@ const viewClassOf = {
                     return;
                 }
 
-                const renderer = new elementClass(elementRoot, reportContext);
+                // Reuse existing renderer if same type at same index
+                let renderer;
+                const old = oldRenderers[i];
+                if (old instanceof elementClass) {
+                    renderer = old;
+                    renderer.container = elementRoot;
+                    oldRenderers[i] = null;
+                } else {
+                    if (old && typeof old.destroy === 'function') {
+                        old.destroy();
+                    }
+                    oldRenderers[i] = null;
+                    renderer = new elementClass(
+                        elementRoot, this.reportContext
+                    );
+                }
                 renderer.update(elementData);
                 this.renderers.push(renderer);
             });
+
+            // Destroy any leftover old renderers
+            for (const r of oldRenderers) {
+                if (r && typeof r.destroy === 'function') r.destroy();
+            }
 
             this.resContent.replaceChildren(report);
         }
@@ -296,10 +349,17 @@ const viewClassOf = {
         constructor(resContent) {
             this.resContent = resContent;
             this.plots = [];
+            this.savedByRole = {};
         }
 
         update(msgData) {
-            this.plots.forEach(p => p.destroy());
+            for (const { role, plot } of this.plots) {
+                this.savedByRole[role] = {
+                    hidden: plot.getHiddenNames(),
+                    zoom: plot.getZoomState(),
+                };
+            }
+            this.plots.forEach(({ plot }) => plot.destroy());
             this.plots = [];
 
             const container = document.createElement('div');
@@ -319,7 +379,12 @@ const viewClassOf = {
                 plot.setData(sweep, Object.entries(voltages).map(
                     ([name, values]) => ({ name, values })
                 ));
-                this.plots.push(plot);
+                const saved = this.savedByRole.voltages;
+                if (saved) {
+                    plot.setHiddenNames(saved.hidden);
+                    plot.setZoomState(saved.zoom);
+                }
+                this.plots.push({ role: 'voltages', plot });
             }
 
             if (Object.keys(currents).length > 0) {
@@ -330,18 +395,32 @@ const viewClassOf = {
                 plot.setData(sweep, Object.entries(currents).map(
                     ([name, values]) => ({ name, values })
                 ));
-                this.plots.push(plot);
+                const saved = this.savedByRole.currents;
+                if (saved) {
+                    plot.setHiddenNames(saved.hidden);
+                    plot.setZoomState(saved.zoom);
+                }
+                this.plots.push({ role: 'currents', plot });
             }
+
+            _syncPlotXAxes(this.plots.map(({ plot }) => plot));
         }
     },
     transim: class {
         constructor(resContent) {
             this.resContent = resContent;
             this.plots = [];
+            this.savedByRole = {};
         }
 
         update(msgData) {
-            this.plots.forEach(p => p.destroy());
+            for (const { role, plot } of this.plots) {
+                this.savedByRole[role] = {
+                    hidden: plot.getHiddenNames(),
+                    zoom: plot.getZoomState(),
+                };
+            }
+            this.plots.forEach(({ plot }) => plot.destroy());
             this.plots = [];
 
             const container = document.createElement('div');
@@ -360,7 +439,12 @@ const viewClassOf = {
                 plot.setData(time, Object.entries(voltages).map(
                     ([name, values]) => ({ name, values })
                 ));
-                this.plots.push(plot);
+                const saved = this.savedByRole.voltages;
+                if (saved) {
+                    plot.setHiddenNames(saved.hidden);
+                    plot.setZoomState(saved.zoom);
+                }
+                this.plots.push({ role: 'voltages', plot });
             }
 
             if (Object.keys(currents).length > 0) {
@@ -371,18 +455,32 @@ const viewClassOf = {
                 plot.setData(time, Object.entries(currents).map(
                     ([name, values]) => ({ name, values })
                 ));
-                this.plots.push(plot);
+                const saved = this.savedByRole.currents;
+                if (saved) {
+                    plot.setHiddenNames(saved.hidden);
+                    plot.setZoomState(saved.zoom);
+                }
+                this.plots.push({ role: 'currents', plot });
             }
+
+            _syncPlotXAxes(this.plots.map(({ plot }) => plot));
         }
     },
     acsim: class {
         constructor(resContent) {
             this.resContent = resContent;
             this.plots = [];
+            this.savedByRole = {};
         }
 
         update(msgData) {
-            this.plots.forEach(p => p.destroy());
+            for (const { role, plot } of this.plots) {
+                this.savedByRole[role] = {
+                    hidden: plot.getHiddenNames(),
+                    zoom: plot.getZoomState(),
+                };
+            }
+            this.plots.forEach(({ plot }) => plot.destroy());
             this.plots = [];
 
             const container = document.createElement('div');
@@ -417,7 +515,12 @@ const viewClassOf = {
                     xscale: 'log',
                 });
                 magPlot.setData(freq, magSeries);
-                this.plots.push(magPlot);
+                let saved = this.savedByRole.magnitude;
+                if (saved) {
+                    magPlot.setHiddenNames(saved.hidden);
+                    magPlot.setZoomState(saved.zoom);
+                }
+                this.plots.push({ role: 'magnitude', plot: magPlot });
 
                 const phasePlot = new SimPlot(container, {
                     xlabel: 'Frequency (Hz)',
@@ -425,8 +528,15 @@ const viewClassOf = {
                     xscale: 'log',
                 });
                 phasePlot.setData(freq, phaseSeries);
-                this.plots.push(phasePlot);
+                saved = this.savedByRole.phase;
+                if (saved) {
+                    phasePlot.setHiddenNames(saved.hidden);
+                    phasePlot.setZoomState(saved.zoom);
+                }
+                this.plots.push({ role: 'phase', plot: phasePlot });
             }
+
+            _syncPlotXAxes(this.plots.map(({ plot }) => plot));
         }
     },
 }
