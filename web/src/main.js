@@ -9,11 +9,11 @@ import {
     LayoutConfig
 } from 'golden-layout'
 import "golden-layout/dist/css/goldenlayout-base.css"
-import "golden-layout/dist/css/themes/goldenlayout-light-theme.css"
 
 import 'ace-builds/src-noconflict/ace'
 import "ace-builds/src-noconflict/mode-python";
 import "ace-builds/src-noconflict/theme-github";
+import "ace-builds/src-noconflict/theme-github_dark";
 import "ace-builds/src-noconflict/ext-language_tools";
 
 import { OrdMode } from "./ace-ord-mode.js";
@@ -22,6 +22,9 @@ import { authenticateLocalQuery } from './auth.js';
 
 import { ResultViewer } from "./resultviewer.js";
 import { OrdecClient } from './client.js';
+import { initTheme, registerAceEditor } from './theme.js';
+
+initTheme();
 
 const sourceTypeSelect = document.querySelector("#sourcetype");
 const urlParams = new URLSearchParams(window.location.search);
@@ -72,7 +75,7 @@ class Editor {
         this.resizeWithContainerAutomatically = true;
 
         this.editor = ace.edit(container.element);
-        this.editor.setTheme("ace/theme/github");
+        registerAceEditor(this.editor);
         this.updateMode();
         this.editor.setOptions({
             fontFamily: "Inconsolata",
@@ -85,7 +88,7 @@ class Editor {
             // After the user has modified the example code, he must confirm
             // when he wants to close the browser window.
             window.onbeforeunload = unloadMsg;
-            
+
             window.clearTimeout(this.timeout);
             this.timeout = window.setTimeout(() => {
                 console.log('ordecClient.connect() triggered by editor change.');
@@ -196,7 +199,7 @@ if(queryLocal) {
                     ]
                 }
             ]
-        }; 
+        };
         uistate.header = {popout: false};
 
         layout.loadLayout(uistate);
@@ -219,19 +222,19 @@ if(queryLocal) {
     initData.uistate.header = {popout: false};
     sourceTypeSelect.value = initData.srctype;
     layout.loadLayout(initData.uistate);
-    
+
     // client is initialized only once we have loaded our layout using loadLayout:
     client = new OrdecClient(getSourceType(), getResultViewers(), setStatus);
     client.srctype = initData.srctype;
     client.src = initData.src;
-    
+
     const editor = getEditor();
     editor.loadSrc(initData.src);
 
     client.connect();
-     
-    // Starting now, changes of editor source will trigger connect():   
-    editor.registerChangeHandler(client); 
+
+    // Starting now, changes of editor source will trigger connect():
+    editor.registerChangeHandler(client);
 }
 
 layout.addEventListener('stateChanged', () => {

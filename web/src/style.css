@@ -44,6 +44,15 @@ body {
 #toolbar .spacer {
     flex-grow:1;
 }
+#theme-toggle {
+    background: none;
+    border: 1px solid #aaa;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0px 4px;
+    line-height: 1.4;
+}
 .resview {
     display:flex;
     flex-direction:column;
@@ -69,7 +78,7 @@ body {
     z-index: 1;
     padding:0px;
     overflow-y:scroll;
-    overflow-x:clip;   
+    overflow-x:clip;
 }
 .resexception {
     flex-grow:1;
@@ -101,7 +110,7 @@ canvas.layoutFit {
     box-sizing: border-box;
     */
 }
-*, *::before, *::after { box-sizing: border-box; } 
+*, *::before, *::after { box-sizing: border-box; }
 .exception {
     color:red;
 }

@@ -17,3 +17,20 @@
     color: #c96bbe;
     font-weight: bold;
 }
+
+/* Dark mode overrides for ORD syntax highlighting */
+body.theme-dark .ace_keyword.ace_operator.ace_ord {
+    color: #98c379;
+}
+
+body.theme-dark .ace_keyword.ace_control.ace_ord {
+    color: #61afef;
+}
+
+body.theme-dark .ace_keyword.ace_definition.ace_ord {
+    color: #e06c75;
+}
+
+body.theme-dark .ace_punctuation.ace_dot.ace_ord {
+    color: #c678dd;
+}
