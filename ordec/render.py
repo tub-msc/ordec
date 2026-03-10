@@ -465,6 +465,8 @@ class SchematicRenderer(Renderer):
                 label = p.ref.full_path_str()
             elif p.npath_nid is not None:
                 label = p.full_path_str()
+            elif p.ref.pin is not None and p.ref.pin.npath_nid is not None:
+                label = p.ref.pin.full_path_str()
             else:
                 label = f"??{p.ref.nid}"
             self.draw_label(label, tran,

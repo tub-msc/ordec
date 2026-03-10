@@ -85,6 +85,8 @@ testdata = [
         refdir / "libtest_testnmosinv.svg"),
     testcase(lambda: libtest.TestNmosInv(variant='no_wiring', add_conn_points=False, add_terminal_taps=True).schematic,
         refdir / "libtest_testnmosinv_nowiring.svg"),
+    testcase(lambda: libtest.NetNamingTest().schematic,
+        refdir / "libtest_netnamingtest_sch.svg"),
     
     # Test cells from lib.examples
     # ----------------------------

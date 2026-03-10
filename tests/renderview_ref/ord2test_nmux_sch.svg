@@ -28,37 +28,37 @@
     <circle cx="-1.0" cy="24.0" r="0.1625" class="connPoint" />
     <circle cx="11.0" cy="14.0" r="0.1625" class="connPoint" />
     <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 -12.0 40.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 -12.0 39.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">??1</text>
+    <text transform="matrix(0 0.045 0.045 0 -12.0 39.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vdd</text>
     <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 -12.0 -5.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 -12.0 -4.35)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">??4</text>
+    <text transform="matrix(0 0.045 0.045 0 -12.0 -4.35)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vss</text>
     <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 2.0 0.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 2.0 -0.65)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">??4</text>
+    <text transform="matrix(0 0.045 0.045 0 2.0 -0.65)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
     <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 2.0 6.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 2.0 6.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">??1</text>
+    <text transform="matrix(0 0.045 0.045 0 2.0 6.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
     <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 2.0 10.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 2.0 9.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">??4</text>
+    <text transform="matrix(0 0.045 0.045 0 2.0 9.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
     <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 2.0 16.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 2.0 16.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">??1</text>
+    <text transform="matrix(0 0.045 0.045 0 2.0 16.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
     <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 2.0 20.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 2.0 19.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">??4</text>
+    <text transform="matrix(0 0.045 0.045 0 2.0 19.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
     <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 2.0 26.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 2.0 26.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">??1</text>
+    <text transform="matrix(0 0.045 0.045 0 2.0 26.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
     <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 2.0 30.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 2.0 29.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">??4</text>
+    <text transform="matrix(0 0.045 0.045 0 2.0 29.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
     <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 2.0 36.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 2.0 36.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">??1</text>
+    <text transform="matrix(0 0.045 0.045 0 2.0 36.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
     <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 14.0 10.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 14.0 9.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">??4</text>
+    <text transform="matrix(0 0.045 0.045 0 14.0 9.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
     <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 14.0 16.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 14.0 16.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">??1</text>
+    <text transform="matrix(0 0.045 0.045 0 14.0 16.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
     <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 14.0 20.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 14.0 19.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">??4</text>
+    <text transform="matrix(0 0.045 0.045 0 14.0 19.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
     <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 14.0 26.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 14.0 26.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">??1</text>
+    <text transform="matrix(0 0.045 0.045 0 14.0 26.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
     <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 26.0 15.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 26.0 14.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">??4</text>
+    <text transform="matrix(0 0.045 0.045 0 26.0 14.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
     <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 26.0 21.0)" class="tapPoint" />
-    <text transform="matrix(0 0.045 0.045 0 26.0 21.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">??1</text>
+    <text transform="matrix(0 0.045 0.045 0 26.0 21.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
     <g>
       <rect x="0.0" y="0.0" width="4.0" height="6.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 3.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Mux2</text>

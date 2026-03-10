@@ -4,6 +4,7 @@
 from ordec.core import *
 from ordec.schematic import helpers
 from ordec.lib.generic_mos import Or2, Nmos
+from ordec.lib.base import Res
 
 class RotateTest(Cell):
     @generate
@@ -177,6 +178,51 @@ class MultibitReg_ArrayOfStructs(Cell):
         s.clk = Pin(pintype=PinType.In, align=West)
         helpers.symbol_place_pins(s)
 
+        return s
+
+
+class NetNamingTest(Cell):
+    """
+    Tests net label rendering for four combinations of net naming and
+    pin association:
+
+    (a) Unnamed net, no pin — renders as "??<nid>"
+    (b) Named net, no pin — renders net name
+    (c) Named net with named pin — renders net name
+    (d) Unnamed net with named pin — renders pin name
+    """
+
+    @generate
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+
+        s.c = Pin(pintype=PinType.Inout, align=West)
+        s.d = Pin(pintype=PinType.Inout, align=West)
+        
+        helpers.symbol_place_pins(s, vpadding=2, hpadding=2)
+        return s
+
+    @generate
+    def schematic(self) -> Schematic:
+        s = Schematic(cell=self, symbol=self.symbol, outline=(0,0,13,7))
+
+        # (a) Unnamed net without associated pin
+        a = s % Net()
+        
+        # (b) Named net without associated pin
+        s.b = Net()
+
+        # (c) Named net with associated named pin
+        c = s % Net(pin=self.symbol.c)
+        s % SchemPort(pos=Vec2R(2, 1), align=East, ref=c)
+        
+        # (d) Unnamed net with associated named pin (and named port)
+        s.d = Net(pin=self.symbol.d)
+        s.d % SchemPort(pos=Vec2R(2, 2), align=East, ref=s.d)
+        
+        s.i0 = SchemInstance(Res('1k').symbol.portmap(m=a, p=s.b), pos=Vec2R(4, 2))
+        s.i2 = SchemInstance(Res('1k').symbol.portmap(m=c, p=s.d), pos=Vec2R(9, 2))
+        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 
 
