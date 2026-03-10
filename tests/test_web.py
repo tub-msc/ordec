@@ -112,6 +112,9 @@ testcases_integrated = {
         'CurrentMirror().schematic': [check_schematic, check_min_size(300, 100)],
         'CurrentMirror().sim_dc': [check_sim_dc, check_min_size(300, 200)],
     },
+    'vco_pseudodiff': {
+        'VcoRing().layout': [],
+    },
 }
 
 testcases_local = {
