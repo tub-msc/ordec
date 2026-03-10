@@ -5,8 +5,8 @@ import * as d3 from "d3";
 
 const MARGIN = { top: 10, right: 15, bottom: 35, left: 60 };
 
-// Oscilloscope-style signal colors: bright on dark background
-const SIGNAL_COLORS = [
+// Dark mode: oscilloscope-style bright signal colors on dark background
+const SIGNAL_COLORS_DARK = [
     '#33ff33', // green (classic scope)
     '#ff3333', // red
     '#ffff33', // yellow
@@ -17,11 +17,28 @@ const SIGNAL_COLORS = [
     '#ff6699', // pink
 ];
 
+// Light mode: saturated colors readable on white background
+const SIGNAL_COLORS_LIGHT = [
+    '#1f77b4', // blue
+    '#d62728', // red
+    '#2ca02c', // green
+    '#ff7f0e', // orange
+    '#9467bd', // purple
+    '#8c564b', // brown
+    '#e377c2', // pink
+    '#17becf', // cyan
+];
+
+function _isDark() {
+    return document.body.classList.contains('theme-dark');
+}
+
 function signalColor(i) {
-    if (i < SIGNAL_COLORS.length) return SIGNAL_COLORS[i];
-    // Distinct colors beyond the common signal colors (golden angle)
+    const palette = _isDark() ? SIGNAL_COLORS_DARK : SIGNAL_COLORS_LIGHT;
+    if (i < palette.length) return palette[i];
     const hue = (i * 137.508) % 360;
-    return `hsl(${hue}, 100%, 60%)`;
+    const lightness = _isDark() ? 60 : 40;
+    return `hsl(${hue}, 80%, ${lightness}%)`;
 }
 
 export class SimPlot {
@@ -80,6 +97,24 @@ export class SimPlot {
             this._resizeTimer = setTimeout(() => this._render(), 30);
         });
         this.resizeObserver.observe(this.wrapper);
+
+        // Re-color when theme changes
+        this._themeObserver = new MutationObserver(() => {
+            this._recolor();
+        });
+        this._themeObserver.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['class'],
+        });
+    }
+
+    _recolor() {
+        this.series.forEach((s, i) => {
+            s.color = signalColor(i);
+        });
+        this.crosshairLine.attr('stroke', _isDark() ? '#888' : '#999');
+        this._updateLegend();
+        this._render();
     }
 
     _setupSvg() {
@@ -118,7 +153,7 @@ export class SimPlot {
             .style('display', 'none');
 
         this.crosshairLine = this.crosshairG.append('line')
-            .attr('stroke', '#888')
+            .attr('stroke', _isDark() ? '#888' : '#999')
             .attr('stroke-width', 1)
             .attr('stroke-dasharray', '4,3');
 
@@ -533,6 +568,10 @@ export class SimPlot {
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
+        }
+        if (this._themeObserver) {
+            this._themeObserver.disconnect();
+            this._themeObserver = null;
         }
         window.removeEventListener('mousemove', this._yDragMove);
         window.removeEventListener('mouseup', this._yDragEnd);

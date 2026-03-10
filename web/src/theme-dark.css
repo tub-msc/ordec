@@ -96,3 +96,60 @@ body.theme-dark .report-markdown table th {
 body.theme-dark .symbolPoly {
     stroke: white;
 }
+
+/* SimPlot dark mode */
+body.theme-dark .simplot-container {
+    background-color: #1a1a1a;
+}
+
+body.theme-dark .simplot svg {
+    background-color: #111;
+}
+
+body.theme-dark .simplot-default-zoom {
+    border-color: #555;
+    background-color: rgba(20, 20, 20, 0.9);
+    color: #ccc;
+}
+
+body.theme-dark .simplot-default-zoom:hover {
+    background-color: rgba(40, 40, 40, 0.95);
+}
+
+body.theme-dark .simplot-legend {
+    color: #ccc;
+    background-color: #1a1a1a;
+    border-bottom-color: #333;
+}
+
+body.theme-dark .simplot + .simplot {
+    border-top-color: #333;
+}
+
+body.theme-dark .simplot-axis line,
+body.theme-dark .simplot-axis path {
+    stroke: #555;
+}
+
+body.theme-dark .simplot-axis text {
+    fill: #999;
+}
+
+body.theme-dark .simplot-axis-label {
+    fill: #bbb;
+}
+
+body.theme-dark .simplot-grid line {
+    stroke: #2a2a2a;
+}
+
+body.theme-dark .simplot-tooltip {
+    background-color: rgba(0, 0, 0, 0.85);
+    border-color: #444;
+    color: #ccc;
+}
+
+body.theme-dark .simplot-tooltip-x {
+    color: #888;
+    border-bottom-color: #333;
+}
