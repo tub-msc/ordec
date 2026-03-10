@@ -107,7 +107,11 @@ testcases_integrated = {
         'Amp().schematic': [check_schematic, check_min_size(300, 100)],
         'AmpTb().schematic': [check_schematic, check_min_size(300, 100)],
         'AmpTb().report_ac': [],
-    }
+    },
+    'currentmirror': {
+        'CurrentMirror().schematic': [check_schematic, check_min_size(300, 100)],
+        'CurrentMirror().sim_dc': [check_sim_dc, check_min_size(300, 200)],
+    },
 }
 
 testcases_local = {
