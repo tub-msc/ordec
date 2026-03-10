@@ -1,0 +1,147 @@
+{
+  "root": {
+    "type": "row",
+    "content": [
+      {
+        "type": "column",
+        "content": [
+          {
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": false,
+                "reorderEnabled": true,
+                "title": "Source Editor",
+                "componentType": "editor",
+                "componentState": {}
+              }
+            ],
+            "size": "50%",
+            "id": "",
+            "maximised": false,
+            "isClosable": false,
+            "activeItemIndex": 0
+          },
+          {
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "AmpTb().report_ac",
+                "componentType": "result",
+                "componentState": {
+                  "view": "AmpTb().report_ac"
+                }
+              }
+            ],
+            "size": "50%",
+            "id": "",
+            "maximised": false,
+            "isClosable": true,
+            "activeItemIndex": 0
+          }
+        ],
+        "size": "50%",
+        "id": "",
+        "isClosable": true
+      },
+      {
+        "type": "column",
+        "content": [
+          {
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "Amp().schematic",
+                "componentType": "result",
+                "componentState": {
+                  "view": "Amp().schematic"
+                }
+              }
+            ],
+            "size": "54.90196078431373%",
+            "id": "",
+            "maximised": false,
+            "isClosable": true,
+            "activeItemIndex": 0
+          },
+          {
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "AmpTb().schematic",
+                "componentType": "result",
+                "componentState": {
+                  "view": "AmpTb().schematic"
+                }
+              }
+            ],
+            "size": "45.09803921568627%",
+            "id": "",
+            "maximised": false,
+            "isClosable": true,
+            "activeItemIndex": 0
+          }
+        ],
+        "size": "50%",
+        "id": "",
+        "isClosable": true
+      }
+    ],
+    "size": "1fr",
+    "id": "",
+    "isClosable": true
+  },
+  "openPopouts": [],
+  "settings": {
+    "constrainDragToContainer": true,
+    "reorderEnabled": true,
+    "popoutWholeStack": false,
+    "blockedPopoutsThrowError": true,
+    "closePopoutsOnUnload": true,
+    "responsiveMode": "none",
+    "tabOverlapAllowance": 0,
+    "reorderOnTabMenuClick": true,
+    "tabControlOffset": 10,
+    "popInOnClose": false
+  },
+  "dimensions": {
+    "borderWidth": 5,
+    "borderGrabWidth": 5,
+    "defaultMinItemHeight": "0px",
+    "defaultMinItemWidth": "10px",
+    "headerHeight": 20,
+    "dragProxyWidth": 300,
+    "dragProxyHeight": 200
+  },
+  "header": {
+    "show": "top",
+    "popout": false,
+    "dock": "dock",
+    "close": "close",
+    "maximise": "maximise",
+    "minimise": "minimise",
+    "tabDropdown": "additional tabs"
+  }
+}

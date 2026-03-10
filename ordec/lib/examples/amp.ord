@@ -1,0 +1,95 @@
+from ordec.core import *
+from ordec.lib.base import Res, Cap, Vdc, Vsin, Gnd, Idc
+from ordec.lib.ihp130 import Nmos, Pmos
+from ordec.ord2.context import schem_check
+from ordec.sim import HighlevelSim
+from ordec.report import *
+
+cell Amp:
+    viewgen symbol -> Symbol:
+        input vin: .align=West
+        input vbias: .align=West
+        output vout: .align=East
+        inout vss: .align=South
+        inout vdd: .align=North
+    viewgen schematic -> Schematic:
+        schem_check(True)
+        net m0g
+        port vdd: .align=South; .pos=(15,18)
+        port vss: .align=North; .pos=(15,1)
+        port vin: .align=East; .pos=(0,5)
+        port vbias: .align=East; .pos=(0,14)
+        port vout: .align=West; .pos=(20, 8)
+
+        Res r0: .pos=(5, 3); .$r=100k; .orientation=R90; .p -- vin; .m -- m0g
+        Res r1: .pos=(6, 6); .$r=400k; .m -- m0g; .p -- vout
+
+        Nmos m0: .pos=(13,3); .d--vout; .g -- m0g; .s -- vss; .b -- vss; .$l=130n; .$w=5u
+        Pmos m1: .pos=(13,12); .d--vout; .g--vbias; .s--vdd; .b--vdd; .$l=130n; .$w=1u
+
+cell AmpTb:
+    viewgen symbol -> Symbol:
+        pass
+    viewgen schematic -> Schematic:
+        net vin, vout, vdd, vss, vbias
+        schem_check(True)
+        Amp DUT: .pos=(17,6); .vss--vss; .vdd--vdd; .vin--vin; .vout--vout; .vbias--vbias
+
+        Gnd gnd: .pos=(0,0); .p--vss
+
+        Vdc vdd_src: .pos=(0,6); .$dc='1.2'; .m--vss; .p--vdd
+        Vdc vbias_src: .pos=(5,6); .$dc='0.5'; .m--vss; .p--vbias
+        Vsin vin_src: .pos=(10,6); .$ac='0.05'; .$dc='0.5'; .$freq=1M; .m--vss; .p--vin
+        Cap cout: .pos=(22,3); .$c=1p; .p--vout; .m--vss
+
+
+    @generate
+    def sim_ac(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).ac('dec', '10', '1M', '1G')
+        return s
+
+    @generate
+    def sim_tran(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        HighlevelSim(s).tran(R('1n'), R('1u'))
+        return s
+
+    @generate
+    def report_ac(self):
+        import math
+        sim = self.sim_ac
+        freq = [f.real for f in sim.freq]
+
+        def mag_db(cvals):
+            return [20 * math.log10(abs(v)) if abs(v) > 0 else -200 for v in cvals]
+
+        def phase_deg(cvals):
+            return [math.degrees(math.atan2(v.imag, v.real)) for v in cvals]
+
+        elements = [Markdown("## Amplifier AC bode plot")]
+        elements.append(Plot2D(
+            x=freq,
+            series={
+                'vin': mag_db(sim.vin.ac_voltage),
+                'vout': mag_db(sim.vout.ac_voltage),
+            },
+            xlabel="Frequency (Hz)",
+            ylabel="Magnitude (dB)",
+            xscale="log",
+            height=200,
+            plot_group="bode",
+        ))
+        elements.append(Plot2D(
+            x=freq,
+            series={
+                'vin': phase_deg(sim.vin.ac_voltage),
+                'vout': phase_deg(sim.vout.ac_voltage),
+            },
+            xlabel="Frequency (Hz)",
+            ylabel="Phase (deg)",
+            xscale="log",
+            height=200,
+            plot_group="bode",
+        ))
+        return Report(elements)

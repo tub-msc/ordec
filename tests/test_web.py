@@ -99,10 +99,15 @@ testcases_integrated = {
         'DiffPairTb().schematic': [check_schematic, check_min_size(300, 100)],
         'DiffPairTb().sim_dc': [check_sim_dc, check_min_size(300, 100)],
     },
-    "rc_curve_py": {
+    "rc_curve": {
         'RC().schematic': [check_schematic, check_min_size(300, 100)],
         'RC().sim_tran': [check_sim_tran, check_min_size(300, 100)],
     },
+    "amp": {
+        'Amp().schematic': [check_schematic, check_min_size(300, 100)],
+        'AmpTb().schematic': [check_schematic, check_min_size(300, 100)],
+        'AmpTb().report_ac': [],
+    }
 }
 
 testcases_local = {
