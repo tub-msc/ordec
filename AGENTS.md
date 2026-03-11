@@ -252,13 +252,15 @@ Each schema type is a Node subclass with Attr declarations and indexes.
   `quantity_from_unit()` classifies variables, `strip_raw_name()` unwraps ngspice `v()`/`i()` wrappers
 
 **SimHierarchy** (ordec/sim/sim_hierarchy.py, ordec/core/schema.py):
-- Flattened simulation hierarchy with SimInstance and SimNet nodes
+- Flattened simulation hierarchy with SimInstance, SimNet, SimPin, and SimParam nodes
 - SimHierarchy stores the full simulation result as a single `SimArray` (`sim_data` attr)
   plus `time_field`/`freq_field` identifying the independent variable column
-- Individual SimNet/SimInstance nodes store only a `trans_field`/`ac_field` string
-  naming their column in the shared SimArray; `@property` methods (`trans_voltage`,
-  `ac_voltage`, `trans_current`, `ac_current`) resolve values on access via `self.root.sim_data`
-- DC results remain as scalar `Attr(float)` on SimNet (`dc_voltage`) and SimInstance (`dc_current`)
+- SimNet stores a single `voltage_field` string naming its column in the shared SimArray;
+  `voltage` property resolves values on access. `dc_voltage` is a scalar `Attr(float)` for op()
+- SimPin tracks per-pin currents on leaf instances: `current_field` / `current` property,
+  `dc_current` scalar. Cells declare `ngspice_current_pins` mapping ngspice subnames to pin attrs
+- SimParam stores arbitrary device parameters (gm, gds, vth, etc.): `field` / `value` property,
+  `dc_value` scalar. Cells declare `ngspice_save_params` listing saveable parameter names
 
 ### Layout
 

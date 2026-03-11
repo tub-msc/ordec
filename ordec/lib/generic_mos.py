@@ -26,6 +26,8 @@ class Mos(Cell):
     """
     l = Parameter(R, default=R('1u'))
     w = Parameter(R, default=R('1u'))
+    ngspice_current_pins = {"id": "d", "is": "s", "ig": "g", "ib": "b"}
+    ngspice_save_params = ["gm", "gds", "vdsat"]
 
     def netlist_ngspice(self, netlister, inst):
         netlister.require_netlist_setup(setup_generic_mos)

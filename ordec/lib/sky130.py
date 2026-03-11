@@ -34,6 +34,7 @@ def netlist_setup(netlister):
     netlister.add(".param","mc_mm_switch=0")
 
 class Mos(Cell):
+    ngspice_save_params = ["gm", "gds", "vth", "vdsat", "region"]
     l = Parameter(R) #: Length
     w = Parameter(R) #: Width
     nf = Parameter(int, default=1) #: Number of fingers

@@ -211,16 +211,21 @@ class Ngspice:
                     value=float(res.group(2)),
                 )
 
-            # Current result like "@m.xdut.mm2[is]" from savecurrents:
+            # Device result like "@m.xdut.mm2[is]" from savecurrents:
             res = re.match(
                 r"@([a-zA-Z]\.)?([0-9a-zA-Z_.#]+)\[([0-9a-zA-Z_]+)\]\s*=\s*([0-9.\-+e]+)\s*",
                 line,
             )
             if res:
+                subname = res.group(3)
+                if subname in ("id", "is", "ig", "ib", "i", "branch"):
+                    qty = Quantity.CURRENT
+                else:
+                    qty = Quantity.PARAMETER
                 yield NgspiceScalar(
-                    quantity=Quantity.CURRENT,
+                    quantity=qty,
                     name=res.group(2),
-                    subname=res.group(3),
+                    subname=subname,
                     value=float(res.group(4)),
                 )
 

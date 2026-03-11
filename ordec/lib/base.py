@@ -15,6 +15,8 @@ from ..schematic import helpers
 class Res(Cell):
     """Ideal resistor"""
     r = Parameter(R) #: Resistance in ohm
+    ngspice_current_pins = {"i": "p"}
+    ngspice_save_params = []
     
     @generate
     def symbol(self) -> Symbol:
@@ -63,6 +65,8 @@ class Res(Cell):
 class Cap(Cell):
     """Ideal capacitor"""
     c = Parameter(R) #: Capacitance in farad
+    ngspice_current_pins = {"i": "p"}
+    ngspice_save_params = []
     ic = Parameter(R, optional=True) #: Initial condition voltage in volt
 
     @generate
@@ -100,6 +104,8 @@ class Cap(Cell):
 class Ind(Cell):
     """Ideal inductor"""
     l = Parameter(R) #: Inductance in henry
+    ngspice_current_pins = {"i": "p"}
+    ngspice_save_params = []
 
     @generate
     def symbol(self) -> Symbol:
@@ -133,6 +139,8 @@ class Ind(Cell):
 @public
 class Gnd(Cell):
     """Global ground connection"""
+    ngspice_current_pins = {"branch": "p"}
+    ngspice_save_params = []
     @generate
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
@@ -177,6 +185,8 @@ class NoConn(Cell):
 class Vdc(Cell):
     """DC voltage source"""
     dc = Parameter(R) #: DC voltage in volt
+    ngspice_current_pins = {"branch": "p"}
+    ngspice_save_params = []
 
     @generate
     def symbol(self) -> Symbol:
@@ -214,6 +224,8 @@ class Vdc(Cell):
 class Idc(Cell):
     """DC current source"""
     dc = Parameter(R) #: DC current in ampere
+    ngspice_current_pins = {"branch": "p"}
+    ngspice_save_params = []
 
     @generate
     def symbol(self) -> Symbol:
@@ -246,6 +258,8 @@ class Idc(Cell):
 class Vpwl(Cell):
     """Piecewise linear voltage source (SPICE PWL)."""
     V = Parameter(tuple) #: Tuple of (time, voltage) tuples defining the waveform.
+    ngspice_current_pins = {"branch": "p"}
+    ngspice_save_params = []
 
     @generate
     def symbol(self) -> Symbol:
@@ -296,6 +310,8 @@ class Vpwl(Cell):
 @public
 class Vpulse(Cell):
     """Pulse voltage source (SPICE PULSE)."""
+    ngspice_current_pins = {"branch": "p"}
+    ngspice_save_params = []
     initial_value = Parameter(R, optional=True, default=R(0)) #: Voltage before pulse.
     pulsed_value = Parameter(R) #: Voltage during pulse.
     delay_time = Parameter(R, optional=True, default=R(0)) #: Delay before first pulse.
@@ -360,6 +376,8 @@ class Vpulse(Cell):
 @public
 class Vsin(Cell):
     """Sinusoidal voltage source (SPICE SIN). Netlists with both AC and transient specifications."""
+    ngspice_current_pins = {"branch": "p"}
+    ngspice_save_params = []
     dc = Parameter(R, optional=True, default=R(0)) #: DC offset.
     ac = Parameter(R) #: Peak amplitude.
     freq = Parameter(R) #: Frequency in Hz.
@@ -418,6 +436,8 @@ class Vsin(Cell):
 @public
 class Ipwl(Cell):
     """Piecewise linear current source (SPICE PWL)."""
+    ngspice_current_pins = {"branch": "p"}
+    ngspice_save_params = []
     I = Parameter(tuple) #: Tuple of (time, current) tuples defining the waveform.
 
     @generate
@@ -476,6 +496,8 @@ class Ipwl(Cell):
 @public
 class Ipulse(Cell):
     """Pulse current source (SPICE PULSE)."""
+    ngspice_current_pins = {"branch": "p"}
+    ngspice_save_params = []
     initial_value = Parameter(R) #: Current before pulse.
     pulsed_value = Parameter(R) #: Current during pulse.
     delay_time = Parameter(R, optional=True, default=R(0)) #: Delay before first pulse.
@@ -548,6 +570,8 @@ class Ipulse(Cell):
 @public
 class Isin(Cell):
     """Sinusoidal current source (SPICE SIN)."""
+    ngspice_current_pins = {"branch": "p"}
+    ngspice_save_params = []
     dc = Parameter(R, optional=True, default=R(0)) #: DC offset.
     ac = Parameter(R) #: Peak amplitude.
     freq = Parameter(R) #: Frequency in Hz.

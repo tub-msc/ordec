@@ -329,6 +329,7 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
 
 
 class Mos(Cell):
+    ngspice_save_params = ["gm", "gds", "vth", "vdsat", "region"]
     l = Parameter(R)  #: Length
     w = Parameter(R)  #: Width
     m = Parameter(int, default=1)  #: Multiplier, i. e. number of devices with separate Activ areas in parallel)

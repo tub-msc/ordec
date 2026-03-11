@@ -23,8 +23,13 @@ def quantity_from_str(s: str, name: str = "") -> Quantity:
     if s in ("current", "i", "a"):
         return Quantity.CURRENT
     # Fall back to name-based heuristics
-    if name.endswith("#branch") or (name.startswith("@") and "[" in name):
+    if name.endswith("#branch"):
         return Quantity.CURRENT
+    if name.startswith("@") and "[" in name:
+        subname = name[name.index("[") + 1:name.index("]")]
+        if subname in ("id", "is", "ig", "ib", "i", "branch"):
+            return Quantity.CURRENT
+        return Quantity.PARAMETER
     return Quantity.OTHER
 
 

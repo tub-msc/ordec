@@ -18,21 +18,30 @@ from ..core import *
 from ..report import Report, Plot2D, Markdown
 
 
-def get_sim_data(sh: SimHierarchy, voltage_attr, current_attr, top_level_only=True):
-    """Helper to extract voltage and current data for different simulation types."""
+def get_voltages(sh: SimHierarchy, top_level_only=False):
+    """Extract voltage data from SimNet nodes."""
     voltages = {}
     for sn in sh.all(SimNet):
         if top_level_only and sn.parent_inst is not None:
             continue
-        if (voltage_val := getattr(sn, voltage_attr, None)) is not None:
-            voltages[sn.full_path_str()] = voltage_val
+        v = sn.voltage
+        if v is not None:
+            voltages[sn.full_path_str()] = v
+    return voltages
+
+
+def get_currents(sh: SimHierarchy, top_level_only=False):
+    """Extract current data from SimPin nodes."""
     currents = {}
-    for si in sh.all(SimInstance):
-        if top_level_only and si.parent_inst is not None:
+    for sp in sh.all(SimPin):
+        if top_level_only and sp.instance.parent_inst is not None:
             continue
-        if (current_val := getattr(si, current_attr, None)) is not None:
-            currents[si.full_path_str()] = current_val
-    return voltages, currents
+        c = sp.current
+        if c is not None:
+            inst_path = sp.instance.full_path_str()
+            pin_name = sp.eref.full_path_str()
+            currents[f"{inst_path}.{pin_name}"] = c
+    return currents
 
 
 def _fmt_eng(val, unit):
@@ -46,7 +55,8 @@ def _fmt_eng(val, unit):
 @public
 def webdata(sh: SimHierarchy):
     if sh.sim_type == SimType.TRAN:
-        voltages, currents = get_sim_data(sh, 'trans_voltage', 'trans_current')
+        voltages = get_voltages(sh)
+        currents = get_currents(sh)
         x = tuple(sh.time)
         report = Report(fill_height=True)
         if voltages:
@@ -70,7 +80,8 @@ def webdata(sh: SimHierarchy):
         return report.webdata()
 
     elif sh.sim_type == SimType.AC:
-        voltages, currents = get_sim_data(sh, 'ac_voltage', 'ac_current')
+        voltages = get_voltages(sh)
+        currents = get_currents(sh)
         x = tuple(sh.freq)
         all_signals = {}
         all_signals.update(voltages)
@@ -113,7 +124,8 @@ def webdata(sh: SimHierarchy):
         report = Report(fill_height=True)
         if sh.sim_data is None or sh.sweep_field is None:
             return report.webdata()
-        voltages, currents = get_sim_data(sh, "dc_sweep_voltage", "dc_sweep_current")
+        voltages = get_voltages(sh)
+        currents = get_currents(sh)
         x = tuple(sh.sim_data.column(sh.sweep_field))
         sweep_name = sh.sweep_field
         if voltages:
@@ -151,17 +163,48 @@ def webdata(sh: SimHierarchy):
             report.add(Markdown("\n".join(lines)))
 
         dc_currents = []
-        for si in sh.all(SimInstance):
-            if si.dc_current is None:
+        for sp in sh.all(SimPin):
+            if sp.dc_current is None:
                 continue
+            inst_path = sp.instance.full_path_str()
+            pin_name = sp.eref.full_path_str()
             dc_currents.append(
-                f"| {si.full_path_str()} | {_fmt_eng(si.dc_current, 'A')} |"
+                f"| {inst_path}.{pin_name} | {_fmt_eng(sp.dc_current, 'A')} |"
             )
         if dc_currents:
             lines = ["| Branch | Current |", "| --- | --- |"] + dc_currents
             report.add(Markdown("\n".join(lines)))
 
+        # Device parameters (gm, gds, vth, etc.)
+        param_rows = {}
+        for sp in sh.all(SimParam):
+            if sp.dc_value is None:
+                continue
+            inst_path = sp.instance.full_path_str()
+            param_rows.setdefault(inst_path, {})[sp.name] = sp.dc_value
+        if param_rows:
+            _REGION_NAMES = {0: "cutoff", 1: "triode", 2: "sat", 3: "subVt"}
+            all_params = sorted({
+                n for vals in param_rows.values() for n in vals})
+            header = "| Instance | " + " | ".join(all_params) + " |"
+            sep = "| --- | " + " | ".join("---" for _ in all_params) + " |"
+            rows = [header, sep]
+            for inst_path in sorted(param_rows):
+                vals = param_rows[inst_path]
+                cells = []
+                for p in all_params:
+                    v = vals.get(p)
+                    if v is None:
+                        cells.append("\u2014")
+                    elif p == "region":
+                        cells.append(_REGION_NAMES.get(int(v), str(v)))
+                    else:
+                        cells.append(_fmt_eng(v, ""))
+                cells_str = " | ".join(cells)
+                rows.append(f"| {inst_path} | {cells_str} |")
+            report.add(Markdown("\n".join(rows)))
+
         return report.webdata()
 
     else:
-        return 'nosim', {}
+        return Report([Markdown("No simulation was run.")]).webdata()

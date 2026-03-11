@@ -683,31 +683,15 @@ class SimNet(Node):
     parent_inst = LocalRef('SimInstance', optional=True,
         refcheck_custom=lambda val: issubclass(val, SimInstance))
 
-    trans_field = Attr(str) #: Column name in root sim_data for transient voltage.
-    ac_field = Attr(str) #: Column name in root sim_data for AC voltage.
-    dc_sweep_field = Attr(str) #: Column name in root sim_data for DC sweep voltage.
+    voltage_field = Attr(str) #: Column name in root sim_data for voltage.
     dc_voltage = Attr(float)
 
     @property
-    def trans_voltage(self):
+    def voltage(self):
         sd = self.root.sim_data
-        if sd is None or self.trans_field is None:
+        if sd is None or self.voltage_field is None:
             return None
-        return sd.column(self.trans_field)
-
-    @property
-    def ac_voltage(self):
-        sd = self.root.sim_data
-        if sd is None or self.ac_field is None:
-            return None
-        return sd.column(self.ac_field)
-
-    @property
-    def dc_sweep_voltage(self):
-        sd = self.root.sim_data
-        if sd is None or self.dc_sweep_field is None:
-            return None
-        return sd.column(self.dc_sweep_field)
+        return sd.column(self.voltage_field)
 
     eref = ExternalRef(Net|Pin,
         of_subgraph=lambda c: c.root.schematic_or_symbol_at(c.parent_inst),
@@ -724,37 +708,54 @@ class SimNet(Node):
     parent_eref_idx = CombinedIndex([parent_inst, eref], unique=True)
 
 @public
+class SimPin(Node):
+    in_subgraphs = [SimHierarchy]
+
+    instance = LocalRef('SimInstance', optional=False,
+        refcheck_custom=lambda val: issubclass(val, SimInstance))
+
+    eref = ExternalRef(Pin,
+        of_subgraph=lambda c: c.instance.eref.symbol,
+        optional=False)
+
+    current_field = Attr(str) #: Column name in root sim_data for current.
+    dc_current = Attr(float)
+
+    @property
+    def current(self):
+        sd = self.root.sim_data
+        if sd is None or self.current_field is None:
+            return None
+        return sd.column(self.current_field)
+
+    instance_eref_idx = CombinedIndex([instance, eref], unique=True)
+
+@public
+class SimParam(Node):
+    in_subgraphs = [SimHierarchy]
+
+    instance = LocalRef('SimInstance', optional=False,
+        refcheck_custom=lambda val: issubclass(val, SimInstance))
+
+    name = Attr(str) #: Parameter name: "gm", "gds", "vth", "region", etc.
+    field = Attr(str) #: Column name in root sim_data (for tran/ac/dcsweep).
+    dc_value = Attr(float) #: Scalar from op().
+
+    @property
+    def value(self):
+        sd = self.root.sim_data
+        if sd is None or self.field is None:
+            return None
+        return sd.column(self.field)
+
+    instance_name_idx = CombinedIndex([instance, name], unique=True)
+
+@public
 class SimInstance(Node):
     in_subgraphs = [SimHierarchy]
 
     parent_inst = LocalRef('SimInstance', optional=True,
         refcheck_custom=lambda val: issubclass(val, SimInstance))
-
-    trans_field = Attr(str) #: Column name in root sim_data for transient current.
-    ac_field = Attr(str) #: Column name in root sim_data for AC current.
-    dc_sweep_field = Attr(str) #: Column name in root sim_data for DC sweep current.
-    dc_current = Attr(float)
-
-    @property
-    def trans_current(self):
-        sd = self.root.sim_data
-        if sd is None or self.trans_field is None:
-            return None
-        return sd.column(self.trans_field)
-
-    @property
-    def ac_current(self):
-        sd = self.root.sim_data
-        if sd is None or self.ac_field is None:
-            return None
-        return sd.column(self.ac_field)
-
-    @property
-    def dc_sweep_current(self):
-        sd = self.root.sim_data
-        if sd is None or self.dc_sweep_field is None:
-            return None
-        return sd.column(self.dc_sweep_field)
 
     schematic = SubgraphRef(Schematic,
         typecheck_custom=lambda v: isinstance(v, (Symbol, Schematic)),
@@ -791,6 +792,9 @@ class SimInstance(Node):
         else:
             parent_path = self.parent_inst.full_path_list()
         return parent_path + self.eref.full_path_list()
+
+    def full_path_str(self) -> str:
+        return '.'.join(str(x) for x in self.full_path_list())
 
 # LayerStack
 # ----------

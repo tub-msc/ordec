@@ -11,6 +11,7 @@ class Quantity(Enum):
     FREQUENCY = 2
     VOLTAGE = 3
     CURRENT = 4
+    PARAMETER = 5
     OTHER = 99
 
 
