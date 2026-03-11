@@ -28,7 +28,7 @@ SPDX-License-Identifier = "CC0-1.0"
 # ordec.lib.examples code:
 path = [
     "ordec/lib/examples/amp.ord",
-    "ordec/lib/examples/blank.py",
+    "ordec/lib/examples/blank.ord",
     "ordec/lib/examples/currentmirror.ord",
     "ordec/lib/examples/diffpair.ord",
     "ordec/lib/examples/nand2.ord",
