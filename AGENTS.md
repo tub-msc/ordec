@@ -256,11 +256,11 @@ Each schema type is a Node subclass with Attr declarations and indexes.
 - SimHierarchy stores the full simulation result as a single `SimArray` (`sim_data` attr)
   plus `time_field`/`freq_field` identifying the independent variable column
 - SimNet stores a single `voltage_field` string naming its column in the shared SimArray;
-  `voltage` property resolves values on access. `dc_voltage` is a scalar `Attr(float)` for op()
+  `voltage` property resolves values on access. `op_voltage` is a scalar `Attr(float)` for op()
 - SimPin tracks per-pin currents on leaf instances: `current_field` / `current` property,
-  `dc_current` scalar. Cells declare `ngspice_current_pins` mapping ngspice subnames to pin attrs
+  `op_current` scalar. Cells declare `ngspice_current_pins` mapping ngspice subnames to pin attrs
 - SimParam stores arbitrary device parameters (gm, gds, vth, etc.): `field` / `value` property,
-  `dc_value` scalar. Cells declare `ngspice_save_params` listing saveable parameter names
+  `op_value` scalar. Cells declare `ngspice_save_params` listing saveable parameter names
 
 ### Layout
 

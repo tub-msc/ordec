@@ -151,37 +151,37 @@ def webdata(sh: SimHierarchy):
     elif sh.sim_type == SimType.DC:
         report = Report(fill_height=False)
 
-        dc_voltages = []
+        op_voltages = []
         for sn in sh.all(SimNet):
-            if sn.dc_voltage is None:
+            if sn.op_voltage is None:
                 continue
-            dc_voltages.append(
-                f"| {sn.full_path_str()} | {_fmt_eng(sn.dc_voltage, 'V')} |"
+            op_voltages.append(
+                f"| {sn.full_path_str()} | {_fmt_eng(sn.op_voltage, 'V')} |"
             )
-        if dc_voltages:
-            lines = ["| Net | Voltage |", "| --- | --- |"] + dc_voltages
+        if op_voltages:
+            lines = ["| Net | Voltage |", "| --- | --- |"] + op_voltages
             report.add(Markdown("\n".join(lines)))
 
-        dc_currents = []
+        op_currents = []
         for sp in sh.all(SimPin):
-            if sp.dc_current is None:
+            if sp.op_current is None:
                 continue
             inst_path = sp.instance.full_path_str()
             pin_name = sp.eref.full_path_str()
-            dc_currents.append(
-                f"| {inst_path}.{pin_name} | {_fmt_eng(sp.dc_current, 'A')} |"
+            op_currents.append(
+                f"| {inst_path}.{pin_name} | {_fmt_eng(sp.op_current, 'A')} |"
             )
-        if dc_currents:
-            lines = ["| Branch | Current |", "| --- | --- |"] + dc_currents
+        if op_currents:
+            lines = ["| Branch | Current |", "| --- | --- |"] + op_currents
             report.add(Markdown("\n".join(lines)))
 
         # Device parameters (gm, gds, vth, etc.)
         param_rows = {}
         for sp in sh.all(SimParam):
-            if sp.dc_value is None:
+            if sp.op_value is None:
                 continue
             inst_path = sp.instance.full_path_str()
-            param_rows.setdefault(inst_path, {})[sp.name] = sp.dc_value
+            param_rows.setdefault(inst_path, {})[sp.name] = sp.op_value
         if param_rows:
             _REGION_NAMES = {0: "cutoff", 1: "triode", 2: "sat", 3: "subVt"}
             all_params = sorted({

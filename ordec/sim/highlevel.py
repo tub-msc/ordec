@@ -69,7 +69,7 @@ class HighlevelSim:
                 sim.command(f"save @{device_name}[{param}]")
 
     def _query_op_params(self, sim):
-        """Query device parameters after op and store as SimParam dc_value."""
+        """Query device parameters after op and store as SimParam op_value."""
         import re
         from .ngspice_common import NgspiceError
         for si in self.simhier.all(SimInstance):
@@ -91,7 +91,7 @@ class HighlevelSim:
                     if m:
                         simparam = self._create_simparam(
                             si, param)
-                        simparam.dc_value = float(m.group(1))
+                        simparam.op_value = float(m.group(1))
                         break
 
     def op(self, save_params=False):
@@ -106,7 +106,7 @@ class HighlevelSim:
                     except KeyError:
                         continue
                     else:
-                        simnet.dc_voltage = value
+                        simnet.op_voltage = value
                 elif qty in (Quantity.CURRENT, Quantity.PARAMETER):
                     try:
                         siminstance = self.hier_simobj_of_name(name)
@@ -114,11 +114,11 @@ class HighlevelSim:
                         continue
                     simpin = self._create_simpin(siminstance, subname)
                     if simpin is not None:
-                        simpin.dc_current = value
+                        simpin.op_current = value
                     else:
                         simparam = self._create_simparam(
                             siminstance, subname)
-                        simparam.dc_value = value
+                        simparam.op_value = value
 
             if save_params:
                 self._query_op_params(sim)

@@ -684,7 +684,7 @@ class SimNet(Node):
         refcheck_custom=lambda val: issubclass(val, SimInstance))
 
     voltage_field = Attr(str) #: Column name in root sim_data for voltage.
-    dc_voltage = Attr(float)
+    op_voltage = Attr(float)
 
     @property
     def voltage(self):
@@ -719,7 +719,7 @@ class SimPin(Node):
         optional=False)
 
     current_field = Attr(str) #: Column name in root sim_data for current.
-    dc_current = Attr(float)
+    op_current = Attr(float)
 
     @property
     def current(self):
@@ -739,7 +739,7 @@ class SimParam(Node):
 
     name = Attr(str) #: Parameter name: "gm", "gds", "vth", "region", etc.
     field = Attr(str) #: Column name in root sim_data (for tran/ac/dcsweep).
-    dc_value = Attr(float) #: Scalar from op().
+    op_value = Attr(float) #: Scalar from op().
 
     @property
     def value(self):
