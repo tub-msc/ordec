@@ -127,31 +127,23 @@ class HighlevelSim:
         return self.netlister.hier_simobj_of_name(self.simhier, name)
 
 
-    def _run_simulation(self, sim_type, sim_method, *sim_args,
-                        save_params=False, **sim_kwargs):
-        """Common simulation execution logic for tran/ac/dc-sweep analyses."""
-        self.simhier.sim_type = sim_type
-
-        with self.launch_ngspice() as sim:
-            sim.load_netlist(self.netlister.out())
-            if save_params:
-                self._save_params(sim)
-            sim_array = getattr(sim, sim_method)(*sim_args, **sim_kwargs)
-
-        # Store SimArray and axis field names on the SimHierarchy root
+    def _store_results(self, sim_array: SimArray):
+        """Store SimArray and assign field names to SimNet/SimPin/SimParam."""
+        sim_type = self.simhier.sim_type
         self.simhier.sim_data = sim_array
+
         for f in sim_array.fields:
             if f.quantity == Quantity.TIME:
                 self.simhier.time_field = f.fid
             elif f.quantity == Quantity.FREQUENCY:
                 self.simhier.freq_field = f.fid
+
         if sim_type == SimType.DCSWEEP:
             if not sim_array.fields:
                 raise ValueError("DC sweep returned no fields")
             # First field in ngspice DC rawfiles is the swept source value.
             self.simhier.sweep_field = sim_array.fields[0].fid
 
-        # Assign field names to SimNet/SimPin/SimParam nodes.
         for f in sim_array.fields:
             if f.quantity in (Quantity.TIME, Quantity.FREQUENCY):
                 continue
@@ -164,7 +156,8 @@ class HighlevelSim:
                     simnet = self.hier_simobj_of_name(stripped)
                     simnet.voltage_field = f.fid
                 elif f.quantity in (Quantity.CURRENT, Quantity.PARAMETER):
-                    device_name, subname = self._extract_device_subname(stripped)
+                    device_name, subname = self._extract_device_subname(
+                        stripped)
                     if device_name is None:
                         continue
                     siminstance = self.hier_simobj_of_name(device_name)
@@ -179,11 +172,22 @@ class HighlevelSim:
                 continue
 
     def tran(self, tstep, tstop, save_params=False):
-        self._run_simulation(SimType.TRAN, "tran", tstep, tstop,
-                             save_params=save_params)
+        self.simhier.sim_type = SimType.TRAN
+        with self.launch_ngspice() as sim:
+            sim.load_netlist(self.netlister.out())
+            if save_params:
+                self._save_params(sim)
+            sim_array = sim.tran(tstep, tstop)
+        self._store_results(sim_array)
 
     def ac(self, *args, save_params=False):
-        self._run_simulation(SimType.AC, "ac", *args, save_params=save_params)
+        self.simhier.sim_type = SimType.AC
+        with self.launch_ngspice() as sim:
+            sim.load_netlist(self.netlister.out())
+            if save_params:
+                self._save_params(sim)
+            sim_array = sim.ac(*args)
+        self._store_results(sim_array)
 
     def dc_sweep(self, source, vstart, vstop, step_count: int, save_params=False):
         if step_count < 2:
@@ -192,15 +196,13 @@ class HighlevelSim:
         vstart = R(vstart)
         vstop = R(vstop)
         vstep = (vstop - vstart) / R(step_count - 1)
-        self._run_simulation(
-            SimType.DCSWEEP,
-            "dc",
-            source_name,
-            vstart,
-            vstop,
-            vstep,
-            save_params=save_params,
-        )
+        self.simhier.sim_type = SimType.DCSWEEP
+        with self.launch_ngspice() as sim:
+            sim.load_netlist(self.netlister.out())
+            if save_params:
+                self._save_params(sim)
+            sim_array = sim.dc(source_name, vstart, vstop, vstep)
+        self._store_results(sim_array)
 
     def _parse_timescale_factor(self, timescale: str) -> float:
         if not isinstance(timescale, str) or not timescale.strip():
