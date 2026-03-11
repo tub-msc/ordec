@@ -55,10 +55,10 @@ def check_symbol(res_viewer):
     assert res_viewer.html.find('<svg') >= 0
 
 def check_sim_dc(res_viewer):
-    assert res_viewer.html.find('<table') >= 0
+    assert res_viewer.html.find('report-view') >= 0
 
 def check_sim_tran(res_viewer):
-    assert res_viewer.html.find('simplot-container') >= 0
+    assert res_viewer.html.find('report-view') >= 0
 
 def check_report_example(res_viewer):
     html = res_viewer.html

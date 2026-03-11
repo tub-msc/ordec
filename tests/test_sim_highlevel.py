@@ -305,21 +305,15 @@ def test_webdata():
     # Test DC webdata
     h_dc = lib_test.ResdivFlatTb().sim_dc
     sim_type, data = h_dc.webdata()
-    assert sim_type == 'dcsim'
-    assert 'dc_voltages' in data
-    assert 'dc_currents' in data
+    assert sim_type == 'report'
+    assert 'elements' in data
 
     # Test transient webdata
     sim_type, data = lib_test.PulsedRC().sim_tran.webdata()
-    assert sim_type == 'transim'
-    assert 'time' in data
-    assert 'voltages' in data
-    assert 'currents' in data
+    assert sim_type == 'report'
+    assert 'elements' in data
 
     # Test DC sweep webdata
     sim_type, data = lib_test.InvTb().sim_dc_sweep.webdata()
-    assert sim_type == 'dcsweep'
-    assert 'sweep' in data
-    assert 'sweep_name' in data
-    assert 'voltages' in data
-    assert 'currents' in data
+    assert sim_type == 'report'
+    assert 'elements' in data

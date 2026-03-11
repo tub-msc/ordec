@@ -97,6 +97,10 @@ body.theme-dark .symbolPoly {
     stroke: white;
 }
 
+body.theme-dark .report-view-fill {
+    background-color: #1a1a1a;
+}
+
 /* SimPlot dark mode */
 body.theme-dark .simplot-container {
     background-color: #1a1a1a;

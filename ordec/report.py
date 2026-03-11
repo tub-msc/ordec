@@ -100,7 +100,7 @@ class Plot2D(ReportElement):
         ylabel: str = "",
         xscale: str = "linear",
         yscale: str = "linear",
-        height: int | float | str = 260,
+        height: int | float | str | None = 260,
         plot_group: str | None = None,
     ):
         self.x = [float(v) for v in x]
@@ -158,13 +158,15 @@ class Plot2D(ReportElement):
         return scale
 
     @staticmethod
-    def _normalize_height(height: int | float | str) -> str:
+    def _normalize_height(height: int | float | str | None) -> str | None:
+        if height is None:
+            return None
         if isinstance(height, str):
             if not height.strip():
                 raise ValueError("height string must not be empty")
             return height
         if not isinstance(height, (int, float)):
-            raise TypeError("height must be int, float or string")
+            raise TypeError("height must be int, float, string or None")
         if height <= 0:
             raise ValueError("height must be greater than zero")
         return f"{height:g}px"
@@ -192,9 +194,10 @@ class Report:
     existing report producers.
     """
 
-    def __init__(self, elements: Iterable[ReportElement] = ()):
+    def __init__(self, elements: Iterable[ReportElement] = (), fill_height: bool=False):
         self._elements = list(elements)
         self._validate_elements(self._elements)
+        self.fill_height = fill_height
 
     @staticmethod
     def _validate_elements(elements: Iterable[ReportElement]):
@@ -221,5 +224,6 @@ class Report:
 
     def webdata(self):
         return "report", {
-            "elements": [element.element_webdata() for element in self._elements]
+            "elements": [element.element_webdata() for element in self._elements],
+            "fill_height": self.fill_height,
         }
