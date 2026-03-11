@@ -218,12 +218,8 @@ class Ngspice:
             )
             if res:
                 subname = res.group(3)
-                if subname in ("id", "is", "ig", "ib", "i", "branch"):
-                    qty = Quantity.CURRENT
-                else:
-                    qty = Quantity.PARAMETER
                 yield NgspiceScalar(
-                    quantity=qty,
+                    quantity=Quantity.PARAMETER,
                     name=res.group(2),
                     subname=subname,
                     value=float(res.group(4)),

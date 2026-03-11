@@ -107,7 +107,7 @@ class HighlevelSim:
                         continue
                     else:
                         simnet.dc_voltage = value
-                elif qty == Quantity.CURRENT:
+                elif qty in (Quantity.CURRENT, Quantity.PARAMETER):
                     try:
                         siminstance = self.hier_simobj_of_name(name)
                     except KeyError:
@@ -115,14 +115,10 @@ class HighlevelSim:
                     simpin = self._create_simpin(siminstance, subname)
                     if simpin is not None:
                         simpin.dc_current = value
-                elif qty == Quantity.PARAMETER:
-                    try:
-                        siminstance = self.hier_simobj_of_name(name)
-                    except KeyError:
-                        continue
-                    simparam = self._create_simparam(
-                        siminstance, subname)
-                    simparam.dc_value = value
+                    else:
+                        simparam = self._create_simparam(
+                            siminstance, subname)
+                        simparam.dc_value = value
 
             if save_params:
                 self._query_op_params(sim)
@@ -167,7 +163,7 @@ class HighlevelSim:
                 if f.quantity == Quantity.VOLTAGE:
                     simnet = self.hier_simobj_of_name(stripped)
                     simnet.voltage_field = f.fid
-                elif f.quantity == Quantity.CURRENT:
+                elif f.quantity in (Quantity.CURRENT, Quantity.PARAMETER):
                     device_name, subname = self._extract_device_subname(stripped)
                     if device_name is None:
                         continue
@@ -175,14 +171,10 @@ class HighlevelSim:
                     simpin = self._create_simpin(siminstance, subname)
                     if simpin is not None:
                         simpin.current_field = f.fid
-                elif f.quantity == Quantity.PARAMETER:
-                    device_name, subname = self._extract_device_subname(stripped)
-                    if device_name is None:
-                        continue
-                    siminstance = self.hier_simobj_of_name(device_name)
-                    simparam = self._create_simparam(
-                        siminstance, subname)
-                    simparam.field = f.fid
+                    else:
+                        simparam = self._create_simparam(
+                            siminstance, subname)
+                        simparam.field = f.fid
             except KeyError:
                 continue
 
