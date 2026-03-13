@@ -28,19 +28,6 @@ class HighlevelSim:
                 func(sim)
             yield sim
 
-    def _create_simpin(self, siminstance, subname):
-        """Create a SimPin for a ngspice current subname, or return None."""
-        cell = siminstance.eref.symbol.cell
-        pin_map = cell.ngspice_current_pins()
-        if subname not in pin_map:
-            return None
-        pin = getattr(siminstance.eref.symbol, pin_map[subname])
-        return self.simhier % SimPin(instance=siminstance, eref=pin)
-
-    def _create_simparam(self, siminstance, param_name):
-        """Create a SimParam for a device parameter."""
-        return self.simhier % SimParam(instance=siminstance, name=param_name)
-
     def _save_params(self, sim):
         """Issue ngspice save commands for all known device parameters."""
         for si in self.simhier.all(SimInstance):
@@ -96,12 +83,14 @@ class HighlevelSim:
                     simnet.voltage_field = fid
                 else:
                     siminstance = self.hier_simobj_of_name(node_name)
-                    simpin = self._create_simpin(siminstance, subname)
-                    if simpin is not None:
+                    pin_map = siminstance.eref.symbol.cell.ngspice_current_pins()
+                    if subname in pin_map:
+                        pin = getattr(siminstance.eref.symbol, pin_map[subname])
+                        simpin = self.simhier % SimPin(instance=siminstance, eref=pin)
                         simpin.current_field = fid
                     else:
-                        simparam = self._create_simparam(
-                            siminstance, subname)
+                        simparam = self.simhier % SimParam(
+                            instance=siminstance, name=subname)
                         simparam.field = fid
             except KeyError:
                 continue
