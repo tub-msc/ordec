@@ -9,8 +9,7 @@ from ..core.rational import R
 from ..core.schema import SimType
 from .ngspice import Ngspice
 from ..schematic.netlister import Netlister
-from ..core.simarray import Quantity
-from .ngspice_common import strip_raw_name
+from .ngspice_common import parse_signal_name
 
 class HighlevelSim:
     def __init__(self, simhier: SimHierarchy, enable_savecurrents: bool = True):
@@ -43,18 +42,6 @@ class HighlevelSim:
         """Create a SimParam for a device parameter."""
         return self.simhier % SimParam(instance=siminstance, name=param_name)
 
-    def _extract_device_subname(self, stripped):
-        """Extract (device_name, subname) from a stripped field name."""
-        if stripped.startswith("@") and "[" in stripped:
-            bracket_pos = stripped.index("[")
-            device_name = stripped[1:bracket_pos]
-            subname = stripped[bracket_pos + 1:-1]
-            return device_name, subname
-        elif stripped.endswith("#branch"):
-            device_name = stripped.removesuffix("#branch")
-            return device_name, "branch"
-        return None, None
-
     def _save_params(self, sim):
         """Issue ngspice save commands for all known device parameters."""
         for si in self.simhier.all(SimInstance):
@@ -68,60 +55,14 @@ class HighlevelSim:
             for param in params:
                 sim.command(f"save @{device_name}[{param}]")
 
-    def _query_op_params(self, sim):
-        """Query device parameters after op and store as SimParam op_value."""
-        import re
-        from .ngspice_common import NgspiceError
-        for si in self.simhier.all(SimInstance):
-            if si.schematic is not None:
-                continue
-            cell = si.eref.symbol.cell
-            params = getattr(cell, 'ngspice_save_params', [])
-            if not params:
-                continue
-            device_name = self.netlister.name_hier_simobj(si)
-            for param in params:
-                try:
-                    result = sim.command(f"print @{device_name}[{param}]")
-                except NgspiceError:
-                    continue
-                for line in result.split("\n"):
-                    m = re.match(
-                        r"@[^\[]+\[[^\]]+\]\s*=\s*([0-9.\-+e]+)", line)
-                    if m:
-                        simparam = self._create_simparam(
-                            si, param)
-                        simparam.op_value = float(m.group(1))
-                        break
-
     def op(self, save_params=False):
         self.simhier.sim_type = SimType.DC
-
         with self.launch_ngspice() as sim:
             sim.load_netlist(self.netlister.out())
-            for qty, name, subname, value in sim.op():
-                if qty == Quantity.VOLTAGE:
-                    try:
-                        simnet = self.hier_simobj_of_name(name)
-                    except KeyError:
-                        continue
-                    else:
-                        simnet.op_voltage = value
-                elif qty in (Quantity.CURRENT, Quantity.PARAMETER):
-                    try:
-                        siminstance = self.hier_simobj_of_name(name)
-                    except KeyError:
-                        continue
-                    simpin = self._create_simpin(siminstance, subname)
-                    if simpin is not None:
-                        simpin.op_current = value
-                    else:
-                        simparam = self._create_simparam(
-                            siminstance, subname)
-                        simparam.op_value = value
-
             if save_params:
-                self._query_op_params(sim)
+                self._save_params(sim)
+            sim_array = sim.op()
+        self._store_results(sim_array)
 
     def hier_simobj_of_name(self, name: str) -> SimInstance|SimNet:
         return self.netlister.hier_simobj_of_name(self.simhier, name)
@@ -132,12 +73,6 @@ class HighlevelSim:
         sim_type = self.simhier.sim_type
         self.simhier.sim_data = sim_array
 
-        for f in sim_array.fields:
-            if f.quantity == Quantity.TIME:
-                self.simhier.time_field = f.fid
-            elif f.quantity == Quantity.FREQUENCY:
-                self.simhier.freq_field = f.fid
-
         if sim_type == SimType.DCSWEEP:
             if not sim_array.fields:
                 raise ValueError("DC sweep returned no fields")
@@ -145,29 +80,30 @@ class HighlevelSim:
             self.simhier.sweep_field = sim_array.fields[0].fid
 
         for f in sim_array.fields:
-            if f.quantity in (Quantity.TIME, Quantity.FREQUENCY):
+            fid = f.fid
+            if fid == "time":
+                self.simhier.time_field = fid
                 continue
-            if sim_type == SimType.DCSWEEP and f.fid == self.simhier.sweep_field:
+            if fid.startswith("frequency"):
+                self.simhier.freq_field = fid
+                continue
+            if sim_type == SimType.DCSWEEP and fid == self.simhier.sweep_field:
                 continue
 
-            stripped = strip_raw_name(f.fid)
+            node_name, subname = parse_signal_name(fid)
             try:
-                if f.quantity == Quantity.VOLTAGE:
-                    simnet = self.hier_simobj_of_name(stripped)
-                    simnet.voltage_field = f.fid
-                elif f.quantity in (Quantity.CURRENT, Quantity.PARAMETER):
-                    device_name, subname = self._extract_device_subname(
-                        stripped)
-                    if device_name is None:
-                        continue
-                    siminstance = self.hier_simobj_of_name(device_name)
+                if subname is None:
+                    simnet = self.hier_simobj_of_name(node_name)
+                    simnet.voltage_field = fid
+                else:
+                    siminstance = self.hier_simobj_of_name(node_name)
                     simpin = self._create_simpin(siminstance, subname)
                     if simpin is not None:
-                        simpin.current_field = f.fid
+                        simpin.current_field = fid
                     else:
                         simparam = self._create_simparam(
                             siminstance, subname)
-                        simparam.field = f.fid
+                        simparam.field = fid
             except KeyError:
                 continue
 

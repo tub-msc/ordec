@@ -153,10 +153,11 @@ def webdata(sh: SimHierarchy):
 
         op_voltages = []
         for sn in sh.all(SimNet):
-            if sn.op_voltage is None:
+            v = sn.voltage
+            if v is None:
                 continue
             op_voltages.append(
-                f"| {sn.full_path_str()} | {_fmt_eng(sn.op_voltage, 'V')} |"
+                f"| {sn.full_path_str()} | {_fmt_eng(v[0], 'V')} |"
             )
         if op_voltages:
             lines = ["| Net | Voltage |", "| --- | --- |"] + op_voltages
@@ -164,12 +165,13 @@ def webdata(sh: SimHierarchy):
 
         op_currents = []
         for sp in sh.all(SimPin):
-            if sp.op_current is None:
+            c = sp.current
+            if c is None:
                 continue
             inst_path = sp.instance.full_path_str()
             pin_name = sp.eref.full_path_str()
             op_currents.append(
-                f"| {inst_path}.{pin_name} | {_fmt_eng(sp.op_current, 'A')} |"
+                f"| {inst_path}.{pin_name} | {_fmt_eng(c[0], 'A')} |"
             )
         if op_currents:
             lines = ["| Branch | Current |", "| --- | --- |"] + op_currents
@@ -178,10 +180,11 @@ def webdata(sh: SimHierarchy):
         # Device parameters (gm, gds, vth, etc.)
         param_rows = {}
         for sp in sh.all(SimParam):
-            if sp.op_value is None:
+            val = sp.value
+            if val is None:
                 continue
             inst_path = sp.instance.full_path_str()
-            param_rows.setdefault(inst_path, {})[sp.name] = sp.op_value
+            param_rows.setdefault(inst_path, {})[sp.name] = val[0]
         if param_rows:
             _REGION_NAMES = {0: "cutoff", 1: "triode", 2: "sat", 3: "subVt"}
             all_params = sorted({

@@ -78,13 +78,13 @@ def plot_bode(freq_hz, response, outfile):
 
 def test_sim_dc_flat():
     h = lib_test.ResdivFlatTb().sim_dc
-    assert h.a.op_voltage == pytest.approx(1.0 / 3.0, abs=1e-12)
-    assert h.b.op_voltage == pytest.approx(2.0 / 3.0, abs=1e-12)
+    assert h.a.voltage[0] == pytest.approx(1.0 / 3.0, abs=1e-12)
+    assert h.b.voltage[0] == pytest.approx(2.0 / 3.0, abs=1e-12)
 
 def test_sim_dc_hier():
     h = lib_test.ResdivHierTb().sim_dc
-    assert h.r.op_voltage == pytest.approx(0.3589743589743596, abs=1e-10)
-    assert h.I0.I1.m.op_voltage == pytest.approx(0.5897435897435901, abs=1e-10)
+    assert h.r.voltage[0] == pytest.approx(0.3589743589743596, abs=1e-10)
+    assert h.I0.I1.m.voltage[0] == pytest.approx(0.5897435897435901, abs=1e-10)
 
 def test_generic_mos_netlister():
     nl = Netlister(Directory())
@@ -95,13 +95,13 @@ def test_generic_mos_netlister():
     assert netlist.count('.model pmosgeneric PMOS level=1') == 1
 
 def test_generic_mos_nmos_sourcefollower():
-    assert lib_test.NmosSourceFollowerTb(vin=R(2)).sim_dc.o.op_voltage == pytest.approx(1.2837721914145377, abs=1e-6)
-    assert lib_test.NmosSourceFollowerTb(vin=R(3)).sim_dc.o.op_voltage == pytest.approx(2.2837721567191442, abs=1e-6)
+    assert lib_test.NmosSourceFollowerTb(vin=R(2)).sim_dc.o.voltage[0] == pytest.approx(1.2837721914145377, abs=1e-6)
+    assert lib_test.NmosSourceFollowerTb(vin=R(3)).sim_dc.o.voltage[0] == pytest.approx(2.2837721567191442, abs=1e-6)
 
 def test_generic_mos_inv():
-    assert lib_test.InvTb(vin=R(0)).sim_dc.o.op_voltage == pytest.approx(4.999999973230277, abs=1e-6)
-    assert lib_test.InvTb(vin=R('2.5')).sim_dc.o.op_voltage == pytest.approx(2.499999990010493, abs=1e-6)
-    assert lib_test.InvTb(vin=R(5)).sim_dc.o.op_voltage == pytest.approx(0, abs=1e-6)
+    assert lib_test.InvTb(vin=R(0)).sim_dc.o.voltage[0] == pytest.approx(4.999999973230277, abs=1e-6)
+    assert lib_test.InvTb(vin=R('2.5')).sim_dc.o.voltage[0] == pytest.approx(2.499999990010493, abs=1e-6)
+    assert lib_test.InvTb(vin=R(5)).sim_dc.o.voltage[0] == pytest.approx(0, abs=1e-6)
 
 
 def test_generic_mos_inv_dc_sweep():
@@ -116,17 +116,17 @@ def test_generic_mos_inv_dc_sweep():
     for got, ref in zip(h.o.voltage, o_ref):
         assert got == pytest.approx(ref, abs=5e-4)
 def test_sky_mos_inv():
-    assert lib_test.InvSkyTb(vin=R(0)).sim_dc.o.op_voltage == pytest.approx(4.999999973187308, abs=1e-10)
-    assert lib_test.InvSkyTb(vin=R('2.5')).sim_dc.o.op_voltage == pytest.approx(1.9806063550640076, abs=1e-10)
-    assert lib_test.InvSkyTb(vin=R(5)).sim_dc.o.op_voltage == pytest.approx(0.00012158997833462999, abs=1e-10)
+    assert lib_test.InvSkyTb(vin=R(0)).sim_dc.o.voltage[0] == pytest.approx(4.999999973187308, abs=1e-10)
+    assert lib_test.InvSkyTb(vin=R('2.5')).sim_dc.o.voltage[0] == pytest.approx(1.9806063550640076, abs=1e-10)
+    assert lib_test.InvSkyTb(vin=R(5)).sim_dc.o.voltage[0] == pytest.approx(0.00012158997833462999, abs=1e-10)
 
 def test_ihp_mos_inv_vin0():
     h_0 = lib_test.InvIhpTb(vin=R(0)).sim_dc
-    assert h_0.o.op_voltage == pytest.approx(4.999573)
+    assert h_0.o.voltage[0] == pytest.approx(4.999573)
 
 def test_ihp_mos_inv_vin5():
     h_5 = lib_test.InvIhpTb(vin=R(5)).sim_dc
-    assert h_5.o.op_voltage == pytest.approx(0.00024556, abs=1e-5)
+    assert h_5.o.voltage[0] == pytest.approx(0.00024556, abs=1e-5)
 
 def test_sky130_nmos_out_of_range():
     from ordec.sim.ngspice_common import NgspiceError
