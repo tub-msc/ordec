@@ -33,8 +33,7 @@ def netlist_setup(netlister):
     netlister.add(".include",f"\"{pdk().ngspice_deck['tt']}\"")
     netlister.add(".param","mc_mm_switch=0")
 
-class Mos(Cell):
-    ngspice_save_params = ["gm", "gds", "vth", "vdsat", "region"]
+class Mos(SimLeafCell):
     l = Parameter(R) #: Length
     w = Parameter(R) #: Width
     nf = Parameter(int, default=1) #: Number of fingers
@@ -48,7 +47,10 @@ class Mos(Cell):
     sb = Parameter(R, default=R(0)) #: Distance between OD edge to Poly (other side)
     sd = Parameter(R, default=R(0)) #: Distance between neighboring fingers
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_save_params(self):
+        return ["gm", "gds", "vth", "vdsat", "region"]
+
+    def ngspice_netlist(self, netlister, inst):
         netlister.require_netlist_setup(netlist_setup)
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
         netlister.add(

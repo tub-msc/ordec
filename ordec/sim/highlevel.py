@@ -31,11 +31,10 @@ class HighlevelSim:
     def _create_simpin(self, siminstance, subname):
         """Create a SimPin for a ngspice current subname, or return None."""
         cell = siminstance.eref.symbol.cell
-        pin_map = getattr(cell, 'ngspice_current_pins', {})
+        pin_map = cell.ngspice_current_pins()
         if subname not in pin_map:
             return None
-        pin_attr = pin_map[subname]
-        pin = getattr(siminstance.eref.symbol, pin_attr)
+        pin = getattr(siminstance.eref.symbol, pin_map[subname])
         return self.simhier % SimPin(instance=siminstance, eref=pin)
 
     def _create_simparam(self, siminstance, param_name):
@@ -48,7 +47,7 @@ class HighlevelSim:
             if si.schematic is not None:
                 continue
             cell = si.eref.symbol.cell
-            params = getattr(cell, 'ngspice_save_params', [])
+            params = cell.ngspice_save_params()
             if not params:
                 continue
             device_name = self.netlister.name_hier_simobj(si)

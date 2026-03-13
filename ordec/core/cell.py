@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+from abc import ABC, ABCMeta, abstractmethod
 from typing import Self
 from functools import partial
 import re
@@ -174,7 +175,7 @@ class Parameter:
         if not isinstance(value, self.type):
             raise ParameterError(f"Expected type {self.type.__name__} for parameter {self.name!r}.")
 
-class MetaCell(type):
+class MetaCell(ABCMeta):
     @staticmethod
     def _collect_class_params(d, bases):
         class_params = {} # The order in raw_attrs defines the tuple layout later on.
@@ -362,9 +363,28 @@ class Cell(metaclass=MetaCell):
         case, a Cell subclass could override this method and return a list
         of one or multiple of its instances created from valid parameters.
         """
+        if cls.__abstractmethods__:
+            return []
+
         r = []
         try:
             r.append(cls())
         except ParameterError:
             pass
         return r
+
+@public
+class SimLeafCell(Cell, ABC):
+    """Abstract base class for cells netlisted directly into ngspice."""
+
+    @abstractmethod
+    def ngspice_netlist(self, netlister, inst):
+        """Add this leaf instance to a netlist."""
+
+    def ngspice_current_pins(self) -> dict[str, str]:
+        """Map ngspice current subnames to symbol pin attribute names."""
+        return {}
+
+    def ngspice_save_params(self) -> list[str]:
+        """Return device parameter names to save via ngspice."""
+        return []
