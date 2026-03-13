@@ -86,6 +86,17 @@ def test_sim_dc_hier():
     assert h.r.voltage[0] == pytest.approx(0.3589743589743596, abs=1e-10)
     assert h.I0.I1.m.voltage[0] == pytest.approx(0.5897435897435901, abs=1e-10)
 
+def test_op_currents():
+    h = lib_test.ResdivHierTb().sim_dc
+    # Top-level: voltage source current
+    assert h.I2.p.current[0] == pytest.approx(-2.051282e-03, abs=1e-8)
+    # Nested: ResdivHier1 -> ResdivHier2(r=100) -> Res I0.p
+    assert h.I0.I0.I0.p.current[0] == pytest.approx(2.051282e-03, abs=1e-8)
+    # Nested: ResdivHier1 -> ResdivHier2(r=200) -> Res I1.p
+    assert h.I0.I1.I1.p.current[0] == pytest.approx(2.051282e-03, abs=1e-8)
+    # Deeper nesting via path: ResdivHier1 -> sub2.I2 -> Res I2.p (no current: shorted)
+    assert h.I0.sub2.I2.I2.p.current[0] == pytest.approx(0, abs=1e-10)
+
 def test_generic_mos_netlister():
     nl = Netlister(Directory())
     nl.netlist_hier(lib_test.NmosSourceFollowerTb(vin=R(2)).schematic)
@@ -97,6 +108,15 @@ def test_generic_mos_netlister():
 def test_generic_mos_nmos_sourcefollower():
     assert lib_test.NmosSourceFollowerTb(vin=R(2)).sim_dc.o.voltage[0] == pytest.approx(1.2837721914145377, abs=1e-6)
     assert lib_test.NmosSourceFollowerTb(vin=R(3)).sim_dc.o.voltage[0] == pytest.approx(2.2837721567191442, abs=1e-6)
+
+def test_op_save_params():
+    from ordec.sim import HighlevelSim
+    tb = lib_test.NmosSourceFollowerTb(vin=R(2))
+    h = SimHierarchy.from_schematic(tb.schematic)
+    HighlevelSim(h).op(save_params=True)
+    nmos = h.I0
+    assert nmos.params['gm'].value[0] > 0
+    assert nmos.params['gds'].value[0] == pytest.approx(0)
 
 def test_generic_mos_inv():
     assert lib_test.InvTb(vin=R(0)).sim_dc.o.voltage[0] == pytest.approx(4.999999973230277, abs=1e-6)
@@ -240,22 +260,12 @@ def test_sim_vpwltb_tran():
         assert out_v == pytest.approx(expected_pwl_value(t), abs=1e-6)
 
 
-def _get_simpin(h, inst_path, pin_name):
-    """Get a SimPin by navigating to a SimInstance and finding its pin."""
-    si = h
-    for part in inst_path.split('.'):
-        si = getattr(si, part)
-    pin = si.eref.symbol
-    pin_obj = getattr(pin, pin_name)
-    return h.simhierarchy.one(SimPin.instance_eref_idx.query((si, pin_obj)))
-
 
 def test_sim_ipwltb_tran():
     tb = lib_test.IpwlTb()
     h = tb.sim_tran
 
-    res_pin = _get_simpin(h.subcursor(), 'res', 'p')
-    for t, res_i in zip(h.time, res_pin.current):
+    for t, res_i in zip(h.time, h.res.p.current):
         assert res_i == pytest.approx(expected_pwl_value(t), abs=1e-8)
 
 
@@ -274,8 +284,7 @@ def test_sim_ipulsetb_tran():
     h = tb.sim_tran
     src = tb.schematic.isrc.symbol.cell
 
-    res_pin = _get_simpin(h.subcursor(), 'res', 'p')
-    for t, res_i in zip(h.time, res_pin.current):
+    for t, res_i in zip(h.time, h.res.p.current):
         expected = expected_pulse_value(t, src)
         assert res_i == pytest.approx(expected, abs=1e-8)
 
@@ -295,8 +304,7 @@ def test_sim_isintb_tran():
     h = tb.sim_tran
     src = tb.schematic.isrc.symbol.cell
 
-    res_pin = _get_simpin(h.subcursor(), 'res', 'p')
-    for t, res_i in zip(h.time, res_pin.current):
+    for t, res_i in zip(h.time, h.res.p.current):
         expected = expected_sin_value(t, src)
         assert res_i == pytest.approx(expected, abs=1e-8)
 

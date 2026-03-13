@@ -565,12 +565,21 @@ class SimHierarchySubcursor(tuple):
             # Coerce SchemPort to Net:
             if isinstance(inner_child, SchemPort):
                 inner_child = inner_child.ref
-            if isinstance(inner_child, Pin) \
-                and self.siminst is not None \
-                and self.siminst.schematic is not None:
-                # Special case: Symbol subcursor is used, but Schematic is
-                # available. In this case, we need the nid from the Schematic!
-                inner_child = self.siminst.schematic.one(Net.pin_idx.query(inner_child))
+            if isinstance(inner_child, Pin) and self.siminst is not None:
+                if self.siminst.schematic is not None:
+                    # Symbol subcursor is used, but Schematic is available.
+                    # We need the nid from the Schematic!
+                    inner_child = self.siminst.schematic.one(Net.pin_idx.query(inner_child))
+                else:
+                    # Leaf device: return SimPin (branch current) if one exists.
+                    try:
+                        return self.simhierarchy.one(
+                            SimPin.instance_eref_idx.query(
+                                (self.siminst, inner_child)))
+                    except QueryException:
+                        # TODO: Maybe in this case we should return something that acts as a SimPin that
+                        # derives its current from known currents.
+                        pass
             return self.simhierarchy.one(SimNet.parent_eref_idx.query(
                 (self.siminst, inner_child)))
         elif isinstance(inner_child, Node) and inner_child.root == self.node.root:
@@ -747,6 +756,25 @@ class SimParam(Node):
 
     instance_name_idx = CombinedIndex([instance, name], unique=True)
 
+class SimInstanceParamCursor(tuple):
+    """Cursor for accessing SimParam nodes of a SimInstance by name.
+
+    Usage: ``instance.params['gm']`` returns the SimParam node.
+    """
+    @property
+    def _instance(self):
+        return tuple.__getitem__(self, 0)
+
+    def __getitem__(self, name):
+        return self._instance.root.one(
+            SimParam.instance_name_idx.query((self._instance, name)))
+
+    def __getattr__(self, name):
+        return self[name]
+
+    def __repr__(self):
+        return f"{type(self).__name__}({self._instance!r})"
+
 @public
 class SimInstance(Node):
     in_subgraphs = [SimHierarchy]
@@ -764,6 +792,10 @@ class SimInstance(Node):
         )
 
     parent_eref_idx = CombinedIndex([parent_inst, eref], unique=True)
+
+    @property
+    def params(self) -> SimInstanceParamCursor:
+        return SimInstanceParamCursor((self,))
 
     def subcursor(self):
         if self.schematic is None:
