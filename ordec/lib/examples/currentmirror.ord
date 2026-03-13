@@ -7,22 +7,22 @@ cell CurrentMirror:
         pass
     viewgen schematic -> Schematic:
         net vss, vdd, l, r
-        
+
         Nmos n0: .pos=(10,6); .d--l; .$w=500n; .orientation=FlippedSouth
         Nmos n1: .pos=(14,6); .d--r; .$w=1500n
-        
+
         for n in n0, n1:
             n.g -- l
             n.s -- vss
             n.b -- vss
-        
+
         Gnd gnd: .pos = (0,0); .p -- vss
         Idc isrc: .pos=(6,12); .p -- vdd; .m --l; .$dc=10u
         Vdc vsrc: .pos=(0,9); .p -- vdd; .m -- vss; .$dc=5
         Res r0: .pos=(14,12); .p--vdd; .m--r; .$r=10k
-    
+
     @generate
     def sim_dc(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(s).op()
+        HighlevelSim(s).op(save_params=True)
         return s

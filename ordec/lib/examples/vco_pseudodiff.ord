@@ -526,8 +526,8 @@ cell VcoTb:
             elements.append(Plot2D(
                 x=sim.time,
                 series={
-                    sim.out_n[i].full_path_str(): sim.out_n[i].trans_voltage,
-                    sim.out_p[i].full_path_str(): sim.out_p[i].trans_voltage,
+                    sim.out_n[i].full_path_str(): sim.out_n[i].voltage,
+                    sim.out_p[i].full_path_str(): sim.out_p[i].voltage,
                 },
                 xlabel="Time (s)",
                 ylabel="Voltage (V)",
@@ -537,17 +537,19 @@ cell VcoTb:
         elements.append(Plot2D(
             x=sim.time,
             series={
-                'rst_n': sim.rst_n.trans_voltage,
-                'vbias': sim.vbias.trans_voltage,
+                'rst_n': sim.rst_n.voltage,
+                'vbias': sim.vbias.voltage,
             },
             xlabel="Time (s)",
             ylabel="Voltage (V)",
             height=120,
             plot_group="vco_tran",
             ))
+        vdd_src_pin = sim.one(SimPin.instance_eref_idx.query(
+            (sim.vdd_src, sim.vdd_src.eref.symbol.p)))
         elements.append(Plot2D(
             x=sim.time,
-            series={'vdd_src': [-x for x in sim.vdd_src.trans_current]},
+            series={'vdd_src': [-x for x in vdd_src_pin.current]},
             xlabel="Time (s)",
             ylabel="Current (A)",
             height=120,

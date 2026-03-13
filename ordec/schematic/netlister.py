@@ -113,9 +113,10 @@ class Netlister:
 
         subckt_dep = set()
         for inst in s.all(SchemInstance):
-            try:
-                f = inst.symbol.cell.netlist_ngspice
-            except AttributeError:  # subckt
+            cell = inst.symbol.cell
+            if isinstance(cell, SimLeafCell):
+                cell.ngspice_netlist(self, inst)
+            else:
                 pins = self.pinlist(inst.symbol)
                 subckt_dep.add(inst.symbol)
                 self.add(
@@ -123,8 +124,6 @@ class Netlister:
                     self.portmap(inst, pins),
                     self.directory.name_subgraph(inst.symbol),
                 )
-            else:
-                f(self, inst)
         return subckt_dep
 
     def netlist_hier(self, top: Schematic):

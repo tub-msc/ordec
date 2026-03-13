@@ -12,9 +12,11 @@ from ..schematic import helpers
 # ========
 
 @public
-class Res(Cell):
+class Res(SimLeafCell):
     """Ideal resistor"""
     r = Parameter(R) #: Resistance in ohm
+    def ngspice_current_pins(self):
+        return {"i": "p"}
     
     @generate
     def symbol(self) -> Symbol:
@@ -51,7 +53,7 @@ class Res(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, prefix="r"), netlister.portmap(inst, pins), f'r={self.r.compat_str()}')
 
@@ -60,9 +62,11 @@ class Res(Cell):
         return [cls('1k')]
 
 @public
-class Cap(Cell):
+class Cap(SimLeafCell):
     """Ideal capacitor"""
     c = Parameter(R) #: Capacitance in farad
+    def ngspice_current_pins(self):
+        return {"i": "p"}
     ic = Parameter(R, optional=True) #: Initial condition voltage in volt
 
     @generate
@@ -85,7 +89,7 @@ class Cap(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
         netlist_str = f'c={self.c.compat_str()}'
         if self.ic is not None:
@@ -97,9 +101,11 @@ class Cap(Cell):
         return [cls('1p')]
 
 @public
-class Ind(Cell):
+class Ind(SimLeafCell):
     """Ideal inductor"""
     l = Parameter(R) #: Inductance in henry
+    def ngspice_current_pins(self):
+        return {"i": "p"}
 
     @generate
     def symbol(self) -> Symbol:
@@ -119,7 +125,7 @@ class Ind(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, prefix="l"), netlister.portmap(inst, pins), f'l={self.l.compat_str()}')
 
@@ -131,8 +137,10 @@ class Ind(Cell):
 # ====
 
 @public
-class Gnd(Cell):
+class Gnd(SimLeafCell):
     """Global ground connection"""
+    def ngspice_current_pins(self):
+        return {"branch": "p"}
     @generate
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
@@ -145,12 +153,12 @@ class Gnd(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p]
         netlister.add(netlister.name_obj(inst, prefix="v"), netlister.portmap(inst, pins), '0', f'dc 0')
 
 @public
-class NoConn(Cell):
+class NoConn(SimLeafCell):
     """No connection"""
     @generate
     def symbol(self) -> Symbol:
@@ -165,7 +173,7 @@ class NoConn(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_netlist(self, netlister, inst):
         # We need to name the instance, else highlevel.py raises an error at some point.
         netlister.name_obj(inst)
         # But nothing is added to the netlist.
@@ -174,9 +182,11 @@ class NoConn(Cell):
 # =========================
 
 @public
-class Vdc(Cell):
+class Vdc(SimLeafCell):
     """DC voltage source"""
     dc = Parameter(R) #: DC voltage in volt
+    def ngspice_current_pins(self):
+        return {"branch": "p"}
 
     @generate
     def symbol(self) -> Symbol:
@@ -202,7 +212,7 @@ class Vdc(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, prefix="v"), netlister.portmap(inst, pins) , f'dc {self.dc.compat_str()}')
 
@@ -211,9 +221,11 @@ class Vdc(Cell):
         return [cls('1')]
 
 @public
-class Idc(Cell):
+class Idc(SimLeafCell):
     """DC current source"""
     dc = Parameter(R) #: DC current in ampere
+    def ngspice_current_pins(self):
+        return {"branch": "p"}
 
     @generate
     def symbol(self) -> Symbol:
@@ -234,7 +246,7 @@ class Idc(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
         netlister.add(netlister.name_obj(inst, prefix="i"), netlister.portmap(inst, pins) , f'dc {self.dc.compat_str()}')
 
@@ -243,9 +255,11 @@ class Idc(Cell):
         return [cls('1u')]
 
 @public
-class Vpwl(Cell):
+class Vpwl(SimLeafCell):
     """Piecewise linear voltage source (SPICE PWL)."""
     V = Parameter(tuple) #: Tuple of (time, voltage) tuples defining the waveform.
+    def ngspice_current_pins(self):
+        return {"branch": "p"}
 
     @generate
     def symbol(self) -> Symbol:
@@ -277,7 +291,7 @@ class Vpwl(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
         V_list = self.V
@@ -294,8 +308,10 @@ class Vpwl(Cell):
         )
 
 @public
-class Vpulse(Cell):
+class Vpulse(SimLeafCell):
     """Pulse voltage source (SPICE PULSE)."""
+    def ngspice_current_pins(self):
+        return {"branch": "p"}
     initial_value = Parameter(R, optional=True, default=R(0)) #: Voltage before pulse.
     pulsed_value = Parameter(R) #: Voltage during pulse.
     delay_time = Parameter(R, optional=True, default=R(0)) #: Delay before first pulse.
@@ -336,7 +352,7 @@ class Vpulse(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
         dc_spec = f"dc {self.initial_value.compat_str()}"
@@ -358,8 +374,10 @@ class Vpulse(Cell):
         )
 
 @public
-class Vsin(Cell):
+class Vsin(SimLeafCell):
     """Sinusoidal voltage source (SPICE SIN). Netlists with both AC and transient specifications."""
+    def ngspice_current_pins(self):
+        return {"branch": "p"}
     dc = Parameter(R, optional=True, default=R(0)) #: DC offset.
     ac = Parameter(R) #: Peak amplitude.
     freq = Parameter(R) #: Frequency in Hz.
@@ -393,7 +411,7 @@ class Vsin(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
         # Required parameters - will raise KeyError if not present
@@ -416,8 +434,10 @@ class Vsin(Cell):
         )
 
 @public
-class Ipwl(Cell):
+class Ipwl(SimLeafCell):
     """Piecewise linear current source (SPICE PWL)."""
+    def ngspice_current_pins(self):
+        return {"branch": "p"}
     I = Parameter(tuple) #: Tuple of (time, current) tuples defining the waveform.
 
     @generate
@@ -457,7 +477,7 @@ class Ipwl(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
         I_list = self.I
@@ -474,8 +494,10 @@ class Ipwl(Cell):
         )
 
 @public
-class Ipulse(Cell):
+class Ipulse(SimLeafCell):
     """Pulse current source (SPICE PULSE)."""
+    def ngspice_current_pins(self):
+        return {"branch": "p"}
     initial_value = Parameter(R) #: Current before pulse.
     pulsed_value = Parameter(R) #: Current during pulse.
     delay_time = Parameter(R, optional=True, default=R(0)) #: Delay before first pulse.
@@ -524,7 +546,7 @@ class Ipulse(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
         dc_spec = f"dc {self.initial_value.compat_str()}"
@@ -546,8 +568,10 @@ class Ipulse(Cell):
         )
 
 @public
-class Isin(Cell):
+class Isin(SimLeafCell):
     """Sinusoidal current source (SPICE SIN)."""
+    def ngspice_current_pins(self):
+        return {"branch": "p"}
     dc = Parameter(R, optional=True, default=R(0)) #: DC offset.
     ac = Parameter(R) #: Peak amplitude.
     freq = Parameter(R) #: Frequency in Hz.
@@ -591,7 +615,7 @@ class Isin(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
         ac = self.ac

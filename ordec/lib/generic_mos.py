@@ -20,14 +20,19 @@ def setup_generic_mos(netlister):
     netlister.add('.model', 'nmosgeneric', 'NMOS', 'level=1', f'VTO={vt0}', *common_args)
     netlister.add('.model', 'pmosgeneric', 'PMOS', 'level=1', f'VTO={-vt0}', *common_args)
 
-class Mos(Cell):
+class Mos(SimLeafCell):
     """
     Shared base class of Nmos and Pmos.
     """
     l = Parameter(R, default=R('1u'))
     w = Parameter(R, default=R('1u'))
+    def ngspice_current_pins(self):
+        return {"id": "d", "is": "s", "ig": "g", "ib": "b"}
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_save_params(self):
+        return ["gm", "gds", "vdsat"]
+
+    def ngspice_netlist(self, netlister, inst):
         netlister.require_netlist_setup(setup_generic_mos)
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
         netlister.add(

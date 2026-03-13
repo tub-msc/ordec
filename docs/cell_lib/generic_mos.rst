@@ -4,4 +4,4 @@
 .. automodule:: ordec.lib.generic_mos
   :members:
   :undoc-members:
-  :exclude-members: instances, netlist_ngspice, discoverable_instances
+  :exclude-members: instances, ngspice_netlist, discoverable_instances

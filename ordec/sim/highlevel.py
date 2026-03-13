@@ -9,8 +9,7 @@ from ..core.rational import R
 from ..core.schema import SimType
 from .ngspice import Ngspice
 from ..schematic.netlister import Netlister
-from ..core.simarray import Quantity
-from .ngspice_common import strip_raw_name
+from .ngspice_common import parse_signal_name
 
 class HighlevelSim:
     def __init__(self, simhier: SimHierarchy, enable_savecurrents: bool = True):
@@ -29,109 +28,105 @@ class HighlevelSim:
                 func(sim)
             yield sim
 
-    def op(self):
+    def _save_params(self, sim):
+        """Issue ngspice save commands for all known device parameters."""
+        for si in self.simhier.all(SimInstance):
+            if si.schematic is not None:
+                continue
+            cell = si.eref.symbol.cell
+            params = cell.ngspice_save_params()
+            if not params:
+                continue
+            device_name = self.netlister.name_hier_simobj(si)
+            for param in params:
+                sim.command(f"save @{device_name}[{param}]")
+
+    def op(self, save_params=False):
         self.simhier.sim_type = SimType.DC
-        
         with self.launch_ngspice() as sim:
             sim.load_netlist(self.netlister.out())
-            for qty, name, subname, value in sim.op():
-                if qty == Quantity.VOLTAGE:
-                    try:
-                        simnet = self.hier_simobj_of_name(name)
-                    except KeyError:
-                        # ignore internal nodes we don't map
-                        continue
-                    else:
-                        simnet.dc_voltage = value
-                elif qty == Quantity.CURRENT:
-                    if subname not in ("id", "branch", "i"):
-                        continue
-                    try:
-                        siminstance = self.hier_simobj_of_name(name)
-                    except KeyError:
-                        continue
-                    else:
-                        siminstance.dc_current = value
+            if save_params:
+                self._save_params(sim)
+            sim_array = sim.op()
+        self._store_results(sim_array)
 
     def hier_simobj_of_name(self, name: str) -> SimInstance|SimNet:
         return self.netlister.hier_simobj_of_name(self.simhier, name)
 
 
-    def _run_simulation(self, sim_type, sim_method, *sim_args, **sim_kwargs):
-        """Common simulation execution logic for tran/ac/dc-sweep analyses."""
-        self.simhier.sim_type = sim_type
-
-        with self.launch_ngspice() as sim:
-            sim.load_netlist(self.netlister.out())
-            sim_array = getattr(sim, sim_method)(*sim_args, **sim_kwargs)
-
-        # Store SimArray and axis field names on the SimHierarchy root
+    def _store_results(self, sim_array: SimArray):
+        """Store SimArray and assign field names to SimNet/SimPin/SimParam."""
+        sim_type = self.simhier.sim_type
         self.simhier.sim_data = sim_array
-        for f in sim_array.fields:
-            if f.quantity == Quantity.TIME:
-                self.simhier.time_field = f.fid
-            elif f.quantity == Quantity.FREQUENCY:
-                self.simhier.freq_field = f.fid
+
         if sim_type == SimType.DCSWEEP:
             if not sim_array.fields:
                 raise ValueError("DC sweep returned no fields")
             # First field in ngspice DC rawfiles is the swept source value.
             self.simhier.sweep_field = sim_array.fields[0].fid
 
-        # Assign field names to SimNet/SimInstance nodes.
-        field_attr_by_sim_type = {
-            SimType.TRAN: "trans_field",
-            SimType.AC: "ac_field",
-            SimType.DCSWEEP: "dc_sweep_field",
-        }
-        field_attr = field_attr_by_sim_type[sim_type]
-
         for f in sim_array.fields:
-            if f.quantity in (Quantity.TIME, Quantity.FREQUENCY):
+            fid = f.fid
+            if fid == "time":
+                self.simhier.time_field = fid
                 continue
-            if sim_type == SimType.DCSWEEP and f.fid == self.simhier.sweep_field:
+            if fid.startswith("frequency"):
+                self.simhier.freq_field = fid
+                continue
+            if sim_type == SimType.DCSWEEP and fid == self.simhier.sweep_field:
                 continue
 
-            stripped = strip_raw_name(f.fid)
+            node_name, subname = parse_signal_name(fid)
             try:
-                if f.quantity == Quantity.VOLTAGE:
-                    simnet = self.hier_simobj_of_name(stripped)
-                    setattr(simnet, field_attr, f.fid)
-                elif f.quantity == Quantity.CURRENT:
-                    if stripped.startswith("@") and "[" in stripped:
-                        device_name = stripped.split("[")[0][1:]
-                        siminstance = self.hier_simobj_of_name(device_name)
+                if subname is None:
+                    simnet = self.hier_simobj_of_name(node_name)
+                    simnet.voltage_field = fid
+                else:
+                    siminstance = self.hier_simobj_of_name(node_name)
+                    pin_map = siminstance.eref.symbol.cell.ngspice_current_pins()
+                    if subname in pin_map:
+                        pin = getattr(siminstance.eref.symbol, pin_map[subname])
+                        simpin = self.simhier % SimPin(instance=siminstance, eref=pin)
+                        simpin.current_field = fid
                     else:
-                        # Raw branch currents use names like "i(vsrc)" and are
-                        # normalized to "vsrc#branch"; strip suffix for lookup.
-                        siminstance = self.hier_simobj_of_name(
-                            stripped.removesuffix("#branch")
-                        )
-                    setattr(siminstance, field_attr, f.fid)
+                        simparam = self.simhier % SimParam(
+                            instance=siminstance, name=subname)
+                        simparam.field = fid
             except KeyError:
                 continue
 
-    def tran(self, tstep, tstop):
-        self._run_simulation(SimType.TRAN, "tran", tstep, tstop)
+    def tran(self, tstep, tstop, save_params=False):
+        self.simhier.sim_type = SimType.TRAN
+        with self.launch_ngspice() as sim:
+            sim.load_netlist(self.netlister.out())
+            if save_params:
+                self._save_params(sim)
+            sim_array = sim.tran(tstep, tstop)
+        self._store_results(sim_array)
 
-    def ac(self, *args):
-        self._run_simulation(SimType.AC, "ac", *args)
+    def ac(self, *args, save_params=False):
+        self.simhier.sim_type = SimType.AC
+        with self.launch_ngspice() as sim:
+            sim.load_netlist(self.netlister.out())
+            if save_params:
+                self._save_params(sim)
+            sim_array = sim.ac(*args)
+        self._store_results(sim_array)
 
-    def dc_sweep(self, source, vstart, vstop, step_count: int):
+    def dc_sweep(self, source, vstart, vstop, step_count: int, save_params=False):
         if step_count < 2:
             raise ValueError("step_count must be >= 2")
         source_name = self.directory.existing_name_node(source)
         vstart = R(vstart)
         vstop = R(vstop)
         vstep = (vstop - vstart) / R(step_count - 1)
-        self._run_simulation(
-            SimType.DCSWEEP,
-            "dc",
-            source_name,
-            vstart,
-            vstop,
-            vstep,
-        )
+        self.simhier.sim_type = SimType.DCSWEEP
+        with self.launch_ngspice() as sim:
+            sim.load_netlist(self.netlister.out())
+            if save_params:
+                self._save_params(sim)
+            sim_array = sim.dc(source_name, vstart, vstop, vstep)
+        self._store_results(sim_array)
 
     def _parse_timescale_factor(self, timescale: str) -> float:
         if not isinstance(timescale, str) or not timescale.strip():
@@ -195,16 +190,13 @@ class HighlevelSim:
                     if signal_names is not None and base_name not in signal_names:
                         continue
 
-                    if (
-                        hasattr(simnet, "trans_voltage")
-                        and simnet.trans_voltage is not None
-                    ):
+                    if simnet.voltage is not None:
                         if i < len(signal_chars):
                             ident = signal_chars[i]
                         else:
                             ident = f"sig{i}"
                         signals_to_export.append(
-                            (base_name, ident, simnet.trans_voltage)
+                            (base_name, ident, simnet.voltage)
                         )
 
                 if not signals_to_export:

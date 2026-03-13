@@ -91,3 +91,8 @@ def test_navigate_simnets_pins():
     assert simnet_I0_I2_I1_m.eref == Res(r=R(100)).symbol.m
     assert simnet_I0_I2_I1_m.parent_inst == simhier.I0.sub2.I2.I1
     assert simnet_I0_I2_I1_m.full_path_list() == ['I0', 'sub2', 'I2', 'I1', 'm']
+
+def test_no_simpins_before_simulation():
+    """SimPin nodes are not created by from_schematic(); only by simulation."""
+    simhier = my_simhier()
+    assert list(simhier.all(SimPin)) == []

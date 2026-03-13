@@ -4,20 +4,11 @@
 import struct
 from numbers import Integral
 from typing import NamedTuple
-from enum import Enum
-
-class Quantity(Enum):
-    TIME = 1
-    FREQUENCY = 2
-    VOLTAGE = 3
-    CURRENT = 4
-    OTHER = 99
 
 
 class SimArrayField(NamedTuple):
     fid: str #: Field ID, unique within a SimArray.
     dtype: str  # 'f8' (float64) or 'c16' (complex128)
-    quantity: Quantity = Quantity.OTHER
 
     @property
     def size(self):

@@ -565,12 +565,21 @@ class SimHierarchySubcursor(tuple):
             # Coerce SchemPort to Net:
             if isinstance(inner_child, SchemPort):
                 inner_child = inner_child.ref
-            if isinstance(inner_child, Pin) \
-                and self.siminst is not None \
-                and self.siminst.schematic is not None:
-                # Special case: Symbol subcursor is used, but Schematic is
-                # available. In this case, we need the nid from the Schematic!
-                inner_child = self.siminst.schematic.one(Net.pin_idx.query(inner_child))
+            if isinstance(inner_child, Pin) and self.siminst is not None:
+                if self.siminst.schematic is not None:
+                    # Symbol subcursor is used, but Schematic is available.
+                    # We need the nid from the Schematic!
+                    inner_child = self.siminst.schematic.one(Net.pin_idx.query(inner_child))
+                else:
+                    # Leaf device: return SimPin (branch current) if one exists.
+                    try:
+                        return self.simhierarchy.one(
+                            SimPin.instance_eref_idx.query(
+                                (self.siminst, inner_child)))
+                    except QueryException:
+                        # TODO: Maybe in this case we should return something that acts as a SimPin that
+                        # derives its current from known currents.
+                        pass
             return self.simhierarchy.one(SimNet.parent_eref_idx.query(
                 (self.siminst, inner_child)))
         elif isinstance(inner_child, Node) and inner_child.root == self.node.root:
@@ -683,31 +692,14 @@ class SimNet(Node):
     parent_inst = LocalRef('SimInstance', optional=True,
         refcheck_custom=lambda val: issubclass(val, SimInstance))
 
-    trans_field = Attr(str) #: Column name in root sim_data for transient voltage.
-    ac_field = Attr(str) #: Column name in root sim_data for AC voltage.
-    dc_sweep_field = Attr(str) #: Column name in root sim_data for DC sweep voltage.
-    dc_voltage = Attr(float)
+    voltage_field = Attr(str) #: Column name in root sim_data for voltage.
 
     @property
-    def trans_voltage(self):
+    def voltage(self):
         sd = self.root.sim_data
-        if sd is None or self.trans_field is None:
+        if sd is None or self.voltage_field is None:
             return None
-        return sd.column(self.trans_field)
-
-    @property
-    def ac_voltage(self):
-        sd = self.root.sim_data
-        if sd is None or self.ac_field is None:
-            return None
-        return sd.column(self.ac_field)
-
-    @property
-    def dc_sweep_voltage(self):
-        sd = self.root.sim_data
-        if sd is None or self.dc_sweep_field is None:
-            return None
-        return sd.column(self.dc_sweep_field)
+        return sd.column(self.voltage_field)
 
     eref = ExternalRef(Net|Pin,
         of_subgraph=lambda c: c.root.schematic_or_symbol_at(c.parent_inst),
@@ -724,37 +716,71 @@ class SimNet(Node):
     parent_eref_idx = CombinedIndex([parent_inst, eref], unique=True)
 
 @public
+class SimPin(Node):
+    in_subgraphs = [SimHierarchy]
+
+    instance = LocalRef('SimInstance', optional=False,
+        refcheck_custom=lambda val: issubclass(val, SimInstance))
+
+    eref = ExternalRef(Pin,
+        of_subgraph=lambda c: c.instance.eref.symbol,
+        optional=False)
+
+    current_field = Attr(str) #: Column name in root sim_data for current.
+
+    @property
+    def current(self):
+        sd = self.root.sim_data
+        if sd is None or self.current_field is None:
+            return None
+        return sd.column(self.current_field)
+
+    instance_eref_idx = CombinedIndex([instance, eref], unique=True)
+
+@public
+class SimParam(Node):
+    in_subgraphs = [SimHierarchy]
+
+    instance = LocalRef('SimInstance', optional=False,
+        refcheck_custom=lambda val: issubclass(val, SimInstance))
+
+    name = Attr(str) #: Parameter name: "gm", "gds", "vth", "region", etc.
+    field = Attr(str) #: Column name in root sim_data.
+
+    @property
+    def value(self):
+        sd = self.root.sim_data
+        if sd is None or self.field is None:
+            return None
+        return sd.column(self.field)
+
+    instance_name_idx = CombinedIndex([instance, name], unique=True)
+
+class SimInstanceParamCursor(tuple):
+    """Cursor for accessing SimParam nodes of a SimInstance by name.
+
+    Usage: ``instance.params['gm']`` returns the SimParam node.
+    """
+    @property
+    def _instance(self):
+        return tuple.__getitem__(self, 0)
+
+    def __getitem__(self, name):
+        return self._instance.root.one(
+            SimParam.instance_name_idx.query((self._instance, name)))
+
+    def __getattr__(self, name):
+        return self[name]
+
+    def __repr__(self):
+        return f"{type(self).__name__}({self._instance!r})"
+
+@public
 class SimInstance(Node):
     in_subgraphs = [SimHierarchy]
 
     parent_inst = LocalRef('SimInstance', optional=True,
         refcheck_custom=lambda val: issubclass(val, SimInstance))
-
-    trans_field = Attr(str) #: Column name in root sim_data for transient current.
-    ac_field = Attr(str) #: Column name in root sim_data for AC current.
-    dc_sweep_field = Attr(str) #: Column name in root sim_data for DC sweep current.
-    dc_current = Attr(float)
-
-    @property
-    def trans_current(self):
-        sd = self.root.sim_data
-        if sd is None or self.trans_field is None:
-            return None
-        return sd.column(self.trans_field)
-
-    @property
-    def ac_current(self):
-        sd = self.root.sim_data
-        if sd is None or self.ac_field is None:
-            return None
-        return sd.column(self.ac_field)
-
-    @property
-    def dc_sweep_current(self):
-        sd = self.root.sim_data
-        if sd is None or self.dc_sweep_field is None:
-            return None
-        return sd.column(self.dc_sweep_field)
 
     schematic = SubgraphRef(Schematic,
         typecheck_custom=lambda v: isinstance(v, (Symbol, Schematic)),
@@ -766,6 +792,10 @@ class SimInstance(Node):
         )
 
     parent_eref_idx = CombinedIndex([parent_inst, eref], unique=True)
+
+    @property
+    def params(self) -> SimInstanceParamCursor:
+        return SimInstanceParamCursor((self,))
 
     def subcursor(self):
         if self.schematic is None:
@@ -791,6 +821,9 @@ class SimInstance(Node):
         else:
             parent_path = self.parent_inst.full_path_list()
         return parent_path + self.eref.full_path_list()
+
+    def full_path_str(self) -> str:
+        return '.'.join(str(x) for x in self.full_path_list())
 
 # LayerStack
 # ----------

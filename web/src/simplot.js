@@ -542,20 +542,42 @@ export class SimPlot {
         const xTickCount = Math.max(Math.floor(w / 80), 3);
         const yTickCount = Math.max(Math.floor(h / 40), 3);
 
+        const xAxis = d3.axisBottom(xScale);
+        if (this.options.xscale === 'log') {
+            xAxis.ticks(xTickCount, "~s");
+        } else {
+            xAxis.ticks(xTickCount).tickFormat(d3.format("~s"));
+        }
         this.xAxisG
             .attr('transform', `translate(0,${h})`)
-            .call(d3.axisBottom(xScale).ticks(xTickCount).tickFormat(d3.format("~s")));
+            .call(xAxis);
 
-        this.yAxisG
-            .call(d3.axisLeft(yScale).ticks(yTickCount).tickFormat(d3.format("~s")));
+        const yAxis = d3.axisLeft(yScale);
+        if (this.options.yscale === 'log') {
+            yAxis.ticks(yTickCount, "~s");
+        } else {
+            yAxis.ticks(yTickCount).tickFormat(d3.format("~s"));
+        }
+        this.yAxisG.call(yAxis);
 
         // Grid lines
+        const xGrid = d3.axisBottom(xScale).tickSize(-h).tickFormat('');
+        if (this.options.xscale === 'log') {
+            xGrid.ticks(xTickCount, "");
+        } else {
+            xGrid.ticks(xTickCount);
+        }
         this.xGridG
             .attr('transform', `translate(0,${h})`)
-            .call(d3.axisBottom(xScale).ticks(xTickCount).tickSize(-h).tickFormat(''));
+            .call(xGrid);
 
-        this.yGridG
-            .call(d3.axisLeft(yScale).ticks(yTickCount).tickSize(-w).tickFormat(''));
+        const yGrid = d3.axisLeft(yScale).tickSize(-w).tickFormat('');
+        if (this.options.yscale === 'log') {
+            yGrid.ticks(yTickCount, "");
+        } else {
+            yGrid.ticks(yTickCount);
+        }
+        this.yGridG.call(yGrid);
 
         // Labels
         this.xLabelEl.attr('x', w / 2).attr('y', h + MARGIN.bottom - 5);

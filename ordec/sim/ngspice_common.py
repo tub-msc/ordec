@@ -3,36 +3,10 @@
 
 import re
 import struct
-from typing import NamedTuple
 from abc import ABC, abstractmethod
 
-from ..core.simarray import SimArray, SimArrayField, Quantity
+from ..core.simarray import SimArray, SimArrayField
 
-
-def quantity_from_str(s: str, name: str = "") -> Quantity:
-    """Determine Quantity from a rawfile variable unit string,
-    with name-based fallback."""
-    s = s.lower().strip()
-    if s in ("time", "index"):
-        return Quantity.TIME
-    # "frequency grid=3" is how ngspice writes the frequency unit in AC rawfiles.
-    if s.startswith("frequency") or s in ("hz", "hertz"):
-        return Quantity.FREQUENCY
-    if s in ("voltage", "v"):
-        return Quantity.VOLTAGE
-    if s in ("current", "i", "a"):
-        return Quantity.CURRENT
-    # Fall back to name-based heuristics
-    if name.endswith("#branch") or (name.startswith("@") and "[" in name):
-        return Quantity.CURRENT
-    return Quantity.OTHER
-
-
-class NgspiceScalar(NamedTuple):
-    quantity: Quantity
-    name: str
-    subname: str
-    value: float
 
 class NgspiceBase(ABC):
     @classmethod
@@ -71,21 +45,72 @@ def check_errors(ngspice_out):
         else:
             raise NgspiceError(first_error_msg)
 
+def name_print_to_raw(name: str) -> str:
+      """
+      Convert an ngspice print-style signal name to rawfile-style.
 
-def strip_raw_name(raw_name: str) -> str:
-    """Normalize a rawfile variable name to the plain node/device name.
+      Examples:
+          a                   -> v(a)
+          vgnd#branch         -> i(gnd)
+          @m.xdut.mm2[is]     -> @m.xdut.mm2[is]
+          i(@m.xdut.mm2[is])  -> i(@m.xdut.mm2[is])   # already raw-style
+          v(a)                -> v(a)                 # already raw-style
+      """
+      s = name.strip()
+      if not s:
+          return s
 
-    ngspice wraps names in rawfiles: v(node) for voltages, i(device) for
-    currents. The netlister and hierarchy lookup expect bare names.
+      # Already raw-style.
+      if re.fullmatch(r'[vViI]\(.*\)', s):
+          return s
+
+      # Internal/device parameter vectors stay as-is.
+      if s.startswith('@'):
+          return s
+
+      # print-style branch current: "foo#branch" -> "i(foo)"
+      if s.endswith('#branch'):
+          return f"i({s[:-7]})"
+
+      # Otherwise treat it as a node voltage: "a" -> "v(a)"
+      return f"v({s})"
+
+
+def parse_signal_name(name):
+    """Parse a rawfile-style ngspice signal name into (node_name, subname).
+
+    Returns (node_name, subname) where subname is None for voltage nodes,
+    or a string like "branch" / "is" for currents and device parameters.
+
+    Use name_print_to_raw() first to convert print-style names.
+
+    Examples:
+        v(a)                -> ("a", None)
+        i(vgnd)             -> ("vgnd", "branch")
+        i(@m.xdut.mm2[is]) -> ("xdut.mm2", "is")
+        @m.xdut.mm2[is]    -> ("xdut.mm2", "is")
     """
-    if raw_name.startswith("v(") and raw_name.endswith(")"):
-        return raw_name[2:-1]
-    if raw_name.startswith("i(") and raw_name.endswith(")"):
-        inner = raw_name[2:-1]
-        if inner.startswith("@"):
-            return inner  # device current: i(@r1[i]) -> @r1[i]
-        return inner + "#branch"  # branch current: i(vi0) -> vi0#branch
-    return raw_name
+    def strip_type_prefix(s):
+        """Strip single-letter SPICE device type prefix (e.g. 'm.' for
+        MOSFET, 'r.' for resistor) if present."""
+        if len(s) > 2 and s[1] == '.' and s[0].isalpha():
+            return s[2:]
+        return s
+
+    if name.startswith("v(") and name.endswith(")"):
+        return (name[2:-1], None)
+    if name.startswith("i(") and name.endswith(")"):
+        inner = name[2:-1]
+        if inner.startswith("@") and "[" in inner:
+            bracket = inner.index("[")
+            return (strip_type_prefix(inner[1:bracket]),
+                    inner[bracket+1:-1])
+        return (inner, "branch")
+    if name.startswith("@") and "[" in name:
+        bracket = name.index("[")
+        return (strip_type_prefix(name[1:bracket]),
+                name[bracket+1:-1])
+    return (name, None)
 
 
 def parse_raw(fn) -> SimArray:
@@ -97,7 +122,6 @@ def parse_raw(fn) -> SimArray:
     """
     info = {}
     var_names = []
-    var_quantities = []
 
     with open(fn, "rb") as f:
         while True:
@@ -113,7 +137,6 @@ def parse_raw(fn) -> SimArray:
                 _, var_idx, var_name, var_unit = parts
                 assert int(var_idx) == len(var_names)
                 var_names.append(var_name)
-                var_quantities.append(quantity_from_str(var_unit, var_name))
             else:
                 if ":" not in l:
                     raise ValueError(f"Malformed header line in rawfile: {l!r}")
@@ -136,8 +159,8 @@ def parse_raw(fn) -> SimArray:
         dtype = 'c16' if is_complex else 'f8'
 
         fields = tuple(
-            SimArrayField(name, dtype, qty)
-            for name, qty in zip(var_names, var_quantities)
+            SimArrayField(name, dtype)
+            for name in var_names
         )
 
         # Calculate expected bytes per record

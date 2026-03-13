@@ -328,13 +328,16 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
     return l
 
 
-class Mos(Cell):
+class Mos(SimLeafCell):
     l = Parameter(R)  #: Length
     w = Parameter(R)  #: Width
     m = Parameter(int, default=1)  #: Multiplier, i. e. number of devices with separate Activ areas in parallel)
     ng = Parameter(int, default=1)  #: Number of gate fingers
 
-    def netlist_ngspice(self, netlister, inst):
+    def ngspice_save_params(self):
+        return ["gm", "gds", "vth", "vdsat", "region"]
+
+    def ngspice_netlist(self, netlister, inst):
         netlister.require_netlist_setup(netlister_setup)
         netlister.require_ngspice_setup(ngspice_setup)
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]

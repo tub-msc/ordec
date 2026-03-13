@@ -17,18 +17,16 @@ from ..core.rational import Rational as R
 logger = logging.getLogger(__name__)
 
 from .ngspice_common import (
-    NgspiceScalar,
     NgspiceError,
     NgspiceFatalError,
     check_errors,
     parse_raw,
 )
-from ..core.simarray import SimArray, Quantity
+from ..core.simarray import SimArray
 
 
 class NgspiceVector(NamedTuple):
     name: str
-    quantity: str
     dtype: str
     length: int
     rest: str
@@ -148,81 +146,9 @@ class Ngspice:
             self.command("set no_auto_gnd")
         check_errors(self.command(f"source {netlist_fn}"))
 
-    def _parse_op_results(self) -> Iterator[str]:
-        """
-        Parse operating point results, extracting only the result lines
-        from command output and skipping command echoes and FINISHED markers.
-        """
-        print_all_res = self.command("print all")
-        # Check if the result contains the warning about zero-length vectors
-        if "is not available or has zero length" in print_all_res:
-            # Fallback: get list of available vectors and print only valid ones
-            display_output = self.command("display")
-
-            # Parse vector list and print only vectors with length > 0
-            for line in display_output.split("\n"):
-                # Look for vector definitions like "name: type, real, N long"
-                vector_match = re.match(
-                    r"\s*([^:]+):\s*[^,]+,\s*[^,]+,\s*([0-9]+)\s+long", line
-                )
-                if vector_match:
-                    vector_name = vector_match.group(1).strip()
-                    vector_length = int(vector_match.group(2))
-
-                    # Only print vectors that have data (length > 0)
-                    if vector_length > 0:
-                        cmd_output = self.command(f"print {vector_name}")
-                        # Extract just the result lines from command output
-                        for output_line in cmd_output.split("\n"):
-                            if re.match(
-                                r"([0-9a-zA-Z_.#]+)\s*=\s*([0-9.\-+e]+)\s*", output_line
-                            ):
-                                yield output_line
-        else:
-            # Extract just the result lines from the print all output
-            for line in print_all_res.split("\n"):
-                if re.match(r"([0-9a-zA-Z_.#]+)\s*=\s*([0-9.\-+e]+)\s*", line):
-                    yield line
-
-    def op(self) -> Iterator[NgspiceScalar]:
+    def op(self) -> SimArray:
         self.command("op")
-
-        for line in self._parse_op_results():
-            if len(line) == 0:
-                continue
-
-            # Voltage result - updated regex to handle device names with special chars:
-            res = re.match(r"([0-9a-zA-Z_.#]+)\s*=\s*([0-9.\-+e]+)\s*", line)
-            if res:
-                yield NgspiceScalar(
-                    quantity=Quantity.VOLTAGE,
-                    name=res.group(1),
-                    subname=None,
-                    value=float(res.group(2)),
-                )
-
-            # Current result like "vgnd#branch":
-            res = re.match(r"([0-9a-zA-Z_.#]+)#branch\s*=\s*([0-9.\-+e]+)\s*", line)
-            if res:
-                yield NgspiceScalar(
-                    quantity=Quantity.CURRENT,
-                    name=res.group(1),
-                    subname="branch",
-                    value=float(res.group(2)),
-                )
-
-            # Current result like "@m.xdut.mm2[is]" from savecurrents:
-            res = re.match(
-                r"@([a-zA-Z]\.)?([0-9a-zA-Z_.#]+)\[([0-9a-zA-Z_]+)\]\s*=\s*([0-9.\-+e]+)\s*",
-                line,
-            )
-            if res:
-                yield NgspiceScalar(
-                    quantity=Quantity.CURRENT,
-                    name=res.group(2),
-                    subname=res.group(3),
-                    value=float(res.group(4)),
-                )
+        return self._write_raw()
 
     def _write_raw(self) -> SimArray:
         """Write current simulation plot to sim.raw.
@@ -299,4 +225,4 @@ class Ngspice:
                 )
                 if res:
                     name, vtype, dtype, length, rest = res.groups()
-                    yield NgspiceVector(name, vtype, dtype, int(length), rest)
+                    yield NgspiceVector(name, dtype, int(length), rest)

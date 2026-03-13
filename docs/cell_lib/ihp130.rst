@@ -7,5 +7,5 @@ This cell library provides part of the `IHP Open PDK <https://github.com/IHP-Gmb
   :members:
   :member-order: groupwise
   :undoc-members:
-  :exclude-members: instances, netlist_ngspice, discoverable_instances, params_check, params_list, params_preprocess, params_rewrite
+  :exclude-members: instances, ngspice_netlist, discoverable_instances, params_check, params_list, params_preprocess, params_rewrite
   :inherited-members:

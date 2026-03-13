@@ -71,8 +71,8 @@ cell AmpTb:
         elements.append(Plot2D(
             x=freq,
             series={
-                'vin': mag_db(sim.vin.ac_voltage),
-                'vout': mag_db(sim.vout.ac_voltage),
+                'vin': mag_db(sim.vin.voltage),
+                'vout': mag_db(sim.vout.voltage),
             },
             xlabel="Frequency (Hz)",
             ylabel="Magnitude (dB)",
@@ -83,8 +83,8 @@ cell AmpTb:
         elements.append(Plot2D(
             x=freq,
             series={
-                'vin': phase_deg(sim.vin.ac_voltage),
-                'vout': phase_deg(sim.vout.ac_voltage),
+                'vin': phase_deg(sim.vin.voltage),
+                'vout': phase_deg(sim.vout.voltage),
             },
             xlabel="Frequency (Hz)",
             ylabel="Phase (deg)",
