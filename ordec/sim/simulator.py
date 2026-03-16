@@ -8,11 +8,12 @@ low-level Ngspice wrapper, and maps rawfile results back onto SimNet,
 SimPin and SimParam nodes."""
 
 from contextlib import contextmanager
+from typing import Literal
 
 from ..core import *
 from ..core.rational import R
 from ..core.schema import SimType
-from .ngspice import Ngspice
+from .ngspice import Ngspice, CommandRecorder, ngspice_batch
 from ..schematic.netlister import Netlister
 
 
@@ -51,48 +52,36 @@ def parse_signal_name(name):
     return (name, None)
 
 
-class Simulator:
+def Simulator(simhier: SimHierarchy, enable_savecurrents: bool = True,
+              batch: bool = True) -> 'SimulatorBase':
+    """Create a Simulator for the given SimHierarchy.
+
+    Args:
+        simhier: The simulation hierarchy to simulate.
+        enable_savecurrents: Enable .option savecurrents in the netlist.
+        batch: If True (default), use ngspice batch mode which streams
+            results to disk. If False, use piped mode which keeps all
+            data in RAM.
+    """
+    cls = SimulatorNgspiceBatch if batch else SimulatorNgspicePiped
+    return cls(simhier, enable_savecurrents=enable_savecurrents)
+
+
+class SimulatorBase:
+    """Shared netlisting, result storage, and query logic."""
+
     def __init__(self, simhier: SimHierarchy, enable_savecurrents: bool = True):
         self.simhier = simhier
         self.top = self.simhier.schematic
 
         self.directory = Directory()
 
-        self.netlister = Netlister(self.directory, enable_savecurrents=enable_savecurrents)
+        self.netlister = Netlister(
+            self.directory, enable_savecurrents=enable_savecurrents)
         self.netlister.netlist_hier(self.top)
-
-    @contextmanager
-    def launch_ngspice(self):
-        with Ngspice.launch() as sim:
-            for func in self.netlister.ngspice_setup_funcs:
-                func(sim)
-            yield sim
-
-    def _save_params(self, sim):
-        """Issue ngspice save commands for all known device parameters."""
-        for si in self.simhier.all(SimInstance):
-            if si.schematic is not None:
-                continue
-            cell = si.eref.symbol.cell
-            params = cell.ngspice_save_params()
-            if not params:
-                continue
-            device_name = self.netlister.name_hier_simobj(si)
-            for param in params:
-                sim.command(f"save @{device_name}[{param}]")
-
-    def op(self, save_params=False):
-        self.simhier.sim_type = SimType.DC
-        with self.launch_ngspice() as sim:
-            sim.load_netlist(self.netlister.out())
-            if save_params:
-                self._save_params(sim)
-            sim_array = sim.op()
-        self._store_results(sim_array)
 
     def hier_simobj_of_name(self, name: str) -> SimInstance|SimNet:
         return self.netlister.hier_simobj_of_name(self.simhier, name)
-
 
     def _store_results(self, sim_array: SimArray):
         """Store SimArray and assign field names to SimNet/SimPin/SimParam."""
@@ -135,23 +124,56 @@ class Simulator:
             except KeyError:
                 continue
 
+
+class SimulatorNgspiceBatch(SimulatorBase):
+    """Batch-mode simulator: streams results to disk via ``ngspice -b``."""
+
+    def _save_all_params(self):
+        """Add .save directives to the netlist for device parameters."""
+        for si in self.simhier.all(SimInstance):
+            if si.schematic is not None:
+                continue
+            cell = si.eref.symbol.cell
+            params = cell.ngspice_save_params()
+            if not params:
+                continue
+            device_name = self.netlister.name_hier_simobj(si)
+            for param in params:
+                self.netlister.add(f".save @{device_name}[{param}]")
+
+    def _run(self) -> SimArray:
+        recorder = CommandRecorder()
+        for func in self.netlister.ngspice_setup_funcs:
+            func(recorder)
+        return ngspice_batch(
+            self.netlister.out(),
+            spiceinit_commands=recorder.commands,
+        )
+
+    def op(self, save_params=False):
+        self.simhier.sim_type = SimType.DC
+        if save_params:
+            self._save_all_params()
+        self.netlister.add(".op")
+        self._store_results(self._run())
+
     def tran(self, tstep, tstop, save_params=False):
         self.simhier.sim_type = SimType.TRAN
-        with self.launch_ngspice() as sim:
-            sim.load_netlist(self.netlister.out())
-            if save_params:
-                self._save_params(sim)
-            sim_array = sim.tran(tstep, tstop)
-        self._store_results(sim_array)
+        if save_params:
+            self._save_all_params()
+        self.netlister.add(
+            ".tran", R(tstep).compat_str(), R(tstop).compat_str())
+        self._store_results(self._run())
 
-    def ac(self, *args, save_params=False):
+    def ac(self, scheme: Literal["dec", "oct", "lin"], n: int,
+           fstart: R, fstop: R, save_params=False):
         self.simhier.sim_type = SimType.AC
-        with self.launch_ngspice() as sim:
-            sim.load_netlist(self.netlister.out())
-            if save_params:
-                self._save_params(sim)
-            sim_array = sim.ac(*args)
-        self._store_results(sim_array)
+        if save_params:
+            self._save_all_params()
+        self.netlister.add(
+            ".ac", scheme, str(n),
+            R(fstart).compat_str(), R(fstop).compat_str())
+        self._store_results(self._run())
 
     def dc_sweep(self, source, vstart, vstop, step_count: int, save_params=False):
         if step_count < 2:
@@ -161,28 +183,67 @@ class Simulator:
         vstop = R(vstop)
         vstep = (vstop - vstart) / R(step_count - 1)
         self.simhier.sim_type = SimType.DCSWEEP
-        with self.launch_ngspice() as sim:
+        if save_params:
+            self._save_all_params()
+        self.netlister.add(
+            ".dc", source_name,
+            vstart.compat_str(), vstop.compat_str(), vstep.compat_str())
+        self._store_results(self._run())
+
+
+class SimulatorNgspicePiped(SimulatorBase):
+    """Piped-mode simulator: keeps a persistent ``ngspice -p`` process.
+
+    All simulation data accumulates in RAM, so this is not suitable
+    for simulations with very large results.
+    """
+
+    @contextmanager
+    def _launch(self, save_params=False):
+        with Ngspice.launch() as sim:
+            for func in self.netlister.ngspice_setup_funcs:
+                func(sim)
             sim.load_netlist(self.netlister.out())
             if save_params:
-                self._save_params(sim)
-            sim_array = sim.dc(source_name, vstart, vstop, vstep)
-        self._store_results(sim_array)
+                self._save_all_params(sim)
+            yield sim
 
-    def get_component_netlist_name(self, component_instance):
-        return self.netlister.name_hier_simobj(component_instance)
+    def _save_all_params(self, sim):
+        """Issue ngspice save commands for all known device parameters."""
+        for si in self.simhier.all(SimInstance):
+            if si.schematic is not None:
+                continue
+            cell = si.eref.symbol.cell
+            params = cell.ngspice_save_params()
+            if not params:
+                continue
+            device_name = self.netlister.name_hier_simobj(si)
+            for param in params:
+                sim.command(f"save @{device_name}[{param}]")
 
-    def find_component_by_ref_name(self, ref_name):
-        for sim_instance in self.simhier.all(SimInstance):
-            if (
-                hasattr(sim_instance, "eref")
-                and hasattr(sim_instance.eref, "full_path_str")
-                and sim_instance.eref.full_path_str().endswith(ref_name)
-            ):
-                return sim_instance
-        return None
+    def op(self, save_params=False):
+        self.simhier.sim_type = SimType.DC
+        with self._launch(save_params) as sim:
+            self._store_results(sim.op())
 
-    def find_sim_instance_from_schem_instance(self, schem_instance):
-        for sim_instance in self.simhier.all(SimInstance):
-            if hasattr(sim_instance, "eref") and sim_instance.eref == schem_instance:
-                return sim_instance
-        return None
+    def tran(self, tstep, tstop, save_params=False):
+        self.simhier.sim_type = SimType.TRAN
+        with self._launch(save_params) as sim:
+            self._store_results(sim.tran(tstep, tstop))
+
+    def ac(self, scheme: Literal["dec", "oct", "lin"], n: int,
+           fstart: R, fstop: R, save_params=False):
+        self.simhier.sim_type = SimType.AC
+        with self._launch(save_params) as sim:
+            self._store_results(sim.ac(scheme, n, fstart, fstop))
+
+    def dc_sweep(self, source, vstart, vstop, step_count: int, save_params=False):
+        if step_count < 2:
+            raise ValueError("step_count must be >= 2")
+        source_name = self.directory.existing_name_node(source)
+        vstart = R(vstart)
+        vstop = R(vstop)
+        vstep = (vstop - vstart) / R(step_count - 1)
+        self.simhier.sim_type = SimType.DCSWEEP
+        with self._launch(save_params) as sim:
+            self._store_results(sim.dc(source_name, vstart, vstop, vstep))

@@ -49,11 +49,18 @@ class ResdivFlatTb(Cell):
 
         return s
 
-    @generate
-    def sim_dc(self):
+    def _sim_dc(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s).op()
+        Simulator(s, batch=batch).op()
         return s
+
+    @generate
+    def sim_dc_batch(self):
+        return self._sim_dc(True)
+
+    @generate
+    def sim_dc_piped(self):
+        return self._sim_dc(False)
 
 class ResdivHier2(Cell):
     r = Parameter(R)
@@ -197,11 +204,18 @@ class ResdivHierTb(Cell):
         helpers.schem_check(s, add_conn_points=True)
         return s
 
-    @generate
-    def sim_dc(self):
+    def _sim_dc(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s).op()
+        Simulator(s, batch=batch).op()
         return s
+
+    @generate
+    def sim_dc_batch(self):
+        return self._sim_dc(True)
+
+    @generate
+    def sim_dc_piped(self):
+        return self._sim_dc(False)
 
 class NmosSourceFollowerTb(Cell):
     """Nmos (generic_mos) source follower with optional parameter vin."""
@@ -244,11 +258,26 @@ class NmosSourceFollowerTb(Cell):
 
         return s
 
-    @generate
-    def sim_dc(self):
+    def _sim_dc(self, batch, save_params=False):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s).op()
+        Simulator(s, batch=batch).op(save_params=save_params)
         return s
+
+    @generate
+    def sim_dc_batch(self):
+        return self._sim_dc(True)
+
+    @generate
+    def sim_dc_piped(self):
+        return self._sim_dc(False)
+
+    @generate
+    def sim_dc_params_batch(self):
+        return self._sim_dc(True, save_params=True)
+
+    @generate
+    def sim_dc_params_piped(self):
+        return self._sim_dc(False, save_params=True)
 
 class InvTb(Cell):
     vin = Parameter(R, optional=True, default=R(0))
@@ -280,22 +309,36 @@ class InvTb(Cell):
 
         return s
 
-    @generate
-    def sim_dc(self):
+    def _sim_dc(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s).op()
+        Simulator(s, batch=batch).op()
         return s
 
     @generate
-    def sim_dc_sweep(self):
+    def sim_dc_batch(self):
+        return self._sim_dc(True)
+
+    @generate
+    def sim_dc_piped(self):
+        return self._sim_dc(False)
+
+    def _sim_dc_sweep(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s).dc_sweep(
+        Simulator(s, batch=batch).dc_sweep(
             self.schematic.I4,
             R(0),
             R(self.schematic.I3.symbol.cell.dc),
             251,
         )
         return s
+
+    @generate
+    def sim_dc_sweep_batch(self):
+        return self._sim_dc_sweep(True)
+
+    @generate
+    def sim_dc_sweep_piped(self):
+        return self._sim_dc_sweep(False)
 
 class InvSkyTb(Cell):
     vin = Parameter(R, optional=True, default=R(0))
@@ -334,11 +377,18 @@ class InvSkyTb(Cell):
 
         return s
 
-    @generate
-    def sim_dc(self):
+    def _sim_dc(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s).op()
+        Simulator(s, batch=batch).op()
         return s
+
+    @generate
+    def sim_dc_batch(self):
+        return self._sim_dc(True)
+
+    @generate
+    def sim_dc_piped(self):
+        return self._sim_dc(False)
 
 class IhpInv(Cell):
     @generate
@@ -446,11 +496,18 @@ class InvIhpTb(Cell):
 
         return s
 
-    @generate
-    def sim_dc(self):
+    def _sim_dc(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s).op()
+        Simulator(s, batch=batch).op()
         return s
+
+    @generate
+    def sim_dc_batch(self):
+        return self._sim_dc(True)
+
+    @generate
+    def sim_dc_piped(self):
+        return self._sim_dc(False)
 
 class SineRC(Cell):
     @generate
@@ -476,11 +533,18 @@ class SineRC(Cell):
         helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 
-    @generate
-    def sim_ac(self):
+    def _sim_ac(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s).ac('dec', '10', '1', '1G')
+        Simulator(s, batch=batch).ac('dec', '10', '1', '1G')
         return s
+
+    @generate
+    def sim_ac_batch(self):
+        return self._sim_ac(True)
+
+    @generate
+    def sim_ac_piped(self):
+        return self._sim_ac(False)
 
 
 class PulsedRC(Cell):
@@ -512,11 +576,18 @@ class PulsedRC(Cell):
         helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 
-    @generate
-    def sim_tran(self):
+    def _sim_tran(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s).tran(R('5u'), R('250u'))
+        Simulator(s, batch=batch).tran(R('5u'), R('250u'))
         return s
+
+    @generate
+    def sim_tran_batch(self):
+        return self._sim_tran(True)
+
+    @generate
+    def sim_tran_piped(self):
+        return self._sim_tran(False)
 
 class SourceTb(Cell):
     demo_pwl_points = (
@@ -547,11 +618,18 @@ class SourceTb(Cell):
         helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 
-    @generate
-    def sim_tran(self):
+    def _sim_tran(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s).tran(R('5u'), R('250u'))
+        Simulator(s, batch=batch).tran(R('5u'), R('250u'))
         return s
+
+    @generate
+    def sim_tran_batch(self):
+        return self._sim_tran(True)
+
+    @generate
+    def sim_tran_piped(self):
+        return self._sim_tran(False)
 
 
 class VpwlTb(SourceTb):

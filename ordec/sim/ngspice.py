@@ -16,7 +16,7 @@ import tempfile
 import logging
 from contextlib import contextmanager
 from pathlib import Path
-from subprocess import Popen, PIPE, STDOUT
+import subprocess
 from typing import Iterator, NamedTuple, Optional, Literal
 
 from ..core.rational import Rational as R
@@ -107,9 +107,9 @@ def parse_raw(fn) -> SimArray:
 
             if l.startswith("\t"):
                 parts = l.split("\t")
-                if len(parts) != 4:
+                if len(parts) < 4:
                     raise ValueError(f"Malformed variable line in rawfile: {l!r}")
-                _, var_idx, var_name, var_unit = parts
+                _, var_idx, var_name = parts[0], parts[1], parts[2]
                 assert int(var_idx) == len(var_names)
                 var_names.append(var_name)
             else:
@@ -159,23 +159,95 @@ class NgspiceVector(NamedTuple):
     rest: str
 
 
+class CommandRecorder:
+    """Records commands for replay into .spiceinit.
+
+    Duck-type stand-in for Ngspice that captures command() calls.
+    Used with ngspice_setup_funcs to collect PDK setup commands
+    that go into the .spiceinit file for batch mode.
+    """
+
+    def __init__(self):
+        self.commands: list[str] = []
+
+    def command(self, cmd: str) -> str:
+        self.commands.append(cmd)
+        return ""
+
+
+def _ngspice_executable() -> str:
+    """Return the ngspice executable name for the current platform."""
+    if sys.platform == "win32" and shutil.which("ngspice_con"):
+        return "ngspice_con"
+    return "ngspice"
+
+
+def ngspice_batch(netlist: str, spiceinit_commands: list[str] | None = None,
+    no_auto_gnd: bool = True) -> SimArray:
+    """Run ngspice in batch mode and return simulation results.
+
+    Batch mode streams data to disk during simulation, keeping memory
+    usage constant regardless of result size. The netlist must contain
+    embedded analysis directives (.tran, .ac, .dc, .op).
+
+    Args:
+        netlist: Complete SPICE netlist with analysis directives.
+        spiceinit_commands: Extra commands for .spiceinit (from PDK
+            setup funcs).
+        no_auto_gnd: Disable ngspice auto-grounding of 'gnd' net.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmppath = Path(tmpdir)
+
+        # Write .spiceinit — ngspice reads it from the working directory.
+        init_lines = ["set filetype=binary"]
+        if no_auto_gnd:
+            init_lines.append("set no_auto_gnd")
+        if spiceinit_commands:
+            init_lines.extend(spiceinit_commands)
+        (tmppath / ".spiceinit").write_text("\n".join(init_lines) + "\n")
+
+        # Write netlist.
+        (tmppath / "netlist.sp").write_text(netlist)
+
+        exe = _ngspice_executable()
+        logger.debug("Running ngspice batch: %s", exe)
+        result = subprocess.run(
+            [exe, "-b", "-r", "sim.raw", "netlist.sp"],
+            cwd=tmpdir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+        stdout_text = result.stdout.decode("ascii", errors="replace")
+        logger.debug("ngspice batch stdout:\n%s", stdout_text)
+
+        check_errors(stdout_text)
+        if result.returncode != 0:
+            raise NgspiceError(
+                f"ngspice exited with code {result.returncode}:\n{stdout_text}")
+
+        rawfile = tmppath / "sim.raw"
+        if not rawfile.exists():
+            raise NgspiceError(
+                f"ngspice did not produce a rawfile:\n{stdout_text}")
+
+        return parse_raw(rawfile)
+
+
 class Ngspice:
+    """Interactive piped-mode ngspice wrapper.
+
+    Uses ``ngspice -p`` to keep a persistent process. All simulation
+    data accumulates in RAM, so this is not suitable for simulations
+    with very large results. For those, use ``ngspice_batch()`` instead.
+    """
     @classmethod
     @contextmanager
     def launch(cls):
-        # Choose the correct ngspice executable for the platform
-        if sys.platform == "win32" and shutil.which("ngspice_con"):
-            # On Windows, prefer ngspice_con if available, fall back to ngspice
-            ngspice_exe = "ngspice_con"
-        else:
-            ngspice_exe = "ngspice"
-
-        logger.debug(f"Using ngspice executable: {ngspice_exe}")
+        exe = _ngspice_executable()
+        logger.debug(f"Using ngspice executable: {exe}")
 
         with tempfile.TemporaryDirectory() as cwd_str:
-            p: Popen[bytes] = Popen(
-                [ngspice_exe, "-p"], stdin=PIPE, stdout=PIPE, stderr=STDOUT, cwd=cwd_str
-            )
+            p = subprocess.Popen([exe, "-p"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=cwd_str)
             logger.debug(f"Process started with PID: {p.pid}")
 
             try:
@@ -192,8 +264,8 @@ class Ngspice:
                 except (ProcessLookupError, BrokenPipeError, TimeoutError):
                     pass  # Process may have already terminated
 
-    def __init__(self, p: Popen, cwd: Path):
-        self.p: Popen[bytes] = p
+    def __init__(self, p: subprocess.Popen, cwd: Path):
+        self.p: subprocess.Popen[bytes] = p
         self.cwd = cwd
 
         self._configure_precision()
