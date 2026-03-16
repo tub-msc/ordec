@@ -194,7 +194,9 @@ const viewClassOf = {
             this.transform = d3.zoomIdentity;
             this.tooltip = document.createElement('div');
             this.tooltip.classList.add('schem-tooltip');
-            this.resContent.appendChild(this.tooltip);
+            this.coordsDisplay = document.createElement('div');
+            this.coordsDisplay.classList.add('schem-coords');
+            this.resContent.append(this.tooltip, this.coordsDisplay);
         }
         zoomed({transform}) {
             this.transform = transform;
@@ -204,6 +206,12 @@ const viewClassOf = {
             const tspans = textEl.querySelectorAll('tspan');
             if (tspans.length === 0) return textEl.textContent;
             return Array.from(tspans, t => t.textContent).join('\n');
+        }
+        _toSchemCoords(event) {
+            const ctm = this.svgNode.getScreenCTM().inverse();
+            const svgPt = new DOMPoint(event.clientX, event.clientY).matrixTransform(ctm);
+            const [gx, gy] = this.transform.invert([svgPt.x, svgPt.y]);
+            return [gx, this.yFlipOffset - gy];
         }
         _setupTooltips() {
             const tooltip = this.tooltip;
@@ -253,6 +261,8 @@ const viewClassOf = {
         }
         update(msgData) {
             const viewbox = msgData['viewbox'];
+            // Recover the Y-flip offset (uy+ly) from the viewBox
+            this.yFlipOffset = 2 * viewbox[1] + viewbox[3];
             const viewbox2 = [[viewbox[0], viewbox[1]], [viewbox[2], viewbox[3]]]
 
             const svg = d3.create("svg")
@@ -272,8 +282,19 @@ const viewClassOf = {
 
             svg.call(zoom.on("zoom", (x) => this.zoomed(x)));
 
-            this.resContent.replaceChildren(svg.node());
-            this.resContent.appendChild(this.tooltip);
+            this.svgNode = svg.node();
+            const coordsDisplay = this.coordsDisplay;
+            const self = this;
+            svg.on('mousemove', (event) => {
+                const [x, y] = self._toSchemCoords(event);
+                coordsDisplay.textContent = `x: ${Math.round(x)}  y: ${Math.round(y)}`;
+            });
+            svg.on('mouseleave', () => {
+                coordsDisplay.textContent = '';
+            });
+
+            this.resContent.replaceChildren(this.svgNode);
+            this.resContent.append(this.tooltip, this.coordsDisplay);
             this._setupTooltips();
         }
     },

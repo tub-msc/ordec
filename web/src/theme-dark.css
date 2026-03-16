@@ -23,6 +23,13 @@ body.theme-dark #toolbar select {
     color: #ccc;
     border-color: #555;
 }
+body.theme-dark #toolbar .item button:hover {
+    background-color: #444;
+}
+body.theme-dark #toolbar select:hover,
+body.theme-dark .resviewhead select:hover {
+    border-color: #888;
+}
 
 body.theme-dark #toolbar a {
     color: #8cb4ff;
@@ -30,6 +37,9 @@ body.theme-dark #toolbar a {
 
 body.theme-dark #theme-toggle {
     border-color: #555;
+}
+body.theme-dark #theme-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
 body.theme-dark .rescontent {
@@ -158,6 +168,11 @@ body.theme-dark .simplot-tooltip-x {
     border-bottom-color: #333;
 }
 
+body.theme-dark .schem-coords {
+    background-color: rgba(30, 30, 30, 0.85);
+    border-color: #555;
+    color: #FFF;
+}
 body.theme-dark .schem-tooltip {
     background-color: rgba(30, 30, 30, 0.95);
     border-color: #555;

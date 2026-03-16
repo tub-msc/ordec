@@ -44,6 +44,22 @@ body {
 #toolbar .spacer {
     flex-grow:1;
 }
+#toolbar .item button {
+    cursor: pointer;
+}
+#toolbar .item button:hover {
+    background-color: #ccc;
+}
+#toolbar a {
+    text-decoration: none;
+}
+#toolbar a:hover {
+    text-decoration: underline;
+}
+#toolbar select:hover,
+.resviewhead select:hover {
+    border-color: #888;
+}
 #theme-toggle {
     background: none;
     border: 1px solid #aaa;
@@ -52,6 +68,12 @@ body {
     font-size: 16px;
     padding: 0px 4px;
     line-height: 1.4;
+}
+#theme-toggle:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+.simplot-legend-item:hover {
+    opacity: 0.7;
 }
 .resview {
     display:flex;
@@ -132,6 +154,20 @@ svg .symbolOutline {
 }
 .schem-tooltip-params {
     display: block;
+}
+.schem-coords {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    padding: 2px 6px;
+    background-color: rgba(255, 255, 255, 0.85);
+    border: 1px solid #bbb;
+    border-radius: 3px;
+    font-family: 'Inconsolata', monospace;
+    font-size: 12px;
+    color: #555;
+    pointer-events: none;
+    z-index: 3;
 }
 canvas.layoutFit {
     display:block;
