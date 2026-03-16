@@ -1,6 +1,12 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+"""High-level simulation interface bridging ORDB and ngspice.
+
+HighlevelSim takes a SimHierarchy, netlists it, drives ngspice via the
+low-level Ngspice wrapper, and maps rawfile results back onto SimNet,
+SimPin and SimParam nodes."""
+
 from contextlib import contextmanager
 
 from ..core import *
@@ -8,7 +14,42 @@ from ..core.rational import R
 from ..core.schema import SimType
 from .ngspice import Ngspice
 from ..schematic.netlister import Netlister
-from .ngspice_common import parse_signal_name
+
+
+def parse_signal_name(name):
+    """Parse a rawfile-style ngspice signal name into (node_name, subname).
+
+    Returns (node_name, subname) where subname is None for voltage nodes,
+    or a string like "branch" / "is" for currents and device parameters.
+
+    Examples:
+        v(a)                -> ("a", None)
+        i(vgnd)             -> ("vgnd", "branch")
+        i(@m.xdut.mm2[is]) -> ("xdut.mm2", "is")
+        @m.xdut.mm2[is]    -> ("xdut.mm2", "is")
+    """
+    def strip_type_prefix(s):
+        """Strip single-letter SPICE device type prefix (e.g. 'm.' for
+        MOSFET, 'r.' for resistor) if present."""
+        if len(s) > 2 and s[1] == '.' and s[0].isalpha():
+            return s[2:]
+        return s
+
+    if name.startswith("v(") and name.endswith(")"):
+        return (name[2:-1], None)
+    if name.startswith("i(") and name.endswith(")"):
+        inner = name[2:-1]
+        if inner.startswith("@") and "[" in inner:
+            bracket = inner.index("[")
+            return (strip_type_prefix(inner[1:bracket]),
+                    inner[bracket+1:-1])
+        return (inner, "branch")
+    if name.startswith("@") and "[" in name:
+        bracket = name.index("[")
+        return (strip_type_prefix(name[1:bracket]),
+                name[bracket+1:-1])
+    return (name, None)
+
 
 class HighlevelSim:
     def __init__(self, simhier: SimHierarchy, enable_savecurrents: bool = True):

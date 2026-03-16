@@ -149,7 +149,7 @@ def test_ihp_mos_inv_vin5():
     assert h_5.o.voltage[0] == pytest.approx(0.00024556, abs=1e-5)
 
 def test_sky130_nmos_out_of_range():
-    from ordec.sim.ngspice_common import NgspiceError
+    from ordec.sim.ngspice import NgspiceError
     from ordec.lib import sky130
     from ordec.sim import HighlevelSim
 
