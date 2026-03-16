@@ -192,10 +192,64 @@ const viewClassOf = {
         constructor(resContent) {
             this.resContent = resContent;
             this.transform = d3.zoomIdentity;
+            this.tooltip = document.createElement('div');
+            this.tooltip.classList.add('schem-tooltip');
+            this.resContent.appendChild(this.tooltip);
         }
         zoomed({transform}) {
             this.transform = transform;
             this.g.attr("transform", transform);
+        }
+        _svgTextContent(textEl) {
+            const tspans = textEl.querySelectorAll('tspan');
+            if (tspans.length === 0) return textEl.textContent;
+            return Array.from(tspans, t => t.textContent).join('\n');
+        }
+        _setupTooltips() {
+            const tooltip = this.tooltip;
+            const svgTextContent = this._svgTextContent;
+
+            this.g.selectAll('.symbolOutline').each(function() {
+                const group = this.parentNode;
+                const cellNameEl = group.querySelector('.cellName');
+                const paramsEl = group.querySelector('.params');
+                if (!cellNameEl && !paramsEl) return;
+
+                const content = document.createDocumentFragment();
+                if (cellNameEl) {
+                    const span = document.createElement('span');
+                    span.className = 'schem-tooltip-cellname';
+                    span.textContent = svgTextContent(cellNameEl);
+                    content.appendChild(span);
+                }
+                if (paramsEl) {
+                    const text = svgTextContent(paramsEl);
+                    if (text) {
+                        const span = document.createElement('span');
+                        span.className = 'schem-tooltip-params';
+                        span.textContent = text;
+                        content.appendChild(span);
+                    }
+                }
+                if (content.childNodes.length === 0) return;
+
+                function positionTooltip(event) {
+                    const rect = tooltip.parentNode.getBoundingClientRect();
+                    tooltip.style.left = (event.clientX - rect.left + 12) + 'px';
+                    tooltip.style.top = (event.clientY - rect.top + 12) + 'px';
+                }
+
+                d3.select(group)
+                    .on('mouseenter', (event) => {
+                        tooltip.replaceChildren(content.cloneNode(true));
+                        tooltip.style.display = 'block';
+                        positionTooltip(event);
+                    })
+                    .on('mousemove', (event) => positionTooltip(event))
+                    .on('mouseleave', () => {
+                        tooltip.style.display = 'none';
+                    });
+            });
         }
         update(msgData) {
             const viewbox = msgData['viewbox'];
@@ -219,6 +273,8 @@ const viewClassOf = {
             svg.call(zoom.on("zoom", (x) => this.zoomed(x)));
 
             this.resContent.replaceChildren(svg.node());
+            this.resContent.appendChild(this.tooltip);
+            this._setupTooltips();
         }
     },
     report: class {

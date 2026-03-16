@@ -157,3 +157,12 @@ body.theme-dark .simplot-tooltip-x {
     color: #888;
     border-bottom-color: #333;
 }
+
+body.theme-dark .schem-tooltip {
+    background-color: rgba(30, 30, 30, 0.95);
+    border-color: #555;
+    color: #fff;
+}
+body.theme-dark .schem-tooltip-cellname + .schem-tooltip-params {
+    border-top-color: #555;
+}
