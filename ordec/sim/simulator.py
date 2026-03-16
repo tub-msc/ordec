@@ -7,8 +7,11 @@ Simulator takes a SimHierarchy, netlists it, drives ngspice via the
 low-level Ngspice wrapper, and maps rawfile results back onto SimNet,
 SimPin and SimParam nodes."""
 
+import logging
 from contextlib import contextmanager
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 from ..core import *
 from ..core.rational import R
@@ -115,6 +118,15 @@ class SimulatorBase:
                     pin_map = siminstance.eref.symbol.cell.ngspice_current_pins()
                     if subname in pin_map:
                         pin = getattr(siminstance.eref.symbol, pin_map[subname])
+                        existing = list(self.simhier.all(
+                            SimPin.instance_eref_idx.query((siminstance, pin))))
+                        if existing:
+                            # TODO: avoid duplicate signals in the rawfile
+                            # instead of skipping them here.
+                            logger.warning(
+                                "duplicate current signal %r for %s, skipping",
+                                fid, node_name)
+                            continue
                         simpin = self.simhier % SimPin(instance=siminstance, eref=pin)
                         simpin.current_field = fid
                     else:

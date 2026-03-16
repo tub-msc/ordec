@@ -7,7 +7,7 @@ from ordec.schematic.routing import schematic_routing
 from ordec.sim import Simulator
 
 from ordec.lib.generic_mos import Nmos, Inv
-from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, Vsin, Ipwl, Ipulse, Isin, Vpulse, Vpwl
+from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, Ind, Vsin, Ipwl, Ipulse, Isin, Vpulse, Vpwl
 from ordec.lib import sky130
 from ordec.lib import ihp130
 
@@ -439,6 +439,44 @@ class SineRC(Cell):
         s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.inp), pos=Vec2R(0, 5))
         s.res = SchemInstance(res.portmap(m=s.out, p=s.inp), pos=Vec2R(10, 8), orientation=West)
         s.cap = SchemInstance(cap.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
+
+        s.outline = schematic_routing(s)
+        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        return s
+
+    def _sim_ac(self, batch):
+        s = SimHierarchy.from_schematic(self.schematic)
+        Simulator(s, batch=batch).ac('dec', '10', '1', '1G')
+        return s
+
+    @generate
+    def sim_ac_batch(self):
+        return self._sim_ac(True)
+
+    @generate
+    def sim_ac_piped(self):
+        return self._sim_ac(False)
+
+
+class SineRL(Cell):
+    @generate
+    def schematic(self):
+        s = Schematic(cell=self)
+        s.vss = Net()
+        s.inp = Net()
+        s.out = Net()
+
+        ind = Ind(l=R("10m")).symbol
+        res = Res(r=R("100")).symbol
+
+        vsrc = Vsin(
+            ac=R(1), freq=R(1),
+        ).symbol
+
+        s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
+        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.inp), pos=Vec2R(0, 5))
+        s.res = SchemInstance(res.portmap(m=s.out, p=s.inp), pos=Vec2R(10, 8), orientation=West)
+        s.ind = SchemInstance(ind.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
 
         s.outline = schematic_routing(s)
         helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)

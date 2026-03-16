@@ -221,6 +221,15 @@ def test_sim_sinerc_ac(sim_batch):
     assert_simcolumn(h.out.voltage, expected, tol=0.02)
 
 
+def test_sim_sinerl_ac(sim_batch):
+    tb = lib_test.SineRL()
+    r = float(tb.schematic.res.symbol.cell.r)
+    l = float(tb.schematic.ind.symbol.cell.l)
+    h = tb.sim_ac_batch if sim_batch else tb.sim_ac_piped
+    expected = [1j * 2.0 * math.pi * f * l / (r + 1j * 2.0 * math.pi * f * l) for f in h.freq]
+    assert_simcolumn(h.out.voltage, expected, tol=0.02)
+
+
 def test_sim_pulsedrc_tran(sim_batch):
     tb = lib_test.PulsedRC()
     src = tb.schematic.vsrc.symbol.cell
