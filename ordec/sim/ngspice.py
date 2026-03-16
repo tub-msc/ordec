@@ -20,7 +20,7 @@ from pathlib import Path
 import subprocess
 from typing import Iterator, NamedTuple, Optional, Literal
 
-from ..core.rational import Rational as R
+from ..core.rational import R
 from ..core.simarray import SimArray, SimArrayField
 
 logger = logging.getLogger(__name__)

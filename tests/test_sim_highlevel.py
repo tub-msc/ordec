@@ -4,7 +4,7 @@
 import pytest
 import math
 from ordec.schematic.netlister import Netlister
-from ordec import Rational as R
+from ordec import R
 from .lib import sim as lib_test
 from ordec.core import *
 
