@@ -654,7 +654,7 @@ class SimHierarchy(SubgraphRoot):
     def from_schematic(cls, schematic: Schematic):
         """
         Create a simulation hierarchy from a schematic. The returned
-        SimHierarchy can be used to run simulations with HighlevelSim.
+        SimHierarchy can be used to run simulations with Simulator.
         """
         simhier = cls()
         simhier.schematic = schematic

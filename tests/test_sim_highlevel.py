@@ -110,10 +110,10 @@ def test_generic_mos_nmos_sourcefollower():
     assert lib_test.NmosSourceFollowerTb(vin=R(3)).sim_dc.o.voltage[0] == pytest.approx(2.2837721567191442, abs=1e-6)
 
 def test_op_save_params():
-    from ordec.sim import HighlevelSim
+    from ordec.sim import Simulator
     tb = lib_test.NmosSourceFollowerTb(vin=R(2))
     h = SimHierarchy.from_schematic(tb.schematic)
-    HighlevelSim(h).op(save_params=True)
+    Simulator(h).op(save_params=True)
     nmos = h.I0
     assert nmos.params['gm'].value[0] > 0
     assert nmos.params['gds'].value[0] == pytest.approx(0)
@@ -151,7 +151,7 @@ def test_ihp_mos_inv_vin5():
 def test_sky130_nmos_out_of_range():
     from ordec.sim.ngspice import NgspiceError
     from ordec.lib import sky130
-    from ordec.sim import HighlevelSim
+    from ordec.sim import Simulator
 
     s = Schematic()
     s.vss = Net()
@@ -161,7 +161,7 @@ def test_sky130_nmos_out_of_range():
 
     h = SimHierarchy.from_schematic(s)
     with pytest.raises(NgspiceError, match="circuit not parsed"):
-        HighlevelSim(h).op()
+        Simulator(h).op()
 
 def test_sim_pulsedrc_tran():
     tb = lib_test.PulsedRC()

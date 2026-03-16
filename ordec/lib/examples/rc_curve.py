@@ -1,6 +1,6 @@
 from ordec.core import *
 from ordec.schematic import helpers
-from ordec.sim import HighlevelSim
+from ordec.sim import Simulator
 from ordec.schematic.routing import schematic_routing
 from ordec.lib import Res, Cap, Gnd, Vpulse, Vsin
 
@@ -45,20 +45,20 @@ class RC(Cell):
     @generate(auto_refresh=False)
     def sim_dc(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        sim = HighlevelSim(s)
+        sim = Simulator(s)
         sim.op()
         return s
 
     @generate
     def sim_tran(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        sim = HighlevelSim(s)
+        sim = Simulator(s)
         sim.tran('10u', '50m')
         return s
 
     @generate
     def sim_ac(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        sim = HighlevelSim(s)
+        sim = Simulator(s)
         sim.ac('dec', '10', '1', '10M')
         return s

@@ -152,7 +152,7 @@ class SchematicModifier(ast.NodeTransformer):
         sim_assignment = convert_to_ast_assignment(
             convert_to_ast_name_store("sim"),
             convert_to_ast_call(
-                function_name=convert_to_ast_name_load("HighlevelSim"),
+                function_name=convert_to_ast_name_load("Simulator"),
                 args=[
                     convert_to_ast_attribute_load(convert_to_ast_name_load("self"), "schematic"),
                     convert_to_ast_name_load("node")

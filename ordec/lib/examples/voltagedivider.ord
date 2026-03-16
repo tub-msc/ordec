@@ -4,7 +4,7 @@ from ordec.core import *
 # Library imports
 from ordec.lib import Vdc, Res, Gnd
 # Simulation imports
-from ordec.sim import HighlevelSim
+from ordec.sim import Simulator
 
 cell VoltageDivider:
     viewgen symbol -> Symbol:
@@ -21,10 +21,10 @@ cell VoltageDivider:
     @generate
     def sim_dc(self):
         node = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(node).op()
+        Simulator(node).op()
         return node
 
     @generate
     def netlist(self) -> str:
         """Example of how to view SPICE netlist in web UI."""
-        return HighlevelSim(SimHierarchy.from_schematic(self.schematic)).netlister.out()
+        return Simulator(SimHierarchy.from_schematic(self.schematic)).netlister.out()

@@ -3,7 +3,7 @@
 
 """High-level simulation interface bridging ORDB and ngspice.
 
-HighlevelSim takes a SimHierarchy, netlists it, drives ngspice via the
+Simulator takes a SimHierarchy, netlists it, drives ngspice via the
 low-level Ngspice wrapper, and maps rawfile results back onto SimNet,
 SimPin and SimParam nodes."""
 
@@ -51,7 +51,7 @@ def parse_signal_name(name):
     return (name, None)
 
 
-class HighlevelSim:
+class Simulator:
     def __init__(self, simhier: SimHierarchy, enable_savecurrents: bool = True):
         self.simhier = simhier
         self.top = self.simhier.schematic

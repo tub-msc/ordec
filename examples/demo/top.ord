@@ -8,7 +8,7 @@ from ordec.lib import NoConn
 from counter_yosys import extlib, report_digital_design
 from ordec.lib.examples.vco_pseudodiff import Vco, VcoHalfStage, VcoRing, VcoTb
 from ordec.layout import helpers
-from ordec.sim import HighlevelSim
+from ordec.sim import Simulator
 from ordec.report import *
 
 @generate_func
@@ -34,7 +34,7 @@ def report_analog_design():
             continue
         rect_count += (vertex_count - 1)
 
-    netlist = HighlevelSim(SimHierarchy.from_schematic(Vco().schematic)).netlister.out()
+    netlist = Simulator(SimHierarchy.from_schematic(Vco().schematic)).netlister.out()
 
     return Report([
         Markdown("# Analog design report: Pseudo-differential voltage-controlled ring oscillator"),

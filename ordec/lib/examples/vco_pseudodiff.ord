@@ -12,7 +12,7 @@ from itertools import pairwise
 from ordec.core import *
 from ordec.lib.ihp130 import Nmos, Pmos, SG13G2
 from ordec.lib.base import Res, Cap, Gnd, Vdc, NoConn, Vpwl
-from ordec.sim import HighlevelSim
+from ordec.sim import Simulator
 from ordec.report import *
 from ordec.layout import makevias, SRouter
 
@@ -513,7 +513,7 @@ cell VcoTb:
         """Run sync transient simulation."""
 
         s = SimHierarchy.from_schematic(self.schematic)
-        sim = HighlevelSim(s)
+        sim = Simulator(s)
         sim.tran(R('10p'), R('30n'))
         return s
 

@@ -1,6 +1,6 @@
 from ordec.core import *
 from ordec.lib import Nmos, Pmos, Res, Vdc, Idc, Gnd
-from ordec.sim import HighlevelSim
+from ordec.sim import Simulator
 
 cell CurrentMirror:
     viewgen symbol -> Symbol:
@@ -24,5 +24,5 @@ cell CurrentMirror:
     @generate
     def sim_dc(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(s).op(save_params=True)
+        Simulator(s).op(save_params=True)
         return s
