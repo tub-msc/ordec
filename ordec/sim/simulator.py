@@ -13,7 +13,7 @@ from typing import Literal
 from ..core import *
 from ..core.rational import R
 from ..core.schema import SimType
-from .ngspice import Ngspice, CommandRecorder, ngspice_batch
+from .ngspice import Ngspice, ngspice_batch
 from ..schematic.netlister import Netlister
 
 
@@ -142,12 +142,12 @@ class SimulatorNgspiceBatch(SimulatorBase):
                 self.netlister.add(f".save @{device_name}[{param}]")
 
     def _run(self) -> SimArray:
-        recorder = CommandRecorder()
+        commands = []
         for func in self.netlister.ngspice_setup_funcs:
-            func(recorder)
+            commands.extend(func())
         return ngspice_batch(
             self.netlister.out(),
-            spiceinit_commands=recorder.commands,
+            spiceinit_commands=commands,
         )
 
     def op(self, save_params=False):
@@ -202,7 +202,8 @@ class SimulatorNgspicePiped(SimulatorBase):
     def _launch(self, save_params=False):
         with Ngspice.launch() as sim:
             for func in self.netlister.ngspice_setup_funcs:
-                func(sim)
+                for cmd in func():
+                    sim.command(cmd)
             sim.load_netlist(self.netlister.out())
             if save_params:
                 self._save_all_params(sim)

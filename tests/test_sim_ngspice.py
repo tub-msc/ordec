@@ -3,7 +3,7 @@
 
 import re
 import pytest
-from ordec.sim.ngspice import Ngspice, CommandRecorder, ngspice_batch
+from ordec.sim.ngspice import Ngspice, ngspice_batch
 from ordec.sim.ngspice import NgspiceError, NgspiceFatalError
 
 def test_ngspice_illegal_netlist_1():
@@ -62,13 +62,6 @@ def test_ngspice_op_no_auto_gnd():
     assert op['a'] == 2.0
     assert op['gnd'] == 1.0
 
-
-def test_command_recorder():
-    rec = CommandRecorder()
-    rec.command("set filetype=binary")
-    rec.command("source /some/path")
-    assert rec.commands == ["set filetype=binary", "source /some/path"]
-    assert rec.command("echo test") == ""
 
 
 def test_ngspice_batch_op():

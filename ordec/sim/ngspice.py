@@ -159,21 +159,6 @@ class NgspiceVector(NamedTuple):
     rest: str
 
 
-class CommandRecorder:
-    """Records commands for replay into .spiceinit.
-
-    Duck-type stand-in for Ngspice that captures command() calls.
-    Used with ngspice_setup_funcs to collect PDK setup commands
-    that go into the .spiceinit file for batch mode.
-    """
-
-    def __init__(self):
-        self.commands: list[str] = []
-
-    def command(self, cmd: str) -> str:
-        self.commands.append(cmd)
-        return ""
-
 
 def _ngspice_executable() -> str:
     """Return the ngspice executable name for the current platform."""

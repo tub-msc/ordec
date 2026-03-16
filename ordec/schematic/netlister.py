@@ -36,12 +36,11 @@ class Netlister:
         self.netlist_setup_funcs.add(func)
 
     def require_ngspice_setup(self, func):
-        """
-        Register a function to be called during simulation setup.
+        """Register a function that returns ngspice setup commands.
 
-        The function should accept a single argument: the Ngspice instance.
-        This is useful for PDK-specific setup commands that need to be
-        executed on the simulator instance rather than in the netlist.
+        The function takes no arguments and returns a list of command
+        strings. These are used for PDK-specific setup (e.g. loading
+        OSDI models) that cannot go in the netlist.
         """
         self.ngspice_setup_funcs.add(func)
 
