@@ -130,6 +130,7 @@ class SimulatorNgspiceBatch(SimulatorBase):
 
     def _save_all_params(self):
         """Add .save directives to the netlist for device parameters."""
+        self.netlister.add(".save all")
         for si in self.simhier.all(SimInstance):
             if si.schematic is not None:
                 continue
@@ -211,6 +212,7 @@ class SimulatorNgspicePiped(SimulatorBase):
 
     def _save_all_params(self, sim):
         """Issue ngspice save commands for all known device parameters."""
+        sim.command("save all")
         for si in self.simhier.all(SimInstance):
             if si.schematic is not None:
                 continue
