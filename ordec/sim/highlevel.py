@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from contextlib import contextmanager
-import time
 
 from ..core import *
 from ..core.rational import R
@@ -127,111 +126,6 @@ class HighlevelSim:
                 self._save_params(sim)
             sim_array = sim.dc(source_name, vstart, vstop, vstep)
         self._store_results(sim_array)
-
-    def _parse_timescale_factor(self, timescale: str) -> float:
-        if not isinstance(timescale, str) or not timescale.strip():
-            raise ValueError(
-                "timescale must be a non-empty string like '1us' or '10 ns'"
-            )
-
-        try:
-            ts_rational = R(timescale)
-        except Exception as e:
-            raise ValueError(f"Invalid timescale '{timescale}': {e}")
-
-        try:
-            timescale_seconds = float(ts_rational)
-        except Exception as e:
-            raise ValueError(f"Could not convert parsed timescale to float: {e}")
-
-        if timescale_seconds <= 0:
-            raise ValueError("Timescale must be greater than zero")
-        return 1.0 / timescale_seconds
-
-    def export_to_vcd(
-        self, filename="simulation.vcd", signal_names=None, timescale="1u"
-    ):
-        if self.simhier.sim_type is None:
-            raise ValueError("No simulation results available. Run a simulation first.")
-
-        if self.simhier.sim_type != SimType.TRAN:
-            raise ValueError(
-                f"VCD export only supported for transient simulations. Current simulation type: {self.simhier.sim_type}"
-            )
-
-        if not hasattr(self.simhier, "time") or not self.simhier.time:
-            raise ValueError("No time data available for VCD export")
-
-        # determine conversion factor from seconds to requested units
-        try:
-            time_to_units = self._parse_timescale_factor(timescale)
-        except ValueError as e:
-            raise ValueError(f"Invalid timescale: {e}")
-
-        try:
-            with open(filename, "w") as vcd_file:
-                # Header
-                vcd_file.write("$date\n")
-                vcd_file.write(f"   {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-                vcd_file.write("$end\n")
-                vcd_file.write("$version\n")
-                vcd_file.write("   ORDeC VCD Generator\n")
-                vcd_file.write("$end\n")
-                vcd_file.write(f"$timescale {timescale} $end\n")
-
-                # Collect signals with transient voltage data
-                signals_to_export = []
-                # limited set of single-char VCD identifiers
-                signal_chars = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"
-
-                for i, simnet in enumerate(self.simhier.all(SimNet)):
-                    base_name = simnet.full_path_str().split(".")[-1]
-
-                    if signal_names is not None and base_name not in signal_names:
-                        continue
-
-                    if simnet.voltage is not None:
-                        if i < len(signal_chars):
-                            ident = signal_chars[i]
-                        else:
-                            ident = f"sig{i}"
-                        signals_to_export.append(
-                            (base_name, ident, simnet.voltage)
-                        )
-
-                if not signals_to_export:
-                    raise ValueError(
-                        "No signals with transient voltage data found for VCD export"
-                    )
-
-                # Definitions
-                vcd_file.write("$scope module top $end\n")
-                for name, ident, _ in signals_to_export:
-                    vcd_file.write(f"$var real 64 {ident} {name} $end\n")
-                vcd_file.write("$upscope $end\n")
-                vcd_file.write("$enddefinitions $end\n")
-
-                # Initial values at time 0
-                vcd_file.write("#0\n")
-                for _, ident, voltage_data in signals_to_export:
-                    if voltage_data and len(voltage_data) > 0:
-                        # Represent real value with default float formatting
-                        vcd_file.write(f"r{voltage_data[0]} {ident}\n")
-
-                # Value changes at each time point, converted to requested timescale
-                time_data = self.simhier.time
-                for time_idx in range(1, len(time_data)):
-                    # convert seconds -> requested timescale integer units
-                    time_units = int(time_data[time_idx] * time_to_units)
-                    vcd_file.write(f"#{time_units}\n")
-                    for _, ident, voltage_data in signals_to_export:
-                        if len(voltage_data) > time_idx:
-                            vcd_file.write(f"r{voltage_data[time_idx]} {ident}\n")
-
-            return True
-
-        except Exception as e:
-            raise ValueError(f"Error generating VCD file: {e}")
 
     def get_component_netlist_name(self, component_instance):
         return self.netlister.name_hier_simobj(component_instance)
