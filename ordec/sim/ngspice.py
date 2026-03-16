@@ -7,6 +7,7 @@ Provides the Ngspice class for launching and controlling an ngspice process,
 running simulations (op, tran, ac, dc), and parsing binary rawfiles into
 SimArray results."""
 
+import mmap
 import re
 import signal
 import struct
@@ -88,17 +89,24 @@ def name_print_to_raw(name: str) -> str:
       return f"v({s})"
 
 
-def parse_raw(fn) -> SimArray:
+def parse_raw(fn, use_mmap=True) -> SimArray:
     """Parse a ngspice binary rawfile.
 
     Returns a SimArray whose fields carry name, dtype and quantity metadata.
     Real simulations (tran, op) yield float64 values; AC simulations yield
     complex128 values.
+
+    Args:
+        fn: Path to the rawfile.
+        use_mmap: If True (default), back the data with an mmap so the
+            OS pages in only the columns actually accessed. Falls back
+            to a plain read when False or when the file is empty.
     """
     info = {}
     var_names = []
 
-    with open(fn, "rb") as f:
+    f = open(fn, "rb")
+    try:
         while True:
             line = f.readline()
             if not line:
@@ -143,13 +151,29 @@ def parse_raw(fn) -> SimArray:
         record_size = field_size * len(var_names)
         expected_bytes = record_size * no_points
 
-        data = f.read(expected_bytes)
-        if len(data) != expected_bytes:
-            raise ValueError(
-                f"Expected {expected_bytes} bytes, got {len(data)}"
-            )
-
-    return SimArray(fields, data)
+        if use_mmap and expected_bytes > 0:
+            data_offset = f.tell()
+            mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+            f.close()
+            # Slicing mmap directly copies into bytes; memoryview gives
+            # a zero-copy slice that still references the mmap.
+            mv = memoryview(mm)[data_offset : data_offset + expected_bytes]
+            if len(mv) != expected_bytes:
+                raise ValueError(
+                    f"Expected {expected_bytes} bytes, got {len(mv)}"
+                )
+            return SimArray(fields, mv)
+        else:
+            data = f.read(expected_bytes)
+            if len(data) != expected_bytes:
+                raise ValueError(
+                    f"Expected {expected_bytes} bytes, got {len(data)}"
+                )
+            f.close()
+            return SimArray(fields, data)
+    except:
+        f.close()
+        raise
 
 
 class NgspiceVector(NamedTuple):
