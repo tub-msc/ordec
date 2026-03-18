@@ -5,7 +5,7 @@ from ordec.core import *
 from ordec.lib import Nmos, Pmos
 from ordec.lib import Gnd, Vdc
 # Simulation imports
-from ordec.sim import HighlevelSim
+from ordec.sim import Simulator
 
 cell Nand2:
     viewgen symbol -> Symbol:
@@ -71,5 +71,5 @@ cell Nand2Tb:
     @generate
     def sim_dc(self):
         node = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(node).op()
+        Simulator(node).op()
         return node

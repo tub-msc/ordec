@@ -5,7 +5,7 @@ from ordec.core import *
 from ordec.lib import Nmos, Res
 from ordec.lib import Gnd, Vdc
 # Simulation imports
-from ordec.sim import HighlevelSim
+from ordec.sim import Simulator
 
 cell DiffPair:
     viewgen symbol -> Symbol:
@@ -72,5 +72,5 @@ cell DiffPairTb:
     @generate
     def sim_dc(self):
         node = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(node).op()
+        Simulator(node).op()
         return node

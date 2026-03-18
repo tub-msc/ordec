@@ -3,8 +3,8 @@
 
 import re
 import pytest
-from ordec.sim.ngspice import Ngspice
-from ordec.sim.ngspice_common import NgspiceError, NgspiceFatalError
+from ordec.sim.ngspice import Ngspice, ngspice_batch
+from ordec.sim.ngspice import NgspiceError, NgspiceFatalError
 
 def test_ngspice_illegal_netlist_1():
     with Ngspice.launch() as sim:
@@ -43,11 +43,9 @@ def test_ngspice_op_no_auto_gnd():
     """
 
     def voltages(sim_array):
-        from ordec.sim.ngspice_common import parse_signal_name
-        return {node: sim_array.column(f.fid)[0]
+        return {f.fid[2:-1]: sim_array.column(f.fid)[0]
                 for f in sim_array.fields
-                for node, sub in [parse_signal_name(f.fid)]
-                if sub is None}
+                if f.fid.startswith("v(") and f.fid.endswith(")")}
 
     # Default behavior: net 'gnd' is automatically ground.
     with Ngspice.launch() as sim:
@@ -63,3 +61,45 @@ def test_ngspice_op_no_auto_gnd():
         op = voltages(sim.op())
     assert op['a'] == 2.0
     assert op['gnd'] == 1.0
+
+
+
+def test_ngspice_batch_op():
+    netlist = """.title batch op test
+V1 in 0 3
+R1 in a 1k
+R2 a 0 1k
+.op
+.end
+"""
+    sa = ngspice_batch(netlist)
+    voltages = {f.fid: sa.column(f.fid)[0]
+                for f in sa.fields if f.fid.startswith("v(")}
+    assert voltages['v(a)'] == pytest.approx(1.5, abs=1e-10)
+    assert voltages['v(in)'] == pytest.approx(3.0, abs=1e-10)
+
+
+def test_ngspice_batch_tran():
+    netlist = """.title batch tran test
+V1 in 0 1
+R1 in out 1k
+C1 out 0 1u
+.tran 10u 5m
+.end
+"""
+    sa = ngspice_batch(netlist)
+    time_col = sa.column("time")
+    assert len(time_col) > 1
+    out_col = sa.column("v(out)")
+    # RC charging: final value should approach 1V
+    assert out_col[-1] == pytest.approx(1.0, abs=0.01)
+
+
+def test_ngspice_batch_error():
+    netlist = """.title bad netlist
+x0 1 2 3 nonexistent_subckt
+.op
+.end
+"""
+    with pytest.raises(NgspiceError):
+        ngspice_batch(netlist)

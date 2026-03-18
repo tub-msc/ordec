@@ -105,7 +105,7 @@ class Ind(SimLeafCell):
     """Ideal inductor"""
     l = Parameter(R) #: Inductance in henry
     def ngspice_current_pins(self):
-        return {"i": "p"}
+        return {"branch": "p", "i": "p"}
 
     @generate
     def symbol(self) -> Symbol:

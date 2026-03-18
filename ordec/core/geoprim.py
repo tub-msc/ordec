@@ -5,7 +5,7 @@
 Geometric primitive types: vectors, matrices, orientations and rotations (D4)
 """
 from enum import Enum
-from .rational import Rational as R
+from .rational import R
 from public import public
 from collections import namedtuple
 

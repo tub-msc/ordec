@@ -1,6 +1,6 @@
 from ordec.core import *
 from ordec.schematic import helpers
-from ordec.sim import HighlevelSim
+from ordec.sim import Simulator
 from ordec.lib import Res, Gnd, Vdc
 
 class VoltageDivider(Cell):
@@ -31,5 +31,5 @@ class VoltageDivider(Cell):
     @generate(auto_refresh=False)
     def sim_dc(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(s).op()
+        Simulator(s).op()
         return s

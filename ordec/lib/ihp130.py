@@ -36,25 +36,19 @@ def pdk() -> PdkDict:
 
     return pdk
 
-def ngspice_setup(sim):
-    """Execute ngspice commands directly based on .spiceinit content"""
-
-    # Set ngspice behavior (from .spiceinit)
-    sim.command("set ngbehavior=hsa")
-    sim.command("set noinit")
-
-    # Set sourcepath (equivalent to setcs sourcepath commands in .spiceinit)
-    sim.command(f"setcs sourcepath = ( {pdk().ngspice_models_dir} {pdk().stdcell_spice_dir} {pdk().iocell_spice_dir} )")
-
-    # Load OSDI models using absolute paths resolved in Python
-    osdi_files = [
+def ngspice_setup():
+    """Return ngspice setup commands based on .spiceinit content."""
+    commands = [
+        "set ngbehavior=hsa",
+        "set noinit",
+        f"setcs sourcepath = ( {pdk().ngspice_models_dir} {pdk().stdcell_spice_dir} {pdk().iocell_spice_dir} )",
+    ]
+    for osdi_file in [
         pdk().ngspice_osdi_dir / "psp103_nqs.osdi",
         pdk().ngspice_osdi_dir / "r3_cmc.osdi",
-        pdk().ngspice_osdi_dir / "mosvar.osdi",
-    ]
-
-    for osdi_file in osdi_files:
-        sim.command(f"osdi '{check_file(osdi_file)}'")
+        pdk().ngspice_osdi_dir / "mosvar.osdi"]:
+        commands.append(f"osdi '{check_file(osdi_file)}'")
+    return commands
 
 def netlister_setup(netlister):
     if netlister.lvs:

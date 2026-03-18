@@ -4,10 +4,10 @@
 from ordec.core import *
 from ordec.schematic import helpers
 from ordec.schematic.routing import schematic_routing
-from ordec.sim import HighlevelSim
+from ordec.sim import Simulator
 
 from ordec.lib.generic_mos import Nmos, Inv
-from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, Vsin, Ipwl, Ipulse, Isin, Vpulse, Vpwl
+from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, Ind, Vsin, Ipwl, Ipulse, Isin, Vpulse, Vpwl
 from ordec.lib import sky130
 from ordec.lib import ihp130
 
@@ -49,11 +49,18 @@ class ResdivFlatTb(Cell):
 
         return s
 
-    @generate
-    def sim_dc(self):
+    def _sim_dc(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(s).op()
+        Simulator(s, batch=batch).op()
         return s
+
+    @generate
+    def sim_dc_batch(self):
+        return self._sim_dc(True)
+
+    @generate
+    def sim_dc_piped(self):
+        return self._sim_dc(False)
 
 class ResdivHier2(Cell):
     r = Parameter(R)
@@ -197,11 +204,18 @@ class ResdivHierTb(Cell):
         helpers.schem_check(s, add_conn_points=True)
         return s
 
-    @generate
-    def sim_dc(self):
+    def _sim_dc(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(s).op()
+        Simulator(s, batch=batch).op()
         return s
+
+    @generate
+    def sim_dc_batch(self):
+        return self._sim_dc(True)
+
+    @generate
+    def sim_dc_piped(self):
+        return self._sim_dc(False)
 
 class NmosSourceFollowerTb(Cell):
     """Nmos (generic_mos) source follower with optional parameter vin."""
@@ -244,61 +258,32 @@ class NmosSourceFollowerTb(Cell):
 
         return s
 
-    @generate
-    def sim_dc(self):
+    def _sim_dc(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(s).op()
+        Simulator(s, batch=batch).op(save_params=True)
         return s
+
+    @generate
+    def sim_dc_batch(self):
+        return self._sim_dc(True)
+
+    @generate
+    def sim_dc_piped(self):
+        return self._sim_dc(False)
 
 class InvTb(Cell):
-    vin = Parameter(R, optional=True, default=R(0))
 
-    @generate
-    def schematic(self):
-        s = Schematic(cell=self)
-        s.vdd = Net()
-        s.i = Net()
-        s.o = Net()
-        s.vss = Net()
-        vin = self.vin
+    def add_inv_instance(self, s) -> R:
+        """Add an inverter instance (i_inv) to the schematic.
 
-        s.I0 = SchemInstance(
-            Inv().symbol.portmap(vdd=s.vdd, vss=s.vss, a=s.i, y=s.o), pos=Vec2R(11, 9)
+        Returns:
+            Supply voltage for the inverter.
+        """
+        sym_inv = Inv().symbol
+        s.i_inv = SchemInstance(
+            sym_inv.portmap(vdd=s.vdd, vss=s.vss, a=s.i, y=s.o), pos=Vec2R(11, 9)
         )
-        s.I1 = SchemInstance(NoConn().symbol.portmap(a=s.o), pos=Vec2R(16, 9))
-        s.I2 = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(11, 0))
-        s.I3 = SchemInstance(
-            Vdc(dc=R("5")).symbol.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 6)
-        )
-        s.I4 = SchemInstance(
-            Vdc(dc=vin).symbol.portmap(m=s.vss, p=s.i), pos=Vec2R(5, 6)
-        )
-
-        s.outline = schematic_routing(s)
-
-        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
-
-        return s
-
-    @generate
-    def sim_dc(self):
-        s = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(s).op()
-        return s
-
-    @generate
-    def sim_dc_sweep(self):
-        s = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(s).dc_sweep(
-            self.schematic.I4,
-            R(0),
-            R(self.schematic.I3.symbol.cell.dc),
-            251,
-        )
-        return s
-
-class InvSkyTb(Cell):
-    vin = Parameter(R, optional=True, default=R(0))
+        return R("5")
 
     @generate
     def schematic(self):
@@ -309,24 +294,20 @@ class InvSkyTb(Cell):
         s.i_ac = Net()
         s.o = Net()
         s.vss = Net()
-        vin = self.vin
 
-        sym_inv = sky130.Inv().symbol
-        sym_nc = NoConn().symbol
-        sym_gnd = Gnd().symbol
-        sym_vdc_vdd = Vdc(dc=R("5")).symbol
-        sym_vdc_in = Vdc(dc=vin).symbol
-        sym_vac_in = Vsin(ac=R(1), freq=R("1e6")).symbol
+        vdd = self.add_inv_instance(s)
 
-        s.i_inv = SchemInstance(
-            sym_inv.portmap(vdd=s.vdd, vss=s.vss, a=s.i, y=s.o), pos=Vec2R(11, 9)
+        s.i_nc = SchemInstance(NoConn().symbol.portmap(a=s.o), pos=Vec2R(16, 9))
+        s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(11, 0))
+        s.i_vdd = SchemInstance(
+            Vdc(dc=vdd).symbol.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 6)
         )
-        s.i_nc = SchemInstance(sym_nc.portmap(a=s.o), pos=Vec2R(16, 9))
-
-        s.i_gnd = SchemInstance(sym_gnd.portmap(p=s.vss), pos=Vec2R(11, 0))
-        s.i_vdd = SchemInstance(sym_vdc_vdd.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 6))
-        s.i_in = SchemInstance(sym_vdc_in.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6))
-        s.i_in_ac = SchemInstance(sym_vac_in.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12))
+        s.i_in = SchemInstance(
+            Vdc(dc=R(0)).symbol.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
+        )
+        s.i_in_ac = SchemInstance(
+            Vsin(ac=R(1), freq=R("1e6")).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
+        )
 
         s.outline = Rect4R(lx=0, ly=0, ux=20, uy=14)
 
@@ -334,11 +315,32 @@ class InvSkyTb(Cell):
 
         return s
 
-    @generate
-    def sim_dc(self):
+    def _sim_dc(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(s).op()
+        Simulator(s, batch=batch).dc_sweep(
+            self.schematic.i_in,
+            R(0),
+            R(self.schematic.i_vdd.symbol.cell.dc),
+            251,
+        )
         return s
+
+    @generate
+    def sim_dc_batch(self):
+        return self._sim_dc(True)
+
+    @generate
+    def sim_dc_piped(self):
+        return self._sim_dc(False)
+
+class InvSkyTb(InvTb):
+
+    def add_inv_instance(self, s):
+        sym_inv = sky130.Inv().symbol
+        s.i_inv = SchemInstance(
+            sym_inv.portmap(vdd=s.vdd, vss=s.vss, a=s.i, y=s.o), pos=Vec2R(11, 9)
+        )
+        return R("5")
 
 class IhpInv(Cell):
     @generate
@@ -409,48 +411,14 @@ class IhpInv(Cell):
         return s
 
 
-class InvIhpTb(Cell):
-    vin = Parameter(R, optional=True, default=R(0))
+class InvIhpTb(InvTb):
 
-    @generate
-    def schematic(self):
-        s = Schematic(cell=self)
-
-        s.vdd = Net()
-        s.i = Net()
-        s.i_ac = Net()
-        s.o = Net()
-        s.vss = Net()
-        vin = self.vin
-
+    def add_inv_instance(self, s):
         sym_inv = IhpInv().symbol
-        sym_nc = NoConn().symbol
-        sym_gnd = Gnd().symbol
-        sym_vdc_vdd = Vdc(dc=R("5")).symbol
-        sym_vdc_in = Vdc(dc=vin).symbol
-        sym_vac_in = Vsin(ac=R(1), freq=R("1e6")).symbol
-
         s.i_inv = SchemInstance(
             sym_inv.portmap(vdd=s.vdd, vss=s.vss, a=s.i, y=s.o), pos=Vec2R(11, 9)
         )
-        s.i_nc = SchemInstance(sym_nc.portmap(a=s.o), pos=Vec2R(16, 9))
-
-        s.i_gnd = SchemInstance(sym_gnd.portmap(p=s.vss), pos=Vec2R(11, 0))
-        s.i_vdd = SchemInstance(sym_vdc_vdd.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 6))
-        s.i_in = SchemInstance(sym_vdc_in.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6))
-        s.i_in_ac = SchemInstance(sym_vac_in.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12))
-
-        s.outline = Rect4R(lx=0, ly=0, ux=20, uy=14)
-
-        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
-
-        return s
-
-    @generate
-    def sim_dc(self):
-        s = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(s).op()
-        return s
+        return R("5")
 
 class SineRC(Cell):
     @generate
@@ -476,11 +444,56 @@ class SineRC(Cell):
         helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 
-    @generate
-    def sim_ac(self):
+    def _sim_ac(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(s).ac('dec', '10', '1', '1G')
+        Simulator(s, batch=batch).ac('dec', '10', '1', '1G')
         return s
+
+    @generate
+    def sim_ac_batch(self):
+        return self._sim_ac(True)
+
+    @generate
+    def sim_ac_piped(self):
+        return self._sim_ac(False)
+
+
+class SineRL(Cell):
+    @generate
+    def schematic(self):
+        s = Schematic(cell=self)
+        s.vss = Net()
+        s.inp = Net()
+        s.out = Net()
+
+        ind = Ind(l=R("10m")).symbol
+        res = Res(r=R("100")).symbol
+
+        vsrc = Vsin(
+            ac=R(1), freq=R(1),
+        ).symbol
+
+        s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
+        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.inp), pos=Vec2R(0, 5))
+        s.res = SchemInstance(res.portmap(m=s.out, p=s.inp), pos=Vec2R(10, 8), orientation=West)
+        s.ind = SchemInstance(ind.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
+
+        s.outline = schematic_routing(s)
+        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        return s
+
+    def _sim_ac(self, batch):
+        s = SimHierarchy.from_schematic(self.schematic)
+        Simulator(s, batch=batch).ac('dec', '10', '1', '1G')
+        return s
+
+    @generate
+    def sim_ac_batch(self):
+        return self._sim_ac(True)
+
+    @generate
+    def sim_ac_piped(self):
+        return self._sim_ac(False)
 
 
 class PulsedRC(Cell):
@@ -512,11 +525,18 @@ class PulsedRC(Cell):
         helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 
-    @generate
-    def sim_tran(self):
+    def _sim_tran(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(s).tran(R('5u'), R('250u'))
+        Simulator(s, batch=batch).tran(R('5u'), R('250u'))
         return s
+
+    @generate
+    def sim_tran_batch(self):
+        return self._sim_tran(True)
+
+    @generate
+    def sim_tran_piped(self):
+        return self._sim_tran(False)
 
 class SourceTb(Cell):
     demo_pwl_points = (
@@ -547,11 +567,18 @@ class SourceTb(Cell):
         helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 
-    @generate
-    def sim_tran(self):
+    def _sim_tran(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(s).tran(R('5u'), R('250u'))
+        Simulator(s, batch=batch).tran(R('5u'), R('250u'))
         return s
+
+    @generate
+    def sim_tran_batch(self):
+        return self._sim_tran(True)
+
+    @generate
+    def sim_tran_piped(self):
+        return self._sim_tran(False)
 
 
 class VpwlTb(SourceTb):

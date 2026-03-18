@@ -98,9 +98,23 @@ class SimArray(tuple):
     def __new__(cls, fields, data):
         if not isinstance(fields, tuple):
             fields = tuple(fields)
-        if not isinstance(data, bytes):
+        if not isinstance(data, (bytes, memoryview)):
             data = bytes(data)
         return tuple.__new__(cls, (fields, data))
+
+    def __hash__(self):
+        """Hash based on fields and data length only.
+
+        Avoids reading the full data buffer, which would defeat the
+        purpose of mmap-backed storage. Collisions between arrays with
+        identical schemas and record counts are resolved by __eq__.
+        """
+        return hash((self.fields, len(self.data)))
+
+    def __eq__(self, other):
+        if not isinstance(other, SimArray):
+            return NotImplemented
+        return tuple.__eq__(self, other)
 
     @property
     def fields(self):

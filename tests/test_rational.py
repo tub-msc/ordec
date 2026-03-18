@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec import Rational as R
+from ordec import R
 from fractions import Fraction
 
 def test_str_to_rational():

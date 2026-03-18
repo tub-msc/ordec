@@ -2,7 +2,7 @@ from ordec.core import *
 from ordec.lib.base import Res, Cap, Vdc, Vsin, Gnd, Idc
 from ordec.lib.ihp130 import Nmos, Pmos
 from ordec.ord2.context import schem_check
-from ordec.sim import HighlevelSim
+from ordec.sim import Simulator
 from ordec.report import *
 
 cell Amp:
@@ -46,13 +46,13 @@ cell AmpTb:
     @generate
     def sim_ac(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(s).ac('dec', '10', '1M', '1G')
+        Simulator(s).ac('dec', '10', '1M', '1G')
         return s
 
     @generate
     def sim_tran(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        HighlevelSim(s).tran(R('1n'), R('1u'))
+        Simulator(s).tran(R('1n'), R('1u'))
         return s
 
     @generate
