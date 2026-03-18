@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from ordec.core import *
-from ordec.schematic import helpers
+from ordec.schematic import schem_check, symbol_place_pins
 from ordec.schematic import schematic_routing
 from ordec.sim import Simulator
 
@@ -44,7 +44,7 @@ class ResdivFlatTb(Cell):
 
         s.outline = Rect4R(lx=0, ly=0, ux=9, uy=21)
 
-        helpers.schem_check(s, add_conn_points=True)
+        schem_check(s, add_conn_points=True)
 
         return s
 
@@ -71,7 +71,7 @@ class ResdivHier2(Cell):
         s.t = Pin(pintype=PinType.Inout, align=North)
         s.r = Pin(pintype=PinType.Inout, align=East)
         s.b = Pin(pintype=PinType.Inout, align=South)
-        helpers.symbol_place_pins(s, vpadding=2, hpadding=2)
+        symbol_place_pins(s, vpadding=2, hpadding=2)
 
         return s
 
@@ -103,7 +103,7 @@ class ResdivHier2(Cell):
         s.m % SchemWire(vertices=[Vec2R(2, 6), Vec2R(5, 6)])
         s.r % SchemWire(vertices=[Vec2R(9, 6), Vec2R(10, 6)])
 
-        helpers.schem_check(s, add_conn_points=True)
+        schem_check(s, add_conn_points=True)
         return s
 
 
@@ -119,7 +119,7 @@ class ResdivHier1(Cell):
         s.inputs.t = Pin(pintype=PinType.Inout, align=North)
         s.outputs.r = Pin(pintype=PinType.Inout, align=East)
         s.inputs.b = Pin(pintype=PinType.Inout, align=South)
-        helpers.symbol_place_pins(s, vpadding=2, hpadding=2)
+        symbol_place_pins(s, vpadding=2, hpadding=2)
 
         return s
 
@@ -162,7 +162,7 @@ class ResdivHier1(Cell):
         s.br % SchemWire(vertices=[Vec2R(9, 2), Vec2R(12, 2), Vec2R(12, 3)])
         s.r % SchemWire(vertices=[Vec2R(14, 5), Vec2R(15, 5)])
 
-        helpers.schem_check(s, add_conn_points=True)
+        schem_check(s, add_conn_points=True)
         return s
 
 
@@ -200,7 +200,7 @@ class ResdivHierTb(Cell):
         s.t % SchemWire(vertices=[Vec2R(2, 10), Vec2R(2, 9), Vec2R(7, 9), Vec2R(7, 5), Vec2R(7, 4)])
         s.r % SchemWire(vertices=[Vec2R(9, 2), Vec2R(10, 2)])
 
-        helpers.schem_check(s, add_conn_points=True)
+        schem_check(s, add_conn_points=True)
         return s
 
     def _sim_dc(self, batch):
@@ -253,7 +253,7 @@ class NmosSourceFollowerTb(Cell):
 
         s.outline = Rect4R(lx=0, ly=0, ux=16, uy=22)
 
-        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        schem_check(s, add_conn_points=True, add_terminal_taps=True)
 
         return s
 
@@ -310,7 +310,7 @@ class InvTb(Cell):
 
         s.outline = Rect4R(lx=0, ly=0, ux=20, uy=14)
 
-        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        schem_check(s, add_conn_points=True, add_terminal_taps=True)
 
         return s
 
@@ -406,7 +406,7 @@ class IhpInv(Cell):
 
         s.outline = Rect4R(lx=0, ly=1, ux=10, uy=13)
 
-        helpers.schem_check(s, add_conn_points=True)
+        schem_check(s, add_conn_points=True)
         return s
 
 
@@ -440,7 +440,7 @@ class SineRC(Cell):
         s.cap = SchemInstance(cap.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
 
         s.outline = schematic_routing(s)
-        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 
     def _sim_ac(self, batch):
@@ -478,7 +478,7 @@ class SineRL(Cell):
         s.ind = SchemInstance(ind.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
 
         s.outline = schematic_routing(s)
-        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 
     def _sim_ac(self, batch):
@@ -521,7 +521,7 @@ class PulsedRC(Cell):
         s.cap = SchemInstance(cap.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
 
         s.outline = schematic_routing(s)
-        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 
     def _sim_tran(self, batch):
@@ -563,7 +563,7 @@ class SourceTb(Cell):
         s.res = SchemInstance(res.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
 
         s.outline = schematic_routing(s)
-        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 
     def _sim_tran(self, batch):

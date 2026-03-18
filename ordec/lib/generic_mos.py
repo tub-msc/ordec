@@ -4,7 +4,7 @@
 from public import public
 
 from ..core import *
-from ..schematic import helpers
+from ..schematic import spice_params, schem_check, symbol_place_pins
  
 def setup_generic_mos(netlister):
     vt0 = 0.4
@@ -39,7 +39,7 @@ class Mos(SimLeafCell):
             netlister.name_obj(inst, prefix="m"),
             netlister.portmap(inst, pins),
             self.model_name,
-            *helpers.spice_params({
+            *spice_params({
                 'l': self.l,
                 'w': self.w,
             }))
@@ -140,7 +140,7 @@ class Inv(Cell):
 
         s.outline = Rect4R(lx=0, ly=1, ux=10, uy=13)
 
-        helpers.schem_check(s, add_conn_points=True)
+        schem_check(s, add_conn_points=True)
         return s
 
 @public
@@ -153,7 +153,7 @@ class Ringosc(Cell):
         s.vss = Pin(pintype=PinType.Inout, align=South)
         s.y = Pin(pintype=PinType.Out, align=East)
 
-        helpers.symbol_place_pins(s, vpadding=2, hpadding=2)
+        symbol_place_pins(s, vpadding=2, hpadding=2)
         return s
 
     @generate
@@ -189,7 +189,7 @@ class Ringosc(Cell):
         s.vdd % SchemWire(vertices=[Vec2R(6, 7), Vec2R(6, 6)])
         s.vdd % SchemWire(vertices=[Vec2R(12, 7), Vec2R(12, 6)])
 
-        helpers.schem_check(s, add_conn_points=True)
+        schem_check(s, add_conn_points=True)
         return s
 
 @public

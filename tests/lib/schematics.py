@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from ordec.core import *
-from ordec.schematic import helpers
+from ordec.schematic import symbol_place_pins, schem_check
 from ordec.lib.generic_mos import Or2, Nmos
 from ordec.lib import Res
 
@@ -45,7 +45,7 @@ class PortAlignTest(Cell):
         s.south = Pin(pintype=PinType.In, align=South)
         s.west = Pin(pintype=PinType.In, align=West)
         s.east = Pin(pintype=PinType.In, align=East)
-        helpers.symbol_place_pins(s)
+        symbol_place_pins(s)
 
         return s
 
@@ -96,7 +96,7 @@ class DFF(Cell):
         s.d = Pin(pintype=PinType.In, align=West)
         s.q = Pin(pintype=PinType.Out, align=East)
         s.clk = Pin(pintype=PinType.In, align=West)
-        helpers.symbol_place_pins(s, vpadding=2, hpadding=3)
+        symbol_place_pins(s, vpadding=2, hpadding=3)
 
         return s
 
@@ -116,7 +116,7 @@ class MultibitReg_Arrays(Cell):
             s.d[i] = Pin(pintype=PinType.In, align=West)
             s.q[i] = Pin(pintype=PinType.Out, align=East)
         s.clk = Pin(pintype=PinType.In, align=West)
-        helpers.symbol_place_pins(s)
+        symbol_place_pins(s)
 
         return s
 
@@ -156,7 +156,7 @@ class MultibitReg_Arrays(Cell):
 
         s.outline = Rect4R(lx=0, ly=0, ux=10, uy=2 + 8 * self.bits)
 
-        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        schem_check(s, add_conn_points=True, add_terminal_taps=True)
 
         return s
 
@@ -176,7 +176,7 @@ class MultibitReg_ArrayOfStructs(Cell):
             s.bit[i].d = Pin(pintype=PinType.In, align=West)
             s.bit[i].q = Pin(pintype=PinType.Out, align=East)
         s.clk = Pin(pintype=PinType.In, align=West)
-        helpers.symbol_place_pins(s)
+        symbol_place_pins(s)
 
         return s
 
@@ -199,7 +199,7 @@ class NetNamingTest(Cell):
         s.c = Pin(pintype=PinType.Inout, align=West)
         s.d = Pin(pintype=PinType.Inout, align=West)
         
-        helpers.symbol_place_pins(s, vpadding=2, hpadding=2)
+        symbol_place_pins(s, vpadding=2, hpadding=2)
         return s
 
     @generate
@@ -222,7 +222,7 @@ class NetNamingTest(Cell):
         
         s.i0 = SchemInstance(Res('1k').symbol.portmap(m=a, p=s.b), pos=Vec2R(4, 2))
         s.i2 = SchemInstance(Res('1k').symbol.portmap(m=c, p=s.d), pos=Vec2R(9, 2))
-        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 
 
@@ -242,7 +242,7 @@ class MultibitReg_StructOfArrays(Cell):
             s.data.d[i] = Pin(pintype=PinType.In, align=West)
             s.data.q[i] = Pin(pintype=PinType.Out, align=East)
         s.clk = Pin(pintype=PinType.In, align=West)
-        helpers.symbol_place_pins(s)
+        symbol_place_pins(s)
 
         return s
 
@@ -262,7 +262,7 @@ class TestNmosInv(Cell):
         s.vss = Pin(pintype=PinType.Inout, align=South)
         s.a = Pin(pintype=PinType.In, align=West)
         s.y = Pin(pintype=PinType.Out, align=East)
-        helpers.symbol_place_pins(s)
+        symbol_place_pins(s)
 
         return s
 
@@ -378,7 +378,7 @@ class TestNmosInv(Cell):
             s.y % SchemConnPoint(pos=Vec2R(4, 7))
 
         s.outline = Rect4R(lx=0, ly=1, ux=10, uy=13)
-        helpers.schem_check(
+        schem_check(
             s,
             add_conn_points=self.add_conn_points,
             add_terminal_taps=self.add_terminal_taps,

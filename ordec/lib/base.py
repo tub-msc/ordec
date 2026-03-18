@@ -6,7 +6,6 @@ import math
 from public import public
 
 from ..core import *
-from ..schematic import helpers
 
 # Passives
 # ========

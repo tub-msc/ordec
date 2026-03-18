@@ -6,8 +6,9 @@ from contextvars import ContextVar, Token
 
 # ordec imports
 from ..core import *
-from ..schematic import schematic_routing, adjust_outline_initial
-from ..schematic import helpers
+from ..schematic import schematic_routing, adjust_outline_initial, symbol_place_pins, resolve_instances
+from ..schematic import schem_check as _schem_check
+from ..schematic.helpers import recursive_setitem, recursive_getitem
 
 _ctx_var = ContextVar("ctx", default=None)
 class _CtxWrapper:
@@ -49,12 +50,12 @@ class OrdContext:
 
     def add(self, name_tuple, ref):
         """ Add a value to the current context"""
-        helpers.recursive_setitem(self.root, name_tuple, ref)
-        return helpers.recursive_getitem(self.root, name_tuple)
+        recursive_setitem(self.root, name_tuple, ref)
+        return recursive_getitem(self.root, name_tuple)
 
     def add_port(self, name_tuple):
         """ Add a port to the current context"""
-        pin = helpers.recursive_getitem(self.root.symbol, name_tuple)
+        pin = recursive_getitem(self.root.symbol, name_tuple)
         subgraph_root = self.root
         while not isinstance(subgraph_root, SubgraphRoot):
             subgraph_root = subgraph_root.parent
@@ -63,7 +64,7 @@ class OrdContext:
 
     def symbol_postprocess(self):
         """ Postprocess call when returning from symbol"""
-        helpers.symbol_place_pins(self.root, vpadding=2, hpadding=2)
+        symbol_place_pins(self.root, vpadding=2, hpadding=2)
         return self.root
 
     def layout_postprocess(self):
@@ -72,13 +73,13 @@ class OrdContext:
 
     def schematic_postprocess(self):
         """ Postprocess call when returning from schematic"""
-        helpers.resolve_instances(self.root)
+        resolve_instances(self.root)
         if self._run_routing:
             self.root.outline = schematic_routing(self.root)
         else:
             self.root.outline = adjust_outline_initial(self.root)
         if self._run_schem_check:
-            helpers.schem_check(self.root, add_conn_points=True, add_terminal_taps=True)
+            _schem_check(self.root, add_conn_points=True, add_terminal_taps=True)
         return self.root
 
 def routing(enabled=True):
