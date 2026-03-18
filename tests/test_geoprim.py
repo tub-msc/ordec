@@ -1,8 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.core.geoprim import *
-from ordec.core.rational import R
+from ordec.core import *
 import pytest
 
 def test_D4():

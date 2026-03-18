@@ -8,7 +8,6 @@ from abc import ABC, abstractmethod
 import numpy as np
 from .geoprim import *
 from .ordb import Attr, MutableSubgraph
-from .geoprim import TD4, Vec2Generic, Rect4Generic
 from .rational import *
 
 class ConstrainableAttrPlaceholder(ABC):

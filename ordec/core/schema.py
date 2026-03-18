@@ -910,7 +910,7 @@ class Layout(SubgraphRoot):
     ref_layers = SubgraphRef(LayerStack, optional=False) #: All .layer attributes of nodes in this subgraph reference this LayerStack.
 
     def webdata(self):
-        from ..layout import webdata
+        from ..layout.webdata import webdata
         return webdata(self)
         #from ..render import render
         #return render(self).webdata()
@@ -1011,7 +1011,6 @@ class LayoutRect(Node):
     rect = ConstrainableAttr(Rect4I, factory=coerce_tuple(Rect4I, 4),
         placeholder=Rect4LinearTerm)
 
-@public
 class LayoutInstanceSubcursor(tuple):
     """Cursor to go through layout instances, transforming coordinates."""
     def __repr__(self):

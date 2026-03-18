@@ -163,7 +163,7 @@ def write_gds(layout: Layout, file: IO[bytes], directory: Optional[Directory] = 
     
 
 @public
-def gds_str(file: IO[bytes]) -> str:
+def gds_text(file: IO[bytes]) -> str:
     """
     Reads GDS data from file-like object 'file' and returns text
     representation. Used mainly for testing.
@@ -192,23 +192,3 @@ def gds_str(file: IO[bytes]) -> str:
         if r.tag in (tags.BGNLIB, tags.BGNSTR, tags.BGNEXTN, tags.PATH, tags.BOX, tags.SREF, tags.AREF, tags.TEXT, tags.BOUNDARY, tags.NODE):
             level += 1
     return '\n'.join(lines)
-
-@public
-def gds_str_from_file(fn: str) -> str:
-    """
-    Opens given GDS filename and returns text representation.
-    Used mainly for testing.
-    """
-    with open(fn, 'rb') as f:
-        return gds_str(f)
-
-@public
-def gds_str_from_layout(layout: Layout) -> str:
-    """
-    Converts given layout into GDS data (using write_gds) and returns text
-    representation. Used mainly for testing.
-    """
-    gds_out = io.BytesIO()
-    write_gds(layout, gds_out)
-    gds_out.seek(0)
-    return gds_str(gds_out)

@@ -8,7 +8,7 @@ import uuid
 import ast
 
 #ordec imports
-from ..ord1.ast_conversion import convert_to_ast_call, convert_to_ast_class_function, convert_to_ast_name_load, \
+from .ast_conversion import convert_to_ast_call, convert_to_ast_class_function, convert_to_ast_name_load, \
     convert_to_ast_function_def, convert_to_ast_assignment, convert_to_ast_name_store, convert_to_ast_attribute_load, \
     convert_to_ast_attribute_store, convert_to_ast_subscript_store, convert_to_ast_constant, convert_to_ast_tuple_load, \
     convert_to_ast_expr, convert_to_ast_for_loop, convert_to_ast_bin_op, convert_to_ast_unary_op, \

@@ -1,5 +1,6 @@
 from ordec.core import *
-from ordec.lib import Nmos, Pmos, Res, Vdc, Idc, Gnd
+from ordec.lib.generic_mos import Nmos, Pmos
+from ordec.lib import Res, Vdc, Idc, Gnd
 from ordec.sim import Simulator
 
 cell CurrentMirror:

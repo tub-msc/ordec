@@ -10,8 +10,8 @@ instead.
 import pytest
 from ordec.core import *
 from .lib import schematics as lib_test
-from ordec.lib import Nmos
-from ordec.schematic.helpers import SchematicError, resolve_instances
+from ordec.lib.generic_mos import Nmos
+from ordec.schematic import SchematicError, resolve_instances
 
 def test_schematic_unconnected_conn_point():
     with pytest.raises(SchematicError, match=r"Incorrectly placed SchemConnPoint"):

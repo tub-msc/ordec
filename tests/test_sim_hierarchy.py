@@ -4,7 +4,7 @@
 import pytest
 from ordec.core import *
 from ordec.core import SimHierarchy
-from ordec.lib.base import Gnd, Res
+from ordec.lib import Gnd, Res
 from ordec.core.schema import SimHierarchySubcursor
 from .lib import sim as lib_test
 

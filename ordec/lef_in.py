@@ -12,7 +12,7 @@ from collections import OrderedDict
 from typing import Any
 
 from .core import *
-from .schematic.helpers import symbol_place_pins
+from .schematic import symbol_place_pins
 
 class LefReaderException(Exception):
     pass

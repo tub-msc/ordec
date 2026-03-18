@@ -14,10 +14,8 @@ from typing import Literal
 logger = logging.getLogger(__name__)
 
 from ..core import *
-from ..core.rational import R
-from ..core.schema import SimType
 from .ngspice import Ngspice, ngspice_batch
-from ..schematic.netlister import Netlister
+from ..schematic import Netlister
 
 
 def parse_signal_name(name):

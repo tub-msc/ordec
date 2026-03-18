@@ -3,7 +3,7 @@
 
 from ordec.core import *
 from ordec.lib import ihp130
-from ordec.schematic.routing import schematic_routing
+from ordec.schematic import schematic_routing
 
 class Inv(Cell):
     variant = Parameter(str, default='clean')

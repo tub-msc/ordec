@@ -1,7 +1,7 @@
 from ordec.core import *
 from ordec.schematic import helpers
 from ordec.sim import Simulator
-from ordec.schematic.routing import schematic_routing
+from ordec.schematic import schematic_routing
 from ordec.lib import Res, Cap, Gnd, Vpulse, Vsin
 
 class RC(Cell):

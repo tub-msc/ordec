@@ -3,13 +3,12 @@
 
 from ordec.core import *
 from ordec.schematic import helpers
-from ordec.schematic.routing import schematic_routing
+from ordec.schematic import schematic_routing
 from ordec.sim import Simulator
 
 from ordec.lib.generic_mos import Nmos, Inv
-from ordec.lib.base import Gnd, NoConn, Res, Vdc, Idc, Cap, Ind, Vsin, Ipwl, Ipulse, Isin, Vpulse, Vpwl
-from ordec.lib import sky130
-from ordec.lib import ihp130
+from ordec.lib import Gnd, NoConn, Res, Vdc, Idc, Cap, Ind, Vsin, Ipwl, Ipulse, Isin, Vpulse, Vpwl
+from ordec.lib import sky130, ihp130
 
 class ResdivFlatTb(Cell):
     @generate

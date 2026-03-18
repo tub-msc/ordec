@@ -5,7 +5,7 @@ import pytest
 
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary, ExtLibraryError
-from ordec.schematic.helpers import symbol_place_pins
+from ordec.schematic import symbol_place_pins
 
 
 def _yosys_json_example():

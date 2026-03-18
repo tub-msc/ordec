@@ -3,8 +3,7 @@
 
 import re
 import pytest
-from ordec.sim.ngspice import Ngspice, ngspice_batch
-from ordec.sim.ngspice import NgspiceError, NgspiceFatalError
+from ordec.sim.ngspice import Ngspice, ngspice_batch, NgspiceError, NgspiceFatalError
 
 def test_ngspice_illegal_netlist_1():
     with Ngspice.launch() as sim:

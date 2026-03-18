@@ -6,7 +6,7 @@ from contextvars import ContextVar, Token
 
 # ordec imports
 from ..core import *
-from ..schematic.routing import schematic_routing, adjust_outline_initial
+from ..schematic import schematic_routing, adjust_outline_initial
 from ..schematic import helpers
 
 _ctx_var = ContextVar("ctx", default=None)

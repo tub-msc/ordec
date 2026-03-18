@@ -4,7 +4,7 @@
 from ordec.core import *
 from ordec.schematic import helpers
 from ordec.lib.generic_mos import Or2, Nmos
-from ordec.lib.base import Res
+from ordec.lib import Res
 
 class RotateTest(Cell):
     @generate

@@ -7,8 +7,7 @@ from public import public
 import functools
 
 from ..core import *
-from ..schematic import helpers
-from ..ord1.implicit_processing import schematic_routing
+from ..schematic import helpers, schematic_routing
 from . import generic_mos
 from .pdk_common import PdkDict, check_dir, check_file
 

@@ -6,9 +6,9 @@ from dataclasses import dataclass, field
 
 #ordec imports
 from ..core import *
-from ..ord1.optimize_position import get_pos_with_constraints
+from .optimize_position import get_pos_with_constraints
 from ..schematic import helpers
-from ..schematic.routing import schematic_routing
+from ..schematic import schematic_routing
 
 @dataclass
 class PostProcess:

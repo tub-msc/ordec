@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.lib import Nmos,Pmos
+from ordec.lib.generic_mos import Nmos,Pmos
 
 cell Nand:
     symbol:
