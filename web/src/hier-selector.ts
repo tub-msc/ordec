@@ -1,6 +1,17 @@
 // SPDX-FileCopyrightText: 2026 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
+interface TrieNode {
+    label: string;
+    children: Map<string, TrieNode>;
+    viewName: string | null;
+}
+
+interface TrieEntry {
+    segments: string[];
+    viewName: string;
+}
+
 /**
  * Split a view name into hierarchical segments at ".", "(" and "[" boundaries,
  * preserving all characters so that segments.join("") === name.
@@ -11,7 +22,7 @@
  *   "mylib['CellName'].layout"   --> ["mylib", "['CellName']", ".layout"]
  *   "__ord_py_source__"          --> ["__ord_py_source__"]
  */
-function splitViewName(name) {
+function splitViewName(name: string): string[] {
     // Split before ".", "(" and "[".
     // Each segment is either a bracket group or a dot-prefixed/plain run
     // of characters up to the next delimiter.
@@ -23,15 +34,15 @@ function splitViewName(name) {
  * Build a trie from an array of { segments, viewName } entries.
  * Each node: { label, children: Map<string, node>, viewName: string|null }
  */
-function buildTrie(entries) {
-    const root = { label: '', children: new Map(), viewName: null };
+function buildTrie(entries: TrieEntry[]): TrieNode {
+    const root: TrieNode = { label: '', children: new Map(), viewName: null };
     for (const { segments, viewName } of entries) {
         let node = root;
         for (const seg of segments) {
             if (!node.children.has(seg)) {
                 node.children.set(seg, { label: seg, children: new Map(), viewName: null });
             }
-            node = node.children.get(seg);
+            node = node.children.get(seg)!;
         }
         node.viewName = viewName;
     }
@@ -43,7 +54,7 @@ function buildTrie(entries) {
  * Labels are concatenated directly (delimiters are already part of segment strings).
  * Exception: don't collapse if the tree has only one top-level path overall.
  */
-function collapseTrie(root) {
+function collapseTrie(root: TrieNode): void {
     for (const [key, child] of root.children) {
         collapseTrie(child);
     }
@@ -52,7 +63,7 @@ function collapseTrie(root) {
     // is a "dual" node (both leaf and parent), merge them.  Keep going in case
     // the merged result can collapse further.
     while (root.children.size === 1) {
-        const [key, child] = root.children.entries().next().value;
+        const [key, child] = root.children.entries().next().value!;
         if (root.viewName !== null) break; // root is itself a leaf, stop
         if (child.viewName !== null && child.children.size > 0) break; // child is leaf+parent
         // Merge child into root
@@ -69,7 +80,7 @@ function collapseTrie(root) {
  * Find the path of segment labels from root to the node matching viewName.
  * Returns an array of child keys, or null if not found.
  */
-function findPath(node, viewName) {
+function findPath(node: TrieNode, viewName: string): string[] | null {
     if (node.viewName === viewName && node.children.size === 0) {
         return [];
     }
@@ -89,8 +100,20 @@ function findPath(node, viewName) {
     return null;
 }
 
+interface HierSelectorCallbacks {
+    onSelect: (viewName: string) => void;
+    onDeselect?: () => void;
+}
+
 export class HierSelector {
-    constructor(container, { onSelect, onDeselect }) {
+    container: HTMLElement;
+    onSelect: (viewName: string) => void;
+    onDeselect: () => void;
+    root: TrieNode | null;
+    selects: HTMLSelectElement[];
+    _selectedView: string | null;
+
+    constructor(container: HTMLElement, { onSelect, onDeselect }: HierSelectorCallbacks) {
         this.container = container;
         this.onSelect = onSelect;
         this.onDeselect = onDeselect || (() => {});
@@ -99,12 +122,12 @@ export class HierSelector {
         this._selectedView = null;
     }
 
-    get selectedView() {
+    get selectedView(): string | null {
         return this._selectedView;
     }
 
-    update(viewNames, selectedView) {
-        const entries = viewNames.map(name => ({
+    update(viewNames: string[], selectedView: string | null): void {
+        const entries: TrieEntry[] = viewNames.map(name => ({
             segments: splitViewName(name),
             viewName: name,
         }));
@@ -121,7 +144,7 @@ export class HierSelector {
         this._render(selectedView);
     }
 
-    _render(selectedView) {
+    _render(selectedView: string | null): void {
         // Remove old selects
         for (const sel of this.selects) {
             sel.remove();
@@ -143,7 +166,7 @@ export class HierSelector {
         }
 
         // Find path to restore selection
-        let path = null;
+        let path: string[] | null = null;
         if (selectedView) {
             path = findPath(this.root, selectedView);
         }
@@ -151,7 +174,7 @@ export class HierSelector {
         this._renderLevel(this.root, 0, path);
     }
 
-    _renderLevel(node, depth, path) {
+    _renderLevel(node: TrieNode, depth: number, path: string[] | null): void {
         const select = document.createElement('select');
         select.classList.add('viewsel');
         this.container.appendChild(select);
@@ -174,7 +197,7 @@ export class HierSelector {
             select.appendChild(directOpt);
         }
 
-        let selectedKey = null;
+        let selectedKey: string | null = null;
         if (path && path.length > 0) {
             selectedKey = path[0];
         } else if (path && path.length === 0 && node.viewName !== null && node.children.size > 0) {
@@ -198,7 +221,7 @@ export class HierSelector {
         }
 
         if (selectedKey === '__direct__') {
-            select.querySelector('option[value="__direct__"]').selected = true;
+            (select.querySelector('option[value="__direct__"]') as HTMLOptionElement).selected = true;
             this._selectedView = node.viewName;
         } else if (!selectedKey) {
             placeholder.selected = true;
@@ -208,7 +231,7 @@ export class HierSelector {
 
         // If we have a path to follow, render the next level
         if (selectedKey && selectedKey !== '__direct__' && node.children.has(selectedKey)) {
-            const child = node.children.get(selectedKey);
+            const child = node.children.get(selectedKey)!;
             if (child.children.size > 0) {
                 this._renderLevel(child, depth + 1, path ? path.slice(1) : null);
             } else {
@@ -218,10 +241,10 @@ export class HierSelector {
         }
     }
 
-    _onSelectChange(node, select, depth) {
+    _onSelectChange(node: TrieNode, select: HTMLSelectElement, depth: number): void {
         // Remove selects deeper than this one
         while (this.selects.length > depth + 1) {
-            this.selects.pop().remove();
+            this.selects.pop()!.remove();
         }
 
         const key = select.value;
@@ -230,7 +253,7 @@ export class HierSelector {
         // Handle "(direct)" option
         if (key === '__direct__') {
             this._selectedView = node.viewName;
-            this.onSelect(node.viewName);
+            this.onSelect(node.viewName!);
             return;
         }
 
@@ -246,7 +269,7 @@ export class HierSelector {
         } else {
             // Leaf: fire selection
             this._selectedView = child.viewName;
-            this.onSelect(child.viewName);
+            this.onSelect(child.viewName!);
         }
     }
 }

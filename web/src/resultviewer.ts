@@ -1,26 +1,34 @@
-// SPDX-FileCopyrightText: 2025 ORDeC contributors
+// SPDX-FileCopyrightText: 2026 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
 // To be improved. Consider the constructor-only classes stubs for future functions.
 
 import * as d3 from "d3";
-import { LayoutGL } from './layout-gl.js';
-import { SimPlot } from './simplot.js';
-import { HierSelector } from './hier-selector.js';
+import { LayoutGL } from './layout-gl';
+import { SimPlot } from './simplot';
+import { HierSelector } from './hier-selector';
+import type { OrdecClient, ResultViewerLike } from './client';
+import type {
+    ViewClass, ViewInstance, ReportElementClass,
+    ReportElementInstance, ReportContext, SyncablePlot
+} from './types';
 
 let idCounter = 0;
-export function generateId() {
+export function generateId(): string {
     idCounter += 1;
     return "idgen" + idCounter;
 }
 
 class ReportPlotGroups {
+    groups: Map<string, { plots: Set<SyncablePlot>; xDomain: number[] | null; crosshairX: number | null | undefined }>;
+    groupNameOfPlot: Map<SyncablePlot, string>;
+
     constructor() {
         this.groups = new Map();
         this.groupNameOfPlot = new Map();
     }
 
-    _applyCrosshair(plot, crosshairX) {
+    _applyCrosshair(plot: SyncablePlot, crosshairX: number | null): void {
         if (crosshairX === null) {
             plot.clearCrosshair({ suppressEvent: true });
         } else {
@@ -28,7 +36,7 @@ class ReportPlotGroups {
         }
     }
 
-    register(plot, groupName) {
+    register(plot: SyncablePlot, groupName: string | undefined): void {
         if (!groupName) return;
         let group = this.groups.get(groupName);
         if (!group) {
@@ -43,8 +51,8 @@ class ReportPlotGroups {
         group.plots.add(plot);
         this.groupNameOfPlot.set(plot, groupName);
         plot.setSyncCallbacks({
-            onXDomainChange: (xDomain) => this._onXDomainChange(groupName, plot, xDomain),
-            onCrosshairXChange: (crosshairX) => this._onCrosshairXChange(groupName, plot, crosshairX),
+            onXDomainChange: (xDomain: number[]) => this._onXDomainChange(groupName, plot, xDomain),
+            onCrosshairXChange: (crosshairX: number | null) => this._onCrosshairXChange(groupName, plot, crosshairX),
         });
         if (!group.xDomain) {
             group.xDomain = plot.getXDomain();
@@ -54,11 +62,11 @@ class ReportPlotGroups {
             plot.setXDomain(group.xDomain, { suppressEvent: true });
         }
         if (group.crosshairX !== undefined) {
-            this._applyCrosshair(plot, group.crosshairX);
+            this._applyCrosshair(plot, group.crosshairX!);
         }
     }
 
-    unregister(plot) {
+    unregister(plot: SyncablePlot): void {
         const groupName = this.groupNameOfPlot.get(plot);
         if (!groupName) return;
         this.groupNameOfPlot.delete(plot);
@@ -68,7 +76,7 @@ class ReportPlotGroups {
         group.plots.delete(plot);
     }
 
-    _onXDomainChange(groupName, sourcePlot, xDomain) {
+    _onXDomainChange(groupName: string, sourcePlot: SyncablePlot, xDomain: number[]): void {
         const group = this.groups.get(groupName);
         if (!group) return;
         group.xDomain = xDomain;
@@ -79,7 +87,7 @@ class ReportPlotGroups {
         });
     }
 
-    _onCrosshairXChange(groupName, sourcePlot, crosshairX) {
+    _onCrosshairXChange(groupName: string, sourcePlot: SyncablePlot, crosshairX: number | null): void {
         const group = this.groups.get(groupName);
         if (!group) return;
         group.crosshairX = crosshairX;
@@ -90,19 +98,21 @@ class ReportPlotGroups {
     }
 }
 
-function simpleReportElementClass(renderNode) {
+function simpleReportElementClass(renderNode: (msgData: any) => HTMLElement | SVGElement): ReportElementClass {
     return class {
-        constructor(container) {
+        container: HTMLElement;
+
+        constructor(container: HTMLElement) {
             this.container = container;
         }
 
-        update(msgData) {
+        update(msgData: any): void {
             this.container.replaceChildren(renderNode(msgData));
         }
     };
 }
 
-const reportElementClassOf = {
+const reportElementClassOf: Record<string, ReportElementClass> = {
     markdown: simpleReportElementClass((msgData) => {
         const section = document.createElement('div');
         section.classList.add('report-markdown');
@@ -122,10 +132,16 @@ const reportElementClassOf = {
         svg.attr("width", msgData.width);
         svg.attr("height", msgData.height);
         svg.append("g").html(msgData.inner);
-        return svg.node();
+        return svg.node()!;
     }),
     plot2d: class {
-        constructor(container, reportContext) {
+        container: HTMLElement;
+        reportContext: ReportContext | undefined;
+        plot: SimPlot | null;
+        savedHidden: Set<string> | null;
+        savedZoom: any;
+
+        constructor(container: HTMLElement, reportContext?: ReportContext) {
             this.container = container;
             this.reportContext = reportContext;
             this.plot = null;
@@ -133,7 +149,7 @@ const reportElementClassOf = {
             this.savedZoom = null;
         }
 
-        update(msgData) {
+        update(msgData: any): void {
             if (this.plot) {
                 this.savedHidden = this.plot.getHiddenNames();
                 this.savedZoom = this.plot.getZoomState();
@@ -167,7 +183,7 @@ const reportElementClassOf = {
             }
         }
 
-        destroy() {
+        destroy(): void {
             if (!this.plot) return;
             if (this.reportContext) {
                 this.reportContext.plotGroups.unregister(this.plot);
@@ -178,51 +194,61 @@ const reportElementClassOf = {
     },
 };
 
-const viewClassOf = {
+const viewClassOf: Record<string, any> = {
     html: class {
-        constructor(resContent) {
+        resContent: HTMLElement;
+
+        constructor(resContent: HTMLElement) {
             this.resContent = resContent;
         }
 
-        update(msgData) {
+        update(msgData: string): void {
             this.resContent.innerHTML = msgData;
         }
     },
     svg: class {
-        constructor(resContent) {
+        resContent: HTMLElement;
+        transform: d3.ZoomTransform;
+        g: d3.Selection<SVGGElement, unknown, null, undefined>;
+
+        constructor(resContent: HTMLElement) {
             this.resContent = resContent;
             this.transform = d3.zoomIdentity;
         }
-        zoomed({transform}) {
+        zoomed({transform}: {transform: d3.ZoomTransform}): void {
             this.transform = transform;
-            this.g.attr("transform", transform);
+            this.g.attr("transform", transform as any);
         }
-        update(msgData) {
+        update(msgData: any): void {
             const viewbox = msgData['viewbox'];
-            const viewbox2 = [[viewbox[0], viewbox[1]], [viewbox[2], viewbox[3]]]
+            const viewbox2: [[number, number], [number, number]] = [[viewbox[0], viewbox[1]], [viewbox[2], viewbox[3]]];
 
             const svg = d3.create("svg")
                 .attr("class", "fit")
                 .attr("viewBox", viewbox);
 
             this.g = svg.append("g")
-                .html(msgData['inner'])
+                .html(msgData['inner']) as any;
 
-            let zoom = d3.zoom()
+            let zoom = d3.zoom<SVGSVGElement, unknown>()
                 .extent(viewbox2)
                 .scaleExtent([1, 12])
                 .translateExtent(viewbox2);
 
             svg.call(zoom.transform, this.transform);
-            this.g.attr("transform", this.transform);
+            this.g.attr("transform", this.transform as any);
 
             svg.call(zoom.on("zoom", (x) => this.zoomed(x)));
 
-            this.resContent.replaceChildren(svg.node());
+            this.resContent.replaceChildren(svg.node()!);
         }
     },
     report: class {
-        constructor(resContent) {
+        resContent: HTMLElement;
+        renderers: ReportElementInstance[];
+        reportContext: ReportContext;
+
+        constructor(resContent: HTMLElement) {
             this.resContent = resContent;
             this.renderers = [];
             this.reportContext = {
@@ -230,8 +256,8 @@ const viewClassOf = {
             };
         }
 
-        update(msgData) {
-            const elements = msgData.elements || [];
+        update(msgData: any): void {
+            const elements: any[] = msgData.elements || [];
             const oldRenderers = this.renderers;
             this.renderers = [];
 
@@ -241,7 +267,7 @@ const viewClassOf = {
                 report.classList.add('report-view-fill');
             }
 
-            elements.forEach((elementData, i) => {
+            elements.forEach((elementData: any, i: number) => {
                 const elementRoot = document.createElement('div');
                 elementRoot.classList.add('report-element');
                 if (elementData.element_type === 'plot2d') {
@@ -262,17 +288,17 @@ const viewClassOf = {
                 }
 
                 // Reuse existing renderer if same type at same index
-                let renderer;
-                const old = oldRenderers[i];
+                let renderer: ReportElementInstance;
+                const old: any = oldRenderers[i];
                 if (old instanceof elementClass) {
                     renderer = old;
                     renderer.container = elementRoot;
-                    oldRenderers[i] = null;
+                    (oldRenderers as any)[i] = null;
                 } else {
                     if (old && typeof old.destroy === 'function') {
                         old.destroy();
                     }
-                    oldRenderers[i] = null;
+                    (oldRenderers as any)[i] = null;
                     renderer = new elementClass(
                         elementRoot, this.reportContext
                     );
@@ -292,11 +318,36 @@ const viewClassOf = {
     layout_gl: LayoutGL,
 }
 
-export class ResultViewer {
+interface GoldenLayoutContainer {
+    element: HTMLElement;
+    setState(state: Record<string, any>): void;
+    setTitle(title: string): void;
+}
+
+export class ResultViewer implements ResultViewerLike {
     static refreshAll = false;
     static useHierSelector = true;
 
-    constructor(container, state) {
+    container: GoldenLayoutContainer;
+    resizeWithContainerAutomatically: boolean;
+    resOverlayRefreshing: HTMLElement;
+    resOverlayRefreshable: HTMLElement;
+    resContent: HTMLElement;
+    resWrapper: HTMLElement;
+    resException: HTMLElement;
+    resViewHead: HTMLElement;
+    viewUpToDate: boolean;
+    viewSelected: string | null;
+    refreshRequestedByUser: boolean;
+    _useHier: boolean;
+    hierSelector: HierSelector | null;
+    viewSelector: HTMLSelectElement | null;
+    restoreSelectedView: string | undefined;
+    viewListInitialized: boolean;
+    client: OrdecClient;
+    view: ViewInstance | null;
+
+    constructor(container: GoldenLayoutContainer, state: Record<string, any>) {
         this.container = container;
         container.element.innerHTML = `
             <div class="resview">
@@ -310,36 +361,37 @@ export class ResultViewer {
             </div>
         `;
         this.resizeWithContainerAutomatically = true;
-        this.resOverlayRefreshing = container.element.querySelector(".refreshing");
-        this.resOverlayRefreshable = container.element.querySelector(".refreshable");
-        container.element.querySelector(".refreshable button").onclick =
+        this.resOverlayRefreshing = container.element.querySelector(".refreshing")!;
+        this.resOverlayRefreshable = container.element.querySelector(".refreshable")!;
+        (container.element.querySelector(".refreshable button") as HTMLElement).onclick =
             () => this.refreshOnClick();
         this.showRefreshOverlay(null);
-        this.resContent = container.element.querySelector(".rescontent");
-        this.resWrapper = container.element.querySelector(".reswrapper");
-        this.resException = container.element.querySelector(".resexception");
-        this.resViewHead = container.element.querySelector(".resviewhead");
+        this.resContent = container.element.querySelector(".rescontent")!;
+        this.resWrapper = container.element.querySelector(".reswrapper")!;
+        this.resException = container.element.querySelector(".resexception")!;
+        this.resViewHead = container.element.querySelector(".resviewhead")!;
         this.viewUpToDate = false;
         this.viewSelected = null;
         this.refreshRequestedByUser = false;
         this._useHier = ResultViewer.useHierSelector;
+        this.view = null;
         if (this._useHier) {
             this.hierSelector = new HierSelector(this.resViewHead, {
-                onSelect: (viewName) => this._onViewSelected(viewName),
+                onSelect: (viewName: string) => this._onViewSelected(viewName),
                 onDeselect: () => this._onViewDeselected(),
             });
             this.viewSelector = null;
         } else {
             this._createFlatSelector();
+            this.hierSelector = null;
         }
         if (state['view']) {
             this.restoreSelectedView = state['view'];
         }
-        //this.updateGlobalState();
         this.viewListInitialized = false;
     }
 
-    _createFlatSelector() {
+    _createFlatSelector(): void {
         const sel = document.createElement('select');
         sel.classList.add('viewsel');
         this.resViewHead.appendChild(sel);
@@ -348,18 +400,18 @@ export class ResultViewer {
         this.hierSelector = null;
     }
 
-    refreshOnClick() {
+    refreshOnClick(): void {
         this.refreshRequestedByUser = true;
         this.showRefreshOverlay('refreshing');
         this.client.requestNextView();
     }
 
-    showRefreshOverlay(config) {
+    showRefreshOverlay(config: string | null): void {
         this.resOverlayRefreshable.style.display = (config == 'refreshable')?'':'none';
         this.resOverlayRefreshing.style.display = (config == 'refreshing')?'':'none';
     }
 
-    requestsView() {
+    requestsView(): boolean {
         if(!this.viewSelected) {
             return false;
         }
@@ -370,8 +422,8 @@ export class ResultViewer {
             );
     }
 
-    viewInfo() {
-        let info = this.client.views.get(this.viewSelected);
+    viewInfo(): { auto_refresh?: boolean } {
+        let info = this.client.views.get(this.viewSelected!);
         if(info) {
             return info;
         } else {
@@ -379,23 +431,23 @@ export class ResultViewer {
         }
     }
 
-    resetResContent() {
+    resetResContent(): void {
         // Replace the rescontent div with a fresh rescontent div, mainly
         // to clear any event handlers that might have been attached to the
         // resContent previously.
         const resContentNew = document.createElement('div');
         resContentNew.classList.add('rescontent');
-        resContentNew.tabIndex = "0";
+        resContentNew.tabIndex = 0;
         this.resWrapper.replaceChild(resContentNew, this.resContent);
         this.resContent = resContentNew;
     }
 
-    viewSelectorOnChange() {
-        const viewName = this.viewSelector.options[this.viewSelector.selectedIndex].value;
+    viewSelectorOnChange(): void {
+        const viewName = this.viewSelector!.options[this.viewSelector!.selectedIndex].value;
         this._onViewSelected(viewName);
     }
 
-    _onViewSelected(viewName) {
+    _onViewSelected(viewName: string): void {
         this.viewSelected = viewName;
         this.container.setState({ view: viewName });
         this.container.setTitle(viewName);
@@ -407,7 +459,7 @@ export class ResultViewer {
         this.client.requestNextView();
     }
 
-    _onViewDeselected() {
+    _onViewDeselected(): void {
         this.viewSelected = null;
         this.viewUpToDate = false;
         this.view = null;
@@ -417,14 +469,14 @@ export class ResultViewer {
         this.resetResContent();
     }
 
-    invalidate() {
+    invalidate(): void {
         this.viewUpToDate = false;
         this.refreshRequestedByUser = false;
 
         this.updateOverlay();
     }
 
-    updateOverlay() {
+    updateOverlay(): void {
         if((!this.viewSelected) || this.viewUpToDate) {
             this.showRefreshOverlay(null);
         } else if(this.viewInfo().auto_refresh && !ResultViewer.refreshAll) {
@@ -434,7 +486,7 @@ export class ResultViewer {
         }
     }
 
-    updateViewList() {
+    updateViewList(): void {
         // Check if mode toggled at runtime
         if (this._useHier !== ResultViewer.useHierSelector) {
             this._useHier = ResultViewer.useHierSelector;
@@ -442,7 +494,7 @@ export class ResultViewer {
             if (this._useHier) {
                 this.viewSelector = null;
                 this.hierSelector = new HierSelector(this.resViewHead, {
-                    onSelect: (viewName) => this._onViewSelected(viewName),
+                    onSelect: (viewName: string) => this._onViewSelected(viewName),
                 });
             } else {
                 this.hierSelector = null;
@@ -450,18 +502,18 @@ export class ResultViewer {
             }
         }
 
-        const viewNames = [];
+        const viewNames: string[] = [];
         this.client.views.forEach(view => viewNames.push(view.name));
 
         const prevSelected = this.viewSelected || this.restoreSelectedView;
 
         if (this._useHier) {
-            this.hierSelector.update(viewNames, prevSelected);
-            this.viewSelected = this.hierSelector.selectedView;
+            this.hierSelector!.update(viewNames, prevSelected || null);
+            this.viewSelected = this.hierSelector!.selectedView;
         } else {
-            let vs = this.viewSelector;
+            let vs = this.viewSelector!;
             vs.innerHTML = "<option disabled selected value>--- Select result from list ---</option>";
-            let selectedVal = null;
+            let selectedVal: string | null = null;
             this.client.views.forEach(view => {
                 var option = document.createElement("option");
                 option.innerText = view.name;
@@ -480,7 +532,7 @@ export class ResultViewer {
         this.viewListInitialized = true;
     }
 
-    updateViewListAndException() {
+    updateViewListAndException(): void {
         this.updateViewList();
         if (this.client.exception) {
             // In this case, the exception was generated during module evaluation:
@@ -493,12 +545,12 @@ export class ResultViewer {
         }
     }
 
-    registerClient(client) {
+    registerClient(client: OrdecClient): void {
         this.client = client;
         this.updateViewList();
     }
 
-    showException(text) {
+    showException(text: string | null): void {
         this.resException.style.display = text?'':'none';
         this.resContent.style.display = text?'none':'';
 
@@ -510,8 +562,7 @@ export class ResultViewer {
         }
     }
 
-    updateView(msg) {
-        //this.resContent.replaceChildren();
+    updateView(msg: any): void {
         this.viewUpToDate = true;
         this.showRefreshOverlay(null);
 
@@ -529,14 +580,14 @@ export class ResultViewer {
                 this.view.update(msg.data);
             } else {
                 this.view = new viewClass(this.resContent);
-                this.view.update(msg.data);
+                this.view!.update(msg.data);
             }
         }
 
         this.updateOverlay();
     }
 
-    testInfo() {
+    testInfo(): { html: string; top: number; right: number; bottom: number; left: number; width: number; height: number } {
         // For automated browser testing (see test_web.py).
         const r = this.resContent.getBoundingClientRect();
         return {

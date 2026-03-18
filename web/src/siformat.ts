@@ -1,9 +1,9 @@
-// SPDX-FileCopyrightText: 2025 ORDeC contributors
+// SPDX-FileCopyrightText: 2026 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
 const siSuffix = ['', 'm', 'μ', 'n'];
 
-export function siFormat(numUnit, unit) {
+export function siFormat(numUnit: number, unit: number): string {
 
     let num = numUnit * unit;
     let unitScaled = unit;
@@ -23,7 +23,7 @@ export function siFormat(numUnit, unit) {
         suffix = `e-${exp3x*3}`;
     }
 
-    let f;
+    let f: string;
     if(unitScaled >= 1.0) {
         // Hide decimal digits below library unit.
         f = num.toFixed(0);

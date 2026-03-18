@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 ORDeC contributors
+// SPDX-FileCopyrightText: 2026 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -15,8 +15,11 @@ export const session = {
     authHmacBypass: window.localStorage.getItem('ordecHmacBypass'),
 };
 
-export async function authenticateLocalQuery(queryLocal, queryHmac) {
-    let valid;
+export async function authenticateLocalQuery(
+    queryLocal: string,
+    queryHmac: string
+): Promise<{ module: string; view: string } | null> {
+    let valid: boolean;
     if(session.authHmacBypass) {
         // SECURITY WARNING: This workaround is **for the testing environment only**.
         // For some reason, the localhost in the testing environment might
@@ -32,7 +35,7 @@ export async function authenticateLocalQuery(queryLocal, queryHmac) {
     } else {
         const hmacAuthKeyCrypto = await window.crypto.subtle.importKey(
             'raw',
-            Uint8Array.fromHex(session.authKey),
+            (Uint8Array as any).fromHex(session.authKey),
             {name: 'HMAC', hash: {name: 'SHA-256'}},
             false,
             ['verify']
@@ -42,7 +45,7 @@ export async function authenticateLocalQuery(queryLocal, queryHmac) {
         valid = await window.crypto.subtle.verify(
             'HMAC',
             hmacAuthKeyCrypto,
-            Uint8Array.fromHex(queryHmac),
+            (Uint8Array as any).fromHex(queryHmac),
             encoder.encode(queryLocal)
         );
     }

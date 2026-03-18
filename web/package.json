@@ -6,9 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/d3": "^7.4.3",
+    "@types/earcut": "^3.0.0",
+    "typescript": "^5.9.3",
     "vite": "^6.3.5",
     "vite-plugin-glsl": "^1.5.1"
   },

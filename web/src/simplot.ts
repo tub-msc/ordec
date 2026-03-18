@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2025 ORDeC contributors
+// SPDX-FileCopyrightText: 2026 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
 import * as d3 from "d3";
+import type { SyncablePlot } from './types';
 
 const MARGIN = { top: 10, right: 15, bottom: 35, left: 60 };
 
@@ -29,11 +30,11 @@ const SIGNAL_COLORS_LIGHT = [
     '#17becf', // cyan
 ];
 
-function _isDark() {
+function _isDark(): boolean {
     return document.body.classList.contains('theme-dark');
 }
 
-function signalColor(i) {
+function signalColor(i: number): string {
     const palette = _isDark() ? SIGNAL_COLORS_DARK : SIGNAL_COLORS_LIGHT;
     if (i < palette.length) return palette[i];
     const hue = (i * 137.508) % 360;
@@ -41,8 +42,64 @@ function signalColor(i) {
     return `hsl(${hue}, 80%, ${lightness}%)`;
 }
 
-export class SimPlot {
-    constructor(container, options = {}) {
+interface SimPlotOptions {
+    xlabel?: string;
+    ylabel?: string;
+    xscale?: string;
+    yscale?: string;
+    fixedHeight?: string | number | null;
+    onXDomainChange?: ((domain: number[]) => void) | null;
+    onCrosshairXChange?: ((xValue: number | null) => void) | null;
+}
+
+interface Series {
+    name: string;
+    values: number[];
+    color: string;
+    visible: boolean;
+}
+
+export class SimPlot implements SyncablePlot {
+    options: Required<SimPlotOptions>;
+    xValues: number[] | null;
+    series: Series[];
+    currentTransform: d3.ZoomTransform;
+    _yZoomScale: number;
+    _yPanOffset: number;
+    _crosshairIndex: number | null;
+    _suppressXDomainChange: boolean;
+    _suppressCrosshairChange: boolean;
+    wrapper: HTMLDivElement;
+    legendEl: HTMLDivElement;
+    svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
+    defaultZoomBtn: HTMLButtonElement;
+    tooltipEl: HTMLDivElement;
+    clipId: string;
+    plotArea: d3.Selection<SVGGElement, unknown, null, undefined>;
+    xGridG: d3.Selection<SVGGElement, unknown, null, undefined>;
+    yGridG: d3.Selection<SVGGElement, unknown, null, undefined>;
+    plotClip: d3.Selection<SVGGElement, unknown, null, undefined>;
+    xAxisG: d3.Selection<SVGGElement, unknown, null, undefined>;
+    yAxisG: d3.Selection<SVGGElement, unknown, null, undefined>;
+    xLabelEl: d3.Selection<SVGTextElement, unknown, null, undefined>;
+    yLabelEl: d3.Selection<SVGTextElement, unknown, null, undefined>;
+    crosshairG: d3.Selection<SVGGElement, unknown, null, undefined>;
+    crosshairLine: d3.Selection<SVGLineElement, unknown, null, undefined>;
+    hoverRect: d3.Selection<SVGRectElement, unknown, null, undefined>;
+    zoom: d3.ZoomBehavior<SVGSVGElement, unknown>;
+    _yDrag: { startY: number; startOffset: number } | null;
+    _yDragMove: (event: MouseEvent) => void;
+    _yDragEnd: () => void;
+    _xScale: d3.ScaleLinear<number, number> | d3.ScaleLogarithmic<number, number> | null;
+    _yScale: d3.ScaleLinear<number, number> | d3.ScaleLogarithmic<number, number> | null;
+    _xBase: d3.ScaleLinear<number, number> | d3.ScaleLogarithmic<number, number> | null;
+    _plotW: number;
+    _plotH: number;
+    _resizeTimer: ReturnType<typeof setTimeout> | null;
+    resizeObserver: ResizeObserver | null;
+    _themeObserver: MutationObserver | null;
+
+    constructor(container: HTMLElement, options: SimPlotOptions = {}) {
         this.options = {
             xlabel: options.xlabel || '',
             ylabel: options.ylabel || '',
@@ -76,7 +133,7 @@ export class SimPlot {
         this.legendEl.classList.add('simplot-legend');
         this.wrapper.appendChild(this.legendEl);
 
-        this.svg = d3.select(this.wrapper).append('svg');
+        this.svg = d3.select(this.wrapper).append('svg') as any;
 
         this.defaultZoomBtn = document.createElement('button');
         this.defaultZoomBtn.type = 'button';
@@ -93,7 +150,7 @@ export class SimPlot {
 
         this._resizeTimer = null;
         this.resizeObserver = new ResizeObserver(() => {
-            clearTimeout(this._resizeTimer);
+            clearTimeout(this._resizeTimer!);
             this._resizeTimer = setTimeout(() => this._render(), 30);
         });
         this.resizeObserver.observe(this.wrapper);
@@ -108,7 +165,7 @@ export class SimPlot {
         });
     }
 
-    _recolor() {
+    _recolor(): void {
         this.series.forEach((s, i) => {
             s.color = signalColor(i);
         });
@@ -117,57 +174,57 @@ export class SimPlot {
         this._render();
     }
 
-    _setupSvg() {
+    _setupSvg(): void {
         this.clipId = 'clip-' + Math.random().toString(36).slice(2, 11);
         this.svg.append('defs').append('clipPath')
             .attr('id', this.clipId)
             .append('rect');
 
-        this.plotArea = this.svg.append('g');
+        this.plotArea = this.svg.append('g') as any;
 
         // Grid lines (behind everything)
-        this.xGridG = this.plotArea.append('g').attr('class', 'simplot-grid');
-        this.yGridG = this.plotArea.append('g').attr('class', 'simplot-grid');
+        this.xGridG = this.plotArea.append('g').attr('class', 'simplot-grid') as any;
+        this.yGridG = this.plotArea.append('g').attr('class', 'simplot-grid') as any;
 
         this.plotClip = this.plotArea.append('g')
-            .attr('clip-path', `url(#${this.clipId})`);
+            .attr('clip-path', `url(#${this.clipId})`) as any;
 
-        this.xAxisG = this.plotArea.append('g').attr('class', 'simplot-axis');
-        this.yAxisG = this.plotArea.append('g').attr('class', 'simplot-axis');
+        this.xAxisG = this.plotArea.append('g').attr('class', 'simplot-axis') as any;
+        this.yAxisG = this.plotArea.append('g').attr('class', 'simplot-axis') as any;
 
         this.xLabelEl = this.plotArea.append('text')
             .attr('class', 'simplot-axis-label')
             .attr('text-anchor', 'middle')
-            .text(this.options.xlabel);
+            .text(this.options.xlabel) as any;
 
         this.yLabelEl = this.plotArea.append('text')
             .attr('class', 'simplot-axis-label')
             .attr('text-anchor', 'middle')
             .attr('transform', 'rotate(-90)')
-            .text(this.options.ylabel);
+            .text(this.options.ylabel) as any;
 
         // Crosshair overlay (on top of everything, inside clip)
         this.crosshairG = this.plotArea.append('g')
             .attr('class', 'simplot-crosshair')
             .attr('clip-path', `url(#${this.clipId})`)
-            .style('display', 'none');
+            .style('display', 'none') as any;
 
         this.crosshairLine = this.crosshairG.append('line')
             .attr('stroke', _isDark() ? '#888' : '#999')
             .attr('stroke-width', 1)
-            .attr('stroke-dasharray', '4,3');
+            .attr('stroke-dasharray', '4,3') as any;
 
         // Hover rect to capture mouse events over the plot area
         this.hoverRect = this.plotArea.append('rect')
             .attr('class', 'simplot-hover-rect')
             .attr('fill', 'none')
-            .attr('pointer-events', 'all');
+            .attr('pointer-events', 'all') as any;
 
         this.hoverRect
-            .on('mousemove', (event) => this._onMouseMove(event))
+            .on('mousemove', (event: MouseEvent) => this._onMouseMove(event))
             .on('mouseleave', () => this._onMouseLeave());
 
-        this.zoom = d3.zoom()
+        this.zoom = d3.zoom<SVGSVGElement, unknown>()
             .scaleExtent([1, 100])
             .filter(event => {
                 // Let shift events through to Y axis handlers instead
@@ -184,7 +241,7 @@ export class SimPlot {
         this.svg.call(this.zoom);
 
         // Shift+scroll → Y axis zoom
-        this.svg.node().addEventListener('wheel', (event) => {
+        this.svg.node()!.addEventListener('wheel', (event) => {
             if (!event.shiftKey) return;
             event.preventDefault();
             const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
@@ -202,12 +259,12 @@ export class SimPlot {
 
         // Shift+drag → Y axis pan
         this._yDrag = null;
-        this.svg.node().addEventListener('mousedown', (event) => {
+        this.svg.node()!.addEventListener('mousedown', (event) => {
             if (!event.shiftKey || event.button !== 0) return;
             event.preventDefault();
             this._yDrag = { startY: event.clientY, startOffset: this._yPanOffset };
         });
-        window.addEventListener('mousemove', this._yDragMove = (event) => {
+        window.addEventListener('mousemove', this._yDragMove = (event: MouseEvent) => {
             if (!this._yDrag || !this._yScale) return;
             const dy = event.clientY - this._yDrag.startY;
             // Convert pixel delta to data units
@@ -232,49 +289,52 @@ export class SimPlot {
         this._plotH = 0;
     }
 
-    static _normalizeCssSize(size) {
+    static _normalizeCssSize(size: string | number | null): string {
         if (typeof size === 'number') {
             return `${size}px`;
         }
-        return size;
+        return size as string;
     }
 
-    setSyncCallbacks({ onXDomainChange = null, onCrosshairXChange = null } = {}) {
+    setSyncCallbacks({ onXDomainChange = null, onCrosshairXChange = null }: {
+        onXDomainChange?: ((domain: number[]) => void) | null;
+        onCrosshairXChange?: ((xValue: number | null) => void) | null;
+    } = {}): void {
         this.options.onXDomainChange = onXDomainChange;
         this.options.onCrosshairXChange = onCrosshairXChange;
     }
 
-    getXDomain() {
+    getXDomain(): number[] | null {
         if (!this._xScale) return null;
         return this._xScale.domain().slice();
     }
 
-    _emitXDomainChange() {
+    _emitXDomainChange(): void {
         if (this._suppressXDomainChange || !this.options.onXDomainChange || !this._xScale) {
             return;
         }
         this.options.onXDomainChange(this._xScale.domain().slice());
     }
 
-    _emitCrosshairXChange(xValue) {
+    _emitCrosshairXChange(xValue: number | null): void {
         if (this._suppressCrosshairChange || !this.options.onCrosshairXChange) {
             return;
         }
         this.options.onCrosshairXChange(xValue);
     }
 
-    _nearestXIndex(xValue) {
-        const bisect = d3.bisector(d => d).left;
-        let idx = bisect(this.xValues, xValue);
-        if (idx > 0 && idx < this.xValues.length) {
-            if (Math.abs(this.xValues[idx - 1] - xValue) < Math.abs(this.xValues[idx] - xValue)) {
+    _nearestXIndex(xValue: number): number {
+        const bisect = d3.bisector((d: number) => d).left;
+        let idx = bisect(this.xValues!, xValue);
+        if (idx > 0 && idx < this.xValues!.length) {
+            if (Math.abs(this.xValues![idx - 1] - xValue) < Math.abs(this.xValues![idx] - xValue)) {
                 idx = idx - 1;
             }
         }
-        return Math.max(0, Math.min(this.xValues.length - 1, idx));
+        return Math.max(0, Math.min(this.xValues!.length - 1, idx));
     }
 
-    _showCrosshairAtIndex(idx) {
+    _showCrosshairAtIndex(idx: number): void {
         if (!this._xScale || !this._yScale || !this.xValues) return;
         const visibleSeries = this.series.filter(s => s.visible);
         if (!visibleSeries.length) {
@@ -291,7 +351,7 @@ export class SimPlot {
             .attr('x1', snappedX).attr('y1', 0)
             .attr('x2', snappedX).attr('y2', this._plotH);
 
-        const dots = this.crosshairG.selectAll('circle.simplot-dot')
+        const dots = this.crosshairG.selectAll<SVGCircleElement, Series>('circle.simplot-dot')
             .data(visibleSeries, d => d.name);
 
         dots.enter()
@@ -302,7 +362,7 @@ export class SimPlot {
             .attr('cx', snappedX)
             .attr('cy', d => {
                 const v = d.values[idx];
-                return isFinite(v) ? this._yScale(v) : -100;
+                return isFinite(v) ? this._yScale!(v) : -100;
             })
             .attr('fill', d => d.color);
 
@@ -320,7 +380,7 @@ export class SimPlot {
         this.tooltipEl.style.display = 'flex';
     }
 
-    _onMouseMove(event) {
+    _onMouseMove(event: MouseEvent): void {
         if (!this._xScale || !this.xValues) return;
 
         const [mx] = d3.pointer(event, this.plotArea.node());
@@ -330,11 +390,11 @@ export class SimPlot {
         this._emitCrosshairXChange(this.xValues[idx]);
     }
 
-    _onMouseLeave() {
+    _onMouseLeave(): void {
         this.clearCrosshair();
     }
 
-    _withCrosshairSuppression(suppressEvent, fn) {
+    _withCrosshairSuppression(suppressEvent: boolean, fn: () => void): void {
         this._suppressCrosshairChange = suppressEvent;
         try {
             fn();
@@ -343,7 +403,7 @@ export class SimPlot {
         }
     }
 
-    setXDomain(domain, { suppressEvent = false } = {}) {
+    setXDomain(domain: number[], { suppressEvent = false } = {}): void {
         if (!this._xBase || !this._plotW || !domain || domain.length !== 2) return;
         let [x0, x1] = domain.map(Number);
         if (!isFinite(x0) || !isFinite(x1)) return;
@@ -374,16 +434,16 @@ export class SimPlot {
         }
     }
 
-    setCrosshairX(xValue, { suppressEvent = false } = {}) {
+    setCrosshairX(xValue: number, { suppressEvent = false } = {}): void {
         if (!this.xValues || !this._xScale) return;
         const idx = this._nearestXIndex(xValue);
         this._withCrosshairSuppression(suppressEvent, () => {
             this._showCrosshairAtIndex(idx);
-            this._emitCrosshairXChange(this.xValues[idx]);
+            this._emitCrosshairXChange(this.xValues![idx]);
         });
     }
 
-    clearCrosshair({ suppressEvent = false } = {}) {
+    clearCrosshair({ suppressEvent = false } = {}): void {
         this._crosshairIndex = null;
         this.crosshairG.style('display', 'none');
         this.tooltipEl.style.display = 'none';
@@ -392,7 +452,7 @@ export class SimPlot {
         });
     }
 
-    getZoomState() {
+    getZoomState(): { transform: d3.ZoomTransform; yZoomScale: number; yPanOffset: number } {
         return {
             transform: this.currentTransform,
             yZoomScale: this._yZoomScale,
@@ -400,21 +460,21 @@ export class SimPlot {
         };
     }
 
-    setZoomState(state) {
+    setZoomState(state: { transform: d3.ZoomTransform; yZoomScale: number; yPanOffset: number }): void {
         this._yZoomScale = state.yZoomScale;
         this._yPanOffset = state.yPanOffset;
         this.currentTransform = state.transform;
         this.svg.call(this.zoom.transform, state.transform);
     }
 
-    resetZoom() {
+    resetZoom(): void {
         this.currentTransform = d3.zoomIdentity;
         this._yZoomScale = 1;
         this._yPanOffset = 0;
         this.svg.call(this.zoom.transform, d3.zoomIdentity);
     }
 
-    setData(xValues, series) {
+    setData(xValues: number[], series: { name: string; values: number[]; color?: string }[]): void {
         this.xValues = xValues;
         this.series = series.map((s, i) => ({
             ...s,
@@ -433,11 +493,11 @@ export class SimPlot {
         }
     }
 
-    getHiddenNames() {
+    getHiddenNames(): Set<string> {
         return new Set(this.series.filter(s => !s.visible).map(s => s.name));
     }
 
-    setHiddenNames(names) {
+    setHiddenNames(names: Set<string>): void {
         let changed = false;
         this.series.forEach(s => {
             const hide = names.has(s.name);
@@ -452,7 +512,7 @@ export class SimPlot {
         }
     }
 
-    _updateLegend() {
+    _updateLegend(): void {
         this.legendEl.innerHTML = '';
         this.legendEl.appendChild(this.defaultZoomBtn);
         this.series.forEach(s => {
@@ -473,7 +533,7 @@ export class SimPlot {
         });
     }
 
-    _render() {
+    _render(): void {
         if (!this.xValues || !this.series.length) return;
 
         const wrapperRect = this.wrapper.getBoundingClientRect();
@@ -490,8 +550,8 @@ export class SimPlot {
         this.svg.select(`#${this.clipId} rect`).attr('width', w).attr('height', h);
 
         // X scale
-        const xDomain = d3.extent(this.xValues);
-        let xBase;
+        const xDomain = d3.extent(this.xValues) as [number, number];
+        let xBase: d3.ScaleLinear<number, number> | d3.ScaleLogarithmic<number, number>;
         if (this.options.xscale === 'log') {
             xBase = d3.scaleLog()
                 .domain([Math.max(xDomain[0], 1e-30), xDomain[1]])
@@ -506,7 +566,7 @@ export class SimPlot {
         let yMin = Infinity, yMax = -Infinity;
         this.series.filter(s => s.visible).forEach(s => {
             for (let i = 0; i < s.values.length; i++) {
-                const x = this.xValues[i];
+                const x = this.xValues![i];
                 if (x >= xLo && x <= xHi) {
                     const v = s.values[i];
                     if (isFinite(v)) {
@@ -519,7 +579,7 @@ export class SimPlot {
         if (!isFinite(yMin)) { yMin = -1; yMax = 1; }
 
         // Apply Y zoom/pan, working in log space for log scale
-        let yScale;
+        let yScale: d3.ScaleLinear<number, number> | d3.ScaleLogarithmic<number, number>;
         if (this.options.yscale === 'log') {
             const logMin = Math.log10(Math.max(yMin, 1e-30));
             const logMax = Math.log10(Math.max(yMax, 1e-29));
@@ -546,22 +606,22 @@ export class SimPlot {
         if (this.options.xscale === 'log') {
             xAxis.ticks(xTickCount, "~s");
         } else {
-            xAxis.ticks(xTickCount).tickFormat(d3.format("~s"));
+            xAxis.ticks(xTickCount).tickFormat(d3.format("~s") as any);
         }
         this.xAxisG
             .attr('transform', `translate(0,${h})`)
-            .call(xAxis);
+            .call(xAxis as any);
 
         const yAxis = d3.axisLeft(yScale);
         if (this.options.yscale === 'log') {
             yAxis.ticks(yTickCount, "~s");
         } else {
-            yAxis.ticks(yTickCount).tickFormat(d3.format("~s"));
+            yAxis.ticks(yTickCount).tickFormat(d3.format("~s") as any);
         }
-        this.yAxisG.call(yAxis);
+        this.yAxisG.call(yAxis as any);
 
         // Grid lines
-        const xGrid = d3.axisBottom(xScale).tickSize(-h).tickFormat('');
+        const xGrid = d3.axisBottom(xScale).tickSize(-h).tickFormat('' as any);
         if (this.options.xscale === 'log') {
             xGrid.ticks(xTickCount, "");
         } else {
@@ -569,29 +629,29 @@ export class SimPlot {
         }
         this.xGridG
             .attr('transform', `translate(0,${h})`)
-            .call(xGrid);
+            .call(xGrid as any);
 
-        const yGrid = d3.axisLeft(yScale).tickSize(-w).tickFormat('');
+        const yGrid = d3.axisLeft(yScale).tickSize(-w).tickFormat('' as any);
         if (this.options.yscale === 'log') {
             yGrid.ticks(yTickCount, "");
         } else {
             yGrid.ticks(yTickCount);
         }
-        this.yGridG.call(yGrid);
+        this.yGridG.call(yGrid as any);
 
         // Labels
         this.xLabelEl.attr('x', w / 2).attr('y', h + MARGIN.bottom - 5);
         this.yLabelEl.attr('x', -h / 2).attr('y', -MARGIN.left + 15);
 
         // Lines
-        const line = d3.line()
+        const line = d3.line<number>()
             .defined((d) => isFinite(d))
-            .x((d, i) => xScale(this.xValues[i]))
+            .x((d, i) => xScale(this.xValues![i]))
             .y(d => yScale(d));
 
         const visibleSeries = this.series.filter(s => s.visible);
 
-        const paths = this.plotClip.selectAll('path.simplot-line')
+        const paths = this.plotClip.selectAll<SVGPathElement, Series>('path.simplot-line')
             .data(visibleSeries, d => d.name);
 
         paths.enter()
@@ -619,8 +679,8 @@ export class SimPlot {
         }
     }
 
-    destroy() {
-        clearTimeout(this._resizeTimer);
+    destroy(): void {
+        clearTimeout(this._resizeTimer!);
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;

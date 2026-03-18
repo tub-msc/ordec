@@ -10,11 +10,11 @@ import glDarkUrl from "golden-layout/dist/css/themes/goldenlayout-dark-theme.css
 
 const STORAGE_KEY = 'ordecTheme';
 
-let glLightLink = null;
-let glDarkLink = null;
-let aceEditors = [];
+let glLightLink: HTMLLinkElement | null = null;
+let glDarkLink: HTMLLinkElement | null = null;
+let aceEditors: any[] = [];
 
-function createGlLinks() {
+function createGlLinks(): void {
     glLightLink = document.createElement('link');
     glLightLink.rel = 'stylesheet';
     glLightLink.href = glLightUrl;
@@ -26,11 +26,11 @@ function createGlLinks() {
     document.head.appendChild(glDarkLink);
 }
 
-function isDark() {
+function isDark(): boolean {
     return document.body.classList.contains('theme-dark');
 }
 
-function applyTheme(dark) {
+function applyTheme(dark: boolean): void {
     if (dark) {
         document.body.classList.add('theme-dark');
     } else {
@@ -38,8 +38,8 @@ function applyTheme(dark) {
     }
 
     if (glLightLink && glDarkLink) {
-        glLightLink.disabled = dark;
-        glDarkLink.disabled = !dark;
+        (glLightLink as any).disabled = dark;
+        (glDarkLink as any).disabled = !dark;
     }
 
     const aceTheme = dark ? "ace/theme/github_dark" : "ace/theme/github";
@@ -50,16 +50,16 @@ function applyTheme(dark) {
     const btn = document.querySelector('#theme-toggle');
     if (btn) {
         btn.textContent = dark ? '\u2600' : '\u263E';
-        btn.title = dark ? 'Switch to light mode' : 'Switch to dark mode';
+        (btn as HTMLElement).title = dark ? 'Switch to light mode' : 'Switch to dark mode';
     }
 }
 
-export function registerAceEditor(editor) {
+export function registerAceEditor(editor: any): void {
     aceEditors.push(editor);
     editor.setTheme(isDark() ? "ace/theme/github_dark" : "ace/theme/github");
 }
 
-export function initTheme() {
+export function initTheme(): void {
     createGlLinks();
 
     const saved = window.localStorage.getItem(STORAGE_KEY);

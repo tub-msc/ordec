@@ -1,12 +1,13 @@
-// SPDX-FileCopyrightText: 2025 ORDeC contributors
+// SPDX-FileCopyrightText: 2026 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
 import * as d3 from "d3";
 import { mat4, vec2 } from "gl-matrix";
 import earcut from 'earcut';
 
-import { generateId } from './resultviewer.js';
-import { siFormat } from './siformat.js';
+import { generateId } from './resultviewer';
+import { siFormat } from './siformat';
+import type { LayoutData, LayoutLayer } from './types';
 
 // See: https://github.com/mdn/dom-examples/blob/main/webgl-examples/tutorial/sample2/webgl-demo.js
 
@@ -17,8 +18,22 @@ import glslPostFrag from './glsl/layout-post.frag';
 import glslLabelsVert from './glsl/layout-labels.vert';
 import glslLabelsFrag from './glsl/layout-labels.frag';
 
-function loadShader(gl, type, source) {
+interface ProgramInfo {
+    program: WebGLProgram;
+    attribLocations: Record<string, number>;
+    uniformLocations: Record<string, WebGLUniformLocation | null>;
+}
+
+interface TextureEntry {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+function loadShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader | null {
     const shader = gl.createShader(type);
+    if (!shader) return null;
 
     gl.shaderSource(shader, source);
     gl.compileShader(shader);
@@ -32,11 +47,12 @@ function loadShader(gl, type, source) {
     return shader;
 }
 
-function initprog(gl, vsSource, fsSource) {
+function initprog(gl: WebGL2RenderingContext, vsSource: string, fsSource: string): WebGLProgram | null {
     const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
     const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
 
     const prog = gl.createProgram();
+    if (!prog || !vertexShader || !fragmentShader) return null;
     gl.attachShader(prog, vertexShader);
     gl.attachShader(prog, fragmentShader);
     gl.linkProgram(prog);
@@ -49,13 +65,13 @@ function initprog(gl, vsSource, fsSource) {
     return prog;
 }
 
-function isConvex(A, B, C) {
+function isConvex(A: number[], B: number[], C: number[]): boolean {
     const x = 0, y = 1;
     const det = (B[x]-A[x])*(C[y]-A[y]) - (C[x]-A[x])*(B[y]-A[y]);
     return det > 0;
 }
 
-function calcLayerColor(color, layerId, dampen) {
+function calcLayerColor(color: number[], layerId: number, dampen: boolean): number[] {
     // If dampen is true, infinite / 0xFF brightness is 'scaled away'.
     const dampenFactor = dampen?0.95:1.0;
     return [
@@ -70,9 +86,42 @@ function calcLayerColor(color, layerId, dampen) {
 }
 
 export class LayoutGL {
-    constructor(resContent) {
+    resContent: HTMLElement;
+    transform: d3.ZoomTransform;
+    projectionMatrix: mat4;
+    visibility: Map<number, boolean>;
+    brightness: number;
+    initialZoomDone: boolean;
+    canvas: HTMLCanvasElement;
+    layersUl: HTMLUListElement;
+    gl: WebGL2RenderingContext;
+    programInfos: { shapes: ProgramInfo; labels: ProgramInfo; post: ProgramInfo };
+    intermediateTexture: WebGLTexture;
+    intermediateTextureDepth: WebGLTexture;
+    intermediateFramebuffer: WebGLFramebuffer;
+    labelsTexture: WebGLTexture;
+    buffers: {
+        gridVertices: WebGLBuffer;
+        postVertices: WebGLBuffer;
+        shapeVertices: WebGLBuffer;
+        labelVertices: WebGLBuffer;
+    };
+    gridSize: number;
+    width: number;
+    height: number;
+    data: LayoutData;
+    zoom: d3.ZoomBehavior<HTMLCanvasElement, unknown>;
+    layerCheckboxes: NodeListOf<HTMLInputElement>;
+    allLayerCheckbox: HTMLInputElement;
+    cursorPosLi: HTMLLIElement;
+    labelsTextureWidth: number;
+    labelsTextureHeight: number;
+    labelsTextureMap: Map<string, TextureEntry>;
+    labelsNumVertices: number;
+
+    constructor(resContent: HTMLElement) {
         this.resContent = resContent;
-        this.transform = d3.zoomIdentity.scale(1e-1,1e-1);
+        this.transform = d3.zoomIdentity.scale(1e-1) as any;
         this.projectionMatrix = mat4.create();
         this.visibility = new Map();
         this.brightness = 60;
@@ -90,7 +139,7 @@ export class LayoutGL {
         this.canvas.width = this.canvas.clientWidth;
         this.canvas.height = this.canvas.clientHeight;
 
-        this.gl = this.canvas.getContext("webgl2");
+        this.gl = this.canvas.getContext("webgl2")!;
         if (this.gl === null) {
             alert("WebGL initialization failed!");
             return;
@@ -98,10 +147,8 @@ export class LayoutGL {
 
         this.initGL();
 
-        this.zoom = d3.zoom().on( 'zoom',  ({transform}) => {
+        this.zoom = d3.zoom<HTMLCanvasElement, unknown>().on( 'zoom',  ({transform}) => {
             this.transform = transform;
-            //this.g.attr("transform", transform);
-            //console.log("zoomed", this.transform);
             this.drawGL();
         });
 
@@ -123,14 +170,14 @@ export class LayoutGL {
     }
 
 
-    zoomFull(animate) {
+    zoomFull(animate: boolean): void {
         console.log("zoom full", this.data.extent);
         let lx = this.data.extent[0];
         let ly = this.data.extent[1];
         let ux = this.data.extent[2];
         let uy = this.data.extent[3];
 
-        const pad = Math.max(ux-lx, uy-ly)*0.05; 
+        const pad = Math.max(ux-lx, uy-ly)*0.05;
         lx -= pad;
         ux += pad;
         ly -= pad;
@@ -146,33 +193,33 @@ export class LayoutGL {
 
         if(scaleX > scaleY) {
             // center horizontally
-            newZoom.x += (this.canvas.width - w*newZoom.k)/2;
+            (newZoom as any).x += (this.canvas.width - w*newZoom.k)/2;
         } else {
             // center vertically
-            newZoom.y += (this.canvas.height - h*newZoom.k)/2;
+            (newZoom as any).y += (this.canvas.height - h*newZoom.k)/2;
         }
 
         if(animate) {
-            d3.select(this.canvas).transition().duration(400).call(this.zoom.transform, newZoom);
+            d3.select(this.canvas).transition().duration(400).call(this.zoom.transform as any, newZoom);
         } else {
             d3.select(this.canvas).call(this.zoom.transform, newZoom);
         }
     }
 
-    onKeydown(event) {
+    onKeydown(event: KeyboardEvent): void {
         if(event.key == "f") {
             this.zoomFull(true);
         }
     }
 
-    onMousemove(event) {
+    onMousemove(event: MouseEvent): void {
         const pos = this.transform.invert([event.offsetX, event.offsetY]);
         const x = siFormat(pos[0], this.data.unit);
         const y = siFormat(-pos[1], this.data.unit);
         this.cursorPosLi.innerHTML = `x=${x}&nbsp;&nbsp;y=${y}`;
     }
 
-    update(msgData) {
+    update(msgData: LayoutData): void {
         this.data = msgData;
 
         if(!this.initialZoomDone) {
@@ -186,18 +233,18 @@ export class LayoutGL {
         this.updateLayers();
     }
 
-    updateLayerList() {
+    updateLayerList(): void {
         const layersUl = this.layersUl;
         layersUl.innerHTML = "";
 
-        let li;
-        let id;
+        let li: HTMLLIElement;
+        let id: string;
 
         li = document.createElement('li');
         id = generateId()
         li.innerHTML = `
             <input type="checkbox" checked class="allLayers" id="${id}" name="all">
-            <label for="${id}"><b>all</b></label> 
+            <label for="${id}"><b>all</b></label>
         `;
         layersUl.appendChild(li);
         this.data.layers.forEach(layer => {
@@ -212,7 +259,7 @@ export class LayoutGL {
                 <label for="${id}">
                     <svg width="30px" height="15px" viewBox="0 0 30 15"><path style="${layer.styleCSS}" d="${svgPath}" /></svg>
                     ${layer.path}
-                </label> 
+                </label>
             `;
             layersUl.appendChild(li);
         });
@@ -224,7 +271,7 @@ export class LayoutGL {
             checkbox.onclick = () => this.updateLayers();
         });
 
-        this.allLayerCheckbox = layersUl.querySelector('.allLayers');
+        this.allLayerCheckbox = layersUl.querySelector('.allLayers')!;
 
         this.allLayerCheckbox.onclick = () => {
             this.layerCheckboxes.forEach(checkbox => {
@@ -238,8 +285,8 @@ export class LayoutGL {
             <input type="range" min="1" max="100" value="${this.brightness}" class="brightness" />
         `;
         layersUl.appendChild(li);
-        li.querySelector('input').oninput = (range) => {
-            this.brightness = range.target.value;
+        li.querySelector('input')!.oninput = (range) => {
+            this.brightness = Number((range.target as HTMLInputElement).value);
             this.drawGL();
         }
 
@@ -249,16 +296,16 @@ export class LayoutGL {
         this.cursorPosLi = li;
     }
 
-    initGL() {
+    initGL(): void {
         const gl = this.gl;
 
         gl.getExtension("EXT_color_buffer_float");
         gl.getExtension("EXT_float_blend");
 
-        this.programInfos = Object();
-        let prog;
+        this.programInfos = {} as any;
+        let prog: WebGLProgram;
 
-        prog = initprog(gl, glslShapesVert, glslShapesFrag);
+        prog = initprog(gl, glslShapesVert, glslShapesFrag)!;
         this.programInfos.shapes = {
             program: prog,
             attribLocations: {
@@ -272,7 +319,7 @@ export class LayoutGL {
             },
         };
 
-        prog = initprog(gl, glslLabelsVert, glslLabelsFrag);
+        prog = initprog(gl, glslLabelsVert, glslLabelsFrag)!;
         this.programInfos.labels = {
             program: prog,
             attribLocations: {
@@ -284,12 +331,11 @@ export class LayoutGL {
                 projectionMatrix: gl.getUniformLocation(prog, "uProjectionMatrix"),
                 modelViewMatrix: gl.getUniformLocation(prog, "uModelViewMatrix"),
                 pixelScale: gl.getUniformLocation(prog, "uPixelScale"),
-                //layerColor: gl.getUniformLocation(prog, "uLayerColor"),
                 sampler: gl.getUniformLocation(prog, "uSampler"),
             },
         };
 
-        prog = initprog(gl, glslPostVert, glslPostFrag);
+        prog = initprog(gl, glslPostVert, glslPostFrag)!;
         this.programInfos.post = {
             program: prog,
             attribLocations: {
@@ -302,19 +348,19 @@ export class LayoutGL {
             },
         };
 
-        this.intermediateTexture = gl.createTexture();
-        this.intermediateTextureDepth = gl.createTexture();
-        this.intermediateFramebuffer = gl.createFramebuffer();
-        this.labelsTexture = gl.createTexture();
+        this.intermediateTexture = gl.createTexture()!;
+        this.intermediateTextureDepth = gl.createTexture()!;
+        this.intermediateFramebuffer = gl.createFramebuffer()!;
+        this.labelsTexture = gl.createTexture()!;
 
         this.buffers = {
             // static, loaded by loadBuffersConstant:
-            gridVertices: gl.createBuffer(),
-            postVertices: gl.createBuffer(),
+            gridVertices: gl.createBuffer()!,
+            postVertices: gl.createBuffer()!,
 
             // dynamic, loaded by loadBuffersDynamic:
-            shapeVertices: gl.createBuffer(),
-            labelVertices: gl.createBuffer(),
+            shapeVertices: gl.createBuffer()!,
+            labelVertices: gl.createBuffer()!,
         }
 
         this.loadBuffersConstant();
@@ -323,12 +369,12 @@ export class LayoutGL {
         this.height = -1;
     }
 
-    loadLabels(isFontSwap) {
-        const gl = this.gl; 
-        let labelVertices = [];
+    loadLabels(isFontSwap: boolean): void {
+        const gl = this.gl;
+        let labelVertices: number[] = [];
         let textureCursorX = 0;
         let textureCursorY = 0;
-     
+
         this.labelsTextureWidth = 512;
         this.labelsTextureHeight = 512;
         this.labelsTextureMap = new Map();
@@ -345,18 +391,18 @@ export class LayoutGL {
             });
         }
 
-        const ctx = document.createElement("canvas").getContext("2d");
+        const ctx = document.createElement("canvas").getContext("2d")!;
         ctx.canvas.width  = this.labelsTextureWidth;
         ctx.canvas.height = this.labelsTextureHeight;
         ctx.fillStyle = "#000000";
         ctx.fillRect(0, 0, this.labelsTextureWidth, this.labelsTextureHeight);
         ctx.font = fontSpec;
-        ctx.fontStretch = "semi-condensed";
+        (ctx as any).fontStretch = "semi-condensed";
         ctx.textAlign = "left";
         ctx.textBaseline = "top";
         ctx.fillStyle = "#ffffff";
 
-        const textOnTexture = (text) => {
+        const textOnTexture = (text: string): TextureEntry | undefined => {
             if(!this.labelsTextureMap.get(text)) {
                 // measure text + break line if needed, before rendering text:
                 const m = ctx.measureText(text);
@@ -385,27 +431,27 @@ export class LayoutGL {
             }
             return this.labelsTextureMap.get(text);
         };
-        //console.log("document fonts status B:", font.status);
         console.log(this.labelsTextureMap);
-        
-        const addLabel = (x, y, text, halign='left', valign='top') => {
+
+        const addLabel = (x: number, y: number, text: string, halign='left', valign='top') => {
             // halign must be one of: 'left', 'center', 'right'
             // valign must be one of: 'top', 'middle', 'bottom'
             const tex = textOnTexture(text);
-            
+            if (!tex) return;
+
             const lu = (tex.x) / this.labelsTextureWidth;
             const uu = (tex.x + tex.width) / this.labelsTextureWidth;
             const lv = (tex.y) / this.labelsTextureHeight;
             const uv = (tex.y + tex.height) / this.labelsTextureHeight;
-            
+
             const W = tex.width;
             const H = tex.height;
 
             // set pixelCoord values depending on halign and valign:
-            let p_xl;
-            let p_xu;
-            let p_yl;
-            let p_yu;
+            let p_xl: number;
+            let p_xu: number;
+            let p_yl: number;
+            let p_yu: number;
             if(halign == 'left') {
                 p_xl = 0;
                 p_xu = W;
@@ -430,18 +476,15 @@ export class LayoutGL {
 
             labelVertices.push(
                 // x y    textureCoord   pixelCoord
-                x, y,     uu, lv,        p_xu, p_yl,
-                x, y,     uu, uv,        p_xu, p_yu,
-                x, y,     lu, uv,        p_xl, p_yu,
-                x, y,     uu, lv,        p_xu, p_yl,
-                x, y,     lu, uv,        p_xl, p_yu,
-                x, y,     lu, lv,        p_xl, p_yl,
+                x, y,     uu, lv,        p_xu!, p_yl!,
+                x, y,     uu, uv,        p_xu!, p_yu!,
+                x, y,     lu, uv,        p_xl!, p_yu!,
+                x, y,     uu, lv,        p_xu!, p_yl!,
+                x, y,     lu, uv,        p_xl!, p_yu!,
+                x, y,     lu, lv,        p_xl!, p_yl!,
             );
             this.labelsNumVertices += 6;
         };
-
-        //addLabel(1000, 1000, "Label 1", 'left', 'top');
-        //addLabel(0, 0, "Origin", 'center', 'middle');
 
         this.data.layers.forEach(layer => {
             layer.labelVerticesOffset = this.labelsNumVertices;
@@ -458,7 +501,7 @@ export class LayoutGL {
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(labelVertices), gl.STATIC_DRAW);
     }
 
-    loadShapes() {
+    loadShapes(): void {
         const gl = this.gl;
 
         // For all shapes, separate triangle (fill) and line (stroke) vertex
@@ -468,7 +511,7 @@ export class LayoutGL {
         // This way, the data is always there, for example if something like
         // "outline on select / hover" is desired in the future.
 
-        const shapeVertices = [];
+        const shapeVertices: number[] = [];
         this.data.layers.forEach(layer => {
             layer.shapeLineVerticesOffset = shapeVertices.length/2;
             layer.polys.forEach(poly => {
@@ -483,7 +526,7 @@ export class LayoutGL {
                 shapeVertices.push(poly.vertices[0], poly.vertices[1]);
 
                 if(layer.styleCrossRect && poly.vertices.length == 4*2) {
-                    // Add "X" shape if styleCrossRect is enabled: 
+                    // Add "X" shape if styleCrossRect is enabled:
                     shapeVertices.push(
                         poly.vertices[0], poly.vertices[1],
                         poly.vertices[4], poly.vertices[5],
@@ -509,7 +552,7 @@ export class LayoutGL {
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(shapeVertices), gl.STATIC_DRAW);
     }
 
-    loadBuffersConstant() {
+    loadBuffersConstant(): void {
         // For postprocessing: Load a screen-filling rectangle (two triangles)
         // with texture coordinates:
 
@@ -525,13 +568,13 @@ export class LayoutGL {
             -1, -1,     0, 0,
             -1,  1,     0, 1,
         ]), gl.STATIC_DRAW);
-    
-            
+
+
         // Load grid buffer:
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.gridVertices);
         this.gridSize = 128;
-        const grid = [];
+        const grid: number[] = [];
         for(let x = 0; x < this.gridSize; x++) {
             for(let y = 0; y < this.gridSize; y++) {
                 grid.push(x, y);
@@ -540,7 +583,7 @@ export class LayoutGL {
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(grid), gl.STATIC_DRAW);
     }
 
-    drawGLShapes() {
+    drawGLShapes(): void {
         const gl = this.gl;
         const programInfo = this.programInfos.shapes;
         const white = [255, 255, 255];
@@ -585,7 +628,7 @@ export class LayoutGL {
 
                 gl.drawArrays(gl.LINES, layer.shapeLineVerticesOffset, layer.shapeLineVerticesCount);
             }
-            
+
             // In the future, layerColor could be an attribute, not a uniform value.
 
             if(layer.styleFill && (layer.shapeTriVerticesCount > 0)) {
@@ -604,13 +647,13 @@ export class LayoutGL {
 
         gl.uniform4fv(programInfo.uniformLocations.layerColor,
             calcLayerColor(white, 0, false));
-        
+
         gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, this.scaleGrid());
 
         gl.drawArrays(gl.POINTS, 0, this.gridSize * this.gridSize);
     }
 
-    drawGLLabels() {
+    drawGLLabels(): void {
         const gl = this.gl;
         const programInfo = this.programInfos.labels;
 
@@ -631,8 +674,8 @@ export class LayoutGL {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        gl.uniform1i(programInfo.uniformLocations.uSampler, 0);
-        
+        gl.uniform1i(programInfo.uniformLocations.sampler, 0);
+
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.labelVertices);
         gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 6*4, 0);
         gl.vertexAttribPointer(programInfo.attribLocations.vertexTextureCoord, 2, gl.FLOAT, false, 6*4, 2*4);
@@ -657,7 +700,7 @@ export class LayoutGL {
         });
     }
 
-    scaleGrid() {
+    scaleGrid(): mat4 {
         const projectionMatrixInv = mat4.create();
         mat4.invert(projectionMatrixInv, this.projectionMatrix);
 
@@ -668,8 +711,8 @@ export class LayoutGL {
 
         const topRight = vec2.create();
         const bottomLeft = vec2.create();
-        vec2.transformMat4(topRight, vec2.fromValues(1, 1), projectionMatrixInv);
-        vec2.transformMat4(bottomLeft, vec2.fromValues(-1, -1), projectionMatrixInv);
+        vec2.transformMat4(topRight, vec2.fromValues(1, 1), projectionMatrixInv as any);
+        vec2.transformMat4(bottomLeft, vec2.fromValues(-1, -1), projectionMatrixInv as any);
         const width = topRight[0] - bottomLeft[0];
         const height = topRight[1] - bottomLeft[1];
         const maxExtent = Math.max(width, height);
@@ -683,7 +726,7 @@ export class LayoutGL {
         return modelViewMatrix;
     }
 
-    drawGLPost() {
+    drawGLPost(): void {
         const gl = this.gl;
         const programInfo = this.programInfos.post;
 
@@ -692,14 +735,14 @@ export class LayoutGL {
         gl.disable(gl.DEPTH_TEST);
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        
+
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.intermediateTexture);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        gl.uniform1i(programInfo.uniformLocations.uSampler, 0);
+        gl.uniform1i(programInfo.uniformLocations.sampler, 0);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.postVertices);
         gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 4*4, 0);
@@ -714,7 +757,7 @@ export class LayoutGL {
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
 
-    resizeGL() {
+    resizeGL(): void {
         const gl = this.gl;
 
         // Configure canvas framebuffer width + height:
@@ -755,7 +798,7 @@ export class LayoutGL {
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this.intermediateTextureDepth, 0);
     }
 
-    updateProjectionMatrix() {
+    updateProjectionMatrix(): void {
         mat4.orthoNO(this.projectionMatrix, 0, this.width, this.height, 0, -1, 1);
         mat4.translate(this.projectionMatrix, this.projectionMatrix, [this.transform.x, this.transform.y, 0]);
         mat4.scale(this.projectionMatrix, this.projectionMatrix, [this.transform.k, this.transform.k, 1]);
@@ -764,12 +807,12 @@ export class LayoutGL {
         mat4.scale(this.projectionMatrix, this.projectionMatrix, [1, -1, 1]);
     }
 
-    drawGL() {
+    drawGL(): void {
         if((this.width != this.canvas.width) || (this.height != this.canvas.height)) {
             this.width = this.canvas.width;
             this.height = this.canvas.height;
 
-            this.resizeGL();    
+            this.resizeGL();
         }
         if(this.data) {
             this.updateProjectionMatrix();
@@ -779,7 +822,7 @@ export class LayoutGL {
         }
     }
 
-    updateLayers() {
+    updateLayers(): void {
         let allVisible = true;
         let allHidden = true;
         this.layerCheckboxes.forEach(checkbox => {
@@ -803,4 +846,4 @@ export class LayoutGL {
         }
         this.drawGL();
     }
-};
+}

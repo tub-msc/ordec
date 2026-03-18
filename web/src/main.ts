@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 ORDeC contributors
+// SPDX-FileCopyrightText: 2026 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
 import './style.css'
@@ -16,24 +16,26 @@ import "ace-builds/src-noconflict/theme-github";
 import "ace-builds/src-noconflict/theme-github_dark";
 import "ace-builds/src-noconflict/ext-language_tools";
 
-import { OrdMode } from "./ace-ord-mode.js";
+import { OrdMode } from "./ace-ord-mode";
 
-import { authenticateLocalQuery } from './auth.js';
+import { authenticateLocalQuery } from './auth';
 
-import { ResultViewer } from "./resultviewer.js";
-import { OrdecClient } from './client.js';
-import { initTheme, registerAceEditor } from './theme.js';
+import { ResultViewer } from "./resultviewer";
+import { OrdecClient } from './client';
+import { initTheme, registerAceEditor } from './theme';
+
+declare const ace: any;
 
 initTheme();
 
-const sourceTypeSelect = document.querySelector("#sourcetype");
+const sourceTypeSelect = document.querySelector("#sourcetype") as HTMLSelectElement;
 const urlParams = new URLSearchParams(window.location.search);
 
 // add &debug=true to show 'debug' elements
 const debug = Boolean(urlParams.get('debug'));
 if(debug) {
     Array.from(document.querySelectorAll(".debug")).forEach(e => {
-        e.style.display = "block";
+        (e as HTMLElement).style.display = "block";
     });
 }
 
@@ -49,27 +51,37 @@ if(Boolean(urlParams.get('viewsel_flat'))) {
 const queryLocal = urlParams.get('local');
 const queryHmac = urlParams.get('hmac');
 
-function getSourceType() {
+function getSourceType(): string {
     return sourceTypeSelect.options[sourceTypeSelect.selectedIndex].value;
 }
 
-function setStatus(status) {
-    let divStatus = document.querySelector("#status");
+function setStatus(status: string): void {
+    let divStatus = document.querySelector("#status") as HTMLElement;
     divStatus.innerText = status;
-    divStatus.style.backgroundColor = {
+    divStatus.style.backgroundColor = ({
         'busy': '#ffff44',
         'ready': '#44ff44',
         'exception': '#ff4444',
         'disconnected': '#ff4444'
-    }[status];
+    } as Record<string, string>)[status];
 }
 
-function unloadMsg() {
+function unloadMsg(): string {
     return "Unsaved changes are lost when leaving. Do you want to leave the site?";
 }
 
+interface EditorContainer {
+    element: HTMLElement;
+}
+
 class Editor {
-    constructor(container, state) {
+    refreshTimeout: number;
+    container: EditorContainer;
+    resizeWithContainerAutomatically: boolean;
+    editor: any;
+    timeout: ReturnType<typeof setTimeout> | undefined;
+
+    constructor(container: EditorContainer, state: Record<string, any>) {
         this.refreshTimeout = 500;
         this.container = container;
         this.resizeWithContainerAutomatically = true;
@@ -83,8 +95,8 @@ class Editor {
         });
     }
 
-    registerChangeHandler(client) {
-        this.editor.session.on('change', (delta) => {
+    registerChangeHandler(client: OrdecClient): void {
+        this.editor.session.on('change', (delta: any) => {
             // After the user has modified the example code, he must confirm
             // when he wants to close the browser window.
             window.onbeforeunload = unloadMsg;
@@ -98,12 +110,12 @@ class Editor {
         });
     }
 
-    loadSrc(src) {
+    loadSrc(src: string): void {
         this.editor.setValue(src);
         this.editor.clearSelection();
     }
 
-    updateMode() {
+    updateMode(): void {
         if (getSourceType() == "ord") {
             this.editor.session.setMode(new OrdMode());
         } else {
@@ -112,7 +124,7 @@ class Editor {
     }
 }
 
-async function getInitData() {
+async function getInitData(): Promise<any> {
     let paramExample = urlParams.get('example');
     if (!paramExample) {
         paramExample = 'blank';
@@ -128,15 +140,15 @@ async function getInitData() {
     return await response.json();
 }
 
-const layout = new GoldenLayout(document.querySelector("#workspace"));
-layout.layoutConfig.settings.showPopoutIcon = false;
+const layout = new GoldenLayout(document.querySelector("#workspace") as HTMLElement);
+(layout as any).layoutConfig.settings.showPopoutIcon = false;
 layout.resizeWithContainerAutomatically = true;
-layout.registerComponent('editor', Editor);
-layout.registerComponent('result', ResultViewer);
+layout.registerComponent('editor', Editor as any);
+layout.registerComponent('result', ResultViewer as any);
 
-function getResultViewers() {
-    let ret = [];
-    layout.root.getAllContentItems().forEach(e => {
+function getResultViewers(): ResultViewer[] {
+    let ret: ResultViewer[] = [];
+    (layout as any).root.getAllContentItems().forEach((e: any) => {
         if (!e.isComponent) return;
         if (e.componentName != 'result') return;
         ret.push(e.component);
@@ -144,9 +156,9 @@ function getResultViewers() {
     return ret;
 }
 
-function getEditor() {
-    let ret;
-    layout.root.getAllContentItems().forEach(e => {
+function getEditor(): Editor {
+    let ret!: Editor;
+    (layout as any).root.getAllContentItems().forEach((e: any) => {
         if(e.componentName == 'editor') {
             ret = e.component;
         }
@@ -154,22 +166,22 @@ function getEditor() {
     return ret;
 }
 
-document.querySelector("#newresview").onclick = () => {
+(document.querySelector("#newresview") as HTMLElement).onclick = () => {
     layout.addComponent('result', undefined, 'Result View');
 };
 
-document.querySelector("#savejson").onclick = () => {
+(document.querySelector("#savejson") as HTMLElement).onclick = () => {
     const uistate = LayoutConfig.fromResolved(layout.saveLayout());
 
     const dataStr = "data:application/json;charset=utf-8,"
         + encodeURIComponent(JSON.stringify(uistate, null, 2));
-    const dlAnchorElem = document.querySelector('#downloadAnchorElem');
+    const dlAnchorElem = document.querySelector('#downloadAnchorElem') as HTMLAnchorElement;
     dlAnchorElem.setAttribute("href", dataStr);
     dlAnchorElem.setAttribute("target", "_blank");
     dlAnchorElem.click();
 };
 
-let client;
+let client: OrdecClient;
 
 if(queryLocal) {
     // If queryLocal is set, the web UI is used in **local mode**.
@@ -178,12 +190,12 @@ if(queryLocal) {
     // To prevent CSRF attacks, queryLocal is authenticated using the queryHmac
     // parameter.
 
-    const local = await authenticateLocalQuery(queryLocal, queryHmac);
+    const local = await authenticateLocalQuery(queryLocal, queryHmac!);
 
     if(local) {
-        document.querySelector("#toolSourcetype").style.display='none';
+        (document.querySelector("#toolSourcetype") as HTMLElement).style.display='none';
 
-        const uistate = {
+        const uistate: any = {
             "content": [
                 {
                     "type": "row",
@@ -216,7 +228,7 @@ if(queryLocal) {
     // This editor and zero or more result views are initialized through
     // the data obtained from the server through getInitData().
 
-    document.querySelector("#toolRefresh").style.display='none';
+    (document.querySelector("#toolRefresh") as HTMLElement).style.display='none';
 
     const initData = await getInitData();
     initData.uistate.header = {popout: false};
@@ -241,7 +253,7 @@ layout.addEventListener('stateChanged', () => {
     client.registerResultViewers(getResultViewers());
 });
 
-document.querySelector("#refresh").onclick = () => {
+(document.querySelector("#refresh") as HTMLElement).onclick = () => {
     client.connect();
 };
 
@@ -256,8 +268,8 @@ sourceTypeSelect.onchange = () => {
 };
 
 // Make the OrdecClient object easy to access for automated testing & browser-based debugging:
-window.ordecClient = client;
+(window as any).ordecClient = client;
 
 fetch('/api/version').then(response => response.json()).then(data => {
-    document.querySelector('#version').innerText = data['version'];
+    (document.querySelector('#version') as HTMLElement).innerText = data['version'];
 });

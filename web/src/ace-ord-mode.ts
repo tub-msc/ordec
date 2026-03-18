@@ -1,17 +1,17 @@
-// SPDX-FileCopyrightText: 2025 ORDeC contributors
+// SPDX-FileCopyrightText: 2026 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
 import ace from "ace-builds/src-noconflict/ace";
 import "ace-builds/src-noconflict/mode-python";
 
-const PythonMode = ace.require("ace/mode/python").Mode;
-const PythonHighlightRules = ace.require("ace/mode/python_highlight_rules").PythonHighlightRules;
+const PythonMode = (ace as any).require("ace/mode/python").Mode;
+const PythonHighlightRules = (ace as any).require("ace/mode/python_highlight_rules").PythonHighlightRules;
 
 class OrdHighlightRules extends PythonHighlightRules {
     constructor() {
         super();
         this.version = 1;
-        this.$rules.start.unshift(
+        (this as any).$rules.start.unshift(
         	{
         		token: "keyword.control.ord",
                 regex: "\\b(cell|viewgen)\\b"
@@ -20,11 +20,11 @@ class OrdHighlightRules extends PythonHighlightRules {
                 token: "keyword.definition.ord",
                 regex: "\\b(inout|input|output|port|net|path)\\b"
             },
-            { 
-            	token: "keyword.operator.ord", 
-            	regex: "--" 
+            {
+            	token: "keyword.operator.ord",
+            	regex: "--"
             },
-		    { 
+		    {
 		        token: ["punctuation.dot.ord", "keyword.operator.ord", "variable.ord"],
 		        regex: "(\\.+)(\\$?)([A-Za-z_]\\w*)"
 		    },
