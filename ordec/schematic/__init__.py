@@ -6,4 +6,4 @@ from .helpers import (
     SchematicError, spice_params,
 )
 from .netlister import Netlister
-from .routing import schematic_routing, adjust_outline_initial
+from .routing import auto_wire, adjust_outline_initial

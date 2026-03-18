@@ -266,9 +266,9 @@ class Schematic(SubgraphRoot):
     default_ground = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
 
     def postprocess(self):
-        from ..schematic import resolve_instances, schematic_routing, schem_check
+        from ..schematic import resolve_instances, auto_wire, schem_check
         resolve_instances(self)
-        self.outline = schematic_routing(self)
+        auto_wire(self)
         schem_check(self, add_conn_points=True, add_terminal_taps=True)
         return self
 
@@ -284,7 +284,7 @@ class Schematic(SubgraphRoot):
 class Net(Node):
     in_subgraphs = [Schematic]
     pin = ExternalRef(Pin, of_subgraph=lambda c: c.root.symbol)
-    route = Attr(bool, default=True) #: Controls whether the Net is routed by schematic_routing
+    auto_wire = Attr(bool, default=True) #: Controls whether the Net is auto-wired
 
     pin_idx = Index(pin)
 

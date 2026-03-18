@@ -7,7 +7,7 @@ from public import public
 import functools
 
 from ..core import *
-from ..schematic import spice_params, schem_check, symbol_place_pins, schematic_routing
+from ..schematic import spice_params, schem_check, symbol_place_pins, auto_wire
 from . import generic_mos
 from .pdk_common import PdkDict, check_dir, check_file
 

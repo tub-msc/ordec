@@ -3,7 +3,7 @@
 
 from ordec.core import *
 from ordec.schematic import schem_check, symbol_place_pins
-from ordec.schematic import schematic_routing
+from ordec.schematic import auto_wire
 from ordec.sim import Simulator
 
 from ordec.lib.generic_mos import Nmos, Inv
@@ -439,7 +439,7 @@ class SineRC(Cell):
         s.res = SchemInstance(res.portmap(m=s.out, p=s.inp), pos=Vec2R(10, 8), orientation=West)
         s.cap = SchemInstance(cap.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
 
-        s.outline = schematic_routing(s)
+        auto_wire(s)
         schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 
@@ -477,7 +477,7 @@ class SineRL(Cell):
         s.res = SchemInstance(res.portmap(m=s.out, p=s.inp), pos=Vec2R(10, 8), orientation=West)
         s.ind = SchemInstance(ind.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
 
-        s.outline = schematic_routing(s)
+        auto_wire(s)
         schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 
@@ -520,7 +520,7 @@ class PulsedRC(Cell):
         s.res = SchemInstance(res.portmap(m=s.out, p=s.inp), pos=Vec2R(10, 8), orientation = West)
         s.cap = SchemInstance(cap.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
 
-        s.outline = schematic_routing(s)
+        auto_wire(s)
         schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 
@@ -562,7 +562,7 @@ class SourceTb(Cell):
         self.add_source_instance(s)
         s.res = SchemInstance(res.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
 
-        s.outline = schematic_routing(s)
+        auto_wire(s)
         schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 

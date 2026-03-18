@@ -1,7 +1,7 @@
 from ordec.core import *
 from ordec.schematic import schem_check
 from ordec.sim import Simulator
-from ordec.schematic import schematic_routing
+from ordec.schematic import auto_wire
 from ordec.lib import Res, Cap, Gnd, Vpulse, Vsin
 
 class RC(Cell):
@@ -38,7 +38,7 @@ class RC(Cell):
         s.res = SchemInstance(res.portmap(m=s.a, p=s.vdd), pos=Vec2R(10, 8), orientation = West)
         s.cap = SchemInstance(cap.portmap(m=s.vss, p=s.a), pos=Vec2R(12, 5))
 
-        s.outline = schematic_routing(s)
+        auto_wire(s)
         schem_check(s, add_conn_points=True, add_terminal_taps=True)
         return s
 

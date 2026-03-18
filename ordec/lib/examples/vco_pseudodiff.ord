@@ -215,10 +215,10 @@ cell VcoRing:
 
         path out_p, out_n
 
-        vdd_st.ref.route = False
-        vss_st.ref.route = False
-        vdd.ref.route = False
-        vss.ref.route = False
+        vdd_st.ref.auto_wire = False
+        vss_st.ref.auto_wire = False
+        vdd.ref.auto_wire = False
+        vss.ref.auto_wire = False
 
         path int_p, int_n
         for i in range(2):

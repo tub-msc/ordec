@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 #ordec imports
 from ..core import *
 from .optimize_position import get_pos_with_constraints
-from ..schematic import symbol_place_pins, schem_check, schematic_routing
+from ..schematic import symbol_place_pins, schem_check, auto_wire
 from ..schematic.helpers import add_conn_points
 
 @dataclass
@@ -175,7 +175,8 @@ def postprocess(self, node, outline, postprocess_data: PostProcess):
                                    node)
     #do the routing
     if postprocess_data.routing.get("__self__", True) is not False:
-        outline = schematic_routing(node, outline, postprocess_data.routing)
+        auto_wire(node, outline, postprocess_data.routing)
+        outline = node.outline
 
     #Add helpers
     if postprocess_data.schem_check:
