@@ -6,8 +6,6 @@ from contextvars import ContextVar, Token
 
 # ordec imports
 from ..core import *
-from ..schematic import schematic_routing, adjust_outline_initial, symbol_place_pins, resolve_instances
-from ..schematic import schem_check as _schem_check
 from ..schematic.helpers import recursive_setitem, recursive_getitem
 
 _ctx_var = ContextVar("ctx", default=None)
@@ -31,8 +29,6 @@ class OrdContext:
         self.root = root
         self._explicit_parent = parent
         self.parent = None
-        self._run_routing = True
-        self._run_schem_check = True
 
     def __enter__(self):
         """Enter context, set context variable and save parent"""
@@ -61,38 +57,3 @@ class OrdContext:
             subgraph_root = subgraph_root.parent
         port = self.add(name_tuple, SchemPort(ref=subgraph_root % Net(pin=pin)))
         return port
-
-    def symbol_postprocess(self):
-        """ Postprocess call when returning from symbol"""
-        symbol_place_pins(self.root, vpadding=2, hpadding=2)
-        return self.root
-
-    def layout_postprocess(self):
-        """ Postprocess call when returning from layout"""
-        return self.root
-
-    def schematic_postprocess(self):
-        """ Postprocess call when returning from schematic"""
-        resolve_instances(self.root)
-        if self._run_routing:
-            self.root.outline = schematic_routing(self.root)
-        else:
-            self.root.outline = adjust_outline_initial(self.root)
-        if self._run_schem_check:
-            _schem_check(self.root, add_conn_points=True, add_terminal_taps=True)
-        return self.root
-
-def routing(enabled=True):
-    """Enable or disable automatic routing for the current ORD context."""
-    current_context = OrdContext.ctx()
-    if current_context is None:
-        raise RuntimeError("routing() can only be used inside an OrdContext")
-    current_context._run_routing = bool(enabled)
-
-def schem_check(enabled=True):
-    """Enable or disable schematic checks for the current ORD context."""
-    current_context = OrdContext.ctx()
-    if current_context is None:
-        raise RuntimeError("schem_check() can only be used inside an OrdContext")
-    current_context._run_schem_check = bool(enabled)
-

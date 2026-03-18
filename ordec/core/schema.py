@@ -100,6 +100,11 @@ class Symbol(SubgraphRoot):
             return main_nid
         return inserter_func
 
+    def postprocess(self):
+        from ..schematic import symbol_place_pins
+        symbol_place_pins(self, vpadding=2, hpadding=2)
+        return self
+
     def _repr_svg_(self):
         from ..render import render
         return render(self).svg().decode('ascii'), {'isolated': False}
@@ -260,13 +265,20 @@ class Schematic(SubgraphRoot):
     default_supply = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
     default_ground = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
 
+    def postprocess(self):
+        from ..schematic import resolve_instances, schematic_routing, schem_check
+        resolve_instances(self)
+        self.outline = schematic_routing(self)
+        schem_check(self, add_conn_points=True, add_terminal_taps=True)
+        return self
+
     def _repr_svg_(self):
         from ..render import render
         return render(self).svg().decode('ascii'), {'isolated': False}
 
     def webdata(self):
         from ..render import render
-        return render(self).webdata() 
+        return render(self).webdata()
 
 @public
 class Net(Node):
@@ -908,6 +920,9 @@ class Layout(SubgraphRoot):
     cell = Attr(Cell)
     symbol = SubgraphRef(Symbol) #: All LayoutPins in this subgraph reference this symbol.
     ref_layers = SubgraphRef(LayerStack, optional=False) #: All .layer attributes of nodes in this subgraph reference this LayerStack.
+
+    def postprocess(self):
+        return self
 
     def webdata(self):
         from ..layout.webdata import webdata
