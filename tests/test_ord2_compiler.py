@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.ord2.parser import ord2_to_py
+from ordec.ord2 import ord2_to_py
 import ast
 from lark.exceptions import VisitError
 import pytest
