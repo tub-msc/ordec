@@ -4,7 +4,7 @@
 from public import public
 
 from ..core import *
-from ..schematic import spice_params, schem_check, symbol_place_pins
+from ..schematic import spice_params
  
 def setup_generic_mos(netlister):
     vt0 = 0.4
@@ -140,7 +140,7 @@ class Inv(Cell):
 
         s.outline = Rect4R(lx=0, ly=1, ux=10, uy=13)
 
-        schem_check(s, add_conn_points=True)
+        s.check(add_conn_points=True)
         return s
 
 @public
@@ -153,7 +153,7 @@ class Ringosc(Cell):
         s.vss = Pin(pintype=PinType.Inout, align=South)
         s.y = Pin(pintype=PinType.Out, align=East)
 
-        symbol_place_pins(s, vpadding=2, hpadding=2)
+        s.place_pins(vpadding=2, hpadding=2)
         return s
 
     @generate
@@ -189,7 +189,7 @@ class Ringosc(Cell):
         s.vdd % SchemWire(vertices=[Vec2R(6, 7), Vec2R(6, 6)])
         s.vdd % SchemWire(vertices=[Vec2R(12, 7), Vec2R(12, 6)])
 
-        schem_check(s, add_conn_points=True)
+        s.check(add_conn_points=True)
         return s
 
 @public

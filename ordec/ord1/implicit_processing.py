@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 #ordec imports
 from ..core import *
 from .optimize_position import get_pos_with_constraints
-from ..schematic import symbol_place_pins, schem_check, auto_wire
+from ..schematic import auto_wire
 from ..schematic.helpers import add_conn_points
 
 @dataclass
@@ -26,7 +26,7 @@ def symbol_process(node):
     Returns:
         None
     """
-    symbol_place_pins(node, vpadding=2, hpadding=2)
+    node.place_pins(vpadding=2, hpadding=2)
 
 
 def preprocess(self, node, outline, port_positions):
@@ -180,7 +180,7 @@ def postprocess(self, node, outline, postprocess_data: PostProcess):
 
     #Add helpers
     if postprocess_data.schem_check:
-        schem_check(node, add_conn_points=True, add_terminal_taps=True)
+        node.check(add_conn_points=True, add_terminal_taps=True)
 
     add_conn_points(node)
     node.outline = outline

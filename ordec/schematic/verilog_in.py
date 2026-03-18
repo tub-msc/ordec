@@ -11,7 +11,6 @@ import subprocess
 import tempfile
 
 from ..core import *
-from .helpers import symbol_place_pins, schem_check
 from .routing import adjust_outline_initial
 
 @public
@@ -96,7 +95,7 @@ def create_symbol(extlib, name, port_spec: OrderedDict[str, tuple[str, int]]) ->
             sym[port_name] = PathNode()
             for i in range(width):
                 sym[port_name][i] = p
-    symbol_place_pins(sym, hpadding=3, vpadding=2)
+    sym.place_pins(hpadding=3, vpadding=2)
     return sym.freeze()
 
 
@@ -221,7 +220,7 @@ def create_schematic(extlib, module_name, module_data: dict[str, Any]) -> Schema
             schematic[nc_name] = Net(route=False)
             schematic % SchemInstanceConn(ref=inst, here=schematic[nc_name], there=pin)
 
-    schem_check(schematic, add_terminal_taps=True)
+    schematic.check(add_terminal_taps=True)
     outline = adjust_outline_initial(schematic)
     if outline is None:
         outline = Rect4R(0, 0, 1, 1)

@@ -1,5 +1,4 @@
 from ordec.core import *
-from ordec.schematic import schem_check
 from ordec.sim import Simulator
 from ordec.lib import Res, Gnd, Vdc
 
@@ -25,7 +24,7 @@ class VoltageDivider(Cell):
         s.vdd % SchemWire([Vec2R(2, 10), Vec2R(2, 21), Vec2R(7, 21), Vec2R(7, 20)])
         s.a % SchemWire([Vec2R(7, 10), Vec2R(7, 11)])
         s.b % SchemWire([Vec2R(7, 15), Vec2R(7, 16)])
-        schem_check(s, add_conn_points=True)
+        s.check(add_conn_points=True)
         return s
 
     @generate(auto_refresh=False)

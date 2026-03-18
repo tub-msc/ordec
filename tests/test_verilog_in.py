@@ -5,7 +5,6 @@ import pytest
 
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary, ExtLibraryError
-from ordec.schematic import symbol_place_pins
 
 
 def _yosys_json_example():
@@ -36,7 +35,7 @@ def _install_mybuf2_symbol(lib: ExtLibrary):
     sym = Symbol(caption="MYBUF2", cell=lib["MYBUF2"])
     sym.A = Pin(pintype=PinType.In, align=West)
     sym.Y = Pin(pintype=PinType.Out, align=East)
-    symbol_place_pins(sym, hpadding=3, vpadding=2)
+    sym.place_pins(hpadding=3, vpadding=2)
     frozen = sym.freeze()
     lib.symbol_funcs["MYBUF2"] = lambda: frozen
 

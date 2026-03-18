@@ -341,23 +341,6 @@ from ordec.lib.examples.nand2 import Nand2
 # -*- version: ord2 -*-
 # -
 
-# ## 8. Deactivate checks in ORD files
-#
-# ORD supports disabling **routing** and **schematic checks** within schematics.
-# This is particularly useful during testing and the initial setup of schematic components.
-# It is recommended to re-enable these checks after placing **ports** and **subcells**.
-
-# +
-%%ord
-from ordec.ord2.context import routing, schem_check
-
-cell Inv:
-    viewgen schematic -> Schematic:
-    	# Here is your schematic code!
-        routing(False)
-        schem_check(False)
-# -
-
 # I hope this short tutorial gave you some insights into how to get started
 # writing ORD code! Feel free to check out the ORD examples `ordec.lib.ord2_test` 
 # by importing and adjusting them in the web interface. 

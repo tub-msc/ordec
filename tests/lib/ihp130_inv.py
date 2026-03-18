@@ -3,7 +3,6 @@
 
 from ordec.core import *
 from ordec.lib import ihp130
-from ordec.schematic import auto_wire
 
 class Inv(Cell):
     variant = Parameter(str, default='clean')
@@ -45,7 +44,7 @@ class Inv(Cell):
         s.a % SchemPort(pos=(1, 7), align=East)
         s.y % SchemPort(pos=(9, 7), align=West)
         
-        auto_wire(s)
+        s.auto_wire()
 
         return s
 

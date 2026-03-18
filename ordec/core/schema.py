@@ -100,9 +100,12 @@ class Symbol(SubgraphRoot):
             return main_nid
         return inserter_func
 
-    def postprocess(self):
+    def place_pins(self, hpadding=3, vpadding=3):
         from ..schematic import symbol_place_pins
-        symbol_place_pins(self, vpadding=2, hpadding=2)
+        symbol_place_pins(self, hpadding=hpadding, vpadding=vpadding)
+
+    def postprocess(self):
+        self.place_pins(vpadding=2, hpadding=2)
         return self
 
     def _repr_svg_(self):
@@ -265,11 +268,22 @@ class Schematic(SubgraphRoot):
     default_supply = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
     default_ground = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
 
-    def postprocess(self):
-        from ..schematic import resolve_instances, auto_wire, schem_check
+    def resolve_instances(self):
+        from ..schematic import resolve_instances
         resolve_instances(self)
+
+    def auto_wire(self):
+        from ..schematic import auto_wire
         auto_wire(self)
-        schem_check(self, add_conn_points=True, add_terminal_taps=True)
+
+    def check(self, add_conn_points=False, add_terminal_taps=False):
+        from ..schematic import schem_check
+        schem_check(self, add_conn_points=add_conn_points, add_terminal_taps=add_terminal_taps)
+
+    def postprocess(self):
+        self.resolve_instances()
+        self.auto_wire()
+        self.check(add_conn_points=True, add_terminal_taps=True)
         return self
 
     def _repr_svg_(self):

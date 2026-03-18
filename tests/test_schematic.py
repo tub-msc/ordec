@@ -11,7 +11,7 @@ import pytest
 from ordec.core import *
 from .lib import schematics as lib_test
 from ordec.lib.generic_mos import Nmos
-from ordec.schematic import SchematicError, resolve_instances
+from ordec.schematic import SchematicError
 
 def test_schematic_unconnected_conn_point():
     with pytest.raises(SchematicError, match=r"Incorrectly placed SchemConnPoint"):
@@ -128,7 +128,7 @@ def test_scheminstance_unresolved():
     s.myinst % SchemInstanceUnresolvedParameter(name='l', value='2u')
     s.myinst % SchemInstanceUnresolvedParameter(name='w', value='5u')
 
-    resolve_instances(s)
+    s.resolve_instances()
 
     assert s.matches(s_ref)
 
@@ -144,7 +144,7 @@ def test_scheminstance_unresolved_hierarchical_path():
     s.myinst % SchemInstanceUnresolvedParameter(name='bits', value=4)
     conn_u = s.myinst % SchemInstanceUnresolvedConn(here=s.mynet, there=('data', 'd', 3))
 
-    resolve_instances(s)
+    s.resolve_instances()
 
     conn = list(s.myinst.conns())[0]
     assert conn.nid == conn_u.nid
