@@ -29,15 +29,10 @@ class NgspiceError(Exception):
     pass
 
 
-class NgspiceFatalError(NgspiceError):
-    pass
-
-
 def check_errors(ngspice_out):
     """Helper function to raise NgspiceError in Python from "Error: ..."
     messages in Ngspice's output."""
     first_error_msg = None
-    has_fatal_indicator = False
 
     for line in ngspice_out.split("\n"):
         if "no such vector" in line:
@@ -46,14 +41,8 @@ def check_errors(ngspice_out):
         if m and first_error_msg is None:
             first_error_msg = "Error: " + m.group(1)
 
-        if "cannot recover" in line or "awaits to be reset" in line:
-            has_fatal_indicator = True
-
     if first_error_msg:
-        if has_fatal_indicator:
-            raise NgspiceFatalError(first_error_msg)
-        else:
-            raise NgspiceError(first_error_msg)
+        raise NgspiceError(first_error_msg)
 
 def name_print_to_raw(name: str) -> str:
       """
@@ -308,7 +297,7 @@ class Ngspice:
             if l == b"":  # readline() returns the empty byte string only on EOF.
                 out_flat = "".join(out)
                 logger.debug("EOF detected, ngspice terminated")
-                raise NgspiceFatalError(f"ngspice terminated abnormally:\n{out_flat}")
+                raise NgspiceError(f"ngspice terminated abnormally:\n{out_flat}")
 
             # Strip "ngspice 123 -> " prompt prefix(es).
             m = re.match(rb"(ngspice [0-9]+ -> )+(.*)$", l, flags=re.DOTALL)
