@@ -69,6 +69,7 @@ SPDX-License-Identifier = "Apache-2.0"
 # File in web/ where inline SPDX data would be messy or impossible:
 path = [
     "web/package.json",
+    "web/tsconfig.json",
     "web/app.html",
     "web/index.html",
     "web/src/style.css",
