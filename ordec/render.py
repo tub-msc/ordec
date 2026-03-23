@@ -292,6 +292,14 @@ class SchematicRenderer(Renderer):
         .portArrow, .portLabel {
             fill: #39f;
         }
+        .errorMarker {
+            stroke: #f00;
+            fill: none;
+            stroke-width: 0.1;
+        }
+        .errorLabel {
+            fill: #f00;
+        }
     """)
 
     def __init__(self, include_nids: bool=True, enable_css: bool=True, enable_grid: bool=True):
@@ -341,6 +349,20 @@ class SchematicRenderer(Renderer):
         for port in s.all(SchemPort):
             with self.subgroup(node=port):
                 self.draw_schem_port(port)
+
+        for err in s.all(SchemErrorMarker):
+            self.draw_error_marker(err)
+
+    def draw_error_marker(self, err: SchemErrorMarker):
+        cx, cy = err.pos.tofloat()
+        s = 0.3  # half-size of the cross
+        d = f"M{cx-s} {cy-s} L{cx+s} {cy+s} M{cx-s} {cy+s} L{cx+s} {cy-s}"
+        path = ET.SubElement(self.cur_group, 'path', d=d)
+        path.attrib['class'] = 'errorMarker'
+        # Label faces away from the symbol (pin align points inward)
+        trans = err.pos.transl() * err.align
+        self.draw_label(err.error_type.value, trans, svg_class="errorLabel",
+            valign=VAlign.Bottom)
 
     def draw_symbol(self, s: Symbol, trans: TD4R, inst_name: str="?"):
         # Draw outline

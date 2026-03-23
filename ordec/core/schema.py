@@ -48,6 +48,27 @@ class RectDirection(Enum):
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'
 
+@public
+class SchemErrorType(Enum):
+    OverlappingTerminals = 'Overlapping terminals'
+    MissingTerminalConnection = 'Missing terminal connection'
+    IncorrectTerminalConnection = 'Incorrect terminal connection'
+    GeometricShort = 'Geometric short'
+    OverlappingSchemConnPoints = 'Overlapping connection points'
+    IncorrectlyPlacedSchemConnPoint = 'Incorrectly placed connection point'
+    UnconnectedPin = 'Unconnected pin'
+    StrayPinsInPortmap = 'Stray pins in portmap'
+    SchemConnPointOverlappingTerminal = 'Connection point overlapping terminal'
+    TerminalMultipleConnections = 'Terminal with multiple connections'
+    UnconnectedWiring = 'Unconnected wiring'
+    StraySchemConnPoint = 'Stray connection point'
+    MissingSchemConnPoint = 'Missing connection point'
+    NetMissesWiring = 'Net misses wiring'
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+
 # NamedTuples
 # -----------
 
@@ -538,6 +559,15 @@ class SchemConnPoint(Node):
     ref_idx = Index(ref)
 
     pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+
+@public
+class SchemErrorMarker(Node):
+    """An error marker indicating a schematic check failure."""
+    in_subgraphs = [Schematic]
+    ref = LocalRef(Schematic)
+    pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    align = Attr(D4, default=D4.R0)
+    error_type = Attr(SchemErrorType)
 
 # Simulation hierarchy
 # --------------------
