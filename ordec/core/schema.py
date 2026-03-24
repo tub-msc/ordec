@@ -301,6 +301,9 @@ class Schematic(SubgraphRoot):
         from ..schematic import schem_check
         schem_check(self, add_conn_points=add_conn_points, add_terminal_taps=add_terminal_taps)
 
+    def has_errors(self) -> bool:
+        return any(True for _ in self.all(SchemErrorMarker))
+
     def postprocess(self):
         self.resolve_instances()
         self.auto_wire()
@@ -334,6 +337,7 @@ class SchemPort(Node):
     ref_idx = Index(ref)
     pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
         factory=coerce_tuple(Vec2R, 2))
+    pos_idx = Index(pos)
     align = Attr(D4, default=D4.R0)
 
 @public
@@ -546,6 +550,7 @@ class SchemTapPoint(Node):
     ref_idx = Index(ref)
 
     pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    pos_idx = Index(pos)
     align = Attr(D4, default=D4.R0)
 
     def loc_transform(self):
@@ -559,6 +564,7 @@ class SchemConnPoint(Node):
     ref_idx = Index(ref)
 
     pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    pos_idx = Index(pos)
 
 @public
 class SchemErrorMarker(Node):
@@ -1262,6 +1268,7 @@ class PolyVec2R(Node):
     pos     = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
 
     ref_idx = Index(ref, sortkey=lambda node: node.order)
+    pos_idx = Index(pos)
 
 @public
 class PolyVec2I(Node):

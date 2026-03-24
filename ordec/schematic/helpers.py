@@ -92,9 +92,46 @@ class PinOfInstance:
 class SchematicError(Exception):
     pass
 
+def _net_at_pos(node: Schematic, pos: Vec2R) -> Net | None:
+    """Look up which Net occupies a position, via tap points or wire vertices."""
+    for tap in node.all(SchemTapPoint.pos_idx.query(pos)):
+        return tap.ref
+    for pv in node.all(PolyVec2R.pos_idx.query(pos)):
+        wire = pv.ref
+        if isinstance(wire, SchemWire):
+            return wire.ref
+    return None
+
+def _has_geometric_short(node: Schematic, pos: Vec2R, net: Net) -> bool:
+    """Check if a position is claimed by a different net."""
+    for tap in node.all(SchemTapPoint.pos_idx.query(pos)):
+        if tap.ref != net:
+            return True
+    for pv in node.all(PolyVec2R.pos_idx.query(pos)):
+        if isinstance(pv.ref, SchemWire) and pv.ref.ref != net:
+            return True
+    return False
+
 class ConnectivityGraph:
-    def __init__(self):
+    def __init__(self, node: Schematic):
+        """Build connectivity graph from wiring, check geometric shorts."""
         self.edges = {}
+        short_reported = set()
+        for net in node.all(Net):
+            for tap in node.all(SchemTapPoint.ref_idx.query(net)):
+                self.add_biedge(tap.pos, net)
+                if tap.pos not in short_reported and _has_geometric_short(node, tap.pos, net):
+                    node.root % SchemErrorMarker(pos=tap.pos, error_type=SchemErrorType.GeometricShort)
+                    short_reported.add(tap.pos)
+
+            for poly in node.all(SchemWire.ref_idx.query(net)):
+                vertices = poly.vertices()
+                for a, b in itertools.pairwise(vertices):
+                    self.add_biedge(a, b)
+                for pos in vertices:
+                    if pos not in short_reported and _has_geometric_short(node, pos, net):
+                        node.root % SchemErrorMarker(pos=pos, error_type=SchemErrorType.GeometricShort)
+                        short_reported.add(pos)
 
     def add_biedge(self, p1, p2):
         if p1 not in self.edges:
@@ -114,74 +151,44 @@ class ConnectivityGraph:
         for nxt in self.edges[cur]:
             yield from self.reachable_from(nxt, visited)
 
-def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=False):
-    g = ConnectivityGraph()
+def _check_conn_points(node: Schematic):
+    """Validate SchemConnPoints are correctly placed."""
+    seen_positions = set()
+    for p in node.all(SchemConnPoint):
+        if p.pos in seen_positions:
+            node.root % SchemErrorMarker(pos=p.pos, error_type=SchemErrorType.OverlappingSchemConnPoints)
+        else:
+            net_here = _net_at_pos(node, p.pos)
+            if net_here is None or net_here != p.ref:
+                node.root % SchemErrorMarker(pos=p.pos, error_type=SchemErrorType.IncorrectlyPlacedSchemConnPoint)
+            else:
+                seen_positions.add(p.pos)
 
-    net_at = {}
-    conn_point_at = {}
-    terminal_at = {}
-    terminals_of_net = {}
-    has_errors = False
-
-    def add_error(pos, error_type, align=D4.R0):
-        nonlocal has_errors
-        has_errors = True
-        node.root % SchemErrorMarker(pos=pos, align=align, error_type=error_type)
+def _check_terminals(node: Schematic, g: ConnectivityGraph,
+                     add_terminal_taps: bool) -> set[Vec2R]:
+    """Validate terminals (ports + instance pins). Returns terminal positions."""
+    terminal_positions = set()
 
     def add_terminal(t):
         if not isinstance(t.ref, Net):
             raise TypeError(f"Illegal connection of {t} to {type(t.ref)}.")
-        if t.pos in terminal_at:
-            add_error(t.pos, SchemErrorType.OverlappingTerminals)
+        if t.pos in terminal_positions:
+            node.root % SchemErrorMarker(pos=t.pos, error_type=SchemErrorType.OverlappingTerminals)
             return
-        terminal_at[t.pos] = t
+        terminal_positions.add(t.pos)
 
-        if t.pos not in net_at:
+        net_here = _net_at_pos(node, t.pos)
+        if net_here is None:
             if add_terminal_taps:
                 t.ref % SchemTapPoint(pos=t.pos, align=t.align.unflip())
                 g.add_biedge(t.pos, t.ref)
-                net_at[t.pos] = t.ref
             else:
-                add_error(t.pos, SchemErrorType.MissingTerminalConnection)
+                node.root % SchemErrorMarker(pos=t.pos, error_type=SchemErrorType.MissingTerminalConnection)
                 return
-        elif net_at[t.pos] != t.ref:
-            add_error(t.pos, SchemErrorType.IncorrectTerminalConnection)
+        elif net_here != t.ref:
+            node.root % SchemErrorMarker(pos=t.pos, error_type=SchemErrorType.IncorrectTerminalConnection)
             return
 
-        terminals_of_net[t.ref].append(t)
-
-    # Wiring: SchemWires, SchemTapPoints and SchemConnPoints:
-    for net in node.all(Net):
-        terminals_of_net[net] = []
-
-        for tap in node.all(SchemTapPoint.ref_idx.query(net)):
-            g.add_biedge(tap.pos, net)
-            if tap.pos in net_at:
-                if net_at[tap.pos] != net:
-                    add_error(tap.pos, SchemErrorType.GeometricShort)
-            else:
-                net_at[tap.pos] = net
-
-        for poly in node.all(SchemWire.ref_idx.query(net)):
-            vertices = poly.vertices()
-            for a, b in itertools.pairwise(vertices):
-                g.add_biedge(a, b)
-            for pos in vertices:
-                if pos in net_at:
-                    if net_at[pos] != net:
-                        add_error(pos, SchemErrorType.GeometricShort)
-                else:
-                    net_at[pos] = net
-
-        for p in node.all(SchemConnPoint.ref_idx.query(net)):
-            if p.pos in conn_point_at:
-                add_error(p.pos, SchemErrorType.OverlappingSchemConnPoints)
-            elif (p.pos not in net_at) or (net_at[p.pos] != net):
-                add_error(p.pos, SchemErrorType.IncorrectlyPlacedSchemConnPoint)
-            else:
-                conn_point_at[p.pos] = p
-
-    # Terminals: SchemPorts and SchemInstance pins:
     for port in node.all(SchemPort):
         add_terminal(port)
     for inst in node.all(SchemInstance):
@@ -193,51 +200,80 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
             pin = inst.symbol.subgraph.cursor_at(pin_nid)
             pin_pos = inst.loc_transform() * pin.pos
             pin_align = inst.loc_transform().d4 * pin.align
-            add_error(pin_pos, SchemErrorType.UnconnectedPin, align=pin_align)
+            node.root % SchemErrorMarker(pos=pin_pos, error_type=SchemErrorType.UnconnectedPin, align=pin_align)
         if len(pins_stray) > 0:
-            add_error(inst.pos, SchemErrorType.StrayPinsInPortmap)
+            node.root % SchemErrorMarker(pos=inst.pos, error_type=SchemErrorType.StrayPinsInPortmap)
         if pins_expected == pins_found:
             for conn in node.all(SchemInstanceConn.ref_idx.query(inst)):
                 add_terminal(PinOfInstance(conn))
 
-    if has_errors:
-        return
+    return terminal_positions
 
-    # Check whether wiring is valid:
+def _check_wiring_validity(node: Schematic, g: ConnectivityGraph,
+                           terminal_positions: set[Vec2R],
+                           add_conn_points: bool):
+    """Validate wiring at each graph node (position).
+
+    At terminals: flags conn points that overlap terminals and terminals
+    with more than one wire connection.
+    At non-terminals: flags dead-end wiring, stray conn points on simple
+    pass-throughs, and junctions (>2 connections) missing a conn point.
+    """
     for pos, connections in g.edges.items():
         if isinstance(pos, Net):
             continue
         assert isinstance(pos, Vec2R)
-        terminal = terminal_at.get(pos, None)
-        conn_point = conn_point_at.get(pos, None)
-        if terminal:
-            if conn_point:
-                add_error(pos, SchemErrorType.SchemConnPointOverlappingTerminal)
+        is_terminal = pos in terminal_positions
+        has_conn_point = any(True for _ in node.all(SchemConnPoint.pos_idx.query(pos)))
+        if is_terminal:
+            if has_conn_point:
+                node.root % SchemErrorMarker(pos=pos, error_type=SchemErrorType.SchemConnPointOverlappingTerminal)
             if len(connections) > 1:
-                add_error(pos, SchemErrorType.TerminalMultipleConnections)
+                node.root % SchemErrorMarker(pos=pos, error_type=SchemErrorType.TerminalMultipleConnections)
         else:
             if len(connections) <= 1:
-                add_error(pos, SchemErrorType.UnconnectedWiring)
-            if len(connections) == 2 and conn_point:
-                add_error(pos, SchemErrorType.StraySchemConnPoint)
-            if len(connections) > 2 and not conn_point:
+                node.root % SchemErrorMarker(pos=pos, error_type=SchemErrorType.UnconnectedWiring)
+            if len(connections) == 2 and has_conn_point:
+                node.root % SchemErrorMarker(pos=pos, error_type=SchemErrorType.StraySchemConnPoint)
+            if len(connections) > 2 and not has_conn_point:
                 if add_conn_points:
+                    net = _net_at_pos(node, pos)
                     net % SchemConnPoint(pos=pos)
                 else:
-                    add_error(pos, SchemErrorType.MissingSchemConnPoint)
+                    node.root % SchemErrorMarker(pos=pos, error_type=SchemErrorType.MissingSchemConnPoint)
 
-    if has_errors:
-        return
+def _check_net_connectivity(node: Schematic, g: ConnectivityGraph):
+    """Check that all terminals of each net are reachable."""
+    # Build terminals-of-net from indices
+    terminals_of_net = {net: [] for net in node.all(Net)}
+    for port in node.all(SchemPort):
+        terminals_of_net[port.ref].append(port)
+    for conn in node.all(SchemInstanceConn):
+        terminals_of_net[conn.here].append(PinOfInstance(conn))
 
-    # Check that terminals of all nets are connected with some kind of wiring (SchemWire or SchemTapPoint):
     for net, terminals in terminals_of_net.items():
         if len(terminals) == 0:
             continue
         must_reach = {t.pos for t in terminals}
         reaches = set(g.reachable_from(terminals[0].pos))
-        unconnected = must_reach-reaches
+        unconnected = must_reach - reaches
         if len(unconnected) > 0:
-            add_error(terminals[0].pos, SchemErrorType.NetMissesWiring)
+            node.root % SchemErrorMarker(pos=terminals[0].pos, error_type=SchemErrorType.NetMissesWiring)
+
+def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=False):
+    g = ConnectivityGraph(node)
+    if node.has_errors():
+        return
+    _check_conn_points(node)
+    if node.has_errors():
+        return
+    terminal_positions = _check_terminals(node, g, add_terminal_taps)
+    if node.has_errors():
+        return
+    _check_wiring_validity(node, g, terminal_positions, add_conn_points)
+    if node.has_errors():
+        return
+    _check_net_connectivity(node, g)
 
 def add_conn_points(s: Schematic):
     """
