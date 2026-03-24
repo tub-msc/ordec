@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import itertools
+from collections import defaultdict
 from dataclasses import dataclass
 from ..core import *
 
@@ -113,31 +114,36 @@ def _has_geometric_short(node: Schematic, pos: Vec2R, net: Net) -> bool:
     return False
 
 def _check_overlapping_segments(node: Schematic):
-    """Check all wire segment pairs for overlap."""
-    all_segments = []
+    """Check all wire segment pairs for overlap.
+
+    Groups axis-aligned segments by their collinear line (e.g. all vertical
+    segments at x=K), then sorts each group by start coordinate and sweeps
+    to detect overlaps in O(n log n) total.
+    """
+    # Bucket segments by orientation + fixed coordinate
+    groups = defaultdict(list)
     for net in node.all(Net):
         for poly in node.all(SchemWire.ref_idx.query(net)):
             for a, b in itertools.pairwise(poly.vertices()):
-                all_segments.append((net, a, b))
-    for i in range(len(all_segments)):
-        net_i, a1, a2 = all_segments[i]
-        for j in range(i + 1, len(all_segments)):
-            net_j, b1, b2 = all_segments[j]
-            # Check if two axis-aligned segments overlap (share more than a point)
-            if a1.x == a2.x == b1.x == b2.x:
-                lo_a, hi_a = (a1.y, a2.y) if a1.y <= a2.y else (a2.y, a1.y)
-                lo_b, hi_b = (b1.y, b2.y) if b1.y <= b2.y else (b2.y, b1.y)
-                overlaps = max(lo_a, lo_b) < min(hi_a, hi_b)
-            elif a1.y == a2.y == b1.y == b2.y:
-                lo_a, hi_a = (a1.x, a2.x) if a1.x <= a2.x else (a2.x, a1.x)
-                lo_b, hi_b = (b1.x, b2.x) if b1.x <= b2.x else (b2.x, b1.x)
-                overlaps = max(lo_a, lo_b) < min(hi_a, hi_b)
-            else:
-                overlaps = False
-            if overlaps:
+                if a.x == b.x:  # vertical
+                    lo, hi = (a.y, b.y) if a.y <= b.y else (b.y, a.y)
+                    groups[('v', a.x)].append((lo, hi, a))
+                else:  # horizontal
+                    lo, hi = (a.x, b.x) if a.x <= b.x else (b.x, a.x)
+                    groups[('h', a.y)].append((lo, hi, a))
+    # Sort+sweep per group: overlap exists when lo < running max_hi
+    # (strict < because touching at a single endpoint is not an overlap)
+    for segs in groups.values():
+        segs.sort()
+        max_hi = segs[0][1]
+        for k in range(1, len(segs)):
+            lo, hi, pos = segs[k]
+            if lo < max_hi:
                 node.root % SchemErrorMarker(
-                    pos=a1, error_type=SchemErrorType.OverlappingWires
+                    pos=pos, error_type=SchemErrorType.OverlappingWires
                 )
+            if hi > max_hi:
+                max_hi = hi
 
 class ConnectivityGraph:
     def __init__(self, node: Schematic):
