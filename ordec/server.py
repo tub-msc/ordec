@@ -559,6 +559,9 @@ class StaticHandler:
             if req_path == Path('api/version'):
                 return self.process_request_version()
 
+            if req_path == Path('api/schematic.css'):
+                return self.process_request_schematic_css()
+
             return self.process_request_static(req_path)
         except:
             print(traceback.print_exc())
@@ -588,6 +591,10 @@ class StaticHandler:
     def process_request_version(self):
         data = json.dumps({'version': version})
         return build_response(data=data.encode('utf8'), mime_type='application/json')
+
+    def process_request_schematic_css(self):
+        from .render import SchematicRenderer
+        return build_response(data=SchematicRenderer.css.encode('utf8'), mime_type='text/css')
 
     def process_request_static(self, req_path):
         if not self.tar:

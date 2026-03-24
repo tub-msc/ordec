@@ -352,6 +352,20 @@ pre {
 .layout {
     background-color: #000;
 }
+.schem-error-tooltip {
+    display: none;
+    position: absolute;
+    padding: 4px 8px;
+    background-color: rgba(255, 240, 240, 0.95);
+    border: 1px solid #f00;
+    border-radius: 3px;
+    font-family: 'Inconsolata', monospace;
+    font-size: 13px;
+    color: #c00;
+    pointer-events: none;
+    z-index: 3;
+    white-space: nowrap;
+}
 .layerList {
     list-style-type:none;
     padding:5px;

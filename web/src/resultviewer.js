@@ -192,6 +192,8 @@ const viewClassOf = {
         constructor(resContent) {
             this.resContent = resContent;
             this.transform = d3.zoomIdentity;
+            this.tooltip = document.createElement('div');
+            this.tooltip.classList.add('schem-error-tooltip');
         }
         zoomed({transform}) {
             this.transform = transform;
@@ -218,7 +220,22 @@ const viewClassOf = {
 
             svg.call(zoom.on("zoom", (x) => this.zoomed(x)));
 
-            this.resContent.replaceChildren(svg.node());
+            this.resContent.replaceChildren(svg.node(), this.tooltip);
+
+            svg.selectAll('.errorMarker')
+                .on('mouseover', (event) => {
+                    const msg = event.target.getAttribute('data-error');
+                    this.tooltip.textContent = msg;
+                    this.tooltip.style.display = 'block';
+                })
+                .on('mousemove', (event) => {
+                    const rect = this.resContent.getBoundingClientRect();
+                    this.tooltip.style.left = (event.clientX - rect.left + 10) + 'px';
+                    this.tooltip.style.top = (event.clientY - rect.top + 10) + 'px';
+                })
+                .on('mouseout', () => {
+                    this.tooltip.style.display = 'none';
+                });
         }
     },
     report: class {

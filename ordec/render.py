@@ -262,13 +262,13 @@ class SchematicRenderer(Renderer):
             fill: #f00;
         }
         .pinLabel, .pinArrow {
-            fill: #f00;
+            fill: #4d994d;
         }
         .params, .cellName {
             fill: #80b380;
         }
         .symbolOutline {
-            stroke: #80b380;
+            stroke: #a3cca3;
         }
         .symbolPoly {
             stroke: #000;
@@ -293,12 +293,8 @@ class SchematicRenderer(Renderer):
             fill: #39f;
         }
         .errorMarker {
-            stroke: #f00;
-            fill: none;
-            stroke-width: 0.1;
-        }
-        .errorLabel {
-            fill: #f00;
+            fill: rgba(255, 0, 0, 0.25);
+            stroke: none;
         }
     """)
 
@@ -355,14 +351,10 @@ class SchematicRenderer(Renderer):
 
     def draw_error_marker(self, err: SchemErrorMarker):
         cx, cy = err.pos.tofloat()
-        s = 0.3  # half-size of the cross
-        d = f"M{cx-s} {cy-s} L{cx+s} {cy+s} M{cx-s} {cy+s} L{cx+s} {cy-s}"
-        path = ET.SubElement(self.cur_group, 'path', d=d)
-        path.attrib['class'] = 'errorMarker'
-        # Label faces away from the symbol (pin align points inward)
-        trans = err.pos.transl() * err.align
-        self.draw_label(err.error_type.value, trans, svg_class="errorLabel",
-            valign=VAlign.Bottom)
+        circle = ET.SubElement(self.cur_group, 'circle',
+            cx=str(cx), cy=str(cy), r='0.5')
+        circle.attrib['class'] = 'errorMarker'
+        circle.attrib['data-error'] = err.error_type.value
 
     def draw_symbol(self, s: Symbol, trans: TD4R, inst_name: str="?"):
         # Draw outline

@@ -168,7 +168,7 @@ def test_renderview(testcase, tmp_path, update_ref):
     render_opts = dict(
         include_nids=False, # Do not include nids to make the output independent of nids.
         enable_grid=False, # Disable grid to make the files smaller.
-        enable_css=True # To be able to inspect the SVG files for correctness, we need to include the proper CSS.
+        enable_css=False # CSS is tested via web/src/schematic.css; use add_style.py to re-inject for visual inspection.
     ) | testcase.render_opts 
 
     svg = render(view, **render_opts).svg()
