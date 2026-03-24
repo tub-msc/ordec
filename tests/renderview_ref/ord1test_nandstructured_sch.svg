@@ -20,9 +20,9 @@
     <circle cx="9.0" cy="20.0" r="0.1625" class="connPoint" />
     <circle cx="4.0" cy="12.0" r="0.1625" class="connPoint" />
     <circle cx="5.0" cy="7.0" r="0.1625" class="connPoint" />
-    <circle cx="17.0" cy="28.0" r="0.1625" class="connPoint" />
-    <circle cx="9.0" cy="28.0" r="0.1625" class="connPoint" />
     <circle cx="6.0" cy="22.0" r="0.1625" class="connPoint" />
+    <circle cx="9.0" cy="28.0" r="0.1625" class="connPoint" />
+    <circle cx="17.0" cy="28.0" r="0.1625" class="connPoint" />
     <circle cx="9.0" cy="6.0" r="0.1625" class="connPoint" />
     <circle cx="12.0" cy="9.0" r="0.1625" class="connPoint" />
     <g>

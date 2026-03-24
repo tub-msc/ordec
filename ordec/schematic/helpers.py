@@ -260,40 +260,40 @@ def _check_net_connectivity(node: Schematic, g: ConnectivityGraph):
         if len(unconnected) > 0:
             node.root % SchemErrorMarker(pos=terminals[0].pos, error_type=SchemErrorType.NetMissesWiring)
 
-def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=False):
+def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=False) -> bool:
+    """Validate schematic connectivity and wiring structure.
+
+    Checks are run in phases, aborting early if any phase produces
+    errors. Unless add_conn_points or add_terminal_taps is True,
+    the only nodes inserted into the schematic are SchemErrorMarkers.
+
+    Args:
+        node: The schematic to validate.
+        add_conn_points: If True, automatically insert
+            SchemConnPoints at junctions with more than two
+            connections instead of reporting an error.
+        add_terminal_taps: If True, automatically insert
+            SchemTapPoints at terminal positions that lack a
+            wiring connection instead of reporting an error.
+
+    Returns:
+        True if the schematic has errors after checking.
+    """
     g = ConnectivityGraph(node)
     if node.has_errors():
-        return
+        return True
     _check_conn_points(node)
     if node.has_errors():
-        return
+        return True
     terminal_positions = _check_terminals(node, g, add_terminal_taps)
     if node.has_errors():
-        return
+        return True
     _check_wiring_validity(node, g, terminal_positions, add_conn_points)
     if node.has_errors():
-        return
+        return True
     _check_net_connectivity(node, g)
+    return node.has_errors()
 
-def add_conn_points(s: Schematic):
-    """
-    Adds SchemConnPoints where two wires of the same net meet.
-
-    schem_check does the same thing more thoroughly, but fails for incomplete
-    schematics.
-    """
-    for net in s.all(Net):
-        pos_single = set()
-        pos_multi = set()
-        for wire in s.all(SchemWire.ref_idx.query(net)):
-            for pos in wire.vertices():
-                if pos in pos_single:
-                    pos_multi.add(pos)
-                else:
-                    pos_single.add(pos)
-            
-        for pos in pos_multi:
-            net % SchemConnPoint(pos=pos)
 
 def recursive_getitem(obj, tup):
     if len(tup) == 0:

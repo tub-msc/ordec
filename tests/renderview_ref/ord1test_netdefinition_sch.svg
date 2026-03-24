@@ -12,9 +12,9 @@
     <path d="M9.0 4.0 L12.0 4.0 L12.0 7.0 L11.0 7.0" class="schemWire" />
     <path d="M4.0 15.0 L4.0 14.0 L4.0 11.0 L9.0 11.0 L9.0 9.0" class="schemWire" />
     <path d="M9.0 11.0 L14.0 11.0 L14.0 15.0" class="schemWire" />
-    <circle cx="14.0" cy="20.0" r="0.1625" class="connPoint" />
     <circle cx="6.0" cy="20.0" r="0.1625" class="connPoint" />
     <circle cx="7.0" cy="20.0" r="0.1625" class="connPoint" />
+    <circle cx="14.0" cy="20.0" r="0.1625" class="connPoint" />
     <circle cx="9.0" cy="4.0" r="0.1625" class="connPoint" />
     <circle cx="2.0" cy="10.0" r="0.1625" class="connPoint" />
     <circle cx="1.0" cy="14.0" r="0.1625" class="connPoint" />

@@ -17,13 +17,41 @@
     <path d="M9.0 15.0 L9.0 11.0" class="schemWire" />
     <path d="M22.0 31.0 L22.0 27.0" class="schemWire" />
     <path d="M22.0 15.0 L22.0 11.0" class="schemWire" />
-    <circle cx="9.0" cy="21.0" r="0.1625" class="connPoint" />
-    <circle cx="22.0" cy="21.0" r="0.1625" class="connPoint" />
     <circle cx="22.0" cy="22.0" r="0.1625" class="connPoint" />
+    <circle cx="22.0" cy="21.0" r="0.1625" class="connPoint" />
+    <circle cx="9.0" cy="21.0" r="0.1625" class="connPoint" />
     <circle cx="4.0" cy="7.0" r="0.1625" class="connPoint" />
     <circle cx="19.0" cy="22.0" r="0.1625" class="connPoint" />
     <circle cx="6.0" cy="14.0" r="0.1625" class="connPoint" />
     <circle cx="5.0" cy="20.0" r="0.1625" class="connPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 2.0 22.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 2.65 22.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 2.0 2.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 2.65 2.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vss</text>
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 9.0 35.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 9.0 35.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 11.0 33.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 11.65 33.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 11.0 25.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 11.65 25.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 11.0 17.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 11.65 17.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vss</text>
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 9.0 7.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 9.0 6.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 11.0 9.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 11.65 9.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vss</text>
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 22.0 35.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 22.0 35.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 24.0 33.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 24.65 33.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 24.0 25.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 24.65 25.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 24.0 17.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 24.65 17.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vss</text>
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 22.0 7.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 22.0 6.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 24.0 9.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 24.65 9.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vss</text>
     <g>
       <rect x="7.0" y="31.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 10.875 34.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Pmos</text>

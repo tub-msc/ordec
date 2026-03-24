@@ -38,4 +38,3 @@ cell D_latch:
             inst.vdd -- vdd
             inst.vss -- vss
 
-        schem_check(True)

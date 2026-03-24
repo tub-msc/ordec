@@ -20,11 +20,11 @@
     <circle cx="12.0" cy="15.0" r="0.1625" class="connPoint" />
     <circle cx="4.0" cy="4.0" r="0.1625" class="connPoint" />
     <circle cx="9.0" cy="17.0" r="0.1625" class="connPoint" />
-    <circle cx="17.0" cy="23.0" r="0.1625" class="connPoint" />
     <circle cx="7.0" cy="23.0" r="0.1625" class="connPoint" />
     <circle cx="10.0" cy="23.0" r="0.1625" class="connPoint" />
-    <circle cx="15.0" cy="4.0" r="0.1625" class="connPoint" />
+    <circle cx="17.0" cy="23.0" r="0.1625" class="connPoint" />
     <circle cx="12.0" cy="1.0" r="0.1625" class="connPoint" />
+    <circle cx="15.0" cy="4.0" r="0.1625" class="connPoint" />
     <g>
       <rect x="10.0" y="2.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 13.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Nmos</text>

@@ -16,8 +16,8 @@
     <path d="M2.0 7.0 L13.0 7.0 L13.0 10.0 L15.0 10.0" class="schemWire" />
     <circle cx="6.0" cy="12.0" r="0.1625" class="connPoint" />
     <circle cx="17.0" cy="17.0" r="0.1625" class="connPoint" />
-    <circle cx="17.0" cy="6.0" r="0.1625" class="connPoint" />
     <circle cx="9.0" cy="6.0" r="0.1625" class="connPoint" />
+    <circle cx="17.0" cy="6.0" r="0.1625" class="connPoint" />
     <circle cx="28.0" cy="12.0" r="0.1625" class="connPoint" />
     <g>
       <rect x="7.0" y="12.0" width="4.0" height="4.0" class="symbolOutline" />

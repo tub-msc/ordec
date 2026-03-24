@@ -8,7 +8,6 @@
     <path d="M10.0 8.0 L8.0 8.0 L8.0 15.0 L7.0 15.0" class="schemWire" />
     <path d="M1.0 9.0 L10.0 9.0" class="schemWire" />
     <circle cx="2.0" cy="7.0" r="0.1625" class="connPoint" />
-    <circle cx="2.0" cy="7.0" r="0.1625" class="connPoint" />
     <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 1.0 20.0)" class="tapPoint" />
     <text transform="matrix(0.045 0 0 -0.045 1.65 20.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
     <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 1.0 1.0)" class="tapPoint" />

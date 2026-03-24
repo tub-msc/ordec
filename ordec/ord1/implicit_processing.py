@@ -8,14 +8,13 @@ from dataclasses import dataclass, field
 from ..core import *
 from .optimize_position import get_pos_with_constraints
 from ..schematic import auto_wire
-from ..schematic.helpers import add_conn_points
 
 @dataclass
 class PostProcess:
     constraints: list = field(default_factory=list)
     routing: dict = field(default_factory=dict)
     called_instances: dict = field(default_factory=dict)
-    schem_check: bool = field(default_factory=bool)
+
 
 def symbol_process(node):
     """
@@ -179,8 +178,6 @@ def postprocess(self, node, outline, postprocess_data: PostProcess):
         outline = node.outline
 
     #Add helpers
-    if postprocess_data.schem_check:
-        node.check(add_conn_points=True, add_terminal_taps=True)
+    node.check(add_conn_points=True, add_terminal_taps=True)
 
-    add_conn_points(node)
     node.outline = outline

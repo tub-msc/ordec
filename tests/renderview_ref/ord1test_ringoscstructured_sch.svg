@@ -12,10 +12,10 @@
     <path d="M11.0 9.0 L15.0 9.0" class="schemWire" />
     <path d="M19.0 9.0 L23.0 9.0" class="schemWire" />
     <circle cx="28.0" cy="7.0" r="0.1625" class="connPoint" />
-    <circle cx="17.0" cy="12.0" r="0.1625" class="connPoint" />
     <circle cx="9.0" cy="12.0" r="0.1625" class="connPoint" />
-    <circle cx="17.0" cy="6.0" r="0.1625" class="connPoint" />
+    <circle cx="17.0" cy="12.0" r="0.1625" class="connPoint" />
     <circle cx="9.0" cy="6.0" r="0.1625" class="connPoint" />
+    <circle cx="17.0" cy="6.0" r="0.1625" class="connPoint" />
     <g>
       <rect x="7.0" y="7.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 10.875 10.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Inv</text>
