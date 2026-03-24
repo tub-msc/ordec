@@ -112,6 +112,33 @@ def _has_geometric_short(node: Schematic, pos: Vec2R, net: Net) -> bool:
             return True
     return False
 
+def _check_overlapping_segments(node: Schematic):
+    """Check all wire segment pairs for overlap."""
+    all_segments = []
+    for net in node.all(Net):
+        for poly in node.all(SchemWire.ref_idx.query(net)):
+            for a, b in itertools.pairwise(poly.vertices()):
+                all_segments.append((net, a, b))
+    for i in range(len(all_segments)):
+        net_i, a1, a2 = all_segments[i]
+        for j in range(i + 1, len(all_segments)):
+            net_j, b1, b2 = all_segments[j]
+            # Check if two axis-aligned segments overlap (share more than a point)
+            if a1.x == a2.x == b1.x == b2.x:
+                lo_a, hi_a = (a1.y, a2.y) if a1.y <= a2.y else (a2.y, a1.y)
+                lo_b, hi_b = (b1.y, b2.y) if b1.y <= b2.y else (b2.y, b1.y)
+                overlaps = max(lo_a, lo_b) < min(hi_a, hi_b)
+            elif a1.y == a2.y == b1.y == b2.y:
+                lo_a, hi_a = (a1.x, a2.x) if a1.x <= a2.x else (a2.x, a1.x)
+                lo_b, hi_b = (b1.x, b2.x) if b1.x <= b2.x else (b2.x, b1.x)
+                overlaps = max(lo_a, lo_b) < min(hi_a, hi_b)
+            else:
+                overlaps = False
+            if overlaps:
+                node.root % SchemErrorMarker(
+                    pos=a1, error_type=SchemErrorType.OverlappingWires
+                )
+
 class ConnectivityGraph:
     def __init__(self, node: Schematic):
         """Build connectivity graph from wiring, check geometric shorts."""
@@ -279,6 +306,9 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
     Returns:
         True if the schematic has errors after checking.
     """
+    _check_overlapping_segments(node)
+    if node.has_errors():
+        return True
     g = ConnectivityGraph(node)
     if node.has_errors():
         return True

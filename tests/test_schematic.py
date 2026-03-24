@@ -67,6 +67,16 @@ def test_schematic_poly_short():
     errors = list(s.all(SchemErrorMarker))
     assert any(e.error_type == SchemErrorType.GeometricShort for e in errors)
 
+def test_schematic_segment_short():
+    s = lib_test.TestNmosInv(variant='segment_short', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.OverlappingWires for e in errors)
+
+def test_schematic_segment_overlap():
+    s = lib_test.TestNmosInv(variant='segment_overlap', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.OverlappingWires for e in errors)
+
 def test_schematic_incorrect_pin_conn():
     s = lib_test.TestNmosInv(variant='incorrect_pin_conn', add_conn_points=True, add_terminal_taps=False).schematic
     errors = list(s.all(SchemErrorMarker))

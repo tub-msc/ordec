@@ -54,6 +54,7 @@ class SchemErrorType(Enum):
     MissingTerminalConnection = 'Missing terminal connection'
     IncorrectTerminalConnection = 'Incorrect terminal connection'
     GeometricShort = 'Geometric short'
+    OverlappingWires = 'Overlapping wires'
     OverlappingSchemConnPoints = 'Overlapping connection points'
     IncorrectlyPlacedSchemConnPoint = 'Incorrectly placed connection point'
     UnconnectedPin = 'Unconnected pin'

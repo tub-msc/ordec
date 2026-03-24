@@ -361,6 +361,21 @@ class TestNmosInv(Cell):
                     ]
                 )
 
+            if self.variant == "segment_short":
+                # vss wire overlaps with a segment on vdd's vertical wire
+                # vdd has a wire at x=2 from y=10 to y=13 (via vertices)
+                # Add a vss segment at x=2 from y=11 to y=15 — overlaps y=11..13
+                s.vss % SchemWire(
+                    vertices=[Vec2R(2, 11), Vec2R(2, 15)]
+                )
+
+            if self.variant == "segment_overlap":
+                # Same-net overlap: vdd already has x=2 from y=10 to y=13
+                # Add another vdd segment at x=2 from y=11 to y=15
+                s.vdd % SchemWire(
+                    vertices=[Vec2R(2, 11), Vec2R(2, 15)]
+                )
+
             s.a % SchemWire(vertices=[Vec2R(1, 4), Vec2R(2, 4), Vec2R(3, 4)])
             s.y % SchemWire(vertices=[Vec2R(5, 6), Vec2R(5, 7), Vec2R(5, 8)])
             s.y % SchemWire(vertices=[Vec2R(5, 7), Vec2R(9, 7)])
