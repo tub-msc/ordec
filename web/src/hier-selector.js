@@ -175,7 +175,7 @@ export class HierSelector {
         }
 
         let selectedKey = null;
-        if (path && path.length > 0) {
+        if (path && path.length > 0 && node.children.has(path[0])) {
             selectedKey = path[0];
         } else if (path && path.length === 0 && node.viewName !== null && node.children.size > 0) {
             // The "(direct)" option should be selected
@@ -219,6 +219,14 @@ export class HierSelector {
     }
 
     _onSelectChange(node, select, depth) {
+        // Capture selected values from deeper selects before removing them
+        const previousPath = [];
+        for (let i = depth + 1; i < this.selects.length; i++) {
+            const val = this.selects[i].value;
+            if (!val) break; // stop at unselected placeholder
+            previousPath.push(val);
+        }
+
         // Remove selects deeper than this one
         while (this.selects.length > depth + 1) {
             this.selects.pop().remove();
@@ -238,11 +246,14 @@ export class HierSelector {
         if (!child) return;
 
         if (child.children.size > 0) {
-            // Non-leaf: selection is incomplete, blank the view
+            // Non-leaf: try to carry forward previous deeper selections
             this._selectedView = null;
-            this.onDeselect();
-            // Render next level
-            this._renderLevel(child, depth + 1, null);
+            this._renderLevel(child, depth + 1, previousPath.length > 0 ? previousPath : null);
+            if (this._selectedView) {
+                this.onSelect(this._selectedView);
+            } else {
+                this.onDeselect();
+            }
         } else {
             // Leaf: fire selection
             this._selectedView = child.viewName;
