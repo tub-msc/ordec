@@ -93,9 +93,8 @@ def test_schematic_incorrect_pin_conn():
     assert any(e.error_type == SchemErrorType.IncorrectTerminalConnection for e in errors)
 
 def test_schematic_incorrect_port_conn():
-    s = lib_test.TestNmosInv(variant='incorrect_port_conn', add_conn_points=True, add_terminal_taps=False).schematic
-    errors = list(s.all(SchemErrorMarker))
-    assert any(e.error_type == SchemErrorType.IncorrectTerminalConnection for e in errors)
+    with pytest.raises(UniqueViolation):
+        lib_test.TestNmosInv(variant='incorrect_port_conn', add_conn_points=True, add_terminal_taps=False).schematic
 
 def test_schematic_portmap_missing_key():
     s = lib_test.TestNmosInv(variant='portmap_missing_key', add_conn_points=True, add_terminal_taps=False).schematic

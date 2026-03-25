@@ -336,7 +336,7 @@ class SchemPort(Node):
     in_subgraphs = [Schematic]
 
     ref = LocalRef(Net, optional=False)
-    ref_idx = Index(ref)
+    ref_idx = Index(ref, unique=True)
     pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
         factory=coerce_tuple(Vec2R, 2))
     pos_idx = Index(pos)
