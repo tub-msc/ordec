@@ -1132,7 +1132,8 @@ def auto_wire(node, outline=None, routing=None):
                     inter_instance_connections.append(connected_nid)
                     ports[connected_nid] = RoutingPort(int(connection_position.x),
                                                  int(connection_position.y),
-                                                 connected_nid, connection_position.direction)
+                                                 connected_nid, connection_position.direction,
+                                                 connected_to.auto_wire)
                     array_mapping_list[connected_to] = connected_nid
                 else:
                     # Save the path after the inter instance connection is established
