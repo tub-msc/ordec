@@ -253,6 +253,38 @@ class TestNmosInv(Cell):
     add_conn_points = Parameter(bool)
     add_terminal_taps = Parameter(bool)
 
+    @classmethod
+    def discoverable_instances(cls):
+        variants = [
+            ('default', False, False),
+            ('manual_conn_points', False, False),
+            ('double_connpoint', False, False),
+            ('double_instance', False, False),
+            ('no_wiring', False, False),
+            ('unconnected_conn_point', True, False),
+            ('net_partitioned', True, False),
+            ('net_partitioned_tapped', True, False),
+            ('skip_vdd_wiring', True, False),
+            ('skip_single_pin', True, False),
+            ('stray_conn_point', True, False),
+            ('tap_short', True, False),
+            ('poly_short', True, False),
+            ('overlapping_instances', True, False),
+            ('touching_instances', True, False),
+            ('segment_short', True, False),
+            ('segment_overlap', True, False),
+            ('incorrect_pin_conn', True, False),
+            ('incorrect_port_conn', True, False),
+            ('portmap_missing_key', True, False),
+            ('portmap_stray_key', True, False),
+            ('portmap_bad_value', True, False),
+            ('terminal_multiple_wires', True, False),
+            ('terminal_connpoint', True, False),
+            ('vdd_bad_wiring', True, True),
+            ('skip_vdd_wiring', True, True),
+        ]
+        return [cls(v, cp, tt) for v, cp, tt in variants]
+
     @generate
     def symbol(self):
         s = Symbol(cell=self)
@@ -289,8 +321,14 @@ class TestNmosInv(Cell):
         elif self.variant == "portmap_bad_value":
             list(s.pd.conns())[0].there = 12345
 
+        if self.variant == "overlapping_instances":
+            pu_pos = Vec2R(3, 4)  # overlaps pd at [3,2,7,6]
+        elif self.variant == "touching_instances":
+            pu_pos = Vec2R(3, 6)  # touches pd at y=6
+        else:
+            pu_pos = Vec2R(3, 8)
         s.pu = SchemInstance(
-            nmos.portmap(d=s.vdd, b=s.vss, g=s.vdd, s=s.y), pos=Vec2R(3, 8)
+            nmos.portmap(d=s.vdd, b=s.vss, g=s.vdd, s=s.y), pos=pu_pos
         )
         if self.variant == "double_instance":
             s.pu2 = SchemInstance(
@@ -305,7 +343,7 @@ class TestNmosInv(Cell):
         else:
             s.y % SchemPort(pos=Vec2R(9, 7), align=West)
 
-        if self.variant == "no_wiring":
+        if self.variant in ("no_wiring", "overlapping_instances", "touching_instances"):
             s.default_supply = s.vdd
             s.default_ground = s.vss
         else:

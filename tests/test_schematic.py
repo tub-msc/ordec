@@ -67,6 +67,16 @@ def test_schematic_poly_short():
     errors = list(s.all(SchemErrorMarker))
     assert any(e.error_type == SchemErrorType.GeometricShort for e in errors)
 
+def test_schematic_overlapping_instances():
+    s = lib_test.TestNmosInv(variant='overlapping_instances', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.OverlappingInstances for e in errors)
+
+def test_schematic_touching_instances():
+    s = lib_test.TestNmosInv(variant='touching_instances', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.OverlappingInstances for e in errors)
+
 def test_schematic_segment_short():
     s = lib_test.TestNmosInv(variant='segment_short', add_conn_points=True, add_terminal_taps=False).schematic
     errors = list(s.all(SchemErrorMarker))
@@ -118,7 +128,7 @@ def test_schematic_double_connpoint():
 def test_schematic_double_instance():
     s = lib_test.TestNmosInv(variant='double_instance', add_conn_points=False, add_terminal_taps=False).schematic
     errors = list(s.all(SchemErrorMarker))
-    assert any(e.error_type == SchemErrorType.OverlappingTerminals for e in errors)
+    assert any(e.error_type == SchemErrorType.OverlappingInstances for e in errors)
 
 def test_scheminstance_unresolved():
     s_ref = MutableSubgraph.load({

@@ -65,6 +65,7 @@ class SchemErrorType(Enum):
     StraySchemConnPoint = 'Stray connection point'
     MissingSchemConnPoint = 'Missing connection point'
     NetMissesWiring = 'Net misses wiring'
+    OverlappingInstances = 'Overlapping instances'
 
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'

@@ -113,6 +113,28 @@ def _has_geometric_short(node: Schematic, pos: Vec2R, net: Net) -> bool:
             return True
     return False
 
+def _check_overlapping_instances(node: Schematic):
+    """Check all instance pairs for overlapping or touching boundaries."""
+    rects = []
+    for inst in node.all(SchemInstance):
+        if isinstance(inst.pos, Vec2LinearTerm):
+            continue
+        r = inst.loc_transform() * inst.symbol.outline
+        rects.append((inst, r))
+    for i in range(len(rects)):
+        for j in range(i + 1, len(rects)):
+            a = rects[i][1]
+            b = rects[j][1]
+            if a.lx <= b.ux and b.lx <= a.ux and a.ly <= b.uy and b.ly <= a.uy:
+                node.root % SchemErrorMarker(
+                    pos=rects[i][0].pos,
+                    error_type=SchemErrorType.OverlappingInstances
+                )
+                node.root % SchemErrorMarker(
+                    pos=rects[j][0].pos,
+                    error_type=SchemErrorType.OverlappingInstances
+                )
+
 def _check_overlapping_segments(node: Schematic):
     """Check all wire segment pairs for overlap.
 
@@ -312,6 +334,9 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
     Returns:
         True if the schematic has errors after checking.
     """
+    _check_overlapping_instances(node)
+    if node.has_errors():
+        return True
     _check_overlapping_segments(node)
     if node.has_errors():
         return True
