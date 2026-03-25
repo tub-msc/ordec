@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import bisect
 import itertools
 from collections import defaultdict
 from dataclasses import dataclass
@@ -114,26 +115,48 @@ def _has_geometric_short(node: Schematic, pos: Vec2R, net: Net) -> bool:
     return False
 
 def _check_overlapping_instances(node: Schematic):
-    """Check all instance pairs for overlapping or touching boundaries."""
-    rects = []
+    """Check all instance pairs for overlapping or touching boundaries.
+
+    Uses x-axis sweep line with a sorted active list of y-intervals.
+    Events are sorted by x; at equal x, opens are processed before closes
+    so that rectangles touching at a single edge are detected.
+    """
+    # Build events: (x, type, inst, rect)  type 0=open, 1=close
+    events = []
     for inst in node.all(SchemInstance):
         if isinstance(inst.pos, Vec2LinearTerm):
             continue
         r = inst.loc_transform() * inst.symbol.outline
-        rects.append((inst, r))
-    for i in range(len(rects)):
-        for j in range(i + 1, len(rects)):
-            a = rects[i][1]
-            b = rects[j][1]
-            if a.lx <= b.ux and b.lx <= a.ux and a.ly <= b.uy and b.ly <= a.uy:
-                node.root % SchemErrorMarker(
-                    pos=rects[i][0].pos,
-                    error_type=SchemErrorType.OverlappingInstances
-                )
-                node.root % SchemErrorMarker(
-                    pos=rects[j][0].pos,
-                    error_type=SchemErrorType.OverlappingInstances
-                )
+        events.append((r.lx, 0, inst, r))
+        events.append((r.ux, 1, inst, r))
+    events.sort(key=lambda e: (e[0], e[1]))
+    # Active list sorted by ly; entries are (ly, uy, inst)
+    active = []
+    for _, etype, inst, r in events:
+        if etype == 1:
+            # Close: remove from active list
+            for k, entry in enumerate(active):
+                if entry[2] is inst:
+                    active.pop(k)
+                    break
+        else:
+            # Open: check active intervals for y-overlap/touch.
+            # Active is sorted by ly, so once a_ly > r.uy no further
+            # entries can overlap.
+            for a_ly, a_uy, a_inst in active:
+                if a_ly > r.uy:
+                    break
+                if r.ly <= a_uy:
+                    node.root % SchemErrorMarker(
+                        pos=inst.pos,
+                        error_type=SchemErrorType.OverlappingInstances
+                    )
+                    node.root % SchemErrorMarker(
+                        pos=a_inst.pos,
+                        error_type=SchemErrorType.OverlappingInstances
+                    )
+            # Insert into active list maintaining sort by ly
+            bisect.insort(active, (r.ly, r.uy, inst))
 
 def _check_overlapping_segments(node: Schematic):
     """Check all wire segment pairs for overlap.
