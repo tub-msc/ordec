@@ -7,8 +7,7 @@ from public import public
 import functools
 
 from ..core import *
-from ..schematic import helpers
-from ..ord1.implicit_processing import schematic_routing
+from ..schematic import spice_params
 from . import generic_mos
 from .pdk_common import PdkDict, check_dir, check_file
 
@@ -57,7 +56,7 @@ class Mos(SimLeafCell):
             netlister.name_obj(inst, prefix="x"),
             netlister.portmap(inst, pins),
             self.model_name,
-            *helpers.spice_params({
+            *spice_params({
                 # sky130 uses ".option scale=1.0u"
                 'l': self.l * R('1e6'), 
                 'w': self.w * R('1e6'),
@@ -150,7 +149,7 @@ class Inv(Cell):
 
         s.outline = Rect4R(lx=0, ly=1, ux=10, uy=13)
         
-        helpers.schem_check(s, add_conn_points=True)
+        s.check(add_conn_points=True)
         return s
 
 @public
@@ -163,7 +162,7 @@ class Ringosc(Cell):
         s.vss = Pin(pintype=PinType.Inout, align=South)
         s.y = Pin(pintype=PinType.Out, align=East)
 
-        helpers.symbol_place_pins(s, vpadding=2, hpadding=2)
+        s.place_pins(vpadding=2, hpadding=2)
         return s
 
     @generate
@@ -200,7 +199,7 @@ class Ringosc(Cell):
         s.vdd % SchemWire(vertices=[Vec2R(6, 7), Vec2R(6, 6)])
         s.vdd % SchemWire(vertices=[Vec2R(12, 7), Vec2R(12, 6)])
 
-        helpers.schem_check(s, add_conn_points=True)
+        s.check(add_conn_points=True)
         return s
 
 @public

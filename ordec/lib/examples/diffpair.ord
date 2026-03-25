@@ -2,8 +2,8 @@
 from ordec.core import *
 
 # Libary imports
-from ordec.lib import Nmos, Res
-from ordec.lib import Gnd, Vdc
+from ordec.lib.generic_mos import Nmos
+from ordec.lib import Res, Gnd, Vdc
 # Simulation imports
 from ordec.sim import Simulator
 

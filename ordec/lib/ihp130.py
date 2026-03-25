@@ -8,12 +8,10 @@ from public import public
 import functools
 
 from ..core import *
-from ..schematic import helpers
-from ..schematic.netlister import Netlister
+from ..schematic import spice_params, Netlister
 from . import generic_mos
 from .pdk_common import PdkDict, check_dir, check_file, rundir
-from ..layout.makevias import makevias
-from ..layout.gds_out import write_gds
+from ..layout import makevias, write_gds
 from ..layout import klayout
 
 @functools.cache
@@ -339,7 +337,7 @@ class Mos(SimLeafCell):
             netlister.name_obj(inst, prefix="M" if netlister.lvs else "x"),
             netlister.portmap(inst, pins),
             self.model_name,
-            *helpers.spice_params({
+            *spice_params({
                 'l': self.l,
                 'w': self.w,
                 'm': self.m,

@@ -6,16 +6,15 @@ from dataclasses import dataclass, field
 
 #ordec imports
 from ..core import *
-from ..ord1.optimize_position import get_pos_with_constraints
-from ..schematic import helpers
-from ..schematic.routing import schematic_routing
+from .optimize_position import get_pos_with_constraints
+from ..schematic import auto_wire
 
 @dataclass
 class PostProcess:
     constraints: list = field(default_factory=list)
     routing: dict = field(default_factory=dict)
     called_instances: dict = field(default_factory=dict)
-    schem_check: bool = field(default_factory=bool)
+
 
 def symbol_process(node):
     """
@@ -26,7 +25,7 @@ def symbol_process(node):
     Returns:
         None
     """
-    helpers.symbol_place_pins(node, vpadding=2, hpadding=2)
+    node.place_pins(vpadding=2, hpadding=2)
 
 
 def preprocess(self, node, outline, port_positions):
@@ -175,11 +174,10 @@ def postprocess(self, node, outline, postprocess_data: PostProcess):
                                    node)
     #do the routing
     if postprocess_data.routing.get("__self__", True) is not False:
-        outline = schematic_routing(node, outline, postprocess_data.routing)
+        auto_wire(node, outline, postprocess_data.routing)
+        outline = node.outline
 
     #Add helpers
-    if postprocess_data.schem_check:
-        helpers.schem_check(node, add_conn_points=True, add_terminal_taps=True)
+    node.check(add_conn_points=True, add_terminal_taps=True)
 
-    helpers.add_conn_points(node)
     node.outline = outline

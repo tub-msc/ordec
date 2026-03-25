@@ -3,8 +3,7 @@ from pathlib import Path
 
 from ordec.lib import ihp130
 from ordec.extlibrary import ExtLibrary
-from ordec.layout.helpers import expand_geom
-from ordec.layout.makevias import makevias
+from ordec.layout import expand_geom, makevias
 from ordec.core import *
 
 @generate_func

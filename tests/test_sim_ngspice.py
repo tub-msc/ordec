@@ -3,12 +3,11 @@
 
 import re
 import pytest
-from ordec.sim.ngspice import Ngspice, ngspice_batch
-from ordec.sim.ngspice import NgspiceError, NgspiceFatalError
+from ordec.sim.ngspice import Ngspice, ngspice_batch, NgspiceError
 
 def test_ngspice_illegal_netlist_1():
     with Ngspice.launch() as sim:
-        with pytest.raises(NgspiceFatalError, match=".*Error: Mismatch of .subckt ... .ends statements!.*"):
+        with pytest.raises(NgspiceError, match=".*Error: Mismatch of .subckt ... .ends statements!.*"):
             sim.load_netlist(".title test\n.ends\n.end")
 
 def test_ngspice_illegal_netlist_2():

@@ -8,8 +8,8 @@ import ast
 import importlib
 
 # ordec imports
-from .ord1.parser import ord1_to_py
-from .ord2.parser import ord2_to_py
+from .ord1 import ord1_to_py
+from .ord2 import ord2_to_py
 
 
 def prepare_ord_globals(g: dict):

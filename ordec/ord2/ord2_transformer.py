@@ -150,11 +150,12 @@ class Ord2Transformer(PythonTransformer):
             )
             suite = [solver_create] + suite + [solver_solve]
 
-        # Call the corresponding context postprocess function implicitly
+        # Call postprocess on the subgraph root
         return_value = ast.Return(
                 ast.Call(
-                func=self.ast_attribute(self.ast_ctx(),
-                                    viewgen_type_lower + "_postprocess",
+                func=self.ast_attribute(
+                    self.ast_attribute(self.ast_ctx(), "root"),
+                    "postprocess",
                 ),
                 args=[],
                 keywords=[]

@@ -3,8 +3,8 @@
 
 import pytest
 import math
-from ordec.schematic.netlister import Netlister
-from ordec import R
+from ordec.schematic import Netlister
+from ordec.core import R
 from .lib import sim as lib_test
 from ordec.core import *
 

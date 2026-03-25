@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from pyrsistent import pmap, pvector, pset, PMap, PVector, PSet
-from typing import Callable, Iterable
-from typing import NamedTuple
+from typing import Callable, Iterable, NamedTuple
 from types import NoneType
 from dataclasses import dataclass, field
 from abc import ABC, ABCMeta, abstractmethod

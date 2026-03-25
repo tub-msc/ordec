@@ -4,7 +4,7 @@
 
 from ordec.core import *
 from .mux2 import Mux2
-from ordec.schematic.routing import schematic_routing
+from ordec.schematic.routing import auto_wire
 import math
 
 
@@ -38,8 +38,8 @@ cell Nto1:
         # ------------------------------------------------------------
         port vdd: .align=South; .pos=(-x_spacing, y_spacing * self.N)
         port vss: .align=North; .pos=(-x_spacing, -y_spacing)
-        vdd.ref.route = False
-        vss.ref.route = False
+        vdd.ref.auto_wire = False
+        vss.ref.auto_wire = False
 
         # Output port
         port y: .align=West; .pos=(signal_count * x_spacing,

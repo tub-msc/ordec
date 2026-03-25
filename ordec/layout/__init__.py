@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from .webdata import *
 from .helpers import *
 from .makevias import *
 from .gds_out import *
@@ -10,7 +9,6 @@ from .srouter import SRouter, SRouterException
 # Without __all__, Sphinx does not document the imported stuff.
 __all__ = [
     'makevias',
-    'webdata',
     'poly_orientation',
     'expand_paths',
     'expand_rectpolys',
@@ -21,9 +19,7 @@ __all__ = [
     'flatten',
     'expand_instancearrays',
     'write_gds',
-    'gds_str',
-    'gds_str_from_file',
-    'gds_str_from_layout',
+    'gds_text',
     'compare',
     'SRouter',
     'SRouterException',

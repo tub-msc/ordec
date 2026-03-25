@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.lib import Inv
+from ordec.lib.generic_mos import Inv
 from ordec.render import render
 
 def test_repr_svg_symbol():

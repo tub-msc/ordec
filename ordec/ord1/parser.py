@@ -8,8 +8,8 @@ import ast
 from pathlib import Path
 
 #ordec imports
-from ..ord1.ast_transformer import SchematicModifier
-from ..ord1.lark_transformer import OrdecTransformer, TreeIndenter
+from .ast_transformer import SchematicModifier
+from .lark_transformer import OrdecTransformer, TreeIndenter
 
 def load_ord_from_string(ord_string):
     """

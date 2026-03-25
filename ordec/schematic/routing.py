@@ -66,7 +66,7 @@ class RoutingPort:
     y: int
     name: str
     direction: str
-    route: bool = True
+    auto_wire: bool = True
 
 class RoutingCell:
     def __init__(self, x, y, x_size, y_size, name, connections=None):
@@ -1018,17 +1018,17 @@ def adjust_outline_initial(node):
             outline = instance_geometry
     return outline
 
-def schematic_routing(node, outline=None, routing=None):
+def auto_wire(node, outline=None, routing=None):
     """Calculate routing vertices via A* pathfinding and attach wires to the node.
+
+    Sets ``node.outline`` to the adjusted outline extended to cover all routed
+    wires.
 
     Args:
         node: Current node containing schematic elements.
         outline (Rect4R, optional): Outline coordinates. Computed if not given.
         routing (dict, optional): Port routing overrides. Keys are port IDs,
             values are booleans enabling/disabling routing.
-
-    Returns:
-        Rect4R: Adjusted outline extended to cover all routed wires.
     """
     # Get all the connections of ports and instances
     if routing is None:
@@ -1088,12 +1088,17 @@ def schematic_routing(node, outline=None, routing=None):
         # Add to ports dictionary
         inner_x = int(pos.x)
         inner_y = int(pos.y)
-        route = instance.ref.route
+        aw = instance.ref.auto_wire
         ports[net_nid] = RoutingPort(inner_x + offset_x,
                            inner_y + offset_y,
                            net_nid,
                            port_alignment,
-                           route)
+                           aw)
+
+    # Early return when ports exist but none need auto-wiring
+    if ports and not any(p.auto_wire for p in ports.values()):
+        node.outline = outline
+        return
 
     #======================
     # Determine connections
@@ -1117,7 +1122,7 @@ def schematic_routing(node, outline=None, routing=None):
                 # ORD1 in dictionry
                 if routing.get(int(connected_nid) if connected_nid.isdigit() else connected_nid, True):
                     # ORD2 in schema
-                    if ports[connected_nid].route:
+                    if ports[connected_nid].auto_wire:
                         connections.append((ports[connected_nid], connection_position))
                 # Connection not in ports <=> inter instance connection
             else:
@@ -1127,11 +1132,12 @@ def schematic_routing(node, outline=None, routing=None):
                     inter_instance_connections.append(connected_nid)
                     ports[connected_nid] = RoutingPort(int(connection_position.x),
                                                  int(connection_position.y),
-                                                 connected_nid, connection_position.direction)
+                                                 connected_nid, connection_position.direction,
+                                                 connected_to.auto_wire)
                     array_mapping_list[connected_to] = connected_nid
                 else:
                     # Save the path after the inter instance connection is established
-                    if ports[connected_nid].route:
+                    if ports[connected_nid].auto_wire:
                         connections.append((ports[connected_nid], connection_position))
 
     #=====================================================
@@ -1165,7 +1171,7 @@ def schematic_routing(node, outline=None, routing=None):
                 setattr(schem_element.ref, f"vert_{named_vertice_counter}",
                         SchemWire(vertices=converted_vertices))
             named_vertice_counter += 1
-    return outline
+    node.outline = outline
 
 
 if __name__ == "__main__":

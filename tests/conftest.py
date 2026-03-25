@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
-from ordec import Subgraph
+from ordec.core import Subgraph
 
 # TODO: --upgrade-golden-files and --update-ord-files are currently not used.
 

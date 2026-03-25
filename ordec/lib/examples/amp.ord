@@ -1,7 +1,6 @@
 from ordec.core import *
 from ordec.lib.base import Res, Cap, Vdc, Vsin, Gnd, Idc
 from ordec.lib.ihp130 import Nmos, Pmos
-from ordec.ord2.context import schem_check
 from ordec.sim import Simulator
 from ordec.report import *
 
@@ -13,7 +12,6 @@ cell Amp:
         inout vss: .align=South
         inout vdd: .align=North
     viewgen schematic -> Schematic:
-        schem_check(True)
         net m0g
         port vdd: .align=South; .pos=(15,18)
         port vss: .align=North; .pos=(15,1)
@@ -32,7 +30,6 @@ cell AmpTb:
         pass
     viewgen schematic -> Schematic:
         net vin, vout, vdd, vss, vbias
-        schem_check(True)
         Amp DUT: .pos=(17,6); .vss--vss; .vdd--vdd; .vin--vin; .vout--vout; .vbias--vbias
 
         Gnd gnd: .pos=(0,0); .p--vss

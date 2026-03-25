@@ -210,23 +210,6 @@ def convert_to_ast_function_def(function_name, args, body, decorators, returns=N
 """
 
 
-# Functions that every cell type needs
-# outline should get parameters in the future depending on the amount of inner cells
-# --> can be calculated via the x and y coordinates
-def helpers_schem_check():
-    """
-    Function which adds some helper functions
-    :return: schem check instance
-    """
-    schem_check = convert_to_ast_expr(
-        convert_to_ast_call(function_name=convert_to_ast_attribute_store(convert_to_ast_name_store("helpers"),
-                                                                         "schem_check"),
-            args=[convert_to_ast_name_load("node")],
-            keywords=[convert_to_ast_keyword("add_conn_points", convert_to_ast_constant(True)),
-                      convert_to_ast_keyword("add_terminal_taps", convert_to_ast_constant(False))]))
-    return schem_check
-
-
 def outline(outline_x, outline_y):
     """
     Function which adds the outline border to the schematic and defines the grid size

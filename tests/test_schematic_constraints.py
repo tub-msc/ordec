@@ -2,9 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from ordec.core import *
-from ordec.core.constraints import (
-    LinearTerm, Vec2LinearTerm, Rect4LinearTerm, TD4LinearTerm
-)
+from ordec.core.constraints import LinearTerm, Vec2LinearTerm, Rect4LinearTerm, TD4LinearTerm
 
 
 class SimpleSymbol(Cell):

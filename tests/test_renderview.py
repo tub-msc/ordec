@@ -16,7 +16,7 @@ from typing import Callable
 from importlib import import_module
 
 import ordec.importer
-from ordec import lib
+from ordec.lib import generic_mos
 from ordec.render import render
 from .lib import schematics as libtest
 
@@ -51,15 +51,15 @@ testdata = [
     # Test cells from lib.base and lib.generic_mos
     # --------------------------------------------
 
-    testcase(lambda: lib.Inv().schematic,
+    testcase(lambda: generic_mos.Inv().schematic,
         refdir / "lib_inverter_sch.svg"),
-    testcase(lambda: lib.Inv().symbol,
+    testcase(lambda: generic_mos.Inv().symbol,
         refdir / "lib_inverter_sym.svg"),
-    testcase(lambda: lib.Ringosc().schematic,
+    testcase(lambda: generic_mos.Ringosc().schematic,
         refdir / "lib_ringosc_sch.svg"),
-    testcase(lambda: lib.And2().symbol,
+    testcase(lambda: generic_mos.And2().symbol,
         refdir / "lib_and2_sym.svg"),
-    testcase(lambda: lib.Or2().symbol,
+    testcase(lambda: generic_mos.Or2().symbol,
         refdir / "lib_or2_sym.svg"),
 
     # Test cells from tests.lib.schematics
@@ -168,7 +168,7 @@ def test_renderview(testcase, tmp_path, update_ref):
     render_opts = dict(
         include_nids=False, # Do not include nids to make the output independent of nids.
         enable_grid=False, # Disable grid to make the files smaller.
-        enable_css=True # To be able to inspect the SVG files for correctness, we need to include the proper CSS.
+        enable_css=False # CSS is tested via web/src/schematic.css; use add_style.py to re-inject for visual inspection.
     ) | testcase.render_opts 
 
     svg = render(view, **render_opts).svg()

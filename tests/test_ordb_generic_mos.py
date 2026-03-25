@@ -99,9 +99,9 @@ def test_example_schematic():
         56: SchemWire(ref=3),
         57: PolyVec2R(ref=56, order=0, pos=Vec2R(x=R('5.'), y=R('7.'))),
         58: PolyVec2R(ref=56, order=1, pos=Vec2R(x=R('9.'), y=R('7.'))),
-        59: SchemConnPoint(ref=7, pos=Vec2R(x=R('2.'), y=R('7.'))),
-        60: SchemConnPoint(ref=7, pos=Vec2R(x=R('5.'), y=R('7.'))),
-        61: SchemConnPoint(ref=7, pos=Vec2R(x=R('5.'), y=R('13.'))),
+        59: SchemConnPoint(ref=1, pos=Vec2R(x=R('2.'), y=R('7.'))),
+        60: SchemConnPoint(ref=3, pos=Vec2R(x=R('5.'), y=R('7.'))),
+        61: SchemConnPoint(ref=5, pos=Vec2R(x=R('5.'), y=R('13.'))),
         62: SchemConnPoint(ref=7, pos=Vec2R(x=R('5.'), y=R('1.'))),
     })
 

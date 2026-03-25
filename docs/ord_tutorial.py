@@ -34,7 +34,6 @@
 
 # + tags=["remove-input"]
 from ordec.core import *
-from ordec.schematic import helpers
 from IPython.core.magic import Magics, magics_class, line_cell_magic
 from IPython.display import Code
 from ordec.language import compile_ord
@@ -340,23 +339,6 @@ from ordec.lib.examples.nand2 import Nand2
 
 # +
 # -*- version: ord2 -*-
-# -
-
-# ## 8. Deactivate checks in ORD files
-#
-# ORD supports disabling **routing** and **schematic checks** within schematics.
-# This is particularly useful during testing and the initial setup of schematic components.
-# It is recommended to re-enable these checks after placing **ports** and **subcells**.
-
-# +
-%%ord
-from ordec.ord2.context import routing, schem_check
-
-cell Inv:
-    viewgen schematic -> Schematic:
-    	# Here is your schematic code!
-        routing(False)
-        schem_check(False)
 # -
 
 # I hope this short tutorial gave you some insights into how to get started

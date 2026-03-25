@@ -12,7 +12,6 @@ from collections import OrderedDict
 from typing import Any
 
 from .core import *
-from .schematic.helpers import symbol_place_pins
 
 class LefReaderException(Exception):
     pass
@@ -136,5 +135,5 @@ def create_symbol(extlib: 'ExtLibrary', name: str, port_spec: OrderedDict[str, t
             sym[port_name] = PathNode()
             for i in range(width):
                 sym[port_name][i] = Pin(**pin_kwargs)
-    symbol_place_pins(sym, hpadding=3, vpadding=2)
+    sym.place_pins(hpadding=3, vpadding=2)
     return sym.freeze()

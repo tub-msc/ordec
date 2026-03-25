@@ -9,6 +9,7 @@ from .rational import R
 from public import public
 from collections import namedtuple
 
+@public
 class Vec2Generic(tuple):
     """
     2D vector, typically representing a point / vertex in 2D space.
@@ -98,6 +99,7 @@ class Vec2I(Vec2Generic):
     def __floordiv__(self, other):
         return Vec2I(self.x // other, self.y // other)
 
+@public
 class Rect4Generic(tuple):
     """Rectangle in 2D space."""
     __slots__ = ()
@@ -281,6 +283,7 @@ class Rect4I(Rect4Generic):
 
         return tuple.__new__(cls, (lx, ly, ux, uy))
 
+@public
 class TD4(tuple):
     """
     Transformation group supporting 2D translation, X/Y mirroring and 90° rotations.

@@ -262,13 +262,13 @@ class SchematicRenderer(Renderer):
             fill: #f00;
         }
         .pinLabel, .pinArrow {
-            fill: #f00;
+            fill: #4d994d;
         }
         .params, .cellName {
             fill: #80b380;
         }
         .symbolOutline {
-            stroke: #80b380;
+            stroke: #a3cca3;
         }
         .symbolPoly {
             stroke: #000;
@@ -291,6 +291,10 @@ class SchematicRenderer(Renderer):
         }
         .portArrow, .portLabel {
             fill: #39f;
+        }
+        .errorMarker {
+            fill: rgba(255, 0, 0, 0.25);
+            stroke: none;
         }
     """)
 
@@ -341,6 +345,16 @@ class SchematicRenderer(Renderer):
         for port in s.all(SchemPort):
             with self.subgroup(node=port):
                 self.draw_schem_port(port)
+
+        for err in s.all(SchemErrorMarker):
+            self.draw_error_marker(err)
+
+    def draw_error_marker(self, err: SchemErrorMarker):
+        cx, cy = err.pos.tofloat()
+        circle = ET.SubElement(self.cur_group, 'circle',
+            cx=str(cx), cy=str(cy), r='0.5')
+        circle.attrib['class'] = 'errorMarker'
+        circle.attrib['data-error'] = err.error_type.value
 
     def draw_symbol(self, s: Symbol, trans: TD4R, inst_name: str="?"):
         # Draw outline

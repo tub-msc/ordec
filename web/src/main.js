@@ -261,3 +261,14 @@ window.ordecClient = client;
 fetch('/api/version').then(response => response.json()).then(data => {
     document.querySelector('#version').innerText = data['version'];
 });
+
+// Schematic CSS is served from the backend (SchematicRenderer.css in render.py)
+// rather than bundled as a frontend asset. This keeps a single source of truth
+// for the styles used by both standalone SVG export and the web UI, avoids
+// duplicating the CSS into every inline SVG in the DOM, and reduces data
+// transferred when multiple schematics are open.
+fetch('/api/schematic.css').then(response => response.text()).then(css => {
+    const style = document.createElement('style');
+    style.textContent = css;
+    document.head.appendChild(style);
+});

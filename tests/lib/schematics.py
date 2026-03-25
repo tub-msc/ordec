@@ -2,9 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from ordec.core import *
-from ordec.schematic import helpers
 from ordec.lib.generic_mos import Or2, Nmos
-from ordec.lib.base import Res
+from ordec.lib import Res
 
 class RotateTest(Cell):
     @generate
@@ -45,7 +44,7 @@ class PortAlignTest(Cell):
         s.south = Pin(pintype=PinType.In, align=South)
         s.west = Pin(pintype=PinType.In, align=West)
         s.east = Pin(pintype=PinType.In, align=East)
-        helpers.symbol_place_pins(s)
+        s.place_pins()
 
         return s
 
@@ -96,7 +95,7 @@ class DFF(Cell):
         s.d = Pin(pintype=PinType.In, align=West)
         s.q = Pin(pintype=PinType.Out, align=East)
         s.clk = Pin(pintype=PinType.In, align=West)
-        helpers.symbol_place_pins(s, vpadding=2, hpadding=3)
+        s.place_pins(vpadding=2, hpadding=3)
 
         return s
 
@@ -116,7 +115,7 @@ class MultibitReg_Arrays(Cell):
             s.d[i] = Pin(pintype=PinType.In, align=West)
             s.q[i] = Pin(pintype=PinType.Out, align=East)
         s.clk = Pin(pintype=PinType.In, align=West)
-        helpers.symbol_place_pins(s)
+        s.place_pins()
 
         return s
 
@@ -156,7 +155,7 @@ class MultibitReg_Arrays(Cell):
 
         s.outline = Rect4R(lx=0, ly=0, ux=10, uy=2 + 8 * self.bits)
 
-        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        s.check(add_conn_points=True, add_terminal_taps=True)
 
         return s
 
@@ -176,7 +175,7 @@ class MultibitReg_ArrayOfStructs(Cell):
             s.bit[i].d = Pin(pintype=PinType.In, align=West)
             s.bit[i].q = Pin(pintype=PinType.Out, align=East)
         s.clk = Pin(pintype=PinType.In, align=West)
-        helpers.symbol_place_pins(s)
+        s.place_pins()
 
         return s
 
@@ -199,7 +198,7 @@ class NetNamingTest(Cell):
         s.c = Pin(pintype=PinType.Inout, align=West)
         s.d = Pin(pintype=PinType.Inout, align=West)
         
-        helpers.symbol_place_pins(s, vpadding=2, hpadding=2)
+        s.place_pins(vpadding=2, hpadding=2)
         return s
 
     @generate
@@ -222,7 +221,7 @@ class NetNamingTest(Cell):
         
         s.i0 = SchemInstance(Res('1k').symbol.portmap(m=a, p=s.b), pos=Vec2R(4, 2))
         s.i2 = SchemInstance(Res('1k').symbol.portmap(m=c, p=s.d), pos=Vec2R(9, 2))
-        helpers.schem_check(s, add_conn_points=True, add_terminal_taps=True)
+        s.check(add_conn_points=True, add_terminal_taps=True)
         return s
 
 
@@ -242,7 +241,7 @@ class MultibitReg_StructOfArrays(Cell):
             s.data.d[i] = Pin(pintype=PinType.In, align=West)
             s.data.q[i] = Pin(pintype=PinType.Out, align=East)
         s.clk = Pin(pintype=PinType.In, align=West)
-        helpers.symbol_place_pins(s)
+        s.place_pins()
 
         return s
 
@@ -254,6 +253,38 @@ class TestNmosInv(Cell):
     add_conn_points = Parameter(bool)
     add_terminal_taps = Parameter(bool)
 
+    @classmethod
+    def discoverable_instances(cls):
+        variants = [
+            ('default', False, False),
+            ('manual_conn_points', False, False),
+            ('double_connpoint', False, False),
+            ('double_instance', False, False),
+            ('no_wiring', False, False),
+            ('unconnected_conn_point', True, False),
+            ('net_partitioned', True, False),
+            ('net_partitioned_tapped', True, False),
+            ('skip_vdd_wiring', True, False),
+            ('skip_single_pin', True, False),
+            ('stray_conn_point', True, False),
+            ('tap_short', True, False),
+            ('poly_short', True, False),
+            ('overlapping_instances', True, False),
+            ('touching_instances', True, False),
+            ('segment_short', True, False),
+            ('segment_overlap', True, False),
+            ('incorrect_pin_conn', True, False),
+            ('incorrect_port_conn', True, False),
+            ('portmap_missing_key', True, False),
+            ('portmap_stray_key', True, False),
+            ('portmap_bad_value', True, False),
+            ('terminal_multiple_wires', True, False),
+            ('terminal_connpoint', True, False),
+            ('vdd_bad_wiring', True, True),
+            ('skip_vdd_wiring', True, True),
+        ]
+        return [cls(v, cp, tt) for v, cp, tt in variants]
+
     @generate
     def symbol(self):
         s = Symbol(cell=self)
@@ -262,7 +293,7 @@ class TestNmosInv(Cell):
         s.vss = Pin(pintype=PinType.Inout, align=South)
         s.a = Pin(pintype=PinType.In, align=West)
         s.y = Pin(pintype=PinType.Out, align=East)
-        helpers.symbol_place_pins(s)
+        s.place_pins()
 
         return s
 
@@ -290,8 +321,14 @@ class TestNmosInv(Cell):
         elif self.variant == "portmap_bad_value":
             list(s.pd.conns())[0].there = 12345
 
+        if self.variant == "overlapping_instances":
+            pu_pos = Vec2R(3, 4)  # overlaps pd at [3,2,7,6]
+        elif self.variant == "touching_instances":
+            pu_pos = Vec2R(3, 6)  # touches pd at y=6
+        else:
+            pu_pos = Vec2R(3, 8)
         s.pu = SchemInstance(
-            nmos.portmap(d=s.vdd, b=s.vss, g=s.vdd, s=s.y), pos=Vec2R(3, 8)
+            nmos.portmap(d=s.vdd, b=s.vss, g=s.vdd, s=s.y), pos=pu_pos
         )
         if self.variant == "double_instance":
             s.pu2 = SchemInstance(
@@ -306,7 +343,7 @@ class TestNmosInv(Cell):
         else:
             s.y % SchemPort(pos=Vec2R(9, 7), align=West)
 
-        if self.variant == "no_wiring":
+        if self.variant in ("no_wiring", "overlapping_instances", "touching_instances"):
             s.default_supply = s.vdd
             s.default_ground = s.vss
         else:
@@ -362,6 +399,21 @@ class TestNmosInv(Cell):
                     ]
                 )
 
+            if self.variant == "segment_short":
+                # vss wire overlaps with a segment on vdd's vertical wire
+                # vdd has a wire at x=2 from y=10 to y=13 (via vertices)
+                # Add a vss segment at x=2 from y=11 to y=15 — overlaps y=11..13
+                s.vss % SchemWire(
+                    vertices=[Vec2R(2, 11), Vec2R(2, 15)]
+                )
+
+            if self.variant == "segment_overlap":
+                # Same-net overlap: vdd already has x=2 from y=10 to y=13
+                # Add another vdd segment at x=2 from y=11 to y=15
+                s.vdd % SchemWire(
+                    vertices=[Vec2R(2, 11), Vec2R(2, 15)]
+                )
+
             s.a % SchemWire(vertices=[Vec2R(1, 4), Vec2R(2, 4), Vec2R(3, 4)])
             s.y % SchemWire(vertices=[Vec2R(5, 6), Vec2R(5, 7), Vec2R(5, 8)])
             s.y % SchemWire(vertices=[Vec2R(5, 7), Vec2R(9, 7)])
@@ -378,8 +430,7 @@ class TestNmosInv(Cell):
             s.y % SchemConnPoint(pos=Vec2R(4, 7))
 
         s.outline = Rect4R(lx=0, ly=1, ux=10, uy=13)
-        helpers.schem_check(
-            s,
+        s.check(
             add_conn_points=self.add_conn_points,
             add_terminal_taps=self.add_terminal_taps,
         )

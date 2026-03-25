@@ -3,72 +3,104 @@
 
 """
 Most schematic-related stuff is tested through test_renderview.py.
-Exception-related stuff cannot be tested there, so it is tested in this module
-instead.
+Error-related stuff could previously not be tested there, so it is tested in
+this module instead.
 """
 
 import pytest
 from ordec.core import *
 from .lib import schematics as lib_test
-from ordec.lib import Nmos
-from ordec.schematic.helpers import SchematicError, resolve_instances
+from ordec.lib.generic_mos import Nmos
+from ordec.schematic import SchematicError
 
 def test_schematic_unconnected_conn_point():
-    with pytest.raises(SchematicError, match=r"Incorrectly placed SchemConnPoint"):
-        lib_test.TestNmosInv(variant='unconnected_conn_point', add_conn_points=True, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='unconnected_conn_point', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.IncorrectlyPlacedSchemConnPoint for e in errors)
 
 def test_schematic_missing_conn_point():
-    with pytest.raises(SchematicError, match=r"Missing SchemConnPoint"):
-        lib_test.TestNmosInv(variant='default', add_conn_points=False, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='default', add_conn_points=False, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.MissingSchemConnPoint for e in errors)
 
 def test_schematic_manual_conn_point():
     lib_test.TestNmosInv(variant='manual_conn_points', add_conn_points=False, add_terminal_taps=False).schematic
 
 def test_schematic_net_partitioned():
-    with pytest.raises(SchematicError, match=r"misses wiring to locations"):
-        lib_test.TestNmosInv(variant='net_partitioned', add_conn_points=True, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='net_partitioned', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.NetMissesWiring for e in errors)
 
 def test_schematic_net_partitioned_tapped():
     lib_test.TestNmosInv(variant='net_partitioned_tapped', add_conn_points=True, add_terminal_taps=False).schematic
 
 def test_schematic_bad_wiring():
-    with pytest.raises(SchematicError, match=r"Unconnected wiring at"):
-        lib_test.TestNmosInv(variant='vdd_bad_wiring', add_conn_points=True, add_terminal_taps=True).schematic
+    s = lib_test.TestNmosInv(variant='vdd_bad_wiring', add_conn_points=True, add_terminal_taps=True).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.UnconnectedWiring for e in errors)
 
 def test_schematic_missing_terminal_connection():
-    with pytest.raises(SchematicError, match=r"Missing terminal connection at"):
-        lib_test.TestNmosInv(variant='skip_vdd_wiring', add_conn_points=True, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='skip_vdd_wiring', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.MissingTerminalConnection for e in errors)
 
 def test_schematic_missing_terminal_connection2():
-    with pytest.raises(SchematicError, match=r"Missing terminal connection at"):
-        lib_test.TestNmosInv(variant='skip_single_pin', add_conn_points=True, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='skip_single_pin', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.MissingTerminalConnection for e in errors)
 
 def test_schematic_add_terminal_taps():
     lib_test.TestNmosInv(variant='skip_vdd_wiring', add_conn_points=True, add_terminal_taps=True).schematic
 
 def test_schematic_stray_conn_point():
-    with pytest.raises(SchematicError, match=r"Stray SchemConnPoint"):
-        lib_test.TestNmosInv(variant='stray_conn_point', add_conn_points=True, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='stray_conn_point', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.StraySchemConnPoint for e in errors)
 
 def test_schematic_tap_short():
-    with pytest.raises(SchematicError, match=r"Geometric short at"):
-        lib_test.TestNmosInv(variant='tap_short', add_conn_points=True, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='tap_short', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.GeometricShort for e in errors)
 
 def test_schematic_poly_short():
-    with pytest.raises(SchematicError, match=r"Geometric short at"):
-        lib_test.TestNmosInv(variant='poly_short', add_conn_points=True, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='poly_short', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.GeometricShort for e in errors)
+
+def test_schematic_overlapping_instances():
+    s = lib_test.TestNmosInv(variant='overlapping_instances', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.OverlappingInstances for e in errors)
+
+def test_schematic_touching_instances():
+    s = lib_test.TestNmosInv(variant='touching_instances', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.OverlappingInstances for e in errors)
+
+def test_schematic_segment_short():
+    s = lib_test.TestNmosInv(variant='segment_short', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.OverlappingWires for e in errors)
+
+def test_schematic_segment_overlap():
+    s = lib_test.TestNmosInv(variant='segment_overlap', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.OverlappingWires for e in errors)
 
 def test_schematic_incorrect_pin_conn():
-    with pytest.raises(SchematicError, match=r"Incorrect terminal connection at"):
-        lib_test.TestNmosInv(variant='incorrect_pin_conn', add_conn_points=True, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='incorrect_pin_conn', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.IncorrectTerminalConnection for e in errors)
 
 def test_schematic_incorrect_port_conn():
-    with pytest.raises(SchematicError, match=r"Incorrect terminal connection at"):
-        lib_test.TestNmosInv(variant='incorrect_port_conn', add_conn_points=True, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='incorrect_port_conn', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.IncorrectTerminalConnection for e in errors)
 
 def test_schematic_portmap_missing_key():
-    with pytest.raises(SchematicError, match=r"Missing pins"):
-        lib_test.TestNmosInv(variant='portmap_missing_key', add_conn_points=True, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='portmap_missing_key', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.UnconnectedPin for e in errors)
 
 def test_schematic_portmap_stray_key():
     with pytest.raises(ModelViolation, match=r"ExternalRef invalid reference"):
@@ -79,20 +111,24 @@ def test_schematic_portmap_bad_value():
         lib_test.TestNmosInv(variant='portmap_bad_value', add_conn_points=True, add_terminal_taps=False).schematic
 
 def test_schematic_terminal_multiple_wires():
-    with pytest.raises(SchematicError, match=r"Terminal with more than one connection"):
-        lib_test.TestNmosInv(variant='terminal_multiple_wires', add_conn_points=True, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='terminal_multiple_wires', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.TerminalMultipleConnections for e in errors)
 
 def test_schematic_terminal_connpoint():
-    with pytest.raises(SchematicError, match=r"SchemConnPoint overlapping terminal"):
-        lib_test.TestNmosInv(variant='terminal_connpoint', add_conn_points=True, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='terminal_connpoint', add_conn_points=True, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.SchemConnPointOverlappingTerminal for e in errors)
 
 def test_schematic_double_connpoint():
-    with pytest.raises(SchematicError, match=r"Overlapping SchemConnPoints at"):
-        lib_test.TestNmosInv(variant='double_connpoint', add_conn_points=False, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='double_connpoint', add_conn_points=False, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.OverlappingSchemConnPoints for e in errors)
 
 def test_schematic_double_instance():
-    with pytest.raises(SchematicError, match=r"Overlapping terminals at"):
-        lib_test.TestNmosInv(variant='double_instance', add_conn_points=False, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='double_instance', add_conn_points=False, add_terminal_taps=False).schematic
+    errors = list(s.all(SchemErrorMarker))
+    assert any(e.error_type == SchemErrorType.OverlappingInstances for e in errors)
 
 def test_scheminstance_unresolved():
     s_ref = MutableSubgraph.load({
@@ -119,7 +155,7 @@ def test_scheminstance_unresolved():
     s.s = Net()
     s.d = Net()
     s.b = Net()
-    
+
     s.myinst = SchemInstanceUnresolved(pos=(1, 2), resolver=lambda **params: Nmos(**params).symbol)
     s.myinst % SchemInstanceUnresolvedConn(here=s.g, there=('g',))
     s.myinst % SchemInstanceUnresolvedConn(here=s.s, there=('s',))
@@ -128,13 +164,13 @@ def test_scheminstance_unresolved():
     s.myinst % SchemInstanceUnresolvedParameter(name='l', value='2u')
     s.myinst % SchemInstanceUnresolvedParameter(name='w', value='5u')
 
-    resolve_instances(s)
+    s.resolve_instances()
 
     assert s.matches(s_ref)
 
 def test_scheminstance_unresolved_hierarchical_path():
     s = Schematic()
-    
+
     s.mynet = Net()
 
     resolver = lambda **params: lib_test.MultibitReg_StructOfArrays(**params).symbol
@@ -144,7 +180,7 @@ def test_scheminstance_unresolved_hierarchical_path():
     s.myinst % SchemInstanceUnresolvedParameter(name='bits', value=4)
     conn_u = s.myinst % SchemInstanceUnresolvedConn(here=s.mynet, there=('data', 'd', 3))
 
-    resolve_instances(s)
+    s.resolve_instances()
 
     conn = list(s.myinst.conns())[0]
     assert conn.nid == conn_u.nid

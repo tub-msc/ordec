@@ -5,7 +5,7 @@
 import ast
 
 #ordec imports
-from ..ord1.ast_conversion import convert_to_ast_assignment, convert_to_ast_name_store, convert_to_ast_call, \
+from .ast_conversion import convert_to_ast_assignment, convert_to_ast_name_store, convert_to_ast_call, \
     convert_to_ast_name_load, convert_to_ast_expr, convert_to_ast_subscript_store, \
     convert_to_ast_constant, convert_to_ast_tuple_load, convert_to_ast_keyword, convert_to_ast_dict, \
     convert_to_ast_attribute_load, convert_to_ast_function_def

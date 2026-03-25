@@ -48,6 +48,29 @@ class RectDirection(Enum):
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'
 
+@public
+class SchemErrorType(Enum):
+    OverlappingTerminals = 'Overlapping terminals'
+    MissingTerminalConnection = 'Missing terminal connection'
+    IncorrectTerminalConnection = 'Incorrect terminal connection'
+    GeometricShort = 'Geometric short'
+    OverlappingWires = 'Overlapping wires'
+    OverlappingSchemConnPoints = 'Overlapping connection points'
+    IncorrectlyPlacedSchemConnPoint = 'Incorrectly placed connection point'
+    UnconnectedPin = 'Unconnected pin'
+    StrayPinsInPortmap = 'Stray pins in portmap'
+    SchemConnPointOverlappingTerminal = 'Connection point overlapping terminal'
+    TerminalMultipleConnections = 'Terminal with multiple connections'
+    UnconnectedWiring = 'Unconnected wiring'
+    StraySchemConnPoint = 'Stray connection point'
+    MissingSchemConnPoint = 'Missing connection point'
+    NetMissesWiring = 'Net misses wiring'
+    OverlappingInstances = 'Overlapping instances'
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+
 # NamedTuples
 # -----------
 
@@ -99,6 +122,14 @@ class Symbol(SubgraphRoot):
                 SchemInstanceConn(ref=main_nid, here=v.nid, there=self[k].nid).insert_into(sgu, sgu.nid_generate())
             return main_nid
         return inserter_func
+
+    def place_pins(self, hpadding=3, vpadding=3):
+        from ..schematic import symbol_place_pins
+        symbol_place_pins(self, hpadding=hpadding, vpadding=vpadding)
+
+    def postprocess(self):
+        self.place_pins(vpadding=2, hpadding=2)
+        return self
 
     def _repr_svg_(self):
         from ..render import render
@@ -260,19 +291,40 @@ class Schematic(SubgraphRoot):
     default_supply = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
     default_ground = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
 
+    def resolve_instances(self):
+        from ..schematic import resolve_instances
+        resolve_instances(self)
+
+    def auto_wire(self):
+        from ..schematic import auto_wire
+        auto_wire(self)
+
+    def check(self, add_conn_points=False, add_terminal_taps=False):
+        from ..schematic import schem_check
+        schem_check(self, add_conn_points=add_conn_points, add_terminal_taps=add_terminal_taps)
+
+    def has_errors(self) -> bool:
+        return any(True for _ in self.all(SchemErrorMarker))
+
+    def postprocess(self):
+        self.resolve_instances()
+        self.auto_wire()
+        self.check(add_conn_points=True, add_terminal_taps=True)
+        return self
+
     def _repr_svg_(self):
         from ..render import render
         return render(self).svg().decode('ascii'), {'isolated': False}
 
     def webdata(self):
         from ..render import render
-        return render(self).webdata() 
+        return render(self).webdata()
 
 @public
 class Net(Node):
     in_subgraphs = [Schematic]
     pin = ExternalRef(Pin, of_subgraph=lambda c: c.root.symbol)
-    route = Attr(bool, default=True) #: Controls whether the Net is routed by schematic_routing
+    auto_wire = Attr(bool, default=True) #: Controls whether the Net is auto-wired
 
     pin_idx = Index(pin)
 
@@ -287,6 +339,7 @@ class SchemPort(Node):
     ref_idx = Index(ref)
     pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
         factory=coerce_tuple(Vec2R, 2))
+    pos_idx = Index(pos)
     align = Attr(D4, default=D4.R0)
 
 @public
@@ -499,6 +552,7 @@ class SchemTapPoint(Node):
     ref_idx = Index(ref)
 
     pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    pos_idx = Index(pos)
     align = Attr(D4, default=D4.R0)
 
     def loc_transform(self):
@@ -512,6 +566,16 @@ class SchemConnPoint(Node):
     ref_idx = Index(ref)
 
     pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    pos_idx = Index(pos)
+
+@public
+class SchemErrorMarker(Node):
+    """An error marker indicating a schematic check failure."""
+    in_subgraphs = [Schematic]
+    ref = LocalRef(Schematic)
+    pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    align = Attr(D4, default=D4.R0)
+    error_type = Attr(SchemErrorType)
 
 # Simulation hierarchy
 # --------------------
@@ -909,8 +973,11 @@ class Layout(SubgraphRoot):
     symbol = SubgraphRef(Symbol) #: All LayoutPins in this subgraph reference this symbol.
     ref_layers = SubgraphRef(LayerStack, optional=False) #: All .layer attributes of nodes in this subgraph reference this LayerStack.
 
+    def postprocess(self):
+        return self
+
     def webdata(self):
-        from ..layout import webdata
+        from ..layout.webdata import webdata
         return webdata(self)
         #from ..render import render
         #return render(self).webdata()
@@ -1011,7 +1078,6 @@ class LayoutRect(Node):
     rect = ConstrainableAttr(Rect4I, factory=coerce_tuple(Rect4I, 4),
         placeholder=Rect4LinearTerm)
 
-@public
 class LayoutInstanceSubcursor(tuple):
     """Cursor to go through layout instances, transforming coordinates."""
     def __repr__(self):
@@ -1204,6 +1270,7 @@ class PolyVec2R(Node):
     pos     = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
 
     ref_idx = Index(ref, sortkey=lambda node: node.order)
+    pos_idx = Index(pos)
 
 @public
 class PolyVec2I(Node):

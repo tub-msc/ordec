@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import io
 import os
 import re
 from pathlib import Path
@@ -12,6 +13,16 @@ from ordec.layout.gds_in import GdsReaderException
 from ordec.layout import *
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary, ExtLibraryError
+
+def gds_text_from_file(fn):
+    with open(fn, 'rb') as f:
+        return gds_text(f)
+
+def gds_text_from_layout(layout):
+    buf = io.BytesIO()
+    write_gds(layout, buf)
+    buf.seek(0)
+    return gds_text(buf)
 
 # def test_read_gds():
 #     ihp_path = Path(os.getenv("ORDEC_PDK_IHP_SG13G2"))
@@ -744,7 +755,7 @@ def test_write_gds():
     #with open("out.gds", "wb") as f:
     #    write_gds(Top().layout, f)
 
-    assert gds_str_from_layout(Top().layout) == gds_str_from_file(gds_dir / 'test_write_gds.gds')
+    assert gds_text_from_layout(Top().layout) == gds_text_from_file(gds_dir / 'test_write_gds.gds')
 
 def test_write_gds_without_cell():
     layers = SG13G2().layers
@@ -753,10 +764,10 @@ def test_write_gds_without_cell():
     l % LayoutRectPoly(layer=layers.Metal2.pin, vertices=[(0, 0), (200, 200), (100, 100)])
     l = l.freeze()
 
-    reference = gds_str_from_file(gds_dir / 'test_write_gds_without_cell.gds')
+    reference = gds_text_from_file(gds_dir / 'test_write_gds_without_cell.gds')
     reference = re.sub(r"\'__subgraph[0-9a-f]+\'", f"'__subgraph{id(l.subgraph):x}'", reference)
 
-    assert gds_str_from_layout(l) == reference
+    assert gds_text_from_layout(l) == reference
 
 def test_write_gds_layers_mismatch():
     layers = SG13G2().layers
@@ -770,7 +781,7 @@ def test_write_gds_layers_mismatch():
     top = top.freeze()
 
     with pytest.raises(ValueError, match="ref_layers mismatch during write_gds"):
-        gds_str_from_layout(top)
+        gds_text_from_layout(top)
 
 def test_layoutinstance_subcursor():
     layers = SG13G2().layers
