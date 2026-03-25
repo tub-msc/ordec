@@ -100,6 +100,10 @@ pytest -m web           # Web interface tests
 # Fast testing: skip web tests (saves significant time)
 # Use this when changes don't affect web interface or ngspice integration
 pytest -m "not web"
+
+# IMPORTANT: After modifying frontend code (web/src/), rebuild before running web tests:
+cd web/ && npm run build && cd ..
+pytest -m web
 ```
 
 ### Web UI Development

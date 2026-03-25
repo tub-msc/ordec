@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2025 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
-const urlParams = new URLSearchParams(window.location.search);
+const urlParams = new URLSearchParams(window.location.hash.substring(1));
 const authParam = urlParams.get('auth');
 if(authParam) {
     urlParams.delete('auth');
     window.localStorage.setItem('ordecAuth', authParam);
-    // drop ?auth=... parameter from browser url
-    window.history.pushState({}, document.title, window.location.pathname + '?' + urlParams.toString());
+    // drop auth parameter from browser url fragment
+    const remaining = urlParams.toString();
+    window.history.pushState({}, document.title, window.location.pathname + (remaining ? '#' + remaining : ''));
 }
 
 export const session = {

@@ -27,7 +27,7 @@ import { initTheme, registerAceEditor } from './theme.js';
 initTheme();
 
 const sourceTypeSelect = document.querySelector("#sourcetype");
-const urlParams = new URLSearchParams(window.location.search);
+const urlParams = new URLSearchParams(window.location.hash.substring(1));
 
 // add &debug=true to show 'debug' elements
 const debug = Boolean(urlParams.get('debug'));

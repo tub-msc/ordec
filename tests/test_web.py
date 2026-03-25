@@ -194,7 +194,7 @@ def test_index(web):
     for a in web.driver.find_elements(By.TAG_NAME, 'a'):
         href = urlparse(a.get_attribute('href'))
         if href.path == '/app.html':
-            app_html_link_queries.add(href.query)
+            app_html_link_queries.add(href.fragment)
 
     # Check that we link to each expected example.
     assert app_html_link_queries == {f'example={testcase}' for testcase in testcases_integrated.keys()}
@@ -215,7 +215,8 @@ def test_index(web):
 def request_integrated_example(web, testcase):
     web.resize_viewport()
 
-    web.driver.get(web.url + f'app.html?example={testcase}&refreshall=true')
+    web.driver.get(web.url + f'app.html#example={testcase}&refreshall=true')
+    web.driver.refresh()  # fragment-only change doesn't reload the page
 
     web.wait_for_ready()
 
@@ -251,7 +252,8 @@ def request_local(web, module, request_views):
     web.resize_viewport()
     
     qs_local = web.key.query_string_local(module, '')
-    web.driver.get(web.url + f'app.html?refreshall=true&viewsel_flat=true&{qs_local}')
+    web.driver.get(web.url + f'app.html#refreshall=true&viewsel_flat=true&{qs_local}')
+    web.driver.refresh()  # fragment-only change doesn't reload the page
 
     web.wait_for_ready()
 
@@ -322,7 +324,8 @@ def test_layoutgl(web):
     web.resize_viewport()
         
     qs_local = web.key.query_string_local("tests.lib.layoutgl_example", "layoutgl_example()")
-    web.driver.get(web.url + f'app.html?refreshall=true&{qs_local}')
+    web.driver.get(web.url + f'app.html#refreshall=true&{qs_local}')
+    web.driver.refresh()  # fragment-only change doesn't reload the page
 
     web.wait_for_ready()
 

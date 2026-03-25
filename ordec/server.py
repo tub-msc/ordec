@@ -701,11 +701,11 @@ def main():
             module = args.module
             view = ''
         qs_module = key.query_string_local(module, view)
-        user_url += f"/app.html?auth={key.token()}&{qs_module}"
+        user_url += f"/app.html#auth={key.token()}&{qs_module}"
         # Enable importing modules from current working directory:
         sys.path.append(os.getcwd()) 
     else:
-        user_url += f"/?auth={key.token()}"
+        user_url += f"/#auth={key.token()}"
 
     # Launch server in separate daemon thread (daemon=True). The connection
     # threads automatically inherit the daemon property. All daemon threads
