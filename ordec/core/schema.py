@@ -328,6 +328,26 @@ class Net(Node):
 
     pin_idx = Index(pin)
 
+    @property
+    def port(self):
+        return self.root.one(SchemPort.ref_idx.query(self))
+
+    @property
+    def pos(self):
+        return self.port.pos
+
+    @pos.setter
+    def pos(self, value):
+        self.port.pos = value
+
+    @property
+    def align(self):
+        return self.port.align
+
+    @align.setter
+    def align(self, value):
+        self.port.align = value
+
 @public
 class SchemPort(Node):
     """

@@ -18,18 +18,6 @@ class Netlister:
         return self.directory.name_node(obj, prefix)
 
     def name_net(self, net: Net) -> str:
-        """
-        Name a net, preferring its own name. If the net is unnamed but linked
-        to a named symbol pin, reuse that pin name for the net.
-        """
-
-        if (net.npath_nid is None) and (net.pin is not None) and (net.pin.npath_nid is not None):
-            # If the net is unnamed, try to use the symbol's pin path for the name.
-            # This happens especially with ORD2 schematics, where ports are named
-            # and the corresponding nets are not named.
-            pin_name = self.directory.name_node(net.pin)
-            return self.directory.unique_name(pin_name, net, net.root)
-
         return self.name_obj(net)
 
     def require_netlist_setup(self, func):

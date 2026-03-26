@@ -38,8 +38,8 @@ cell Nto1:
         # ------------------------------------------------------------
         port vdd: .align=South; .pos=(-x_spacing, y_spacing * self.N)
         port vss: .align=North; .pos=(-x_spacing, -y_spacing)
-        vdd.ref.auto_wire = False
-        vss.ref.auto_wire = False
+        vdd.auto_wire = False
+        vss.auto_wire = False
 
         # Output port
         port y: .align=West; .pos=(signal_count * x_spacing,

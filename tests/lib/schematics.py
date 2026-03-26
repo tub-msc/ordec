@@ -183,12 +183,14 @@ class MultibitReg_ArrayOfStructs(Cell):
 class NetNamingTest(Cell):
     """
     Tests net label rendering for four combinations of net naming and
-    pin association:
+    pin association. Previously, case (d) rendered the pin name as a
+    fallback for unnamed nets; this was the common case for ORD2 ports
+    before ports were changed to assign the Net (instead of SchemPort).
 
     (a) Unnamed net, no pin — renders as "??<nid>"
     (b) Named net, no pin — renders net name
     (c) Named net with named pin — renders net name
-    (d) Unnamed net with named pin — renders pin name
+    (d) Unnamed net with named pin — renders as "??<nid>"
     """
 
     @generate

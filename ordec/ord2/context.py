@@ -55,5 +55,6 @@ class OrdContext:
         subgraph_root = self.root
         while not isinstance(subgraph_root, SubgraphRoot):
             subgraph_root = subgraph_root.parent
-        port = self.add(name_tuple, SchemPort(ref=subgraph_root % Net(pin=pin)))
-        return port
+        net = self.add(name_tuple, Net(pin=pin))
+        subgraph_root % SchemPort(ref=net)
+        return net
