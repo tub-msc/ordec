@@ -15,12 +15,14 @@ jobs:
       options: --user root
     steps:
       - name: check out repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
       - name: Source venv
         run: |
           . /home/app/venv/bin/activate
           echo PATH=$PATH >> $GITHUB_ENV
           echo SETUPTOOLS_SCM_PRETEND_VERSION="0" >> $GITHUB_ENV
+      - name: Mark workspace as safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: pip install
         run: pip install .[test]
       - name: run tests
