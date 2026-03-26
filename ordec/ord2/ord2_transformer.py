@@ -117,17 +117,8 @@ class Ord2Transformer(PythonTransformer):
         # Build the ORD context call
         ord_context_call = ast.Call(
             func=self.ast_ord_context("OrdContext"),
-            args=[],
-            keywords=[
-                ast.keyword(
-                    arg='root',
-                    value=viewgen_call
-                ),
-                ast.keyword(
-                    arg='parent',
-                    value=self.ast_name('self')
-                )
-            ]
+            args=[viewgen_call],
+            keywords=[]
         )
         # Solver must be added to layout viewgen
         if viewgen_type_lower == "layout":
@@ -313,13 +304,8 @@ class Ord2Transformer(PythonTransformer):
                 ast.withitem(
                     context_expr=ast.Call(
                         func=self.ast_ord_context("OrdContext"),
-                        args=[],
-                        keywords=[
-                            ast.keyword(
-                                arg="root",
-                                value=context_name
-                            )
-                        ]
+                        args=[context_name],
+                        keywords=[]
                     )
                 )
             ],

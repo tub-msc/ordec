@@ -7,7 +7,7 @@ from ordec.ord2.context import OrdContext
 
 def test_symbol_dot():
     root=Symbol()
-    with OrdContext(root=root):
+    with OrdContext(root):
         # We can access our current context root via '.':
         assert . == OrdContext.ctx.root == root
         .outline = (0,1,2,3)
@@ -16,7 +16,7 @@ def test_symbol_dot():
 
 def test_symbol_pin_creation():
     root = Symbol()
-    with OrdContext(root=root):
+    with OrdContext(root):
         sym = .
 
         # We can create a Pin using the special input/output/inout keywords...
@@ -51,10 +51,10 @@ def test_symbol_pin_creation():
 def test_nested_contexts():
     root1 = Symbol()
     root2 = Symbol()
-    with OrdContext(root=root1):
+    with OrdContext(root1):
         input a
         assert .a == a
-        with OrdContext(root=root2):
+        with OrdContext(root2):
             output a
             input c
         assert .a != a
@@ -73,7 +73,7 @@ def test_nested_contexts():
 
 def test_scheminstance_creation():
     root = Schematic()
-    with OrdContext(root=root):
+    with OrdContext(root):
         # Bodyless...
         # ...using a Cell subclass:
         Res a

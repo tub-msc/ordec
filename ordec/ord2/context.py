@@ -25,19 +25,14 @@ class OrdContext:
     """
     ctx = _CtxWrapper()
 
-    def __init__(self, root=None, parent=None):
+    def __init__(self, root):
         self.root = root
-        self._explicit_parent = parent
-        self.parent = None
 
     def __enter__(self):
         """Enter context, set context variable and save parent"""
         self._token = _ctx_var.set(self)
-        if self._token.old_value is not Token.MISSING:
-            self.parent = self._token.old_value
-        else:
-            # Case for the top-level context
-            self.parent = self._explicit_parent
+        old = self._token.old_value
+        self.parent = old if old is not Token.MISSING else None
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):

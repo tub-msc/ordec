@@ -73,43 +73,43 @@ converted to `ctx.root(.parent)*`. Accesses outside the context are still possib
 	class Inv(Cell):
 	    @generate
 	    def symbol(self) -> Symbol:
-	        with OrdContext(root=Symbol(cell=self), parent=self):
+	        with OrdContext(Symbol(cell=self)):
 	            vdd = ctx.add(('vdd',), Pin(pintype=PinType.Inout))
-	            with OrdContext(root=vdd):
+	            with OrdContext(vdd):
 	                ctx.root.align = North
 	            vss = ctx.add(('vss',), Pin(pintype=PinType.Inout))
-	            with OrdContext(root=vss):
+	            with OrdContext(vss):
 	                ctx.root.align = South
 	            a = ctx.add(('a',), Pin(pintype=PinType.In))
-	            with OrdContext(root=a):
+	            with OrdContext(a):
 	                ctx.root.align = West
 	            y = ctx.add(('y',), Pin(pintype=PinType.Out))
-	            with OrdContext(root=y):
+	            with OrdContext(y):
 	                ctx.root.align = East
 	            return ctx.symbol_postprocess()
 
 	    @generate
 	    def schematic(self) -> Schematic:
-	        with OrdContext(root=Schematic(cell=self, symbol=self.symbol), parent=self):
+	        with OrdContext(Schematic(cell=self, symbol=self.symbol)):
 	            vss = ctx.add_port(('vss',))
-	            with OrdContext(root=vss):
+	            with OrdContext(vss):
 	                ctx.root.pos = (2,1)
 	                ctx.root.align = South
 	            vdd = ctx.add_port(('vdd',))
-	            with OrdContext(root=vdd):
+	            with OrdContext(vdd):
 	                ctx.root.pos = (2,13)
 	                ctx.root.align = North
 	            y = ctx.add_port(('y',))
-	            with OrdContext(root=y):
+	            with OrdContext(y):
 	                ctx.root.pos = (9,7)
 	                ctx.root.align = West
 	            a = ctx.add_port(('a',))
-	            with OrdContext(root=a):
+	            with OrdContext(a):
 	                ctx.root.pos = (1,7)
 	                ctx.root.align = East
 	      
 	            pd = ctx.add(('pd',), SchemInstanceUnresolved(resolver = lambda **params: Nmos(**params).symbol))
-	            with OrdContext (root=pd):
+	            with OrdContext(pd):
 	                ctx.root.s.__wire_op__(vss.ref)
 	                ctx.root.b.__wire_op__(vss.ref)
 	                ctx.root.d.__wire_op__(y.ref)
@@ -117,7 +117,7 @@ converted to `ctx.root(.parent)*`. Accesses outside the context are still possib
 	                ctx.root.params.l = R('400n')
 
 	            pu = ctx.add(('pu',), SchemInstanceUnresolved(resolver = lambda **params: Pmos(**params).symbol))
-	            with OrdContext (root=pu):
+	            with OrdContext(pu):
 	                ctx.root.s.__wire_op__(vdd.ref)
 	                ctx.root.b.__wire_op__(vdd.ref)
 	                ctx.root.d.__wire_op__(y.ref)
