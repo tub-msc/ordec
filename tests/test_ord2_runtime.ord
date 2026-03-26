@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from ordec.lib import Res
+from ordec.ord2.context import OrdContext
+
+def test_symbol_dot():
+    root=Symbol()
+    with OrdContext(root=root):
+        # We can access our current context root via '.':
+        assert . == OrdContext.ctx.root == root
+        .outline = (0,1,2,3)
+        assert .outline == (0,1,2,3)
+    assert root.outline == Rect4R(0,1,2,3)
+
+def test_symbol_pin_creation():
+    root = Symbol()
+    with OrdContext(root=root):
+        sym = .
+
+        # We can create a Pin using the special input/output/inout keywords...
+        # ...either bodyless (no colon and subsequent body):
+        input a
+        # ...or with body (colon and subsequent body):
+        output b:
+            .pos = (5,5)
+            assert .parent == sym
+
+        # Alternatively, we can create a Pin using 'Pin', which is the Node subclass directly from the schema...
+        # ...again either bodyless:
+        Pin c
+        # ...or with body:
+        Pin d:
+            .pintype = PinType.Inout
+            .align = R180
+            assert .parent == sym
+
+    assert isinstance(root.a, Pin)
+    assert root.a.pintype == PinType.In
+    assert root.a.pos is None
+    assert isinstance(sym.b, Pin)
+    assert root.b.pintype == PinType.Out
+    assert root.b.pos == Vec2R(5,5)
+    assert isinstance(sym.c, Pin)
+    assert root.c.pos is None
+    assert isinstance(sym.d, Pin)
+    assert root.d.pintype == PinType.Inout
+    assert root.d.align == D4.R180
+
+def test_scheminstance_creation():
+    root = Schematic()
+    with OrdContext(root=root):
+        # Bodyless...
+        # ...using a Cell subclass:
+        Res a
+        assert isinstance(a, SchemInstanceUnresolved)
+        # ...or using a Cell subclass instance:
+        Res('1k') b
+        assert isinstance(b, SchemInstanceUnresolved)
+
+        # With body...
+        # ...using a Cell subclass:
+        Res c:
+            .pos=(1,2)
+        # ...or using a Cell subclass instance:
+        Res('1k') d:
+            .pos=(1,2)
+
+        assert c.pos == d.pos == Vec2R(1,2)
+

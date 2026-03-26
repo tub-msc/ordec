@@ -289,53 +289,23 @@ class Ord2Transformer(PythonTransformer):
             func = self.ast_attribute(self.ast_ctx(),"add_port")
             rhs = ast.Call(func=func, args=args, keywords=[])
 
-        # Case for instantiating sub-cells
+        # Case for any other element type (Cell class/instance, Node class/instance)
         else:
-            resolver_lambda = ast.Lambda(
-                        args=ast.arguments(
-                            posonlyargs=[],
-                            args=[],
-                            kwonlyargs=[],
-                            kw_defaults=[],
-                            kwarg=ast.arg(
-                                arg="params"
-                            ),
-                            defaults=[]
-                        ),
-                        body=self.ast_attribute(
-                            ast.Call(
-                                func=context_type_expr,
-                                args=[],
-                                keywords=[
-                                    ast.keyword(
-                                        value=self.ast_name("params"),
-                                    )
-                                ]
-                            ),
-                            "symbol"
-                        )
-                    )
-
-            args = []
-            func=self.ast_attribute(self.ast_ctx(), "add")
-            args.append(ast.Tuple(elts=context_name_tuple, ctx=ast.Load()))
-            args.append(ast.Call(
-                        func=self.ast_core("SchemInstanceUnresolved"),
-                        keywords=[
-                            ast.keyword(
-                                arg="resolver",
-                                value=resolver_lambda
-                            )
-                        ],
-                        args=[]
-                )
-            )
+            args = [
+                ast.Tuple(elts=context_name_tuple, ctx=ast.Load()),
+                context_type_expr
+            ]
+            func = self.ast_attribute(self.ast_ctx(), "add_element")
             rhs = ast.Call(func=func, args=args, keywords=[])
+
         # Path accesses must not be assigned
         if path_node:
             assignment = ast.Expr(rhs)
         else:
             assignment = ast.Assign([lhs], rhs)
+
+        if context_body is None:
+            return [assignment]
 
         # Combine to context-with stmt
         with_stmt = ast.With(
@@ -356,6 +326,10 @@ class Ord2Transformer(PythonTransformer):
             body=context_body if isinstance(context_body, list) else [context_body]
         )
         return [assignment, with_stmt]
+
+    def context_element_nobody(self, nodes):
+        """context_element without body (e.g., 'port x' or 'Pmos m1')"""
+        return self.context_element(nodes)
 
     def depth_helper(self, value, depth=1):
         """ Access parent attributes depending on the dotted depth"""

@@ -1010,7 +1010,7 @@ class LayoutLabel(Node):
     """
     in_subgraphs = [Layout]
 
-    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
     pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
         placeholder=Vec2LinearTerm)
     text = Attr(str)
@@ -1027,7 +1027,7 @@ class LayoutPoly(GenericPolyI, MixinClosedPolygon):
     """
     in_subgraphs = [Layout]
 
-    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
 
 class LayoutPathBase(GenericPolyI):
     endtype = Attr(PathEndType, default=PathEndType.Flush, optional=False)
@@ -1071,7 +1071,7 @@ class LayoutRectPoly(GenericPolyI):
     in_subgraphs = [Layout]
 
     start_direction = Attr(RectDirection, default=RectDirection.Horizontal)
-    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
 
 @public
 class LayoutRectPath(LayoutPathBase):
@@ -1094,7 +1094,7 @@ class LayoutRect(Node):
     """Layout rectangle."""
     in_subgraphs = [Layout]
 
-    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
     rect = ConstrainableAttr(Rect4I, factory=coerce_tuple(Rect4I, 4),
         placeholder=Rect4LinearTerm)
 

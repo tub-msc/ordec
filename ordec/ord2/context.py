@@ -58,3 +58,39 @@ class OrdContext:
         net = self.add(name_tuple, Net(pin=pin))
         subgraph_root % SchemPort(ref=net)
         return net
+
+    def add_element(self, name_tuple, element):
+        """
+        Add a context element, dispatching based on element type.
+
+        Args:
+            name_tuple: path components for naming the element.
+            element: Cell class, Cell instance, Node subclass,
+                or NodeTuple instance.
+        """
+        if isinstance(element, type) and issubclass(element, Cell):
+            # Cell class: deferred resolution with parameters
+            ref = SchemInstanceUnresolved(
+                resolver=lambda **params: element(**params).symbol
+            )
+            return self.add(name_tuple, ref)
+
+        if isinstance(element, Cell):
+            # Cell instance: symbol already determined, params are fixed
+            ref = SchemInstanceUnresolved(
+                resolver=lambda: element.symbol
+            )
+            return self.add(name_tuple, ref)
+
+        if isinstance(element, type) and issubclass(element, Node):
+            # Node subclass: instantiate with defaults
+            return self.add(name_tuple, element())
+
+        if isinstance(element, NodeTuple):
+            # Node instance: add directly
+            return self.add(name_tuple, element)
+
+        raise TypeError(
+            f"Cannot use {element!r} as context element. "
+            f"Expected Cell class/instance or Node class/instance."
+        )
