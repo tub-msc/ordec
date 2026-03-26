@@ -3,6 +3,7 @@
 
 from ordec.core import *
 from ordec.lib import Res
+from ordec.lib.ihp130 import SG13G2
 from ordec.ord2.context import OrdContext
 
 def test_symbol_dot():
@@ -91,3 +92,24 @@ def test_scheminstance_creation():
             .pos=(1,2)
 
         assert c.pos == d.pos == Vec2R(1,2)
+
+cell LayoutTestCell:
+    viewgen symbol -> Symbol:
+        pass
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+        LayoutRect r:
+            .layer = layers.Metal1
+        ! .r.rect.width == 100
+        ! .r.rect.height == 100
+        ! .r.rect.lx == 0
+        ! .r.rect.ly == 0
+
+def test_minimal_layout():
+    c = LayoutTestCell()
+    layout = c.layout
+    layers = SG13G2().layers
+    assert layout.ref_layers == layers
+    assert layout.r.layer == layers.Metal1

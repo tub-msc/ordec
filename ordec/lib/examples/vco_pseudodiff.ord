@@ -61,7 +61,9 @@ cell VcoHalfStage:
             mos.$l = self.length
 
 
-    viewgen layout(layers=SG13G2().layers) -> Layout:
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
         pmos = self.schematic.m1.symbol.cell
         nmos = self.schematic.m2.symbol.cell
 
@@ -257,7 +259,9 @@ cell VcoRing:
                 .pos = (5 + xoffset, 3)
 
 
-    viewgen layout(layers=SG13G2().layers) -> Layout:
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
         path stage_n, stage_p, out_n, out_p
         sr = SRouter(__ordec_solver__.subgraph, __ordec_solver__,
             routing_spec=SG13G2().default_routing_spec)

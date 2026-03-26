@@ -101,13 +101,6 @@ class Ord2Transformer(PythonTransformer):
                     value=self.ast_attribute(self.ast_name("self"), attr="symbol")
                 )
             )
-        # For layout viewgens, map layers kwarg to ref_layers
-        if viewgen_type_lower == "layout":
-            for arg in viewgen_args:
-                if isinstance(arg, tuple) and arg[0] == "argvalue" and arg[1].id == "layers":
-                    keywords.append(
-                        ast.keyword(arg="ref_layers", value=self.ast_name("layers"))
-                    )
 
         viewgen_call = ast.Call(
             func=self.ast_core(viewgen_type.title()),

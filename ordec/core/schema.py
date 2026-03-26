@@ -991,7 +991,7 @@ class Layout(SubgraphRoot):
 
     cell = Attr(Cell)
     symbol = SubgraphRef(Symbol) #: All LayoutPins in this subgraph reference this symbol.
-    ref_layers = SubgraphRef(LayerStack, optional=False) #: All .layer attributes of nodes in this subgraph reference this LayerStack.
+    ref_layers = SubgraphRef(LayerStack) #: All .layer attributes of nodes in this subgraph reference this LayerStack.
 
     def postprocess(self):
         return self
