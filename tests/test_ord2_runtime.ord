@@ -48,6 +48,29 @@ def test_symbol_pin_creation():
     assert root.d.pintype == PinType.Inout
     assert root.d.align == D4.R180
 
+def test_nested_contexts():
+    root1 = Symbol()
+    root2 = Symbol()
+    with OrdContext(root=root1):
+        input a
+        assert .a == a
+        with OrdContext(root=root2):
+            output a
+            input c
+        assert .a != a
+        output c
+
+    assert root1.a.pintype == PinType.In
+    assert root1.c.pintype == PinType.Out
+
+    assert root2.a.pintype == PinType.Out
+    assert root2.c.pintype == PinType.In
+
+    # Expect our local variables to be a bit messed up now:
+    assert a == root2.a
+    assert c == root1.c
+
+
 def test_scheminstance_creation():
     root = Schematic()
     with OrdContext(root=root):
@@ -68,4 +91,3 @@ def test_scheminstance_creation():
             .pos=(1,2)
 
         assert c.pos == d.pos == Vec2R(1,2)
-
