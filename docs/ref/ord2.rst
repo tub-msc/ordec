@@ -2,7 +2,7 @@
 ===================================
 
 ORD2 is a programming language that offers full support of Python, plus additional ORD syntax (a *Python-superset*) to improve textual IC design within the ORDeC project. It currently focuses on simplifying the schematic entry phase, while also supporting the usual Python syntax for simulations or layouts. The language revision described in this file is called **ORD2**; it is a reworked version of the former **ORD1**, which had its own grammar and was not based on the Python language. Execution of ORD code results in a one-pass compiler step that transforms the input into context-based Python code. 
-This is only made possible by leveraging the power of the :class:`OrdContext`, which is explained in a later paragraph. The actual ORD grammar is written in Lark. Lark is a well-known and efficient Python parsing framework for grammars in EBNF form. The function call :func:`ord2_to_py` summarizes the necessary function calls for a proper ORD to Python conversion. The conversion is mostly dependent on the :class:`Ord2Transformer` that inherits from :class:`PythonTransformer`. The **PythonTransformer** is capable of transforming any Python code written in ORD back to Python, and the **Ord2Transformer** handles the conversion of the ORD syntax. The following paragraphs will summarize the logic behind the ORD to Python conversion. 
+This is only made possible by leveraging the power of the :class:`Context`, which is explained in a later paragraph. The actual ORD grammar is written in Lark. Lark is a well-known and efficient Python parsing framework for grammars in EBNF form. The function call :func:`ord2_to_py` summarizes the necessary function calls for a proper ORD to Python conversion. The conversion is mostly dependent on the :class:`Ord2Transformer` that inherits from :class:`PythonTransformer`. The **PythonTransformer** is capable of transforming any Python code written in ORD back to Python, and the **Ord2Transformer** handles the conversion of the ORD syntax. The following paragraphs will summarize the logic behind the ORD to Python conversion. 
 
 
 For a practical demonstration, please visit the ORD tutorial :ref:`ord_tutorial` page!
@@ -18,7 +18,7 @@ Mastering the ORD language requires understanding two crucial parts. First, the 
 ORD2 Contexts
 -------------
 
-The dotted syntax of ORD, which accesses the parent element, requires having a reference to the parent element. This structure therefore necessitates that statements and expressions inside a context block have a reference to the parent even after transformation of ORD back to Python. This logic is implemented with the so-called :class:`OrdContext`. It uses the Python `with` environment together with a context variable :class:`ContextVar` to always maintain a reference without requiring information about the parent during transformation. With ORD, we try to keep the transformation logic as simple as possible and leverage the power of Python to supply the necessary constructs during execution.
+The dotted syntax of ORD, which accesses the parent element, requires having a reference to the parent element. This structure therefore necessitates that statements and expressions inside a context block have a reference to the parent even after transformation of ORD back to Python. This logic is implemented with the so-called :class:`Context`. It uses the Python `with` environment together with a context variable :class:`ContextVar` to always maintain a reference without requiring information about the parent during transformation. With ORD, we try to keep the transformation logic as simple as possible and leverage the power of Python to supply the necessary constructs during execution.
 
 .. code-block::
 
@@ -50,9 +50,7 @@ Or it can be bodyless:
 
     Nmos pd
 
-To demonstrate how the ORD context works and how the conversion from ORD to Python looks, consider the following two examples. Every time a node statement (viewgen, port, or a schematic instance) is encountered, the element is saved as a local variable and a `with` context is opened. The dotted
-access is converted into `ctx.root`. If multiple dots are written prior to the identifier, the dots are
-converted to `ctx.root(.parent)*`. Accesses outside the context are still possible through the local variable. An access like this is visible in the for loop of the example.
+To demonstrate how the ORD context works and how the conversion from ORD to Python looks, consider the following example:
 
 **ORD code**
 
@@ -87,68 +85,75 @@ converted to `ctx.root(.parent)*`. Accesses outside the context are still possib
             for instance in pu, pd:
                 instance.g -- a
 
-
 **Compiled Python code**
 
+.. note::
+
+    The actual compiled code uses ``__ord_context__`` instead of ``context`` to avoid name collisions with user code. Here we use ``import ordec.ord2.context as context`` for readability.
+
+Every time a node statement (viewgen, port, or a schematic instance) is encountered, the element is saved as a local variable and a ``with`` context is opened. The dotted access is converted into ``context.root()``. If multiple dots are written prior to the identifier, the dots are converted to ``context.root()(.parent)*``. Accesses outside the context are still possible through the local variable. An access like this is visible in the for loop of the example.
+
 .. code-block:: python
+
+    import ordec.ord2.context as context
 
     class Inv(Cell):
         @generate
         def symbol(self) -> Symbol:
-            with OrdContext(Symbol(cell=self)):
-                vdd = ctx.add(('vdd',), Pin(pintype=PinType.Inout))
-                with OrdContext(vdd):
-                    ctx.root.align = North
-                vss = ctx.add(('vss',), Pin(pintype=PinType.Inout))
-                with OrdContext(vss):
-                    ctx.root.align = South
-                a = ctx.add(('a',), Pin(pintype=PinType.In))
-                with OrdContext(a):
-                    ctx.root.align = West
-                y = ctx.add(('y',), Pin(pintype=PinType.Out))
-                with OrdContext(y):
-                    ctx.root.align = East
-                return ctx.symbol_postprocess()
+            with context.Context(Symbol(cell=self)):
+                vdd = context.add(('vdd',), Pin(pintype=PinType.Inout))
+                with context.Context(vdd):
+                    context.root().align = North
+                vss = context.add(('vss',), Pin(pintype=PinType.Inout))
+                with context.Context(vss):
+                    context.root().align = South
+                a = context.add(('a',), Pin(pintype=PinType.In))
+                with context.Context(a):
+                    context.root().align = West
+                y = context.add(('y',), Pin(pintype=PinType.Out))
+                with context.Context(y):
+                    context.root().align = East
+                return context.root().postprocess()
 
         @generate
         def schematic(self) -> Schematic:
-            with OrdContext(Schematic(cell=self, symbol=self.symbol)):
-                vss = ctx.add_port(('vss',))
-                with OrdContext(vss):
-                    ctx.root.pos = (2,1)
-                    ctx.root.align = South
-                vdd = ctx.add_port(('vdd',))
-                with OrdContext(vdd):
-                    ctx.root.pos = (2,13)
-                    ctx.root.align = North
-                y = ctx.add_port(('y',))
-                with OrdContext(y):
-                    ctx.root.pos = (9,7)
-                    ctx.root.align = West
-                a = ctx.add_port(('a',))
-                with OrdContext(a):
-                    ctx.root.pos = (1,7)
-                    ctx.root.align = East
-          
-                pd = ctx.add(('pd',), SchemInstanceUnresolved(resolver = lambda **params: Nmos(**params).symbol))
-                with OrdContext(pd):
-                    ctx.root.s.__wire_op__(vss.ref)
-                    ctx.root.b.__wire_op__(vss.ref)
-                    ctx.root.d.__wire_op__(y.ref)
-                    ctx.root.pos = (3,2)
-                    ctx.root.params.l = R('400n')
+            with context.Context(Schematic(cell=self, symbol=self.symbol)):
+                vss = context.add_port(('vss',))
+                with context.Context(vss):
+                    context.root().pos = (2,1)
+                    context.root().align = South
+                vdd = context.add_port(('vdd',))
+                with context.Context(vdd):
+                    context.root().pos = (2,13)
+                    context.root().align = North
+                y = context.add_port(('y',))
+                with context.Context(y):
+                    context.root().pos = (9,7)
+                    context.root().align = West
+                a = context.add_port(('a',))
+                with context.Context(a):
+                    context.root().pos = (1,7)
+                    context.root().align = East
 
-                pu = ctx.add(('pu',), SchemInstanceUnresolved(resolver = lambda **params: Pmos(**params).symbol))
-                with OrdContext(pu):
-                    ctx.root.s.__wire_op__(vdd.ref)
-                    ctx.root.b.__wire_op__(vdd.ref)
-                    ctx.root.d.__wire_op__(y.ref)
-                    ctx.root.pos = (3,8)
-                    ctx.root.params.l = R('400n')
-                    
+                pd = context.add(('pd',), SchemInstanceUnresolved(resolver = lambda **params: Nmos(**params).symbol))
+                with context.Context(pd):
+                    context.root().s.__wire_op__(vss.ref)
+                    context.root().b.__wire_op__(vss.ref)
+                    context.root().d.__wire_op__(y.ref)
+                    context.root().pos = (3,2)
+                    context.root().params.l = R('400n')
+
+                pu = context.add(('pu',), SchemInstanceUnresolved(resolver = lambda **params: Pmos(**params).symbol))
+                with context.Context(pu):
+                    context.root().s.__wire_op__(vdd.ref)
+                    context.root().b.__wire_op__(vdd.ref)
+                    context.root().d.__wire_op__(y.ref)
+                    context.root().pos = (3,8)
+                    context.root().params.l = R('400n')
+
                 for instance in pu, pd:
                     instance.g.__wire_op__(a.ref)
-                return ctx.schematic_postprocess()
+                return context.root().postprocess()
 
 
 The following summary shows the most important functions and classes of ORD2. Please refer to the Python codebase for more background information and details.
@@ -162,10 +167,10 @@ Parser
 .. autofunction:: ordec.ord2.parser.parse_with_errors
 .. autofunction:: ordec.ord2.parser.ord2_to_py
 
-OrdContext
-----------
+Context
+-------
 
-.. autoclass:: ordec.ord2.context.OrdContext
+.. autoclass:: ordec.ord2.context.Context
     :members:
 
 OrdTransformer

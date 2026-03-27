@@ -29,9 +29,6 @@ class Ord2Transformer(PythonTransformer):
     def ast_ord_context(self, attr):
         return self.ast_attribute(self.ast_name("__ord_context__"), attr)
 
-    def ast_ctx(self):
-        return self.ast_attribute(self.ast_ord_context("OrdContext"), "ctx")
-
     def celldef(self, nodes):
         """ Definition of a ORDeC cell class"""
         cell_name = nodes[0]
@@ -109,7 +106,7 @@ class Ord2Transformer(PythonTransformer):
         )
         # Build the ORD context call
         ord_context_call = ast.Call(
-            func=self.ast_ord_context("OrdContext"),
+            func=self.ast_ord_context("Context"),
             args=[viewgen_call],
             keywords=[]
         )
@@ -119,7 +116,7 @@ class Ord2Transformer(PythonTransformer):
                 targets=[self.ast_name("__ordec_solver__", ctx=ast.Store())],
                 value=ast.Call(
                     func=self.ast_core("Solver"),
-                    args=[self.ast_attribute(self.ast_ctx(), "root")],
+                    args=[ast.Call(self.ast_ord_context("root"), args=[], keywords=[])],
                     keywords=[]
                 )
             )
@@ -138,7 +135,7 @@ class Ord2Transformer(PythonTransformer):
         return_value = ast.Return(
                 ast.Call(
                 func=self.ast_attribute(
-                    self.ast_attribute(self.ast_ctx(), "root"),
+                    ast.Call(self.ast_ord_context("root"), args=[], keywords=[]),
                     "postprocess",
                 ),
                 args=[],
@@ -254,7 +251,7 @@ class Ord2Transformer(PythonTransformer):
                     inout = "Out"
 
             args = []
-            func = self.ast_attribute(self.ast_ctx(), "add")
+            func = self.ast_ord_context("add")
 
             args.append(ast.Tuple(elts=context_name_tuple, ctx=ast.Load()))
             args.append(ast.Call(
@@ -276,7 +273,7 @@ class Ord2Transformer(PythonTransformer):
         elif context_type_name == "port":
  
             args = [ast.Tuple(elts=context_name_tuple, ctx=ast.Load())]
-            func = self.ast_attribute(self.ast_ctx(),"add_port")
+            func = self.ast_ord_context("add_port")
             rhs = ast.Call(func=func, args=args, keywords=[])
 
         # Case for any other element type (Cell class/instance, Node class/instance)
@@ -285,7 +282,7 @@ class Ord2Transformer(PythonTransformer):
                 ast.Tuple(elts=context_name_tuple, ctx=ast.Load()),
                 context_type_expr
             ]
-            func = self.ast_attribute(self.ast_ctx(), "add_element")
+            func = self.ast_ord_context("add_element")
             rhs = ast.Call(func=func, args=args, keywords=[])
 
         # Path accesses must not be assigned
@@ -302,7 +299,7 @@ class Ord2Transformer(PythonTransformer):
             items=[
                 ast.withitem(
                     context_expr=ast.Call(
-                        func=self.ast_ord_context("OrdContext"),
+                        func=self.ast_ord_context("Context"),
                         args=[context_name],
                         keywords=[]
                     )
@@ -321,7 +318,7 @@ class Ord2Transformer(PythonTransformer):
 
     def depth_helper(self, value, depth=1):
         """ Access parent attributes depending on the dotted depth"""
-        node = self.ast_attribute(self.ast_ctx(), "root")
+        node = ast.Call(self.ast_ord_context("root"), args=[], keywords=[])
 
         for _ in range(depth - 1):
             node = self.ast_attribute(node,"parent")
@@ -353,10 +350,7 @@ class Ord2Transformer(PythonTransformer):
             # only dotted access
             attr = nodes[0]
             ctx = ast.Store()
-            target = self.ast_attribute(
-                self.ast_ctx(),
-                "root"
-            )
+            target = ast.Call(self.ast_ord_context("root"), args=[], keywords=[])
         return self.ast_attribute(
             self.ast_attribute(
                 target,
@@ -372,9 +366,7 @@ class Ord2Transformer(PythonTransformer):
             context_name_tuple = self.extract_path(name)
             name_length = len(context_name_tuple)
             rhs = ast.Call(
-                func=self.ast_attribute(
-                    self.ast_ctx(),
-                    "add"),
+                func=self.ast_ord_context("add"),
                 args=[
                     ast.Tuple(elts=context_name_tuple, ctx=ast.Load()),
                     ast.Call(

@@ -9,21 +9,13 @@ from ..core import *
 from ..schematic.helpers import recursive_setitem, recursive_getitem
 
 _ctx_var = ContextVar("ctx", default=None)
-class _CtxWrapper:
-    """Wrapper for the context variable"""
-    def __getattr__(self, item):
-        return getattr(_ctx_var.get(), item)
 
-    def __call__(self):
-        return _ctx_var.get()
-
-class OrdContext:
+class Context:
     """
     Class which represents the context where a specific
     ORDB element is alive and accessible via relative
     accesses (dotted notation)
     """
-    ctx = _CtxWrapper()
 
     def __init__(self, root):
         self.root = root
@@ -39,62 +31,73 @@ class OrdContext:
         """Exit context and reset context variable"""
         _ctx_var.reset(self._token)
 
-    def add(self, name_tuple, ref):
-        """ Add a value to the current context"""
-        recursive_setitem(self.root, name_tuple, ref)
-        return recursive_getitem(self.root, name_tuple)
 
-    def add_port(self, name_tuple):
-        """ Add a port to the current context"""
-        pin = recursive_getitem(self.root.symbol, name_tuple)
-        subgraph_root = self.root
-        while not isinstance(subgraph_root, SubgraphRoot):
-            subgraph_root = subgraph_root.parent
-        net = self.add(name_tuple, Net(pin=pin))
-        subgraph_root % SchemPort(ref=net)
-        return net
+def root():
+    """Return the root of the current context"""
+    return _ctx_var.get().root
 
-    def add_element(self, name_tuple, element):
-        """
-        Add an element from a node statement, dispatching based on type.
 
-        Handles the three types of node statements:
-        - Node class statements (e.g., LayoutRect x)
-        - Node instance statements (e.g., Nmos x)
-        - Cell class/instance statements (e.g., Inv x)
+def add(name_tuple, ref):
+    """ Add a value to the current context"""
+    ctx = _ctx_var.get()
+    recursive_setitem(ctx.root, name_tuple, ref)
+    return recursive_getitem(ctx.root, name_tuple)
 
-        Args:
-            name_tuple: path components for naming the element.
-            element: Cell class, Cell instance, Node subclass,
-                or NodeTuple instance.
-        """
-        # Layout context: create LayoutInstance from Cell instances
-        if isinstance(self.root, Layout):
-            if isinstance(element, Cell):
-                ref = LayoutInstance(ref=element.layout)
-                return self.add(name_tuple, ref)
 
-        if isinstance(element, type) and issubclass(element, Cell):
-            # Cell class: deferred resolution with parameters
-            ref = SchemInstanceUnresolved(
-                resolver=lambda **params: element(**params).symbol
-            )
-            return self.add(name_tuple, ref)
+def add_port(name_tuple):
+    """ Add a port to the current context"""
+    ctx = _ctx_var.get()
+    pin = recursive_getitem(ctx.root.symbol, name_tuple)
+    subgraph_root = ctx.root
+    while not isinstance(subgraph_root, SubgraphRoot):
+        subgraph_root = subgraph_root.parent
+    net = add(name_tuple, Net(pin=pin))
+    subgraph_root % SchemPort(ref=net)
+    return net
 
+
+def add_element(name_tuple, element):
+    """
+    Add an element from a node statement, dispatching based on type.
+
+    Handles the three types of node statements:
+    - Node class statements (e.g., LayoutRect x)
+    - Node instance statements (e.g., Nmos x)
+    - Cell class/instance statements (e.g., Inv x)
+
+    Args:
+        name_tuple: path components for naming the element.
+        element: Cell class, Cell instance, Node subclass,
+            or NodeTuple instance.
+    """
+    ctx = _ctx_var.get()
+    # Layout context: create LayoutInstance from Cell instances
+    if isinstance(ctx.root, Layout):
         if isinstance(element, Cell):
-            # Cell instance: symbol already determined, create SchemInstance directly
-            ref = SchemInstance(symbol=element.symbol)
-            return self.add(name_tuple, ref)
+            ref = LayoutInstance(ref=element.layout)
+            return add(name_tuple, ref)
 
-        if isinstance(element, type) and issubclass(element, Node):
-            # Node subclass: instantiate with defaults
-            return self.add(name_tuple, element())
-
-        if isinstance(element, NodeTuple):
-            # Node instance: add directly
-            return self.add(name_tuple, element)
-
-        raise TypeError(
-            f"Cannot use {element!r} in node statement. "
-            f"Expected Cell class/instance or Node class/instance."
+    if isinstance(element, type) and issubclass(element, Cell):
+        # Cell class: deferred resolution with parameters
+        ref = SchemInstanceUnresolved(
+            resolver=lambda **params: element(**params).symbol
         )
+        return add(name_tuple, ref)
+
+    if isinstance(element, Cell):
+        # Cell instance: symbol already determined, create SchemInstance directly
+        ref = SchemInstance(symbol=element.symbol)
+        return add(name_tuple, ref)
+
+    if isinstance(element, type) and issubclass(element, Node):
+        # Node subclass: instantiate with defaults
+        return add(name_tuple, element())
+
+    if isinstance(element, NodeTuple):
+        # Node instance: add directly
+        return add(name_tuple, element)
+
+    raise TypeError(
+        f"Cannot use {element!r} in node statement. "
+        f"Expected Cell class/instance or Node class/instance."
+    )
