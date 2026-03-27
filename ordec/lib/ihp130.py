@@ -259,53 +259,53 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
         nonlocal l, s, x_cur, activ_ext
         l.sd[i] = LayoutRect(layer=layers.Metal1)
         sd = l.sd[i]
-        s.constrain(sd.rect.west == (x_cur, l.activ.rect.cy))
-        s.constrain(sd.rect.width == 160)
+        s.constrain(sd.west == (x_cur, l.activ.cy))
+        s.constrain(sd.width == 160)
         if W >= 300:
-            s.constrain(sd.rect.height == W)
+            s.constrain(sd.height == W)
         else:
-            s.constrain(sd.rect.height == 260)
+            s.constrain(sd.height == 260)
 
             activ_ext = l % LayoutRect(layer=layers.Activ)
-            s.constrain(activ_ext.rect.center == sd.rect.center)
-            s.constrain(activ_ext.rect.size == (300, 300))
-        x_cur = sd.rect.ux    
+            s.constrain(activ_ext.center == sd.center)
+            s.constrain(activ_ext.size == (300, 300))
+        x_cur = sd.ux
 
     def add_poly(i):
         nonlocal l, s, x_cur
         x_cur += 110
         l.poly[i] = LayoutRect(layer=layers.GatPoly)
         poly = l.poly[i]
-        s.constrain(poly.rect.west == (x_cur, l.activ.rect.cy))
-        s.constrain(poly.rect.size == (L, l.activ.rect.height + 360))
-        s.constrain(poly.rect.ly == 0)
-        x_cur = poly.rect.ux + 110
+        s.constrain(poly.west == (x_cur, l.activ.cy))
+        s.constrain(poly.size == (L, l.activ.height + 360))
+        s.constrain(poly.ly == 0)
+        x_cur = poly.ux + 110
 
     l.activ = LayoutRect(layer=layers.Activ)
-    s.constrain(l.activ.rect.height == W)
-    s.constrain(l.activ.rect.lx == 0)
-    x_cur = l.activ.rect.lx + 70
+    s.constrain(l.activ.height == W)
+    s.constrain(l.activ.lx == 0)
+    x_cur = l.activ.lx + 70
 
     add_sd(0)
     for i in range(num_gates):
         add_poly(i)
         add_sd(i+1)
 
-    s.constrain(l.activ.rect.ux == x_cur + 70)
+    s.constrain(l.activ.ux == x_cur + 70)
 
     if nwell:
         l.psd = LayoutRect(layer=layers.pSD)
-        s.constrain(l.psd.rect.center == l.activ.rect.center)
-        s.constrain(l.psd.rect.size == l.activ.rect.size + Vec2I(360, 600))
+        s.constrain(l.psd.center == l.activ.center)
+        s.constrain(l.psd.size == l.activ.size + Vec2I(360, 600))
 
         if activ_ext is None:
             max_activ = l.activ
         else:
             max_activ = activ_ext
         l.nwell = LayoutRect(layer=layers.NWell)
-        s.constrain(l.nwell.rect.center == l.activ.rect.center)
-        s.constrain(l.nwell.rect.ux == l.activ.rect.ux + 310)
-        s.constrain(l.nwell.rect.uy == max_activ.rect.uy + 310)
+        s.constrain(l.nwell.center == l.activ.center)
+        s.constrain(l.nwell.ux == l.activ.ux + 310)
+        s.constrain(l.nwell.uy == max_activ.uy + 310)
 
     s.solve()
 
@@ -373,8 +373,8 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     W = int(width/R("1n"))
 
     l.activ = LayoutRect(layer=layers.Activ)
-    s.constrain(l.activ.rect.size == (L, W))
-    s.constrain(l.activ.rect.southwest == (0, 0))
+    s.constrain(l.activ.size == (L, W))
+    s.constrain(l.activ.southwest == (0, 0))
 
     l.m1 = LayoutRect(layer=layers.Metal1)
 
@@ -382,15 +382,15 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
 
     if nwell:
         l.nwell = LayoutRect(layer=layers.NWell)
-        s.constrain(l.nwell.rect.center == l.activ.rect.center)
-        s.constrain(l.nwell.rect.size == l.activ.rect.size + Vec2I(480, 480))
+        s.constrain(l.nwell.center == l.activ.center)
+        s.constrain(l.nwell.size == l.activ.size + Vec2I(480, 480))
 
         l.nbulay = LayoutRect(layer=layers.nBuLay)
         s.constrain(l.nbulay.rect == l.nwell.rect)
     else:
         l.psd = LayoutRect(layer=layers.pSD)
-        s.constrain(l.psd.rect.center == l.activ.rect.center)
-        s.constrain(l.psd.rect.size == l.activ.rect.size + Vec2I(60, 60))
+        s.constrain(l.psd.center == l.activ.center)
+        s.constrain(l.psd.size == l.activ.size + Vec2I(60, 60))
 
     s.solve()
 

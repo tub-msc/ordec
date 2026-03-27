@@ -87,8 +87,8 @@ class SRouter:
                     raise SRouterException("Cannot draw via-like rect on layer wher"
                         " route_via_width or route_via_height is None.")
                 r = self.layout % LayoutRect(layer=self.cur_layer)
-                self.solver.constrain(r.rect.center == self.cur_pos)
-                self.solver.constrain(r.rect.size ==
+                self.solver.constrain(r.center == self.cur_pos)
+                self.solver.constrain(r.size ==
                     (rsl.route_via_width, rsl.route_via_height))
         else:
             self.path = None

@@ -73,14 +73,8 @@ cell VcoHalfStage:
             ! .poly[0].cx == m1.poly[0].cx
             ! .activ.uy + 1500 == m1.activ.ly
 
-        nmos m3
-        pmos m4
-
-        nmos m5
-        pmos m6
-
-        nmos m7
-        pmos m8
+        nmos m3, m5, m7
+        pmos m4, m6, m8
 
         grid = ((m2, m1), (m3, m4), (m5, m6), (m7, m8))
 

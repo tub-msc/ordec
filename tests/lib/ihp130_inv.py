@@ -69,18 +69,18 @@ class Inv(Cell):
 
         # Example use of the new LayoutInstanceSubcursor:
         l.m1_vdd = LayoutRect(layer=layers.Metal1)
-        s.constrain(l.m1_vdd.rect.southwest == l.ntap.m1.rect.southeast)
-        s.constrain(l.m1_vdd.rect.southeast == l.pmos.sd[0].rect.southwest)
+        s.constrain(l.m1_vdd.southwest == l.ntap.m1.southeast)
+        s.constrain(l.m1_vdd.southeast == l.pmos.sd[0].southwest)
 
-        s.constrain(l.m1_vdd.rect.ux == l.pmos.sd[0].rect.lx)
-        s.constrain(l.m1_vdd.rect.height == (100 if self.variant=='thin_m1' else 160))
-        s.constrain(l.m1_vdd.rect.width == 800)
+        s.constrain(l.m1_vdd.ux == l.pmos.sd[0].lx)
+        s.constrain(l.m1_vdd.height == (100 if self.variant=='thin_m1' else 160))
+        s.constrain(l.m1_vdd.width == 800)
 
         l.m1_vss = LayoutRect(layer=layers.Metal1)
-        s.constrain(l.m1_vss.rect.southwest == l.ptap.m1.rect.southeast)
-        s.constrain(l.m1_vss.rect.southeast == l.nmos.sd[0].rect.southwest)
-        s.constrain(l.m1_vss.rect.height == (100 if self.variant=='thin_m1' else 160))
-        s.constrain(l.m1_vss.rect.width == 800)
+        s.constrain(l.m1_vss.southwest == l.ptap.m1.southeast)
+        s.constrain(l.m1_vss.southeast == l.nmos.sd[0].southwest)
+        s.constrain(l.m1_vss.height == (100 if self.variant=='thin_m1' else 160))
+        s.constrain(l.m1_vss.width == 800)
 
         if self.variant=="vss_vdd_pins_swapped":
             l.m1_vss % LayoutPin(pin=self.symbol.vdd)
@@ -91,32 +91,32 @@ class Inv(Cell):
 
         if self.variant!="missing_y":
             l.m1_y = LayoutRect(layer=layers.Metal1)
-            s.constrain(l.m1_y.rect.south == l.nmos.sd[1].rect.north)
-            s.constrain(l.m1_y.rect.north == l.pmos.sd[1].rect.south)
-            s.constrain(l.m1_y.rect.width == 160)
+            s.constrain(l.m1_y.south == l.nmos.sd[1].north)
+            s.constrain(l.m1_y.north == l.pmos.sd[1].south)
+            s.constrain(l.m1_y.width == 160)
             l.m1_y % LayoutPin(pin=self.symbol.y)
         
         l.nwell = LayoutRect(layer=layers.NWell)
-        s.constrain(l.nwell.rect.contains(l.ntap.nwell.rect))
-        s.constrain(l.nwell.rect.contains(l.pmos.nwell.rect))
+        s.constrain(l.nwell.contains(l.ntap.nwell.rect))
+        s.constrain(l.nwell.contains(l.pmos.nwell.rect))
 
         l.polybar = LayoutRect(layer=layers.GatPoly)
-        s.constrain(l.polybar.rect.south == l.nmos.poly[0].rect.north)
-        s.constrain(l.polybar.rect.north == l.pmos.poly[0].rect.south)
-        s.constrain(l.polybar.rect.width == l.pmos.poly[0].rect.width)
+        s.constrain(l.polybar.south == l.nmos.poly[0].north)
+        s.constrain(l.polybar.north == l.pmos.poly[0].south)
+        s.constrain(l.polybar.width == l.pmos.poly[0].width)
 
         l.polyext = LayoutRect(layer=layers.GatPoly)
-        s.constrain(l.polyext.rect.size == (500, 500))
-        s.constrain(l.polyext.rect.east == l.polybar.rect.west)
+        s.constrain(l.polyext.size == (500, 500))
+        s.constrain(l.polyext.east == l.polybar.west)
 
         l.polycont = LayoutRect(layer=layers.Cont)
-        s.constrain(l.polycont.rect.size == (160, 160))
-        s.constrain(l.polycont.rect.center == l.polyext.rect.center)
+        s.constrain(l.polycont.size == (160, 160))
+        s.constrain(l.polycont.center == l.polyext.center)
 
         l.m1_a = LayoutRect(layer=layers.Metal1)
-        s.constrain(l.m1_a.rect.y_extent == l.polycont.rect.y_extent)
-        s.constrain(l.m1_a.rect.ux == l.polycont.rect.ux + 200)
-        s.constrain(l.m1_a.rect.width == 1500)
+        s.constrain(l.m1_a.y_extent == l.polycont.y_extent)
+        s.constrain(l.m1_a.ux == l.polycont.ux + 200)
+        s.constrain(l.m1_a.width == 1500)
         l.m1_a % LayoutPin(pin=self.symbol.a)
 
         s.solve()

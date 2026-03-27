@@ -52,4 +52,4 @@ def makevias(layout: Layout,
             y = y_start + (size.y+spacing.y)*row
             via = layout % LayoutRect(layer=layer, rect=Rect4I(x, y, x+size.x, y+size.y))
 
-    return Rect4I(x_start, y_start, via.rect.ux, via.rect.uy)
+    return Rect4I(x_start, y_start, via.ux, via.uy)

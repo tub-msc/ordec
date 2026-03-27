@@ -133,10 +133,10 @@ cell LayoutTestCell:
         layers = .ref_layers
         LayoutRect r:
             .layer = layers.Metal1
-        ! .r.rect.width == 100
-        ! .r.rect.height == 100
-        ! .r.rect.lx == 0
-        ! .r.rect.ly == 0
+        ! .r.width == 100
+        ! .r.height == 100
+        ! .r.lx == 0
+        ! .r.ly == 0
 
 def test_minimal_layout():
     c = LayoutTestCell()

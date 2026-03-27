@@ -23,14 +23,14 @@ Only :class:`ConstrainableAttr` attributes can be constrained.
     l.r2 = LayoutRect(layer=layers.Metal1)
 
     s = Solver(l)
-    s.constrain(l.r1.rect.height >= 500)
-    s.constrain(l.r1.rect.width >= 150)
-    s.constrain(l.r1.rect.southwest == (100, -100)
-    s.constrain(l.r2.rect.lx >= l.r1.rect.ux + 150)
-    s.constrain(l.r2.rect.width == -l.r1.rect.height + 800)
-    s.constrain(l.r2.rect.width <= 150)
-    s.constrain(l.r2.rect.height == 150)
-    s.constrain(l.r2.rect.cy == l.r1.rect.cy)
+    s.constrain(l.r1.height >= 500)
+    s.constrain(l.r1.width >= 150)
+    s.constrain(l.r1.southwest == (100, -100))
+    s.constrain(l.r2.lx >= l.r1.ux + 150)
+    s.constrain(l.r2.width == -l.r1.height + 800)
+    s.constrain(l.r2.width <= 150)
+    s.constrain(l.r2.height == 150)
+    s.constrain(l.r2.cy == l.r1.cy)
     s.solve()
 
 
