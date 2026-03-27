@@ -23,7 +23,6 @@ def test_dotdot():
             assert .. == root
             assert . == root.x
             PathNode z:
-                print(....)
                 #assert ... == root
                 assert .. == root.x
                 assert . == root.x.z
