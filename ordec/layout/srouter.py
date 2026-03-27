@@ -8,8 +8,20 @@ class SRouterException(Exception):
 
 class SRouter:
     """Stack router"""
-    def __init__(self, layout: Layout, solver: Solver,
-        routing_spec: RoutingSpec):
+    def __init__(self, routing_spec: RoutingSpec,
+        layout: Layout = None, solver: Solver = None):
+        """Create a stack router.
+
+        If layout or solver are not provided, they are obtained from the
+        current LayoutViewContext.
+        """
+        if layout is None or solver is None:
+            from ordec.ord2.context import view_context
+            vc = view_context()
+            if layout is None:
+                layout = vc.root
+            if solver is None:
+                solver = vc.solver
         self.layout = layout
         self.solver = solver
         self.routing_spec = routing_spec

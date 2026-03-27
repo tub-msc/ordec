@@ -12,7 +12,7 @@ rs = ihp130.SG13G2().default_routing_spec
 def layout_basic():
     l = Layout(ref_layers=layers)
     s = Solver(l)
-    sr = SRouter(l, s, routing_spec=rs)
+    sr = SRouter(rs, layout=l, solver=s)
     sr.move(layers.Metal1, (0, 0))
     sr.wire((1000, 0))
     sr.wire((1000, 1000))
@@ -40,7 +40,7 @@ def layout_push_pop():
     """T-shaped route: go right, push, go up, pop, go down."""
     l = Layout(ref_layers=layers)
     s = Solver(l)
-    sr = SRouter(l, s, routing_spec=rs)
+    sr = SRouter(rs, layout=l, solver=s)
     sr.move(layers.Metal1, (0, 0))
     sr.wire((1000, 0))
     sr.push()
@@ -56,7 +56,7 @@ def layout_push_pop_layerchange():
     """T-shaped route: go right, push, go up, pop, change layer, go down."""
     l = Layout(ref_layers=layers)
     s = Solver(l)
-    sr = SRouter(l, s, routing_spec=rs)
+    sr = SRouter(rs, layout=l, solver=s)
     sr.move(layers.Metal1, (0, 0))
     sr.wire((1000, 0))
     sr.push()

@@ -263,8 +263,6 @@ cell VcoRing:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
         path stage_n, stage_p, out_n, out_p
-        vc = __ord_context__.view_context()
-        sr = SRouter(vc.root, vc.solver, routing_spec=SG13G2().default_routing_spec)
 
         LayoutRect nwell:
              .layer=layers.NWell
@@ -316,6 +314,8 @@ cell VcoRing:
 
         ! .stage_p[0].pos == (0,0)
 
+        sr = SRouter(SG13G2().default_routing_spec)
+        
         # Connect rst_n of stage_n[0] and stage_p[1] to VDD:
         for stage in [.stage_n[0], .stage_p[1]]:
             sr.move(layers.Metal1, stage.rst_n.center)
