@@ -22,11 +22,11 @@ The dotted syntax of ORD, which accesses the parent element, requires having a r
 
 .. code-block::
 
-	# Type 1
-	port xyz:
-		.pos=(1,2)
-	# Type 2
-	port xyz(.pos=(1,2))
+    # Type 1
+    port xyz:
+        .pos=(1,2)
+    # Type 2
+    port xyz(.pos=(1,2))
 
 Node Statements
 ^^^^^^^^^^^^^^^
@@ -41,14 +41,14 @@ A node statement may have an optional body (indented block after ``:``) for sett
 
 .. code-block::
 
-	Nmos pd:
-		.$l = 400n
+    Nmos pd:
+        .$l = 400n
 
 Or it can be bodyless:
 
 .. code-block::
 
-	Nmos pd
+    Nmos pd
 
 To demonstrate how the ORD context works and how the conversion from ORD to Python looks, consider the following two examples. Every time a node statement (viewgen, port, or a schematic instance) is encountered, the element is saved as a local variable and a `with` context is opened. The dotted
 access is converted into `ctx.root`. If multiple dots are written prior to the identifier, the dots are
@@ -58,97 +58,97 @@ converted to `ctx.root(.parent)*`. Accesses outside the context are still possib
 
 .. code-block:: 
 
-	cell Inv:
-	    viewgen symbol:
-	        inout vdd(.align=North)
-	        inout vss(.align=South)
-	        input a(.align=West)
-	        output y(.align=East)
+    cell Inv:
+        viewgen symbol:
+            inout vdd(.align=North)
+            inout vss(.align=South)
+            input a(.align=West)
+            output y(.align=East)
 
-	    viewgen schematic:
-	        port vdd(.pos=(2,13); .align=North)
-	        port vss(.pos=(2,1); .align=South)
-	        port y (.pos=(9,7); .align=West)
-	        port a (.pos=(1,7); .align=East)
+        viewgen schematic:
+            port vdd(.pos=(2,13); .align=North)
+            port vss(.pos=(2,1); .align=South)
+            port y (.pos=(9,7); .align=West)
+            port a (.pos=(1,7); .align=East)
 
-	        Nmos pd:
-	            .s -- vss
-	            .b -- vss
-	            .d -- y
-	            .pos = (3,2)
-	            .$l = 400n
-	        Pmos pu:
-	            .s -- vdd
-	            .b -- vdd
-	            .d -- y
-	            .pos = (3,8)
-	            .$l = 400n
+            Nmos pd:
+                .s -- vss
+                .b -- vss
+                .d -- y
+                .pos = (3,2)
+                .$l = 400n
+            Pmos pu:
+                .s -- vdd
+                .b -- vdd
+                .d -- y
+                .pos = (3,8)
+                .$l = 400n
 
-	        for instance in pu, pd:
-	            instance.g -- a
+            for instance in pu, pd:
+                instance.g -- a
 
 
 **Compiled Python code**
 
 .. code-block:: python
 
-	class Inv(Cell):
-	    @generate
-	    def symbol(self) -> Symbol:
-	        with OrdContext(Symbol(cell=self)):
-	            vdd = ctx.add(('vdd',), Pin(pintype=PinType.Inout))
-	            with OrdContext(vdd):
-	                ctx.root.align = North
-	            vss = ctx.add(('vss',), Pin(pintype=PinType.Inout))
-	            with OrdContext(vss):
-	                ctx.root.align = South
-	            a = ctx.add(('a',), Pin(pintype=PinType.In))
-	            with OrdContext(a):
-	                ctx.root.align = West
-	            y = ctx.add(('y',), Pin(pintype=PinType.Out))
-	            with OrdContext(y):
-	                ctx.root.align = East
-	            return ctx.symbol_postprocess()
+    class Inv(Cell):
+        @generate
+        def symbol(self) -> Symbol:
+            with OrdContext(Symbol(cell=self)):
+                vdd = ctx.add(('vdd',), Pin(pintype=PinType.Inout))
+                with OrdContext(vdd):
+                    ctx.root.align = North
+                vss = ctx.add(('vss',), Pin(pintype=PinType.Inout))
+                with OrdContext(vss):
+                    ctx.root.align = South
+                a = ctx.add(('a',), Pin(pintype=PinType.In))
+                with OrdContext(a):
+                    ctx.root.align = West
+                y = ctx.add(('y',), Pin(pintype=PinType.Out))
+                with OrdContext(y):
+                    ctx.root.align = East
+                return ctx.symbol_postprocess()
 
-	    @generate
-	    def schematic(self) -> Schematic:
-	        with OrdContext(Schematic(cell=self, symbol=self.symbol)):
-	            vss = ctx.add_port(('vss',))
-	            with OrdContext(vss):
-	                ctx.root.pos = (2,1)
-	                ctx.root.align = South
-	            vdd = ctx.add_port(('vdd',))
-	            with OrdContext(vdd):
-	                ctx.root.pos = (2,13)
-	                ctx.root.align = North
-	            y = ctx.add_port(('y',))
-	            with OrdContext(y):
-	                ctx.root.pos = (9,7)
-	                ctx.root.align = West
-	            a = ctx.add_port(('a',))
-	            with OrdContext(a):
-	                ctx.root.pos = (1,7)
-	                ctx.root.align = East
-	      
-	            pd = ctx.add(('pd',), SchemInstanceUnresolved(resolver = lambda **params: Nmos(**params).symbol))
-	            with OrdContext(pd):
-	                ctx.root.s.__wire_op__(vss.ref)
-	                ctx.root.b.__wire_op__(vss.ref)
-	                ctx.root.d.__wire_op__(y.ref)
-	                ctx.root.pos = (3,2)
-	                ctx.root.params.l = R('400n')
+        @generate
+        def schematic(self) -> Schematic:
+            with OrdContext(Schematic(cell=self, symbol=self.symbol)):
+                vss = ctx.add_port(('vss',))
+                with OrdContext(vss):
+                    ctx.root.pos = (2,1)
+                    ctx.root.align = South
+                vdd = ctx.add_port(('vdd',))
+                with OrdContext(vdd):
+                    ctx.root.pos = (2,13)
+                    ctx.root.align = North
+                y = ctx.add_port(('y',))
+                with OrdContext(y):
+                    ctx.root.pos = (9,7)
+                    ctx.root.align = West
+                a = ctx.add_port(('a',))
+                with OrdContext(a):
+                    ctx.root.pos = (1,7)
+                    ctx.root.align = East
+          
+                pd = ctx.add(('pd',), SchemInstanceUnresolved(resolver = lambda **params: Nmos(**params).symbol))
+                with OrdContext(pd):
+                    ctx.root.s.__wire_op__(vss.ref)
+                    ctx.root.b.__wire_op__(vss.ref)
+                    ctx.root.d.__wire_op__(y.ref)
+                    ctx.root.pos = (3,2)
+                    ctx.root.params.l = R('400n')
 
-	            pu = ctx.add(('pu',), SchemInstanceUnresolved(resolver = lambda **params: Pmos(**params).symbol))
-	            with OrdContext(pu):
-	                ctx.root.s.__wire_op__(vdd.ref)
-	                ctx.root.b.__wire_op__(vdd.ref)
-	                ctx.root.d.__wire_op__(y.ref)
-	                ctx.root.pos = (3,8)
-	                ctx.root.params.l = R('400n')
-	                
-	            for instance in pu, pd:
-	                instance.g.__wire_op__(a.ref)
-	            return ctx.schematic_postprocess()
+                pu = ctx.add(('pu',), SchemInstanceUnresolved(resolver = lambda **params: Pmos(**params).symbol))
+                with OrdContext(pu):
+                    ctx.root.s.__wire_op__(vdd.ref)
+                    ctx.root.b.__wire_op__(vdd.ref)
+                    ctx.root.d.__wire_op__(y.ref)
+                    ctx.root.pos = (3,8)
+                    ctx.root.params.l = R('400n')
+                    
+                for instance in pu, pd:
+                    instance.g.__wire_op__(a.ref)
+                return ctx.schematic_postprocess()
 
 
 The following summary shows the most important functions and classes of ORD2. Please refer to the Python codebase for more background information and details.
@@ -159,23 +159,23 @@ Parser
 
 .. automodule:: ordec.ord2
 
-.. autofunction:: parse_with_errors
-.. autofunction:: ord2_to_py
+.. autofunction:: ordec.ord2.parser.parse_with_errors
+.. autofunction:: ordec.ord2.parser.ord2_to_py
 
 OrdContext
 ----------
 
-.. autoclass:: OrdContext
-	:members: 
+.. autoclass:: ordec.ord2.context.OrdContext
+    :members:
 
 OrdTransformer
 --------------
 
-.. autoclass:: Ord2Transformer
-	:members:
-	:show-inheritance:
+.. autoclass:: ordec.ord2.ord2_transformer.Ord2Transformer
+    :members:
+    :show-inheritance:
 
 PythonTransformer
 -----------------
 
-.. autoclass:: PythonTransformer
+.. autoclass:: ordec.ord2.python_transformer.PythonTransformer

@@ -13,27 +13,21 @@ ORD1 is the initial version of the IC design language in the ORDeC project. It w
 Parser
 ------
 
-.. autofunction:: load_ord_from_string
-.. autofunction:: ord1_to_py
+.. autofunction:: ordec.ord1.parser.load_ord_from_string
+.. autofunction:: ordec.ord1.parser.ord1_to_py
 
 Lark Transformer
 ----------------
 
-.. autoclass:: OrdecTransformer
+.. autoclass:: ordec.ord1.lark_transformer.OrdecTransformer
 
 AST Transformer
 ---------------
 
-.. autoclass:: SchematicModifier
+.. autoclass:: ordec.ord1.ast_transformer.SchematicModifier
 	:members:
-
-Implicit Processing
--------------------
-
-.. autofunction:: preprocess
-.. autofunction:: postprocess
 
 Optimize Position
 -----------------
 
-.. autofunction:: get_pos_with_constraints
+.. autofunction:: ordec.ord1.optimize_position.get_pos_with_constraints
