@@ -313,8 +313,11 @@ class Ord2Transformer(PythonTransformer):
         return [assignment, with_stmt]
 
     def node_stmt_nobody(self, nodes):
-        """Node statement without body (e.g., 'port x' or 'Pmos m1')"""
-        return self.node_stmt(nodes)
+        """Node statement without body, supports multiple names (e.g., 'Nmos a, b, c')"""
+        result = []
+        for context_target in nodes[1:]:
+            result.extend(self.node_stmt([nodes[0], context_target]))
+        return result
 
     def depth_helper(self, value, depth=1):
         """ Access parent attributes depending on the dotted depth"""

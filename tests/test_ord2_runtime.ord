@@ -84,6 +84,25 @@ def test_nested_contexts():
     assert c == root1.c
 
 
+def test_multi_name_bodyless_node_stmt():
+    root = Symbol()
+    with OrdContext(root):
+        # Multiple pins with a keyword:
+        input x1, x2, x3
+        assert isinstance(root.x1, Pin)
+        assert isinstance(root.x2, Pin)
+        assert isinstance(root.x3, Pin)
+        assert root.x1.pintype == PinType.In
+        assert root.x2.pintype == PinType.In
+        assert root.x3.pintype == PinType.In
+
+        # Multiple pins with a Node subclass:
+        Pin p1, p2, p3
+
+    assert isinstance(root.p1, Pin)
+    assert isinstance(root.p2, Pin)
+    assert isinstance(root.p3, Pin)
+
 def test_scheminstance_creation():
     root = Schematic()
     with OrdContext(root):

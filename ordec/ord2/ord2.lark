@@ -386,7 +386,7 @@ viewgen: "viewgen" name ["(" [arguments] ")"] "->" name ":" suite
 constrain_stmt: "!" test
 context_body: ":" suite
 node_stmt: atom_expr context_target context_body
-node_stmt_nobody: atom_expr context_target
+node_stmt_nobody: atom_expr context_target ("," context_target)*
 
 ?context_target: context_target "." name -> getattr
 		       | context_target "[" subscriptlist "]" -> getitem
