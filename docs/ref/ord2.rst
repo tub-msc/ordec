@@ -28,9 +28,31 @@ The dotted syntax of ORD, which accesses the parent element, requires having a r
 	# Type 2
 	port xyz(.pos=(1,2))
 
-To demonstrate how the ORD context works and how the conversion from ORD to Python looks, consider the following two examples. Every time a context element (viewgen, port, or a schematic instance) is defined, the element is saved as a local variable `ctx` and a `with` context is opened. The dotted
+Node Statements
+^^^^^^^^^^^^^^^
+
+A **node statement** is the ``A B`` construct that creates and names an element in the current context. There are three types of node statements:
+
+1. **Node class statements** — the type is a Node subclass, e.g., ``LayoutRect x``
+2. **Node instance statements** — the type is a Cell class or instance, e.g., ``Nmos x``
+3. **Node keyword statements** — the type is a built-in keyword, e.g., ``input x``, ``output y``, ``port z``
+
+A node statement may have an optional body (indented block after ``:``) for setting attributes:
+
+.. code-block::
+
+	Nmos pd:
+		.$l = 400n
+
+Or it can be bodyless:
+
+.. code-block::
+
+	Nmos pd
+
+To demonstrate how the ORD context works and how the conversion from ORD to Python looks, consider the following two examples. Every time a node statement (viewgen, port, or a schematic instance) is encountered, the element is saved as a local variable and a `with` context is opened. The dotted
 access is converted into `ctx.root`. If multiple dots are written prior to the identifier, the dots are
-converted to `ctx.root(.parent)*`. Accesses outside the context are still possible through the local variable. An access like this is visible in the for loop of the example. 
+converted to `ctx.root(.parent)*`. Accesses outside the context are still possible through the local variable. An access like this is visible in the for loop of the example.
 
 **ORD code**
 

@@ -56,7 +56,12 @@ class OrdContext:
 
     def add_element(self, name_tuple, element):
         """
-        Add a context element, dispatching based on element type.
+        Add an element from a node statement, dispatching based on type.
+
+        Handles the three types of node statements:
+        - Node class statements (e.g., LayoutRect x)
+        - Node instance statements (e.g., Nmos x)
+        - Cell class/instance statements (e.g., Inv x)
 
         Args:
             name_tuple: path components for naming the element.
@@ -92,6 +97,6 @@ class OrdContext:
             return self.add(name_tuple, element)
 
         raise TypeError(
-            f"Cannot use {element!r} as context element. "
+            f"Cannot use {element!r} in node statement. "
             f"Expected Cell class/instance or Node class/instance."
         )

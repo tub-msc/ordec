@@ -215,8 +215,14 @@ class Ord2Transformer(PythonTransformer):
         else:
             raise Exception(f"Incompatible path type: {nodes!r}")
 
-    def context_element(self, nodes):
-        """ context_element (context_type context_target:\n    suite)"""
+    def node_stmt(self, nodes):
+        """Node statement: 'Type name' with optional body.
+
+        There are three types of node statements:
+        - Node class statements: e.g., LayoutRect x
+        - Node instance statements: e.g., Nmos x
+        - Node keyword statements: e.g., input x, port x
+        """
         context_type = nodes[0]
         context_name = nodes[1]
         context_body = nodes[2] if len(nodes) > 2 else None
@@ -306,9 +312,9 @@ class Ord2Transformer(PythonTransformer):
         )
         return [assignment, with_stmt]
 
-    def context_element_nobody(self, nodes):
-        """context_element without body (e.g., 'port x' or 'Pmos m1')"""
-        return self.context_element(nodes)
+    def node_stmt_nobody(self, nodes):
+        """Node statement without body (e.g., 'port x' or 'Pmos m1')"""
+        return self.node_stmt(nodes)
 
     def depth_helper(self, value, depth=1):
         """ Access parent attributes depending on the dotted depth"""
@@ -394,7 +400,7 @@ class Ord2Transformer(PythonTransformer):
         return self.net_and_path_stmt_helper(nodes, "PathNode")
 
     def _flatten(self, items):
-        """ Flatten the body of the context element suite"""
+        """ Flatten the body of a node statement suite"""
         flat = []
         for item in items:
             if isinstance(item, list):
