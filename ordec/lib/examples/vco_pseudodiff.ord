@@ -67,8 +67,11 @@ cell VcoHalfStage:
         pmos = self.schematic.m1.symbol.cell
         nmos = self.schematic.m2.symbol.cell
 
-        pmos m1
-        nmos m2
+        pmos m1:
+            ! .pos == (0, 0)
+        nmos m2:
+            ! .poly[0].rect.cx == m1.poly[0].rect.cx
+            ! .activ.rect.uy + 1500 == m1.activ.rect.ly
 
         nmos m3
         pmos m4
@@ -79,12 +82,7 @@ cell VcoHalfStage:
         nmos m7
         pmos m8
 
-        grid = ((.m2, .m1), (.m3, .m4), (.m5, .m6), (.m7, .m8))
-
-        ! .m1.pos == (0, 0)
-        ! .m1.poly[0].rect.cx == .m2.poly[0].rect.cx
-
-        ! .m1.activ.rect.ly == .m2.activ.rect.uy + 1500
+        grid = ((m2, m1), (m3, m4), (m5, m6), (m7, m8))
 
         for left, right in pairwise(grid):
             left_nmos, left_pmos = left
@@ -94,9 +92,10 @@ cell VcoHalfStage:
 
         path poly
         for idx, insts in enumerate(grid):
-            LayoutRect poly[idx]: .layer=layers.GatPoly
-            for inst in insts:
-                ! poly[idx].rect.contains(inst.poly[0].rect)
+            LayoutRect poly[idx]: 
+                .layer=layers.GatPoly
+                for inst in insts:
+                    ! .rect.contains(inst.poly[0].rect)
 
         polycont_spec = (
             ('south', 'west', 'rst_n'),
@@ -110,51 +109,55 @@ cell VcoHalfStage:
             polyext = . % LayoutRect(layer=layers.GatPoly)
             ! polyext.rect.size == (300, 300)
             if horiz_spec == 'west':
-                ! polyext.rect.ux == .poly[idx].rect.ux
+                ! polyext.rect.ux == poly[idx].rect.ux
             else:
                 assert horiz_spec == 'east'
-                ! polyext.rect.lx == .poly[idx].rect.lx
+                ! polyext.rect.lx == poly[idx].rect.lx
             if vert_spec == 'north':
-                ! polyext.rect.uy == .m1.activ.rect.ly - 200
+                ! polyext.rect.uy == m1.activ.rect.ly - 200
             else:
                 assert vert_spec == 'south'
-                ! polyext.rect.ly == .m2.activ.rect.uy + 200
+                ! polyext.rect.ly == m2.activ.rect.uy + 200
             LayoutRect polycont[idx]: .layer=layers.Cont
             ! polycont[idx].rect.size == (160, 160)
             ! polycont[idx].rect.center == polyext.rect.center
             if add_m1:
                 setattr(., add_m1, LayoutRect(layer=layers.Metal1))
-                m1 = getattr(., add_m1)
-                ! m1.rect.cx == .polycont[idx].rect.cx + (-25 if horiz_spec=='west' else 25)
-                ! m1.rect.width == 210
-                ! m1.rect.ly == .m2.sd[0].rect.uy + 200
-                ! m1.rect.height == 600
+                m1_ = getattr(., add_m1)
+                ! m1_.rect.cx == .polycont[idx].rect.cx + (-25 if horiz_spec=='west' else 25)
+                ! m1_.rect.width == 210
+                ! m1_.rect.ly == .m2.sd[0].rect.uy + 200
+                ! m1_.rect.height == 600
 
         .rst_n % LayoutPin(pin=self.symbol.rst_n)
         .inp % LayoutPin(pin=self.symbol.inp)
         .fb % LayoutPin(pin=self.symbol.fb)
 
-        LayoutRect outbar_h: .layer=layers.Metal1
-        .outbar_h % LayoutPin(pin=self.symbol.out)
-        ! .outbar_h.rect.cy == .polycont[3].rect.cy
-        ! .outbar_h.rect.height == 210
-        ! .outbar_h.rect.lx == .m1.sd[0].rect.lx
-        ! .outbar_h.rect.ux == .polycont[3].rect.ux + 500
+        LayoutRect outbar_h:
+            .layer=layers.Metal1
+            . % LayoutPin(pin=self.symbol.out)
+            ! .rect.cy == polycont[3].rect.cy
+            ! .rect.height == 210
+            ! .rect.lx == m1.sd[0].rect.lx
+            ! .rect.ux == polycont[3].rect.ux + 500
 
-        LayoutRect outbar_vmain: .layer=layers.Metal1
-        ! .outbar_vmain.rect.contains(.m3.sd[1].rect)
-        ! .outbar_vmain.rect.contains(.m4.sd[1].rect)
+        LayoutRect outbar_vmain:
+            .layer=layers.Metal1
+            ! .rect.contains(m3.sd[1].rect)
+            ! .rect.contains(m4.sd[1].rect)
 
-        LayoutRect outbar_vrst: .layer=layers.Metal1
-        ! .outbar_vrst.rect.contains(.m1.sd[0].rect)
-        ! .outbar_vrst.rect.ly == .outbar_h.rect.ly
+        LayoutRect outbar_vrst:
+            .layer=layers.Metal1
+            ! .rect.contains(m1.sd[0].rect)
+            ! .rect.ly == outbar_h.rect.ly
 
-        LayoutRect outbar_outn: .layer=layers.Metal1
-        ! .outbar_outn.rect.uy == .m8.sd[1].rect.uy
-        ! .outbar_outn.rect.ly == .m7.sd[1].rect.ly
-        ! .outbar_outn.rect.lx >= .m7.sd[1].rect.ux
-        ! .outbar_outn.rect.lx >= .outbar_h.rect.ux + 200
-        ! .outbar_outn.rect.width == 210
+        LayoutRect outbar_outn:
+            .layer=layers.Metal1
+            ! .rect.uy == m8.sd[1].rect.uy
+            ! .rect.ly == m7.sd[1].rect.ly
+            ! .rect.lx >= m7.sd[1].rect.ux
+            ! .rect.lx >= outbar_h.rect.ux + 200
+            ! .rect.width == 210
 
         .outbar_outn % LayoutPin(pin=self.symbol.out_n)
 
@@ -163,36 +166,39 @@ cell VcoHalfStage:
             ! r.rect.contains(sd.rect)
             ! r.rect.ux >= .outbar_outn.rect.lx
 
-        LayoutRect vddbar: .layer=layers.Metal1
-        .vddbar % LayoutPin(pin=self.symbol.vdd)
-        ! .vddbar.rect.southwest == .m1.sd[0].rect.northwest + (-500,400)
-        ! .vddbar.rect.height == 400
-        ! .vddbar.rect.ux == .m7.sd[1].rect.ux + 500
+        LayoutRect vddbar:
+            .layer=layers.Metal1
+            . % LayoutPin(pin=self.symbol.vdd)
+            ! .rect.southwest == m1.sd[0].rect.northwest + (-500,400)
+            ! .rect.height == 400
+            ! .rect.ux == m7.sd[1].rect.ux + 500
 
         for sd in (.m4.sd[0], .m8.sd[0]):
             r = . % LayoutRect(layer=layers.Metal1)
             ! r.rect.contains(sd.rect)
             ! r.rect.uy == .vddbar.rect.ly
 
-        LayoutRect vssbar: .layer=layers.Metal1
-        .vssbar % LayoutPin(pin=self.symbol.vss)
-        ! .vssbar.rect.width == .vddbar.rect.width
-        ! .vssbar.rect.height == 400
-        ! .vssbar.rect.northwest == .m2.sd[0].rect.southwest - (500,500)
+        LayoutRect vssbar:
+            .layer=layers.Metal1
+            . % LayoutPin(pin=self.symbol.vss)
+            ! .rect.width == vddbar.rect.width
+            ! .rect.height == 400
+            ! .rect.northwest == m2.sd[0].rect.southwest - (500,500)
 
         for sd in (.m2.sd[0], .m7.sd[0]):
             r = . % LayoutRect(layer=layers.Metal1)
             ! r.rect.contains(sd.rect)
-            ! r.rect.ly == .vssbar.rect.uy
+            ! r.rect.ly == vssbar.rect.uy
 
         r = . % LayoutRect(layer=layers.Metal1)
-        ! r.rect.contains(.m2.sd[1].rect)
+        ! r.rect.contains(m2.sd[1].rect)
         ! r.rect.height == 600
-        ! r.rect.uy == .m2.sd[1].rect.uy
+        ! r.rect.uy == m2.sd[1].rect.uy
 
-        LayoutRect nwell: .layer=layers.NWell
-        for m in (.m1, .m4, .m6, .m8):
-            ! .nwell.rect.contains(m.nwell.rect)
+        LayoutRect nwell:
+            .layer=layers.NWell
+            for m in (m1, m4, m6, m8):
+                ! .rect.contains(m.nwell.rect)
 
 cell VcoRing:
     viewgen symbol -> Symbol:
@@ -266,46 +272,53 @@ cell VcoRing:
         sr = SRouter(__ordec_solver__.subgraph, __ordec_solver__,
             routing_spec=SG13G2().default_routing_spec)
 
-        LayoutRect nwell: .layer=layers.NWell
+        LayoutRect nwell:
+             .layer=layers.NWell
 
-        LayoutRect vdd_st_bar: .layer=layers.Metal1
-        vdd_st_bar % LayoutPin(pin=self.symbol.vdd_st)
+        LayoutRect vdd_st_bar:
+            .layer=layers.Metal1
+            . % LayoutPin(pin=self.symbol.vdd_st)
 
-        LayoutRect vss_st_bar_n: .layer=layers.Metal1
-        vss_st_bar_n % LayoutPin(pin=self.symbol.vss_st)
+        LayoutRect vss_st_bar_n:
+            .layer=layers.Metal1
+            . % LayoutPin(pin=self.symbol.vss_st)
 
-        LayoutRect vss_st_bar_p: .layer=layers.Metal1
-        vss_st_bar_p % LayoutPin(pin=self.symbol.vss_st)
+        LayoutRect vss_st_bar_p:
+            .layer=layers.Metal1
+            . % LayoutPin(pin=self.symbol.vss_st)
 
         for i in range(2):
-            VcoHalfStage() stage_p[i]: .orientation=MX
-            VcoHalfStage() stage_n[i]
-            if i == 0:
-                .stage_p[i].orientation *= MY
-                .stage_n[i].orientation *= MY
-            ! .stage_n[i].vddbar.rect.southwest == .stage_p[i].vddbar.rect.southwest
+            VcoHalfStage() stage_p[i]:
+                .orientation=MX
+                if i == 0:
+                    .orientation *= MY
+                ! vdd_st_bar.rect.contains(.vddbar.rect)
+                ! nwell.rect.contains(.nwell.rect)
+                ! vss_st_bar_p.rect.contains(.vssbar.rect)
+            
+            VcoHalfStage() stage_n[i]:
+                if i == 0:
+                    .orientation *= MY
+                ! vdd_st_bar.rect.contains(.vddbar.rect)
+                ! vss_st_bar_n.rect.contains(.vssbar.rect)
+                ! nwell.rect.contains(.nwell.rect)
+
+            ! stage_n[i].vddbar.rect.southwest == stage_p[i].vddbar.rect.southwest
 
             if i > 0:
-                ! .stage_n[i].vddbar.rect.west == .stage_n[i-1].vddbar.rect.east
+                ! stage_n[i].vddbar.rect.west == stage_n[i-1].vddbar.rect.east
 
-            ! .nwell.rect.contains(.stage_p[i].nwell.rect)
-            ! .nwell.rect.contains(.stage_n[i].nwell.rect)
-
-            outbar_n = .stage_n[i].outbar_outn
-            LayoutRect out_n[i]: .layer=outbar_n.layer.nid
-            ! out_n[i].rect == outbar_n.rect
-            out_n[i] % LayoutPin(pin=self.symbol.out_n[i])
+            outbar_n = stage_n[i].outbar_outn
+            LayoutRect out_n[i]:
+                .layer=outbar_n.layer.nid
+                ! .rect == outbar_n.rect
+                . % LayoutPin(pin=self.symbol.out_n[i])
 
             outbar_p = .stage_p[i].outbar_outn
-            LayoutRect out_p[i]: .layer=outbar_p.layer.nid
-            ! out_p[i].rect == outbar_p.rect
-            out_p[i] % LayoutPin(pin=self.symbol.out_p[i])
-
-            ! vdd_st_bar.rect.contains(.stage_p[i].vddbar.rect)
-            ! vdd_st_bar.rect.contains(.stage_n[i].vddbar.rect)
-
-            ! vss_st_bar_n.rect.contains(.stage_n[i].vssbar.rect)
-            ! vss_st_bar_p.rect.contains(.stage_p[i].vssbar.rect)
+            LayoutRect out_p[i]:
+                .layer=outbar_p.layer.nid
+                ! .rect == outbar_p.rect
+                . % LayoutPin(pin=self.symbol.out_p[i])
 
         ! .stage_p[0].pos == (0,0)
 
@@ -318,69 +331,69 @@ cell VcoRing:
 
         # Connect rst_n of stage_n[1] and stage_p[0] to own rst_n:
 
-        sr.move(layers.Metal1, .stage_n[1].rst_n.rect.center)
+        sr.move(layers.Metal1, stage_n[1].rst_n.rect.center)
         sr.layer(layers.Metal2)
-        sr.wire_x(0.5*.stage_p[0].rst_n.rect.cx + 0.5*.stage_n[1].rst_n.rect.cx)
-        sr.wire_y(.stage_p[0].rst_n.rect.cy)
+        sr.wire_x(0.5*stage_p[0].rst_n.rect.cx + 0.5*stage_n[1].rst_n.rect.cx)
+        sr.wire_y(stage_p[0].rst_n.rect.cy)
         sr.push()
-        sr.wire_x(.stage_p[0].rst_n.rect.cx)
+        sr.wire_x(stage_p[0].rst_n.rect.cx)
         sr.layer(layers.Metal1)
         sr.pop()
-        sr.wire_y(.stage_p[0].rst_n.rect.cy+2500)
+        sr.wire_y(stage_p[0].rst_n.rect.cy+2500)
         sr.path % LayoutPin(pin=self.symbol.rst_n)
 
         # Connect matching fb -- out -- inp pins:
 
-        sr.move(layers.Metal1, .stage_n[0].fb.rect.center)
+        sr.move(layers.Metal1, stage_n[0].fb.rect.center)
         sr.layer(layers.Metal2)
-        sr.wire_y(.stage_p[0].outbar_h.rect.cy)
+        sr.wire_y(stage_p[0].outbar_h.rect.cy)
         sr.push()
         sr.layer(layers.Metal1)
         sr.pop()
         sr.layer(layers.Metal3)
-        sr.wire_x(.stage_p[1].inp.rect.cx)
+        sr.wire_x(stage_p[1].inp.rect.cx)
         sr.layer(layers.Metal2)
-        sr.wire_y(.stage_p[1].inp.rect.cy)
+        sr.wire_y(stage_p[1].inp.rect.cy)
         sr.layer(layers.Metal1)
 
-        sr.move(layers.Metal1, .stage_n[1].fb.rect.center)
+        sr.move(layers.Metal1, stage_n[1].fb.rect.center)
         sr.layer(layers.Metal2)
-        sr.wire_y(.stage_n[1].outbar_h.rect.cy + 500)
+        sr.wire_y(stage_n[1].outbar_h.rect.cy + 500)
         sr.push()
-        sr.wire_y(.stage_p[1].outbar_h.rect.cy)
+        sr.wire_y(stage_p[1].outbar_h.rect.cy)
         sr.layer(layers.Metal1)
         sr.pop()
         sr.layer(layers.Metal3)
-        sr.wire_x(.stage_n[0].inp.rect.cx)
+        sr.wire_x(stage_n[0].inp.rect.cx)
         sr.layer(layers.Metal2)
-        sr.wire_y(.stage_n[0].inp.rect.cy)
+        sr.wire_y(stage_n[0].inp.rect.cy)
         sr.layer(layers.Metal1)
 
-        sr.move(layers.Metal1, .stage_p[0].fb.rect.center)
+        sr.move(layers.Metal1, stage_p[0].fb.rect.center)
         sr.layer(layers.Metal2)
-        sr.wire_x(.stage_n[0].outbar_h.rect.lx + 150)
-        sr.wire_y(.stage_n[0].outbar_h.rect.cy)
+        sr.wire_x(stage_n[0].outbar_h.rect.lx + 150)
+        sr.wire_y(stage_n[0].outbar_h.rect.cy)
         sr.push()
         sr.layer(layers.Metal1)
         sr.pop()
         sr.layer(layers.Metal3)
-        sr.wire_x(.stage_n[1].inp.rect.cx)
+        sr.wire_x(stage_n[1].inp.rect.cx)
         sr.layer(layers.Metal2)
-        sr.wire_y(.stage_n[1].inp.rect.cy)
+        sr.wire_y(stage_n[1].inp.rect.cy)
         sr.layer(layers.Metal1)
 
-        sr.move(layers.Metal1, .stage_p[1].fb.rect.center)
+        sr.move(layers.Metal1, stage_p[1].fb.rect.center)
         sr.layer(layers.Metal2)
-        sr.wire_x(.stage_n[1].outbar_h.rect.ux - 150)
-        sr.wire_y(.stage_p[i].outbar_h.rect.cy - 500)
+        sr.wire_x(stage_n[1].outbar_h.rect.ux - 150)
+        sr.wire_y(stage_p[i].outbar_h.rect.cy - 500)
         sr.push()
-        sr.wire_y(.stage_n[1].outbar_h.rect.cy)
+        sr.wire_y(stage_n[1].outbar_h.rect.cy)
         sr.layer(layers.Metal1)
         sr.pop()
         sr.layer(layers.Metal3)
-        sr.wire_x(.stage_p[0].inp.rect.cx)
+        sr.wire_x(stage_p[0].inp.rect.cx)
         sr.layer(layers.Metal2)
-        sr.wire_y(.stage_p[0].inp.rect.cy)
+        sr.wire_y(stage_p[0].inp.rect.cy)
         sr.layer(layers.Metal1)
 
 cell Vco:
