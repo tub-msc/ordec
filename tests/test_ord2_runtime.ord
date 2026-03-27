@@ -15,6 +15,19 @@ def test_symbol_dot():
         assert .outline == (0,1,2,3)
     assert root.outline == Rect4R(0,1,2,3)
 
+def test_dotdot():
+    root = Symbol()
+    with OrdContext(root):
+        assert . == root
+        PathNode x:
+            assert .. == root
+            assert . == root.x
+            PathNode z:
+                print(....)
+                #assert ... == root
+                assert .. == root.x
+                assert . == root.x.z
+
 def test_symbol_pin_creation():
     root = Symbol()
     with OrdContext(root):
