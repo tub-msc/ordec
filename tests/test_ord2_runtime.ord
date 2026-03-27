@@ -202,3 +202,11 @@ def test_layout_instance_shorthand():
         assert isinstance(b, LayoutInstance)
         assert b.ref == tc.layout
         assert b.orientation == D4.MX
+
+def test_node_as_context_manager():
+    root = Symbol()
+    with root.ctx():
+        input a
+        assert .a == a
+        assert .a.pintype == PinType.In
+    assert root.a.pintype == PinType.In

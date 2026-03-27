@@ -935,6 +935,11 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         """Returns whether the selected subgraph is mutable."""
         raise TypeError("n.mutable is unavailable where n is not subclass of MutableNode or FrozenNode.")
 
+    def ctx(self):
+        """Return a Context for use as a context manager: ``with node.ctx(): ...``"""
+        from ordec.ord2.context import Context
+        return Context(self)
+
     def __copy__(self) -> 'Self':
         return self # tuple is immutable (at shallow level), thus no copy needed.
 
