@@ -209,3 +209,20 @@ def test_node_as_context_manager():
         assert .a == a
         assert .a.pintype == PinType.In
     assert root.a.pintype == PinType.In
+
+
+def add_pin_x():
+    Pin x
+
+def add_pin_y():
+    Pin y
+
+def count_pins():
+    return len(list(.all(Pin)))
+
+def test_nodecontext_across_calls():
+    """Checks that node context works across function calls"""
+    with Symbol().ctx():
+        add_pin_x()
+        add_pin_y()
+        assert count_pins() == 2
