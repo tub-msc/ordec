@@ -126,3 +126,16 @@ def test_minimal_layout():
     layers = SG13G2().layers
     assert layout.ref_layers == layers
     assert layout.r.layer == layers.Metal1
+
+def test_layout_instance_shorthand():
+    root = Layout()
+    tc = LayoutTestCell()
+    with OrdContext(root):
+        tc a
+        assert isinstance(a, LayoutInstance)
+        assert a.ref == tc.layout
+
+        tc b: .orientation = MX
+        assert isinstance(b, LayoutInstance)
+        assert b.ref == tc.layout
+        assert b.orientation == D4.MX

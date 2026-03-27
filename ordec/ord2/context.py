@@ -63,6 +63,12 @@ class OrdContext:
             element: Cell class, Cell instance, Node subclass,
                 or NodeTuple instance.
         """
+        # Layout context: create LayoutInstance from Cell instances
+        if isinstance(self.root, Layout):
+            if isinstance(element, Cell):
+                ref = LayoutInstance(ref=element.layout)
+                return self.add(name_tuple, ref)
+
         if isinstance(element, type) and issubclass(element, Cell):
             # Cell class: deferred resolution with parameters
             ref = SchemInstanceUnresolved(
