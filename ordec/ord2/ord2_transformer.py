@@ -99,62 +99,46 @@ class Ord2Transformer(PythonTransformer):
                 )
             )
 
+        ord_root = self.ast_name("__ord_root__")
+        ord_root_store = self.ast_name("__ord_root__", ctx=ast.Store())
+
         viewgen_call = ast.Call(
             func=self.ast_core(viewgen_type.title()),
             args=[],
             keywords=keywords
         )
-        # Build the ORD context call
-        ord_context_call = ast.Call(
-            func=self.ast_ord_context("Context"),
-            args=[viewgen_call],
+
+        # __ord_root__ = Type(cell=self, symbol=self.symbol)
+        root_assign = ast.Assign(
+            targets=[ord_root_store],
+            value=viewgen_call
+        )
+
+        # __ord_root__.view_context(__ord_root__) — access class attr, instantiate
+        view_context_call = ast.Call(
+            func=self.ast_attribute(ord_root, "view_context"),
+            args=[ord_root],
             keywords=[]
         )
-        # Solver must be added to layout viewgen
-        if viewgen_type_lower == "layout":
-            solver_create = ast.Assign(
-                targets=[self.ast_name("__ordec_solver__", ctx=ast.Store())],
-                value=ast.Call(
-                    func=self.ast_core("Solver"),
-                    args=[ast.Call(self.ast_ord_context("root"), args=[], keywords=[])],
-                    keywords=[]
-                )
-            )
-            solver_solve = ast.Expr(
-                ast.Call(
-                    func=self.ast_attribute(
-                        self.ast_name("__ordec_solver__"), "solve"
-                    ),
-                    args=[],
-                    keywords=[]
-                )
-            )
-            suite = [solver_create] + suite + [solver_solve]
 
-        # Call postprocess on the subgraph root
+        # return __ord_root__.postprocess()
         return_value = ast.Return(
-                ast.Call(
-                func=self.ast_attribute(
-                    ast.Call(self.ast_ord_context("root"), args=[], keywords=[]),
-                    "postprocess",
-                ),
+            ast.Call(
+                func=self.ast_attribute(ord_root, "postprocess"),
                 args=[],
                 keywords=[]
             )
         )
 
-        suite.append(return_value)
         with_context = ast.With(
             items=[
-                ast.withitem(
-                    context_expr=ord_context_call
-                )
+                ast.withitem(context_expr=view_context_call),
             ],
             body=suite
         )
         # Wrap with statement with context in a decorated function call
         # --> See Python implementation
-        func_body = kwarg_assignments + [with_context]
+        func_body = kwarg_assignments + [root_assign, with_context, return_value]
         func_def = ast.FunctionDef(
             name=func_name,
             args=ast.arguments(
@@ -185,9 +169,7 @@ class Ord2Transformer(PythonTransformer):
         """ ! x >= 200 """
         return ast.Expr(
             ast.Call(
-                func=self.ast_attribute(
-                    self.ast_name("__ordec_solver__"), "constrain"
-                ),
+                func=self.ast_ord_context("constrain"),
                 args=[nodes[0]],
                 keywords=[]
             )
@@ -299,8 +281,8 @@ class Ord2Transformer(PythonTransformer):
             items=[
                 ast.withitem(
                     context_expr=ast.Call(
-                        func=self.ast_ord_context("Context"),
-                        args=[context_name],
+                        func=self.ast_attribute(context_name, "ctx"),
+                        args=[],
                         keywords=[]
                     )
                 )

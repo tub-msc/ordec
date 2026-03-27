@@ -937,8 +937,8 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
 
     def ctx(self):
         """Return a Context for use as a context manager: ``with node.ctx(): ...``"""
-        from ordec.ord2.context import Context
-        return Context(self)
+        from ordec.ord2.context import NodeContext
+        return NodeContext(self)
 
     def __copy__(self) -> 'Self':
         return self # tuple is immutable (at shallow level), thus no copy needed.

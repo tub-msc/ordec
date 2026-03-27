@@ -13,6 +13,7 @@ from .geoprim import *
 from .ordb import *
 from .cell import Cell
 from .constraints import *
+from .viewctx import ViewContext, LayoutViewContext
 from .simarray import SimArray
 
 # Enums
@@ -132,6 +133,7 @@ def coerce_tuple(target_type, tuple_length):
 @public
 class Symbol(SubgraphRoot):
     """A symbol of an individual cell."""
+    view_context = ViewContext
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
     caption = Attr(str)
     cell = Attr(Cell)
@@ -306,6 +308,7 @@ class SymbolArc(Node):
 @public
 class Schematic(SubgraphRoot):
     """A schematic of an individual cell."""
+    view_context = ViewContext
     symbol = SubgraphRef(Symbol)
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
     cell = Attr(Cell)
@@ -1013,6 +1016,7 @@ class Layout(SubgraphRoot):
     Subgraph containing integrated circuit layout elements, possibly including
     hierarchical instances of other Layout subgraphs.
     """
+    view_context = LayoutViewContext
 
     cell = Attr(Cell)
     symbol = SubgraphRef(Symbol) #: All LayoutPins in this subgraph reference this symbol.

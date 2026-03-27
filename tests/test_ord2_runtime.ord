@@ -4,11 +4,10 @@
 from ordec.core import *
 from ordec.lib import Res
 from ordec.lib.ihp130 import SG13G2
-from ordec.ord2.context import Context
 
 def test_symbol_dot():
     root=Symbol()
-    with Context(root):
+    with root.ctx():
         # We can access our current context root via '.':
         assert . == __ord_context__.root() == root
         .outline = (0,1,2,3)
@@ -17,7 +16,7 @@ def test_symbol_dot():
 
 def test_dotdot():
     root = Symbol()
-    with Context(root):
+    with root.ctx():
         assert . == root
         PathNode x:
             assert .. == root
@@ -29,7 +28,7 @@ def test_dotdot():
 
 def test_symbol_pin_creation():
     root = Symbol()
-    with Context(root):
+    with root.ctx():
         sym = .
 
         # We can create a Pin using the special input/output/inout keywords...
@@ -64,10 +63,10 @@ def test_symbol_pin_creation():
 def test_nested_contexts():
     root1 = Symbol()
     root2 = Symbol()
-    with Context(root1):
+    with root1.ctx():
         input a
         assert .a == a
-        with Context(root2):
+        with root2.ctx():
             output a
             input c
         assert .a != a
@@ -86,7 +85,7 @@ def test_nested_contexts():
 
 def test_multi_name_bodyless_node_stmt():
     root = Symbol()
-    with Context(root):
+    with root.ctx():
         # Multiple pins with a keyword:
         input x1, x2, x3
         assert isinstance(root.x1, Pin)
@@ -105,7 +104,7 @@ def test_multi_name_bodyless_node_stmt():
 
 def test_scheminstance_creation():
     root = Schematic()
-    with Context(root):
+    with root.ctx():
         # Bodyless...
         # ...using a Cell subclass:
         Res a
@@ -130,7 +129,7 @@ def test_mixed_unresolved_resolved_instances():
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
-    with Context(root):
+    with root.ctx():
         net vss, mid
 
         # Cell instance -> SchemInstance directly
@@ -193,7 +192,7 @@ def test_minimal_layout():
 def test_layout_instance_shorthand():
     root = Layout()
     tc = LayoutTestCell()
-    with Context(root):
+    with root.ctx():
         tc a
         assert isinstance(a, LayoutInstance)
         assert a.ref == tc.layout

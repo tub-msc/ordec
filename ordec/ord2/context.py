@@ -9,8 +9,9 @@ from ..core import *
 from ..schematic.helpers import recursive_setitem, recursive_getitem
 
 _ctx_var = ContextVar("ctx", default=None)
+_view_ctx_var = ContextVar("view_ctx", default=None)
 
-class Context:
+class NodeContext:
     """
     Class which represents the context where a specific
     ORDB element is alive and accessible via relative
@@ -54,6 +55,14 @@ def add_port(name_tuple):
     net = add(name_tuple, Net(pin=pin))
     subgraph_root % SchemPort(ref=net)
     return net
+
+
+def view_context():
+    return _view_ctx_var.get()
+
+
+def constrain(constraint):
+    return _view_ctx_var.get().constrain(constraint)
 
 
 def add_element(name_tuple, element):
