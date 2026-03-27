@@ -70,6 +70,27 @@ class SchemErrorType(Enum):
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'
 
+# Attribute proxy
+# ---------------
+
+class AttrProxy:
+    """Descriptor that delegates reads to a sub-attribute of another attribute.
+
+    Carries metadata (source_attr, name) so that LayoutInstanceSubcursor
+    can retrieve the full source object for coordinate transformation
+    before extracting the sub-attribute.
+    """
+    def __init__(self, source_attr, name):
+        self.source_attr = source_attr
+        self.name = name
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self
+        return getattr(getattr(obj, self.source_attr), self.name)
+
+def _rect_proxy(name):
+    return AttrProxy('rect', name)
 
 # NamedTuples
 # -----------
@@ -1098,6 +1119,33 @@ class LayoutRect(Node):
     rect = ConstrainableAttr(Rect4I, factory=coerce_tuple(Rect4I, 4),
         placeholder=Rect4LinearTerm)
 
+    # Delegate Rect4Generic properties:
+    lx = _rect_proxy('lx')
+    ly = _rect_proxy('ly')
+    ux = _rect_proxy('ux')
+    uy = _rect_proxy('uy')
+    cx = _rect_proxy('cx')
+    cy = _rect_proxy('cy')
+    width = _rect_proxy('width')
+    height = _rect_proxy('height')
+    size = _rect_proxy('size')
+    center = _rect_proxy('center')
+    north = _rect_proxy('north')
+    south = _rect_proxy('south')
+    east = _rect_proxy('east')
+    west = _rect_proxy('west')
+    northwest = _rect_proxy('northwest')
+    northeast = _rect_proxy('northeast')
+    southwest = _rect_proxy('southwest')
+    southeast = _rect_proxy('southeast')
+    x_extent = _rect_proxy('x_extent')
+    y_extent = _rect_proxy('y_extent')
+
+    def contains(self, other):
+        if isinstance(other, LayoutRect):
+            return self.rect.contains(other.rect)
+        return self.rect.contains(other)
+
 class LayoutInstanceSubcursor(tuple):
     """Cursor to go through layout instances, transforming coordinates."""
     def __repr__(self):
@@ -1200,9 +1248,15 @@ class LayoutInstanceSubcursor(tuple):
             return self.__getattr('parent')
 
     def __getattr__(self, name):
-        inner_ret = getattr(self.node(), name)
+        node = self.node()
         if self.needs_instancearray_index():
             raise AttributeError("Missing index [] for LayoutInstanceArray.")
+        # Detect AttrProxy descriptors: delegate through self so transformation
+        # happens automatically via the existing __getattr__ path.
+        descriptor = getattr(type(node), name, None)
+        if isinstance(descriptor, AttrProxy):
+            return getattr(getattr(self, descriptor.source_attr), descriptor.name)
+        inner_ret = getattr(node, name)
         if isinstance(inner_ret, (Rect4I, Vec2I)):
             return self.transform_stack() * inner_ret
         elif isinstance(inner_ret, Node):
