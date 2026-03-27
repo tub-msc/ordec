@@ -82,10 +82,8 @@ class OrdContext:
             return self.add(name_tuple, ref)
 
         if isinstance(element, Cell):
-            # Cell instance: symbol already determined, params are fixed
-            ref = SchemInstanceUnresolved(
-                resolver=lambda: element.symbol
-            )
+            # Cell instance: symbol already determined, create SchemInstance directly
+            ref = SchemInstance(symbol=element.symbol)
             return self.add(name_tuple, ref)
 
         if isinstance(element, type) and issubclass(element, Node):

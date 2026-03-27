@@ -416,6 +416,10 @@ class SchemInstanceSubcursor(tuple):
         """Support indexing into pin hierarchies (e.g., inst['d'][0].pos)."""
         return SchemInstanceSubcursor((self.inst(), self.node()[key]))
 
+    def __wire_op__(self, here):
+        conn = self.inst() % SchemInstanceConn(here=here, there=self.node())
+        return conn
+
     def __getattr__(self, name):
         inner_ret = getattr(self.node(), name)
         if isinstance(inner_ret, (Rect4R, Vec2R)):

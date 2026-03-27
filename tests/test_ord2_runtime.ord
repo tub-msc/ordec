@@ -110,9 +110,9 @@ def test_scheminstance_creation():
         # ...using a Cell subclass:
         Res a
         assert isinstance(a, SchemInstanceUnresolved)
-        # ...or using a Cell subclass instance:
+        # ...or using a Cell subclass instance (creates SchemInstance directly):
         Res('1k') b
-        assert isinstance(b, SchemInstanceUnresolved)
+        assert isinstance(b, SchemInstance)
 
         # With body...
         # ...using a Cell subclass:
@@ -123,6 +123,51 @@ def test_scheminstance_creation():
             .pos=(1,2)
 
         assert c.pos == d.pos == Vec2R(1,2)
+
+def test_mixed_unresolved_resolved_instances():
+    """A schematic with both SchemInstance (from Cell instance) and
+    SchemInstanceUnresolved (from Cell class), wired together and postprocessed."""
+    from ordec.lib import Vdc, Gnd
+
+    root = Schematic()
+    with OrdContext(root):
+        net vss, mid
+
+        # Cell instance -> SchemInstance directly
+        Vdc('1') v1: .p -- mid; .m -- vss; .pos = (0, 6)
+        # Cell class -> SchemInstanceUnresolved (params set via body)
+        Res r1: .$r = '1k'; .p -- mid; .m -- vss; .pos = (5, 6)
+        # Another Cell instance -> SchemInstance directly
+        Gnd() gnd: .p -- vss; .pos = (0, 0)
+
+    # Before postprocess: v1 and gnd are already SchemInstance,
+    # r1 is still SchemInstanceUnresolved
+    assert isinstance(v1, SchemInstance)
+    assert isinstance(gnd, SchemInstance)
+    assert isinstance(r1, SchemInstanceUnresolved)
+
+    # v1 already has SchemInstanceConn (direct wiring)
+    v1_conns = list(root.all(SchemInstanceConn.ref_idx.query(v1)))
+    assert len(v1_conns) == 2
+
+    # r1 still has SchemInstanceUnresolvedConn (deferred wiring)
+    r1_conns = list(root.all(SchemInstanceUnresolvedConn.ref_idx.query(r1)))
+    assert len(r1_conns) == 2
+
+    # Postprocess resolves r1 and runs auto_wire + check
+    root.postprocess()
+
+    # After postprocess: all instances are SchemInstance
+    all_instances = list(root.all(SchemInstance))
+    assert len(all_instances) == 3
+    assert not list(root.all(SchemInstanceUnresolved))
+
+    # All connections are now SchemInstanceConn
+    all_conns = list(root.all(SchemInstanceConn))
+    assert len(all_conns) == 5  # v1: 2, r1: 2, gnd: 1
+
+    # No unresolved connections remain
+    assert not list(root.all(SchemInstanceUnresolvedConn))
 
 cell LayoutTestCell:
     viewgen symbol -> Symbol:
