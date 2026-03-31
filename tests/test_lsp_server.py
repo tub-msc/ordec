@@ -25,6 +25,7 @@ def test_lsp_initialize_exposes_core_capabilities(tmp_path):
             "capabilities": {
                 "textDocumentSync": 1,
                 "documentSymbolProvider": True,
+                "documentHighlightProvider": True,
                 "workspaceSymbolProvider": True,
                 "definitionProvider": True,
                 "hoverProvider": True,
@@ -177,9 +178,46 @@ def test_lsp_open_definition_hover_and_references(tmp_path):
         ],
     }]
 
-    completion_messages = server.handle_message({
+    highlight_messages = server.handle_message({
         "jsonrpc": "2.0",
         "id": 5,
+        "method": "textDocument/documentHighlight",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 2, "character": 14},
+        },
+    })
+    assert highlight_messages == [{
+        "jsonrpc": "2.0",
+        "id": 5,
+        "result": [
+            {
+                "range": {
+                    "start": {"line": 0, "character": 26},
+                    "end": {"line": 0, "character": 31},
+                },
+                "kind": 3,
+            },
+            {
+                "range": {
+                    "start": {"line": 2, "character": 13},
+                    "end": {"line": 2, "character": 18},
+                },
+                "kind": 2,
+            },
+            {
+                "range": {
+                    "start": {"line": 3, "character": 11},
+                    "end": {"line": 3, "character": 16},
+                },
+                "kind": 2,
+            },
+        ],
+    }]
+
+    completion_messages = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 6,
         "method": "textDocument/completion",
         "params": {
             "textDocument": {"uri": uri},
@@ -208,7 +246,7 @@ def test_lsp_open_definition_hover_and_references(tmp_path):
 
     prepare_rename_messages = server.handle_message({
         "jsonrpc": "2.0",
-        "id": 6,
+        "id": 7,
         "method": "textDocument/prepareRename",
         "params": {
             "textDocument": {"uri": uri},
@@ -217,7 +255,7 @@ def test_lsp_open_definition_hover_and_references(tmp_path):
     })
     assert prepare_rename_messages == [{
         "jsonrpc": "2.0",
-        "id": 6,
+        "id": 7,
         "result": {
             "range": {
                 "start": {"line": 2, "character": 13},
@@ -229,7 +267,7 @@ def test_lsp_open_definition_hover_and_references(tmp_path):
 
     rename_messages = server.handle_message({
         "jsonrpc": "2.0",
-        "id": 7,
+        "id": 8,
         "method": "textDocument/rename",
         "params": {
             "textDocument": {"uri": uri},
@@ -239,7 +277,7 @@ def test_lsp_open_definition_hover_and_references(tmp_path):
     })
     assert rename_messages == [{
         "jsonrpc": "2.0",
-        "id": 7,
+        "id": 8,
         "result": {
             "changes": {
                 uri: [
@@ -547,6 +585,150 @@ def test_lsp_module_imports_resolve_to_local_module(tmp_path):
     }]
 
 
+def test_lsp_definition_resolves_python_imports(tmp_path):
+    inv_path = tmp_path / "inv.ord"
+    inv_path.write_text(
+        "from ordec.core import *\n"
+        "from ordec.lib.generic_mos import Nmos, Pmos\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        return Symbol(cell=self)\n"
+        "\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        pd = Nmos().symbol\n"
+        "        pu = Pmos().symbol\n"
+    )
+
+    server = OrdecLanguageServer()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    })
+
+    uri = inv_path.resolve().as_uri()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "text": inv_path.read_text(),
+            },
+        },
+    })
+
+    symbol_definition = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "textDocument/definition",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 4, "character": 23},
+        },
+    })
+    assert symbol_definition[0]["result"]["uri"].endswith("/ordec/core/schema.py")
+
+    nmos_definition = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "textDocument/definition",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 8, "character": 14},
+        },
+    })
+    assert nmos_definition[0]["id"] == 3
+    assert nmos_definition[0]["result"] is not None
+    assert nmos_definition[0]["result"]["uri"].endswith("/ordec/lib/generic_mos.py")
+
+
+def test_lsp_definition_resolves_python_members(tmp_path):
+    inv_path = tmp_path / "inv.ord"
+    inv_path.write_text(
+        "from ordec.core import *\n"
+        "from ordec.lib.generic_mos import Nmos, Pmos\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        port vdd: .pos=(2,13)\n"
+        "        port a: .pos=(1,7)\n"
+        "        Nmos pd:\n"
+        "            .s -- vdd\n"
+        "        Pmos pu:\n"
+        "            .$l = 400n\n"
+        "\n"
+        "        pd.$l = 350u\n"
+        "\n"
+        "        for instance in pu, pd:\n"
+        "            instance.g -- a\n"
+    )
+
+    server = OrdecLanguageServer()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    })
+
+    uri = inv_path.resolve().as_uri()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "text": inv_path.read_text(),
+            },
+        },
+    })
+
+    source_definition = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "textDocument/definition",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 8, "character": 13},
+        },
+    })
+    assert source_definition[0]["result"]["uri"].endswith("/ordec/lib/generic_mos.py")
+    assert source_definition[0]["result"]["range"]["start"]["line"] == 53
+
+    param_definition = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "textDocument/definition",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 10, "character": 14},
+        },
+    })
+    assert param_definition[0]["result"]["uri"].endswith("/ordec/lib/generic_mos.py")
+    assert param_definition[0]["result"]["range"]["start"]["line"] == 26
+
+    loop_definition = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "textDocument/definition",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 15, "character": 21},
+        },
+    })
+    assert loop_definition[0]["result"]["uri"].endswith("/ordec/lib/generic_mos.py")
+    assert loop_definition[0]["result"]["range"]["start"]["line"] in (52, 75)
+
+
 def test_lsp_local_variables_resolve_and_rename(tmp_path):
     local_path = tmp_path / "locals.ord"
     local_path.write_text(
@@ -692,6 +874,138 @@ def test_lsp_local_variables_resolve_and_rename(tmp_path):
                         "newText": "signal",
                     },
                 ],
+            },
+        },
+    }]
+
+
+def test_lsp_completion_tolerates_incomplete_import_syntax(tmp_path):
+    local_path = tmp_path / "broken.ord"
+    local_path.write_text("from ...\n")
+
+    server = OrdecLanguageServer()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    })
+
+    uri = local_path.resolve().as_uri()
+    open_messages = server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "text": local_path.read_text(),
+            },
+        },
+    })
+    assert open_messages[0]["params"]["diagnostics"][0]["severity"] == 1
+
+    completion_messages = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "textDocument/completion",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 0, "character": 7},
+        },
+    })
+    completion_map = {
+        item["label"]: {
+            "kind": item["kind"],
+            "detail": item["detail"],
+        }
+        for item in completion_messages[0]["result"]
+    }
+
+    assert completion_map["cell"] == {
+        "kind": 14,
+        "detail": "keyword",
+    }
+    assert completion_map["viewgen"] == {
+        "kind": 14,
+        "detail": "keyword",
+    }
+
+
+def test_lsp_definition_resolves_context_declared_names(tmp_path):
+    local_path = tmp_path / "inv.ord"
+    local_path.write_text(
+        "cell Inv:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        port vss: .align=South\n"
+        "        Nmos pd:\n"
+        "            .s -- vss\n"
+        "        pd.$l = 350u\n"
+    )
+
+    server = OrdecLanguageServer()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    })
+
+    uri = local_path.resolve().as_uri()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "text": local_path.read_text(),
+            },
+        },
+    })
+
+    pd_definition = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "textDocument/definition",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 5, "character": 9},
+        },
+    })
+    assert pd_definition == [{
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+            "uri": uri,
+            "range": {
+                "start": {"line": 3, "character": 13},
+                "end": {"line": 3, "character": 15},
+            },
+        },
+    }]
+
+    vss_definition = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "textDocument/definition",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 4, "character": 18},
+        },
+    })
+    assert vss_definition == [{
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": {
+            "uri": uri,
+            "range": {
+                "start": {"line": 2, "character": 13},
+                "end": {"line": 2, "character": 16},
             },
         },
     }]
