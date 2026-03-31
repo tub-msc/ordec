@@ -36,6 +36,24 @@ def test_lsp_initialize_exposes_core_capabilities(tmp_path):
                 "completionProvider": {
                     "resolveProvider": False,
                 },
+                "foldingRangeProvider": True,
+                "selectionRangeProvider": True,
+                "semanticTokensProvider": {
+                    "legend": {
+                        "tokenTypes": [
+                            "namespace",
+                            "class",
+                            "function",
+                            "parameter",
+                            "variable",
+                            "property",
+                        ],
+                        "tokenModifiers": [
+                            "definition",
+                        ],
+                    },
+                    "full": True,
+                },
             },
         },
     }]
@@ -729,6 +747,121 @@ def test_lsp_definition_resolves_python_members(tmp_path):
     assert loop_definition[0]["result"]["range"]["start"]["line"] in (52, 75)
 
 
+def test_lsp_member_references_and_rename_guard(tmp_path):
+    inv_path = tmp_path / "inv.ord"
+    inv_path.write_text(
+        "from ordec.core import *\n"
+        "from ordec.lib.generic_mos import Nmos, Pmos\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        Nmos pd:\n"
+        "            .s -- vdd\n"
+        "        Pmos pu:\n"
+        "            .$l = 400n\n"
+        "\n"
+        "        pd.$l = 350u\n"
+    )
+
+    server = OrdecLanguageServer()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    })
+
+    uri = inv_path.resolve().as_uri()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "text": inv_path.read_text(),
+            },
+        },
+    })
+
+    reference_messages = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "textDocument/references",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 8, "character": 14},
+        },
+    })
+    assert reference_messages == [{
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": [
+            {
+                "uri": uri,
+                "range": {
+                    "start": {"line": 8, "character": 14},
+                    "end": {"line": 8, "character": 15},
+                },
+            },
+            {
+                "uri": uri,
+                "range": {
+                    "start": {"line": 10, "character": 12},
+                    "end": {"line": 10, "character": 13},
+                },
+            },
+        ],
+    }]
+
+    highlight_messages = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "textDocument/documentHighlight",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 8, "character": 14},
+        },
+    })
+    assert highlight_messages == [{
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": [
+            {
+                "range": {
+                    "start": {"line": 8, "character": 14},
+                    "end": {"line": 8, "character": 15},
+                },
+                "kind": 2,
+            },
+            {
+                "range": {
+                    "start": {"line": 10, "character": 12},
+                    "end": {"line": 10, "character": 13},
+                },
+                "kind": 2,
+            },
+        ],
+    }]
+
+    prepare_rename_messages = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "textDocument/prepareRename",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 8, "character": 14},
+        },
+    })
+    assert prepare_rename_messages == [{
+        "jsonrpc": "2.0",
+        "id": 4,
+        "result": None,
+    }]
+
+
 def test_lsp_local_variables_resolve_and_rename(tmp_path):
     local_path = tmp_path / "locals.ord"
     local_path.write_text(
@@ -1009,3 +1142,196 @@ def test_lsp_definition_resolves_context_declared_names(tmp_path):
             },
         },
     }]
+
+
+def test_lsp_folding_ranges(tmp_path):
+    server = OrdecLanguageServer()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    })
+
+    # Verify the capability is advertised.
+    init_response = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 99,
+        "method": "initialize",
+        "params": {"rootUri": tmp_path.resolve().as_uri()},
+    })
+    assert init_response[0]["result"]["capabilities"]["foldingRangeProvider"] is True
+
+    ord_text = (
+        "from .helpers import foo\n"
+        "from .helpers import bar\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen layout() -> Layout:\n"
+        "        path vdd\n"
+        "\n"
+        "def helper(x):\n"
+        "    return x\n"
+    )
+
+    uri = "file:///tmp/fold_test.ord"
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "text": ord_text,
+            },
+        },
+    })
+
+    folding_response = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "textDocument/foldingRange",
+        "params": {
+            "textDocument": {"uri": uri},
+        },
+    })
+
+    result = folding_response[0]["result"]
+
+    # Import block: lines 0-1 (0-indexed)
+    assert {"startLine": 0, "endLine": 1, "kind": "imports"} in result
+
+    # cell Inv (multi-line): startLine=3
+    cell_folds = [r for r in result if r["startLine"] == 3 and "kind" not in r]
+    assert len(cell_folds) == 1
+
+    # def helper (multi-line): startLine=7
+    helper_folds = [r for r in result if r["startLine"] == 7 and "kind" not in r]
+    assert len(helper_folds) == 1
+
+
+def test_lsp_selection_ranges(tmp_path):
+    server = OrdecLanguageServer()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    })
+
+    # Verify capability is advertised.
+    init_response = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 99,
+        "method": "initialize",
+        "params": {"rootUri": tmp_path.resolve().as_uri()},
+    })
+    assert init_response[0]["result"]["capabilities"]["selectionRangeProvider"] is True
+
+    ord_text = (
+        "cell Inv:\n"
+        "    viewgen layout() -> Layout:\n"
+        "        path vdd\n"
+    )
+
+    uri = "file:///tmp/sel_test.ord"
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "text": ord_text,
+            },
+        },
+    })
+
+    # Request selection range at "layout" (line 1, character 12 — 0-indexed).
+    sel_response = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "textDocument/selectionRange",
+        "params": {
+            "textDocument": {"uri": uri},
+            "positions": [{"line": 1, "character": 12}],
+        },
+    })
+
+    result = sel_response[0]["result"]
+    assert len(result) == 1
+    assert result[0] is not None
+
+    # Innermost range should be the "layout" token (0-indexed: line 1, char 12-18).
+    innermost = result[0]
+    assert innermost["range"]["start"]["line"] == 1
+    assert innermost["range"]["start"]["character"] == 12
+    assert innermost["range"]["end"]["line"] == 1
+    assert innermost["range"]["end"]["character"] == 18
+
+    # Should have a parent (viewgen scope or cell scope).
+    assert "parent" in innermost
+
+
+def test_lsp_semantic_tokens(tmp_path):
+    server = OrdecLanguageServer()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    })
+
+    # Verify capability is advertised with legend.
+    init_response = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 99,
+        "method": "initialize",
+        "params": {"rootUri": tmp_path.resolve().as_uri()},
+    })
+    provider = init_response[0]["result"]["capabilities"]["semanticTokensProvider"]
+    assert provider["full"] is True
+    assert "namespace" in provider["legend"]["tokenTypes"]
+    assert "class" in provider["legend"]["tokenTypes"]
+    assert "definition" in provider["legend"]["tokenModifiers"]
+
+    ord_text = (
+        "cell Inv:\n"
+        "    def build(self):\n"
+        "        return self\n"
+    )
+
+    uri = "file:///tmp/sem_test.ord"
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "text": ord_text,
+            },
+        },
+    })
+
+    sem_response = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "textDocument/semanticTokens/full",
+        "params": {
+            "textDocument": {"uri": uri},
+        },
+    })
+
+    data = sem_response[0]["result"]["data"]
+    assert isinstance(data, list)
+    # data is a flat list of 5-tuples: deltaLine, deltaChar, length, type, modifiers
+    assert len(data) % 5 == 0
+    # Should have at least Inv (class), build (function), self (parameter) x2
+    assert len(data) >= 20  # at least 4 tokens
