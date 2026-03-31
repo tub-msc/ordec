@@ -56,15 +56,18 @@ extra = [
 
 [project.scripts]
 ordec = "ordec.__main__:main"
+ordec-lsp = "ordec.lsp:main"
 
 [tool.setuptools]
 packages = [
     "ordec",
+    "ordec.analysis",
     "ordec.ord",
     "ordec.core",
     "ordec.layout",
     "ordec.lib",
     "ordec.examples",
+    "ordec.lsp",
     "ordec.schematic",
     "ordec.sim",
 ]
