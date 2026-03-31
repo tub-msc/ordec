@@ -93,7 +93,6 @@ lambda_kwparams: "**" name ","?
             | global_stmt
             | nonlocal_stmt
             | assert_stmt
-            | connect_stmt
             | path_stmt
             | net_stmt
             | constrain_stmt
@@ -380,7 +379,6 @@ RATIONAL: DEC_NUMBER SLASH DEC_NUMBER
         | DEC_NUMBER SI?
         | FLOAT_NUMBER SI?
 
-connect_stmt: testlist_star_expr "--" testlist_star_expr
 celldef: "cell" name ":" suite
 viewgen: "viewgen" name ["(" [arguments] ")"] "->" name ":" suite
 constrain_stmt: "!" test

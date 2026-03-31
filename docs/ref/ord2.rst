@@ -137,23 +137,50 @@ Every time a node statement (viewgen, port, or a schematic instance) is encounte
 
                 pd = context.add(('pd',), SchemInstanceUnresolved(resolver = lambda **params: Nmos(**params).symbol))
                 with context.Context(pd):
-                    context.root().s.__wire_op__(vss.ref)
-                    context.root().b.__wire_op__(vss.ref)
-                    context.root().d.__wire_op__(y.ref)
+                    context.root().s -- vss.ref
+                    context.root().b -- vss.ref
+                    context.root().d -- y.ref
                     context.root().pos = (3,2)
                     context.root().params.l = R('400n')
 
                 pu = context.add(('pu',), SchemInstanceUnresolved(resolver = lambda **params: Pmos(**params).symbol))
                 with context.Context(pu):
-                    context.root().s.__wire_op__(vdd.ref)
-                    context.root().b.__wire_op__(vdd.ref)
-                    context.root().d.__wire_op__(y.ref)
+                    context.root().s -- vdd.ref
+                    context.root().b -- vdd.ref
+                    context.root().d -- y.ref
                     context.root().pos = (3,8)
                     context.root().params.l = R('400n')
 
                 for instance in pu, pd:
-                    instance.g.__wire_op__(a.ref)
+                    instance.g -- a.ref
                 return context.root().postprocess()
+
+
+Connection Operator ``--``
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``--`` operator connects an instance pin to a net (or vice versa).  It is
+not a dedicated grammar rule but a **pseudo-operator** that relies on standard
+Python parsing: ``a -- b`` is parsed as ``a - (-b)``, combining subtraction
+(``__sub__``) and negation (``__neg__``).  Both operand orders are supported,
+so ``inst.d -- vss`` and ``vss -- inst.d`` are equivalent.
+
+Internally, the negation step returns a ``NegatedWireOperand`` and the
+subtraction step detects this sentinel and calls ``__wire_op__`` to create the
+actual connection node (``SchemInstanceConn`` or
+``SchemInstanceUnresolvedConn``).
+
+.. code-block::
+
+    # These two forms are equivalent:
+    inst.d -- vss      # pin -- net
+    vss -- inst.d      # net -- pin
+
+    # Python sees:  inst.d.__sub__(vss.__neg__())
+    #          or:  vss.__sub__(inst.d.__neg__())  → fallback to _NegatedForWire.__rsub__
+
+Because ``--`` is plain Python arithmetic, it coexists with regular numeric
+expressions: ``2 -- 2`` evaluates to ``4`` as expected.
 
 
 The following summary shows the most important functions and classes of ORD2. Please refer to the Python codebase for more background information and details.

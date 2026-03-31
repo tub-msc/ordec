@@ -156,15 +156,6 @@ class Ord2Transformer(PythonTransformer):
         )
         return func_def
 
-    def connect_stmt(self, nodes):
-        """ connect stmt x -- b"""
-        connect_lhs = nodes[0]
-        connect_rhs = nodes[1]
-        call = ast.Call(func=self.ast_attribute(connect_lhs, attr="__wire_op__"),
-                        args=[connect_rhs],
-                        keywords=[])
-        return ast.Expr(value=call)
-
     def constrain_stmt(self, nodes):
         """ ! x >= 200 """
         return ast.Expr(

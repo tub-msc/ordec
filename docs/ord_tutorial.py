@@ -181,8 +181,9 @@ Inv().schematic
 
 # ### 4.4 Connections
 #
-# Connections between elements are another unique feature of the ORD language. 
-# They use the `--` operator and should always be connected from an instance to a `port` or `net`.
+# Connections between elements are another unique feature of the ORD language.
+# They use the `--` pseudo-operator to connect an instance pin to a `port` or `net`.
+# The operator is commutative: `inst.d -- vss` and `vss -- inst.d` are equivalent.
 
 # ### 4.5 Nets
 #

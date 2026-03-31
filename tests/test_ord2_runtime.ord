@@ -168,6 +168,36 @@ def test_mixed_unresolved_resolved_instances():
     # No unresolved connections remain
     assert not list(root.all(SchemInstanceUnresolvedConn))
 
+def test_wire_op():
+    # The -- pseudo-operator is commutative: net -- pin and pin -- net should produce the same result.
+    from ordec.lib import Vdc, Gnd
+
+    root = Schematic()
+    with root.ctx():
+        net vss, mid
+
+        # pin -- net (normal order)
+        Vdc('1') v1: .p -- mid; .m -- vss; .pos = (0, 6)
+        # net -- pin (reversed order)
+        Res r1: .$r = '1k'; mid -- .p; vss -- .m; .pos = (5, 6)
+        # Also reversed for a Cell instance
+        Gnd() gnd: vss -- .p; .pos = (0, 0)
+
+    # All connections should be created regardless of operand order
+    v1_conns = list(root.all(SchemInstanceConn.ref_idx.query(v1)))
+    assert len(v1_conns) == 2
+
+    r1_conns = list(root.all(SchemInstanceUnresolvedConn.ref_idx.query(r1)))
+    assert len(r1_conns) == 2
+
+    gnd_conns = list(root.all(SchemInstanceConn.ref_idx.query(gnd)))
+    assert len(gnd_conns) == 1
+
+    # Postprocess should resolve everything normally
+    root.postprocess()
+    all_conns = list(root.all(SchemInstanceConn))
+    assert len(all_conns) == 5
+
 cell LayoutTestCell:
     viewgen symbol -> Symbol:
         pass

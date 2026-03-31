@@ -344,6 +344,25 @@ class Schematic(SubgraphRoot):
         from ..render import render
         return render(self).webdata()
 
+class NegatedWireOperand:
+    """Wrapper enabling the ``--`` pseudo-operator for schematic wiring.
+
+    The ``--`` connection operator (e.g. ``inst.d -- vss``) is not a dedicated
+    grammar rule but a combination of Python's subtraction and negation:
+    ``a -- b`` is parsed as ``a.__sub__(b.__neg__())``.  Both operand orders
+    are supported (pin -- net *and* net -- pin) so the operator is commutative.
+    """
+    __slots__ = ('wrapped',)
+    def __init__(self, wrapped):
+        self.wrapped = wrapped
+
+    def __rsub__(self, other):
+        # Supports net -- pin (i.e. net - (-pin))
+        wire_op = getattr(self.wrapped, '__wire_op__', None)
+        if wire_op is not None:
+            return wire_op(other)
+        return NotImplemented
+
 @public
 class Net(Node):
     in_subgraphs = [Schematic]
@@ -351,6 +370,9 @@ class Net(Node):
     auto_wire = Attr(bool, default=True) #: Controls whether the Net is auto-wired
 
     pin_idx = Index(pin)
+
+    def __neg__(self):
+        return NegatedWireOperand(self)
 
     @property
     def port(self):
@@ -419,9 +441,17 @@ class SchemInstanceSubcursor(tuple):
         """Support indexing into pin hierarchies (e.g., inst['d'][0].pos)."""
         return SchemInstanceSubcursor((self.inst(), self.node()[key]))
 
+    def __neg__(self):
+        return NegatedWireOperand(self)
+
     def __wire_op__(self, here):
         conn = self.inst() % SchemInstanceConn(here=here, there=self.node())
         return conn
+
+    def __sub__(self, other):
+        if isinstance(other, NegatedWireOperand):
+            return self.__wire_op__(other.wrapped)
+        return NotImplemented
 
     def __getattr__(self, name):
         inner_ret = getattr(self.node(), name)
@@ -527,10 +557,18 @@ class SchemInstanceUnresolvedSubcursor(tuple):
         # self[1:], but without calling SchemInstanceUnresolvedCursor.__getitem__
         return tuple.__getitem__(self, slice(1,None))
 
+    def __neg__(self):
+        return NegatedWireOperand(self)
+
     def __wire_op__(self, here):
         conn = self.instanceunresolved % \
             SchemInstanceUnresolvedConn(here=here, there=self.instancepath)
         return conn
+
+    def __sub__(self, other):
+        if isinstance(other, NegatedWireOperand):
+            return self.__wire_op__(other.wrapped)
+        return NotImplemented
     
 @public
 class SchemInstanceUnresolved(Node):
