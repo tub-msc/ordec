@@ -759,11 +759,27 @@ class AnalysisSession:
                 "range": occurrence["range"],
             })
 
+        for occurrence in analysis.member_occurrences:
+            candidates.append({
+                "name": occurrence["name"],
+                "range": occurrence["range"],
+            })
+
         return candidates
 
     def definition_key(self, definition):
         if definition.get("binding_id") is not None and not definition.get("exported"):
             return (definition["uri"], definition["binding_id"])
+
+        selection_range = definition.get("selection_range")
+        if selection_range is not None:
+            return (
+                definition["uri"],
+                selection_range.start.line,
+                selection_range.start.character,
+                selection_range.end.line,
+                selection_range.end.character,
+            )
 
         return (
             definition["uri"],
@@ -974,6 +990,16 @@ class AnalysisSession:
 
         return None
 
+    def member_occurrence_at_position(self, uri: str, position: AnalysisPosition):
+        if not self.ensure_document(uri):
+            return None
+
+        for occurrence in self.analyze(uri).member_occurrences:
+            if range_contains(occurrence["range"], position):
+                return occurrence
+
+        return None
+
     def completions(self, uri: str, position: AnalysisPosition):
         if not self.ensure_document(uri):
             return []
@@ -1060,6 +1086,205 @@ class AnalysisSession:
             result.append(items[label])
         return result
 
+    def folding_ranges(self, uri: str):
+        if not self.ensure_document(uri):
+            return []
+
+        analysis = self.analyze(uri)
+        ranges = []
+
+        # Fold each multi-line symbol (cell, viewgen, function, class, context, path, net).
+        for symbol in analysis.symbols:
+            start_line = symbol.range.start.line
+            end_line = symbol.range.end.line
+            if end_line > start_line:
+                ranges.append({
+                    "start_line": start_line,
+                    "end_line": end_line,
+                    "kind": "region",
+                })
+
+        # Fold consecutive import blocks.
+        if analysis.import_entries:
+            import_lines = set()
+            for entry in analysis.import_entries:
+                for line in range(entry.range.start.line, entry.range.end.line + 1):
+                    import_lines.add(line)
+
+            sorted_lines = sorted(import_lines)
+            block_start = sorted_lines[0]
+            block_end = sorted_lines[0]
+            for line in sorted_lines[1:]:
+                if line == block_end + 1:
+                    block_end = line
+                else:
+                    if block_end > block_start:
+                        ranges.append({
+                            "start_line": block_start,
+                            "end_line": block_end,
+                            "kind": "imports",
+                        })
+                    block_start = line
+                    block_end = line
+
+            if block_end > block_start:
+                ranges.append({
+                    "start_line": block_start,
+                    "end_line": block_end,
+                    "kind": "imports",
+                })
+
+        ranges.sort(key=lambda r: (r["start_line"], r["end_line"]))
+        return ranges
+
+    def selection_ranges(self, uri: str, positions):
+        if not self.ensure_document(uri):
+            return [None for _ in positions]
+
+        analysis = self.analyze(uri)
+
+        # Build a sorted list of candidate containers from scopes and symbols.
+        containers = []
+        for scope in analysis.scopes.values():
+            containers.append(scope["range"])
+        for symbol in analysis.symbols:
+            containers.append(symbol.range)
+            containers.append(symbol.selection_range)
+        for binding in analysis.bindings:
+            containers.append(binding["range"])
+            containers.append(binding["selection_range"])
+
+        # Deduplicate and sort by size descending (outermost first).
+        unique_containers = sorted(
+            set(containers),
+            key=lambda r: (
+                -(r.end.line - r.start.line) * 10000 - (r.end.character - r.start.character),
+                r.start.line,
+                r.start.character,
+            ),
+        )
+
+        results = []
+        for position in positions:
+            # Find all containers that contain this position, sorted outermost first.
+            matching = []
+            for container in unique_containers:
+                if range_contains(container, position) or (
+                    position_before_or_equal(container.start, position)
+                    and position_before_or_equal(position, container.end)
+                ):
+                    matching.append(container)
+
+            # Also include the name token at the position as the innermost range.
+            name_info = self.name_at_position(uri, position)
+            if name_info is not None:
+                matching.append(name_info["range"])
+
+            if not matching:
+                results.append(None)
+                continue
+
+            # Deduplicate and sort from outermost to innermost (largest to smallest).
+            seen = set()
+            deduplicated = []
+            for r in matching:
+                key = (r.start.line, r.start.character, r.end.line, r.end.character)
+                if key not in seen:
+                    seen.add(key)
+                    deduplicated.append(r)
+
+            deduplicated.sort(
+                key=lambda r: (
+                    -(r.end.line - r.start.line) * 10000 - (r.end.character - r.start.character),
+                    r.start.line,
+                    r.start.character,
+                ),
+            )
+
+            # Build the chain from outermost to innermost.
+            chain = None
+            for r in deduplicated:
+                chain = {
+                    "range": r,
+                    "parent": chain,
+                }
+
+            results.append(chain)
+
+        return results
+
+    def semantic_tokens(self, uri: str):
+        if not self.ensure_document(uri):
+            return []
+
+        analysis = self.analyze(uri)
+        tokens = []
+
+        # Classify occurrences by their resolved binding kind.
+        for occurrence in analysis.occurrences:
+            binding = analysis.binding_map.get(occurrence["binding_id"])
+            if binding is None:
+                continue
+
+            kind = binding["kind"]
+            token_type = "variable"
+            if kind == "class":
+                token_type = "class"
+            elif kind == "function":
+                token_type = "function"
+            elif kind == "parameter":
+                token_type = "parameter"
+
+            modifiers = []
+            if occurrence["range"] == binding["selection_range"]:
+                modifiers.append("definition")
+
+            tokens.append({
+                "range": occurrence["range"],
+                "type": token_type,
+                "modifiers": modifiers,
+            })
+
+        # Classify member occurrences as properties.
+        for occurrence in analysis.member_occurrences:
+            tokens.append({
+                "range": occurrence["range"],
+                "type": "property",
+                "modifiers": [],
+            })
+
+        # Classify import names.
+        for entry in analysis.import_entries:
+            if entry.export_name == "*":
+                continue
+
+            token_type = "namespace" if entry.kind == "import" else "variable"
+            tokens.append({
+                "range": entry.selection_range,
+                "type": token_type,
+                "modifiers": [],
+            })
+
+        # Sort by position for delta encoding.
+        tokens.sort(key=lambda t: (t["range"].start.line, t["range"].start.character))
+
+        # Deduplicate: if a binding definition and an import entry cover the
+        # same range, keep the first (occurrence-based) entry.
+        deduplicated = []
+        seen = set()
+        for token in tokens:
+            key = (
+                token["range"].start.line,
+                token["range"].start.character,
+                token["range"].end.line,
+                token["range"].end.character,
+            )
+            if key not in seen:
+                seen.add(key)
+                deduplicated.append(token)
+
+        return deduplicated
+
     def workspace_symbols(self, query: str = ""):
         query = query.lower()
         result = []
@@ -1084,6 +1309,9 @@ class AnalysisSession:
         return result
 
     def prepare_rename(self, uri: str, position: AnalysisPosition):
+        if self.member_occurrence_at_position(uri, position) is not None:
+            return None
+
         name_info = self.name_at_position(uri, position)
         if name_info is None:
             return None
@@ -1099,6 +1327,9 @@ class AnalysisSession:
     def rename(self, uri: str, position: AnalysisPosition, new_name: str):
         if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", new_name) is None:
             raise ValueError("Invalid identifier: {}".format(new_name))
+
+        if self.member_occurrence_at_position(uri, position) is not None:
+            return None
 
         name_info = self.name_at_position(uri, position)
         if name_info is None:

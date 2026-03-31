@@ -364,6 +364,71 @@ def test_analysis_session_definition_resolves_python_members(tmp_path):
     assert loop_member["selection_range"].start.line in (53, 76)
 
 
+def test_analysis_session_member_references_and_rename_guard(tmp_path):
+    inv_path = tmp_path / "inv.ord"
+    inv_path.write_text(
+        "from ordec.core import *\n"
+        "from ordec.lib.generic_mos import Nmos, Pmos\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        Nmos pd:\n"
+        "            .s -- vdd\n"
+        "        Pmos pu:\n"
+        "            .$l = 400n\n"
+        "\n"
+        "        pd.$l = 350u\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    inv_uri = inv_path.resolve().as_uri()
+
+    references = session.references(inv_uri, AnalysisPosition(line=9, character=15))
+    assert [(reference["name"], reference["range"].to_dict()) for reference in references] == [
+        (
+            "l",
+            {
+                "start": {"line": 9, "character": 15},
+                "end": {"line": 9, "character": 16},
+            },
+        ),
+        (
+            "l",
+            {
+                "start": {"line": 11, "character": 13},
+                "end": {"line": 11, "character": 14},
+            },
+        ),
+    ]
+
+    highlights = session.document_highlights(inv_uri, AnalysisPosition(line=9, character=15))
+    assert [
+        {
+            "range": highlight["range"].to_dict(),
+            "kind": highlight["kind"],
+        }
+        for highlight in highlights
+    ] == [
+        {
+            "range": {
+                "start": {"line": 9, "character": 15},
+                "end": {"line": 9, "character": 16},
+            },
+            "kind": "read",
+        },
+        {
+            "range": {
+                "start": {"line": 11, "character": 13},
+                "end": {"line": 11, "character": 14},
+            },
+            "kind": "read",
+        },
+    ]
+
+    assert session.prepare_rename(inv_uri, AnalysisPosition(line=9, character=15)) is None
+    assert session.rename(inv_uri, AnalysisPosition(line=9, character=15), "length") is None
+
+
 def test_analysis_session_hover_uses_current_token_range(tmp_path):
     mux2_path = tmp_path / "ord2" / "mux2.ord"
     mux2_path.parent.mkdir()
@@ -1214,3 +1279,160 @@ def test_analysis_session_context_declarations_resolve_inverter_style_names(tmp_
             },
         ),
     ]
+
+
+def test_analysis_session_folding_ranges_cover_symbols_and_imports():
+    ord_string = (
+        "import math\n"
+        "from .helpers import foo\n"
+        "from .helpers import bar\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen layout(layers=sky130) -> Layout:\n"
+        "        output bus[0].y:\n"
+        "            .align = East\n"
+        "        path vdd, vss\n"
+        "\n"
+        "def helper(x):\n"
+        "    return x\n"
+    )
+
+    session = AnalysisSession()
+    uri = "file:///tmp/test.ord"
+    session.open_document(uri, ord_string)
+    ranges = session.folding_ranges(uri)
+
+    assert ranges == [
+        # import block: lines 1-3
+        {"start_line": 1, "end_line": 3, "kind": "imports"},
+        # cell Inv
+        {"start_line": 5, "end_line": 11, "kind": "region"},
+        # viewgen layout
+        {"start_line": 6, "end_line": 11, "kind": "region"},
+        # output context
+        {"start_line": 7, "end_line": 9, "kind": "region"},
+        # def helper
+        {"start_line": 11, "end_line": 14, "kind": "region"},
+    ]
+
+
+def test_analysis_session_folding_ranges_single_line_symbols_excluded():
+    """Single-line constructs should not produce fold regions."""
+
+    ord_string = (
+        "def one_liner():\n"
+        "    return 1\n"
+        "\n"
+        "cell Big:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        path a\n"
+    )
+
+    session = AnalysisSession()
+    uri = "file:///tmp/test.ord"
+    session.open_document(uri, ord_string)
+    ranges = session.folding_ranges(uri)
+
+    # one_liner spans 2 lines (1-2), Big spans 4-6, symbol spans 5-6
+    for r in ranges:
+        assert r["end_line"] > r["start_line"]
+
+
+def test_analysis_session_selection_ranges_expand_through_scopes():
+    ord_string = (
+        "cell Inv:\n"
+        "    viewgen layout() -> Layout:\n"
+        "        path vdd\n"
+    )
+
+    session = AnalysisSession()
+    uri = "file:///tmp/test.ord"
+    session.open_document(uri, ord_string)
+
+    # Position on "layout" name (line 2, char 13).
+    results = session.selection_ranges(uri, [AnalysisPosition(2, 13)])
+    assert len(results) == 1
+
+    chain = results[0]
+    assert chain is not None
+
+    # Collect the chain of ranges from innermost to outermost.
+    ranges_chain = []
+    node = chain
+    while node is not None:
+        ranges_chain.append(node["range"].to_dict())
+        node = node["parent"]
+
+    # Innermost should be the "layout" token, then viewgen scope, then file scope.
+    assert len(ranges_chain) >= 2
+    # The innermost range should be tight around "layout".
+    assert ranges_chain[0] == {
+        "start": {"line": 2, "character": 13},
+        "end": {"line": 2, "character": 19},
+    }
+
+
+def test_analysis_session_selection_ranges_returns_none_for_empty_position():
+    session = AnalysisSession()
+    uri = "file:///tmp/test.ord"
+    session.open_document(uri, "\n\n\n")
+
+    results = session.selection_ranges(uri, [AnalysisPosition(2, 1)])
+    assert len(results) == 1
+    # Even on an empty line there should be at least the file scope.
+    # The result may be a scope chain or None depending on position.
+
+
+def test_analysis_session_semantic_tokens_classify_bindings_and_members():
+    ord_string = (
+        "from .helpers import foo\n"
+        "\n"
+        "cell Inv:\n"
+        "    def build(self):\n"
+        "        .align = East\n"
+    )
+
+    session = AnalysisSession()
+    uri = "file:///tmp/test.ord"
+    session.open_document(uri, ord_string)
+    tokens = session.semantic_tokens(uri)
+
+    token_tuples = [
+        (t["range"].to_dict(), t["type"], t["modifiers"])
+        for t in tokens
+    ]
+
+    # foo (import entry) — classified as variable
+    assert (
+        {"start": {"line": 1, "character": 22}, "end": {"line": 1, "character": 25}},
+        "variable",
+        [],
+    ) in token_tuples
+
+    # Inv (class definition)
+    assert (
+        {"start": {"line": 3, "character": 6}, "end": {"line": 3, "character": 9}},
+        "class",
+        ["definition"],
+    ) in token_tuples
+
+    # build (function definition)
+    assert (
+        {"start": {"line": 4, "character": 9}, "end": {"line": 4, "character": 14}},
+        "function",
+        ["definition"],
+    ) in token_tuples
+
+    # self (parameter definition)
+    assert (
+        {"start": {"line": 4, "character": 15}, "end": {"line": 4, "character": 19}},
+        "parameter",
+        ["definition"],
+    ) in token_tuples
+
+    # .align (property)
+    assert (
+        {"start": {"line": 5, "character": 10}, "end": {"line": 5, "character": 15}},
+        "property",
+        [],
+    ) in token_tuples

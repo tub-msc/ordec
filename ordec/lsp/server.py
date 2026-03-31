@@ -13,6 +13,22 @@ from ..analysis import AnalysisPosition
 from ..analysis import AnalysisSession
 
 
+SEMANTIC_TOKEN_TYPES = [
+    "namespace",
+    "class",
+    "function",
+    "parameter",
+    "variable",
+    "property",
+]
+SEMANTIC_TOKEN_MODIFIERS = [
+    "definition",
+]
+
+SEMANTIC_TOKEN_TYPE_MAP = {name: i for i, name in enumerate(SEMANTIC_TOKEN_TYPES)}
+SEMANTIC_TOKEN_MODIFIER_MAP = {name: i for i, name in enumerate(SEMANTIC_TOKEN_MODIFIERS)}
+
+
 class OrdecLanguageServer:
     def __init__(self):
         self.shutdown_requested = False
@@ -56,6 +72,15 @@ class OrdecLanguageServer:
                         },
                         "completionProvider": {
                             "resolveProvider": False,
+                        },
+                        "foldingRangeProvider": True,
+                        "selectionRangeProvider": True,
+                        "semanticTokensProvider": {
+                            "legend": {
+                                "tokenTypes": list(SEMANTIC_TOKEN_TYPES),
+                                "tokenModifiers": list(SEMANTIC_TOKEN_MODIFIERS),
+                            },
+                            "full": True,
                         },
                     },
                 },
@@ -208,6 +233,86 @@ class OrdecLanguageServer:
                 "jsonrpc": "2.0",
                 "id": message_id,
                 "result": result,
+            }]
+
+        if method == "textDocument/foldingRange":
+            uri = params["textDocument"]["uri"]
+            result = []
+            for folding_range in self.session.folding_ranges(uri):
+                entry = {
+                    "startLine": folding_range["start_line"] - 1,
+                    "endLine": folding_range["end_line"] - 1,
+                }
+                if folding_range["kind"] == "imports":
+                    entry["kind"] = "imports"
+                elif folding_range["kind"] == "comment":
+                    entry["kind"] = "comment"
+                result.append(entry)
+            return [{
+                "jsonrpc": "2.0",
+                "id": message_id,
+                "result": result,
+            }]
+
+        if method == "textDocument/selectionRange":
+            uri = params["textDocument"]["uri"]
+            positions = [
+                self.analysis_position(pos)
+                for pos in params["positions"]
+            ]
+            selection_ranges = self.session.selection_ranges(uri, positions)
+            result = []
+            for chain in selection_ranges:
+                if chain is None:
+                    result.append(None)
+                    continue
+
+                def build_lsp_chain(node):
+                    lsp_node = {
+                        "range": self.lsp_range(node["range"]),
+                    }
+                    if node["parent"] is not None:
+                        lsp_node["parent"] = build_lsp_chain(node["parent"])
+                    return lsp_node
+
+                result.append(build_lsp_chain(chain))
+            return [{
+                "jsonrpc": "2.0",
+                "id": message_id,
+                "result": result,
+            }]
+
+        if method == "textDocument/semanticTokens/full":
+            uri = params["textDocument"]["uri"]
+            tokens = self.session.semantic_tokens(uri)
+            data = []
+            prev_line = 0
+            prev_char = 0
+            for token in tokens:
+                line = token["range"].start.line - 1
+                char = token["range"].start.character - 1
+                length = (
+                    token["range"].end.character - token["range"].start.character
+                )
+                token_type = SEMANTIC_TOKEN_TYPE_MAP.get(token["type"], 0)
+                modifier_bits = 0
+                for modifier in token["modifiers"]:
+                    bit = SEMANTIC_TOKEN_MODIFIER_MAP.get(modifier)
+                    if bit is not None:
+                        modifier_bits |= 1 << bit
+
+                delta_line = line - prev_line
+                delta_char = char if delta_line != 0 else char - prev_char
+                data.extend([delta_line, delta_char, length, token_type, modifier_bits])
+                prev_line = line
+                prev_char = char
+
+            return [{
+                "jsonrpc": "2.0",
+                "id": message_id,
+                "result": {
+                    "data": data,
+                },
             }]
 
         if method == "workspace/symbol":
