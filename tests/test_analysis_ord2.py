@@ -1436,3 +1436,80 @@ def test_analysis_session_semantic_tokens_classify_bindings_and_members():
         "property",
         [],
     ) in token_tuples
+
+
+def test_analysis_session_cross_file_ord_cell_member_definition(tmp_path):
+    """Member accesses on instances of imported ORD cells resolve to context declarations."""
+
+    inv_path = tmp_path / "inverter.ord"
+    inv_path.write_text(
+        "cell Inv:\n"
+        "    input g:\n"
+        "        .width = 1\n"
+        "    output d:\n"
+        "        .width = 1\n"
+        "    path vdd, vss\n"
+    )
+
+    top_path = tmp_path / "top.ord"
+    top_path.write_text(
+        "from .inverter import Inv\n"
+        "\n"
+        "cell Top:\n"
+        "    Inv inv:\n"
+        "        .g -- signal_in\n"
+        "        .d -- signal_out\n"
+        "        .vdd -- power\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    top_uri = session.open_path(str(top_path))
+    inv_uri = inv_path.resolve().as_uri()
+
+    # .g should resolve to input g in inverter.ord
+    g_defn = session.definition(top_uri, AnalysisPosition(5, 10))
+    assert g_defn is not None
+    assert g_defn["uri"] == inv_uri
+    assert g_defn["name"] == "g"
+
+    # .d should resolve to output d in inverter.ord
+    d_defn = session.definition(top_uri, AnalysisPosition(6, 10))
+    assert d_defn is not None
+    assert d_defn["uri"] == inv_uri
+    assert d_defn["name"] == "d"
+
+    # .vdd should resolve to path vdd in inverter.ord
+    vdd_defn = session.definition(top_uri, AnalysisPosition(7, 10))
+    assert vdd_defn is not None
+    assert vdd_defn["uri"] == inv_uri
+    assert vdd_defn["name"] == "vdd"
+
+    # hover on .g should show the cross-file target
+    g_hover = session.hover(top_uri, AnalysisPosition(5, 10))
+    assert g_hover is not None
+    assert "g" in g_hover["contents"]
+    assert inv_uri in g_hover["contents"]
+
+
+def test_analysis_session_cross_file_ord_cell_member_same_file(tmp_path):
+    """Member accesses on instances of cells defined in the same file also resolve."""
+
+    single_path = tmp_path / "circuit.ord"
+    single_path.write_text(
+        "cell Driver:\n"
+        "    output q:\n"
+        "        .width = 1\n"
+        "\n"
+        "cell Top:\n"
+        "    Driver drv:\n"
+        "        .q -- out\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = session.open_path(str(single_path))
+
+    # .q should resolve to output q in Driver (same file)
+    q_defn = session.definition(uri, AnalysisPosition(7, 10))
+    assert q_defn is not None
+    assert q_defn["uri"] == uri
+    assert q_defn["name"] == "q"
