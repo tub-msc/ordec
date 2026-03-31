@@ -1335,3 +1335,76 @@ def test_lsp_semantic_tokens(tmp_path):
     assert len(data) % 5 == 0
     # Should have at least Inv (class), build (function), self (parameter) x2
     assert len(data) >= 20  # at least 4 tokens
+
+
+def test_lsp_cross_file_ord_cell_member_definition(tmp_path):
+    inv_path = tmp_path / "inverter.ord"
+    inv_path.write_text(
+        "cell Inv:\n"
+        "    input g:\n"
+        "        .width = 1\n"
+        "    output d:\n"
+        "        .width = 1\n"
+    )
+
+    top_path = tmp_path / "top.ord"
+    top_path.write_text(
+        "from .inverter import Inv\n"
+        "\n"
+        "cell Top:\n"
+        "    Inv inv:\n"
+        "        .g -- signal_in\n"
+    )
+
+    server = OrdecLanguageServer()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    })
+
+    top_uri = top_path.resolve().as_uri()
+    inv_uri = inv_path.resolve().as_uri()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": top_uri,
+                "version": 1,
+                "text": top_path.read_text(),
+            },
+        },
+    })
+
+    # .g (line 4, char 9 — 0-indexed) should resolve to input g in inverter.ord
+    defn_response = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "textDocument/definition",
+        "params": {
+            "textDocument": {"uri": top_uri},
+            "position": {"line": 4, "character": 9},
+        },
+    })
+
+    result = defn_response[0]["result"]
+    assert result is not None
+    assert result["uri"] == inv_uri
+
+    # hover on .g should mention the target file
+    hover_response = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "textDocument/hover",
+        "params": {
+            "textDocument": {"uri": top_uri},
+            "position": {"line": 4, "character": 9},
+        },
+    })
+    hover_result = hover_response[0]["result"]
+    assert hover_result is not None
+    assert "g" in hover_result["contents"]["value"]

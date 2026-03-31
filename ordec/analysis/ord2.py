@@ -952,6 +952,54 @@ class AnalysisSession:
             "range": hover_range,
         }
 
+    def ord_cell_member_definition(self, cell_uri: str, cell_name: str, member_name: str):
+        if not self.ensure_document(cell_uri):
+            return None
+
+        analysis = self.analyze(cell_uri)
+
+        # Find the cell symbol to identify its scope.
+        cell_symbol = None
+        for symbol in analysis.symbols:
+            if symbol.name == cell_name and symbol.kind == "class":
+                cell_symbol = symbol
+                break
+
+        if cell_symbol is None:
+            return None
+
+        # Find the cell's body scope — the scope whose range matches the cell
+        # and whose parent is the file-level scope.
+        cell_scope = None
+        for scope in analysis.scopes.values():
+            if scope["depth"] != 1:
+                continue
+            if not range_contains(scope["range"], cell_symbol.selection_range.start):
+                continue
+            cell_scope = scope
+            break
+
+        if cell_scope is None:
+            return None
+
+        # Look for a binding in the cell's body scope that matches the member name.
+        for binding_id in cell_scope["bindings"]:
+            binding = analysis.binding_map.get(binding_id)
+            if binding is None:
+                continue
+            if binding["name"] != member_name:
+                continue
+
+            return {
+                "uri": cell_uri,
+                "name": binding["name"],
+                "kind": binding["kind"],
+                "range": binding["range"],
+                "selection_range": binding["selection_range"],
+            }
+
+        return None
+
     def member_definition(self, uri: str, position: AnalysisPosition):
         if not self.ensure_document(uri):
             return None
@@ -977,16 +1025,26 @@ class AnalysisSession:
                 type_definition = self.resolve_name(uri, type_name)
                 if type_definition is None:
                     continue
-                if "python_module" not in type_definition or "python_class" not in type_definition:
-                    continue
 
-                match = self.python_class_member_definition(
-                    type_definition["python_module"],
-                    type_definition["python_class"],
-                    occurrence["name"],
-                )
-                if match is not None:
-                    return match
+                # Try Python class member resolution first.
+                if "python_module" in type_definition and "python_class" in type_definition:
+                    match = self.python_class_member_definition(
+                        type_definition["python_module"],
+                        type_definition["python_class"],
+                        occurrence["name"],
+                    )
+                    if match is not None:
+                        return match
+
+                # Try ORD cell member resolution for cross-file cells.
+                if type_definition.get("kind") == "class" and "uri" in type_definition:
+                    match = self.ord_cell_member_definition(
+                        type_definition["uri"],
+                        type_definition["name"],
+                        occurrence["name"],
+                    )
+                    if match is not None:
+                        return match
 
         return None
 
