@@ -275,6 +275,95 @@ def test_analysis_session_definition_resolves_import_alias(tmp_path):
     assert import_definition["name"] == "Mux2"
 
 
+def test_analysis_session_definition_resolves_python_imports(tmp_path):
+    inv_path = tmp_path / "inv.ord"
+    inv_path.write_text(
+        "from ordec.core import *\n"
+        "from ordec.lib.generic_mos import Nmos, Pmos\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        return Symbol(cell=self)\n"
+        "\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        pd = Nmos().symbol\n"
+        "        pu = Pmos().symbol\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    inv_uri = inv_path.resolve().as_uri()
+
+    symbol_definition = session.definition(inv_uri, AnalysisPosition(line=5, character=24))
+    assert symbol_definition["name"] == "Symbol"
+    assert symbol_definition["kind"] == "class"
+    assert symbol_definition["uri"].endswith("/ordec/core/schema.py")
+
+    constructor_definition = session.definition(inv_uri, AnalysisPosition(line=6, character=17))
+    assert constructor_definition["name"] == "Symbol"
+    assert constructor_definition["uri"] == symbol_definition["uri"]
+
+    schematic_definition = session.definition(inv_uri, AnalysisPosition(line=8, character=28))
+    assert schematic_definition["name"] == "Schematic"
+    assert schematic_definition["kind"] == "class"
+    assert schematic_definition["uri"].endswith("/ordec/core/schema.py")
+
+    nmos_definition = session.definition(inv_uri, AnalysisPosition(line=9, character=15))
+    assert nmos_definition["name"] == "Nmos"
+    assert nmos_definition["kind"] == "class"
+    assert nmos_definition["uri"].endswith("/ordec/lib/generic_mos.py")
+
+    pmos_definition = session.definition(inv_uri, AnalysisPosition(line=10, character=15))
+    assert pmos_definition["name"] == "Pmos"
+    assert pmos_definition["kind"] == "class"
+    assert pmos_definition["uri"].endswith("/ordec/lib/generic_mos.py")
+
+
+def test_analysis_session_definition_resolves_python_members(tmp_path):
+    inv_path = tmp_path / "inv.ord"
+    inv_path.write_text(
+        "from ordec.core import *\n"
+        "from ordec.lib.generic_mos import Nmos, Pmos\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        port vdd: .pos=(2,13)\n"
+        "        port a: .pos=(1,7)\n"
+        "        Nmos pd:\n"
+        "            .s -- vdd\n"
+        "        Pmos pu:\n"
+        "            .$l = 400n\n"
+        "\n"
+        "        pd.$l = 350u\n"
+        "\n"
+        "        for instance in pu, pd:\n"
+        "            instance.g -- a\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    inv_uri = inv_path.resolve().as_uri()
+
+    source_member = session.definition(inv_uri, AnalysisPosition(line=9, character=14))
+    assert source_member["name"] == "s"
+    assert source_member["uri"].endswith("/ordec/lib/generic_mos.py")
+    assert source_member["selection_range"].start.line == 54
+
+    implicit_param = session.definition(inv_uri, AnalysisPosition(line=11, character=15))
+    assert implicit_param["name"] == "l"
+    assert implicit_param["kind"] == "parameter"
+    assert implicit_param["uri"].endswith("/ordec/lib/generic_mos.py")
+    assert implicit_param["selection_range"].start.line == 27
+
+    explicit_param = session.definition(inv_uri, AnalysisPosition(line=13, character=13))
+    assert explicit_param["name"] == "l"
+    assert explicit_param["uri"] == implicit_param["uri"]
+    assert explicit_param["selection_range"] == implicit_param["selection_range"]
+
+    loop_member = session.definition(inv_uri, AnalysisPosition(line=16, character=22))
+    assert loop_member["name"] == "g"
+    assert loop_member["uri"].endswith("/ordec/lib/generic_mos.py")
+    assert loop_member["selection_range"].start.line in (53, 76)
+
+
 def test_analysis_session_hover_uses_current_token_range(tmp_path):
     mux2_path = tmp_path / "ord2" / "mux2.ord"
     mux2_path.parent.mkdir()
@@ -358,6 +447,62 @@ def test_analysis_session_references_follow_import_alias(tmp_path):
                 "end": {"line": 1, "character": 10},
             },
         ),
+    ]
+
+
+def test_analysis_session_document_highlights_follow_import_alias(tmp_path):
+    mux2_path = tmp_path / "ord2" / "mux2.ord"
+    mux2_path.parent.mkdir()
+    mux2_path.write_text(
+        "cell Mux2:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        path a\n"
+    )
+
+    nmux_path = tmp_path / "ord2" / "nmux.ord"
+    nmux_path.write_text(
+        "from .mux2 import Mux2 as Stage\n"
+        "\n"
+        "def helper(x=Stage):\n"
+        "    return Stage\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    nmux_uri = nmux_path.resolve().as_uri()
+
+    highlights = session.document_highlights(
+        nmux_uri,
+        AnalysisPosition(line=3, character=15),
+    )
+
+    assert [
+        {
+            "range": highlight["range"].to_dict(),
+            "kind": highlight["kind"],
+        }
+        for highlight in highlights
+    ] == [
+        {
+            "range": {
+                "start": {"line": 1, "character": 27},
+                "end": {"line": 1, "character": 32},
+            },
+            "kind": "write",
+        },
+        {
+            "range": {
+                "start": {"line": 3, "character": 14},
+                "end": {"line": 3, "character": 19},
+            },
+            "kind": "read",
+        },
+        {
+            "range": {
+                "start": {"line": 4, "character": 12},
+                "end": {"line": 4, "character": 17},
+            },
+            "kind": "read",
+        },
     ]
 
 
@@ -980,6 +1125,92 @@ def test_analysis_session_for_loop_variables_resolve_after_loop(tmp_path):
             {
                 "start": {"line": 4, "character": 12},
                 "end": {"line": 4, "character": 17},
+            },
+        ),
+    ]
+
+
+def test_analysis_session_completions_tolerate_incomplete_import_syntax(tmp_path):
+    local_path = tmp_path / "broken.ord"
+    local_path.write_text("from ...\n")
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = local_path.resolve().as_uri()
+    completions = session.completions(uri, AnalysisPosition(line=1, character=8))
+    completion_map = dict((item["label"], item) for item in completions)
+
+    assert completion_map["cell"]["kind"] == "keyword"
+    assert completion_map["viewgen"]["kind"] == "keyword"
+
+
+def test_analysis_session_context_declarations_resolve_inverter_style_names(tmp_path):
+    local_path = tmp_path / "inv.ord"
+    local_path.write_text(
+        "cell Inv:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        port vss: .align=South\n"
+        "        Nmos pd:\n"
+        "            .s -- vss\n"
+        "        pd.$l = 350u\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = local_path.resolve().as_uri()
+
+    pd_definition = session.definition(uri, AnalysisPosition(line=6, character=10))
+    assert pd_definition["uri"] == uri
+    assert pd_definition["name"] == "pd"
+    assert pd_definition["kind"] == "variable"
+    assert pd_definition["selection_range"].to_dict() == {
+        "start": {"line": 4, "character": 14},
+        "end": {"line": 4, "character": 16},
+    }
+
+    vss_definition = session.definition(uri, AnalysisPosition(line=5, character=19))
+    assert vss_definition["uri"] == uri
+    assert vss_definition["name"] == "vss"
+    assert vss_definition["kind"] == "variable"
+    assert vss_definition["selection_range"].to_dict() == {
+        "start": {"line": 3, "character": 14},
+        "end": {"line": 3, "character": 17},
+    }
+
+    pd_references = session.references(uri, AnalysisPosition(line=6, character=10))
+    assert [(ref["uri"], ref["name"], ref["range"].to_dict()) for ref in pd_references] == [
+        (
+            uri,
+            "pd",
+            {
+                "start": {"line": 4, "character": 14},
+                "end": {"line": 4, "character": 16},
+            },
+        ),
+        (
+            uri,
+            "pd",
+            {
+                "start": {"line": 6, "character": 9},
+                "end": {"line": 6, "character": 11},
+            },
+        ),
+    ]
+
+    vss_references = session.references(uri, AnalysisPosition(line=5, character=19))
+    assert [(ref["uri"], ref["name"], ref["range"].to_dict()) for ref in vss_references] == [
+        (
+            uri,
+            "vss",
+            {
+                "start": {"line": 3, "character": 14},
+                "end": {"line": 3, "character": 17},
+            },
+        ),
+        (
+            uri,
+            "vss",
+            {
+                "start": {"line": 5, "character": 19},
+                "end": {"line": 5, "character": 22},
             },
         ),
     ]

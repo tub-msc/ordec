@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # standard imports
+import ast
+import importlib.util
 from pathlib import Path
 import re
 from typing import List
@@ -105,6 +107,7 @@ class DocumentAnalysis:
         scopes=None,
         bindings=None,
         occurrences=None,
+        member_occurrences=None,
     ):
         self.uri = uri
         self.version = version
@@ -117,6 +120,7 @@ class DocumentAnalysis:
         self.bindings = bindings if bindings is not None else []
         self.binding_map = dict((binding["id"], binding) for binding in self.bindings)
         self.occurrences = occurrences if occurrences is not None else []
+        self.member_occurrences = member_occurrences if member_occurrences is not None else []
 
     def to_dict(self):
         return {
@@ -149,6 +153,7 @@ class AnalysisSession:
     def __init__(self, workspace_root: Optional[str] = None):
         self.workspace_root = workspace_root
         self.documents = dict()
+        self.python_modules = dict()
 
     def open_document(self, uri: str, text: str, version: Optional[int] = None):
         self.documents[uri] = {
@@ -202,6 +207,358 @@ class AnalysisSession:
         import_path = import_path.with_suffix(".ord")
         if import_path.exists():
             return import_path.resolve().as_uri()
+
+        return None
+
+    def resolve_python_module_path(self, module_name: str):
+        try:
+            spec = importlib.util.find_spec(module_name)
+        except (ImportError, ModuleNotFoundError, ValueError):
+            return None
+
+        if spec is None or spec.origin in (None, "built-in", "frozen"):
+            return None
+
+        path = Path(spec.origin)
+        if not path.exists():
+            return None
+
+        return path.resolve()
+
+    def python_module_info(self, module_name: str):
+        if module_name in self.python_modules:
+            return self.python_modules[module_name]
+
+        module_path = self.resolve_python_module_path(module_name)
+        if module_path is None:
+            self.python_modules[module_name] = None
+            return None
+
+        try:
+            source_data = module_path.read_text()
+            syntax_tree = ast.parse(source_data, filename=str(module_path))
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            self.python_modules[module_name] = None
+            return None
+
+        exports = dict()
+        reexports = []
+        star_modules = []
+        imports = dict()
+        import_members = dict()
+        classes = dict()
+
+        def node_range(node):
+            end_lineno = getattr(node, "end_lineno", node.lineno)
+            end_col_offset = getattr(node, "end_col_offset", node.col_offset)
+            return AnalysisRange(
+                start=AnalysisPosition(node.lineno, node.col_offset + 1),
+                end=AnalysisPosition(end_lineno, end_col_offset + 1),
+            )
+
+        def add_export(name, kind, node):
+            if name.startswith("_") or name in exports:
+                return
+
+            exports[name] = {
+                "uri": module_path.as_uri(),
+                "name": name,
+                "kind": kind,
+                "range": node_range(node),
+                "selection_range": AnalysisRange(
+                    start=AnalysisPosition(node.lineno, node.col_offset + 1),
+                    end=AnalysisPosition(node.lineno, node.col_offset + 1 + len(name)),
+                ),
+            }
+            if kind == "class":
+                exports[name]["python_module"] = module_name
+                exports[name]["python_class"] = name
+
+        def node_name(node):
+            if isinstance(node, ast.Name):
+                return node.id
+            if isinstance(node, ast.Attribute):
+                value_name = node_name(node.value)
+                if value_name is None:
+                    return None
+                return "{}.{}".format(value_name, node.attr)
+            return None
+
+        def resolve_imported_module(node):
+            import_name = "." * node.level
+            if node.module:
+                import_name += node.module
+
+            try:
+                return importlib.util.resolve_name(import_name, module_name)
+            except (ImportError, ValueError):
+                return None
+
+        for node in syntax_tree.body:
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    local_name = alias.asname or alias.name.split(".", 1)[0]
+                    imports[local_name] = alias.name
+                continue
+
+            if isinstance(node, ast.ImportFrom):
+                resolved_module = resolve_imported_module(node)
+                if resolved_module is None:
+                    continue
+
+                for alias in node.names:
+                    if alias.name == "*":
+                        star_modules.append(resolved_module)
+                        continue
+
+                    import_members[alias.asname or alias.name] = {
+                        "module": resolved_module,
+                        "export_name": alias.name,
+                    }
+                # Keep parsing the same node for top-level reexports below.
+
+            if isinstance(node, ast.ClassDef):
+                class_info = {
+                    "bases": [],
+                    "members": dict(),
+                }
+                for base_node in node.bases:
+                    base_name = node_name(base_node)
+                    if base_name is not None:
+                        class_info["bases"].append(base_name)
+
+                for class_node in node.body:
+                    if isinstance(class_node, ast.Assign):
+                        member_kind = "variable"
+                        if isinstance(class_node.value, ast.Call):
+                            func_name = node_name(class_node.value.func)
+                            if func_name == "Parameter":
+                                member_kind = "parameter"
+
+                        for target in class_node.targets:
+                            if not isinstance(target, ast.Name):
+                                continue
+                            if target.id.startswith("_"):
+                                continue
+
+                            class_info["members"].setdefault(target.id, {
+                                "uri": module_path.as_uri(),
+                                "name": target.id,
+                                "kind": member_kind,
+                                "range": node_range(target),
+                                "selection_range": node_range(target),
+                            })
+                        continue
+
+                    if isinstance(class_node, ast.AnnAssign) and isinstance(class_node.target, ast.Name):
+                        target = class_node.target
+                        if not target.id.startswith("_"):
+                            class_info["members"].setdefault(target.id, {
+                                "uri": module_path.as_uri(),
+                                "name": target.id,
+                                "kind": "variable",
+                                "range": node_range(target),
+                                "selection_range": node_range(target),
+                            })
+                        continue
+
+                    if not isinstance(class_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        continue
+
+                    container_names = set()
+                    for stmt in ast.walk(class_node):
+                        if not isinstance(stmt, ast.Assign):
+                            continue
+                        if len(stmt.targets) != 1 or not isinstance(stmt.targets[0], ast.Name):
+                            continue
+                        if not isinstance(stmt.value, ast.Call):
+                            continue
+
+                        func_name = node_name(stmt.value.func)
+                        if func_name not in ("Symbol", "Schematic"):
+                            continue
+
+                        container_names.add(stmt.targets[0].id)
+
+                    for stmt in ast.walk(class_node):
+                        targets = []
+                        if isinstance(stmt, ast.Assign):
+                            targets = stmt.targets
+                        elif isinstance(stmt, ast.AnnAssign):
+                            targets = [stmt.target]
+
+                        for target in targets:
+                            if not isinstance(target, ast.Attribute):
+                                continue
+                            if not isinstance(target.value, ast.Name):
+                                continue
+                            if target.value.id not in container_names:
+                                continue
+                            if target.attr.startswith("_"):
+                                continue
+
+                            member_kind = "variable"
+                            value = getattr(stmt, "value", None)
+                            if isinstance(value, ast.Call) and node_name(value.func) == "Pin":
+                                member_kind = "variable"
+
+                            class_info["members"].setdefault(target.attr, {
+                                "uri": module_path.as_uri(),
+                                "name": target.attr,
+                                "kind": member_kind,
+                                "range": node_range(target),
+                                "selection_range": AnalysisRange(
+                                    start=AnalysisPosition(target.end_lineno, target.end_col_offset - len(target.attr) + 1),
+                                    end=AnalysisPosition(target.end_lineno, target.end_col_offset + 1),
+                                ),
+                            })
+
+                classes[node.name] = class_info
+                add_export(node.name, "class", node)
+                continue
+
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                add_export(node.name, "function", node)
+                continue
+
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        add_export(target.id, "variable", target)
+                continue
+
+            if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                add_export(node.target.id, "variable", node.target)
+                continue
+
+            if not isinstance(node, ast.ImportFrom):
+                continue
+
+            resolved_module = resolve_imported_module(node)
+            if resolved_module is None:
+                continue
+
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+
+                reexports.append({
+                    "local_name": alias.asname or alias.name,
+                    "module": resolved_module,
+                    "export_name": alias.name,
+                })
+
+        module_info = {
+            "uri": module_path.as_uri(),
+            "path": module_path,
+            "exports": exports,
+            "reexports": reexports,
+            "star_modules": star_modules,
+            "imports": imports,
+            "import_members": import_members,
+            "classes": classes,
+        }
+        self.python_modules[module_name] = module_info
+        return module_info
+
+    def python_definition(self, module_name: str, export_name: Optional[str] = None, seen=None):
+        if seen is None:
+            seen = set()
+
+        if module_name in seen:
+            return None
+        seen.add(module_name)
+
+        module_info = self.python_module_info(module_name)
+        if module_info is None:
+            return None
+
+        if export_name is None:
+            module_path = module_info["path"]
+            return {
+                "uri": module_info["uri"],
+                "name": module_name.split(".")[-1],
+                "kind": "module",
+                "range": AnalysisRange(
+                    start=AnalysisPosition(1, 1),
+                    end=AnalysisPosition(1, 1),
+                ),
+                "selection_range": AnalysisRange(
+                    start=AnalysisPosition(1, 1),
+                    end=AnalysisPosition(1, 1),
+                ),
+            }
+
+        match = module_info["exports"].get(export_name)
+        if match is not None:
+            return match
+
+        for reexport in module_info["reexports"]:
+            if reexport["local_name"] != export_name:
+                continue
+
+            match = self.python_definition(
+                reexport["module"],
+                export_name=reexport["export_name"],
+                seen=seen,
+            )
+            if match is not None:
+                return match
+
+        for star_module in module_info["star_modules"]:
+            match = self.python_definition(
+                star_module,
+                export_name=export_name,
+                seen=seen,
+            )
+            if match is not None:
+                return match
+
+        return None
+
+    def python_class_member_definition(self, module_name: str, class_name: str, member_name: str, seen=None):
+        if seen is None:
+            seen = set()
+
+        key = (module_name, class_name, member_name)
+        if key in seen:
+            return None
+        seen.add(key)
+
+        module_info = self.python_module_info(module_name)
+        if module_info is None:
+            return None
+
+        class_info = module_info["classes"].get(class_name)
+        if class_info is None:
+            return None
+
+        match = class_info["members"].get(member_name)
+        if match is not None:
+            return match
+
+        for base_name in class_info["bases"]:
+            if base_name in module_info["classes"]:
+                match = self.python_class_member_definition(
+                    module_name,
+                    base_name,
+                    member_name,
+                    seen=seen,
+                )
+                if match is not None:
+                    return match
+                continue
+
+            if base_name in module_info["import_members"]:
+                imported = module_info["import_members"][base_name]
+                match = self.python_class_member_definition(
+                    imported["module"],
+                    imported["export_name"],
+                    member_name,
+                    seen=seen,
+                )
+                if match is not None:
+                    return match
 
         return None
 
@@ -346,6 +703,9 @@ class AnalysisSession:
             return []
 
         analysis = self.analyze(uri)
+        if 0 not in analysis.scopes:
+            return []
+
         scope = analysis.scopes[0]
 
         for current_scope in analysis.scopes.values():
@@ -431,7 +791,7 @@ class AnalysisSession:
     def module_definition(self, uri: str, module_name: str):
         module_uri = self.resolve_module_uri(uri, module_name)
         if module_uri is None:
-            return None
+            return self.python_definition(module_name)
 
         module_base = module_name.split(".")[-1]
         return {
@@ -529,9 +889,12 @@ class AnalysisSession:
                     import_uri = self.resolve_module_uri(uri, import_entry.module)
 
                 if import_uri is None:
-                    continue
-
-                match = self.find_export(import_uri, import_entry.export_name)
+                    match = self.python_definition(
+                        import_entry.module,
+                        export_name=import_entry.export_name,
+                    )
+                else:
+                    match = self.find_export(import_uri, import_entry.export_name)
                 if match is not None:
                     return match
 
@@ -539,6 +902,18 @@ class AnalysisSession:
                 match = self.module_definition(uri, import_entry.module)
                 if match is not None:
                     return match
+
+        for import_entry in analysis.import_entries:
+            if import_entry.kind != "from" or import_entry.export_name != "*":
+                continue
+
+            module_name = import_entry.module
+            if module_name and set(module_name) == {"."}:
+                continue
+
+            match = self.python_definition(module_name, export_name=name)
+            if match is not None:
+                return match
 
         return None
 
@@ -560,6 +935,44 @@ class AnalysisSession:
             "contents": contents,
             "range": hover_range,
         }
+
+    def member_definition(self, uri: str, position: AnalysisPosition):
+        if not self.ensure_document(uri):
+            return None
+
+        analysis = self.analyze(uri)
+
+        for occurrence in analysis.member_occurrences:
+            if not range_contains(occurrence["range"], position):
+                continue
+
+            type_names = list(occurrence["type_names"])
+            if occurrence["binding_id"] is not None:
+                binding = analysis.binding_map.get(occurrence["binding_id"])
+                if binding is not None:
+                    type_names = list(binding.get("type_names", [])) + type_names
+
+            seen_type_names = set()
+            for type_name in type_names:
+                if not type_name or type_name in seen_type_names:
+                    continue
+                seen_type_names.add(type_name)
+
+                type_definition = self.resolve_name(uri, type_name)
+                if type_definition is None:
+                    continue
+                if "python_module" not in type_definition or "python_class" not in type_definition:
+                    continue
+
+                match = self.python_class_member_definition(
+                    type_definition["python_module"],
+                    type_definition["python_class"],
+                    occurrence["name"],
+                )
+                if match is not None:
+                    return match
+
+        return None
 
     def completions(self, uri: str, position: AnalysisPosition):
         if not self.ensure_document(uri):
@@ -751,6 +1164,43 @@ class AnalysisSession:
 
         return references
 
+    def document_highlights(self, uri: str, position: AnalysisPosition):
+        if not self.ensure_document(uri):
+            return []
+
+        definition = self.definition(uri, position)
+        if definition is None:
+            return []
+
+        definition_range = None
+        if definition["uri"] == uri:
+            definition_range = definition["selection_range"]
+
+        name_info = self.name_at_position(uri, position)
+        if name_info is not None:
+            for import_entry in self.analyze(uri).import_entries:
+                if import_entry.local_name != name_info["name"]:
+                    continue
+
+                definition_range = import_entry.selection_range
+                break
+
+        highlights = []
+        for reference in self.references(uri, position):
+            if reference["uri"] != uri:
+                continue
+
+            highlight = {
+                "range": reference["range"],
+                "kind": "read",
+            }
+            if definition_range is not None and reference["range"] == definition_range:
+                highlight["kind"] = "write"
+
+            highlights.append(highlight)
+
+        return highlights
+
     def definition(self, uri: str, position: AnalysisPosition):
         if not self.ensure_document(uri):
             return None
@@ -758,6 +1208,10 @@ class AnalysisSession:
         local_definition = self.local_definition(uri, position)
         if local_definition is not None:
             return local_definition
+
+        member_definition = self.member_definition(uri, position)
+        if member_definition is not None:
+            return member_definition
 
         analysis = self.analyze(uri)
         for symbol in analysis.symbols:
@@ -808,6 +1262,12 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
     def tree_text(node):
         if isinstance(node, Token):
             return node.value
+
+        if node.data == "dotted_name":
+            return ".".join(
+                tree_text(child)
+                for child in node.children
+            )
 
         if node.data == "getattr":
             return "{}.{}".format(tree_text(node.children[0]), tree_text(node.children[1]))
@@ -897,6 +1357,7 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
     }
     bindings = []
     occurrences = []
+    member_occurrences = []
 
     def simple_name_node(node):
         if not isinstance(node, Tree):
@@ -927,6 +1388,19 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
         scope_bindings[scope_id] = dict()
         return scope_id
 
+    def normalize_type_names(type_names):
+        if not type_names:
+            return []
+
+        seen = set()
+        result = []
+        for type_name in type_names:
+            if not type_name or type_name in seen:
+                continue
+            seen.add(type_name)
+            result.append(type_name)
+        return result
+
     def resolve_binding(scope_id, name):
         while scope_id is not None:
             binding_id = scope_bindings[scope_id].get(name)
@@ -935,9 +1409,10 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
             scope_id = scopes[scope_id]["parent_id"]
         return None
 
-    def add_binding(scope_id, name_node, kind, node_range=None, exported=False):
+    def add_binding(scope_id, name_node, kind, node_range=None, exported=False, type_names=None):
         name = tree_text(name_node)
         binding_id = scope_bindings[scope_id].get(name)
+        type_names = normalize_type_names(type_names)
 
         if binding_id is None:
             binding_id = len(bindings) + 1
@@ -949,9 +1424,13 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
                 "range": node_range if node_range is not None else tree_range(name_node),
                 "selection_range": tree_range(name_node),
                 "exported": exported,
+                "type_names": type_names,
             })
             scopes[scope_id]["bindings"].append(binding_id)
             scope_bindings[scope_id][name] = binding_id
+        elif type_names:
+            existing_type_names = normalize_type_names(bindings[binding_id - 1].get("type_names"))
+            bindings[binding_id - 1]["type_names"] = normalize_type_names(existing_type_names + type_names)
 
         occurrences.append({
             "name": name,
@@ -961,6 +1440,29 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
         })
 
         return binding_id
+
+    def binding_type_names(binding_id):
+        if binding_id is None:
+            return []
+        return normalize_type_names(bindings[binding_id - 1].get("type_names"))
+
+    def expression_type_names(node, scope_id):
+        if not isinstance(node, Tree):
+            return []
+
+        name_node = simple_name_node(node)
+        if name_node is not None:
+            return binding_type_names(resolve_binding(scope_id, tree_text(name_node)))
+
+        if node.data in ("tuple", "list", "testlist_tuple"):
+            type_names = []
+            for child in node.children:
+                if not isinstance(child, Tree):
+                    continue
+                type_names.extend(expression_type_names(child, scope_id))
+            return normalize_type_names(type_names)
+
+        return []
 
     def add_reference(scope_id, name_node):
         name = tree_text(name_node)
@@ -1019,7 +1521,7 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
             for value_node in value_nodes[1:]:
                 visit(value_node, scope_id)
 
-    def visit(node, scope_id, top_level=False):
+    def visit(node, scope_id, top_level=False, context_type_names=None):
         if not isinstance(node, Tree):
             return
 
@@ -1062,19 +1564,37 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
                         bind_arguments(child, child_scope_id)
                         continue
 
-                    visit(child, child_scope_id)
+                    visit(child, child_scope_id, context_type_names=context_type_names)
                 return
 
         if node.data == "context_element" and len(node.children) >= 2:
             kind_node = node.children[0]
             target_node = node.children[1]
             if isinstance(kind_node, Tree) and isinstance(target_node, Tree):
+                context_type_names = []
+                kind_name = tree_text(kind_node)
+                if kind_name not in ("port", "input", "output", "inout"):
+                    context_type_names = [kind_name]
+
                 symbols.append(AnalysisSymbol(
                     name="{} {}".format(tree_text(kind_node), tree_text(target_node)),
                     kind="context",
                     range=tree_range(node),
                     selection_range=tree_range(target_node),
                 ))
+                name_node = simple_name_node(target_node)
+                if name_node is not None:
+                    add_binding(
+                        scope_id,
+                        name_node,
+                        "variable",
+                        node_range=tree_range(target_node),
+                        type_names=context_type_names,
+                    )
+
+            for child in node.children[2:]:
+                if isinstance(child, Tree):
+                    visit(child, scope_id, context_type_names=context_type_names)
             return
 
         if node.data in ("path_stmt", "net_stmt"):
@@ -1085,6 +1605,14 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
                     if selection_node is None:
                         selection_node = child
                     names.append(tree_text(child))
+                    name_node = simple_name_node(child)
+                    if name_node is not None:
+                        add_binding(
+                            scope_id,
+                            name_node,
+                            "variable",
+                            node_range=tree_range(child),
+                        )
             if names and selection_node is not None:
                 symbols.append(AnalysisSymbol(
                     name=", ".join(names),
@@ -1139,14 +1667,18 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
         if node.data == "import_from":
             module = ""
             names = []
+            selection_node = None
             for child in node.children:
                 if not isinstance(child, Tree):
                     continue
 
                 if child.data == "dots":
                     module = tree_text(child) + module
+                    if selection_node is None:
+                        selection_node = child
                 elif child.data == "dotted_name":
                     module = module + tree_text(child)
+                    selection_node = child
                 elif child.data == "import_as_names":
                     for import_node in child.children:
                         if not isinstance(import_node, Tree) or import_node.data != "import_as_name":
@@ -1188,6 +1720,14 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
                 imports.append("from {} import {}".format(module, ", ".join(names)))
             elif module:
                 imports.append("from {} import *".format(module))
+                import_entries.append(AnalysisImport(
+                    kind="from",
+                    module=module,
+                    export_name="*",
+                    local_name="*",
+                    range=tree_range(node),
+                    selection_range=tree_range(selection_node if selection_node is not None else node),
+                ))
             return
 
         if node.data == "assign":
@@ -1200,9 +1740,10 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
                         name_node,
                         "variable",
                         node_range=tree_range(tree_children[0]),
+                        type_names=expression_type_names(tree_children[1], scope_id),
                     )
                     for child in tree_children[1:]:
-                        visit(child, scope_id)
+                        visit(child, scope_id, context_type_names=context_type_names)
                     return
 
         if node.data == "for_stmt":
@@ -1210,15 +1751,68 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
             if tree_children:
                 name_node = simple_name_node(tree_children[0])
                 if name_node is not None:
+                    iterable_type_names = []
+                    if len(tree_children) > 1:
+                        iterable_type_names = expression_type_names(tree_children[1], scope_id)
                     add_binding(
                         scope_id,
                         name_node,
                         "variable",
                         node_range=tree_range(tree_children[0]),
+                        type_names=iterable_type_names,
                     )
                     for child in tree_children[1:]:
-                        visit(child, scope_id)
+                        visit(child, scope_id, context_type_names=context_type_names)
                     return
+
+        if node.data == "getattr" and len(node.children) == 2:
+            base_node = node.children[0]
+            name_node = node.children[1]
+            binding_id = None
+            base_name_node = simple_name_node(base_node)
+            if base_name_node is not None:
+                binding_id = resolve_binding(scope_id, tree_text(base_name_node))
+
+            member_occurrences.append({
+                "name": tree_text(name_node),
+                "range": tree_range(name_node),
+                "scope_id": scope_id,
+                "binding_id": binding_id,
+                "type_names": normalize_type_names(context_type_names),
+            })
+            visit(base_node, scope_id, context_type_names=context_type_names)
+            return
+
+        if node.data == "getparam":
+            name_node = node.children[-1]
+            binding_id = None
+            type_names = normalize_type_names(context_type_names)
+            if len(node.children) == 2:
+                base_node = node.children[0]
+                base_name_node = simple_name_node(base_node)
+                if base_name_node is not None:
+                    binding_id = resolve_binding(scope_id, tree_text(base_name_node))
+                visit(base_node, scope_id, context_type_names=context_type_names)
+
+            member_occurrences.append({
+                "name": tree_text(name_node),
+                "range": tree_range(name_node),
+                "scope_id": scope_id,
+                "binding_id": binding_id,
+                "type_names": type_names,
+            })
+            return
+
+        if node.data == "dotted_atom" and len(node.children) == 2:
+            name_node = node.children[1]
+            member_occurrences.append({
+                "name": tree_text(name_node),
+                "range": tree_range(name_node),
+                "scope_id": scope_id,
+                "binding_id": None,
+                "type_names": normalize_type_names(context_type_names),
+            })
+            return
 
         if node.data == "var":
             name_node = simple_name_node(node)
@@ -1228,7 +1822,12 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
 
         for child in node.children:
             if isinstance(child, Tree):
-                visit(child, scope_id, top_level=node.data == "file_input")
+                visit(
+                    child,
+                    scope_id,
+                    top_level=node.data == "file_input",
+                    context_type_names=context_type_names,
+                )
 
     visit(syntax_tree, 0)
 
@@ -1243,4 +1842,5 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
         scopes=scopes,
         bindings=bindings,
         occurrences=occurrences,
+        member_occurrences=member_occurrences,
     )

@@ -46,6 +46,7 @@ class OrdecLanguageServer:
                     "capabilities": {
                         "textDocumentSync": 1,
                         "documentSymbolProvider": True,
+                        "documentHighlightProvider": True,
                         "workspaceSymbolProvider": True,
                         "definitionProvider": True,
                         "hoverProvider": True,
@@ -120,6 +121,21 @@ class OrdecLanguageServer:
                     "selectionRange": self.lsp_range(symbol.selection_range),
                 })
 
+            return [{
+                "jsonrpc": "2.0",
+                "id": message_id,
+                "result": result,
+            }]
+
+        if method == "textDocument/documentHighlight":
+            uri = params["textDocument"]["uri"]
+            position = self.analysis_position(params["position"])
+            result = []
+            for highlight in self.session.document_highlights(uri, position):
+                result.append({
+                    "range": self.lsp_range(highlight["range"]),
+                    "kind": self.document_highlight_kind(highlight["kind"]),
+                })
             return [{
                 "jsonrpc": "2.0",
                 "id": message_id,
@@ -345,6 +361,13 @@ class OrdecLanguageServer:
             return 14
         if kind in ("path", "net", "context"):
             return 6
+        return 1
+
+    def document_highlight_kind(self, kind: str):
+        if kind == "read":
+            return 2
+        if kind == "write":
+            return 3
         return 1
 
 
