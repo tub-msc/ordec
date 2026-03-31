@@ -7,44 +7,229 @@
     <title>ORDeC</title>
     <style type="text/css">
       body {
-        max-width:600px;
-        margin:20px auto;
-        text-align:center;
+        max-width: 520px;
+        margin: 0 auto;
+        padding: 40px 20px;
+        font-family: "Helvetica", sans-serif;
+        background-color: #fff;
+        color: #333;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 30px 0 50px;
+        position: relative;
       }
       #logo {
-        margin:50px 0px;
+        display: block;
       }
-      ul {
+      #theme-toggle {
+        position: absolute;
+        right: 0;
+        background: none;
+        border: 1px solid #aaa;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 16px;
+        padding: 0px 4px;
+        line-height: 1.4;
+      }
+      a.new-design {
         display: flex;
-        flex-direction: column;
-        gap:25px;
-        margin:0px;
-        padding:0px;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        margin-bottom: 30px;
+        border: 1px solid #aaa;
+        border-radius: 5px;
+        background-color: #f5f5f5;
+        color: #333;
+        text-decoration: none;
+        font-size: 15px;
       }
-      li {
-        border-radius: 10px;
-        list-style-type: none;
-        padding: 15px;
-        border:1px solid #aaa;
-        margin: 0px;
-        background-color: #fff;
-        box-shadow: 0px 0px 5px 5px rgba(0,0,0,0.08);
+      a.new-design:hover {
+        background-color: #eee;
+        border-color: #888;
+      }
+      a.new-design .icon {
+        font-size: 20px;
+        color: #c00000;
+        flex-shrink: 0;
+      }
+      h2 {
+        font-size: 12px;
+        font-weight: normal;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #888;
+        margin: 0 0 4px;
+      }
+      .examples {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .examples li {
+        border-top: 1px solid #ddd;
+      }
+      .examples li:last-child {
+        border-bottom: 1px solid #ddd;
+      }
+      .examples a {
+        display: block;
+        padding: 9px 14px;
+        color: #333;
+        text-decoration: none;
+        font-size: 14px;
+      }
+      .examples a:hover {
+        background-color: #f5f5f5;
+      }
+      .examples .tag {
+        font-size: 11px;
+        color: #999;
+        margin-left: 6px;
+      }
+      .local-hint {
+        margin-top: 30px;
+        padding: 10px 14px;
+        font-size: 13px;
+        color: #666;
+        border-left: 3px solid #c00000;
+        line-height: 1.5;
+      }
+      .local-hint a {
+        color: #c00000;
+        text-decoration: none;
+      }
+      .local-hint a:hover {
+        text-decoration: underline;
+      }
+      footer {
+        margin-top: 40px;
+        font-size: 12px;
+        color: #999;
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+      }
+      footer a {
+        color: #999;
+        text-decoration: none;
+      }
+      footer a:hover {
+        text-decoration: underline;
+      }
+
+      /* Dark theme */
+      body.theme-dark {
+        background-color: #1e1e1e;
+        color: #ccc;
+      }
+      body.theme-dark #theme-toggle {
+        border-color: #555;
+      }
+      body.theme-dark a.new-design {
+        border-color: #555;
+        background-color: #252525;
+        color: #ccc;
+      }
+      body.theme-dark a.new-design:hover {
+        background-color: #2a2a2a;
+        border-color: #666;
+      }
+      body.theme-dark a.new-design .icon {
+        color: #e04040;
+      }
+      body.theme-dark h2 {
+        color: #777;
+      }
+      body.theme-dark .examples li {
+        border-color: #333;
+      }
+      body.theme-dark .examples a {
+        color: #ccc;
+      }
+      body.theme-dark .examples a:hover {
+        background-color: #252525;
+      }
+      body.theme-dark .examples .tag {
+        color: #666;
+      }
+      body.theme-dark .local-hint {
+        color: #999;
+        border-left-color: #e04040;
+      }
+      body.theme-dark .local-hint a {
+        color: #e04040;
+      }
+      body.theme-dark footer {
+        color: #666;
+      }
+      body.theme-dark footer a {
+        color: #666;
       }
     </style>
   </head>
   <body>
-    <img id="logo" src="/ordec_logo.svg" alt="ORDeC" />
-    <ul>
-      <a href="/app.html#example=blank"><li>Blank file</li></a>
-      <a href="/app.html#example=diffpair"><li>NMOS differential pair</li></a>
-      <a href="/app.html#example=currentmirror"><li>Current mirror</li></a>
-      <a href="/app.html#example=amp"><li>Common-source amplifier (SG13G2)</li></a>
-      <a href="/app.html#example=vco_pseudodiff"><li>Pseudodifferential VCO (layout demo)</li></a>
-      <a href="/app.html#example=nand2"><li>CMOS 2-input NAND gate</li></a>
-      <a href="/app.html#example=voltagedivider"><li>Voltage divider</li></a>
-      <a href="/app.html#example=voltagedivider_py"><li>Voltage divider (Python)</li></a>
-      <a href="/app.html#example=rc_curve"><li>RC curve (Python)</li></a>
+    <header>
+      <img id="logo" src="/ordec_logo.svg" alt="ORDeC" />
+      <button id="theme-toggle"></button>
+    </header>
+
+    <a class="new-design" href="/app.html#example=blank">
+      <span class="icon">+</span>
+      Start with a new design&hellip;
+    </a>
+
+    <h2>Examples</h2>
+    <ul class="examples">
+      <li><a href="/app.html#example=diffpair">NMOS differential pair</a></li>
+      <li><a href="/app.html#example=currentmirror">Current mirror</a></li>
+      <li><a href="/app.html#example=amp">Common-source amplifier <span class="tag">SG13G2</span></a></li>
+      <li><a href="/app.html#example=vco_pseudodiff">Pseudodifferential VCO <span class="tag">layout</span></a></li>
+      <li><a href="/app.html#example=nand2">CMOS 2-input NAND gate</a></li>
+      <li><a href="/app.html#example=voltagedivider">Voltage divider</a></li>
+      <li><a href="/app.html#example=voltagedivider_py">Voltage divider <span class="tag">Python</span></a></li>
+      <li><a href="/app.html#example=rc_curve">RC curve <span class="tag">Python</span></a></li>
     </ul>
+
+    <div class="local-hint">
+      Working on a larger project? Use <a href="https://ordec.readthedocs.io/en/latest/webui.html">local mode</a>
+      to store your designs as files on disk and edit them with your preferred editor.
+    </div>
+
+    <footer>
+      <span id="version"></span>
+      <a href="https://ordec.readthedocs.io">Documentation</a>
+    </footer>
+
+    <script>
+      // Apply saved theme preference immediately to avoid flash
+      const dark = window.localStorage.getItem('ordecTheme') === 'dark';
+      if (dark) document.body.classList.add('theme-dark');
+
+      // Theme toggle (mirrors app behavior, shares localStorage key)
+      const btn = document.querySelector('#theme-toggle');
+      function updateToggleBtn(isDark) {
+        btn.textContent = isDark ? '\u2600' : '\u263E';
+        btn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+      }
+      updateToggleBtn(dark);
+      btn.addEventListener('click', () => {
+        const nowDark = !document.body.classList.contains('theme-dark');
+        document.body.classList.toggle('theme-dark', nowDark);
+        window.localStorage.setItem('ordecTheme', nowDark ? 'dark' : 'light');
+        updateToggleBtn(nowDark);
+      });
+
+      // Version info
+      fetch('/api/version')
+        .then(r => r.json())
+        .then(data => { document.querySelector('#version').textContent = data['version']; })
+        .catch(() => {});
+    </script>
     <script type="module" src="/src/auth.js"></script>
   </body>
 </html>
