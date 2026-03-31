@@ -14,7 +14,6 @@ FROM ghcr.io/tub-msc/ordec-base:sha-e3d0bc2 AS ordec-base
 # Build ORDeC wheel:
 WORKDIR /home/app/ordec
 COPY --chown=app . .
-#ENV SETUPTOOLS_SCM_PRETEND_VERSION=0
 RUN python3 -m build .
 
 # Stage 2
