@@ -1,36 +1,10 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-# standard imports
-from contextvars import ContextVar, Token
-
 # ordec imports
 from ..core import *
+from ..core.context import _ctx_var, _view_ctx_var
 from ..schematic.helpers import recursive_setitem, recursive_getitem
-
-_ctx_var = ContextVar("ctx", default=None)
-_view_ctx_var = ContextVar("view_ctx", default=None)
-
-class NodeContext:
-    """
-    Class which represents the context where a specific
-    ORDB element is alive and accessible via relative
-    accesses (dotted notation)
-    """
-
-    def __init__(self, root):
-        self.root = root
-
-    def __enter__(self):
-        """Enter context, set context variable and save parent"""
-        self._token = _ctx_var.set(self)
-        old = self._token.old_value
-        self.parent = old if old is not Token.MISSING else None
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Exit context and reset context variable"""
-        _ctx_var.reset(self._token)
 
 
 def root():

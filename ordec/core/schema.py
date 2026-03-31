@@ -13,7 +13,7 @@ from .geoprim import *
 from .ordb import *
 from .cell import Cell
 from .constraints import *
-from .viewctx import ViewContext, LayoutViewContext
+from .context import ViewContext, LayoutViewContext
 from .simarray import SimArray
 
 # Enums

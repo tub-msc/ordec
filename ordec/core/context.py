@@ -1,10 +1,39 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+# standard imports
+from contextvars import ContextVar, Token
+
+
+_ctx_var = ContextVar("ctx", default=None)
+_view_ctx_var = ContextVar("view_ctx", default=None)
+
+
+class NodeContext:
+    """
+    Class which represents the context where a specific
+    ORDB element is alive and accessible via relative
+    accesses (dotted notation)
+    """
+
+    def __init__(self, root):
+        self.root = root
+
+    def __enter__(self):
+        """Enter context, set context variable and save parent"""
+        self._token = _ctx_var.set(self)
+        old = self._token.old_value
+        self.parent = old if old is not Token.MISSING else None
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Exit context and reset context variable"""
+        _ctx_var.reset(self._token)
+
 
 class ViewContext:
     """
-    Base view context. Subclasses override to add capabilities(e.g.constraint
+    Base view context. Subclasses override to add capabilities (e.g. constraint
     solving).
 
     ViewContext is a separate context from the NodeContext but its __enter__
@@ -15,14 +44,12 @@ class ViewContext:
         self.root = root
 
     def __enter__(self):
-        from ordec.ord2.context import _view_ctx_var
         self._node_ctx = self.root.ctx()
         self._node_ctx.__enter__()
         self._token = _view_ctx_var.set(self)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        from ordec.ord2.context import _view_ctx_var
         _view_ctx_var.reset(self._token)
         self._node_ctx.__exit__(exc_type, exc_val, exc_tb)
 
