@@ -256,3 +256,56 @@ def test_nodecontext_across_calls():
         add_pin_x()
         add_pin_y()
         assert count_pins() == 2
+
+def test_anonymous_node_stmt():
+    """Anonymous node statements create nodes without NPath entries."""
+    root = Symbol()
+    with root.ctx():
+        # Anonymous bodyless
+        anonymous Pin a
+        assert isinstance(a, Pin)
+
+        # Anonymous with body
+        anonymous Pin b:
+            .pintype = PinType.Out
+
+        assert isinstance(b, Pin)
+        assert b.pintype == PinType.Out
+
+        # Regular pin for comparison
+        Pin c
+
+        # c has an NPath, a and b don't
+        assert root.c == c
+        # a and b should not be accessible via path
+        import pytest
+        with pytest.raises(AttributeError):
+            root.a
+        with pytest.raises(AttributeError):
+            root.b
+
+def test_anonymous_in_loop():
+    """Anonymous nodes in loops don't clash on NPath names."""
+    root = Symbol()
+    pins = []
+    with root.ctx():
+        for i in range(3):
+            anonymous Pin p
+            pins.append(p)
+    assert len(pins) == 3
+    # All are distinct nodes
+    assert len(set(id(p) for p in pins)) == 3
+
+def test_anonymous_multi_target():
+    """Anonymous node statement with multiple targets."""
+    root = Symbol()
+    with root.ctx():
+        anonymous Pin x, y, z
+        assert isinstance(x, Pin)
+        assert isinstance(y, Pin)
+        assert isinstance(z, Pin)
+
+def test_anonymous_as_identifier():
+    """'anonymous' can still be used as a variable name."""
+    anonymous = 42
+    assert anonymous == 42

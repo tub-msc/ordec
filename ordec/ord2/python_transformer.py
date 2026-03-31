@@ -206,6 +206,8 @@ class PythonTransformer(Transformer):
     SLASH = lambda self, token: token.value
     STRING_OTHER_PREFIX = lambda self, token: token.value
     MATCH = lambda self, token: token.value
+    CASE = lambda self, token: token.value
+    ANONYMOUS = lambda self, token: token.value
 
     # Statements
     # ----------

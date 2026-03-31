@@ -282,6 +282,49 @@ class Ord2Transformer(PythonTransformer):
         )
         return [assignment, with_stmt]
 
+    def anon_node_stmt(self, nodes):
+        """Anonymous node statement: 'anonymous Type name' with optional body.
+
+        Like node_stmt but passes None as name_tuple, so no NPath is created.
+        """
+        context_type = nodes[0]
+        context_name = nodes[1]
+        context_body = nodes[2] if len(nodes) > 2 else None
+
+        rhs = ast.Call(
+            func=self.ast_ord_context("add_element"),
+            args=[ast.Constant(value=None), context_type],
+            keywords=[]
+        )
+
+        target = copy.copy(context_name)
+        self._set_ctx(target, ast.Store())
+        assignment = ast.Assign([target], rhs)
+
+        if context_body is None:
+            return [assignment]
+
+        with_stmt = ast.With(
+            items=[
+                ast.withitem(
+                    context_expr=ast.Call(
+                        func=self.ast_attribute(context_name, "ctx"),
+                        args=[],
+                        keywords=[]
+                    )
+                )
+            ],
+            body=context_body if isinstance(context_body, list) else [context_body]
+        )
+        return [assignment, with_stmt]
+
+    def anon_node_stmt_nobody(self, nodes):
+        """Anonymous node statement without body, supports multiple names."""
+        result = []
+        for context_target in nodes[1:]:
+            result.extend(self.anon_node_stmt([nodes[0], context_target]))
+        return result
+
     def node_stmt_nobody(self, nodes):
         """Node statement without body, supports multiple names (e.g., 'Nmos a, b, c')"""
         result = []

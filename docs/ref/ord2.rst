@@ -156,6 +156,50 @@ Every time a node statement (viewgen, port, or a schematic instance) is encounte
                 return context.root().postprocess()
 
 
+Anonymous Node Statements
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Prepending a node statement with the ``anonymous`` keyword creates the node
+**without** registering it in the ORDB path system.  The node is still assigned
+to a local Python variable, so it can be referenced in subsequent code.  This
+is useful inside loops or other situations where multiple nodes of the same type
+would cause NPath name clashes:
+
+.. code-block::
+
+    for sd in (.m8.sd[1], .m7.sd[1]):
+        anonymous LayoutRect r:
+            .layer = layers.Metal1
+        ! r.contains(sd.rect)
+
+Without ``anonymous``, writing ``LayoutRect r`` twice (across loop iterations)
+would attempt to register the path name ``r`` twice, causing a conflict.  With
+``anonymous``, each iteration creates a fresh node that is only accessible
+through the local variable ``r``.
+
+Anonymous node statements support all the same forms as regular node statements:
+
+.. code-block::
+
+    # Bodyless
+    anonymous Pin a
+
+    # With body
+    anonymous LayoutRect r:
+        .layer = layers.Metal1
+
+    # Multiple targets (bodyless only)
+    anonymous Pin x, y, z
+
+``anonymous`` is a **soft keyword**: it can still be used as a regular
+identifier (variable name, function name, etc.) in all other contexts.
+
+Internally, ``anonymous LayoutRect r`` compiles to
+``r = context.add_element(None, LayoutRect)``.  When ``add`` receives ``None``
+as the name tuple, it adds the node to the subgraph without creating an NPath
+entry.
+
+
 Connection Operator ``--``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 

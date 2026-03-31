@@ -96,7 +96,7 @@ lambda_kwparams: "**" name ","?
             | path_stmt
             | net_stmt
             | constrain_stmt
-            | node_stmt_nobody)
+            | node_stmt_nobody | anon_node_stmt_nobody)
 
 expr_stmt: testlist_star_expr
 assign_stmt: annassign | augassign | assign
@@ -134,7 +134,7 @@ assert_stmt: "assert" test ["," test]
 
 ?compound_stmt: if_stmt | while_stmt | for_stmt | try_stmt | match_stmt
               | with_stmt | funcdef | classdef | celldef | decorated | async_stmt | viewgen
-              | node_stmt
+              | node_stmt | anon_node_stmt
 async_stmt: "async" (funcdef | with_stmt | for_stmt)
 if_stmt: "if" test ":" suite elifs ["else" ":" suite]
 elifs: elif_*
@@ -357,7 +357,7 @@ _NEWLINE: ( /\r?\n[\t ]*/ | COMMENT )+
 %declare _INDENT _DEDENT
 
 // Python terminals
-!name: NAME | "match" | "case"
+!name: NAME | "match" | "case" | "anonymous"
 NAME: /[^\W\d]\w*(?!['"])/
 COMMENT: /#[^\n]*/
 
@@ -385,6 +385,8 @@ constrain_stmt: "!" test
 context_body: ":" suite
 node_stmt: atom_expr context_target context_body
 node_stmt_nobody: atom_expr context_target ("," context_target)*
+anon_node_stmt: "anonymous" atom_expr context_target context_body
+anon_node_stmt_nobody: "anonymous" atom_expr context_target ("," context_target)*
 
 ?context_target: context_target "." name -> getattr
 		       | context_target "[" subscriptlist "]" -> getitem

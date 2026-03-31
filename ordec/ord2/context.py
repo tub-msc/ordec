@@ -41,6 +41,10 @@ def root():
 def add(name_tuple, ref):
     """ Add a value to the current context"""
     ctx = _ctx_var.get()
+    if name_tuple is None:
+        # Anonymous: add to subgraph without NPath
+        nid_new = ctx.root.subgraph.add(ref)
+        return ctx.root.subgraph.cursor_at(nid_new, lookup_npath=False)
     recursive_setitem(ctx.root, name_tuple, ref)
     return recursive_getitem(ctx.root, name_tuple)
 

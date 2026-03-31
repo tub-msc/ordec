@@ -100,21 +100,23 @@ cell VcoHalfStage:
         path polycont
         polycont_m1={}
         for idx, (vert_spec, horiz_spec, add_m1) in enumerate(polycont_spec):
-            polyext = . % LayoutRect(layer=layers.GatPoly)
-            ! polyext.size == (300, 300)
-            if horiz_spec == 'west':
-                ! polyext.ux == poly[idx].ux
-            else:
-                assert horiz_spec == 'east'
-                ! polyext.lx == poly[idx].lx
-            if vert_spec == 'north':
-                ! polyext.uy == m1.activ.ly - 200
-            else:
-                assert vert_spec == 'south'
-                ! polyext.ly == m2.activ.uy + 200
-            LayoutRect polycont[idx]: .layer=layers.Cont
-            ! polycont[idx].size == (160, 160)
-            ! polycont[idx].center == polyext.center
+            anonymous LayoutRect polyext:
+                .layer=layers.GatPoly
+                ! .size == (300, 300)
+                if horiz_spec == 'west':
+                    ! .ux == poly[idx].ux
+                else:
+                    assert horiz_spec == 'east'
+                    ! .lx == poly[idx].lx
+                if vert_spec == 'north':
+                    ! .uy == m1.activ.ly - 200
+                else:
+                    assert vert_spec == 'south'
+                    ! .ly == m2.activ.uy + 200
+            LayoutRect polycont[idx]:
+                .layer=layers.Cont
+                ! .size == (160, 160)
+                ! .center == polyext.center
             if add_m1:
                 setattr(., add_m1, LayoutRect(layer=layers.Metal1))
                 m1_ = getattr(., add_m1)
@@ -156,9 +158,10 @@ cell VcoHalfStage:
         .outbar_outn % LayoutPin(pin=self.symbol.out_n)
 
         for sd in (.m8.sd[1], .m7.sd[1]):
-            r = . % LayoutRect(layer=layers.Metal1)
-            ! r.contains(sd.rect)
-            ! r.ux >= .outbar_outn.lx
+            anonymous LayoutRect r:
+                .layer=layers.Metal1
+                ! .contains(sd.rect)
+                ! .ux >= outbar_outn.lx
 
         LayoutRect vddbar:
             .layer=layers.Metal1
@@ -168,9 +171,10 @@ cell VcoHalfStage:
             ! .ux == m7.sd[1].ux + 500
 
         for sd in (.m4.sd[0], .m8.sd[0]):
-            r = . % LayoutRect(layer=layers.Metal1)
-            ! r.contains(sd.rect)
-            ! r.uy == .vddbar.ly
+            anonymous LayoutRect r:
+                .layer=layers.Metal1
+                ! .contains(sd.rect)
+                ! .uy == vddbar.ly
 
         LayoutRect vssbar:
             .layer=layers.Metal1
