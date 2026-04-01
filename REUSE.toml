@@ -93,6 +93,7 @@ SPDX-License-Identifier = "CC0-1.0"
 path = [
     "README.md",
     "AGENTS.md",
+    "CONTRIBUTING.md",
     "tests/renderview_ref/README.md",
     "docs/**/*.rst",
     "docs/**/*.svg",
