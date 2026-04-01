@@ -253,6 +253,14 @@ sourceTypeSelect.onchange = () => {
 // Make the OrdecClient object easy to access for automated testing & browser-based debugging:
 window.ordecClient = client;
 
+document.querySelector("#examples").onclick = () => {
+    if (window.onbeforeunload) {
+        window.open('/index.html', '_blank');
+    } else {
+        window.location.href = '/index.html';
+    }
+};
+
 fetch('/api/version').then(response => response.json()).then(data => {
     document.querySelector('#version').innerText = data['version'];
 });
