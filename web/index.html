@@ -13,6 +13,7 @@
         font-family: "Helvetica", sans-serif;
         background-color: #fff;
         color: #333;
+        transition: background-color 150ms ease, color 150ms ease;
       }
       header {
         display: flex;
@@ -130,6 +131,7 @@
       }
       body.theme-dark #theme-toggle {
         border-color: #555;
+        color: #ccc;
       }
       body.theme-dark a.new-design {
         border-color: #555;
@@ -176,7 +178,7 @@
   <body>
     <header>
       <img id="logo" src="/ordec_logo.svg" alt="ORDeC" />
-      <button id="theme-toggle"></button>
+      <button id="theme-toggle" aria-label="Toggle dark/light mode"></button>
     </header>
 
     <a class="new-design" href="/app.html#example=blank">

@@ -323,6 +323,7 @@ export class ResultViewer {
                     <div class="resoverlay-topleft refreshable">View is out of date. <button>Refresh</button></div>
                     <div class="rescontent" tabindex="1"></div>
                     <div class="resexception"></div>
+                    <div class="resview-empty">Select a view from the dropdown above</div>
                 </div>
             </div>
         `;
@@ -335,6 +336,7 @@ export class ResultViewer {
         this.resContent = container.element.querySelector(".rescontent");
         this.resWrapper = container.element.querySelector(".reswrapper");
         this.resException = container.element.querySelector(".resexception");
+        this.resEmpty = container.element.querySelector(".resview-empty");
         this.resViewHead = container.element.querySelector(".resviewhead");
         this.viewUpToDate = false;
         this.viewSelected = null;
@@ -416,6 +418,7 @@ export class ResultViewer {
         this.viewSelected = viewName;
         this.container.setState({ view: viewName });
         this.container.setTitle(viewName);
+        this.resEmpty.style.display = 'none';
 
         this.invalidate();
         this.resetResContent();
@@ -432,6 +435,7 @@ export class ResultViewer {
         this.showRefreshOverlay(null);
         this.showException(null);
         this.resetResContent();
+        this.resEmpty.style.display = '';
     }
 
     invalidate() {
@@ -493,6 +497,7 @@ export class ResultViewer {
         }
         if (this.viewSelected) {
             this.container.setTitle(this.viewSelected);
+            this.resEmpty.style.display = 'none';
         }
         this.viewListInitialized = true;
     }

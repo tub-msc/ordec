@@ -3,183 +3,418 @@
     size-adjust: 100%;
     src: url('/fonts/Inconsolata/Inconsolata-VariableFont_wdth,wght.ttf') format('truetype');
 }
+
+/* -- Design tokens ----------------------------------------------- */
+:root {
+    /* Surface / background */
+    --color-bg:              #fff;
+    --color-bg-secondary:    #f5f5f5;
+    --color-bg-tertiary:     #eee;
+    --color-bg-overlay:      #eee;
+    --color-bg-table-header: #d8d8d8;
+    --color-bg-tooltip:      rgba(255, 255, 255, 0.92);
+    --color-bg-plot:         #fff;
+    --color-bg-zoom-btn:     rgba(240, 240, 240, 0.9);
+    --color-bg-zoom-btn-hover: rgba(220, 220, 220, 0.95);
+
+    /* Text */
+    --color-text:            #333;
+    --color-text-secondary:  #555;
+    --color-text-muted:      #777;
+    --color-text-link:       inherit;
+
+    /* Borders */
+    --color-border:          #aaa;
+    --color-border-light:    #ccc;
+    --color-border-table:    #aaa;
+    --color-border-plot-grid:#e0e0e0;
+
+    /* Plot axes */
+    --color-axis-line:       #aaa;
+    --color-axis-text:       #555;
+    --color-axis-label:      #333;
+
+    /* Status */
+    --color-status-busy:     #ffff44;
+    --color-status-ready:    #44ff44;
+    --color-status-error:    #ff4444;
+
+    /* Exception */
+    --color-exception:       red;
+
+    /* Refreshing / refreshable overlays */
+    --color-refreshing:      #ff0;
+    --color-refreshable:     #f00;
+
+    /* ORDB table */
+    --color-ordb-border:     black;
+    --color-ordb-header:     #ccc;
+
+    /* Schematic error tooltip */
+    --color-schem-err-bg:    rgba(255, 240, 240, 0.95);
+    --color-schem-err-border:#f00;
+    --color-schem-err-text:  #c00;
+
+    /* Report */
+    --color-report-separator:#cfcfcf;
+    --color-report-fill-bg:  #fff;
+
+    /* Markdown tables */
+    --color-md-table-border: black;
+
+    /* Layout canvas */
+    --color-layout-bg:       #000;
+
+    /* Workspace (behind Golden Layout) */
+    --color-bg-workspace:    #f4f4f4;
+
+    /* Toolbar — match GL tab inactive background + glow */
+    --color-bg-toolbar:      #e1e1e1;
+    --color-toolbar-border:  #cccccc;
+    --toolbar-shadow:        0 1px 3px rgba(0, 0, 0, 0.12);
+
+    /* Symbol stroke */
+    --color-symbol-stroke:   black;
+
+    /* Typography scale */
+    --font-size-xs:    11px;
+    --font-size-sm:    12px;
+    --font-size-base:  13px;
+    --font-size-md:    14px;
+    --font-size-lg:    16px;
+
+    /* Font families */
+    --font-sans:  "Helvetica", sans-serif;
+    --font-mono:  'Inconsolata', monospace;
+
+    /* Scrollbar */
+    --scrollbar-track:       #f0f0f0;
+    --scrollbar-thumb:       #c0c0c0;
+    --scrollbar-thumb-hover: #a0a0a0;
+
+    /* Focus */
+    --color-focus:           #4d90fe;
+}
+
+body.theme-dark {
+    --color-bg:              #1e1e1e;
+    --color-bg-secondary:    #1a1a1a;
+    --color-bg-tertiary:     #2a2a2a;
+    --color-bg-overlay:      #2a2a2a;
+    --color-bg-table-header: #2a2a2a;
+    --color-bg-tooltip:      rgba(0, 0, 0, 0.85);
+    --color-bg-plot:         #111;
+    --color-bg-zoom-btn:     rgba(20, 20, 20, 0.9);
+    --color-bg-zoom-btn-hover: rgba(40, 40, 40, 0.95);
+
+    --color-text:            #ccc;
+    --color-text-secondary:  #999;
+    --color-text-muted:      #888;
+    --color-text-link:       #8cb4ff;
+
+    --color-border:          #555;
+    --color-border-light:    #333;
+    --color-border-table:    #444;
+    --color-border-plot-grid:#2a2a2a;
+
+    --color-axis-line:       #555;
+    --color-axis-text:       #999;
+    --color-axis-label:      #bbb;
+
+    --color-exception:       #ff6666;
+
+    --color-refreshing:      #665500;
+    --color-refreshable:     #662200;
+
+    --color-ordb-border:     #444;
+    --color-ordb-header:     #2a2a2a;
+
+    --color-schem-err-bg:    rgba(60, 20, 20, 0.95);
+    --color-schem-err-border:#f66;
+    --color-schem-err-text:  #f66;
+
+    --color-bg-workspace:    #000;
+    --color-bg-toolbar:      #111111;
+    --color-toolbar-border:  #000000;
+    --toolbar-shadow:        0 1px 3px rgba(0, 0, 0, 0.5);
+
+    --scrollbar-track:       #2a2a2a;
+    --scrollbar-thumb:       #555;
+    --scrollbar-thumb-hover: #777;
+
+    --color-focus:           #5a9bff;
+
+    --color-report-separator:#333;
+    --color-report-fill-bg:  #1a1a1a;
+
+    --color-md-table-border: #444;
+
+    --color-symbol-stroke:   white;
+}
+
+/* -- Theme transition -------------------------------------------- */
 body {
-    margin:0px;
-    padding:0px;
-    display:flex;
-    flex-direction:column;
-    height:100vh;
-    width:100vw;
-    font-family:"Helvetica", sans-serif;
-    align-items:stretch;
-    overflow:hidden;
+    transition: background-color 150ms ease, color 150ms ease;
+}
+#toolbar {
+    transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+.boxitem,
+.rescontent,
+.resviewhead,
+.resoverlay-topleft,
+.resoverlay-bottomright,
+.simplot-container,
+.simplot svg,
+.simplot-legend,
+.simplot-default-zoom,
+.simplot-tooltip,
+.dc_table th,
+.ordb-table table th,
+.report-view-fill {
+    transition: background-color 150ms ease, color 150ms ease,
+                border-color 150ms ease;
+}
+
+/* -- Base layout ------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+    margin: 0px;
+    padding: 0px;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+    font-family: var(--font-sans);
+    font-size: var(--font-base);
+    align-items: stretch;
+    overflow: hidden;
+    background-color: var(--color-bg);
+    color: var(--color-text);
 }
 
 #workspace {
-    position:absolute;
-    top:28px;
-    bottom:0;
-    left:0;
-    right:0;
+    flex: 1;
+    min-height: 0;
+    padding-top: 4px;
+    background-color: var(--color-bg-workspace);
+}
+
+/* -- Toolbar ----------------------------------------------------- */
+#toolbar {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    padding: 2px 6px;
+    background-color: var(--color-bg-toolbar);
+    border-bottom: 1px solid var(--color-toolbar-border);
+    box-shadow: var(--toolbar-shadow);
+    z-index: 1;
+}
+#toolbar .spacer {
+    flex-grow: 1;
+}
+#toolbar a {
+    color: var(--color-text-link);
+}
+
+/* Dark mode: override browser-default button/select chrome */
+body.theme-dark #toolbar button,
+body.theme-dark #toolbar select {
+    background-color: #333;
+    color: #ccc;
+    border-color: #555;
 }
 
 .boxitem {
-    border:1px solid #aaa;
-    background-color:#eee;
-    padding:1px 4px;
-    font-size:small;
+    border: 1px solid var(--color-border);
+    background-color: var(--color-bg-tertiary);
+    color: #000;
+    padding: 1px 4px;
+    font-size: var(--font-size-sm);
     border-radius: 5px;
 }
 
-#toolbar {
-    height:28px;
-    display: flex;
-    flex-direction:row;
-    align-items:center;
-    gap:10px;
-    padding:1px 3px;
-    background-color:#d8d8d8;
-    border-bottom:1px solid #aaa;
-}
-#toolbar .spacer {
-    flex-grow:1;
-}
 #theme-toggle {
     background: none;
-    border: 1px solid #aaa;
+    border: 1px solid var(--color-border);
     border-radius: 3px;
     cursor: pointer;
-    font-size: 16px;
+    font-size: var(--font-size-lg);
     padding: 0px 4px;
     line-height: 1.4;
 }
+
+/* -- Status indicator -------------------------------------------- */
+#status.status-busy         { background-color: var(--color-status-busy); }
+#status.status-ready        { background-color: var(--color-status-ready); }
+#status.status-exception    { background-color: var(--color-status-error); }
+#status.status-disconnected { background-color: var(--color-status-error); }
+
+/* -- Result viewer ----------------------------------------------- */
 .resview {
-    display:flex;
-    flex-direction:column;
+    display: flex;
+    flex-direction: column;
     box-sizing: border-box;
-    position:absolute;
-    top:0px;
-    bottom:0px;
-    left:0px;
-    right:0px;
+    position: absolute;
+    top: 0px;
+    bottom: 0px;
+    left: 0px;
+    right: 0px;
 }
 .reswrapper {
-    flex-grow:1;
+    flex-grow: 1;
     display: flex;
     align-items: stretch;
-    position:relative;
+    position: relative;
 }
 .rescontent {
-    background-color:#fff;
+    background-color: var(--color-bg);
+    color: var(--color-text);
     position: absolute;
     left: 0;
     width: 100%;
     height: 100%;
     z-index: 1;
-    padding:0px;
-    overflow-y:scroll;
-    overflow-x:clip;
+    padding: 0px;
+    overflow-y: scroll;
+    overflow-x: clip;
 }
 .resexception {
-    flex-grow:1;
-    padding:3px;
+    flex-grow: 1;
+    padding: 3px;
 }
 .resviewhead select {
-    flex-grow:1;
-    min-width:80px;
+    flex-grow: 1;
+    min-width: 80px;
+}
+body.theme-dark .resviewhead select {
+    background-color: #333;
+    color: #ccc;
+    border-color: #555;
 }
 .resviewhead {
-    display:flex;
-    flex-direction:row;
-    gap:5px;
-    padding:2px 5px;
-    border-bottom:1px solid #aaa;
+    display: flex;
+    flex-direction: row;
+    gap: 5px;
+    padding: 2px 5px;
+    border-bottom: 1px solid var(--color-border);
 }
+
+/* -- Empty state ------------------------------------------------- */
+.resview-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-md);
+    text-align: center;
+    padding: 20px;
+    user-select: none;
+}
+
+/* -- Overlays ---------------------------------------------------- */
+.resoverlay-topleft, .resoverlay-bottomright {
+    z-index: 2;
+    position: absolute;
+    background-color: var(--color-bg-overlay);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    margin: 5px;
+    padding: 4px;
+    border-radius: 5px;
+}
+.resoverlay-bottomright {
+    bottom: 0px;
+    right: 0px;
+}
+.refreshing {
+    background-color: var(--color-refreshing);
+}
+.refreshing img {
+    height: 1.2em;
+    alignment-baseline: middle;
+    display: inline-block;
+    margin-bottom: -0.2em;
+}
+.refreshable {
+    background-color: var(--color-refreshable);
+}
+
+/* -- SVG / Canvas ------------------------------------------------ */
 svg.fit {
-    display:block;
-    object-fit:contain;
-    width:100%;
-    height:100%;
+    display: block;
+    object-fit: contain;
+    width: 100%;
+    height: 100%;
 }
 canvas.layoutFit {
-    display:block;
-    width:100%;
-    height:100%;
-    /* To debug:
-    padding:5px;
-    box-sizing: border-box;
-    */
+    display: block;
+    width: 100%;
+    height: 100%;
 }
-*, *::before, *::after { box-sizing: border-box; }
+
+/* -- Exception --------------------------------------------------- */
 .exception {
-    color:red;
+    color: var(--color-exception);
 }
 pre {
-    margin:0px;
+    margin: 0px;
 }
+
+/* -- DC table ---------------------------------------------------- */
 .dc_table {
-    width:100%;
+    width: 100%;
     border-collapse: collapse;
 }
 .dc_table td, .dc_table th {
-    border: 1px solid #aaa;
-    padding:0px 5px;
+    border: 1px solid var(--color-border-table);
+    padding: 0px 5px;
 }
 .dc_table th {
-    background-color:#d8d8d8;
+    background-color: var(--color-bg-table-header);
 }
 .dc_table td:nth-child(2) {
     width: 100%;
     max-width: 0;
 }
+
+/* -- Debug ------------------------------------------------------- */
 .debug {
-    display:none;
-}
-.resoverlay-topleft, .resoverlay-bottomright {
-    z-index: 2;
-    position:absolute;
-    background-color:#eee;
-    border:1px solid #aaa;
-    margin:5px;
-    padding:4px;
-    border-radius:5px;
-}
-.resoverlay-bottomright {
-    bottom:0px;
-    right:0px;
-}
-.refreshing {
-    background-color:#ff0;
-}
-.refreshing img {
-    height:1.2em;
-    alignment-baseline: middle;
-    display:inline-block;
-    margin-bottom:-0.2em;
-}
-.refreshable {
-    background-color:#f00;
-}
-.ordb-table {
-    font-family: 'Inconsolata';
-}
-.ordb-table table td, .ordb-table table th {
-    border:1px solid black;
-    padding:0px 3px;
-}
-.ordb-table table th {
-    background-color: #ccc;
-}
-.ordb-table table {
-    border-collapse:collapse;
+    display: none;
 }
 
+/* -- ORDB table -------------------------------------------------- */
+.ordb-table {
+    font-family: var(--font-mono);
+}
+.ordb-table table td, .ordb-table table th {
+    border: 1px solid var(--color-ordb-border);
+    padding: 0px 3px;
+}
+.ordb-table table th {
+    background-color: var(--color-ordb-header);
+}
+.ordb-table table {
+    border-collapse: collapse;
+}
+
+/* -- SimPlot ----------------------------------------------------- */
 .simplot-container {
     display: flex;
     flex-direction: column;
     height: 100%;
     overflow: hidden;
-    background-color: #f5f5f5;
+    background-color: var(--color-bg-secondary);
 }
 .simplot {
     flex: 1;
@@ -190,31 +425,31 @@ pre {
 }
 .simplot svg {
     flex: 1;
-    background-color: #fff;
+    background-color: var(--color-bg-plot);
 }
 .simplot-default-zoom {
     padding: 2px 7px;
-    border: 1px solid #bbb;
+    border: 1px solid var(--color-border);
     border-radius: 3px;
-    background-color: rgba(240, 240, 240, 0.9);
-    color: #333;
-    font-family: 'Inconsolata', monospace;
-    font-size: 12px;
+    background-color: var(--color-bg-zoom-btn);
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
     cursor: pointer;
 }
 .simplot-default-zoom:hover {
-    background-color: rgba(220, 220, 220, 0.95);
+    background-color: var(--color-bg-zoom-btn-hover);
 }
 .simplot-legend {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
     padding: 4px 8px;
-    font-size: 14px;
-    font-family: 'Inconsolata', monospace;
-    color: #333;
-    background-color: #f5f5f5;
-    border-bottom: 1px solid #ccc;
+    font-size: var(--font-size-md);
+    font-family: var(--font-mono);
+    color: var(--color-text);
+    background-color: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-border-light);
 }
 .simplot-legend-item {
     display: flex;
@@ -233,23 +468,23 @@ pre {
     height: 3px;
 }
 .simplot + .simplot {
-    border-top: 1px solid #ccc;
+    border-top: 1px solid var(--color-border-light);
 }
 .simplot-axis line, .simplot-axis path {
-    stroke: #aaa;
+    stroke: var(--color-axis-line);
 }
 .simplot-axis text {
-    font-size: 13px;
-    font-family: 'Inconsolata', monospace;
-    fill: #555;
+    font-size: var(--font-size-base);
+    font-family: var(--font-mono);
+    fill: var(--color-axis-text);
 }
 .simplot-axis-label {
-    font-size: 14px;
-    font-family: 'Inconsolata', monospace;
-    fill: #333;
+    font-size: var(--font-size-md);
+    font-family: var(--font-mono);
+    fill: var(--color-axis-label);
 }
 .simplot-grid line {
-    stroke: #e0e0e0;
+    stroke: var(--color-border-plot-grid);
     stroke-dasharray: 2,2;
 }
 .simplot-grid path {
@@ -261,19 +496,30 @@ pre {
     top: 0;
     right: 0;
     padding: 4px 8px;
-    background-color: rgba(255, 255, 255, 0.92);
-    border: 1px solid #bbb;
+    background-color: var(--color-bg-tooltip);
+    border: 1px solid var(--color-border);
     border-radius: 3px;
-    font-family: 'Inconsolata', monospace;
-    font-size: 13px;
-    color: #333;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-base);
+    color: var(--color-text);
     pointer-events: none;
     z-index: 3;
     display: none;
     flex-direction: column;
     gap: 1px;
 }
+.simplot-tooltip span {
+    display: block;
+    white-space: nowrap;
+}
+.simplot-tooltip-x {
+    color: var(--color-text-muted);
+    border-bottom: 1px solid var(--color-border-light);
+    padding-bottom: 2px;
+    margin-bottom: 1px;
+}
 
+/* -- Report view ------------------------------------------------- */
 .report-view {
     display: flex;
     flex-direction: column;
@@ -282,6 +528,7 @@ pre {
 .report-view-fill {
     height: 100%;
     overflow: hidden;
+    background-color: var(--color-report-fill-bg);
 }
 .report-view-fill > .report-element-plot2d {
     flex: 1;
@@ -303,16 +550,16 @@ pre {
     padding: 0;
 }
 .report-element + .report-element {
-    border-top: 1px solid #cfcfcf;
+    border-top: 1px solid var(--color-report-separator);
 }
 .report-preformatted {
     margin: 0;
-    font-family: 'Inconsolata', monospace;
+    font-family: var(--font-mono);
     white-space: pre;
     overflow-x: auto;
 }
 .report-markdown code {
-    font-family: 'Inconsolata', monospace;
+    font-family: var(--font-mono);
 }
 .report-markdown h1,
 .report-markdown h2,
@@ -332,47 +579,75 @@ pre {
 .report-plot2d {
     width: 100%;
 }
-.simplot-tooltip span {
-    display: block;
-    white-space: nowrap;
-}
-.simplot-tooltip-x {
-    color: #777;
-    border-bottom: 1px solid #ccc;
-    padding-bottom: 2px;
-    margin-bottom: 1px;
-}
 .report-markdown table {
     border-collapse: collapse;
 }
 .report-markdown table td, .report-markdown table th {
-    border:1px solid black;
-    padding:2px;
+    border: 1px solid var(--color-md-table-border);
+    padding: 2px;
 }
+
+/* -- Layout viewer ----------------------------------------------- */
 .layout {
-    background-color: #000;
+    background-color: var(--color-layout-bg);
 }
+
+/* -- Schematic error tooltip ------------------------------------- */
 .schem-error-tooltip {
     display: none;
     position: absolute;
     padding: 4px 8px;
-    background-color: rgba(255, 240, 240, 0.95);
-    border: 1px solid #f00;
+    background-color: var(--color-schem-err-bg);
+    border: 1px solid var(--color-schem-err-border);
     border-radius: 3px;
-    font-family: 'Inconsolata', monospace;
-    font-size: 13px;
-    color: #c00;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-base);
+    color: var(--color-schem-err-text);
     pointer-events: none;
     z-index: 3;
     white-space: nowrap;
 }
+
+/* -- Layer list (layout viewer) ---------------------------------- */
 .layerList {
-    list-style-type:none;
-    padding:5px;
-    margin:0px;
-    position:absolute;
-    top:3px;
-    right:3px;
-    background-color:#000;
-    color:#fff;
+    list-style-type: none;
+    padding: 5px;
+    margin: 0px;
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    background-color: #000;
+    color: #fff;
+}
+
+/* -- Symbol stroke (theme-aware) --------------------------------- */
+.symbolPoly {
+    stroke: var(--color-symbol-stroke);
+}
+
+/* -- Scrollbar --------------------------------------------------- */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+}
+/* Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* -- Focus ------------------------------------------------------- */
+:focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 1px;
 }

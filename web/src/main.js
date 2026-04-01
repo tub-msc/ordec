@@ -56,12 +56,7 @@ function getSourceType() {
 function setStatus(status) {
     let divStatus = document.querySelector("#status");
     divStatus.innerText = status;
-    divStatus.style.backgroundColor = {
-        'busy': '#ffff44',
-        'ready': '#44ff44',
-        'exception': '#ff4444',
-        'disconnected': '#ff4444'
-    }[status];
+    divStatus.className = 'boxitem status-' + status;
 }
 
 function unloadMsg() {

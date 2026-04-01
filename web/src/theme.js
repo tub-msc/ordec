@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import './theme-dark.css'
-
 // Import both Golden Layout themes. Only one will be active at a time;
 // the inactive one is disabled via its stylesheet's .disabled property.
 import glLightUrl from "golden-layout/dist/css/themes/goldenlayout-light-theme.css?url";
