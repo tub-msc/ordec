@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from .inverter import Inv
+from .mux2 import Mux2
+
+cell D_latch:
+    viewgen symbol -> Symbol:
+        input D: .align = West
+        input LE: .align = West
+        input vdd: .align = North
+        input vss: .align = South
+        output Q: .align = East
+
+    viewgen schematic -> Schematic:
+        port D: .pos = (1, 10); .align = East
+        port LE: .pos = (1, 16); .align = East
+        port vdd: .pos = (1, 24); .align = East
+        port vss: .pos = (1, 1); .align = East
+        port Q: .pos = (24, 12); .align = West
+
+        net mux_out
+
+        vdd.auto_wire = False
+        vss.auto_wire = False
+
+        Mux2 m1:
+            .vdd -- vdd
+            .vss -- vss
+            .a -- Q
+            .b -- D
+            .s -- LE
+            .y -- mux_out
+            .pos = (5, 2)
+
+        Inv i1:
+            .vdd -- vdd
+            .vss -- vss
+            .a -- mux_out
+            .y -- Q
+            .pos = (18, 10)

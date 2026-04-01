@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from .inverter import Inv
+
+cell Ringosc:
+    viewgen symbol -> Symbol:
+        output y: .pos = (24, 4); .align = East
+        input vdd: .pos = (1, 8); .align = West
+        input vss: .pos = (1, 1); .align = West
+
+    viewgen schematic -> Schematic:
+        port y: .pos = (24, 4); .align = West
+        port vdd: .pos = (1, 8); .align = East
+        port vss: .pos = (1, 1); .align = East
+
+        net y0
+        net y1
+
+        Inv i0:
+            .pos = (3, 2)
+            .vdd -- vdd
+            .vss -- vss
+            .a -- y
+            .y -- y0
+
+        Inv i1:
+            .pos = (10, 2)
+            .vdd -- vdd
+            .vss -- vss
+            .a -- y0
+            .y -- y1
+
+        Inv i2:
+            .pos = (17, 2)
+            .vdd -- vdd
+            .vss -- vss
+            .a -- y1
+            .y -- y

@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1349.25px" height="945.0px" viewBox="-1.5499999999999998 0.0 38.55 27.0">
+  <g transform="matrix(1 0 0 -1 0 27.0)">
+    <path d="M32.0 13.0 L31.0 13.0 L31.0 12.0 L36.0 12.0 L36.0 16.0 L35.0 16.0" class="schemWire" />
+    <path d="M31.0 13.0 L17.0 13.0 L17.0 17.0 L18.0 17.0" class="schemWire" />
+    <path d="M5.0 5.0 L4.0 5.0 L4.0 1.0 L16.0 1.0 L23.0 1.0 L23.0 4.0 L22.0 4.0" class="schemWire" />
+    <path d="M16.0 1.0 L16.0 16.0 L18.0 16.0" class="schemWire" />
+    <path d="M1.0 12.0 L3.0 12.0 L3.0 4.0 L5.0 4.0" class="schemWire" />
+    <path d="M9.0 4.0 L18.0 4.0" class="schemWire" />
+    <path d="M22.0 16.0 L31.0 16.0" class="schemWire" />
+    <circle cx="31.0" cy="13.0" r="0.1625" class="connPoint" />
+    <circle cx="16.0" cy="1.0" r="0.1625" class="connPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 1.0 26.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 1.65 26.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 1.0 1.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 1.65 1.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vss</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 1.0 18.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 1.65 18.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">CLK</text>
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 7.0 8.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 7.0 8.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 7.0 2.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 7.0 1.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 1 -1 0 5.0 6.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 4.35 6.0)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">CLK</text>
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 7.0 24.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 7.0 24.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 7.0 20.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 7.0 19.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 1 -1 0 5.0 22.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 4.35 22.0)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">CLK</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 9.0 22.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 9.65 22.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">clk_not</text>
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 20.0 6.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 20.0 6.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 20.0 2.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 20.0 1.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 20.0 20.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 20.0 20.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 20.0 14.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 20.0 13.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
+    <path d="M0 0 L0 0.5" transform="matrix(0 1 -1 0 18.0 18.0)" class="tapPoint" />
+    <text transform="matrix(0.045 0 0 -0.045 17.35 18.0)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">clk_not</text>
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 33.0 18.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 33.0 18.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 33.0 14.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 33.0 13.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
+    <g>
+      <rect x="5.0" y="2.0" width="4.0" height="6.0" class="symbolOutline" />
+      <text transform="matrix(0.045 0 0 -0.045 8.875 7.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Mux2</text>
+      <text transform="matrix(0.045 0 0 -0.045 8.875 2.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 5.125 7.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">m1</text>
+      <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 8.8 4.0)" class="pinArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 8.875 4.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">y</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 5.2 4.0)" class="pinArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 5.125 4.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">a</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 5.2 5.0)" class="pinArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 5.125 5.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">b</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(-1 0 0 -1 7.0 7.8)" class="pinArrow" />
+      <text transform="matrix(0 0.045 0.045 0 6.875 7.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">vdd</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(1 0 0 1 7.0 2.2)" class="pinArrow" />
+      <text transform="matrix(0 0.045 0.045 0 6.875 2.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">vss</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 5.2 6.0)" class="pinArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 5.125 6.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">s</text>
+    </g>
+    <g>
+      <rect x="5.0" y="20.0" width="4.0" height="4.0" class="symbolOutline" />
+      <text transform="matrix(0.045 0 0 -0.045 8.875 23.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Inv</text>
+      <text transform="matrix(0.045 0 0 -0.045 8.875 20.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 5.125 23.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">clk_inv</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(-1 0 0 -1 7.0 23.8)" class="pinArrow" />
+      <text transform="matrix(0 0.045 0.045 0 6.875 23.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">vdd</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(1 0 0 1 7.0 20.2)" class="pinArrow" />
+      <text transform="matrix(0 0.045 0.045 0 6.875 20.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">vss</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 5.2 22.0)" class="pinArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 5.125 22.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">a</text>
+      <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 8.8 22.0)" class="pinArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 8.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">y</text>
+    </g>
+    <g>
+      <rect x="18.0" y="2.0" width="4.0" height="4.0" class="symbolOutline" />
+      <text transform="matrix(0.045 0 0 -0.045 21.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Inv</text>
+      <text transform="matrix(0.045 0 0 -0.045 21.875 2.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 18.125 5.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">i1</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(-1 0 0 -1 20.0 5.8)" class="pinArrow" />
+      <text transform="matrix(0 0.045 0.045 0 19.875 5.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">vdd</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(1 0 0 1 20.0 2.2)" class="pinArrow" />
+      <text transform="matrix(0 0.045 0.045 0 19.875 2.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">vss</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 18.2 4.0)" class="pinArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 18.125 4.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">a</text>
+      <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 21.8 4.0)" class="pinArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 21.875 4.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">y</text>
+    </g>
+    <g>
+      <rect x="18.0" y="14.0" width="4.0" height="6.0" class="symbolOutline" />
+      <text transform="matrix(0.045 0 0 -0.045 21.875 19.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Mux2</text>
+      <text transform="matrix(0.045 0 0 -0.045 21.875 14.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 18.125 19.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">m2</text>
+      <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 21.8 16.0)" class="pinArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 21.875 16.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">y</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 18.2 16.0)" class="pinArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 18.125 16.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">a</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 18.2 17.0)" class="pinArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 18.125 17.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">b</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(-1 0 0 -1 20.0 19.8)" class="pinArrow" />
+      <text transform="matrix(0 0.045 0.045 0 19.875 19.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">vdd</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(1 0 0 1 20.0 14.2)" class="pinArrow" />
+      <text transform="matrix(0 0.045 0.045 0 19.875 14.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">vss</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 18.2 18.0)" class="pinArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 18.125 18.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">s</text>
+    </g>
+    <g>
+      <rect x="31.0" y="14.0" width="4.0" height="4.0" class="symbolOutline" />
+      <text transform="matrix(0.045 0 0 -0.045 34.875 17.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Inv</text>
+      <text transform="matrix(0.045 0 0 -0.045 34.875 14.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
+      <text transform="matrix(0.045 0 0 -0.045 31.125 17.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">i2</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(-1 0 0 -1 33.0 17.8)" class="pinArrow" />
+      <text transform="matrix(0 0.045 0.045 0 32.875 17.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">vdd</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(1 0 0 1 33.0 14.2)" class="pinArrow" />
+      <text transform="matrix(0 0.045 0.045 0 32.875 14.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">vss</text>
+      <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 31.2 16.0)" class="pinArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 31.125 16.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">a</text>
+      <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 34.8 16.0)" class="pinArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 34.875 16.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">y</text>
+    </g>
+    <g>
+      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 26.0)" class="portArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 0.35 26.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vdd</text>
+    </g>
+    <g>
+      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 1.0)" class="portArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 0.35 1.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vss</text>
+    </g>
+    <g>
+      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 18.0)" class="portArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 0.35 18.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">CLK</text>
+    </g>
+    <g>
+      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 12.0)" class="portArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 0.35 12.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">D</text>
+    </g>
+    <g>
+      <path d="M0 0 L0.25 0 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 0 Z" transform="matrix(0 1 -1 0 32.0 13.0)" class="portArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 32.65 13.0)" dominant-baseline="middle" text-anchor="start" class="portLabel">Q</text>
+    </g>
+  </g>
+</svg>

@@ -1,8 +1,23 @@
 :mod:`ordec.ord2` --- ORD2 language
 ===================================
 
-ORD2 is a programming language that offers full support of Python, plus additional ORD syntax (a *Python-superset*) to improve textual IC design within the ORDeC project. It currently focuses on simplifying the schematic entry phase, while also supporting the usual Python syntax for simulations or layouts. The language revision described in this file is called **ORD2**; it is a reworked version of the former **ORD1**, which had its own grammar and was not based on the Python language. Execution of ORD code results in a one-pass compiler step that transforms the input into context-based Python code. 
-This is only made possible by leveraging the power of the :class:`Context`, which is explained in a later paragraph. The actual ORD grammar is written in Lark. Lark is a well-known and efficient Python parsing framework for grammars in EBNF form. The function call :func:`ord2_to_py` summarizes the necessary function calls for a proper ORD to Python conversion. The conversion is mostly dependent on the :class:`Ord2Transformer` that inherits from :class:`PythonTransformer`. The **PythonTransformer** is capable of transforming any Python code written in ORD back to Python, and the **Ord2Transformer** handles the conversion of the ORD syntax. The following paragraphs will summarize the logic behind the ORD to Python conversion. 
+ORD2 is ORDeC's current programming language. It offers full support of Python,
+plus additional ORD syntax (a Python-superset) to improve textual IC design
+within the ORDeC project. It currently focuses on simplifying schematic entry
+while also supporting regular Python syntax for simulations or layouts.
+Execution of ORD code results in a one-pass compiler step that transforms the
+input into context-based Python code.
+
+This is only made possible by leveraging the power of the :class:`Context`,
+which is explained in a later paragraph. The actual ORD grammar is written in
+Lark. Lark is a well-known and efficient Python parsing framework for grammars
+in EBNF form. The function call :func:`ord2_to_py` summarizes the necessary
+function calls for a proper ORD-to-Python conversion. The conversion is mostly
+dependent on the :class:`Ord2Transformer` that inherits from
+:class:`PythonTransformer`. The **PythonTransformer** is capable of
+transforming any Python code written in ORD back to Python, and the
+**Ord2Transformer** handles the conversion of the ORD syntax. The following
+paragraphs summarize the logic behind the ORD-to-Python conversion.
 
 
 For a practical demonstration, please visit the ORD tutorial :ref:`ord_tutorial` page!

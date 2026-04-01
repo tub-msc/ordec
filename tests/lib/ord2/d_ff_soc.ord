@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from .inverter import Inv
+from .mux2 import Mux2
+
+cell D_flip_flop:
+    viewgen symbol -> Symbol:
+        input vdd: .align = North
+        input vss: .align = South
+        input CLK: .align = West
+        input D: .align = West
+        output Q: .align = East
+
+    viewgen schematic -> Schematic:
+        port vdd: .pos = (1, 26); .align = East
+        port vss: .pos = (1, 1); .align = East
+        port CLK: .pos = (1, 18); .align = East
+        port D: .pos = (1, 12); .align = East
+        port Q: .pos = (32, 13); .align = West
+
+        net s_val
+        net clk_not
+        net m1_y
+        net m2_y
+
+        vdd.auto_wire = False
+        vss.auto_wire = False
+        CLK.auto_wire = False
+        clk_not.auto_wire = False
+
+        Mux2 m1:
+            .vdd -- vdd
+            .vss -- vss
+            .a -- D
+            .b -- s_val
+            .s -- CLK
+            .y -- m1_y
+            .pos = (5, 2)
+
+        Inv clk_inv:
+            .vdd -- vdd
+            .vss -- vss
+            .a -- CLK
+            .y -- clk_not
+            .pos = (5, 20)
+
+        Inv i1:
+            .vdd -- vdd
+            .vss -- vss
+            .a -- m1_y
+            .y -- s_val
+            .pos = (18, 2)
+
+        Mux2 m2:
+            .vdd -- vdd
+            .vss -- vss
+            .a -- s_val
+            .b -- Q
+            .s -- clk_not
+            .y -- m2_y
+            .pos = (18, 14)
+
+        Inv i2:
+            .vdd -- vdd
+            .vss -- vss
+            .a -- m2_y
+            .y -- Q
+            .pos = (31, 14)

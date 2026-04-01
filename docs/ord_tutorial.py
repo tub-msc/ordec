@@ -28,9 +28,8 @@
 # This tutorial provides a starting point for writing basic ORD code.  
 # It covers all the main structures and features that ORD currently offers 
 # and will be extended in the future as ORD gains more features. The inverter 
-# will be the most referenced design throughout the tutorial, since it is 
-# well-known and easy to get started with. Since ORD1 is no longer maintained, 
-# all examples are written in ORD2. 
+# will be the most referenced design throughout the tutorial, since it is
+# well-known and easy to get started with. All examples are written in ORD2.
 
 # + tags=["remove-input"]
 from ordec.core import *
@@ -333,14 +332,9 @@ import ordec.importer
 from ordec.examples.nand2 import Nand2
 # -
 
-# ## 7. ORD version
+# ## 7. ORD files
 #
-# A header in the ORD file is used to decide which ORD language version the code is written in.
-# The header should be placed in the **first line**. The **default** version is currently **version one** if the version header is not present.
-
-# +
-# -*- version: ord2 -*-
-# -
+# ORD files are parsed as ORD2 directly. No language version header is needed.
 
 # I hope this short tutorial gave you some insights into how to get started
 # writing ORD code! Feel free to check out the ORD examples `ordec.lib.ord2_test` 

@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from .nand import Nand
+
+cell SR_flip_flop:
+    viewgen symbol -> Symbol:
+        input S: .pos = (1, 16); .align = West
+        input R: .pos = (1, 6); .align = West
+        input CLK: .pos = (8, 12); .align = North
+        input vdd: .pos = (2, 22); .align = North
+        input vss: .pos = (2, 0); .align = South
+        output Q: .pos = (33, 16); .align = East
+        output Q_not: .pos = (33, 6); .align = East
+
+    viewgen schematic -> Schematic:
+        port S: .pos = (1, 16); .align = East
+        port R: .pos = (1, 6); .align = East
+        port CLK: .pos = (8, 23); .align = South
+        port vdd: .pos = (2, 23); .align = South
+        port vss: .pos = (2, 0); .align = North
+        port Q: .pos = (33, 16); .align = West
+        port Q_not: .pos = (33, 6); .align = West
+
+        net n1_out
+        net n2_out
+
+        vdd.auto_wire = False
+        vss.auto_wire = False
+
+        Nand n1: .pos = (10, 14)
+        Nand n2: .pos = (10, 3)
+        Nand n3: .pos = (21, 14)
+        Nand n4: .pos = (21, 2)
+
+        n1.a -- S
+        n1.b -- CLK
+        n1.y -- n1_out
+
+        n2.a -- CLK
+        n2.b -- R
+        n2.y -- n2_out
+
+        n3.a -- n1_out
+        n3.b -- Q_not
+        n3.y -- Q
+
+        n4.a -- Q
+        n4.b -- n2_out
+        n4.y -- Q_not
+
+        for inst in n1, n2, n3, n4:
+            inst.vdd -- vdd
+            inst.vss -- vss

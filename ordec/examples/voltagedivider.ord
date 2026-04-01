@@ -1,4 +1,3 @@
-# -*- version: ord2 -*-
 from ordec.core import *
 
 # Library imports

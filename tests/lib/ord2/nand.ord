@@ -1,4 +1,3 @@
-# -*- version: ord2 -*-
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
@@ -26,4 +25,3 @@ cell Nand:
         Nmos n2: .pos=(10,10); .d -- y; .s -- net_conn; .b -- vss; .g -- b
         Pmos p1: .pos=(5,18); .d -- y; .s -- vdd; .b -- vdd; .g -- a
         Pmos p2: .pos=(15,18); .d -- y; .s -- vdd; .b -- vdd; .g -- b
-
