@@ -56,7 +56,7 @@ function getSourceType() {
 function setStatus(status) {
     let divStatus = document.querySelector("#status");
     divStatus.innerText = status;
-    divStatus.className = 'boxitem status-' + status;
+    divStatus.className = 'item status-' + status;
 }
 
 function unloadMsg() {

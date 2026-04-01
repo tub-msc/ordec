@@ -9,22 +9,21 @@
   </head>
   <body>
     <div id="toolbar">
-      <div class="item"><button id="newresview">New Result View</button></div>
-      <div class="item debug"><button id="savejson">Save as JSON</button></div>
-      <div id="toolSourcetype">
-        Source Type:
-        <select name="sourcetype" id="sourcetype">
-          <option value="ord">ORD</option>
-          <option value="python">Python</option>
+      <div class="item"><button class="toolbar-btn" id="newresview">New Result View</button></div>
+      <div class="item debug"><button class="toolbar-btn" id="savejson">Save as JSON</button></div>
+      <div class="item" id="toolSourcetype">
+        <select class="toolbar-btn" name="sourcetype" id="sourcetype">
+          <option value="ord">Source: ORD</option>
+          <option value="python">Source: Python</option>
         </select>
       </div>
-      <div class="item" id="toolRefresh"><button id="refresh">Refresh</button></div>
-      <div class="item"><a href="/index.html" target="_blank">Examples</a></div>
+      <div class="item" id="toolRefresh"><button class="toolbar-btn" id="refresh">Refresh</button></div>
+      <div class="item"><a class="toolbar-btn" href="/index.html" target="_blank">Examples</a></div>
+      <div class="toolbar-divider"></div>
       <div class="spacer"></div>
-      <div class="item"><img height="20px" style="vertical-align: -2px" src="/ordec_logo.svg" /></div>
-      <div class="item" id="version"></div>
-      <div class="item boxitem status-disconnected" id="status">disconnected</div>
-      <button id="theme-toggle" title="Toggle dark/light mode" aria-label="Toggle dark/light mode"></button>
+      <div class="item toolbar-muted">ORDeC&nbsp;<span id="version"></span></div>
+      <div class="item status-disconnected" id="status">disconnected</div>
+      <button class="toolbar-btn" id="theme-toggle" title="Toggle dark/light mode" aria-label="Toggle dark/light mode"></button>
     </div>
     <div id="workspace"></div>
     <a id="downloadAnchorElem" style="display:none"></a>

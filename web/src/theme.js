@@ -12,15 +12,17 @@ let glLightLink = null;
 let glDarkLink = null;
 let aceEditors = [];
 
-function createGlLinks() {
+function createGlLinks(dark) {
     glLightLink = document.createElement('link');
     glLightLink.rel = 'stylesheet';
     glLightLink.href = glLightUrl;
+    glLightLink.disabled = dark;
     document.head.appendChild(glLightLink);
 
     glDarkLink = document.createElement('link');
     glDarkLink.rel = 'stylesheet';
     glDarkLink.href = glDarkUrl;
+    glDarkLink.disabled = !dark;
     document.head.appendChild(glDarkLink);
 }
 
@@ -58,10 +60,9 @@ export function registerAceEditor(editor) {
 }
 
 export function initTheme() {
-    createGlLinks();
-
     const saved = window.localStorage.getItem(STORAGE_KEY);
     const dark = saved === 'dark';
+    createGlLinks(dark);
     applyTheme(dark);
 
     const btn = document.querySelector('#theme-toggle');

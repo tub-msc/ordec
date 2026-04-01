@@ -89,6 +89,27 @@ function findPath(node, viewName) {
     return null;
 }
 
+/**
+ * Resize a <select> to fit its currently selected option text.
+ * Uses a temporary hidden element to measure the text width.
+ */
+const _measurer = document.createElement('span');
+_measurer.style.cssText =
+    'position:absolute;visibility:hidden;white-space:nowrap;pointer-events:none';
+
+function autoWidthSelect(select) {
+    const style = getComputedStyle(select);
+    _measurer.style.font = style.font;
+    _measurer.style.fontSize = style.fontSize;
+    _measurer.style.fontFamily = style.fontFamily;
+    _measurer.textContent = select.options[select.selectedIndex]?.text || '';
+    document.body.appendChild(_measurer);
+    // Add padding (left+right from the select) plus room for the dropdown arrow
+    const pad = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + 20;
+    select.style.width = (_measurer.offsetWidth + pad) + 'px';
+    _measurer.remove();
+}
+
 export class HierSelector {
     constructor(container, { onSelect, onDeselect }) {
         this.container = container;
@@ -205,6 +226,7 @@ export class HierSelector {
         }
 
         select.onchange = () => this._onSelectChange(node, select, depth);
+        autoWidthSelect(select);
 
         // If we have a path to follow, render the next level
         if (selectedKey && selectedKey !== '__direct__' && node.children.has(selectedKey)) {
@@ -219,6 +241,7 @@ export class HierSelector {
     }
 
     _onSelectChange(node, select, depth) {
+        autoWidthSelect(select);
         // Capture selected values from deeper selects before removing them
         const previousPath = [];
         for (let i = depth + 1; i < this.selects.length; i++) {
