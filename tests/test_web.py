@@ -118,8 +118,8 @@ testcases_integrated = {
 }
 
 testcases_local = {
-    "ordec.lib.examples.voltagedivider": testcases_integrated['voltagedivider'],
-    "ordec.lib.examples.voltagedivider_py": testcases_integrated['voltagedivider_py'],
+    "ordec.examples.voltagedivider": testcases_integrated['voltagedivider'],
+    "ordec.examples.voltagedivider_py": testcases_integrated['voltagedivider_py'],
     "tests.lib.report": {
         'report_example()': [check_report_example],
     },

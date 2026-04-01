@@ -305,7 +305,7 @@ Each schema type is a Node subclass with Attr declarations and indexes.
 - ihp130.py: IHP SG13G2 PDK integration
 - generic_mos.py: Generic MOSFET models
 
-**Examples** (ordec/lib/examples/): .ord and .py example designs with .uistate.json UI state
+**Examples** (ordec/examples/): .ord and .py example designs with .uistate.json UI state
 
 **PDK configuration**: Environment variables (ORDEC_PDK_SKY130A, ORDEC_PDK_IHP_SG13G2, etc.)
 

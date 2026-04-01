@@ -6,7 +6,7 @@ from ordec.core import *
 from ordec.lib import NoConn
 
 from counter_yosys import extlib, report_digital_design
-from ordec.lib.examples.vco_pseudodiff import Vco, VcoHalfStage, VcoRing, VcoTb
+from ordec.examples.vco_pseudodiff import Vco, VcoHalfStage, VcoRing, VcoTb
 from ordec.layout import helpers
 from ordec.sim import Simulator
 from ordec.report import *

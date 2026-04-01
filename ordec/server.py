@@ -336,12 +336,14 @@ class ConnectionHandler:
                 exc = e
             else:
                 with self.import_lock.write():
+                    self.purge_modules()
                     try:
                         exec(code, conn_globals, conn_globals)
                     except Exception as e:
                         exc = e
         elif source_type == 'python':
             with self.import_lock.write():
+                self.purge_modules()
                 try:
                     exec(source_data, conn_globals, conn_globals)
                 except Exception as e:
@@ -571,7 +573,7 @@ class StaticHandler:
         srctype = None
         src = None
         uistate = None
-        from .lib import examples
+        from . import examples
         for p in importlib.resources.files(examples).iterdir():
             if p.stem == name:
                 src = p.read_text()

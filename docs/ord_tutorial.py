@@ -329,7 +329,7 @@ Inv().symbol
 # Get the ORDeC importer
 import ordec.importer
 # Import your ORD file!
-from ordec.lib.examples.nand2 import Nand2
+from ordec.examples.nand2 import Nand2
 # -
 
 # ## 7. ORD version
