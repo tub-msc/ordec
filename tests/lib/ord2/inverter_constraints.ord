@@ -29,7 +29,7 @@ cell Inv:
             .$l = 400n
         pu.$w = 200n
             
-        solver = Solver(__ord_context__.OrdContext.ctx.root)
+        solver = Solver(__ord_context__.root())
         solver.constrain(vss.pos == (2, 1))
         solver.constrain(vdd.pos == vss.pos + (0, 12))
         solver.constrain(y.pos.y == pd.d.pos.y + 1)

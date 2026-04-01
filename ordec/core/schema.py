@@ -13,6 +13,7 @@ from .geoprim import *
 from .ordb import *
 from .cell import Cell
 from .constraints import *
+from .context import ViewContext, LayoutViewContext
 from .simarray import SimArray
 
 # Enums
@@ -70,6 +71,27 @@ class SchemErrorType(Enum):
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'
 
+# Attribute proxy
+# ---------------
+
+class AttrProxy:
+    """Descriptor that delegates reads to a sub-attribute of another attribute.
+
+    Carries metadata (source_attr, name) so that LayoutInstanceSubcursor
+    can retrieve the full source object for coordinate transformation
+    before extracting the sub-attribute.
+    """
+    def __init__(self, source_attr, name):
+        self.source_attr = source_attr
+        self.name = name
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self
+        return getattr(getattr(obj, self.source_attr), self.name)
+
+def _rect_proxy(name):
+    return AttrProxy('rect', name)
 
 # NamedTuples
 # -----------
@@ -111,6 +133,7 @@ def coerce_tuple(target_type, tuple_length):
 @public
 class Symbol(SubgraphRoot):
     """A symbol of an individual cell."""
+    view_context = ViewContext
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
     caption = Attr(str)
     cell = Attr(Cell)
@@ -285,6 +308,7 @@ class SymbolArc(Node):
 @public
 class Schematic(SubgraphRoot):
     """A schematic of an individual cell."""
+    view_context = ViewContext
     symbol = SubgraphRef(Symbol)
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
     cell = Attr(Cell)
@@ -320,6 +344,25 @@ class Schematic(SubgraphRoot):
         from ..render import render
         return render(self).webdata()
 
+class NegatedWireOperand:
+    """Wrapper enabling the ``--`` pseudo-operator for schematic wiring.
+
+    The ``--`` connection operator (e.g. ``inst.d -- vss``) is not a dedicated
+    grammar rule but a combination of Python's subtraction and negation:
+    ``a -- b`` is parsed as ``a.__sub__(b.__neg__())``.  Both operand orders
+    are supported (pin -- net *and* net -- pin) so the operator is commutative.
+    """
+    __slots__ = ('wrapped',)
+    def __init__(self, wrapped):
+        self.wrapped = wrapped
+
+    def __rsub__(self, other):
+        # Supports net -- pin (i.e. net - (-pin))
+        wire_op = getattr(self.wrapped, '__wire_op__', None)
+        if wire_op is not None:
+            return wire_op(other)
+        return NotImplemented
+
 @public
 class Net(Node):
     in_subgraphs = [Schematic]
@@ -327,6 +370,9 @@ class Net(Node):
     auto_wire = Attr(bool, default=True) #: Controls whether the Net is auto-wired
 
     pin_idx = Index(pin)
+
+    def __neg__(self):
+        return NegatedWireOperand(self)
 
     @property
     def port(self):
@@ -394,6 +440,18 @@ class SchemInstanceSubcursor(tuple):
     def __getitem__(self, key):
         """Support indexing into pin hierarchies (e.g., inst['d'][0].pos)."""
         return SchemInstanceSubcursor((self.inst(), self.node()[key]))
+
+    def __neg__(self):
+        return NegatedWireOperand(self)
+
+    def __wire_op__(self, here):
+        conn = self.inst() % SchemInstanceConn(here=here, there=self.node())
+        return conn
+
+    def __sub__(self, other):
+        if isinstance(other, NegatedWireOperand):
+            return self.__wire_op__(other.wrapped)
+        return NotImplemented
 
     def __getattr__(self, name):
         inner_ret = getattr(self.node(), name)
@@ -499,10 +557,18 @@ class SchemInstanceUnresolvedSubcursor(tuple):
         # self[1:], but without calling SchemInstanceUnresolvedCursor.__getitem__
         return tuple.__getitem__(self, slice(1,None))
 
+    def __neg__(self):
+        return NegatedWireOperand(self)
+
     def __wire_op__(self, here):
         conn = self.instanceunresolved % \
             SchemInstanceUnresolvedConn(here=here, there=self.instancepath)
         return conn
+
+    def __sub__(self, other):
+        if isinstance(other, NegatedWireOperand):
+            return self.__wire_op__(other.wrapped)
+        return NotImplemented
     
 @public
 class SchemInstanceUnresolved(Node):
@@ -988,10 +1054,11 @@ class Layout(SubgraphRoot):
     Subgraph containing integrated circuit layout elements, possibly including
     hierarchical instances of other Layout subgraphs.
     """
+    view_context = LayoutViewContext
 
     cell = Attr(Cell)
     symbol = SubgraphRef(Symbol) #: All LayoutPins in this subgraph reference this symbol.
-    ref_layers = SubgraphRef(LayerStack, optional=False) #: All .layer attributes of nodes in this subgraph reference this LayerStack.
+    ref_layers = SubgraphRef(LayerStack) #: All .layer attributes of nodes in this subgraph reference this LayerStack.
 
     def postprocess(self):
         return self
@@ -1010,7 +1077,7 @@ class LayoutLabel(Node):
     """
     in_subgraphs = [Layout]
 
-    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
     pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
         placeholder=Vec2LinearTerm)
     text = Attr(str)
@@ -1027,7 +1094,7 @@ class LayoutPoly(GenericPolyI, MixinClosedPolygon):
     """
     in_subgraphs = [Layout]
 
-    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
 
 class LayoutPathBase(GenericPolyI):
     endtype = Attr(PathEndType, default=PathEndType.Flush, optional=False)
@@ -1071,7 +1138,7 @@ class LayoutRectPoly(GenericPolyI):
     in_subgraphs = [Layout]
 
     start_direction = Attr(RectDirection, default=RectDirection.Horizontal)
-    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
 
 @public
 class LayoutRectPath(LayoutPathBase):
@@ -1094,9 +1161,36 @@ class LayoutRect(Node):
     """Layout rectangle."""
     in_subgraphs = [Layout]
 
-    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
     rect = ConstrainableAttr(Rect4I, factory=coerce_tuple(Rect4I, 4),
         placeholder=Rect4LinearTerm)
+
+    # Delegate Rect4Generic properties:
+    lx = _rect_proxy('lx')
+    ly = _rect_proxy('ly')
+    ux = _rect_proxy('ux')
+    uy = _rect_proxy('uy')
+    cx = _rect_proxy('cx')
+    cy = _rect_proxy('cy')
+    width = _rect_proxy('width')
+    height = _rect_proxy('height')
+    size = _rect_proxy('size')
+    center = _rect_proxy('center')
+    north = _rect_proxy('north')
+    south = _rect_proxy('south')
+    east = _rect_proxy('east')
+    west = _rect_proxy('west')
+    northwest = _rect_proxy('northwest')
+    northeast = _rect_proxy('northeast')
+    southwest = _rect_proxy('southwest')
+    southeast = _rect_proxy('southeast')
+    x_extent = _rect_proxy('x_extent')
+    y_extent = _rect_proxy('y_extent')
+
+    def contains(self, other):
+        if isinstance(other, LayoutRect):
+            return self.rect.contains(other.rect)
+        return self.rect.contains(other)
 
 class LayoutInstanceSubcursor(tuple):
     """Cursor to go through layout instances, transforming coordinates."""
@@ -1200,9 +1294,15 @@ class LayoutInstanceSubcursor(tuple):
             return self.__getattr('parent')
 
     def __getattr__(self, name):
-        inner_ret = getattr(self.node(), name)
+        node = self.node()
         if self.needs_instancearray_index():
             raise AttributeError("Missing index [] for LayoutInstanceArray.")
+        # Detect AttrProxy descriptors: delegate through self so transformation
+        # happens automatically via the existing __getattr__ path.
+        descriptor = getattr(type(node), name, None)
+        if isinstance(descriptor, AttrProxy):
+            return getattr(getattr(self, descriptor.source_attr), descriptor.name)
+        inner_ret = getattr(node, name)
         if isinstance(inner_ret, (Rect4I, Vec2I)):
             return self.transform_stack() * inner_ret
         elif isinstance(inner_ret, Node):

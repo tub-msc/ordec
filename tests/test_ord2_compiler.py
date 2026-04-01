@@ -711,3 +711,15 @@ def test_match_mapping_attr_key():
 def test_match_mapping_singleton_keys():
     ord_string = "match x:\n    case {True: y, None: z}:\n        pass"
     compare_asts(ord_string)
+
+def test_lineno_propagation():
+    code = "x = 1\ny = 2\nz = 3"
+    tree = ord2_to_py(code)
+    assert tree.body[0].lineno == 1
+    assert tree.body[1].lineno == 2
+    assert tree.body[2].lineno == 3
+
+def test_lineno_celldef():
+    code = "cell Foo:\n    pass"
+    tree = ord2_to_py(code)
+    assert tree.body[0].lineno == 1

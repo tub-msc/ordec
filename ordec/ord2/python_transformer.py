@@ -13,6 +13,18 @@ class PythonTransformer(Transformer):
     This Class represents the base of the ORD language
     """
 
+    def _call_userfunc(self, tree, new_children=None):
+        result = super()._call_userfunc(tree, new_children)
+        if isinstance(result, ast.AST) and hasattr(tree, 'meta'):
+            meta = tree.meta
+            if meta.line is not None:
+                result.lineno = meta.line
+                result.col_offset = (meta.column or 1) - 1
+            if meta.end_line is not None:
+                result.end_lineno = meta.end_line
+                result.end_col_offset = (meta.end_column or 1) - 1
+        return result
+
     # Variables
     # ---------
 
@@ -194,6 +206,8 @@ class PythonTransformer(Transformer):
     SLASH = lambda self, token: token.value
     STRING_OTHER_PREFIX = lambda self, token: token.value
     MATCH = lambda self, token: token.value
+    CASE = lambda self, token: token.value
+    ANONYMOUS = lambda self, token: token.value
 
     # Statements
     # ----------

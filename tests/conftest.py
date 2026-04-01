@@ -1,8 +1,51 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import types
 import pytest
 from ordec.core import Subgraph
+from ordec.language import compile_ord
+
+
+class OrdFile(pytest.File):
+    """Collect test_* functions from .ord files."""
+
+    def collect(self):
+        source = self.path.read_text()
+        mod = types.ModuleType(self.path.stem)
+        mod.__file__ = str(self.path)
+        try:
+            code = compile_ord(source, mod.__dict__, str(self.path))
+            exec(code, mod.__dict__)
+        except Exception as exc:
+            # Report compilation failure as a single failing test item
+            # so that other test files are still collected and run.
+            yield OrdCompileError.from_parent(self, name="compile", error=exc)
+            return
+        for name, obj in mod.__dict__.items():
+            if name.startswith("test_") and callable(obj):
+                yield pytest.Function.from_parent(self, name=name, callobj=obj)
+
+
+class OrdCompileError(pytest.Item):
+    """A test item that fails with the .ord file's compilation error."""
+
+    def __init__(self, name, parent, error):
+        super().__init__(name, parent)
+        self.error = error
+
+    def runtest(self):
+        raise self.error
+
+    def repr_failure(self, excinfo):
+        return str(excinfo.value)
+
+    def reportinfo(self):
+        return self.path, None, f"{self.path}::compile"
+
+def pytest_collect_file(file_path, parent):
+    if file_path.suffix == ".ord" and file_path.stem.startswith("test_"):
+        return OrdFile.from_parent(parent, path=file_path)
 
 # TODO: --upgrade-golden-files and --update-ord-files are currently not used.
 

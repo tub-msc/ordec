@@ -21,7 +21,12 @@ def prepare_ord_globals(g: dict):
 def compile_ord(source_data: str, g: dict, filename: str = "<string>"):
     """Compile ORD source, prepare globals, return compiled code object."""
     prepare_ord_globals(g)
-    module = ord_to_py(source_data)
+    try:
+        module = ord_to_py(source_data)
+    except SyntaxError as e:
+        if e.filename is None:
+            e.msg = f"In {filename}:\n{e.msg}"
+        raise
     g["__ord_py_source__"] = ast.unparse(module)
     return compile(module, filename, "exec")
 

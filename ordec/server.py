@@ -57,6 +57,8 @@ import argparse
 import http
 import json
 import traceback
+import linecache
+import itertools
 import queue
 from pathlib import Path
 from types import ModuleType
@@ -85,9 +87,9 @@ from websockets.http11 import Request, Response
 from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosedOK
 
-from . import importer
+from . import importer, language
 from .version import version
-from .core import Cell, generate, generate_func, SubgraphRoot 
+from .core import Cell, generate, generate_func, SubgraphRoot
 from .language import compile_ord
 from .extlibrary import ExtLibrary
 
@@ -293,6 +295,30 @@ class ImportTracker:
                 return spec
         return None
 
+def is_internal_frame(filename):
+    from .ord2 import parser as ord2_parser
+    internal_files = {
+        __file__,
+        importer.__file__,
+        language.__file__,
+        ord2_parser.__file__
+        }
+    return (filename in internal_files
+        or (filename.startswith('<') and filename != '<webeditor>')
+        or 'importlib' in filename)
+
+def format_user_exception(exc):
+    """Format exception for the web UI, keeping only user-relevant frames."""
+    all_frames = traceback.extract_tb(exc.__traceback__)
+    frames = list(itertools.dropwhile(
+        lambda f: is_internal_frame(f.filename), all_frames
+    ))
+    parts = ['Traceback (most recent call last):\n']
+    if frames:
+        parts += traceback.format_list(frames)
+    parts += traceback.format_exception_only(type(exc), exc)
+    return ''.join(parts)
+
 class ConnectionHandler:
     def __init__(self, key, sysmodules_orig):
         self.sysmodules_orig = set(sysmodules_orig.keys())
@@ -320,18 +346,25 @@ class ConnectionHandler:
                 viewtype, data = view.webdata()
             msg_ret['type'] = viewtype
             msg_ret['data'] = data
-        except:    
-            msg_ret['exception'] = traceback.format_exc()
+        except Exception as e:
+            msg_ret['exception'] = format_user_exception(e)
 
         return msg_ret
+
 
     def build_cells(self, source_type: str, source_data: str) -> (dict, dict):
         conn_globals = {}
         exc = None
+        filename = '<webeditor>'
+        # Populate linecache so tracebacks can display the original source lines.
+        source_lines = [line + '\n' for line in source_data.splitlines()]
+        linecache.cache[filename] = (
+            len(source_data), None, source_lines, filename
+        )
         if source_type == 'ord':
             # Having the import here enables auto-reloading of ord.
             try:
-                code = compile_ord(source_data, conn_globals)
+                code = compile_ord(source_data, conn_globals, filename=filename)
             except Exception as e:
                 exc = e
             else:
@@ -345,7 +378,8 @@ class ConnectionHandler:
             with self.import_lock.write():
                 self.purge_modules()
                 try:
-                    exec(source_data, conn_globals, conn_globals)
+                    code = compile(source_data, filename, 'exec')
+                    exec(code, conn_globals, conn_globals)
                 except Exception as e:
                     exc = e
         else:
@@ -408,10 +442,9 @@ class ConnectionHandler:
             raise Exception("Excpected 'source' or 'localmodule' message.")
         
         if exc:
-            exc_str = ''.join(traceback.format_exception(exc))
             websocket.send(json.dumps({
                 'msg': 'exception',
-                'exception': exc_str,
+                'exception': format_user_exception(exc),
             }))
         else: 
             websocket.send(json.dumps({

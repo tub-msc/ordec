@@ -16,15 +16,15 @@ def test_equalities():
 
     s = Solver(l)
 
-    s.constrain(l.activ.rect.width == 500)
-    s.constrain(l.activ.rect.height == 150)
-    s.constrain(l.activ.rect.lx == 100)
-    s.constrain(l.activ.rect.ly == -100)
+    s.constrain(l.activ.width == 500)
+    s.constrain(l.activ.height == 150)
+    s.constrain(l.activ.lx == 100)
+    s.constrain(l.activ.ly == -100)
 
-    s.constrain(l.activ.rect.cx == l.poly.rect.cx) # align x centers
-    s.constrain(l.activ.rect.cy == l.poly.rect.cy) # align y centers
-    s.constrain(l.poly.rect.height == 300)
-    s.constrain(l.poly.rect.width == 100)
+    s.constrain(l.activ.cx == l.poly.cx) # align x centers
+    s.constrain(l.activ.cy == l.poly.cy) # align y centers
+    s.constrain(l.poly.height == 300)
+    s.constrain(l.poly.width == 100)
 
     s.solve()
 
@@ -38,9 +38,9 @@ def test_underconstrained_1():
     l.activ = LayoutRect(layer=layers.Activ)
 
     s = Solver(l)
-    s.constrain(l.activ.rect.width == 500)
-    s.constrain(l.activ.rect.height == 150)
-    s.constrain(l.activ.rect.lx == 100)
+    s.constrain(l.activ.width == 500)
+    s.constrain(l.activ.height == 150)
+    s.constrain(l.activ.lx == 100)
     # Missing constraint for ly - system is underconstrained.
 
     with pytest.raises(UnderconstrainedError) as exc_info:
@@ -61,15 +61,15 @@ def test_underconstrained_2():
 
     s = Solver(l)
 
-    # l.r1.rect.lx not constrained.
-    s.constrain(l.r1.rect.ly == 0)
-    s.constrain(l.r1.rect.height >= 100)
-    s.constrain(l.r1.rect.width >= 200)
+    # l.r1.lx not constrained.
+    s.constrain(l.r1.ly == 0)
+    s.constrain(l.r1.height >= 100)
+    s.constrain(l.r1.width >= 200)
 
-    s.constrain(l.r2.rect.lx >= l.r1.rect.ux)
-    s.constrain(l.r2.rect.ly <= l.r1.rect.lx)
-    s.constrain(l.r2.rect.width == l.r2.rect.height)
-    # l.r2.rect.width and .height not properly constrained.
+    s.constrain(l.r2.lx >= l.r1.ux)
+    s.constrain(l.r2.ly <= l.r1.lx)
+    s.constrain(l.r2.width == l.r2.height)
+    # l.r2.width and .height not properly constrained.
 
     with pytest.raises(UnderconstrainedError) as exc_info:
         s.solve()
@@ -85,11 +85,11 @@ def test_missing_variables():
 
     l.activ = LayoutRect(layer=layers.Activ)
 
-    # For l.activ.rect, ly und uy have constraints, but lx and ux have non constraints.
+    # For l.activ, ly and uy have constraints, but lx and ux have no constraints.
 
     s = Solver(l)
-    s.constrain(l.activ.rect.ly == 100)
-    s.constrain(l.activ.rect.uy == 200)
+    s.constrain(l.activ.ly == 100)
+    s.constrain(l.activ.uy == 200)
 
     with pytest.raises(UnderconstrainedError) as exc_info:
         s.solve()
@@ -107,16 +107,16 @@ def test_inequalities():
     l.r2 = LayoutRect(layer=layers.Metal1)
 
     s = Solver(l)
-    s.constrain(l.r1.rect.height >= 500)
-    s.constrain(l.r1.rect.width >= 150)
-    s.constrain(l.r1.rect.southwest == (100, -100))
+    s.constrain(l.r1.height >= 500)
+    s.constrain(l.r1.width >= 150)
+    s.constrain(l.r1.southwest == (100, -100))
 
-    s.constrain(l.r2.rect.lx >= l.r1.rect.ux + 150)
-    s.constrain(l.r2.rect.width == -l.r1.rect.height + 800)
-    s.constrain(l.r2.rect.width <= 150) # Adjust this factor & see what happens.
+    s.constrain(l.r2.lx >= l.r1.ux + 150)
+    s.constrain(l.r2.width == -l.r1.height + 800)
+    s.constrain(l.r2.width <= 150) # Adjust this factor & see what happens.
 
-    s.constrain(l.r2.rect.height == 150)
-    s.constrain(l.r2.rect.cy == l.r1.rect.cy)
+    s.constrain(l.r2.height == 150)
+    s.constrain(l.r2.cy == l.r1.cy)
 
     s.solve()
 
@@ -134,8 +134,8 @@ def test_constraint_ops():
  
     l.r1 = LayoutRect(layer=layers.Metal1)
 
-    v1 = l.r1.rect.lx
-    v2 = l.r1.rect.ux
+    v1 = l.r1.lx
+    v2 = l.r1.ux
     assert isinstance(v1 == 100, Constraint)
     assert isinstance(100 == v1, Constraint)
     assert isinstance(v1 >= 100, Constraint)
@@ -161,11 +161,11 @@ def test_no_solution():
     l.activ = LayoutRect(layer=layers.Activ)
 
     s = Solver(l)
-    s.constrain(l.activ.rect.width == 500)
-    s.constrain(l.activ.rect.height == 150)
-    s.constrain(l.activ.rect.lx == 100)
-    s.constrain(l.activ.rect.ly == -100)
-    s.constrain(l.activ.rect.ux == 900) # conflicting with lx == 100 and width == 500
+    s.constrain(l.activ.width == 500)
+    s.constrain(l.activ.height == 150)
+    s.constrain(l.activ.lx == 100)
+    s.constrain(l.activ.ly == -100)
+    s.constrain(l.activ.ux == 900) # conflicting with lx == 100 and width == 500
 
     with pytest.raises(SolverError):
         s.solve()
@@ -179,12 +179,12 @@ def test_vec2():
     l.label = LayoutLabel(layer=layers.Metal1.pin)
 
     s = Solver(l)
-    s.constrain(l.m1.rect.width == 150)
-    s.constrain(l.m1.rect.height == 150)
-    s.constrain(l.m1.rect.lx == 0)
-    s.constrain(l.m1.rect.ly == 0)
-    s.constrain(l.label.pos.x == l.m1.rect.cx)
-    s.constrain(l.label.pos.y == l.m1.rect.cy)
+    s.constrain(l.m1.width == 150)
+    s.constrain(l.m1.height == 150)
+    s.constrain(l.m1.lx == 0)
+    s.constrain(l.m1.ly == 0)
+    s.constrain(l.label.pos.x == l.m1.cx)
+    s.constrain(l.label.pos.y == l.m1.cy)
     s.solve()
 
     assert l.m1.rect == Rect4I(lx=0, ly=0, ux=150, uy=150)
@@ -197,7 +197,7 @@ def test_multiconstraint():
     l.activ = LayoutRect(layer=layers.Activ)
 
     s = Solver(l)
-    s.constrain((l.activ.rect.lx == l.activ.rect.ly) & (l.activ.rect.ly == 100))
+    s.constrain((l.activ.lx == l.activ.ly) & (l.activ.ly == 100))
     s.constrain(l.activ.rect.is_square(150))
     s.solve()
 
@@ -225,15 +225,13 @@ def test_layoutinstance_subcursor_constraints():
 
         assert isinstance(layout2.layout1_inst.myrect.rect, Rect4LinearTerm)
         s = Solver(layout2)
-        s.constrain(layout2.layout1_inst.myrect.rect.lx == 1000)
-        s.constrain(layout2.layout1_inst.myrect.rect.ly == 900)
+        s.constrain(layout2.layout1_inst.myrect.lx == 1000)
+        s.constrain(layout2.layout1_inst.myrect.ly == 900)
 
         s.solve()
-        #print(layout2.layout1_inst.myrect.rect.lx, layout2.layout1_inst.myrect.rect.ly)
-        #print(layout2.layout1_inst.pos)
 
-        assert layout2.layout1_inst.myrect.rect.lx == 1000
-        assert layout2.layout1_inst.myrect.rect.ly == 900
+        assert layout2.layout1_inst.myrect.lx == 1000
+        assert layout2.layout1_inst.myrect.ly == 900
 
 def test_variable_on_frozen_subgraph():
     layers = SG13G2().layers
@@ -255,10 +253,10 @@ def test_solve_wrong_subgraph():
     layout2.myrect = LayoutRect(layer=layers.Metal1)
 
     s = Solver(layout2)
-    s.constrain(layout1.myrect.rect.lx == 1)
-    s.constrain(layout1.myrect.rect.ux == 2)
-    s.constrain(layout1.myrect.rect.ly == 3)
-    s.constrain(layout1.myrect.rect.uy == 4)
+    s.constrain(layout1.myrect.lx == 1)
+    s.constrain(layout1.myrect.ux == 2)
+    s.constrain(layout1.myrect.ly == 3)
+    s.constrain(layout1.myrect.uy == 4)
 
     with pytest.raises(SolverError, match="Solver found Variables of unexpected subgraph"):
         s.solve()
@@ -271,10 +269,10 @@ def test_vec2_constraints_eq():
     layout.r2 = LayoutRect(layer=layers.Metal2)
     
     s = Solver(layout)
-    s.constrain(layout.r1.rect.center == layout.r2.rect.center)
-    s.constrain(layout.r1.rect.size == (100, 100))
-    s.constrain(layout.r2.rect.size == (300, 400))
-    s.constrain(layout.r1.rect.southwest == (1000, -1000))
+    s.constrain(layout.r1.center == layout.r2.center)
+    s.constrain(layout.r1.size == (100, 100))
+    s.constrain(layout.r2.size == (300, 400))
+    s.constrain(layout.r1.southwest == (1000, -1000))
     s.solve()
 
     assert layout.r1.rect == Rect4I(lx=1000, ly=-1000, ux=1100, uy=-900)
@@ -289,10 +287,10 @@ def test_rect4_constraints_eq():
     layout.r3 = LayoutRect(layer=layers.Metal3)
 
     s = Solver(layout)
-    s.constrain(layout.r1.rect.lx == 100)
-    s.constrain(layout.r1.rect.ly == 200)
-    s.constrain(layout.r1.rect.ux == 300)
-    s.constrain(layout.r1.rect.uy == 400)
+    s.constrain(layout.r1.lx == 100)
+    s.constrain(layout.r1.ly == 200)
+    s.constrain(layout.r1.ux == 300)
+    s.constrain(layout.r1.uy == 400)
     s.constrain(layout.r2.rect == layout.r1.rect)
     s.constrain(layout.r3.rect == (10, 20, 30, 40))
     s.solve()
@@ -311,17 +309,17 @@ def test_rect4_constraints_contains():
     layout.r4 = LayoutRect(layer=layers.Metal2)
 
     s = Solver(layout)
-    s.constrain(layout.r1.rect.size == (100, 100))
-    s.constrain(layout.r2.rect.size == (100, 100))
-    s.constrain(layout.r3.rect.size == (100, 100))
+    s.constrain(layout.r1.size == (100, 100))
+    s.constrain(layout.r2.size == (100, 100))
+    s.constrain(layout.r3.size == (100, 100))
 
-    s.constrain(layout.r1.rect.southwest == (1000, -1000))
-    s.constrain(layout.r2.rect.southwest == (1600, -900))
-    s.constrain(layout.r3.rect.southwest == (1300, -500))
+    s.constrain(layout.r1.southwest == (1000, -1000))
+    s.constrain(layout.r2.southwest == (1600, -900))
+    s.constrain(layout.r3.southwest == (1300, -500))
 
-    s.constrain(layout.r4.rect.contains(layout.r1.rect))
-    s.constrain(layout.r4.rect.contains(layout.r2.rect))
-    s.constrain(layout.r4.rect.contains(layout.r3.rect))
+    s.constrain(layout.r4.contains(layout.r1))
+    s.constrain(layout.r4.contains(layout.r2))
+    s.constrain(layout.r4.contains(layout.r3))
 
     s.solve()
 

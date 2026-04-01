@@ -29,9 +29,6 @@ class Ord2Transformer(PythonTransformer):
     def ast_ord_context(self, attr):
         return self.ast_attribute(self.ast_name("__ord_context__"), attr)
 
-    def ast_ctx(self):
-        return self.ast_attribute(self.ast_ord_context("OrdContext"), "ctx")
-
     def celldef(self, nodes):
         """ Definition of a ORDeC cell class"""
         cell_name = nodes[0]
@@ -101,79 +98,47 @@ class Ord2Transformer(PythonTransformer):
                     value=self.ast_attribute(self.ast_name("self"), attr="symbol")
                 )
             )
-        # For layout viewgens, map layers kwarg to ref_layers
-        if viewgen_type_lower == "layout":
-            for arg in viewgen_args:
-                if isinstance(arg, tuple) and arg[0] == "argvalue" and arg[1].id == "layers":
-                    keywords.append(
-                        ast.keyword(arg="ref_layers", value=self.ast_name("layers"))
-                    )
+
+        ord_root = self.ast_name("__ord_root__")
+        ord_root_store = self.ast_name("__ord_root__", ctx=ast.Store())
 
         viewgen_call = ast.Call(
             func=self.ast_core(viewgen_type.title()),
             args=[],
             keywords=keywords
         )
-        # Build the ORD context call
-        ord_context_call = ast.Call(
-            func=self.ast_ord_context("OrdContext"),
-            args=[],
-            keywords=[
-                ast.keyword(
-                    arg='root',
-                    value=viewgen_call
-                ),
-                ast.keyword(
-                    arg='parent',
-                    value=self.ast_name('self')
-                )
-            ]
-        )
-        # Solver must be added to layout viewgen
-        if viewgen_type_lower == "layout":
-            solver_create = ast.Assign(
-                targets=[self.ast_name("__ordec_solver__", ctx=ast.Store())],
-                value=ast.Call(
-                    func=self.ast_core("Solver"),
-                    args=[self.ast_attribute(self.ast_ctx(), "root")],
-                    keywords=[]
-                )
-            )
-            solver_solve = ast.Expr(
-                ast.Call(
-                    func=self.ast_attribute(
-                        self.ast_name("__ordec_solver__"), "solve"
-                    ),
-                    args=[],
-                    keywords=[]
-                )
-            )
-            suite = [solver_create] + suite + [solver_solve]
 
-        # Call postprocess on the subgraph root
+        # __ord_root__ = Type(cell=self, symbol=self.symbol)
+        root_assign = ast.Assign(
+            targets=[ord_root_store],
+            value=viewgen_call
+        )
+
+        # __ord_root__.view_context(__ord_root__) — access class attr, instantiate
+        view_context_call = ast.Call(
+            func=self.ast_attribute(ord_root, "view_context"),
+            args=[ord_root],
+            keywords=[]
+        )
+
+        # return __ord_root__.postprocess()
         return_value = ast.Return(
-                ast.Call(
-                func=self.ast_attribute(
-                    self.ast_attribute(self.ast_ctx(), "root"),
-                    "postprocess",
-                ),
+            ast.Call(
+                func=self.ast_attribute(ord_root, "postprocess"),
                 args=[],
                 keywords=[]
             )
         )
 
-        suite.append(return_value)
         with_context = ast.With(
             items=[
-                ast.withitem(
-                    context_expr=ord_context_call
-                )
+                ast.withitem(context_expr=view_context_call),
             ],
             body=suite
         )
         # Wrap with statement with context in a decorated function call
         # --> See Python implementation
-        func_body = kwarg_assignments + [with_context]
+        func_body = kwarg_assignments + [root_assign, with_context, return_value]
         func_def = ast.FunctionDef(
             name=func_name,
             args=ast.arguments(
@@ -191,22 +156,11 @@ class Ord2Transformer(PythonTransformer):
         )
         return func_def
 
-    def connect_stmt(self, nodes):
-        """ connect stmt x -- b"""
-        connect_lhs = nodes[0]
-        connect_rhs = nodes[1]
-        call = ast.Call(func=self.ast_attribute(connect_lhs, attr="__wire_op__"),
-                        args=[connect_rhs],
-                        keywords=[])
-        return ast.Expr(value=call)
-
     def constrain_stmt(self, nodes):
         """ ! x >= 200 """
         return ast.Expr(
             ast.Call(
-                func=self.ast_attribute(
-                    self.ast_name("__ordec_solver__"), "constrain"
-                ),
+                func=self.ast_ord_context("constrain"),
                 args=[nodes[0]],
                 keywords=[]
             )
@@ -231,8 +185,14 @@ class Ord2Transformer(PythonTransformer):
         else:
             raise Exception(f"Incompatible path type: {nodes!r}")
 
-    def context_element(self, nodes):
-        """ context_element (context_type context_target:\n    suite)"""
+    def node_stmt(self, nodes):
+        """Node statement: 'Type name' with optional body.
+
+        There are three types of node statements:
+        - Node class statements: e.g., LayoutRect x
+        - Node instance statements: e.g., Nmos x
+        - Node keyword statements: e.g., input x, port x
+        """
         context_type = nodes[0]
         context_name = nodes[1]
         context_body = nodes[2] if len(nodes) > 2 else None
@@ -264,7 +224,7 @@ class Ord2Transformer(PythonTransformer):
                     inout = "Out"
 
             args = []
-            func = self.ast_attribute(self.ast_ctx(), "add")
+            func = self.ast_ord_context("add")
 
             args.append(ast.Tuple(elts=context_name_tuple, ctx=ast.Load()))
             args.append(ast.Call(
@@ -286,70 +246,35 @@ class Ord2Transformer(PythonTransformer):
         elif context_type_name == "port":
  
             args = [ast.Tuple(elts=context_name_tuple, ctx=ast.Load())]
-            func = self.ast_attribute(self.ast_ctx(),"add_port")
+            func = self.ast_ord_context("add_port")
             rhs = ast.Call(func=func, args=args, keywords=[])
 
-        # Case for instantiating sub-cells
+        # Case for any other element type (Cell class/instance, Node class/instance)
         else:
-            resolver_lambda = ast.Lambda(
-                        args=ast.arguments(
-                            posonlyargs=[],
-                            args=[],
-                            kwonlyargs=[],
-                            kw_defaults=[],
-                            kwarg=ast.arg(
-                                arg="params"
-                            ),
-                            defaults=[]
-                        ),
-                        body=self.ast_attribute(
-                            ast.Call(
-                                func=context_type_expr,
-                                args=[],
-                                keywords=[
-                                    ast.keyword(
-                                        value=self.ast_name("params"),
-                                    )
-                                ]
-                            ),
-                            "symbol"
-                        )
-                    )
-
-            args = []
-            func=self.ast_attribute(self.ast_ctx(), "add")
-            args.append(ast.Tuple(elts=context_name_tuple, ctx=ast.Load()))
-            args.append(ast.Call(
-                        func=self.ast_core("SchemInstanceUnresolved"),
-                        keywords=[
-                            ast.keyword(
-                                arg="resolver",
-                                value=resolver_lambda
-                            )
-                        ],
-                        args=[]
-                )
-            )
+            args = [
+                ast.Tuple(elts=context_name_tuple, ctx=ast.Load()),
+                context_type_expr
+            ]
+            func = self.ast_ord_context("add_element")
             rhs = ast.Call(func=func, args=args, keywords=[])
+
         # Path accesses must not be assigned
         if path_node:
             assignment = ast.Expr(rhs)
         else:
             assignment = ast.Assign([lhs], rhs)
 
+        if context_body is None:
+            return [assignment]
+
         # Combine to context-with stmt
         with_stmt = ast.With(
             items=[
                 ast.withitem(
                     context_expr=ast.Call(
-                        func=self.ast_ord_context("OrdContext"),
+                        func=self.ast_attribute(context_name, "ctx"),
                         args=[],
-                        keywords=[
-                            ast.keyword(
-                                arg="root",
-                                value=context_name
-                            )
-                        ]
+                        keywords=[]
                     )
                 )
             ],
@@ -357,9 +282,59 @@ class Ord2Transformer(PythonTransformer):
         )
         return [assignment, with_stmt]
 
+    def anon_node_stmt(self, nodes):
+        """Anonymous node statement: 'anonymous Type name' with optional body.
+
+        Like node_stmt but passes None as name_tuple, so no NPath is created.
+        """
+        context_type = nodes[0]
+        context_name = nodes[1]
+        context_body = nodes[2] if len(nodes) > 2 else None
+
+        rhs = ast.Call(
+            func=self.ast_ord_context("add_element"),
+            args=[ast.Constant(value=None), context_type],
+            keywords=[]
+        )
+
+        target = copy.copy(context_name)
+        self._set_ctx(target, ast.Store())
+        assignment = ast.Assign([target], rhs)
+
+        if context_body is None:
+            return [assignment]
+
+        with_stmt = ast.With(
+            items=[
+                ast.withitem(
+                    context_expr=ast.Call(
+                        func=self.ast_attribute(context_name, "ctx"),
+                        args=[],
+                        keywords=[]
+                    )
+                )
+            ],
+            body=context_body if isinstance(context_body, list) else [context_body]
+        )
+        return [assignment, with_stmt]
+
+    def anon_node_stmt_nobody(self, nodes):
+        """Anonymous node statement without body, supports multiple names."""
+        result = []
+        for context_target in nodes[1:]:
+            result.extend(self.anon_node_stmt([nodes[0], context_target]))
+        return result
+
+    def node_stmt_nobody(self, nodes):
+        """Node statement without body, supports multiple names (e.g., 'Nmos a, b, c')"""
+        result = []
+        for context_target in nodes[1:]:
+            result.extend(self.node_stmt([nodes[0], context_target]))
+        return result
+
     def depth_helper(self, value, depth=1):
         """ Access parent attributes depending on the dotted depth"""
-        node = self.ast_attribute(self.ast_ctx(), "root")
+        node = ast.Call(self.ast_ord_context("root"), args=[], keywords=[])
 
         for _ in range(depth - 1):
             node = self.ast_attribute(node,"parent")
@@ -391,10 +366,7 @@ class Ord2Transformer(PythonTransformer):
             # only dotted access
             attr = nodes[0]
             ctx = ast.Store()
-            target = self.ast_attribute(
-                self.ast_ctx(),
-                "root"
-            )
+            target = ast.Call(self.ast_ord_context("root"), args=[], keywords=[])
         return self.ast_attribute(
             self.ast_attribute(
                 target,
@@ -410,9 +382,7 @@ class Ord2Transformer(PythonTransformer):
             context_name_tuple = self.extract_path(name)
             name_length = len(context_name_tuple)
             rhs = ast.Call(
-                func=self.ast_attribute(
-                    self.ast_ctx(),
-                    "add"),
+                func=self.ast_ord_context("add"),
                 args=[
                     ast.Tuple(elts=context_name_tuple, ctx=ast.Load()),
                     ast.Call(
@@ -441,7 +411,7 @@ class Ord2Transformer(PythonTransformer):
         return self.net_and_path_stmt_helper(nodes, "PathNode")
 
     def _flatten(self, items):
-        """ Flatten the body of the context element suite"""
+        """ Flatten the body of a node statement suite"""
         flat = []
         for item in items:
             if isinstance(item, list):
