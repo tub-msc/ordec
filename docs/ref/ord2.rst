@@ -137,23 +137,23 @@ Parser
 
 .. automodule:: ordec.ord2
 
-.. autofunction:: parse_with_errors
-.. autofunction:: ord2_to_py
+.. autofunction:: ordec.ord2.parser.parse_with_errors
+.. autofunction:: ordec.ord2.parser.ord2_to_py
 
 OrdContext
 ----------
 
-.. autoclass:: OrdContext
-	:members: 
+.. autoclass:: ordec.ord2.context.OrdContext
+	:members:
 
 OrdTransformer
 --------------
 
-.. autoclass:: Ord2Transformer
+.. autoclass:: ordec.ord2.ord2_transformer.Ord2Transformer
 	:members:
 	:show-inheritance:
 
 PythonTransformer
 -----------------
 
-.. autoclass:: PythonTransformer
+.. autoclass:: ordec.ord2.python_transformer.PythonTransformer

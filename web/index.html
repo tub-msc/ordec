@@ -86,10 +86,11 @@
       .examples a:hover {
         background-color: #f5f5f5;
       }
-      .examples .tag {
+      .examples .desc {
+        display: block;
         font-size: 11px;
         color: #999;
-        margin-left: 6px;
+        margin-top: 2px;
       }
       .local-hint {
         margin-top: 30px;
@@ -154,7 +155,7 @@
       body.theme-dark .examples a:hover {
         background-color: #252525;
       }
-      body.theme-dark .examples .tag {
+      body.theme-dark .examples .desc {
         color: #666;
       }
       body.theme-dark .local-hint {
@@ -185,14 +186,14 @@
 
     <h2>Examples</h2>
     <ul class="examples">
-      <li><a href="/app.html#example=diffpair">NMOS differential pair</a></li>
-      <li><a href="/app.html#example=currentmirror">Current mirror</a></li>
-      <li><a href="/app.html#example=amp">Common-source amplifier <span class="tag">SG13G2</span></a></li>
-      <li><a href="/app.html#example=vco_pseudodiff">Pseudodifferential VCO <span class="tag">layout</span></a></li>
-      <li><a href="/app.html#example=nand2">CMOS 2-input NAND gate</a></li>
-      <li><a href="/app.html#example=voltagedivider">Voltage divider</a></li>
-      <li><a href="/app.html#example=voltagedivider_py">Voltage divider <span class="tag">Python</span></a></li>
-      <li><a href="/app.html#example=rc_curve">RC curve <span class="tag">Python</span></a></li>
+      <li><a href="/app.html#example=diffpair">NMOS differential pair <span class="desc">Resistor-loaded diff pair with DC operating point simulation.</span></a></li>
+      <li><a href="/app.html#example=currentmirror">Current mirror <span class="desc">NMOS current mirror with DC simulation and device parameter extraction.</span></a></li>
+      <li><a href="/app.html#example=amp">Common-source amplifier <span class="desc">IHP SG13G2 amplifier with AC bode plot and transient simulation.</span></a></li>
+      <li><a href="/app.html#example=vco_pseudodiff">Pseudodifferential VCO <span class="desc">4-phase ring oscillator with <b>constraint-based layout</b> using IHP SG13G2.</span></a></li>
+      <li><a href="/app.html#example=nand2">CMOS 2-input NAND gate <span class="desc">Basic schematic including loops and multiple connection styles.</span></a></li>
+      <li><a href="/app.html#example=voltagedivider">Voltage divider <span class="desc">Resistive divider with DC simulation and SPICE netlist export.</span></a></li>
+      <li><a href="/app.html#example=voltagedivider_py">Voltage divider (Python) <span class="desc">Same voltage divider circuit, written in pure Python.</span></a></li>
+      <li><a href="/app.html#example=rc_curve">RC curve (Python) <span class="desc">RC low-pass filter with transient step response and AC frequency sweep, written in pure Python.</span></a></li>
     </ul>
 
     <div class="local-hint">
