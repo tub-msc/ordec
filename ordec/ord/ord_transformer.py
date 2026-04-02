@@ -9,11 +9,11 @@ import copy
 from .python_transformer import PythonTransformer
 
 
-class Ord2Transformer(PythonTransformer):
+class OrdTransformer(PythonTransformer):
     """
-    The Ord2Transformer handles Ord specific sytnax and converts it
+    The OrdTransformer handles ORD-specific syntax and converts it
     back to valid Python ORDeC code. It inherits from the PythonTransformer
-    for full support of the Python syntax. 
+    for full support of the Python syntax.
     """
 
     @staticmethod

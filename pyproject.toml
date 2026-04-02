@@ -60,11 +60,11 @@ ordec = "ordec.__main__:main"
 [tool.setuptools]
 packages = [
     "ordec",
+    "ordec.ord",
     "ordec.core",
     "ordec.layout",
     "ordec.lib",
     "ordec.examples",
-    "ordec.ord2",
     "ordec.schematic",
     "ordec.sim",
 ]

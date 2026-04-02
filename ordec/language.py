@@ -7,13 +7,13 @@ import ast
 import importlib
 
 # ordec imports
-from .ord2 import ord2_to_py
+from .ord import ord_to_py as compile_ord_to_py
 
 
 def prepare_ord_globals(g: dict):
-    """Populate g with the implicit globals that ORD2-generated code expects."""
+    """Populate g with the implicit globals that ORD-generated code expects."""
     g.setdefault("__ordec_core__", importlib.import_module("ordec.core"))
-    g.setdefault("__ord_context__", importlib.import_module("ordec.ord2.context"))
+    g.setdefault("__ord_context__", importlib.import_module("ordec.ord.context"))
 
 
 def compile_ord(source_data: str, g: dict, filename: str = "<string>"):
@@ -31,4 +31,4 @@ def compile_ord(source_data: str, g: dict, filename: str = "<string>"):
 
 def ord_to_py(source_data: str) -> ast.Module:
     """Compile ORD source to the Python module AST."""
-    return ord2_to_py(source_data)
+    return compile_ord_to_py(source_data)

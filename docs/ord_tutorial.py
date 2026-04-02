@@ -23,13 +23,13 @@
 # ORD (Open Rapid Design) is ORDeC's **hardware description language for IC design**. 
 # It is designed to make custom IC design more software-like and text-based, 
 # as an alternative to traditional GUI-based tools.
-# Follow this link for the full ORD language reference: {doc}`ref/ord2`.
+# Follow this link for the full ORD language reference: {doc}`ref/ord`.
 
 # This tutorial provides a starting point for writing basic ORD code.  
 # It covers all the main structures and features that ORD currently offers 
 # and will be extended in the future as ORD gains more features. The inverter 
 # will be the most referenced design throughout the tutorial, since it is
-# well-known and easy to get started with. All examples are written in ORD2.
+# well-known and easy to get started with. All examples are written in ORD.
 
 # + tags=["remove-input"]
 from ordec.core import *
@@ -334,10 +334,10 @@ from ordec.examples.nand2 import Nand2
 
 # ## 7. ORD files
 #
-# ORD files are parsed as ORD2 directly. No language version header is needed.
+# ORD files are parsed directly. No language version header is needed.
 
 # I hope this short tutorial gave you some insights into how to get started
-# writing ORD code! Feel free to check out the ORD examples `ordec.lib.ord2_test` 
+# writing ORD code! Feel free to check out the ORD examples in `ordec.examples`
 # by importing and adjusting them in the web interface. 
 # 
 # **Happy ORD coding!**

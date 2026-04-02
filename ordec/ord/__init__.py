@@ -1,4 +1,4 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from .parser import ord2_to_py
+from .parser import ord_to_py

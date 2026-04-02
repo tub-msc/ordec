@@ -5,9 +5,8 @@ from lark import Lark, UnexpectedToken, UnexpectedCharacters, UnexpectedInput
 from pathlib import Path
 import argparse
 from lark.indenter import PythonIndenter
-from .ord2_transformer import Ord2Transformer
+from .ord_transformer import OrdTransformer
 import ast
-import importlib.resources
 
 
 def format_error(code, line, column, window=2):
@@ -86,8 +85,8 @@ def parse_with_errors(parser, code):
 
 
 parser = Lark.open_from_package(
-    __name__,
-    "ord2.lark",
+    __package__,
+    "ord.lark",
     parser="lalr",
     postlex=PythonIndenter(),
     start="file_input",
@@ -95,7 +94,7 @@ parser = Lark.open_from_package(
     propagate_positions=True
 )
 
-def ord2_to_py(ord_string: str) -> ast.Module:
+def ord_to_py(ord_string: str) -> ast.Module:
     """
     Function which parses an ORD string and returns the transformed result.
 
@@ -106,8 +105,8 @@ def ord2_to_py(ord_string: str) -> ast.Module:
     """
     # Parse the string directly
     parsed_result = parse_with_errors(parser, ord_string)
-    ord2_transformer = Ord2Transformer(source_text=ord_string + "\n")
-    transformed_ast = ord2_transformer.transform(parsed_result)
+    ord_transformer = OrdTransformer(source_text=ord_string + "\n")
+    transformed_ast = ord_transformer.transform(parsed_result)
     ast.fix_missing_locations(transformed_ast)
     return transformed_ast
 
@@ -134,7 +133,7 @@ if __name__ == "__main__":
     parsed = parse_with_errors(parser, code)
     print(parsed)
 
-    ordec_transformer = Ord2Transformer()
+    ordec_transformer = OrdTransformer()
     transformed = ordec_transformer.transform(parsed)
     transformed = ast.fix_missing_locations(transformed)
     print(ast.dump(transformed, indent=4))
@@ -142,4 +141,3 @@ if __name__ == "__main__":
     code_obj = compile(transformed, "<ast>", "exec")
     print(ast.unparse(transformed))
     exec(code_obj, globals(), locals())
-

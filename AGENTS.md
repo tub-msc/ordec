@@ -220,8 +220,8 @@ All IC design data is represented as ORDB subgraphs: Symbols, Schematics, Layout
 
 ### Language Layer
 
-**ORD HDL** (ordec/language.py, ordec/ord2/):
-- ORD2: Current syntax with improved features (keyword `viewgen` for view generators), intended as superset of Python
+**ORD HDL** (ordec/language.py, ordec/ord/):
+- ORD: Current syntax with improved features (keyword `viewgen` for view generators), intended as superset of Python
 - `.ord` sources compile to Python AST, then execute to build ORDB structures
 
 **Parser flow**: `.ord file` → `ord_to_py()` → Python AST → `exec()` → ORDB subgraphs

@@ -296,12 +296,12 @@ class ImportTracker:
         return None
 
 def is_internal_frame(filename):
-    from .ord2 import parser as ord2_parser
+    from .ord import parser as ord_parser
     internal_files = {
         __file__,
         importer.__file__,
         language.__file__,
-        ord2_parser.__file__
+        ord_parser.__file__
         }
     return (filename in internal_files
         or (filename.startswith('<') and filename != '<webeditor>')

@@ -1,22 +1,22 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.ord2 import ord2_to_py
+from ordec.ord import ord_to_py
 import ast
 from lark.exceptions import VisitError
 import pytest
 
-def compare_asts(ord2_code_string):
-    or2_ast = ord2_to_py(ord2_code_string)
-    python_ast = ast.parse(ord2_code_string)
-    assert (ast.dump(or2_ast) ==
+def compare_asts(ord_code_string):
+    ord_ast = ord_to_py(ord_code_string)
+    python_ast = ast.parse(ord_code_string)
+    assert (ast.dump(ord_ast) ==
             ast.dump(python_ast))
 
-def compare_syntax_errors(ord2_code_string):
+def compare_syntax_errors(ord_code_string):
     with pytest.raises(SyntaxError):
-        ast.parse(ord2_code_string)
+        ast.parse(ord_code_string)
     with pytest.raises((SyntaxError, VisitError)) as error:
-        ord2_to_py(ord2_code_string)
+        ord_to_py(ord_code_string)
     if isinstance(error.value, VisitError):
         assert isinstance(error.value.orig_exc, SyntaxError)
 
@@ -401,7 +401,7 @@ def test_from_import_as():
     compare_asts(ord_string)
 
 def test_from_relative_nested():
-    ord_string = "from ...ord2 import parser"
+    ord_string = "from ...ord import parser"
     compare_asts(ord_string)
 
 def test_relative_import():
@@ -714,12 +714,12 @@ def test_match_mapping_singleton_keys():
 
 def test_lineno_propagation():
     code = "x = 1\ny = 2\nz = 3"
-    tree = ord2_to_py(code)
+    tree = ord_to_py(code)
     assert tree.body[0].lineno == 1
     assert tree.body[1].lineno == 2
     assert tree.body[2].lineno == 3
 
 def test_lineno_celldef():
     code = "cell Foo:\n    pass"
-    tree = ord2_to_py(code)
+    tree = ord_to_py(code)
     assert tree.body[0].lineno == 1

@@ -1,7 +1,7 @@
-:mod:`ordec.ord2` --- ORD2 language
-===================================
+:mod:`ordec.ord` --- ORD language
+=================================
 
-ORD2 is ORDeC's current programming language. It offers full support of Python,
+ORD is ORDeC's current programming language. It offers full support of Python,
 plus additional ORD syntax (a Python-superset) to improve textual IC design
 within the ORDeC project. It currently focuses on simplifying schematic entry
 while also supporting regular Python syntax for simulations or layouts.
@@ -11,27 +11,27 @@ input into context-based Python code.
 This is only made possible by leveraging the power of the :class:`Context`,
 which is explained in a later paragraph. The actual ORD grammar is written in
 Lark. Lark is a well-known and efficient Python parsing framework for grammars
-in EBNF form. The function call :func:`ord2_to_py` summarizes the necessary
+in EBNF form. The function call :func:`ord_to_py` summarizes the necessary
 function calls for a proper ORD-to-Python conversion. The conversion is mostly
-dependent on the :class:`Ord2Transformer` that inherits from
+dependent on the :class:`OrdTransformer` that inherits from
 :class:`PythonTransformer`. The **PythonTransformer** is capable of
 transforming any Python code written in ORD back to Python, and the
-**Ord2Transformer** handles the conversion of the ORD syntax. The following
+**OrdTransformer** handles the conversion of the ORD syntax. The following
 paragraphs summarize the logic behind the ORD-to-Python conversion.
 
 
 For a practical demonstration, please visit the ORD tutorial :ref:`ord_tutorial` page!
 
 
-ORD2 to Python in detail
-------------------------
+ORD to Python in Detail
+-----------------------
 
 ORD is not a general-purpose programming language. It is developed to simplify certain steps in IC design, especially for the ORDeC project. The entire backend of ORDeC is written in Python, but using Python for tasks like schematic entry can become complicated and cumbersome. ORD represents a more convenient syntax layer that makes structuring and describing IC designs much easier.
 
 Mastering the ORD language requires understanding two crucial parts. First, the ORD language itself: what it offers and what it represents. Second, the converted code: understanding how ORD code is converted back to Python. This helps, especially if you run into trouble while programming or designing, and it also helps you understand how the project works under the hood. Especially for complex programs and debugging purposes, understanding the Python side can become important.
 
-ORD2 Contexts
--------------
+ORD Contexts
+------------
 
 The dotted syntax of ORD, which accesses the parent element, requires having a reference to the parent element. This structure therefore necessitates that statements and expressions inside a context block have a reference to the parent even after transformation of ORD back to Python. This logic is implemented with the so-called :class:`Context`. It uses the Python `with` environment together with a context variable :class:`ContextVar` to always maintain a reference without requiring information about the parent during transformation. With ORD, we try to keep the transformation logic as simple as possible and leverage the power of Python to supply the necessary constructs during execution.
 
@@ -104,13 +104,13 @@ To demonstrate how the ORD context works and how the conversion from ORD to Pyth
 
 .. note::
 
-    The actual compiled code uses ``__ord_context__`` instead of ``context`` to avoid name collisions with user code. Here we use ``import ordec.ord2.context as context`` for readability.
+    The actual compiled code uses ``__ord_context__`` instead of ``context`` to avoid name collisions with user code. Here we use ``import ordec.ord.context as context`` for readability.
 
 Every time a node statement (viewgen, port, or a schematic instance) is encountered, the element is saved as a local variable and a ``with`` context is opened. The dotted access is converted into ``context.root()``. If multiple dots are written prior to the identifier, the dots are converted to ``context.root()(.parent)*``. Accesses outside the context are still possible through the local variable. An access like this is visible in the for loop of the example.
 
 .. code-block:: python
 
-    import ordec.ord2.context as context
+    import ordec.ord.context as context
 
     class Inv(Cell):
         @generate
@@ -242,31 +242,33 @@ Because ``--`` is plain Python arithmetic, it coexists with regular numeric
 expressions: ``2 -- 2`` evaluates to ``4`` as expected.
 
 
-The following summary shows the most important functions and classes of ORD2. Please refer to the Python codebase for more background information and details.
+The following summary shows the most important functions and classes of ORD.
+Please refer to the Python codebase for more background information and
+details.
 
 
 Parser
 ------
 
-.. automodule:: ordec.ord2
+.. automodule:: ordec.ord
 
-.. autofunction:: ordec.ord2.parser.parse_with_errors
-.. autofunction:: ordec.ord2.parser.ord2_to_py
+.. autofunction:: ordec.ord.parser.parse_with_errors
+.. autofunction:: ordec.ord.parser.ord_to_py
 
 Context
 -------
 
-.. autoclass:: ordec.ord2.context.Context
+.. autoclass:: ordec.ord.context.Context
     :members:
 
 OrdTransformer
 --------------
 
-.. autoclass:: ordec.ord2.ord2_transformer.Ord2Transformer
+.. autoclass:: ordec.ord.ord_transformer.OrdTransformer
     :members:
     :show-inheritance:
 
 PythonTransformer
 -----------------
 
-.. autoclass:: ordec.ord2.python_transformer.PythonTransformer
+.. autoclass:: ordec.ord.python_transformer.PythonTransformer

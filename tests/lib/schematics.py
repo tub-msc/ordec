@@ -184,7 +184,7 @@ class NetNamingTest(Cell):
     """
     Tests net label rendering for four combinations of net naming and
     pin association. Previously, case (d) rendered the pin name as a
-    fallback for unnamed nets; this was the common case for ORD2 ports
+    fallback for unnamed nets; this was the common case for ORD ports
     before ports were changed to assign the Net (instead of SchemPort).
 
     (a) Unnamed net, no pin — renders as "??<nid>"

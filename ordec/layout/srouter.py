@@ -16,7 +16,7 @@ class SRouter:
         current LayoutViewContext.
         """
         if layout is None or solver is None:
-            from ordec.ord2.context import view_context
+            from ordec.ord.context import view_context
             vc = view_context()
             if layout is None:
                 layout = vc.root
