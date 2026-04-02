@@ -3,7 +3,7 @@
 ## Overview
 
 ORDeC (Open Rapid Design Composer) is a custom IC design platform consisting of:
-- **ORD Hardware Description Language (HDL)** with two versions (ORD1, ORD2) for design entry
+- **ORD Hardware Description Language (HDL)** for design entry
 - **ORDB**: Internal graph database for representing IC design data (schematics, symbols, layouts)
 - **Python backend** (websockets server + tool integration)
 - **Web frontend** (Vite + vanilla JS with WebGL rendering)
@@ -220,11 +220,9 @@ All IC design data is represented as ORDB subgraphs: Symbols, Schematics, Layout
 
 ### Language Layer
 
-**ORD HDL** (ordec/language.py, ordec/ord1/, ordec/ord2/):
-- Version detection from first line comment (e.g., `# version: ord2`)
-- ORD1: Original syntax with Lark parser → AST → Python
-- ORD2: Newer syntax with improved features (keyword `viewgen` for view generators), intended as superset of Python
-- Both compile to Python AST, then executed to build ORDB structures
+**ORD HDL** (ordec/language.py, ordec/ord/):
+- ORD: Current syntax with improved features (keyword `viewgen` for view generators), intended as superset of Python
+- `.ord` sources compile to Python AST, then execute to build ORDB structures
 
 **Parser flow**: `.ord file` → `ord_to_py()` → Python AST → `exec()` → ORDB subgraphs
 

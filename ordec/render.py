@@ -564,10 +564,10 @@ class LayoutRenderer(Renderer):
             layer_g = self.layer_group(poly.layer)
             p = ET.SubElement(layer_g, 'path', d=poly.svg_path())
             p.attrib['class'] = 'layoutPoly'
-            for vertex in poly.vertices:
-                self.auto_outline_add(vertex.pos)
+            for vertex in poly.vertices():
+                self.auto_outline_add(vertex)
 
-        for label in l.all(Label):
+        for label in l.all(LayoutLabel):
             with self.subgroup(existing_group=self.layer_group(label.layer)):
 
                 d = "M-0.1 -0.1 L0.1 0.1 M-0.1 0.1 L0.1 -0.1"

@@ -1119,9 +1119,7 @@ def auto_wire(node, outline=None, routing=None):
             connection_position = cells[instance_nid].connections[inner_connection_nid]
             # Only if the ports have the connection and if it's not an inter cell connection
             if connected_nid in ports:
-                # ORD1 in dictionry
                 if routing.get(int(connected_nid) if connected_nid.isdigit() else connected_nid, True):
-                    # ORD2 in schema
                     if ports[connected_nid].auto_wire:
                         connections.append((ports[connected_nid], connection_position))
                 # Connection not in ports <=> inter instance connection

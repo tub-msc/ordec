@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+
+cell Cell1:
+    viewgen symbol -> Symbol:
+        pass
+
+    viewgen schematic -> Schematic:
+        pass
+
+cell Cell2:
+    viewgen symbol -> Symbol:
+        pass
+
+    viewgen schematic -> Schematic:
+        pass

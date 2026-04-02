@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: 2025 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from ..schematics import DFF
+
+cell MultibitReg_Arrays:
+    bits = Parameter(int)
+    viewgen symbol -> Symbol:
+        input vdd: .align=North
+        input vss: .align=South
+        path d
+        path q
+        for i in range(self.bits):
+            input d[i]: .align=West
+            output q[i]: .align=East
+        input clk: .align=West
+
+    viewgen schematic -> Schematic:
+        port vss: .pos=(1,0); .align=East
+        port vdd: .pos=(1,1); .align=East
+        port clk: .pos=(1,2); .align=East
+        path d
+        path q
+        path I
+        for i in range(self.bits):
+            port d[i]: .pos=(4, 5 + 8 * i); .align=East
+            port q[i]: .pos=(14, 5 + 8 * i); .align=West
+            DFF I[i]:
+                .vss -- vss
+                .vdd -- vdd
+                .clk -- clk
+                .d -- d[i]
+                .q -- q[i]
+            I[i].pos = (6, 3 + 8 * i)

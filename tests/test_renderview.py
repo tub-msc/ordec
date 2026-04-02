@@ -39,8 +39,8 @@ def ord_lambda(name, cell, view, **kwargs):
     This function makes it possible to test the views of cells without having
     to import them on the level of the test module.
 
-    This ensures that errors raised by the ORD ord1 during import of an .ord
-    file do not break the entire test module.
+    This ensures that errors raised during import of an .ord file do not break
+    the entire test module.
     """
     return lambda: getattr(getattr(import_module(name), cell)(**kwargs), view)
 
@@ -96,69 +96,33 @@ testdata = [
     testcase(ord_lambda('ordec.examples.diffpair', 'DiffPairTb', 'schematic'),
         refdir / "examples_diffpairtb_sch.svg"),
     
-    # Test cells from tests.lib.ord1
+    # Test cells from tests.lib.ord
     # ------------------------------
 
-    testcase(ord_lambda('tests.lib.ord1.d_ff_soc', 'D_flip_flop', 'schematic'),
-        refdir / "ord1test_dffsoc_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.d_flip_flop', 'D_flip_flop', 'schematic'),
-        refdir / "ord1test_dflipflop_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.d_latch', 'D_latch', 'schematic'),
-        refdir / "ord1test_dlatch_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.d_latch_schem_check', 'D_latch', 'schematic'),
-        refdir / "ord1test_dlatch_schem_check_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.d_latch_soc', 'D_latch', 'schematic'),
-        refdir / "ord1test_dlatchsoc_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.inv_all_features', 'Inv', 'schematic'),
-        refdir / "ord1test_invallfeatures_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.inv_origin_centered', 'Inv', 'schematic'),
-             refdir / "ord1test_invorigincentered_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.inv_for_loop', 'Inv', 'schematic'),
-        refdir / "ord1test_invforloop_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.inv_liop', 'Inv', 'schematic'),
-        refdir / "ord1test_invliop_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.inv_structured', 'Inv', 'schematic'),
-        refdir / "ord1test_invstructured_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.mux2_structured', 'Mux2', 'schematic'),
-        refdir / "ord1test_mux2structured_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.nand', 'Nand', 'schematic'),
-        refdir / "ord1test_nand_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.nand', 'Nand', 'symbol'),
-        refdir / "ord1test_nand_sym.svg"),
-    testcase(ord_lambda('tests.lib.ord1.nand_structured', 'Nand', 'schematic'),
-        refdir / "ord1test_nandstructured_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.net_definition', 'Inv', 'schematic'),
-        refdir / "ord1test_netdefinition_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.resdiv_flat_tb', 'ResdivFlatTb', 'schematic'),
-        refdir / "ord1test_resdivflattb_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.ringosc', 'Ringosc', 'schematic'),
-        refdir / "ord1test_ringosc_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.ringosc_liop', 'Ringosc', 'schematic'),
-        refdir / "ord1test_ringoscliop_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.ringosc_structured', 'Ringosc', 'schematic'),
-        refdir / "ord1test_ringoscstructured_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.sr_flip_flop', 'SR_flip_flop', 'schematic'),
-        refdir / "ord1test_srflipflop_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.strongarm', 'Strongarm', 'schematic'),
-        refdir / "ord1test_strongarm_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.strongarm_liop', 'Strongarm', 'schematic'),
-        refdir / "ord1test_strongarmliop_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord1.strongarm_structured', 'Strongarm', 'schematic'),
-        refdir / "ord1test_strongarmstructured_sch.svg"),
-
-    # Test cells from tests.lib.ord2
-    # ------------------------------
-
-    testcase(ord_lambda('tests.lib.ord2.inverter', 'Inv', 'schematic'),
-        refdir / "ord2test_inverter_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord2.inverter_constraints', 'Inv', 'schematic'),
-        refdir / "ord2test_inverter_constraints_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord2.nand', 'Nand', 'schematic'),
-        refdir / "ord2test_nand_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord2.reg', 'MultibitReg_Arrays', 'schematic', bits=3),
-        refdir / "ord2test_reg_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord2.nmux', 'Nto1', 'schematic', N=8),
-        refdir / "ord2test_nmux_sch.svg"),
+    testcase(ord_lambda('tests.lib.ord.d_ff_soc', 'D_flip_flop', 'schematic'),
+        refdir / "ordtest_dffsoc_sch.svg"),
+    testcase(ord_lambda('tests.lib.ord.d_flip_flop', 'D_flip_flop', 'schematic'),
+        refdir / "ordtest_dflipflop_sch.svg"),
+    testcase(ord_lambda('tests.lib.ord.d_latch', 'D_latch', 'schematic'),
+        refdir / "ordtest_dlatch_sch.svg"),
+    testcase(ord_lambda('tests.lib.ord.d_latch_schem_check', 'D_latch', 'schematic'),
+        refdir / "ordtest_dlatch_schem_check_sch.svg"),
+    testcase(ord_lambda('tests.lib.ord.d_latch_soc', 'D_latch', 'schematic'),
+        refdir / "ordtest_dlatchsoc_sch.svg"),
+    testcase(ord_lambda('tests.lib.ord.inverter', 'Inv', 'schematic'),
+        refdir / "ordtest_inverter_sch.svg"),
+    testcase(ord_lambda('tests.lib.ord.inverter_constraints', 'Inv', 'schematic'),
+        refdir / "ordtest_inverter_constraints_sch.svg"),
+    testcase(ord_lambda('tests.lib.ord.nand', 'Nand', 'schematic'),
+        refdir / "ordtest_nand_sch.svg"),
+    testcase(ord_lambda('tests.lib.ord.reg', 'MultibitReg_Arrays', 'schematic', bits=3),
+        refdir / "ordtest_reg_sch.svg"),
+    testcase(ord_lambda('tests.lib.ord.nmux', 'Nto1', 'schematic', N=8),
+        refdir / "ordtest_nmux_sch.svg"),
+    testcase(ord_lambda('tests.lib.ord.ringosc', 'Ringosc', 'schematic'),
+        refdir / "ordtest_ringosc_migrated_sch.svg"),
+    testcase(ord_lambda('tests.lib.ord.strongarm', 'Strongarm', 'schematic'),
+        refdir / "ordtest_strongarm_sch.svg"),
 ]
 
 @pytest.mark.parametrize("testcase", testdata, ids=lambda t: t.ref_file.with_suffix("").name)
