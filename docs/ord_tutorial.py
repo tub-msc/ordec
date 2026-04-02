@@ -332,10 +332,6 @@ import ordec.importer
 from ordec.examples.nand2 import Nand2
 # -
 
-# ## 7. ORD files
-#
-# ORD files are parsed directly. No language version header is needed.
-
 # I hope this short tutorial gave you some insights into how to get started
 # writing ORD code! Feel free to check out the ORD examples in `ordec.examples`
 # by importing and adjusting them in the web interface. 

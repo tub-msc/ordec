@@ -14,11 +14,11 @@ cell D_flip_flop:
         output Q: .align = East
 
     viewgen schematic -> Schematic:
-        port vdd: .pos = (1, 26); .align = East
+        port vdd: .pos = (1, 23); .align = East
         port vss: .pos = (1, 1); .align = East
         port CLK: .pos = (1, 18); .align = East
-        port D: .pos = (1, 12); .align = East
-        port Q: .pos = (32, 13); .align = West
+        port D: .pos = (1, 6); .align = East
+        port Q: .pos = (38, 16); .align = West
 
         net s_val
         net clk_not
@@ -27,8 +27,6 @@ cell D_flip_flop:
 
         vdd.auto_wire = False
         vss.auto_wire = False
-        CLK.auto_wire = False
-        clk_not.auto_wire = False
 
         Mux2 m1:
             .vdd -- vdd
@@ -37,21 +35,21 @@ cell D_flip_flop:
             .b -- s_val
             .s -- CLK
             .y -- m1_y
-            .pos = (5, 2)
+            .pos = (5, 4)
 
         Inv clk_inv:
             .vdd -- vdd
             .vss -- vss
             .a -- CLK
             .y -- clk_not
-            .pos = (5, 20)
+            .pos = (5, 16)
 
         Inv i1:
             .vdd -- vdd
             .vss -- vss
             .a -- m1_y
             .y -- s_val
-            .pos = (18, 2)
+            .pos = (12, 4)
 
         Mux2 m2:
             .vdd -- vdd

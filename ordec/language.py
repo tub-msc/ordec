@@ -7,7 +7,7 @@ import ast
 import importlib
 
 # ordec imports
-from .ord import ord_to_py as compile_ord_to_py
+from .ord import ord_to_py
 
 
 def prepare_ord_globals(g: dict):
@@ -27,8 +27,3 @@ def compile_ord(source_data: str, g: dict, filename: str = "<string>"):
         raise
     g["__ord_py_source__"] = ast.unparse(module)
     return compile(module, filename, "exec")
-
-
-def ord_to_py(source_data: str) -> ast.Module:
-    """Compile ORD source to the Python module AST."""
-    return compile_ord_to_py(source_data)
