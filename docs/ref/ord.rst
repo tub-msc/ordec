@@ -8,16 +8,18 @@ while also supporting regular Python syntax for simulations or layouts.
 Execution of ORD code results in a one-pass compiler step that transforms the
 input into context-based Python code.
 
-This is only made possible by leveraging the power of the :class:`Context`,
-which is explained in a later paragraph. The actual ORD grammar is written in
-Lark. Lark is a well-known and efficient Python parsing framework for grammars
-in EBNF form. The function call :func:`ord_to_py` summarizes the necessary
-function calls for a proper ORD-to-Python conversion. The conversion is mostly
-dependent on the :class:`OrdTransformer` that inherits from
-:class:`PythonTransformer`. The **PythonTransformer** is capable of
-transforming any Python code written in ORD back to Python, and the
-**OrdTransformer** handles the conversion of the ORD syntax. The following
-paragraphs summarize the logic behind the ORD-to-Python conversion.
+This is only made possible by leveraging the power of
+:class:`~ordec.core.context.ViewContext` and
+:class:`~ordec.core.context.NodeContext`, which are explained in a later
+paragraph. The actual ORD grammar is written in Lark. Lark is a well-known and
+efficient Python parsing framework for grammars in EBNF form. The function call
+:func:`ord_to_py` summarizes the necessary function calls for a proper
+ORD-to-Python conversion. The conversion is mostly dependent on the
+:class:`OrdTransformer` that inherits from :class:`PythonTransformer`. The
+**PythonTransformer** is capable of transforming any Python code written in ORD
+back to Python, and the **OrdTransformer** handles the conversion of the ORD
+syntax. The following paragraphs summarize the logic behind the
+ORD-to-Python conversion.
 
 
 For a practical demonstration, please visit the ORD tutorial :ref:`ord_tutorial` page!
@@ -33,7 +35,17 @@ Mastering the ORD language requires understanding two crucial parts. First, the 
 ORD Contexts
 ------------
 
-The dotted syntax of ORD, which accesses the parent element, requires having a reference to the parent element. This structure therefore necessitates that statements and expressions inside a context block have a reference to the parent even after transformation of ORD back to Python. This logic is implemented with the so-called :class:`Context`. It uses the Python `with` environment together with a context variable :class:`ContextVar` to always maintain a reference without requiring information about the parent during transformation. With ORD, we try to keep the transformation logic as simple as possible and leverage the power of Python to supply the necessary constructs during execution.
+The dotted syntax of ORD, which accesses the parent element, requires having a
+reference to the parent element. This structure therefore necessitates that
+statements and expressions inside a context block have a reference to the
+parent even after transformation of ORD back to Python. This logic is
+implemented with :class:`~ordec.core.context.ViewContext` for the active view
+and :class:`~ordec.core.context.NodeContext` for the currently active node.
+They use the Python ``with`` environment together with a context variable
+:class:`ContextVar` to always maintain a reference without requiring
+information about the parent during transformation. With ORD, we try to keep
+the transformation logic as simple as possible and leverage the power of
+Python to supply the necessary constructs during execution.
 
 .. code-block::
 
@@ -72,13 +84,13 @@ To demonstrate how the ORD context works and how the conversion from ORD to Pyth
 .. code-block:: 
 
     cell Inv:
-        viewgen symbol:
+        viewgen symbol -> Symbol:
             inout vdd(.align=North)
             inout vss(.align=South)
             input a(.align=West)
             output y(.align=East)
 
-        viewgen schematic:
+        viewgen schematic -> Schematic:
             port vdd(.pos=(2,13); .align=North)
             port vss(.pos=(2,1); .align=South)
             port y (.pos=(9,7); .align=West)
@@ -104,9 +116,20 @@ To demonstrate how the ORD context works and how the conversion from ORD to Pyth
 
 .. note::
 
-    The actual compiled code uses ``__ord_context__`` instead of ``context`` to avoid name collisions with user code. Here we use ``import ordec.ord.context as context`` for readability.
+    The actual compiled code uses ``__ord_context__`` instead of ``context`` to
+    avoid name collisions with user code. Here we use
+    ``import ordec.ord.context as context`` for readability when calling helper
+    functions such as ``add`` and ``root``.
 
-Every time a node statement (viewgen, port, or a schematic instance) is encountered, the element is saved as a local variable and a ``with`` context is opened. The dotted access is converted into ``context.root()``. If multiple dots are written prior to the identifier, the dots are converted to ``context.root()(.parent)*``. Accesses outside the context are still possible through the local variable. An access like this is visible in the for loop of the example.
+At the start of a view generator, the compiler creates ``__ord_root__`` and
+opens the root view context with ``__ord_root__.view_context(__ord_root__)``.
+Every node statement then saves the created element as a local variable and, if
+the statement has a body, opens a nested node context with ``node.ctx()``. The
+dotted access is converted into ``context.root()``. If multiple dots are
+written prior to the identifier, the dots are converted to
+``context.root()(.parent)*``. Accesses outside the context are still possible
+through the local variable. An access like this is visible in the ``for`` loop
+of the example.
 
 .. code-block:: python
 
@@ -115,60 +138,62 @@ Every time a node statement (viewgen, port, or a schematic instance) is encounte
     class Inv(Cell):
         @generate
         def symbol(self) -> Symbol:
-            with context.Context(Symbol(cell=self)):
+            __ord_root__ = Symbol(cell=self)
+            with __ord_root__.view_context(__ord_root__):
                 vdd = context.add(('vdd',), Pin(pintype=PinType.Inout))
-                with context.Context(vdd):
+                with vdd.ctx():
                     context.root().align = North
                 vss = context.add(('vss',), Pin(pintype=PinType.Inout))
-                with context.Context(vss):
+                with vss.ctx():
                     context.root().align = South
                 a = context.add(('a',), Pin(pintype=PinType.In))
-                with context.Context(a):
+                with a.ctx():
                     context.root().align = West
                 y = context.add(('y',), Pin(pintype=PinType.Out))
-                with context.Context(y):
+                with y.ctx():
                     context.root().align = East
-                return context.root().postprocess()
+            return __ord_root__.postprocess()
 
         @generate
         def schematic(self) -> Schematic:
-            with context.Context(Schematic(cell=self, symbol=self.symbol)):
+            __ord_root__ = Schematic(cell=self, symbol=self.symbol)
+            with __ord_root__.view_context(__ord_root__):
                 vss = context.add_port(('vss',))
-                with context.Context(vss):
+                with vss.ctx():
                     context.root().pos = (2,1)
                     context.root().align = South
                 vdd = context.add_port(('vdd',))
-                with context.Context(vdd):
+                with vdd.ctx():
                     context.root().pos = (2,13)
                     context.root().align = North
                 y = context.add_port(('y',))
-                with context.Context(y):
+                with y.ctx():
                     context.root().pos = (9,7)
                     context.root().align = West
                 a = context.add_port(('a',))
-                with context.Context(a):
+                with a.ctx():
                     context.root().pos = (1,7)
                     context.root().align = East
 
-                pd = context.add(('pd',), SchemInstanceUnresolved(resolver = lambda **params: Nmos(**params).symbol))
-                with context.Context(pd):
-                    context.root().s -- vss.ref
-                    context.root().b -- vss.ref
-                    context.root().d -- y.ref
+                pd = context.add_element(('pd',), Nmos)
+                with pd.ctx():
+                    context.root().s -- vss
+                    context.root().b -- vss
+                    context.root().d -- y
                     context.root().pos = (3,2)
                     context.root().params.l = R('400n')
 
-                pu = context.add(('pu',), SchemInstanceUnresolved(resolver = lambda **params: Pmos(**params).symbol))
-                with context.Context(pu):
-                    context.root().s -- vdd.ref
-                    context.root().b -- vdd.ref
-                    context.root().d -- y.ref
+                pu = context.add_element(('pu',), Pmos)
+                with pu.ctx():
+                    context.root().s -- vdd
+                    context.root().b -- vdd
+                    context.root().d -- y
                     context.root().pos = (3,8)
                     context.root().params.l = R('400n')
 
                 for instance in pu, pd:
-                    instance.g -- a.ref
-                return context.root().postprocess()
+                    instance.g -- a
+            return __ord_root__.postprocess()
 
 
 Anonymous Node Statements
@@ -255,10 +280,16 @@ Parser
 .. autofunction:: ordec.ord.parser.parse_with_errors
 .. autofunction:: ordec.ord.parser.ord_to_py
 
-Context
--------
+Contexts
+--------
 
-.. autoclass:: ordec.ord.context.Context
+.. autoclass:: ordec.core.context.NodeContext
+    :members:
+
+.. autoclass:: ordec.core.context.ViewContext
+    :members:
+
+.. autoclass:: ordec.core.context.LayoutViewContext
     :members:
 
 OrdTransformer

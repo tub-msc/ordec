@@ -67,8 +67,8 @@ cell Inv:
 # ## 2. Viewgen
 # 
 # Cell-specific generator functions described by the ORDeC data schema are defined using the `viewgen` keyword. 
-# They can be simulation, schematic, symbol, or layout views. Currently, **schematic** and **symbol** views are fully
-# implemented in the ORD language! 
+# In ORD itself, **symbol**, **schematic**, and **layout** generators are supported directly.
+# Other view types can still be written as regular Python code when needed.
 
 # + 
 %%ord 
@@ -220,8 +220,8 @@ Nand().schematic
 
 # ### 4.6 Paths
 #
-# ORDeC uses hierarchical subgraphs to add elements to a schematic. 
-# When defining elements in the schematic, they become children of the schematic subgraph. 
+# ORDeC uses hierarchical subgraphs to add elements to a view.
+# When defining elements in a symbol, schematic, or layout, they become children of the current subgraph.
 # Further nesting of elements can be achieved using `path` elements. Paths open a new subgraph 
 # layer where elements can be added using indices. 
 # This enables definition of **list-like** elements, which are especially powerful in 
@@ -294,7 +294,125 @@ cell Inv:
 Inv().schematic
 # -
 
-# ## 5. Python support
+# + [markdown]
+# ### 4.8 Anonymous nodes
+#
+# Sometimes a node is only a temporary helper and should **not** get a persistent path name.
+# This is especially common inside loops, where repeating the same node name would otherwise
+# create path conflicts. The `anonymous` keyword creates the node normally, assigns it to a local
+# variable, but skips registration in the ORDB path system.
+#
+# Typical usage looks like this: `anonymous LayoutRect r:` creates a temporary rectangle, and
+# a constraint such as `! .contains(sd.rect)` can still be applied to it locally.
+#
+# The variable `r` can still be used inside the current block, but there is no `.r` child on the
+# parent view.
+# -
+
+# ## 5. Layout
+#
+# ORD layout generators use the same context-based syntax as symbols and schematics.
+# In practice, a layout view usually starts by selecting a layer stack, then creating
+# geometry such as `LayoutRect`, `LayoutPath`, or `LayoutPin`, and finally constraining
+# the geometry with `!` expressions.
+
+# +
+%%ord
+from ordec.lib.ihp130 import SG13G2
+
+cell LayoutDemo:
+    viewgen symbol -> Symbol:
+        input a: .align=West
+        output y: .align=East
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        LayoutRect in_bar:
+            .layer = layers.Metal1
+            ! .lx == 0
+            ! .ly == 0
+            ! .width == 600
+            ! .height == 200
+            . % LayoutPin(pin=self.symbol.a)
+
+        LayoutRect out_bar:
+            .layer = layers.Metal2
+            ! .lx == in_bar.ux + 300
+            ! .ly == in_bar.ly
+            ! .width == 600
+            ! .height == 200
+            . % LayoutPin(pin=self.symbol.y)
+
+        for i in range(3):
+            anonymous LayoutRect stub:
+                .layer = layers.Metal1
+                ! .width == 120
+                ! .height == 120
+                ! .lx == in_bar.lx + 120 + 140 * i
+                ! .ly == in_bar.uy + 120
+# -
+# + tags=["remove-input"]
+import xml.etree.ElementTree as ET
+from IPython.display import SVG, display
+
+_, layout_data = LayoutDemo().layout.webdata()
+lx, ly, ux, uy = layout_data["extent"]
+
+svg = ET.Element(
+    "svg",
+    xmlns="http://www.w3.org/2000/svg",
+    width="300px",
+    height="300px",
+    viewBox=f"{lx} {ly} {max(ux - lx, 1)} {max(uy - ly, 1)}",
+    preserveAspectRatio="xMidYMid meet",
+)
+group = ET.SubElement(svg, "g", transform=f"matrix(1 0 0 -1 0 {ly + uy})")
+
+for layer in layout_data["layers"]:
+    layer_group = ET.SubElement(group, "g")
+    fill = layer["styleFill"] or "none"
+    stroke = layer["styleStroke"] or "none"
+    for poly in layer["polys"]:
+        vertices = poly["vertices"]
+        d = "M" + " L".join(
+            f"{vertices[i]} {vertices[i + 1]}"
+            for i in range(0, len(vertices), 2)
+        ) + " Z"
+        ET.SubElement(layer_group, "path", d=d, fill=fill, stroke=stroke)
+
+display(SVG(data=ET.tostring(svg, encoding="unicode")))
+# -
+
+# + [markdown]
+# ### 5.1 Constraints
+#
+# The `!` prefix adds a **constraint** instead of executing a normal statement.
+# This is particularly useful in layouts, where relative geometry is often more
+# natural than assigning absolute coordinates everywhere.
+#
+# Common patterns are `! out_bar.lx == in_bar.ux + 300`, `! .contains(other.rect)`,
+# and `! .width == 600`.
+#
+# This style scales well to larger generators. The `vco_pseudodiff.ord` example uses
+# the same mechanism to align devices, pin bars, and routing anchors across a much larger layout.
+#
+# ### 5.2 Layout pins and advanced helpers
+#
+# `LayoutPin` attaches layout geometry back to a symbol pin, so the layout keeps a semantic
+# connection to the cell interface.
+#
+# More advanced layout generators can also mix ORD syntax with Python helper APIs. For example,
+# `ordec.examples.vco_pseudodiff` uses helpers such as `SRouter` and `makevias`, then attaches
+# the generated routing back to a symbol pin with `sr.path % LayoutPin(pin=self.symbol.rst_n)`.
+#
+# This combination of ORD syntax and Python helpers is one of the strengths of ORD: concise
+# textual geometry where it is helpful, and direct access to Python building blocks when a
+# generator becomes more algorithmic.
+# -
+
+# ## 6. Python support
 #
 # ORD is not a standalone language. It is a **language extension (superset) of Python**!
 # ORD is capable of running and including any Python code, which has the advantage that Python functionalities
@@ -321,7 +439,7 @@ cell Inv:
 Inv().symbol
 # -
 
-# ## 6. Import ORD
+# ## 7. Import ORD
 #
 # Every module written in ORD can be **imported like a Python module** through the ORD importer!
 
