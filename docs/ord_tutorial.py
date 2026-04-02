@@ -34,8 +34,9 @@
 # + tags=["remove-input"]
 from ordec.core import *
 from IPython.core.magic import Magics, magics_class, line_cell_magic
-from IPython.display import Code
 from ordec.language import compile_ord
+import xml.etree.ElementTree as ET
+from IPython.display import SVG, display
 
 @magics_class
 class OrdMagics(Magics):
@@ -159,7 +160,7 @@ Inv().schematic
 #     .pos=(2,13) 
 #     .align=North
 # ```
-# Attributes must not be set directly on definition, they can also be set at a later point in the code
+# Attributes don't have to be set directly on definition, they can also be set at a later point in the code
 # ```python
 # port vdd: .align=North
 # vdd.pos=(2,13)
@@ -231,7 +232,10 @@ Nand().schematic
 # path bit
 # path bit[i]
 # ```
+#
+# See {ref}`parametrization` for a concrete example using paths.
 
+# (parametrization)=
 # ### 4.7 Parametrization
 #
 # **Cells can be parametrized** to make them reusable and adjust to new applications.
@@ -307,8 +311,11 @@ Inv().schematic
 #
 # The variable `r` can still be used inside the current block, but there is no `.r` child on the
 # parent view.
+#
+# See {ref}`layout` for a runnable example using `anonymous`.
 # -
 
+# (layout)=
 # ## 5. Layout
 #
 # ORD layout generators use the same context-based syntax as symbols and schematics.
@@ -354,9 +361,6 @@ cell LayoutDemo:
                 ! .ly == in_bar.uy + 120
 # -
 # + tags=["remove-input"]
-import xml.etree.ElementTree as ET
-from IPython.display import SVG, display
-
 _, layout_data = LayoutDemo().layout.webdata()
 lx, ly, ux, uy = layout_data["extent"]
 

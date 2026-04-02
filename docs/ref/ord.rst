@@ -4,7 +4,7 @@
 ORD is ORDeC's current programming language. It offers full support of Python,
 plus additional ORD syntax (a Python-superset) to improve textual IC design
 within the ORDeC project. It currently focuses on simplifying schematic entry
-while also supporting regular Python syntax for simulations or layouts.
+and layout while also supporting regular Python syntax for simulations.
 Execution of ORD code results in a one-pass compiler step that transforms the
 input into context-based Python code.
 
