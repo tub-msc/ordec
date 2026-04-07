@@ -503,21 +503,22 @@ def background_inotify(watch_files, pipe_inotify_abort_r, websocket, websocket_l
         #print(f"Watching for changes to file: {f}")
         inotify.add_watch(f, watch_flags)
 
-    while True:
-        readable, _, _ = select.select([inotify, pipe_inotify_abort_r], [], [])
-        if pipe_inotify_abort_r in readable:
-            break
-        if inotify in readable:
-            for m in inotify.read(timeout=0):
-                with websocket_lock:
-                    websocket.send(json.dumps({'msg':'localmodule_changed'}))
-                # Currently multiple localmodule_changed messages are
-                # potentially sent to the client. Alternatively, the
-                # background_inotify thread could terminate after the first
-                # message.
-
-    inotify.close()
-    pipe_inotify_abort_r.close()
+    try:
+        while True:
+            readable, _, _ = select.select([inotify, pipe_inotify_abort_r], [], [])
+            if pipe_inotify_abort_r in readable:
+                break
+            if inotify in readable:
+                for m in inotify.read(timeout=0):
+                    with websocket_lock:
+                        websocket.send(json.dumps({'msg':'localmodule_changed'}))
+                    # Currently multiple localmodule_changed messages are
+                    # potentially sent to the client. Alternatively, the
+                    # background_inotify thread could terminate after the first
+                    # message.
+    finally:
+        inotify.close()
+        pipe_inotify_abort_r.close()
 
 
 def build_response(status: http.HTTPStatus=http.HTTPStatus.OK, mime_type: str='text/plain', data: bytes=None):
