@@ -92,8 +92,7 @@ def parse_raw(fn, use_mmap=True) -> SimArray:
     info = {}
     var_names = []
 
-    f = open(fn, "rb")
-    try:
+    with open(fn, "rb") as f:
         while True:
             line = f.readline()
             if not line:
@@ -140,8 +139,9 @@ def parse_raw(fn, use_mmap=True) -> SimArray:
 
         if use_mmap and expected_bytes > 0:
             data_offset = f.tell()
+            # mmap holds its own reference to the underlying fd, so it
+            # remains valid after the `with` closes the Python file object.
             mm = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
-            f.close()
             # Slicing mmap directly copies into bytes; memoryview gives
             # a zero-copy slice that still references the mmap.
             mv = memoryview(mm)[data_offset : data_offset + expected_bytes]
@@ -156,11 +156,7 @@ def parse_raw(fn, use_mmap=True) -> SimArray:
                 raise ValueError(
                     f"Expected {expected_bytes} bytes, got {len(data)}"
                 )
-            f.close()
             return SimArray(fields, data)
-    except:
-        f.close()
-        raise
 
 
 class NgspiceVector(NamedTuple):
