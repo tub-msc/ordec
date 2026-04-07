@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from .inverter import Inv
+from .sr_flip_flop import SR_flip_flop
+
+cell D_latch:
+    viewgen symbol -> Symbol:
+        input D: .pos = (1, 7); .align = West
+        input CLK: .pos = (1, 9); .align = West
+        input vdd: .pos = (1, 20); .align = North
+        input vss: .pos = (1, 1); .align = South
+        output Q: .pos = (18, 7); .align = East
+        output Q_not: .pos = (18, 8); .align = East
+
+    viewgen schematic -> Schematic:
+        port D: .pos = (1, 7); .align = East
+        port CLK: .pos = (1, 9); .align = East
+        port vdd: .pos = (1, 20); .align = East
+        port vss: .pos = (1, 1); .align = East
+        port Q: .pos = (18, 7); .align = West
+        port Q_not: .pos = (18, 8); .align = West
+
+        net reset_n
+
+        vdd.auto_wire = False
+        vss.auto_wire = False
+
+        SR_flip_flop sr1: .pos = (10, 5)
+        Inv i1: .pos = (3, 13)
+
+        i1.a -- D
+        i1.y -- reset_n
+
+        sr1.S -- D
+        sr1.CLK -- CLK
+        sr1.Q -- Q
+        sr1.Q_not -- Q_not
+        sr1.R -- reset_n
+
+        for inst in i1, sr1:
+            inst.vdd -- vdd
+            inst.vss -- vss
