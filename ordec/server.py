@@ -439,7 +439,7 @@ class ConnectionHandler:
         elif msg_first['msg'] == 'localmodule':
             conn_globals, watch_files, exc = self.build_localmodule(msg_first['module'])
         else:
-            raise Exception("Excpected 'source' or 'localmodule' message.")
+            raise Exception("Expected 'source' or 'localmodule' message.")
         
         if exc:
             websocket.send(json.dumps({
@@ -598,8 +598,8 @@ class StaticHandler:
                 return self.process_request_schematic_css()
 
             return self.process_request_static(req_path)
-        except:
-            print(traceback.print_exc())
+        except Exception:
+            traceback.print_exc()
             return build_response(http.HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def process_request_example(self, name):

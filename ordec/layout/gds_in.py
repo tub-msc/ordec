@@ -91,8 +91,8 @@ def read_gds_structure(structure: Structure, layers: LayerStack, unit: R, extlib
                 )
         elif isinstance(elem, elements.Path):
             layer = lookup_layer(elem.layer, elem.data_type, text=False)
-            if len(elem.xy) < 1:
-                raise GdsReaderException(f"Invalid GDS data: Path {elem} has less than 3 vertices!")
+            if len(elem.xy) < 2:
+                raise GdsReaderException(f"Invalid GDS data: Path {elem} has less than 2 vertices!")
             vertices=[conv_xy(xy) for xy in elem.xy]
             endtype = gds_pathtype_to_endtype(elem.path_type)
             if endtype == PathEndType.Custom:
@@ -132,7 +132,7 @@ def read_gds_structure(structure: Structure, layers: LayerStack, unit: R, extlib
         elif isinstance(elem, elements.Node):
             raise NotImplementedError("GDS Node element not supported.")
         else:
-            raise GdsReaderException("Unknown GDS element: {elem!r}")
+            raise GdsReaderException(f"Unknown GDS element: {elem!r}")
 
     return layout.freeze()
 

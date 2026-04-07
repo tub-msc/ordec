@@ -374,7 +374,7 @@ class Ngspice:
     def ac(self, scheme: Literal["dec", "oct", "lin"], n: int, fstart: R, fstop: R) -> SimArray:
         """Runs Ngspice's 'ac' command for AC small-signal analysis."""
         if scheme not in ('dec', 'oct', 'lin'):
-            raise TypeError("scheme must be 'dec', 'oct' or 'lin'.1`")
+            raise TypeError("scheme must be 'dec', 'oct' or 'lin'.")
         self.command(" ".join([
             'ac',
             scheme,

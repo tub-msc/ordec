@@ -83,7 +83,7 @@ def path_to_poly_vertices(path: LayoutPath) -> list[Vec2I]:
     Calculates the outline / stroke expansion of the given LayoutPath.
     """
     if path.width % 2 != 0:
-        raise ValueError(f"Path width must be multiple of two (is {path.width}.")
+        raise ValueError(f"Path width must be multiple of two (is {path.width}).")
     halfwidth = path.width // 2
     outline = []
     for pred, cur, succ in iter_triplets(path.vertices()):
@@ -110,7 +110,7 @@ def path_to_poly_vertices(path: LayoutPath) -> list[Vec2I]:
                 # 0 degree turn => node b can be dropped
                 continue
             if abs_direction != Vec2I(1, 1):
-                raise ValueError("Unsupported path (Only 90 degree and 0 degree turns permitted.")
+                raise ValueError("Unsupported path (only 90 degree and 0 degree turns permitted).")
             # else: 90 degree turn, which is the usual case.
         normal = Vec2I(direction.y, -direction.x)
         outline.append(cur + halfwidth*normal + extension)

@@ -203,7 +203,7 @@ The foundation is ORDB (ordec/core/ordb.py), a custom graph database using immut
 - **Nodes**: Typed graph nodes with attributes (similar to database records)
 - **Subgraphs**: Collections of related nodes with indexes for queries
 - **SubgraphRoot**: Entry point to a subgraph (nid=0)
-- **Inserters**: Functions that add nodes to subgraphs during construction
+- **Inserters**: ABC class hierarchy (`Inserter` in `ordec/core/ordb.py`) for adding nodes to subgraphs during construction. `FuncInserter` wraps a plain function as an inserter; `NodeTuple` is registered as a virtual subclass so node tuples themselves can be used as inserters.
 - **Indexes**: Query interfaces (unique indexes enforce constraints)
 
 All IC design data is represented as ORDB subgraphs: Symbols, Schematics, Layouts, SimHierarchy, etc.
@@ -245,24 +245,30 @@ Each schema type is a Node subclass with Attr declarations and indexes.
 
 **SimArray** (ordec/core/simarray.py): Immutable, hashable structured array for simulation data
 - Tuple subclass holding `(fields, data)` where fields describe columns and data is packed binary
-- Supports `column(name)` to extract a field as a tuple of float/complex values
+- Supports `column(name)` to extract a field as a `SimColumn` — a lazy strided view into the packed binary data (supports indexing, slicing, iteration, `len()`); values are unpacked on demand, not materialized as a tuple
 - No numpy dependency for core operations; `to_numpy()` available for convenience
 
 **Ngspice** (ordec/sim/):
-- ngspice_subprocess.py: Subprocess-based ngspice communication
-- ngspice_common.py: Shared utilities — `parse_raw()` reads binary rawfiles into SimArray,
-  `quantity_from_unit()` classifies variables, `strip_raw_name()` unwraps ngspice `v()`/`i()` wrappers
+- `ngspice.py`: Contains the `Ngspice` class (interactive piped-mode wrapper),
+  `ngspice_batch()` (batch-mode helper), `parse_raw()` (reads binary rawfiles into a
+  `SimArray`, handles real and complex/AC rawfiles), and `name_print_to_raw()`
+  (converts print-style names like `vgnd#branch` to rawfile-style `i(gnd)`).
+- `simulator.py`: High-level `Simulator`, `SimulatorBase`, `SimulatorNgspiceBatch`,
+  and `SimulatorNgspicePiped` classes that bridge ORDB schematics and ngspice. Also
+  defines `parse_signal_name()` which parses rawfile names like `v(a)`, `i(vgnd)`,
+  `@m.xdut.mm2[is]` into `(node_name, subname)`.
 
-**SimHierarchy** (ordec/sim/sim_hierarchy.py, ordec/core/schema.py):
-- Flattened simulation hierarchy with SimInstance, SimNet, SimPin, and SimParam nodes
+**SimHierarchy** (defined entirely in `ordec/core/schema.py`):
+- Flattened simulation hierarchy with SimInstance, SimNet, SimPin, and SimParam nodes.
 - SimHierarchy stores the full simulation result as a single `SimArray` (`sim_data` attr)
-  plus `time_field`/`freq_field` identifying the independent variable column
+  plus `time_field`/`freq_field` identifying the independent variable column.
 - SimNet stores a single `voltage_field` string naming its column in the shared SimArray;
-  `voltage` property resolves values on access. `op_voltage` is a scalar `Attr(float)` for op()
-- SimPin tracks per-pin currents on leaf instances: `current_field` / `current` property,
-  `op_current` scalar. `SimLeafCell.ngspice_current_pins()` maps ngspice subnames to pin attrs
-- SimParam stores arbitrary device parameters (gm, gds, vth, etc.): `field` / `value` property,
-  `op_value` scalar. `SimLeafCell.ngspice_save_params()` lists saveable parameter names
+  the `voltage` property resolves values on access (returns a `SimColumn`; for op-point
+  results this column has a single element).
+- SimPin tracks per-pin currents on leaf instances via `current_field` and the `current`
+  property. `Cell.ngspice_current_pins()` maps ngspice subnames to pin attrs.
+- SimParam stores arbitrary device parameters (gm, gds, vth, etc.) via `field` and the
+  `value` property. `Cell.ngspice_save_params()` lists saveable parameter names.
 
 ### Layout
 
@@ -285,8 +291,13 @@ Each schema type is a Node subclass with Attr declarations and indexes.
 **Frontend** (web/src/):
 - main.js: Application entry point, Golden Layout setup
 - client.js: WebSocket client, view management
+- auth.js: Session/token management, HMAC verification for local mode
 - resultviewer.js: Result rendering logic
 - layout-gl.js: WebGL-based layout renderer
+- simplot.js: Interactive simulation plot component (D3-based)
+- hier-selector.js: Hierarchical path selector for simulation browsing
+- siformat.js: SI unit formatting utilities
+- theme.js: Color theme configuration
 - ace-ord-mode.js: Syntax highlighting for ORD language
 
 **Communication protocol**:
