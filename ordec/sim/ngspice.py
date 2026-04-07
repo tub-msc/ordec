@@ -9,7 +9,6 @@ SimArray results."""
 
 import mmap
 import re
-import signal
 import struct
 import sys
 import shutil
@@ -251,15 +250,16 @@ class Ngspice:
                 yield cls(p, cwd=Path(cwd_str))
             finally:
                 logger.debug(f"Cleaning up process {p.pid}")
+                # communicate() closes stdin (giving ngspice EOF, which is the
+                # graceful shutdown for piped mode), drains stdout, and waits.
+                # If ngspice ignores EOF, escalate to SIGKILL — see Python
+                # subprocess docs for this kill-on-timeout pattern.
                 try:
-                    p.send_signal(signal.SIGTERM)
-                    if p.stdin:
-                        p.stdin.close()
-                    if p.stdout:
-                        p.stdout.read()
-                    p.wait(timeout=1.0)
-                except (ProcessLookupError, BrokenPipeError, TimeoutError):
-                    pass  # Process may have already terminated
+                    p.communicate(timeout=1.0)
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"ngspice {p.pid} did not exit on EOF, escalating to SIGKILL.")
+                    p.kill()
+                    p.communicate()
 
     def __init__(self, p: subprocess.Popen, cwd: Path):
         self.p: subprocess.Popen[bytes] = p
