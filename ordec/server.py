@@ -421,25 +421,45 @@ class ConnectionHandler:
         print(f"{remote}: new websocket connection")
         msgs = iter(websocket)
 
-        # Validate auth_token to prevent code execution from untrusted connections:
-        msg_first = json.loads(next(msgs))
-        if not self.key.authenticate(msg_first['auth']):
+        def send_exception_info(reason):
             websocket.send(json.dumps({
-                'msg':'exception',
-                'exception':"incorrect auth token provided",
-                }))
+                'msg': 'exception',
+                'exception': reason,
+            }))
+
+        # Validate auth_token to prevent code execution from untrusted connections:
+        try:
+            msg_first = json.loads(next(msgs))
+        except StopIteration:
+            # Client connected and disconnected without sending anything.
+            print(f"{remote}: websocket closed before first message")
+            return
+
+        try:
+            auth = msg_first['auth']
+            msg_first_type = msg_first['msg']
+        except (KeyError, TypeError):
+            send_exception_info("malformed first message: missing 'auth' or 'msg'")
+            return
+
+        if not self.key.authenticate(auth):
+            send_exception_info("incorrect auth token provided")
             return
 
         # First message - read design input / build cells:
 
-        if msg_first['msg'] == 'source':
-            #print(f"Received source of type {source_type}.")
-            conn_globals, exc = self.build_cells(msg_first['srctype'], msg_first['src'])
-            watch_files = []
-        elif msg_first['msg'] == 'localmodule':
-            conn_globals, watch_files, exc = self.build_localmodule(msg_first['module'])
-        else:
-            raise Exception("Expected 'source' or 'localmodule' message.")
+        try:
+            if msg_first_type == 'source':
+                conn_globals, exc = self.build_cells(msg_first['srctype'], msg_first['src'])
+                watch_files = []
+            elif msg_first_type == 'localmodule':
+                conn_globals, watch_files, exc = self.build_localmodule(msg_first['module'])
+            else:
+                send_exception_info("expected 'source' or 'localmodule' message")
+                return
+        except KeyError as e:
+            send_exception_info(f"malformed first message: missing key {e}")
+            return
         
         if exc:
             websocket.send(json.dumps({
@@ -466,8 +486,12 @@ class ConnectionHandler:
         try:
             for msg_raw in websocket:
                 msg = json.loads(msg_raw)
-                assert msg['msg'] == 'getview'
-                view_name = msg['view']
+                if msg.get('msg') != 'getview':
+                    raise ValueError(f"unexpected message type: {msg.get('msg')!r}")
+                try:
+                    view_name = msg['view']
+                except KeyError:
+                    raise ValueError("getview message missing 'view' field")
 
                 msg_ret = self.query_view(view_name, conn_globals)
                 with websocket_lock:
