@@ -9,8 +9,11 @@ class Netlister:
         self.spice_cards = []
         self.cur_line = 0
         self.indent = 0
-        self.netlist_setup_funcs = set()
-        self.ngspice_setup_funcs = set()
+        # Lists (not sets) to preserve insertion order so setup functions
+        # with ordering dependencies run deterministically. Deduplicated on
+        # insert in require_netlist_setup / require_ngspice_setup.
+        self.netlist_setup_funcs = []
+        self.ngspice_setup_funcs = []
         self.enable_savecurrents = enable_savecurrents
         self.lvs = lvs
 
@@ -21,7 +24,8 @@ class Netlister:
         return self.name_obj(net)
 
     def require_netlist_setup(self, func):
-        self.netlist_setup_funcs.add(func)
+        if func not in self.netlist_setup_funcs:
+            self.netlist_setup_funcs.append(func)
 
     def require_ngspice_setup(self, func):
         """Register a function that returns ngspice setup commands.
@@ -30,7 +34,8 @@ class Netlister:
         strings. These are used for PDK-specific setup (e.g. loading
         OSDI models) that cannot go in the netlist.
         """
-        self.ngspice_setup_funcs.add(func)
+        if func not in self.ngspice_setup_funcs:
+            self.ngspice_setup_funcs.append(func)
 
     def out(self):
         return "\n".join(self.spice_cards) + "\n.end\n"
