@@ -32,21 +32,77 @@ function loadShader(gl, type, source) {
     return shader;
 }
 
-function initprog(gl, vsSource, fsSource) {
-    const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
-    const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
-
-    const prog = gl.createProgram();
-    gl.attachShader(prog, vertexShader);
-    gl.attachShader(prog, fragmentShader);
-    gl.linkProgram(prog);
-
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-        alert(`Unable to initialize shader program: ${gl.getProgramInfoLog(prog)}`);
-        return null;
+/**
+ * Tracks WebGL resources created through it so they can all be released
+ * in a single destroy() call. WebGL resources live in GPU memory and are
+ * not reclaimed by the JS garbage collector. Forgetting to delete them
+ * leaks GPU memory and could eventually exhaust the browser's per-document
+ * WebGL limits.
+ */
+class GLResourceRegistry {
+    constructor(gl) {
+        this.gl = gl;
+        this.textures = [];
+        this.buffers = [];
+        this.framebuffers = [];
+        this.programs = [];
     }
 
-    return prog;
+    createTexture() {
+        const t = this.gl.createTexture();
+        this.textures.push(t);
+        return t;
+    }
+
+    createBuffer() {
+        const b = this.gl.createBuffer();
+        this.buffers.push(b);
+        return b;
+    }
+
+    createFramebuffer() {
+        const f = this.gl.createFramebuffer();
+        this.framebuffers.push(f);
+        return f;
+    }
+
+    createProgram(vsSource, fsSource) {
+        const gl = this.gl;
+        const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+        const prog = gl.createProgram();
+        gl.attachShader(prog, vertexShader);
+        gl.attachShader(prog, fragmentShader);
+        gl.linkProgram(prog);
+
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+            alert(`Unable to initialize shader program: ${gl.getProgramInfoLog(prog)}`);
+            return null;
+        }
+
+        // Flag shaders for deletion. They remain alive (because they are
+        // attached to the program) until the program itself is deleted, at
+        // which point they are freed automatically. Without these calls the
+        // shader objects would leak when the program is later deleted.
+        gl.deleteShader(vertexShader);
+        gl.deleteShader(fragmentShader);
+
+        this.programs.push(prog);
+        return prog;
+    }
+
+    destroy() {
+        const gl = this.gl;
+        for (const t of this.textures) gl.deleteTexture(t);
+        for (const b of this.buffers) gl.deleteBuffer(b);
+        for (const f of this.framebuffers) gl.deleteFramebuffer(f);
+        for (const p of this.programs) gl.deleteProgram(p);
+        this.textures = [];
+        this.buffers = [];
+        this.framebuffers = [];
+        this.programs = [];
+    }
 }
 
 function isConvex(A, B, C) {
@@ -107,7 +163,9 @@ export class LayoutGL {
 
         d3.select(this.canvas).call(this.zoom).call(this.zoom.transform, this.transform);
 
-        const resizeObserver = new ResizeObserver((entries) => {
+        this.resizeObserver = new ResizeObserver((entries) => {
+            // Guard against callbacks that arrive after destroy().
+            if (!this.gl) return;
             if((this.canvas.clientWidth == 0) || (this.canvas.clientHeight == 0)) {
                 return;
             }
@@ -116,7 +174,7 @@ export class LayoutGL {
             this.canvas.height = this.canvas.clientHeight;
             this.drawGL();
         });
-        resizeObserver.observe(this.canvas);
+        this.resizeObserver.observe(this.canvas);
 
         this.resContent.addEventListener("keydown", event => this.onKeydown(event));
         this.canvas.addEventListener("mousemove", event => this.onMousemove(event));
@@ -249,16 +307,25 @@ export class LayoutGL {
         this.cursorPosLi = li;
     }
 
+    destroy() {
+        // Called by ResultViewer when this renderer is being replaced.
+        if (!this.gl) return;
+        this.resizeObserver.disconnect();
+        this.glResources.destroy();
+        this.gl = null;
+    }
+
     initGL() {
         const gl = this.gl;
 
         gl.getExtension("EXT_color_buffer_float");
         gl.getExtension("EXT_float_blend");
 
+        this.glResources = new GLResourceRegistry(gl);
         this.programInfos = Object();
         let prog;
 
-        prog = initprog(gl, glslShapesVert, glslShapesFrag);
+        prog = this.glResources.createProgram(glslShapesVert, glslShapesFrag);
         this.programInfos.shapes = {
             program: prog,
             attribLocations: {
@@ -272,7 +339,7 @@ export class LayoutGL {
             },
         };
 
-        prog = initprog(gl, glslLabelsVert, glslLabelsFrag);
+        prog = this.glResources.createProgram(glslLabelsVert, glslLabelsFrag);
         this.programInfos.labels = {
             program: prog,
             attribLocations: {
@@ -289,7 +356,7 @@ export class LayoutGL {
             },
         };
 
-        prog = initprog(gl, glslPostVert, glslPostFrag);
+        prog = this.glResources.createProgram(glslPostVert, glslPostFrag);
         this.programInfos.post = {
             program: prog,
             attribLocations: {
@@ -302,19 +369,19 @@ export class LayoutGL {
             },
         };
 
-        this.intermediateTexture = gl.createTexture();
-        this.intermediateTextureDepth = gl.createTexture();
-        this.intermediateFramebuffer = gl.createFramebuffer();
-        this.labelsTexture = gl.createTexture();
+        this.intermediateTexture = this.glResources.createTexture();
+        this.intermediateTextureDepth = this.glResources.createTexture();
+        this.intermediateFramebuffer = this.glResources.createFramebuffer();
+        this.labelsTexture = this.glResources.createTexture();
 
         this.buffers = {
             // static, loaded by loadBuffersConstant:
-            gridVertices: gl.createBuffer(),
-            postVertices: gl.createBuffer(),
+            gridVertices: this.glResources.createBuffer(),
+            postVertices: this.glResources.createBuffer(),
 
             // dynamic, loaded by loadBuffersDynamic:
-            shapeVertices: gl.createBuffer(),
-            labelVertices: gl.createBuffer(),
+            shapeVertices: this.glResources.createBuffer(),
+            labelVertices: this.glResources.createBuffer(),
         }
 
         this.loadBuffersConstant();

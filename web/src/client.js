@@ -36,6 +36,7 @@ export class OrdecClient {
         this.sock.onopen = (ev) => this.wsOnOpen(ev);
         this.sock.onmessage = (ev) => this.wsOnMessage(ev);
         this.sock.onclose = (ev) => this.wsOnClose(ev);
+        this.sock.onerror = (ev) => this.wsOnError(ev);
         this.reqPending = false;
     }
 
@@ -66,8 +67,20 @@ export class OrdecClient {
     }
 
     wsOnClose(closeEvent) {
+        // Any in-flight request is gone once the socket closes. Reset the
+        // flag so a reconnect (or a late requestNextView call before reconnect)
+        // doesn't get stuck waiting for a response that will never arrive.
+        this.reqPending = false;
         if (!this.exception) {
             //this.exception = "Websocket disconnected.";
+            this.setStatus('disconnected');
+        }
+    }
+
+    wsOnError(errorEvent) {
+        console.error("WebSocket error:", errorEvent);
+        this.reqPending = false;
+        if (!this.exception) {
             this.setStatus('disconnected');
         }
     }
