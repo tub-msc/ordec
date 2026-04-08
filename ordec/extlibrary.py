@@ -1,9 +1,13 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
+
 from .layout.gds_in import gds_discover
 from .core import *
 from public import public
+
+logger = logging.getLogger(__name__)
 
 @public
 class ExtLibraryError(Exception):
@@ -77,7 +81,7 @@ class ExtLibraryCell(Cell):
 
     @generate
     def layout(self) -> Layout:
-        print(f"generating layout {self.name}")
+        logger.debug("generating layout %s", self.name)
         try:
             layout_func = self.extlib.layout_funcs[self.name]
         except KeyError:
@@ -86,7 +90,7 @@ class ExtLibraryCell(Cell):
 
     @generate
     def frame(self) -> Layout:
-        print(f"generating frame {self.name}")
+        logger.debug("generating frame %s", self.name)
         try:
             frame_func = self.extlib.frame_funcs[self.name]
         except KeyError:
@@ -95,7 +99,7 @@ class ExtLibraryCell(Cell):
 
     @generate
     def symbol(self) -> Symbol:
-        print(f"generating symbol {self.name}")
+        logger.debug("generating symbol %s", self.name)
         try:
             symbol_func = self.extlib.symbol_funcs[self.name]
         except KeyError:
@@ -104,7 +108,7 @@ class ExtLibraryCell(Cell):
 
     @generate
     def schematic(self) -> Schematic:
-        print(f"generating schematic {self.name}")
+        logger.debug("generating schematic %s", self.name)
         try:
             schematic_func = self.extlib.schematic_funcs[self.name]
         except KeyError:
