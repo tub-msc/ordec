@@ -4,6 +4,7 @@
 import pytest
 import re
 from ordec.core import *
+from ordec.core.ordb import IndexKey
 from tabulate import tabulate
 import ordec.core.ordb
 
@@ -324,7 +325,13 @@ def test_updater():
     with s.updater() as u:
         MyNode(label='hello').insert_into(u, u.nid_generate())
 
-    #TODO?
+    # s was mutated by the committed updater...
+    assert not s.subgraph.internally_equal(s_orig.subgraph)
+    assert s.subgraph.nid_alloc.start == 2
+    assert s.subgraph.nodes[1].label == 'hello'
+    # ...but s_orig is unaffected (copy is independent).
+    assert s_orig.subgraph.nid_alloc.start == 1
+    assert len(s_orig.subgraph.nodes) == 1
 
 def test_localref_integrity():
     class Person(Node):
@@ -377,21 +384,31 @@ def test_localref_integrity():
     s.subgraph.remove_nid(alice.nid)
 
 def test_index():
-    # TODO!
     class NodeA(Node):
         in_subgraphs=[MyHead]
         color = Attr(int)
-        Index(color)
+        color_idx = Index(color)
 
     s = MyHead()
     s.node1 = NodeA(color=123)
     s.node2 = NodeA(color=123)
-    
-    #print(tabulate(s.index.items()))
-    # TODO: Complete test.
+    s.node3 = NodeA(color=456)
+
+    # Direct inspection of the underlying index pmap:
+    key123 = IndexKey(NodeA.color_idx, 123)
+    key456 = IndexKey(NodeA.color_idx, 456)
+    assert set(s.subgraph.index[key123]) == {s.node1.nid, s.node2.nid}
+    assert set(s.subgraph.index[key456]) == {s.node3.nid}
+
+    # Query API returns all nodes matching the key:
+    got123 = {c.nid for c in s.all(NodeA.color_idx.query(123))}
+    assert got123 == {s.node1.nid, s.node2.nid}
+    got456 = {c.nid for c in s.all(NodeA.color_idx.query(456))}
+    assert got456 == {s.node3.nid}
+    # Non-existent key yields no results:
+    assert list(s.all(NodeA.color_idx.query(999))) == []
 
 def test_unique():
-    # TODO: Extend this test
     class NodeU1(Node):
         in_subgraphs=[MyHead]
         label = Attr(str)
@@ -403,8 +420,40 @@ def test_unique():
     with pytest.raises(UniqueViolation):
         s2 % NodeU1(label='hello')
     # Make sure neither the nodes nor the index was modified here:
-    assert s2.subgraph.internally_equal(s.subgraph) 
-    assert s2.subgraph.index == s.subgraph.index 
+    assert s2.subgraph.internally_equal(s.subgraph)
+    assert s2.subgraph.index == s.subgraph.index
+
+    # Updating an existing node to collide with another must also fail,
+    # and leave the subgraph unchanged.
+    s3 = MyHead()
+    n_a = s3 % NodeU1(label='hello')
+    n_b = s3 % NodeU1(label='world')
+    s3_before = s3.copy()
+    with pytest.raises(UniqueViolation):
+        n_b.label = 'hello'
+    assert s3.subgraph.internally_equal(s3_before.subgraph)
+    assert s3.subgraph.index == s3_before.subgraph.index
+
+    # Removing a node then re-inserting the same label must succeed.
+    s3.subgraph.remove_nid(n_a.nid)
+    s3 % NodeU1(label='hello')
+
+    # None values are not indexed by the unique constraint, so multiple
+    # nodes with label=None are allowed.
+    s4 = MyHead()
+    s4 % NodeU1(label=None)
+    s4 % NodeU1(label=None)
+
+    # Updater rollback on UniqueViolation leaves state untouched.
+    s5 = MyHead()
+    s5 % NodeU1(label='hello')
+    s5_before = s5.copy()
+    with pytest.raises(UniqueViolation):
+        with s5.updater() as u:
+            NodeU1(label='world').insert_into(u, u.nid_generate())
+            NodeU1(label='hello').insert_into(u, u.nid_generate())
+    assert s5.subgraph.internally_equal(s5_before.subgraph)
+    assert s5.subgraph.index == s5_before.subgraph.index
 
 def test_cursor_remove():
     s = MyHead()
@@ -1074,6 +1123,6 @@ def test_set_byattr():
     assert h.a.text1 == "Hello"
     assert h.a.text2 == "you!"
 
-    # TODO
+    # Passing an Attr that belongs to an unrelated node type must raise:
     with pytest.raises(OrdbException):
-        h.a.update_byattr(UnrelatedNode, 'test')
+        h.a.update_byattr(UnrelatedNode.text2, 'test')
