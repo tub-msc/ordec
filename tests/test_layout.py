@@ -897,10 +897,10 @@ def test_expand_pins():
     layout = Layout(ref_layers=layers, symbol=sym)
 
     r1 = layout % LayoutRect(layer=layers.Metal1, rect=(0,0,100,100))
-    r1 % LayoutPin(pin=sym.my_pin)
+    r1.create_pin(sym.my_pin)
 
     r2 = layout % LayoutRect(layer=layers.Metal1, rect=(200,0,300,100))
-    r2 % LayoutPin(pin=sym.my.pin)
+    r2.create_pin(sym.my.pin)
 
     expand_rects(layout)
     expand_pins(layout, Directory())
@@ -1002,11 +1002,11 @@ def test_compare_pin_mismatch():
 
     a = Layout(ref_layers=layers, symbol=sym)
     r1 = a % LayoutRect(layer=layers.Metal1, rect=(0, 0, 100, 100))
-    r1 % LayoutPin(pin=sym.pin_a)
+    r1.create_pin(sym.pin_a)
 
     b = Layout(ref_layers=layers, symbol=sym)
     r2 = b % LayoutRect(layer=layers.Metal1, rect=(0, 0, 100, 100))
-    r2 % LayoutPin(pin=sym.pin_b)
+    r2.create_pin(sym.pin_b)
 
     result = compare(a, b)
     assert result is not None
@@ -1023,7 +1023,7 @@ def test_expand_pins_rect():
     layout = Layout(ref_layers=layers, symbol=sym)
 
     r = layout % LayoutRect(layer=layers.Metal1, rect=(0, 0, 100, 100))
-    r % LayoutPin(pin=sym.my_pin)
+    r.create_pin(sym.my_pin)
 
     expand_rects(layout)
     expand_pins(layout, Directory())
@@ -1047,7 +1047,7 @@ def test_expand_pins_concave_L():
         Vec2I(100, 100), Vec2I(100, 300), Vec2I(0, 300),
     ]
     poly = layout % LayoutPoly(layer=layers.Metal1, vertices=verts)
-    poly % LayoutPin(pin=sym.my_pin)
+    poly.create_pin(sym.my_pin)
 
     expand_pins(layout, Directory())
 
@@ -1070,9 +1070,26 @@ def test_expand_pins_concave_U():
         Vec2I(200, 100), Vec2I(100, 100), Vec2I(100, 300), Vec2I(0, 300),
     ]
     poly = layout % LayoutPoly(layer=layers.Metal1, vertices=verts)
-    poly % LayoutPin(pin=sym.my_pin)
+    poly.create_pin(sym.my_pin)
 
     expand_pins(layout, Directory())
 
     lbl = list(layout.all(LayoutLabel))[0]
     assert lbl.pos == Vec2I(50, 175)
+
+
+def test_create_pin_method():
+    """create_pin() method creates LayoutPin with correct ref."""
+    sym = Symbol()
+    sym.my_pin = Pin()
+    sym = sym.freeze()
+
+    layers = SG13G2().layers
+    layout = Layout(ref_layers=layers, symbol=sym)
+
+    r = layout % LayoutRect(layer=layers.Metal1, rect=(0, 0, 100, 100))
+    pin_cursor = r.create_pin(sym.my_pin)
+
+    assert isinstance(pin_cursor, LayoutPin.Mutable)
+    assert pin_cursor.ref.nid == r.nid
+    assert pin_cursor.pin.nid == sym.my_pin.nid

@@ -125,13 +125,13 @@ cell VcoHalfStage:
                 ! m1_.ly == .m2.sd[0].uy + 200
                 ! m1_.height == 600
 
-        .rst_n % LayoutPin(pin=self.symbol.rst_n)
-        .inp % LayoutPin(pin=self.symbol.inp)
-        .fb % LayoutPin(pin=self.symbol.fb)
+        .rst_n.create_pin(self.symbol.rst_n)
+        .inp.create_pin(self.symbol.inp)
+        .fb.create_pin(self.symbol.fb)
 
         LayoutRect outbar_h:
             .layer=layers.Metal1
-            . % LayoutPin(pin=self.symbol.out)
+            .create_pin(self.symbol.out)
             ! .cy == polycont[3].cy
             ! .height == 210
             ! .lx == m1.sd[0].lx
@@ -155,7 +155,7 @@ cell VcoHalfStage:
             ! .lx >= outbar_h.ux + 200
             ! .width == 210
 
-        .outbar_outn % LayoutPin(pin=self.symbol.out_n)
+        .outbar_outn.create_pin(self.symbol.out_n)
 
         for sd in (.m8.sd[1], .m7.sd[1]):
             anonymous LayoutRect r:
@@ -165,7 +165,7 @@ cell VcoHalfStage:
 
         LayoutRect vddbar:
             .layer=layers.Metal1
-            . % LayoutPin(pin=self.symbol.vdd)
+            .create_pin(self.symbol.vdd)
             ! .southwest == m1.sd[0].northwest + (-500,400)
             ! .height == 400
             ! .ux == m7.sd[1].ux + 500
@@ -178,7 +178,7 @@ cell VcoHalfStage:
 
         LayoutRect vssbar:
             .layer=layers.Metal1
-            . % LayoutPin(pin=self.symbol.vss)
+            .create_pin(self.symbol.vss)
             ! .width == vddbar.width
             ! .height == 400
             ! .northwest == m2.sd[0].southwest - (500,500)
@@ -273,15 +273,15 @@ cell VcoRing:
 
         LayoutRect vdd_st_bar:
             .layer=layers.Metal1
-            . % LayoutPin(pin=self.symbol.vdd_st)
+            .create_pin(self.symbol.vdd_st)
 
         LayoutRect vss_st_bar_n:
             .layer=layers.Metal1
-            . % LayoutPin(pin=self.symbol.vss_st)
+            .create_pin(self.symbol.vss_st)
 
         LayoutRect vss_st_bar_p:
             .layer=layers.Metal1
-            . % LayoutPin(pin=self.symbol.vss_st)
+            .create_pin(self.symbol.vss_st)
 
         for i in range(2):
             VcoHalfStage() stage_p[i]:
@@ -308,13 +308,13 @@ cell VcoRing:
             LayoutRect out_n[i]:
                 .layer=outbar_n.layer.nid
                 ! .rect == outbar_n.rect
-                . % LayoutPin(pin=self.symbol.out_n[i])
+                .create_pin(self.symbol.out_n[i])
 
             outbar_p = .stage_p[i].outbar_outn
             LayoutRect out_p[i]:
                 .layer=outbar_p.layer.nid
                 ! .rect == outbar_p.rect
-                . % LayoutPin(pin=self.symbol.out_p[i])
+                .create_pin(self.symbol.out_p[i])
 
         ! .stage_p[0].pos == (0,0)
 
@@ -338,7 +338,7 @@ cell VcoRing:
         sr.layer(layers.Metal1)
         sr.pop()
         sr.wire_y(stage_p[0].rst_n.cy+2500)
-        sr.path % LayoutPin(pin=self.symbol.rst_n)
+        sr.path.create_pin(self.symbol.rst_n)
 
         # Connect matching fb -- out -- inp pins:
 

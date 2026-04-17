@@ -198,6 +198,20 @@ class MixinClosedPolygon:
         return ' '.join(d)
 
 
+class MixinLayoutPinnable:
+    """Mixin for layout shapes that can have LayoutPin associations."""
+    def create_pin(self, pin):
+        """Create a LayoutPin associating this shape with a symbol pin.
+
+        Args:
+            pin: Reference to a Pin in the layout's symbol.
+
+        Returns:
+            Cursor to the newly created LayoutPin node.
+        """
+        return self % LayoutPin(pin=pin)
+
+
 class GenericPoly(Node):
     in_subgraphs = [Symbol]
 
@@ -1070,7 +1084,7 @@ class LayoutLabel(Node):
     text = Attr(str)
 
 @public
-class LayoutPoly(GenericPolyI, MixinClosedPolygon):
+class LayoutPoly(GenericPolyI, MixinClosedPolygon, MixinLayoutPinnable):
     """
     Simple (no self intersection, no holes) polygon with CCW orientation.
     (LayoutPoly cannot represent an open polygonal chain. Thus, the first and
@@ -1102,13 +1116,13 @@ class LayoutPathBase(GenericPolyI):
         return super().__new__(cls, *args, **kwargs)
 
 @public
-class LayoutPath(LayoutPathBase, MixinPolygonalChain):
+class LayoutPath(LayoutPathBase, MixinPolygonalChain, MixinLayoutPinnable):
     """Layout path (polygonal chain with width)."""
     in_subgraphs = [Layout]
 
 
 @public
-class LayoutRectPoly(GenericPolyI):
+class LayoutRectPoly(GenericPolyI, MixinLayoutPinnable):
     """
     Compact rectilinear polygon. Each vertex is connected to its successor
     through two segments. The first segment in start_direction, the second
@@ -1128,7 +1142,7 @@ class LayoutRectPoly(GenericPolyI):
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
 
 @public
-class LayoutRectPath(LayoutPathBase):
+class LayoutRectPath(LayoutPathBase, MixinLayoutPinnable):
     """
     Compact rectilinear path. Each vertex is connected to its successor
     through two segments. The first segment in start_direction, the second
@@ -1144,7 +1158,7 @@ class LayoutRectPath(LayoutPathBase):
     start_direction = Attr(RectDirection, default=RectDirection.Horizontal)
 
 @public
-class LayoutRect(Node):
+class LayoutRect(Node, MixinLayoutPinnable):
     """Layout rectangle."""
     in_subgraphs = [Layout]
 
