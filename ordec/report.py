@@ -46,6 +46,16 @@ class PreformattedText(ReportElement):
         return {"element_type": "preformatted_text", "text": self.text}
 
 @public
+class Html(ReportElement):
+    """Raw HTML content rendered directly in the web interface."""
+
+    def __init__(self, html: str):
+        self.html = html
+
+    def element_webdata(self) -> dict:
+        return {"element_type": "html", "html": self.html}
+
+@public
 class Svg(ReportElement):
     """Static SVG element (e.g. schematic/symbol) rendered without zoom."""
 

@@ -1126,7 +1126,8 @@ class SubgraphRoot(NonLeafNode):
         return self.copy()
 
     def webdata(self):
-        return 'html', self.tables(html=True)
+        from ..report import Report, Html
+        return Report([Html(self.tables(html=True))]).webdata()
 
 class SubgraphQueryMixin:
     __slots__ = ()
@@ -1362,27 +1363,28 @@ class Subgraph(SubgraphQueryMixin, ABC):
 
         if html:
             ret = [
-                f'<div class="ordb-table"><p><b>Subgraph {type(self.root_cursor).__qualname__}({hex(id(self))}):</b></p>'
+                f'<p><b>Subgraph {type(self.root_cursor).__qualname__}({hex(id(self))}):</b></p>'
             ]
         else:
             ret = [f"Subgraph {type(self.root_cursor).__qualname__}({hex(id(self))}):"]
 
         for ntype, nodes in self.iter_tables():
-            if html:
-                ret.append(f"<p><i>{ntype._cursor_type.__name__}</i>:</p>")
-            else:
+            if not html:
                 ret.append(ntype._cursor_type.__name__)
             table = []
             for nid, node in nodes:
                 table.append([nid] + [fmt_val(val) for val in tuple.__iter__(node)])
 
-            ret.append(tabulate(
+            table_str = tabulate(
                 table,
                 headers = ['nid']+[ad.name for ad in ntype._layout],
                 tablefmt="html" if html else "github"
-                ))
-        if html:
-            ret.append('</div>')
+                )
+            if html:
+                heading = f'<div class="ordb-table-heading">{ntype._cursor_type.__name__}</div>'
+                table_str = table_str.replace('<table>', f'{heading}<div class="ordb-table"><table>', 1)
+                table_str = table_str.replace('</table>', '</table></div>', 1)
+            ret.append(table_str)
         return "\n".join(ret).replace('\n', '\n  ')
 
     def node_dict(self, mode='canonical') -> dict[int,NodeTuple]:

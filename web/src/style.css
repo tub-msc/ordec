@@ -483,6 +483,17 @@ pre {
 
 /* -- ORDB table -------------------------------------------------- */
 .ordb-table {
+    overflow-x: auto;
+    min-width: 0;
+}
+.ordb-table-heading {
+    text-align: left;
+    font-weight: bold;
+    font-family: var(--font-sans);
+    padding: 0.5em 0 0.25em 0;
+}
+.ordb-table table {
+    border-collapse: collapse;
     font-family: var(--font-mono);
 }
 .ordb-table table td, .ordb-table table th {
@@ -491,9 +502,6 @@ pre {
 }
 .ordb-table table th {
     background-color: var(--color-ordb-header);
-}
-.ordb-table table {
-    border-collapse: collapse;
 }
 
 /* -- SimPlot ----------------------------------------------------- */
@@ -632,6 +640,7 @@ pre {
 }
 .report-element {
     width: 100%;
+    min-width: 0;
     padding: 5px 10px;
 }
 .report-element-plot2d {
@@ -639,6 +648,9 @@ pre {
 }
 .report-element + .report-element {
     border-top: 1px solid var(--color-report-separator);
+}
+.report-html {
+    min-width: 0;
 }
 .report-preformatted {
     margin: 0;

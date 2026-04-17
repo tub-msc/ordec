@@ -109,6 +109,12 @@ const reportElementClassOf = {
         section.innerHTML = msgData.html;
         return section;
     }),
+    html: simpleReportElementClass((msgData) => {
+        const section = document.createElement('div');
+        section.classList.add('report-html');
+        section.innerHTML = msgData.html;
+        return section;
+    }),
     preformatted_text: simpleReportElementClass((msgData) => {
         const pre = document.createElement('pre');
         pre.classList.add('report-preformatted');
@@ -179,15 +185,6 @@ const reportElementClassOf = {
 };
 
 const viewClassOf = {
-    html: class {
-        constructor(resContent) {
-            this.resContent = resContent;
-        }
-
-        update(msgData) {
-            this.resContent.innerHTML = msgData;
-        }
-    },
     svg: class {
         constructor(resContent) {
             this.resContent = resContent;
