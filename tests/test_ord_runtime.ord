@@ -125,11 +125,12 @@ def test_scheminstance_creation():
 
 def test_mixed_unresolved_resolved_instances():
     """A schematic with both SchemInstance (from Cell instance) and
-    SchemInstanceUnresolved (from Cell class), wired together and postprocessed."""
+    SchemInstanceUnresolved (from Cell class), wired together. ViewContext
+    automatically resolves all instances on exit."""
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
-    with root.ctx():
+    with root.view_context(root):
         net vss, mid
 
         # Cell instance -> SchemInstance directly
@@ -139,24 +140,21 @@ def test_mixed_unresolved_resolved_instances():
         # Another Cell instance -> SchemInstance directly
         Gnd() gnd: .p -- vss; .pos = (0, 0)
 
-    # Before postprocess: v1 and gnd are already SchemInstance,
-    # r1 is still SchemInstanceUnresolved
-    assert isinstance(v1, SchemInstance)
-    assert isinstance(gnd, SchemInstance)
-    assert isinstance(r1, SchemInstanceUnresolved)
+        # Before view_context exit: v1 and gnd are already SchemInstance,
+        # r1 is still SchemInstanceUnresolved
+        assert isinstance(v1, SchemInstance)
+        assert isinstance(gnd, SchemInstance)
+        assert isinstance(r1, SchemInstanceUnresolved)
 
-    # v1 already has SchemInstanceConn (direct wiring)
-    v1_conns = list(root.all(SchemInstanceConn.ref_idx.query(v1)))
-    assert len(v1_conns) == 2
+        # v1 already has SchemInstanceConn (direct wiring)
+        v1_conns = list(root.all(SchemInstanceConn.ref_idx.query(v1)))
+        assert len(v1_conns) == 2
 
-    # r1 still has SchemInstanceUnresolvedConn (deferred wiring)
-    r1_conns = list(root.all(SchemInstanceUnresolvedConn.ref_idx.query(r1)))
-    assert len(r1_conns) == 2
+        # r1 still has SchemInstanceUnresolvedConn (deferred wiring)
+        r1_conns = list(root.all(SchemInstanceUnresolvedConn.ref_idx.query(r1)))
+        assert len(r1_conns) == 2
 
-    # Postprocess resolves r1 and runs auto_wire + check
-    root.postprocess()
-
-    # After postprocess: all instances are SchemInstance
+    # After view_context exit: all instances are SchemInstance
     all_instances = list(root.all(SchemInstance))
     assert len(all_instances) == 3
     assert not list(root.all(SchemInstanceUnresolved))
@@ -173,7 +171,7 @@ def test_wire_op():
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
-    with root.ctx():
+    with root.view_context(root):
         net vss, mid
 
         # pin -- net (normal order)
@@ -183,18 +181,17 @@ def test_wire_op():
         # Also reversed for a Cell instance
         Gnd() gnd: vss -- .p; .pos = (0, 0)
 
-    # All connections should be created regardless of operand order
-    v1_conns = list(root.all(SchemInstanceConn.ref_idx.query(v1)))
-    assert len(v1_conns) == 2
+        # All connections should be created regardless of operand order
+        v1_conns = list(root.all(SchemInstanceConn.ref_idx.query(v1)))
+        assert len(v1_conns) == 2
 
-    r1_conns = list(root.all(SchemInstanceUnresolvedConn.ref_idx.query(r1)))
-    assert len(r1_conns) == 2
+        r1_conns = list(root.all(SchemInstanceUnresolvedConn.ref_idx.query(r1)))
+        assert len(r1_conns) == 2
 
-    gnd_conns = list(root.all(SchemInstanceConn.ref_idx.query(gnd)))
-    assert len(gnd_conns) == 1
+        gnd_conns = list(root.all(SchemInstanceConn.ref_idx.query(gnd)))
+        assert len(gnd_conns) == 1
 
-    # Postprocess should resolve everything normally
-    root.postprocess()
+    # After view_context exit: all connections resolved to SchemInstanceConn
     all_conns = list(root.all(SchemInstanceConn))
     assert len(all_conns) == 5
 

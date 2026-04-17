@@ -121,14 +121,8 @@ class OrdTransformer(PythonTransformer):
             keywords=[]
         )
 
-        # return __ord_root__.postprocess()
-        return_value = ast.Return(
-            ast.Call(
-                func=self.ast_attribute(ord_root, "postprocess"),
-                args=[],
-                keywords=[]
-            )
-        )
+        # return __ord_root__
+        return_value = ast.Return(ord_root)
 
         with_context = ast.With(
             items=[

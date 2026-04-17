@@ -152,7 +152,7 @@ of the example.
                 y = context.add(('y',), Pin(pintype=PinType.Out))
                 with y.ctx():
                     context.root().align = East
-            return __ord_root__.postprocess()
+            return __ord_root__
 
         @generate
         def schematic(self) -> Schematic:
@@ -193,7 +193,7 @@ of the example.
 
                 for instance in pu, pd:
                     instance.g -- a
-            return __ord_root__.postprocess()
+            return __ord_root__
 
 
 Anonymous Node Statements

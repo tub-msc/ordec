@@ -13,7 +13,7 @@ from .geoprim import *
 from .ordb import *
 from .cell import Cell
 from .constraints import *
-from .context import ViewContext, LayoutViewContext
+from .context import ViewContext, SymbolViewContext, SchematicViewContext, LayoutViewContext
 from .simarray import SimArray
 
 # Enums
@@ -133,7 +133,7 @@ def coerce_tuple(target_type, tuple_length):
 @public
 class Symbol(SubgraphRoot):
     """A symbol of an individual cell."""
-    view_context = ViewContext
+    view_context = SymbolViewContext
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
     caption = Attr(str)
     cell = Attr(Cell)
@@ -149,10 +149,6 @@ class Symbol(SubgraphRoot):
     def place_pins(self, hpadding=3, vpadding=3):
         from ..schematic import symbol_place_pins
         symbol_place_pins(self, hpadding=hpadding, vpadding=vpadding)
-
-    def postprocess(self):
-        self.place_pins(vpadding=2, hpadding=2)
-        return self
 
     def _repr_svg_(self):
         from ..render import render
@@ -308,7 +304,7 @@ class SymbolArc(Node):
 @public
 class Schematic(SubgraphRoot):
     """A schematic of an individual cell."""
-    view_context = ViewContext
+    view_context = SchematicViewContext
     symbol = SubgraphRef(Symbol)
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
     cell = Attr(Cell)
@@ -329,12 +325,6 @@ class Schematic(SubgraphRoot):
 
     def has_errors(self) -> bool:
         return any(True for _ in self.all(SchemErrorMarker))
-
-    def postprocess(self):
-        self.resolve_instances()
-        self.auto_wire()
-        self.check(add_conn_points=True, add_terminal_taps=True)
-        return self
 
     def _repr_svg_(self):
         from ..render import render
@@ -1059,9 +1049,6 @@ class Layout(SubgraphRoot):
     cell = Attr(Cell)
     symbol = SubgraphRef(Symbol) #: All LayoutPins in this subgraph reference this symbol.
     ref_layers = SubgraphRef(LayerStack) #: All .layer attributes of nodes in this subgraph reference this LayerStack.
-
-    def postprocess(self):
-        return self
 
     def webdata(self):
         from ..layout.webdata import webdata

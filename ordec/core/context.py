@@ -50,11 +50,29 @@ class ViewContext:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            self.postprocess()
         _view_ctx_var.reset(self._token)
         self._node_ctx.__exit__(exc_type, exc_val, exc_tb)
 
+    def postprocess(self):
+        """Override in subclasses to perform finalization on context exit."""
+        pass
+
     def constrain(self, constraint):
         raise TypeError(f"Constraints not supported in {type(self.root).__name__} views.")
+
+
+class SymbolViewContext(ViewContext):
+    def postprocess(self):
+        self.root.place_pins(vpadding=2, hpadding=2)
+
+
+class SchematicViewContext(ViewContext):
+    def postprocess(self):
+        self.root.resolve_instances()
+        self.root.auto_wire()
+        self.root.check(add_conn_points=True, add_terminal_taps=True)
 
 
 class LayoutViewContext(ViewContext):
@@ -64,10 +82,8 @@ class LayoutViewContext(ViewContext):
         self.solver = Solver(self.root)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is None:
-            self.solver.solve()
-        super().__exit__(exc_type, exc_val, exc_tb)
+    def postprocess(self):
+        self.solver.solve()
 
     def constrain(self, constraint):
         self.solver.constrain(constraint)
