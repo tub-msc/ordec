@@ -149,8 +149,7 @@ Inv().schematic
 # You might have already recognized a specific feature of the ORD language called **relative access**
 # or **dotted notation**. Whenever an ORD-specific element is defined, a **context** is opened.
 # This context can be defined with the Python-style block based notation `Nmos pd:`.
-# Every statement or expression inside this context can reference the parent object by using a leading `.`. The contexts 
-# are hierarchically structured, so even multiple leading dots are possible to access parent contexts.
+# Every statement or expression inside this context can reference the current context object by using a leading `.`.
 #
 # ```python
 # # Oneline definition
