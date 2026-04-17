@@ -35,8 +35,8 @@ Mastering the ORD language requires understanding two crucial parts. First, the 
 ORD Contexts
 ------------
 
-The dotted syntax of ORD, which accesses the parent element, requires having a
-reference to the parent element. This structure therefore necessitates that
+The dotted syntax of ORD, which accesses the current context element, requires
+having a reference to that element. This structure therefore necessitates that
 statements and expressions inside a context block have a reference to the
 parent even after transformation of ORD back to Python. This logic is
 implemented with :class:`~ordec.core.context.ViewContext` for the active view
@@ -125,9 +125,7 @@ At the start of a view generator, the compiler creates ``__ord_root__`` and
 opens the root view context with ``__ord_root__.view_context(__ord_root__)``.
 Every node statement then saves the created element as a local variable and, if
 the statement has a body, opens a nested node context with ``node.ctx()``. The
-dotted access is converted into ``context.root()``. If multiple dots are
-written prior to the identifier, the dots are converted to
-``context.root()(.parent)*``. Accesses outside the context are still possible
+dotted access is converted into ``context.root()``. Accesses outside the context are still possible
 through the local variable. An access like this is visible in the ``for`` loop
 of the example.
 
