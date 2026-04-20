@@ -1042,8 +1042,6 @@ def auto_wire(node, outline=None, routing=None):
     offset_y = (height // 2) - int(outline.ly)
     ports = dict()
     cells = dict()
-    # mapping between net and name
-    array_mapping_list = dict()
 
     #======================
     # Build Cells and Ports
@@ -1081,19 +1079,16 @@ def auto_wire(node, outline=None, routing=None):
         # Add instances for ports
         port_alignment = instance.align.lefdef()
         pos = instance.pos
-        # Check if port has npath
         net_nid = str(instance.ref.nid)
-        # Mapping to seperate ports form inner nets
-        array_mapping_list[instance.ref] = net_nid
-        # Add to ports dictionary
         inner_x = int(pos.x)
         inner_y = int(pos.y)
         aw = instance.ref.auto_wire
-        ports[net_nid] = RoutingPort(inner_x + offset_x,
-                           inner_y + offset_y,
-                           net_nid,
-                           port_alignment,
-                           aw)
+        ports[net_nid] = RoutingPort(
+            inner_x + offset_x,
+            inner_y + offset_y,
+            net_nid,
+            port_alignment,
+            aw)
 
     # Early return when ports exist but none need auto-wiring
     if ports and not any(p.auto_wire for p in ports.values()):
@@ -1104,39 +1099,28 @@ def auto_wire(node, outline=None, routing=None):
     # Determine connections
     #======================
 
-    # Get the connections defined via the portmap
     connections = list()
-    inter_instance_connections = list()
     for instance in node.all(SchemInstance):
         instance_nid = str(instance.nid)
-        # Connections of Cells and ports
         for conn in instance.conns():
             inner_connection = conn.there
             connected_to = conn.here
-            # Get the instance name to get a unique assignment
             inner_connection_nid = str(inner_connection.nid)
-            connected_nid = array_mapping_list.get(connected_to, None)
+            connected_nid = str(connected_to.nid)
             connection_position = cells[instance_nid].connections[inner_connection_nid]
-            # Only if the ports have the connection and if it's not an inter cell connection
             if connected_nid in ports:
+                # External port or previously seen inter-instance net
                 if routing.get(int(connected_nid) if connected_nid.isdigit() else connected_nid, True):
                     if ports[connected_nid].auto_wire:
                         connections.append((ports[connected_nid], connection_position))
-                # Connection not in ports <=> inter instance connection
             else:
-                connected_nid = str(connected_to.nid)
-                if connected_nid not in inter_instance_connections:
-                    # Create the inner port on first appearance and save the inter instance connection
-                    inter_instance_connections.append(connected_nid)
-                    ports[connected_nid] = RoutingPort(int(connection_position.x),
-                                                 int(connection_position.y),
-                                                 connected_nid, connection_position.direction,
-                                                 connected_to.auto_wire)
-                    array_mapping_list[connected_to] = connected_nid
-                else:
-                    # Save the path after the inter instance connection is established
-                    if ports[connected_nid].auto_wire:
-                        connections.append((ports[connected_nid], connection_position))
+                # Inter-instance net: create routing port on first encounter
+                ports[connected_nid] = RoutingPort(
+                    int(connection_position.x),
+                    int(connection_position.y),
+                    connected_nid,
+                    connection_position.direction,
+                    connected_to.auto_wire)
 
     #=====================================================
     # Calculate the vertices and add them to the schematic
