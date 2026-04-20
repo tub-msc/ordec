@@ -95,7 +95,6 @@ lambda_kwparams: "**" name ","?
             | assert_stmt
             | path_stmt
             | net_stmt
-            | constrain_stmt
             | node_stmt_nobody | anon_node_stmt_nobody)
 
 expr_stmt: testlist_star_expr
@@ -382,7 +381,6 @@ RATIONAL: DEC_NUMBER SLASH DEC_NUMBER
 
 celldef: "cell" name ":" suite
 viewgen: "viewgen" name ["(" [arguments] ")"] "->" name ":" suite
-constrain_stmt: "!" test
 context_body: ":" suite
 node_stmt: atom_expr context_target context_body
 node_stmt_nobody: atom_expr context_target ("," context_target)*
