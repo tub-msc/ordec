@@ -706,6 +706,17 @@ class NodeMeta(type):
 
     def __init__(cls, name, bases, attrs, build_node=True):
         if build_node:
+            # Check that all non-Node bases define __slots__ to prevent __dict__
+            for base in cls.__mro__:
+                if base in (object, tuple, cls):
+                    continue
+                if isinstance(base, NodeMeta):
+                    continue
+                if base.__dict__.get('__slots__') != ():
+                    raise TypeError(
+                        f"{name}: mixin {base.__name__} must define __slots__ = ()"
+                    )
+
             # Build descriptors from raw attributes:
             attrdesc_by_attr = {}
             attrdesc_by_name = {}

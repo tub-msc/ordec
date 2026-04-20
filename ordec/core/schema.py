@@ -175,6 +175,8 @@ class Pin(Node):
     align   = Attr(D4, default=D4.R0)
 
 class MixinPolygonalChain:
+    __slots__ = ()
+
     def svg_path(self) -> str:
         """Returns SVG path string of polygon."""
         d = []
@@ -192,6 +194,8 @@ class MixinPolygonalChain:
         return ' '.join(d)
 
 class MixinClosedPolygon:
+    __slots__ = ()
+
     def svg_path(self) -> str:
         """Returns SVG path string of polygon."""
         d = []
@@ -207,6 +211,8 @@ class MixinClosedPolygon:
 
 class MixinLayoutPinnable:
     """Mixin for layout shapes that can have LayoutPin associations."""
+    __slots__ = ()
+
     def create_pin(self, pin):
         """Create a LayoutPin associating this shape with a symbol pin.
 
