@@ -13,7 +13,7 @@ from dataclasses import dataclass
 #ordec imports
 
 from ..core import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire, Rect4R
-from ..render import Renderer
+from .render import Renderer
 
 """Routing constraints and heuristics used by this module.
 

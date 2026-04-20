@@ -8,7 +8,6 @@ from sphinx.util.typing import get_type_hints, restify, stringify_annotation
 
 from .core import *
 from .core.cell import ViewGenerator
-from .render import render
 from .version import version
 
 # See: https://www.sphinx-doc.org/en/master/development/tutorials/autodoc_ext.html
@@ -73,7 +72,7 @@ class ViewgenDocumenter(Documenter):
 
             self.add_line('   .. raw:: html', sourcename)
             self.add_line('', sourcename)
-            for line in render(subgraph).svg().decode('utf-8').split('\n'):
+            for line in subgraph.render().svg().decode('utf-8').split('\n'):
                 self.add_line(f"      {line}", sourcename)
             self.add_line('', sourcename)
 

@@ -10,7 +10,7 @@ be opened in a browser.
 import re
 from pathlib import Path
 
-from ordec.render import SchematicRenderer
+from ordec.schematic.render import SchematicRenderer
 
 
 def main():

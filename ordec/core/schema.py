@@ -130,8 +130,23 @@ def coerce_tuple(target_type, tuple_length):
 # Symbol
 # ------
 
+class MixinRenderable:
+    """Mixin providing SVG rendering for Symbol and Schematic subgraphs."""
+    __slots__ = ()
+
+    def render(self, **kwargs) -> 'Renderer':
+        from ..schematic.render import render
+        return render(self, **kwargs)
+
+    def _repr_svg_(self):
+        return self.render().svg().decode('ascii'), {'isolated': False}
+
+    def webdata(self):
+        return self.render().webdata()
+
+
 @public
-class Symbol(SubgraphRoot):
+class Symbol(MixinRenderable, SubgraphRoot):
     """A symbol of an individual cell."""
     view_context = SymbolViewContext
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
@@ -149,14 +164,6 @@ class Symbol(SubgraphRoot):
     def place_pins(self, hpadding=3, vpadding=3):
         from ..schematic import symbol_place_pins
         symbol_place_pins(self, hpadding=hpadding, vpadding=vpadding)
-
-    def _repr_svg_(self):
-        from ..render import render
-        return render(self).svg().decode('ascii'), {'isolated': False}
-
-    def webdata(self):
-        from ..render import render
-        return render(self).webdata()
 
 @public
 class Pin(Node):
@@ -316,7 +323,7 @@ class SymbolArc(Node):
 # # ---------
 
 @public
-class Schematic(SubgraphRoot):
+class Schematic(MixinRenderable, SubgraphRoot):
     """A schematic of an individual cell."""
     view_context = SchematicViewContext
     symbol = SubgraphRef(Symbol)
@@ -340,13 +347,6 @@ class Schematic(SubgraphRoot):
     def has_errors(self) -> bool:
         return any(True for _ in self.all(SchemErrorMarker))
 
-    def _repr_svg_(self):
-        from ..render import render
-        return render(self).svg().decode('ascii'), {'isolated': False}
-
-    def webdata(self):
-        from ..render import render
-        return render(self).webdata()
 
 class NegatedWireOperand:
     """Wrapper enabling the ``--`` pseudo-operator for schematic wiring.

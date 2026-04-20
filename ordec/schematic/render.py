@@ -3,9 +3,8 @@
 
 import xml.etree.ElementTree as ET
 import math
-from base64 import b64encode
 from contextlib import contextmanager
-from .core import *
+from ..core import *
 from enum import Enum
 import re
 
@@ -18,7 +17,7 @@ class HAlign(Enum):
             return self.Right
         elif self == self.Right:
             return self.Left
-        else:    
+        else:
             return self
 
 class VAlign(Enum):
@@ -38,7 +37,7 @@ class Renderer:
     """
     Instantiate the Renderer class and then call one of its render_ methods,
     e.g. render_schematic(). draw_... and other methods are more internal.
-    Afterwards, obtain the result via the svg() or png() methods.
+    Afterwards, obtain the result via the svg() method.
     """
 
     pin_text_space = 0.125
@@ -70,12 +69,12 @@ class Renderer:
     def subgroup(self, node=None, existing_group=None):
         if existing_group:
             self.group_stack.append(existing_group)
-        else:    
+        else:
             self.group_stack.append(ET.SubElement(self.cur_group, 'g'))
         if node and self.include_nids:
             self.cur_group.attrib['class'] = f'nid{node.nid}'
         try:
-            yield 
+            yield
         finally:
             self.group_stack.pop()
 
@@ -92,8 +91,8 @@ class Renderer:
 
         # g_matrix has same basic translation as trans, but limits rotations of text
         # to 0 or 90 degrees (so that you never have to rotate your head by 180 degrees)
-        g_matrix = pos.transl() 
-        if align in (South, North):  
+        g_matrix = pos.transl()
+        if align in (South, North):
              g_matrix *= R90
 
         # Furthermore, g_matrix adds some space (padding):
@@ -109,7 +108,7 @@ class Renderer:
 
         lines = text.split('\n')
         if len(lines) == 1:
-            # Make the XML tree more compact by skipping <tspan> for single-line text: 
+            # Make the XML tree more compact by skipping <tspan> for single-line text:
             tag.text = lines[0]
         else:
             for idx, line in enumerate(lines):
@@ -144,7 +143,7 @@ class Renderer:
                 workaround for this issue, set scale_viewbox to a large number
                 such as 1e6 for layouts.
         """
-        
+
         assert len(self.group_stack) == 1 # ensures that there is no subgroup() currently active.
 
         lx, ly, ux, uy = rect.tofloat()
@@ -166,7 +165,7 @@ class Renderer:
     def indent_xml_recursive(self, elem, depth):
         if elem.tag in ('text',):
             # Spaces within <text></text> are sometimes rendered. To avoid this,
-            # no not add spaces / new lines within <text></text. 
+            # no not add spaces / new lines within <text></text.
             return
         if elem.text:
             # Also skip elements with leading text to avoid messing up something
@@ -206,20 +205,6 @@ class Renderer:
         """
         return ET.tostring(self.root)
 
-    # Use inline SVG (with svg()) instead of svg-as-image (base64-encoded SVG +
-    # <img> using old svg_url() and html() methods). Advantages of inline SVG
-    # are (1) that the containing HTML can control font loading and
-    # (2) easier interaction with containing HTML (click, hover etc.)
-
-    # def svg_url(self) -> str:
-    #     """
-    #     Returns SVG XML data packed into Base64 encoded URL.
-    #     """
-    #     return f"data:image/svg+xml;base64,{b64encode(self.svg()).decode('ascii')}"
-
-    # def html(self) -> str:
-    #     return f'<img src="{self.svg_url()}" />'
-
     def webdata(self):
         return 'svg', {
             'inner': self.inner_svg().decode('ascii'),
@@ -227,24 +212,6 @@ class Renderer:
             'width': self.root.attrib.get('width'),
             'height': self.root.attrib.get('height'),
         }
-
-    def png(self) -> bytes:
-        """
-        This method is a thin wrapper around the svg() method that uses cairosvg
-        to convert the SVG data to a PNG raster image.
-
-        One of the goals of this new render module is to get rid of the
-        cairo and pango dependencies, or at least weaken them. Maybe use the
-        method only in test code. I am not sure yet if the cairosvg is as
-        error-prone as pycairo + pangi via python3-gi, but maybe just avoid it.
-
-        Earlier trials using the 'wand' library did not lead to satisfactory
-        results: the fonts and text baselines were messed up. This is strange,
-        as ImageMagick's command line tool 'convert' did not have those
-        problems.
-        """
-        import cairosvg
-        return cairosvg.svg2png(self.svg())
 
 class SchematicRenderer(Renderer):
     css = clean_css("""
@@ -373,17 +340,17 @@ class SchematicRenderer(Renderer):
             valign=VAlign.Bottom, svg_class="params")
         self.draw_label(inst_name, rect.northwest.transl() * MX90,
             svg_class="instanceName")
-        
+
         for poly in s.all(SymbolPoly):
             p = ET.SubElement(self.cur_group, 'path', d=poly.svg_path(),
                 transform=trans.svg_transform())
             p.attrib['class'] = 'symbolPoly'
-        
+
         for arc in s.all(SymbolArc):
             p = ET.SubElement(self.cur_group, 'path', d=arc.svg_path(),
                 transform=trans.svg_transform())
             p.attrib['class'] = 'symbolPoly'
-        
+
         for pin in s.all(Pin):
             self.draw_pin(pin, trans)
 
@@ -413,7 +380,7 @@ class SchematicRenderer(Renderer):
 
         left_tip = halfheight if arrow_left else 0
         right_tip = halfheight if arrow_right else 0
-        
+
         if center:
             m = trans * Vec2R(x=0,y=width/2).transl()
         else:
@@ -435,7 +402,7 @@ class SchematicRenderer(Renderer):
     def draw_schem_port(self, p: SchemPort):
         trans = p.pos.transl() * p.align
         self.draw_arrow(ArrowType.Port, p.ref.pin.pintype, trans)
-        
+
         label = p.ref.pin.full_path_str()
         self.draw_label(label, trans*R180,
             space=self.port_text_space, halign=HAlign.Left, valign=VAlign.Middle,
@@ -473,7 +440,7 @@ class SchematicRenderer(Renderer):
 
         path = ET.SubElement(self.cur_group, 'path', d=d, transform=tran.svg_transform())
         path.attrib['class'] = 'tapPoint'
-        
+
         if not (is_default_supply or is_default_ground):
             if p.ref.npath_nid is not None:
                 label = p.ref.full_path_str()
@@ -483,125 +450,6 @@ class SchematicRenderer(Renderer):
                 space=self.port_text_space, valign=VAlign.Middle,
                 svg_class="tapPointLabel")
 
-class LayoutRenderer(Renderer):
-    """
-    IMPORTANT: This LayoutRenderer is currently not used!
-    Instead, layouts are rendered by layout-gl.js in the browser, for which the
-    JSON data is generated by layout/webdata.py on the server.
-    """
-
-    css = clean_css("""
-        svg {
-            stroke-linecap: butt;
-            stroke-linejoin: bevel;
-        }
-        .layoutPoly {
-        }
-        .layoutPoly, .layoutText, .cross {
-            mix-blend-mode: screen;
-            opacity:0.5;
-        }
-        .layoutText {
-            font-size: 11pt;
-            font-family: "Inconsolata", monospace;
-            font-stretch: 75%;
-        }
-        .cross {
-            stroke:white;
-            stroke-width:0.05;
-        }
-        .isolate {
-            isolation:isolate;
-        }
-    """)
-
-    # In general, we want layout shapes (SVG <path> tags) to be blended using
-    # "mix-blend-mode: screen" (i.e. RGB_result = (1 - RGB_old) * (1 - RGB_new)).
-    # However, browsers are slow in rendering this, especially when panning or
-    # zooming, or when there are many paths. This is probably a shortcoming
-    # of Firefox WebRender or something like that.
-    #
-    # For CSS tweaking, see also: "isolation:isolate" and
-    # "vector-effect: non-scaling-stroke".
-    #
-    # As a consequence of the mentioned performance problems, the layout
-    # renderer was now implemented using WebGL (layout-gl.js) instead of using
-    # SVG. 
-
-    def __init__(self, *args, **kwargs):
-        self.auto_outline = None
-        return super().__init__(*args, **kwargs)
-
-    def setup_canvas(self, rect: Rect4R, padding: float = 1.0, scale_viewbox: float = 1.0):
-        # Initialize the coordinate system to how we like it:
-        super().setup_canvas(rect, padding, scale_viewbox)
-
-        self.root.attrib['width'] = '300px'
-        self.root.attrib['height'] = '300px'
-
-    def auto_outline_add(self, point: Vec2R):
-        if self.auto_outline:
-            self.auto_outline = self.auto_outline.extend(point)
-        else:
-            self.auto_outline = Rect4R(point.x, point.y, point.x, point.y)
-
-    def layer_group(self, layer: Layer):
-        try:
-            return self.layer_groups[layer.nid]
-        except KeyError:
-            layer_g = ET.SubElement(self.cur_group, 'g')
-            self.layer_groups[layer.nid] = layer_g
-            self.layers_present.append(layer)
-            layer_g.attrib['class'] = f'layer_nid{layer.nid}'
-            layer_g.attrib['data-layer-path'] = layer.full_path_str()
-            layer_g.attrib['style'] = layer.inline_css()
-            return layer_g
-
-    def render_layout(self, l: Layout):
-        self.layer_groups = {}
-        self.layers_present = []
-        for poly in l.all(LayoutPoly):
-            layer_g = self.layer_group(poly.layer)
-            p = ET.SubElement(layer_g, 'path', d=poly.svg_path())
-            p.attrib['class'] = 'layoutPoly'
-            for vertex in poly.vertices():
-                self.auto_outline_add(vertex)
-
-        for label in l.all(LayoutLabel):
-            with self.subgroup(existing_group=self.layer_group(label.layer)):
-
-                d = "M-0.1 -0.1 L0.1 0.1 M-0.1 0.1 L0.1 -0.1"
-                scale = 5e-7
-                with self.subgroup():
-                    self.cur_group.attrib['transform'] = label.pos.transl().svg_transform()
-                    with self.subgroup():
-                        self.cur_group.attrib['transform'] = f"scale({scale})"
-                        self.cur_group.attrib['class'] = 'rescale'
-                        p=ET.SubElement(self.cur_group, 'path', d=d)
-                        p.attrib['class'] = 'cross'
-                        self.draw_label(label.text, label.pos.transl()*R90, halign=HAlign.Left, valign=VAlign.Top, space=0.0, svg_class="layoutText")
-
-
-        self.cur_group[:] = sorted(self.cur_group, key=lambda x: x.attrib['class'], reverse=True)
-        self.layers_present.sort(key=lambda x: x.nid)
-        self.setup_canvas(self.auto_outline, padding=0.0, scale_viewbox=1e9)
-        self.cur_group.attrib['class'] = 'isolate'
-
-    def webdata(self):
-        layer_info = []
-        for layer in self.layers_present:
-            layer_info.append({
-                'nid': layer.nid,
-                'path': layer.full_path_str(),
-                'inline_css': layer.inline_css(),
-            })
-
-        return 'layout', {
-            'inner': self.inner_svg().decode('ascii'),
-            'viewbox': self.viewbox,
-            'layer_info': layer_info,
-        }
-
 def render(obj, **kwargs) -> Renderer:
     if isinstance(obj, Symbol):
         r = SchematicRenderer(**kwargs)
@@ -609,10 +457,7 @@ def render(obj, **kwargs) -> Renderer:
     elif isinstance(obj, Schematic):
         r = SchematicRenderer(**kwargs)
         r.render_schematic(obj)
-    elif isinstance(obj, Layout):
-        r = LayoutRenderer(**kwargs)
-        r.render_layout(obj)
     else:
-        raise TypeError(f"Unsupported object {obj} for rending.")
+        raise TypeError(f"Unsupported object {obj} for rendering.")
     r.indent_xml()
     return r

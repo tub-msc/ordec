@@ -17,7 +17,6 @@ from importlib import import_module
 
 import ordec.importer
 from ordec.lib import generic_mos
-from ordec.render import render
 from .lib import schematics as libtest
 
 @dataclass
@@ -135,7 +134,7 @@ def test_renderview(testcase, tmp_path, update_ref):
         enable_css=False # CSS is tested via web/src/schematic.css; use add_style.py to re-inject for visual inspection.
     ) | testcase.render_opts 
 
-    svg = render(view, **render_opts).svg()
+    svg = view.render(**render_opts).svg()
     (tmp_path / testcase.ref_file.name).write_bytes(svg) # Write output to tmp_path for user.
 
     if update_ref:

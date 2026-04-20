@@ -19,9 +19,9 @@ from IPython.core.interactiveshell import InteractiveShell
 InteractiveShell.ast_node_interactivity = "all"
 
 # +
-from ordec import lib, render
+from ordec import lib
 
-print(render(lib.Inv().schematic, enable_grid=False).svg().decode('ascii'))
+print(lib.Inv().schematic.render(enable_grid=False).svg().decode('ascii'))
 # -
 
 # Implicit rendering in Jupyter via \_repr\_html\_():
@@ -38,15 +38,12 @@ lib_test.RotateTest().schematic
 # Explicit rendering via the render() function / Renderer class of order.render:
 
 # +
-from ordec import render
 from IPython.display import display, SVG, Image
 
-s = render(lib.And2().symbol)
+s = lib.And2().symbol.render()
 display(SVG(s.svg()))
 
-#s = render(lib_test.RotateTest().schematic)
-s = render(lib_test.Inv().schematic)
-#s = render(lib_test.TestNmosInv(variant='no_wiring', add_conn_points=False, add_terminal_taps=True).schematic)
+#s = lib_test.RotateTest().schematic.render()
+s = lib_test.Inv().schematic.render()
+#s = lib_test.TestNmosInv(variant='no_wiring', add_conn_points=False, add_terminal_taps=True).schematic.render()
 display(SVG(s.svg()))
-
-#display(Image(s.png(), format='png'))
