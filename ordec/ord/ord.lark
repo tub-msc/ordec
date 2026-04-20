@@ -263,7 +263,8 @@ AWAIT: "await"
      | number
      | string_concat
      | "(" test ")"
-     | dotted_atom // "..." -> ellipsis
+     | dotted_atom
+     | "..." -> ellipsis
      | "None"    -> const_none
      | "True"    -> const_true
      | "False"   -> const_false
@@ -392,7 +393,7 @@ anon_node_stmt_nobody: "anonymous" atom_expr context_target ("," context_target)
 		       | context_target "[" subscriptlist "]" -> getitem
    	           | name -> var
 		
-dotted_atom: dots name?
+dotted_atom: "." name?
 path_stmt: "path" context_target ("," context_target)*
 net_stmt: "net" context_target ("," context_target)*
 // END OF ORD DEFINITIONS

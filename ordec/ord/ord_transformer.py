@@ -326,28 +326,12 @@ class OrdTransformer(PythonTransformer):
             result.extend(self.node_stmt([nodes[0], context_target]))
         return result
 
-    def depth_helper(self, value, depth=1):
-        """ Access parent attributes depending on the dotted depth"""
-        node = ast.Call(self.ast_ord_context("root"), args=[], keywords=[])
-
-        for _ in range(depth - 1):
-            node = self.ast_attribute(node,"parent")
-
-        if value:
-            node = self.ast_attribute(node, value)
-        return node
-
     def dotted_atom(self, nodes):
-        """ Dotted name (..x) or ellipsis (...) """
-        if len(nodes) == 1:
-            depth = nodes[0]
-            if depth == 3:
-                return ast.Constant(value=Ellipsis)
-            return self.depth_helper(None, depth)
-        else:
-           depth = nodes[0]
-           value = nodes[1]
-           return self.depth_helper(value, depth)
+        """ Dotted name (.x) or bare dot (.) - access current context root """
+        root = ast.Call(self.ast_ord_context("root"), args=[], keywords=[])
+        if nodes:
+            return self.ast_attribute(root, nodes[0])
+        return root
 
     def getparam(self, nodes):
         """ get/set param (.$l = 100n) """
