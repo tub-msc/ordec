@@ -63,8 +63,8 @@ def _parse_edge(value_str: str, conv: Callable[[float], int]) -> tuple[Vec2I, Ve
 
 
 def _parse_edge_pair(value_str: str, conv: Callable[[float], int]) -> tuple[Vec2I, Vec2I, Vec2I, Vec2I]:
-    """Parse KLayout edge pair value string: '(x1,y1;x2,y2)/(x3,y3;x4,y4)'."""
-    match = re.match(r'\(([^;]+);([^)]+)\)/\(([^;]+);([^)]+)\)', value_str)
+    """Parse KLayout edge pair value string: '(x1,y1;x2,y2)/(x3,y3;x4,y4)' or '(x1,y1;x2,y2)|(x3,y3;x4,y4)'."""
+    match = re.match(r'\(([^;]+);([^)]+)\)[/|]\(([^;]+);([^)]+)\)', value_str)
     if not match:
         raise ValueError(f"Invalid edge_pair format: {value_str}")
     return (
@@ -193,8 +193,8 @@ def parse_rdb(filename, layout: Layout, directory: Directory = None) -> DrcRepor
                         value_str = value_str.replace('edge:', '').strip()
                         p1, p2 = _parse_edge(value_str, conv)
                         report % DrcEdge(item=item, order=order, tag=tag, p1=p1, p2=p2)
-                    elif value_str.startswith('edge_pair:') or ('/' in value_str and '(' in value_str):
-                        value_str = value_str.replace('edge_pair:', '').strip()
+                    elif value_str.startswith('edge_pair:') or value_str.startswith('edge-pair:') or (('/' in value_str or '|' in value_str) and '(' in value_str):
+                        value_str = value_str.replace('edge_pair:', '').replace('edge-pair:', '').strip()
                         e1p1, e1p2, e2p1, e2p2 = _parse_edge_pair(value_str, conv)
                         report % DrcEdgePair(item=item, order=order, tag=tag,
                             edge1_p1=e1p1, edge1_p2=e1p2, edge2_p1=e2p1, edge2_p2=e2p2)

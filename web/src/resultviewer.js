@@ -7,6 +7,7 @@ import * as d3 from "d3";
 import { LayoutGL } from './layout-gl.js';
 import { SimPlot } from './simplot.js';
 import { HierSelector } from './hier-selector.js';
+import { viewEventBus } from './event-bus.js';
 
 let idCounter = 0;
 export function generateId() {
@@ -304,6 +305,109 @@ const viewClassOf = {
         }
     },
     layout_gl: LayoutGL,
+    drc_report: class {
+        constructor(resContent) {
+            this.resContent = resContent;
+            this.el = document.createElement('div');
+            this.el.className = 'drc-viewer';
+            this.selectedItemNid = null;
+            resContent.appendChild(this.el);
+        }
+
+        update(data) {
+            const catMap = new Map();
+            data.categories.forEach(cat => {
+                catMap.set(cat.nid, { ...cat, items: [], count: 0 });
+            });
+
+            const itemMap = new Map();
+            data.items.forEach(item => {
+                itemMap.set(item.nid, item);
+                const cat = catMap.get(item.category_nid);
+                if (cat) {
+                    cat.items.push(item);
+                    cat.count++;
+                }
+            });
+
+            const totalCount = data.items.length;
+            const catCount = data.categories.length;
+
+            let html = `<div class="drc-header">
+                <span>${totalCount} violations in ${catCount} categories</span>
+                <button class="drc-deselect" disabled>Deselect</button>
+            </div>`;
+            html += '<div class="drc-categories">';
+
+            data.categories.forEach(cat => {
+                const catData = catMap.get(cat.nid);
+                html += `<div class="drc-category" data-nid="${cat.nid}">`;
+                html += `<span class="drc-category-toggle">&#9654;</span> `;
+                html += `<span class="drc-category-name">${cat.name}</span>`;
+                html += ` <span class="drc-category-count">(${catData.count})</span>`;
+                if (cat.description) {
+                    html += `<span class="drc-category-desc"> - ${cat.description}</span>`;
+                }
+                html += '<div class="drc-items">';
+                catData.items.forEach((item, idx) => {
+                    const label = item.shapes.length > 0
+                        ? item.shapes[0].type
+                        : 'item';
+                    html += `<div class="drc-item" data-nid="${item.nid}">#${idx + 1}: ${label}</div>`;
+                });
+                html += '</div></div>';
+            });
+
+            html += '</div>';
+            this.el.innerHTML = html;
+
+            this.el.querySelectorAll('.drc-category').forEach(catEl => {
+                const toggleCategory = () => {
+                    catEl.classList.toggle('expanded');
+                    const toggle = catEl.querySelector('.drc-category-toggle');
+                    toggle.innerHTML = catEl.classList.contains('expanded') ? '&#9660;' : '&#9654;';
+                };
+                catEl.addEventListener('click', (e) => {
+                    if (!e.target.classList.contains('drc-item')) {
+                        toggleCategory();
+                    }
+                });
+            });
+
+            const deselectBtn = this.el.querySelector('.drc-deselect');
+            const deselect = () => {
+                this.el.querySelectorAll('.drc-item.selected').forEach(el => {
+                    el.classList.remove('selected');
+                });
+                this.selectedItemNid = null;
+                deselectBtn.disabled = true;
+                viewEventBus.emit('drc:clear');
+            };
+            deselectBtn.addEventListener('click', deselect);
+
+            this.el.querySelectorAll('.drc-item').forEach(itemEl => {
+                itemEl.addEventListener('click', () => {
+                    this.el.querySelectorAll('.drc-item.selected').forEach(el => {
+                        el.classList.remove('selected');
+                    });
+                    itemEl.classList.add('selected');
+                    deselectBtn.disabled = false;
+                    const nid = parseInt(itemEl.dataset.nid, 10);
+                    this.selectedItemNid = nid;
+                    const item = itemMap.get(nid);
+                    if (item) {
+                        viewEventBus.emit('drc:select', { shapes: item.shapes });
+                    }
+                });
+            });
+
+            this.itemMap = itemMap;
+        }
+
+        destroy() {
+            viewEventBus.emit('drc:clear');
+        }
+    },
 }
 
 export class ResultViewer {
