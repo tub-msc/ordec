@@ -184,6 +184,13 @@ export class LayoutGL {
         this._onDrcClear = () => this.clearHighlight();
         viewEventBus.on('drc:select', this._onDrcSelect);
         viewEventBus.on('drc:clear', this._onDrcClear);
+
+        const pending = viewEventBus.consumePending('drc:select');
+        if (pending) {
+            // Store pending shapes - zoom will be applied after first update()
+            this._pendingHighlight = pending.shapes;
+            this.setHighlight(pending.shapes, false); // Don't zoom yet
+        }
     }
 
 
@@ -238,7 +245,13 @@ export class LayoutGL {
         this.data = msgData;
 
         if(!this.initialZoomDone) {
-            this.zoomFull(false);
+            if (this._pendingHighlight) {
+                // Zoom to pending highlight instead of full view
+                this.setHighlight(this._pendingHighlight, true);
+                this._pendingHighlight = null;
+            } else {
+                this.zoomFull(false);
+            }
             this.initialZoomDone = true;
         }
 

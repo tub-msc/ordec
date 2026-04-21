@@ -390,6 +390,12 @@ body.theme-dark .resviewhead select:hover,
 body.theme-dark .resviewhead button:hover {
     background-color: rgba(255, 255, 255, 0.08);
 }
+.direct-view-label {
+    padding: 4px 8px;
+    font-family: var(--font-sans);
+    font-size: var(--font-size-sm);
+    color: var(--color-text);
+}
 
 /* -- Empty state ------------------------------------------------- */
 .resview-empty {

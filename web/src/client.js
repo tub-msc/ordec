@@ -20,6 +20,9 @@ export class OrdecClient {
             rv.registerClient(this);
         });
         this.resultViewers = resultViewers;
+        if (this.sock) {
+            this.requestNextView();
+        }
     }
 
     connect() {

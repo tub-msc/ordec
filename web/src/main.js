@@ -23,6 +23,7 @@ import { authenticateLocalQuery } from './auth.js';
 import { ResultViewer } from "./resultviewer.js";
 import { OrdecClient } from './client.js';
 import { initTheme, registerAceEditor } from './theme.js';
+import { viewEventBus } from './event-bus.js';
 
 initTheme();
 
@@ -252,6 +253,62 @@ sourceTypeSelect.onchange = () => {
 
 // Make the OrdecClient object easy to access for automated testing & browser-based debugging:
 window.ordecClient = client;
+
+viewEventBus.on('layout:request-open', (data) => {
+    const view = data.view;
+    const componentState = view ? { view, directView: true } : undefined;
+    const title = view || 'Layout';
+
+    const componentConfig = {
+        type: 'component',
+        componentName: 'result',
+        componentState,
+        title,
+    };
+
+    // Try to add to the right of the source by finding a row parent
+    const container = data.sourceContainer;
+    const componentItem = container?.parent;
+    const stack = componentItem?.parent;
+    const parent = stack?.parent;
+
+    if (parent?.isRow) {
+        const index = parent.contentItems.indexOf(stack) + 1;
+        parent.addItem(componentConfig, index);
+    } else {
+        // No row structure - build fresh minimal config
+        const existingComponents = [];
+        const extractComponents = (item) => {
+            if (item.isComponent) {
+                existingComponents.push({
+                    type: 'component',
+                    componentName: 'result',
+                    title: item.title,
+                    componentState: item.container.state,
+                });
+            } else if (item.contentItems) {
+                item.contentItems.forEach(extractComponents);
+            }
+        };
+        layout.rootItem.contentItems.forEach(extractComponents);
+
+        const newConfig = {
+            content: [{
+                type: 'row',
+                content: [
+                    ...existingComponents,
+                    {
+                        type: 'component',
+                        componentName: 'result',
+                        title: title,
+                        componentState: componentState,
+                    }
+                ]
+            }]
+        };
+        layout.loadLayout(newConfig);
+    }
+});
 
 document.querySelector("#examples").onclick = () => {
     if (window.onbeforeunload) {

@@ -396,7 +396,17 @@ const viewClassOf = {
                     this.selectedItemNid = nid;
                     const item = itemMap.get(nid);
                     if (item) {
-                        viewEventBus.emit('drc:select', { shapes: item.shapes });
+                        const payload = { shapes: item.shapes };
+                        if (viewEventBus.hasListeners('drc:select')) {
+                            viewEventBus.emit('drc:select', payload);
+                        } else {
+                            viewEventBus.setPending('drc:select', payload);
+                            const layoutView = this.viewName ? `${this.viewName}.ref_layout` : null;
+                            viewEventBus.emit('layout:request-open', {
+                                view: layoutView,
+                                sourceContainer: this.glContainer,
+                            });
+                        }
                     }
                 });
             });
@@ -428,6 +438,11 @@ export class ResultViewer {
                 </div>
             </div>
         `;
+        container.addEventListener('beforeComponentRelease', () => {
+            if (this.view && typeof this.view.destroy === 'function') {
+                this.view.destroy();
+            }
+        });
         this.resizeWithContainerAutomatically = true;
         this.resOverlayRefreshing = container.element.querySelector(".refreshing");
         this.resOverlayRefreshable = container.element.querySelector(".refreshable");
@@ -442,18 +457,31 @@ export class ResultViewer {
         this.viewUpToDate = false;
         this.viewSelected = null;
         this.refreshRequestedByUser = false;
-        this._useHier = ResultViewer.useHierSelector;
-        if (this._useHier) {
-            this.hierSelector = new HierSelector(this.resViewHead, {
-                onSelect: (viewName) => this._onViewSelected(viewName),
-                onDeselect: () => this._onViewDeselected(),
-            });
+        this.directView = state && state.directView;
+
+        if (this.directView) {
+            const label = document.createElement('span');
+            label.className = 'direct-view-label';
+            label.textContent = state.view;
+            this.resViewHead.appendChild(label);
+            this.hierSelector = null;
             this.viewSelector = null;
+            this.viewSelected = state.view;
+            this.resEmpty.style.display = 'none';
         } else {
-            this._createFlatSelector();
-        }
-        if (state['view']) {
-            this.restoreSelectedView = state['view'];
+            this._useHier = ResultViewer.useHierSelector;
+            if (this._useHier) {
+                this.hierSelector = new HierSelector(this.resViewHead, {
+                    onSelect: (viewName) => this._onViewSelected(viewName),
+                    onDeselect: () => this._onViewDeselected(),
+                });
+                this.viewSelector = null;
+            } else {
+                this._createFlatSelector();
+            }
+            if (state && state['view']) {
+                this.restoreSelectedView = state['view'];
+            }
         }
         //this.updateGlobalState();
         this.viewListInitialized = false;
@@ -482,6 +510,9 @@ export class ResultViewer {
     requestsView() {
         if(!this.viewSelected) {
             return false;
+        }
+        if (this.directView) {
+            return !this.viewUpToDate;
         }
         return (!this.viewUpToDate) && (
             this.refreshRequestedByUser ||
@@ -557,6 +588,12 @@ export class ResultViewer {
     }
 
     updateViewList() {
+        if (this.directView) {
+            this.container.setTitle(this.viewSelected);
+            this.viewListInitialized = true;
+            return;
+        }
+
         // Check if mode toggled at runtime
         if (this._useHier !== ResultViewer.useHierSelector) {
             this._useHier = ResultViewer.useHierSelector;
@@ -652,6 +689,8 @@ export class ResultViewer {
                 this.view.update(msg.data);
             } else {
                 this.view = new viewClass(this.resContent);
+                this.view.viewName = this.viewSelected;
+                this.view.glContainer = this.container;
                 this.view.update(msg.data);
             }
         }
