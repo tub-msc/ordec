@@ -488,7 +488,7 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
         #    )
     
         log = (cwd / "main.log").read_text() # currently ignored
-        return klayout.parse_rdb(cwd / "main.lyrdb", directory)
+        return klayout.parse_rdb(cwd / "main.lyrdb", l, directory)
 
 
 @public
