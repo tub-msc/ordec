@@ -46,6 +46,12 @@ Further goals of ORDeC are: built-in support for open PDKs, and visualizing sili
 
 Questions and feedback via GitHub issues are welcome! Alternatively, feel free to email Tobias Kaiser (kaiser@tu-berlin.de).
 
+## Contributors
+
+- Tobias Kaiser
+- Dominik Schwimmbeck
+- Kreijstal
+
 ## Acknowledgements
 
 This work is supported by the German Federal Ministry of Research, Technology and Space (BMFTR) under grant [16ME0996 (DI-ORDeC)](https://www.elektronikforschung.de/projekte/di-ordec).
