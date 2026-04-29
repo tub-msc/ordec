@@ -194,8 +194,8 @@ export class LayoutGL {
     }
 
 
-    zoomToBox(lx, ly, ux, uy, animate) {
-        const pad = Math.max(ux-lx, uy-ly)*0.05 + 100;
+    zoomToBox(lx, ly, ux, uy, animate, padFraction = 0.05) {
+        const pad = Math.max(ux-lx, uy-ly) * padFraction;
         lx -= pad;
         ux += pad;
         ly -= pad;
@@ -901,7 +901,7 @@ export class LayoutGL {
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
 
         if (zoomTo && minX !== Infinity) {
-            this.zoomToBox(minX, minY, maxX, maxY, true);
+            this.zoomToBox(minX, minY, maxX, maxY, true, 0.25);
         } else {
             this.drawGL();
         }
