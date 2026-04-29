@@ -284,9 +284,7 @@ const viewClassOf = {
                     renderer.container = elementRoot;
                     oldRenderers[i] = null;
                 } else {
-                    if (old && typeof old.destroy === 'function') {
-                        old.destroy();
-                    }
+                    old?.destroy?.();
                     oldRenderers[i] = null;
                     renderer = new elementClass(
                         elementRoot, this.reportContext
@@ -298,7 +296,7 @@ const viewClassOf = {
 
             // Destroy any leftover old renderers
             for (const r of oldRenderers) {
-                if (r && typeof r.destroy === 'function') r.destroy();
+                r?.destroy?.();
             }
 
             this.resContent.replaceChildren(report);
@@ -439,9 +437,7 @@ export class ResultViewer {
             </div>
         `;
         container.addEventListener('beforeComponentRelease', () => {
-            if (this.view && typeof this.view.destroy === 'function') {
-                this.view.destroy();
-            }
+            this.view?.destroy?.();
         });
         this.resizeWithContainerAutomatically = true;
         this.resOverlayRefreshing = container.element.querySelector(".refreshing");
@@ -555,6 +551,7 @@ export class ResultViewer {
         this.invalidate();
         this.resetResContent();
         this.resContent.focus();
+        this.view?.destroy?.();
         this.view = null;
         this.client.requestNextView();
     }
@@ -562,6 +559,7 @@ export class ResultViewer {
     _onViewDeselected() {
         this.viewSelected = null;
         this.viewUpToDate = false;
+        this.view?.destroy?.();
         this.view = null;
         this.container.setTitle('Result View');
         this.showRefreshOverlay(null);
