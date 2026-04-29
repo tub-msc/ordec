@@ -253,6 +253,7 @@ sourceTypeSelect.onchange = () => {
 
 // Make the OrdecClient object easy to access for automated testing & browser-based debugging:
 window.ordecClient = client;
+window.viewEventBus = viewEventBus;
 
 viewEventBus.on('layout:request-open', (data) => {
     const view = data.view;

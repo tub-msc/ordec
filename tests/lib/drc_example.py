@@ -7,7 +7,7 @@ from ordec.lib.ihp130 import SG13G2, run_drc
 
 
 @generate_func
-def drc_violation_layout() -> Layout:
+def layout() -> Layout:
     """Layout with intentional DRC violations for testing."""
     pdk = SG13G2()
     layers = pdk.layers
@@ -110,7 +110,6 @@ def drc_violation_layout() -> Layout:
 
 
 @generate_func
-def ihp_drc_example() -> DrcReport:
+def drc_report() -> DrcReport:
     """Run IHP130 DRC on a layout with violations."""
-    layout = drc_violation_layout()
-    return run_drc(layout, variant='minimal')
+    return run_drc(layout(), variant='minimal')

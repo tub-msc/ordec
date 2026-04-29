@@ -912,6 +912,13 @@ export class LayoutGL {
         this.drawGL();
     }
 
+    testState() {
+        return {
+            highlightNumVertices: this.highlightNumVertices,
+            hasPendingHighlight: !!this._pendingHighlight,
+        };
+    }
+
     drawGLHighlight() {
         const gl = this.gl;
         const programInfo = this.programInfos.shapes;
