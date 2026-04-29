@@ -8,6 +8,8 @@ import re
 import warnings
 from typing import Callable
 
+from lark import Lark, Transformer, v_args
+
 from ..core import *
 from ..core.schema import (
     DrcReport, DrcCategory, DrcItem, DrcBox, DrcEdge, DrcEdgePair,
@@ -226,93 +228,38 @@ def parse_rdb(filename, layout: Layout, directory: Directory = None) -> DrcRepor
     return report
 
 
-class _LvsdbTokenizer:
-    """Simple tokenizer for LVSDB S-expression format."""
+class _LvsdbTransformer(Transformer):
+    """Transform Lark parse tree to nested list structure."""
 
-    def __init__(self, text: str):
-        self.text = text
-        self.pos = 0
-        self.len = len(text)
+    def start(self, items):
+        return list(items)
 
-    def _skip_whitespace_and_comments(self):
-        while self.pos < self.len:
-            c = self.text[self.pos]
-            if c in ' \t\n\r':
-                self.pos += 1
-            elif c == '#':
-                while self.pos < self.len and self.text[self.pos] != '\n':
-                    self.pos += 1
-            else:
-                break
+    @v_args(inline=True)
+    def named_sexp(self, name, *children):
+        return [str(name), *children]
 
-    def peek(self) -> str | None:
-        self._skip_whitespace_and_comments()
-        if self.pos >= self.len:
-            return None
-        return self.text[self.pos]
+    def anon_sexp(self, children):
+        return list(children)
 
-    def next_token(self) -> str | None:
-        self._skip_whitespace_and_comments()
-        if self.pos >= self.len:
-            return None
+    def ATOM(self, token):
+        return str(token)
 
-        c = self.text[self.pos]
+    def NUMBER(self, token):
+        return str(token)
 
-        if c in '()':
-            self.pos += 1
-            return c
+    def QUOTED_STRING(self, token):
+        return str(token)[1:-1]
 
-        if c == "'":
-            end = self.text.find("'", self.pos + 1)
-            if end < 0:
-                end = self.len
-            token = self.text[self.pos + 1:end]
-            self.pos = end + 1
-            return token
-
-        start = self.pos
-        while self.pos < self.len and self.text[self.pos] not in ' \t\n\r()#':
-            self.pos += 1
-        return self.text[start:self.pos]
+    def EMPTY_PARENS(self, token):
+        return "()"
 
 
-def _parse_lvsdb_sexp(tokenizer: _LvsdbTokenizer) -> list | str | None:
-    """Parse an S-expression from the tokenizer.
-
-    Handles both 'name(...)' and '(...)' styles:
-    - 'J(...)' is parsed as ['J', ...contents...]
-    - '(...)' is parsed as [...contents...]
-    """
-    token = tokenizer.next_token()
-    if token is None:
-        return None
-    if token == '(':
-        result = []
-        while True:
-            if tokenizer.peek() == ')':
-                tokenizer.next_token()
-                break
-            item = _parse_lvsdb_sexp(tokenizer)
-            if item is None:
-                break
-            result.append(item)
-        return result
-    elif token == ')':
-        return None
-    else:
-        if tokenizer.peek() == '(':
-            tokenizer.next_token()
-            result = [token]
-            while True:
-                if tokenizer.peek() == ')':
-                    tokenizer.next_token()
-                    break
-                item = _parse_lvsdb_sexp(tokenizer)
-                if item is None:
-                    break
-                result.append(item)
-            return result
-        return token
+_lvsdb_parser = Lark.open_from_package(
+    __package__,
+    "lvsdb.lark",
+    parser="lalr",
+)
+_lvsdb_transformer = _LvsdbTransformer()
 
 
 def _find_sexp(sexp: list, name: str) -> list | None:
@@ -355,16 +302,14 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic) -> LvsReport:
     with open(filename, 'r') as f:
         text = f.read()
 
-    tokenizer = _LvsdbTokenizer(text)
+    tree = _lvsdb_parser.parse(text)
+    sexps = _lvsdb_transformer.transform(tree)
 
     layout_sexp = None
     reference_sexp = None
     xref_sexp = None
 
-    while True:
-        sexp = _parse_lvsdb_sexp(tokenizer)
-        if sexp is None:
-            break
+    for sexp in sexps:
         if isinstance(sexp, list) and len(sexp) > 0:
             name = sexp[0]
             if name in ('layout', 'J'):
