@@ -6,35 +6,17 @@ Important: You have to run 'npm run build' in web/ before running the tests.
 """
 
 import pytest
-import threading
 import time
-import queue
-from pathlib import Path
 from urllib.parse import urlparse
 from dataclasses import dataclass
-import importlib.resources
-import secrets
 from PIL import Image, ImageStat
 import io
 
-from ordec import server
-
 try:
-    from selenium import webdriver
-    from selenium.webdriver.support import expected_conditions as EC
-    from selenium.webdriver.support.wait import WebDriverWait
     from selenium.webdriver.common.by import By
 except ImportError:
-    skip_webtests = True
-else:
-    skip_webtests = False
+    By = None
 
-    webdriver_options = webdriver.ChromeOptions()
-    webdriver_options.add_argument("--no-sandbox") # Somehow needed for webdriver to work in ordec-base image (something with the ubuntu version?!)
-    webdriver_options.add_argument("--headless=new")
-    webdriver_options.add_argument("--force-device-scale-factor=1")
-    # The following sets the window size, not the viewport size (see resize_viewport below):
-    # webdriver_options.add_argument("--window-size=1280,720")
 
 @dataclass
 class WebResViewer:
@@ -127,67 +109,7 @@ testcases_local = {
 }
 
 
-@dataclass
-class WebInfo:
-    url: str
-    key: server.ServerKey
-    driver: object
-
-    def resize_viewport(self, w=800, h=600):
-        w_overhead = self.driver.execute_script("return window.outerWidth - window.innerWidth;")
-        h_overhead = self.driver.execute_script("return window.outerHeight - window.innerHeight;")
-        self.driver.set_window_size(w+w_overhead, h+h_overhead)
-
-    def authenticate(self, hmac_bypass: bool=False):
-        self.driver.get(self.url)
-        self.driver.execute_script("""
-            window.localStorage.setItem('ordecAuth', arguments[0]);
-            window.localStorage.setItem('ordecHmacBypass', arguments[1]?"true":"");
-        """, self.key.token(), hmac_bypass)
-
-    def wait_for_ready(self):
-        WebDriverWait(self.driver, 10).until(
-            EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
-
-@pytest.fixture(scope="session", autouse=True)
-def web():
-    """
-    This pytest fixture starts both an ORDeC server and a Selenium webdriver
-    (browser / client) to interact with the server. (Previously, this fixture
-    was only the server, and each test started a new client. By sharing both
-    server and webdriver between tests, we save some time.)
-    """
-
-    key = server.ServerKey()
-    # Using a port other than 8100 makes it possible to run the tests
-    # while having another independent ordec server running.
-    port = 8102
-    web_dist_path = (Path(__file__).parent.parent/'web'/'dist').resolve()
-    tar = server.anonymous_tar(web_dist_path)
-    static_handler = server.StaticHandler(tar)
-    startup_queue = queue.Queue(maxsize=1)
-
-    t = threading.Thread(target=server.server_thread,
-        args=('127.0.0.1', port, static_handler, key, startup_queue), daemon=True)
-    t.start()
-    startup_error = startup_queue.get()
-    if startup_error is not None:
-        raise RuntimeError(f"Test server failed to start: {startup_error}")
-
-    with webdriver.Chrome(options=webdriver_options) as driver:
-        web = WebInfo(
-            f"http://127.0.0.1:{port}/", 
-            key=key,
-            driver=driver,
-            )
-        # Authentication was previously done in each test. To save time, it is
-        # now done once in this session-scope fixture.
-        web.authenticate(hmac_bypass=True)
-        yield web
-    # Server will stop when pytest exits.
-
 @pytest.mark.web
-@pytest.mark.skipif(skip_webtests, reason="Prerequesites for web tests not installed.")
 def test_index(web):
     web.driver.get(web.url + '')
     app_html_link_queries = set()
@@ -233,7 +155,6 @@ def request_integrated_example(web, testcase):
 
 @pytest.mark.web
 @pytest.mark.parametrize('testcase', testcases_integrated.keys())
-@pytest.mark.skipif(skip_webtests, reason="Prerequesites for web tests not installed.")
 def test_integrated(web, testcase):
     """Web tests using integrated mode (&example=..)"""
     res_viewers = request_integrated_example(web, testcase)
@@ -286,7 +207,6 @@ def request_local(web, module, request_views):
 
 @pytest.mark.web
 @pytest.mark.parametrize('testcase', testcases_local.keys())
-@pytest.mark.skipif(skip_webtests, reason="Prerequesites for web tests not installed.")
 def test_local(web, testcase):
     """Web tests using local mode (&module=..)"""
     ref = testcases_local[testcase]
@@ -318,7 +238,6 @@ def myhistogram(img, thresh=50):
     return h
 
 @pytest.mark.web
-@pytest.mark.skipif(skip_webtests, reason="Prerequesites for web tests not installed.")
 def test_layoutgl(web):
     """Fuzzy visual testing of web layout viewer (layout-gl.js)."""
     web.resize_viewport()

@@ -1402,7 +1402,7 @@ class PolyVec2R(Node):
 @public
 class PolyVec2I(Node):
     """One vertex of a Vec2I polygonal chain or polygon."""
-    in_subgraphs = [Layout]
+    in_subgraphs = [Layout]  # DrcReport added below after it's defined
     ref    = LocalRef(GenericPolyI, optional=False)
     order   = Attr(int, optional=False) #: Order of the point in the polygonal chain
     pos     = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
@@ -1412,3 +1412,239 @@ class PolyVec2I(Node):
 
 GenericPolyR.vertex_cls = PolyVec2R
 GenericPolyI.vertex_cls = PolyVec2I
+
+# DRC (Design Rule Check)
+# -----------------------
+
+@public
+class DrcReport(SubgraphRoot):
+    """DRC report containing design rule check results."""
+    __slots__ = ()
+
+    ref_layout = SubgraphRef(Layout)
+    top_cell_name = Attr(str)
+
+    def nresults(self) -> int:
+        """Count total DrcItems."""
+        return sum(1 for _ in self.all(DrcItem))
+
+    def summary(self) -> dict[str, int]:
+        """Category name -> count mapping."""
+        counts = {}
+        for item in self.all(DrcItem):
+            name = item.category.name
+            counts[name] = counts.get(name, 0) + 1
+        return counts
+
+    def webdata(self):
+        items_dict = {}
+        categories_with_items = set()
+        for item in self.all(DrcItem):
+            items_dict[item.nid] = {
+                'nid': item.nid,
+                'category_nid': item.category.nid,
+                'shapes': [],
+            }
+            categories_with_items.add(item.category.nid)
+
+        categories = []
+        for cat in self.all(DrcCategory):
+            if cat.nid in categories_with_items:
+                categories.append({
+                    'nid': cat.nid,
+                    'name': cat.name,
+                    'description': cat.description,
+                    'parent_nid': cat.parent.nid if cat.parent else None,
+                })
+
+        for box in self.all(DrcBox):
+            items_dict[box.item.nid]['shapes'].append({
+                'type': 'box',
+                'rect': [box.rect.lx, box.rect.ly, box.rect.ux, box.rect.uy]
+            })
+
+        for edge in self.all(DrcEdge):
+            items_dict[edge.item.nid]['shapes'].append({
+                'type': 'edge',
+                'p1': [edge.p1.x, edge.p1.y],
+                'p2': [edge.p2.x, edge.p2.y]
+            })
+
+        for ep in self.all(DrcEdgePair):
+            items_dict[ep.item.nid]['shapes'].append({
+                'type': 'edge_pair',
+                'e1': [[ep.edge1_p1.x, ep.edge1_p1.y], [ep.edge1_p2.x, ep.edge1_p2.y]],
+                'e2': [[ep.edge2_p1.x, ep.edge2_p1.y], [ep.edge2_p2.x, ep.edge2_p2.y]],
+            })
+
+        for poly in self.all(DrcPoly):
+            verts = [[v.x, v.y] for v in poly.vertices()]
+            items_dict[poly.item.nid]['shapes'].append({
+                'type': 'poly', 'vertices': verts
+            })
+
+        for path in self.all(DrcPath):
+            verts = [[v.x, v.y] for v in path.vertices()]
+            items_dict[path.item.nid]['shapes'].append({
+                'type': 'path', 'vertices': verts, 'width': path.width
+            })
+
+        for text in self.all(DrcText):
+            items_dict[text.item.nid]['shapes'].append({
+                'type': 'text', 'pos': [text.pos.x, text.pos.y], 'text': text.text
+            })
+
+        return 'drc_report', {
+            'top_cell': self.top_cell_name,
+            'categories': categories,
+            'items': list(items_dict.values()),
+            'unit': float(self.ref_layout.ref_layers.unit),
+        }
+
+
+@public
+class DrcCategory(Node):
+    """Category of DRC violations (e.g., 'Minimum spacing', 'Minimum width')."""
+    __slots__ = ()
+    in_subgraphs = [DrcReport]
+
+    name = Attr(str)
+    description = Attr(str, default='')
+    parent = LocalRef('DrcCategory', optional=True,
+        refcheck_custom=lambda val: issubclass(val, DrcCategory))
+
+    parent_idx = Index(parent)
+
+
+@public
+class DrcItem(Node):
+    """Individual DRC violation item within a category."""
+    __slots__ = ()
+    in_subgraphs = [DrcReport]
+
+    category = LocalRef(DrcCategory, optional=False)
+    category_idx = Index(category)
+
+    cell = ExternalRef(LayoutInstance,
+        of_subgraph=lambda c: c.root.ref_layout,
+        optional=True)
+
+
+@public
+class DrcBox(Node):
+    """Box geometry in a DRC item."""
+    __slots__ = ()
+    in_subgraphs = [DrcReport]
+
+    item = LocalRef(DrcItem, optional=False)
+    item_idx = Index(item, sortkey=lambda node: node.order)
+
+    order = Attr(int, default=0)
+    tag = Attr(str, default='')
+    rect = Attr(Rect4I, factory=coerce_tuple(Rect4I, 4))
+
+
+@public
+class DrcEdge(Node):
+    """Edge geometry in a DRC item."""
+    __slots__ = ()
+    in_subgraphs = [DrcReport]
+
+    item = LocalRef(DrcItem, optional=False)
+    item_idx = Index(item, sortkey=lambda node: node.order)
+
+    order = Attr(int, default=0)
+    tag = Attr(str, default='')
+    p1 = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+    p2 = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+
+
+@public
+class DrcEdgePair(Node):
+    """Edge pair geometry in a DRC item (e.g., for spacing violations)."""
+    __slots__ = ()
+    in_subgraphs = [DrcReport]
+
+    item = LocalRef(DrcItem, optional=False)
+    item_idx = Index(item, sortkey=lambda node: node.order)
+
+    order = Attr(int, default=0)
+    tag = Attr(str, default='')
+    edge1_p1 = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+    edge1_p2 = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+    edge2_p1 = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+    edge2_p2 = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+
+
+class DrcPolyBase(GenericPolyI):
+    """Base class for DRC polygon nodes."""
+    __slots__ = ()
+
+    tag = Attr(str, default='')
+
+
+@public
+class DrcPoly(DrcPolyBase):
+    """Polygon geometry in a DRC item."""
+    __slots__ = ()
+    in_subgraphs = [DrcReport]
+    vertex_cls = PolyVec2I
+
+    item = LocalRef(DrcItem, optional=False)
+    item_idx = Index(item, sortkey=lambda node: node.order)
+
+    order = Attr(int, default=0)
+
+
+class DrcPathBase(GenericPolyI):
+    """Base class for DRC path nodes."""
+    __slots__ = ()
+
+    tag = Attr(str, default='')
+    width = Attr(int)
+    endtype = Attr(PathEndType, default=PathEndType.Flush)
+
+
+@public
+class DrcPath(DrcPathBase):
+    """Path geometry in a DRC item."""
+    __slots__ = ()
+    in_subgraphs = [DrcReport]
+    vertex_cls = PolyVec2I
+
+    item = LocalRef(DrcItem, optional=False)
+    item_idx = Index(item, sortkey=lambda node: node.order)
+
+    order = Attr(int, default=0)
+
+
+@public
+class DrcText(Node):
+    """Text geometry in a DRC item."""
+    __slots__ = ()
+    in_subgraphs = [DrcReport]
+
+    item = LocalRef(DrcItem, optional=False)
+    item_idx = Index(item, sortkey=lambda node: node.order)
+
+    order = Attr(int, default=0)
+    tag = Attr(str, default='')
+    pos = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
+    text = Attr(str)
+
+
+@public
+class DrcValue(Node):
+    """Arbitrary string value in a DRC item."""
+    __slots__ = ()
+    in_subgraphs = [DrcReport]
+
+    item = LocalRef(DrcItem, optional=False)
+    item_idx = Index(item, sortkey=lambda node: node.order)
+
+    order = Attr(int, default=0)
+    tag = Attr(str, default='')
+    value = Attr(str)
+
+
+PolyVec2I.in_subgraphs.append(DrcReport)

@@ -600,6 +600,8 @@ class StaticHandler:
     def __init__(self, tar: tarfile.TarFile=None):
         self.tar = tar
         self.tar_lock = threading.Lock()
+        from .schematic.render import SchematicRenderer
+        self.schematic_css = SchematicRenderer.css.encode('utf8')
         
     def process_request(self, connection, request):
         try:
@@ -653,8 +655,7 @@ class StaticHandler:
         return build_response(data=data.encode('utf8'), mime_type='application/json')
 
     def process_request_schematic_css(self):
-        from .schematic.render import SchematicRenderer
-        return build_response(data=SchematicRenderer.css.encode('utf8'), mime_type='text/css')
+        return build_response(data=self.schematic_css, mime_type='text/css')
 
     def process_request_static(self, req_path):
         if not self.tar:

@@ -23,6 +23,7 @@ import { authenticateLocalQuery } from './auth.js';
 import { ResultViewer } from "./resultviewer.js";
 import { OrdecClient } from './client.js';
 import { initTheme, registerAceEditor } from './theme.js';
+import { viewEventBus } from './event-bus.js';
 
 initTheme();
 
@@ -252,6 +253,48 @@ sourceTypeSelect.onchange = () => {
 
 // Make the OrdecClient object easy to access for automated testing & browser-based debugging:
 window.ordecClient = client;
+window.viewEventBus = viewEventBus;
+
+viewEventBus.on('layout:request-open', (data) => {
+    const view = data.view;
+    const componentState = view ? { view, directView: true } : undefined;
+    const title = view || 'Layout';
+
+    const componentConfig = {
+        type: 'component',
+        componentName: 'result',
+        componentState,
+        title,
+    };
+
+    const sourceContainer = data.sourceContainer;
+    const sourceComponentItem = sourceContainer?.parent;
+    const sourceStack = sourceComponentItem?.parent;
+
+    if (!sourceStack?.isStack) {
+        layout.addComponent('result', componentState, title);
+        return;
+    }
+
+    const stackParent = sourceStack.parent;
+
+    if (stackParent.isRow) {
+        const index = stackParent.contentItems.indexOf(sourceStack) + 1;
+        stackParent.addItem(componentConfig, index);
+    } else {
+        const stackIndex = stackParent.contentItems.indexOf(sourceStack);
+        stackParent.removeChild(sourceStack, true);
+
+        const rowConfig = {
+            type: 'row',
+            content: [componentConfig]
+        };
+        stackParent.addItem(rowConfig, stackIndex);
+
+        const newRow = stackParent.contentItems[stackIndex];
+        newRow.addChild(sourceStack, 0);
+    }
+});
 
 document.querySelector("#examples").onclick = () => {
     if (window.onbeforeunload) {

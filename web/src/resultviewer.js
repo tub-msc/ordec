@@ -7,6 +7,7 @@ import * as d3 from "d3";
 import { LayoutGL } from './layout-gl.js';
 import { SimPlot } from './simplot.js';
 import { HierSelector } from './hier-selector.js';
+import { viewEventBus } from './event-bus.js';
 
 let idCounter = 0;
 export function generateId() {
@@ -283,9 +284,7 @@ const viewClassOf = {
                     renderer.container = elementRoot;
                     oldRenderers[i] = null;
                 } else {
-                    if (old && typeof old.destroy === 'function') {
-                        old.destroy();
-                    }
+                    old?.destroy?.();
                     oldRenderers[i] = null;
                     renderer = new elementClass(
                         elementRoot, this.reportContext
@@ -297,13 +296,126 @@ const viewClassOf = {
 
             // Destroy any leftover old renderers
             for (const r of oldRenderers) {
-                if (r && typeof r.destroy === 'function') r.destroy();
+                r?.destroy?.();
             }
 
             this.resContent.replaceChildren(report);
         }
     },
     layout_gl: LayoutGL,
+    drc_report: class {
+        constructor(resContent) {
+            this.resContent = resContent;
+            this.el = document.createElement('div');
+            this.el.className = 'drc-viewer';
+            this.selectedItemNid = null;
+            resContent.appendChild(this.el);
+        }
+
+        update(data) {
+            const catMap = new Map();
+            data.categories.forEach(cat => {
+                catMap.set(cat.nid, { ...cat, items: [], count: 0 });
+            });
+
+            const itemMap = new Map();
+            data.items.forEach(item => {
+                itemMap.set(item.nid, item);
+                const cat = catMap.get(item.category_nid);
+                if (cat) {
+                    cat.items.push(item);
+                    cat.count++;
+                }
+            });
+
+            const totalCount = data.items.length;
+            const catCount = data.categories.length;
+
+            let html = `<div class="drc-header">
+                <span>${totalCount} violations in ${catCount} categories</span>
+                <button class="drc-deselect" disabled>Deselect</button>
+            </div>`;
+            html += '<div class="drc-categories">';
+
+            data.categories.forEach(cat => {
+                const catData = catMap.get(cat.nid);
+                html += `<div class="drc-category" data-nid="${cat.nid}">`;
+                html += `<span class="drc-category-toggle">&#9654;</span> `;
+                html += `<span class="drc-category-name">${cat.name}</span>`;
+                html += ` <span class="drc-category-count">(${catData.count})</span>`;
+                if (cat.description) {
+                    html += `<span class="drc-category-desc"> - ${cat.description}</span>`;
+                }
+                html += '<div class="drc-items">';
+                catData.items.forEach((item, idx) => {
+                    const label = item.shapes.length > 0
+                        ? item.shapes[0].type
+                        : 'item';
+                    html += `<div class="drc-item" data-nid="${item.nid}">#${idx + 1}: ${label}</div>`;
+                });
+                html += '</div></div>';
+            });
+
+            html += '</div>';
+            this.el.innerHTML = html;
+
+            this.el.querySelectorAll('.drc-category').forEach(catEl => {
+                const toggleCategory = () => {
+                    catEl.classList.toggle('expanded');
+                    const toggle = catEl.querySelector('.drc-category-toggle');
+                    toggle.innerHTML = catEl.classList.contains('expanded') ? '&#9660;' : '&#9654;';
+                };
+                catEl.addEventListener('click', (e) => {
+                    if (!e.target.classList.contains('drc-item')) {
+                        toggleCategory();
+                    }
+                });
+            });
+
+            const deselectBtn = this.el.querySelector('.drc-deselect');
+            const deselect = () => {
+                this.el.querySelectorAll('.drc-item.selected').forEach(el => {
+                    el.classList.remove('selected');
+                });
+                this.selectedItemNid = null;
+                deselectBtn.disabled = true;
+                viewEventBus.emit('drc:clear');
+            };
+            deselectBtn.addEventListener('click', deselect);
+
+            this.el.querySelectorAll('.drc-item').forEach(itemEl => {
+                itemEl.addEventListener('click', () => {
+                    this.el.querySelectorAll('.drc-item.selected').forEach(el => {
+                        el.classList.remove('selected');
+                    });
+                    itemEl.classList.add('selected');
+                    deselectBtn.disabled = false;
+                    const nid = parseInt(itemEl.dataset.nid, 10);
+                    this.selectedItemNid = nid;
+                    const item = itemMap.get(nid);
+                    if (item) {
+                        const payload = { shapes: item.shapes };
+                        if (viewEventBus.hasListeners('drc:select')) {
+                            viewEventBus.emit('drc:select', payload);
+                        } else {
+                            viewEventBus.setPending('drc:select', payload);
+                            const layoutView = this.viewName ? `${this.viewName}.ref_layout` : null;
+                            viewEventBus.emit('layout:request-open', {
+                                view: layoutView,
+                                sourceContainer: this.glContainer,
+                            });
+                        }
+                    }
+                });
+            });
+
+            this.itemMap = itemMap;
+        }
+
+        destroy() {
+            viewEventBus.emit('drc:clear');
+        }
+    },
 }
 
 export class ResultViewer {
@@ -324,6 +436,9 @@ export class ResultViewer {
                 </div>
             </div>
         `;
+        container.addEventListener('beforeComponentRelease', () => {
+            this.view?.destroy?.();
+        });
         this.resizeWithContainerAutomatically = true;
         this.resOverlayRefreshing = container.element.querySelector(".refreshing");
         this.resOverlayRefreshable = container.element.querySelector(".refreshable");
@@ -338,18 +453,31 @@ export class ResultViewer {
         this.viewUpToDate = false;
         this.viewSelected = null;
         this.refreshRequestedByUser = false;
-        this._useHier = ResultViewer.useHierSelector;
-        if (this._useHier) {
-            this.hierSelector = new HierSelector(this.resViewHead, {
-                onSelect: (viewName) => this._onViewSelected(viewName),
-                onDeselect: () => this._onViewDeselected(),
-            });
+        this.directView = state && state.directView;
+
+        if (this.directView) {
+            const label = document.createElement('span');
+            label.className = 'direct-view-label';
+            label.textContent = state.view;
+            this.resViewHead.appendChild(label);
+            this.hierSelector = null;
             this.viewSelector = null;
+            this.viewSelected = state.view;
+            this.resEmpty.style.display = 'none';
         } else {
-            this._createFlatSelector();
-        }
-        if (state['view']) {
-            this.restoreSelectedView = state['view'];
+            this._useHier = ResultViewer.useHierSelector;
+            if (this._useHier) {
+                this.hierSelector = new HierSelector(this.resViewHead, {
+                    onSelect: (viewName) => this._onViewSelected(viewName),
+                    onDeselect: () => this._onViewDeselected(),
+                });
+                this.viewSelector = null;
+            } else {
+                this._createFlatSelector();
+            }
+            if (state && state['view']) {
+                this.restoreSelectedView = state['view'];
+            }
         }
         //this.updateGlobalState();
         this.viewListInitialized = false;
@@ -378,6 +506,9 @@ export class ResultViewer {
     requestsView() {
         if(!this.viewSelected) {
             return false;
+        }
+        if (this.directView) {
+            return !this.viewUpToDate;
         }
         return (!this.viewUpToDate) && (
             this.refreshRequestedByUser ||
@@ -420,6 +551,7 @@ export class ResultViewer {
         this.invalidate();
         this.resetResContent();
         this.resContent.focus();
+        this.view?.destroy?.();
         this.view = null;
         this.client.requestNextView();
     }
@@ -427,6 +559,7 @@ export class ResultViewer {
     _onViewDeselected() {
         this.viewSelected = null;
         this.viewUpToDate = false;
+        this.view?.destroy?.();
         this.view = null;
         this.container.setTitle('Result View');
         this.showRefreshOverlay(null);
@@ -453,6 +586,12 @@ export class ResultViewer {
     }
 
     updateViewList() {
+        if (this.directView) {
+            this.container.setTitle(this.viewSelected);
+            this.viewListInitialized = true;
+            return;
+        }
+
         // Check if mode toggled at runtime
         if (this._useHier !== ResultViewer.useHierSelector) {
             this._useHier = ResultViewer.useHierSelector;
@@ -548,6 +687,8 @@ export class ResultViewer {
                 this.view.update(msg.data);
             } else {
                 this.view = new viewClass(this.resContent);
+                this.view.viewName = this.viewSelected;
+                this.view.glContainer = this.container;
                 this.view.update(msg.data);
             }
         }

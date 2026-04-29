@@ -7,6 +7,7 @@ import earcut from 'earcut';
 
 import { generateId } from './resultviewer.js';
 import { siFormat } from './siformat.js';
+import { viewEventBus } from './event-bus.js';
 
 // See: https://github.com/mdn/dom-examples/blob/main/webgl-examples/tutorial/sample2/webgl-demo.js
 
@@ -178,17 +179,23 @@ export class LayoutGL {
 
         this.resContent.addEventListener("keydown", event => this.onKeydown(event));
         this.canvas.addEventListener("mousemove", event => this.onMousemove(event));
+
+        this._onDrcSelect = (data) => this.setHighlight(data.shapes);
+        this._onDrcClear = () => this.clearHighlight();
+        viewEventBus.on('drc:select', this._onDrcSelect);
+        viewEventBus.on('drc:clear', this._onDrcClear);
+
+        const pending = viewEventBus.consumePending('drc:select');
+        if (pending) {
+            // Store pending shapes - zoom will be applied after first update()
+            this._pendingHighlight = pending.shapes;
+            this.setHighlight(pending.shapes, false); // Don't zoom yet
+        }
     }
 
 
-    zoomFull(animate) {
-        console.log("zoom full", this.data.extent);
-        let lx = this.data.extent[0];
-        let ly = this.data.extent[1];
-        let ux = this.data.extent[2];
-        let uy = this.data.extent[3];
-
-        const pad = Math.max(ux-lx, uy-ly)*0.05; 
+    zoomToBox(lx, ly, ux, uy, animate, padFraction = 0.05) {
+        const pad = Math.max(ux-lx, uy-ly) * padFraction;
         lx -= pad;
         ux += pad;
         ly -= pad;
@@ -203,10 +210,8 @@ export class LayoutGL {
         let newZoom = new d3.ZoomTransform(scale, -lx*scale, uy*scale);
 
         if(scaleX > scaleY) {
-            // center horizontally
             newZoom.x += (this.canvas.width - w*newZoom.k)/2;
         } else {
-            // center vertically
             newZoom.y += (this.canvas.height - h*newZoom.k)/2;
         }
 
@@ -215,6 +220,12 @@ export class LayoutGL {
         } else {
             d3.select(this.canvas).call(this.zoom.transform, newZoom);
         }
+    }
+
+    zoomFull(animate) {
+        console.log("zoom full", this.data.extent);
+        const [lx, ly, ux, uy] = this.data.extent;
+        this.zoomToBox(lx, ly, ux, uy, animate);
     }
 
     onKeydown(event) {
@@ -234,7 +245,13 @@ export class LayoutGL {
         this.data = msgData;
 
         if(!this.initialZoomDone) {
-            this.zoomFull(false);
+            if (this._pendingHighlight) {
+                // Zoom to pending highlight instead of full view
+                this.setHighlight(this._pendingHighlight, true);
+                this._pendingHighlight = null;
+            } else {
+                this.zoomFull(false);
+            }
             this.initialZoomDone = true;
         }
 
@@ -309,6 +326,8 @@ export class LayoutGL {
 
     destroy() {
         // Called by ResultViewer when this renderer is being replaced.
+        viewEventBus.off('drc:select', this._onDrcSelect);
+        viewEventBus.off('drc:clear', this._onDrcClear);
         if (!this.gl) return;
         this.resizeObserver.disconnect();
         this.glResources.destroy();
@@ -382,7 +401,11 @@ export class LayoutGL {
             // dynamic, loaded by loadBuffersDynamic:
             shapeVertices: this.glResources.createBuffer(),
             labelVertices: this.glResources.createBuffer(),
+
+            // highlight overlay for DRC:
+            highlightVertices: this.glResources.createBuffer(),
         }
+        this.highlightNumVertices = 0;
 
         this.loadBuffersConstant();
 
@@ -831,18 +854,104 @@ export class LayoutGL {
         mat4.scale(this.projectionMatrix, this.projectionMatrix, [1, -1, 1]);
     }
 
+    setHighlight(shapes, zoomTo = true) {
+        const gl = this.gl;
+        if (!gl) return;
+
+        const vertices = [];
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+        const updateBounds = (x, y) => {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+        };
+
+        shapes.forEach(shape => {
+            if (shape.type === 'box') {
+                const [lx, ly, ux, uy] = shape.rect;
+                vertices.push(lx, ly, ux, ly, ux, ly, ux, uy,
+                             ux, uy, lx, uy, lx, uy, lx, ly);
+                updateBounds(lx, ly);
+                updateBounds(ux, uy);
+            } else if (shape.type === 'edge') {
+                vertices.push(...shape.p1, ...shape.p2);
+                updateBounds(shape.p1[0], shape.p1[1]);
+                updateBounds(shape.p2[0], shape.p2[1]);
+            } else if (shape.type === 'edge_pair') {
+                vertices.push(...shape.e1[0], ...shape.e1[1], ...shape.e2[0], ...shape.e2[1]);
+                updateBounds(shape.e1[0][0], shape.e1[0][1]);
+                updateBounds(shape.e1[1][0], shape.e1[1][1]);
+                updateBounds(shape.e2[0][0], shape.e2[0][1]);
+                updateBounds(shape.e2[1][0], shape.e2[1][1]);
+            } else if (shape.type === 'poly' || shape.type === 'path') {
+                for (let i = 0; i < shape.vertices.length - 1; i++) {
+                    vertices.push(...shape.vertices[i], ...shape.vertices[i + 1]);
+                }
+                if (shape.type === 'poly' && shape.vertices.length > 2) {
+                    vertices.push(...shape.vertices[shape.vertices.length - 1], ...shape.vertices[0]);
+                }
+                shape.vertices.forEach(v => updateBounds(v[0], v[1]));
+            }
+        });
+
+        this.highlightNumVertices = vertices.length / 2;
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.highlightVertices);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
+
+        if (zoomTo && minX !== Infinity) {
+            this.zoomToBox(minX, minY, maxX, maxY, true, 0.25);
+        } else {
+            this.drawGL();
+        }
+    }
+
+    clearHighlight() {
+        this.highlightNumVertices = 0;
+        this.drawGL();
+    }
+
+    testState() {
+        return {
+            highlightNumVertices: this.highlightNumVertices,
+            hasPendingHighlight: !!this._pendingHighlight,
+        };
+    }
+
+    drawGLHighlight() {
+        const gl = this.gl;
+        const programInfo = this.programInfos.shapes;
+
+        gl.useProgram(programInfo.program);
+        gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, this.projectionMatrix);
+        gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, mat4.create());
+        gl.uniform4fv(programInfo.uniformLocations.layerColor, [1.0, 0.0, 0.0, 1.0]);
+        gl.uniform1f(programInfo.uniformLocations.brightness, 1.0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.highlightVertices);
+        gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+
+        gl.lineWidth(2.0);
+        gl.drawArrays(gl.LINES, 0, this.highlightNumVertices);
+    }
+
     drawGL() {
         if((this.width != this.canvas.width) || (this.height != this.canvas.height)) {
             this.width = this.canvas.width;
             this.height = this.canvas.height;
 
-            this.resizeGL();    
+            this.resizeGL();
         }
         if(this.data) {
             this.updateProjectionMatrix();
             this.drawGLShapes();
             this.drawGLPost();
             this.drawGLLabels();
+            if (this.highlightNumVertices > 0) {
+                this.drawGLHighlight();
+            }
         }
     }
 

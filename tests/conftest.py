@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import types
+
 import pytest
 from ordec.core import Subgraph
 from ordec.language import compile_ord
+
+pytest_plugins = ["tests.web_fixtures"]
 
 
 class OrdFile(pytest.File):

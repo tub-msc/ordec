@@ -20,6 +20,10 @@ export class OrdecClient {
             rv.registerClient(this);
         });
         this.resultViewers = resultViewers;
+        // Only request views after viewlist received (views.size > 0) to avoid race with initial load
+        if (this.sock && this.views.size > 0) {
+            this.requestNextView();
+        }
     }
 
     connect() {
