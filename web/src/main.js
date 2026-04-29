@@ -266,47 +266,32 @@ viewEventBus.on('layout:request-open', (data) => {
         title,
     };
 
-    // Try to add to the right of the source by finding a row parent
-    const container = data.sourceContainer;
-    const componentItem = container?.parent;
-    const stack = componentItem?.parent;
-    const parent = stack?.parent;
+    const sourceContainer = data.sourceContainer;
+    const sourceComponentItem = sourceContainer?.parent;
+    const sourceStack = sourceComponentItem?.parent;
 
-    if (parent?.isRow) {
-        const index = parent.contentItems.indexOf(stack) + 1;
-        parent.addItem(componentConfig, index);
+    if (!sourceStack?.isStack) {
+        layout.addComponent('result', componentState, title);
+        return;
+    }
+
+    const stackParent = sourceStack.parent;
+
+    if (stackParent.isRow) {
+        const index = stackParent.contentItems.indexOf(sourceStack) + 1;
+        stackParent.addItem(componentConfig, index);
     } else {
-        // No row structure - build fresh minimal config
-        const existingComponents = [];
-        const extractComponents = (item) => {
-            if (item.isComponent) {
-                existingComponents.push({
-                    type: 'component',
-                    componentName: 'result',
-                    title: item.title,
-                    componentState: item.container.state,
-                });
-            } else if (item.contentItems) {
-                item.contentItems.forEach(extractComponents);
-            }
-        };
-        layout.rootItem.contentItems.forEach(extractComponents);
+        const stackIndex = stackParent.contentItems.indexOf(sourceStack);
+        stackParent.removeChild(sourceStack, true);
 
-        const newConfig = {
-            content: [{
-                type: 'row',
-                content: [
-                    ...existingComponents,
-                    {
-                        type: 'component',
-                        componentName: 'result',
-                        title: title,
-                        componentState: componentState,
-                    }
-                ]
-            }]
+        const rowConfig = {
+            type: 'row',
+            content: [componentConfig]
         };
-        layout.loadLayout(newConfig);
+        stackParent.addItem(rowConfig, stackIndex);
+
+        const newRow = stackParent.contentItems[stackIndex];
+        newRow.addChild(sourceStack, 0);
     }
 });
 
