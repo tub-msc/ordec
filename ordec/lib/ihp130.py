@@ -492,23 +492,30 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
 
 
 @public
-def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> bool:
+def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True,
+            return_report: bool=False):
     """
+    Run LVS (Layout vs. Schematic) check.
+
+    Args:
+        layout: The Layout to check.
+        symbol: The Symbol containing the reference schematic.
+        use_tempdir: If True, use a temporary directory for intermediate files.
+        return_report: If True, return an LvsReport subgraph instead of a bool.
+
     Returns:
-        True if LVS is clean, else False.
+        If return_report is False: True if LVS is clean, else False.
+        If return_report is True: LvsReport subgraph with detailed results.
     """
-    #layout = layout.freeze()
-    #schematic = schematic.freeze()
+    from ..core.schema import LvsReport, LvsStatus
 
     directory = Directory()
     nl = Netlister(directory, lvs=True)
     nl.netlist_hier_symbol(symbol)
-    
-    with rundir('lvs', use_tempdir) as cwd:
-        # Note: The LVS script sometimes creates files in the parent directory
-        # of the input data. This seems to be fixed with the current LVS
-        # options, though. If the issue returns, add here: cwd = cwd / 'lvs'
 
+    schematic = symbol.cell.schematic
+
+    with rundir('lvs', use_tempdir) as cwd:
         (cwd / 'schematic.cir').write_text(nl.out())
 
         (cwd / 'out.log').unlink(missing_ok=True)
@@ -540,6 +547,10 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> bool:
             )
 
         log = (cwd / "out.log").read_text()
+
+        if return_report:
+            return klayout.parse_lvsdb(cwd / 'out.lvsdb', layout, schematic)
+
         if log.find("INFO : Congratulations! Netlists match.") >= 0:
             return True
         elif log.find("ERROR : Netlists don't match") >= 0:

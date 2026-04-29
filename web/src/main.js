@@ -296,6 +296,47 @@ viewEventBus.on('layout:request-open', (data) => {
     }
 });
 
+viewEventBus.on('schematic:request-open', (data) => {
+    const view = data.view;
+    const componentState = view ? { view, directView: true } : undefined;
+    const title = view || 'Schematic';
+
+    const componentConfig = {
+        type: 'component',
+        componentName: 'result',
+        componentState,
+        title,
+    };
+
+    const sourceContainer = data.sourceContainer;
+    const sourceComponentItem = sourceContainer?.parent;
+    const sourceStack = sourceComponentItem?.parent;
+
+    if (!sourceStack?.isStack) {
+        layout.addComponent('result', componentState, title);
+        return;
+    }
+
+    const stackParent = sourceStack.parent;
+
+    if (stackParent.isRow) {
+        const index = stackParent.contentItems.indexOf(sourceStack) + 1;
+        stackParent.addItem(componentConfig, index);
+    } else {
+        const stackIndex = stackParent.contentItems.indexOf(sourceStack);
+        stackParent.removeChild(sourceStack, true);
+
+        const rowConfig = {
+            type: 'row',
+            content: [componentConfig]
+        };
+        stackParent.addItem(rowConfig, stackIndex);
+
+        const newRow = stackParent.contentItems[stackIndex];
+        newRow.addChild(sourceStack, 0);
+    }
+});
+
 document.querySelector("#examples").onclick = () => {
     if (window.onbeforeunload) {
         window.open('/index.html', '_blank');

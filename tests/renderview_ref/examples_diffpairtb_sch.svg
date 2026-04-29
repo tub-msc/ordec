@@ -17,7 +17,7 @@
     <text transform="matrix(0.045 0 0 -0.045 27.65 8.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vout1</text>
     <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 27.0 9.0)" class="tapPoint" />
     <text transform="matrix(0.045 0 0 -0.045 27.65 9.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vout2</text>
-    <g>
+    <g data-inst="DUT">
       <rect x="23.0" y="6.0" width="4.0" height="6.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 26.875 11.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">DiffPair</text>
       <text transform="matrix(0.045 0 0 -0.045 26.875 6.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -37,7 +37,7 @@
       <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 26.8 9.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 26.875 9.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">vout2</text>
     </g>
-    <g>
+    <g data-inst="gnd">
       <rect x="0.0" y="0.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 3.875 3.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Gnd</text>
       <text transform="matrix(0.045 0 0 -0.045 3.875 0.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -47,7 +47,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(-1 0 0 -1 2.0 3.8)" class="pinArrow" />
       <text transform="matrix(0 0.045 0.045 0 1.875 3.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">p</text>
     </g>
-    <g>
+    <g data-inst="src_vdd">
       <rect x="0.0" y="6.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 3.875 9.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Vdc</text>
       <text transform="matrix(0.045 0 0 -0.045 3.875 6.125)" dominant-baseline="ideographic" text-anchor="end" class="params">dc=5.</text>
@@ -63,7 +63,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(-1 0 0 -1 2.0 9.8)" class="pinArrow" />
       <text transform="matrix(0 0.045 0.045 0 1.875 9.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">p</text>
     </g>
-    <g>
+    <g data-inst="src_vbias">
       <rect x="5.0" y="6.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 8.875 9.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Vdc</text>
       <text transform="matrix(0.045 0 0 -0.045 8.875 6.125)" dominant-baseline="ideographic" text-anchor="end" class="params">dc=1.5</text>
@@ -79,7 +79,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(-1 0 0 -1 7.0 9.8)" class="pinArrow" />
       <text transform="matrix(0 0.045 0.045 0 6.875 9.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">p</text>
     </g>
-    <g>
+    <g data-inst="src_vin2">
       <rect x="10.0" y="6.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 13.875 9.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Vdc</text>
       <text transform="matrix(0.045 0 0 -0.045 13.875 6.125)" dominant-baseline="ideographic" text-anchor="end" class="params">dc=3.05</text>
@@ -95,7 +95,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(-1 0 0 -1 12.0 9.8)" class="pinArrow" />
       <text transform="matrix(0 0.045 0.045 0 11.875 9.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">p</text>
     </g>
-    <g>
+    <g data-inst="src_vin1">
       <rect x="15.0" y="6.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 18.875 9.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Vdc</text>
       <text transform="matrix(0.045 0 0 -0.045 18.875 6.125)" dominant-baseline="ideographic" text-anchor="end" class="params">dc=2.95</text>

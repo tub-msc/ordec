@@ -37,7 +37,7 @@
     <text transform="matrix(0 0.045 0.045 0 33.0 18.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
     <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 33.0 14.0)" class="tapPoint" />
     <text transform="matrix(0 0.045 0.045 0 33.0 13.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
-    <g>
+    <g data-inst="m1">
       <rect x="5.0" y="4.0" width="4.0" height="6.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 8.875 9.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Mux2</text>
       <text transform="matrix(0.045 0 0 -0.045 8.875 4.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -55,7 +55,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 5.2 8.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 5.125 8.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">s</text>
     </g>
-    <g>
+    <g data-inst="clk_inv">
       <rect x="5.0" y="16.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 8.875 19.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Inv</text>
       <text transform="matrix(0.045 0 0 -0.045 8.875 16.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -69,7 +69,7 @@
       <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 8.8 18.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 8.875 18.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">y</text>
     </g>
-    <g>
+    <g data-inst="i1">
       <rect x="12.0" y="4.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 15.875 7.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Inv</text>
       <text transform="matrix(0.045 0 0 -0.045 15.875 4.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -83,7 +83,7 @@
       <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 15.8 6.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 15.875 6.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">y</text>
     </g>
-    <g>
+    <g data-inst="m2">
       <rect x="18.0" y="14.0" width="4.0" height="6.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 21.875 19.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Mux2</text>
       <text transform="matrix(0.045 0 0 -0.045 21.875 14.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -101,7 +101,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 18.2 18.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 18.125 18.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">s</text>
     </g>
-    <g>
+    <g data-inst="i2">
       <rect x="31.0" y="14.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 34.875 17.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Inv</text>
       <text transform="matrix(0.045 0 0 -0.045 34.875 14.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />

@@ -185,11 +185,22 @@ export class LayoutGL {
         viewEventBus.on('drc:select', this._onDrcSelect);
         viewEventBus.on('drc:clear', this._onDrcClear);
 
+        this._onLvsSelect = (data) => this.setHighlight(data.shapes);
+        this._onLvsClear = () => this.clearHighlight();
+        viewEventBus.on('lvs:select', this._onLvsSelect);
+        viewEventBus.on('lvs:clear', this._onLvsClear);
+
         const pending = viewEventBus.consumePending('drc:select');
         if (pending) {
             // Store pending shapes - zoom will be applied after first update()
             this._pendingHighlight = pending.shapes;
             this.setHighlight(pending.shapes, false); // Don't zoom yet
+        }
+
+        const pendingLvs = viewEventBus.consumePending('lvs:select');
+        if (pendingLvs) {
+            this._pendingHighlight = pendingLvs.shapes;
+            this.setHighlight(pendingLvs.shapes, false);
         }
     }
 
@@ -328,6 +339,8 @@ export class LayoutGL {
         // Called by ResultViewer when this renderer is being replaced.
         viewEventBus.off('drc:select', this._onDrcSelect);
         viewEventBus.off('drc:clear', this._onDrcClear);
+        viewEventBus.off('lvs:select', this._onLvsSelect);
+        viewEventBus.off('lvs:clear', this._onLvsClear);
         if (!this.gl) return;
         this.resizeObserver.disconnect();
         this.glResources.destroy();

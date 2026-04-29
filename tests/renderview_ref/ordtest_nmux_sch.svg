@@ -58,7 +58,7 @@
     <text transform="matrix(0 0.045 0.045 0 26.0 14.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
     <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 26.0 21.0)" class="tapPoint" />
     <text transform="matrix(0 0.045 0.045 0 26.0 21.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
-    <g>
+    <g data-inst="mux[0][0]">
       <rect x="0.0" y="0.0" width="4.0" height="6.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 3.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Mux2</text>
       <text transform="matrix(0.045 0 0 -0.045 3.875 0.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -76,7 +76,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 4.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.125 4.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">s</text>
     </g>
-    <g>
+    <g data-inst="mux[0][2]">
       <rect x="0.0" y="10.0" width="4.0" height="6.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 3.875 15.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Mux2</text>
       <text transform="matrix(0.045 0 0 -0.045 3.875 10.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -94,7 +94,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 14.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.125 14.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">s</text>
     </g>
-    <g>
+    <g data-inst="mux[0][4]">
       <rect x="0.0" y="20.0" width="4.0" height="6.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 3.875 25.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Mux2</text>
       <text transform="matrix(0.045 0 0 -0.045 3.875 20.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -112,7 +112,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 24.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.125 24.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">s</text>
     </g>
-    <g>
+    <g data-inst="mux[0][6]">
       <rect x="0.0" y="30.0" width="4.0" height="6.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 3.875 35.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Mux2</text>
       <text transform="matrix(0.045 0 0 -0.045 3.875 30.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -130,7 +130,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 34.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.125 34.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">s</text>
     </g>
-    <g>
+    <g data-inst="mux[1][0]">
       <rect x="12.0" y="10.0" width="4.0" height="6.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 15.875 15.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Mux2</text>
       <text transform="matrix(0.045 0 0 -0.045 15.875 10.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -148,7 +148,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 12.2 14.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 12.125 14.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">s</text>
     </g>
-    <g>
+    <g data-inst="mux[1][2]">
       <rect x="12.0" y="20.0" width="4.0" height="6.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 15.875 25.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Mux2</text>
       <text transform="matrix(0.045 0 0 -0.045 15.875 20.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -166,7 +166,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 12.2 24.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 12.125 24.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">s</text>
     </g>
-    <g>
+    <g data-inst="mux[2][0]">
       <rect x="24.0" y="15.0" width="4.0" height="6.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 27.875 20.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Mux2</text>
       <text transform="matrix(0.045 0 0 -0.045 27.875 15.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />

@@ -24,7 +24,7 @@
     <circle cx="17.0" cy="23.0" r="0.1625" class="connPoint" />
     <circle cx="12.0" cy="1.0" r="0.1625" class="connPoint" />
     <circle cx="15.0" cy="4.0" r="0.1625" class="connPoint" />
-    <g>
+    <g data-inst="n1">
       <rect x="10.0" y="2.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 13.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Nmos</text>
       <text transform="matrix(0.045 0 0 -0.045 13.875 2.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
@@ -44,7 +44,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 1 -1 0 13.8 4.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 13.875 4.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">b</text>
     </g>
-    <g>
+    <g data-inst="n2">
       <rect x="10.0" y="10.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 13.875 13.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Nmos</text>
       <text transform="matrix(0.045 0 0 -0.045 13.875 10.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
@@ -64,7 +64,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 1 -1 0 13.8 12.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 13.875 12.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">b</text>
     </g>
-    <g>
+    <g data-inst="p1">
       <rect x="5.0" y="18.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 8.875 21.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Pmos</text>
       <text transform="matrix(0.045 0 0 -0.045 8.875 18.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
@@ -84,7 +84,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 1 -1 0 8.8 20.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 8.875 20.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">b</text>
     </g>
-    <g>
+    <g data-inst="p2">
       <rect x="15.0" y="18.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 18.875 21.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Pmos</text>
       <text transform="matrix(0.045 0 0 -0.045 18.875 18.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>

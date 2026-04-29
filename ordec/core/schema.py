@@ -1648,3 +1648,137 @@ class DrcValue(Node):
 
 
 PolyVec2I.in_subgraphs.append(DrcReport)
+
+
+# LVS (Layout vs Schematic) Results
+# ----------------------------------
+
+@public
+class LvsStatus(Enum):
+    """Status of an LVS comparison item."""
+    Match = 'match'
+    Mismatch = 'mismatch'
+    NoMatch = 'nomatch'  # Circuit-level: no corresponding circuit found
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+
+@public
+class LvsItemType(Enum):
+    """Type of LVS comparison item."""
+    Net = 'net'
+    Device = 'device'
+    Pin = 'pin'
+    Subcircuit = 'subcircuit'
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+
+@public
+class LvsReport(SubgraphRoot):
+    """LVS report containing layout vs. schematic comparison results."""
+    __slots__ = ()
+
+    ref_layout = SubgraphRef(Layout)
+    ref_schematic = SubgraphRef(Schematic)
+    top_cell = Attr(str)
+    status = Attr(LvsStatus)
+
+    def nresults(self) -> int:
+        """Count total LvsItems with mismatch status."""
+        return sum(1 for item in self.all(LvsItem)
+                   if item.status != LvsStatus.Match)
+
+    def summary(self) -> dict[str, dict[str, int]]:
+        """Circuit name -> {item_type: count} for mismatches."""
+        counts = {}
+        for item in self.all(LvsItem):
+            if item.status == LvsStatus.Match:
+                continue
+            circuit_name = item.circuit.layout_name or item.circuit.schem_name
+            if circuit_name not in counts:
+                counts[circuit_name] = {}
+            itype = item.item_type.value
+            counts[circuit_name][itype] = counts[circuit_name].get(itype, 0) + 1
+        return counts
+
+    def webdata(self):
+        circuits = []
+        for circuit in self.all(LvsCircuit):
+            circuits.append({
+                'nid': circuit.nid,
+                'layout_name': circuit.layout_name,
+                'schem_name': circuit.schem_name,
+                'status': circuit.status.value,
+                'message': circuit.message,
+            })
+
+        items = []
+        for item in self.all(LvsItem):
+            shapes = []
+            if item.layout_shapes:
+                for shape in item.layout_shapes:
+                    if isinstance(shape, tuple) and len(shape) >= 2:
+                        shape_type, coords = shape[0], shape[1]
+                        if shape_type == 'box' and len(coords) >= 4:
+                            shapes.append({'type': 'box', 'rect': list(coords[:4])})
+            items.append({
+                'nid': item.nid,
+                'circuit_nid': item.circuit.nid,
+                'item_type': item.item_type.value,
+                'status': item.status.value,
+                'layout_name': item.layout_name,
+                'schem_name': item.schem_name,
+                'layout_shapes': shapes,
+                'schem_path': list(item.schem_path) if item.schem_path else [],
+                'message': item.message,
+            })
+
+        return 'lvs_report', {
+            'top_cell': self.top_cell,
+            'status': self.status.value,
+            'circuits': circuits,
+            'items': items,
+            'unit': float(self.ref_layout.ref_layers.unit) if self.ref_layout else 1.0,
+        }
+
+
+@public
+class LvsCircuit(Node):
+    """A circuit (cell) in the LVS comparison."""
+    __slots__ = ()
+    in_subgraphs = [LvsReport]
+
+    layout_name = Attr(str, default='')
+    schem_name = Attr(str, default='')
+    status = Attr(LvsStatus)
+    message = Attr(str, default='')
+
+    layout_name_idx = Index(layout_name)
+    schem_name_idx = Index(schem_name)
+
+
+@public
+class LvsItem(Node):
+    """Individual LVS comparison item (net, device, pin, or subcircuit)."""
+    __slots__ = ()
+    in_subgraphs = [LvsReport]
+
+    circuit = LocalRef(LvsCircuit, optional=False)
+    circuit_idx = Index(circuit)
+
+    item_type = Attr(LvsItemType)
+    status = Attr(LvsStatus)
+
+    layout_name = Attr(str, default='')
+    schem_name = Attr(str, default='')
+
+    # Layout side: geometry for highlighting (list of shape dicts)
+    layout_shapes = Attr(tuple, optional=True)
+
+    # Schematic side: hierarchical path for highlighting
+    schem_path = Attr(tuple, optional=True)
+
+    message = Attr(str, default='')

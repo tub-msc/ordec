@@ -12,7 +12,7 @@
     <circle cx="7.0" cy="17.0" r="0.1625" class="connPoint" />
     <circle cx="7.0" cy="8.0" r="0.1625" class="connPoint" />
     <circle cx="23.0" cy="12.0" r="0.1625" class="connPoint" />
-    <g>
+    <g data-inst="m1">
       <rect x="5.0" y="10.0" width="4.0" height="6.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 8.875 15.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Mux2</text>
       <text transform="matrix(0.045 0 0 -0.045 8.875 10.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -30,7 +30,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 5.2 14.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 5.125 14.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">s</text>
     </g>
-    <g>
+    <g data-inst="i1">
       <rect x="18.0" y="10.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 21.875 13.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Inv</text>
       <text transform="matrix(0.045 0 0 -0.045 21.875 10.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />

@@ -852,3 +852,111 @@ body.theme-dark .lm_content {
     background: var(--color-bg-plot);
     outline: 1px solid var(--color-border);
 }
+
+/* -- LVS Viewer -------------------------------------------------- */
+.lvs-viewer {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    font-family: var(--font-mono);
+    font-size: var(--font-sm);
+}
+.lvs-header {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--color-border-light);
+    background: var(--color-bg-secondary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.lvs-status {
+    font-weight: bold;
+    padding: 2px 8px;
+    border-radius: 3px;
+}
+.lvs-pass .lvs-status {
+    background: #2a6f2a;
+    color: #fff;
+}
+.lvs-fail .lvs-status {
+    background: #c43c3c;
+    color: #fff;
+}
+.lvs-summary {
+    color: var(--color-text-secondary);
+}
+.lvs-deselect {
+    font-size: var(--font-xs);
+    padding: 2px 8px;
+    cursor: pointer;
+}
+.lvs-deselect:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.lvs-circuits {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+.lvs-circuit {
+    padding: 4px 12px;
+    cursor: pointer;
+    user-select: none;
+}
+.lvs-circuit:hover {
+    background: var(--color-bg-tertiary);
+}
+.lvs-circuit.lvs-mismatch {
+    border-left: 3px solid #f44;
+}
+.lvs-circuit.lvs-match {
+    border-left: 3px solid #4f4;
+}
+.lvs-circuit-toggle {
+    display: inline-block;
+    width: 1em;
+    font-size: 0.8em;
+    color: var(--color-text-secondary);
+}
+.lvs-circuit-name {
+    font-weight: bold;
+}
+.lvs-circuit-count {
+    color: var(--color-text-muted);
+}
+.lvs-circuit-msg {
+    color: var(--color-text-secondary);
+    font-style: italic;
+    padding-left: 1.5em;
+    font-size: 0.9em;
+}
+.lvs-items {
+    display: none;
+    padding-left: 20px;
+}
+.lvs-circuit.expanded > .lvs-items {
+    display: block;
+}
+.lvs-item {
+    padding: 3px 8px;
+    cursor: pointer;
+    border-radius: 3px;
+}
+.lvs-item:hover {
+    background: var(--color-bg-tertiary);
+}
+.lvs-item.selected {
+    background: var(--color-bg-plot);
+    outline: 1px solid var(--color-border);
+}
+.lvs-item-mismatch {
+    color: #e55;
+}
+.lvs-item-match {
+    color: var(--color-text-secondary);
+}
+.lvs-item-msg {
+    color: var(--color-text-muted);
+    font-size: 0.9em;
+}

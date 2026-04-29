@@ -192,10 +192,60 @@ const viewClassOf = {
             this.transform = d3.zoomIdentity;
             this.tooltip = document.createElement('div');
             this.tooltip.classList.add('schem-error-tooltip');
+            this.highlightOverlay = null;
+            this.svg = null;
+
+            this._onLvsSelect = (data) => this.setHighlight(data);
+            this._onLvsClear = () => this.clearHighlight();
+            viewEventBus.on('lvs:select', this._onLvsSelect);
+            viewEventBus.on('lvs:clear', this._onLvsClear);
+
+            const pending = viewEventBus.consumePending('lvs:select');
+            if (pending) {
+                this._pendingHighlight = pending;
+            }
         }
         zoomed({transform}) {
             this.transform = transform;
             this.g.attr("transform", transform);
+        }
+        setHighlight(data) {
+            this.clearHighlight();
+            if (!this.svg || !data.schem_path || data.schem_path.length === 0) {
+                return;
+            }
+
+            const highlightGroup = this.svg.append("g")
+                .attr("class", "lvs-highlight-group")
+                .attr("transform", this.transform);
+
+            const instName = data.schem_path.join('.');
+            const instGroup = this.g.select(`[data-inst="${instName}"]`);
+
+            if (instGroup.empty()) {
+                return;
+            }
+
+            const bbox = instGroup.node().getBBox();
+            const pad = 0.3;
+            highlightGroup.append("rect")
+                .attr("class", "lvs-highlight-border")
+                .attr("x", bbox.x - pad)
+                .attr("y", bbox.y - pad)
+                .attr("width", bbox.width + pad * 2)
+                .attr("height", bbox.height + pad * 2)
+                .attr("fill", "none")
+                .attr("stroke", "#e55")
+                .attr("stroke-width", 0.15)
+                .attr("stroke-dasharray", "0.3,0.15");
+
+            this.highlightOverlay = highlightGroup;
+        }
+        clearHighlight() {
+            if (this.highlightOverlay) {
+                this.highlightOverlay.remove();
+                this.highlightOverlay = null;
+            }
         }
         update(msgData) {
             const viewbox = msgData['viewbox'];
@@ -204,6 +254,7 @@ const viewClassOf = {
             const svg = d3.create("svg")
                 .attr("class", "fit")
                 .attr("viewBox", viewbox);
+            this.svg = svg;
 
             this.g = svg.append("g")
                 .html(msgData['inner'])
@@ -234,6 +285,16 @@ const viewClassOf = {
                 .on('mouseout', () => {
                     this.tooltip.style.display = 'none';
                 });
+
+            if (this._pendingHighlight) {
+                this.setHighlight(this._pendingHighlight);
+                this._pendingHighlight = null;
+            }
+        }
+        destroy() {
+            viewEventBus.off('lvs:select', this._onLvsSelect);
+            viewEventBus.off('lvs:clear', this._onLvsClear);
+            this.clearHighlight();
         }
     },
     report: class {
@@ -414,6 +475,184 @@ const viewClassOf = {
 
         destroy() {
             viewEventBus.emit('drc:clear');
+        }
+    },
+    lvs_report: class {
+        constructor(resContent) {
+            this.resContent = resContent;
+            this.el = document.createElement('div');
+            this.el.className = 'lvs-viewer';
+            this.selectedItemNid = null;
+            resContent.appendChild(this.el);
+        }
+
+        update(data) {
+            const circuitMap = new Map();
+            data.circuits.forEach(circuit => {
+                circuitMap.set(circuit.nid, { ...circuit, items: [] });
+            });
+
+            const itemMap = new Map();
+            data.items.forEach(item => {
+                itemMap.set(item.nid, item);
+                const circuit = circuitMap.get(item.circuit_nid);
+                if (circuit) {
+                    circuit.items.push(item);
+                }
+            });
+
+            const mismatchItemCount = data.items.filter(i => i.status !== 'match').length;
+            const circuitMismatchCount = data.circuits.filter(c => c.status !== 'match').length;
+
+            const statusClass = data.status === 'match' ? 'lvs-pass' : 'lvs-fail';
+            const statusText = data.status === 'match' ? 'PASS' : 'FAIL';
+
+            let summaryText;
+            if (circuitMismatchCount > 0) {
+                summaryText = `${circuitMismatchCount} circuit${circuitMismatchCount > 1 ? 's' : ''} with errors`;
+                if (mismatchItemCount > 0) {
+                    summaryText += `, ${mismatchItemCount} item mismatch${mismatchItemCount > 1 ? 'es' : ''}`;
+                }
+            } else {
+                summaryText = 'All circuits match';
+            }
+
+            let html = `<div class="lvs-header ${statusClass}">
+                <span class="lvs-status">${statusText}</span>
+                <span class="lvs-summary">${summaryText}</span>
+                <button class="lvs-deselect" disabled>Deselect</button>
+            </div>`;
+            html += '<div class="lvs-circuits">';
+
+            data.circuits.forEach(circuit => {
+                const circuitData = circuitMap.get(circuit.nid);
+                const mismatchItems = circuitData.items.filter(i => i.status !== 'match');
+
+                if (circuit.status === 'match' && mismatchItems.length === 0) {
+                    return;
+                }
+
+                const circuitStatusClass = circuit.status === 'match' ? 'lvs-match' : 'lvs-mismatch';
+                const circuitName = circuit.layout_name || circuit.schem_name || 'unknown';
+                const hasExpandableItems = mismatchItems.length > 0;
+
+                html += `<div class="lvs-circuit ${circuitStatusClass}" data-nid="${circuit.nid}">`;
+                if (hasExpandableItems) {
+                    html += `<span class="lvs-circuit-toggle">&#9654;</span> `;
+                }
+                html += `<span class="lvs-circuit-name">${circuitName}</span>`;
+
+                if (circuit.status !== 'match' && circuit.message) {
+                    html += `<div class="lvs-circuit-msg">${circuit.message}</div>`;
+                }
+
+                if (hasExpandableItems) {
+                    html += '<div class="lvs-items">';
+                    mismatchItems.forEach((item, idx) => {
+                        const typeLabel = item.item_type;
+                        const layoutId = item.layout_name || '?';
+                        const schemId = item.schem_name || '?';
+                        html += `<div class="lvs-item lvs-item-mismatch" data-nid="${item.nid}">`;
+                        html += `${typeLabel}: L:${layoutId} ↔ S:${schemId}`;
+                        if (item.message) {
+                            html += ` <span class="lvs-item-msg">${item.message}</span>`;
+                        }
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                }
+
+                html += '</div>';
+            });
+
+            html += '</div>';
+            this.el.innerHTML = html;
+
+            this.el.querySelectorAll('.lvs-circuit').forEach(circuitEl => {
+                const toggleCircuit = () => {
+                    circuitEl.classList.toggle('expanded');
+                    const toggle = circuitEl.querySelector('.lvs-circuit-toggle');
+                    toggle.innerHTML = circuitEl.classList.contains('expanded') ? '&#9660;' : '&#9654;';
+                };
+                circuitEl.addEventListener('click', (e) => {
+                    if (!e.target.classList.contains('lvs-item')) {
+                        toggleCircuit();
+                    }
+                });
+            });
+
+            const deselectBtn = this.el.querySelector('.lvs-deselect');
+            const deselect = () => {
+                this.el.querySelectorAll('.lvs-item.selected').forEach(el => {
+                    el.classList.remove('selected');
+                });
+                this.selectedItemNid = null;
+                deselectBtn.disabled = true;
+                viewEventBus.emit('lvs:clear');
+            };
+            deselectBtn.addEventListener('click', deselect);
+
+            this.el.querySelectorAll('.lvs-item').forEach(itemEl => {
+                itemEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.el.querySelectorAll('.lvs-item.selected').forEach(el => {
+                        el.classList.remove('selected');
+                    });
+                    itemEl.classList.add('selected');
+                    deselectBtn.disabled = false;
+                    const nid = parseInt(itemEl.dataset.nid, 10);
+                    this.selectedItemNid = nid;
+                    const item = itemMap.get(nid);
+                    if (item) {
+                        const payload = {
+                            shapes: item.layout_shapes || [],
+                            schem_path: item.schem_path || [],
+                        };
+
+                        const hasLayoutShapes = item.layout_shapes && item.layout_shapes.length > 0;
+                        const hasSchemPath = item.schem_path && item.schem_path.length > 0;
+                        const hasListeners = viewEventBus.hasListeners('lvs:select');
+
+                        console.log('LVS click:', {
+                            viewName: this.viewName,
+                            hasLayoutShapes,
+                            hasSchemPath,
+                            hasListeners,
+                            schem_path_raw: item.schem_path,
+                            layout_shapes_raw: item.layout_shapes,
+                            item,
+                        });
+
+                        if (hasListeners) {
+                            viewEventBus.emit('lvs:select', payload);
+                        } else {
+                            viewEventBus.setPending('lvs:select', payload);
+                            if (hasLayoutShapes) {
+                                const layoutView = this.viewName ? `${this.viewName}.ref_layout` : null;
+                                console.log('Requesting layout:', layoutView);
+                                viewEventBus.emit('layout:request-open', {
+                                    view: layoutView,
+                                    sourceContainer: this.glContainer,
+                                });
+                            }
+                            if (hasSchemPath) {
+                                const schemView = this.viewName ? `${this.viewName}.ref_schematic` : null;
+                                console.log('Requesting schematic:', schemView);
+                                viewEventBus.emit('schematic:request-open', {
+                                    view: schemView,
+                                    sourceContainer: this.glContainer,
+                                });
+                            }
+                        }
+                    }
+                });
+            });
+
+            this.itemMap = itemMap;
+        }
+
+        destroy() {
+            viewEventBus.emit('lvs:clear');
         }
     },
 }
