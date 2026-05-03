@@ -69,29 +69,6 @@ def layout_expand_geom() -> Layout:
         ],
     )
 
-    l % LayoutRectPoly(
-        layer=layers.Metal4,
-        vertices = [
-            Vec2I(0,0),
-            Vec2I(100,100),
-            Vec2I(50,50),
-            Vec2I(-100, 25),
-        ],
-    )
-
-    l % LayoutRectPath(
-        width=80,
-        endtype=PathEndType.Square,
-        layer=layers.Metal5,
-        vertices = [
-            Vec2I(0,0),
-            Vec2I(1400,1400),
-            Vec2I(-400,600),
-            Vec2I(100,100),
-        ],
-        start_direction=RectDirection.Horizontal,
-    )
-
     return l
 
 @generate_func

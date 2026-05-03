@@ -41,15 +41,6 @@ class PathEndType(Enum):
         return f'{self.__class__.__name__}.{self.name}'
 
 @public
-class RectDirection(Enum):
-    """Used by :class:`LayoutRectPoly` and :class:`LayoutRectPath`."""
-    Vertical = 0 #: Indicates that shape is encoded with vertical edge first, horizontal edge second.
-    Horizontal = 1  #: Indicates that shape is encoded with horizontal edge first, vertical edge second.
-
-    def __repr__(self):
-        return f'{self.__class__.__name__}.{self.name}'
-
-@public
 class SchemErrorType(Enum):
     OverlappingTerminals = 'Overlapping terminals'
     MissingTerminalConnection = 'Missing terminal connection'
@@ -1128,42 +1119,6 @@ class LayoutPath(LayoutPathBase, MixinPolygonalChain, MixinLayoutPinnable):
 
 
 @public
-class LayoutRectPoly(GenericPolyI, MixinLayoutPinnable):
-    """
-    Compact rectilinear polygon. Each vertex is connected to its successor
-    through two segments. The first segment in start_direction, the second
-    segment perpendicular to the first. Each vertex has to differ in both x
-    and y coordiante from its successor. The successor of the last vertex is the
-    first vertex.
-
-    This representation of a rectilinear polygon requires half the vertices as
-    an equivalent LayoutPoly.
-
-    One use case is for rectangles, which this class can represent using just
-    two corner vertices.
-    """
-    in_subgraphs = [Layout]
-
-    start_direction = Attr(RectDirection, default=RectDirection.Horizontal)
-    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
-
-@public
-class LayoutRectPath(LayoutPathBase, MixinLayoutPinnable):
-    """
-    Compact rectilinear path. Each vertex is connected to its successor
-    through two segments. The first segment in start_direction, the second
-    segment perpendicular to the first. Each vertex has to differ in both x
-    and y coordiante from its successor. The last vertex has no successor
-    (i.e. open path).
-
-    This representation of a rectilinear path requires half the vertices as
-    an equivalent LayoutPath.
-    """
-    in_subgraphs = [Layout]
-
-    start_direction = Attr(RectDirection, default=RectDirection.Horizontal)
-
-@public
 class LayoutRect(Node, MixinLayoutPinnable):
     """Layout rectangle."""
     in_subgraphs = [Layout]
@@ -1372,13 +1327,12 @@ class LayoutPin(Node):
     a non-pin layer, and a corresponding pin layer shape is created
     automatically by expand_pins (in write_gds or the web viewer).
 
-    The associated shape can be a LayoutPoly, LayoutRectPoly, LayoutRect,
-    LayoutPath or LayoutRectPath.
+    The associated shape can be a LayoutPoly, LayoutRect, or LayoutPath.
     """
     in_subgraphs = [Layout]
 
-    ref = LocalRef(LayoutPoly|LayoutRectPoly|LayoutPath,
-        refcheck_custom=lambda val: issubclass(val, (LayoutPoly, LayoutRectPoly, LayoutRect, LayoutPath, LayoutRectPath)),
+    ref = LocalRef(LayoutPoly|LayoutPath,
+        refcheck_custom=lambda val: issubclass(val, (LayoutPoly, LayoutRect, LayoutPath)),
         )
     pin = ExternalRef(Pin,
         of_subgraph=lambda c: c.root.symbol,

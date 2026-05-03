@@ -117,15 +117,7 @@ Layout
    :undoc-members:
 
 .. autoclass:: LayoutPath
-   :members: 
-   :undoc-members:
-
-.. autoclass:: LayoutRectPoly
-   :members: 
-   :undoc-members:
-
-.. autoclass:: LayoutRectPath
-   :members: 
+   :members:
    :undoc-members:
 
 .. autoclass:: LayoutRect
@@ -145,9 +137,5 @@ Layout
    :undoc-members:
 
 .. autoclass:: PathEndType
-   :members: 
-   :undoc-members:
-
-.. autoclass:: RectDirection
-   :members: 
+   :members:
    :undoc-members:
