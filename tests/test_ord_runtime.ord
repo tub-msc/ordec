@@ -192,10 +192,10 @@ cell LayoutTestCell:
         layers = .ref_layers
         LayoutRect r:
             .layer = layers.Metal1
-        ! .r.width == 100
-        ! .r.height == 100
-        ! .r.lx == 0
-        ! .r.ly == 0
+        constrain(.r.width == 100)
+        constrain(.r.height == 100)
+        constrain(.r.lx == 0)
+        constrain(.r.ly == 0)
 
 def test_minimal_layout():
     c = LayoutTestCell()
