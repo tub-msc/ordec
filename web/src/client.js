@@ -12,6 +12,7 @@ export class OrdecClient {
         this.registerResultViewers(resultViewers);
         this.setStatus = setStatus;
         this.localModule = null; // Set to module name when in localModule mode.
+        this.autoRefreshEnabled = true;
     }
 
     registerResultViewers(resultViewers) {
@@ -65,8 +66,12 @@ export class OrdecClient {
             this.reqPending = false;
             this.requestNextView();
         } else if (msg['msg'] == 'localmodule_changed') {
-            console.log("ordecClient.connect() triggered by localmodule_changed message.");
-            this.connect();
+            if (this.autoRefreshEnabled) {
+                console.log("ordecClient.connect() triggered by localmodule_changed message.");
+                this.connect();
+            } else {
+                console.log("localmodule_changed ignored (auto-refresh disabled).");
+            }
         }
     }
 

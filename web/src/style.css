@@ -287,6 +287,28 @@ body.theme-dark .toolbar-btn option {
     color: var(--color-text-muted);
 }
 
+/* -- Toolbar toggle button --------------------------------------- */
+.toolbar-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.toolbar-toggle-btn::before {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background-color: var(--color-toggle);
+    transition: background-color 150ms ease;
+}
+.toolbar-toggle-btn.active {
+    --color-toggle: #00cc44;
+}
+.toolbar-toggle-btn:not(.active) {
+    --color-toggle: #ee2222;
+}
+
 /* -- Status indicator -------------------------------------------- */
 #status {
     display: flex;
@@ -482,8 +504,8 @@ pre {
 }
 
 /* -- Debug ------------------------------------------------------- */
-#toolbar > .debug,
-.debug {
+body:not(.show-debug) #toolbar > .debug,
+body:not(.show-debug) .debug {
     display: none;
 }
 

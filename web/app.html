@@ -10,14 +10,17 @@
   <body>
     <div id="toolbar">
       <div class="item"><button class="toolbar-btn" id="newresview">New Result View</button></div>
-      <div class="item debug"><button class="toolbar-btn" id="savejson">Save as JSON</button></div>
       <div class="item" id="toolSourcetype">
         <select class="toolbar-btn" name="sourcetype" id="sourcetype">
           <option value="ord">Source: ORD</option>
           <option value="python">Source: Python</option>
         </select>
       </div>
-      <div class="item" id="toolRefresh"><button class="toolbar-btn" id="refresh">Refresh</button></div>
+      <div class="item" id="toolAutoRefresh">
+        <button class="toolbar-btn toolbar-toggle-btn active" id="autoRefreshToggle" title="Auto-refresh views when source changes">Auto-refresh: on</button>
+      </div>
+      <div class="item" id="toolRefresh"><button class="toolbar-btn" id="refresh">Refresh (Ctrl+M)</button></div>
+      <div class="item debug"><button class="toolbar-btn" id="savejson">Save as JSON</button></div>
       <div class="item"><button class="toolbar-btn" id="examples">Examples</button></div>
       <div class="toolbar-divider"></div>
       <div class="spacer"></div>

@@ -30,12 +30,15 @@ initTheme();
 const sourceTypeSelect = document.querySelector("#sourcetype");
 const urlParams = new URLSearchParams(window.location.hash.substring(1));
 
+// Reload page when URL hash changes (e.g., example=, debug=) so parameters take effect
+window.addEventListener('hashchange', () => {
+    window.location.reload();
+});
+
 // add &debug=true to show 'debug' elements
 const debug = Boolean(urlParams.get('debug'));
 if(debug) {
-    Array.from(document.querySelectorAll(".debug")).forEach(e => {
-        e.style.display = "block";
-    });
+    document.body.classList.add('show-debug');
 }
 
 // Overrides auto_refresh=False behavior for test_web.py:
@@ -80,17 +83,20 @@ class Editor {
     }
 
     registerChangeHandler(client) {
+        this.client = client;
         this.editor.session.on('change', (delta) => {
             // After the user has modified the example code, he must confirm
             // when he wants to close the browser window.
             window.onbeforeunload = unloadMsg;
 
             window.clearTimeout(this.timeout);
-            this.timeout = window.setTimeout(() => {
-                console.log('ordecClient.connect() triggered by editor change.');
-                client.src = this.editor.getValue();
-                client.connect();
-            }, this.refreshTimeout);
+            if (client.autoRefreshEnabled) {
+                this.timeout = window.setTimeout(() => {
+                    console.log('ordecClient.connect() triggered by editor change.');
+                    client.src = this.editor.getValue();
+                    client.connect();
+                }, this.refreshTimeout);
+            }
         });
     }
 
@@ -212,8 +218,6 @@ if(queryLocal) {
     // This editor and zero or more result views are initialized through
     // the data obtained from the server through getInitData().
 
-    document.querySelector("#toolRefresh").style.display='none';
-
     const initData = await getInitData();
     initData.uistate.header = {popout: false};
     sourceTypeSelect.value = initData.srctype;
@@ -237,9 +241,26 @@ layout.addEventListener('stateChanged', () => {
     client.registerResultViewers(getResultViewers());
 });
 
-document.querySelector("#refresh").onclick = () => {
+function refresh() {
+    if (!client.localModule) {
+        const editor = getEditor();
+        if (editor) {
+            client.src = editor.editor.getValue();
+        }
+    }
     client.connect();
-};
+}
+
+const refreshBtn = document.querySelector("#refresh");
+refreshBtn.onmousedown = (e) => e.preventDefault();
+refreshBtn.onclick = refresh;
+
+document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'm') {
+        e.preventDefault();
+        refresh();
+    }
+});
 
 sourceTypeSelect.onchange = () => {
     const sourceType = getSourceType();
@@ -249,6 +270,14 @@ sourceTypeSelect.onchange = () => {
 
     console.log('ordecClient.connect() triggered by source type selector.');
     client.connect();
+};
+
+const autoRefreshToggle = document.querySelector("#autoRefreshToggle");
+autoRefreshToggle.onmousedown = (e) => e.preventDefault();
+autoRefreshToggle.onclick = () => {
+    client.autoRefreshEnabled = !client.autoRefreshEnabled;
+    autoRefreshToggle.classList.toggle('active', client.autoRefreshEnabled);
+    autoRefreshToggle.textContent = client.autoRefreshEnabled ? 'Auto-refresh: on' : 'Auto-refresh: off';
 };
 
 // Make the OrdecClient object easy to access for automated testing & browser-based debugging:
