@@ -394,8 +394,21 @@ class ConnectionHandler:
 
         Only call this method with self.import_lock acquired as writer.
         """
-        for k in list(sys.modules.keys()):
+        protected_roots = [
+            Path(sys.prefix).resolve(),
+            Path(sys.base_prefix).resolve(),
+        ]
+        for k, module in list(sys.modules.items()):
             if k not in self.sysmodules_orig:
+                filename = getattr(module, "__file__", None)
+                if not filename:
+                    continue
+                try:
+                    path = Path(filename).resolve()
+                except OSError:
+                    continue
+                if any(path.is_relative_to(root) for root in protected_roots):
+                    continue
                 #print(f"Unloading {k}...")
                 del sys.modules[k]
 
@@ -775,11 +788,13 @@ def main():
     # A future version of the websockets library might make this workaround
     # unnecessary.
     startup_queue = queue.Queue(maxsize=1)
-    threading.Thread(
+    server_queue = queue.Queue(maxsize=1)
+    thread = threading.Thread(
         target=server_thread,
-        args=(hostname, port, static_handler, key, startup_queue),
+        args=(hostname, port, static_handler, key, startup_queue, server_queue),
         daemon=True,
-    ).start()
+    )
+    thread.start()
 
     # Wait until the server thread has either successfully bound or failed.
     startup_error = startup_queue.get()
@@ -789,6 +804,7 @@ def main():
         else:
             print(f"ERROR: Failed to start server on {hostname}:{port}: {startup_error}")
         raise SystemExit(1)
+    server = server_queue.get()
 
     print(f"To start ORDeC, navigate to: {user_url}")
 
@@ -804,14 +820,18 @@ def main():
     except KeyboardInterrupt:
         print("Terminating.")
     finally:
+        server.shutdown()
+        thread.join()
         if launch_html:
             launch_html.close() # Deletes the temporary file.
 
-def server_thread(hostname, port, static_handler, key, startup_queue):
+def server_thread(hostname, port, static_handler, key, startup_queue, server_queue=None):
     c = ConnectionHandler(key=key, sysmodules_orig=sys.modules)
     startup_notified = False
     try:
         with serve(c.handle_connection, hostname, port, process_request=static_handler.process_request) as server:
+            if server_queue is not None:
+                server_queue.put(server)
             startup_queue.put(None)
             startup_notified = True
             #print(f"Listening on {hostname}, port {port}")
@@ -820,4 +840,5 @@ def server_thread(hostname, port, static_handler, key, startup_queue):
         # If startup fails (e.g. EADDRINUSE), report to main thread and return.
         if not startup_notified:
             startup_queue.put(e)
+            return
         raise
