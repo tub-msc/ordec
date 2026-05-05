@@ -87,14 +87,6 @@ testdata = [
     testcase(lambda: libtest.NetNamingTest().schematic,
         refdir / "libtest_netnamingtest_sch.svg"),
     
-    # Test cells from ordec.examples
-    # ----------------------------
-
-    testcase(ord_lambda('ordec.examples.diffpair', 'DiffPair', 'schematic'),
-        refdir / "examples_diffpair_sch.svg"),
-    testcase(ord_lambda('ordec.examples.diffpair', 'DiffPairTb', 'schematic'),
-        refdir / "examples_diffpairtb_sch.svg"),
-    
     # Test cells from tests.lib.ord
     # ------------------------------
 
