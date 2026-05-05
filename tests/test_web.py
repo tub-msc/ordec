@@ -132,8 +132,7 @@ def test_index(web):
 def request_integrated_example(web, testcase):
     web.resize_viewport()
 
-    web.driver.get(web.url + f'app.html#example={testcase}&refreshall=true')
-    web.driver.refresh()  # fragment-only change doesn't reload the page
+    web.navigate(f'app.html#example={testcase}&refreshall=true')
 
     web.wait_for_ready()
 
@@ -166,10 +165,9 @@ def test_integrated(web, testcase):
 def request_local(web, module, request_views):
     res = {}
     web.resize_viewport()
-    
+
     qs_local = web.key.query_string_local(module, '')
-    web.driver.get(web.url + f'app.html#refreshall=true&viewsel_flat=true&{qs_local}')
-    web.driver.refresh()  # fragment-only change doesn't reload the page
+    web.navigate(f'app.html#refreshall=true&viewsel_flat=true&{qs_local}')
 
     web.wait_for_ready()
 
@@ -236,10 +234,9 @@ def myhistogram(img, thresh=50):
 def test_layoutgl(web):
     """Fuzzy visual testing of web layout viewer (layout-gl.js)."""
     web.resize_viewport()
-        
+
     qs_local = web.key.query_string_local("tests.lib.layoutgl_example", "layoutgl_example()")
-    web.driver.get(web.url + f'app.html#refreshall=true&{qs_local}')
-    web.driver.refresh()  # fragment-only change doesn't reload the page
+    web.navigate(f'app.html#refreshall=true&{qs_local}')
 
     web.wait_for_ready()
 
