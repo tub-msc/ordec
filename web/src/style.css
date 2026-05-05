@@ -201,23 +201,20 @@ body {
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
-    align-items: center;
+    align-items: stretch;
     min-height: 28px;
-    gap: 0;
     padding: 0;
     background-color: var(--color-bg-toolbar);
     border-bottom: 1px solid var(--color-toolbar-border);
     box-shadow: var(--toolbar-shadow);
     z-index: 1;
 }
-#toolbar .spacer {
-    flex-grow: 1;
-}
 #toolbar > .item {
     display: flex;
     align-items: stretch;
     align-self: stretch;
     padding: 0;
+    min-height: 28px;
 }
 /* Non-interactive items get padding directly */
 #toolbar > .item.toolbar-muted,
@@ -225,11 +222,57 @@ body {
     align-items: center;
     padding: 0 8px;
 }
-/* -- Unified toolbar control style --------------------------------- */
-#toolbar > :not(.spacer):not(.toolbar-divider):not(:first-child) {
+/* Right-aligned item group */
+#toolbar > .toolbar-right {
+    display: flex;
+    align-items: stretch;
+    margin-left: auto;
+}
+.toolbar-right > .item {
+    display: flex;
+    align-items: stretch;
+    padding: 0;
+    min-height: 28px;
+}
+.toolbar-right > .item.toolbar-muted,
+.toolbar-right > #status {
+    align-items: center;
+    padding: 0 8px;
+}
+.toolbar-right > .toolbar-btn {
+    align-self: stretch;
+    min-height: 28px;
+}
+.toolbar-right > :not(:first-child) {
     position: relative;
 }
-#toolbar > :not(.spacer):not(.toolbar-divider):not(:first-child):not(#status)::before {
+.toolbar-right > :not(:first-child):not(#status)::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 3px;
+    bottom: 3px;
+    width: 1px;
+    background-color: var(--color-toolbar-border);
+}
+/* Vertical divider after section */
+#toolbar > .toolbar-section-end {
+    position: relative;
+}
+#toolbar > .toolbar-section-end::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 3px;
+    bottom: 3px;
+    width: 1px;
+    background-color: var(--color-toolbar-border);
+}
+/* -- Unified toolbar control style --------------------------------- */
+#toolbar > :not(:first-child) {
+    position: relative;
+}
+#toolbar > :not(:first-child):not(#status)::before {
     content: '';
     position: absolute;
     left: 0;
@@ -243,12 +286,6 @@ body {
     background-size: 1px calc(100% - 6px);
     background-position: left center;
     background-repeat: no-repeat;
-}
-.toolbar-divider {
-    width: 1px;
-    align-self: stretch;
-    margin: 3px 0;
-    background-color: var(--color-toolbar-border);
 }
 .toolbar-btn {
     font-family: var(--font-sans);
@@ -266,6 +303,7 @@ body {
 /* toolbar-btn as direct child of toolbar (not inside .item) */
 #toolbar > .toolbar-btn {
     align-self: stretch;
+    min-height: 28px;
 }
 .toolbar-btn:hover {
     background-color: rgba(0, 0, 0, 0.06);
@@ -504,7 +542,7 @@ pre {
 }
 
 /* -- Debug ------------------------------------------------------- */
-body:not(.show-debug) #toolbar > .debug,
+body:not(.show-debug) #toolbar .debug,
 body:not(.show-debug) .debug {
     display: none;
 }
