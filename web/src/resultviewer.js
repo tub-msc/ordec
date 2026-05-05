@@ -301,6 +301,13 @@ const viewClassOf = {
 
             this.resContent.replaceChildren(report);
         }
+
+        destroy() {
+            for (const r of this.renderers) {
+                r?.destroy?.();
+            }
+            this.renderers = [];
+        }
     },
     layout_gl: LayoutGL,
     drc_report: class {
