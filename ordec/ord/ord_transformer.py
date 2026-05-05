@@ -26,9 +26,6 @@ class OrdTransformer(PythonTransformer):
     def ast_core(self, attr):
         return self.ast_attribute(self.ast_name("__ordec_core__"), attr)
 
-    def ast_sim(self, attr):
-        return self.ast_attribute(self.ast_name("__ordec_sim__"), attr)
-
     def ast_ord_context(self, attr):
         return self.ast_attribute(self.ast_name("__ord_context__"), attr)
 
@@ -75,18 +72,15 @@ class OrdTransformer(PythonTransformer):
 
         # Validate the return type
         viewgen_type_lower = viewgen_type.lower()
-        valid_viewgens = ("symbol", "schematic", "layout", "simulation")
+        valid_viewgens = (
+            "symbol", "schematic", "layout", "simulation", "report")
         if viewgen_type_lower not in valid_viewgens:
             raise SyntaxError(
                 f"Unknown viewgen return type '{viewgen_type}'. "
-                "Expected Symbol, Schematic, Layout, or Simulation."
+                "Expected Symbol, Schematic, Layout, Simulation, or Report."
             )
 
         if viewgen_type_lower == "simulation":
-            if viewgen_args:
-                raise SyntaxError(
-                    "Simulation viewgen parameters are not supported yet."
-                )
             return self._sim_viewgen(
                 func_name, suite)
 
@@ -102,7 +96,8 @@ class OrdTransformer(PythonTransformer):
                 )
 
         keywords = list()
-        keywords.append(ast.keyword(arg="cell", value=self.ast_name("self")))
+        if viewgen_type_lower in ("symbol", "schematic", "layout"):
+            keywords.append(ast.keyword(arg="cell", value=self.ast_name("self")))
         if viewgen_type_lower in ("schematic", "layout"):
             keywords.append(
                 ast.keyword(
@@ -115,7 +110,7 @@ class OrdTransformer(PythonTransformer):
         ord_root_store = self.ast_name("__ord_root__", ctx=ast.Store())
 
         viewgen_call = ast.Call(
-            func=self.ast_core(viewgen_type.title()),
+            func=self.ast_name("Report") if viewgen_type_lower == "report" else self.ast_core(viewgen_type.title()),
             args=[],
             keywords=keywords
         )
@@ -157,7 +152,7 @@ class OrdTransformer(PythonTransformer):
             ),
             body=func_body,
             decorator_list=[self.ast_core("generate")],
-            returns=self.ast_core(viewgen_type.title()),
+            returns=self.ast_name("Report") if viewgen_type_lower == "report" else self.ast_core(viewgen_type.title()),
             type_params=[]
         )
         return func_def
@@ -185,7 +180,7 @@ class OrdTransformer(PythonTransformer):
         simulator_assign = ast.Assign(
             targets=[ord_simulator_store],
             value=ast.Call(
-                func=self.ast_sim("Simulator"),
+                func=self.ast_name("Simulator"),
                 args=[ord_simhier],
                 keywords=[]
             )

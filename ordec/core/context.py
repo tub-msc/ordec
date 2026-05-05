@@ -91,3 +91,7 @@ class LayoutViewContext(ViewContext):
 
 class SimulationViewContext(ViewContext):
     pass
+
+
+class ReportViewContext(ViewContext):
+    pass

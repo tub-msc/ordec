@@ -3,6 +3,7 @@ from ordec.core import *
 # Libary imports
 from ordec.lib.generic_mos import Nmos
 from ordec.lib import Res, Gnd, Vdc
+from ordec.sim import Simulator
 
 cell DiffPair:
     viewgen symbol -> Symbol:

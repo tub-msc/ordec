@@ -3,6 +3,7 @@ from ordec.core import *
 # Libary imports
 from ordec.lib.generic_mos import Nmos, Pmos
 from ordec.lib import Gnd, Vdc
+from ordec.sim import Simulator
 
 cell Nand2:
     viewgen symbol -> Symbol:

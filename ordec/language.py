@@ -13,7 +13,6 @@ from .ord import ord_to_py
 def prepare_ord_globals(g: dict):
     """Populate g with the implicit globals that ORD-generated code expects."""
     g.setdefault("__ordec_core__", importlib.import_module("ordec.core"))
-    g.setdefault("__ordec_sim__", importlib.import_module("ordec.sim"))
     g.setdefault("__ord_context__", importlib.import_module("ordec.ord.context"))
 
 
