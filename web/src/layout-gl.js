@@ -177,8 +177,10 @@ export class LayoutGL {
         });
         this.resizeObserver.observe(this.canvas);
 
-        this.resContent.addEventListener("keydown", event => this.onKeydown(event));
-        this.canvas.addEventListener("mousemove", event => this.onMousemove(event));
+        this._onKeydown = (event) => this.onKeydown(event);
+        this._onMousemove = (event) => this.onMousemove(event);
+        this.resContent.addEventListener("keydown", this._onKeydown);
+        this.canvas.addEventListener("mousemove", this._onMousemove);
 
         this._onDrcSelect = (data) => this.setHighlight(data.shapes);
         this._onDrcClear = () => this.clearHighlight();
@@ -328,6 +330,8 @@ export class LayoutGL {
         // Called by ResultViewer when this renderer is being replaced.
         viewEventBus.off('drc:select', this._onDrcSelect);
         viewEventBus.off('drc:clear', this._onDrcClear);
+        this.resContent.removeEventListener("keydown", this._onKeydown);
+        this.canvas.removeEventListener("mousemove", this._onMousemove);
         if (!this.gl) return;
         this.resizeObserver.disconnect();
         this.glResources.destroy();
