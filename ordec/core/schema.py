@@ -976,6 +976,8 @@ class SimInstance(Node):
     def full_path_str(self) -> str:
         return '.'.join(str(x) for x in self.full_path_list())
 
+public(Simulation = SimHierarchy)
+
 # LayerStack
 # ----------
 

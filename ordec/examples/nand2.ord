@@ -3,8 +3,6 @@ from ordec.core import *
 # Libary imports
 from ordec.lib.generic_mos import Nmos, Pmos
 from ordec.lib import Gnd, Vdc
-# Simulation imports
-from ordec.sim import Simulator
 
 cell Nand2:
     viewgen symbol -> Symbol:
@@ -67,8 +65,5 @@ cell Nand2Tb:
         Vdc src_a: .pos=(10,6); .m -- vss; .p -- a; .$dc=5
         Vdc src_b: .pos=(5,6); .m -- vss; .p -- b; .$dc=0
 
-    @generate
-    def sim_dc(self):
-        node = SimHierarchy.from_schematic(self.schematic)
-        Simulator(node).op()
-        return node
+    viewgen sim_dc -> Simulation:
+        .op()

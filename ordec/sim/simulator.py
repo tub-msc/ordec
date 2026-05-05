@@ -14,6 +14,7 @@ from typing import Literal
 logger = logging.getLogger(__name__)
 
 from ..core import *
+from ..core.context import NodeContext, SimulationViewContext
 from .ngspice import Ngspice, ngspice_batch
 from ..schematic import Netlister
 
@@ -71,6 +72,8 @@ def Simulator(simhier: SimHierarchy, enable_savecurrents: bool = True,
 class SimulatorBase:
     """Shared netlisting, result storage, and query logic."""
 
+    view_context = SimulationViewContext
+
     def __init__(self, simhier: SimHierarchy, enable_savecurrents: bool = True):
         self.simhier = simhier
         self.top = self.simhier.schematic
@@ -83,6 +86,10 @@ class SimulatorBase:
 
     def hier_simobj_of_name(self, name: str) -> SimInstance|SimNet:
         return self.netlister.hier_simobj_of_name(self.simhier, name)
+
+    def ctx(self):
+        """Return a context for ORD simulation view generators."""
+        return NodeContext(self)
 
     def _store_results(self, sim_array: SimArray):
         """Store SimArray and assign field names to SimNet/SimPin/SimParam."""

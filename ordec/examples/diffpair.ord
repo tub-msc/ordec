@@ -1,0 +1,70 @@
+from ordec.core import *
+
+# Libary imports
+from ordec.lib.generic_mos import Nmos
+from ordec.lib import Res, Gnd, Vdc
+
+cell DiffPair:
+    viewgen symbol -> Symbol:
+        input vdd: .align = North
+        input vss: .align = South
+        input vin1: .align = West
+        input vin2: .align = West
+        input vbias: .align = West
+        output vout1: .align = East
+        output vout2: .align = East
+    viewgen schematic -> Schematic:
+        net s
+        port vdd: .pos=(1,21); .align = East
+        port vss: .pos=(1,0); .align = East
+        port vin1: .pos=(1,10); .align = East
+        port vin2: .pos=(1,13); .align = East
+        port vbias: .pos=(5,3); .align = East
+        port vout1: .pos=(17,14); .align = West
+        port vout2: .pos=(17,15); .align = West
+
+        Nmos M3: .pos=(7,1); .s -- vss; .g -- vbias; .d -- s
+        Nmos M1: .pos=(3,8); .s -- s; .d -- vout1; .g -- vin1
+        Nmos M2: .pos=(15,8); .orientation = FlippedSouth; .s -- s; .d -- vout2; .g -- vin2
+        Res R1: .pos=(3,16); .m -- vout1; .p -- vdd
+        Res R2: .pos=(11,16);  .m -- vout2; .p -- vdd
+        
+        for m in M1, M2, M3:
+            m.b -- vss
+            m.$l = 1u
+            m.$w = 5u
+        
+        for r in R1, R2:
+            r.$r = 250k
+            
+cell DiffPairTb:
+    viewgen symbol -> Symbol:
+        pass
+    viewgen schematic -> Schematic:
+        net vss
+        net vdd
+        net vbias
+        net vin1
+        net vin2
+        net vout1
+        net vout2
+        
+        DiffPair DUT:
+            .pos=(23,6)
+            .vss -- vss
+            .vdd -- vdd
+            .vbias -- vbias
+            .vin1 -- vin1
+            .vin2 -- vin2
+            .vout1 -- vout1
+            .vout2 -- vout2
+
+        Gnd gnd: .pos=(0,0); .p -- vss
+
+        Vdc src_vdd: .pos=(0,6); .m -- vss; .p -- vdd;    .$dc=R("5")
+        Vdc src_vbias: .pos=(5,6);.m -- vss; .p -- vbias;.$dc=R("1.5")
+        Vdc src_vin2: .pos=(10,6); .m -- vss; .p -- vin2; .$dc=R("3.05")
+        Vdc src_vin1: .pos=(15,6); .m -- vss; .p -- vin1; .$dc=R("2.95")
+
+    viewgen sim_dc -> Simulation:
+        .op()

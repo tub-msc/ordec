@@ -87,3 +87,7 @@ class LayoutViewContext(ViewContext):
 
     def constrain(self, constraint):
         self.solver.constrain(constraint)
+
+
+class SimulationViewContext(ViewContext):
+    pass

@@ -26,6 +26,9 @@ class OrdTransformer(PythonTransformer):
     def ast_core(self, attr):
         return self.ast_attribute(self.ast_name("__ordec_core__"), attr)
 
+    def ast_sim(self, attr):
+        return self.ast_attribute(self.ast_name("__ordec_sim__"), attr)
+
     def ast_ord_context(self, attr):
         return self.ast_attribute(self.ast_name("__ord_context__"), attr)
 
@@ -72,11 +75,20 @@ class OrdTransformer(PythonTransformer):
 
         # Validate the return type
         viewgen_type_lower = viewgen_type.lower()
-        if viewgen_type_lower not in ("symbol", "schematic", "layout"):
+        valid_viewgens = ("symbol", "schematic", "layout", "simulation")
+        if viewgen_type_lower not in valid_viewgens:
             raise SyntaxError(
                 f"Unknown viewgen return type '{viewgen_type}'. "
-                f"Expected Symbol, Schematic, or Layout."
+                "Expected Symbol, Schematic, Layout, or Simulation."
             )
+
+        if viewgen_type_lower == "simulation":
+            if viewgen_args:
+                raise SyntaxError(
+                    "Simulation viewgen parameters are not supported yet."
+                )
+            return self._sim_viewgen(
+                func_name, suite)
 
         # Extract keyword arguments
         kwarg_assignments = []
@@ -149,6 +161,70 @@ class OrdTransformer(PythonTransformer):
             type_params=[]
         )
         return func_def
+
+    def _sim_viewgen(self, func_name, suite):
+        ord_simhier = self.ast_name("__ord_simhier__")
+        ord_simhier_store = self.ast_name("__ord_simhier__", ctx=ast.Store())
+        ord_simulator = self.ast_name("__ord_simulator__")
+        ord_simulator_store = self.ast_name(
+            "__ord_simulator__", ctx=ast.Store())
+
+        simhier_assign = ast.Assign(
+            targets=[ord_simhier_store],
+            value=ast.Call(
+                func=self.ast_attribute(
+                    self.ast_core("SimHierarchy"), "from_schematic"),
+                args=[
+                    self.ast_attribute(
+                        self.ast_name("self"), attr="schematic")
+                ],
+                keywords=[]
+            )
+        )
+
+        simulator_assign = ast.Assign(
+            targets=[ord_simulator_store],
+            value=ast.Call(
+                func=self.ast_sim("Simulator"),
+                args=[ord_simhier],
+                keywords=[]
+            )
+        )
+
+        context_call = ast.Call(
+            func=self.ast_attribute(ord_simulator, "view_context"),
+            args=[ord_simulator],
+            keywords=[]
+        )
+
+        func_body = (
+            [simhier_assign, simulator_assign] +
+            [
+                ast.With(
+                    items=[
+                        ast.withitem(context_expr=context_call),
+                    ],
+                    body=suite
+                ),
+                ast.Return(ord_simhier)
+            ]
+        )
+
+        return ast.FunctionDef(
+            name=func_name,
+            args=ast.arguments(
+                posonlyargs=[],
+                args=[ast.arg(arg="self")],
+                kwonlyargs=[],
+                kw_defaults=[],
+                kwarg=None,
+                defaults=[]
+            ),
+            body=func_body,
+            decorator_list=[self.ast_core("generate")],
+            returns=self.ast_core("Simulation"),
+            type_params=[]
+        )
 
     def constrain_stmt(self, nodes):
         """ ! x >= 200 """

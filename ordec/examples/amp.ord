@@ -1,7 +1,6 @@
 from ordec.core import *
 from ordec.lib.base import Res, Cap, Vdc, Vsin, Gnd, Idc
 from ordec.lib.ihp130 import Nmos, Pmos
-from ordec.sim import Simulator
 from ordec.report import *
 
 cell Amp:
@@ -40,17 +39,11 @@ cell AmpTb:
         Cap cout: .pos=(22,3); .$c=1p; .p--vout; .m--vss
 
 
-    @generate
-    def sim_ac(self):
-        s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s).ac('dec', '10', '1M', '1G')
-        return s
+    viewgen sim_ac -> Simulation:
+        .ac('dec', '10', '1M', '1G')
 
-    @generate
-    def sim_tran(self):
-        s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s).tran(R('1n'), R('1u'))
-        return s
+    viewgen sim_tran -> Simulation:
+        .tran(R('1n'), R('1u'))
 
     @generate
     def report_ac(self):
