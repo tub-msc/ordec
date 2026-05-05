@@ -11,7 +11,7 @@ import gdsii.elements as elements
 from gdsii import types, tags
 
 from ..core import *
-from .helpers import expand_rectpolys, expand_rectpaths, expand_rects, expand_pins
+from .helpers import expand_rects, expand_pins
 
 def d4_to_gds(d4: D4) -> tuple[float,int]:
     return {
@@ -34,8 +34,6 @@ class GdsGenerator:
 
         layout = layout.mutable_copy()
         # Expand objects that are not supported by GDSII:
-        expand_rectpolys(layout)
-        expand_rectpaths(layout)
         expand_rects(layout)
         expand_pins(layout, directory=self.directory)
 

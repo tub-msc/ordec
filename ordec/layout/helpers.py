@@ -130,62 +130,6 @@ def expand_paths(layout: Layout):
             vertices=path_to_poly_vertices(path),
             ))
 
-def rpoly_to_poly_vertices(rpoly: LayoutRectPoly) -> Iterable[Vec2I]:
-    start_direction = rpoly.start_direction
-    it = iter(rpoly.vertices())
-    last = next(it)
-    for pos in chain(it, (last,)):
-        if start_direction == RectDirection.Horizontal:
-            yield Vec2I(pos.x, last.y)
-        else:
-            yield Vec2I(last.x, pos.y)
-        yield pos
-        last = pos
-
-@public
-def expand_rectpolys(layout: Layout):
-    """
-    For the given Layout, replaces all LayoutRectPoly instances by geometrically
-    equivalent LayoutPoly instances.
-    """
-    for rpoly in layout.all(LayoutRectPoly):
-        rpoly.replace(LayoutPoly(
-            layer=rpoly.layer,
-            vertices=rpoly_to_poly_vertices(rpoly)
-            ))
-
-def rpath_to_path_vertices(rpath: LayoutRectPath) -> Iterable[Vec2I]:
-    start_direction = rpath.start_direction
-    it = iter(rpath.vertices())
-    pos0 = next(it)
-    yield pos0
-    last = pos0
-    for pos in it:
-        if start_direction == RectDirection.Horizontal:
-            intermediate = Vec2I(pos.x, last.y)
-        else:
-            intermediate = Vec2I(last.x, pos.y)
-        if intermediate != pos and intermediate != last:
-            yield intermediate
-        yield pos
-        last = pos
-
-@public
-def expand_rectpaths(layout: Layout):
-    """
-    For the given Layout, replaces all LayoutRectPath instances by geometrically
-    equivalent LayoutPath instances.
-    """
-    for rpath in layout.all(LayoutRectPath):
-        rpath.replace(LayoutPath(
-            layer=rpath.layer,
-            vertices=rpath_to_path_vertices(rpath),
-            endtype=rpath.endtype,
-            width=rpath.width,
-            ext_bgn=rpath.ext_bgn,
-            ext_end=rpath.ext_end,
-            ))
-
 @public
 def expand_rects(layout: Layout):
     """
@@ -208,11 +152,9 @@ def expand_rects(layout: Layout):
 @public
 def expand_geom(layout: Layout):
     """
-    Replaces all LayoutRectPath, LayoutRectPoly, LayoutRect and LayoutPath
-    instances by equivalent LayoutPoly instances.
+    Replaces all LayoutRect and LayoutPath instances by equivalent LayoutPoly
+    instances.
     """
-    expand_rectpolys(layout)
-    expand_rectpaths(layout)
     expand_rects(layout)
     expand_paths(layout)
 
@@ -263,24 +205,6 @@ def flatten_instance(dst: Layout, src: Layout, tran: TD4I, first_level: bool):
     for src_e in src.all(LayoutPath):
         dst % LayoutPath(
             layer=src_e.layer,
-            width=src_e.width,
-            endtype=src_e.endtype,
-            vertices=[tran * v for v in src_e.vertices()],
-            ext_bgn = src_e.ext_bgn,
-            ext_end = src_e.ext_end,
-        )
-
-    for src_e in src.all(LayoutRectPoly):
-        dst % LayoutRectPoly(
-            layer=src_e.layer,
-            start_direction=src_e.start_direction,
-            vertices=transform_vertex_loop(src_e.vertices()),
-        )
-    
-    for src_e in src.all(LayoutRectPath):
-        dst % LayoutRectPath(
-            layer=src_e.layer,
-            start_direction=src_e.start_direction,
             width=src_e.width,
             endtype=src_e.endtype,
             vertices=[tran * v for v in src_e.vertices()],
@@ -382,9 +306,8 @@ def expand_pins(layout: Layout, directory: Directory):
     For a given layout, removes LayoutPin objects and adds according LayoutPoly
     and LayoutLabel instances.
 
-    Handles LayoutPoly and LayoutPath refs directly. Expects that LayoutRect,
-    LayoutRectPoly and LayoutRectPath objects have already been expanded (e.g.
-    through expand_rects, expand_rectpolys, expand_rectpaths).
+    Handles LayoutPoly and LayoutPath refs directly. Expects that LayoutRect
+    objects have already been expanded (e.g. through expand_rects).
     """
     for pin in layout.all(LayoutPin):
         ref = pin.ref
@@ -395,7 +318,7 @@ def expand_pins(layout: Layout, directory: Directory):
         else:
             raise Exception(
                 f"expand_pins: unsupported ref type {type(ref)}. "
-                f"Run expand_rects/expand_rectpolys/expand_rectpaths first."
+                f"Run expand_rects first."
             )
 
         pinlayer = pin.ref.layer.pinlayer()

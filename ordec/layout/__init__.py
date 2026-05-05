@@ -11,8 +11,6 @@ __all__ = [
     'makevias',
     'poly_orientation',
     'expand_paths',
-    'expand_rectpolys',
-    'expand_rectpaths',
     'expand_rects',
     'expand_geom',
     'expand_pins',

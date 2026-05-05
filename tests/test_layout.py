@@ -260,18 +260,6 @@ def test_flatten():
         width=150,
         vertices=[(0, 0), (1000, 0), (1000, 1000)],
     )
-    rpoly_orig = sublayout % LayoutRectPoly(
-        layer=layers.Metal3,
-        start_direction=RectDirection.Vertical,
-        vertices=[(0, 0), (250, 250), (500, 500)],
-    )
-    rpath_orig = sublayout % LayoutRectPath(
-        layer=layers.Metal4,
-        start_direction=RectDirection.Vertical,
-        endtype=PathEndType.Square,
-        width=200,
-        vertices=[(0, 0), (-1000, 1000), (500, 500)],
-    )
     rect_orig = sublayout % LayoutRect(
         layer=layers.Metal5,
         rect=(900, 900, 1100, 1100),
@@ -312,23 +300,6 @@ def test_flatten():
         assert path.endtype == path_orig.endtype
         assert path.width == path_orig.width
         assert path.vertices() == [tran * v for v in path_orig.vertices()]
-
-        # ...and the flattened LayoutRectPoly...
-        rpoly = layout.one(LayoutRectPoly)
-        assert rpoly.layer == rpoly_orig.layer
-        assert rpoly.start_direction == rpoly_orig.start_direction
-        expected_vertices = [tran * v for v in rpoly_orig.vertices()]
-        if orientation.det() < 0:
-            expected_vertices.reverse()
-        assert rpoly.vertices() == expected_vertices
-
-        # ...and the flattened LayoutRectPath...
-        rpath = layout.one(LayoutRectPath)
-        assert rpath.layer == rpath_orig.layer
-        assert rpath.endtype == rpath_orig.endtype
-        assert rpath.width == rpath_orig.width
-        assert rpath.start_direction == rpath_orig.start_direction
-        assert rpath.vertices() == [tran * v for v in rpath_orig.vertices()]
 
         # ...and the flattened LayoutRect...
         rect = layout.one(LayoutRect)
@@ -556,138 +527,6 @@ def test_expand_paths_invalid():
         with pytest.raises(ValueError):
             expand_paths(l)
 
-def test_expand_rectpoly():
-    layers = SG13G2().layers
-
-    l = Layout(ref_layers=layers)
-    l.rpoly_h = LayoutRectPoly(
-        layer=layers.Metal1,
-        vertices = [
-            Vec2I(0, 0),
-            Vec2I(100, 100),
-            Vec2I(50, 50),
-        ],
-        start_direction=RectDirection.Horizontal,
-    )
-    l.rpoly_v = LayoutRectPoly(
-        layer=layers.Metal1,
-        vertices = [
-            Vec2I(0, 0),
-            Vec2I(-100, 100),
-            Vec2I(-50, 50),
-        ],
-        start_direction=RectDirection.Vertical,
-    )
-
-    expand_rectpolys(l)
-
-    assert len(list(l.all(LayoutRectPoly))) == 0
-    assert isinstance(l.rpoly_h, LayoutPoly)
-    assert l.rpoly_h.vertices() == [
-        Vec2I(100, 0),
-        Vec2I(100, 100),
-        Vec2I(50, 100),
-        Vec2I(50, 50),
-        Vec2I(0, 50),
-        Vec2I(0, 0),
-    ]
-    assert isinstance(l.rpoly_v, LayoutPoly)
-    assert l.rpoly_v.vertices() == [
-        Vec2I(0, 100),
-        Vec2I(-100, 100),
-        Vec2I(-100, 50),
-        Vec2I(-50, 50),
-        Vec2I(-50, 0),
-        Vec2I(0, 0),
-    ]
-
-def test_expand_rectpath():
-    layers = SG13G2().layers
-
-    l = Layout(ref_layers=layers)
-    l.rpath_h = LayoutRectPath(
-        layer=layers.Metal1,
-        vertices = [
-            Vec2I(0, 0),
-            Vec2I(100, 100),
-            Vec2I(50, 50),
-        ],
-        width=10,
-        endtype=PathEndType.Square,
-        start_direction=RectDirection.Horizontal,
-    )
-    l.rpath_h2 = LayoutRectPath(
-        layer=layers.Metal1,
-        vertices = [
-            Vec2I(0, 0),
-            Vec2I(100, 100),
-            Vec2I(100, 50),
-        ],
-        width=10,
-        endtype=PathEndType.Square,
-        start_direction=RectDirection.Horizontal,
-    )
-    l.rpath_h3 = LayoutRectPath(
-        layer=layers.Metal1,
-        vertices = [
-            Vec2I(0, 0),
-            Vec2I(100, 100),
-            Vec2I(50, 100),
-        ],
-        width=10,
-        endtype=PathEndType.Square,
-        start_direction=RectDirection.Horizontal,
-    )
-    l.rpath_v = LayoutRectPath(
-        layer=layers.Metal1,
-        vertices = [
-            Vec2I(0, 0),
-            Vec2I(100, 100),
-            Vec2I(50, 50),
-        ],
-        width=10,
-        endtype=PathEndType.Square,
-        start_direction=RectDirection.Vertical,
-    )
-
-    expand_rectpaths(l)
-    assert len(list(l.all(LayoutRectPath))) == 0
-    assert isinstance(l.rpath_h, LayoutPath)
-    assert l.rpath_h.vertices() == [
-        Vec2I(0, 0),
-        Vec2I(100, 0),
-        Vec2I(100, 100),
-        Vec2I(50, 100),
-        Vec2I(50, 50),
-    ]
-    assert l.rpath_h.width == 10
-    assert l.rpath_h.endtype == PathEndType.Square
-
-    assert isinstance(l.rpath_h2, LayoutPath)
-    assert l.rpath_h2.vertices() == [
-        Vec2I(0, 0),
-        Vec2I(100, 0),
-        Vec2I(100, 100),
-        Vec2I(100, 50),
-    ]
-
-    assert isinstance(l.rpath_h3, LayoutPath)
-    assert l.rpath_h3.vertices() == [
-        Vec2I(0, 0),
-        Vec2I(100, 0),
-        Vec2I(100, 100),
-        Vec2I(50, 100),
-    ]
-
-    assert isinstance(l.rpath_v, LayoutPath)
-    assert l.rpath_v.vertices() == [
-        Vec2I(0, 0),
-        Vec2I(0, 100),
-        Vec2I(100, 100),
-        Vec2I(100, 50),
-        Vec2I(50, 50),
-    ]
-
 def test_expand_rect():
     layers = SG13G2().layers
 
@@ -715,14 +554,16 @@ def test_write_gds():
         @generate
         def layout(self) -> Layout:
             l = Layout(ref_layers=layers, cell=self)
-            l % LayoutRectPoly(layer=layers.Metal2.pin, vertices=[(0, 0), (200, 200), (100, 100)])
+            l % LayoutPoly(layer=layers.Metal2.pin, vertices=[
+                (200, 0), (200, 200), (100, 200), (100, 100), (0, 100), (0, 0)])
             return l
 
     class Sub2(Cell):
         @generate
         def layout(self) -> Layout:
             l = Layout(ref_layers=layers, cell=self)
-            l % LayoutRectPoly(layer=layers.Metal2.pin, vertices=[(0, 0), (100, 100), (200, 200)])
+            l % LayoutPoly(layer=layers.Metal2.pin, vertices=[
+                (100, 0), (100, 100), (200, 100), (200, 200), (0, 200), (0, 0)])
             return l
 
     class Top(Cell):
@@ -761,7 +602,8 @@ def test_write_gds_without_cell():
     layers = SG13G2().layers
 
     l = Layout(ref_layers=layers)
-    l % LayoutRectPoly(layer=layers.Metal2.pin, vertices=[(0, 0), (200, 200), (100, 100)])
+    l % LayoutPoly(layer=layers.Metal2.pin, vertices=[
+        (200, 0), (200, 200), (100, 200), (100, 100), (0, 100), (0, 0)])
     l = l.freeze()
 
     reference = gds_text_from_file(gds_dir / 'test_write_gds_without_cell.gds')
