@@ -93,6 +93,17 @@ from .core import Cell, generate, generate_func, SubgraphRoot
 from .language import compile_ord
 from .extlibrary import ExtLibrary
 
+RELOAD_PROTECTED_MODULE_PREFIXES = (
+    "numpy",
+    "scipy",
+)
+
+def is_reload_protected_module(module_name):
+    return any(
+        module_name == prefix or module_name.startswith(prefix + ".")
+        for prefix in RELOAD_PROTECTED_MODULE_PREFIXES
+    )
+
 class ServerKey:
     def __init__(self):
         self.key = secrets.token_bytes(32)
@@ -394,20 +405,9 @@ class ConnectionHandler:
 
         Only call this method with self.import_lock acquired as writer.
         """
-        protected_roots = [
-            Path(sys.prefix).resolve(),
-            Path(sys.base_prefix).resolve(),
-        ]
-        for k, module in list(sys.modules.items()):
+        for k in list(sys.modules.keys()):
             if k not in self.sysmodules_orig:
-                filename = getattr(module, "__file__", None)
-                if not filename:
-                    continue
-                try:
-                    path = Path(filename).resolve()
-                except OSError:
-                    continue
-                if any(path.is_relative_to(root) for root in protected_roots):
+                if is_reload_protected_module(k):
                     continue
                 #print(f"Unloading {k}...")
                 del sys.modules[k]
