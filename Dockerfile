@@ -12,8 +12,11 @@
 FROM ghcr.io/tub-msc/ordec-base:sha-e3d0bc2 AS ordec-base
 
 # Build ORDeC wheel:
+# Copy .git first, then checkout to ensure that setuptools_scm figures out the
+# current version.
 WORKDIR /home/app/ordec
-COPY --chown=app . .
+COPY --chown=app .git .git
+RUN git checkout HEAD -- .
 RUN python3 -m build .
 
 # Stage 2
