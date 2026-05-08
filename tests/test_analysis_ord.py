@@ -3,10 +3,10 @@
 
 from ordec.analysis import AnalysisSession
 from ordec.analysis import AnalysisPosition
-from ordec.analysis import analyze_ord2
+from ordec.analysis import analyze_ord
 
 
-def test_analyze_ord2_collects_symbols():
+def test_analyze_ord_collects_symbols():
     ord_string = (
         "cell Inv:\n"
         "    viewgen layout(layers=sky130) -> Layout:\n"
@@ -18,7 +18,7 @@ def test_analyze_ord2_collects_symbols():
         "    return x\n"
     )
 
-    analysis = analyze_ord2(ord_string, uri="file:///tmp/test.ord", version=3)
+    analysis = analyze_ord(ord_string, uri="file:///tmp/test.ord", version=3)
 
     assert analysis.to_dict() == {
         "uri": "file:///tmp/test.ord",
@@ -91,8 +91,8 @@ def test_analyze_ord2_collects_symbols():
     }
 
 
-def test_analyze_ord2_reports_syntax_errors():
-    analysis = analyze_ord2("cell Inv:\n    viewgen layout(", uri="file:///tmp/test.ord")
+def test_analyze_ord_reports_syntax_errors():
+    analysis = analyze_ord("cell Inv:\n    viewgen layout(", uri="file:///tmp/test.ord")
 
     assert len(analysis.diagnostics) == 1
     assert analysis.symbols == []
@@ -118,11 +118,11 @@ def test_analysis_session_tracks_open_documents():
     assert session.documents == {}
 
 
-def test_analyze_ord2_collects_imports_and_exports():
+def test_analyze_ord_collects_imports_and_exports():
     ord_string = (
         "import math, numpy as np\n"
         "from .helpers import foo, bar as baz\n"
-        "from ...ord2 import parser\n"
+        "from ...ord import parser\n"
         "\n"
         "cell Inv:\n"
         "    viewgen layout() -> Layout:\n"
@@ -132,13 +132,13 @@ def test_analyze_ord2_collects_imports_and_exports():
         "    return foo\n"
     )
 
-    analysis = analyze_ord2(ord_string)
+    analysis = analyze_ord(ord_string)
 
     assert analysis.imports == [
         "math",
         "numpy as np",
         "from .helpers import foo, bar as baz",
-        "from ...ord2 import parser",
+        "from ...ord import parser",
     ]
     assert analysis.exports == [
         "Inv",
@@ -152,7 +152,7 @@ def test_analyze_ord2_collects_imports_and_exports():
         ("import", "numpy", None, "np"),
         ("from", ".helpers", "foo", "foo"),
         ("from", ".helpers", "bar", "baz"),
-        ("from", "...ord2", "parser", "parser"),
+        ("from", "...ord", "parser", "parser"),
     ]
     assert analysis.import_entries[1].selection_range.to_dict() == {
         "start": {"line": 1, "character": 23},
@@ -165,7 +165,7 @@ def test_analyze_ord2_collects_imports_and_exports():
 
 
 def test_analysis_session_resolves_local_ord_imports(tmp_path):
-    mux2_path = tmp_path / "ord2" / "mux2.ord"
+    mux2_path = tmp_path / "ord" / "mux2.ord"
     mux2_path.parent.mkdir()
     mux2_path.write_text(
         "cell Mux2:\n"
@@ -173,7 +173,7 @@ def test_analysis_session_resolves_local_ord_imports(tmp_path):
         "        path a\n"
     )
 
-    nmux_path = tmp_path / "ord2" / "nmux.ord"
+    nmux_path = tmp_path / "ord" / "nmux.ord"
     nmux_path.write_text(
         "from .mux2 import Mux2\n"
         "\n"
@@ -196,7 +196,7 @@ def test_analysis_session_resolves_local_ord_imports(tmp_path):
 
 
 def test_analysis_session_resolves_exported_names(tmp_path):
-    mux2_path = tmp_path / "ord2" / "mux2.ord"
+    mux2_path = tmp_path / "ord" / "mux2.ord"
     mux2_path.parent.mkdir()
     mux2_path.write_text(
         "cell Mux2:\n"
@@ -204,7 +204,7 @@ def test_analysis_session_resolves_exported_names(tmp_path):
         "        path a\n"
     )
 
-    nmux_path = tmp_path / "ord2" / "nmux.ord"
+    nmux_path = tmp_path / "ord" / "nmux.ord"
     nmux_path.write_text(
         "from .mux2 import Mux2\n"
         "\n"
@@ -227,7 +227,7 @@ def test_analysis_session_resolves_exported_names(tmp_path):
 
 
 def test_analysis_session_definition_resolves_local_symbol(tmp_path):
-    nmux_path = tmp_path / "ord2" / "nmux.ord"
+    nmux_path = tmp_path / "ord" / "nmux.ord"
     nmux_path.parent.mkdir()
     nmux_path.write_text(
         "cell Nto1:\n"
@@ -245,7 +245,7 @@ def test_analysis_session_definition_resolves_local_symbol(tmp_path):
 
 
 def test_analysis_session_definition_resolves_import_alias(tmp_path):
-    mux2_path = tmp_path / "ord2" / "mux2.ord"
+    mux2_path = tmp_path / "ord" / "mux2.ord"
     mux2_path.parent.mkdir()
     mux2_path.write_text(
         "cell Mux2:\n"
@@ -253,7 +253,7 @@ def test_analysis_session_definition_resolves_import_alias(tmp_path):
         "        path a\n"
     )
 
-    nmux_path = tmp_path / "ord2" / "nmux.ord"
+    nmux_path = tmp_path / "ord" / "nmux.ord"
     nmux_path.write_text(
         "from .mux2 import Mux2 as Stage\n"
         "\n"
@@ -430,7 +430,7 @@ def test_analysis_session_member_references_and_rename_guard(tmp_path):
 
 
 def test_analysis_session_hover_uses_current_token_range(tmp_path):
-    mux2_path = tmp_path / "ord2" / "mux2.ord"
+    mux2_path = tmp_path / "ord" / "mux2.ord"
     mux2_path.parent.mkdir()
     mux2_path.write_text(
         "cell Mux2:\n"
@@ -438,7 +438,7 @@ def test_analysis_session_hover_uses_current_token_range(tmp_path):
         "        path a\n"
     )
 
-    nmux_path = tmp_path / "ord2" / "nmux.ord"
+    nmux_path = tmp_path / "ord" / "nmux.ord"
     nmux_path.write_text(
         "from .mux2 import Mux2 as Stage\n"
         "\n"
@@ -459,7 +459,7 @@ def test_analysis_session_hover_uses_current_token_range(tmp_path):
 
 
 def test_analysis_session_references_follow_import_alias(tmp_path):
-    mux2_path = tmp_path / "ord2" / "mux2.ord"
+    mux2_path = tmp_path / "ord" / "mux2.ord"
     mux2_path.parent.mkdir()
     mux2_path.write_text(
         "cell Mux2:\n"
@@ -467,7 +467,7 @@ def test_analysis_session_references_follow_import_alias(tmp_path):
         "        path a\n"
     )
 
-    nmux_path = tmp_path / "ord2" / "nmux.ord"
+    nmux_path = tmp_path / "ord" / "nmux.ord"
     nmux_path.write_text(
         "from .mux2 import Mux2 as Stage\n"
         "\n"
@@ -516,7 +516,7 @@ def test_analysis_session_references_follow_import_alias(tmp_path):
 
 
 def test_analysis_session_document_highlights_follow_import_alias(tmp_path):
-    mux2_path = tmp_path / "ord2" / "mux2.ord"
+    mux2_path = tmp_path / "ord" / "mux2.ord"
     mux2_path.parent.mkdir()
     mux2_path.write_text(
         "cell Mux2:\n"
@@ -524,7 +524,7 @@ def test_analysis_session_document_highlights_follow_import_alias(tmp_path):
         "        path a\n"
     )
 
-    nmux_path = tmp_path / "ord2" / "nmux.ord"
+    nmux_path = tmp_path / "ord" / "nmux.ord"
     nmux_path.write_text(
         "from .mux2 import Mux2 as Stage\n"
         "\n"
@@ -572,7 +572,7 @@ def test_analysis_session_document_highlights_follow_import_alias(tmp_path):
 
 
 def test_analysis_session_completions_include_symbols_imports_and_keywords(tmp_path):
-    mux2_path = tmp_path / "ord2" / "mux2.ord"
+    mux2_path = tmp_path / "ord" / "mux2.ord"
     mux2_path.parent.mkdir()
     mux2_path.write_text(
         "cell Mux2:\n"
@@ -580,7 +580,7 @@ def test_analysis_session_completions_include_symbols_imports_and_keywords(tmp_p
         "        path a\n"
     )
 
-    nmux_path = tmp_path / "ord2" / "nmux.ord"
+    nmux_path = tmp_path / "ord" / "nmux.ord"
     nmux_path.write_text(
         "from .mux2 import Mux2 as Stage\n"
         "import math\n"
@@ -627,7 +627,7 @@ def test_analysis_session_completions_include_symbols_imports_and_keywords(tmp_p
 
 
 def test_analysis_session_rename_updates_related_export_references(tmp_path):
-    mux2_path = tmp_path / "ord2" / "mux2.ord"
+    mux2_path = tmp_path / "ord" / "mux2.ord"
     mux2_path.parent.mkdir()
     mux2_path.write_text(
         "cell Mux2:\n"
@@ -635,7 +635,7 @@ def test_analysis_session_rename_updates_related_export_references(tmp_path):
         "        path a\n"
     )
 
-    nmux_path = tmp_path / "ord2" / "nmux.ord"
+    nmux_path = tmp_path / "ord" / "nmux.ord"
     nmux_path.write_text(
         "from .mux2 import Mux2\n"
         "\n"
@@ -696,7 +696,7 @@ def test_analysis_session_rename_updates_related_export_references(tmp_path):
 
 
 def test_analysis_session_rename_import_alias_is_local_only(tmp_path):
-    mux2_path = tmp_path / "ord2" / "mux2.ord"
+    mux2_path = tmp_path / "ord" / "mux2.ord"
     mux2_path.parent.mkdir()
     mux2_path.write_text(
         "cell Mux2:\n"
@@ -704,7 +704,7 @@ def test_analysis_session_rename_import_alias_is_local_only(tmp_path):
         "        path a\n"
     )
 
-    nmux_path = tmp_path / "ord2" / "nmux.ord"
+    nmux_path = tmp_path / "ord" / "nmux.ord"
     nmux_path.write_text(
         "from .mux2 import Mux2 as Stage\n"
         "\n"
@@ -756,14 +756,14 @@ def test_analysis_session_rename_import_alias_is_local_only(tmp_path):
 
 
 def test_analysis_session_workspace_symbols_scan_root(tmp_path):
-    ord2_path = tmp_path / "ord2"
-    ord2_path.mkdir()
-    (ord2_path / "mux2.ord").write_text(
+    ord_path = tmp_path / "ord"
+    ord_path.mkdir()
+    (ord_path / "mux2.ord").write_text(
         "cell Mux2:\n"
         "    viewgen symbol -> Symbol:\n"
         "        path a\n"
     )
-    (ord2_path / "helper.ord").write_text(
+    (ord_path / "helper.ord").write_text(
         "def build_mux():\n"
         "    return 1\n"
     )
@@ -776,12 +776,12 @@ def test_analysis_session_workspace_symbols_scan_root(tmp_path):
         for symbol in symbols
     ] == [
         (
-            (ord2_path / "helper.ord").resolve().as_uri(),
+            (ord_path / "helper.ord").resolve().as_uri(),
             "build_mux",
             "function",
         ),
         (
-            (ord2_path / "mux2.ord").resolve().as_uri(),
+            (ord_path / "mux2.ord").resolve().as_uri(),
             "Mux2",
             "class",
         ),
@@ -789,7 +789,7 @@ def test_analysis_session_workspace_symbols_scan_root(tmp_path):
 
 
 def test_analysis_session_prepare_rename_returns_current_token(tmp_path):
-    mux2_path = tmp_path / "ord2" / "mux2.ord"
+    mux2_path = tmp_path / "ord" / "mux2.ord"
     mux2_path.parent.mkdir()
     mux2_path.write_text(
         "cell Mux2:\n"
@@ -797,7 +797,7 @@ def test_analysis_session_prepare_rename_returns_current_token(tmp_path):
         "        path a\n"
     )
 
-    nmux_path = tmp_path / "ord2" / "nmux.ord"
+    nmux_path = tmp_path / "ord" / "nmux.ord"
     nmux_path.write_text(
         "from .mux2 import Mux2 as Stage\n"
         "\n"
@@ -921,7 +921,7 @@ def test_analysis_session_module_import_definition_hover_and_rename(tmp_path):
     }
 
 
-def test_analyze_ord2_collects_local_bindings_and_occurrences():
+def test_analyze_ord_collects_local_bindings_and_occurrences():
     ord_string = (
         "def outer(source):\n"
         "    value = source\n"
@@ -934,7 +934,7 @@ def test_analyze_ord2_collects_local_bindings_and_occurrences():
         "        return width\n"
     )
 
-    analysis = analyze_ord2(ord_string)
+    analysis = analyze_ord(ord_string)
     binding_map = dict((binding["name"], binding) for binding in analysis.bindings)
 
     assert binding_map["outer"]["kind"] == "function"
