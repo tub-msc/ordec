@@ -14,6 +14,8 @@ def prepare_ord_globals(g: dict):
     """Populate g with the implicit globals that ORD-generated code expects."""
     g.setdefault("__ordec_core__", importlib.import_module("ordec.core"))
     g.setdefault("__ord_context__", importlib.import_module("ordec.ord.context"))
+    from .ord import context
+    g.setdefault("constrain", context.constrain)
 
 
 def compile_ord(source_data: str, g: dict, filename: str = "<string>"):

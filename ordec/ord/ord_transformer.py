@@ -150,16 +150,6 @@ class OrdTransformer(PythonTransformer):
         )
         return func_def
 
-    def constrain_stmt(self, nodes):
-        """ ! x >= 200 """
-        return ast.Expr(
-            ast.Call(
-                func=self.ast_ord_context("constrain"),
-                args=[nodes[0]],
-                keywords=[]
-            )
-        )
-
     def extract_path(self, nodes):
         """Extract string list from nested attributes"""
 
