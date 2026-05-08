@@ -42,6 +42,7 @@ def ngspice_setup():
         f"setcs sourcepath = ( {pdk().ngspice_models_dir} {pdk().stdcell_spice_dir} {pdk().iocell_spice_dir} )",
     ]
     for osdi_file in [
+        pdk().ngspice_osdi_dir / "psp103.osdi",
         pdk().ngspice_osdi_dir / "psp103_nqs.osdi",
         pdk().ngspice_osdi_dir / "r3_cmc.osdi",
         pdk().ngspice_osdi_dir / "mosvar.osdi"]:
