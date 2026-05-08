@@ -192,6 +192,9 @@ const viewClassOf = {
             this.transform = d3.zoomIdentity;
             this.tooltip = document.createElement('div');
             this.tooltip.classList.add('schem-error-tooltip');
+            this.paramTooltip = document.createElement('div');
+            this.paramTooltip.classList.add('schem-param-tooltip');
+            this.paramTooltip.hidden = true;
             this.coordsDisplay = document.createElement('div');
             this.coordsDisplay.classList.add('schem-coords');
             this.coordsDisplay.hidden = true;
@@ -207,7 +210,7 @@ const viewClassOf = {
             const yFlipOffset = 2 * vy + vh;
 
             const svg = d3.create("svg")
-                .attr("class", "fit")
+                .attr("class", "fit schem-svg")
                 .attr("viewBox", viewbox);
 
             this.g = svg.append("g")
@@ -254,9 +257,61 @@ const viewClassOf = {
             svg.on('mouseleave', hideCoords);
 
             this.resContent.replaceChildren(
-                this.svgNode, this.tooltip, this.coordsDisplay
+                this.svgNode, this.tooltip, this.paramTooltip,
+                this.coordsDisplay
             );
+            this.paramTooltip.hidden = true;
             hideCoords();
+
+            const svgTextContent = (textEl) => {
+                const tspans = textEl.querySelectorAll('tspan');
+                if (tspans.length == 0) return textEl.textContent;
+                return Array.from(tspans, t => t.textContent).join('\n');
+            };
+            const positionParamTooltip = (event) => {
+                const rect = this.resContent.getBoundingClientRect();
+                this.paramTooltip.style.left = (event.clientX - rect.left + 12) + 'px';
+                this.paramTooltip.style.top = (event.clientY - rect.top + 12) + 'px';
+            };
+
+            const paramTooltip = this.paramTooltip;
+            this.g.selectAll('.symbolOutline').each(function() {
+                const group = this.parentNode;
+                const cellNameEl = group.querySelector('.cellName');
+                const paramsEl = group.querySelector('.params');
+                if (!cellNameEl && !paramsEl) return;
+
+                const content = document.createDocumentFragment();
+                if (cellNameEl) {
+                    const span = document.createElement('span');
+                    span.className = 'schem-param-tooltip-cellname';
+                    span.textContent = svgTextContent(cellNameEl);
+                    content.appendChild(span);
+                }
+                if (paramsEl) {
+                    const params = svgTextContent(paramsEl);
+                    if (params) {
+                        const span = document.createElement('span');
+                        span.className = 'schem-param-tooltip-params';
+                        span.textContent = params;
+                        content.appendChild(span);
+                    }
+                }
+                if (content.childNodes.length == 0) return;
+
+                d3.select(group)
+                    .on('mouseenter', (event) => {
+                        paramTooltip.replaceChildren(
+                            content.cloneNode(true)
+                        );
+                        paramTooltip.hidden = false;
+                        positionParamTooltip(event);
+                    })
+                    .on('mousemove', positionParamTooltip)
+                    .on('mouseleave', () => {
+                        paramTooltip.hidden = true;
+                    });
+            });
 
             svg.selectAll('.errorMarker')
                 .on('mouseover', (event) => {

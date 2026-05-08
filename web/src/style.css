@@ -770,8 +770,44 @@ body:not(.show-debug) .debug {
     font-size: var(--font-size-base);
     color: var(--color-schem-err-text);
     pointer-events: none;
-    z-index: 3;
+    z-index: 4;
     white-space: nowrap;
+}
+svg.schem-svg .params {
+    display: none;
+}
+svg.schem-svg .symbolOutline {
+    pointer-events: all;
+}
+.schem-param-tooltip {
+    position: absolute;
+    padding: 4px 8px;
+    background-color: var(--color-bg-tooltip);
+    border: 1px solid #000;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-md);
+    color: #000;
+    pointer-events: none;
+    z-index: 3;
+    white-space: pre;
+}
+.schem-param-tooltip-cellname {
+    display: block;
+    font-weight: bold;
+}
+.schem-param-tooltip-cellname + .schem-param-tooltip-params {
+    border-top: 1px solid var(--color-border-light);
+    margin-top: 2px;
+    padding-top: 2px;
+}
+.schem-param-tooltip-params {
+    display: block;
+}
+body.theme-dark .schem-param-tooltip {
+    background-color: var(--color-bg);
+    border-color: #fff;
+    color: #fff;
 }
 .schem-coords {
     position: absolute;
