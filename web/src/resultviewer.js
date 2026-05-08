@@ -207,6 +207,7 @@ const viewClassOf = {
             const viewbox = msgData['viewbox'];
             const [vx, vy, vw, vh] = viewbox;
             const zoomExtent = [[vx, vy], [vx + vw, vy + vh]];
+            // Convert SVG Y coordinates back to schematic Y coordinates.
             const yFlipOffset = 2 * vy + vh;
 
             const svg = d3.create("svg")
@@ -264,6 +265,7 @@ const viewClassOf = {
             hideCoords();
 
             const svgTextContent = (textEl) => {
+                // Preserve multi-line SVG text when moving params into a tooltip.
                 const tspans = textEl.querySelectorAll('tspan');
                 if (tspans.length == 0) return textEl.textContent;
                 return Array.from(tspans, t => t.textContent).join('\n');
@@ -275,6 +277,7 @@ const viewClassOf = {
             };
 
             const paramTooltip = this.paramTooltip;
+            // Show hidden symbol metadata when hovering the symbol outline.
             this.g.selectAll('.symbolOutline').each(function() {
                 const group = this.parentNode;
                 const cellNameEl = group.querySelector('.cellName');
