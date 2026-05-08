@@ -1,8 +1,6 @@
 from ordec.core import *
 from ordec.lib.base import Res, Cap, Vdc, Vsin, Gnd, Idc
 from ordec.lib.ihp130 import Nmos, Pmos
-from ordec.sim import Simulator
-from ordec.report import *
 
 cell Amp:
     viewgen symbol -> Symbol:
@@ -57,8 +55,8 @@ cell AmpTb:
         def phase_deg(cvals):
             return [math.degrees(math.atan2(v.imag, v.real)) for v in cvals]
 
-        elements = [Markdown("## Amplifier AC bode plot")]
-        elements.append(Plot2D(
+        .markdown("## Amplifier AC bode plot")
+        .plot2d(
             x=freq,
             series={
                 'vin': mag_db(sim.vin.voltage),
@@ -69,8 +67,8 @@ cell AmpTb:
             xscale="log",
             height=200,
             plot_group="bode",
-        ))
-        elements.append(Plot2D(
+        )
+        .plot2d(
             x=freq,
             series={
                 'vin': phase_deg(sim.vin.voltage),
@@ -81,5 +79,4 @@ cell AmpTb:
             xscale="log",
             height=200,
             plot_group="bode",
-        ))
-        .extend(elements)
+        )

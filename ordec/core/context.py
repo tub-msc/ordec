@@ -90,7 +90,13 @@ class LayoutViewContext(ViewContext):
 
 
 class SimulationViewContext(ViewContext):
-    pass
+    def __enter__(self):
+        from ..sim import Simulator
+        self.simulator = Simulator(self.root)
+        self._node_ctx = self.simulator.ctx()
+        self._node_ctx.__enter__()
+        self._token = _view_ctx_var.set(self)
+        return self
 
 
 class ReportViewContext(ViewContext):

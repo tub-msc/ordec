@@ -230,6 +230,29 @@ class Report:
         self._elements.append(element)
         return self
 
+    def markdown(self, markdown: str) -> "Report":
+        return self.add(Markdown(markdown))
+
+    def preformatted(self, text: str) -> "Report":
+        return self.add(PreformattedText(text))
+
+    def html(self, html: str) -> "Report":
+        return self.add(Html(html))
+
+    def svg(self, view) -> "Report":
+        return self.add(Svg.from_view(view))
+
+    def plot2d(
+        self,
+        x: Iterable[float],
+        series: (
+            dict[str, Iterable[float]]
+            | Iterable[tuple[str, Iterable[float]]]
+        ),
+        **kwargs,
+    ) -> "Report":
+        return self.add(Plot2D(x, series, **kwargs))
+
     def extend(self, elements: Iterable[ReportElement]) -> "Report":
         new_elements = list(elements)
         self._validate_elements(new_elements)

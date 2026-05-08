@@ -12,8 +12,6 @@ from itertools import pairwise
 from ordec.core import *
 from ordec.lib.ihp130 import Nmos, Pmos, SG13G2
 from ordec.lib.base import Res, Cap, Gnd, Vdc, NoConn, Vpwl
-from ordec.sim import Simulator
-from ordec.report import *
 from ordec.layout import makevias, SRouter
 
 cell VcoHalfStage:
@@ -530,9 +528,9 @@ cell VcoTb:
     viewgen report_tran -> Report:
         sim = self.sim_tran
 
-        elements = [Markdown("## VCO transient main waveforms")]
+        .markdown("## VCO transient main waveforms")
         for i in range(2):
-            elements.append(Plot2D(
+            .plot2d(
                 x=sim.time,
                 series={
                     sim.out_n[i].full_path_str(): sim.out_n[i].voltage,
@@ -542,8 +540,8 @@ cell VcoTb:
                 ylabel="Voltage (V)",
                 height=180,
                 plot_group="vco_tran",
-                ))
-        elements.append(Plot2D(
+            )
+        .plot2d(
             x=sim.time,
             series={
                 'rst_n': sim.rst_n.voltage,
@@ -553,15 +551,14 @@ cell VcoTb:
             ylabel="Voltage (V)",
             height=120,
             plot_group="vco_tran",
-            ))
+        )
         vdd_src_pin = sim.one(SimPin.instance_eref_idx.query(
             (sim.vdd_src, sim.vdd_src.eref.symbol.p)))
-        elements.append(Plot2D(
+        .plot2d(
             x=sim.time,
             series={'vdd_src': [-x for x in vdd_src_pin.current]},
             xlabel="Time (s)",
             ylabel="Current (A)",
             height=120,
             plot_group="vco_tran",
-            ))
-        .extend(elements)
+        )

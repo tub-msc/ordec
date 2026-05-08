@@ -13,7 +13,7 @@ from .geoprim import *
 from .ordb import *
 from .cell import Cell
 from .constraints import *
-from .context import ViewContext, SymbolViewContext, SchematicViewContext, LayoutViewContext
+from .context import ViewContext, SymbolViewContext, SchematicViewContext, LayoutViewContext, SimulationViewContext
 from .simarray import SimArray
 
 # Enums
@@ -748,6 +748,8 @@ class SimHierarchySubcursor(tuple):
 
 @public
 class SimHierarchy(SubgraphRoot):
+    view_context = SimulationViewContext
+
     schematic = SubgraphRef(Schematic)
     cell = Attr(Cell)
     sim_type = Attr(SimType)

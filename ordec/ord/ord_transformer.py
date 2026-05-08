@@ -29,6 +29,9 @@ class OrdTransformer(PythonTransformer):
     def ast_ord_context(self, attr):
         return self.ast_attribute(self.ast_name("__ord_context__"), attr)
 
+    def ast_ord_report(self, attr):
+        return self.ast_attribute(self.ast_name("__ord_report__"), attr)
+
     def celldef(self, nodes):
         """ Definition of a ORDeC cell class"""
         cell_name = nodes[0]
@@ -110,7 +113,11 @@ class OrdTransformer(PythonTransformer):
         ord_root_store = self.ast_name("__ord_root__", ctx=ast.Store())
 
         viewgen_call = ast.Call(
-            func=self.ast_name("Report") if viewgen_type_lower == "report" else self.ast_core(viewgen_type.title()),
+            func=(
+                self.ast_ord_report("Report")
+                if viewgen_type_lower == "report"
+                else self.ast_core(viewgen_type.title())
+            ),
             args=[],
             keywords=keywords
         )
@@ -152,7 +159,11 @@ class OrdTransformer(PythonTransformer):
             ),
             body=func_body,
             decorator_list=[self.ast_core("generate")],
-            returns=self.ast_name("Report") if viewgen_type_lower == "report" else self.ast_core(viewgen_type.title()),
+            returns=(
+                self.ast_ord_report("Report")
+                if viewgen_type_lower == "report"
+                else self.ast_core(viewgen_type.title())
+            ),
             type_params=[]
         )
         return func_def
@@ -160,9 +171,6 @@ class OrdTransformer(PythonTransformer):
     def _sim_viewgen(self, func_name, suite):
         ord_simhier = self.ast_name("__ord_simhier__")
         ord_simhier_store = self.ast_name("__ord_simhier__", ctx=ast.Store())
-        ord_simulator = self.ast_name("__ord_simulator__")
-        ord_simulator_store = self.ast_name(
-            "__ord_simulator__", ctx=ast.Store())
 
         simhier_assign = ast.Assign(
             targets=[ord_simhier_store],
@@ -177,23 +185,14 @@ class OrdTransformer(PythonTransformer):
             )
         )
 
-        simulator_assign = ast.Assign(
-            targets=[ord_simulator_store],
-            value=ast.Call(
-                func=self.ast_name("Simulator"),
-                args=[ord_simhier],
-                keywords=[]
-            )
-        )
-
         context_call = ast.Call(
-            func=self.ast_attribute(ord_simulator, "view_context"),
-            args=[ord_simulator],
+            func=self.ast_attribute(ord_simhier, "view_context"),
+            args=[ord_simhier],
             keywords=[]
         )
 
         func_body = (
-            [simhier_assign, simulator_assign] +
+            [simhier_assign] +
             [
                 ast.With(
                     items=[
