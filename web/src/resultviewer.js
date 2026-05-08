@@ -192,6 +192,9 @@ const viewClassOf = {
             this.transform = d3.zoomIdentity;
             this.tooltip = document.createElement('div');
             this.tooltip.classList.add('schem-error-tooltip');
+            this.coordsDisplay = document.createElement('div');
+            this.coordsDisplay.classList.add('schem-coords');
+            this.coordsDisplay.hidden = true;
         }
         zoomed({transform}) {
             this.transform = transform;
@@ -199,7 +202,9 @@ const viewClassOf = {
         }
         update(msgData) {
             const viewbox = msgData['viewbox'];
-            const viewbox2 = [[viewbox[0], viewbox[1]], [viewbox[2], viewbox[3]]]
+            const [vx, vy, vw, vh] = viewbox;
+            const zoomExtent = [[vx, vy], [vx + vw, vy + vh]];
+            const yFlipOffset = 2 * vy + vh;
 
             const svg = d3.create("svg")
                 .attr("class", "fit")
@@ -209,16 +214,49 @@ const viewClassOf = {
                 .html(msgData['inner'])
 
             let zoom = d3.zoom()
-                .extent(viewbox2)
+                .extent(zoomExtent)
                 .scaleExtent([1, 12])
-                .translateExtent(viewbox2);
+                .translateExtent(zoomExtent);
 
             svg.call(zoom.transform, this.transform);
             this.g.attr("transform", this.transform);
 
             svg.call(zoom.on("zoom", (x) => this.zoomed(x)));
 
-            this.resContent.replaceChildren(svg.node(), this.tooltip);
+            this.svgNode = svg.node();
+
+            const hideCoords = () => {
+                this.coordsDisplay.textContent = '';
+                this.coordsDisplay.hidden = true;
+            };
+
+            svg.on('mousemove', (event) => {
+                const screenCtm = this.svgNode.getScreenCTM();
+                if (!screenCtm) {
+                    hideCoords();
+                    return;
+                }
+
+                const svgPt = new DOMPoint(event.clientX, event.clientY)
+                    .matrixTransform(screenCtm.inverse());
+                const [x, ySvg] = this.transform.invert([svgPt.x, svgPt.y]);
+                const y = yFlipOffset - ySvg;
+
+                if (x < vx || x > vx + vw || y < vy || y > vy + vh) {
+                    hideCoords();
+                    return;
+                }
+
+                this.coordsDisplay.textContent =
+                    `x=${Math.round(x)}  y=${Math.round(y)}`;
+                this.coordsDisplay.hidden = false;
+            });
+            svg.on('mouseleave', hideCoords);
+
+            this.resContent.replaceChildren(
+                this.svgNode, this.tooltip, this.coordsDisplay
+            );
+            hideCoords();
 
             svg.selectAll('.errorMarker')
                 .on('mouseover', (event) => {

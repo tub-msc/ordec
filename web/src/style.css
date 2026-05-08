@@ -773,6 +773,26 @@ body:not(.show-debug) .debug {
     z-index: 3;
     white-space: nowrap;
 }
+.schem-coords {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    padding: 2px 6px;
+    background-color: var(--color-bg-tooltip);
+    border: 1px solid #000;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-md);
+    color: #000;
+    pointer-events: none;
+    z-index: 3;
+    white-space: nowrap;
+}
+body.theme-dark .schem-coords {
+    background-color: var(--color-bg);
+    border-color: #fff;
+    color: #fff;
+}
 
 /* -- Layer list (layout viewer) ---------------------------------- */
 .layerList {
