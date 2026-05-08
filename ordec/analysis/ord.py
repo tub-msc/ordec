@@ -19,8 +19,8 @@ from lark.exceptions import UnexpectedInput
 from lark.exceptions import UnexpectedToken
 
 # ordec imports
-from ..ord2.parser import format_error
-from ..ord2.parser import parser
+from ..ord.parser import format_error
+from ..ord.parser import parser
 
 
 class AnalysisPosition(NamedTuple):
@@ -565,7 +565,7 @@ class AnalysisSession:
     def analyze(self, uri: str):
         doc = self.documents[uri]
         if doc["analysis"] is None:
-            doc["analysis"] = analyze_ord2(doc["text"], uri=uri, version=doc["version"])
+            doc["analysis"] = analyze_ord(doc["text"], uri=uri, version=doc["version"])
         return doc["analysis"]
 
     def open_path(self, path: str, version: Optional[int] = None):
@@ -1539,8 +1539,8 @@ class AnalysisSession:
         return self.resolve_name(uri, name_info["name"])
 
 
-def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None):
-    """Parse ORD2 source and return diagnostics plus declaration symbols."""
+def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
+    """Parse ORD source and return diagnostics plus declaration symbols."""
 
     def tree_range(node: Tree):
         return AnalysisRange(
@@ -1856,7 +1856,7 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
                     visit(child, child_scope_id, context_type_names=context_type_names)
                 return
 
-        if node.data == "context_element" and len(node.children) >= 2:
+        if node.data in ("node_stmt", "anon_node_stmt") and len(node.children) >= 2:
             kind_node = node.children[0]
             target_node = node.children[1]
             if isinstance(kind_node, Tree) and isinstance(target_node, Tree):
@@ -2092,8 +2092,8 @@ def analyze_ord2(source_data: str, uri: str = "", version: Optional[int] = None)
             })
             return
 
-        if node.data == "dotted_atom" and len(node.children) == 2:
-            name_node = node.children[1]
+        if node.data == "dotted_atom" and len(node.children) == 1:
+            name_node = node.children[0]
             member_occurrences.append({
                 "name": tree_text(name_node),
                 "range": tree_range(name_node),

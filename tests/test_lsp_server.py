@@ -60,7 +60,7 @@ def test_lsp_initialize_exposes_core_capabilities(tmp_path):
 
 
 def test_lsp_open_definition_hover_and_references(tmp_path):
-    mux2_path = tmp_path / "ord2" / "mux2.ord"
+    mux2_path = tmp_path / "ord" / "mux2.ord"
     mux2_path.parent.mkdir()
     mux2_path.write_text(
         "cell Mux2:\n"
@@ -68,7 +68,7 @@ def test_lsp_open_definition_hover_and_references(tmp_path):
         "        path a\n"
     )
 
-    nmux_path = tmp_path / "ord2" / "nmux.ord"
+    nmux_path = tmp_path / "ord" / "nmux.ord"
     nmux_path.write_text(
         "from .mux2 import Mux2 as Stage\n"
         "\n"
@@ -418,14 +418,14 @@ def test_lsp_document_symbol_and_diagnostics(tmp_path):
 
 
 def test_lsp_workspace_symbol_scans_workspace_root(tmp_path):
-    ord2_path = tmp_path / "ord2"
-    ord2_path.mkdir()
-    (ord2_path / "mux2.ord").write_text(
+    ord_path = tmp_path / "ord"
+    ord_path.mkdir()
+    (ord_path / "mux2.ord").write_text(
         "cell Mux2:\n"
         "    viewgen symbol -> Symbol:\n"
         "        path a\n"
     )
-    (ord2_path / "helper.ord").write_text(
+    (ord_path / "helper.ord").write_text(
         "def build_mux():\n"
         "    return 1\n"
     )
@@ -456,7 +456,7 @@ def test_lsp_workspace_symbol_scans_workspace_root(tmp_path):
                 "name": "build_mux",
                 "kind": 12,
                 "location": {
-                    "uri": (ord2_path / "helper.ord").resolve().as_uri(),
+                    "uri": (ord_path / "helper.ord").resolve().as_uri(),
                     "range": {
                         "start": {"line": 0, "character": 4},
                         "end": {"line": 0, "character": 13},
@@ -467,7 +467,7 @@ def test_lsp_workspace_symbol_scans_workspace_root(tmp_path):
                 "name": "Mux2",
                 "kind": 5,
                 "location": {
-                    "uri": (ord2_path / "mux2.ord").resolve().as_uri(),
+                    "uri": (ord_path / "mux2.ord").resolve().as_uri(),
                     "range": {
                         "start": {"line": 0, "character": 5},
                         "end": {"line": 0, "character": 9},
