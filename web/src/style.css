@@ -782,7 +782,7 @@ svg.schem-svg .symbolOutline {
 .schem-param-tooltip {
     position: absolute;
     padding: 4px 8px;
-    background-color: var(--color-bg-tooltip);
+    background-color: var(--color-bg);
     border: 1px solid #000;
     border-radius: 3px;
     font-family: var(--font-mono);
