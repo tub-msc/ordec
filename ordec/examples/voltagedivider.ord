@@ -16,7 +16,7 @@ cell VoltageDivider:
         Gnd gnd: .p -- vss; .pos = (0,0)
 
     viewgen sim_dc -> Simulation:
-        .op()
+        .simulate().op()
 
     @generate
     def netlist(self) -> str:

@@ -29,9 +29,6 @@ class OrdTransformer(PythonTransformer):
     def ast_ord_context(self, attr):
         return self.ast_attribute(self.ast_name("__ord_context__"), attr)
 
-    def ast_ord_report(self, attr):
-        return self.ast_attribute(self.ast_name("__ord_report__"), attr)
-
     def celldef(self, nodes):
         """ Definition of a ORDeC cell class"""
         cell_name = nodes[0]
@@ -73,20 +70,6 @@ class OrdTransformer(PythonTransformer):
             viewgen_type = nodes[1]
             suite = nodes[2]
 
-        # Validate the return type
-        viewgen_type_lower = viewgen_type.lower()
-        valid_viewgens = (
-            "symbol", "schematic", "layout", "simulation", "report")
-        if viewgen_type_lower not in valid_viewgens:
-            raise SyntaxError(
-                f"Unknown viewgen return type '{viewgen_type}'. "
-                "Expected Symbol, Schematic, Layout, Simulation, or Report."
-            )
-
-        if viewgen_type_lower == "simulation":
-            return self._sim_viewgen(
-                func_name, suite)
-
         # Extract keyword arguments
         kwarg_assignments = []
         for arg in viewgen_args:
@@ -98,31 +81,16 @@ class OrdTransformer(PythonTransformer):
                     )
                 )
 
-        keywords = list()
-        if viewgen_type_lower in ("symbol", "schematic", "layout"):
-            keywords.append(ast.keyword(arg="cell", value=self.ast_name("self")))
-        if viewgen_type_lower in ("schematic", "layout"):
-            keywords.append(
-                ast.keyword(
-                    arg="symbol",
-                    value=self.ast_attribute(self.ast_name("self"), attr="symbol")
-                )
-            )
-
         ord_root = self.ast_name("__ord_root__")
         ord_root_store = self.ast_name("__ord_root__", ctx=ast.Store())
 
         viewgen_call = ast.Call(
-            func=(
-                self.ast_ord_report("Report")
-                if viewgen_type_lower == "report"
-                else self.ast_core(viewgen_type.title())
-            ),
-            args=[],
-            keywords=keywords
+            func=self.ast_ord_context("create_view_root"),
+            args=[self.ast_name("self"), self.ast_name(viewgen_type)],
+            keywords=[]
         )
 
-        # __ord_root__ = Type(cell=self, symbol=self.symbol)
+        # __ord_root__ = __ord_context__.create_view_root(self, Type)
         root_assign = ast.Assign(
             targets=[ord_root_store],
             value=viewgen_call
@@ -159,66 +127,10 @@ class OrdTransformer(PythonTransformer):
             ),
             body=func_body,
             decorator_list=[self.ast_core("generate")],
-            returns=(
-                self.ast_ord_report("Report")
-                if viewgen_type_lower == "report"
-                else self.ast_core(viewgen_type.title())
-            ),
+            returns=self.ast_name(viewgen_type),
             type_params=[]
         )
         return func_def
-
-    def _sim_viewgen(self, func_name, suite):
-        ord_simhier = self.ast_name("__ord_simhier__")
-        ord_simhier_store = self.ast_name("__ord_simhier__", ctx=ast.Store())
-
-        simhier_assign = ast.Assign(
-            targets=[ord_simhier_store],
-            value=ast.Call(
-                func=self.ast_attribute(
-                    self.ast_core("SimHierarchy"), "from_schematic"),
-                args=[
-                    self.ast_attribute(
-                        self.ast_name("self"), attr="schematic")
-                ],
-                keywords=[]
-            )
-        )
-
-        context_call = ast.Call(
-            func=self.ast_attribute(ord_simhier, "view_context"),
-            args=[ord_simhier],
-            keywords=[]
-        )
-
-        func_body = (
-            [simhier_assign] +
-            [
-                ast.With(
-                    items=[
-                        ast.withitem(context_expr=context_call),
-                    ],
-                    body=suite
-                ),
-                ast.Return(ord_simhier)
-            ]
-        )
-
-        return ast.FunctionDef(
-            name=func_name,
-            args=ast.arguments(
-                posonlyargs=[],
-                args=[ast.arg(arg="self")],
-                kwonlyargs=[],
-                kw_defaults=[],
-                kwarg=None,
-                defaults=[]
-            ),
-            body=func_body,
-            decorator_list=[self.ast_core("generate")],
-            returns=self.ast_core("Simulation"),
-            type_params=[]
-        )
 
     def constrain_stmt(self, nodes):
         """ ! x >= 200 """

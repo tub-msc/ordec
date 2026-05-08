@@ -9,8 +9,6 @@ from typing import Iterable
 import markdown2
 from public import public
 
-from .core.context import NodeContext, ReportViewContext
-
 class ReportElement(ABC):
     """Base class for all report elements."""
 
@@ -206,8 +204,6 @@ class Report:
     existing report producers.
     """
 
-    view_context = ReportViewContext
-
     def __init__(self, elements: Iterable[ReportElement] = (), fill_height: bool=False):
         self._elements = list(elements)
         self._validate_elements(self._elements)
@@ -242,26 +238,14 @@ class Report:
     def svg(self, view) -> "Report":
         return self.add(Svg.from_view(view))
 
-    def plot2d(
-        self,
-        x: Iterable[float],
-        series: (
-            dict[str, Iterable[float]]
-            | Iterable[tuple[str, Iterable[float]]]
-        ),
-        **kwargs,
-    ) -> "Report":
-        return self.add(Plot2D(x, series, **kwargs))
+    def plot2d(self, *args, **kwargs) -> "Report":
+        return self.add(Plot2D(*args, **kwargs))
 
     def extend(self, elements: Iterable[ReportElement]) -> "Report":
         new_elements = list(elements)
         self._validate_elements(new_elements)
         self._elements.extend(new_elements)
         return self
-
-    def ctx(self):
-        """Return a context for ORD report view generators."""
-        return NodeContext(self)
 
     def webdata(self):
         return "report", {

@@ -13,6 +13,7 @@ from ordec.core import *
 from ordec.lib.ihp130 import Nmos, Pmos, SG13G2
 from ordec.lib.base import Res, Cap, Gnd, Vdc, NoConn, Vpwl
 from ordec.layout import makevias, SRouter
+from ordec.report import Report
 
 cell VcoHalfStage:
     width = Parameter(R, default=300n)
@@ -523,14 +524,16 @@ cell VcoTb:
 
     viewgen sim_tran -> Simulation:
         """Run sync transient simulation."""
-        .tran(R('10p'), R('30n'))
+        .simulate().tran(R('10p'), R('30n'))
 
-    viewgen report_tran -> Report:
+    @generate
+    def report_tran(self) -> Report:
         sim = self.sim_tran
+        report = Report()
 
-        .markdown("## VCO transient main waveforms")
+        report.markdown("## VCO transient main waveforms")
         for i in range(2):
-            .plot2d(
+            report.plot2d(
                 x=sim.time,
                 series={
                     sim.out_n[i].full_path_str(): sim.out_n[i].voltage,
@@ -541,7 +544,7 @@ cell VcoTb:
                 height=180,
                 plot_group="vco_tran",
             )
-        .plot2d(
+        report.plot2d(
             x=sim.time,
             series={
                 'rst_n': sim.rst_n.voltage,
@@ -554,7 +557,7 @@ cell VcoTb:
         )
         vdd_src_pin = sim.one(SimPin.instance_eref_idx.query(
             (sim.vdd_src, sim.vdd_src.eref.symbol.p)))
-        .plot2d(
+        report.plot2d(
             x=sim.time,
             series={'vdd_src': [-x for x in vdd_src_pin.current]},
             xlabel="Time (s)",
@@ -562,3 +565,4 @@ cell VcoTb:
             height=120,
             plot_group="vco_tran",
         )
+        return report
