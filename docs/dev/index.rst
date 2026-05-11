@@ -8,6 +8,7 @@ Developer's Corner
    setup
    containers_and_ci
    ipython_integration
+   lsp
    ngspice_pipe_mode
    design_decisions
    todos
