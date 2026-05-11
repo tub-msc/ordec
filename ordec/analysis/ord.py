@@ -3,6 +3,7 @@
 
 # standard imports
 import ast
+import importlib
 import importlib.util
 from pathlib import Path
 import re
@@ -21,6 +22,9 @@ from lark.exceptions import UnexpectedToken
 # ordec imports
 from ..ord.parser import format_error
 from ..ord.parser import parser
+
+
+_MISSING = object()
 
 
 class AnalysisPosition(NamedTuple):
@@ -132,6 +136,27 @@ class DocumentAnalysis:
             "exports": list(self.exports),
         }
 
+    def has_errors(self):
+        return any(
+            diagnostic.severity == "error"
+            for diagnostic in self.diagnostics
+        )
+
+    def with_diagnostics(self, diagnostics, uri: Optional[str] = None, version=_MISSING):
+        return DocumentAnalysis(
+            uri=self.uri if uri is None else uri,
+            version=self.version if version is _MISSING else version,
+            diagnostics=diagnostics,
+            symbols=self.symbols,
+            imports=self.imports,
+            import_entries=self.import_entries,
+            exports=self.exports,
+            scopes=self.scopes,
+            bindings=self.bindings,
+            occurrences=self.occurrences,
+            member_occurrences=self.member_occurrences,
+        )
+
 
 def position_before(left: AnalysisPosition, right: AnalysisPosition):
     if left.line != right.line:
@@ -154,29 +179,108 @@ class AnalysisSession:
         self.workspace_root = workspace_root
         self.documents = dict()
         self.python_modules = dict()
+        self.workspace_index = None
 
-    def open_document(self, uri: str, text: str, version: Optional[int] = None):
+    def last_good_analysis(self, doc):
+        if doc is None:
+            return None
+
+        analysis = doc.get("analysis")
+        if analysis is not None and not analysis.has_errors():
+            return analysis
+
+        return doc.get("last_good_analysis")
+
+    def invalidate_workspace_index(self):
+        self.workspace_index = None
+
+    def clear_python_modules(self):
+        importlib.invalidate_caches()
+        self.python_modules.clear()
+
+    def open_document(
+        self,
+        uri: str,
+        text: str,
+        version: Optional[int] = None,
+        is_open: bool = True,
+    ):
+        previous = self.documents.get(uri)
         self.documents[uri] = {
             "text": text,
             "version": version,
             "analysis": None,
+            "last_good_analysis": self.last_good_analysis(previous),
+            "is_open": is_open,
         }
+        self.invalidate_workspace_index()
 
-    def update_document(self, uri: str, text: str, version: Optional[int] = None):
+    def update_document(
+        self,
+        uri: str,
+        text: str,
+        version: Optional[int] = None,
+        is_open: bool = True,
+    ):
+        previous = self.documents.get(uri)
         self.documents[uri] = {
             "text": text,
             "version": version,
             "analysis": None,
+            "last_good_analysis": self.last_good_analysis(previous),
+            "is_open": is_open,
         }
+        self.invalidate_workspace_index()
 
     def close_document(self, uri: str):
         self.documents.pop(uri, None)
+        self.invalidate_workspace_index()
 
     def ensure_document(self, uri: str):
         if uri not in self.documents and uri.startswith("file:"):
             path = Path(unquote(urlparse(uri).path))
-            self.open_path(str(path))
+            try:
+                self.open_path(str(path))
+            except OSError:
+                return False
         return uri in self.documents
+
+    def is_ord_uri(self, uri: str):
+        parsed_uri = urlparse(uri)
+        if parsed_uri.scheme != "file":
+            return False
+
+        return Path(unquote(parsed_uri.path)).suffix == ".ord"
+
+    def invalidate_path(self, path: str):
+        path = Path(path).resolve()
+        if path.suffix == ".py":
+            self.clear_python_modules()
+            return None
+
+        if path.suffix != ".ord":
+            return None
+
+        uri = path.as_uri()
+        doc = self.documents.get(uri)
+        if doc is not None and doc.get("is_open"):
+            doc["analysis"] = None
+            self.invalidate_workspace_index()
+            return uri
+
+        if path.exists():
+            return self.update_path(str(path))
+
+        self.documents.pop(uri, None)
+        self.invalidate_workspace_index()
+        return uri
+
+    def invalidate_uri(self, uri: str):
+        parsed_uri = urlparse(uri)
+        if parsed_uri.scheme != "file":
+            return None
+
+        return self.invalidate_path(unquote(parsed_uri.path))
 
     def resolve_module_uri(self, uri: str, module_name: str):
         if not uri.startswith("file:"):
@@ -565,23 +669,42 @@ class AnalysisSession:
     def analyze(self, uri: str):
         doc = self.documents[uri]
         if doc["analysis"] is None:
-            doc["analysis"] = analyze_ord(doc["text"], uri=uri, version=doc["version"])
+            analysis = analyze_ord(doc["text"], uri=uri, version=doc["version"])
+            if analysis.has_errors():
+                last_good = doc.get("last_good_analysis")
+                if last_good is not None:
+                    analysis = last_good.with_diagnostics(
+                        analysis.diagnostics,
+                        uri=uri,
+                        version=doc["version"],
+                    )
+            else:
+                doc["last_good_analysis"] = analysis
+            doc["analysis"] = analysis
         return doc["analysis"]
 
     def open_path(self, path: str, version: Optional[int] = None):
         path = Path(path).resolve()
+        uri = path.as_uri()
+        if uri in self.documents and self.documents[uri].get("is_open"):
+            return uri
+
         with open(path) as source_file:
             text = source_file.read()
-        uri = path.as_uri()
-        self.open_document(uri, text, version=version)
+        self.open_document(uri, text, version=version, is_open=False)
         return uri
 
     def update_path(self, path: str, version: Optional[int] = None):
         path = Path(path).resolve()
+        uri = path.as_uri()
+        if uri in self.documents and self.documents[uri].get("is_open"):
+            self.documents[uri]["analysis"] = None
+            self.invalidate_workspace_index()
+            return uri
+
         with open(path) as source_file:
             text = source_file.read()
-        uri = path.as_uri()
-        self.update_document(uri, text, version=version)
+        self.update_document(uri, text, version=version, is_open=False)
         return uri
 
     def analyze_path(self, path: str, version: Optional[int] = None):
@@ -599,7 +722,10 @@ class AnalysisSession:
 
                     uri = path.resolve().as_uri()
                     if uri not in self.documents:
-                        self.open_path(str(path))
+                        try:
+                            self.open_path(str(path))
+                        except OSError:
+                            continue
                     uris.append(uri)
                 return uris
 
@@ -608,6 +734,42 @@ class AnalysisSession:
             if uri.startswith("file:"):
                 uris.append(uri)
         return uris
+
+    def workspace_import_index(self):
+        if self.workspace_index is not None:
+            return self.workspace_index
+
+        uris = set(self.workspace_uris())
+        imports_by_uri = dict()
+        dependents_by_uri = dict()
+
+        for uri in sorted(uris):
+            import_uris = set(self.resolve_import_uris(uri))
+            imports_by_uri[uri] = import_uris
+            for import_uri in import_uris:
+                dependents_by_uri.setdefault(import_uri, set()).add(uri)
+
+        self.workspace_index = {
+            "uris": uris,
+            "imports": imports_by_uri,
+            "dependents": dependents_by_uri,
+        }
+        return self.workspace_index
+
+    def workspace_dependents(self, uri: str):
+        index = self.workspace_import_index()
+        dependents = set()
+        pending = list(index["dependents"].get(uri, set()))
+
+        while pending:
+            dependent_uri = pending.pop()
+            if dependent_uri in dependents:
+                continue
+
+            dependents.add(dependent_uri)
+            pending.extend(index["dependents"].get(dependent_uri, set()))
+
+        return dependents
 
     def resolve_import_uris(self, uri: str):
         if not self.ensure_document(uri) or not uri.startswith("file:"):
@@ -1434,9 +1596,10 @@ class AnalysisSession:
             return []
 
         references = []
+        seen = set()
         target = self.definition_key(definition)
 
-        for ref_uri in self.analyze_related(uri):
+        for ref_uri in self.reference_search_uris(uri, definition):
             for candidate in self.reference_candidates(ref_uri):
                 resolved = self.definition(ref_uri, candidate["range"].start)
                 if resolved is None:
@@ -1445,6 +1608,17 @@ class AnalysisSession:
                 if self.definition_key(resolved) != target:
                     continue
 
+                key = (
+                    ref_uri,
+                    candidate["range"].start.line,
+                    candidate["range"].start.character,
+                    candidate["range"].end.line,
+                    candidate["range"].end.character,
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+
                 references.append({
                     "uri": ref_uri,
                     "name": candidate["name"],
@@ -1452,6 +1626,28 @@ class AnalysisSession:
                 })
 
         return references
+
+    def reference_search_uris(self, uri: str, definition):
+        if definition.get("binding_id") is not None and not definition.get("exported"):
+            return [uri]
+
+        target_uri = definition["uri"]
+        if self.is_ord_uri(target_uri):
+            uris = [uri, target_uri]
+            uris.extend(sorted(self.workspace_dependents(target_uri)))
+            if not self.workspace_root:
+                uris.extend(sorted(self.analyze_related(uri).keys()))
+
+            result = []
+            seen = set()
+            for candidate_uri in uris:
+                if candidate_uri in seen:
+                    continue
+                seen.add(candidate_uri)
+                result.append(candidate_uri)
+            return result
+
+        return self.workspace_uris()
 
     def document_highlights(self, uri: str, position: AnalysisPosition):
         if not self.ensure_document(uri):

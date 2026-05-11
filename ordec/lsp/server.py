@@ -60,7 +60,13 @@ class OrdecLanguageServer:
                         "name": "ordec-lsp",
                     },
                     "capabilities": {
-                        "textDocumentSync": 1,
+                        "textDocumentSync": {
+                            "openClose": True,
+                            "change": 1,
+                            "save": {
+                                "includeText": True,
+                            },
+                        },
                         "documentSymbolProvider": True,
                         "documentHighlightProvider": True,
                         "workspaceSymbolProvider": True,
@@ -87,6 +93,9 @@ class OrdecLanguageServer:
             }]
 
         if method == "initialized":
+            return []
+
+        if method == "$/cancelRequest":
             return []
 
         if method == "shutdown":
@@ -133,6 +142,24 @@ class OrdecLanguageServer:
                     "diagnostics": [],
                 },
             }]
+
+        if method == "textDocument/didSave":
+            text_document = params["textDocument"]
+            uri = text_document["uri"]
+            if "text" in params:
+                self.session.update_document(
+                    uri,
+                    params["text"],
+                    version=text_document.get("version"),
+                )
+            else:
+                self.session.invalidate_uri(uri)
+            return [self.publish_diagnostics(uri)]
+
+        if method == "workspace/didChangeWatchedFiles":
+            for change in params.get("changes", []):
+                self.session.invalidate_uri(change["uri"])
+            return []
 
         if method == "textDocument/documentSymbol":
             uri = params["textDocument"]["uri"]
@@ -395,8 +422,9 @@ class OrdecLanguageServer:
         return []
 
     def publish_diagnostics(self, uri: str):
+        analysis = self.session.analyze(uri)
         diagnostics = []
-        for diagnostic in self.session.analyze(uri).diagnostics:
+        for diagnostic in analysis.diagnostics:
             diagnostics.append({
                 "range": self.lsp_range(diagnostic.range),
                 "severity": self.diagnostic_severity(diagnostic.severity),
@@ -404,13 +432,17 @@ class OrdecLanguageServer:
                 "code": diagnostic.code,
             })
 
+        params = {
+            "uri": uri,
+            "diagnostics": diagnostics,
+        }
+        if analysis.version is not None:
+            params["version"] = analysis.version
+
         return {
             "jsonrpc": "2.0",
             "method": "textDocument/publishDiagnostics",
-            "params": {
-                "uri": uri,
-                "diagnostics": diagnostics,
-            },
+            "params": params,
         }
 
     def analysis_position(self, position):

@@ -23,7 +23,13 @@ def test_lsp_initialize_exposes_core_capabilities(tmp_path):
                 "name": "ordec-lsp",
             },
             "capabilities": {
-                "textDocumentSync": 1,
+                "textDocumentSync": {
+                    "openClose": True,
+                    "change": 1,
+                    "save": {
+                        "includeText": True,
+                    },
+                },
                 "documentSymbolProvider": True,
                 "documentHighlightProvider": True,
                 "workspaceSymbolProvider": True,
@@ -103,6 +109,7 @@ def test_lsp_open_definition_hover_and_references(tmp_path):
         "method": "textDocument/publishDiagnostics",
         "params": {
             "uri": uri,
+            "version": 1,
             "diagnostics": [],
         },
     }]
@@ -476,6 +483,61 @@ def test_lsp_workspace_symbol_scans_workspace_root(tmp_path):
             },
         ],
     }]
+
+
+def test_lsp_watched_file_change_refreshes_workspace_cache(tmp_path):
+    ord_path = tmp_path / "watched.ord"
+    ord_path.write_text(
+        "cell OldName:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        path a\n"
+    )
+
+    server = OrdecLanguageServer()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    })
+
+    old_symbols = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "workspace/symbol",
+        "params": {
+            "query": "old",
+        },
+    })
+    assert old_symbols[0]["result"][0]["name"] == "OldName"
+
+    ord_path.write_text(
+        "cell NewName:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        path a\n"
+    )
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "workspace/didChangeWatchedFiles",
+        "params": {
+            "changes": [{
+                "uri": ord_path.resolve().as_uri(),
+                "type": 2,
+            }],
+        },
+    })
+
+    new_symbols = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "workspace/symbol",
+        "params": {
+            "query": "new",
+        },
+    })
+    assert new_symbols[0]["result"][0]["name"] == "NewName"
 
 
 def test_lsp_module_imports_resolve_to_local_module(tmp_path):

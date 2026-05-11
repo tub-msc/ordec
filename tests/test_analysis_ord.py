@@ -118,6 +118,38 @@ def test_analysis_session_tracks_open_documents():
     assert session.documents == {}
 
 
+def test_analysis_session_keeps_last_good_symbols_during_syntax_errors():
+    session = AnalysisSession(workspace_root="/tmp/workspace")
+    uri = "file:///tmp/test.ord"
+    session.open_document(
+        uri,
+        "cell Inv:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        path a\n",
+        version=1,
+    )
+
+    good_analysis = session.analyze(uri)
+    assert good_analysis.diagnostics == []
+    assert [symbol.name for symbol in good_analysis.symbols] == ["Inv", "symbol", "a"]
+
+    session.update_document(
+        uri,
+        "cell Inv:\n"
+        "    viewgen symbol(\n",
+        version=2,
+    )
+    broken_analysis = session.analyze(uri)
+
+    assert broken_analysis.version == 2
+    assert broken_analysis.diagnostics[0].severity == "error"
+    assert [symbol.name for symbol in broken_analysis.symbols] == ["Inv", "symbol", "a"]
+
+    definition = session.definition(uri, AnalysisPosition(line=1, character=6))
+    assert definition["name"] == "Inv"
+    assert definition["kind"] == "class"
+
+
 def test_analyze_ord_collects_imports_and_exports():
     ord_string = (
         "import math, numpy as np\n"
@@ -364,6 +396,43 @@ def test_analysis_session_definition_resolves_python_members(tmp_path):
     assert loop_member["selection_range"].start.line in (53, 76)
 
 
+def test_analysis_session_invalidates_cached_python_module_info(tmp_path, monkeypatch):
+    package_path = tmp_path / "pkg"
+    package_path.mkdir()
+    (package_path / "__init__.py").write_text("")
+    module_path = package_path / "devices.py"
+    module_path.write_text(
+        "class Device:\n"
+        "    old_pin = 1\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    old_member = session.python_class_member_definition(
+        "pkg.devices",
+        "Device",
+        "old_pin",
+    )
+    assert old_member is not None
+
+    module_path.write_text(
+        "class Device:\n"
+        "    new_pin = 1\n"
+    )
+    session.invalidate_path(str(module_path))
+
+    assert session.python_class_member_definition(
+        "pkg.devices",
+        "Device",
+        "old_pin",
+    ) is None
+    assert session.python_class_member_definition(
+        "pkg.devices",
+        "Device",
+        "new_pin",
+    ) is not None
+
+
 def test_analysis_session_member_references_and_rename_guard(tmp_path):
     inv_path = tmp_path / "inv.ord"
     inv_path.write_text(
@@ -513,6 +582,53 @@ def test_analysis_session_references_follow_import_alias(tmp_path):
             },
         ),
     ]
+
+
+def test_analysis_session_references_include_reverse_workspace_dependents(tmp_path):
+    mux2_path = tmp_path / "ord" / "mux2.ord"
+    mux2_path.parent.mkdir()
+    mux2_path.write_text(
+        "cell Mux2:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        path a\n"
+    )
+
+    first_user = tmp_path / "ord" / "first.ord"
+    first_user.write_text(
+        "from .mux2 import Mux2\n"
+        "\n"
+        "def helper(x=Mux2):\n"
+        "    return Mux2\n"
+    )
+
+    second_user = tmp_path / "ord" / "second.ord"
+    second_user.write_text(
+        "from .mux2 import Mux2 as Stage\n"
+        "\n"
+        "def helper(x=Stage):\n"
+        "    return Stage\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    mux2_uri = mux2_path.resolve().as_uri()
+    first_uri = first_user.resolve().as_uri()
+    second_uri = second_user.resolve().as_uri()
+
+    references = session.references(mux2_uri, AnalysisPosition(line=1, character=6))
+    names_by_uri = {
+        ref_uri: [
+            reference["name"]
+            for reference in references
+            if reference["uri"] == ref_uri
+        ]
+        for ref_uri in (mux2_uri, first_uri, second_uri)
+    }
+
+    assert names_by_uri == {
+        mux2_uri: ["Mux2"],
+        first_uri: ["Mux2", "Mux2", "Mux2"],
+        second_uri: ["Stage", "Stage", "Stage"],
+    }
 
 
 def test_analysis_session_document_highlights_follow_import_alias(tmp_path):
