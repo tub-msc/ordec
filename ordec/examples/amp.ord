@@ -1,8 +1,7 @@
 from ordec.core import *
 from ordec.lib.base import Res, Cap, Vdc, Vsin, Gnd, Idc
 from ordec.lib.ihp130 import Nmos, Pmos
-from ordec.sim import Simulator
-from ordec.report import *
+from ordec.report import Report
 
 cell Amp:
     viewgen symbol -> Symbol:
@@ -40,23 +39,18 @@ cell AmpTb:
         Cap cout: .pos=(22,3); .$c=1p; .p--vout; .m--vss
 
 
-    @generate
-    def sim_ac(self):
-        s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s).ac('dec', '10', '1M', '1G')
-        return s
+    viewgen sim_ac -> Simulation:
+        .simulate().ac('dec', '10', '1M', '1G')
+
+    viewgen sim_tran -> Simulation:
+        .simulate().tran(R('1n'), R('1u'))
 
     @generate
-    def sim_tran(self):
-        s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s).tran(R('1n'), R('1u'))
-        return s
-
-    @generate
-    def report_ac(self):
+    def report_ac(self) -> Report:
         import math
         sim = self.sim_ac
         freq = [f.real for f in sim.freq]
+        report = Report()
 
         def mag_db(cvals):
             return [20 * math.log10(abs(v)) if abs(v) > 0 else -200 for v in cvals]
@@ -64,8 +58,8 @@ cell AmpTb:
         def phase_deg(cvals):
             return [math.degrees(math.atan2(v.imag, v.real)) for v in cvals]
 
-        elements = [Markdown("## Amplifier AC bode plot")]
-        elements.append(Plot2D(
+        report.markdown("## Amplifier AC bode plot")
+        report.plot2d(
             x=freq,
             series={
                 'vin': mag_db(sim.vin.voltage),
@@ -76,8 +70,8 @@ cell AmpTb:
             xscale="log",
             height=200,
             plot_group="bode",
-        ))
-        elements.append(Plot2D(
+        )
+        report.plot2d(
             x=freq,
             series={
                 'vin': phase_deg(sim.vin.voltage),
@@ -88,5 +82,5 @@ cell AmpTb:
             xscale="log",
             height=200,
             plot_group="bode",
-        ))
-        return Report(elements)
+        )
+        return report

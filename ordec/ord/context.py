@@ -39,6 +39,16 @@ def view_context():
     return _view_ctx_var.get()
 
 
+def create_view_root(cell, root_cls):
+    try:
+        view_context_cls = root_cls.view_context
+    except AttributeError as e:
+        raise TypeError(
+            f"{root_cls!r} cannot be used as an ORD viewgen return type."
+        ) from e
+    return view_context_cls.create_root(cell, root_cls)
+
+
 def constrain(constraint):
     return _view_ctx_var.get().constrain(constraint)
 

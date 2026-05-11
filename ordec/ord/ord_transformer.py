@@ -61,54 +61,19 @@ class OrdTransformer(PythonTransformer):
     def viewgen(self, nodes):
         """ Funcdef for cell (viewgen name -> Type:\n suite)"""
         func_name = nodes[0]
-        if len(nodes) == 4:
-            viewgen_args = nodes[1]
-            viewgen_type = nodes[2]
-            suite = nodes[3]
-        else:
-            viewgen_args = []
-            viewgen_type = nodes[1]
-            suite = nodes[2]
-
-        # Validate the return type
-        viewgen_type_lower = viewgen_type.lower()
-        if viewgen_type_lower not in ("symbol", "schematic", "layout"):
-            raise SyntaxError(
-                f"Unknown viewgen return type '{viewgen_type}'. "
-                f"Expected Symbol, Schematic, or Layout."
-            )
-
-        # Extract keyword arguments
-        kwarg_assignments = []
-        for arg in viewgen_args:
-            if isinstance(arg, tuple) and arg[0] == "argvalue":
-                kwarg_assignments.append(
-                    ast.Assign(
-                        targets=[self.ast_name(arg[1].id, ctx=ast.Store())],
-                        value=arg[2]
-                    )
-                )
-
-        keywords = list()
-        keywords.append(ast.keyword(arg="cell", value=self.ast_name("self")))
-        if viewgen_type_lower in ("schematic", "layout"):
-            keywords.append(
-                ast.keyword(
-                    arg="symbol",
-                    value=self.ast_attribute(self.ast_name("self"), attr="symbol")
-                )
-            )
+        viewgen_type = nodes[1]
+        suite = nodes[2]
 
         ord_root = self.ast_name("__ord_root__")
         ord_root_store = self.ast_name("__ord_root__", ctx=ast.Store())
 
         viewgen_call = ast.Call(
-            func=self.ast_core(viewgen_type.title()),
-            args=[],
-            keywords=keywords
+            func=self.ast_ord_context("create_view_root"),
+            args=[self.ast_name("self"), self.ast_name(viewgen_type)],
+            keywords=[]
         )
 
-        # __ord_root__ = Type(cell=self, symbol=self.symbol)
+        # __ord_root__ = __ord_context__.create_view_root(self, Type)
         root_assign = ast.Assign(
             targets=[ord_root_store],
             value=viewgen_call
@@ -132,7 +97,7 @@ class OrdTransformer(PythonTransformer):
         )
         # Wrap with statement with context in a decorated function call
         # --> See Python implementation
-        func_body = kwarg_assignments + [root_assign, with_context, return_value]
+        func_body = [root_assign, with_context, return_value]
         func_def = ast.FunctionDef(
             name=func_name,
             args=ast.arguments(
@@ -145,7 +110,7 @@ class OrdTransformer(PythonTransformer):
             ),
             body=func_body,
             decorator_list=[self.ast_core("generate")],
-            returns=self.ast_core(viewgen_type.title()),
+            returns=self.ast_name(viewgen_type),
             type_params=[]
         )
         return func_def

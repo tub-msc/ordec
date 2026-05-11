@@ -13,7 +13,7 @@ from .geoprim import *
 from .ordb import *
 from .cell import Cell
 from .constraints import *
-from .context import ViewContext, SymbolViewContext, SchematicViewContext, LayoutViewContext
+from .context import ViewContext, SymbolViewContext, SchematicViewContext, LayoutViewContext, SimulationViewContext
 from .simarray import SimArray
 
 # Enums
@@ -748,6 +748,8 @@ class SimHierarchySubcursor(tuple):
 
 @public
 class SimHierarchy(SubgraphRoot):
+    view_context = SimulationViewContext
+
     schematic = SubgraphRef(Schematic)
     cell = Attr(Cell)
     sim_type = Attr(SimType)
@@ -790,6 +792,10 @@ class SimHierarchy(SubgraphRoot):
 
     def subcursor(self):
         return SimHierarchySubcursor((self, None, self.schematic))
+
+    def simulate(self, enable_savecurrents: bool = True, batch: bool = True):
+        from ..sim import Simulator
+        return Simulator(self, enable_savecurrents=enable_savecurrents, batch=batch)
 
     def schematic_or_symbol_at(self, inst: Optional['SimInstance']):
         """Helper function for of_subgraph of SimNet.eref and SimInstance.eref."""
@@ -975,6 +981,8 @@ class SimInstance(Node):
 
     def full_path_str(self) -> str:
         return '.'.join(str(x) for x in self.full_path_list())
+
+public(Simulation = SimHierarchy)
 
 # LayerStack
 # ----------

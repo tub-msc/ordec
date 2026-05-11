@@ -43,6 +43,10 @@ class ViewContext:
     def __init__(self, root):
         self.root = root
 
+    @classmethod
+    def create_root(cls, cell, root_cls):
+        return root_cls()
+
     def __enter__(self):
         self._node_ctx = self.root.ctx()
         self._node_ctx.__enter__()
@@ -64,11 +68,19 @@ class ViewContext:
 
 
 class SymbolViewContext(ViewContext):
+    @classmethod
+    def create_root(cls, cell, root_cls):
+        return root_cls(cell=cell)
+
     def postprocess(self):
         self.root.place_pins(vpadding=2, hpadding=2)
 
 
 class SchematicViewContext(ViewContext):
+    @classmethod
+    def create_root(cls, cell, root_cls):
+        return root_cls(cell=cell, symbol=cell.symbol)
+
     def postprocess(self):
         self.root.resolve_instances()
         self.root.auto_wire()
@@ -76,6 +88,10 @@ class SchematicViewContext(ViewContext):
 
 
 class LayoutViewContext(ViewContext):
+    @classmethod
+    def create_root(cls, cell, root_cls):
+        return root_cls(cell=cell, symbol=cell.symbol)
+
     def __enter__(self):
         super().__enter__()
         from .constraints import Solver
@@ -87,3 +103,9 @@ class LayoutViewContext(ViewContext):
 
     def constrain(self, constraint):
         self.solver.constrain(constraint)
+
+
+class SimulationViewContext(ViewContext):
+    @classmethod
+    def create_root(cls, cell, root_cls):
+        return root_cls.from_schematic(cell.schematic)

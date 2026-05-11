@@ -2,8 +2,6 @@ from ordec.core import *
 
 # Library imports
 from ordec.lib import Vdc, Res, Gnd
-# Simulation imports
-from ordec.sim import Simulator
 
 cell VoltageDivider:
     viewgen symbol -> Symbol:
@@ -17,11 +15,8 @@ cell VoltageDivider:
         Res res_3: .$r = 100; .m -- b; .p -- vdd; .pos = (5,18)
         Gnd gnd: .p -- vss; .pos = (0,0)
 
-    @generate
-    def sim_dc(self):
-        node = SimHierarchy.from_schematic(self.schematic)
-        Simulator(node).op()
-        return node
+    viewgen sim_dc -> Simulation:
+        .simulate().op()
 
     @generate
     def netlist(self) -> str:

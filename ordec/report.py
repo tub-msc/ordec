@@ -226,6 +226,21 @@ class Report:
         self._elements.append(element)
         return self
 
+    def markdown(self, markdown: str) -> "Report":
+        return self.add(Markdown(markdown))
+
+    def preformatted(self, text: str) -> "Report":
+        return self.add(PreformattedText(text))
+
+    def html(self, html: str) -> "Report":
+        return self.add(Html(html))
+
+    def svg(self, view) -> "Report":
+        return self.add(Svg.from_view(view))
+
+    def plot2d(self, *args, **kwargs) -> "Report":
+        return self.add(Plot2D(*args, **kwargs))
+
     def extend(self, elements: Iterable[ReportElement]) -> "Report":
         new_elements = list(elements)
         self._validate_elements(new_elements)
