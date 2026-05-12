@@ -8,6 +8,7 @@ import earcut from 'earcut';
 import { generateId } from './resultviewer.js';
 import { siFormat } from './siformat.js';
 import { viewEventBus } from './event-bus.js';
+import { CoordinateDisplay } from './viewer-coordinates.js';
 
 // See: https://github.com/mdn/dom-examples/blob/main/webgl-examples/tutorial/sample2/webgl-demo.js
 
@@ -135,14 +136,27 @@ export class LayoutGL {
         this.brightness = 60;
         this.initialZoomDone = false;
 
+        this.root = document.createElement('div');
+        this.root.classList.add('layout-viewer');
         this.canvas = document.createElement('canvas');
         this.canvas.classList.add('layoutFit');
+        this.sidebar = document.createElement('div');
+        this.sidebar.classList.add('layout-sidebar');
+        this.sidebarToggle = document.createElement('button');
+        this.sidebarToggle.classList.add('layout-sidebar-toggle');
+        this.sidebarToggle.type = 'button';
+        this.sidebarToggle.textContent = 'Layers';
+        this.sidebarToggle.setAttribute('aria-expanded', 'true');
+        this.sidebarToggle.title = 'Hide layers';
+        this.sidebarToggle.onclick = () => this.toggleSidebar();
         this.layersUl = document.createElement('ul');
         this.layersUl.classList.add('layerList');
-        this.resContent.replaceChildren(
-            this.canvas,
+        this.sidebar.append(
+            this.sidebarToggle,
             this.layersUl
         );
+        this.root.append(this.canvas, this.sidebar);
+        this.resContent.replaceChildren(this.root);
 
         this.canvas.width = this.canvas.clientWidth;
         this.canvas.height = this.canvas.clientHeight;
@@ -179,8 +193,10 @@ export class LayoutGL {
 
         this._onKeydown = (event) => this.onKeydown(event);
         this._onMousemove = (event) => this.onMousemove(event);
+        this._onMouseleave = () => this.clearMousePosition();
         this.resContent.addEventListener("keydown", this._onKeydown);
         this.canvas.addEventListener("mousemove", this._onMousemove);
+        this.canvas.addEventListener("mouseleave", this._onMouseleave);
 
         this._onDrcSelect = (data) => this.setHighlight(data.shapes);
         this._onDrcClear = () => this.clearHighlight();
@@ -236,11 +252,25 @@ export class LayoutGL {
         }
     }
 
+    toggleSidebar() {
+        this.sidebar.classList.toggle('layout-sidebar-collapsed');
+        const expanded = !this.sidebar.classList.contains(
+            'layout-sidebar-collapsed'
+        );
+        this.sidebarToggle.setAttribute('aria-expanded', String(expanded));
+        this.sidebarToggle.title = expanded ? 'Hide layers' : 'Show layers';
+    }
+
+    clearMousePosition() {
+        this.cursorCoordinates?.clear();
+    }
+
     onMousemove(event) {
+        if (!this.data || !this.cursorCoordinates) return;
         const pos = this.transform.invert([event.offsetX, event.offsetY]);
         const x = siFormat(pos[0], this.data.unit);
         const y = siFormat(-pos[1], this.data.unit);
-        this.cursorPosLi.innerHTML = `x=${x}&nbsp;&nbsp;y=${y}`;
+        this.cursorCoordinates.set(x, y);
     }
 
     update(msgData) {
@@ -320,10 +350,11 @@ export class LayoutGL {
             this.drawGL();
         }
 
-        li = document.createElement('li');
-        li.innerHTML =`x=0&nbsp;&nbsp;y=0`;
-        layersUl.appendChild(li);
-        this.cursorPosLi = li;
+        this.cursorCoordinates = new CoordinateDisplay({
+            tagName: 'li',
+            classNames: ['layout-coordinates'],
+        });
+        layersUl.appendChild(this.cursorCoordinates.element);
     }
 
     destroy() {
@@ -332,6 +363,7 @@ export class LayoutGL {
         viewEventBus.off('drc:clear', this._onDrcClear);
         this.resContent.removeEventListener("keydown", this._onKeydown);
         this.canvas.removeEventListener("mousemove", this._onMousemove);
+        this.canvas.removeEventListener("mouseleave", this._onMouseleave);
         if (!this.gl) return;
         this.resizeObserver.disconnect();
         this.glResources.destroy();
