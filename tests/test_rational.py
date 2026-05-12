@@ -55,3 +55,28 @@ def test_rational_op_types():
     assert type(R(1) / R(1)) == R
     assert type(R(1) // R(1)) == R
     assert type(R(1) % R(1)) == R
+
+
+def test_float_to_rational():
+    # Float conversion uses shortest decimal that round-trips
+    assert R(1.2) == R("1.2")
+    assert R(0.1) == R("0.1")
+    assert R(2.4) == R("2.4")
+    assert R(0.085) == R("0.085")
+    assert R(0.25) == R("0.25")
+    assert R(0.5) == R("0.5")
+    assert R(0.625) == R("0.625")
+    assert R(-1.2) == R("-1.2")
+    assert R(0.0) == R("0.0")
+    assert R(1e-9) == R("1e-9")
+    assert R(1.5e6) == R("1.5e6")
+
+
+def test_float_to_rational_rejects_nonfinite():
+    import pytest
+    with pytest.raises(ValueError):
+        R(float("inf"))
+    with pytest.raises(ValueError):
+        R(float("-inf"))
+    with pytest.raises(ValueError):
+        R(float("nan"))

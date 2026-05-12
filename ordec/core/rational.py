@@ -34,6 +34,12 @@ class Rational(fractions.Fraction):
     sisuffix_rev = {c: n for n, c in sisuffix.items()} | {"μ":-6}
 
     def __new__(cls, number=0, denominator=None):
+        if isinstance(number, float) and denominator is None:
+            if not math.isfinite(number):
+                raise ValueError(f"Cannot convert {number} to Rational")
+            # Use shortest decimal representation that round-trips, recovering
+            # the user's intended decimal rather than exact IEEE-754 binary.
+            number = str(number)
         if isinstance(number, str) and denominator is None:
             if number.startswith("f'"):
                 num, den = number[2:].split("/", 1)
