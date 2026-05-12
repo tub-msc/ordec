@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 ORDeC contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // LVSDB S-Expression Grammar
 // Parses KLayout LVS database files (.lvsdb)
 
