@@ -45,6 +45,18 @@ class ViewContext:
 
     @classmethod
     def create_root(cls, cell, root_cls):
+        """
+        Creates the root node for a view. Called through create_view_root()
+        during the setup phase of ORD viewgen methods.
+
+        Args:
+            cell: The Cell instance whose view is being generated.
+            root_cls: The SubgraphRoot subclass to instantiate (e.g., Symbol,
+                Schematic, Layout, SimHierarchy).
+
+        Returns:
+            A new SubgraphRoot instance initialized for the view type.
+        """
         return root_cls()
 
     def __enter__(self):
