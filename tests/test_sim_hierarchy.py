@@ -64,7 +64,7 @@ def test_navigate_simnets_nets():
 
     simnet_I0_I2_t = simhier.I0.sub2.I2.t
     assert isinstance(simnet_I0_I2_t, SimNet)
-    assert simnet_I0_I2_t.eref == lib_test.ResdivHier2(r=R(100)).schematic.t
+    assert simnet_I0_I2_t.eref == lib_test.ResdivHier2(r=100).schematic.t
     assert simnet_I0_I2_t.parent_inst == simhier.I0.sub2.I2
     assert simnet_I0_I2_t.full_path_list() == ['I0', 'sub2', 'I2', 't']
 
@@ -88,7 +88,7 @@ def test_navigate_simnets_pins():
 
     simnet_I0_I2_I1_m = simhier.I0.sub2.I2.I1.m
     assert isinstance(simnet_I0_I2_I1_m, SimNet)
-    assert simnet_I0_I2_I1_m.eref == Res(r=R(100)).symbol.m
+    assert simnet_I0_I2_I1_m.eref == Res(r=100).symbol.m
     assert simnet_I0_I2_I1_m.parent_inst == simhier.I0.sub2.I2.I1
     assert simnet_I0_I2_I1_m.full_path_list() == ['I0', 'sub2', 'I2', 'I1', 'm']
 

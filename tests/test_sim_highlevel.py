@@ -258,22 +258,22 @@ def test_sim_pulsedrc_tran(sim_batch):
 
 def test_generic_mos_netlister():
     nl = Netlister(Directory())
-    nl.netlist_hier(lib_test.NmosSourceFollowerTb(vin=R(2)).schematic)
+    nl.netlist_hier(lib_test.NmosSourceFollowerTb(vin=2).schematic)
     netlist = nl.out()
 
     assert netlist.count('.model nmosgeneric NMOS level=1') == 1
     assert netlist.count('.model pmosgeneric PMOS level=1') == 1
 
 def test_generic_mos_nmos_sourcefollower(sim_batch):
-    tb = lib_test.NmosSourceFollowerTb(vin=R(2))
+    tb = lib_test.NmosSourceFollowerTb(vin=2)
     h = tb.sim_dc_batch if sim_batch else tb.sim_dc_piped
     assert h.o.voltage[0] == pytest.approx(1.2837721914145377, abs=1e-6)
-    tb = lib_test.NmosSourceFollowerTb(vin=R(3))
+    tb = lib_test.NmosSourceFollowerTb(vin=3)
     h = tb.sim_dc_batch if sim_batch else tb.sim_dc_piped
     assert h.o.voltage[0] == pytest.approx(2.2837721567191442, abs=1e-6)
 
 def test_op_save_params(sim_batch):
-    tb = lib_test.NmosSourceFollowerTb(vin=R(2))
+    tb = lib_test.NmosSourceFollowerTb(vin=2)
     h = tb.sim_dc_batch if sim_batch else tb.sim_dc_piped
     nmos = h.I0
     assert nmos.params['gm'].value[0] > 0
@@ -314,7 +314,7 @@ def test_sky130_nmos_out_of_range(sim_batch):
 
     s = Schematic()
     s.vss = Net()
-    nmos = sky130.Nmos(l=R("100n"), w=R("250n")).symbol
+    nmos = sky130.Nmos(l="100n", w="250n").symbol
     s.i_nmos = SchemInstance(nmos.portmap(g=s.vss, d=s.vss, s=s.vss, b=s.vss), pos=Vec2R(10, 5))
     s = s.freeze()
 

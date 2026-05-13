@@ -118,8 +118,8 @@ class Inv(Cell):
         s.vdd = Net(pin=self.symbol.vdd)
         s.vss = Net(pin=self.symbol.vss)
 
-        nmos = Nmos(w=R("500n"), l=R("250n")).symbol
-        pmos = Pmos(w=R("500n"), l=R("250n")).symbol
+        nmos = Nmos(w="500n", l="250n").symbol
+        pmos = Pmos(w="500n", l="250n").symbol
 
         s.pd = SchemInstance(nmos.portmap(s=s.vss, b=s.vss, g=s.a, d=s.y), pos=Vec2R(3, 2))
         s.pu = SchemInstance(pmos.portmap(s=s.vdd, b=s.vdd, g=s.a, d=s.y), pos=Vec2R(3, 8))

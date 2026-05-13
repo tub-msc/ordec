@@ -19,10 +19,10 @@ class ResdivFlatTb(Cell):
         s.a = Net()
         s.b = Net()
 
-        sym_vdc = Vdc(dc=R(1)).symbol
-        sym_vac = Vsin(ac=R(1), freq=R("1e6")).symbol
+        sym_vdc = Vdc(dc=1).symbol
+        sym_vac = Vsin(ac=1, freq=1e6).symbol
         sym_gnd = Gnd().symbol
-        sym_res = Res(r=R(100)).symbol
+        sym_res = Res(r=100).symbol
 
         s.I0 = SchemInstance(sym_gnd.portmap(p=s.vss), pos=Vec2R(5, 0))
         s.I1 = SchemInstance(sym_vdc.portmap(m=s.vss, p=s.vdd_ac), pos=Vec2R(0, 6))
@@ -142,8 +142,8 @@ class ResdivHier1(Cell):
         s.r % SchemPort(pos=Vec2R(15, 5), align=West)
         s.b % SchemPort(pos=Vec2R(7, -1), align=North)
 
-        sym_1 = ResdivHier2(r=R(100)).symbol
-        sym_2 = ResdivHier2(r=R(200)).symbol
+        sym_1 = ResdivHier2(r=100).symbol
+        sym_2 = ResdivHier2(r=200).symbol
 
         # s % SchemInstance(pos=Vec2R(5, 0), ref=sym_1, portmap={sym_1.t: s.m, sym_1.b:s.gnd, sym_1.r:s.br})
         
@@ -183,10 +183,10 @@ class ResdivHierTb(Cell):
 
         s.I1 = SchemInstance(NoConn().symbol.portmap(a=s.r), pos=Vec2R(10, 0))
         s.I2 = SchemInstance(
-            Vdc(dc=R(1)).symbol.portmap(m=s.gnd, p=s.t_ac), pos=Vec2R(0, 0)
+            Vdc(dc=1).symbol.portmap(m=s.gnd, p=s.t_ac), pos=Vec2R(0, 0)
         )
         s.I2_ac = SchemInstance(
-            Vsin(ac=R(1), freq=R("1e6")).symbol.portmap(m=s.t_ac, p=s.t), pos=Vec2R(0, 6)
+            Vsin(ac=1, freq=1e6).symbol.portmap(m=s.t_ac, p=s.t), pos=Vec2R(0, 6)
         )
         s.I3 = SchemInstance(Gnd().symbol.portmap(p=s.gnd), pos=Vec2R(0, -6))
 
@@ -217,7 +217,7 @@ class ResdivHierTb(Cell):
 class NmosSourceFollowerTb(Cell):
     """Nmos (generic_mos) source follower with optional parameter vin."""
 
-    vin = Parameter(R, optional=True, default=R(2))
+    vin = Parameter(R, optional=True, default=2)
 
     @generate
     def schematic(self):
@@ -231,22 +231,22 @@ class NmosSourceFollowerTb(Cell):
         vin = self.vin
 
         s.I0 = SchemInstance(
-            Nmos(w=R("5u"), l=R("1u")).symbol.portmap(d=s.vdd, s=s.o, g=s.i, b=s.vss),
+            Nmos(w="5u", l="1u").symbol.portmap(d=s.vdd, s=s.o, g=s.i, b=s.vss),
             pos=Vec2R(11, 12),
         )
 
         s.I1 = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(11, 0))
         s.I2 = SchemInstance(
-            Vdc(dc=R("5")).symbol.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 6)
+            Vdc(dc=5).symbol.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 6)
         )
         s.I3 = SchemInstance(
             Vdc(dc=vin).symbol.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
         )
         s.I3_ac = SchemInstance(
-            Vsin(ac=R(1), freq=R("1e6")).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
+            Vsin(ac=1, freq=1e6).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
         )
         s.I4 = SchemInstance(
-            Idc(dc=R("5u")).symbol.portmap(m=s.vss, p=s.o), pos=Vec2R(11, 6)
+            Idc(dc="5u").symbol.portmap(m=s.vss, p=s.o), pos=Vec2R(11, 6)
         )
 
         s.outline = Rect4R(lx=0, ly=0, ux=16, uy=22)
@@ -280,7 +280,7 @@ class InvTb(Cell):
         s.i_inv = SchemInstance(
             sym_inv.portmap(vdd=s.vdd, vss=s.vss, a=s.i, y=s.o), pos=Vec2R(11, 9)
         )
-        return R("5")
+        return R(5)
 
     @generate
     def schematic(self):
@@ -300,10 +300,10 @@ class InvTb(Cell):
             Vdc(dc=vdd).symbol.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 6)
         )
         s.i_in = SchemInstance(
-            Vdc(dc=R(0)).symbol.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
+            Vdc(dc=0).symbol.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
         )
         s.i_in_ac = SchemInstance(
-            Vsin(ac=R(1), freq=R("1e6")).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
+            Vsin(ac=1, freq=1e6).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
         )
 
         s.outline = Rect4R(lx=0, ly=0, ux=20, uy=14)
@@ -337,7 +337,7 @@ class InvSkyTb(InvTb):
         s.i_inv = SchemInstance(
             sym_inv.portmap(vdd=s.vdd, vss=s.vss, a=s.i, y=s.o), pos=Vec2R(11, 9)
         )
-        return R("5")
+        return R(5)
 
 class IhpInv(Cell):
     @generate
@@ -370,16 +370,16 @@ class IhpInv(Cell):
 
         # IHP130 specific parameters - using values from the old code
         nmos_params = {
-            "l": R("0.13u"),
-            "w": R("0.495u"),
+            "l": "0.13u",
+            "w": "0.495u",
             "m": 1,
             "ng": 1,
         }
         nmos = ihp130.Nmos(**nmos_params).symbol
 
         pmos_params = {
-            "l": R("0.13u"),
-            "w": R("0.99u"),
+            "l": "0.13u",
+            "w": "0.99u",
             "m": 1,
             "ng": 1,
         }
@@ -415,7 +415,7 @@ class InvIhpTb(InvTb):
         s.i_inv = SchemInstance(
             sym_inv.portmap(vdd=s.vdd, vss=s.vss, a=s.i, y=s.o), pos=Vec2R(11, 9)
         )
-        return R("5")
+        return R(5)
 
 class SineRC(Cell):
     @generate
@@ -425,11 +425,11 @@ class SineRC(Cell):
         s.inp = Net()
         s.out = Net()
 
-        res = Res(r=R("100")).symbol
-        cap = Cap(c=R("100n")).symbol
+        res = Res(r=100).symbol
+        cap = Cap(c="100n").symbol
 
         vsrc = Vsin(
-            ac=R(1), freq=R(1),
+            ac=1, freq=1,
         ).symbol
 
         s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
@@ -463,11 +463,11 @@ class SineRL(Cell):
         s.inp = Net()
         s.out = Net()
 
-        ind = Ind(l=R("10m")).symbol
-        res = Res(r=R("100")).symbol
+        ind = Ind(l="10m").symbol
+        res = Res(r=100).symbol
 
         vsrc = Vsin(
-            ac=R(1), freq=R(1),
+            ac=1, freq=1,
         ).symbol
 
         s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
@@ -501,16 +501,16 @@ class PulsedRC(Cell):
         s.inp = Net()
         s.out = Net()
 
-        res = Res(r=R("100")).symbol
-        cap = Cap(c=R("100n")).symbol
+        res = Res(r=100).symbol
+        cap = Cap(c="100n").symbol
 
         vsrc = Vpulse(
-            initial_value=R(0),
-            pulsed_value=R(1),
-            rise_time=R("10u"),
-            fall_time=R("10u"),
-            pulse_width=R("15u"),
-            period=R("50u"),
+            initial_value=0,
+            pulsed_value=1,
+            rise_time="10u",
+            fall_time="10u",
+            pulse_width="15u",
+            period="50u",
         ).symbol
 
         s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
@@ -524,7 +524,7 @@ class PulsedRC(Cell):
 
     def _sim_tran(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s, batch=batch).tran(R('5u'), R('250u'))
+        Simulator(s, batch=batch).tran("5u", "250u")
         return s
 
     @generate
@@ -537,12 +537,12 @@ class PulsedRC(Cell):
 
 class SourceTb(Cell):
     demo_pwl_points = (
-        (R("0u"), R("0")),
-        (R("35u"), R("1")),
-        (R("90u"), R("0")),
-        (R("120u"), R("0.5")),
-        (R("210u"), R("0")),
-        (R("250u"), R("1")),
+        (R("0u"), 0),
+        (R("35u"), 1),
+        (R("90u"), 0),
+        (R("120u"), 0.5),
+        (R("210u"), 0),
+        (R("250u"), 1),
     )
 
     def add_source_instance(self, s: Schematic):
@@ -554,7 +554,7 @@ class SourceTb(Cell):
         s.vss = Net()
         s.out = Net()
 
-        res = Res(r=R("1k")).symbol
+        res = Res(r="1k").symbol
 
         s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
         self.add_source_instance(s)
@@ -566,7 +566,7 @@ class SourceTb(Cell):
 
     def _sim_tran(self, batch):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s, batch=batch).tran(R('5u'), R('250u'))
+        Simulator(s, batch=batch).tran("5u", "250u")
         return s
 
     @generate
@@ -594,13 +594,13 @@ class IpwlTb(SourceTb):
 class VpulseTb(SourceTb):
     def add_source_instance(self, s: Schematic):
         vsrc = Vpulse(
-            initial_value=R("0"),
-            pulsed_value=R("1"),
-            delay_time=R("0u"),
-            rise_time=R("10u"),
-            fall_time=R("10u"),
-            pulse_width=R("15u"),
-            period=R("50u"),
+            initial_value=0,
+            pulsed_value=1,
+            delay_time=0,
+            rise_time="10u",
+            fall_time="10u",
+            pulse_width="15u",
+            period="50u",
         ).symbol
         s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.out), pos=Vec2R(0, 5))
 
@@ -608,13 +608,13 @@ class VpulseTb(SourceTb):
 class IpulseTb(SourceTb):
     def add_source_instance(self, s: Schematic):
         isrc = Ipulse(
-            initial_value=R("0m"),
-            pulsed_value=R("1m"),
-            delay_time=R("0u"),
-            rise_time=R("10u"),
-            fall_time=R("10u"),
-            pulse_width=R("15u"),
-            period=R("50u"),
+            initial_value=0,
+            pulsed_value="1m",
+            delay_time=0,
+            rise_time="10u",
+            fall_time="10u",
+            pulse_width="15u",
+            period="50u",
         ).symbol
         # Source oriented so positive Ipulse values produce positive resistor current.
         s.isrc = SchemInstance(isrc.portmap(p=s.vss, m=s.out), pos=Vec2R(0, 5))
@@ -623,9 +623,9 @@ class IpulseTb(SourceTb):
 class VsinTb(SourceTb):
     def add_source_instance(self, s: Schematic):
         vsrc = Vsin(
-            dc=R("0.2"),
-            ac=R("0.8"),
-            freq=R("20k"),
+            dc=0.2,
+            ac=0.8,
+            freq="20k",
         ).symbol
         s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.out), pos=Vec2R(0, 5))
 
@@ -633,9 +633,9 @@ class VsinTb(SourceTb):
 class IsinTb(SourceTb):
     def add_source_instance(self, s: Schematic):
         isrc = Isin(
-            dc=R("0.5m"),
-            ac=R("0.5m"),
-            freq=R("20k"),
+            dc="0.5m",
+            ac="0.5m",
+            freq="20k",
         ).symbol
         # Source oriented so positive Isin values produce positive resistor current.
         s.isrc = SchemInstance(isrc.portmap(p=s.vss, m=s.out), pos=Vec2R(0, 5))

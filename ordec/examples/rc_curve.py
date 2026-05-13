@@ -12,22 +12,22 @@ class RC(Cell):
         s.vss = Net()
         s.a = Net()
 
-        res = Res(r=R("100")).symbol
-        cap = Cap(c=R("100u")).symbol
+        res = Res(r=100).symbol
+        cap = Cap(c="100u").symbol
 
 
         if self.pulse_source:
             vcc = Vpulse(
-                initial_value=R(0),
-                pulsed_value=R(1),
-                rise_time=R("1n"),
-                pulse_width=R("1"),
-                period=R("2"),
+                initial_value=0,
+                pulsed_value=1,
+                rise_time="1n",
+                pulse_width=1,
+                period=2,
             ).symbol
         else:
             vcc = Vsin(
-                ac=R(1),
-                freq=R("1k")
+                ac=1,
+                freq="1k"
             ).symbol
 
 

@@ -71,17 +71,17 @@ def test_param_inst():
         l = Parameter(R)
         w = Parameter(R)
 
-    a1 = A(l=R('1'), w=R('2'))
-    assert a1.l == R('1')
-    assert a1.w == R('2')
+    a1 = A(l=1, w=2)
+    assert a1.l == R(1)
+    assert a1.w == R(2)
     assert isinstance(a1.params, PMap)
-    assert a1.params['l'] == R('1')
-    assert a1.params['w'] == R('2')
+    assert a1.params['l'] == R(1)
+    assert a1.params['w'] == R(2)
 
     # Basic type coercion:
     a2 = A(l=1, w=3)
-    assert a2.l == R('1')
-    assert a2.w == R('3')
+    assert a2.l == R(1)
+    assert a2.w == R(3)
 
     assert a2 is not a1
     assert A(l=1, w=2) is a1

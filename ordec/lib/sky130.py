@@ -58,7 +58,7 @@ class Mos(SimLeafCell):
             self.model_name,
             *spice_params({
                 # sky130 uses ".option scale=1.0u"
-                'l': self.l * R('1e6'), 
+                'l': self.l * R('1e6'),
                 'w': self.w * R('1e6'),
                 # how do the other parameters need to be scaled?
                 'nf': self.nf,
@@ -112,21 +112,21 @@ class Inv(Cell):
         s.vss = Net(pin=self.symbol.vss)
 
         nmos_params = {
-            "l": R("0.15u"),
-            "w": R("0.495u"),
-            "as_": R("0.131175"),
-            "ad": R("0.131175"),
-            "ps": R("1.52"),
-            "pd": R("1.52"),
+            "l": "0.15u",
+            "w": "0.495u",
+            "as_": 0.131175,
+            "ad": 0.131175,
+            "ps": 1.52,
+            "pd": 1.52,
         }
         nmos = Nmos(**nmos_params).symbol
         pmos_params = {
-            "l": R("0.15u"),
-            "w": R("0.99u"),
-            "as_": R("0.26235"),
-            "ad": R("0.26235"),
-            "ps": R("2.51"),
-            "pd": R("2.51"),
+            "l": "0.15u",
+            "w": "0.99u",
+            "as_": 0.26235,
+            "ad": 0.26235,
+            "ps": 2.51,
+            "pd": 2.51,
         }
         pmos = Pmos(**pmos_params).symbol
 
