@@ -42,20 +42,45 @@ class CompletionsMixin:
         before_prefix = line[:prefix_start]
 
         if before_prefix.endswith(".$"):
-            return {
+            base = self.completion_subject(before_prefix[:-2])
+            context = {
                 "mode": "parameter",
                 "prefix": prefix,
-                "base": self.completion_subject(before_prefix[:-2]),
+                "base": base,
             }
+            if base is None:
+                context["type_names"] = self.completion_inline_context_type_names(before_prefix[:-2])
+            return context
 
         if before_prefix.endswith("."):
-            return {
+            base = self.completion_subject(before_prefix[:-1])
+            context = {
                 "mode": "member",
                 "prefix": prefix,
-                "base": self.completion_subject(before_prefix[:-1]),
+                "base": base,
             }
+            if base is None:
+                context["type_names"] = self.completion_inline_context_type_names(before_prefix[:-1])
+            return context
 
         return None
+
+    def completion_inline_context_type_names(self, text: str):
+        """Infer node context type names from an inline ORD node statement.
+
+        Args:
+            text: Source text before a bare member or parameter completion.
+
+        Returns:
+            Candidate type names for a same-line ORD node context.
+        """
+        match = re.match(
+            r"^\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)\s+[^:]+:\s*",
+            text,
+        )
+        if match is None:
+            return []
+        return self.context_type_names_for_kind(match.group(1))
 
     def completion_subject(self, text: str):
         """Extract the expression subject immediately before a completion dot.
@@ -89,6 +114,10 @@ class CompletionsMixin:
         Returns:
             Candidate type names for member lookup.
         """
+        context_type_names = context.get("type_names")
+        if context_type_names:
+            return self.normalize_type_names(context_type_names)
+
         base_name = context["base"]
         if base_name is None:
             return self.context_type_names_at_position(uri, position)

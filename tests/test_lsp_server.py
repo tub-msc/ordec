@@ -41,6 +41,7 @@ def test_lsp_initialize_exposes_core_capabilities(tmp_path):
                 },
                 "completionProvider": {
                     "resolveProvider": False,
+                    "triggerCharacters": [".", "$"],
                 },
                 "codeActionProvider": True,
                 "foldingRangeProvider": True,
@@ -1124,6 +1125,111 @@ def test_lsp_context_aware_completion(tmp_path):
     }
     assert sorted(parameter_map) == ["l", "w"]
     assert parameter_map["w"] == {
+        "kind": 6,
+        "detail": "parameter of Nmos",
+    }
+
+
+def test_lsp_inline_node_stmt_completion(tmp_path):
+    inv_path = tmp_path / "inline.ord"
+    valid_text = (
+        "from ordec.core import *\n"
+        "from ordec.lib.generic_mos import Nmos\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        net vss\n"
+        "        Nmos pd: .\n"
+    )
+    inv_path.write_text(valid_text)
+
+    server = OrdecLanguageServer()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    })
+
+    uri = inv_path.resolve().as_uri()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "text": valid_text,
+            },
+        },
+    })
+
+    line = valid_text.splitlines()[6]
+    member_completion = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "textDocument/completion",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 6, "character": len(line)},
+        },
+    })
+    member_map = {
+        item["label"]: {
+            "kind": item["kind"],
+            "detail": item["detail"],
+        }
+        for item in member_completion[0]["result"]
+    }
+    assert member_map["d"] == {
+        "kind": 6,
+        "detail": "variable of Nmos",
+    }
+    assert member_map["pos"] == {
+        "kind": 6,
+        "detail": "variable of Nmos",
+    }
+    assert member_map["orientation"] == {
+        "kind": 6,
+        "detail": "variable of Nmos",
+    }
+
+    parameter_text = valid_text.replace("Nmos pd: .", "Nmos pd: .$")
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didChange",
+        "params": {
+            "textDocument": {
+                "uri": uri,
+                "version": 2,
+            },
+            "contentChanges": [{
+                "text": parameter_text,
+            }],
+        },
+    })
+
+    line = parameter_text.splitlines()[6]
+    parameter_completion = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "textDocument/completion",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 6, "character": len(line)},
+        },
+    })
+    parameter_map = {
+        item["label"]: {
+            "kind": item["kind"],
+            "detail": item["detail"],
+        }
+        for item in parameter_completion[0]["result"]
+    }
+    assert sorted(parameter_map) == ["l", "w"]
+    assert parameter_map["l"] == {
         "kind": 6,
         "detail": "parameter of Nmos",
     }
