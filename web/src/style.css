@@ -826,10 +826,11 @@ body:not(.show-debug) .debug {
     width: max-content;
     min-width: 150px;
     max-width: min(280px, 40%);
-    background-color: var(--color-bg);
-    color: var(--color-text);
-    border-left: 1px solid var(--color-border);
-    box-shadow: var(--toolbar-shadow);
+    /* Force dark colors to match black layout background */
+    background-color: #1e1e1e;
+    color: #ccc;
+    border-left: 1px solid #555;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 .layout-sidebar-toggle {
     flex: 0 0 auto;
@@ -839,8 +840,8 @@ body:not(.show-debug) .debug {
     justify-content: space-between;
     gap: 10px;
     border: 0;
-    border-bottom: 1px solid var(--color-border);
-    background-color: var(--color-bg-toolbar);
+    border-bottom: 1px solid #555;
+    background-color: #444;
     color: inherit;
     font-family: var(--font-sans);
     font-size: var(--font-size-base);
@@ -849,9 +850,6 @@ body:not(.show-debug) .debug {
     cursor: pointer;
 }
 .layout-sidebar-toggle:hover {
-    background-color: rgba(0, 0, 0, 0.06);
-}
-body.theme-dark .layout-sidebar-toggle:hover {
     background-color: rgba(255, 255, 255, 0.08);
 }
 .layout-sidebar-toggle::after {
@@ -865,22 +863,32 @@ body.theme-dark .layout-sidebar-toggle:hover {
     transform: rotate(-45deg);
 }
 .layout-sidebar-collapsed {
-    width: 36px;
-    min-width: 36px;
+    width: 28px;
+    min-width: 28px;
 }
 .layout-sidebar-collapsed .layout-sidebar-toggle {
     width: 100%;
     height: 100%;
     min-height: 0;
-    justify-content: center;
-    padding: 10px 6px;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0;
     border-bottom: 0;
     font-size: 0;
+}
+.layout-sidebar-collapsed .layout-sidebar-toggle::before {
+    content: "Layers";
+    font-size: var(--font-size-base);
+    writing-mode: vertical-lr;
+    transform: rotate(180deg);
 }
 .layout-sidebar-collapsed .layerList {
     display: none;
 }
 .layout-sidebar-collapsed .layout-sidebar-toggle::after {
+    order: -1;
     border-right: 0;
     border-left: 1.5px solid currentColor;
     transform: rotate(45deg);
@@ -896,7 +904,7 @@ body.theme-dark .layout-sidebar-toggle:hover {
 }
 .layout-coordinates {
     color: inherit;
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid #555;
     margin-top: 5px;
     padding-top: 4px;
 }
