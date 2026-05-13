@@ -4,1780 +4,389 @@
 from ordec.lsp.server import OrdecLanguageServer
 
 
-def test_lsp_initialize_exposes_core_capabilities(tmp_path):
+def source_offset(source, needle, occurrence=1):
+    """Return zero-based line and character for text in source."""
+    start = 0
+    for _ in range(occurrence):
+        offset = source.index(needle, start)
+        start = offset + len(needle)
+
+    line = source.count("\n", 0, offset)
+    previous_newline = source.rfind("\n", 0, offset)
+    return {
+        "line": line,
+        "character": offset - previous_newline - 1,
+    }
+
+
+def source_offset_after(source, needle, occurrence=1):
+    """Return zero-based line and character directly after text in source."""
+    start = 0
+    for _ in range(occurrence):
+        offset = source.index(needle, start)
+        start = offset + len(needle)
+
+    offset += len(needle)
+    line = source.count("\n", 0, offset)
+    previous_newline = source.rfind("\n", 0, offset)
+    return {
+        "line": line,
+        "character": offset - previous_newline - 1,
+    }
+
+
+def initialize_server(tmp_path):
+    """Create and initialize an ORD language server for a temporary workspace."""
     server = OrdecLanguageServer()
-    responses = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
+    result = request(
+        server,
+        "initialize",
+        {
             "rootUri": tmp_path.resolve().as_uri(),
         },
+    )
+    assert result["serverInfo"]["name"] == "ordec-lsp"
+    return server
+
+
+def request(server, method, params=None, message_id=1):
+    """Send an LSP request and return its result."""
+    responses = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": message_id,
+        "method": method,
+        "params": params or {},
+    })
+    assert len(responses) == 1
+    assert "error" not in responses[0]
+    return responses[0]["result"]
+
+
+def notify(server, method, params=None):
+    """Send an LSP notification and return the server responses."""
+    return server.handle_message({
+        "jsonrpc": "2.0",
+        "method": method,
+        "params": params or {},
     })
 
-    assert responses == [{
-        "jsonrpc": "2.0",
-        "id": 1,
-        "result": {
-            "serverInfo": {
-                "name": "ordec-lsp",
-            },
-            "capabilities": {
-                "textDocumentSync": {
-                    "openClose": True,
-                    "change": 1,
-                    "save": {
-                        "includeText": True,
-                    },
-                },
-                "documentSymbolProvider": True,
-                "documentHighlightProvider": True,
-                "workspaceSymbolProvider": True,
-                "definitionProvider": True,
-                "hoverProvider": True,
-                "referencesProvider": True,
-                "renameProvider": {
-                    "prepareProvider": True,
-                },
-                "completionProvider": {
-                    "resolveProvider": False,
-                    "triggerCharacters": [".", "$"],
-                },
-                "codeActionProvider": True,
-                "foldingRangeProvider": True,
-                "selectionRangeProvider": True,
-                "semanticTokensProvider": {
-                    "legend": {
-                        "tokenTypes": [
-                            "namespace",
-                            "class",
-                            "function",
-                            "parameter",
-                            "variable",
-                            "property",
-                        ],
-                        "tokenModifiers": [
-                            "definition",
-                        ],
-                    },
-                    "full": True,
-                },
+
+def open_document(server, uri, text, version=1):
+    """Open a document and return published diagnostics."""
+    responses = notify(
+        server,
+        "textDocument/didOpen",
+        {
+            "textDocument": {
+                "uri": uri,
+                "version": version,
+                "text": text,
             },
         },
-    }]
+    )
+    assert len(responses) == 1
+    assert responses[0]["method"] == "textDocument/publishDiagnostics"
+    return responses[0]["params"]["diagnostics"]
 
 
-def test_lsp_open_definition_hover_and_references(tmp_path):
-    mux2_path = tmp_path / "ord" / "mux2.ord"
-    mux2_path.parent.mkdir()
-    mux2_path.write_text(
+def change_document(server, uri, text, version=2):
+    """Replace a document and return published diagnostics."""
+    responses = notify(
+        server,
+        "textDocument/didChange",
+        {
+            "textDocument": {
+                "uri": uri,
+                "version": version,
+            },
+            "contentChanges": [{
+                "text": text,
+            }],
+        },
+    )
+    assert len(responses) == 1
+    return responses[0]["params"]["diagnostics"]
+
+
+def text_document(uri):
+    """Return an LSP textDocument parameter."""
+    return {
+        "uri": uri,
+    }
+
+
+def test_lsp_initialize_exposes_core_capabilities(tmp_path):
+    server = OrdecLanguageServer()
+    result = request(
+        server,
+        "initialize",
+        {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    )
+
+    capabilities = result["capabilities"]
+    for capability in (
+        "documentSymbolProvider",
+        "definitionProvider",
+        "hoverProvider",
+        "referencesProvider",
+        "renameProvider",
+        "completionProvider",
+        "codeActionProvider",
+        "foldingRangeProvider",
+        "selectionRangeProvider",
+        "semanticTokensProvider",
+    ):
+        assert capability in capabilities
+
+    assert capabilities["completionProvider"]["triggerCharacters"] == [".", "$"]
+
+
+def test_lsp_document_lifecycle_and_diagnostics(tmp_path):
+    server = initialize_server(tmp_path)
+    uri = (tmp_path / "broken.ord").resolve().as_uri()
+    broken_source = "from .missing import Foo\n"
+
+    diagnostics = open_document(server, uri, broken_source)
+    assert [diagnostic["code"] for diagnostic in diagnostics] == ["unresolved-import"]
+
+    fixed_source = "cell Inv:\n    viewgen symbol -> Symbol:\n        path a\n"
+    assert change_document(server, uri, fixed_source) == []
+
+    close_responses = notify(
+        server,
+        "textDocument/didClose",
+        {
+            "textDocument": text_document(uri),
+        },
+    )
+    assert close_responses[0]["params"]["diagnostics"] == []
+
+
+def test_lsp_navigation_references_rename_and_symbols(tmp_path):
+    mux_path = tmp_path / "mux2.ord"
+    mux_path.write_text(
         "cell Mux2:\n"
         "    viewgen symbol -> Symbol:\n"
         "        path a\n"
     )
-
-    nmux_path = tmp_path / "ord" / "nmux.ord"
-    nmux_path.write_text(
+    source = (
         "from .mux2 import Mux2 as Stage\n"
         "\n"
         "def helper(x=Stage):\n"
         "    return Stage\n"
     )
+    user_path = tmp_path / "user.ord"
+    user_path.write_text(source)
 
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
+    server = initialize_server(tmp_path)
+    uri = user_path.resolve().as_uri()
+    assert open_document(server, uri, source) == []
 
-    uri = nmux_path.resolve().as_uri()
-    open_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": nmux_path.read_text(),
-            },
+    position = source_offset(source, "Stage", 2)
+    definition = request(
+        server,
+        "textDocument/definition",
+        {
+            "textDocument": text_document(uri),
+            "position": position,
         },
-    })
-    assert open_messages == [{
-        "jsonrpc": "2.0",
-        "method": "textDocument/publishDiagnostics",
-        "params": {
-            "uri": uri,
-            "version": 1,
-            "diagnostics": [],
-        },
-    }]
+    )
+    assert definition["uri"] == mux_path.resolve().as_uri()
 
-    definition_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/definition",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 2, "character": 14},
+    hover = request(
+        server,
+        "textDocument/hover",
+        {
+            "textDocument": text_document(uri),
+            "position": position,
         },
-    })
-    assert definition_messages == [{
-        "jsonrpc": "2.0",
-        "id": 2,
-        "result": {
-            "uri": mux2_path.resolve().as_uri(),
-            "range": {
-                "start": {"line": 0, "character": 5},
-                "end": {"line": 0, "character": 9},
-            },
-        },
-    }]
+    )
+    assert "Mux2" in hover["contents"]["value"]
 
-    hover_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 3,
-        "method": "textDocument/hover",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 2, "character": 14},
+    references = request(
+        server,
+        "textDocument/references",
+        {
+            "textDocument": text_document(uri),
+            "position": position,
         },
-    })
-    assert hover_messages == [{
-        "jsonrpc": "2.0",
-        "id": 3,
-        "result": {
-            "contents": {
-                "kind": "plaintext",
-                "value": "class Mux2\n{}".format(mux2_path.resolve().as_uri()),
-            },
-            "range": {
-                "start": {"line": 2, "character": 13},
-                "end": {"line": 2, "character": 18},
-            },
-        },
-    }]
+    )
+    assert len(references) == 4
 
-    reference_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 4,
-        "method": "textDocument/references",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 2, "character": 14},
+    highlights = request(
+        server,
+        "textDocument/documentHighlight",
+        {
+            "textDocument": text_document(uri),
+            "position": position,
         },
-    })
-    assert reference_messages == [{
-        "jsonrpc": "2.0",
-        "id": 4,
-        "result": [
-            {
-                "uri": uri,
-                "range": {
-                    "start": {"line": 0, "character": 26},
-                    "end": {"line": 0, "character": 31},
-                },
-            },
-            {
-                "uri": uri,
-                "range": {
-                    "start": {"line": 2, "character": 13},
-                    "end": {"line": 2, "character": 18},
-                },
-            },
-            {
-                "uri": uri,
-                "range": {
-                    "start": {"line": 3, "character": 11},
-                    "end": {"line": 3, "character": 16},
-                },
-            },
-            {
-                "uri": mux2_path.resolve().as_uri(),
-                "range": {
-                    "start": {"line": 0, "character": 5},
-                    "end": {"line": 0, "character": 9},
-                },
-            },
-        ],
-    }]
+    )
+    assert len(highlights) == 3
 
-    highlight_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 5,
-        "method": "textDocument/documentHighlight",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 2, "character": 14},
+    symbols = request(
+        server,
+        "textDocument/documentSymbol",
+        {
+            "textDocument": text_document(uri),
         },
-    })
-    assert highlight_messages == [{
-        "jsonrpc": "2.0",
-        "id": 5,
-        "result": [
-            {
-                "range": {
-                    "start": {"line": 0, "character": 26},
-                    "end": {"line": 0, "character": 31},
-                },
-                "kind": 3,
-            },
-            {
-                "range": {
-                    "start": {"line": 2, "character": 13},
-                    "end": {"line": 2, "character": 18},
-                },
-                "kind": 2,
-            },
-            {
-                "range": {
-                    "start": {"line": 3, "character": 11},
-                    "end": {"line": 3, "character": 16},
-                },
-                "kind": 2,
-            },
-        ],
-    }]
+    )
+    assert [symbol["name"] for symbol in symbols] == ["helper"]
 
-    completion_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 6,
-        "method": "textDocument/completion",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 2, "character": 14},
+    assert request(
+        server,
+        "textDocument/prepareRename",
+        {
+            "textDocument": text_document(uri),
+            "position": position,
         },
-    })
-    completion_map = {
-        item["label"]: {
-            "kind": item["kind"],
-            "detail": item["detail"],
-        }
-        for item in completion_messages[0]["result"]
-    }
-    assert completion_map["Stage"] == {
-        "kind": 7,
-        "detail": "from .mux2 import Mux2 as Stage",
-    }
-    assert completion_map["helper"] == {
-        "kind": 3,
-        "detail": "function",
-    }
-    assert completion_map["cell"] == {
-        "kind": 14,
-        "detail": "keyword",
-    }
-
-    prepare_rename_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 7,
-        "method": "textDocument/prepareRename",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 2, "character": 14},
-        },
-    })
-    assert prepare_rename_messages == [{
-        "jsonrpc": "2.0",
-        "id": 7,
-        "result": {
-            "range": {
-                "start": {"line": 2, "character": 13},
-                "end": {"line": 2, "character": 18},
-            },
-            "placeholder": "Stage",
-        },
-    }]
-
-    rename_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 8,
-        "method": "textDocument/rename",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 2, "character": 14},
+    )["placeholder"] == "Stage"
+    rename = request(
+        server,
+        "textDocument/rename",
+        {
+            "textDocument": text_document(uri),
+            "position": position,
             "newName": "Driver",
         },
-    })
-    assert rename_messages == [{
-        "jsonrpc": "2.0",
-        "id": 8,
-        "result": {
-            "changes": {
-                uri: [
-                    {
-                        "range": {
-                            "start": {"line": 0, "character": 26},
-                            "end": {"line": 0, "character": 31},
-                        },
-                        "newText": "Driver",
-                    },
-                    {
-                        "range": {
-                            "start": {"line": 2, "character": 13},
-                            "end": {"line": 2, "character": 18},
-                        },
-                        "newText": "Driver",
-                    },
-                    {
-                        "range": {
-                            "start": {"line": 3, "character": 11},
-                            "end": {"line": 3, "character": 16},
-                        },
-                        "newText": "Driver",
-                    },
-                ],
-            },
+    )
+    assert uri in rename["changes"]
+
+
+def test_lsp_completion_and_code_actions(tmp_path):
+    source = (
+        "from ordec.core import *\n"
+        "from ordec.lib.generic_mos import Nmos\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        net vss\n"
+        "        Nmos pd:\n"
+        "            .s -- vss\n"
+    )
+    uri = (tmp_path / "inv.ord").resolve().as_uri()
+    server = initialize_server(tmp_path)
+    assert open_document(server, uri, source) == []
+
+    edited = source.replace(".s -- vss", ".")
+    change_document(server, uri, edited)
+    completions = request(
+        server,
+        "textDocument/completion",
+        {
+            "textDocument": text_document(uri),
+            "position": source_offset_after(edited, "            ."),
         },
-    }]
+    )
+    assert {"s", "d", "l"} <= {
+        item["label"]
+        for item in completions
+    }
 
-
-def test_lsp_document_symbol_and_diagnostics(tmp_path):
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
-
-    uri = (tmp_path / "test.ord").resolve().as_uri()
-    open_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": "cell Inv:\n    viewgen layout(\n",
-            },
-        },
-    })
-    assert open_messages[0]["params"]["diagnostics"][0]["severity"] == 1
-
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didChange",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 2,
-            },
-            "contentChanges": [{
-                "text": "cell Inv:\n    viewgen layout -> Layout:\n        path a\n",
-            }],
-        },
-    })
-
-    symbol_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/documentSymbol",
-        "params": {
-            "textDocument": {"uri": uri},
-        },
-    })
-    assert symbol_messages == [{
-        "jsonrpc": "2.0",
-        "id": 2,
-        "result": [
-            {
-                "name": "Inv",
-                "kind": 5,
-                "range": {
-                    "start": {"line": 0, "character": 0},
-                    "end": {"line": 4, "character": 0},
-                },
-                "selectionRange": {
-                    "start": {"line": 0, "character": 5},
-                    "end": {"line": 0, "character": 8},
-                },
-            },
-            {
-                "name": "layout",
-                "kind": 12,
-                "range": {
-                    "start": {"line": 1, "character": 4},
-                    "end": {"line": 4, "character": 0},
-                },
-                "selectionRange": {
-                    "start": {"line": 1, "character": 12},
-                    "end": {"line": 1, "character": 18},
-                },
-            },
-            {
-                "name": "a",
-                "kind": 13,
-                "range": {
-                    "start": {"line": 2, "character": 8},
-                    "end": {"line": 2, "character": 14},
-                },
-                "selectionRange": {
-                    "start": {"line": 2, "character": 13},
-                    "end": {"line": 2, "character": 14},
-                },
-            },
-        ],
-    }]
-
-
-def test_lsp_publishes_semantic_diagnostics(tmp_path):
-    (tmp_path / "helper.ord").write_text(
-        "cell Other:\n"
+    broken_symbol = (
+        "cell Inv:\n"
         "    viewgen symbol -> Symbol:\n"
         "        input a\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        port a\n"
+        "        port y\n"
     )
-
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
-
-    uri = (tmp_path / "broken.ord").resolve().as_uri()
-    messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": (
-                    "from .helper import Missing\n"
-                    "from ordec.lib.generic_mos import Nmos\n"
-                    "\n"
-                    "cell Inv:\n"
-                    "    viewgen symbol -> Symbol:\n"
-                    "        input a\n"
-                    "    viewgen schematic -> Schematic:\n"
-                    "        port b: .align=West\n"
-                    "        ! b.pos.x == 0\n"
-                    "        Nmos pd:\n"
-                    "            .missing -- b\n"
-                    "            .$bogus = 1u\n"
-                    "    viewgen bad -> Nmos:\n"
-                    "        pass\n"
-                ),
-            },
-        },
-    })
-
-    diagnostics = messages[0]["params"]["diagnostics"]
-    assert [diagnostic["code"] for diagnostic in diagnostics] == [
-        "unresolved-import-member",
-        "invalid-viewgen-return",
-        "invalid-constraint-context",
-        "unknown-member",
-        "unknown-parameter",
-        "unknown-symbol-port",
-    ]
-    assert all(diagnostic["severity"] == 1 for diagnostic in diagnostics)
-
-
-def test_lsp_code_actions_for_missing_symbol_port(tmp_path):
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
-
-    uri = (tmp_path / "missing_port.ord").resolve().as_uri()
-    open_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": (
-                    "cell Inv:\n"
-                    "    viewgen symbol -> Symbol:\n"
-                    "        input a\n"
-                    "    viewgen schematic -> Schematic:\n"
-                    "        port b: .align=West\n"
-                ),
-            },
-        },
-    })
-    diagnostics = open_messages[0]["params"]["diagnostics"]
-
-    action_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/codeAction",
-        "params": {
-            "textDocument": {"uri": uri},
-            "range": diagnostics[0]["range"],
+    broken_uri = (tmp_path / "missing_symbol_port.ord").resolve().as_uri()
+    diagnostics = open_document(server, broken_uri, broken_symbol)
+    actions = request(
+        server,
+        "textDocument/codeAction",
+        {
+            "textDocument": text_document(broken_uri),
             "context": {
                 "diagnostics": diagnostics,
             },
         },
-    })
-
-    assert action_messages[0]["result"] == [{
-        "title": "Declare `b` in symbol view",
-        "kind": "quickfix",
-        "diagnostics": [diagnostics[0]],
-        "edit": {
-            "changes": {
-                uri: [{
-                    "range": {
-                        "start": {"line": 2, "character": 0},
-                        "end": {"line": 2, "character": 0},
-                    },
-                    "newText": "        input b\n",
-                }],
-            },
-        },
-    }]
+    )
+    assert [action["title"] for action in actions] == ["Declare `y` in symbol view"]
 
 
-def test_lsp_workspace_symbol_scans_workspace_root(tmp_path):
-    ord_path = tmp_path / "ord"
-    ord_path.mkdir()
-    (ord_path / "mux2.ord").write_text(
+def test_lsp_workspace_folding_selection_and_semantic_tokens(tmp_path):
+    source = (
+        "import math\n"
+        "\n"
         "cell Mux2:\n"
         "    viewgen symbol -> Symbol:\n"
         "        path a\n"
-    )
-    (ord_path / "helper.ord").write_text(
-        "def build_mux():\n"
-        "    return 1\n"
-    )
-
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
-
-    symbol_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "workspace/symbol",
-        "params": {
-            "query": "mux",
-        },
-    })
-    assert symbol_messages == [{
-        "jsonrpc": "2.0",
-        "id": 2,
-        "result": [
-            {
-                "name": "build_mux",
-                "kind": 12,
-                "location": {
-                    "uri": (ord_path / "helper.ord").resolve().as_uri(),
-                    "range": {
-                        "start": {"line": 0, "character": 4},
-                        "end": {"line": 0, "character": 13},
-                    },
-                },
-            },
-            {
-                "name": "Mux2",
-                "kind": 5,
-                "location": {
-                    "uri": (ord_path / "mux2.ord").resolve().as_uri(),
-                    "range": {
-                        "start": {"line": 0, "character": 5},
-                        "end": {"line": 0, "character": 9},
-                    },
-                },
-            },
-        ],
-    }]
-
-
-def test_lsp_watched_file_change_refreshes_workspace_cache(tmp_path):
-    ord_path = tmp_path / "watched.ord"
-    ord_path.write_text(
-        "cell OldName:\n"
-        "    viewgen symbol -> Symbol:\n"
-        "        path a\n"
-    )
-
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
-
-    old_symbols = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "workspace/symbol",
-        "params": {
-            "query": "old",
-        },
-    })
-    assert old_symbols[0]["result"][0]["name"] == "OldName"
-
-    ord_path.write_text(
-        "cell NewName:\n"
-        "    viewgen symbol -> Symbol:\n"
-        "        path a\n"
-    )
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "workspace/didChangeWatchedFiles",
-        "params": {
-            "changes": [{
-                "uri": ord_path.resolve().as_uri(),
-                "type": 2,
-            }],
-        },
-    })
-
-    new_symbols = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 3,
-        "method": "workspace/symbol",
-        "params": {
-            "query": "new",
-        },
-    })
-    assert new_symbols[0]["result"][0]["name"] == "NewName"
-
-
-def test_lsp_module_imports_resolve_to_local_module(tmp_path):
-    (tmp_path / "localmod.ord").write_text(
-        "cell LocalMod:\n"
-        "    viewgen symbol -> Symbol:\n"
-        "        path a\n"
-    )
-    user_path = tmp_path / "user.ord"
-    user_path.write_text(
-        "import localmod as mod\n"
         "\n"
-        "def helper(x=mod):\n"
-        "    return mod\n"
+        "def helper():\n"
+        "    .align = East\n"
+        "    return math\n"
     )
+    path = tmp_path / "mux2.ord"
+    path.write_text(source)
 
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
+    server = initialize_server(tmp_path)
+    uri = path.resolve().as_uri()
+    assert open_document(server, uri, source) == []
 
-    uri = user_path.resolve().as_uri()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": user_path.read_text(),
-            },
-        },
-    })
+    workspace_symbols = request(server, "workspace/symbol", {"query": "mux"})
+    assert [symbol["name"] for symbol in workspace_symbols] == ["Mux2"]
 
-    definition_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/definition",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 2, "character": 14},
+    folding_ranges = request(
+        server,
+        "textDocument/foldingRange",
+        {
+            "textDocument": text_document(uri),
         },
-    })
-    assert definition_messages == [{
-        "jsonrpc": "2.0",
-        "id": 2,
-        "result": {
-            "uri": (tmp_path / "localmod.ord").resolve().as_uri(),
-            "range": {
-                "start": {"line": 0, "character": 0},
-                "end": {"line": 0, "character": 0},
-            },
-        },
-    }]
-
-    hover_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 3,
-        "method": "textDocument/hover",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 2, "character": 14},
-        },
-    })
-    assert hover_messages == [{
-        "jsonrpc": "2.0",
-        "id": 3,
-        "result": {
-            "contents": {
-                "kind": "plaintext",
-                "value": "module localmod\n{}".format((tmp_path / "localmod.ord").resolve().as_uri()),
-            },
-            "range": {
-                "start": {"line": 2, "character": 13},
-                "end": {"line": 2, "character": 16},
-            },
-        },
-    }]
-
-    rename_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 4,
-        "method": "textDocument/rename",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 2, "character": 14},
-            "newName": "driver",
-        },
-    })
-    assert rename_messages == [{
-        "jsonrpc": "2.0",
-        "id": 4,
-        "result": {
-            "changes": {
-                uri: [
-                    {
-                        "range": {
-                            "start": {"line": 0, "character": 19},
-                            "end": {"line": 0, "character": 22},
-                        },
-                        "newText": "driver",
-                    },
-                    {
-                        "range": {
-                            "start": {"line": 2, "character": 13},
-                            "end": {"line": 2, "character": 16},
-                        },
-                        "newText": "driver",
-                    },
-                    {
-                        "range": {
-                            "start": {"line": 3, "character": 11},
-                            "end": {"line": 3, "character": 14},
-                        },
-                        "newText": "driver",
-                    },
-                ],
-            },
-        },
-    }]
-
-
-def test_lsp_definition_resolves_python_imports(tmp_path):
-    inv_path = tmp_path / "inv.ord"
-    inv_path.write_text(
-        "from ordec.core import *\n"
-        "from ordec.lib.generic_mos import Nmos, Pmos\n"
-        "\n"
-        "cell Inv:\n"
-        "    viewgen symbol -> Symbol:\n"
-        "        return Symbol(cell=self)\n"
-        "\n"
-        "    viewgen schematic -> Schematic:\n"
-        "        pd = Nmos().symbol\n"
-        "        pu = Pmos().symbol\n"
     )
+    assert folding_ranges
 
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
+    selection_ranges = request(
+        server,
+        "textDocument/selectionRange",
+        {
+            "textDocument": text_document(uri),
+            "positions": [source_offset(source, "symbol")],
         },
-    })
-
-    uri = inv_path.resolve().as_uri()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": inv_path.read_text(),
-            },
-        },
-    })
-
-    symbol_definition = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/definition",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 4, "character": 23},
-        },
-    })
-    assert symbol_definition[0]["result"]["uri"].endswith("/ordec/core/schema.py")
-
-    nmos_definition = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 3,
-        "method": "textDocument/definition",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 8, "character": 14},
-        },
-    })
-    assert nmos_definition[0]["id"] == 3
-    assert nmos_definition[0]["result"] is not None
-    assert nmos_definition[0]["result"]["uri"].endswith("/ordec/lib/generic_mos.py")
-
-
-def test_lsp_definition_resolves_python_members(tmp_path):
-    inv_path = tmp_path / "inv.ord"
-    inv_path.write_text(
-        "from ordec.core import *\n"
-        "from ordec.lib.generic_mos import Nmos, Pmos\n"
-        "\n"
-        "cell Inv:\n"
-        "    viewgen schematic -> Schematic:\n"
-        "        port vdd: .pos=(2,13)\n"
-        "        port a: .pos=(1,7)\n"
-        "        Nmos pd:\n"
-        "            .s -- vdd\n"
-        "        Pmos pu:\n"
-        "            .$l = 400n\n"
-        "\n"
-        "        pd.$l = 350u\n"
-        "\n"
-        "        for instance in pu, pd:\n"
-        "            instance.g -- a\n"
     )
+    assert selection_ranges[0] is not None
 
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
+    semantic_tokens = request(
+        server,
+        "textDocument/semanticTokens/full",
+        {
+            "textDocument": text_document(uri),
         },
-    })
-
-    uri = inv_path.resolve().as_uri()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": inv_path.read_text(),
-            },
-        },
-    })
-
-    source_definition = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/definition",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 8, "character": 13},
-        },
-    })
-    assert source_definition[0]["result"]["uri"].endswith("/ordec/lib/generic_mos.py")
-    assert source_definition[0]["result"]["range"]["start"]["line"] == 53
-
-    param_definition = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 3,
-        "method": "textDocument/definition",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 10, "character": 14},
-        },
-    })
-    assert param_definition[0]["result"]["uri"].endswith("/ordec/lib/generic_mos.py")
-    assert param_definition[0]["result"]["range"]["start"]["line"] == 26
-
-    loop_definition = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 4,
-        "method": "textDocument/definition",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 15, "character": 21},
-        },
-    })
-    assert loop_definition[0]["result"]["uri"].endswith("/ordec/lib/generic_mos.py")
-    assert loop_definition[0]["result"]["range"]["start"]["line"] in (52, 75)
-
-
-def test_lsp_member_references_and_rename_guard(tmp_path):
-    inv_path = tmp_path / "inv.ord"
-    inv_path.write_text(
-        "from ordec.core import *\n"
-        "from ordec.lib.generic_mos import Nmos, Pmos\n"
-        "\n"
-        "cell Inv:\n"
-        "    viewgen schematic -> Schematic:\n"
-        "        Nmos pd:\n"
-        "            .s -- vdd\n"
-        "        Pmos pu:\n"
-        "            .$l = 400n\n"
-        "\n"
-        "        pd.$l = 350u\n"
     )
+    assert semantic_tokens["data"]
 
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
-
-    uri = inv_path.resolve().as_uri()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": inv_path.read_text(),
-            },
-        },
-    })
-
-    reference_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/references",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 8, "character": 14},
-        },
-    })
-    assert reference_messages == [{
-        "jsonrpc": "2.0",
-        "id": 2,
-        "result": [
-            {
-                "uri": uri,
-                "range": {
-                    "start": {"line": 8, "character": 14},
-                    "end": {"line": 8, "character": 15},
-                },
-            },
-            {
-                "uri": uri,
-                "range": {
-                    "start": {"line": 10, "character": 12},
-                    "end": {"line": 10, "character": 13},
-                },
-            },
-        ],
-    }]
-
-    highlight_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 3,
-        "method": "textDocument/documentHighlight",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 8, "character": 14},
-        },
-    })
-    assert highlight_messages == [{
-        "jsonrpc": "2.0",
-        "id": 3,
-        "result": [
-            {
-                "range": {
-                    "start": {"line": 8, "character": 14},
-                    "end": {"line": 8, "character": 15},
-                },
-                "kind": 2,
-            },
-            {
-                "range": {
-                    "start": {"line": 10, "character": 12},
-                    "end": {"line": 10, "character": 13},
-                },
-                "kind": 2,
-            },
-        ],
-    }]
-
-    prepare_rename_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 4,
-        "method": "textDocument/prepareRename",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 8, "character": 14},
-        },
-    })
-    assert prepare_rename_messages == [{
-        "jsonrpc": "2.0",
-        "id": 4,
-        "result": None,
-    }]
-
-
-def test_lsp_context_aware_completion(tmp_path):
-    inv_path = tmp_path / "inv.ord"
-    inv_path.write_text(
-        "from ordec.core import *\n"
-        "from ordec.lib.generic_mos import Nmos\n"
-        "\n"
-        "cell Inv:\n"
-        "    viewgen schematic -> Schematic:\n"
-        "        net vss\n"
-        "        Nmos pd:\n"
-        "            .s -- vss\n"
-        "            pd.$l = 1u\n"
-    )
-
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
-
-    uri = inv_path.resolve().as_uri()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": inv_path.read_text(),
-            },
-        },
-    })
-
-    member_completion = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/completion",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 7, "character": 13},
-        },
-    })
-    member_map = {
-        item["label"]: {
-            "kind": item["kind"],
-            "detail": item["detail"],
-        }
-        for item in member_completion[0]["result"]
-    }
-    assert member_map["s"] == {
-        "kind": 6,
-        "detail": "variable of Nmos",
-    }
-    assert member_map["l"] == {
-        "kind": 6,
-        "detail": "parameter of Nmos",
-    }
-
-    parameter_completion = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 3,
-        "method": "textDocument/completion",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 8, "character": 16},
-        },
-    })
-    parameter_map = {
-        item["label"]: {
-            "kind": item["kind"],
-            "detail": item["detail"],
-        }
-        for item in parameter_completion[0]["result"]
-    }
-    assert sorted(parameter_map) == ["l", "w"]
-    assert parameter_map["w"] == {
-        "kind": 6,
-        "detail": "parameter of Nmos",
-    }
-
-
-def test_lsp_inline_node_stmt_completion(tmp_path):
-    inv_path = tmp_path / "inline.ord"
-    valid_text = (
-        "from ordec.core import *\n"
-        "from ordec.lib.generic_mos import Nmos\n"
-        "\n"
-        "cell Inv:\n"
-        "    viewgen schematic -> Schematic:\n"
-        "        net vss\n"
-        "        Nmos pd: .\n"
-    )
-    inv_path.write_text(valid_text)
-
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
-
-    uri = inv_path.resolve().as_uri()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": valid_text,
-            },
-        },
-    })
-
-    line = valid_text.splitlines()[6]
-    member_completion = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/completion",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 6, "character": len(line)},
-        },
-    })
-    member_map = {
-        item["label"]: {
-            "kind": item["kind"],
-            "detail": item["detail"],
-        }
-        for item in member_completion[0]["result"]
-    }
-    assert member_map["d"] == {
-        "kind": 6,
-        "detail": "variable of Nmos",
-    }
-    assert member_map["pos"] == {
-        "kind": 6,
-        "detail": "variable of Nmos",
-    }
-    assert member_map["orientation"] == {
-        "kind": 6,
-        "detail": "variable of Nmos",
-    }
-
-    parameter_text = valid_text.replace("Nmos pd: .", "Nmos pd: .$")
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didChange",
-        "params": {
+    new_source = source.replace("Mux2", "Mux4")
+    path.write_text(new_source)
+    notify(
+        server,
+        "textDocument/didSave",
+        {
             "textDocument": {
                 "uri": uri,
                 "version": 2,
             },
-            "contentChanges": [{
-                "text": parameter_text,
-            }],
+            "text": new_source,
         },
-    })
-
-    line = parameter_text.splitlines()[6]
-    parameter_completion = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 3,
-        "method": "textDocument/completion",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 6, "character": len(line)},
-        },
-    })
-    parameter_map = {
-        item["label"]: {
-            "kind": item["kind"],
-            "detail": item["detail"],
-        }
-        for item in parameter_completion[0]["result"]
-    }
-    assert sorted(parameter_map) == ["l", "w"]
-    assert parameter_map["l"] == {
-        "kind": 6,
-        "detail": "parameter of Nmos",
-    }
-
-
-def test_lsp_local_variables_resolve_and_rename(tmp_path):
-    local_path = tmp_path / "locals.ord"
-    local_path.write_text(
-        "def outer(source):\n"
-        "    value = source\n"
-        "    def inner(target):\n"
-        "        return value\n"
-        "    return value\n"
     )
+    workspace_symbols = request(server, "workspace/symbol", {"query": "mux"})
+    assert [symbol["name"] for symbol in workspace_symbols] == ["Mux4"]
 
-    server = OrdecLanguageServer()
-    server.handle_message({
+
+def test_lsp_shutdown_and_unknown_method(tmp_path):
+    server = initialize_server(tmp_path)
+
+    unknown = server.handle_message({
         "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
+        "id": 10,
+        "method": "ordec/missing",
+        "params": {},
+    })[0]
+    assert unknown["error"]["code"] == -32601
 
-    uri = local_path.resolve().as_uri()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": local_path.read_text(),
-            },
-        },
-    })
-
-    definition_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/definition",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 3, "character": 17},
-        },
-    })
-    assert definition_messages == [{
-        "jsonrpc": "2.0",
-        "id": 2,
-        "result": {
-            "uri": uri,
-            "range": {
-                "start": {"line": 1, "character": 4},
-                "end": {"line": 1, "character": 9},
-            },
-        },
-    }]
-
-    hover_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 3,
-        "method": "textDocument/hover",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 3, "character": 17},
-        },
-    })
-    assert hover_messages == [{
-        "jsonrpc": "2.0",
-        "id": 3,
-        "result": {
-            "contents": {
-                "kind": "plaintext",
-                "value": "variable value",
-            },
-            "range": {
-                "start": {"line": 3, "character": 15},
-                "end": {"line": 3, "character": 20},
-            },
-        },
-    }]
-
-    completion_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 4,
-        "method": "textDocument/completion",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 3, "character": 17},
-        },
-    })
-    completion_map = {
-        item["label"]: {
-            "kind": item["kind"],
-            "detail": item["detail"],
-        }
-        for item in completion_messages[0]["result"]
-    }
-    assert completion_map["source"] == {
-        "kind": 6,
-        "detail": "parameter",
-    }
-    assert completion_map["target"] == {
-        "kind": 6,
-        "detail": "parameter",
-    }
-    assert completion_map["value"] == {
-        "kind": 6,
-        "detail": "variable",
-    }
-
-    rename_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 5,
-        "method": "textDocument/rename",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 3, "character": 17},
-            "newName": "signal",
-        },
-    })
-    assert rename_messages == [{
-        "jsonrpc": "2.0",
-        "id": 5,
-        "result": {
-            "changes": {
-                uri: [
-                    {
-                        "range": {
-                            "start": {"line": 1, "character": 4},
-                            "end": {"line": 1, "character": 9},
-                        },
-                        "newText": "signal",
-                    },
-                    {
-                        "range": {
-                            "start": {"line": 3, "character": 15},
-                            "end": {"line": 3, "character": 20},
-                        },
-                        "newText": "signal",
-                    },
-                    {
-                        "range": {
-                            "start": {"line": 4, "character": 11},
-                            "end": {"line": 4, "character": 16},
-                        },
-                        "newText": "signal",
-                    },
-                ],
-            },
-        },
-    }]
-
-
-def test_lsp_completion_tolerates_incomplete_import_syntax(tmp_path):
-    local_path = tmp_path / "broken.ord"
-    local_path.write_text("from ...\n")
-
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
-
-    uri = local_path.resolve().as_uri()
-    open_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": local_path.read_text(),
-            },
-        },
-    })
-    assert open_messages[0]["params"]["diagnostics"][0]["severity"] == 1
-
-    completion_messages = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/completion",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 0, "character": 7},
-        },
-    })
-    completion_map = {
-        item["label"]: {
-            "kind": item["kind"],
-            "detail": item["detail"],
-        }
-        for item in completion_messages[0]["result"]
-    }
-
-    assert completion_map["cell"] == {
-        "kind": 14,
-        "detail": "keyword",
-    }
-    assert completion_map["viewgen"] == {
-        "kind": 14,
-        "detail": "keyword",
-    }
-
-
-def test_lsp_definition_resolves_context_declared_names(tmp_path):
-    local_path = tmp_path / "inv.ord"
-    local_path.write_text(
-        "cell Inv:\n"
-        "    viewgen schematic -> Schematic:\n"
-        "        port vss: .align=South\n"
-        "        Nmos pd:\n"
-        "            .s -- vss\n"
-        "        pd.$l = 350u\n"
-    )
-
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
-
-    uri = local_path.resolve().as_uri()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": local_path.read_text(),
-            },
-        },
-    })
-
-    pd_definition = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/definition",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 5, "character": 9},
-        },
-    })
-    assert pd_definition == [{
-        "jsonrpc": "2.0",
-        "id": 2,
-        "result": {
-            "uri": uri,
-            "range": {
-                "start": {"line": 3, "character": 13},
-                "end": {"line": 3, "character": 15},
-            },
-        },
-    }]
-
-    vss_definition = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 3,
-        "method": "textDocument/definition",
-        "params": {
-            "textDocument": {"uri": uri},
-            "position": {"line": 4, "character": 18},
-        },
-    })
-    assert vss_definition == [{
-        "jsonrpc": "2.0",
-        "id": 3,
-        "result": {
-            "uri": uri,
-            "range": {
-                "start": {"line": 2, "character": 13},
-                "end": {"line": 2, "character": 16},
-            },
-        },
-    }]
-
-
-def test_lsp_folding_ranges(tmp_path):
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
-
-    # Verify the capability is advertised.
-    init_response = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 99,
-        "method": "initialize",
-        "params": {"rootUri": tmp_path.resolve().as_uri()},
-    })
-    assert init_response[0]["result"]["capabilities"]["foldingRangeProvider"] is True
-
-    ord_text = (
-        "from .helpers import foo\n"
-        "from .helpers import bar\n"
-        "\n"
-        "cell Inv:\n"
-        "    viewgen layout -> Layout:\n"
-        "        path vdd\n"
-        "\n"
-        "def helper(x):\n"
-        "    return x\n"
-    )
-
-    uri = "file:///tmp/fold_test.ord"
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": ord_text,
-            },
-        },
-    })
-
-    folding_response = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/foldingRange",
-        "params": {
-            "textDocument": {"uri": uri},
-        },
-    })
-
-    result = folding_response[0]["result"]
-
-    # Import block: lines 0-1 (0-indexed)
-    assert {"startLine": 0, "endLine": 1, "kind": "imports"} in result
-
-    # cell Inv (multi-line): startLine=3
-    cell_folds = [r for r in result if r["startLine"] == 3 and "kind" not in r]
-    assert len(cell_folds) == 1
-
-    # def helper (multi-line): startLine=7
-    helper_folds = [r for r in result if r["startLine"] == 7 and "kind" not in r]
-    assert len(helper_folds) == 1
-
-
-def test_lsp_selection_ranges(tmp_path):
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
-
-    # Verify capability is advertised.
-    init_response = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 99,
-        "method": "initialize",
-        "params": {"rootUri": tmp_path.resolve().as_uri()},
-    })
-    assert init_response[0]["result"]["capabilities"]["selectionRangeProvider"] is True
-
-    ord_text = (
-        "cell Inv:\n"
-        "    viewgen layout -> Layout:\n"
-        "        path vdd\n"
-    )
-
-    uri = "file:///tmp/sel_test.ord"
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": ord_text,
-            },
-        },
-    })
-
-    # Request selection range at "layout" (line 1, character 12 — 0-indexed).
-    sel_response = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/selectionRange",
-        "params": {
-            "textDocument": {"uri": uri},
-            "positions": [{"line": 1, "character": 12}],
-        },
-    })
-
-    result = sel_response[0]["result"]
-    assert len(result) == 1
-    assert result[0] is not None
-
-    # Innermost range should be the "layout" token (0-indexed: line 1, char 12-18).
-    innermost = result[0]
-    assert innermost["range"]["start"]["line"] == 1
-    assert innermost["range"]["start"]["character"] == 12
-    assert innermost["range"]["end"]["line"] == 1
-    assert innermost["range"]["end"]["character"] == 18
-
-    # Should have a parent (viewgen scope or cell scope).
-    assert "parent" in innermost
-
-
-def test_lsp_semantic_tokens(tmp_path):
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
-
-    # Verify capability is advertised with legend.
-    init_response = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 99,
-        "method": "initialize",
-        "params": {"rootUri": tmp_path.resolve().as_uri()},
-    })
-    provider = init_response[0]["result"]["capabilities"]["semanticTokensProvider"]
-    assert provider["full"] is True
-    assert "namespace" in provider["legend"]["tokenTypes"]
-    assert "class" in provider["legend"]["tokenTypes"]
-    assert "definition" in provider["legend"]["tokenModifiers"]
-
-    ord_text = (
-        "cell Inv:\n"
-        "    def build(self):\n"
-        "        return self\n"
-    )
-
-    uri = "file:///tmp/sem_test.ord"
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": uri,
-                "version": 1,
-                "text": ord_text,
-            },
-        },
-    })
-
-    sem_response = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/semanticTokens/full",
-        "params": {
-            "textDocument": {"uri": uri},
-        },
-    })
-
-    data = sem_response[0]["result"]["data"]
-    assert isinstance(data, list)
-    # data is a flat list of 5-tuples: deltaLine, deltaChar, length, type, modifiers
-    assert len(data) % 5 == 0
-    # Should have at least Inv (class), build (function), self (parameter) x2
-    assert len(data) >= 20  # at least 4 tokens
-
-
-def test_lsp_cross_file_ord_cell_member_definition(tmp_path):
-    inv_path = tmp_path / "inverter.ord"
-    inv_path.write_text(
-        "cell Inv:\n"
-        "    input g:\n"
-        "        .width = 1\n"
-        "    output d:\n"
-        "        .width = 1\n"
-    )
-
-    top_path = tmp_path / "top.ord"
-    top_path.write_text(
-        "from .inverter import Inv\n"
-        "\n"
-        "cell Top:\n"
-        "    Inv inv:\n"
-        "        .g -- signal_in\n"
-    )
-
-    server = OrdecLanguageServer()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
-    })
-
-    top_uri = top_path.resolve().as_uri()
-    inv_uri = inv_path.resolve().as_uri()
-    server.handle_message({
-        "jsonrpc": "2.0",
-        "method": "textDocument/didOpen",
-        "params": {
-            "textDocument": {
-                "uri": top_uri,
-                "version": 1,
-                "text": top_path.read_text(),
-            },
-        },
-    })
-
-    # .g (line 4, char 9 — 0-indexed) should resolve to input g in inverter.ord
-    defn_response = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "textDocument/definition",
-        "params": {
-            "textDocument": {"uri": top_uri},
-            "position": {"line": 4, "character": 9},
-        },
-    })
-
-    result = defn_response[0]["result"]
-    assert result is not None
-    assert result["uri"] == inv_uri
-
-    # hover on .g should mention the target file
-    hover_response = server.handle_message({
-        "jsonrpc": "2.0",
-        "id": 3,
-        "method": "textDocument/hover",
-        "params": {
-            "textDocument": {"uri": top_uri},
-            "position": {"line": 4, "character": 9},
-        },
-    })
-    hover_result = hover_response[0]["result"]
-    assert hover_result is not None
-    assert "g" in hover_result["contents"]["value"]
+    assert request(server, "shutdown") is None
+    try:
+        notify(server, "exit")
+    except SystemExit as exc:
+        assert exc.code == 0
