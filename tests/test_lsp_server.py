@@ -42,6 +42,7 @@ def test_lsp_initialize_exposes_core_capabilities(tmp_path):
                 "completionProvider": {
                     "resolveProvider": False,
                 },
+                "codeActionProvider": True,
                 "foldingRangeProvider": True,
                 "selectionRangeProvider": True,
                 "semanticTokensProvider": {
@@ -479,6 +480,128 @@ def test_lsp_publishes_semantic_diagnostics(tmp_path):
         "unknown-symbol-port",
     ]
     assert all(diagnostic["severity"] == 1 for diagnostic in diagnostics)
+
+
+def test_lsp_code_actions_for_obsolete_viewgen_syntax(tmp_path):
+    server = OrdecLanguageServer()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    })
+
+    uri = (tmp_path / "broken.ord").resolve().as_uri()
+    open_messages = server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "text": "cell Inv:\n    viewgen layout() -> Layout:\n        pass\n",
+            },
+        },
+    })
+    diagnostics = open_messages[0]["params"]["diagnostics"]
+
+    action_messages = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "textDocument/codeAction",
+        "params": {
+            "textDocument": {"uri": uri},
+            "range": diagnostics[0]["range"],
+            "context": {
+                "diagnostics": diagnostics,
+            },
+        },
+    })
+
+    assert action_messages == [{
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": [{
+            "title": "Remove obsolete viewgen parameter list",
+            "kind": "quickfix",
+            "diagnostics": [diagnostics[0]],
+            "edit": {
+                "changes": {
+                    uri: [{
+                        "range": {
+                            "start": {"line": 1, "character": 18},
+                            "end": {"line": 1, "character": 20},
+                        },
+                        "newText": "",
+                    }],
+                },
+            },
+        }],
+    }]
+
+
+def test_lsp_code_actions_for_missing_symbol_port(tmp_path):
+    server = OrdecLanguageServer()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    })
+
+    uri = (tmp_path / "missing_port.ord").resolve().as_uri()
+    open_messages = server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "text": (
+                    "cell Inv:\n"
+                    "    viewgen symbol -> Symbol:\n"
+                    "        input a\n"
+                    "    viewgen schematic -> Schematic:\n"
+                    "        port b: .align=West\n"
+                ),
+            },
+        },
+    })
+    diagnostics = open_messages[0]["params"]["diagnostics"]
+
+    action_messages = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "textDocument/codeAction",
+        "params": {
+            "textDocument": {"uri": uri},
+            "range": diagnostics[0]["range"],
+            "context": {
+                "diagnostics": diagnostics,
+            },
+        },
+    })
+
+    assert action_messages[0]["result"] == [{
+        "title": "Declare `b` in symbol view",
+        "kind": "quickfix",
+        "diagnostics": [diagnostics[0]],
+        "edit": {
+            "changes": {
+                uri: [{
+                    "range": {
+                        "start": {"line": 2, "character": 0},
+                        "end": {"line": 2, "character": 0},
+                    },
+                    "newText": "        input b\n",
+                }],
+            },
+        },
+    }]
 
 
 def test_lsp_workspace_symbol_scans_workspace_root(tmp_path):
@@ -1049,7 +1172,7 @@ def test_lsp_context_aware_completion(tmp_path):
         "method": "textDocument/completion",
         "params": {
             "textDocument": {"uri": uri},
-            "position": {"line": 8, "character": 17},
+            "position": {"line": 8, "character": 16},
         },
     })
     parameter_map = {

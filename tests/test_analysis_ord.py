@@ -3,6 +3,7 @@
 
 from ordec.analysis import AnalysisSession
 from ordec.analysis import AnalysisPosition
+from ordec.analysis import AnalysisRange
 from ordec.analysis import analyze_ord
 
 
@@ -351,6 +352,37 @@ def test_analysis_session_definition_resolves_import_alias(tmp_path):
     assert import_definition["name"] == "Mux2"
 
 
+def test_analysis_session_resolves_ord_package_init_imports(tmp_path):
+    package_path = tmp_path / "ordcells"
+    package_path.mkdir()
+    init_path = package_path / "__init__.ord"
+    init_path.write_text(
+        "cell Exported:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    user_path = tmp_path / "top.ord"
+    user_path.write_text(
+        "from .ordcells import Exported\n"
+        "\n"
+        "cell Top:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        Exported child:\n"
+        "            .a -- net_a\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    user_uri = user_path.resolve().as_uri()
+
+    analysis = session.analyze_path(str(user_path))
+    assert analysis.diagnostics == []
+    assert session.diagnostics(user_uri) == []
+
+    definition = session.definition(user_uri, AnalysisPosition(line=5, character=10))
+    assert definition["uri"] == init_path.resolve().as_uri()
+    assert definition["name"] == "Exported"
+
+
 def test_analysis_session_definition_resolves_python_imports(tmp_path):
     inv_path = tmp_path / "inv.ord"
     inv_path.write_text(
@@ -477,6 +509,45 @@ def test_analysis_session_invalidates_cached_python_module_info(tmp_path, monkey
     ) is not None
 
 
+def test_analysis_session_invalidates_python_module_cache_selectively(tmp_path):
+    package_path = tmp_path / "pkg"
+    package_path.mkdir()
+    (package_path / "__init__.py").write_text("")
+    module_path = package_path / "devices.py"
+    helper_path = package_path / "helpers.py"
+    module_path.write_text("class Device:\n    old_pin = 1\n")
+    helper_path.write_text("class Helper:\n    value = 1\n")
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    assert session.python_class_member_definition("pkg.devices", "Device", "old_pin") is not None
+    assert session.python_class_member_definition("pkg.helpers", "Helper", "value") is not None
+    helper_info = session.python_modules["pkg.helpers"]
+
+    module_path.write_text("class Device:\n    new_pin = 1\n")
+    session.invalidate_path(str(module_path))
+
+    assert "pkg.devices" not in session.python_modules
+    assert session.python_modules["pkg.helpers"] is helper_info
+    assert session.python_class_member_definition("pkg.devices", "Device", "new_pin") is not None
+
+
+def test_analysis_session_resolves_workspace_python_modules_without_syspath(tmp_path):
+    package_path = tmp_path / "pkg"
+    package_path.mkdir()
+    (package_path / "__init__.py").write_text("")
+    (package_path / "devices.py").write_text(
+        "class Device:\n"
+        "    pin = 1\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    definition = session.python_definition("pkg.devices", export_name="Device")
+
+    assert definition is not None
+    assert definition["name"] == "Device"
+    assert definition["uri"].endswith("/pkg/devices.py")
+
+
 def test_analysis_session_member_references_and_rename_guard(tmp_path):
     inv_path = tmp_path / "inv.ord"
     inv_path.write_text(
@@ -590,7 +661,7 @@ def test_analysis_session_context_aware_member_and_parameter_completions(tmp_pat
                 "detail": item["detail"],
             },
         )
-        for item in session.completions(inv_uri, AnalysisPosition(line=9, character=18))
+        for item in session.completions(inv_uri, AnalysisPosition(line=9, character=17))
     )
     assert parameter_map == {
         "l": {
@@ -635,6 +706,44 @@ def test_analysis_session_constructor_assignment_type_flow(tmp_path):
             "detail": "parameter of Nmos",
         },
         "w": {
+            "kind": "parameter",
+            "detail": "parameter of Nmos",
+        },
+    }
+
+    diagnostics = session.diagnostics(inv_uri)
+    assert [diagnostic.code for diagnostic in diagnostics] == ["unknown-parameter"]
+    assert diagnostics[0].message == "Unknown parameter `bad` for `Nmos`."
+
+
+def test_analysis_session_annotation_and_chain_type_flow(tmp_path):
+    inv_path = tmp_path / "annotation_chain.ord"
+    inv_path.write_text(
+        "from ordec.core import *\n"
+        "from ordec.lib.generic_mos import Nmos\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        pd: Nmos = Nmos()\n"
+        "        pd.g[0].$bad = 1u\n"
+        "        pd.g[0].$l = 1u\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    inv_uri = inv_path.resolve().as_uri()
+
+    parameter_map = dict(
+        (
+            item["label"],
+            {
+                "kind": item["kind"],
+                "detail": item["detail"],
+            },
+        )
+        for item in session.completions(inv_uri, AnalysisPosition(line=8, character=19))
+    )
+    assert parameter_map == {
+        "l": {
             "kind": "parameter",
             "detail": "parameter of Nmos",
         },
@@ -1373,6 +1482,58 @@ def test_analysis_session_rename_local_bindings_is_file_local(tmp_path):
     }
 
 
+def test_analysis_session_renames_ord_declared_nets_paths_and_ports(tmp_path):
+    local_path = tmp_path / "ord_names.ord"
+    local_path.write_text(
+        "cell Inv:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        port vss: .align=South\n"
+        "        net mid\n"
+        "        path bus\n"
+        "        mid -- vss\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = local_path.resolve().as_uri()
+    rename = session.rename(uri, AnalysisPosition(line=4, character=13), "source")
+
+    assert {
+        change_uri: [
+            {
+                "range": change["range"].to_dict(),
+                "new_text": change["new_text"],
+            }
+            for change in changes
+        ]
+        for change_uri, changes in rename.items()
+    } == {
+        uri: [
+            {
+                "range": {
+                    "start": {"line": 4, "character": 13},
+                    "end": {"line": 4, "character": 16},
+                },
+                "new_text": "source",
+            },
+            {
+                "range": {
+                    "start": {"line": 6, "character": 9},
+                    "end": {"line": 6, "character": 12},
+                },
+                "new_text": "source",
+            },
+        ],
+    }
+
+    assert session.prepare_rename(uri, AnalysisPosition(line=3, character=14)) == {
+        "range": AnalysisRange(
+            start=AnalysisPosition(line=3, character=14),
+            end=AnalysisPosition(line=3, character=17),
+        ),
+        "placeholder": "vss",
+    }
+
+
 def test_analysis_session_destructuring_assignments_resolve_locally(tmp_path):
     local_path = tmp_path / "locals.ord"
     local_path.write_text(
@@ -1537,6 +1698,46 @@ def test_analysis_session_with_and_except_targets_resolve_locally(tmp_path):
         "start": {"line": 6, "character": 26},
         "end": {"line": 6, "character": 29},
     }
+
+
+def test_analysis_session_walrus_match_and_comprehension_scopes(tmp_path):
+    local_path = tmp_path / "scope_features.ord"
+    local_path.write_text(
+        "def helper(items, value):\n"
+        "    if (chosen := value):\n"
+        "        first = chosen\n"
+        "    values = [pin for pin in items if pin]\n"
+        "    match value:\n"
+        "        case [left, *rest]:\n"
+        "            return left\n"
+        "    return pin\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = local_path.resolve().as_uri()
+
+    chosen_definition = session.definition(uri, AnalysisPosition(line=3, character=18))
+    assert chosen_definition["name"] == "chosen"
+    assert chosen_definition["selection_range"].to_dict() == {
+        "start": {"line": 2, "character": 9},
+        "end": {"line": 2, "character": 15},
+    }
+
+    pin_definition = session.definition(uri, AnalysisPosition(line=4, character=15))
+    assert pin_definition["name"] == "pin"
+    assert pin_definition["selection_range"].to_dict() == {
+        "start": {"line": 4, "character": 23},
+        "end": {"line": 4, "character": 26},
+    }
+
+    left_definition = session.definition(uri, AnalysisPosition(line=7, character=20))
+    assert left_definition["name"] == "left"
+    assert left_definition["selection_range"].to_dict() == {
+        "start": {"line": 6, "character": 15},
+        "end": {"line": 6, "character": 19},
+    }
+
+    assert session.definition(uri, AnalysisPosition(line=8, character=13)) is None
 
 
 def test_analysis_session_completions_tolerate_incomplete_import_syntax(tmp_path):
