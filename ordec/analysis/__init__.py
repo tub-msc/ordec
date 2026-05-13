@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from .ord import AnalysisDiagnostic
-from .ord import AnalysisImport
-from .ord import AnalysisPosition
-from .ord import AnalysisRange
-from .ord import AnalysisSession
-from .ord import AnalysisSymbol
-from .ord import DocumentAnalysis
-from .ord import analyze_ord
+from .model import AnalysisDiagnostic
+from .model import AnalysisImport
+from .model import AnalysisPosition
+from .model import AnalysisRange
+from .model import AnalysisSymbol
+from .model import DocumentAnalysis
+from .parser_pass import analyze_ord
+from .session import AnalysisSession
