@@ -277,7 +277,7 @@ class AnalysisSession:
     def invalidate_path(self, path: str):
         path = Path(path).resolve()
         if path.suffix == ".py":
-            self.clear_python_modules()
+            self.invalidate_python_module_path(path)
             return None
 
         if path.suffix != ".ord":
@@ -330,13 +330,27 @@ class AnalysisSession:
         else:
             import_path = workspace_root.joinpath(*module_name.split("."))
 
-        import_path = import_path.with_suffix(".ord")
-        if import_path.exists():
-            return import_path.resolve().as_uri()
+        module_file_path = import_path.with_suffix(".ord")
+        if module_file_path.exists():
+            return module_file_path.resolve().as_uri()
+
+        package_init_path = import_path / "__init__.ord"
+        if package_init_path.exists():
+            return package_init_path.resolve().as_uri()
 
         return None
 
     def resolve_python_module_path(self, module_name: str):
+        if self.workspace_root:
+            workspace_root = Path(self.workspace_root).resolve()
+            workspace_path = workspace_root.joinpath(*module_name.split("."))
+            for candidate in (
+                workspace_path.with_suffix(".py"),
+                workspace_path / "__init__.py",
+            ):
+                if candidate.exists():
+                    return candidate.resolve()
+
         try:
             spec = importlib.util.find_spec(module_name)
         except (ImportError, ModuleNotFoundError, ValueError):
@@ -350,6 +364,37 @@ class AnalysisSession:
             return None
 
         return path.resolve()
+
+    def python_module_names_for_path(self, path: Path):
+        names = []
+
+        for module_name, module_info in self.python_modules.items():
+            if module_info is None:
+                continue
+            if module_info.get("path") == path:
+                names.append(module_name)
+
+        if self.workspace_root:
+            try:
+                relative_path = path.relative_to(Path(self.workspace_root).resolve())
+            except ValueError:
+                relative_path = None
+
+            if relative_path is not None:
+                if relative_path.name == "__init__.py":
+                    module_parts = relative_path.parent.parts
+                else:
+                    module_parts = relative_path.with_suffix("").parts
+
+                if module_parts:
+                    names.append(".".join(module_parts))
+
+        return sorted(set(names))
+
+    def invalidate_python_module_path(self, path: Path):
+        importlib.invalidate_caches()
+        for module_name in self.python_module_names_for_path(path):
+            self.python_modules.pop(module_name, None)
 
     def python_module_info(self, module_name: str):
         if module_name in self.python_modules:
@@ -1403,7 +1448,10 @@ class AnalysisSession:
         if text == "":
             return None
 
-        match = re.search(r"[A-Za-z_][A-Za-z0-9_]*$", text)
+        match = re.search(
+            r"(?:\.?[A-Za-z_][A-Za-z0-9_]*)(?:\[[^\]]+\]|\.[A-Za-z_][A-Za-z0-9_]*)*$",
+            text,
+        )
         if match is None or match.end() != len(text):
             return None
         return match.group(0)
@@ -1443,6 +1491,13 @@ class AnalysisSession:
         base_name = context["base"]
         if base_name is None:
             return self.context_type_names_at_position(uri, position)
+
+        if base_name.startswith("."):
+            return self.context_type_names_at_position(uri, position)
+
+        match = re.match(r"[A-Za-z_][A-Za-z0-9_]*", base_name)
+        if match is not None:
+            base_name = match.group(0)
 
         for binding in self.visible_bindings(uri, position):
             if binding["name"] == base_name:
@@ -1722,8 +1777,24 @@ class AnalysisSession:
 
         return diagnostics
 
+    def completion_sort_key(self, item, prefix=None):
+        kind_rank = {
+            "parameter": 0,
+            "variable": 1,
+            "function": 2,
+            "class": 3,
+            "module": 4,
+            "keyword": 5,
+        }.get(item["kind"], 9)
+        label = item["label"]
+        prefix_rank = 0
+        if prefix:
+            prefix_rank = 0 if label.startswith(prefix) else 1
+        return (prefix_rank, kind_rank, label.lower(), label)
+
     def member_completion_items(self, uri: str, position: AnalysisPosition, context):
         items = dict()
+        prefix = context.get("prefix") or ""
 
         for type_name in self.completion_type_names(uri, position, context):
             type_definition = self.resolve_completion_type(uri, type_name)
@@ -1732,6 +1803,8 @@ class AnalysisSession:
 
             for name, member in self.type_members(type_definition).items():
                 if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name) is None:
+                    continue
+                if prefix and not name.startswith(prefix):
                     continue
                 if context["mode"] == "parameter" and member["kind"] != "parameter":
                     continue
@@ -1754,7 +1827,13 @@ class AnalysisSession:
         if context is not None:
             items.update(self.member_completion_items(uri, position, context))
             if items:
-                return [items[label] for label in sorted(items)]
+                return [
+                    items[label]
+                    for label in sorted(
+                        items,
+                        key=lambda item_label: self.completion_sort_key(items[item_label], context.get("prefix")),
+                    )
+                ]
 
         for binding in self.visible_bindings(uri, position):
             if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", binding["name"]) is None:
@@ -2267,7 +2346,13 @@ class AnalysisSession:
 def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
     """Parse ORD source and return diagnostics plus declaration symbols."""
 
-    def tree_range(node: Tree):
+    def tree_range(node):
+        if isinstance(node, Token):
+            return AnalysisRange(
+                start=AnalysisPosition(node.line, node.column),
+                end=AnalysisPosition(node.end_line, node.end_column),
+            )
+
         return AnalysisRange(
             start=AnalysisPosition(node.meta.line, node.meta.column),
             end=AnalysisPosition(node.meta.end_line, node.meta.end_column),
@@ -2431,6 +2516,25 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
             return []
         return [match.group(0)]
 
+    def type_names_from_annotation(node):
+        if not isinstance(node, Tree):
+            return []
+
+        name_node = simple_name_node(node)
+        if name_node is not None:
+            return [tree_text(name_node)]
+
+        if node.data == "getitem" and node.children:
+            return type_names_from_annotation(node.children[0])
+
+        if node.data == "getattr":
+            name = tree_text(node)
+            match = re.search(r"[A-Za-z_][A-Za-z0-9_]*$", name)
+            if match is not None:
+                return [match.group(0)]
+
+        return []
+
     def resolve_binding(scope_id, name):
         while scope_id is not None:
             binding_id = scope_bindings[scope_id].get(name)
@@ -2522,7 +2626,7 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
 
         return False
 
-    def expression_type_names(node, scope_id):
+    def expression_type_names(node, scope_id, context_type_names=None):
         if not isinstance(node, Tree):
             return []
 
@@ -2535,7 +2639,7 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
             for child in node.children:
                 if not isinstance(child, Tree):
                     continue
-                type_names.extend(expression_type_names(child, scope_id))
+                type_names.extend(expression_type_names(child, scope_id, context_type_names=context_type_names))
             return normalize_type_names(type_names)
 
         if node.data == "funccall" and node.children:
@@ -2545,7 +2649,34 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                 if name[:1].isupper():
                     return [name]
 
+        if node.data == "getitem" and node.children:
+            return expression_type_names(
+                node.children[0],
+                scope_id,
+                context_type_names=context_type_names,
+            )
+
+        if node.data == "dotted_atom":
+            return normalize_type_names(context_type_names)
+
         return []
+
+    def expression_root_type_names(node, scope_id, context_type_names=None):
+        if not isinstance(node, Tree):
+            return []
+
+        if node.data in ("getattr", "getitem") and node.children:
+            return expression_root_type_names(
+                node.children[0],
+                scope_id,
+                context_type_names=context_type_names,
+            )
+
+        return expression_type_names(
+            node,
+            scope_id,
+            context_type_names=context_type_names,
+        )
 
     def add_reference(scope_id, name_node):
         name = tree_text(name_node)
@@ -2567,13 +2698,47 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                 add_binding(scope_id, child, "parameter")
                 continue
 
+            if child.data == "typedparam":
+                name_node = None
+                annotation_node = None
+                for value_node in child.children:
+                    if not isinstance(value_node, Tree):
+                        continue
+                    if name_node is None and value_node.data == "name":
+                        name_node = value_node
+                    elif annotation_node is None:
+                        annotation_node = value_node
+
+                type_names = type_names_from_annotation(annotation_node)
+                if name_node is not None:
+                    add_binding(scope_id, name_node, "parameter", type_names=type_names)
+                if annotation_node is not None:
+                    visit(annotation_node, scope_id)
+                continue
+
             if child.data != "paramvalue":
                 visit(child, scope_id)
                 continue
 
             name_node = None
+            annotation_node = None
             for value_node in child.children:
                 if not isinstance(value_node, Tree):
+                    continue
+
+                if value_node.data == "typedparam":
+                    for typed_child in value_node.children:
+                        if not isinstance(typed_child, Tree):
+                            continue
+                        if name_node is None and typed_child.data == "name":
+                            name_node = typed_child
+                        elif annotation_node is None:
+                            annotation_node = typed_child
+                    type_names = type_names_from_annotation(annotation_node)
+                    if name_node is not None:
+                        add_binding(scope_id, name_node, "parameter", type_names=type_names)
+                    if annotation_node is not None:
+                        visit(annotation_node, scope_id)
                     continue
 
                 if name_node is None and value_node.data == "name":
@@ -2603,6 +2768,98 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
 
             for value_node in value_nodes[1:]:
                 visit(value_node, scope_id)
+
+    def bind_pattern(scope_id, pattern_node):
+        if isinstance(pattern_node, Token):
+            return
+
+        if not isinstance(pattern_node, Tree):
+            return
+
+        if pattern_node.data in ("capture_pattern", "star_pattern"):
+            if pattern_node.children:
+                add_binding(scope_id, pattern_node.children[0], "variable")
+            return
+
+        if pattern_node.data == "as_pattern":
+            for child in pattern_node.children:
+                if isinstance(child, Token):
+                    add_binding(scope_id, child, "variable")
+                else:
+                    bind_pattern(scope_id, child)
+            return
+
+        if pattern_node.data == "mapping_star_pattern":
+            for child in pattern_node.children:
+                if isinstance(child, Token):
+                    add_binding(scope_id, child, "variable")
+                else:
+                    bind_pattern(scope_id, child)
+            return
+
+        if pattern_node.data == "keyw_arg_pattern":
+            for child in pattern_node.children[1:]:
+                bind_pattern(scope_id, child)
+            return
+
+        for child in pattern_node.children:
+            bind_pattern(scope_id, child)
+
+    def visit_comprehension(node, scope_id, context_type_names=None):
+        comprehension_node = None
+        for child in node.children:
+            if isinstance(child, Tree) and child.data == "comprehension":
+                comprehension_node = child
+                break
+
+        if comprehension_node is None or not comprehension_node.children:
+            for child in node.children:
+                if isinstance(child, Tree):
+                    visit(child, scope_id, context_type_names=context_type_names)
+            return
+
+        comp_scope_id = add_scope(node, scope_id)
+        result_node = comprehension_node.children[0]
+        post_for_nodes = []
+
+        for child in comprehension_node.children[1:]:
+            if not isinstance(child, Tree):
+                continue
+
+            if child.data != "comp_fors":
+                post_for_nodes.append(child)
+                continue
+
+            for comp_for in child.children:
+                if not isinstance(comp_for, Tree) or comp_for.data != "comp_for":
+                    continue
+
+                tree_children = [
+                    comp_child for comp_child in comp_for.children
+                    if isinstance(comp_child, Tree)
+                ]
+                if len(tree_children) < 2:
+                    for comp_child in tree_children:
+                        visit(comp_child, comp_scope_id, context_type_names=context_type_names)
+                    continue
+
+                target_node = tree_children[0]
+                iterable_node = tree_children[1]
+                visit(iterable_node, comp_scope_id, context_type_names=context_type_names)
+                if not bind_target(
+                    comp_scope_id,
+                    target_node,
+                    context_type_names=context_type_names,
+                ):
+                    visit(target_node, comp_scope_id, context_type_names=context_type_names)
+
+                for extra_node in tree_children[2:]:
+                    visit(extra_node, comp_scope_id, context_type_names=context_type_names)
+
+        for post_for_node in post_for_nodes:
+            visit(post_for_node, comp_scope_id, context_type_names=context_type_names)
+
+        visit(result_node, comp_scope_id, context_type_names=context_type_names)
 
     def visit(node, scope_id, top_level=False, context_type_names=None):
         if not isinstance(node, Tree):
@@ -2695,6 +2952,48 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
             for child in node.children[2:]:
                 if isinstance(child, Tree):
                     visit(child, scope_id, context_type_names=context_type_names)
+            return
+
+        if node.data in ("node_stmt_nobody", "anon_node_stmt_nobody") and len(node.children) >= 2:
+            kind_node = node.children[0]
+            if isinstance(kind_node, Tree):
+                kind_name = tree_text(kind_node)
+                context_type_names = context_type_names_for_kind(kind_name)
+                kind_binding_id = None
+                kind_name_node = simple_name_node(kind_node)
+                if kind_name_node is not None:
+                    kind_binding_id = resolve_binding(scope_id, tree_text(kind_name_node))
+
+                for target_node in node.children[1:]:
+                    if not isinstance(target_node, Tree):
+                        continue
+
+                    node_contexts.append({
+                        "kind_name": kind_name,
+                        "kind_range": tree_range(kind_node),
+                        "kind_binding_id": kind_binding_id,
+                        "target_name": tree_text(target_node),
+                        "target_range": tree_range(target_node),
+                        "range": tree_range(node),
+                    })
+                    symbols.append(AnalysisSymbol(
+                        name="{} {}".format(kind_name, tree_text(target_node)),
+                        kind="context",
+                        range=tree_range(node),
+                        selection_range=tree_range(target_node),
+                    ))
+
+                    name_node = simple_name_node(target_node)
+                    if name_node is not None:
+                        add_binding(
+                            scope_id,
+                            name_node,
+                            "variable",
+                            node_range=tree_range(target_node),
+                            type_names=context_type_names,
+                        )
+                    else:
+                        visit(target_node, scope_id, context_type_names=context_type_names)
             return
 
         if node.data in ("path_stmt", "net_stmt"):
@@ -2837,7 +3136,11 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
             if tree_children:
                 targets = tree_children[:-1]
                 value_node = tree_children[-1]
-                value_type_names = expression_type_names(value_node, scope_id)
+                value_type_names = expression_type_names(
+                    value_node,
+                    scope_id,
+                    context_type_names=context_type_names,
+                )
 
                 for target_node in targets:
                     if bind_target(
@@ -2853,12 +3156,44 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                 visit(value_node, scope_id, context_type_names=context_type_names)
                 return
 
+        if node.data == "annassign":
+            tree_children = [child for child in node.children if isinstance(child, Tree)]
+            if len(tree_children) >= 2:
+                target_node = tree_children[0]
+                annotation_node = tree_children[1]
+                value_node = tree_children[2] if len(tree_children) > 2 else None
+                type_names = type_names_from_annotation(annotation_node)
+                if value_node is not None:
+                    type_names.extend(expression_type_names(
+                        value_node,
+                        scope_id,
+                        context_type_names=context_type_names,
+                    ))
+                type_names = normalize_type_names(type_names)
+
+                if not bind_target(
+                    scope_id,
+                    target_node,
+                    type_names=type_names,
+                    context_type_names=context_type_names,
+                ):
+                    visit(target_node, scope_id, context_type_names=context_type_names)
+
+                visit(annotation_node, scope_id, context_type_names=context_type_names)
+                if value_node is not None:
+                    visit(value_node, scope_id, context_type_names=context_type_names)
+                return
+
         if node.data == "for_stmt":
             tree_children = [child for child in node.children if isinstance(child, Tree)]
             if tree_children:
                 iterable_type_names = []
                 if len(tree_children) > 1:
-                    iterable_type_names = expression_type_names(tree_children[1], scope_id)
+                    iterable_type_names = expression_type_names(
+                        tree_children[1],
+                        scope_id,
+                        context_type_names=context_type_names,
+                    )
 
                 if bind_target(
                     scope_id,
@@ -2869,6 +3204,44 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                     for child in tree_children[1:]:
                         visit(child, scope_id, context_type_names=context_type_names)
                     return
+
+        if node.data in (
+            "list_comprehension",
+            "tuple_comprehension",
+            "dict_comprehension",
+            "set_comprehension",
+        ):
+            visit_comprehension(node, scope_id, context_type_names=context_type_names)
+            return
+
+        if node.data == "assign_expr" and len(node.children) >= 2:
+            name_node = node.children[0]
+            value_node = node.children[1]
+            type_names = expression_type_names(
+                value_node,
+                scope_id,
+                context_type_names=context_type_names,
+            )
+            add_binding(scope_id, name_node, "variable", type_names=type_names)
+            visit(value_node, scope_id, context_type_names=context_type_names)
+            return
+
+        if node.data == "case" and node.children:
+            pattern_node = None
+            remaining_children = []
+            for child in node.children:
+                if not isinstance(child, Tree):
+                    continue
+                if pattern_node is None:
+                    pattern_node = child
+                    continue
+                remaining_children.append(child)
+
+            if pattern_node is not None:
+                bind_pattern(scope_id, pattern_node)
+            for child in remaining_children:
+                visit(child, scope_id, context_type_names=context_type_names)
+            return
 
         if node.data == "with_stmt":
             for child in node.children:
@@ -2930,13 +3303,19 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
             base_name_node = simple_name_node(base_node)
             if base_name_node is not None:
                 binding_id = resolve_binding(scope_id, tree_text(base_name_node))
+            type_names = expression_type_names(
+                base_node,
+                scope_id,
+                context_type_names=context_type_names,
+            )
+            type_names.extend(normalize_type_names(context_type_names))
 
             member_occurrences.append({
                 "name": tree_text(name_node),
                 "range": tree_range(name_node),
                 "scope_id": scope_id,
                 "binding_id": binding_id,
-                "type_names": normalize_type_names(context_type_names),
+                "type_names": normalize_type_names(type_names),
                 "mode": "member",
             })
             visit(base_node, scope_id, context_type_names=context_type_names)
@@ -2951,6 +3330,11 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                 base_name_node = simple_name_node(base_node)
                 if base_name_node is not None:
                     binding_id = resolve_binding(scope_id, tree_text(base_name_node))
+                type_names.extend(expression_root_type_names(
+                    base_node,
+                    scope_id,
+                    context_type_names=context_type_names,
+                ))
                 visit(base_node, scope_id, context_type_names=context_type_names)
 
             member_occurrences.append({
@@ -2958,7 +3342,7 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                 "range": tree_range(name_node),
                 "scope_id": scope_id,
                 "binding_id": binding_id,
-                "type_names": type_names,
+                "type_names": normalize_type_names(type_names),
                 "mode": "parameter",
             })
             return
