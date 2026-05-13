@@ -677,6 +677,73 @@ def test_analysis_session_context_aware_member_and_parameter_completions(tmp_pat
     }
 
 
+def test_analysis_session_inline_node_stmt_completions(tmp_path):
+    inv_path = tmp_path / "inline.ord"
+    valid_text = (
+        "from ordec.core import *\n"
+        "from ordec.lib.generic_mos import Nmos\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        net vss\n"
+        "        Nmos pd: .\n"
+    )
+    inv_path.write_text(valid_text)
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    inv_uri = inv_path.resolve().as_uri()
+
+    line = valid_text.splitlines()[6]
+    member_map = dict(
+        (
+            item["label"],
+            {
+                "kind": item["kind"],
+                "detail": item["detail"],
+            },
+        )
+        for item in session.completions(inv_uri, AnalysisPosition(line=7, character=len(line) + 1))
+    )
+    assert member_map["d"] == {
+        "kind": "variable",
+        "detail": "variable of Nmos",
+    }
+    assert member_map["pos"] == {
+        "kind": "variable",
+        "detail": "variable of Nmos",
+    }
+    assert member_map["orientation"] == {
+        "kind": "variable",
+        "detail": "variable of Nmos",
+    }
+
+    # Seed last-good analysis before testing the temporarily invalid ``.$`` edit.
+    session.analyze(inv_uri)
+    parameter_text = valid_text.replace("Nmos pd: .", "Nmos pd: .$")
+    session.update_document(inv_uri, parameter_text)
+    line = parameter_text.splitlines()[6]
+    parameter_map = dict(
+        (
+            item["label"],
+            {
+                "kind": item["kind"],
+                "detail": item["detail"],
+            },
+        )
+        for item in session.completions(inv_uri, AnalysisPosition(line=7, character=len(line) + 1))
+    )
+    assert parameter_map == {
+        "l": {
+            "kind": "parameter",
+            "detail": "parameter of Nmos",
+        },
+        "w": {
+            "kind": "parameter",
+            "detail": "parameter of Nmos",
+        },
+    }
+
+
 def test_analysis_session_constructor_assignment_type_flow(tmp_path):
     inv_path = tmp_path / "constructor_type.ord"
     inv_path.write_text(

@@ -79,6 +79,7 @@ class OrdecLanguageServer:
                         },
                         "completionProvider": {
                             "resolveProvider": False,
+                            "triggerCharacters": [".", "$"],
                         },
                         "codeActionProvider": True,
                         "foldingRangeProvider": True,
