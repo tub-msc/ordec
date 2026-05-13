@@ -826,28 +826,32 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         else:
             return self.parent.full_path_list() + here
 
-    def full_path_str(self) -> str:
-        """Hierarchial path of the selected node in NPath hierarchy as string."""
-        it = iter(self.full_path_list())
+    @staticmethod
+    def format_path_list(path_list: list) -> str:
+        """Format a path list as a string (e.g., ['I0', 'sub', 0] -> 'I0.sub[0]')."""
+        it = iter(path_list)
         try:
             first = next(it)
         except StopIteration:
-            return "root_cursor" # TODO: This seems wrong.
-
-        ret = []
+            return ''
         if not isinstance(first, str):
-            raise TypeError("First element of full path must be a string.")
-        ret.append(first)
-
+            raise TypeError("First element of path must be a string.")
+        parts = [first]
         for elem in it:
             if isinstance(elem, int):
-                ret.append(f'[{elem!r}]')
+                parts.append(f'[{elem}]')
             elif isinstance(elem, str):
-                ret.append(f".{elem}")
+                parts.append(f'.{elem}')
             else:
                 raise TypeError("Path must only contain str and int.")
+        return ''.join(parts)
 
-        return ''.join(ret)
+    def full_path_str(self) -> str:
+        """Hierarchial path of the selected node in NPath hierarchy as string."""
+        path_list = self.full_path_list()
+        if not path_list:
+            return "root_cursor"  # TODO: This seems wrong.
+        return Node.format_path_list(path_list)
 
     def __repr__(self):
         info = []

@@ -96,3 +96,202 @@ def test_no_simpins_before_simulation():
     """SimPin nodes are not created by from_schematic(); only by simulation."""
     simhier = my_simhier()
     assert list(simhier.all(SimPin)) == []
+
+
+def test_export_no_sim_data():
+    """Test that export methods raise ValueError when no simulation data."""
+    simhier = my_simhier()
+    with pytest.raises(ValueError, match="No simulation data"):
+        simhier.to_numpy()
+    with pytest.raises(ValueError, match="No simulation data"):
+        simhier.write_csv("/tmp/test.csv")
+
+
+def test_to_numpy_all():
+    """Test to_numpy() with all fields (include=None), raw names."""
+    import numpy as np
+    tb = lib_test.ResdivHierTb()
+    h = tb.sim_dc_batch
+    arr = h.to_numpy(translate_names=False)
+    assert isinstance(arr, np.ndarray)
+    assert len(arr) == len(h.sim_data)
+    for f in h.sim_data.fields:
+        assert f.fid in arr.dtype.names
+
+
+def test_to_numpy_include():
+    """Test to_numpy() with specific nodes in include, raw names."""
+    import numpy as np
+    tb = lib_test.ResdivHierTb()
+    h = tb.sim_dc_batch
+    arr = h.to_numpy(include=[h.r, h.I2.p], translate_names=False)
+    assert isinstance(arr, np.ndarray)
+    assert len(arr) == len(h.sim_data)
+    assert h.r.voltage_field in arr.dtype.names
+    assert h.I2.p.current_field in arr.dtype.names
+    # DC op-point has no independent variable, so just 2 fields
+    assert len(arr.dtype.names) == 2
+
+
+def test_to_numpy_invalid_include():
+    """Test to_numpy() raises TypeError for invalid include nodes."""
+    tb = lib_test.ResdivHierTb()
+    h = tb.sim_dc_batch
+    with pytest.raises(TypeError, match="SimNet, SimPin, or SimParam"):
+        h.to_numpy(include=[h.I0])
+
+
+def test_write_csv_all(tmp_path):
+    """Test write_csv() with all fields (include=None), raw names."""
+    import csv
+    tb = lib_test.ResdivHierTb()
+    h = tb.sim_dc_batch
+    outfile = tmp_path / "sim_all.csv"
+    h.write_csv(outfile, translate_names=False)
+    with open(outfile) as f:
+        reader = csv.reader(f)
+        header = next(reader)
+        rows = list(reader)
+    assert len(rows) == len(h.sim_data)
+    for f in h.sim_data.fields:
+        assert f.fid in header
+
+
+def test_write_csv_include(tmp_path):
+    """Test write_csv() with specific nodes in include, raw names."""
+    import csv
+    tb = lib_test.ResdivHierTb()
+    h = tb.sim_dc_batch
+    outfile = tmp_path / "sim_include.csv"
+    h.write_csv(outfile, include=[h.r, h.I2.p], translate_names=False)
+    with open(outfile) as f:
+        reader = csv.reader(f)
+        header = next(reader)
+        rows = list(reader)
+    assert len(rows) == len(h.sim_data)
+    assert h.r.voltage_field in header
+    assert h.I2.p.current_field in header
+    # DC op-point has no independent variable, so just 2 fields
+    assert len(header) == 2
+
+
+def test_to_numpy_with_time_axis():
+    """Test to_numpy() includes time axis for transient simulation, raw names."""
+    import numpy as np
+    tb = lib_test.VpwlTb()
+    h = tb.sim_tran_batch
+    assert h.time_field is not None
+    arr = h.to_numpy(include=[h.out], translate_names=False)
+    assert h.time_field in arr.dtype.names
+    assert h.out.voltage_field in arr.dtype.names
+    # time + 1 voltage field
+    assert len(arr.dtype.names) == 2
+    # First column should be time
+    assert arr.dtype.names[0] == h.time_field
+
+
+def test_write_csv_with_time_axis(tmp_path):
+    """Test write_csv() includes time axis for transient simulation, raw names."""
+    import csv
+    tb = lib_test.VpwlTb()
+    h = tb.sim_tran_batch
+    assert h.time_field is not None
+    outfile = tmp_path / "sim_tran.csv"
+    h.write_csv(outfile, include=[h.out], translate_names=False)
+    with open(outfile) as f:
+        reader = csv.reader(f)
+        header = next(reader)
+        rows = list(reader)
+    assert h.time_field in header
+    assert h.out.voltage_field in header
+    # time + 1 voltage field
+    assert len(header) == 2
+    # First column should be time
+    assert header[0] == h.time_field
+
+
+def test_to_numpy_ac_complex():
+    """Test to_numpy() with AC simulation (complex values), raw names."""
+    import numpy as np
+    tb = lib_test.SineRC()
+    h = tb.sim_ac_batch
+    assert h.freq_field is not None
+    arr = h.to_numpy(include=[h.out], translate_names=False)
+    # freq + 1 voltage field
+    assert len(arr.dtype.names) == 2
+    assert arr.dtype.names[0] == h.freq_field
+    assert h.out.voltage_field in arr.dtype.names
+    # AC data should be complex
+    assert np.iscomplexobj(arr[h.out.voltage_field])
+    # Verify data integrity
+    assert len(arr) == len(h.sim_data)
+    for i in range(min(5, len(arr))):
+        assert arr[h.out.voltage_field][i] == h.out.voltage[i]
+
+
+def test_to_numpy_dc_sweep():
+    """Test to_numpy() with DC sweep simulation, raw names."""
+    import numpy as np
+    tb = lib_test.InvTb()
+    h = tb.sim_dc_batch
+    assert h.sim_type == SimType.DCSWEEP
+    assert h.sweep_field is not None
+    arr = h.to_numpy(include=[h.i, h.o], translate_names=False)
+    # sweep + 2 voltage fields
+    assert len(arr.dtype.names) == 3
+    assert arr.dtype.names[0] == h.sweep_field
+    assert h.i.voltage_field in arr.dtype.names
+    assert h.o.voltage_field in arr.dtype.names
+    # Verify data integrity
+    assert len(arr) == len(h.sim_data)
+    for i in range(min(5, len(arr))):
+        assert arr[h.i.voltage_field][i] == h.i.voltage[i]
+        assert arr[h.o.voltage_field][i] == h.o.voltage[i]
+
+
+def test_translate_names():
+    """Test translate_names=True converts ngspice names to ORDB paths."""
+    import numpy as np
+    tb = lib_test.ResdivHierTb()
+    h = tb.sim_dc_batch
+
+    # Voltage and current translation
+    arr = h.to_numpy(include=[h.r, h.I2.p])
+    assert 'r.voltage' in arr.dtype.names
+    assert 'I2.p.current' in arr.dtype.names
+    assert h.r.voltage_field not in arr.dtype.names
+    assert arr['r.voltage'][0] == h.r.voltage[0]
+    assert arr['I2.p.current'][0] == h.I2.p.current[0]
+
+    # Nested hierarchy paths
+    arr = h.to_numpy(include=[h.I0.I0.I0.p])
+    assert 'I0.I0.I0.p.current' in arr.dtype.names
+
+
+def test_translate_names_axes(tmp_path):
+    """Test that independent variable axes are translated correctly."""
+    import csv
+    import numpy as np
+
+    # Transient: time axis
+    h_tran = lib_test.VpwlTb().sim_tran_batch
+    arr = h_tran.to_numpy(include=[h_tran.out])
+    assert arr.dtype.names[0] == 'time'
+    assert 'out.voltage' in arr.dtype.names
+
+    # AC: frequency axis
+    h_ac = lib_test.SineRC().sim_ac_batch
+    arr = h_ac.to_numpy(include=[h_ac.out])
+    assert arr.dtype.names[0] == 'frequency'
+
+    # DC sweep: sweep axis
+    h_sweep = lib_test.InvTb().sim_dc_batch
+    arr = h_sweep.to_numpy(include=[h_sweep.i])
+    assert arr.dtype.names[0] == 'sweep'
+
+    # write_csv uses same translation
+    outfile = tmp_path / "sim.csv"
+    h_tran.write_csv(outfile, include=[h_tran.out])
+    with open(outfile) as f:
+        header = next(csv.reader(f))
+    assert header == ['time', 'out.voltage']

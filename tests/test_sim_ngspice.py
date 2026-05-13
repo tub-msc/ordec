@@ -4,6 +4,33 @@
 import re
 import pytest
 from ordec.sim.ngspice import Ngspice, ngspice_batch, NgspiceError
+from ordec.sim.simulator import parse_signal_name
+
+
+def test_parse_signal_name():
+    """Test parsing of ngspice rawfile signal names."""
+    # Voltage nodes
+    assert parse_signal_name("v(vdd)") == ("vdd", None)
+    assert parse_signal_name("v(xdut.a)") == ("xdut.a", None)
+
+    # Internal model nodes (device type prefix stripped, # splits path/param)
+    assert parse_signal_name("v(n.xdut.xm1.model#GP)") == ("xdut.xm1.model", "GP")
+    assert parse_signal_name("v(m.xdut.mm1#internal)") == ("xdut.mm1", "internal")
+
+    # Branch currents
+    assert parse_signal_name("i(vgnd)") == ("vgnd", "branch")
+
+    # Subcircuit port currents
+    assert parse_signal_name("i(xdut:vss)") == ("xdut", "vss")
+
+    # Device parameters
+    assert parse_signal_name("@m.xdut.mm2[gm]") == ("xdut.mm2", "gm")
+    assert parse_signal_name("i(@m.xdut.mm2[id])") == ("xdut.mm2", "id")
+    assert parse_signal_name("v(@m.xi0.mm1[vdsat])") == ("xi0.mm1", "vdsat")
+
+    # Unknown format
+    assert parse_signal_name("time") == ("time", None)
+
 
 def test_ngspice_illegal_netlist_1():
     with Ngspice.launch() as sim:

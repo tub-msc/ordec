@@ -842,6 +842,146 @@ class SimHierarchy(SubgraphRoot):
         from ..sim.webdata import webdata
         return webdata(self)
 
+    def _collect_fields(self, include):
+        """Collect field names to export, starting with the independent variable.
+
+        Args:
+            include: None to include all fields, or an iterable of
+                SimNet/SimPin/SimParam nodes to include.
+
+        Returns:
+            List of field names (strings) to export.
+        """
+        fields = []
+        for axis in (self.time_field, self.freq_field, self.sweep_field):
+            if axis is not None:
+                fields.append(axis)
+
+        if include is None:
+            for f in self.sim_data.fields:
+                if f.fid not in fields:
+                    fields.append(f.fid)
+        else:
+            for node in include:
+                if isinstance(node, SimNet):
+                    if node.voltage_field is not None:
+                        fields.append(node.voltage_field)
+                elif isinstance(node, SimPin):
+                    if node.current_field is not None:
+                        fields.append(node.current_field)
+                elif isinstance(node, SimParam):
+                    if node.field is not None:
+                        fields.append(node.field)
+                else:
+                    raise TypeError(
+                        f"include must contain SimNet, SimPin, or SimParam nodes, got {type(node).__name__}"
+                    )
+        return fields
+
+    def _build_field_translation_map(self):
+        """Build mapping from ngspice field names to ORDB-style paths."""
+        field_map = {}
+
+        if self.time_field:
+            field_map[self.time_field] = 'time'
+        if self.freq_field:
+            field_map[self.freq_field] = 'frequency'
+        if self.sweep_field:
+            field_map[self.sweep_field] = 'sweep'
+
+        for simnet in self.all(SimNet):
+            if simnet.voltage_field:
+                path = simnet.full_path_str()
+                field_map[simnet.voltage_field] = f'{path}.voltage'
+
+        for simpin in self.all(SimPin):
+            if simpin.current_field:
+                path_list = simpin.instance.full_path_list() + simpin.eref.full_path_list()
+                path = Node.format_path_list(path_list)
+                field_map[simpin.current_field] = f'{path}.current'
+
+        for simparam in self.all(SimParam):
+            if simparam.field:
+                path = simparam.instance.full_path_str()
+                field_map[simparam.field] = f"{path}.params[{simparam.name!r}].value"
+
+        return field_map
+
+    def _translate_fields(self, fields, translate):
+        """Optionally translate field names to ORDB-style paths.
+
+        When translate=True, fields without ORDB mappings (e.g., internal
+        model nodes) are filtered out.
+        """
+        if not translate:
+            return fields, fields
+        field_map = self._build_field_translation_map()
+        raw = [f for f in fields if f in field_map]
+        translated = [field_map[f] for f in raw]
+        return raw, translated
+
+    def to_numpy(self, include=None, translate_names=True):
+        """Convert simulation data to a numpy structured array.
+
+        Args:
+            include: None to include all fields, or an iterable of
+                SimNet/SimPin/SimParam nodes. The independent variable
+                (time/freq/sweep) is always included first.
+            translate_names: If True (default), translate ngspice field names
+                to ORDB-style paths. If False, keep raw ngspice names.
+
+        Returns:
+            numpy structured array with requested fields.
+        """
+        import numpy as np
+
+        if self.sim_data is None:
+            raise ValueError("No simulation data available")
+
+        fields = self._collect_fields(include)
+        fields, names = self._translate_fields(fields, translate_names)
+
+        dtype_to_np = {'f8': np.float64, 'c16': np.complex128}
+        field_info = {f.fid: f for f in self.sim_data.fields}
+
+        dtype = np.dtype({
+            'names': names,
+            'formats': [dtype_to_np[field_info[fid].dtype] for fid in fields],
+        })
+
+        n = len(self.sim_data)
+        arr = np.empty(n, dtype=dtype)
+        for fid, name in zip(fields, names):
+            arr[name] = list(self.sim_data.column(fid))
+        return arr
+
+    def write_csv(self, filename, include=None, translate_names=True):
+        """Write simulation data to a CSV file.
+
+        Args:
+            filename: Path to the output CSV file.
+            include: None to include all fields, or an iterable of
+                SimNet/SimPin/SimParam nodes. The independent variable
+                (time/freq/sweep) is always included first.
+            translate_names: If True (default), translate ngspice field names
+                to ORDB-style paths. If False, keep raw ngspice names.
+        """
+        import csv
+
+        if self.sim_data is None:
+            raise ValueError("No simulation data available")
+
+        fields = self._collect_fields(include)
+        fields, names = self._translate_fields(fields, translate_names)
+        n = len(self.sim_data)
+
+        with open(filename, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(names)
+            columns = [self.sim_data.column(fid) for fid in fields]
+            for i in range(n):
+                writer.writerow([col[i] for col in columns])
+
 @public
 class SimNet(Node):
     in_subgraphs = [SimHierarchy]

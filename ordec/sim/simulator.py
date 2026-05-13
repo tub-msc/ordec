@@ -24,33 +24,35 @@ def parse_signal_name(name):
 
     Returns (node_name, subname) where subname is None for voltage nodes,
     or a string like "branch" / "is" for currents and device parameters.
-
-    Examples:
-        v(a)                -> ("a", None)
-        i(vgnd)             -> ("vgnd", "branch")
-        i(@m.xdut.mm2[is]) -> ("xdut.mm2", "is")
-        @m.xdut.mm2[is]    -> ("xdut.mm2", "is")
     """
     def strip_type_prefix(s):
-        """Strip single-letter SPICE device type prefix (e.g. 'm.' for
-        MOSFET, 'r.' for resistor) if present."""
+        """Strip single-letter SPICE device type prefix (e.g. 'm.', 'n.')."""
         if len(s) > 2 and s[1] == '.' and s[0].isalpha():
             return s[2:]
         return s
 
     if name.startswith("v(") and name.endswith(")"):
-        return (name[2:-1], None)
+        inner = name[2:-1]
+        if inner.startswith("@") and "[" in inner:
+            bracket = inner.index("[")
+            return (strip_type_prefix(inner[1:bracket]), inner[bracket+1:-1])
+        if "#" in inner:
+            inner = strip_type_prefix(inner)
+            path, param = inner.rsplit("#", 1)
+            return (path, param)
+        return (inner, None)
     if name.startswith("i(") and name.endswith(")"):
         inner = name[2:-1]
         if inner.startswith("@") and "[" in inner:
             bracket = inner.index("[")
-            return (strip_type_prefix(inner[1:bracket]),
-                    inner[bracket+1:-1])
+            return (strip_type_prefix(inner[1:bracket]), inner[bracket+1:-1])
+        if ":" in inner:
+            inst, port = inner.rsplit(":", 1)
+            return (inst, port)
         return (inner, "branch")
     if name.startswith("@") and "[" in name:
         bracket = name.index("[")
-        return (strip_type_prefix(name[1:bracket]),
-                name[bracket+1:-1])
+        return (strip_type_prefix(name[1:bracket]), name[bracket+1:-1])
     return (name, None)
 
 
@@ -97,7 +99,6 @@ class SimulatorBase:
         if sim_type == SimType.DCSWEEP:
             if not sim_array.fields:
                 raise ValueError("DC sweep returned no fields")
-            # First field in ngspice DC rawfiles is the swept source value.
             self.simhier.sweep_field = sim_array.fields[0].fid
 
         for f in sim_array.fields:
@@ -117,24 +118,62 @@ class SimulatorBase:
                     simnet = self.hier_simobj_of_name(node_name)
                     simnet.voltage_field = fid
                 else:
-                    siminstance = self.hier_simobj_of_name(node_name)
-                    pin_map = siminstance.eref.symbol.cell.ngspice_current_pins()
-                    if subname in pin_map:
+                    # Try progressively shorter paths for internal model nodes
+                    siminstance = None
+                    remaining_path = []
+                    parts = node_name.split(".")
+                    for i in range(len(parts), 0, -1):
+                        try_path = ".".join(parts[:i])
+                        try:
+                            siminstance = self.hier_simobj_of_name(try_path)
+                            remaining_path = parts[i:]
+                            break
+                        except KeyError:
+                            continue
+                    if siminstance is None:
+                        continue
+
+                    if remaining_path:
+                        full_subname = ".".join(remaining_path) + "#" + subname
+                    else:
+                        full_subname = subname
+
+                    cell = siminstance.eref.symbol.cell
+                    pin_map = cell.ngspice_current_pins() if hasattr(cell, 'ngspice_current_pins') else {}
+
+                    if subname in pin_map and not remaining_path:
                         pin = getattr(siminstance.eref.symbol, pin_map[subname])
                         existing = list(self.simhier.all(
                             SimPin.instance_eref_idx.query((siminstance, pin))))
                         if existing:
-                            # TODO: avoid duplicate signals in the rawfile
-                            # instead of skipping them here.
                             logger.warning(
                                 "duplicate current signal %r for %s, skipping",
                                 fid, node_name)
                             continue
                         simpin = self.simhier % SimPin(instance=siminstance, eref=pin)
                         simpin.current_field = fid
+                    elif siminstance.schematic is not None and not remaining_path:
+                        pin = None
+                        try:
+                            net = siminstance.schematic[subname]
+                            if hasattr(net, 'pin') and net.pin is not None:
+                                pin = net.pin
+                        except (KeyError, AttributeError, QueryException):
+                            pass
+                        if pin is None:
+                            continue
+                        existing = list(self.simhier.all(
+                            SimPin.instance_eref_idx.query((siminstance, pin))))
+                        if existing:
+                            continue
+                        simpin = self.simhier % SimPin(instance=siminstance, eref=pin)
+                        simpin.current_field = fid
+                    elif ":" in fid:
+                        # Port currents (i(inst:port)) that couldn't be mapped to SimPins
+                        continue
                     else:
                         simparam = self.simhier % SimParam(
-                            instance=siminstance, name=subname)
+                            instance=siminstance, name=full_subname)
                         simparam.field = fid
             except KeyError:
                 continue
