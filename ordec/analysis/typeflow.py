@@ -26,9 +26,28 @@ SCHEMA_TYPE_NAMES = {
     "SchemInstance",
 }
 
+DYNAMIC_MEMBER_TYPE_NAMES = {
+    "Symbol",
+    "Schematic",
+    "Layout",
+    "SimHierarchy",
+    "Simulation",
+}
+
 
 class TypeFlowMixin:
     """Helpers for resolving lightweight ORD and Python type information."""
+
+    def allows_dynamic_members(self, type_name: str):
+        """Return whether a type can expose runtime-defined members.
+
+        Args:
+            type_name: Type name inferred for a member access.
+
+        Returns:
+            True when unknown members should be treated conservatively.
+        """
+        return type_name in DYNAMIC_MEMBER_TYPE_NAMES
 
     def context_type_names_for_kind(self, kind_name: str):
         """Map an ORD context keyword to candidate type names.

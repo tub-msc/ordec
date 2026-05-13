@@ -428,6 +428,57 @@ def test_analysis_session_definition_resolves_python_imports(tmp_path):
     assert pmos_definition["uri"].endswith("/ordec/lib/generic_mos.py")
 
 
+def test_analysis_session_resolves_document_local_python_imports(tmp_path):
+    demo_path = tmp_path / "demo"
+    demo_path.mkdir()
+    module_path = demo_path / "counter_yosys.py"
+    module_path.write_text(
+        "class ExtLib:\n"
+        "    pass\n"
+        "\n"
+        "def report_digital_design():\n"
+        "    pass\n"
+    )
+    top_path = demo_path / "top.ord"
+    top_path.write_text(
+        "from counter_yosys import ExtLib, report_digital_design\n"
+        "\n"
+        "def helper(x=ExtLib):\n"
+        "    return report_digital_design\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = session.open_path(str(top_path))
+
+    assert session.diagnostics(uri) == []
+
+    definition = session.resolve_name(uri, "ExtLib")
+    assert definition["name"] == "ExtLib"
+    assert definition["kind"] == "class"
+    assert definition["uri"] == module_path.resolve().as_uri()
+
+
+def test_analysis_session_resolves_package_submodule_imports(tmp_path):
+    root_path = Path(__file__).resolve().parents[1]
+    top_path = tmp_path / "top.ord"
+    top_path.write_text(
+        "from ordec.layout import helpers\n"
+        "\n"
+        "def helper():\n"
+        "    return helpers\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(root_path))
+    uri = session.open_path(str(top_path))
+
+    assert session.diagnostics(uri) == []
+
+    definition = session.resolve_name(uri, "helpers")
+    assert definition["name"] == "helpers"
+    assert definition["kind"] == "module"
+    assert definition["uri"].endswith("/ordec/layout/helpers.py")
+
+
 def test_analysis_session_definition_resolves_python_members(tmp_path):
     inv_path = tmp_path / "inv.ord"
     inv_path.write_text(
@@ -2234,16 +2285,77 @@ def test_analysis_session_resolves_relative_python_cell_instances(tmp_path):
     assert session.diagnostics(uri) == []
 
 
+def test_analysis_session_accepts_dynamic_ordb_and_factory_members():
+    session = AnalysisSession()
+    uri = "file:///tmp/dynamic_runtime_patterns.ord"
+    session.open_document(
+        uri,
+        "from ordec.core import *\n"
+        "from ordec.sim import Simulator\n"
+        "\n"
+        "def helper():\n"
+        "    root = Symbol()\n"
+        "    with root.ctx():\n"
+        "        input a\n"
+        "        assert .a == a\n"
+        "    assert root.a == a\n"
+        "    assert root.all(Pin)\n"
+        "    pin = Pin()\n"
+        "    assert pin.parent\n"
+        "    sim = Simulator(SimHierarchy())\n"
+        "    return sim.netlister\n",
+    )
+
+    assert session.diagnostics(uri) == []
+
+
 def test_analysis_session_current_problem_examples_have_no_lsp_diagnostics():
     root_path = Path(__file__).resolve().parents[1]
     session = AnalysisSession(workspace_root=str(root_path))
 
     for relative_path in (
+        "examples/demo/top.ord",
         "ordec/examples/amp.ord",
         "tests/lib/ord/reg.ord",
         "tests/lib/ord/reg_array_structs.ord",
         "tests/lib/ord/reg_struct_arrays.ord",
         "tests/lib/ord/nmux.ord",
+        "ordec/examples/vco_pseudodiff.ord",
     ):
         uri = session.open_path(str(root_path / relative_path))
         assert session.diagnostics(uri) == []
+
+
+def test_analysis_session_vco_pseudodiff_definitions():
+    root_path = Path(__file__).resolve().parents[1]
+    session = AnalysisSession(workspace_root=str(root_path))
+    uri = session.open_path(str(root_path / "ordec/examples/vco_pseudodiff.ord"))
+
+    sim_definition = session.definition(uri, AnalysisPosition(line=525, character=25))
+    assert sim_definition is not None
+    assert sim_definition["name"] == "SimHierarchy"
+    assert sim_definition["kind"] == "class"
+    assert sim_definition["uri"].endswith("/ordec/core/schema.py")
+
+    sim_hover = session.hover(uri, AnalysisPosition(line=525, character=25))
+    assert sim_hover["contents"].startswith("class SimHierarchy\n")
+
+    schematic_definition = session.definition(uri, AnalysisPosition(line=66, character=21))
+    assert schematic_definition is not None
+    assert schematic_definition["uri"] == uri
+    assert schematic_definition["name"] == "schematic"
+
+    vddbar_definition = session.definition(uri, AnalysisPosition(line=290, character=41))
+    assert vddbar_definition is not None
+    assert vddbar_definition["uri"] == uri
+    assert vddbar_definition["name"] == "vddbar"
+
+    outbar_definition = session.definition(uri, AnalysisPosition(line=306, character=36))
+    assert outbar_definition is not None
+    assert outbar_definition["uri"] == uri
+    assert outbar_definition["name"] == "outbar_outn"
+
+    router_path_definition = session.definition(uri, AnalysisPosition(line=340, character=12))
+    assert router_path_definition is not None
+    assert router_path_definition["name"] == "path"
+    assert router_path_definition["uri"].endswith("/ordec/layout/srouter.py")
