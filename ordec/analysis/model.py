@@ -11,10 +11,17 @@ _MISSING = object()
 
 
 class AnalysisPosition(NamedTuple):
+    """One-based source position used by the ORD analysis layer."""
+
     line: int
     character: int
 
     def to_dict(self):
+        """Convert the position to a plain dictionary.
+
+        Returns:
+            Dictionary with line and character fields.
+        """
         return {
             "line": self.line,
             "character": self.character,
@@ -22,10 +29,17 @@ class AnalysisPosition(NamedTuple):
 
 
 class AnalysisRange(NamedTuple):
+    """Half-open source range using ORD analysis positions."""
+
     start: AnalysisPosition
     end: AnalysisPosition
 
     def to_dict(self):
+        """Convert the range to a plain dictionary.
+
+        Returns:
+            Dictionary containing serialized start and end positions.
+        """
         return {
             "start": self.start.to_dict(),
             "end": self.end.to_dict(),
@@ -33,12 +47,19 @@ class AnalysisRange(NamedTuple):
 
 
 class AnalysisDiagnostic(NamedTuple):
+    """Diagnostic emitted by the parser or semantic analysis passes."""
+
     range: AnalysisRange
     severity: str
     message: str
     code: Optional[str] = None
 
     def to_dict(self):
+        """Convert the diagnostic to a plain dictionary.
+
+        Returns:
+            Dictionary containing range, severity, message, and code.
+        """
         return {
             "range": self.range.to_dict(),
             "severity": self.severity,
@@ -48,12 +69,19 @@ class AnalysisDiagnostic(NamedTuple):
 
 
 class AnalysisSymbol(NamedTuple):
+    """Named symbol discovered in an ORD document."""
+
     name: str
     kind: str
     range: AnalysisRange
     selection_range: AnalysisRange
 
     def to_dict(self):
+        """Convert the symbol to a dictionary for protocol responses.
+
+        Returns:
+            Dictionary containing the symbol name, kind, and ranges.
+        """
         return {
             "name": self.name,
             "kind": self.kind,
@@ -63,6 +91,8 @@ class AnalysisSymbol(NamedTuple):
 
 
 class AnalysisImport(NamedTuple):
+    """Import statement captured from an ORD document."""
+
     kind: str
     module: str
     export_name: Optional[str]
@@ -71,6 +101,11 @@ class AnalysisImport(NamedTuple):
     selection_range: AnalysisRange
 
     def to_dict(self):
+        """Convert the import entry to a dictionary.
+
+        Returns:
+            Dictionary containing import metadata and source ranges.
+        """
         return {
             "kind": self.kind,
             "module": self.module,
@@ -82,6 +117,12 @@ class AnalysisImport(NamedTuple):
 
 
 class DocumentAnalysis:
+    """Analysis result for one ORD document.
+
+    The object keeps both user-facing analysis data and internal indexes used
+    by LSP features such as definition, references, rename, and completions.
+    """
+
     def __init__(
         self,
         uri: str,
@@ -99,6 +140,24 @@ class DocumentAnalysis:
         node_contexts=None,
         constraints=None,
     ):
+        """Initialize a document analysis result.
+
+        Args:
+            uri: URI of the analyzed document.
+            version: Optional document version from the LSP client.
+            diagnostics: Parser or semantic diagnostics for the document.
+            symbols: Top-level and structural symbols in source order.
+            imports: Imported module names.
+            import_entries: Detailed import records.
+            exports: Names exported by the document.
+            scopes: Scope table built by the parser pass.
+            bindings: Name bindings built by the parser pass.
+            occurrences: Name occurrences built by the parser pass.
+            member_occurrences: Member or parameter occurrences.
+            viewgen_returns: View generator return type records.
+            node_contexts: ORD node context records.
+            constraints: Constraint syntax records.
+        """
         self.uri = uri
         self.version = version
         self.diagnostics = diagnostics
@@ -116,6 +175,11 @@ class DocumentAnalysis:
         self.constraints = constraints if constraints is not None else []
 
     def to_dict(self):
+        """Convert the public analysis fields to a dictionary.
+
+        Returns:
+            Dictionary used by tests and LSP response helpers.
+        """
         return {
             "uri": self.uri,
             "version": self.version,
@@ -126,12 +190,27 @@ class DocumentAnalysis:
         }
 
     def has_errors(self):
+        """Return whether this analysis contains an error diagnostic.
+
+        Returns:
+            True if any diagnostic has error severity.
+        """
         return any(
             diagnostic.severity == "error"
             for diagnostic in self.diagnostics
         )
 
     def with_diagnostics(self, diagnostics, uri: Optional[str] = None, version=_MISSING):
+        """Create a copy with replaced diagnostics.
+
+        Args:
+            diagnostics: Diagnostics to attach to the copied analysis.
+            uri: Optional replacement URI.
+            version: Optional replacement document version.
+
+        Returns:
+            New ``DocumentAnalysis`` sharing the same structural analysis data.
+        """
         return DocumentAnalysis(
             uri=self.uri if uri is None else uri,
             version=self.version if version is _MISSING else version,
@@ -151,16 +230,43 @@ class DocumentAnalysis:
 
 
 def position_before(left: AnalysisPosition, right: AnalysisPosition):
+    """Return whether one analysis position is strictly before another.
+
+    Args:
+        left: Position to compare first.
+        right: Position to compare against.
+
+    Returns:
+        True if ``left`` sorts before ``right``.
+    """
     if left.line != right.line:
         return left.line < right.line
     return left.character < right.character
 
 
 def position_before_or_equal(left: AnalysisPosition, right: AnalysisPosition):
+    """Return whether one analysis position is before or equal to another.
+
+    Args:
+        left: Position to compare first.
+        right: Position to compare against.
+
+    Returns:
+        True if ``left`` is before or equal to ``right``.
+    """
     return not position_before(right, left)
 
 
 def range_contains(value_range: AnalysisRange, position: AnalysisPosition):
+    """Return whether a half-open analysis range contains a position.
+
+    Args:
+        value_range: Range to test.
+        position: Position that may fall inside the range.
+
+    Returns:
+        True if the position is inside ``value_range``.
+    """
     if not position_before_or_equal(value_range.start, position):
         return False
     return position_before(position, value_range.end)

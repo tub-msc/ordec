@@ -10,7 +10,17 @@ from .model import range_contains
 
 
 class TypeFlowMixin:
+    """Helpers for resolving lightweight ORD and Python type information."""
+
     def context_type_names_for_kind(self, kind_name: str):
+        """Map an ORD context keyword to candidate type names.
+
+        Args:
+            kind_name: Context keyword or user-defined context type.
+
+        Returns:
+            Candidate type names usable for member completion and diagnostics.
+        """
         if kind_name in ("input", "output", "inout"):
             return ["Pin"]
         if kind_name in ("port", "net"):
@@ -24,6 +34,15 @@ class TypeFlowMixin:
         return [match.group(0)]
 
     def context_type_names_at_position(self, uri: str, position: AnalysisPosition):
+        """Return type names implied by the ORD context at a position.
+
+        Args:
+            uri: Document URI to inspect.
+            position: One-based analysis position.
+
+        Returns:
+            Candidate type names for the innermost matching context.
+        """
         analysis = self.analyze(uri)
 
         best_symbol = None
@@ -42,6 +61,15 @@ class TypeFlowMixin:
         return self.context_type_names_for_kind(kind_name)
 
     def resolve_completion_type(self, uri: str, type_name: str):
+        """Resolve a type name to an ORD or Python definition.
+
+        Args:
+            uri: Document URI that provides local import context.
+            type_name: Type name to resolve.
+
+        Returns:
+            Definition dictionary, or None when the type cannot be resolved.
+        """
         type_definition = self.resolve_name(uri, type_name)
         if type_definition is not None:
             return type_definition
@@ -66,6 +94,14 @@ class TypeFlowMixin:
         return None
 
     def type_members(self, type_definition):
+        """Collect members available on a resolved type definition.
+
+        Args:
+            type_definition: Definition dictionary from the analysis session.
+
+        Returns:
+            Mapping of member names to member metadata.
+        """
         if "python_module" in type_definition and "python_class" in type_definition:
             return self.python_class_members(
                 type_definition["python_module"],
@@ -79,4 +115,3 @@ class TypeFlowMixin:
             )
 
         return dict()
-

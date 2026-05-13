@@ -23,7 +23,17 @@ from ..ord.parser import parser
 
 
 def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
-    """Parse ORD source and return diagnostics plus declaration symbols."""
+    """Parse ORD source and collect syntax-aware analysis data.
+
+    Args:
+        source_data: ORD source text to parse.
+        uri: Optional document URI associated with the source.
+        version: Optional LSP document version associated with the source.
+
+    Returns:
+        ``DocumentAnalysis`` containing diagnostics, symbols, scopes,
+        bindings, occurrences, imports, and ORD-specific semantic records.
+    """
 
     def tree_range(node):
         if isinstance(node, Token):
