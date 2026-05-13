@@ -12,7 +12,7 @@ maintainers = [
 ]
 description = "ORDeC"
 readme = "README.md"
-requires-python = ">=3.6"
+requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3",
 ]
@@ -74,6 +74,7 @@ packages = [
 
 [tool.setuptools.package-data]
 "ordec" = ["webdist.tar"]
+"ordec.ord" = ["*.lark"]
 "ordec.examples" = ["*.json"]
 
 [tool.setuptools_scm]

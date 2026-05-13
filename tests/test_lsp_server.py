@@ -367,7 +367,7 @@ def test_lsp_document_symbol_and_diagnostics(tmp_path):
                 "version": 2,
             },
             "contentChanges": [{
-                "text": "cell Inv:\n    viewgen layout() -> Layout:\n        path a\n",
+                "text": "cell Inv:\n    viewgen layout -> Layout:\n        path a\n",
             }],
         },
     })
@@ -422,6 +422,63 @@ def test_lsp_document_symbol_and_diagnostics(tmp_path):
             },
         ],
     }]
+
+
+def test_lsp_publishes_semantic_diagnostics(tmp_path):
+    (tmp_path / "helper.ord").write_text(
+        "cell Other:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+
+    server = OrdecLanguageServer()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    })
+
+    uri = (tmp_path / "broken.ord").resolve().as_uri()
+    messages = server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "text": (
+                    "from .helper import Missing\n"
+                    "from ordec.lib.generic_mos import Nmos\n"
+                    "\n"
+                    "cell Inv:\n"
+                    "    viewgen symbol -> Symbol:\n"
+                    "        input a\n"
+                    "    viewgen schematic -> Schematic:\n"
+                    "        port b: .align=West\n"
+                    "        ! b.pos.x == 0\n"
+                    "        Nmos pd:\n"
+                    "            .missing -- b\n"
+                    "            .$bogus = 1u\n"
+                    "    viewgen bad -> Nmos:\n"
+                    "        pass\n"
+                ),
+            },
+        },
+    })
+
+    diagnostics = messages[0]["params"]["diagnostics"]
+    assert [diagnostic["code"] for diagnostic in diagnostics] == [
+        "unresolved-import-member",
+        "invalid-viewgen-return",
+        "invalid-constraint-context",
+        "unknown-member",
+        "unknown-parameter",
+        "unknown-symbol-port",
+    ]
+    assert all(diagnostic["severity"] == 1 for diagnostic in diagnostics)
 
 
 def test_lsp_workspace_symbol_scans_workspace_root(tmp_path):
@@ -924,6 +981,91 @@ def test_lsp_member_references_and_rename_guard(tmp_path):
     }]
 
 
+def test_lsp_context_aware_completion(tmp_path):
+    inv_path = tmp_path / "inv.ord"
+    inv_path.write_text(
+        "from ordec.core import *\n"
+        "from ordec.lib.generic_mos import Nmos\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        net vss\n"
+        "        Nmos pd:\n"
+        "            .s -- vss\n"
+        "            pd.$l = 1u\n"
+    )
+
+    server = OrdecLanguageServer()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": tmp_path.resolve().as_uri(),
+        },
+    })
+
+    uri = inv_path.resolve().as_uri()
+    server.handle_message({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": uri,
+                "version": 1,
+                "text": inv_path.read_text(),
+            },
+        },
+    })
+
+    member_completion = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "textDocument/completion",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 7, "character": 13},
+        },
+    })
+    member_map = {
+        item["label"]: {
+            "kind": item["kind"],
+            "detail": item["detail"],
+        }
+        for item in member_completion[0]["result"]
+    }
+    assert member_map["s"] == {
+        "kind": 6,
+        "detail": "variable of Nmos",
+    }
+    assert member_map["l"] == {
+        "kind": 6,
+        "detail": "parameter of Nmos",
+    }
+
+    parameter_completion = server.handle_message({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "textDocument/completion",
+        "params": {
+            "textDocument": {"uri": uri},
+            "position": {"line": 8, "character": 17},
+        },
+    })
+    parameter_map = {
+        item["label"]: {
+            "kind": item["kind"],
+            "detail": item["detail"],
+        }
+        for item in parameter_completion[0]["result"]
+    }
+    assert sorted(parameter_map) == ["l", "w"]
+    assert parameter_map["w"] == {
+        "kind": 6,
+        "detail": "parameter of Nmos",
+    }
+
+
 def test_lsp_local_variables_resolve_and_rename(tmp_path):
     local_path = tmp_path / "locals.ord"
     local_path.write_text(
@@ -1231,7 +1373,7 @@ def test_lsp_folding_ranges(tmp_path):
         "from .helpers import bar\n"
         "\n"
         "cell Inv:\n"
-        "    viewgen layout() -> Layout:\n"
+        "    viewgen layout -> Layout:\n"
         "        path vdd\n"
         "\n"
         "def helper(x):\n"
@@ -1296,7 +1438,7 @@ def test_lsp_selection_ranges(tmp_path):
 
     ord_text = (
         "cell Inv:\n"
-        "    viewgen layout() -> Layout:\n"
+        "    viewgen layout -> Layout:\n"
         "        path vdd\n"
     )
 
