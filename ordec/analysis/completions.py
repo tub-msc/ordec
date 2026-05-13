@@ -5,7 +5,7 @@
 import re
 
 # ordec imports
-from .model import AnalysisPosition
+from .model import AnalysisPosition, is_identifier, leading_identifier
 
 
 class CompletionsMixin:
@@ -125,9 +125,9 @@ class CompletionsMixin:
         if base_name.startswith("."):
             return self.context_type_names_at_position(uri, position)
 
-        match = re.match(r"[A-Za-z_][A-Za-z0-9_]*", base_name)
-        if match is not None:
-            base_name = match.group(0)
+        identifier = leading_identifier(base_name)
+        if identifier is not None:
+            base_name = identifier
 
         for binding in self.visible_bindings(uri, position):
             if binding["name"] == base_name:
@@ -179,7 +179,7 @@ class CompletionsMixin:
                 continue
 
             for name, member in self.type_members(type_definition).items():
-                if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name) is None:
+                if not is_identifier(name):
                     continue
                 if prefix and not name.startswith(prefix):
                     continue
@@ -222,7 +222,7 @@ class CompletionsMixin:
                 ]
 
         for binding in self.visible_bindings(uri, position):
-            if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", binding["name"]) is None:
+            if not is_identifier(binding["name"]):
                 continue
 
             items.setdefault(binding["name"], {
@@ -232,7 +232,7 @@ class CompletionsMixin:
             })
 
         for symbol in analysis.symbols:
-            if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", symbol.name) is None:
+            if not is_identifier(symbol.name):
                 continue
 
             items.setdefault(symbol.name, {

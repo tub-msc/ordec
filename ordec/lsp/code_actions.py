@@ -8,6 +8,9 @@ import re
 from ..analysis.model import AnalysisPosition
 
 
+MISSING_SYMBOL_PORT_RE = re.compile(r"Schematic port `([^`]+)`")
+
+
 def code_actions(session, uri: str, diagnostics):
     """Return code actions supported for diagnostics in one document.
 
@@ -60,7 +63,7 @@ def missing_symbol_port_action(session, uri: str, diagnostic):
         LSP code action dictionary, or None when the fix cannot be placed.
     """
     message = diagnostic.get("message", "")
-    match = re.search(r"Schematic port `([^`]+)`", message)
+    match = MISSING_SYMBOL_PORT_RE.search(message)
     if match is None:
         return None
 

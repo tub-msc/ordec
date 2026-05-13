@@ -1,12 +1,8 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-# standard imports
-import re
-
 # ordec imports
-from .model import AnalysisPosition
-from .model import range_contains
+from .model import AnalysisPosition, leading_identifier, range_contains
 
 
 SCHEMA_TYPE_NAMES = {
@@ -65,10 +61,10 @@ class TypeFlowMixin:
         if kind_name == "path":
             return ["PathNode"]
 
-        match = re.match(r"^[A-Za-z_][A-Za-z0-9_]*", kind_name)
-        if match is None:
+        identifier = leading_identifier(kind_name)
+        if identifier is None:
             return []
-        return [match.group(0)]
+        return [identifier]
 
     def context_type_names_at_position(self, uri: str, position: AnalysisPosition):
         """Return type names implied by the ORD context at a position.

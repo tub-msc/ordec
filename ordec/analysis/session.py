@@ -13,10 +13,12 @@ from urllib.parse import urlparse
 # ordec imports
 from .completions import CompletionsMixin
 from .diagnostics import DiagnosticsMixin
-from .model import AnalysisPosition
-from .model import AnalysisRange
-from .model import position_before_or_equal
-from .model import range_contains
+from .model import (
+    AnalysisPosition,
+    AnalysisRange,
+    position_before_or_equal,
+    range_contains,
+)
 from .parser_pass import analyze_ord
 from .rename import RenameMixin
 from .typeflow import TypeFlowMixin

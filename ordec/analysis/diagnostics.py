@@ -1,12 +1,8 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-# standard imports
-import re
-
 # ordec imports
-from .model import AnalysisDiagnostic
-from .model import range_contains
+from .model import AnalysisDiagnostic, is_identifier, range_contains
 
 
 class DiagnosticsMixin:
@@ -120,7 +116,7 @@ class DiagnosticsMixin:
                 continue
             if context.get("kind_binding_id") is not None:
                 continue
-            if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", kind_name) is None:
+            if not is_identifier(kind_name):
                 continue
             if self.resolve_completion_type(uri, kind_name) is None:
                 add_diagnostic(
@@ -248,7 +244,7 @@ class DiagnosticsMixin:
                 if len(parts) != 2:
                     continue
                 kind_name, target_name = parts
-                if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", target_name) is None:
+                if not is_identifier(target_name):
                     continue
 
                 if kind_name in ("input", "output", "inout") and range_contains(symbol_view.range, symbol.selection_range.start):

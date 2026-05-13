@@ -1,23 +1,23 @@
-# SPDX-FileCopyrightText: 2026 ORDeC contributors
+2# SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
 # standard imports
-import re
 from typing import Optional
 
-from lark import Token
-from lark import Tree
-from lark.exceptions import UnexpectedCharacters
-from lark.exceptions import UnexpectedInput
-from lark.exceptions import UnexpectedToken
+from lark import Token, Tree
+from lark.exceptions import UnexpectedCharacters, UnexpectedInput, UnexpectedToken
 
 # ordec imports
-from .model import AnalysisDiagnostic
-from .model import AnalysisImport
-from .model import AnalysisPosition
-from .model import AnalysisRange
-from .model import AnalysisSymbol
-from .model import DocumentAnalysis
+from .model import (
+    AnalysisDiagnostic,
+    AnalysisImport,
+    AnalysisPosition,
+    AnalysisRange,
+    AnalysisSymbol,
+    DocumentAnalysis,
+    leading_identifier,
+    trailing_identifier,
+)
 from ..ord.parser import format_error
 from ..ord.parser import parser
 
@@ -200,10 +200,10 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
         if kind_name == "path":
             return ["PathNode"]
 
-        match = re.match(r"^[A-Za-z_][A-Za-z0-9_]*", kind_name)
-        if match is None:
+        identifier = leading_identifier(kind_name)
+        if identifier is None:
             return []
-        return [match.group(0)]
+        return [identifier]
 
     def type_names_from_annotation(node):
         if not isinstance(node, Tree):
@@ -218,9 +218,9 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
 
         if node.data == "getattr":
             name = tree_text(node)
-            match = re.search(r"[A-Za-z_][A-Za-z0-9_]*$", name)
-            if match is not None:
-                return [match.group(0)]
+            identifier = trailing_identifier(name)
+            if identifier is not None:
+                return [identifier]
 
         return []
 

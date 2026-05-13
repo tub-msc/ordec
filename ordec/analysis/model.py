@@ -2,12 +2,56 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # standard imports
-from typing import List
-from typing import NamedTuple
-from typing import Optional
+import re
+from typing import List, NamedTuple, Optional
 
 
 _MISSING = object()
+IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+LEADING_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+TRAILING_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def is_identifier(value: str):
+    """Return whether a value is an ORD/Python-style identifier.
+
+    Args:
+        value: String to validate.
+
+    Returns:
+        True when value is a single ASCII identifier.
+    """
+    return IDENTIFIER_RE.match(value) is not None
+
+
+def leading_identifier(value: str):
+    """Return the leading identifier in a string.
+
+    Args:
+        value: String to inspect.
+
+    Returns:
+        Leading identifier, or None when the string does not start with one.
+    """
+    match = LEADING_IDENTIFIER_RE.match(value)
+    if match is None:
+        return None
+    return match.group(0)
+
+
+def trailing_identifier(value: str):
+    """Return the trailing identifier in a string.
+
+    Args:
+        value: String to inspect.
+
+    Returns:
+        Trailing identifier, or None when the string does not end with one.
+    """
+    match = TRAILING_IDENTIFIER_RE.search(value)
+    if match is None:
+        return None
+    return match.group(0)
 
 
 class AnalysisPosition(NamedTuple):

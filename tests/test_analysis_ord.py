@@ -3,9 +3,7 @@
 
 from pathlib import Path
 
-from ordec.analysis import AnalysisPosition
-from ordec.analysis import AnalysisSession
-from ordec.analysis import analyze_ord
+from ordec.analysis import AnalysisPosition, AnalysisSession, analyze_ord
 
 
 def position_at(source, needle, occurrence=1):
