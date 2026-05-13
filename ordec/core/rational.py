@@ -48,6 +48,19 @@ class Rational(fractions.Fraction):
                 number = number[:-1] + f"e{cls.sisuffix_rev[number[-1]]}"
         return super().__new__(cls, number, denominator)
 
+    @classmethod
+    def exact_float(cls, value):
+        """
+        Convert a float to its exact IEEE-754 binary representation as a
+        Rational. Unlike ``R(float)``, this preserves the exact binary value.
+        """
+        if not isinstance(value, float):
+            raise TypeError(f"expected float, got {type(value).__name__}")
+        if not math.isfinite(value):
+            raise ValueError(f"Cannot convert {value} to Rational")
+        num, den = value.as_integer_ratio()
+        return cls(num, den)
+
     def __repr__(self):
         return f"R('{self}')"
 

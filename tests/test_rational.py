@@ -80,3 +80,18 @@ def test_float_to_rational_rejects_nonfinite():
         R(float("-inf"))
     with pytest.raises(ValueError):
         R(float("nan"))
+
+
+def test_exact_float():
+    import pytest
+    # exact_float preserves exact IEEE-754 binary representation
+    assert R.exact_float(1.2) != R("1.2")
+    assert R.exact_float(1.2) == R(5404319552844595, 4503599627370496)
+    # Exactly representable floats are the same either way
+    assert R.exact_float(0.5) == R("0.5")
+    assert R.exact_float(0.25) == R("0.25")
+    # Rejects non-float and non-finite
+    with pytest.raises(TypeError):
+        R.exact_float(1)
+    with pytest.raises(ValueError):
+        R.exact_float(float("inf"))
