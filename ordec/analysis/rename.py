@@ -1,11 +1,8 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-# standard imports
-import re
-
 # ordec imports
-from .model import AnalysisPosition
+from .model import AnalysisPosition, is_identifier
 
 
 class RenameMixin:
@@ -51,7 +48,7 @@ class RenameMixin:
         Raises:
             ValueError: If ``new_name`` is not a valid Python identifier.
         """
-        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", new_name) is None:
+        if not is_identifier(new_name):
             raise ValueError("Invalid identifier: {}".format(new_name))
 
         if self.member_occurrence_at_position(uri, position) is not None:

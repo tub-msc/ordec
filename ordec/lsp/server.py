@@ -5,8 +5,7 @@
 from pathlib import Path
 import json
 import sys
-from urllib.parse import unquote
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 # ordec imports
 from ..analysis import AnalysisPosition
