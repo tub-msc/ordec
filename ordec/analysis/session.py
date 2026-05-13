@@ -244,6 +244,44 @@ class AnalysisSession(
 
         return path.resolve()
 
+    def resolve_python_import_name(self, uri: str, module_name: str):
+        """Resolve a possibly relative Python import name for a document."""
+        if not module_name or not module_name.startswith("."):
+            return module_name
+
+        parsed_uri = urlparse(uri)
+        if parsed_uri.scheme != "file" or not self.workspace_root:
+            return None
+
+        doc_path = Path(unquote(parsed_uri.path)).resolve()
+        workspace_root = Path(self.workspace_root).resolve()
+        try:
+            relative_path = doc_path.relative_to(workspace_root)
+        except ValueError:
+            return None
+
+        package_name = ".".join(relative_path.parent.parts)
+        if not package_name:
+            return None
+
+        try:
+            return importlib.util.resolve_name(module_name, package_name)
+        except (ImportError, ValueError):
+            return None
+
+    def python_module_exists(self, module_name: str):
+        """Return whether a Python module can be imported or found locally."""
+        if not module_name:
+            return False
+
+        if self.resolve_python_module_path(module_name) is not None:
+            return True
+
+        try:
+            return importlib.util.find_spec(module_name) is not None
+        except (ImportError, ModuleNotFoundError, ValueError):
+            return False
+
     def python_module_names_for_path(self, path: Path):
         """Return cached or workspace module names that may map to a path."""
         names = []
@@ -342,8 +380,15 @@ class AnalysisSession(
             if node.module:
                 import_name += node.module
 
+            package_name = module_name
+            if node.level:
+                if module_path.name == "__init__.py":
+                    package_name = module_name
+                else:
+                    package_name = module_name.rsplit(".", 1)[0]
+
             try:
-                return importlib.util.resolve_name(import_name, module_name)
+                return importlib.util.resolve_name(import_name, package_name)
             except (ImportError, ValueError):
                 return None
 
@@ -528,6 +573,9 @@ class AnalysisSession(
 
     def python_definition(self, module_name: str, export_name: Optional[str] = None, seen=None):
         """Resolve a Python module or exported member definition."""
+        if not module_name:
+            return None
+
         if seen is None:
             seen = set()
 
@@ -582,6 +630,36 @@ class AnalysisSession(
 
         return None
 
+    def python_base_class_refs(self, module_name: str, module_info, base_name: str):
+        """Resolve a base class name from a parsed Python module."""
+        if base_name in module_info["classes"]:
+            return [(module_name, base_name)]
+
+        if base_name in module_info["import_members"]:
+            imported = module_info["import_members"][base_name]
+            return [(imported["module"], imported["export_name"])]
+
+        if "." not in base_name:
+            return []
+
+        local_name, member_name = base_name.split(".", 1)
+        refs = []
+
+        imported_module = module_info["imports"].get(local_name)
+        if imported_module is not None:
+            refs.append((imported_module, member_name))
+
+        imported_member = module_info["import_members"].get(local_name)
+        if imported_member is not None:
+            module_candidate = "{}.{}".format(
+                imported_member["module"],
+                imported_member["export_name"],
+            )
+            if self.python_module_exists(module_candidate):
+                refs.append((module_candidate, member_name))
+
+        return refs
+
     def python_class_member_definition(self, module_name: str, class_name: str, member_name: str, seen=None):
         """Resolve a Python class member, including inherited members."""
         if seen is None:
@@ -616,11 +694,10 @@ class AnalysisSession(
                     return match
                 continue
 
-            if base_name in module_info["import_members"]:
-                imported = module_info["import_members"][base_name]
+            for base_module_name, base_class_name in self.python_base_class_refs(module_name, module_info, base_name):
                 match = self.python_class_member_definition(
-                    imported["module"],
-                    imported["export_name"],
+                    base_module_name,
+                    base_class_name,
                     member_name,
                     seen=seen,
                 )
@@ -657,11 +734,10 @@ class AnalysisSession(
                 ))
                 continue
 
-            if base_name in module_info["import_members"]:
-                imported = module_info["import_members"][base_name]
+            for base_module_name, base_class_name in self.python_base_class_refs(module_name, module_info, base_name):
                 members.update(self.python_class_members(
-                    imported["module"],
-                    imported["export_name"],
+                    base_module_name,
+                    base_class_name,
                     seen=seen,
                 ))
 
@@ -996,8 +1072,9 @@ class AnalysisSession(
     def module_definition(self, uri: str, module_name: str):
         """Resolve an ORD or Python module definition from an import name."""
         module_uri = self.resolve_module_uri(uri, module_name)
+        python_module_name = self.resolve_python_import_name(uri, module_name)
         if module_uri is None:
-            return self.python_definition(module_name)
+            return self.python_definition(python_module_name)
 
         module_base = module_name.split(".")[-1]
         return {
@@ -1098,8 +1175,9 @@ class AnalysisSession(
                     import_uri = self.resolve_module_uri(uri, import_entry.module)
 
                 if import_uri is None:
+                    python_module_name = self.resolve_python_import_name(uri, import_entry.module)
                     match = self.python_definition(
-                        import_entry.module,
+                        python_module_name,
                         export_name=import_entry.export_name,
                     )
                 else:
@@ -1120,7 +1198,8 @@ class AnalysisSession(
             if module_name and set(module_name) == {"."}:
                 continue
 
-            match = self.python_definition(module_name, export_name=name)
+            python_module_name = self.resolve_python_import_name(uri, module_name)
+            match = self.python_definition(python_module_name, export_name=name)
             if match is not None:
                 return match
 
@@ -1278,29 +1357,13 @@ class AnalysisSession(
                     continue
                 seen_type_names.add(type_name)
 
-                type_definition = self.resolve_name(uri, type_name)
+                type_definition = self.resolve_completion_type(uri, type_name)
                 if type_definition is None:
                     continue
 
-                # Try Python class member resolution first.
-                if "python_module" in type_definition and "python_class" in type_definition:
-                    match = self.python_class_member_definition(
-                        type_definition["python_module"],
-                        type_definition["python_class"],
-                        occurrence["name"],
-                    )
-                    if match is not None:
-                        return match
-
-                # Try ORD cell member resolution for cross-file cells.
-                if type_definition.get("kind") == "class" and "uri" in type_definition:
-                    match = self.ord_cell_member_definition(
-                        type_definition["uri"],
-                        type_definition["name"],
-                        occurrence["name"],
-                    )
-                    if match is not None:
-                        return match
+                match = self.type_members(type_definition).get(occurrence["name"])
+                if match is not None:
+                    return match
 
         return None
 

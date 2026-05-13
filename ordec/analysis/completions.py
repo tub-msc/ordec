@@ -225,6 +225,14 @@ class CompletionsMixin:
                     match = self.find_export(import_uri, import_entry.export_name)
                     if match is not None:
                         import_kind = match["kind"]
+                else:
+                    python_module_name = self.resolve_python_import_name(uri, import_entry.module)
+                    match = self.python_definition(
+                        python_module_name,
+                        export_name=import_entry.export_name,
+                    )
+                    if match is not None:
+                        import_kind = match["kind"]
 
                 detail = "from {} import {}".format(import_entry.module, import_entry.export_name)
                 if import_entry.local_name != import_entry.export_name:
