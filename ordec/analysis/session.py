@@ -246,7 +246,35 @@ class AnalysisSession(
 
     def resolve_python_import_name(self, uri: str, module_name: str):
         """Resolve a possibly relative Python import name for a document."""
-        if not module_name or not module_name.startswith("."):
+        if not module_name:
+            return module_name
+
+        if not module_name.startswith("."):
+            parsed_uri = urlparse(uri)
+            if parsed_uri.scheme == "file" and self.workspace_root:
+                doc_path = Path(unquote(parsed_uri.path)).resolve()
+                workspace_root = Path(self.workspace_root).resolve()
+                import_path = doc_path.parent.joinpath(*module_name.split("."))
+                for candidate in (
+                    import_path.with_suffix(".py"),
+                    import_path / "__init__.py",
+                ):
+                    if not candidate.exists():
+                        continue
+
+                    try:
+                        relative_path = candidate.resolve().relative_to(workspace_root)
+                    except ValueError:
+                        continue
+
+                    if relative_path.name == "__init__.py":
+                        module_parts = relative_path.parent.parts
+                    else:
+                        module_parts = relative_path.with_suffix("").parts
+
+                    if module_parts:
+                        return ".".join(module_parts)
+
             return module_name
 
         parsed_uri = urlparse(uri)
@@ -375,6 +403,18 @@ class AnalysisSession(
                 return "{}.{}".format(value_name, node.attr)
             return None
 
+        def add_class_member(class_info, name, kind, node):
+            if name.startswith("_"):
+                return
+
+            class_info["members"].setdefault(name, {
+                "uri": module_path.as_uri(),
+                "name": name,
+                "kind": kind,
+                "range": node_range(node),
+                "selection_range": node_range(node),
+            })
+
         def resolve_imported_module(node):
             import_name = "." * node.level
             if node.module:
@@ -436,28 +476,12 @@ class AnalysisSession(
                         for target in class_node.targets:
                             if not isinstance(target, ast.Name):
                                 continue
-                            if target.id.startswith("_"):
-                                continue
-
-                            class_info["members"].setdefault(target.id, {
-                                "uri": module_path.as_uri(),
-                                "name": target.id,
-                                "kind": member_kind,
-                                "range": node_range(target),
-                                "selection_range": node_range(target),
-                            })
+                            add_class_member(class_info, target.id, member_kind, target)
                         continue
 
                     if isinstance(class_node, ast.AnnAssign) and isinstance(class_node.target, ast.Name):
                         target = class_node.target
-                        if not target.id.startswith("_"):
-                            class_info["members"].setdefault(target.id, {
-                                "uri": module_path.as_uri(),
-                                "name": target.id,
-                                "kind": "variable",
-                                "range": node_range(target),
-                                "selection_range": node_range(target),
-                            })
+                        add_class_member(class_info, target.id, "variable", target)
                         continue
 
                     if not isinstance(class_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -522,6 +546,23 @@ class AnalysisSession(
                                     end=AnalysisPosition(target.end_lineno, target.end_col_offset + 1),
                                 ),
                             })
+
+                    for stmt in ast.walk(class_node):
+                        targets = []
+                        if isinstance(stmt, ast.Assign):
+                            targets = stmt.targets
+                        elif isinstance(stmt, ast.AnnAssign):
+                            targets = [stmt.target]
+
+                        for target in targets:
+                            if not isinstance(target, ast.Attribute):
+                                continue
+                            if not isinstance(target.value, ast.Name):
+                                continue
+                            if target.value.id != "self":
+                                continue
+
+                            add_class_member(class_info, target.attr, "variable", target)
 
                 classes[node.name] = class_info
                 add_export(node.name, "class", node)
@@ -619,6 +660,11 @@ class AnalysisSession(
             if match is not None:
                 return match
 
+        submodule_name = "{}.{}".format(module_name, export_name)
+        match = self.python_definition(submodule_name, seen=seen)
+        if match is not None:
+            return match
+
         for star_module in module_info["star_modules"]:
             match = self.python_definition(
                 star_module,
@@ -639,11 +685,21 @@ class AnalysisSession(
             imported = module_info["import_members"][base_name]
             return [(imported["module"], imported["export_name"])]
 
+        refs = []
+        for star_module in module_info["star_modules"]:
+            match = self.python_definition(star_module, export_name=base_name)
+            if match is None:
+                continue
+            if "python_module" in match and "python_class" in match:
+                refs.append((match["python_module"], match["python_class"]))
+
+        if refs:
+            return refs
+
         if "." not in base_name:
             return []
 
         local_name, member_name = base_name.split(".", 1)
-        refs = []
 
         imported_module = module_info["imports"].get(local_name)
         if imported_module is not None:
@@ -1292,8 +1348,18 @@ class AnalysisSession(
 
         members = dict()
 
-        # Include directly declared cell members. This covers compact tests and
-        # unusual cells that declare pins directly in the cell body.
+        def add_binding_member(binding):
+            members.setdefault(binding["name"], {
+                "uri": cell_uri,
+                "name": binding["name"],
+                "kind": binding["kind"],
+                "range": binding["range"],
+                "selection_range": binding["selection_range"],
+            })
+
+        # Include directly declared cell members and view generators. This
+        # covers self.schematic/self.layout and compact tests that declare pins
+        # directly in the cell body.
         for scope in analysis.scopes.values():
             if scope["depth"] != 1:
                 continue
@@ -1302,19 +1368,14 @@ class AnalysisSession(
 
             for binding_id in scope["bindings"]:
                 binding = analysis.binding_map.get(binding_id)
-                if binding is None or binding["kind"] != "variable":
+                if binding is None or binding["name"] == "self":
                     continue
-                members.setdefault(binding["name"], {
-                    "uri": cell_uri,
-                    "name": binding["name"],
-                    "kind": binding["kind"],
-                    "range": binding["range"],
-                    "selection_range": binding["selection_range"],
-                })
+                add_binding_member(binding)
 
-        # Normal ORD cells expose instance members through their symbol view.
+        # Normal ORD cells expose schematic instance members through their
+        # symbol view. Layout instances additionally expose named layout nodes.
         for symbol in analysis.symbols:
-            if symbol.name != "symbol" or symbol.kind != "function":
+            if symbol.name not in ("symbol", "layout") or symbol.kind != "function":
                 continue
             if not range_contains(cell_symbol.range, symbol.selection_range.start):
                 continue
@@ -1324,13 +1385,7 @@ class AnalysisSession(
                     continue
                 if not range_contains(symbol.range, binding["selection_range"].start):
                     continue
-                members.setdefault(binding["name"], {
-                    "uri": cell_uri,
-                    "name": binding["name"],
-                    "kind": binding["kind"],
-                    "range": binding["range"],
-                    "selection_range": binding["selection_range"],
-                })
+                add_binding_member(binding)
 
         return members
 
@@ -1750,4 +1805,8 @@ class AnalysisSession(
         if name_info is None:
             return None
 
-        return self.resolve_name(uri, name_info["name"])
+        definition = self.resolve_name(uri, name_info["name"])
+        if definition is not None:
+            return definition
+
+        return self.resolve_completion_type(uri, name_info["name"])

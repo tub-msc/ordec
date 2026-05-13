@@ -85,7 +85,8 @@ class DiagnosticsMixin:
                 if export_name not in (None, "*"):
                     python_module_name = self.resolve_python_import_name(uri, module_name)
                     match = self.python_definition(python_module_name, export_name=export_name)
-                    if match is None:
+                    module_info = self.python_module_info(python_module_name)
+                    if module_info is not None and match is None:
                         add_diagnostic(
                             import_entry.selection_range,
                             "error",
@@ -193,7 +194,15 @@ class DiagnosticsMixin:
                 type_definition = self.resolve_completion_type(uri, type_name)
                 if type_definition is None:
                     continue
+
+                if type_definition.get("kind") != "class" and "python_class" not in type_definition:
+                    continue
+
                 resolved_any = True
+
+                if not parameter_only and self.allows_dynamic_members(type_name):
+                    matched = True
+                    break
 
                 member = self.type_members(type_definition).get(occurrence["name"])
                 if member is None:
