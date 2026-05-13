@@ -9,7 +9,7 @@ from ordec.analysis import analyze_ord
 def test_analyze_ord_collects_symbols():
     ord_string = (
         "cell Inv:\n"
-        "    viewgen layout(layers=sky130) -> Layout:\n"
+        "    viewgen layout -> Layout:\n"
         "        output bus[0].y:\n"
         "            .align = East\n"
         "        path vdd, vss\n"
@@ -150,6 +150,50 @@ def test_analysis_session_keeps_last_good_symbols_during_syntax_errors():
     assert definition["kind"] == "class"
 
 
+def test_analysis_session_reports_semantic_diagnostics(tmp_path):
+    (tmp_path / "helper.ord").write_text(
+        "cell Other:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = (tmp_path / "broken.ord").resolve().as_uri()
+    session.open_document(
+        uri,
+        "from .missing import Foo\n"
+        "from .helper import Missing\n"
+        "from ordec.lib.generic_mos import Nmos\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        port b: .align=West\n"
+        "        ! b.pos.x == 0\n"
+        "        MissingCell inst:\n"
+        "            .x -- b\n"
+        "        Nmos pd:\n"
+        "            .missing -- b\n"
+        "            .$bogus = 1u\n"
+        "    viewgen bad -> Nmos:\n"
+        "        pass\n",
+    )
+
+    codes = [diagnostic.code for diagnostic in session.diagnostics(uri)]
+
+    assert codes == [
+        "unresolved-import",
+        "unresolved-import-member",
+        "unresolved-node-type",
+        "invalid-viewgen-return",
+        "invalid-constraint-context",
+        "unknown-member",
+        "unknown-parameter",
+        "unknown-symbol-port",
+    ]
+
+
 def test_analyze_ord_collects_imports_and_exports():
     ord_string = (
         "import math, numpy as np\n"
@@ -157,7 +201,7 @@ def test_analyze_ord_collects_imports_and_exports():
         "from ...ord import parser\n"
         "\n"
         "cell Inv:\n"
-        "    viewgen layout() -> Layout:\n"
+        "    viewgen layout -> Layout:\n"
         "        return Layout()\n"
         "\n"
         "def helper():\n"
@@ -498,6 +542,109 @@ def test_analysis_session_member_references_and_rename_guard(tmp_path):
     assert session.rename(inv_uri, AnalysisPosition(line=9, character=15), "length") is None
 
 
+def test_analysis_session_context_aware_member_and_parameter_completions(tmp_path):
+    inv_path = tmp_path / "inv.ord"
+    inv_path.write_text(
+        "from ordec.core import *\n"
+        "from ordec.lib.generic_mos import Nmos\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        net vss\n"
+        "        Nmos pd:\n"
+        "            .s -- vss\n"
+        "            pd.$l = 1u\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    inv_uri = inv_path.resolve().as_uri()
+
+    member_map = dict(
+        (
+            item["label"],
+            {
+                "kind": item["kind"],
+                "detail": item["detail"],
+            },
+        )
+        for item in session.completions(inv_uri, AnalysisPosition(line=8, character=14))
+    )
+    assert member_map["s"] == {
+        "kind": "variable",
+        "detail": "variable of Nmos",
+    }
+    assert member_map["d"] == {
+        "kind": "variable",
+        "detail": "variable of Nmos",
+    }
+    assert member_map["l"] == {
+        "kind": "parameter",
+        "detail": "parameter of Nmos",
+    }
+
+    parameter_map = dict(
+        (
+            item["label"],
+            {
+                "kind": item["kind"],
+                "detail": item["detail"],
+            },
+        )
+        for item in session.completions(inv_uri, AnalysisPosition(line=9, character=18))
+    )
+    assert parameter_map == {
+        "l": {
+            "kind": "parameter",
+            "detail": "parameter of Nmos",
+        },
+        "w": {
+            "kind": "parameter",
+            "detail": "parameter of Nmos",
+        },
+    }
+
+
+def test_analysis_session_constructor_assignment_type_flow(tmp_path):
+    inv_path = tmp_path / "constructor_type.ord"
+    inv_path.write_text(
+        "from ordec.core import *\n"
+        "from ordec.lib.generic_mos import Nmos\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        pd = Nmos()\n"
+        "        pd.$bad = 1u\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    inv_uri = inv_path.resolve().as_uri()
+
+    parameter_map = dict(
+        (
+            item["label"],
+            {
+                "kind": item["kind"],
+                "detail": item["detail"],
+            },
+        )
+        for item in session.completions(inv_uri, AnalysisPosition(line=7, character=13))
+    )
+    assert parameter_map == {
+        "l": {
+            "kind": "parameter",
+            "detail": "parameter of Nmos",
+        },
+        "w": {
+            "kind": "parameter",
+            "detail": "parameter of Nmos",
+        },
+    }
+
+    diagnostics = session.diagnostics(inv_uri)
+    assert [diagnostic.code for diagnostic in diagnostics] == ["unknown-parameter"]
+    assert diagnostics[0].message == "Unknown parameter `bad` for `Nmos`."
+
+
 def test_analysis_session_hover_uses_current_token_range(tmp_path):
     mux2_path = tmp_path / "ord" / "mux2.ord"
     mux2_path.parent.mkdir()
@@ -702,7 +849,7 @@ def test_analysis_session_completions_include_symbols_imports_and_keywords(tmp_p
         "import math\n"
         "\n"
         "cell Nto1:\n"
-        "    viewgen layout() -> Layout:\n"
+        "    viewgen layout -> Layout:\n"
         "        path a\n"
         "\n"
         "def helper():\n"
@@ -1046,7 +1193,8 @@ def test_analyze_ord_collects_local_bindings_and_occurrences():
         "    return inner\n"
         "\n"
         "cell Inv:\n"
-        "    viewgen layout(width=2) -> Layout:\n"
+        "    viewgen layout -> Layout:\n"
+        "        width = 2\n"
         "        return width\n"
     )
 
@@ -1061,7 +1209,7 @@ def test_analyze_ord_collects_local_bindings_and_occurrences():
     assert binding_map["target"]["kind"] == "parameter"
     assert binding_map["Inv"]["kind"] == "class"
     assert binding_map["layout"]["kind"] == "function"
-    assert binding_map["width"]["kind"] == "parameter"
+    assert binding_map["width"]["kind"] == "variable"
 
     assert any(
         occurrence["name"] == "value"
@@ -1074,8 +1222,8 @@ def test_analyze_ord_collects_local_bindings_and_occurrences():
     assert any(
         occurrence["name"] == "width"
         and occurrence["range"].to_dict() == {
-            "start": {"line": 9, "character": 16},
-            "end": {"line": 9, "character": 21},
+            "start": {"line": 10, "character": 16},
+            "end": {"line": 10, "character": 21},
         }
         for occurrence in analysis.occurrences
     )
@@ -1225,24 +1373,24 @@ def test_analysis_session_rename_local_bindings_is_file_local(tmp_path):
     }
 
 
-def test_analysis_session_viewgen_parameters_resolve_locally(tmp_path):
-    local_path = tmp_path / "view.ord"
+def test_analysis_session_destructuring_assignments_resolve_locally(tmp_path):
+    local_path = tmp_path / "locals.ord"
     local_path.write_text(
-        "cell Inv:\n"
-        "    viewgen layout(width=2) -> Layout:\n"
-        "        return width\n"
+        "def helper(pair):\n"
+        "    left, right = pair\n"
+        "    return left\n"
     )
 
     session = AnalysisSession(workspace_root=str(tmp_path))
     uri = local_path.resolve().as_uri()
 
-    definition = session.definition(uri, AnalysisPosition(line=3, character=18))
+    definition = session.definition(uri, AnalysisPosition(line=3, character=13))
     assert definition["uri"] == uri
-    assert definition["name"] == "width"
-    assert definition["kind"] == "parameter"
+    assert definition["name"] == "left"
+    assert definition["kind"] == "variable"
     assert definition["selection_range"].to_dict() == {
-        "start": {"line": 2, "character": 20},
-        "end": {"line": 2, "character": 25},
+        "start": {"line": 2, "character": 5},
+        "end": {"line": 2, "character": 9},
     }
 
     completion_map = dict(
@@ -1253,11 +1401,15 @@ def test_analysis_session_viewgen_parameters_resolve_locally(tmp_path):
                 "detail": item["detail"],
             },
         )
-        for item in session.completions(uri, AnalysisPosition(line=3, character=18))
+        for item in session.completions(uri, AnalysisPosition(line=3, character=13))
     )
-    assert completion_map["width"] == {
-        "kind": "parameter",
-        "detail": "parameter",
+    assert completion_map["left"] == {
+        "kind": "variable",
+        "detail": "variable",
+    }
+    assert completion_map["right"] == {
+        "kind": "variable",
+        "detail": "variable",
     }
 
 
@@ -1309,6 +1461,82 @@ def test_analysis_session_for_loop_variables_resolve_after_loop(tmp_path):
             },
         ),
     ]
+
+
+def test_analysis_session_for_loop_destructuring_resolves_locally(tmp_path):
+    local_path = tmp_path / "loop_destructure.ord"
+    local_path.write_text(
+        "def helper(pairs):\n"
+        "    for idx, (left, right) in pairs:\n"
+        "        current = left\n"
+        "    return right\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = local_path.resolve().as_uri()
+
+    definition = session.definition(uri, AnalysisPosition(line=4, character=14))
+    assert definition["uri"] == uri
+    assert definition["name"] == "right"
+    assert definition["kind"] == "variable"
+    assert definition["selection_range"].to_dict() == {
+        "start": {"line": 2, "character": 21},
+        "end": {"line": 2, "character": 26},
+    }
+
+    references = session.references(uri, AnalysisPosition(line=4, character=14))
+    assert [(ref["uri"], ref["name"], ref["range"].to_dict()) for ref in references] == [
+        (
+            uri,
+            "right",
+            {
+                "start": {"line": 2, "character": 21},
+                "end": {"line": 2, "character": 26},
+            },
+        ),
+        (
+            uri,
+            "right",
+            {
+                "start": {"line": 4, "character": 12},
+                "end": {"line": 4, "character": 17},
+            },
+        ),
+    ]
+
+
+def test_analysis_session_with_and_except_targets_resolve_locally(tmp_path):
+    local_path = tmp_path / "with_except.ord"
+    local_path.write_text(
+        "def helper(path):\n"
+        "    with open(path) as handle:\n"
+        "        data = handle.read()\n"
+        "    try:\n"
+        "        raise ValueError(data)\n"
+        "    except ValueError as exc:\n"
+        "        return exc\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = local_path.resolve().as_uri()
+
+    handle_definition = session.definition(uri, AnalysisPosition(line=3, character=17))
+    assert handle_definition["uri"] == uri
+    assert handle_definition["name"] == "handle"
+    assert handle_definition["kind"] == "variable"
+    assert handle_definition["selection_range"].to_dict() == {
+        "start": {"line": 2, "character": 24},
+        "end": {"line": 2, "character": 30},
+    }
+
+    exc_definition = session.definition(uri, AnalysisPosition(line=7, character=17))
+    assert exc_definition["uri"] == uri
+    assert exc_definition["name"] == "exc"
+    assert exc_definition["kind"] == "variable"
+    assert exc_definition["selection_range"].to_dict() == {
+        "start": {"line": 6, "character": 26},
+        "end": {"line": 6, "character": 29},
+    }
 
 
 def test_analysis_session_completions_tolerate_incomplete_import_syntax(tmp_path):
@@ -1404,7 +1632,7 @@ def test_analysis_session_folding_ranges_cover_symbols_and_imports():
         "from .helpers import bar\n"
         "\n"
         "cell Inv:\n"
-        "    viewgen layout(layers=sky130) -> Layout:\n"
+        "    viewgen layout -> Layout:\n"
         "        output bus[0].y:\n"
         "            .align = East\n"
         "        path vdd, vss\n"
@@ -1457,7 +1685,7 @@ def test_analysis_session_folding_ranges_single_line_symbols_excluded():
 def test_analysis_session_selection_ranges_expand_through_scopes():
     ord_string = (
         "cell Inv:\n"
-        "    viewgen layout() -> Layout:\n"
+        "    viewgen layout -> Layout:\n"
         "        path vdd\n"
     )
 

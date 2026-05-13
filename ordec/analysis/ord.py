@@ -112,6 +112,9 @@ class DocumentAnalysis:
         bindings=None,
         occurrences=None,
         member_occurrences=None,
+        viewgen_returns=None,
+        node_contexts=None,
+        constraints=None,
     ):
         self.uri = uri
         self.version = version
@@ -125,6 +128,9 @@ class DocumentAnalysis:
         self.binding_map = dict((binding["id"], binding) for binding in self.bindings)
         self.occurrences = occurrences if occurrences is not None else []
         self.member_occurrences = member_occurrences if member_occurrences is not None else []
+        self.viewgen_returns = viewgen_returns if viewgen_returns is not None else []
+        self.node_contexts = node_contexts if node_contexts is not None else []
+        self.constraints = constraints if constraints is not None else []
 
     def to_dict(self):
         return {
@@ -155,6 +161,9 @@ class DocumentAnalysis:
             bindings=self.bindings,
             occurrences=self.occurrences,
             member_occurrences=self.member_occurrences,
+            viewgen_returns=self.viewgen_returns,
+            node_contexts=self.node_contexts,
+            constraints=self.constraints,
         )
 
 
@@ -197,6 +206,19 @@ class AnalysisSession:
     def clear_python_modules(self):
         importlib.invalidate_caches()
         self.python_modules.clear()
+
+    def normalize_type_names(self, type_names):
+        if not type_names:
+            return []
+
+        seen = set()
+        result = []
+        for type_name in type_names:
+            if not type_name or type_name in seen:
+                continue
+            seen.add(type_name)
+            result.append(type_name)
+        return result
 
     def open_document(
         self,
@@ -469,6 +491,18 @@ class AnalysisSession:
                     if not isinstance(class_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         continue
 
+                    if not class_node.name.startswith("_"):
+                        class_info["members"].setdefault(class_node.name, {
+                            "uri": module_path.as_uri(),
+                            "name": class_node.name,
+                            "kind": "function",
+                            "range": node_range(class_node),
+                            "selection_range": AnalysisRange(
+                                start=AnalysisPosition(class_node.lineno, class_node.col_offset + 1),
+                                end=AnalysisPosition(class_node.lineno, class_node.col_offset + 1 + len(class_node.name)),
+                            ),
+                        })
+
                     container_names = set()
                     for stmt in ast.walk(class_node):
                         if not isinstance(stmt, ast.Assign):
@@ -666,6 +700,44 @@ class AnalysisSession:
 
         return None
 
+    def python_class_members(self, module_name: str, class_name: str, seen=None):
+        if seen is None:
+            seen = set()
+
+        key = (module_name, class_name)
+        if key in seen:
+            return dict()
+        seen.add(key)
+
+        module_info = self.python_module_info(module_name)
+        if module_info is None:
+            return dict()
+
+        class_info = module_info["classes"].get(class_name)
+        if class_info is None:
+            return dict()
+
+        members = dict()
+        for base_name in class_info["bases"]:
+            if base_name in module_info["classes"]:
+                members.update(self.python_class_members(
+                    module_name,
+                    base_name,
+                    seen=seen,
+                ))
+                continue
+
+            if base_name in module_info["import_members"]:
+                imported = module_info["import_members"][base_name]
+                members.update(self.python_class_members(
+                    imported["module"],
+                    imported["export_name"],
+                    seen=seen,
+                ))
+
+        members.update(class_info["members"])
+        return members
+
     def analyze(self, uri: str):
         doc = self.documents[uri]
         if doc["analysis"] is None:
@@ -682,6 +754,16 @@ class AnalysisSession:
                 doc["last_good_analysis"] = analysis
             doc["analysis"] = analysis
         return doc["analysis"]
+
+    def diagnostics(self, uri: str):
+        if not self.ensure_document(uri):
+            return []
+
+        analysis = self.analyze(uri)
+        if analysis.has_errors():
+            return analysis.diagnostics
+
+        return analysis.diagnostics + self.semantic_diagnostics(uri)
 
     def open_path(self, path: str, version: Optional[int] = None):
         path = Path(path).resolve()
@@ -1162,6 +1244,65 @@ class AnalysisSession:
 
         return None
 
+    def ord_cell_members(self, cell_uri: str, cell_name: str):
+        if not self.ensure_document(cell_uri):
+            return dict()
+
+        analysis = self.analyze(cell_uri)
+
+        cell_symbol = None
+        for symbol in analysis.symbols:
+            if symbol.name == cell_name and symbol.kind == "class":
+                cell_symbol = symbol
+                break
+
+        if cell_symbol is None:
+            return dict()
+
+        members = dict()
+
+        # Include directly declared cell members. This covers compact tests and
+        # unusual cells that declare pins directly in the cell body.
+        for scope in analysis.scopes.values():
+            if scope["depth"] != 1:
+                continue
+            if not range_contains(scope["range"], cell_symbol.selection_range.start):
+                continue
+
+            for binding_id in scope["bindings"]:
+                binding = analysis.binding_map.get(binding_id)
+                if binding is None or binding["kind"] != "variable":
+                    continue
+                members.setdefault(binding["name"], {
+                    "uri": cell_uri,
+                    "name": binding["name"],
+                    "kind": binding["kind"],
+                    "range": binding["range"],
+                    "selection_range": binding["selection_range"],
+                })
+
+        # Normal ORD cells expose instance members through their symbol view.
+        for symbol in analysis.symbols:
+            if symbol.name != "symbol" or symbol.kind != "function":
+                continue
+            if not range_contains(cell_symbol.range, symbol.selection_range.start):
+                continue
+
+            for binding in analysis.bindings:
+                if binding["kind"] != "variable":
+                    continue
+                if not range_contains(symbol.range, binding["selection_range"].start):
+                    continue
+                members.setdefault(binding["name"], {
+                    "uri": cell_uri,
+                    "name": binding["name"],
+                    "kind": binding["kind"],
+                    "range": binding["range"],
+                    "selection_range": binding["selection_range"],
+                })
+
+        return members
+
     def member_definition(self, uri: str, position: AnalysisPosition):
         if not self.ensure_document(uri):
             return None
@@ -1220,12 +1361,400 @@ class AnalysisSession:
 
         return None
 
+    def completion_context(self, uri: str, position: AnalysisPosition):
+        lines = self.documents[uri]["text"].splitlines()
+        if position.line < 1 or position.line > len(lines):
+            return None
+
+        line = lines[position.line - 1]
+        cursor = max(0, min(position.character - 1, len(line)))
+
+        prefix_start = cursor
+        while (
+            prefix_start > 0
+            and (
+                line[prefix_start - 1].isalnum()
+                or line[prefix_start - 1] == "_"
+            )
+        ):
+            prefix_start -= 1
+
+        prefix = line[prefix_start:cursor]
+        before_prefix = line[:prefix_start]
+
+        if before_prefix.endswith(".$"):
+            return {
+                "mode": "parameter",
+                "prefix": prefix,
+                "base": self.completion_subject(before_prefix[:-2]),
+            }
+
+        if before_prefix.endswith("."):
+            return {
+                "mode": "member",
+                "prefix": prefix,
+                "base": self.completion_subject(before_prefix[:-1]),
+            }
+
+        return None
+
+    def completion_subject(self, text: str):
+        text = text.rstrip()
+        if text == "":
+            return None
+
+        match = re.search(r"[A-Za-z_][A-Za-z0-9_]*$", text)
+        if match is None or match.end() != len(text):
+            return None
+        return match.group(0)
+
+    def context_type_names_for_kind(self, kind_name: str):
+        if kind_name in ("input", "output", "inout"):
+            return ["Pin"]
+        if kind_name in ("port", "net"):
+            return ["Net"]
+        if kind_name == "path":
+            return ["PathNode"]
+
+        match = re.match(r"^[A-Za-z_][A-Za-z0-9_]*", kind_name)
+        if match is None:
+            return []
+        return [match.group(0)]
+
+    def context_type_names_at_position(self, uri: str, position: AnalysisPosition):
+        analysis = self.analyze(uri)
+
+        best_symbol = None
+        for symbol in analysis.symbols:
+            if symbol.kind != "context":
+                continue
+            if not range_contains(symbol.range, position):
+                continue
+            if best_symbol is None or range_contains(best_symbol.range, symbol.range.start):
+                best_symbol = symbol
+
+        if best_symbol is None:
+            return []
+
+        kind_name = best_symbol.name.split(" ", 1)[0]
+        return self.context_type_names_for_kind(kind_name)
+
+    def completion_type_names(self, uri: str, position: AnalysisPosition, context):
+        base_name = context["base"]
+        if base_name is None:
+            return self.context_type_names_at_position(uri, position)
+
+        for binding in self.visible_bindings(uri, position):
+            if binding["name"] == base_name:
+                return self.normalize_type_names(binding.get("type_names"))
+
+        return []
+
+    def resolve_completion_type(self, uri: str, type_name: str):
+        type_definition = self.resolve_name(uri, type_name)
+        if type_definition is not None:
+            return type_definition
+
+        if type_name in (
+            "Symbol",
+            "Schematic",
+            "Layout",
+            "SimHierarchy",
+            "Pin",
+            "Net",
+            "PathNode",
+            "LayoutRect",
+            "LayoutPath",
+            "LayoutPoly",
+            "LayoutLabel",
+            "LayoutPin",
+            "SchemInstance",
+        ):
+            return self.python_definition("ordec.core", export_name=type_name)
+
+        return None
+
+    def type_members(self, type_definition):
+        if "python_module" in type_definition and "python_class" in type_definition:
+            return self.python_class_members(
+                type_definition["python_module"],
+                type_definition["python_class"],
+            )
+
+        if type_definition.get("kind") == "class" and "uri" in type_definition:
+            return self.ord_cell_members(
+                type_definition["uri"],
+                type_definition["name"],
+            )
+
+        return dict()
+
+    def semantic_diagnostics(self, uri: str):
+        analysis = self.analyze(uri)
+        diagnostics = []
+        seen = set()
+
+        def add_diagnostic(value_range, severity, message, code):
+            key = (
+                code,
+                value_range.start.line,
+                value_range.start.character,
+                value_range.end.line,
+                value_range.end.character,
+            )
+            if key in seen:
+                return
+            seen.add(key)
+            diagnostics.append(AnalysisDiagnostic(
+                range=value_range,
+                severity=severity,
+                message=message,
+                code=code,
+            ))
+
+        def module_exists(module_name):
+            if module_name is None:
+                return False
+            return self.module_definition(uri, module_name) is not None
+
+        for import_entry in analysis.import_entries:
+            if import_entry.kind == "import":
+                if not module_exists(import_entry.module):
+                    add_diagnostic(
+                        import_entry.selection_range,
+                        "error",
+                        "Cannot resolve import `{}`.".format(import_entry.module),
+                        "unresolved-import",
+                    )
+                continue
+
+            export_name = import_entry.export_name
+            module_name = import_entry.module
+
+            if export_name not in (None, "*") and module_name and set(module_name) == {"."}:
+                if self.resolve_module_uri(uri, module_name + export_name) is not None:
+                    continue
+
+            module_uri = self.resolve_module_uri(uri, module_name)
+            if module_uri is None:
+                if not module_exists(module_name):
+                    add_diagnostic(
+                        import_entry.selection_range,
+                        "error",
+                        "Cannot resolve import module `{}`.".format(module_name),
+                        "unresolved-import",
+                    )
+                    continue
+
+                if export_name not in (None, "*"):
+                    match = self.python_definition(module_name, export_name=export_name)
+                    if match is None:
+                        add_diagnostic(
+                            import_entry.selection_range,
+                            "error",
+                            "Cannot resolve `{}` from `{}`.".format(export_name, module_name),
+                            "unresolved-import-member",
+                        )
+                continue
+
+            if export_name in (None, "*"):
+                continue
+
+            if self.find_export(module_uri, export_name) is None:
+                add_diagnostic(
+                    import_entry.selection_range,
+                    "error",
+                    "Cannot resolve `{}` from `{}`.".format(export_name, module_name),
+                    "unresolved-import-member",
+                )
+
+        built_in_contexts = {
+            "input",
+            "output",
+            "inout",
+            "port",
+            "net",
+            "path",
+        }
+        for context in analysis.node_contexts:
+            kind_name = context["kind_name"]
+            if kind_name in built_in_contexts:
+                continue
+            if context.get("kind_binding_id") is not None:
+                continue
+            if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", kind_name) is None:
+                continue
+            if self.resolve_completion_type(uri, kind_name) is None:
+                add_diagnostic(
+                    context["kind_range"],
+                    "error",
+                    "Cannot resolve ORD node type `{}`.".format(kind_name),
+                    "unresolved-node-type",
+                )
+
+        for viewgen in analysis.viewgen_returns:
+            type_name = viewgen["return_type"]
+            type_definition = self.resolve_completion_type(uri, type_name)
+            if type_definition is None:
+                add_diagnostic(
+                    viewgen["selection_range"],
+                    "error",
+                    "Cannot resolve viewgen return type `{}`.".format(type_name),
+                    "unresolved-viewgen-return",
+                )
+                continue
+
+            members = self.type_members(type_definition)
+            if "view_context" not in members:
+                add_diagnostic(
+                    viewgen["selection_range"],
+                    "error",
+                    "`{}` cannot be used as an ORD viewgen return type.".format(type_name),
+                    "invalid-viewgen-return",
+                )
+
+        for constraint in analysis.constraints:
+            containing_viewgen = None
+            for viewgen in analysis.viewgen_returns:
+                if not range_contains(viewgen["viewgen_range"], constraint["range"].start):
+                    continue
+                containing_viewgen = viewgen
+                break
+
+            if containing_viewgen is None:
+                add_diagnostic(
+                    constraint["range"],
+                    "error",
+                    "Constraints are only supported inside layout view generators.",
+                    "invalid-constraint-context",
+                )
+                continue
+
+            if containing_viewgen["return_type"] not in ("Layout",):
+                add_diagnostic(
+                    constraint["range"],
+                    "error",
+                    "Constraints are only supported inside layout view generators.",
+                    "invalid-constraint-context",
+                )
+
+        for occurrence in analysis.member_occurrences:
+            type_names = list(occurrence.get("type_names", []))
+            binding_id = occurrence.get("binding_id")
+            if binding_id is not None:
+                binding = analysis.binding_map.get(binding_id)
+                if binding is not None:
+                    type_names = list(binding.get("type_names", [])) + type_names
+            type_names = self.normalize_type_names(type_names)
+            if not type_names:
+                continue
+
+            resolved_any = False
+            matched = False
+            parameter_only = occurrence.get("mode") == "parameter"
+            for type_name in type_names:
+                type_definition = self.resolve_completion_type(uri, type_name)
+                if type_definition is None:
+                    continue
+                resolved_any = True
+
+                member = self.type_members(type_definition).get(occurrence["name"])
+                if member is None:
+                    continue
+                if parameter_only and member["kind"] != "parameter":
+                    continue
+                matched = True
+                break
+
+            if not resolved_any or matched:
+                continue
+
+            diagnostic_type = "parameter" if parameter_only else "member"
+            add_diagnostic(
+                occurrence["range"],
+                "error",
+                "Unknown {} `{}` for `{}`.".format(
+                    diagnostic_type,
+                    occurrence["name"],
+                    " | ".join(type_names),
+                ),
+                "unknown-{}".format(diagnostic_type),
+            )
+
+        for cell in [symbol for symbol in analysis.symbols if symbol.kind == "class"]:
+            cell_viewgens = [
+                symbol for symbol in analysis.symbols
+                if symbol.kind == "function"
+                and range_contains(cell.range, symbol.selection_range.start)
+            ]
+            symbol_view = next((symbol for symbol in cell_viewgens if symbol.name == "symbol"), None)
+            schematic_view = next((symbol for symbol in cell_viewgens if symbol.name == "schematic"), None)
+            if symbol_view is None or schematic_view is None:
+                continue
+
+            symbol_pins = set()
+            schematic_ports = []
+            for symbol in analysis.symbols:
+                if symbol.kind != "context":
+                    continue
+
+                parts = symbol.name.split(" ", 1)
+                if len(parts) != 2:
+                    continue
+                kind_name, target_name = parts
+                if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", target_name) is None:
+                    continue
+
+                if kind_name in ("input", "output", "inout") and range_contains(symbol_view.range, symbol.selection_range.start):
+                    symbol_pins.add(target_name)
+                elif kind_name == "port" and range_contains(schematic_view.range, symbol.selection_range.start):
+                    schematic_ports.append(symbol)
+
+            for port_symbol in schematic_ports:
+                port_name = port_symbol.name.split(" ", 1)[1]
+                if port_name not in symbol_pins:
+                    add_diagnostic(
+                        port_symbol.selection_range,
+                        "error",
+                        "Schematic port `{}` is not declared in the symbol view.".format(port_name),
+                        "unknown-symbol-port",
+                    )
+
+        return diagnostics
+
+    def member_completion_items(self, uri: str, position: AnalysisPosition, context):
+        items = dict()
+
+        for type_name in self.completion_type_names(uri, position, context):
+            type_definition = self.resolve_completion_type(uri, type_name)
+            if type_definition is None:
+                continue
+
+            for name, member in self.type_members(type_definition).items():
+                if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name) is None:
+                    continue
+                if context["mode"] == "parameter" and member["kind"] != "parameter":
+                    continue
+                items.setdefault(name, {
+                    "label": name,
+                    "kind": member["kind"],
+                    "detail": "{} of {}".format(member["kind"], type_name),
+                })
+
+        return items
+
     def completions(self, uri: str, position: AnalysisPosition):
         if not self.ensure_document(uri):
             return []
 
         analysis = self.analyze(uri)
         items = dict()
+
+        context = self.completion_context(uri, position)
+        if context is not None:
+            items.update(self.member_completion_items(uri, position, context))
+            if items:
+                return [items[label] for label in sorted(items)]
 
         for binding in self.visible_bindings(uri, position):
             if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", binding["name"]) is None:
@@ -1843,6 +2372,9 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
     bindings = []
     occurrences = []
     member_occurrences = []
+    viewgen_returns = []
+    node_contexts = []
+    constraints = []
 
     def simple_name_node(node):
         if not isinstance(node, Tree):
@@ -1885,6 +2417,19 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
             seen.add(type_name)
             result.append(type_name)
         return result
+
+    def context_type_names_for_kind(kind_name):
+        if kind_name in ("input", "output", "inout"):
+            return ["Pin"]
+        if kind_name in ("port", "net"):
+            return ["Net"]
+        if kind_name == "path":
+            return ["PathNode"]
+
+        match = re.match(r"^[A-Za-z_][A-Za-z0-9_]*", kind_name)
+        if match is None:
+            return []
+        return [match.group(0)]
 
     def resolve_binding(scope_id, name):
         while scope_id is not None:
@@ -1931,6 +2476,52 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
             return []
         return normalize_type_names(bindings[binding_id - 1].get("type_names"))
 
+    def bind_target(scope_id, target_node, type_names=None, context_type_names=None):
+        """Bind Python assignment/loop targets, including destructuring."""
+        if not isinstance(target_node, Tree):
+            return False
+
+        name_node = simple_name_node(target_node)
+        if name_node is not None:
+            add_binding(
+                scope_id,
+                name_node,
+                "variable",
+                node_range=tree_range(target_node),
+                type_names=type_names,
+            )
+            return True
+
+        if target_node.data in ("tuple", "list", "exprlist", "testlist_tuple"):
+            bound_any = False
+            for child in target_node.children:
+                if not isinstance(child, Tree):
+                    continue
+
+                if bind_target(
+                    scope_id,
+                    child,
+                    type_names=type_names,
+                    context_type_names=context_type_names,
+                ):
+                    bound_any = True
+                    continue
+
+                visit(child, scope_id, context_type_names=context_type_names)
+            return bound_any
+
+        if target_node.data == "star_expr" and target_node.children:
+            child = target_node.children[0]
+            if isinstance(child, Tree):
+                return bind_target(
+                    scope_id,
+                    child,
+                    type_names=type_names,
+                    context_type_names=context_type_names,
+                )
+
+        return False
+
     def expression_type_names(node, scope_id):
         if not isinstance(node, Tree):
             return []
@@ -1946,6 +2537,13 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                     continue
                 type_names.extend(expression_type_names(child, scope_id))
             return normalize_type_names(type_names)
+
+        if node.data == "funccall" and node.children:
+            name_node = simple_name_node(node.children[0])
+            if name_node is not None:
+                name = tree_text(name_node)
+                if name[:1].isupper():
+                    return [name]
 
         return []
 
@@ -2012,10 +2610,12 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
 
         if node.data in ("celldef", "viewgen", "funcdef", "classdef"):
             name_node = None
+            name_nodes = []
             for child in node.children:
                 if isinstance(child, Tree) and child.data == "name":
-                    name_node = child
-                    break
+                    name_nodes.append(child)
+            if name_nodes:
+                name_node = name_nodes[0]
             if name_node is not None:
                 kind = "function"
                 if node.data in ("celldef", "classdef"):
@@ -2036,6 +2636,15 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                 )
                 if top_level:
                     exports.append(name)
+                if node.data == "viewgen" and len(name_nodes) > 1:
+                    return_type_node = name_nodes[1]
+                    viewgen_returns.append({
+                        "name": name,
+                        "return_type": tree_text(return_type_node),
+                        "range": tree_range(node),
+                        "selection_range": tree_range(return_type_node),
+                        "viewgen_range": tree_range(node),
+                    })
                 child_scope_id = add_scope(node, scope_id, name_node=name_node)
                 for child in node.children:
                     if not isinstance(child, Tree) or child is name_node:
@@ -2045,10 +2654,6 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                         bind_parameters(child, child_scope_id)
                         continue
 
-                    if node.data == "viewgen" and child.data == "arguments":
-                        bind_arguments(child, child_scope_id)
-                        continue
-
                     visit(child, child_scope_id, context_type_names=context_type_names)
                 return
 
@@ -2056,10 +2661,20 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
             kind_node = node.children[0]
             target_node = node.children[1]
             if isinstance(kind_node, Tree) and isinstance(target_node, Tree):
-                context_type_names = []
                 kind_name = tree_text(kind_node)
-                if kind_name not in ("port", "input", "output", "inout"):
-                    context_type_names = [kind_name]
+                context_type_names = context_type_names_for_kind(kind_name)
+                kind_binding_id = None
+                kind_name_node = simple_name_node(kind_node)
+                if kind_name_node is not None:
+                    kind_binding_id = resolve_binding(scope_id, tree_text(kind_name_node))
+                node_contexts.append({
+                    "kind_name": kind_name,
+                    "kind_range": tree_range(kind_node),
+                    "kind_binding_id": kind_binding_id,
+                    "target_name": tree_text(target_node),
+                    "target_range": tree_range(target_node),
+                    "range": tree_range(node),
+                })
 
                 symbols.append(AnalysisSymbol(
                     name="{} {}".format(tree_text(kind_node), tree_text(target_node)),
@@ -2085,6 +2700,7 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
         if node.data in ("path_stmt", "net_stmt"):
             names = []
             selection_node = None
+            type_names = ["Net"] if node.data == "net_stmt" else ["PathNode"]
             for child in node.children:
                 if isinstance(child, Tree) and child.data == "var":
                     if selection_node is None:
@@ -2097,6 +2713,7 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                             name_node,
                             "variable",
                             node_range=tree_range(child),
+                            type_names=type_names,
                         )
             if names and selection_node is not None:
                 symbols.append(AnalysisSymbol(
@@ -2218,37 +2835,93 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
         if node.data == "assign":
             tree_children = [child for child in node.children if isinstance(child, Tree)]
             if tree_children:
-                name_node = simple_name_node(tree_children[0])
-                if name_node is not None:
-                    add_binding(
+                targets = tree_children[:-1]
+                value_node = tree_children[-1]
+                value_type_names = expression_type_names(value_node, scope_id)
+
+                for target_node in targets:
+                    if bind_target(
                         scope_id,
-                        name_node,
-                        "variable",
-                        node_range=tree_range(tree_children[0]),
-                        type_names=expression_type_names(tree_children[1], scope_id),
-                    )
-                    for child in tree_children[1:]:
-                        visit(child, scope_id, context_type_names=context_type_names)
-                    return
+                        target_node,
+                        type_names=value_type_names,
+                        context_type_names=context_type_names,
+                    ):
+                        continue
+
+                    visit(target_node, scope_id, context_type_names=context_type_names)
+
+                visit(value_node, scope_id, context_type_names=context_type_names)
+                return
 
         if node.data == "for_stmt":
             tree_children = [child for child in node.children if isinstance(child, Tree)]
             if tree_children:
-                name_node = simple_name_node(tree_children[0])
-                if name_node is not None:
-                    iterable_type_names = []
-                    if len(tree_children) > 1:
-                        iterable_type_names = expression_type_names(tree_children[1], scope_id)
-                    add_binding(
-                        scope_id,
-                        name_node,
-                        "variable",
-                        node_range=tree_range(tree_children[0]),
-                        type_names=iterable_type_names,
-                    )
+                iterable_type_names = []
+                if len(tree_children) > 1:
+                    iterable_type_names = expression_type_names(tree_children[1], scope_id)
+
+                if bind_target(
+                    scope_id,
+                    tree_children[0],
+                    type_names=iterable_type_names,
+                    context_type_names=context_type_names,
+                ):
                     for child in tree_children[1:]:
                         visit(child, scope_id, context_type_names=context_type_names)
                     return
+
+        if node.data == "with_stmt":
+            for child in node.children:
+                if not isinstance(child, Tree):
+                    continue
+
+                if child.data != "with_items":
+                    visit(child, scope_id, context_type_names=context_type_names)
+                    continue
+
+                for item_node in child.children:
+                    if not isinstance(item_node, Tree) or item_node.data != "with_item":
+                        continue
+
+                    item_children = [
+                        item_child for item_child in item_node.children
+                        if isinstance(item_child, Tree)
+                    ]
+                    if not item_children:
+                        continue
+
+                    visit(item_children[0], scope_id, context_type_names=context_type_names)
+                    for target_node in item_children[1:]:
+                        if bind_target(
+                            scope_id,
+                            target_node,
+                            context_type_names=context_type_names,
+                        ):
+                            continue
+                        visit(target_node, scope_id, context_type_names=context_type_names)
+            return
+
+        if node.data == "except_clause":
+            tree_children = [child for child in node.children if isinstance(child, Tree)]
+            if tree_children and tree_children[0].data != "suite":
+                visit(tree_children[0], scope_id, context_type_names=context_type_names)
+                tree_children = tree_children[1:]
+
+            for child in tree_children:
+                if child.data == "name":
+                    add_binding(scope_id, child, "variable")
+                    continue
+                visit(child, scope_id, context_type_names=context_type_names)
+            return
+
+        if node.data == "constrain_stmt":
+            constraints.append({
+                "range": tree_range(node),
+            })
+            for child in node.children:
+                if isinstance(child, Tree):
+                    visit(child, scope_id, context_type_names=context_type_names)
+            return
 
         if node.data == "getattr" and len(node.children) == 2:
             base_node = node.children[0]
@@ -2264,6 +2937,7 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                 "scope_id": scope_id,
                 "binding_id": binding_id,
                 "type_names": normalize_type_names(context_type_names),
+                "mode": "member",
             })
             visit(base_node, scope_id, context_type_names=context_type_names)
             return
@@ -2285,6 +2959,7 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                 "scope_id": scope_id,
                 "binding_id": binding_id,
                 "type_names": type_names,
+                "mode": "parameter",
             })
             return
 
@@ -2296,6 +2971,7 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                 "scope_id": scope_id,
                 "binding_id": None,
                 "type_names": normalize_type_names(context_type_names),
+                "mode": "member",
             })
             return
 
@@ -2328,4 +3004,7 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
         bindings=bindings,
         occurrences=occurrences,
         member_occurrences=member_occurrences,
+        viewgen_returns=viewgen_returns,
+        node_contexts=node_contexts,
+        constraints=constraints,
     )

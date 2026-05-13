@@ -424,7 +424,7 @@ class OrdecLanguageServer:
     def publish_diagnostics(self, uri: str):
         analysis = self.session.analyze(uri)
         diagnostics = []
-        for diagnostic in analysis.diagnostics:
+        for diagnostic in self.session.diagnostics(uri):
             diagnostics.append({
                 "range": self.lsp_range(diagnostic.range),
                 "severity": self.diagnostic_severity(diagnostic.severity),
