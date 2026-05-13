@@ -9,6 +9,24 @@ from .model import AnalysisPosition
 from .model import range_contains
 
 
+SCHEMA_TYPE_NAMES = {
+    "Symbol",
+    "Schematic",
+    "Layout",
+    "SimHierarchy",
+    "Simulation",
+    "Pin",
+    "Net",
+    "PathNode",
+    "LayoutRect",
+    "LayoutPath",
+    "LayoutPoly",
+    "LayoutLabel",
+    "LayoutPin",
+    "SchemInstance",
+}
+
+
 class TypeFlowMixin:
     """Helpers for resolving lightweight ORD and Python type information."""
 
@@ -74,24 +92,17 @@ class TypeFlowMixin:
         if type_definition is not None:
             return type_definition
 
-        if type_name in (
-            "Symbol",
-            "Schematic",
-            "Layout",
-            "SimHierarchy",
-            "Pin",
-            "Net",
-            "PathNode",
-            "LayoutRect",
-            "LayoutPath",
-            "LayoutPoly",
-            "LayoutLabel",
-            "LayoutPin",
-            "SchemInstance",
-        ):
+        if type_name == "Simulation":
+            return self.python_definition("ordec.core", export_name="SimHierarchy")
+
+        if type_name in SCHEMA_TYPE_NAMES:
             return self.python_definition("ordec.core", export_name=type_name)
 
         return None
+
+    def schematic_instance_members(self):
+        """Return members common to schematic cell instances."""
+        return self.python_class_members("ordec.core.schema", "SchemInstance")
 
     def type_members(self, type_definition):
         """Collect members available on a resolved type definition.
@@ -103,15 +114,22 @@ class TypeFlowMixin:
             Mapping of member names to member metadata.
         """
         if "python_module" in type_definition and "python_class" in type_definition:
-            return self.python_class_members(
+            members = self.python_class_members(
                 type_definition["python_module"],
                 type_definition["python_class"],
             )
+            if type_definition["python_class"] not in SCHEMA_TYPE_NAMES:
+                members = dict(members)
+                members.update(self.schematic_instance_members())
+            return members
 
         if type_definition.get("kind") == "class" and "uri" in type_definition:
-            return self.ord_cell_members(
+            members = self.ord_cell_members(
                 type_definition["uri"],
                 type_definition["name"],
             )
+            members = dict(members)
+            members.update(self.schematic_instance_members())
+            return members
 
         return dict()

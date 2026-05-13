@@ -47,7 +47,11 @@ class DiagnosticsMixin:
         def module_exists(module_name):
             if module_name is None:
                 return False
-            return self.module_definition(uri, module_name) is not None
+            python_module_name = self.resolve_python_import_name(uri, module_name)
+            return (
+                self.module_definition(uri, module_name) is not None
+                or self.python_module_exists(python_module_name)
+            )
 
         for import_entry in analysis.import_entries:
             if import_entry.kind == "import":
@@ -79,7 +83,8 @@ class DiagnosticsMixin:
                     continue
 
                 if export_name not in (None, "*"):
-                    match = self.python_definition(module_name, export_name=export_name)
+                    python_module_name = self.resolve_python_import_name(uri, module_name)
+                    match = self.python_definition(python_module_name, export_name=export_name)
                     if match is None:
                         add_diagnostic(
                             import_entry.selection_range,

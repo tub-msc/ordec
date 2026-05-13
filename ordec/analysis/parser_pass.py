@@ -264,6 +264,31 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
 
         return binding_id
 
+    def add_synthetic_binding(scope_id, name, kind, value_range, type_names=None):
+        binding_id = scope_bindings[scope_id].get(name)
+        type_names = normalize_type_names(type_names)
+
+        if binding_id is not None:
+            if type_names:
+                existing_type_names = normalize_type_names(bindings[binding_id - 1].get("type_names"))
+                bindings[binding_id - 1]["type_names"] = normalize_type_names(existing_type_names + type_names)
+            return binding_id
+
+        binding_id = len(bindings) + 1
+        bindings.append({
+            "id": binding_id,
+            "name": name,
+            "kind": kind,
+            "scope_id": scope_id,
+            "range": value_range,
+            "selection_range": value_range,
+            "exported": False,
+            "type_names": type_names,
+        })
+        scopes[scope_id]["bindings"].append(binding_id)
+        scope_bindings[scope_id][name] = binding_id
+        return binding_id
+
     def binding_type_names(binding_id):
         if binding_id is None:
             return []
@@ -312,6 +337,58 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                     type_names=type_names,
                     context_type_names=context_type_names,
                 )
+
+        if target_node.data == "getitem" and target_node.children:
+            base_node = target_node.children[0]
+            if isinstance(base_node, Tree):
+                return bind_target(
+                    scope_id,
+                    base_node,
+                    type_names=type_names,
+                    context_type_names=context_type_names,
+                )
+
+        return False
+
+    def bind_node_target(scope_id, target_node, type_names=None, context_type_names=None):
+        """Bind an ORD node target without treating path segments as members."""
+        if not isinstance(target_node, Tree):
+            return False
+
+        name_node = simple_name_node(target_node)
+        if name_node is not None:
+            add_binding(
+                scope_id,
+                name_node,
+                "variable",
+                node_range=tree_range(target_node),
+                type_names=type_names,
+            )
+            return True
+
+        if target_node.data == "getitem" and target_node.children:
+            base_node = target_node.children[0]
+            if isinstance(base_node, Tree) and simple_name_node(base_node) is not None:
+                bind_node_target(
+                    scope_id,
+                    base_node,
+                    type_names=type_names,
+                    context_type_names=context_type_names,
+                )
+            for index_node in target_node.children[1:]:
+                if isinstance(index_node, Tree):
+                    visit(index_node, scope_id, context_type_names=context_type_names)
+            return True
+
+        if target_node.data == "getattr" and target_node.children:
+            base_node = target_node.children[0]
+            if isinstance(base_node, Tree):
+                bind_node_target(
+                    scope_id,
+                    base_node,
+                    context_type_names=context_type_names,
+                )
+            return True
 
         return False
 
@@ -592,6 +669,14 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                         "viewgen_range": tree_range(node),
                     })
                 child_scope_id = add_scope(node, scope_id, name_node=name_node)
+                if node.data == "celldef":
+                    add_synthetic_binding(
+                        child_scope_id,
+                        "self",
+                        "variable",
+                        tree_range(name_node),
+                        type_names=[name],
+                    )
                 for child in node.children:
                     if not isinstance(child, Tree) or child is name_node:
                         continue
@@ -637,6 +722,14 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                         node_range=tree_range(target_node),
                         type_names=context_type_names,
                     )
+                else:
+                    if not bind_node_target(
+                        scope_id,
+                        target_node,
+                        type_names=context_type_names,
+                        context_type_names=context_type_names,
+                    ):
+                        visit(target_node, scope_id, context_type_names=context_type_names)
 
             for child in node.children[2:]:
                 if isinstance(child, Tree):
@@ -682,7 +775,12 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                             type_names=context_type_names,
                         )
                     else:
-                        visit(target_node, scope_id, context_type_names=context_type_names)
+                        bind_node_target(
+                            scope_id,
+                            target_node,
+                            type_names=context_type_names,
+                            context_type_names=context_type_names,
+                        )
             return
 
         if node.data in ("path_stmt", "net_stmt"):
@@ -988,6 +1086,10 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
         if node.data == "getattr" and len(node.children) == 2:
             base_node = node.children[0]
             name_node = node.children[1]
+            if isinstance(base_node, Tree) and base_node.data == "dotted_atom":
+                visit(base_node, scope_id, context_type_names=context_type_names)
+                return
+
             binding_id = None
             base_name_node = simple_name_node(base_node)
             if base_name_node is not None:
@@ -997,7 +1099,6 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                 scope_id,
                 context_type_names=context_type_names,
             )
-            type_names.extend(normalize_type_names(context_type_names))
 
             member_occurrences.append({
                 "name": tree_text(name_node),

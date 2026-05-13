@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+from pathlib import Path
+
 from ordec.analysis import AnalysisSession
 from ordec.analysis import AnalysisPosition
 from ordec.analysis import AnalysisRange
@@ -2058,3 +2060,123 @@ def test_analysis_session_cross_file_ord_cell_member_same_file(tmp_path):
     assert q_defn is not None
     assert q_defn["uri"] == uri
     assert q_defn["name"] == "q"
+
+
+def test_analysis_session_accepts_builtin_python_imports():
+    session = AnalysisSession()
+    uri = "file:///tmp/math_import.ord"
+    session.open_document(
+        uri,
+        "import math\n"
+        "from ordec.core import *\n"
+        "\n"
+        "cell Top:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        value = math.log(2)\n",
+    )
+
+    assert session.diagnostics(uri) == []
+
+
+def test_analysis_session_resolves_self_parameters_in_ord_cells():
+    session = AnalysisSession()
+    uri = "file:///tmp/self_parameter.ord"
+    session.open_document(
+        uri,
+        "from ordec.core import *\n"
+        "\n"
+        "cell Nto1:\n"
+        "    N = Parameter(int)\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        port vdd: .pos=(0, self.N); .align=East\n",
+    )
+
+    assert session.diagnostics(uri) == []
+
+
+def test_analysis_session_resolves_python_cell_instance_members():
+    session = AnalysisSession()
+    uri = "file:///tmp/ihp_instance.ord"
+    session.open_document(
+        uri,
+        "from ordec.core import *\n"
+        "from ordec.lib.ihp130 import Nmos\n"
+        "\n"
+        "cell Top:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        net x\n"
+        "        Nmos m:\n"
+        "            .d -- x\n"
+        "            .g -- x\n"
+        "            .s -- x\n"
+        "            .b -- x\n"
+        "            .pos = (0, 0)\n"
+        "            .orientation = R90\n",
+    )
+
+    assert session.diagnostics(uri) == []
+
+    pos_definition = session.definition(uri, AnalysisPosition(line=12, character=14))
+    assert pos_definition["name"] == "pos"
+    assert pos_definition["uri"].endswith("/ordec/core/schema.py")
+
+    orientation_definition = session.definition(uri, AnalysisPosition(line=13, character=14))
+    assert orientation_definition["name"] == "orientation"
+    assert orientation_definition["uri"].endswith("/ordec/core/schema.py")
+
+
+def test_analysis_session_resolves_relative_python_cell_instances(tmp_path):
+    package_path = tmp_path / "pkg"
+    ord_path = package_path / "ord"
+    ord_path.mkdir(parents=True)
+    (package_path / "__init__.py").write_text("")
+    (ord_path / "__init__.py").write_text("")
+    (package_path / "devices.py").write_text(
+        "from ordec.core import *\n"
+        "\n"
+        "class DFF(Cell):\n"
+        "    @generate\n"
+        "    def symbol(self) -> Symbol:\n"
+        "        s = Symbol(cell=self)\n"
+        "        s.d = Pin()\n"
+        "        s.q = Pin()\n"
+        "        return s\n"
+    )
+    reg_path = ord_path / "reg.ord"
+    reg_path.write_text(
+        "from ordec.core import *\n"
+        "from ..devices import DFF\n"
+        "\n"
+        "cell Reg:\n"
+        "    bits = Parameter(int)\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        path d\n"
+        "        path I\n"
+        "        for i in range(self.bits):\n"
+        "            net d[i]\n"
+        "            DFF I[i]:\n"
+        "                .d -- d[i]\n"
+        "                .q -- d[i]\n"
+        "            I[i].pos = (6, 3 + 8 * i)\n"
+        "            I[i].q -- d[i]\n"
+    )
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = session.open_path(str(reg_path))
+
+    assert session.diagnostics(uri) == []
+
+
+def test_analysis_session_current_problem_examples_have_no_lsp_diagnostics():
+    root_path = Path(__file__).resolve().parents[1]
+    session = AnalysisSession(workspace_root=str(root_path))
+
+    for relative_path in (
+        "ordec/examples/amp.ord",
+        "tests/lib/ord/reg.ord",
+        "tests/lib/ord/reg_array_structs.ord",
+        "tests/lib/ord/reg_struct_arrays.ord",
+        "tests/lib/ord/nmux.ord",
+    ):
+        uri = session.open_path(str(root_path / relative_path))
+        assert session.diagnostics(uri) == []
