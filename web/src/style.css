@@ -794,12 +794,12 @@ body:not(.show-debug) .debug {
     align-items: center;
     gap: 12px;
     padding: 2px 8px;
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--color-toolbar-border);
     background-color: var(--color-bg-toolbar);
     color: var(--color-text);
 }
 .schem-statusbar {
-    justify-content: center;
+    justify-content: flex-end;
 }
 .viewer-coordinates {
     font-family: var(--font-mono);
