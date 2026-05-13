@@ -36,15 +36,49 @@ class Mos(SimLeafCell):
     l = Parameter(R) #: Length
     w = Parameter(R) #: Width
     nf = Parameter(int, default=1) #: Number of fingers
-    ad = Parameter(R, default=R(0)) #: Drain area
-    as_ = Parameter(R, default=R(0)) #: Source area; underscore added because 'as' is keyword in Python
-    pd = Parameter(R, default=R(0)) #: Drain perimeter
-    ps = Parameter(R, default=R(0)) #: Source perimeter
-    nrd = Parameter(R, default=R(0)) #: Number of squares in drain
-    nrs = Parameter(R, default=R(0)) #: Number of squares in source
-    sa = Parameter(R, default=R(0)) #: Distance between OD edge to Poly
-    sb = Parameter(R, default=R(0)) #: Distance between OD edge to Poly (other side)
-    sd = Parameter(R, default=R(0)) #: Distance between neighboring fingers
+    diff_ext = Parameter(R, default=R("0.265u")) #: Diffusion extension for drain/source
+    ad = Parameter(R, default=None) #: Drain area (auto-calculated if None)
+    as_ = Parameter(R, default=None) #: Source area (auto-calculated if None)
+    pd = Parameter(R, default=None) #: Drain perimeter (auto-calculated if None)
+    ps = Parameter(R, default=None) #: Source perimeter (auto-calculated if None)
+    nrd = Parameter(R, default=R(0)) #: Drain diffusion squares for series R (0 = none)
+    nrs = Parameter(R, default=R(0)) #: Source diffusion squares for series R (0 = none)
+    sa = Parameter(R, default=R(0)) #: OD-to-poly distance, one side (0 = no stress model)
+    sb = Parameter(R, default=R(0)) #: OD-to-poly distance, other side (0 = no stress model)
+    sd = Parameter(R, default=R(0)) #: Poly-to-poly distance for multi-finger (0 = no stress model)
+
+    @classmethod
+    def params_rewrite(cls, params: dict) -> dict:
+        """Auto-calculate ad/as/pd/ps for interdigitated S-G-D-G-S-... layout."""
+        w = params['w']
+        diff_ext = params['diff_ext']
+        nf = params['nf']
+
+        # Number of drain/source diffusion regions:
+        # nf=1: S-G-D (1 drain, 1 source)
+        # nf=2: S-G-D-G-S (1 drain, 2 sources)
+        # nf=3: S-G-D-G-S-G-D (2 drains, 2 sources)
+        n_drain = (nf + 1) // 2
+        n_source = (nf + 2) // 2
+
+        # Area: each diffusion region is w × diff_ext
+        if params.get('ad') is None:
+            params['ad'] = n_drain * w * diff_ext
+        if params.get('as_') is None:
+            params['as_'] = n_source * w * diff_ext
+
+        # Perimeter: 2×diff_ext per region (sides facing isolation), plus W
+        # contribution from edge diffusions only. Edge diffusion count:
+        # - odd nf: 1 drain edge, 1 source edge
+        # - even nf: 0 drain edges (internal), 2 source edges
+        if params.get('pd') is None:
+            n_edge_drain = 1 if nf % 2 == 1 else 0
+            params['pd'] = 2 * n_drain * diff_ext + n_edge_drain * w
+        if params.get('ps') is None:
+            n_edge_source = 1 if nf % 2 == 1 else 2
+            params['ps'] = 2 * n_source * diff_ext + n_edge_source * w
+
+        return params
 
     def ngspice_save_params(self):
         return ["gm", "gds", "vth", "vdsat", "region"]
@@ -52,25 +86,27 @@ class Mos(SimLeafCell):
     def ngspice_netlist(self, netlister, inst):
         netlister.require_netlist_setup(netlist_setup)
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
+        # sky130 uses ".option scale=1.0u", so ngspice scales:
+        # - linear dimensions (l, w, pd, ps, sa, sb, sd) by 1e-6
+        # - areas (ad, as) by 1e-12
+        # We pre-scale from SI to µm/µm² so ngspice gets the right values.
         netlister.add(
             netlister.name_obj(inst, prefix="x"),
             netlister.portmap(inst, pins),
             self.model_name,
             *spice_params({
-                # sky130 uses ".option scale=1.0u"
                 'l': self.l * R('1e6'),
                 'w': self.w * R('1e6'),
-                # how do the other parameters need to be scaled?
                 'nf': self.nf,
-                'ad': self.ad,
-                'as': self.as_,
-                'pd': self.pd,
-                'ps': self.ps,
+                'ad': self.ad * R('1e12'),
+                'as': self.as_ * R('1e12'),
+                'pd': self.pd * R('1e6'),
+                'ps': self.ps * R('1e6'),
                 'nrd': self.nrd,
                 'nrs': self.nrs,
-                'sa': self.sa,
-                'sb': self.sb,
-                'sd': self.sd,
+                'sa': self.sa * R('1e6'),
+                'sb': self.sb * R('1e6'),
+                'sd': self.sd * R('1e6'),
             }))
 
 @public
@@ -111,24 +147,8 @@ class Inv(Cell):
         s.vdd = Net(pin=self.symbol.vdd)
         s.vss = Net(pin=self.symbol.vss)
 
-        nmos_params = {
-            "l": "0.15u",
-            "w": "0.495u",
-            "as_": 0.131175,
-            "ad": 0.131175,
-            "ps": 1.52,
-            "pd": 1.52,
-        }
-        nmos = Nmos(**nmos_params).symbol
-        pmos_params = {
-            "l": "0.15u",
-            "w": "0.99u",
-            "as_": 0.26235,
-            "ad": 0.26235,
-            "ps": 2.51,
-            "pd": 2.51,
-        }
-        pmos = Pmos(**pmos_params).symbol
+        nmos = Nmos(l="0.15u", w="0.495u").symbol
+        pmos = Pmos(l="0.15u", w="0.99u").symbol
 
         s.pd = SchemInstance(nmos.portmap(s=s.vss, b=s.vss, g=s.a, d=s.y), pos=Vec2R(3, 2))
         s.pu = SchemInstance(pmos.portmap(s=s.vdd, b=s.vdd, g=s.a, d=s.y), pos=Vec2R(3, 8))
