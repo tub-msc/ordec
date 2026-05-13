@@ -666,6 +666,7 @@ export class ResultViewer {
     showException(text) {
         this.resException.style.display = text?'':'none';
         this.resContent.style.display = text?'none':'';
+        this.resEmpty.style.display = (text || this.viewSelected) ? 'none' : '';
 
         if(text) {
             let pre = document.createElement("pre");
