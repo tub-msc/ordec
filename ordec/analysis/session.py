@@ -28,13 +28,22 @@ class AnalysisSession(
     DiagnosticsMixin,
     RenameMixin,
 ):
+    """Stateful ORD analysis session for open documents and workspace files."""
+
     def __init__(self, workspace_root: Optional[str] = None):
+        """Initialize an analysis session.
+
+        Args:
+            workspace_root: Optional directory used to resolve workspace ORD
+                modules and Python files.
+        """
         self.workspace_root = workspace_root
         self.documents = dict()
         self.python_modules = dict()
         self.workspace_index = None
 
     def last_good_analysis(self, doc):
+        """Return the latest error-free analysis for a document record."""
         if doc is None:
             return None
 
@@ -45,13 +54,16 @@ class AnalysisSession(
         return doc.get("last_good_analysis")
 
     def invalidate_workspace_index(self):
+        """Clear cached workspace dependency information."""
         self.workspace_index = None
 
     def clear_python_modules(self):
+        """Clear cached Python module analysis and invalidate import caches."""
         importlib.invalidate_caches()
         self.python_modules.clear()
 
     def normalize_type_names(self, type_names):
+        """Return unique non-empty type names while preserving order."""
         if not type_names:
             return []
 
@@ -71,6 +83,14 @@ class AnalysisSession(
         version: Optional[int] = None,
         is_open: bool = True,
     ):
+        """Register a newly opened document.
+
+        Args:
+            uri: Document URI.
+            text: Full document text.
+            version: Optional LSP document version.
+            is_open: Whether the document is open in the editor.
+        """
         previous = self.documents.get(uri)
         self.documents[uri] = {
             "text": text,
@@ -88,6 +108,14 @@ class AnalysisSession(
         version: Optional[int] = None,
         is_open: bool = True,
     ):
+        """Replace a document snapshot and invalidate dependent caches.
+
+        Args:
+            uri: Document URI.
+            text: Full replacement document text.
+            version: Optional LSP document version.
+            is_open: Whether the document is open in the editor.
+        """
         previous = self.documents.get(uri)
         self.documents[uri] = {
             "text": text,
@@ -99,10 +127,12 @@ class AnalysisSession(
         self.invalidate_workspace_index()
 
     def close_document(self, uri: str):
+        """Remove a document from the session."""
         self.documents.pop(uri, None)
         self.invalidate_workspace_index()
 
     def ensure_document(self, uri: str):
+        """Load a file-backed document when it is not already tracked."""
         if uri not in self.documents and uri.startswith("file:"):
             path = Path(unquote(urlparse(uri).path))
             try:
@@ -112,6 +142,7 @@ class AnalysisSession(
         return uri in self.documents
 
     def is_ord_uri(self, uri: str):
+        """Return whether a URI points to an ORD source file."""
         parsed_uri = urlparse(uri)
         if parsed_uri.scheme != "file":
             return False
@@ -119,6 +150,7 @@ class AnalysisSession(
         return Path(unquote(parsed_uri.path)).suffix == ".ord"
 
     def invalidate_path(self, path: str):
+        """Invalidate cached state for a filesystem path."""
         path = Path(path).resolve()
         if path.suffix == ".py":
             self.invalidate_python_module_path(path)
@@ -142,6 +174,7 @@ class AnalysisSession(
         return uri
 
     def invalidate_uri(self, uri: str):
+        """Invalidate cached state for a file URI."""
         parsed_uri = urlparse(uri)
         if parsed_uri.scheme != "file":
             return None
@@ -149,6 +182,7 @@ class AnalysisSession(
         return self.invalidate_path(unquote(parsed_uri.path))
 
     def resolve_module_uri(self, uri: str, module_name: str):
+        """Resolve an ORD import name relative to a document URI."""
         if not uri.startswith("file:"):
             return None
 
@@ -185,6 +219,7 @@ class AnalysisSession(
         return None
 
     def resolve_python_module_path(self, module_name: str):
+        """Resolve a Python module name to a source file path."""
         if self.workspace_root:
             workspace_root = Path(self.workspace_root).resolve()
             workspace_path = workspace_root.joinpath(*module_name.split("."))
@@ -210,6 +245,7 @@ class AnalysisSession(
         return path.resolve()
 
     def python_module_names_for_path(self, path: Path):
+        """Return cached or workspace module names that may map to a path."""
         names = []
 
         for module_name, module_info in self.python_modules.items():
@@ -236,11 +272,13 @@ class AnalysisSession(
         return sorted(set(names))
 
     def invalidate_python_module_path(self, path: Path):
+        """Invalidate cached Python analysis for modules backed by a path."""
         importlib.invalidate_caches()
         for module_name in self.python_module_names_for_path(path):
             self.python_modules.pop(module_name, None)
 
     def python_module_info(self, module_name: str):
+        """Analyze a Python module enough for ORD import and member lookup."""
         if module_name in self.python_modules:
             return self.python_modules[module_name]
 
@@ -489,6 +527,7 @@ class AnalysisSession(
         return module_info
 
     def python_definition(self, module_name: str, export_name: Optional[str] = None, seen=None):
+        """Resolve a Python module or exported member definition."""
         if seen is None:
             seen = set()
 
@@ -544,6 +583,7 @@ class AnalysisSession(
         return None
 
     def python_class_member_definition(self, module_name: str, class_name: str, member_name: str, seen=None):
+        """Resolve a Python class member, including inherited members."""
         if seen is None:
             seen = set()
 
@@ -590,6 +630,7 @@ class AnalysisSession(
         return None
 
     def python_class_members(self, module_name: str, class_name: str, seen=None):
+        """Collect Python class members, including inherited members."""
         if seen is None:
             seen = set()
 
@@ -628,6 +669,7 @@ class AnalysisSession(
         return members
 
     def analyze(self, uri: str):
+        """Return cached document analysis, parsing the document when needed."""
         doc = self.documents[uri]
         if doc["analysis"] is None:
             analysis = analyze_ord(doc["text"], uri=uri, version=doc["version"])
@@ -645,6 +687,7 @@ class AnalysisSession(
         return doc["analysis"]
 
     def diagnostics(self, uri: str):
+        """Return parser and semantic diagnostics for a document."""
         if not self.ensure_document(uri):
             return []
 
@@ -655,6 +698,7 @@ class AnalysisSession(
         return analysis.diagnostics + self.semantic_diagnostics(uri)
 
     def open_path(self, path: str, version: Optional[int] = None):
+        """Open a filesystem ORD file as a closed session document."""
         path = Path(path).resolve()
         uri = path.as_uri()
         if uri in self.documents and self.documents[uri].get("is_open"):
@@ -666,6 +710,7 @@ class AnalysisSession(
         return uri
 
     def update_path(self, path: str, version: Optional[int] = None):
+        """Refresh a filesystem ORD file in the session."""
         path = Path(path).resolve()
         uri = path.as_uri()
         if uri in self.documents and self.documents[uri].get("is_open"):
@@ -679,10 +724,12 @@ class AnalysisSession(
         return uri
 
     def analyze_path(self, path: str, version: Optional[int] = None):
+        """Refresh and analyze a filesystem ORD file."""
         uri = self.update_path(path, version=version)
         return self.analyze(uri)
 
     def workspace_uris(self):
+        """Return ORD file URIs known to the current workspace."""
         if self.workspace_root:
             root_path = Path(self.workspace_root).resolve()
             if root_path.exists():
@@ -707,6 +754,7 @@ class AnalysisSession(
         return uris
 
     def workspace_import_index(self):
+        """Build or return cached ORD import dependency indexes."""
         if self.workspace_index is not None:
             return self.workspace_index
 
@@ -728,6 +776,7 @@ class AnalysisSession(
         return self.workspace_index
 
     def workspace_dependents(self, uri: str):
+        """Return workspace URIs that directly or indirectly import a URI."""
         index = self.workspace_import_index()
         dependents = set()
         pending = list(index["dependents"].get(uri, set()))
@@ -743,6 +792,7 @@ class AnalysisSession(
         return dependents
 
     def resolve_import_uris(self, uri: str):
+        """Resolve ORD imports in a document to imported document URIs."""
         if not self.ensure_document(uri) or not uri.startswith("file:"):
             return []
 
@@ -766,6 +816,7 @@ class AnalysisSession(
         return imports
 
     def analyze_related(self, uri: str):
+        """Analyze a document and its reachable ORD imports."""
         analyses = dict()
         pending = [uri]
 
@@ -790,6 +841,7 @@ class AnalysisSession(
         return analyses
 
     def local_definition(self, uri: str, position: AnalysisPosition):
+        """Resolve a local binding or occurrence at a document position."""
         if not self.ensure_document(uri):
             return None
 
@@ -832,6 +884,7 @@ class AnalysisSession(
         return None
 
     def visible_bindings(self, uri: str, position: AnalysisPosition):
+        """Return bindings visible from a document position."""
         if not self.ensure_document(uri):
             return []
 
@@ -874,6 +927,7 @@ class AnalysisSession(
         return visible_bindings
 
     def reference_candidates(self, uri: str):
+        """Return named ranges that can participate in reference searches."""
         if not self.ensure_document(uri):
             return []
 
@@ -901,6 +955,7 @@ class AnalysisSession(
         return candidates
 
     def definition_key(self, definition):
+        """Return a stable key used to compare resolved definitions."""
         if definition.get("binding_id") is not None and not definition.get("exported"):
             return (definition["uri"], definition["binding_id"])
 
@@ -921,6 +976,7 @@ class AnalysisSession(
         )
 
     def find_export(self, uri: str, name: str):
+        """Find an exported ORD symbol in a document and its imports."""
         for analysis_uri, analysis in self.analyze_related(uri).items():
             if name not in analysis.exports:
                 continue
@@ -938,6 +994,7 @@ class AnalysisSession(
         return None
 
     def module_definition(self, uri: str, module_name: str):
+        """Resolve an ORD or Python module definition from an import name."""
         module_uri = self.resolve_module_uri(uri, module_name)
         if module_uri is None:
             return self.python_definition(module_name)
@@ -958,6 +1015,7 @@ class AnalysisSession(
         }
 
     def import_entry_at_position(self, uri: str, position: AnalysisPosition):
+        """Return the import entry whose selected name contains a position."""
         if not self.ensure_document(uri):
             return None
 
@@ -974,6 +1032,7 @@ class AnalysisSession(
         return None
 
     def name_at_position(self, uri: str, position: AnalysisPosition):
+        """Return the identifier token at or immediately before a position."""
         if not self.ensure_document(uri):
             return None
 
@@ -1018,6 +1077,7 @@ class AnalysisSession(
         }
 
     def resolve_name(self, uri: str, name: str):
+        """Resolve a top-level ORD or Python name visible from a document."""
         if not self.ensure_document(uri):
             return None
 
@@ -1067,6 +1127,7 @@ class AnalysisSession(
         return None
 
     def hover(self, uri: str, position: AnalysisPosition):
+        """Return hover contents for the definition at a position."""
         definition = self.definition(uri, position)
         if definition is None:
             return None
@@ -1086,6 +1147,7 @@ class AnalysisSession(
         }
 
     def ord_cell_member_definition(self, cell_uri: str, cell_name: str, member_name: str):
+        """Resolve a member declared by an ORD cell."""
         if not self.ensure_document(cell_uri):
             return None
 
@@ -1134,6 +1196,7 @@ class AnalysisSession(
         return None
 
     def ord_cell_members(self, cell_uri: str, cell_name: str):
+        """Collect members exposed by an ORD cell."""
         if not self.ensure_document(cell_uri):
             return dict()
 
@@ -1193,6 +1256,7 @@ class AnalysisSession(
         return members
 
     def member_definition(self, uri: str, position: AnalysisPosition):
+        """Resolve a member or parameter access at a document position."""
         if not self.ensure_document(uri):
             return None
 
@@ -1241,6 +1305,7 @@ class AnalysisSession(
         return None
 
     def member_occurrence_at_position(self, uri: str, position: AnalysisPosition):
+        """Return a member occurrence that contains a document position."""
         if not self.ensure_document(uri):
             return None
 
@@ -1250,18 +1315,8 @@ class AnalysisSession(
 
         return None
 
-
-
-
-
-
-
-
-
-
-
-
     def folding_ranges(self, uri: str):
+        """Return foldable symbol and import ranges for a document."""
         if not self.ensure_document(uri):
             return []
 
@@ -1313,6 +1368,7 @@ class AnalysisSession(
         return ranges
 
     def selection_ranges(self, uri: str, positions):
+        """Return nested selection ranges for document positions."""
         if not self.ensure_document(uri):
             return [None for _ in positions]
 
@@ -1389,6 +1445,7 @@ class AnalysisSession(
         return results
 
     def semantic_tokens(self, uri: str):
+        """Return semantic token records for a document."""
         if not self.ensure_document(uri):
             return []
 
@@ -1461,6 +1518,7 @@ class AnalysisSession(
         return deduplicated
 
     def workspace_symbols(self, query: str = ""):
+        """Return exported workspace symbols matching an optional query."""
         query = query.lower()
         result = []
 
@@ -1484,6 +1542,7 @@ class AnalysisSession(
         return result
 
     def references(self, uri: str, position: AnalysisPosition):
+        """Return references to the definition at a document position."""
         definition = self.definition(uri, position)
         if definition is None:
             return []
@@ -1521,6 +1580,7 @@ class AnalysisSession(
         return references
 
     def reference_search_uris(self, uri: str, definition):
+        """Return the documents that may contain references to a definition."""
         if definition.get("binding_id") is not None and not definition.get("exported"):
             return [uri]
 
@@ -1543,6 +1603,7 @@ class AnalysisSession(
         return self.workspace_uris()
 
     def document_highlights(self, uri: str, position: AnalysisPosition):
+        """Return same-document highlights for the symbol at a position."""
         if not self.ensure_document(uri):
             return []
 
@@ -1580,6 +1641,7 @@ class AnalysisSession(
         return highlights
 
     def definition(self, uri: str, position: AnalysisPosition):
+        """Resolve the best definition for a document position."""
         if not self.ensure_document(uri):
             return None
 

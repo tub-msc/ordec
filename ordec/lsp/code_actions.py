@@ -9,6 +9,16 @@ from ..analysis.model import AnalysisPosition
 
 
 def code_actions(session, uri: str, diagnostics):
+    """Return code actions supported for diagnostics in one document.
+
+    Args:
+        session: Analysis session that owns the document text and symbols.
+        uri: Document URI for the action request.
+        diagnostics: LSP diagnostics supplied by the client.
+
+    Returns:
+        List of LSP code action dictionaries.
+    """
     actions = []
     if uri not in session.documents:
         return actions
@@ -33,6 +43,14 @@ def code_actions(session, uri: str, diagnostics):
 
 
 def lsp_analysis_position(position):
+    """Convert a zero-based LSP position into a one-based analysis position.
+
+    Args:
+        position: LSP position dictionary.
+
+    Returns:
+        Equivalent ``AnalysisPosition``.
+    """
     return AnalysisPosition(
         line=position["line"] + 1,
         character=position["character"] + 1,
@@ -40,6 +58,16 @@ def lsp_analysis_position(position):
 
 
 def missing_symbol_port_action(session, uri: str, diagnostic):
+    """Create a quick fix for schematic ports missing from a symbol view.
+
+    Args:
+        session: Analysis session used to inspect document symbols.
+        uri: Document URI for the diagnostic.
+        diagnostic: LSP diagnostic with an ``unknown-symbol-port`` code.
+
+    Returns:
+        LSP code action dictionary, or None when the fix cannot be placed.
+    """
     message = diagnostic.get("message", "")
     match = re.search(r"Schematic port `([^`]+)`", message)
     if match is None:
@@ -102,6 +130,16 @@ def missing_symbol_port_action(session, uri: str, diagnostic):
 
 
 def obsolete_viewgen_syntax_action(uri: str, lines, diagnostic):
+    """Create a quick fix for legacy ``viewgen name(...) ->`` syntax.
+
+    Args:
+        uri: Document URI for the diagnostic.
+        lines: Document text split into lines.
+        diagnostic: LSP syntax diagnostic near the obsolete syntax.
+
+    Returns:
+        LSP code action dictionary, or None when no legacy syntax is found.
+    """
     start_line = diagnostic.get("range", {}).get("start", {}).get("line", 0)
     candidate_lines = []
     if 0 <= start_line < len(lines):
