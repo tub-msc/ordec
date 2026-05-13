@@ -770,20 +770,143 @@ body:not(.show-debug) .debug {
     font-size: var(--font-size-base);
     color: var(--color-schem-err-text);
     pointer-events: none;
-    z-index: 3;
+    z-index: 4;
+    white-space: nowrap;
+}
+.schem-viewer {
+    position: relative;
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    flex-direction: column;
+}
+.schem-canvas {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+.viewer-statusbar {
+    flex: 0 0 auto;
+    min-height: 22px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 2px 8px;
+    border-top: 1px solid var(--color-toolbar-border);
+    background-color: var(--color-bg-toolbar);
+    color: var(--color-text);
+}
+.schem-statusbar {
+    justify-content: flex-end;
+}
+.viewer-coordinates {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-md);
+    color: var(--color-text);
     white-space: nowrap;
 }
 
 /* -- Layer list (layout viewer) ---------------------------------- */
+.layout-viewer {
+    position: relative;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+.layout-sidebar {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    width: max-content;
+    min-width: 150px;
+    max-width: min(280px, 40%);
+    /* Force dark colors to match black layout background */
+    background-color: #1e1e1e;
+    color: #ccc;
+    border-left: 1px solid #555;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.layout-sidebar-toggle {
+    flex: 0 0 auto;
+    min-height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border: 0;
+    border-bottom: 1px solid #555;
+    background-color: #444;
+    color: inherit;
+    font-family: var(--font-sans);
+    font-size: var(--font-size-base);
+    text-align: left;
+    padding: 7px 9px;
+    cursor: pointer;
+}
+.layout-sidebar-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+.layout-sidebar-toggle::after {
+    content: "";
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    opacity: 0.8;
+    transform: rotate(-45deg);
+}
+.layout-sidebar-collapsed {
+    width: 28px;
+    min-width: 28px;
+}
+.layout-sidebar-collapsed .layout-sidebar-toggle {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0;
+    border-bottom: 0;
+    font-size: 0;
+}
+.layout-sidebar-collapsed .layout-sidebar-toggle::before {
+    content: "Layers";
+    font-size: var(--font-size-base);
+    writing-mode: vertical-lr;
+    transform: rotate(180deg);
+}
+.layout-sidebar-collapsed .layerList {
+    display: none;
+}
+.layout-sidebar-collapsed .layout-sidebar-toggle::after {
+    order: -1;
+    border-right: 0;
+    border-left: 1.5px solid currentColor;
+    transform: rotate(45deg);
+}
 .layerList {
     list-style-type: none;
-    padding: 5px;
-    margin: 0px;
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    background-color: #000;
-    color: #fff;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px;
+    margin: 0;
+    color: inherit;
+}
+.layout-coordinates {
+    color: inherit;
+    border-top: 1px solid #555;
+    margin-top: 5px;
+    padding-top: 4px;
 }
 
 /* -- Symbol stroke (theme-aware) --------------------------------- */

@@ -8,6 +8,7 @@ import { LayoutGL } from './layout-gl.js';
 import { SimPlot } from './simplot.js';
 import { HierSelector } from './hier-selector.js';
 import { viewEventBus } from './event-bus.js';
+import { CoordinateDisplay } from './viewer-coordinates.js';
 
 let idCounter = 0;
 export function generateId() {
@@ -192,6 +193,7 @@ const viewClassOf = {
             this.transform = d3.zoomIdentity;
             this.tooltip = document.createElement('div');
             this.tooltip.classList.add('schem-error-tooltip');
+            this.coordsDisplay = new CoordinateDisplay();
         }
         zoomed({transform}) {
             this.transform = transform;
@@ -199,26 +201,65 @@ const viewClassOf = {
         }
         update(msgData) {
             const viewbox = msgData['viewbox'];
-            const viewbox2 = [[viewbox[0], viewbox[1]], [viewbox[2], viewbox[3]]]
+            const [vx, vy, vw, vh] = viewbox;
+            const zoomExtent = [[vx, vy], [vx + vw, vy + vh]];
+            // Convert SVG Y coordinates back to schematic Y coordinates.
+            const yFlipOffset = 2 * vy + vh;
 
             const svg = d3.create("svg")
-                .attr("class", "fit")
+                .attr("class", "fit schem-svg")
                 .attr("viewBox", viewbox);
 
             this.g = svg.append("g")
                 .html(msgData['inner'])
 
             let zoom = d3.zoom()
-                .extent(viewbox2)
+                .extent(zoomExtent)
                 .scaleExtent([1, 12])
-                .translateExtent(viewbox2);
+                .translateExtent(zoomExtent);
 
             svg.call(zoom.transform, this.transform);
             this.g.attr("transform", this.transform);
 
             svg.call(zoom.on("zoom", (x) => this.zoomed(x)));
 
-            this.resContent.replaceChildren(svg.node(), this.tooltip);
+            this.svgNode = svg.node();
+
+            const schemRoot = document.createElement('div');
+            schemRoot.className = 'schem-viewer';
+
+            const svgHost = document.createElement('div');
+            svgHost.className = 'schem-canvas';
+            svgHost.append(this.svgNode, this.tooltip);
+
+            const statusBar = document.createElement('div');
+            statusBar.className = 'viewer-statusbar schem-statusbar';
+            statusBar.appendChild(this.coordsDisplay.element);
+            schemRoot.append(svgHost, statusBar);
+
+            svg.on('mousemove', (event) => {
+                const screenCtm = this.svgNode.getScreenCTM();
+                if (!screenCtm) {
+                    this.coordsDisplay.clear();
+                    return;
+                }
+
+                const svgPt = new DOMPoint(event.clientX, event.clientY)
+                    .matrixTransform(screenCtm.inverse());
+                const [x, ySvg] = this.transform.invert([svgPt.x, svgPt.y]);
+                const y = yFlipOffset - ySvg;
+
+                if (x < vx || x > vx + vw || y < vy || y > vy + vh) {
+                    this.coordsDisplay.clear();
+                    return;
+                }
+
+                this.coordsDisplay.set(Math.round(x), Math.round(y));
+            });
+            svg.on('mouseleave', () => this.coordsDisplay.clear());
+
+            this.resContent.replaceChildren(schemRoot);
+            this.coordsDisplay.clear();
 
             svg.selectAll('.errorMarker')
                 .on('mouseover', (event) => {
@@ -227,7 +268,7 @@ const viewClassOf = {
                     this.tooltip.style.display = 'block';
                 })
                 .on('mousemove', (event) => {
-                    const rect = this.resContent.getBoundingClientRect();
+                    const rect = svgHost.getBoundingClientRect();
                     this.tooltip.style.left = (event.clientX - rect.left + 10) + 'px';
                     this.tooltip.style.top = (event.clientY - rect.top + 10) + 'px';
                 })
