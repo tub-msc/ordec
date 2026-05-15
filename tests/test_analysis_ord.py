@@ -191,6 +191,30 @@ def test_analysis_session_resolves_ord_imports_and_exported_symbols(tmp_path):
     assert session.definition(uri, position_at(top_source, "Exported exp"))["name"] == "Exported"
 
 
+def test_analysis_session_resolves_ord_star_imports(tmp_path):
+    (tmp_path / "mux2.ord").write_text(
+        "cell Mux2:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    star_source = (
+        "from .mux2 import *\n"
+        "\n"
+        "cell Top:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        Mux2 child:\n"
+        "            .a -- net_a\n"
+    )
+    star_path = tmp_path / "star_user.ord"
+    star_path.write_text(star_source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    star_uri = session.open_path(str(star_path))
+
+    assert session.diagnostics(star_uri) == []
+    assert session.definition(star_uri, position_at(star_source, "Mux2 child"))["name"] == "Mux2"
+
+
 def test_analysis_session_resolves_python_import_variants(tmp_path):
     (tmp_path / "counter_yosys.py").write_text(
         "class ExtLib:\n"
@@ -412,6 +436,24 @@ def test_analysis_session_python_scope_constructs_resolve_locally(tmp_path):
     assert "current" in completion_labels(session, uri, position_at(source, "return"))
 
 
+def test_analysis_session_assignment_targets_do_not_create_fake_bindings(tmp_path):
+    source = (
+        "def helper(idx, value):\n"
+        "    unknown[idx] = value\n"
+        "    target.field = value\n"
+        "    return idx, unknown, target\n"
+    )
+    path = tmp_path / "assignment_targets.ord"
+    path.write_text(source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = path.resolve().as_uri()
+
+    assert session.definition(uri, position_at(source, "idx]"))["name"] == "idx"
+    assert session.definition(uri, position_at(source, "unknown", 2)) is None
+    assert session.definition(uri, position_at(source, "target", 2)) is None
+
+
 def test_analysis_session_workspace_cache_and_document_features(tmp_path):
     source = (
         "import math\n"
@@ -441,6 +483,29 @@ def test_analysis_session_workspace_cache_and_document_features(tmp_path):
     path.write_text(source.replace("Mux2", "Mux4"))
     session.invalidate_path(str(path))
     assert [symbol["name"] for symbol in session.workspace_symbols("mux")] == ["Mux4"]
+
+
+def test_analysis_session_analyzes_unopened_file_uris(tmp_path):
+    source = (
+        "cell Mux2:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        path a\n"
+        "\n"
+        "def helper():\n"
+        "    return Mux2\n"
+    )
+    path = tmp_path / "unopened.ord"
+    path.write_text(source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    analysis = session.analyze(path.resolve().as_uri())
+
+    assert [symbol.name for symbol in analysis.symbols] == [
+        "Mux2",
+        "symbol",
+        "a",
+        "helper",
+    ]
 
 
 def test_analysis_session_simulation_alias_resolves_like_schema_type():

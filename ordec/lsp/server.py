@@ -214,10 +214,47 @@ class OrdecLanguageServer:
             self.session.invalidate_uri(uri)
         return [self.publish_diagnostics(uri)]
 
+    def open_document_uris(self):
+        """Return open document URIs currently tracked by the analysis session."""
+        return {
+            uri
+            for uri, doc in self.session.documents.items()
+            if doc.get("is_open")
+        }
+
+    def is_python_uri(self, uri: str):
+        """Return whether a URI points to a Python source file."""
+        parsed_uri = urlparse(uri)
+        if parsed_uri.scheme != "file":
+            return False
+
+        return Path(unquote(parsed_uri.path)).suffix == ".py"
+
     def handle_did_change_watched_files(self, message):
+        affected_uris = set()
+        open_uris = self.open_document_uris()
         for change in message.get("params", {}).get("changes", []):
-            self.session.invalidate_uri(change["uri"])
-        return []
+            uri = change["uri"]
+
+            if uri in open_uris:
+                affected_uris.add(uri)
+
+            if self.session.is_ord_uri(uri):
+                affected_uris.update(self.session.workspace_dependents(uri))
+
+            canonical_invalidated_uri = self.session.invalidate_uri(uri)
+            if canonical_invalidated_uri is not None:
+                if canonical_invalidated_uri in open_uris:
+                    affected_uris.add(canonical_invalidated_uri)
+                if self.session.is_ord_uri(canonical_invalidated_uri):
+                    affected_uris.update(self.session.workspace_dependents(canonical_invalidated_uri))
+            elif self.is_python_uri(uri):
+                affected_uris.update(open_uris)
+
+        return [
+            self.publish_diagnostics(uri)
+            for uri in sorted(affected_uris & open_uris)
+        ]
 
     def handle_document_symbol(self, message):
         uri = message.get("params", {})["textDocument"]["uri"]

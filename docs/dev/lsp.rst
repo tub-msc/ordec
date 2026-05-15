@@ -87,8 +87,10 @@ dependencies can be found.
 
 The server also performs shallow Python analysis for imported Python modules.
 This is used for go-to-definition and member completion of exported classes,
-functions, variables, and simple class members. It is intentionally lightweight
-and does not execute imported Python modules.
+functions, variables, and simple class members. It is intentionally lightweight:
+workspace Python modules are parsed without executing them, while resolving
+installed packages may import parent ``__init__.py`` files through
+``importlib.util.find_spec``.
 
 Implementation notes
 --------------------
@@ -111,7 +113,7 @@ Most language intelligence lives in ``ordec.analysis``:
 * ``python_index.py`` owns shallow Python module indexing. It resolves Python
   imports, parses Python source with ``ast``, caches module information, and
   exposes exported symbols and class members without importing or executing
-  user modules.
+  workspace modules.
 * ``completions.py``, ``diagnostics.py``, ``rename.py``, and ``typeflow.py`` add
   feature-specific methods to ``AnalysisSession`` through mixin classes.
 

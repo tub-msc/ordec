@@ -13,6 +13,7 @@ from .diagnostics import DiagnosticsMixin
 from .model import (
     AnalysisPosition,
     AnalysisRange,
+    DocumentAnalysis,
     position_before_or_equal,
     range_contains,
 )
@@ -293,6 +294,9 @@ class AnalysisSession(
 
     def analyze(self, uri: str):
         """Return cached document analysis, parsing the document when needed."""
+        if not self.ensure_document(uri):
+            return DocumentAnalysis(uri=uri, version=None, diagnostics=[], symbols=[])
+
         doc = self.documents[uri]
         if doc["analysis"] is None:
             analysis = analyze_ord(doc["text"], uri=uri, version=doc["version"])
@@ -745,8 +749,12 @@ class AnalysisSession(
             if module_name and set(module_name) == {"."}:
                 continue
 
-            python_module_name = self.resolve_python_import_name(uri, module_name)
-            match = self.python_definition(python_module_name, export_name=name)
+            import_uri = self.resolve_module_uri(uri, module_name)
+            if import_uri is None:
+                python_module_name = self.resolve_python_import_name(uri, module_name)
+                match = self.python_definition(python_module_name, export_name=name)
+            else:
+                match = self.find_export(import_uri, name)
             if match is not None:
                 return match
 
