@@ -248,12 +248,7 @@ class PythonModuleIndex:
                 value_name = node_name(keyword.value)
                 value_export = exports.get(value_name)
                 if value_export is not None and value_export.get("kind") == "class":
-                    exports[keyword.arg] = {
-                        **value_export,
-                        "name": keyword.arg,
-                        "range": node_range(keyword),
-                        "selection_range": name_range(keyword, keyword.arg),
-                    }
+                    exports[keyword.arg] = value_export
                     continue
 
                 add_export(keyword.arg, "variable", keyword)
