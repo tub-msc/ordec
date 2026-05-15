@@ -33,404 +33,394 @@ class OrdecLanguageServer:
     def __init__(self):
         self.shutdown_requested = False
         self.session = AnalysisSession()
+        self.handlers = {
+            "initialize": self.handle_initialize,
+            "initialized": self.handle_noop,
+            "$/cancelRequest": self.handle_noop,
+            "shutdown": self.handle_shutdown,
+            "exit": self.handle_exit,
+            "textDocument/didOpen": self.handle_did_open,
+            "textDocument/didChange": self.handle_did_change,
+            "textDocument/didClose": self.handle_did_close,
+            "textDocument/didSave": self.handle_did_save,
+            "workspace/didChangeWatchedFiles": self.handle_did_change_watched_files,
+            "textDocument/documentSymbol": self.handle_document_symbol,
+            "textDocument/documentHighlight": self.handle_document_highlight,
+            "textDocument/definition": self.handle_definition,
+            "textDocument/hover": self.handle_hover,
+            "textDocument/references": self.handle_references,
+            "textDocument/completion": self.handle_completion,
+            "textDocument/codeAction": self.handle_code_action,
+            "textDocument/foldingRange": self.handle_folding_range,
+            "textDocument/selectionRange": self.handle_selection_range,
+            "textDocument/semanticTokens/full": self.handle_semantic_tokens_full,
+            "workspace/symbol": self.handle_workspace_symbol,
+            "textDocument/prepareRename": self.handle_prepare_rename,
+            "textDocument/rename": self.handle_rename,
+        }
 
     def handle_message(self, message):
         method = message.get("method")
         if method is None:
             return []
 
-        message_id = message.get("id")
-        params = message.get("params", {})
+        handler = self.handlers.get(method)
+        if handler is None:
+            return self.method_not_found(message)
 
-        if method == "initialize":
-            root_path = None
-            if params.get("rootUri"):
-                parsed_uri = urlparse(params["rootUri"])
-                if parsed_uri.scheme == "file":
-                    root_path = str(Path(unquote(parsed_uri.path)))
-            elif params.get("rootPath"):
-                root_path = params["rootPath"]
+        return handler(message)
 
-            self.session = AnalysisSession(workspace_root=root_path)
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "result": {
-                    "serverInfo": {
-                        "name": "ordec-lsp",
-                    },
-                    "capabilities": {
-                        "textDocumentSync": {
-                            "openClose": True,
-                            "change": 1,
-                            "save": {
-                                "includeText": True,
-                            },
-                        },
-                        "documentSymbolProvider": True,
-                        "documentHighlightProvider": True,
-                        "workspaceSymbolProvider": True,
-                        "definitionProvider": True,
-                        "hoverProvider": True,
-                        "referencesProvider": True,
-                        "renameProvider": {
-                            "prepareProvider": True,
-                        },
-                        "completionProvider": {
-                            "resolveProvider": False,
-                            "triggerCharacters": [".", "$"],
-                        },
-                        "codeActionProvider": True,
-                        "foldingRangeProvider": True,
-                        "selectionRangeProvider": True,
-                        "semanticTokensProvider": {
-                            "legend": {
-                                "tokenTypes": list(SEMANTIC_TOKEN_TYPES),
-                                "tokenModifiers": list(SEMANTIC_TOKEN_MODIFIERS),
-                            },
-                            "full": True,
-                        },
-                    },
-                },
-            }]
+    def result_response(self, message, result):
+        return [{
+            "jsonrpc": "2.0",
+            "id": message.get("id"),
+            "result": result,
+        }]
 
-        if method == "initialized":
+    def error_response(self, message, code, value):
+        return [{
+            "jsonrpc": "2.0",
+            "id": message.get("id"),
+            "error": {
+                "code": code,
+                "message": value,
+            },
+        }]
+
+    def method_not_found(self, message):
+        if message.get("id") is None:
             return []
 
-        if method == "$/cancelRequest":
-            return []
+        return self.error_response(
+            message,
+            -32601,
+            "Method not found: {}".format(message.get("method")),
+        )
 
-        if method == "shutdown":
-            self.shutdown_requested = True
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "result": None,
-            }]
-
-        if method == "exit":
-            raise SystemExit(0 if self.shutdown_requested else 1)
-
-        if method == "textDocument/didOpen":
-            text_document = params["textDocument"]
-            self.session.open_document(
-                text_document["uri"],
-                text_document["text"],
-                version=text_document.get("version"),
-            )
-            return [self.publish_diagnostics(text_document["uri"])]
-
-        if method == "textDocument/didChange":
-            text_document = params["textDocument"]
-            content_changes = params.get("contentChanges", [])
-            if not content_changes:
-                return []
-
-            self.session.update_document(
-                text_document["uri"],
-                content_changes[-1]["text"],
-                version=text_document.get("version"),
-            )
-            return [self.publish_diagnostics(text_document["uri"])]
-
-        if method == "textDocument/didClose":
-            text_document = params["textDocument"]
-            self.session.close_document(text_document["uri"])
-            return [{
-                "jsonrpc": "2.0",
-                "method": "textDocument/publishDiagnostics",
-                "params": {
-                    "uri": text_document["uri"],
-                    "diagnostics": [],
-                },
-            }]
-
-        if method == "textDocument/didSave":
-            text_document = params["textDocument"]
-            uri = text_document["uri"]
-            if "text" in params:
-                self.session.update_document(
-                    uri,
-                    params["text"],
-                    version=text_document.get("version"),
-                )
-            else:
-                self.session.invalidate_uri(uri)
-            return [self.publish_diagnostics(uri)]
-
-        if method == "workspace/didChangeWatchedFiles":
-            for change in params.get("changes", []):
-                self.session.invalidate_uri(change["uri"])
-            return []
-
-        if method == "textDocument/documentSymbol":
-            uri = params["textDocument"]["uri"]
-            analysis = self.session.analyze(uri)
-            result = []
-            for symbol in analysis.symbols:
-                result.append({
-                    "name": symbol.name,
-                    "kind": self.symbol_kind(symbol.kind),
-                    "range": self.lsp_range(symbol.range),
-                    "selectionRange": self.lsp_range(symbol.selection_range),
-                })
-
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "result": result,
-            }]
-
-        if method == "textDocument/documentHighlight":
-            uri = params["textDocument"]["uri"]
-            position = self.analysis_position(params["position"])
-            result = []
-            for highlight in self.session.document_highlights(uri, position):
-                result.append({
-                    "range": self.lsp_range(highlight["range"]),
-                    "kind": self.document_highlight_kind(highlight["kind"]),
-                })
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "result": result,
-            }]
-
-        if method == "textDocument/definition":
-            uri = params["textDocument"]["uri"]
-            position = self.analysis_position(params["position"])
-            definition = self.session.definition(uri, position)
-            result = None
-            if definition is not None:
-                result = {
-                    "uri": definition["uri"],
-                    "range": self.lsp_range(definition["selection_range"]),
-                }
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "result": result,
-            }]
-
-        if method == "textDocument/hover":
-            uri = params["textDocument"]["uri"]
-            position = self.analysis_position(params["position"])
-            hover = self.session.hover(uri, position)
-            result = None
-            if hover is not None:
-                result = {
-                    "contents": {
-                        "kind": "plaintext",
-                        "value": hover["contents"],
-                    },
-                    "range": self.lsp_range(hover["range"]),
-                }
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "result": result,
-            }]
-
-        if method == "textDocument/references":
-            uri = params["textDocument"]["uri"]
-            position = self.analysis_position(params["position"])
-            references = self.session.references(uri, position)
-            result = []
-            for reference in references:
-                result.append({
-                    "uri": reference["uri"],
-                    "range": self.lsp_range(reference["range"]),
-                })
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "result": result,
-            }]
-
-        if method == "textDocument/completion":
-            uri = params["textDocument"]["uri"]
-            position = self.analysis_position(params["position"])
-            completions = self.session.completions(uri, position)
-            result = []
-            for completion in completions:
-                result.append({
-                    "label": completion["label"],
-                    "kind": self.completion_kind(completion["kind"]),
-                    "detail": completion["detail"],
-                })
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "result": result,
-            }]
-
-        if method == "textDocument/codeAction":
-            uri = params["textDocument"]["uri"]
-            diagnostics = params.get("context", {}).get("diagnostics", [])
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "result": code_actions(self.session, uri, diagnostics),
-            }]
-
-        if method == "textDocument/foldingRange":
-            uri = params["textDocument"]["uri"]
-            result = []
-            for folding_range in self.session.folding_ranges(uri):
-                entry = {
-                    "startLine": folding_range["start_line"] - 1,
-                    "endLine": folding_range["end_line"] - 1,
-                }
-                if folding_range["kind"] == "imports":
-                    entry["kind"] = "imports"
-                elif folding_range["kind"] == "comment":
-                    entry["kind"] = "comment"
-                result.append(entry)
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "result": result,
-            }]
-
-        if method == "textDocument/selectionRange":
-            uri = params["textDocument"]["uri"]
-            positions = [
-                self.analysis_position(pos)
-                for pos in params["positions"]
-            ]
-            selection_ranges = self.session.selection_ranges(uri, positions)
-            result = []
-            for chain in selection_ranges:
-                if chain is None:
-                    result.append(None)
-                    continue
-
-                def build_lsp_chain(node):
-                    lsp_node = {
-                        "range": self.lsp_range(node["range"]),
-                    }
-                    if node["parent"] is not None:
-                        lsp_node["parent"] = build_lsp_chain(node["parent"])
-                    return lsp_node
-
-                result.append(build_lsp_chain(chain))
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "result": result,
-            }]
-
-        if method == "textDocument/semanticTokens/full":
-            uri = params["textDocument"]["uri"]
-            tokens = self.session.semantic_tokens(uri)
-            data = []
-            prev_line = 0
-            prev_char = 0
-            for token in tokens:
-                line = token["range"].start.line - 1
-                char = token["range"].start.character - 1
-                length = (
-                    token["range"].end.character - token["range"].start.character
-                )
-                token_type = SEMANTIC_TOKEN_TYPE_MAP.get(token["type"], 0)
-                modifier_bits = 0
-                for modifier in token["modifiers"]:
-                    bit = SEMANTIC_TOKEN_MODIFIER_MAP.get(modifier)
-                    if bit is not None:
-                        modifier_bits |= 1 << bit
-
-                delta_line = line - prev_line
-                delta_char = char if delta_line != 0 else char - prev_char
-                data.extend([delta_line, delta_char, length, token_type, modifier_bits])
-                prev_line = line
-                prev_char = char
-
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "result": {
-                    "data": data,
-                },
-            }]
-
-        if method == "workspace/symbol":
-            result = []
-            for symbol in self.session.workspace_symbols(params.get("query", "")):
-                result.append({
-                    "name": symbol["name"],
-                    "kind": self.symbol_kind(symbol["kind"]),
-                    "location": {
-                        "uri": symbol["uri"],
-                        "range": self.lsp_range(symbol["selection_range"]),
-                    },
-                })
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "result": result,
-            }]
-
-        if method == "textDocument/prepareRename":
-            uri = params["textDocument"]["uri"]
-            position = self.analysis_position(params["position"])
-            result = self.session.prepare_rename(uri, position)
-            if result is not None:
-                result = {
-                    "range": self.lsp_range(result["range"]),
-                    "placeholder": result["placeholder"],
-                }
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "result": result,
-            }]
-
-        if method == "textDocument/rename":
-            uri = params["textDocument"]["uri"]
-            position = self.analysis_position(params["position"])
-            try:
-                changes = self.session.rename(uri, position, params["newName"])
-            except ValueError as exc:
-                return [{
-                    "jsonrpc": "2.0",
-                    "id": message_id,
-                    "error": {
-                        "code": -32602,
-                        "message": str(exc),
-                    },
-                }]
-
-            result = None
-            if changes is not None:
-                result = {
-                    "changes": dict(
-                        (change_uri, [
-                            {
-                                "range": self.lsp_range(change["range"]),
-                                "newText": change["new_text"],
-                            }
-                            for change in uri_changes
-                        ])
-                        for change_uri, uri_changes in changes.items()
-                    ),
-                }
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "result": result,
-            }]
-
-        if message_id is not None:
-            return [{
-                "jsonrpc": "2.0",
-                "id": message_id,
-                "error": {
-                    "code": -32601,
-                    "message": "Method not found: {}".format(method),
-                },
-            }]
-
+    def handle_noop(self, message):
         return []
+
+    def handle_initialize(self, message):
+        params = message.get("params", {})
+        root_path = None
+        if params.get("rootUri"):
+            parsed_uri = urlparse(params["rootUri"])
+            if parsed_uri.scheme == "file":
+                root_path = str(Path(unquote(parsed_uri.path)))
+        elif params.get("rootPath"):
+            root_path = params["rootPath"]
+
+        self.session = AnalysisSession(workspace_root=root_path)
+        return self.result_response(message, {
+            "serverInfo": {
+                "name": "ordec-lsp",
+            },
+            "capabilities": {
+                "textDocumentSync": {
+                    "openClose": True,
+                    "change": 1,
+                    "save": {
+                        "includeText": True,
+                    },
+                },
+                "documentSymbolProvider": True,
+                "documentHighlightProvider": True,
+                "workspaceSymbolProvider": True,
+                "definitionProvider": True,
+                "hoverProvider": True,
+                "referencesProvider": True,
+                "renameProvider": {
+                    "prepareProvider": True,
+                },
+                "completionProvider": {
+                    "resolveProvider": False,
+                    "triggerCharacters": [".", "$"],
+                },
+                "codeActionProvider": True,
+                "foldingRangeProvider": True,
+                "selectionRangeProvider": True,
+                "semanticTokensProvider": {
+                    "legend": {
+                        "tokenTypes": list(SEMANTIC_TOKEN_TYPES),
+                        "tokenModifiers": list(SEMANTIC_TOKEN_MODIFIERS),
+                    },
+                    "full": True,
+                },
+            },
+        })
+
+    def handle_shutdown(self, message):
+        self.shutdown_requested = True
+        return self.result_response(message, None)
+
+    def handle_exit(self, message):
+        raise SystemExit(0 if self.shutdown_requested else 1)
+
+    def handle_did_open(self, message):
+        params = message.get("params", {})
+        text_document = params["textDocument"]
+        self.session.open_document(
+            text_document["uri"],
+            text_document["text"],
+            version=text_document.get("version"),
+        )
+        return [self.publish_diagnostics(text_document["uri"])]
+
+    def handle_did_change(self, message):
+        params = message.get("params", {})
+        text_document = params["textDocument"]
+        content_changes = params.get("contentChanges", [])
+        if not content_changes:
+            return []
+
+        self.session.update_document(
+            text_document["uri"],
+            content_changes[-1]["text"],
+            version=text_document.get("version"),
+        )
+        return [self.publish_diagnostics(text_document["uri"])]
+
+    def handle_did_close(self, message):
+        text_document = message.get("params", {})["textDocument"]
+        self.session.close_document(text_document["uri"])
+        return [{
+            "jsonrpc": "2.0",
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "uri": text_document["uri"],
+                "diagnostics": [],
+            },
+        }]
+
+    def handle_did_save(self, message):
+        params = message.get("params", {})
+        text_document = params["textDocument"]
+        uri = text_document["uri"]
+        if "text" in params:
+            self.session.update_document(
+                uri,
+                params["text"],
+                version=text_document.get("version"),
+            )
+        else:
+            self.session.invalidate_uri(uri)
+        return [self.publish_diagnostics(uri)]
+
+    def handle_did_change_watched_files(self, message):
+        for change in message.get("params", {}).get("changes", []):
+            self.session.invalidate_uri(change["uri"])
+        return []
+
+    def handle_document_symbol(self, message):
+        uri = message.get("params", {})["textDocument"]["uri"]
+        analysis = self.session.analyze(uri)
+        result = []
+        for symbol in analysis.symbols:
+            result.append({
+                "name": symbol.name,
+                "kind": self.symbol_kind(symbol.kind),
+                "range": self.lsp_range(symbol.range),
+                "selectionRange": self.lsp_range(symbol.selection_range),
+            })
+
+        return self.result_response(message, result)
+
+    def handle_document_highlight(self, message):
+        params = message.get("params", {})
+        uri = params["textDocument"]["uri"]
+        position = self.analysis_position(params["position"])
+        result = []
+        for highlight in self.session.document_highlights(uri, position):
+            result.append({
+                "range": self.lsp_range(highlight["range"]),
+                "kind": self.document_highlight_kind(highlight["kind"]),
+            })
+        return self.result_response(message, result)
+
+    def handle_definition(self, message):
+        params = message.get("params", {})
+        uri = params["textDocument"]["uri"]
+        position = self.analysis_position(params["position"])
+        definition = self.session.definition(uri, position)
+        result = None
+        if definition is not None:
+            result = {
+                "uri": definition["uri"],
+                "range": self.lsp_range(definition["selection_range"]),
+            }
+        return self.result_response(message, result)
+
+    def handle_hover(self, message):
+        params = message.get("params", {})
+        uri = params["textDocument"]["uri"]
+        position = self.analysis_position(params["position"])
+        hover = self.session.hover(uri, position)
+        result = None
+        if hover is not None:
+            result = {
+                "contents": {
+                    "kind": "plaintext",
+                    "value": hover["contents"],
+                },
+                "range": self.lsp_range(hover["range"]),
+            }
+        return self.result_response(message, result)
+
+    def handle_references(self, message):
+        params = message.get("params", {})
+        uri = params["textDocument"]["uri"]
+        position = self.analysis_position(params["position"])
+        references = self.session.references(uri, position)
+        result = []
+        for reference in references:
+            result.append({
+                "uri": reference["uri"],
+                "range": self.lsp_range(reference["range"]),
+            })
+        return self.result_response(message, result)
+
+    def handle_completion(self, message):
+        params = message.get("params", {})
+        uri = params["textDocument"]["uri"]
+        position = self.analysis_position(params["position"])
+        completions = self.session.completions(uri, position)
+        result = []
+        for completion in completions:
+            result.append({
+                "label": completion["label"],
+                "kind": self.completion_kind(completion["kind"]),
+                "detail": completion["detail"],
+            })
+        return self.result_response(message, result)
+
+    def handle_code_action(self, message):
+        params = message.get("params", {})
+        uri = params["textDocument"]["uri"]
+        diagnostics = params.get("context", {}).get("diagnostics", [])
+        return self.result_response(
+            message,
+            code_actions(self.session, uri, diagnostics),
+        )
+
+    def handle_folding_range(self, message):
+        uri = message.get("params", {})["textDocument"]["uri"]
+        result = []
+        for folding_range in self.session.folding_ranges(uri):
+            entry = {
+                "startLine": folding_range["start_line"] - 1,
+                "endLine": folding_range["end_line"] - 1,
+            }
+            if folding_range["kind"] == "imports":
+                entry["kind"] = "imports"
+            elif folding_range["kind"] == "comment":
+                entry["kind"] = "comment"
+            result.append(entry)
+        return self.result_response(message, result)
+
+    def lsp_selection_range_chain(self, node):
+        lsp_node = {
+            "range": self.lsp_range(node["range"]),
+        }
+        if node["parent"] is not None:
+            lsp_node["parent"] = self.lsp_selection_range_chain(node["parent"])
+        return lsp_node
+
+    def handle_selection_range(self, message):
+        params = message.get("params", {})
+        uri = params["textDocument"]["uri"]
+        positions = [
+            self.analysis_position(pos)
+            for pos in params["positions"]
+        ]
+        selection_ranges = self.session.selection_ranges(uri, positions)
+        result = []
+        for chain in selection_ranges:
+            if chain is None:
+                result.append(None)
+                continue
+
+            result.append(self.lsp_selection_range_chain(chain))
+        return self.result_response(message, result)
+
+    def handle_semantic_tokens_full(self, message):
+        uri = message.get("params", {})["textDocument"]["uri"]
+        tokens = self.session.semantic_tokens(uri)
+        data = []
+        prev_line = 0
+        prev_char = 0
+        for token in tokens:
+            line = token["range"].start.line - 1
+            char = token["range"].start.character - 1
+            length = (
+                token["range"].end.character - token["range"].start.character
+            )
+            token_type = SEMANTIC_TOKEN_TYPE_MAP.get(token["type"], 0)
+            modifier_bits = 0
+            for modifier in token["modifiers"]:
+                bit = SEMANTIC_TOKEN_MODIFIER_MAP.get(modifier)
+                if bit is not None:
+                    modifier_bits |= 1 << bit
+
+            delta_line = line - prev_line
+            delta_char = char if delta_line != 0 else char - prev_char
+            data.extend([delta_line, delta_char, length, token_type, modifier_bits])
+            prev_line = line
+            prev_char = char
+
+        return self.result_response(message, {
+            "data": data,
+        })
+
+    def handle_workspace_symbol(self, message):
+        params = message.get("params", {})
+        result = []
+        for symbol in self.session.workspace_symbols(params.get("query", "")):
+            result.append({
+                "name": symbol["name"],
+                "kind": self.symbol_kind(symbol["kind"]),
+                "location": {
+                    "uri": symbol["uri"],
+                    "range": self.lsp_range(symbol["selection_range"]),
+                },
+            })
+        return self.result_response(message, result)
+
+    def handle_prepare_rename(self, message):
+        params = message.get("params", {})
+        uri = params["textDocument"]["uri"]
+        position = self.analysis_position(params["position"])
+        result = self.session.prepare_rename(uri, position)
+        if result is not None:
+            result = {
+                "range": self.lsp_range(result["range"]),
+                "placeholder": result["placeholder"],
+            }
+        return self.result_response(message, result)
+
+    def handle_rename(self, message):
+        params = message.get("params", {})
+        uri = params["textDocument"]["uri"]
+        position = self.analysis_position(params["position"])
+        try:
+            changes = self.session.rename(uri, position, params["newName"])
+        except ValueError as exc:
+            return self.error_response(message, -32602, str(exc))
+
+        result = None
+        if changes is not None:
+            result = {
+                "changes": dict(
+                    (change_uri, [
+                        {
+                            "range": self.lsp_range(change["range"]),
+                            "newText": change["new_text"],
+                        }
+                        for change in uri_changes
+                    ])
+                    for change_uri, uri_changes in changes.items()
+                ),
+            }
+        return self.result_response(message, result)
 
     def publish_diagnostics(self, uri: str):
         analysis = self.session.analyze(uri)
