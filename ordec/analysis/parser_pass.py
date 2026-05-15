@@ -291,12 +291,19 @@ class _OrdAnalysisBuilder:
         if target_node.data == "getitem" and target_node.children:
             base_node = target_node.children[0]
             if isinstance(base_node, Tree):
-                return self.bind_target(
-                    scope_id,
+                self.visit(
                     base_node,
-                    type_names=type_names,
+                    scope_id,
                     context_type_names=context_type_names,
                 )
+            for index_node in target_node.children[1:]:
+                if isinstance(index_node, Tree):
+                    self.visit(index_node, scope_id, context_type_names=context_type_names)
+            return True
+
+        if target_node.data == "getattr" and target_node.children:
+            self.visit(target_node, scope_id, context_type_names=context_type_names)
+            return True
 
         return False
 
