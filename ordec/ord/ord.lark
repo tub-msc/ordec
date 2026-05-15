@@ -50,26 +50,27 @@ single_input: _NEWLINE | simple_stmt | compound_stmt _NEWLINE
 file_input: (_NEWLINE | stmt)*
 eval_input: testlist _NEWLINE*
 
-decorator: "@" dotted_name [ "(" [arguments] ")" ] _NEWLINE
+decorator: "@" test _NEWLINE
 decorators: decorator+
 decorated: decorators (classdef | celldef | funcdef | viewgen | async_funcdef)
 
 async_funcdef: "async" funcdef
-funcdef: "def" name "(" [parameters] ")" ["->" test] ":" suite
+funcdef: "def" name [type_params] "(" [parameters] _rpar ["->" test] ":" suite
 
 parameters: paramvalue ("," paramvalue)* ["," SLASH ("," paramvalue)*] ["," [starparams | kwparams]]
           | starparams
-          | kwparams
+          | kwparams ","?
 
 SLASH: "/" // Otherwise the it will completely disappear and it will be undisguisable in the result
 starparams: (starparam | starguard) poststarparams
-starparam: "*" typedparam
+starparam: "*" typed_starparam
 starguard: "*"
-poststarparams: ("," paramvalue)* ["," kwparams]
-kwparams: "**" typedparam ","?
+poststarparams: ("," paramvalue)* ["," kwparams] ","?
+kwparams: "**" typedparam
 
 ?paramvalue: typedparam ("=" test)?
 ?typedparam: name (":" test)?
+?typed_starparam: name (":" test_or_star_expr)?
 
 
 lambdef: "lambda" [lambda_params] ":" test
@@ -93,6 +94,7 @@ lambda_kwparams: "**" name ","?
             | global_stmt
             | nonlocal_stmt
             | assert_stmt
+            | type_alias_stmt
             | path_stmt
             | net_stmt
             | constrain_stmt
@@ -121,7 +123,7 @@ raise_stmt: "raise" [test ["from" test]]
 import_stmt: import_name | import_from
 import_name: "import" dotted_as_names
 // note below: the ("." | "...") is necessary because "..." is tokenized as ELLIPSIS
-import_from: "from" (dots? dotted_name | dots) "import" ("*" | "(" import_as_names ")" | import_as_names)
+import_from: "from" (dots? dotted_name | dots) "import" ("*" | "(" import_as_names _rpar | import_as_names)
 !dots: "."+
 import_as_name: name ["as" name]
 dotted_as_name: dotted_name ["as" name]
@@ -146,18 +148,29 @@ try_stmt: "try" ":" suite except_clauses ["else" ":" suite] [finally__]
 finally__: "finally" ":" suite
 except_clauses: except_clause+
 except_clause: "except" [test ["as" name]] ":" suite
+             | "except" "*" test ["as" name] ":" suite -> except_star_clause
 // NB compile.c makes sure that the default except clause is last
 
 
 with_stmt: "with" with_items ":" suite
+         | "with" "(" test _RPAREN_AS "as" with_target ":" suite -> with_parenthesized_expr_as
+         | "with" "(" with_paren_mixed_items _RPAREN_AS "as" with_target ":" suite -> with_parenthesized_items_as
+         | "with" "(" with_paren_as_item ","? ")" ":" suite
+         | "with" "(" with_paren_mixed_items ")" ":" suite
 with_items: with_item ("," with_item)*
+with_paren_as_item: test "as" with_target
+with_paren_mixed_items: with_paren_as_item "," with_paren_item ("," with_paren_item)* ","?
+                      | with_paren_as_item "," -> with_paren_single_as_item
+                      | test "," -> with_paren_single_item
+                      | test "," with_paren_item ("," with_paren_item)* ","?
+with_paren_item: test ["as" with_target]
 with_item: test ["as" with_target]
 
 ?with_target: with_target "." name -> getattr
             | with_target "[" subscriptlist "]" -> getitem
             | name -> var
-            | "(" with_target ")"
-            | "(" _with_target_items ")" -> tuple
+            | "(" with_target _rpar
+            | "(" _with_target_items _rpar -> tuple
             | "[" _with_target_items "]" -> list
 _with_target_items: with_target_item ("," with_target_item)* ","?
 ?with_target_item: with_target
@@ -175,9 +188,9 @@ case: "case" pattern ["if" test] ":" suite
                | NAME -> capture_pattern
                | "_" -> any_pattern
                | attr_pattern
-               | "(" as_pattern ")"
+               | "(" as_pattern _rpar
                | "[" _sequence_pattern "]" -> sequence_pattern
-               | "(" (sequence_item_pattern "," _sequence_pattern)? ")" -> sequence_pattern
+               | "(" (sequence_item_pattern "," _sequence_pattern)? _rpar -> sequence_pattern
                | "{" (mapping_item_pattern ("," mapping_item_pattern)* ","?)?"}" -> mapping_pattern
                | "{" (mapping_item_pattern ("," mapping_item_pattern)* ",")? "**" NAME ","? "}" -> mapping_star_pattern
                | class_pattern
@@ -189,9 +202,15 @@ literal_pattern: inner_literal_pattern
                       | "False" -> const_false
                       | STRING
                       | LONG_STRING
+                      | complex_number_pattern
+                      | "-" number -> negative_number
                       | number
 
-attr_pattern: NAME ("." NAME)+ -> value
+complex_number_pattern: signed_real_number _add_op IMAG_NUMBER
+?signed_real_number: "-" number -> negative_number
+                   | number
+
+attr_pattern: NAME ("." NAME)+
 
 name_or_attr_pattern: NAME ("." NAME)* -> value
 
@@ -201,7 +220,7 @@ _sequence_pattern: (sequence_item_pattern ("," sequence_item_pattern)* ","?)?
 ?sequence_item_pattern: as_pattern
                       | "*" NAME -> star_pattern
 
-class_pattern: name_or_attr_pattern "(" [arguments_pattern ","?] ")"
+class_pattern: name_or_attr_pattern "(" [arguments_pattern ","?] _rpar
 arguments_pattern: argument ("," argument)*
 argument: NAME "=" as_pattern -> keyw_arg_pattern
         | as_pattern
@@ -236,23 +255,21 @@ star_expr: "*" expr
 !_add_op: "+"|"-"
 !_shift_op: "<<"|">>"
 !_mul_op: "*"|"@"|"/"|"%"|"//"
-// <> isn't actually a valid comparison operator in Python. It's here for the
-// sake of a __future__ import described in PEP 401 (which really works :-)
-!comp_op: "<"|">"|"=="|">="|"<="|"<>"|"!="|"in"| /not\s+in/ | "is" | /is\s+not/
+!comp_op: "<"|">"|"=="|">="|"<="|"!="|"in"| "not" "in" -> not_in | "is" "not" -> is_not | "is"
 
 ?power: await_expr ("**" factor)?
 ?await_expr: AWAIT? atom_expr
 AWAIT: "await"
 
-?atom_expr: atom_expr "(" [arguments] ")"      -> funccall
+?atom_expr: atom_expr "(" [arguments] _rpar    -> funccall
           | atom_expr "[" subscriptlist "]"    -> getitem
           | atom_expr "." name            -> getattr
           | atom_expr? ".$" name           -> getparam
           | atom
 
-?atom: "(" yield_expr ")"
-     | "(" _tuple_inner? ")" -> tuple
-     | "(" comprehension{test_or_star_expr} ")" -> tuple_comprehension
+?atom: "(" yield_expr _rpar
+     | "(" _tuple_inner? _rpar -> parenthesized_tuple
+     | "(" comprehension{test_or_star_expr} _rpar -> tuple_comprehension
      | "[" _exprlist? "]"  -> list
      | "[" comprehension{test_or_star_expr} "]"  -> list_comprehension
      | "{" _dict_exprlist? "}" -> dict
@@ -262,7 +279,7 @@ AWAIT: "await"
      | name -> var
      | number
      | string_concat
-     | "(" test ")"
+     | "(" test _rpar -> grouped_test
      | dotted_atom
      | "..." -> ellipsis
      | "None"    -> const_none
@@ -276,8 +293,10 @@ _tuple_inner: test_or_star_expr (("," test_or_star_expr)+ [","] | ",")
 ?test_or_star_expr: test
                  | star_expr
 
-?subscriptlist: subscript
-              | subscript (("," subscript)+ [","] | ",") -> subscript_tuple
+?subscriptlist: star_expr -> subscript_starred_tuple
+              | subscript
+              | subscript_item (("," subscript_item)+ [","] | ",") -> subscript_tuple
+?subscript_item: subscript | star_expr
 ?subscript: test | ([test] MARK [test] [sliceop]) -> slice
 MARK: ":"
 sliceop: ":" [test]
@@ -291,21 +310,28 @@ key_value: test ":"  test
 
 _exprlist: test_or_star_expr (","  test_or_star_expr)* [","]
 
-classdef: "class" name ["(" [arguments] ")"] ":" suite
+classdef: "class" name [type_params] ["(" [arguments] _rpar] ":" suite
 
-arguments: argvalue ("," argvalue)* ("," starargs_part)? ("," kwargs)? ","?
-         | starargs_part
-         | kwargs
-         | comprehension{test}
+type_alias_stmt: "type" name [type_params] "=" test
+type_params: "[" type_param ("," type_param)* ","? "]"
+?type_param: name -> typevar
+           | name ":" test -> bounded_typevar
+           | "*" name -> typevartuple
+           | "**" name -> paramspec
 
-starargs_part: stararg ("," stararg)* ("," argvalue)* ("," kwargs)? ","?
+arguments: comprehension{test}
+         | call_argument ("," call_argument)* ","?
+
+?call_argument: name "=" test -> argvalue
+              | stararg
+              | kwargs
+              | test
+
 stararg: "*" test
 kwargs: "**" test
-?argvalue: test ("=" test)?
 
-comprehension{comp_result}: comp_result comp_fors comp_if*
-comp_fors: comp_for+
-comp_for: [ASYNC] "for" exprlist "in" or_test
+comprehension{comp_result}: comp_result comp_for+
+comp_for: [ASYNC] "for" exprlist "in" or_test comp_if*
 ASYNC: "async"
 ?comp_if: "if" test_nocond
 
@@ -316,7 +342,7 @@ yield_expr: "yield" [testlist]
           | "yield" "from" test -> yield_from
 
 number: HEX_NUMBER | BIN_NUMBER | OCT_NUMBER | IMAG_NUMBER | RATIONAL
-string: STRING | LONG_STRING | f_string
+string: INVALID_STRING_PREFIX | F_LONG_STRING | STRING | LONG_STRING | f_string
 
 f_string: FSTRING_DOUBLE_START f_string_content_double* FSTRING_DOUBLE_END
         | FSTRING_SINGLE_START f_string_content_single* FSTRING_SINGLE_END
@@ -332,25 +358,29 @@ f_string_content_single: FSTRING_TEXT_SINGLE
 f_expression_double: "{" test debug_eq? conversion? format_spec_double? "}"
 f_expression_single: "{" test debug_eq? conversion? format_spec_single? "}"
 debug_eq: "="
-format_spec_single: ":" (FSTRING_TEXT_SINGLE | "{" test "}")+
-format_spec_double: ":" (FSTRING_TEXT_DOUBLE | "{" test "}")+
+format_spec_single: ":" (FSTRING_TEXT_SINGLE | "{" test "}")*
+format_spec_double: ":" (FSTRING_TEXT_DOUBLE | "{" test "}")*
 conversion: "!" /[rsa]/i
 
 FSTRING_DOUBLE_END.2: /"/
 FSTRING_SINGLE_END.2: /'/
 
-FSTRING_SINGLE_START.2: /(f|fr|rf)'/
-FSTRING_DOUBLE_START.2: /(f|fr|rf)"/
+FSTRING_SINGLE_START.2: /(f|fr|rf)'/i
+FSTRING_DOUBLE_START.2: /(f|fr|rf)"/i
 
 FSTRING_TEXT_DOUBLE.2: /(?:\\.|[^{}"\\])+/
 FSTRING_TEXT_SINGLE.2: /(?:\\.|[^{}'\\])+/
 
-STRING: /([ub]?r?|r[ub])("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
-LONG_STRING: /([ub]?r?|r[ub])(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is
+INVALID_STRING_PREFIX.4: /((ur|ru))("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
+F_LONG_STRING.3: /((f|fr|rf))(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is
+STRING: /((br|rb|b|r|u)?)("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
+LONG_STRING: /((br|rb|b|r|u)?)(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is
 
 // Other terminals
 
 _NEWLINE: ( /\r?\n[\t ]*/ | COMMENT )+
+_rpar: ")" | _RPAREN_AS
+_RPAREN_AS.3: /\)(?=[\t \f]*as\b)/
 
 %ignore /[\t \f]+/  // WS
 %ignore /\\[\t \f]*\r?\n/   // LINE_CONT
@@ -359,7 +389,7 @@ _NEWLINE: ( /\r?\n[\t ]*/ | COMMENT )+
 
 // Python terminals
 !name: NAME | "match" | "case" | "anonymous"
-NAME: /[^\W\d]\w*(?!['"])/
+NAME: /(?!(?:False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\b)(?![^\W\d]\w*['"])[^\W\d]\w*/
 COMMENT: /#[^\n]*/
 
 _SPECIAL_DEC: "0".."9"        ("_"?  "0".."9"                       )*
