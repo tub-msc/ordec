@@ -35,6 +35,17 @@ def source_offset_after(source, needle, occurrence=1):
     }
 
 
+def utf16_source_offset(source, needle, occurrence=1):
+    """Return zero-based LSP UTF-16 line and character for text in source."""
+    position = source_offset(source, needle, occurrence=occurrence)
+    line_text = source.splitlines()[position["line"]]
+    character = len(line_text[:position["character"]].encode("utf-16-le")) // 2
+    return {
+        "line": position["line"],
+        "character": character,
+    }
+
+
 def initialize_server(tmp_path):
     """Create and initialize an ORD language server for a temporary workspace."""
     server = OrdecLanguageServer()
@@ -141,6 +152,7 @@ def test_lsp_initialize_exposes_core_capabilities(tmp_path):
         assert capability in capabilities
 
     assert capabilities["completionProvider"]["triggerCharacters"] == [".", "$"]
+    assert capabilities["positionEncoding"] == "utf-16"
 
 
 def test_lsp_document_lifecycle_and_diagnostics(tmp_path):
@@ -300,6 +312,39 @@ def test_lsp_navigation_references_rename_and_symbols(tmp_path):
     assert uri in rename["changes"]
 
 
+def test_lsp_positions_use_utf16_offsets(tmp_path):
+    mux_path = tmp_path / "mux2.ord"
+    mux_path.write_text(
+        "cell Mux2:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        path a\n"
+    )
+    source = (
+        "from .mux2 import Mux2 as Stage\n"
+        "\n"
+        "def helper():\n"
+        "    return \"😀\", Stage\n"
+    )
+    user_path = tmp_path / "utf16.ord"
+    user_path.write_text(source)
+
+    server = initialize_server(tmp_path)
+    uri = user_path.resolve().as_uri()
+    assert open_document(server, uri, source) == []
+
+    hover = request(
+        server,
+        "textDocument/hover",
+        {
+            "textDocument": text_document(uri),
+            "position": utf16_source_offset(source, "Stage", 2),
+        },
+    )
+
+    assert "Mux2" in hover["contents"]["value"]
+    assert hover["range"]["start"] == utf16_source_offset(source, "Stage", 2)
+
+
 def test_lsp_completion_and_code_actions(tmp_path):
     source = (
         "from ordec.core import *\n"
@@ -332,14 +377,15 @@ def test_lsp_completion_and_code_actions(tmp_path):
 
     broken_symbol = (
         "cell Inv:\n"
-        "    viewgen symbol -> Symbol:\n"
-        "        input a\n"
-        "    viewgen schematic -> Schematic:\n"
-        "        port a\n"
-        "        port y\n"
+        "  viewgen symbol -> Symbol:\n"
+        "    input a\n"
+        "  viewgen schematic -> Schematic:\n"
+        "    port a\n"
+        "    port y\n"
     )
     broken_uri = (tmp_path / "missing_symbol_port.ord").resolve().as_uri()
     diagnostics = open_document(server, broken_uri, broken_symbol)
+    diagnostics[0]["message"] = "wording changed"
     actions = request(
         server,
         "textDocument/codeAction",
@@ -351,6 +397,41 @@ def test_lsp_completion_and_code_actions(tmp_path):
         },
     )
     assert [action["title"] for action in actions] == ["Declare `y` in symbol view"]
+    assert actions[0]["edit"]["changes"][broken_uri][0]["newText"] == "    input y\n"
+
+
+def test_lsp_rejects_incremental_did_change(tmp_path):
+    server = initialize_server(tmp_path)
+    uri = (tmp_path / "incremental.ord").resolve().as_uri()
+    source = "cell Inv:\n    viewgen symbol -> Symbol:\n        input a\n"
+    assert open_document(server, uri, source) == []
+
+    responses = notify(
+        server,
+        "textDocument/didChange",
+        {
+            "textDocument": {
+                "uri": uri,
+                "version": 2,
+            },
+            "contentChanges": [{
+                "range": {
+                    "start": {
+                        "line": 0,
+                        "character": 0,
+                    },
+                    "end": {
+                        "line": 0,
+                        "character": 0,
+                    },
+                },
+                "text": "broken",
+            }],
+        },
+    )
+
+    assert responses[0]["method"] == "window/showMessage"
+    assert server.session.documents[uri]["text"] == source
 
 
 def test_lsp_workspace_folding_selection_and_semantic_tokens(tmp_path):

@@ -97,19 +97,23 @@ class AnalysisDiagnostic(NamedTuple):
     severity: str
     message: str
     code: Optional[str] = None
+    data: Optional[dict] = None
 
     def to_dict(self):
         """Convert the diagnostic to a plain dictionary.
 
         Returns:
-            Dictionary containing range, severity, message, and code.
+            Dictionary containing range, severity, message, code, and data.
         """
-        return {
+        result = {
             "range": self.range.to_dict(),
             "severity": self.severity,
             "message": self.message,
             "code": self.code,
         }
+        if self.data is not None:
+            result["data"] = self.data
+        return result
 
 
 class AnalysisSymbol(NamedTuple):
@@ -204,19 +208,46 @@ class DocumentAnalysis:
         """
         self.uri = uri
         self.version = version
-        self.diagnostics = diagnostics
-        self.symbols = symbols
-        self.imports = imports if imports is not None else []
-        self.import_entries = import_entries if import_entries is not None else []
-        self.exports = exports if exports is not None else []
-        self.scopes = scopes if scopes is not None else dict()
-        self.bindings = bindings if bindings is not None else []
+        self.diagnostics = list(diagnostics)
+        self.symbols = list(symbols)
+        self.imports = list(imports) if imports is not None else []
+        self.import_entries = list(import_entries) if import_entries is not None else []
+        self.exports = list(exports) if exports is not None else []
+        self.scopes = self.copy_scopes(scopes if scopes is not None else dict())
+        self.bindings = self.copy_records(bindings if bindings is not None else [])
         self.binding_map = dict((binding["id"], binding) for binding in self.bindings)
-        self.occurrences = occurrences if occurrences is not None else []
-        self.member_occurrences = member_occurrences if member_occurrences is not None else []
-        self.viewgen_returns = viewgen_returns if viewgen_returns is not None else []
-        self.node_contexts = node_contexts if node_contexts is not None else []
-        self.constraints = constraints if constraints is not None else []
+        self.occurrences = self.copy_records(occurrences if occurrences is not None else [])
+        self.member_occurrences = self.copy_records(
+            member_occurrences if member_occurrences is not None else []
+        )
+        self.viewgen_returns = self.copy_records(viewgen_returns if viewgen_returns is not None else [])
+        self.node_contexts = self.copy_records(node_contexts if node_contexts is not None else [])
+        self.constraints = self.copy_records(constraints if constraints is not None else [])
+
+    def copy_scopes(self, scopes):
+        """Return copied scope records so analysis snapshots do not alias."""
+        result = dict()
+        for scope_id, scope in scopes.items():
+            copied = dict(scope)
+            if "bindings" in copied:
+                copied["bindings"] = list(copied["bindings"])
+            result[scope_id] = copied
+        return result
+
+    def copy_records(self, records):
+        """Return copied analysis record dictionaries."""
+        result = []
+        for record in records:
+            copied = dict(record)
+            for key, value in list(copied.items()):
+                if isinstance(value, list):
+                    copied[key] = list(value)
+                elif isinstance(value, set):
+                    copied[key] = set(value)
+                elif isinstance(value, dict):
+                    copied[key] = dict(value)
+            result.append(copied)
+        return result
 
     def to_dict(self):
         """Convert the public analysis fields to a dictionary.
@@ -253,7 +284,7 @@ class DocumentAnalysis:
             version: Optional replacement document version.
 
         Returns:
-            New ``DocumentAnalysis`` sharing the same structural analysis data.
+            New ``DocumentAnalysis`` with copied structural analysis data.
         """
         return DocumentAnalysis(
             uri=self.uri if uri is None else uri,

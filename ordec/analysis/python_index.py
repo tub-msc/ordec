@@ -18,9 +18,11 @@ from .model import AnalysisRange
 class PythonModuleIndex:
     """Shallow Python source index used by ORD analysis.
 
-    The index resolves Python modules without executing them and extracts the
-    exported classes, functions, variables, and class members needed by LSP
-    definition, diagnostics, and completion features.
+    The index parses workspace Python modules without executing them and
+    extracts the exported classes, functions, variables, and class members
+    needed by LSP definition, diagnostics, and completion features. Resolving
+    installed modules uses ``importlib`` and may execute parent package
+    initialization code; failures are treated as unresolved modules.
     """
 
     def __init__(self, workspace_root: Optional[str] = None):
@@ -32,6 +34,15 @@ class PythonModuleIndex:
         """Clear cached Python module analysis and importlib state."""
         importlib.invalidate_caches()
         self.python_modules.clear()
+
+    def find_spec(self, module_name: str):
+        """Return an importlib spec without letting package failures escape."""
+        try:
+            return importlib.util.find_spec(module_name)
+        except KeyboardInterrupt:
+            raise
+        except BaseException:
+            return None
 
     def resolve_module_path(self, module_name: str):
         """Resolve a Python module name to a source file path."""
@@ -45,10 +56,7 @@ class PythonModuleIndex:
                 if candidate.exists():
                     return candidate.resolve()
 
-        try:
-            spec = importlib.util.find_spec(module_name)
-        except (ImportError, ModuleNotFoundError, ValueError):
-            return None
+        spec = self.find_spec(module_name)
 
         if spec is None or spec.origin in (None, "built-in", "frozen"):
             return None
@@ -120,10 +128,7 @@ class PythonModuleIndex:
         if self.resolve_module_path(module_name) is not None:
             return True
 
-        try:
-            return importlib.util.find_spec(module_name) is not None
-        except (ImportError, ModuleNotFoundError, ValueError):
-            return False
+        return self.find_spec(module_name) is not None
 
     def module_names_for_path(self, path: Path):
         """Return cached or workspace module names that may map to a path."""
@@ -169,12 +174,13 @@ class PythonModuleIndex:
             return None
 
         try:
-            source_data = module_path.read_text()
+            source_data = module_path.read_text(encoding="utf-8")
             syntax_tree = ast.parse(source_data, filename=str(module_path))
         except (OSError, SyntaxError, UnicodeDecodeError):
             self.python_modules[module_name] = None
             return None
 
+        source_lines = source_data.splitlines()
         exports = dict()
         reexports = []
         star_modules = []
@@ -182,12 +188,35 @@ class PythonModuleIndex:
         import_members = dict()
         classes = dict()
 
+        def ast_position(lineno, col_offset):
+            line = source_lines[lineno - 1] if lineno - 1 < len(source_lines) else ""
+            consumed = 0
+            character = 0
+            for char in line:
+                width = len(char.encode("utf-8"))
+                if consumed + width > col_offset:
+                    break
+                consumed += width
+                character += 1
+            return AnalysisPosition(lineno, character + 1)
+
         def node_range(node):
             end_lineno = getattr(node, "end_lineno", node.lineno)
             end_col_offset = getattr(node, "end_col_offset", node.col_offset)
             return AnalysisRange(
-                start=AnalysisPosition(node.lineno, node.col_offset + 1),
-                end=AnalysisPosition(end_lineno, end_col_offset + 1),
+                start=ast_position(node.lineno, node.col_offset),
+                end=ast_position(end_lineno, end_col_offset),
+            )
+
+        def name_range(node, name):
+            line = source_lines[node.lineno - 1] if node.lineno - 1 < len(source_lines) else ""
+            start_hint = ast_position(node.lineno, node.col_offset).character - 1
+            start = line.find(name, start_hint)
+            if start < 0:
+                start = start_hint
+            return AnalysisRange(
+                start=AnalysisPosition(node.lineno, start + 1),
+                end=AnalysisPosition(node.lineno, start + 1 + len(name)),
             )
 
         def add_export(name, kind, node):
@@ -199,10 +228,7 @@ class PythonModuleIndex:
                 "name": name,
                 "kind": kind,
                 "range": node_range(node),
-                "selection_range": AnalysisRange(
-                    start=AnalysisPosition(node.lineno, node.col_offset + 1),
-                    end=AnalysisPosition(node.lineno, node.col_offset + 1 + len(name)),
-                ),
+                "selection_range": name_range(node, name),
             }
             if kind == "class":
                 exports[name]["python_module"] = module_name
@@ -311,16 +337,7 @@ class PythonModuleIndex:
                             "name": class_node.name,
                             "kind": "function",
                             "range": node_range(class_node),
-                            "selection_range": AnalysisRange(
-                                start=AnalysisPosition(
-                                    class_node.lineno,
-                                    class_node.col_offset + 1,
-                                ),
-                                end=AnalysisPosition(
-                                    class_node.lineno,
-                                    class_node.col_offset + 1 + len(class_node.name),
-                                ),
-                            ),
+                            "selection_range": name_range(class_node, class_node.name),
                         })
 
                     container_names = set()
@@ -366,14 +383,11 @@ class PythonModuleIndex:
                                 "kind": member_kind,
                                 "range": node_range(target),
                                 "selection_range": AnalysisRange(
-                                    start=AnalysisPosition(
+                                    start=ast_position(
                                         target.end_lineno,
-                                        target.end_col_offset - len(target.attr) + 1,
+                                        target.end_col_offset - len(target.attr),
                                     ),
-                                    end=AnalysisPosition(
-                                        target.end_lineno,
-                                        target.end_col_offset + 1,
-                                    ),
+                                    end=ast_position(target.end_lineno, target.end_col_offset),
                                 ),
                             })
 

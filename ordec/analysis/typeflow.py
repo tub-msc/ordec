@@ -5,29 +5,8 @@
 from .model import AnalysisPosition, leading_identifier, range_contains
 
 
-SCHEMA_TYPE_NAMES = {
-    "Symbol",
-    "Schematic",
-    "Layout",
-    "SimHierarchy",
-    "Simulation",
-    "Pin",
-    "Net",
-    "PathNode",
-    "LayoutRect",
-    "LayoutPath",
-    "LayoutPoly",
-    "LayoutLabel",
-    "LayoutPin",
-    "SchemInstance",
-}
-
-DYNAMIC_MEMBER_TYPE_NAMES = {
-    "Symbol",
-    "Schematic",
-    "Layout",
-    "SimHierarchy",
-    "Simulation",
+CORE_TYPE_ALIASES = {
+    "Simulation": "SimHierarchy",
 }
 
 
@@ -43,7 +22,18 @@ class TypeFlowMixin:
         Returns:
             True when unknown members should be treated conservatively.
         """
-        return type_name in DYNAMIC_MEMBER_TYPE_NAMES
+        type_definition = self.resolve_core_type(type_name)
+        if type_definition is None:
+            return False
+        return "view_context" in self.type_members(type_definition)
+
+    def resolve_core_type(self, type_name: str):
+        """Resolve an ORDeC core type exported by ``ordec.core``."""
+        core_type_name = CORE_TYPE_ALIASES.get(type_name, type_name)
+        type_definition = self.python_definition("ordec.core", export_name=core_type_name)
+        if type_definition is None or type_definition.get("kind") != "class":
+            return None
+        return type_definition
 
     def context_type_names_for_kind(self, kind_name: str):
         """Map an ORD context keyword to candidate type names.
@@ -107,11 +97,9 @@ class TypeFlowMixin:
         if type_definition is not None:
             return type_definition
 
-        if type_name == "Simulation":
-            return self.python_definition("ordec.core", export_name="SimHierarchy")
-
-        if type_name in SCHEMA_TYPE_NAMES:
-            return self.python_definition("ordec.core", export_name=type_name)
+        core_definition = self.resolve_core_type(type_name)
+        if core_definition is not None:
+            return core_definition
 
         return None
 
@@ -133,7 +121,7 @@ class TypeFlowMixin:
                 type_definition["python_module"],
                 type_definition["python_class"],
             )
-            if type_definition["python_class"] not in SCHEMA_TYPE_NAMES:
+            if self.resolve_core_type(type_definition["python_class"]) is None:
                 members = dict(members)
                 members.update(self.schematic_instance_members())
             return members

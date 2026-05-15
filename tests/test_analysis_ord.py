@@ -4,6 +4,7 @@
 from pathlib import Path
 
 from ordec.analysis import AnalysisPosition, AnalysisSession, analyze_ord
+from ordec.analysis.python_index import PythonModuleIndex
 
 
 def position_at(source, needle, occurrence=1):
@@ -105,6 +106,56 @@ def test_analysis_session_tracks_document_versions_and_last_good_analysis():
 
     session.close_document(uri)
     assert session.documents == {}
+
+
+def test_analysis_error_snapshots_do_not_alias_last_good_analysis():
+    session = AnalysisSession(workspace_root="/tmp/workspace")
+    uri = "file:///tmp/snapshot.ord"
+    session.open_document(
+        uri,
+        "cell Inv:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        path a\n",
+        version=1,
+    )
+
+    good = session.analyze(uri)
+    session.update_document(uri, "cell Inv:\n    viewgen symbol(\n", version=2)
+    broken = session.analyze(uri)
+    broken.symbols.clear()
+
+    assert [symbol.name for symbol in good.symbols] == ["Inv", "symbol", "a"]
+    assert [symbol.name for symbol in session.documents[uri]["last_good_analysis"].symbols] == [
+        "Inv",
+        "symbol",
+        "a",
+    ]
+
+
+def test_python_index_find_spec_failures_are_unresolved(monkeypatch):
+    index = PythonModuleIndex()
+
+    def broken_find_spec(module_name):
+        raise SystemExit("bad package")
+
+    monkeypatch.setattr("importlib.util.find_spec", broken_find_spec)
+
+    assert index.resolve_module_path("bad.package") is None
+    assert not index.module_exists("bad.package")
+
+
+def test_python_index_exports_select_name_ranges(tmp_path):
+    (tmp_path / "devices.py").write_text(
+        "class ExtLib:\n"
+        "    pass\n"
+    )
+
+    definition = PythonModuleIndex(workspace_root=str(tmp_path)).definition(
+        "devices",
+        export_name="ExtLib",
+    )
+
+    assert definition["selection_range"].start.character == 7
 
 
 def test_analysis_session_reports_core_semantic_diagnostics(tmp_path):
@@ -483,6 +534,44 @@ def test_analysis_session_workspace_cache_and_document_features(tmp_path):
     path.write_text(source.replace("Mux2", "Mux4"))
     session.invalidate_path(str(path))
     assert [symbol["name"] for symbol in session.workspace_symbols("mux")] == ["Mux4"]
+
+
+def test_analysis_session_refreshes_dirty_workspace_rows_without_rescan(tmp_path, monkeypatch):
+    (tmp_path / "a.ord").write_text(
+        "cell A:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    (tmp_path / "b.ord").write_text(
+        "cell B:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    path = tmp_path / "top.ord"
+    source = (
+        "from .a import A\n"
+        "\n"
+        "cell Top:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        A inst:\n"
+        "            .a -- net_a\n"
+    )
+    path.write_text(source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = session.open_path(str(path))
+    first_index = session.workspace_import_index()
+    assert (tmp_path / "a.ord").resolve().as_uri() in first_index["imports"][uri]
+
+    def fail_workspace_uris():
+        raise AssertionError("workspace_uris should not run for dirty-row refresh")
+
+    monkeypatch.setattr(session, "workspace_uris", fail_workspace_uris)
+    edited = source.replace("from .a import A", "from .b import B").replace("A inst", "B inst")
+    session.update_document(uri, edited)
+
+    refreshed_index = session.workspace_import_index()
+    assert (tmp_path / "b.ord").resolve().as_uri() in refreshed_index["imports"][uri]
 
 
 def test_analysis_session_analyzes_unopened_file_uris(tmp_path):
