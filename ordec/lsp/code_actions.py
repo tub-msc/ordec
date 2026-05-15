@@ -45,6 +45,11 @@ def lsp_analysis_position(position):
     )
 
 
+def line_in_range(value_range, line: int):
+    """Return whether a one-based line falls inside an analysis range."""
+    return value_range.start.line <= line <= value_range.end.line
+
+
 def missing_symbol_port_action(session, uri: str, diagnostic):
     """Create a quick fix for schematic ports missing from a symbol view.
 
@@ -68,10 +73,7 @@ def missing_symbol_port_action(session, uri: str, diagnostic):
     for symbol in analysis.symbols:
         if symbol.kind != "class":
             continue
-        if not (
-            symbol.range.start.line <= diagnostic_position.line
-            and diagnostic_position.line <= symbol.range.end.line
-        ):
+        if not line_in_range(symbol.range, diagnostic_position.line):
             continue
         containing_cell = symbol
         break
@@ -83,10 +85,7 @@ def missing_symbol_port_action(session, uri: str, diagnostic):
     for symbol in analysis.symbols:
         if symbol.name != "symbol" or symbol.kind != "function":
             continue
-        if not (
-            containing_cell.range.start.line <= symbol.selection_range.start.line
-            and symbol.selection_range.start.line <= containing_cell.range.end.line
-        ):
+        if not line_in_range(containing_cell.range, symbol.selection_range.start.line):
             continue
         symbol_view = symbol
         break
@@ -125,10 +124,7 @@ def symbol_body_indent(session, uri: str, analysis, symbol_view):
     for symbol in analysis.symbols:
         if symbol.kind != "context":
             continue
-        if not (
-            symbol_view.range.start.line <= symbol.selection_range.start.line
-            and symbol.selection_range.start.line <= symbol_view.range.end.line
-        ):
+        if not line_in_range(symbol_view.range, symbol.selection_range.start.line):
             continue
 
         line = lines[symbol.selection_range.start.line - 1]
