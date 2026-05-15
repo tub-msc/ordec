@@ -109,17 +109,37 @@ class OrdecLanguageServer:
         """Handle notifications that require no server action."""
         return []
 
-    def handle_initialize(self, message):
-        params = message.get("params", {})
-        root_path = None
+    def canonical_uri(self, uri: str):
+        """Return the session-canonical URI for file-backed documents."""
+        return self.session.canonical_uri(uri)
+
+    def text_document_uri(self, params):
+        """Return the canonical URI from LSP textDocument params."""
+        return self.canonical_uri(params["textDocument"]["uri"])
+
+    def message_text_document_uri(self, message):
+        """Return the canonical URI from an LSP message's textDocument params."""
+        return self.text_document_uri(message.get("params", {}))
+
+    def file_change_uri(self, change):
+        """Return the canonical URI from a watched-file change entry."""
+        return self.canonical_uri(change["uri"])
+
+    def initialize_root_path(self, params):
+        """Return the resolved workspace root path from initialize params."""
         if params.get("rootUri"):
             parsed_uri = urlparse(params["rootUri"])
             if parsed_uri.scheme == "file":
-                root_path = str(Path(unquote(parsed_uri.path)))
-        elif params.get("rootPath"):
-            root_path = params["rootPath"]
+                return str(Path(unquote(parsed_uri.path)).resolve())
 
-        self.session = AnalysisSession(workspace_root=root_path)
+        if params.get("rootPath"):
+            return str(Path(params["rootPath"]).resolve())
+
+        return None
+
+    def handle_initialize(self, message):
+        params = message.get("params", {})
+        self.session = AnalysisSession(workspace_root=self.initialize_root_path(params))
         return self.result_response(message, {
             "serverInfo": {
                 "name": "ordec-lsp",
@@ -169,16 +189,18 @@ class OrdecLanguageServer:
     def handle_did_open(self, message):
         params = message.get("params", {})
         text_document = params["textDocument"]
+        uri = self.text_document_uri(params)
         self.session.open_document(
-            text_document["uri"],
+            uri,
             text_document["text"],
             version=text_document.get("version"),
         )
-        return [self.publish_diagnostics(text_document["uri"])]
+        return [self.publish_diagnostics(uri)]
 
     def handle_did_change(self, message):
         params = message.get("params", {})
         text_document = params["textDocument"]
+        uri = self.text_document_uri(params)
         content_changes = params.get("contentChanges", [])
         if not content_changes:
             return []
@@ -189,20 +211,20 @@ class OrdecLanguageServer:
             )]
 
         self.session.update_document(
-            text_document["uri"],
+            uri,
             content_changes[-1]["text"],
             version=text_document.get("version"),
         )
-        return [self.publish_diagnostics(text_document["uri"])]
+        return [self.publish_diagnostics(uri)]
 
     def handle_did_close(self, message):
-        text_document = message.get("params", {})["textDocument"]
-        self.session.close_document(text_document["uri"])
+        uri = self.message_text_document_uri(message)
+        self.session.close_document(uri)
         return [{
             "jsonrpc": "2.0",
             "method": "textDocument/publishDiagnostics",
             "params": {
-                "uri": text_document["uri"],
+                "uri": uri,
                 "diagnostics": [],
             },
         }]
@@ -210,7 +232,7 @@ class OrdecLanguageServer:
     def handle_did_save(self, message):
         params = message.get("params", {})
         text_document = params["textDocument"]
-        uri = text_document["uri"]
+        uri = self.text_document_uri(params)
         if "text" in params:
             self.session.update_document(
                 uri,
@@ -231,18 +253,14 @@ class OrdecLanguageServer:
 
     def is_python_uri(self, uri: str):
         """Return whether a URI points to a Python source file."""
-        parsed_uri = urlparse(uri)
-        if parsed_uri.scheme != "file":
-            return False
-
-        return Path(unquote(parsed_uri.path)).suffix == ".py"
+        return self.session.file_uri_suffix(uri) == ".py"
 
     def handle_did_change_watched_files(self, message):
         affected_uris = set()
         open_uris = self.open_document_uris()
         changes = message.get("params", {}).get("changes", [])
         ord_uris = {
-            change["uri"]
+            self.file_change_uri(change)
             for change in changes
             if self.session.is_ord_uri(change["uri"])
         }
@@ -255,7 +273,7 @@ class OrdecLanguageServer:
         python_changed = False
         canonical_ord_uris = set()
         for change in changes:
-            uri = change["uri"]
+            uri = self.file_change_uri(change)
 
             canonical_invalidated_uri = self.session.invalidate_uri(uri)
             if canonical_invalidated_uri is not None:
@@ -278,7 +296,7 @@ class OrdecLanguageServer:
         ]
 
     def handle_document_symbol(self, message):
-        uri = message.get("params", {})["textDocument"]["uri"]
+        uri = self.message_text_document_uri(message)
         analysis = self.session.analyze(uri)
         result = []
         for symbol in analysis.symbols:
@@ -293,7 +311,7 @@ class OrdecLanguageServer:
 
     def handle_document_highlight(self, message):
         params = message.get("params", {})
-        uri = params["textDocument"]["uri"]
+        uri = self.text_document_uri(params)
         position = self.analysis_position(uri, params["position"])
         result = []
         for highlight in self.session.document_highlights(uri, position):
@@ -305,7 +323,7 @@ class OrdecLanguageServer:
 
     def handle_definition(self, message):
         params = message.get("params", {})
-        uri = params["textDocument"]["uri"]
+        uri = self.text_document_uri(params)
         position = self.analysis_position(uri, params["position"])
         definition = self.session.definition(uri, position)
         result = None
@@ -318,7 +336,7 @@ class OrdecLanguageServer:
 
     def handle_hover(self, message):
         params = message.get("params", {})
-        uri = params["textDocument"]["uri"]
+        uri = self.text_document_uri(params)
         position = self.analysis_position(uri, params["position"])
         hover = self.session.hover(uri, position)
         result = None
@@ -334,7 +352,7 @@ class OrdecLanguageServer:
 
     def handle_references(self, message):
         params = message.get("params", {})
-        uri = params["textDocument"]["uri"]
+        uri = self.text_document_uri(params)
         position = self.analysis_position(uri, params["position"])
         references = self.session.references(uri, position)
         result = []
@@ -347,7 +365,7 @@ class OrdecLanguageServer:
 
     def handle_completion(self, message):
         params = message.get("params", {})
-        uri = params["textDocument"]["uri"]
+        uri = self.text_document_uri(params)
         position = self.analysis_position(uri, params["position"])
         completions = self.session.completions(uri, position)
         result = []
@@ -361,7 +379,7 @@ class OrdecLanguageServer:
 
     def handle_code_action(self, message):
         params = message.get("params", {})
-        uri = params["textDocument"]["uri"]
+        uri = self.text_document_uri(params)
         diagnostics = params.get("context", {}).get("diagnostics", [])
         return self.result_response(
             message,
@@ -369,7 +387,7 @@ class OrdecLanguageServer:
         )
 
     def handle_folding_range(self, message):
-        uri = message.get("params", {})["textDocument"]["uri"]
+        uri = self.message_text_document_uri(message)
         result = []
         for folding_range in self.session.folding_ranges(uri):
             entry = {
@@ -394,7 +412,7 @@ class OrdecLanguageServer:
 
     def handle_selection_range(self, message):
         params = message.get("params", {})
-        uri = params["textDocument"]["uri"]
+        uri = self.text_document_uri(params)
         positions = [
             self.analysis_position(uri, pos)
             for pos in params["positions"]
@@ -410,7 +428,7 @@ class OrdecLanguageServer:
         return self.result_response(message, result)
 
     def handle_semantic_tokens_full(self, message):
-        uri = message.get("params", {})["textDocument"]["uri"]
+        uri = self.message_text_document_uri(message)
         tokens = self.session.semantic_tokens(uri)
         data = []
         prev_line = 0
@@ -454,7 +472,7 @@ class OrdecLanguageServer:
 
     def handle_prepare_rename(self, message):
         params = message.get("params", {})
-        uri = params["textDocument"]["uri"]
+        uri = self.text_document_uri(params)
         position = self.analysis_position(uri, params["position"])
         result = self.session.prepare_rename(uri, position)
         if result is not None:
@@ -466,7 +484,7 @@ class OrdecLanguageServer:
 
     def handle_rename(self, message):
         params = message.get("params", {})
-        uri = params["textDocument"]["uri"]
+        uri = self.text_document_uri(params)
         position = self.analysis_position(uri, params["position"])
         try:
             changes = self.session.rename(uri, position, params["newName"])
@@ -536,6 +554,7 @@ class OrdecLanguageServer:
 
     def document_line(self, uri: str, one_based_line: int):
         """Return a document line for position encoding conversion."""
+        uri = self.canonical_uri(uri)
         doc = self.session.documents.get(uri)
         if doc is not None:
             lines = doc["text"].splitlines()

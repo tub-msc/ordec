@@ -49,19 +49,79 @@ class AnalysisSession(
     points.
     """
 
-    def __init__(self, workspace_root: Optional[str] = None):
+    def __init__(
+        self,
+        workspace_root: Optional[str] = None,
+        max_closed_documents: int = 512,
+    ):
         """Initialize an analysis session.
 
         Args:
             workspace_root: Optional directory used to resolve workspace ORD
                 modules and Python files.
+            max_closed_documents: Maximum number of file-backed closed
+                documents to keep cached after workspace operations.
         """
-        self.workspace_root = workspace_root
+        if workspace_root:
+            self.workspace_root = str(Path(workspace_root).resolve())
+        else:
+            self.workspace_root = None
+        self.max_closed_documents = max_closed_documents
         self.documents = dict()
-        self.python_index = PythonModuleIndex(workspace_root=workspace_root)
+        self.document_access_counter = 0
+        self.python_index = PythonModuleIndex(workspace_root=self.workspace_root)
         self.python_modules = self.python_index.python_modules
         self.workspace_index = None
         self.workspace_dirty_uris = set()
+
+    def canonical_uri(self, uri: str):
+        """Return the canonical session key for a URI."""
+        path = self.file_uri_path(uri)
+        if path is None:
+            return uri
+
+        return path.as_uri()
+
+    def file_uri_path(self, uri: str):
+        """Return the resolved path for a file URI, or None."""
+        parsed_uri = urlparse(uri)
+        if parsed_uri.scheme != "file":
+            return None
+
+        return Path(unquote(parsed_uri.path)).resolve()
+
+    def file_uri_suffix(self, uri: str):
+        """Return a file URI suffix, or None for non-file URIs."""
+        path = self.file_uri_path(uri)
+        if path is None:
+            return None
+
+        return path.suffix
+
+    def record_document_access(self, uri: str):
+        """Record recent use for closed-document eviction."""
+        doc = self.documents.get(uri)
+        if doc is None:
+            return
+        self.document_access_counter += 1
+        doc["last_access"] = self.document_access_counter
+
+    def evict_closed_documents(self):
+        """Evict least-recently-used closed file documents beyond the limit."""
+        if self.max_closed_documents is None or self.max_closed_documents < 0:
+            return
+
+        closed = [
+            (doc.get("last_access", 0), uri)
+            for uri, doc in self.documents.items()
+            if not doc.get("is_open") and uri.startswith("file:")
+        ]
+        overflow = len(closed) - self.max_closed_documents
+        if overflow <= 0:
+            return
+
+        for _, uri in sorted(closed)[:overflow]:
+            self.documents.pop(uri, None)
 
     def last_good_analysis(self, doc):
         """Return the latest error-free analysis for a document record."""
@@ -81,27 +141,35 @@ class AnalysisSession(
 
     def mark_workspace_uri_dirty(self, uri: str):
         """Mark one ORD document's workspace-import row as stale."""
-        if (
-            self.workspace_index is not None
-            and self.is_ord_uri(uri)
-            and (
-                uri in self.workspace_index["uris"]
-                or self.uri_in_workspace(uri)
-            )
-        ):
-            self.workspace_dirty_uris.add(uri)
+        uri = self.canonical_uri(uri)
+        if not self.is_ord_uri(uri):
+            return
+
+        if not self.workspace_index_may_track(uri):
+            return
+
+        self.workspace_dirty_uris.add(uri)
+
+    def workspace_index_may_track(self, uri: str):
+        """Return whether a URI could affect the workspace import graph."""
+        if self.workspace_index is None:
+            return False
+
+        if uri in self.workspace_index["uris"]:
+            return True
+
+        return self.uri_in_workspace(uri)
 
     def uri_in_workspace(self, uri: str):
         """Return whether a file URI is inside the configured workspace."""
         if not self.workspace_root:
             return True
 
-        parsed_uri = urlparse(uri)
-        if parsed_uri.scheme != "file":
+        path = self.file_uri_path(uri)
+        if path is None:
             return False
 
         try:
-            path = Path(unquote(parsed_uri.path)).resolve()
             path.relative_to(Path(self.workspace_root).resolve())
         except ValueError:
             return False
@@ -140,15 +208,7 @@ class AnalysisSession(
             version: Optional LSP document version.
             is_open: Whether the document is open in the editor.
         """
-        previous = self.documents.get(uri)
-        self.documents[uri] = {
-            "text": text,
-            "version": version,
-            "analysis": None,
-            "last_good_analysis": self.last_good_analysis(previous),
-            "is_open": is_open,
-        }
-        self.mark_workspace_uri_dirty(uri)
+        self.store_document(uri, text, version=version, is_open=is_open)
 
     def update_document(
         self,
@@ -165,6 +225,17 @@ class AnalysisSession(
             version: Optional LSP document version.
             is_open: Whether the document is open in the editor.
         """
+        self.store_document(uri, text, version=version, is_open=is_open)
+
+    def store_document(
+        self,
+        uri: str,
+        text: str,
+        version: Optional[int] = None,
+        is_open: bool = True,
+    ):
+        """Store a document snapshot and mark related workspace state dirty."""
+        uri = self.canonical_uri(uri)
         previous = self.documents.get(uri)
         self.documents[uri] = {
             "text": text,
@@ -172,31 +243,35 @@ class AnalysisSession(
             "analysis": None,
             "last_good_analysis": self.last_good_analysis(previous),
             "is_open": is_open,
+            "last_access": 0,
         }
+        self.record_document_access(uri)
         self.mark_workspace_uri_dirty(uri)
+        return uri
 
     def close_document(self, uri: str):
         """Remove a document from the session."""
+        uri = self.canonical_uri(uri)
         self.documents.pop(uri, None)
         self.invalidate_workspace_index()
 
     def ensure_document(self, uri: str):
         """Load a file-backed document when it is not already tracked."""
+        uri = self.canonical_uri(uri)
         if uri not in self.documents and uri.startswith("file:"):
-            path = Path(unquote(urlparse(uri).path))
+            path = self.file_uri_path(uri)
             try:
                 self.open_path(str(path))
-            except OSError:
+            except (OSError, TypeError):
                 return False
-        return uri in self.documents
+        if uri in self.documents:
+            self.record_document_access(uri)
+            return True
+        return False
 
     def is_ord_uri(self, uri: str):
         """Return whether a URI points to an ORD source file."""
-        parsed_uri = urlparse(uri)
-        if parsed_uri.scheme != "file":
-            return False
-
-        return Path(unquote(parsed_uri.path)).suffix == ".ord"
+        return self.file_uri_suffix(uri) == ".ord"
 
     def invalidate_path(self, path: str):
         """Invalidate cached state for a filesystem path."""
@@ -224,6 +299,7 @@ class AnalysisSession(
 
     def invalidate_uri(self, uri: str):
         """Invalidate cached state for a file URI."""
+        uri = self.canonical_uri(uri)
         parsed_uri = urlparse(uri)
         if parsed_uri.scheme != "file":
             return None
@@ -232,6 +308,7 @@ class AnalysisSession(
 
     def resolve_module_uri(self, uri: str, module_name: str):
         """Resolve an ORD import name relative to a document URI."""
+        uri = self.canonical_uri(uri)
         if not uri.startswith("file:"):
             return None
 
@@ -324,6 +401,7 @@ class AnalysisSession(
 
     def analyze(self, uri: str):
         """Return cached document analysis, parsing the document when needed."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return DocumentAnalysis(uri=uri, version=None, diagnostics=[], symbols=[])
 
@@ -345,6 +423,7 @@ class AnalysisSession(
 
     def diagnostics(self, uri: str):
         """Return parser and semantic diagnostics for a document."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return []
 
@@ -412,6 +491,7 @@ class AnalysisSession(
         """Build or return cached ORD import dependency indexes."""
         if self.workspace_index is not None:
             self.refresh_workspace_import_rows()
+            self.evict_closed_documents()
             return self.workspace_index
 
         uris = set(self.workspace_uris())
@@ -429,6 +509,7 @@ class AnalysisSession(
             "imports": imports_by_uri,
             "dependents": dependents_by_uri,
         }
+        self.evict_closed_documents()
         return self.workspace_index
 
     def refresh_workspace_import_rows(self):
@@ -464,6 +545,7 @@ class AnalysisSession(
 
             for import_uri in import_uris - old_imports:
                 self.workspace_index["dependents"].setdefault(import_uri, set()).add(uri)
+        self.evict_closed_documents()
 
     def remove_workspace_import_row(self, uri: str):
         """Remove one URI from the cached workspace import graph."""
@@ -482,6 +564,7 @@ class AnalysisSession(
 
     def workspace_dependents(self, uri: str):
         """Return workspace URIs that directly or indirectly import a URI."""
+        uri = self.canonical_uri(uri)
         index = self.workspace_import_index()
         dependents = set()
         pending = list(index["dependents"].get(uri, set()))
@@ -498,6 +581,7 @@ class AnalysisSession(
 
     def resolve_import_uris(self, uri: str):
         """Resolve ORD imports in a document to imported document URIs."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri) or not uri.startswith("file:"):
             return []
 
@@ -522,6 +606,7 @@ class AnalysisSession(
 
     def analyze_related(self, uri: str):
         """Analyze a document and its reachable ORD imports."""
+        uri = self.canonical_uri(uri)
         analyses = dict()
         pending = [uri]
 
@@ -547,6 +632,7 @@ class AnalysisSession(
 
     def local_definition(self, uri: str, position: AnalysisPosition):
         """Resolve a local binding or occurrence at a document position."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return None
 
@@ -590,6 +676,7 @@ class AnalysisSession(
 
     def visible_bindings(self, uri: str, position: AnalysisPosition):
         """Return bindings visible from a document position."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return []
 
@@ -633,6 +720,7 @@ class AnalysisSession(
 
     def reference_candidates(self, uri: str):
         """Return named ranges that can participate in reference searches."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return []
 
@@ -700,6 +788,7 @@ class AnalysisSession(
 
     def module_definition(self, uri: str, module_name: str):
         """Resolve an ORD or Python module definition from an import name."""
+        uri = self.canonical_uri(uri)
         module_uri = self.resolve_module_uri(uri, module_name)
         python_module_name = self.resolve_python_import_name(uri, module_name)
         if module_uri is None:
@@ -722,6 +811,7 @@ class AnalysisSession(
 
     def import_entry_at_position(self, uri: str, position: AnalysisPosition):
         """Return the import entry whose selected name contains a position."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return None
 
@@ -739,6 +829,7 @@ class AnalysisSession(
 
     def name_at_position(self, uri: str, position: AnalysisPosition):
         """Return the identifier token at or immediately before a position."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return None
 
@@ -784,6 +875,7 @@ class AnalysisSession(
 
     def resolve_name(self, uri: str, name: str):
         """Resolve a top-level ORD or Python name visible from a document."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return None
 
@@ -840,6 +932,7 @@ class AnalysisSession(
 
     def hover(self, uri: str, position: AnalysisPosition):
         """Return hover contents for the definition at a position."""
+        uri = self.canonical_uri(uri)
         definition = self.definition(uri, position)
         if definition is None:
             return None
@@ -860,6 +953,7 @@ class AnalysisSession(
 
     def ord_cell_member_definition(self, cell_uri: str, cell_name: str, member_name: str):
         """Resolve a member declared by an ORD cell."""
+        cell_uri = self.canonical_uri(cell_uri)
         if not self.ensure_document(cell_uri):
             return None
 
@@ -909,6 +1003,7 @@ class AnalysisSession(
 
     def ord_cell_members(self, cell_uri: str, cell_name: str):
         """Collect members exposed by an ORD cell."""
+        cell_uri = self.canonical_uri(cell_uri)
         if not self.ensure_document(cell_uri):
             return dict()
 
@@ -968,6 +1063,7 @@ class AnalysisSession(
 
     def member_definition(self, uri: str, position: AnalysisPosition):
         """Resolve a member or parameter access at a document position."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return None
 
@@ -1001,6 +1097,7 @@ class AnalysisSession(
 
     def member_occurrence_at_position(self, uri: str, position: AnalysisPosition):
         """Return a member occurrence that contains a document position."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return None
 
@@ -1012,6 +1109,7 @@ class AnalysisSession(
 
     def folding_ranges(self, uri: str):
         """Return foldable symbol and import ranges for a document."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return []
 
@@ -1064,6 +1162,7 @@ class AnalysisSession(
 
     def selection_ranges(self, uri: str, positions):
         """Return nested selection ranges for document positions."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return [None for _ in positions]
 
@@ -1141,6 +1240,7 @@ class AnalysisSession(
 
     def semantic_tokens(self, uri: str):
         """Return semantic token records for a document."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return []
 
@@ -1234,10 +1334,12 @@ class AnalysisSession(
                     "selection_range": symbol.selection_range,
                 })
 
+        self.evict_closed_documents()
         return result
 
     def references(self, uri: str, position: AnalysisPosition):
         """Return references to the definition at a document position."""
+        uri = self.canonical_uri(uri)
         definition = self.definition(uri, position)
         if definition is None:
             return []
@@ -1276,6 +1378,7 @@ class AnalysisSession(
 
     def reference_search_uris(self, uri: str, definition):
         """Return the documents that may contain references to a definition."""
+        uri = self.canonical_uri(uri)
         if definition.get("binding_id") is not None and not definition.get("exported"):
             return [uri]
 
@@ -1299,6 +1402,7 @@ class AnalysisSession(
 
     def document_highlights(self, uri: str, position: AnalysisPosition):
         """Return same-document highlights for the symbol at a position."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return []
 
@@ -1337,6 +1441,7 @@ class AnalysisSession(
 
     def definition(self, uri: str, position: AnalysisPosition):
         """Resolve the best definition for a document position."""
+        uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return None
 
