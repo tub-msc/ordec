@@ -98,6 +98,20 @@ class AnalysisSession(
 
         return path.suffix
 
+    def display_uri(self, uri: str):
+        """Return a user-facing location string for a URI."""
+        path = self.file_uri_path(uri)
+        if path is None:
+            return uri
+
+        if self.workspace_root:
+            try:
+                return str(path.relative_to(Path(self.workspace_root).resolve()))
+            except ValueError:
+                pass
+
+        return str(path)
+
     def record_document_access(self, uri: str):
         """Record recent use for closed-document eviction."""
         doc = self.documents.get(uri)
@@ -944,7 +958,7 @@ class AnalysisSession(
 
         contents = "{} {}".format(definition["kind"], definition["name"])
         if definition["uri"] != uri:
-            contents += "\n{}".format(definition["uri"])
+            contents += "\n{}".format(self.display_uri(definition["uri"]))
 
         return {
             "contents": contents,
