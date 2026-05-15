@@ -1,14 +1,8 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-# standard imports
-import re
-
 # ordec imports
 from ..analysis.model import AnalysisPosition
-
-
-MISSING_SYMBOL_PORT_RE = re.compile(r"Schematic port `([^`]+)`")
 
 
 def code_actions(session, uri: str, diagnostics):
@@ -62,12 +56,11 @@ def missing_symbol_port_action(session, uri: str, diagnostic):
     Returns:
         LSP code action dictionary, or None when the fix cannot be placed.
     """
-    message = diagnostic.get("message", "")
-    match = MISSING_SYMBOL_PORT_RE.search(message)
-    if match is None:
+    data = diagnostic.get("data") or {}
+    port_name = data.get("portName")
+    if not port_name:
         return None
 
-    port_name = match.group(1)
     diagnostic_position = lsp_analysis_position(diagnostic["range"]["start"])
     analysis = session.analyze(uri)
 
@@ -101,6 +94,7 @@ def missing_symbol_port_action(session, uri: str, diagnostic):
     if symbol_view is None:
         return None
 
+    indent = symbol_body_indent(session, uri, analysis, symbol_view)
     insert_position = {
         "line": symbol_view.range.start.line,
         "character": 0,
@@ -116,8 +110,36 @@ def missing_symbol_port_action(session, uri: str, diagnostic):
                         "start": insert_position,
                         "end": insert_position,
                     },
-                    "newText": "        input {}\n".format(port_name),
+                    "newText": "{}input {}\n".format(indent, port_name),
                 }],
             },
         },
     }
+
+
+def symbol_body_indent(session, uri: str, analysis, symbol_view):
+    """Return the indentation to use for a new symbol-view body line."""
+    text = session.documents[uri]["text"]
+    lines = text.splitlines()
+
+    for symbol in analysis.symbols:
+        if symbol.kind != "context":
+            continue
+        if not (
+            symbol_view.range.start.line <= symbol.selection_range.start.line
+            and symbol.selection_range.start.line <= symbol_view.range.end.line
+        ):
+            continue
+
+        line = lines[symbol.selection_range.start.line - 1]
+        return line[:len(line) - len(line.lstrip(" \t"))]
+
+    start_line_index = symbol_view.range.start.line
+    end_line_index = min(symbol_view.range.end.line, len(lines))
+    for line in lines[start_line_index:end_line_index]:
+        if line.strip():
+            return line[:len(line) - len(line.lstrip(" \t"))]
+
+    header = lines[symbol_view.range.start.line - 1]
+    header_indent = header[:len(header) - len(header.lstrip(" \t"))]
+    return header_indent + "    "

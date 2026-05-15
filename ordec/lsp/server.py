@@ -35,6 +35,7 @@ class OrdecLanguageServer:
     def __init__(self):
         """Initialize server state and LSP method dispatch."""
         self.shutdown_requested = False
+        self.position_encoding = "utf-16"
         self.session = AnalysisSession()
         self.handlers = {
             "initialize": self.handle_initialize,
@@ -124,6 +125,7 @@ class OrdecLanguageServer:
                 "name": "ordec-lsp",
             },
             "capabilities": {
+                "positionEncoding": self.position_encoding,
                 "textDocumentSync": {
                     "openClose": True,
                     "change": 1,
@@ -180,6 +182,11 @@ class OrdecLanguageServer:
         content_changes = params.get("contentChanges", [])
         if not content_changes:
             return []
+        if any("range" in change for change in content_changes):
+            return [self.show_message(
+                "error",
+                "ORDeC LSP only supports full document synchronization.",
+            )]
 
         self.session.update_document(
             text_document["uri"],
@@ -233,23 +240,37 @@ class OrdecLanguageServer:
     def handle_did_change_watched_files(self, message):
         affected_uris = set()
         open_uris = self.open_document_uris()
-        for change in message.get("params", {}).get("changes", []):
-            uri = change["uri"]
+        changes = message.get("params", {}).get("changes", [])
+        ord_uris = {
+            change["uri"]
+            for change in changes
+            if self.session.is_ord_uri(change["uri"])
+        }
 
+        for uri in ord_uris:
             if uri in open_uris:
                 affected_uris.add(uri)
+            affected_uris.update(self.session.workspace_dependents(uri))
 
-            if self.session.is_ord_uri(uri):
-                affected_uris.update(self.session.workspace_dependents(uri))
+        python_changed = False
+        canonical_ord_uris = set()
+        for change in changes:
+            uri = change["uri"]
 
             canonical_invalidated_uri = self.session.invalidate_uri(uri)
             if canonical_invalidated_uri is not None:
                 if canonical_invalidated_uri in open_uris:
                     affected_uris.add(canonical_invalidated_uri)
                 if self.session.is_ord_uri(canonical_invalidated_uri):
-                    affected_uris.update(self.session.workspace_dependents(canonical_invalidated_uri))
+                    canonical_ord_uris.add(canonical_invalidated_uri)
             elif self.is_python_uri(uri):
-                affected_uris.update(open_uris)
+                python_changed = True
+
+        for uri in canonical_ord_uris:
+            affected_uris.update(self.session.workspace_dependents(uri))
+
+        if python_changed:
+            affected_uris.update(open_uris)
 
         return [
             self.publish_diagnostics(uri)
@@ -264,8 +285,8 @@ class OrdecLanguageServer:
             result.append({
                 "name": symbol.name,
                 "kind": self.symbol_kind(symbol.kind),
-                "range": self.lsp_range(symbol.range),
-                "selectionRange": self.lsp_range(symbol.selection_range),
+                "range": self.lsp_range(uri, symbol.range),
+                "selectionRange": self.lsp_range(uri, symbol.selection_range),
             })
 
         return self.result_response(message, result)
@@ -273,11 +294,11 @@ class OrdecLanguageServer:
     def handle_document_highlight(self, message):
         params = message.get("params", {})
         uri = params["textDocument"]["uri"]
-        position = self.analysis_position(params["position"])
+        position = self.analysis_position(uri, params["position"])
         result = []
         for highlight in self.session.document_highlights(uri, position):
             result.append({
-                "range": self.lsp_range(highlight["range"]),
+                "range": self.lsp_range(uri, highlight["range"]),
                 "kind": self.document_highlight_kind(highlight["kind"]),
             })
         return self.result_response(message, result)
@@ -285,20 +306,20 @@ class OrdecLanguageServer:
     def handle_definition(self, message):
         params = message.get("params", {})
         uri = params["textDocument"]["uri"]
-        position = self.analysis_position(params["position"])
+        position = self.analysis_position(uri, params["position"])
         definition = self.session.definition(uri, position)
         result = None
         if definition is not None:
             result = {
                 "uri": definition["uri"],
-                "range": self.lsp_range(definition["selection_range"]),
+                "range": self.lsp_range(definition["uri"], definition["selection_range"]),
             }
         return self.result_response(message, result)
 
     def handle_hover(self, message):
         params = message.get("params", {})
         uri = params["textDocument"]["uri"]
-        position = self.analysis_position(params["position"])
+        position = self.analysis_position(uri, params["position"])
         hover = self.session.hover(uri, position)
         result = None
         if hover is not None:
@@ -307,27 +328,27 @@ class OrdecLanguageServer:
                     "kind": "plaintext",
                     "value": hover["contents"],
                 },
-                "range": self.lsp_range(hover["range"]),
+                "range": self.lsp_range(uri, hover["range"]),
             }
         return self.result_response(message, result)
 
     def handle_references(self, message):
         params = message.get("params", {})
         uri = params["textDocument"]["uri"]
-        position = self.analysis_position(params["position"])
+        position = self.analysis_position(uri, params["position"])
         references = self.session.references(uri, position)
         result = []
         for reference in references:
             result.append({
                 "uri": reference["uri"],
-                "range": self.lsp_range(reference["range"]),
+                "range": self.lsp_range(reference["uri"], reference["range"]),
             })
         return self.result_response(message, result)
 
     def handle_completion(self, message):
         params = message.get("params", {})
         uri = params["textDocument"]["uri"]
-        position = self.analysis_position(params["position"])
+        position = self.analysis_position(uri, params["position"])
         completions = self.session.completions(uri, position)
         result = []
         for completion in completions:
@@ -362,20 +383,20 @@ class OrdecLanguageServer:
             result.append(entry)
         return self.result_response(message, result)
 
-    def lsp_selection_range_chain(self, node):
+    def lsp_selection_range_chain(self, uri, node):
         """Convert a nested analysis selection range chain to LSP shape."""
         lsp_node = {
-            "range": self.lsp_range(node["range"]),
+            "range": self.lsp_range(uri, node["range"]),
         }
         if node["parent"] is not None:
-            lsp_node["parent"] = self.lsp_selection_range_chain(node["parent"])
+            lsp_node["parent"] = self.lsp_selection_range_chain(uri, node["parent"])
         return lsp_node
 
     def handle_selection_range(self, message):
         params = message.get("params", {})
         uri = params["textDocument"]["uri"]
         positions = [
-            self.analysis_position(pos)
+            self.analysis_position(uri, pos)
             for pos in params["positions"]
         ]
         selection_ranges = self.session.selection_ranges(uri, positions)
@@ -385,7 +406,7 @@ class OrdecLanguageServer:
                 result.append(None)
                 continue
 
-            result.append(self.lsp_selection_range_chain(chain))
+            result.append(self.lsp_selection_range_chain(uri, chain))
         return self.result_response(message, result)
 
     def handle_semantic_tokens_full(self, message):
@@ -395,11 +416,11 @@ class OrdecLanguageServer:
         prev_line = 0
         prev_char = 0
         for token in tokens:
-            line = token["range"].start.line - 1
-            char = token["range"].start.character - 1
-            length = (
-                token["range"].end.character - token["range"].start.character
-            )
+            start = self.lsp_position(uri, token["range"].start)
+            end = self.lsp_position(uri, token["range"].end)
+            line = start["line"]
+            char = start["character"]
+            length = end["character"] - char
             token_type = SEMANTIC_TOKEN_TYPE_MAP.get(token["type"], 0)
             modifier_bits = 0
             for modifier in token["modifiers"]:
@@ -426,7 +447,7 @@ class OrdecLanguageServer:
                 "kind": self.symbol_kind(symbol["kind"]),
                 "location": {
                     "uri": symbol["uri"],
-                    "range": self.lsp_range(symbol["selection_range"]),
+                    "range": self.lsp_range(symbol["uri"], symbol["selection_range"]),
                 },
             })
         return self.result_response(message, result)
@@ -434,11 +455,11 @@ class OrdecLanguageServer:
     def handle_prepare_rename(self, message):
         params = message.get("params", {})
         uri = params["textDocument"]["uri"]
-        position = self.analysis_position(params["position"])
+        position = self.analysis_position(uri, params["position"])
         result = self.session.prepare_rename(uri, position)
         if result is not None:
             result = {
-                "range": self.lsp_range(result["range"]),
+                "range": self.lsp_range(uri, result["range"]),
                 "placeholder": result["placeholder"],
             }
         return self.result_response(message, result)
@@ -446,7 +467,7 @@ class OrdecLanguageServer:
     def handle_rename(self, message):
         params = message.get("params", {})
         uri = params["textDocument"]["uri"]
-        position = self.analysis_position(params["position"])
+        position = self.analysis_position(uri, params["position"])
         try:
             changes = self.session.rename(uri, position, params["newName"])
         except ValueError as exc:
@@ -458,7 +479,7 @@ class OrdecLanguageServer:
                 "changes": dict(
                     (change_uri, [
                         {
-                            "range": self.lsp_range(change["range"]),
+                            "range": self.lsp_range(change_uri, change["range"]),
                             "newText": change["new_text"],
                         }
                         for change in uri_changes
@@ -473,12 +494,15 @@ class OrdecLanguageServer:
         analysis = self.session.analyze(uri)
         diagnostics = []
         for diagnostic in self.session.diagnostics(uri):
-            diagnostics.append({
-                "range": self.lsp_range(diagnostic.range),
+            lsp_diagnostic = {
+                "range": self.lsp_range(uri, diagnostic.range),
                 "severity": self.diagnostic_severity(diagnostic.severity),
                 "message": diagnostic.message,
                 "code": diagnostic.code,
-            })
+            }
+            if diagnostic.data is not None:
+                lsp_diagnostic["data"] = diagnostic.data
+            diagnostics.append(lsp_diagnostic)
 
         params = {
             "uri": uri,
@@ -493,25 +517,91 @@ class OrdecLanguageServer:
             "params": params,
         }
 
-    def analysis_position(self, position):
-        """Convert a zero-based LSP position to a one-based analysis position."""
-        return AnalysisPosition(
-            line=position["line"] + 1,
-            character=position["character"] + 1,
-        )
-
-    def lsp_position(self, position):
-        """Convert a one-based analysis position to a zero-based LSP position."""
+    def show_message(self, severity: str, message: str):
+        """Build a ``window/showMessage`` notification."""
+        severity_code = {
+            "error": 1,
+            "warning": 2,
+            "info": 3,
+            "log": 4,
+        }.get(severity, 3)
         return {
-            "line": position.line - 1,
-            "character": position.character - 1,
+            "jsonrpc": "2.0",
+            "method": "window/showMessage",
+            "params": {
+                "type": severity_code,
+                "message": message,
+            },
         }
 
-    def lsp_range(self, value_range):
+    def document_line(self, uri: str, one_based_line: int):
+        """Return a document line for position encoding conversion."""
+        doc = self.session.documents.get(uri)
+        if doc is not None:
+            lines = doc["text"].splitlines()
+        else:
+            parsed_uri = urlparse(uri)
+            if parsed_uri.scheme != "file":
+                return None
+            try:
+                text = Path(unquote(parsed_uri.path)).read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                return None
+            lines = text.splitlines()
+
+        if one_based_line < 1 or one_based_line > len(lines):
+            return None
+        return lines[one_based_line - 1]
+
+    def utf16_offset_to_codepoint_offset(self, line: str, utf16_offset: int):
+        """Convert a UTF-16 code-unit offset to a Python string offset."""
+        offset = 0
+        consumed = 0
+        for char in line:
+            width = 2 if ord(char) > 0xFFFF else 1
+            if consumed + width > utf16_offset:
+                break
+            consumed += width
+            offset += 1
+        return offset
+
+    def codepoint_offset_to_utf16_offset(self, line: str, codepoint_offset: int):
+        """Convert a Python string offset to a UTF-16 code-unit offset."""
+        prefix = line[:max(0, min(codepoint_offset, len(line)))]
+        return len(prefix.encode("utf-16-le")) // 2
+
+    def analysis_position(self, uri: str, position):
+        """Convert a zero-based LSP position to a one-based analysis position."""
+        line_number = position["line"] + 1
+        character = position["character"]
+        if self.position_encoding == "utf-16":
+            line = self.document_line(uri, line_number)
+            if line is not None:
+                character = self.utf16_offset_to_codepoint_offset(line, character)
+
+        return AnalysisPosition(
+            line=line_number,
+            character=character + 1,
+        )
+
+    def lsp_position(self, uri: str, position):
+        """Convert a one-based analysis position to a zero-based LSP position."""
+        character = position.character - 1
+        if self.position_encoding == "utf-16":
+            line = self.document_line(uri, position.line)
+            if line is not None:
+                character = self.codepoint_offset_to_utf16_offset(line, character)
+
+        return {
+            "line": position.line - 1,
+            "character": character,
+        }
+
+    def lsp_range(self, uri: str, value_range):
         """Convert an analysis range to an LSP range."""
         return {
-            "start": self.lsp_position(value_range.start),
-            "end": self.lsp_position(value_range.end),
+            "start": self.lsp_position(uri, value_range.start),
+            "end": self.lsp_position(uri, value_range.end),
         }
 
     def diagnostic_severity(self, severity: str):

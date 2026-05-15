@@ -22,7 +22,7 @@ class DiagnosticsMixin:
         diagnostics = []
         seen = set()
 
-        def add_diagnostic(value_range, severity, message, code):
+        def add_diagnostic(value_range, severity, message, code, data=None):
             key = (
                 code,
                 value_range.start.line,
@@ -38,6 +38,7 @@ class DiagnosticsMixin:
                 severity=severity,
                 message=message,
                 code=code,
+                data=data,
             ))
 
         def module_exists(module_name):
@@ -260,6 +261,9 @@ class DiagnosticsMixin:
                         "error",
                         "Schematic port `{}` is not declared in the symbol view.".format(port_name),
                         "unknown-symbol-port",
+                        data={
+                            "portName": port_name,
+                        },
                     )
 
         return diagnostics

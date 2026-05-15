@@ -61,6 +61,7 @@ class AnalysisSession(
         self.python_index = PythonModuleIndex(workspace_root=workspace_root)
         self.python_modules = self.python_index.python_modules
         self.workspace_index = None
+        self.workspace_dirty_uris = set()
 
     def last_good_analysis(self, doc):
         """Return the latest error-free analysis for a document record."""
@@ -76,6 +77,35 @@ class AnalysisSession(
     def invalidate_workspace_index(self):
         """Clear cached workspace dependency information."""
         self.workspace_index = None
+        self.workspace_dirty_uris.clear()
+
+    def mark_workspace_uri_dirty(self, uri: str):
+        """Mark one ORD document's workspace-import row as stale."""
+        if (
+            self.workspace_index is not None
+            and self.is_ord_uri(uri)
+            and (
+                uri in self.workspace_index["uris"]
+                or self.uri_in_workspace(uri)
+            )
+        ):
+            self.workspace_dirty_uris.add(uri)
+
+    def uri_in_workspace(self, uri: str):
+        """Return whether a file URI is inside the configured workspace."""
+        if not self.workspace_root:
+            return True
+
+        parsed_uri = urlparse(uri)
+        if parsed_uri.scheme != "file":
+            return False
+
+        try:
+            path = Path(unquote(parsed_uri.path)).resolve()
+            path.relative_to(Path(self.workspace_root).resolve())
+        except ValueError:
+            return False
+        return True
 
     def clear_python_modules(self):
         """Clear cached Python module analysis and invalidate import caches."""
@@ -118,7 +148,7 @@ class AnalysisSession(
             "last_good_analysis": self.last_good_analysis(previous),
             "is_open": is_open,
         }
-        self.invalidate_workspace_index()
+        self.mark_workspace_uri_dirty(uri)
 
     def update_document(
         self,
@@ -143,7 +173,7 @@ class AnalysisSession(
             "last_good_analysis": self.last_good_analysis(previous),
             "is_open": is_open,
         }
-        self.invalidate_workspace_index()
+        self.mark_workspace_uri_dirty(uri)
 
     def close_document(self, uri: str):
         """Remove a document from the session."""
@@ -182,14 +212,14 @@ class AnalysisSession(
         doc = self.documents.get(uri)
         if doc is not None and doc.get("is_open"):
             doc["analysis"] = None
-            self.invalidate_workspace_index()
+            self.mark_workspace_uri_dirty(uri)
             return uri
 
         if path.exists():
             return self.update_path(str(path))
 
         self.documents.pop(uri, None)
-        self.invalidate_workspace_index()
+        self.mark_workspace_uri_dirty(uri)
         return uri
 
     def invalidate_uri(self, uri: str):
@@ -331,8 +361,7 @@ class AnalysisSession(
         if uri in self.documents and self.documents[uri].get("is_open"):
             return uri
 
-        with open(path) as source_file:
-            text = source_file.read()
+        text = path.read_text(encoding="utf-8")
         self.open_document(uri, text, version=version, is_open=False)
         return uri
 
@@ -342,11 +371,10 @@ class AnalysisSession(
         uri = path.as_uri()
         if uri in self.documents and self.documents[uri].get("is_open"):
             self.documents[uri]["analysis"] = None
-            self.invalidate_workspace_index()
+            self.mark_workspace_uri_dirty(uri)
             return uri
 
-        with open(path) as source_file:
-            text = source_file.read()
+        text = path.read_text(encoding="utf-8")
         self.update_document(uri, text, version=version, is_open=False)
         return uri
 
@@ -383,6 +411,7 @@ class AnalysisSession(
     def workspace_import_index(self):
         """Build or return cached ORD import dependency indexes."""
         if self.workspace_index is not None:
+            self.refresh_workspace_import_rows()
             return self.workspace_index
 
         uris = set(self.workspace_uris())
@@ -401,6 +430,55 @@ class AnalysisSession(
             "dependents": dependents_by_uri,
         }
         return self.workspace_index
+
+    def refresh_workspace_import_rows(self):
+        """Refresh stale rows in the cached workspace import graph."""
+        if self.workspace_index is None or not self.workspace_dirty_uris:
+            return
+
+        dirty_uris = set(self.workspace_dirty_uris)
+        self.workspace_dirty_uris.clear()
+
+        for uri in sorted(dirty_uris):
+            if not self.is_ord_uri(uri):
+                continue
+
+            parsed_uri = urlparse(uri)
+            path = Path(unquote(parsed_uri.path))
+            if not path.exists() and uri not in self.documents:
+                self.remove_workspace_import_row(uri)
+                continue
+
+            self.workspace_index["uris"].add(uri)
+            old_imports = self.workspace_index["imports"].get(uri, set())
+            import_uris = set(self.resolve_import_uris(uri))
+            self.workspace_index["imports"][uri] = import_uris
+
+            for import_uri in old_imports - import_uris:
+                dependents = self.workspace_index["dependents"].get(import_uri)
+                if dependents is None:
+                    continue
+                dependents.discard(uri)
+                if not dependents:
+                    self.workspace_index["dependents"].pop(import_uri, None)
+
+            for import_uri in import_uris - old_imports:
+                self.workspace_index["dependents"].setdefault(import_uri, set()).add(uri)
+
+    def remove_workspace_import_row(self, uri: str):
+        """Remove one URI from the cached workspace import graph."""
+        if self.workspace_index is None:
+            return
+
+        self.workspace_index["uris"].discard(uri)
+        old_imports = self.workspace_index["imports"].pop(uri, set())
+        for import_uri in old_imports:
+            dependents = self.workspace_index["dependents"].get(import_uri)
+            if dependents is None:
+                continue
+            dependents.discard(uri)
+            if not dependents:
+                self.workspace_index["dependents"].pop(import_uri, None)
 
     def workspace_dependents(self, uri: str):
         """Return workspace URIs that directly or indirectly import a URI."""
