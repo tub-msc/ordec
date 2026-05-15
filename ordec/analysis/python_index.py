@@ -234,6 +234,30 @@ class PythonModuleIndex:
                 exports[name]["python_module"] = module_name
                 exports[name]["python_class"] = name
 
+        def add_public_call_exports(node):
+            if not isinstance(node, ast.Expr) or not isinstance(node.value, ast.Call):
+                return
+
+            if node_name(node.value.func) != "public":
+                return
+
+            for keyword in node.value.keywords:
+                if keyword.arg is None:
+                    continue
+
+                value_name = node_name(keyword.value)
+                value_export = exports.get(value_name)
+                if value_export is not None and value_export.get("kind") == "class":
+                    exports[keyword.arg] = {
+                        **value_export,
+                        "name": keyword.arg,
+                        "range": node_range(keyword),
+                        "selection_range": name_range(keyword, keyword.arg),
+                    }
+                    continue
+
+                add_export(keyword.arg, "variable", keyword)
+
         def node_name(node):
             if isinstance(node, ast.Name):
                 return node.id
@@ -274,6 +298,8 @@ class PythonModuleIndex:
                 return None
 
         for node in syntax_tree.body:
+            add_public_call_exports(node)
+
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     local_name = alias.asname or alias.name.split(".", 1)[0]

@@ -170,6 +170,13 @@ class _OrdAnalysisBuilder:
 
         return []
 
+    def visit_required_expression(self, node, scope_id, context_type_names=None):
+        """Visit an expression whose unresolved names should be diagnosed."""
+        occurrence_start = len(self.occurrences)
+        self.visit(node, scope_id, context_type_names=context_type_names)
+        for occurrence in self.occurrences[occurrence_start:]:
+            occurrence["diagnose_unresolved"] = True
+
     def resolve_binding(self, scope_id, name):
         """Resolve a name from a scope through its parent scopes."""
         while scope_id is not None:
@@ -179,10 +186,19 @@ class _OrdAnalysisBuilder:
             scope_id = self.scopes[scope_id]["parent_id"]
         return None
 
-    def add_binding(self, scope_id, name_node, kind, node_range=None, exported=False, type_names=None):
+    def add_binding(
+        self,
+        scope_id,
+        name_node,
+        kind,
+        node_range=None,
+        exported=False,
+        type_names=None,
+        fresh=False,
+    ):
         """Register a named binding and its defining occurrence."""
         name = tree_text(name_node)
-        binding_id = self.scope_bindings[scope_id].get(name)
+        binding_id = None if fresh else self.scope_bindings[scope_id].get(name)
         type_names = self.normalize_type_names(type_names)
 
         if binding_id is None:
@@ -244,7 +260,14 @@ class _OrdAnalysisBuilder:
             return []
         return self.normalize_type_names(self.bindings[binding_id - 1].get("type_names"))
 
-    def bind_target(self, scope_id, target_node, type_names=None, context_type_names=None):
+    def bind_target(
+        self,
+        scope_id,
+        target_node,
+        type_names=None,
+        context_type_names=None,
+        fresh=False,
+    ):
         """Bind Python assignment/loop targets, including destructuring."""
         if not isinstance(target_node, Tree):
             return False
@@ -257,6 +280,7 @@ class _OrdAnalysisBuilder:
                 "variable",
                 node_range=tree_range(target_node),
                 type_names=type_names,
+                fresh=fresh,
             )
             return True
 
@@ -271,6 +295,7 @@ class _OrdAnalysisBuilder:
                     child,
                     type_names=type_names,
                     context_type_names=context_type_names,
+                    fresh=fresh,
                 ):
                     bound_any = True
                     continue
@@ -286,6 +311,7 @@ class _OrdAnalysisBuilder:
                     child,
                     type_names=type_names,
                     context_type_names=context_type_names,
+                    fresh=fresh,
                 )
 
         if target_node.data == "getitem" and target_node.children:
@@ -298,7 +324,11 @@ class _OrdAnalysisBuilder:
                 )
             for index_node in target_node.children[1:]:
                 if isinstance(index_node, Tree):
-                    self.visit(index_node, scope_id, context_type_names=context_type_names)
+                    self.visit_required_expression(
+                        index_node,
+                        scope_id,
+                        context_type_names=context_type_names,
+                    )
             return True
 
         if target_node.data == "getattr" and target_node.children:
@@ -325,7 +355,7 @@ class _OrdAnalysisBuilder:
 
         if target_node.data == "getitem" and target_node.children:
             base_node = target_node.children[0]
-            if isinstance(base_node, Tree) and self.simple_name_node(base_node) is not None:
+            if isinstance(base_node, Tree):
                 self.bind_node_target(
                     scope_id,
                     base_node,
@@ -334,7 +364,11 @@ class _OrdAnalysisBuilder:
                 )
             for index_node in target_node.children[1:]:
                 if isinstance(index_node, Tree):
-                    self.visit(index_node, scope_id, context_type_names=context_type_names)
+                    self.visit_required_expression(
+                        index_node,
+                        scope_id,
+                        context_type_names=context_type_names,
+                    )
             return True
 
         if target_node.data == "getattr" and target_node.children:
@@ -731,19 +765,29 @@ class _OrdAnalysisBuilder:
             selection_node = None
             type_names = ["Net"] if node.data == "net_stmt" else ["PathNode"]
             for child in node.children:
-                if isinstance(child, Tree) and child.data == "var":
-                    if selection_node is None:
-                        selection_node = child
-                    names.append(tree_text(child))
-                    name_node = self.simple_name_node(child)
-                    if name_node is not None:
-                        self.add_binding(
-                            scope_id,
-                            name_node,
-                            "variable",
-                            node_range=tree_range(child),
-                            type_names=type_names,
-                        )
+                if not isinstance(child, Tree):
+                    continue
+
+                if selection_node is None:
+                    selection_node = child
+                names.append(tree_text(child))
+
+                name_node = self.simple_name_node(child)
+                if name_node is not None:
+                    self.add_binding(
+                        scope_id,
+                        name_node,
+                        "variable",
+                        node_range=tree_range(child),
+                        type_names=type_names,
+                    )
+                else:
+                    self.bind_node_target(
+                        scope_id,
+                        child,
+                        type_names=type_names,
+                        context_type_names=type_names,
+                    )
             if names and selection_node is not None:
                 self.symbols.append(AnalysisSymbol(
                     name=", ".join(names),
@@ -930,6 +974,7 @@ class _OrdAnalysisBuilder:
                     tree_children[0],
                     type_names=iterable_type_names,
                     context_type_names=context_type_names,
+                    fresh=True,
                 ):
                     for child in tree_children[1:]:
                         self.visit(child, scope_id, context_type_names=context_type_names)
