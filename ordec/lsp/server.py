@@ -30,7 +30,10 @@ SEMANTIC_TOKEN_MODIFIER_MAP = {name: i for i, name in enumerate(SEMANTIC_TOKEN_M
 
 
 class OrdecLanguageServer:
+    """Minimal stdio LSP server backed by an ``AnalysisSession``."""
+
     def __init__(self):
+        """Initialize server state and LSP method dispatch."""
         self.shutdown_requested = False
         self.session = AnalysisSession()
         self.handlers = {
@@ -60,6 +63,7 @@ class OrdecLanguageServer:
         }
 
     def handle_message(self, message):
+        """Route one decoded JSON-RPC message to its LSP handler."""
         method = message.get("method")
         if method is None:
             return []
@@ -71,6 +75,7 @@ class OrdecLanguageServer:
         return handler(message)
 
     def result_response(self, message, result):
+        """Build a JSON-RPC success response for a request message."""
         return [{
             "jsonrpc": "2.0",
             "id": message.get("id"),
@@ -78,6 +83,7 @@ class OrdecLanguageServer:
         }]
 
     def error_response(self, message, code, value):
+        """Build a JSON-RPC error response for a request message."""
         return [{
             "jsonrpc": "2.0",
             "id": message.get("id"),
@@ -88,6 +94,7 @@ class OrdecLanguageServer:
         }]
 
     def method_not_found(self, message):
+        """Return an unknown-method error for requests and ignore notifications."""
         if message.get("id") is None:
             return []
 
@@ -98,6 +105,7 @@ class OrdecLanguageServer:
         )
 
     def handle_noop(self, message):
+        """Handle notifications that require no server action."""
         return []
 
     def handle_initialize(self, message):
@@ -318,6 +326,7 @@ class OrdecLanguageServer:
         return self.result_response(message, result)
 
     def lsp_selection_range_chain(self, node):
+        """Convert a nested analysis selection range chain to LSP shape."""
         lsp_node = {
             "range": self.lsp_range(node["range"]),
         }
@@ -423,6 +432,7 @@ class OrdecLanguageServer:
         return self.result_response(message, result)
 
     def publish_diagnostics(self, uri: str):
+        """Build a publishDiagnostics notification for a document URI."""
         analysis = self.session.analyze(uri)
         diagnostics = []
         for diagnostic in self.session.diagnostics(uri):
@@ -447,24 +457,28 @@ class OrdecLanguageServer:
         }
 
     def analysis_position(self, position):
+        """Convert a zero-based LSP position to a one-based analysis position."""
         return AnalysisPosition(
             line=position["line"] + 1,
             character=position["character"] + 1,
         )
 
     def lsp_position(self, position):
+        """Convert a one-based analysis position to a zero-based LSP position."""
         return {
             "line": position.line - 1,
             "character": position.character - 1,
         }
 
     def lsp_range(self, value_range):
+        """Convert an analysis range to an LSP range."""
         return {
             "start": self.lsp_position(value_range.start),
             "end": self.lsp_position(value_range.end),
         }
 
     def diagnostic_severity(self, severity: str):
+        """Map analysis diagnostic severities to LSP severity constants."""
         if severity == "error":
             return 1
         if severity == "warning":
@@ -476,6 +490,7 @@ class OrdecLanguageServer:
         return 3
 
     def symbol_kind(self, kind: str):
+        """Map analysis symbol kinds to LSP symbol kind constants."""
         if kind == "class":
             return 5
         if kind == "function":
@@ -487,6 +502,7 @@ class OrdecLanguageServer:
         return 13
 
     def completion_kind(self, kind: str):
+        """Map analysis completion kinds to LSP completion item constants."""
         if kind == "class":
             return 7
         if kind == "function":
@@ -502,6 +518,7 @@ class OrdecLanguageServer:
         return 1
 
     def document_highlight_kind(self, kind: str):
+        """Map analysis highlight kinds to LSP highlight constants."""
         if kind == "read":
             return 2
         if kind == "write":
@@ -510,6 +527,7 @@ class OrdecLanguageServer:
 
 
 def read_message(input_stream):
+    """Read one Content-Length framed JSON-RPC message from a byte stream."""
     headers = dict()
     while True:
         header_line = input_stream.readline()
@@ -531,6 +549,7 @@ def read_message(input_stream):
 
 
 def write_message(output_stream, message):
+    """Write one Content-Length framed JSON-RPC message to a byte stream."""
     body = json.dumps(message, separators=(",", ":")).encode("utf-8")
     output_stream.write("Content-Length: {}\r\n\r\n".format(len(body)).encode("ascii"))
     output_stream.write(body)
@@ -538,6 +557,7 @@ def write_message(output_stream, message):
 
 
 def main():
+    """Run the ORDeC language server over stdin/stdout."""
     server = OrdecLanguageServer()
     input_stream = sys.stdin.buffer
     output_stream = sys.stdout.buffer
