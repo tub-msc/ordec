@@ -1,6 +1,9 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+# standard imports
+import builtins
+
 # ordec imports
 from .model import AnalysisDiagnostic, is_identifier, range_contains
 
@@ -49,6 +52,11 @@ class DiagnosticsMixin:
                 self.module_definition(uri, module_name) is not None
                 or self.python_module_exists(python_module_name)
             )
+
+        def name_resolves(name):
+            if hasattr(builtins, name):
+                return True
+            return self.resolve_name(uri, name) is not None
 
         for import_entry in analysis.import_entries:
             if import_entry.kind == "import":
@@ -147,6 +155,21 @@ class DiagnosticsMixin:
                     "`{}` cannot be used as an ORD viewgen return type.".format(type_name),
                     "invalid-viewgen-return",
                 )
+
+        for occurrence in analysis.occurrences:
+            if occurrence.get("binding_id") is not None:
+                continue
+            if not occurrence.get("diagnose_unresolved"):
+                continue
+            if name_resolves(occurrence["name"]):
+                continue
+
+            add_diagnostic(
+                occurrence["range"],
+                "error",
+                "Cannot resolve name `{}`.".format(occurrence["name"]),
+                "unresolved-name",
+            )
 
         for constraint in analysis.constraints:
             containing_viewgen = None
