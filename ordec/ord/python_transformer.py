@@ -180,24 +180,19 @@ class PythonTransformer(Transformer):
         return isinstance(node, (ast.Name, ast.Attribute, ast.Subscript))
 
     @staticmethod
-    def _is_unparenthesized_namedexpr(node):
-        return (
-            isinstance(node, ast.NamedExpr) and
-            not getattr(node, "_ord_parenthesized", False)
-        )
-
-    @classmethod
-    def _contains_unparenthesized_namedexpr(cls, node):
+    def _contains_unparenthesized_namedexpr(node):
         # The grammar accepts `test` in several places where Python only allows
         # a named expression when it is parenthesized or nested in a container.
         if node is None:
             return False
-        if cls._is_unparenthesized_namedexpr(node):
+        if (isinstance(node, ast.NamedExpr) and
+                not getattr(node, "_parenthesized_expr", False)):
             return True
         if (isinstance(node, ast.Tuple) and
-                not getattr(node, "_ord_parenthesized", False)):
+                not getattr(node, "_parenthesized_expr", False)):
             return any(
-                cls._is_unparenthesized_namedexpr(elt)
+                isinstance(elt, ast.NamedExpr) and
+                not getattr(elt, "_parenthesized_expr", False)
                 for elt in node.elts
             )
         return False
@@ -307,7 +302,7 @@ class PythonTransformer(Transformer):
         self._set_ctx(target, ast.Store())
         simple = 1 if (
             isinstance(target, ast.Name) and
-            not getattr(target, "_ord_parenthesized", False)
+            not getattr(target, "_parenthesized_expr", False)
         ) else 0
         return ast.AnnAssign(
             target=target,
@@ -543,7 +538,7 @@ class PythonTransformer(Transformer):
         if (len(with_items) == 1 and
                 with_items[0].optional_vars is None and
                 isinstance(with_items[0].context_expr, ast.Tuple) and
-                not getattr(with_items[0].context_expr, "_ord_parenthesized", False)):
+                not getattr(with_items[0].context_expr, "_parenthesized_expr", False)):
             with_items = [
                 ast.withitem(context_expr=elt, optional_vars=None)
                 for elt in with_items[0].context_expr.elts
@@ -877,7 +872,7 @@ class PythonTransformer(Transformer):
     def grouped_test(self, nodes):
         node = nodes[0]
         if isinstance(node, ast.AST):
-            node._ord_parenthesized = True
+            node._parenthesized_expr = True
         return node
 
     def test(self, nodes):
@@ -931,7 +926,7 @@ class PythonTransformer(Transformer):
 
     def parenthesized_tuple(self, nodes):
         node = ast.Tuple(elts=nodes, ctx=ast.Load())
-        node._ord_parenthesized = True
+        node._parenthesized_expr = True
         return node
 
     def testlist_tuple(self, nodes):
@@ -1790,7 +1785,7 @@ class PythonTransformer(Transformer):
             )
             body = nodes[0]
 
-        if self._is_unparenthesized_namedexpr(body):
+        if self._contains_unparenthesized_namedexpr(body):
             raise SyntaxError("invalid assignment expression")
         return ast.Lambda(args=params, body=body)
 
