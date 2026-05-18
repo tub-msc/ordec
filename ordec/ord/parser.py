@@ -1,12 +1,79 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from lark import Lark, UnexpectedToken, UnexpectedCharacters, UnexpectedInput
+from lark import Lark, UnexpectedToken, UnexpectedCharacters, UnexpectedInput, Token
 from pathlib import Path
 import argparse
 from lark.indenter import PythonIndenter
 from .ord_transformer import OrdTransformer
 import ast
+
+
+class PythonTokenAwareIndenter(PythonIndenter):
+    """
+    PythonIndenter with accounting for grammar-specific Python tokens.
+
+    The stock Lark indenter only balances the standard close-token names. This
+    grammar has extra hidden close tokens for f-strings and with-as lookahead,
+    so newline suppression must account for them explicitly.
+    """
+
+    CLOSE_PAREN_types = PythonIndenter.CLOSE_PAREN_types + ["_RPAREN_AS"]
+    FSTRING_START_types = {"FSTRING_DOUBLE_START", "FSTRING_SINGLE_START"}
+    FSTRING_END_types = {"FSTRING_DOUBLE_END", "FSTRING_SINGLE_END"}
+    FSTRING_EXPR_END_type = "_FSTRING_EXPR_END"
+
+    def _process(self, stream):
+        token = None
+        paren_stack = []
+        fstring_brace_levels = []
+
+        for token in stream:
+            if token.type == self.NL_type:
+                yield from self.handle_NL(token)
+            else:
+                yield token
+
+            token_type = token.type
+            if token_type in self.FSTRING_START_types:
+                fstring_brace_levels.append(0)
+                continue
+            if token_type in self.FSTRING_END_types:
+                if fstring_brace_levels and fstring_brace_levels[-1] == 0:
+                    fstring_brace_levels.pop()
+                continue
+
+            if token_type in self.OPEN_PAREN_types:
+                paren_stack.append(token_type)
+                self.paren_level = len(paren_stack)
+                if fstring_brace_levels and token_type == "LBRACE":
+                    fstring_brace_levels[-1] += 1
+                continue
+
+            if token_type in self.CLOSE_PAREN_types:
+                paren_stack.pop()
+                self.paren_level = len(paren_stack)
+                continue
+
+            if token_type == self.FSTRING_EXPR_END_type:
+                if fstring_brace_levels:
+                    if fstring_brace_levels[-1] > 0:
+                        paren_stack.pop()
+                        self.paren_level = len(paren_stack)
+                        fstring_brace_levels[-1] -= 1
+                    continue
+                if paren_stack and paren_stack[-1] == "LBRACE":
+                    paren_stack.pop()
+                    self.paren_level = len(paren_stack)
+
+        while len(self.indent_level) > 1:
+            self.indent_level.pop()
+            if token:
+                yield Token.new_borrow_pos(self.DEDENT_type, '', token)
+            else:
+                yield Token(self.DEDENT_type, '', 0, 0, 0, 0, 0, 0)
+
+        assert self.indent_level == [0], self.indent_level
 
 
 def format_error(code, line, column, window=2):
@@ -88,7 +155,7 @@ parser = Lark.open_from_package(
     __package__,
     "ord.lark",
     parser="lalr",
-    postlex=PythonIndenter(),
+    postlex=PythonTokenAwareIndenter(),
     start="file_input",
     maybe_placeholders=False,
     propagate_positions=True
