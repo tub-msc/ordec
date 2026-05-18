@@ -5,7 +5,6 @@
 from lark import Transformer, v_args
 import ast
 import unicodedata
-import sys
 
 class PythonTransformer(Transformer):
     """
@@ -75,7 +74,6 @@ class PythonTransformer(Transformer):
         '==': ast.Eq,
         '>=': ast.GtE,
         '<=': ast.LtE,
-        '<>': ast.NotEq,  # Python 2
         '!=': ast.NotEq,
         'in': ast.In,
         'not in': ast.NotIn,
@@ -165,11 +163,21 @@ class PythonTransformer(Transformer):
 
         # Starred target: *rest
         elif isinstance(node, ast.Starred):
+            if isinstance(ctx, ast.Del):
+                raise SyntaxError("cannot delete starred")
             node.ctx = ctx
             self._set_ctx(node.value, ctx)
 
         else:
-            pass
+            if isinstance(ctx, ast.Store):
+                raise SyntaxError("invalid assignment target")
+            if isinstance(ctx, ast.Del):
+                raise SyntaxError("invalid deletion target")
+
+    @staticmethod
+    def _is_single_target(node):
+        # Augmented and annotated assignments use Python's single-target shape.
+        return isinstance(node, (ast.Name, ast.Attribute, ast.Subscript))
 
     @staticmethod
     def _is_unparenthesized_namedexpr(node):
@@ -180,19 +188,18 @@ class PythonTransformer(Transformer):
 
     @classmethod
     def _contains_unparenthesized_namedexpr(cls, node):
+        # The grammar accepts `test` in several places where Python only allows
+        # a named expression when it is parenthesized or nested in a container.
         if node is None:
             return False
-        if isinstance(node, ast.NamedExpr):
-            if not getattr(node, "_ord_parenthesized", False):
-                return True
-            return cls._contains_unparenthesized_namedexpr(node.value)
-        if isinstance(node, ast.AST):
+        if cls._is_unparenthesized_namedexpr(node):
+            return True
+        if (isinstance(node, ast.Tuple) and
+                not getattr(node, "_ord_parenthesized", False)):
             return any(
-                cls._contains_unparenthesized_namedexpr(child)
-                for child in ast.iter_child_nodes(node)
+                cls._is_unparenthesized_namedexpr(elt)
+                for elt in node.elts
             )
-        if isinstance(node, (list, tuple)):
-            return any(cls._contains_unparenthesized_namedexpr(child) for child in node)
         return False
 
     # Terminals
@@ -283,6 +290,8 @@ class PythonTransformer(Transformer):
         value = nodes[2]
         if self._contains_unparenthesized_namedexpr(value):
             raise SyntaxError("invalid assignment expression")
+        if not self._is_single_target(target):
+            raise SyntaxError("illegal expression for augmented assignment")
         self._set_ctx(target, ast.Store())
         return ast.AugAssign(target=target, op=op, value=value)
 
@@ -293,6 +302,8 @@ class PythonTransformer(Transformer):
         if (self._contains_unparenthesized_namedexpr(target_type) or
                 self._contains_unparenthesized_namedexpr(value)):
             raise SyntaxError("invalid assignment expression")
+        if not self._is_single_target(target):
+            raise SyntaxError("illegal target for annotation")
         self._set_ctx(target, ast.Store())
         simple = 1 if (
             isinstance(target, ast.Name) and
@@ -634,13 +645,9 @@ class PythonTransformer(Transformer):
             elif isinstance(arg, tuple) and arg[0] == "kwargs":
                 seen_kwargs = True
             elif isinstance(arg, tuple) and len(arg) == 2 and isinstance(arg[1], list):
-                if self._contains_unparenthesized_namedexpr(arg[0]):
-                    raise SyntaxError("invalid assignment expression")
                 if seen_keyword or seen_kwargs:
                     raise SyntaxError("positional argument follows keyword argument")
             else:
-                if self._contains_unparenthesized_namedexpr(arg):
-                    raise SyntaxError("invalid assignment expression")
                 if seen_keyword:
                     raise SyntaxError("positional argument follows keyword argument")
                 if seen_kwargs:
@@ -922,6 +929,11 @@ class PythonTransformer(Transformer):
     def tuple(selfs, nodes):
         return ast.Tuple(elts=nodes, ctx=ast.Load())
 
+    def parenthesized_tuple(self, nodes):
+        node = ast.Tuple(elts=nodes, ctx=ast.Load())
+        node._ord_parenthesized = True
+        return node
+
     def testlist_tuple(self, nodes):
         return ast.Tuple(elts=nodes, ctx=ast.Load())
 
@@ -1043,53 +1055,10 @@ class PythonTransformer(Transformer):
         inner = segment[1:-1]
         eq_index = inner.rfind("=")
 
-        # CPython changed debug-fstring prefix extraction in 3.13:
-        # legacy versions truncate at top-level !/: before the final debug '=',
-        # while 3.13+ keeps the full expression text.
-        if sys.version_info < (3, 13):
-            marker_index = self._find_top_level_marker(inner)
-            if marker_index != -1 and marker_index < eq_index:
-                return inner[:marker_index]
-
         after_eq = eq_index + 1
         while after_eq < len(inner) and inner[after_eq] in " \t":
             after_eq += 1
         return inner[:after_eq]
-
-    @staticmethod
-    def _find_top_level_marker(text):
-        # Find the first top-level debug-fstring marker ('!' conversion or ':' format),
-        # skipping nested brackets and quoted strings.
-        depth = 0
-        quote = None
-        escaped = False
-
-        for i, char in enumerate(text):
-            if quote is not None:
-                if escaped:
-                    escaped = False
-                elif char == "\\":
-                    escaped = True
-                elif char == quote:
-                    quote = None
-                continue
-
-            if char in ("'", '"'):
-                quote = char
-                continue
-
-            if char in "([{":
-                depth += 1
-                continue
-
-            if char in ")]}" and depth > 0:
-                depth -= 1
-                continue
-
-            if depth == 0 and char in ("!", ":"):
-                return i
-
-        return -1
 
     def debug_eq(self, nodes):
         return "debug_eq", "="
@@ -1111,8 +1080,6 @@ class PythonTransformer(Transformer):
                 values.append(ast.Constant(value=node))
             elif isinstance(node, ast.AST):
                 values.append(self.f_expression([node]))
-        if nodes and isinstance(nodes[-1], ast.AST):
-            values.append(ast.Constant(value=""))
         return ast.JoinedStr(values=values)
 
     def _normalize_joined_str(self, node, decode_literals):
@@ -1429,8 +1396,6 @@ class PythonTransformer(Transformer):
                 seen_kwargs = True
                 keywords.append(ast.keyword(arg=None, value=base[1]))
             else:
-                if self._contains_unparenthesized_namedexpr(base):
-                    raise SyntaxError("invalid assignment expression")
                 if seen_keyword:
                     raise SyntaxError("positional argument follows keyword argument")
                 if seen_kwargs:

@@ -268,7 +268,7 @@ AWAIT: "await"
           | atom
 
 ?atom: "(" yield_expr _rpar
-     | "(" _tuple_inner? _rpar -> tuple
+     | "(" _tuple_inner? _rpar -> parenthesized_tuple
      | "(" comprehension{test_or_star_expr} _rpar -> tuple_comprehension
      | "[" _exprlist? "]"  -> list
      | "[" comprehension{test_or_star_expr} "]"  -> list_comprehension

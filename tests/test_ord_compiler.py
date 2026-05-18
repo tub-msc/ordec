@@ -832,6 +832,58 @@ def test_invalid_old_not_equal_operator():
     ord_string = "x = a <> b"
     compare_syntax_errors(ord_string)
 
+def test_assignment_starred_target():
+    ord_string = "*a, = b"
+    compare_asts(ord_string)
+
+def test_assignment_empty_tuple_target():
+    ord_string = "() = values"
+    compare_asts(ord_string)
+
+def test_invalid_assignment_literal_target():
+    ord_string = "1 = x"
+    compare_syntax_errors(ord_string)
+
+def test_invalid_assignment_expression_target():
+    ord_string = "a + b = x"
+    compare_syntax_errors(ord_string)
+
+def test_invalid_assignment_call_target():
+    ord_string = "f() = x"
+    compare_syntax_errors(ord_string)
+
+def test_invalid_augassign_tuple_target():
+    ord_string = "a, b += c"
+    compare_syntax_errors(ord_string)
+
+def test_invalid_augassign_starred_target():
+    ord_string = "*a += b"
+    compare_syntax_errors(ord_string)
+
+def test_invalid_annassign_tuple_target():
+    ord_string = "a, b: int"
+    compare_syntax_errors(ord_string)
+
+def test_invalid_annassign_call_target():
+    ord_string = "f(): int"
+    compare_syntax_errors(ord_string)
+
+def test_invalid_del_literal_target():
+    ord_string = "del 1"
+    compare_syntax_errors(ord_string)
+
+def test_invalid_del_starred_target():
+    ord_string = "del *items"
+    compare_syntax_errors(ord_string)
+
+def test_invalid_for_literal_target():
+    ord_string = "for 1 in values:\n    pass"
+    compare_syntax_errors(ord_string)
+
+def test_invalid_for_expression_target():
+    ord_string = "for a + b in values:\n    pass"
+    compare_syntax_errors(ord_string)
+
 def test_invalid_function_default_order():
     ord_string = "def f(a=1, b):\n    pass"
     compare_syntax_errors(ord_string)
@@ -1003,6 +1055,38 @@ def test_invalid_walrus_for_iter():
 def test_invalid_walrus_tuple_assignment_value():
     ord_string = "a = b, c := 1"
     compare_syntax_errors(ord_string)
+
+def test_walrus_list_expression_statement():
+    ord_string = "[x := 1]"
+    compare_asts(ord_string)
+
+def test_walrus_comprehension_expression_statement():
+    ord_string = "[y := x for x in xs]"
+    compare_asts(ord_string)
+
+def test_walrus_assignment_nested_container():
+    ord_string = "a = [x := 1]"
+    compare_asts(ord_string)
+
+def test_walrus_assignment_parenthesized_tuple():
+    ord_string = "a = (b, c := 1)"
+    compare_asts(ord_string)
+
+def test_walrus_call_positional_argument():
+    ord_string = "func(x := 1)"
+    compare_asts(ord_string)
+
+def test_walrus_keyword_nested_container():
+    ord_string = "func(a=[x := 1])"
+    compare_asts(ord_string)
+
+def test_walrus_return_nested_container():
+    ord_string = "def f():\n    return [x := 1]"
+    compare_asts(ord_string)
+
+def test_walrus_class_base():
+    ord_string = "class C(x := Base):\n    pass"
+    compare_asts(ord_string)
 
 def test_f_string_empty_format_spec():
     ord_string = "f'{x:}'"
