@@ -1151,3 +1151,47 @@ def test_invalid_match_class_positional_after_keyword():
 def test_invalid_match_as_wildcard_target():
     ord_string = "match x:\n    case y as _:\n        pass"
     compare_syntax_errors(ord_string)
+
+# Python conformance cases found by sweeping the CPython 3.13 stdlib through
+# ord_to_py and comparing ASTs against ast.parse. These guard against ORD
+# statement keywords (type/path/cell/net/viewgen) becoming hard-reserved.
+
+def test_name_type_assignment():
+    ord_string = "type = None"
+    compare_asts(ord_string)
+
+def test_name_path_assignment():
+    ord_string = "path = 1"
+    compare_asts(ord_string)
+
+def test_name_cell_assignment():
+    ord_string = "cell = 1"
+    compare_asts(ord_string)
+
+def test_name_net_assignment():
+    ord_string = "net = 1"
+    compare_asts(ord_string)
+
+def test_name_viewgen_assignment():
+    ord_string = "viewgen = 1"
+    compare_asts(ord_string)
+
+def test_name_type_aug_assignment():
+    ord_string = "type += 1"
+    compare_asts(ord_string)
+
+def test_name_path_annotation():
+    ord_string = "path: int = 1"
+    compare_asts(ord_string)
+
+def test_name_type_loop_target():
+    ord_string = "for i, type in x: pass"
+    compare_asts(ord_string)
+
+def test_name_type_call_statement():
+    ord_string = "type(x).y()"
+    compare_asts(ord_string)
+
+def test_fstring_tuple_field():
+    ord_string = 's = f"{x,}"'
+    compare_asts(ord_string)

@@ -1310,7 +1310,7 @@ class PythonTransformer(Transformer):
 
     number = lambda self, nodes: nodes[0]
     star_expr = lambda self, nodes: ast.Starred(value=nodes[0], ctx=ast.Load())
-    name = lambda self, nodes: nodes[0]
+    name = lambda self, nodes: str(nodes[0])
     comp_op = lambda self, nodes: nodes[0]
     ellipsis = lambda self, _: ast.Constant(value=Ellipsis)
     f_string_content_single = lambda self, nodes: nodes[0]
