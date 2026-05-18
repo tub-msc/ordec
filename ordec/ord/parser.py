@@ -9,16 +9,16 @@ from .ord_transformer import OrdTransformer
 import ast
 
 
-class FStringAwarePythonIndenter(PythonIndenter):
+class PythonTokenAwareIndenter(PythonIndenter):
     """
-    PythonIndenter with f-string brace accounting.
+    PythonIndenter with accounting for grammar-specific Python tokens.
 
-    The stock Lark indenter only balances the standard RBRACE token. This
-    grammar uses _FSTRING_EXPR_END for both f-string expression closes and
-    escaped literal close braces, so newline suppression must distinguish those
-    two cases.
+    The stock Lark indenter only balances the standard close-token names. This
+    grammar has extra hidden close tokens for f-strings and with-as lookahead,
+    so newline suppression must account for them explicitly.
     """
 
+    CLOSE_PAREN_types = PythonIndenter.CLOSE_PAREN_types + ["_RPAREN_AS"]
     FSTRING_START_types = {"FSTRING_DOUBLE_START", "FSTRING_SINGLE_START"}
     FSTRING_END_types = {"FSTRING_DOUBLE_END", "FSTRING_SINGLE_END"}
     FSTRING_EXPR_END_type = "_FSTRING_EXPR_END"
@@ -155,7 +155,7 @@ parser = Lark.open_from_package(
     __package__,
     "ord.lark",
     parser="lalr",
-    postlex=FStringAwarePythonIndenter(),
+    postlex=PythonTokenAwareIndenter(),
     start="file_input",
     maybe_placeholders=False,
     propagate_positions=True
