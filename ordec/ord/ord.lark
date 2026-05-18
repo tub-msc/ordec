@@ -319,9 +319,10 @@ type_params: "[" type_param ("," type_param)* ","? "]"
            | name ":" test -> bounded_typevar
            | name ":" test "=" test -> bounded_typevar_default
            | "*" name -> typevartuple
-           | "*" name "=" test -> typevartuple_default
+           | "*" name "=" typevartuple_default_value -> typevartuple_default
            | "**" name -> paramspec
            | "**" name "=" test -> paramspec_default
+?typevartuple_default_value: test | star_expr
 
 arguments: comprehension{test}
          | call_argument ("," call_argument)* ","?

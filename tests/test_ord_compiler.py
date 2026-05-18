@@ -928,6 +928,10 @@ def test_type_alias_typevartuple_default():
     ord_string = "type TupleAlias[*Ts = tuple[int, ...]] = tuple[*Ts]"
     compare_asts(ord_string)
 
+def test_type_alias_typevartuple_starred_default():
+    ord_string = "type TupleAlias[*Ts = *default] = tuple[*Ts]"
+    compare_asts(ord_string)
+
 def test_type_alias_paramspec_default():
     ord_string = "type CallableAlias[**P = [int, str]] = Callable[P, int]"
     compare_asts(ord_string)
