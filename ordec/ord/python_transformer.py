@@ -884,6 +884,9 @@ class PythonTransformer(Transformer):
         orelse = nodes[2]
         return ast.IfExp(test=test_cond, body=body, orelse=orelse)
 
+    def f_test(self, nodes):
+        return self.test(nodes)
+
     def sliceop(self, nodes):
         step = nodes[0] if nodes else None
         return ":", step
@@ -1013,6 +1016,25 @@ class PythonTransformer(Transformer):
             if pending_close_brace:
                 raise SyntaxError("f-string: single '}' is not allowed")
 
+            if (
+                    isinstance(item, tuple) and len(item) == 2 and
+                    item[0] == "named_unicode_escape"):
+                if is_raw:
+                    if not item[1].isidentifier():
+                        raise SyntaxError("invalid syntax")
+                    values_raw.append("\\N")
+                    values_raw.append(ast.FormattedValue(
+                        value=ast.Name(id=item[1], ctx=ast.Load()),
+                        conversion=-1,
+                        format_spec=None
+                    ))
+                else:
+                    try:
+                        values_raw.append(unicodedata.lookup(item[1]))
+                    except KeyError as exc:
+                        raise SyntaxError("unknown Unicode character name") from exc
+                continue
+
             if isinstance(item, tuple) and len(item) == 3 and item[0] == "debug_fexpr":
                 values_raw.append(ast.Constant(value=item[1]))
                 values_raw.append(item[2])
@@ -1086,6 +1108,9 @@ class PythonTransformer(Transformer):
     def format_spec_double(self, nodes):
         return self.format_spec(nodes)
 
+    def format_spec_eq(self, nodes):
+        return self.format_spec(["=", *nodes])
+
     def format_spec(self, nodes):
         values = []
         for node in nodes:
@@ -1108,7 +1133,9 @@ class PythonTransformer(Transformer):
 
         def flush_literal_buffer():
             if literal_buffer:
-                normalized_values.append(ast.Constant(value="".join(literal_buffer)))
+                literal = "".join(literal_buffer)
+                if literal:
+                    normalized_values.append(ast.Constant(value=literal))
                 literal_buffer.clear()
 
         for value in node.values:
@@ -1319,6 +1346,7 @@ class PythonTransformer(Transformer):
     f_string_escaped_content_single = lambda self, nodes: nodes[0]
     literal_open_brace = lambda self, _: '{'
     literal_close_brace = lambda self, _: self.FSTRING_LITERAL_CLOSE_BRACE
+    named_unicode_escape = lambda self, nodes: ("named_unicode_escape", str(nodes[0])[3:-1])
     exprlist = lambda self, nodes: nodes
 
     # Definitions

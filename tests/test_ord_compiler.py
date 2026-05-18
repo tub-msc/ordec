@@ -1152,10 +1152,6 @@ def test_invalid_match_as_wildcard_target():
     ord_string = "match x:\n    case y as _:\n        pass"
     compare_syntax_errors(ord_string)
 
-# Python conformance cases found by sweeping the CPython 3.13 stdlib through
-# ord_to_py and comparing ASTs against ast.parse. These guard against ORD
-# statement keywords (type/path/cell/net/viewgen) becoming hard-reserved.
-
 def test_name_type_assignment():
     ord_string = "type = None"
     compare_asts(ord_string)
@@ -1194,4 +1190,175 @@ def test_name_type_call_statement():
 
 def test_fstring_tuple_field():
     ord_string = 's = f"{x,}"'
+    compare_asts(ord_string)
+
+def test_with_call_as_name_multi_stmt():
+    ord_string = "with f() as b:\n    x\n    y"
+    compare_asts(ord_string)
+
+def test_with_open_as_file_body():
+    ord_string = "with open(p) as f:\n    a = 1\n    b = 2"
+    compare_asts(ord_string)
+
+def test_with_parenthesized_call_as():
+    ord_string = "with (f()) as b:\n    x\n    y"
+    compare_asts(ord_string)
+
+def test_with_multiple_call_as_items():
+    ord_string = "with f() as b, g() as c:\n    x\n    y"
+    compare_asts(ord_string)
+
+def test_funcdef_kwargs_trailing_comma_after_param():
+    ord_string = "def f(a, **kw,): pass"
+    compare_asts(ord_string)
+
+def test_funcdef_annotated_kwargs_trailing_comma():
+    ord_string = "def f(a, **kw: int,): pass"
+    compare_asts(ord_string)
+
+@pytest.mark.filterwarnings("ignore:invalid escape sequence.*:SyntaxWarning")
+def test_fstring_backslash_before_field():
+    ord_string = 's = f"a\\{b}"'
+    compare_asts(ord_string)
+
+def test_raw_fstring_backslash_before_field():
+    ord_string = 's = rf"\\{b}"'
+    compare_asts(ord_string)
+
+@pytest.mark.filterwarnings("ignore:invalid escape sequence.*:SyntaxWarning")
+def test_fstring_backslash_before_field_single_quote():
+    ord_string = "s = f'a\\{b}'"
+    compare_asts(ord_string)
+
+@pytest.mark.filterwarnings("ignore:invalid escape sequence.*:SyntaxWarning")
+def test_fstring_backslash_before_field_multiple():
+    ord_string = 's = f"\\{b}\\{c}"'
+    compare_asts(ord_string)
+
+def test_fstring_named_unicode_escape():
+    ord_string = 's = f"\\N{BULLET}"'
+    compare_asts(ord_string)
+
+def test_fstring_named_unicode_escape_then_field():
+    ord_string = 's = f"\\N{BULLET}{x}"'
+    compare_asts(ord_string)
+
+def test_fstring_valid_escape_before_field():
+    ord_string = 's = f"\\n{b}"'
+    compare_asts(ord_string)
+
+def test_fstring_escaped_backslash_before_field():
+    ord_string = 's = f"\\\\{b}"'
+    compare_asts(ord_string)
+
+def test_raw_fstring_named_escape_is_field():
+    ord_string = 's = rf"\\N{x}"'
+    compare_asts(ord_string)
+
+def test_match_tuple_subject_trailing_comma():
+    ord_string = "match x,:\n    case y:\n        z = 0"
+    compare_asts(ord_string)
+
+def test_match_soft_keyword_as_identifier():
+    ord_string = "match.foo()"
+    compare_asts(ord_string)
+
+def test_for_target_single_elem_tuple():
+    ord_string = "for x, in y:\n    pass"
+    compare_asts(ord_string)
+
+def test_fstring_format_spec_starting_eq():
+    ord_string = "s = f'{x:=10}'"
+    compare_asts(ord_string)
+
+def test_string_backslash_newline_continuation():
+    ord_string = "x = 'a\\\nb'"
+    compare_asts(ord_string)
+
+def test_return_starred_unparenthesized_tuple():
+    ord_string = "def f():\n    return *a, b"
+    compare_asts(ord_string)
+
+def test_return_starred_trailing_comma():
+    ord_string = "def f():\n    return *a,"
+    compare_asts(ord_string)
+
+def test_yield_starred_unparenthesized_tuple():
+    ord_string = "def g():\n    yield *a, b"
+    compare_asts(ord_string)
+
+def test_return_starred_parenthesized_tuple():
+    ord_string = "def f():\n    return (*a, b)"
+    compare_asts(ord_string)
+
+def test_assign_starred_unparenthesized_tuple():
+    ord_string = "x = *a, b"
+    compare_asts(ord_string)
+
+def test_match_prefixed_identifier_annotation():
+    ord_string = "match_tests: int"
+    compare_asts(ord_string)
+
+def test_match_prefixed_identifier_assignment_guard():
+    ord_string = "match_x = 1"
+    compare_asts(ord_string)
+
+def test_anonymous_keyword_as_call():
+    ord_string = "anonymous()"
+    compare_asts(ord_string)
+
+def test_path_keyword_as_call_guard():
+    ord_string = "path()"
+    compare_asts(ord_string)
+
+def test_case_class_pattern_trailing_comma():
+    ord_string = "match p:\n    case Foo(a,):\n        pass"
+    compare_asts(ord_string)
+
+def test_fstring_named_escape_after_text():
+    ord_string = "s = f'2\\N{GREEK CAPITAL LETTER DELTA}'"
+    compare_asts(ord_string)
+
+def test_fstring_named_escape_at_start_guard():
+    ord_string = "s = f'\\N{GREEK CAPITAL LETTER DELTA}'"
+    compare_asts(ord_string)
+
+def test_for_iter_starred_exprs():
+    ord_string = "for x in *a, *b:\n    pass"
+    compare_asts(ord_string)
+
+def test_with_as_call_subscript_target():
+    ord_string = "with c() as f()[0]:\n    pass"
+    compare_asts(ord_string)
+
+def test_fstring_concat_empty_str_empty_fstring():
+    ord_string = "x = '' f''"
+    compare_asts(ord_string)
+
+def test_fstring_concat_empty_str_then_field():
+    ord_string = "x = '' f'{y}'"
+    compare_asts(ord_string)
+
+def test_fstring_concat_field_then_empty_str():
+    ord_string = "x = f'{y}' ''"
+    compare_asts(ord_string)
+
+def test_fstring_concat_empty_fstring_alone_guard():
+    ord_string = "x = f''"
+    compare_asts(ord_string)
+
+def test_fstring_concat_two_empty_plain_guard():
+    ord_string = "x = '' ''"
+    compare_asts(ord_string)
+
+def test_fstring_concat_nonempty_str_empty_fstring_guard():
+    ord_string = "x = 'a' f''"
+    compare_asts(ord_string)
+
+def test_fstring_concat_empty_str_nonempty_fstring_guard():
+    ord_string = "x = '' f'b'"
+    compare_asts(ord_string)
+
+def test_fstring_concat_two_empty_fstrings_guard():
+    ord_string = "x = f'' f''"
     compare_asts(ord_string)
