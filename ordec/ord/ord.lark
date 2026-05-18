@@ -61,7 +61,7 @@ parameters: paramvalue ("," paramvalue)* ["," SLASH ("," paramvalue)*] ["," [sta
           | starparams
           | kwparams_trailing
 
-SLASH: "/" // Otherwise the it will completely disappear and it will be undisguisable in the result
+SLASH: "/" // Otherwise it will disappear and be indistinguishable in the result
 starparams: (starparam | starguard) poststarparams
 starparam: "*" typed_starparam
 starguard: "*"
@@ -80,7 +80,7 @@ lambda_params: lambda_paramvalue ("," lambda_paramvalue)* ["," SLASH ("," lambda
           | lambda_starparams
           | lambda_kwparams
 lambda_paramvalue: name ("=" test)?
-lambda_starparams: "*" [name]  ("," lambda_paramvalue)* ["," [lambda_kwparams]]
+lambda_starparams: "*" [name] ("," lambda_paramvalue)* ["," [lambda_kwparams]]
 lambda_kwparams: "**" name ","?
 
 
@@ -260,11 +260,11 @@ star_expr: "*" expr
 ?term: factor (_mul_op factor)*
 ?factor: _unary_op factor | power
 
-!_unary_op: "+"|"-"|"~"|"not"
-!_add_op: "+"|"-"
-!_shift_op: "<<"|">>"
-!_mul_op: "*"|"@"|"/"|"%"|"//"
-!comp_op: "<"|">"|"=="|">="|"<="|"!="|"in"| "not" "in" -> not_in | "is" "not" -> is_not | "is"
+!_unary_op: "+" | "-" | "~" | "not"
+!_add_op: "+" | "-"
+!_shift_op: "<<" | ">>"
+!_mul_op: "*" | "@" | "/" | "%" | "//"
+!comp_op: "<" | ">" | "==" | ">=" | "<=" | "!=" | "in" | "not" "in" -> not_in | "is" "not" -> is_not | "is"
 
 ?power: await_expr ("**" factor)?
 ?await_expr: AWAIT? atom_expr
@@ -315,7 +315,7 @@ sliceop: ":" [test]
 testlist_tuple: test (("," test)+ [","] | ",")
 _dict_exprlist: (key_value | "**" expr) ("," (key_value | "**" expr))* [","]
 
-key_value: test ":"  test
+key_value: test ":" test
 
 _exprlist: test_or_star_expr (","  test_or_star_expr)* [","]
 
@@ -448,9 +448,9 @@ anon_node_stmt_nobody: _ANONYMOUS_STMT atom_expr context_target ("," context_tar
 _ANONYMOUS_STMT.3: /anonymous(?![\t \f]*[:=])(?=[\t \f]+)/
 
 ?context_target: context_target "." name -> getattr
-		       | context_target "[" subscriptlist "]" -> getitem
-   	           | name -> var
-		
+               | context_target "[" subscriptlist "]" -> getitem
+               | name -> var
+
 dotted_atom: "." name?
 path_stmt: "path" context_target ("," context_target)*
 net_stmt: "net" context_target ("," context_target)*

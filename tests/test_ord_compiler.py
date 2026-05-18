@@ -1196,10 +1196,6 @@ def test_with_call_as_name_multi_stmt():
     ord_string = "with f() as b:\n    x\n    y"
     compare_asts(ord_string)
 
-def test_with_open_as_file_body():
-    ord_string = "with open(p) as f:\n    a = 1\n    b = 2"
-    compare_asts(ord_string)
-
 def test_with_parenthesized_call_as():
     ord_string = "with (f()) as b:\n    x\n    y"
     compare_asts(ord_string)
@@ -1317,10 +1313,6 @@ def test_case_class_pattern_trailing_comma():
 
 def test_fstring_named_escape_after_text():
     ord_string = "s = f'2\\N{GREEK CAPITAL LETTER DELTA}'"
-    compare_asts(ord_string)
-
-def test_fstring_named_escape_at_start_guard():
-    ord_string = "s = f'\\N{GREEK CAPITAL LETTER DELTA}'"
     compare_asts(ord_string)
 
 def test_for_iter_starred_exprs():

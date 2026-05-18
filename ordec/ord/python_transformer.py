@@ -177,11 +177,6 @@ class PythonTransformer(Transformer):
                 raise SyntaxError("invalid deletion target")
 
     @staticmethod
-    def _is_single_target(node):
-        # Augmented and annotated assignments use Python's single-target shape.
-        return isinstance(node, (ast.Name, ast.Attribute, ast.Subscript))
-
-    @staticmethod
     def _contains_unparenthesized_namedexpr(node):
         # The grammar accepts `test` in several places where Python only allows
         # a named expression when it is parenthesized or nested in a container.
@@ -232,11 +227,6 @@ class PythonTransformer(Transformer):
     FSTRING_SINGLE_END = lambda self, token: token.value
     FSTRING_DOUBLE_END = lambda self, token: token.value
     SLASH = lambda self, token: token.value
-    STRING_OTHER_PREFIX = lambda self, token: token.value
-    MATCH = lambda self, token: token.value
-    CASE = lambda self, token: token.value
-    ANONYMOUS = lambda self, token: token.value
-
     # Statements
     # ----------
 
@@ -262,11 +252,7 @@ class PythonTransformer(Transformer):
                                 orelse=for_stmt.orelse)
 
     def simple_stmt(self, nodes):
-        statements = []
-        for node in nodes:
-            if node is not None:
-                statements.append(node)
-        return statements
+        return [node for node in nodes if node is not None]
 
     def assign(self, nodes):
         targets = nodes[:-1]
@@ -287,7 +273,7 @@ class PythonTransformer(Transformer):
         value = nodes[2]
         if self._contains_unparenthesized_namedexpr(value):
             raise SyntaxError("invalid assignment expression")
-        if not self._is_single_target(target):
+        if not isinstance(target, (ast.Name, ast.Attribute, ast.Subscript)):
             raise SyntaxError("illegal expression for augmented assignment")
         self._set_ctx(target, ast.Store())
         return ast.AugAssign(target=target, op=op, value=value)
@@ -299,7 +285,7 @@ class PythonTransformer(Transformer):
         if (self._contains_unparenthesized_namedexpr(target_type) or
                 self._contains_unparenthesized_namedexpr(value)):
             raise SyntaxError("invalid assignment expression")
-        if not self._is_single_target(target):
+        if not isinstance(target, (ast.Name, ast.Attribute, ast.Subscript)):
             raise SyntaxError("illegal target for annotation")
         self._set_ctx(target, ast.Store())
         simple = 1 if (
@@ -393,8 +379,8 @@ class PythonTransformer(Transformer):
     def del_stmt(self, nodes):
         # Set for each of the inner nodes
         del_stmts = nodes[0] if isinstance(nodes[0], list) else [nodes[0]]
-        for del_stmt in del_stmts:
-            self._set_ctx(del_stmt, ast.Del())
+        for target in del_stmts:
+            self._set_ctx(target, ast.Del())
         return ast.Delete(targets=del_stmts)
 
     pass_stmt = lambda self, _: ast.Pass()
@@ -611,18 +597,6 @@ class PythonTransformer(Transformer):
         args = []
         ordered_args = []
 
-        def append_argument(arg):
-            if isinstance(arg, tuple) and arg[0] == "stararg":
-                args.append(ast.Starred(arg[1], ctx=ast.Load()))
-            elif isinstance(arg, tuple) and arg[0] == "argvalue":
-                keywords.append(ast.keyword(arg=arg[1], value=arg[2]))
-            elif isinstance(arg, tuple) and arg[0] == "kwargs":
-                keywords.append(ast.keyword(arg=None, value=arg[1]))
-            elif isinstance(arg, tuple) and len(arg) == 2 and isinstance(arg[1], list):
-                args.append(ast.GeneratorExp(elt=arg[0], generators=arg[1]))
-            else:
-                args.append(arg)
-
         for arg in prelim_args:
             if isinstance(arg, list):
                 ordered_args.extend(arg)
@@ -651,7 +625,17 @@ class PythonTransformer(Transformer):
                     raise SyntaxError(
                         "positional argument follows keyword argument unpacking"
                     )
-            append_argument(arg)
+
+            if isinstance(arg, tuple) and arg[0] == "stararg":
+                args.append(ast.Starred(arg[1], ctx=ast.Load()))
+            elif isinstance(arg, tuple) and arg[0] == "argvalue":
+                keywords.append(ast.keyword(arg=arg[1], value=arg[2]))
+            elif isinstance(arg, tuple) and arg[0] == "kwargs":
+                keywords.append(ast.keyword(arg=None, value=arg[1]))
+            elif isinstance(arg, tuple) and len(arg) == 2 and isinstance(arg[1], list):
+                args.append(ast.GeneratorExp(elt=arg[0], generators=arg[1]))
+            else:
+                args.append(arg)
 
         return ast.Call(
             func=function_name,
@@ -685,8 +669,7 @@ class PythonTransformer(Transformer):
         return ast.Dict(keys=keys, values=values)
 
     def list(self, nodes):
-        list_items = nodes if nodes else []
-        return ast.List(elts=list_items, ctx=ast.Load())
+        return ast.List(elts=nodes if nodes else [], ctx=ast.Load())
 
     def getitem(self, nodes):
         object = nodes[0]
@@ -794,7 +777,7 @@ class PythonTransformer(Transformer):
         return ast.SetComp(elt=elt, generators=generators)
 
     def set(self, nodes):
-        return ast.Set(nodes)
+        return ast.Set(elts=nodes)
 
     def comprehension(self, nodes):
         # comprehension
@@ -926,7 +909,7 @@ class PythonTransformer(Transformer):
     def subscript_starred_tuple(self, nodes):
         return ast.Tuple(elts=nodes, ctx=ast.Load())
 
-    def tuple(selfs, nodes):
+    def tuple(self, nodes):
         return ast.Tuple(elts=nodes, ctx=ast.Load())
 
     def parenthesized_tuple(self, nodes):
@@ -980,7 +963,11 @@ class PythonTransformer(Transformer):
         if len(merged_string) == 1:
             return merged_string[0]
 
-        if all(isinstance(item, ast.Constant) and isinstance(item.value, (str, bytes)) for item in merged_string):
+        if all(
+            isinstance(item, ast.Constant) and
+            isinstance(item.value, (str, bytes))
+            for item in merged_string
+        ):
             if isinstance(merged_string[0].value, str):
                 return ast.Constant(value="".join(item.value for item in merged_string))
             return ast.Constant(value=b"".join(item.value for item in merged_string))
@@ -995,7 +982,10 @@ class PythonTransformer(Transformer):
                     raise SyntaxError("Cannot concatenate bytes literals with f-strings")
             elif isinstance(string, ast.JoinedStr):
                 return_string.extend(string.values)
-        return self._normalize_joined_str(ast.JoinedStr(values=return_string), decode_literals=False)
+        return self._normalize_joined_str(
+            ast.JoinedStr(values=return_string),
+            decode_literals=False
+        )
 
     def f_string(self, nodes):
         is_raw = isinstance(nodes[0], str) and "r" in nodes[0].lower()
@@ -1064,8 +1054,7 @@ class PythonTransformer(Transformer):
         for node in nodes[1:]:
             # check for the conversion
             if isinstance(node, str):
-                conv_map = {"r": ord('r'), "s": ord('s'), "a": ord('a')}
-                conversion = conv_map[node.lower()]
+                conversion = ord(node.lower())
             elif isinstance(node, tuple) and len(node) == 2 and node[0] == "debug_eq":
                 debug_eq = node[1]
             elif isinstance(node, ast.AST):
@@ -1161,16 +1150,16 @@ class PythonTransformer(Transformer):
         current_string = nodes[0]
         if isinstance(current_string, (ast.JoinedStr, ast.Constant)):
             return current_string
+
+        prefix, string = current_string
+        if len(prefix) == 0:
+            return ast.Constant(value=string)
+        elif 'b' in prefix:
+            return ast.Constant(value=string.encode('utf-8'))
+        elif 'u' == prefix:
+            return ast.Constant(value=string, kind=prefix)
         else:
-            prefix, string = current_string
-            if len(prefix) == 0:
-                return ast.Constant(value=string)
-            elif 'b' in prefix:
-                return ast.Constant(value=string.encode('utf-8'))
-            elif 'u' == prefix:
-                return ast.Constant(value=string, kind=prefix)
-            else:
-                return ast.Constant(value=string)
+            return ast.Constant(value=string)
 
     @staticmethod
     def _split_string_literal(token_value):
@@ -1342,8 +1331,6 @@ class PythonTransformer(Transformer):
     ellipsis = lambda self, _: ast.Constant(value=Ellipsis)
     f_string_content_single = lambda self, nodes: nodes[0]
     f_string_content_double = lambda self, nodes: nodes[0]
-    f_string_escaped_content_double = lambda self, nodes: nodes[0]
-    f_string_escaped_content_single = lambda self, nodes: nodes[0]
     literal_open_brace = lambda self, _: '{'
     literal_close_brace = lambda self, _: self.FSTRING_LITERAL_CLOSE_BRACE
     named_unicode_escape = lambda self, nodes: ("named_unicode_escape", str(nodes[0])[3:-1])
@@ -1366,14 +1353,25 @@ class PythonTransformer(Transformer):
         name = str(nodes[0])
         index = 1
         type_params = []
-        if index < len(nodes) and self._is_type_params(nodes[index]):
+        if (
+            index < len(nodes) and isinstance(nodes[index], tuple) and
+            len(nodes[index]) == 2 and nodes[index][0] == "type_params"
+        ):
             type_params = nodes[index][1]
             index += 1
         if index < len(nodes) and isinstance(nodes[index], ast.arguments):
             parameters = nodes[index]
             index += 1
         else:
-            parameters = self._empty_arguments()
+            parameters = ast.arguments(
+                posonlyargs=[],
+                args=[],
+                vararg=None,
+                kwonlyargs=[],
+                kw_defaults=[],
+                kwarg=None,
+                defaults=[]
+            )
 
         # Extract return type and suite
         rest = nodes[index:]
@@ -1394,25 +1392,23 @@ class PythonTransformer(Transformer):
 
     def async_funcdef(self, nodes):
         funcdef = nodes[0] if isinstance(nodes, list) else nodes
-        name = funcdef.name
-        args = funcdef.args
-        body = funcdef.body
-        returns = funcdef.returns
-        type_params = funcdef.type_params
         return ast.AsyncFunctionDef(
-            name=name,
-            args=args,
-            body=body,
+            name=funcdef.name,
+            args=funcdef.args,
+            body=funcdef.body,
             decorator_list=[],
-            type_params=type_params,
-            returns=returns
+            type_params=funcdef.type_params,
+            returns=funcdef.returns
         )
 
     def classdef(self, nodes):
         name = nodes[0]
         index = 1
         type_params = []
-        if index < len(nodes) and self._is_type_params(nodes[index]):
+        if (
+            index < len(nodes) and isinstance(nodes[index], tuple) and
+            len(nodes[index]) == 2 and nodes[index][0] == "type_params"
+        ):
             type_params = nodes[index][1]
             index += 1
         if index < len(nodes) - 1:
@@ -1456,22 +1452,6 @@ class PythonTransformer(Transformer):
             decorator_list=[],
             type_params=type_params
         )
-
-    @staticmethod
-    def _empty_arguments():
-        return ast.arguments(
-            posonlyargs=[],
-            args=[],
-            vararg=None,
-            kwonlyargs=[],
-            kw_defaults=[],
-            kwarg=None,
-            defaults=[]
-        )
-
-    @staticmethod
-    def _is_type_params(node):
-        return isinstance(node, tuple) and len(node) == 2 and node[0] == "type_params"
 
     def type_params(self, nodes):
         return "type_params", nodes
@@ -1709,9 +1689,6 @@ class PythonTransformer(Transformer):
         if self._contains_unparenthesized_namedexpr(nodes[0]):
             raise SyntaxError("invalid assignment expression")
         return "kwargs", nodes[0]
-
-    def starargs(self, nodes):
-        return nodes
 
     def lambda_paramvalue(self, nodes):
         name_node = nodes[0]
