@@ -362,8 +362,9 @@ f_string_content_single: FSTRING_TEXT_SINGLE
                        | f_expression_single
                        | FSTRING_LITERAL_OPEN -> literal_open_brace
                        | _FSTRING_EXPR_END -> literal_close_brace
-f_expression_double: "{" test debug_eq? conversion? format_spec_double? _FSTRING_EXPR_END
-f_expression_single: "{" test debug_eq? conversion? format_spec_single? _FSTRING_EXPR_END
+f_expression_double: "{" f_expression_body debug_eq? conversion? format_spec_double? _FSTRING_EXPR_END
+f_expression_single: "{" f_expression_body debug_eq? conversion? format_spec_single? _FSTRING_EXPR_END
+?f_expression_body: yield_expr | testlist_star_expr
 debug_eq: "="
 format_spec_single: ":" (FSTRING_TEXT_SINGLE | f_expression_single)*
 format_spec_double: ":" (FSTRING_TEXT_DOUBLE | f_expression_double)*
@@ -398,6 +399,7 @@ _RPAREN_AS.3: /\)(?=[\t \f]*as\b)/
 
 // Python terminals
 !name: NAME | "match" | "case" | "anonymous"
+     | "type" | "path" | "cell" | "net" | "viewgen"
 NAME: /(?!(?:False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|
     finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\b)
     (?![^\W\d]\w*['"])[^\W\d]\w*/x
