@@ -71,7 +71,7 @@ kwparams: "**" typedparam
 
 ?paramvalue: typedparam ("=" test)?
 ?typedparam: name (":" test)?
-?typed_starparam: name (":" test_or_star_expr)?
+?typed_starparam: name (":" test_or_star_expr)? -> typedparam
 
 
 lambdef: "lambda" [lambda_params] ":" test
@@ -159,18 +159,15 @@ with_stmt: "with" with_items ":" suite
          | "with" "(" with_paren_as_item ","? ")" ":" suite
          | "with" "(" with_paren_mixed_items ")" ":" suite
 with_items: with_item ("," with_item)*
-with_paren_as_item: test "as" with_target
+with_paren_as_item: test "as" with_target -> with_item
 with_paren_mixed_items: with_paren_as_item "," with_paren_item ("," with_paren_item)* ","?
                       | with_paren_as_item "," -> with_paren_single_as_item
                       | test "," -> with_paren_single_item
                       | test "," with_paren_item ("," with_paren_item)* ","?
-with_paren_item: test ["as" with_target]
+with_paren_item: test ["as" with_target] -> with_item
 with_item: test ["as" with_target]
 
 ?with_target: expr
-_with_target_items: with_target_item ("," with_target_item)* ","?
-?with_target_item: with_target
-                 | "*" with_target -> star_expr
 
 match_stmt: _MATCH_STMT testlist_star_expr ":" _NEWLINE _INDENT case+ _DEDENT
 
@@ -302,7 +299,7 @@ _tuple_inner: test_or_star_expr (("," test_or_star_expr)+ [","] | ",")
 ?test_or_star_expr: test
                  | star_expr
 
-?subscriptlist: star_expr -> subscript_starred_tuple
+?subscriptlist: star_expr -> subscript_tuple
               | subscript
               | subscript_item (("," subscript_item)+ [","] | ",") -> subscript_tuple
 ?subscript_item: subscript | star_expr
@@ -349,9 +346,6 @@ comp_for: [ASYNC] "for" for_target_list "in" or_test comp_if*
 ASYNC: "async"
 ?comp_if: "if" test_nocond
 
-// not used in grammar, but may appear in "node" passed from Parser to Compiler
-encoding_decl: name
-
 yield_expr: "yield" [testlist_star_expr]
           | "yield" "from" test -> yield_from
 
@@ -377,9 +371,9 @@ f_expression_double: "{" f_expression_body debug_eq? conversion? format_spec_dou
 f_expression_single: "{" f_expression_body debug_eq? conversion? format_spec_single? _FSTRING_EXPR_END
 ?f_expression_body: yield_expr | f_testlist_star_expr
 debug_eq: "="
-format_spec_single: ":" (FSTRING_TEXT_SINGLE | f_expression_single)*
+format_spec_single: ":" (FSTRING_TEXT_SINGLE | f_expression_single)* -> format_spec
                   | ":=" (FSTRING_TEXT_SINGLE | f_expression_single)* -> format_spec_eq
-format_spec_double: ":" (FSTRING_TEXT_DOUBLE | f_expression_double)*
+format_spec_double: ":" (FSTRING_TEXT_DOUBLE | f_expression_double)* -> format_spec
                   | ":=" (FSTRING_TEXT_DOUBLE | f_expression_double)* -> format_spec_eq
 conversion: "!" /[rsa]/i
 
@@ -455,7 +449,3 @@ dotted_atom: "." name?
 path_stmt: "path" context_target ("," context_target)*
 net_stmt: "net" context_target ("," context_target)*
 // END OF ORD DEFINITIONS
-
-// Comma-separated list (with an optional trailing comma)
-cs_list{item}: item ("," item)* ","?
-_cs_list{item}: item ("," item)* ","?
