@@ -744,8 +744,20 @@ def test_funcdef_type_params():
     ord_string = "def identity[T](x: T) -> T:\n    return x"
     compare_asts(ord_string)
 
+def test_funcdef_type_param_default():
+    ord_string = "def identity[T = int](x: T) -> T:\n    return x"
+    compare_asts(ord_string)
+
+def test_funcdef_bounded_type_param_default():
+    ord_string = "def identity[T: int = bool](x: T) -> T:\n    return x"
+    compare_asts(ord_string)
+
 def test_classdef_type_params():
     ord_string = "class Box[T]:\n    pass"
+    compare_asts(ord_string)
+
+def test_classdef_type_param_defaults():
+    ord_string = "class Box[T = int, *Ts = tuple[int, ...], **P = [int, str]]:\n    pass"
     compare_asts(ord_string)
 
 def test_decorator_call_expression():
@@ -902,6 +914,22 @@ def test_subscript_starred_tuple():
 
 def test_type_alias_typevartuple_used():
     ord_string = "type TupleAlias[*Ts] = tuple[*Ts]"
+    compare_asts(ord_string)
+
+def test_type_alias_type_param_default():
+    ord_string = "type Alias[T = int] = list[T]"
+    compare_asts(ord_string)
+
+def test_type_alias_bounded_type_param_default():
+    ord_string = "type Alias[T: int = bool] = list[T]"
+    compare_asts(ord_string)
+
+def test_type_alias_typevartuple_default():
+    ord_string = "type TupleAlias[*Ts = tuple[int, ...]] = tuple[*Ts]"
+    compare_asts(ord_string)
+
+def test_type_alias_paramspec_default():
+    ord_string = "type CallableAlias[**P = [int, str]] = Callable[P, int]"
     compare_asts(ord_string)
 
 def test_funcdef_typevartuple_annotation():
@@ -1099,6 +1127,18 @@ def test_f_string_conversion_empty_format_spec():
 def test_f_string_nested_format_spec_trailing_empty():
     ord_string = "f'{x:{width}}'"
     compare_asts(ord_string)
+
+def test_f_string_nested_format_spec_conversion():
+    ord_string = "f'{x:{width!r}}'"
+    compare_asts(ord_string)
+
+def test_f_string_nested_format_spec_nested_spec():
+    ord_string = "f'{x:{width:{precision}}}'"
+    compare_asts(ord_string)
+
+def test_invalid_f_string_single_close_brace():
+    ord_string = "f'}'"
+    compare_syntax_errors(ord_string)
 
 def test_invalid_match_class_positional_after_keyword():
     ord_string = "match x:\n    case Point(x=1, y):\n        pass"

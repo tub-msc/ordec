@@ -315,9 +315,13 @@ classdef: "class" name [type_params] ["(" [arguments] _rpar] ":" suite
 type_alias_stmt: "type" name [type_params] "=" test
 type_params: "[" type_param ("," type_param)* ","? "]"
 ?type_param: name -> typevar
+           | name "=" test -> typevar_default
            | name ":" test -> bounded_typevar
+           | name ":" test "=" test -> bounded_typevar_default
            | "*" name -> typevartuple
+           | "*" name "=" test -> typevartuple_default
            | "**" name -> paramspec
+           | "**" name "=" test -> paramspec_default
 
 arguments: comprehension{test}
          | call_argument ("," call_argument)* ","?
@@ -346,24 +350,28 @@ string: INVALID_STRING_PREFIX | F_LONG_STRING | STRING | LONG_STRING | f_string
 
 f_string: FSTRING_DOUBLE_START f_string_content_double* FSTRING_DOUBLE_END
         | FSTRING_SINGLE_START f_string_content_single* FSTRING_SINGLE_END
+// Literal close braces are paired in the transformer to avoid `}}` stealing
+// adjacent expression closers in nested format specs.
 f_string_content_double: FSTRING_TEXT_DOUBLE
                        | f_expression_double
-                       | "{{" -> literal_open_brace
-                       | "}}" -> literal_close_brace
+                       | FSTRING_LITERAL_OPEN -> literal_open_brace
+                       | _FSTRING_EXPR_END -> literal_close_brace
 
 f_string_content_single: FSTRING_TEXT_SINGLE
                        | f_expression_single
-                       | "{{" -> literal_open_brace
-                       | "}}" -> literal_close_brace
-f_expression_double: "{" test debug_eq? conversion? format_spec_double? "}"
-f_expression_single: "{" test debug_eq? conversion? format_spec_single? "}"
+                       | FSTRING_LITERAL_OPEN -> literal_open_brace
+                       | _FSTRING_EXPR_END -> literal_close_brace
+f_expression_double: "{" test debug_eq? conversion? format_spec_double? _FSTRING_EXPR_END
+f_expression_single: "{" test debug_eq? conversion? format_spec_single? _FSTRING_EXPR_END
 debug_eq: "="
-format_spec_single: ":" (FSTRING_TEXT_SINGLE | "{" test "}")*
-format_spec_double: ":" (FSTRING_TEXT_DOUBLE | "{" test "}")*
+format_spec_single: ":" (FSTRING_TEXT_SINGLE | f_expression_single)*
+format_spec_double: ":" (FSTRING_TEXT_DOUBLE | f_expression_double)*
 conversion: "!" /[rsa]/i
 
 FSTRING_DOUBLE_END.2: /"/
 FSTRING_SINGLE_END.2: /'/
+FSTRING_LITERAL_OPEN.4: "{{"
+_FSTRING_EXPR_END.3: "}"
 
 FSTRING_SINGLE_START.2: /(f|fr|rf)'/i
 FSTRING_DOUBLE_START.2: /(f|fr|rf)"/i
@@ -389,7 +397,9 @@ _RPAREN_AS.3: /\)(?=[\t \f]*as\b)/
 
 // Python terminals
 !name: NAME | "match" | "case" | "anonymous"
-NAME: /(?!(?:False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\b)(?![^\W\d]\w*['"])[^\W\d]\w*/
+NAME: /(?!(?:False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|
+    finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\b)
+    (?![^\W\d]\w*['"])[^\W\d]\w*/x
 COMMENT: /#[^\n]*/
 
 _SPECIAL_DEC: "0".."9"        ("_"?  "0".."9"                       )*
