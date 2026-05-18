@@ -107,6 +107,8 @@ class PythonTransformer(Transformer):
         "v": 11,
     }
 
+    FSTRING_LITERAL_CLOSE_BRACE = object()
+
     def __init__(self, source_text=""):
         super().__init__()
         self.source_text = source_text
@@ -995,12 +997,29 @@ class PythonTransformer(Transformer):
     def f_string(self, nodes):
         is_raw = isinstance(nodes[0], str) and "r" in nodes[0].lower()
         values_raw = []
+        pending_close_brace = False
         for item in nodes[1:-1]:
+            # Close braces are accepted singly in the grammar so nested format
+            # specs can split adjacent expression closers. Pair literal braces
+            # here to preserve CPython's escaped "}}" rule.
+            if item is self.FSTRING_LITERAL_CLOSE_BRACE:
+                if pending_close_brace:
+                    values_raw.append("}")
+                    pending_close_brace = False
+                else:
+                    pending_close_brace = True
+                continue
+
+            if pending_close_brace:
+                raise SyntaxError("f-string: single '}' is not allowed")
+
             if isinstance(item, tuple) and len(item) == 3 and item[0] == "debug_fexpr":
                 values_raw.append(ast.Constant(value=item[1]))
                 values_raw.append(item[2])
             else:
                 values_raw.append(item)
+        if pending_close_brace:
+            raise SyntaxError("f-string: single '}' is not allowed")
         values = self.merge_adjacent_strings(values_raw)
         joined = ast.JoinedStr(values=values)
         return self._normalize_joined_str(joined, decode_literals=not is_raw)
@@ -1073,6 +1092,8 @@ class PythonTransformer(Transformer):
             # string or expression
             if isinstance(node, str):
                 values.append(ast.Constant(value=node))
+            elif isinstance(node, ast.FormattedValue):
+                values.append(node)
             elif isinstance(node, ast.AST):
                 values.append(self.f_expression([node]))
         return ast.JoinedStr(values=values)
@@ -1297,7 +1318,7 @@ class PythonTransformer(Transformer):
     f_string_escaped_content_double = lambda self, nodes: nodes[0]
     f_string_escaped_content_single = lambda self, nodes: nodes[0]
     literal_open_brace = lambda self, _: '{'
-    literal_close_brace = lambda self, _: '}'
+    literal_close_brace = lambda self, _: self.FSTRING_LITERAL_CLOSE_BRACE
     exprlist = lambda self, nodes: nodes
 
     # Definitions
@@ -1428,16 +1449,28 @@ class PythonTransformer(Transformer):
         return "type_params", nodes
 
     def typevar(self, nodes):
-        return ast.TypeVar(name=nodes[0], bound=None)
+        return ast.TypeVar(name=nodes[0], bound=None, default_value=None)
+
+    def typevar_default(self, nodes):
+        return ast.TypeVar(name=nodes[0], bound=None, default_value=nodes[1])
 
     def bounded_typevar(self, nodes):
-        return ast.TypeVar(name=nodes[0], bound=nodes[1])
+        return ast.TypeVar(name=nodes[0], bound=nodes[1], default_value=None)
+
+    def bounded_typevar_default(self, nodes):
+        return ast.TypeVar(name=nodes[0], bound=nodes[1], default_value=nodes[2])
 
     def typevartuple(self, nodes):
-        return ast.TypeVarTuple(name=nodes[0])
+        return ast.TypeVarTuple(name=nodes[0], default_value=None)
+
+    def typevartuple_default(self, nodes):
+        return ast.TypeVarTuple(name=nodes[0], default_value=nodes[1])
 
     def paramspec(self, nodes):
-        return ast.ParamSpec(name=nodes[0])
+        return ast.ParamSpec(name=nodes[0], default_value=None)
+
+    def paramspec_default(self, nodes):
+        return ast.ParamSpec(name=nodes[0], default_value=nodes[1])
 
     def type_alias_stmt(self, nodes):
         name = ast.Name(id=nodes[0], ctx=ast.Store())
