@@ -560,12 +560,6 @@ class PythonTransformer(Transformer):
             optional_vars=name
         )
 
-    def with_paren_item(self, nodes):
-        return self.with_item(nodes)
-
-    def with_paren_as_item(self, nodes):
-        return self.with_item(nodes)
-
     def with_paren_single_item(self, nodes):
         return [ast.withitem(context_expr=nodes[0], optional_vars=None)]
 
@@ -906,9 +900,6 @@ class PythonTransformer(Transformer):
     def subscript_tuple(self, nodes):
         return ast.Tuple(elts=nodes, ctx=ast.Load())
 
-    def subscript_starred_tuple(self, nodes):
-        return ast.Tuple(elts=nodes, ctx=ast.Load())
-
     def tuple(self, nodes):
         return ast.Tuple(elts=nodes, ctx=ast.Load())
 
@@ -1090,12 +1081,6 @@ class PythonTransformer(Transformer):
 
     def conversion(self, token):
         return token[0]
-
-    def format_spec_single(self, nodes):
-        return self.format_spec(nodes)
-
-    def format_spec_double(self, nodes):
-        return self.format_spec(nodes)
 
     def format_spec_eq(self, nodes):
         return self.format_spec(["=", *nodes])
@@ -1671,9 +1656,6 @@ class PythonTransformer(Transformer):
         annotation = nodes[1] if len(nodes) > 1 else None
         return ast.arg(arg=name, annotation=annotation)
 
-    def typed_starparam(self, nodes):
-        return self.typedparam(nodes)
-
     def argvalue(self, nodes):
         if self._contains_unparenthesized_namedexpr(nodes[1]):
             raise SyntaxError("invalid assignment expression")
@@ -1932,7 +1914,6 @@ class PythonTransformer(Transformer):
                 pos_args.append(argument)
         return pos_args, (kw_names, kw_values)
 
-
     def class_pattern(self, nodes):
         # dotted_name (value)
         class_name = nodes[0]
@@ -1948,27 +1929,12 @@ class PythonTransformer(Transformer):
                               kwd_attrs=keys,
                               kwd_patterns=patterns)
 
-    @staticmethod
-    def convert_string(current_string):
-        prefix, string = current_string
-        if len(prefix) == 0:
-            return ast.Constant(value=string)
-        elif 'b' in prefix:
-            return ast.Constant(value=string.encode('utf-8'))
-        elif 'u' == prefix:
-            return ast.Constant(value=string, kind=prefix)
-        else:
-            return ast.Constant(value=string)
-
     def literal_pattern(self, nodes):
         const = nodes[0]
         # Constants
         if (isinstance(const, ast.Constant) and
                 (type(const.value) is bool or const.value is None)):
             return ast.MatchSingleton(value=const.value)
-        # Strings
-        elif isinstance(const, tuple):
-            return ast.MatchValue(self.convert_string(const))
         # Other values
         return ast.MatchValue(const)
 
