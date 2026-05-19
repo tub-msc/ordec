@@ -47,7 +47,7 @@ class OrdTransformer(PythonTransformer):
     def RATIONAL(self, token):
         """ Rational numbers with SI suffix (100n, 20u)"""
         si_suffixes = ('a','f','p','n','u','m','k','M','G','T')
-        if token.endswith(si_suffixes) or '/' in token:
+        if token.endswith(si_suffixes):
             token = ast.Constant(token.value)
             return ast.Call(func=self.ast_core("R"), args=[token], keywords=[])
         else:
