@@ -26,11 +26,11 @@
 
 // ------------------------------------------------------------------------------
 
-// Special Python 3 grammar for Lark
-// This grammar extends the standard Python syntax with additional constructs
-// and syntactic rules specific to custom integrated circuit (IC) design.
-
-// This grammar should parse all python 3.x code successfully.
+// Python grammar for Lark, extended with ORD syntax.
+// Python 3.13 syntax is the primary reference. This grammar aims for broad
+// Python 3.X compatibility but does not guarantee to parse every Python 3.X program.
+// ORD adds constructs and syntactic rules specific to custom integrated circuit
+// (IC) design.
 // Adapted from: https://docs.python.org/3/reference/grammar.html
 
 // Start symbols for the grammar:

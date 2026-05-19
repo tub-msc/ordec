@@ -8,24 +8,17 @@ import unicodedata
 
 class PythonTransformer(Transformer):
     """
-    Transformer that transforms any Python code back into a Python AST.
-    This Class represents the base of the ORD language
+    Transform parsed Python syntax into a Python AST.
+
+    This generic Python transformer provides the Python-language foundation for
+    ORD. It builds standard ``ast`` nodes, uses Python 3.13 syntax and AST
+    behavior as its primary reference, and raises ``SyntaxError`` for parsed
+    forms that are not valid Python syntax.
     """
 
-    def _call_userfunc(self, tree, new_children=None):
-        result = super()._call_userfunc(tree, new_children)
-        if isinstance(result, ast.AST) and hasattr(tree, 'meta'):
-            meta = tree.meta
-            if meta.line is not None:
-                result.lineno = meta.line
-                result.col_offset = (meta.column or 1) - 1
-            if meta.end_line is not None:
-                result.end_lineno = meta.end_line
-                result.end_col_offset = (meta.end_column or 1) - 1
-        return result
-
+    # -------------------------------------------------------------------------
     # Variables
-    # ---------
+    # -------------------------------------------------------------------------
 
     AUG_OP_MAP = {
         "+=": ast.Add,
@@ -113,8 +106,21 @@ class PythonTransformer(Transformer):
         super().__init__()
         self.source_text = source_text
 
+    # -------------------------------------------------------------------------
     # Helpers
-    # -------
+    # -------------------------------------------------------------------------
+
+    def _call_userfunc(self, tree, new_children=None):
+        result = super()._call_userfunc(tree, new_children)
+        if isinstance(result, ast.AST) and hasattr(tree, 'meta'):
+            meta = tree.meta
+            if meta.line is not None:
+                result.lineno = meta.line
+                result.col_offset = (meta.column or 1) - 1
+            if meta.end_line is not None:
+                result.end_lineno = meta.end_line
+                result.end_col_offset = (meta.end_column or 1) - 1
+        return result
 
     def _flatten_body(self, body):
         # flatten ast statements
@@ -194,8 +200,227 @@ class PythonTransformer(Transformer):
             )
         return False
 
+    @staticmethod
+    def merge_adjacent_strings(items):
+        merged_buffer = []
+        temp_value = None
+        temp_kind = None
+
+        for item in items:
+            if isinstance(item, str):
+                item = ast.Constant(value=item)
+
+            if isinstance(item, ast.Constant) and isinstance(item.value, (str, bytes)):
+                if temp_value is None:
+                    temp_value = item.value
+                    temp_kind = item.kind
+                # Merge items of the same type directly
+                elif isinstance(item.value, type(temp_value)):
+                    temp_value += item.value
+                    if temp_kind is None:
+                        temp_kind = item.kind
+                # Append if the type differs
+                else:
+                    merged_buffer.append(ast.Constant(value=temp_value, kind=temp_kind))
+                    temp_value = item.value
+                    temp_kind = item.kind
+                continue
+            # Append if not string or bytes
+            if temp_value is not None:
+                merged_buffer.append(ast.Constant(value=temp_value, kind=temp_kind))
+                temp_value = None
+                temp_kind = None
+
+            merged_buffer.append(item)
+
+        if temp_value is not None:
+            merged_buffer.append(ast.Constant(value=temp_value, kind=temp_kind))
+        return merged_buffer
+
+    def _debug_prefix_from_source(self, meta):
+        # Parser additions:
+        # - propagate_positions=True provides start_pos/end_pos on f_expression nodes.
+        # - source_text contains the parsed source.
+        segment = self.source_text[meta.start_pos:meta.end_pos]
+        inner = segment[1:-1]
+        eq_index = inner.rfind("=")
+
+        after_eq = eq_index + 1
+        while after_eq < len(inner) and inner[after_eq] in " \t":
+            after_eq += 1
+        return inner[:after_eq]
+
+    def _normalize_joined_str(self, node, decode_literals):
+        """
+        Merge adjacent literal Constant(str) pieces into one piece
+        and recursively normalize joined strings
+        """
+        normalized_values = []
+        literal_buffer = []
+
+        def flush_literal_buffer():
+            if literal_buffer:
+                literal = "".join(literal_buffer)
+                if literal:
+                    normalized_values.append(ast.Constant(value=literal))
+                literal_buffer.clear()
+
+        for value in node.values:
+            if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                literal = value.value
+                if decode_literals:
+                    literal = self._decode_string_escapes(literal)
+                literal_buffer.append(literal)
+                continue
+
+            flush_literal_buffer()
+            if isinstance(value, ast.FormattedValue) and isinstance(value.format_spec, ast.JoinedStr):
+                value.format_spec = self._normalize_joined_str(
+                    value.format_spec,
+                    decode_literals=decode_literals
+                )
+            normalized_values.append(value)
+
+        flush_literal_buffer()
+        return ast.JoinedStr(values=normalized_values)
+
+    @staticmethod
+    def _split_string_literal(token_value):
+        """Extract string literal"""
+        quote_start = 0
+        while quote_start < len(token_value) and token_value[quote_start].isalpha():
+            quote_start += 1
+
+        prefix = token_value[:quote_start]
+        if token_value[quote_start:quote_start + 3] in ('"""', "'''"):
+            quote_len = 3
+        else:
+            quote_len = 1
+
+        content = token_value[quote_start + quote_len:-quote_len]
+        return prefix, content
+
+    @staticmethod
+    def _is_hex_digits(value):
+        return all(ch in "0123456789abcdefABCDEF" for ch in value)
+
+    def _decode_string_escapes(self, value):
+        # Decode Python literal escape sequences so transformed AST constants match Python.
+        decoded = []
+        i = 0
+        while i < len(value):
+            char = value[i]
+            if char != "\\":
+                decoded.append(char)
+                i += 1
+                continue
+
+            if i + 1 >= len(value):
+                decoded.append("\\")
+                i += 1
+                continue
+
+            esc = value[i + 1]
+            if esc == "\n":
+                i += 2
+                continue
+            if esc in self.STRING_ESCAPE_MAP:
+                decoded.append(self.STRING_ESCAPE_MAP[esc])
+                i += 2
+                continue
+            if esc in "01234567":
+                j = i + 1
+                while j < len(value) and j < i + 4 and value[j] in "01234567":
+                    j += 1
+                decoded.append(chr(int(value[i + 1:j], 8)))
+                i = j
+                continue
+            if esc == "x":
+                hex_digits = value[i + 2:i + 4]
+                if len(hex_digits) != 2 or not self._is_hex_digits(hex_digits):
+                    raise SyntaxError("invalid \\x escape sequence")
+                decoded.append(chr(int(hex_digits, 16)))
+                i += 4
+                continue
+            if esc == "u":
+                hex_digits = value[i + 2:i + 6]
+                if len(hex_digits) != 4 or not self._is_hex_digits(hex_digits):
+                    raise SyntaxError("invalid \\u escape sequence")
+                decoded.append(chr(int(hex_digits, 16)))
+                i += 6
+                continue
+            if esc == "U":
+                hex_digits = value[i + 2:i + 10]
+                if len(hex_digits) != 8 or not self._is_hex_digits(hex_digits):
+                    raise SyntaxError("invalid \\U escape sequence")
+                decoded.append(chr(int(hex_digits, 16)))
+                i += 10
+                continue
+            if esc == "N" and i + 2 < len(value) and value[i + 2] == "{":
+                closing_brace = value.find("}", i + 3)
+                if closing_brace == -1:
+                    raise SyntaxError("malformed \\N escape sequence")
+                unicode_name = value[i + 3:closing_brace]
+                try:
+                    decoded.append(unicodedata.lookup(unicode_name))
+                except KeyError as exc:
+                    raise SyntaxError("unknown Unicode character name") from exc
+                i = closing_brace + 1
+                continue
+
+            decoded.append("\\")
+            decoded.append(esc)
+            i += 2
+        return "".join(decoded)
+
+    def _decode_bytes_escapes(self, value):
+        decoded = bytearray()
+        i = 0
+        while i < len(value):
+            char = value[i]
+            if char != "\\":
+                if ord(char) > 0x7F:
+                    raise SyntaxError("bytes literals may only contain ASCII characters")
+                decoded.append(ord(char))
+                i += 1
+                continue
+
+            if i + 1 >= len(value):
+                decoded.append(ord("\\"))
+                i += 1
+                continue
+
+            esc = value[i + 1]
+            if esc == "\n":
+                i += 2
+                continue
+            if esc in self.BYTES_ESCAPE_MAP:
+                decoded.append(self.BYTES_ESCAPE_MAP[esc])
+                i += 2
+                continue
+            if esc in "01234567":
+                j = i + 1
+                while j < len(value) and j < i + 4 and value[j] in "01234567":
+                    j += 1
+                decoded.append(int(value[i + 1:j], 8) & 0xFF)
+                i = j
+                continue
+            if esc == "x":
+                hex_digits = value[i + 2:i + 4]
+                if len(hex_digits) != 2 or not self._is_hex_digits(hex_digits):
+                    raise SyntaxError("invalid \\x escape sequence")
+                decoded.append(int(hex_digits, 16))
+                i += 4
+                continue
+
+            decoded.append(ord("\\"))
+            decoded.append(ord(esc))
+            i += 2
+        return bytes(decoded)
+
+    # -------------------------------------------------------------------------
     # Terminals
-    # ---------
+    # -------------------------------------------------------------------------
 
     def HEX_NUMBER(self, nodes):
         value = nodes.value.replace("_", "")
@@ -221,8 +446,10 @@ class PythonTransformer(Transformer):
     FSTRING_SINGLE_END = lambda self, token: token.value
     FSTRING_DOUBLE_END = lambda self, token: token.value
     SLASH = lambda self, token: token.value
+
+    # -------------------------------------------------------------------------
     # Statements
-    # ----------
+    # -------------------------------------------------------------------------
 
     def expr_stmt(self, nodes):
         if self._contains_unparenthesized_namedexpr(nodes[0]):
@@ -393,8 +620,9 @@ class PythonTransformer(Transformer):
     import_stmt = lambda self, nodes: nodes[0]
     yield_stmt = lambda self, nodes: ast.Expr(value=nodes[0])
 
+    # -------------------------------------------------------------------------
     # Compound Statements
-    # -------------------
+    # -------------------------------------------------------------------------
 
     def if_stmt(self, nodes):
         condition = nodes[0]
@@ -574,8 +802,9 @@ class PythonTransformer(Transformer):
     except_clauses = lambda self, nodes: nodes
     with_items = lambda self, nodes: nodes
 
+    # -------------------------------------------------------------------------
     # Expressions
-    # -----------
+    # -------------------------------------------------------------------------
 
     def funccall(self, nodes):
         # Converts argvalue/stararg/kwargs into arguments
@@ -905,43 +1134,6 @@ class PythonTransformer(Transformer):
     def testlist_tuple(self, nodes):
         return ast.Tuple(elts=nodes, ctx=ast.Load())
 
-    @staticmethod
-    def merge_adjacent_strings(items):
-        merged_buffer = []
-        temp_value = None
-        temp_kind = None
-
-        for item in items:
-            if isinstance(item, str):
-                item = ast.Constant(value=item)
-
-            if isinstance(item, ast.Constant) and isinstance(item.value, (str, bytes)):
-                if temp_value is None:
-                    temp_value = item.value
-                    temp_kind = item.kind
-                # Merge items of the same type directly
-                elif isinstance(item.value, type(temp_value)):
-                    temp_value += item.value
-                    if temp_kind is None:
-                        temp_kind = item.kind
-                # Append if the type differs
-                else:
-                    merged_buffer.append(ast.Constant(value=temp_value, kind=temp_kind))
-                    temp_value = item.value
-                    temp_kind = item.kind
-                continue
-            # Append if not string or bytes
-            if temp_value is not None:
-                merged_buffer.append(ast.Constant(value=temp_value, kind=temp_kind))
-                temp_value = None
-                temp_kind = None
-
-            merged_buffer.append(item)
-
-        if temp_value is not None:
-            merged_buffer.append(ast.Constant(value=temp_value, kind=temp_kind))
-        return merged_buffer
-
     def string_concat(self, nodes):
         merged_string = self.merge_adjacent_strings(nodes)
         # Return if only one value
@@ -1057,19 +1249,6 @@ class PythonTransformer(Transformer):
             return "debug_fexpr", self._debug_prefix_from_source(meta), formatted_value
         return formatted_value
 
-    def _debug_prefix_from_source(self, meta):
-        # Parser additions:
-        # - propagate_positions=True provides start_pos/end_pos on f_expression nodes.
-        # - source_text contains the parsed source.
-        segment = self.source_text[meta.start_pos:meta.end_pos]
-        inner = segment[1:-1]
-        eq_index = inner.rfind("=")
-
-        after_eq = eq_index + 1
-        while after_eq < len(inner) and inner[after_eq] in " \t":
-            after_eq += 1
-        return inner[:after_eq]
-
     def debug_eq(self, nodes):
         return "debug_eq", "="
 
@@ -1091,40 +1270,6 @@ class PythonTransformer(Transformer):
                 values.append(self.f_expression([node]))
         return ast.JoinedStr(values=values)
 
-    def _normalize_joined_str(self, node, decode_literals):
-        """
-        Merge adjacent literal Constant(str) pieces into one piece
-        and recursively normalize joined strings
-        """
-        normalized_values = []
-        literal_buffer = []
-
-        def flush_literal_buffer():
-            if literal_buffer:
-                literal = "".join(literal_buffer)
-                if literal:
-                    normalized_values.append(ast.Constant(value=literal))
-                literal_buffer.clear()
-
-        for value in node.values:
-            if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                literal = value.value
-                if decode_literals:
-                    literal = self._decode_string_escapes(literal)
-                literal_buffer.append(literal)
-                continue
-
-            flush_literal_buffer()
-            if isinstance(value, ast.FormattedValue) and isinstance(value.format_spec, ast.JoinedStr):
-                value.format_spec = self._normalize_joined_str(
-                    value.format_spec,
-                    decode_literals=decode_literals
-                )
-            normalized_values.append(value)
-
-        flush_literal_buffer()
-        return ast.JoinedStr(values=normalized_values)
-
     def string(self, nodes):
         current_string = nodes[0]
         if isinstance(current_string, (ast.JoinedStr, ast.Constant)):
@@ -1139,140 +1284,6 @@ class PythonTransformer(Transformer):
             return ast.Constant(value=string, kind=prefix)
         else:
             return ast.Constant(value=string)
-
-    @staticmethod
-    def _split_string_literal(token_value):
-        """Extract string literal"""
-        quote_start = 0
-        while quote_start < len(token_value) and token_value[quote_start].isalpha():
-            quote_start += 1
-
-        prefix = token_value[:quote_start]
-        if token_value[quote_start:quote_start + 3] in ('"""', "'''"):
-            quote_len = 3
-        else:
-            quote_len = 1
-
-        content = token_value[quote_start + quote_len:-quote_len]
-        return prefix, content
-
-    @staticmethod
-    def _is_hex_digits(value):
-        return all(ch in "0123456789abcdefABCDEF" for ch in value)
-
-    def _decode_string_escapes(self, value):
-        # Decode Python literal escape sequences so transformed AST constants match Python.
-        decoded = []
-        i = 0
-        while i < len(value):
-            char = value[i]
-            if char != "\\":
-                decoded.append(char)
-                i += 1
-                continue
-
-            if i + 1 >= len(value):
-                decoded.append("\\")
-                i += 1
-                continue
-
-            esc = value[i + 1]
-            if esc == "\n":
-                i += 2
-                continue
-            if esc in self.STRING_ESCAPE_MAP:
-                decoded.append(self.STRING_ESCAPE_MAP[esc])
-                i += 2
-                continue
-            if esc in "01234567":
-                j = i + 1
-                while j < len(value) and j < i + 4 and value[j] in "01234567":
-                    j += 1
-                decoded.append(chr(int(value[i + 1:j], 8)))
-                i = j
-                continue
-            if esc == "x":
-                hex_digits = value[i + 2:i + 4]
-                if len(hex_digits) != 2 or not self._is_hex_digits(hex_digits):
-                    raise SyntaxError("invalid \\x escape sequence")
-                decoded.append(chr(int(hex_digits, 16)))
-                i += 4
-                continue
-            if esc == "u":
-                hex_digits = value[i + 2:i + 6]
-                if len(hex_digits) != 4 or not self._is_hex_digits(hex_digits):
-                    raise SyntaxError("invalid \\u escape sequence")
-                decoded.append(chr(int(hex_digits, 16)))
-                i += 6
-                continue
-            if esc == "U":
-                hex_digits = value[i + 2:i + 10]
-                if len(hex_digits) != 8 or not self._is_hex_digits(hex_digits):
-                    raise SyntaxError("invalid \\U escape sequence")
-                decoded.append(chr(int(hex_digits, 16)))
-                i += 10
-                continue
-            if esc == "N" and i + 2 < len(value) and value[i + 2] == "{":
-                closing_brace = value.find("}", i + 3)
-                if closing_brace == -1:
-                    raise SyntaxError("malformed \\N escape sequence")
-                unicode_name = value[i + 3:closing_brace]
-                try:
-                    decoded.append(unicodedata.lookup(unicode_name))
-                except KeyError as exc:
-                    raise SyntaxError("unknown Unicode character name") from exc
-                i = closing_brace + 1
-                continue
-
-            decoded.append("\\")
-            decoded.append(esc)
-            i += 2
-        return "".join(decoded)
-
-    def _decode_bytes_escapes(self, value):
-        decoded = bytearray()
-        i = 0
-        while i < len(value):
-            char = value[i]
-            if char != "\\":
-                if ord(char) > 0x7F:
-                    raise SyntaxError("bytes literals may only contain ASCII characters")
-                decoded.append(ord(char))
-                i += 1
-                continue
-
-            if i + 1 >= len(value):
-                decoded.append(ord("\\"))
-                i += 1
-                continue
-
-            esc = value[i + 1]
-            if esc == "\n":
-                i += 2
-                continue
-            if esc in self.BYTES_ESCAPE_MAP:
-                decoded.append(self.BYTES_ESCAPE_MAP[esc])
-                i += 2
-                continue
-            if esc in "01234567":
-                j = i + 1
-                while j < len(value) and j < i + 4 and value[j] in "01234567":
-                    j += 1
-                decoded.append(int(value[i + 1:j], 8) & 0xFF)
-                i = j
-                continue
-            if esc == "x":
-                hex_digits = value[i + 2:i + 4]
-                if len(hex_digits) != 2 or not self._is_hex_digits(hex_digits):
-                    raise SyntaxError("invalid \\x escape sequence")
-                decoded.append(int(hex_digits, 16))
-                i += 4
-                continue
-
-            decoded.append(ord("\\"))
-            decoded.append(ord(esc))
-            i += 2
-        return bytes(decoded)
 
     def STRING(self, token):
         prefix, content = self._split_string_literal(token.value)
@@ -1315,8 +1326,9 @@ class PythonTransformer(Transformer):
     named_unicode_escape = lambda self, nodes: ("named_unicode_escape", str(nodes[0])[3:-1])
     exprlist = lambda self, nodes: nodes
 
+    # -------------------------------------------------------------------------
     # Definitions
-    # -----------
+    # -------------------------------------------------------------------------
 
     def decorator(self, nodes):
         return nodes[0]
@@ -1474,8 +1486,9 @@ class PythonTransformer(Transformer):
     decorators = lambda self, nodes: nodes
     arguments = lambda self, nodes: nodes
 
+    # -------------------------------------------------------------------------
     # Parameters / Arguments
-    # ----------------------
+    # -------------------------------------------------------------------------
 
     def parameters(self, nodes):
         """
@@ -1803,8 +1816,9 @@ class PythonTransformer(Transformer):
             raise SyntaxError("invalid assignment expression")
         return ast.Lambda(args=params, body=body)
 
+    # -------------------------------------------------------------------------
     # Match Case
-    # ----------
+    # -------------------------------------------------------------------------
 
     def case(self, nodes):
         pattern = nodes[0]
@@ -1947,8 +1961,9 @@ class PythonTransformer(Transformer):
     const_false = lambda self, _: ast.Constant(value=False)
     argument = lambda self, nodes: nodes[0]
 
+    # -------------------------------------------------------------------------
     # Top-Level
-    # ---------
+    # -------------------------------------------------------------------------
 
     single_input = lambda self, nodes: nodes[0]
     file_input = lambda self, nodes: ast.Module(body=self._flatten_body(nodes), type_ignores=[])
