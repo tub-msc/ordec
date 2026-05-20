@@ -36,6 +36,7 @@ class OrdecLanguageServer:
         """Initialize server state and LSP method dispatch."""
         self.shutdown_requested = False
         self.position_encoding = "utf-16"
+        self.definition_link_support = False
         self.session = AnalysisSession()
         self.handlers = {
             "initialize": self.handle_initialize,
@@ -139,6 +140,10 @@ class OrdecLanguageServer:
 
     def handle_initialize(self, message):
         params = message.get("params", {})
+        capabilities = params.get("capabilities", {})
+        text_document_capabilities = capabilities.get("textDocument", {})
+        definition_capabilities = text_document_capabilities.get("definition", {})
+        self.definition_link_support = bool(definition_capabilities.get("linkSupport"))
         self.session = AnalysisSession(workspace_root=self.initialize_root_path(params))
         return self.result_response(message, {
             "serverInfo": {
@@ -328,10 +333,7 @@ class OrdecLanguageServer:
         definition = self.session.definition(uri, position)
         result = None
         if definition is not None:
-            result = {
-                "uri": definition["uri"],
-                "range": self.lsp_range(definition["uri"], definition["selection_range"]),
-            }
+            result = self.lsp_definition_result(uri, definition)
         return self.result_response(message, result)
 
     def handle_hover(self, message):
@@ -622,6 +624,31 @@ class OrdecLanguageServer:
             "start": self.lsp_position(uri, value_range.start),
             "end": self.lsp_position(uri, value_range.end),
         }
+
+    def lsp_definition_result(self, source_uri: str, definition):
+        """Convert an analysis definition to the client-supported LSP shape."""
+        target_selection_range = self.lsp_range(
+            definition["uri"],
+            definition["selection_range"],
+        )
+        if not self.definition_link_support:
+            return {
+                "uri": definition["uri"],
+                "range": target_selection_range,
+            }
+
+        result = {
+            "targetUri": definition["uri"],
+            "targetRange": self.lsp_range(definition["uri"], definition["range"]),
+            "targetSelectionRange": target_selection_range,
+        }
+        if definition.get("origin_range") is not None:
+            result["originSelectionRange"] = self.lsp_range(
+                source_uri,
+                definition["origin_range"],
+            )
+
+        return [result]
 
     def diagnostic_severity(self, severity: str):
         """Map analysis diagnostic severities to LSP severity constants."""

@@ -46,15 +46,19 @@ def utf16_source_offset(source, needle, occurrence=1):
     }
 
 
-def initialize_server(tmp_path):
+def initialize_server(tmp_path, capabilities=None):
     """Create and initialize an ORD language server for a temporary workspace."""
     server = OrdecLanguageServer()
+    params = {
+        "rootUri": tmp_path.resolve().as_uri(),
+    }
+    if capabilities is not None:
+        params["capabilities"] = capabilities
+
     result = request(
         server,
         "initialize",
-        {
-            "rootUri": tmp_path.resolve().as_uri(),
-        },
+        params,
     )
     assert result["serverInfo"]["name"] == "ordec-lsp"
     return server
@@ -310,6 +314,58 @@ def test_lsp_navigation_references_rename_and_symbols(tmp_path):
         },
     )
     assert uri in rename["changes"]
+
+
+def test_lsp_definition_uses_location_link_when_supported(tmp_path):
+    mux_source = (
+        "cell Mux2:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        path a\n"
+    )
+    mux_path = tmp_path / "mux2.ord"
+    mux_path.write_text(mux_source)
+    source = (
+        "from .mux2 import Mux2 as Stage\n"
+        "\n"
+        "def helper(x=Stage):\n"
+        "    return Stage\n"
+    )
+    user_path = tmp_path / "user.ord"
+    user_path.write_text(source)
+
+    server = initialize_server(
+        tmp_path,
+        capabilities={
+            "textDocument": {
+                "definition": {
+                    "linkSupport": True,
+                },
+            },
+        },
+    )
+    uri = user_path.resolve().as_uri()
+    assert open_document(server, uri, source) == []
+
+    position = source_offset(source, "Stage", 2)
+    definition = request(
+        server,
+        "textDocument/definition",
+        {
+            "textDocument": text_document(uri),
+            "position": position,
+        },
+    )
+
+    assert len(definition) == 1
+    assert definition[0]["targetUri"] == mux_path.resolve().as_uri()
+    assert definition[0]["originSelectionRange"] == {
+        "start": position,
+        "end": source_offset_after(source, "Stage", 2),
+    }
+    assert definition[0]["targetSelectionRange"] == {
+        "start": source_offset(mux_source, "Mux2"),
+        "end": source_offset_after(mux_source, "Mux2"),
+    }
 
 
 def test_lsp_positions_use_utf16_offsets(tmp_path):

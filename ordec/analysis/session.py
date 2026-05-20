@@ -662,6 +662,7 @@ class AnalysisSession(
                 "kind": binding["kind"],
                 "range": binding["range"],
                 "selection_range": binding["selection_range"],
+                "origin_range": binding["selection_range"],
                 "binding_id": binding["id"],
                 "scope_id": binding["scope_id"],
                 "exported": binding["exported"],
@@ -681,6 +682,7 @@ class AnalysisSession(
                 "kind": binding["kind"],
                 "range": binding["range"],
                 "selection_range": binding["selection_range"],
+                "origin_range": occurrence["range"],
                 "binding_id": binding["id"],
                 "scope_id": binding["scope_id"],
                 "exported": binding["exported"],
@@ -781,6 +783,15 @@ class AnalysisSession(
             definition["name"],
             definition["kind"],
         )
+
+    def definition_with_origin(self, definition, origin_range):
+        """Return a definition copy annotated with the source identifier range."""
+        if definition is None:
+            return None
+
+        result = dict(definition)
+        result["origin_range"] = origin_range
+        return result
 
     def find_export(self, uri: str, name: str):
         """Find an exported ORD symbol in a document and its imports."""
@@ -1105,7 +1116,7 @@ class AnalysisSession(
 
                 match = self.type_members(type_definition).get(occurrence["name"])
                 if match is not None:
-                    return match
+                    return self.definition_with_origin(match, occurrence["range"])
 
         return None
 
@@ -1476,6 +1487,7 @@ class AnalysisSession(
                     "kind": symbol.kind,
                     "range": symbol.range,
                     "selection_range": symbol.selection_range,
+                    "origin_range": symbol.selection_range,
                 }
 
         import_entry = self.import_entry_at_position(uri, position)
@@ -1490,12 +1502,18 @@ class AnalysisSession(
                 if import_uri is not None:
                     match = self.find_export(import_uri, import_entry.export_name)
                     if match is not None:
-                        return match
+                        return self.definition_with_origin(
+                            match,
+                            import_entry.selection_range,
+                        )
 
             else:
                 match = self.module_definition(uri, import_entry.module)
                 if match is not None:
-                    return match
+                    return self.definition_with_origin(
+                        match,
+                        import_entry.selection_range,
+                    )
 
         name_info = self.name_at_position(uri, position)
         if name_info is None:
@@ -1503,6 +1521,9 @@ class AnalysisSession(
 
         definition = self.resolve_name(uri, name_info["name"])
         if definition is not None:
-            return definition
+            return self.definition_with_origin(definition, name_info["range"])
 
-        return self.resolve_completion_type(uri, name_info["name"])
+        return self.definition_with_origin(
+            self.resolve_completion_type(uri, name_info["name"]),
+            name_info["range"],
+        )
