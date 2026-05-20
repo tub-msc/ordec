@@ -179,13 +179,6 @@ def adjust_start_end_for_direction(start, start_dir, end, end_dir):
 
     return start, end
 
-def adjust_point_for_direction(point, direction):
-    """Step a point by one grid cell in ``direction``."""
-    if direction:
-        dx, dy = direction_moves[direction]
-        return point[0] + dx, point[1] + dy
-    return point
-
 def dependency_versions(start_name):
     """Return a version signature of all straight lines except ``start_name``."""
     if not _straight_line_change_count:
@@ -674,6 +667,12 @@ def sort_connections(connections, name_grid=None):
     Returns:
         tuple: (name_endpoint_marker_mapping, sorted_connections).
     """
+    def adjust_point_for_direction(point, direction):
+        if direction:
+            dx, dy = direction_moves[direction]
+            return point[0] + dx, point[1] + dy
+        return point
+
     # Helper function to calculate squared Euclidean distance.
     # sqrt() is monotonic, so squared distance preserves sorting order.
     def euclidean_distance_sq(point1, point2):
@@ -819,6 +818,7 @@ def draw_connections(grid, connections, width, height, name_grid=None):
                         x, y = shortcut[0]
                         if grid[y][x] < GRID_BLOCKED:
                             path_list.append(shortcut[0])
+                path_list = list(dict.fromkeys(path_list))
                 if end_new in path_list:
                     # Endpoint already lies on an existing path --> trivial connection
                     path = [end_new]
