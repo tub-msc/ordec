@@ -537,145 +537,189 @@ const viewClassOf = {
         update(data) {
             const circuitMap = new Map();
             data.circuits.forEach(circuit => {
-                circuitMap.set(circuit.nid, { ...circuit, items: [] });
+                circuitMap.set(circuit.nid, { ...circuit, itemsByType: { pin: [], net: [], device: [], subcircuit: [] } });
             });
 
             const itemMap = new Map();
             data.items.forEach(item => {
                 itemMap.set(item.nid, item);
                 const circuit = circuitMap.get(item.circuit_nid);
-                if (circuit) {
-                    circuit.items.push(item);
+                if (circuit && circuit.itemsByType[item.item_type]) {
+                    circuit.itemsByType[item.item_type].push(item);
                 }
             });
 
             const mismatchItemCount = data.items.filter(i => i.status !== 'match').length;
-            const circuitMismatchCount = data.circuits.filter(c => c.status !== 'match').length;
-
             const statusClass = data.status === 'match' ? 'lvs-pass' : 'lvs-fail';
             const statusText = data.status === 'match' ? 'PASS' : 'FAIL';
-
-            let summaryText;
-            if (circuitMismatchCount > 0) {
-                summaryText = `${circuitMismatchCount} circuit${circuitMismatchCount > 1 ? 's' : ''} with errors`;
-                if (mismatchItemCount > 0) {
-                    summaryText += `, ${mismatchItemCount} item mismatch${mismatchItemCount > 1 ? 'es' : ''}`;
-                }
-            } else {
-                summaryText = 'All circuits match';
-            }
+            const summaryText = mismatchItemCount > 0
+                ? `${mismatchItemCount} mismatch${mismatchItemCount > 1 ? 'es' : ''}`
+                : 'All match';
 
             let html = `<div class="lvs-header ${statusClass}">
                 <span class="lvs-status">${statusText}</span>
                 <span class="lvs-summary">${summaryText}</span>
                 <button class="lvs-deselect" disabled>Deselect</button>
             </div>`;
-            html += '<div class="lvs-circuits">';
+            html += `<div class="lvs-body">
+                <div class="lvs-col-header">
+                    <span>Objects</span>
+                    <span>Layout</span>
+                    <span>Reference</span>
+                </div>`;
+
+            const typeOrder = ['pin', 'net', 'device', 'subcircuit'];
+            const typeLabels = { pin: 'Pins', net: 'Nets', device: 'Devices', subcircuit: 'Subcircuits' };
+            const typeIcons = { pin: '&#8660;', net: '&#8593;', device: '&#9649;', subcircuit: '&#9633;' };
 
             data.circuits.forEach(circuit => {
                 const circuitData = circuitMap.get(circuit.nid);
-                const mismatchItems = circuitData.items.filter(i => i.status !== 'match');
+                const allItems = Object.values(circuitData.itemsByType).flat();
+                const hasMismatches = circuit.status !== 'match' || allItems.some(i => i.status !== 'match');
 
-                if (circuit.status === 'match' && mismatchItems.length === 0) {
-                    return;
-                }
+                if (!hasMismatches && allItems.length === 0) return;
 
-                const circuitStatusClass = circuit.status === 'match' ? 'lvs-match' : 'lvs-mismatch';
-                const circuitName = circuit.layout_name || circuit.schem_name || 'unknown';
-                const hasExpandableItems = mismatchItems.length > 0;
+                const circuitStatusIcon = this._statusIcon(circuit.status);
+                html += `<div class="lvs-circuit" data-nid="${circuit.nid}">
+                    <div class="lvs-circuit-header">
+                        <span><span class="lvs-toggle">&#9654;</span> ${circuitStatusIcon} Circuit</span>
+                        <span>${circuit.layout_name || '?'}</span>
+                        <span>${circuit.schem_name || '?'}</span>
+                    </div>`;
 
-                html += `<div class="lvs-circuit ${circuitStatusClass}" data-nid="${circuit.nid}">`;
-                if (hasExpandableItems) {
-                    html += `<span class="lvs-circuit-toggle">&#9654;</span> `;
-                }
-                html += `<span class="lvs-circuit-name">${circuitName}</span>`;
+                for (const itemType of typeOrder) {
+                    const items = circuitData.itemsByType[itemType];
+                    if (items.length === 0) continue;
 
-                if (circuit.status !== 'match' && circuit.message) {
-                    html += `<div class="lvs-circuit-msg">${circuit.message}</div>`;
-                }
+                    const mismatchCount = items.filter(i => i.status !== 'match').length;
+                    const groupStatusIcon = mismatchCount > 0
+                        ? this._statusIcon('mismatch')
+                        : this._statusIcon('match');
 
-                if (hasExpandableItems) {
-                    html += '<div class="lvs-items">';
-                    mismatchItems.forEach((item, idx) => {
-                        const typeLabel = item.item_type;
-                        const layoutId = item.layout_name || '?';
-                        const schemId = item.schem_name || '?';
-                        html += `<div class="lvs-item lvs-item-mismatch" data-nid="${item.nid}">`;
-                        html += `${typeLabel}: L:${layoutId} ↔ S:${schemId}`;
+                    html += `<div class="lvs-type-group" data-type="${itemType}">
+                        <div class="lvs-type-header">
+                            <span><span class="lvs-toggle">&#9654;</span> ${groupStatusIcon} ${typeLabels[itemType]} (${items.length})</span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                        <div class="lvs-type-items">`;
+
+                    for (const item of items) {
+                        const statusClass = item.status === 'match'
+                            ? 'lvs-status-match'
+                            : (item.message && item.message.includes('parameter') ? 'lvs-status-warning' : 'lvs-status-mismatch');
+                        const layoutName = item.layout_name || '?';
+                        const schemName = item.schem_name || '?';
+                        const layoutParams = this._formatParams(item.layout_params);
+
+                        html += `<div class="lvs-item-row ${statusClass}" data-nid="${item.nid}">
+                            <span>${typeIcons[itemType]} ${layoutName} &#8596; ${schemName}</span>
+                            <span>${layoutName}${layoutParams}</span>
+                            <span>${schemName}</span>
+                        </div>`;
                         if (item.message) {
-                            html += ` <span class="lvs-item-msg">${item.message}</span>`;
+                            html += `<div class="lvs-item-msg">${item.message}</div>`;
                         }
-                        html += '</div>';
-                    });
-                    html += '</div>';
+                    }
+
+                    html += `</div></div>`;
                 }
 
-                html += '</div>';
+                html += `</div>`;
             });
 
             html += '</div>';
             this.el.innerHTML = html;
 
-            this.el.querySelectorAll('.lvs-circuit').forEach(circuitEl => {
-                const toggleCircuit = () => {
-                    circuitEl.classList.toggle('expanded');
-                    const toggle = circuitEl.querySelector('.lvs-circuit-toggle');
-                    toggle.innerHTML = circuitEl.classList.contains('expanded') ? '&#9660;' : '&#9654;';
-                };
-                circuitEl.addEventListener('click', (e) => {
-                    if (!e.target.classList.contains('lvs-item')) {
-                        toggleCircuit();
+            this._attachEventHandlers(itemMap);
+            this.itemMap = itemMap;
+        }
+
+        _statusIcon(status) {
+            const cls = status === 'match' ? 'match' : (status === 'warning' ? 'warning' : 'mismatch');
+            return `<span class="lvs-status-icon ${cls}"></span>`;
+        }
+
+        _formatParams(params) {
+            if (!params || Object.keys(params).length === 0) return '';
+            const keyParams = ['W', 'L'];
+            const parts = [];
+            for (const key of keyParams) {
+                if (key in params) {
+                    let val = params[key];
+                    if (typeof val === 'number') {
+                        if (val < 1e-3) val = (val * 1e6).toFixed(2) + 'u';
+                        else if (val < 1) val = (val * 1e3).toFixed(2) + 'm';
+                        else val = val.toFixed(2);
                     }
+                    parts.push(`${key}=${val}`);
+                }
+            }
+            return parts.length > 0 ? ` [${parts.join(', ')}]` : '';
+        }
+
+        _attachEventHandlers(itemMap) {
+            this.el.querySelectorAll('.lvs-circuit-header').forEach(header => {
+                header.addEventListener('click', () => {
+                    const circuit = header.parentElement;
+                    circuit.classList.toggle('expanded');
+                    header.querySelector('.lvs-toggle').classList.toggle('expanded');
+                });
+            });
+
+            this.el.querySelectorAll('.lvs-type-header').forEach(header => {
+                header.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const group = header.parentElement;
+                    group.classList.toggle('expanded');
+                    header.querySelector('.lvs-toggle').classList.toggle('expanded');
                 });
             });
 
             const deselectBtn = this.el.querySelector('.lvs-deselect');
-            const deselect = () => {
-                this.el.querySelectorAll('.lvs-item.selected').forEach(el => {
+            deselectBtn.addEventListener('click', () => {
+                this.el.querySelectorAll('.lvs-item-row.selected').forEach(el => {
                     el.classList.remove('selected');
                 });
                 this.selectedItemNid = null;
                 deselectBtn.disabled = true;
                 viewEventBus.emit('lvs:clear');
-            };
-            deselectBtn.addEventListener('click', deselect);
+            });
 
-            this.el.querySelectorAll('.lvs-item').forEach(itemEl => {
+            this.el.querySelectorAll('.lvs-item-row').forEach(itemEl => {
                 itemEl.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    this.el.querySelectorAll('.lvs-item.selected').forEach(el => {
+                    this.el.querySelectorAll('.lvs-item-row.selected').forEach(el => {
                         el.classList.remove('selected');
                     });
                     itemEl.classList.add('selected');
                     deselectBtn.disabled = false;
+
                     const nid = parseInt(itemEl.dataset.nid, 10);
                     this.selectedItemNid = nid;
                     const item = itemMap.get(nid);
+
                     if (item) {
                         const payload = {
                             shapes: item.layout_shapes || [],
                             schem_path: item.schem_path || [],
                         };
-
                         const hasLayoutShapes = item.layout_shapes && item.layout_shapes.length > 0;
                         const hasSchemPath = item.schem_path && item.schem_path.length > 0;
-                        const hasListeners = viewEventBus.hasListeners('lvs:select');
 
-                        if (hasListeners) {
+                        if (viewEventBus.hasListeners('lvs:select')) {
                             viewEventBus.emit('lvs:select', payload);
                         } else {
                             viewEventBus.setPending('lvs:select', payload);
                             if (hasLayoutShapes) {
-                                const layoutView = this.viewName ? `${this.viewName}.ref_layout` : null;
                                 viewEventBus.emit('layout:request-open', {
-                                    view: layoutView,
+                                    view: this.viewName ? `${this.viewName}.ref_layout` : null,
                                     sourceContainer: this.glContainer,
                                 });
                             }
                             if (hasSchemPath) {
-                                const schemView = this.viewName ? `${this.viewName}.ref_schematic` : null;
                                 viewEventBus.emit('schematic:request-open', {
-                                    view: schemView,
+                                    view: this.viewName ? `${this.viewName}.ref_schematic` : null,
                                     sourceContainer: this.glContainer,
                                 });
                             }
@@ -683,8 +727,6 @@ const viewClassOf = {
                     }
                 });
             });
-
-            this.itemMap = itemMap;
         }
 
         destroy() {

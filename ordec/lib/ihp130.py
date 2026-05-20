@@ -548,7 +548,7 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True,
         log = (cwd / "out.log").read_text()
 
         if return_report:
-            return klayout.parse_lvsdb(cwd / 'out.lvsdb', layout, schematic)
+            return klayout.parse_lvsdb(cwd / 'out.lvsdb', layout, schematic, directory)
 
         if log.find("INFO : Congratulations! Netlists match.") >= 0:
             return True

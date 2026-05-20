@@ -1834,6 +1834,7 @@ class LvsReport(SubgraphRoot):
                 'layout_name': item.layout_name,
                 'schem_name': item.schem_name,
                 'layout_shapes': shapes,
+                'layout_params': dict(item.layout_params) if item.layout_params else None,
                 'schem_path': list(item.schem_path) if item.schem_path else [],
                 'message': item.message,
             })
@@ -1879,6 +1880,8 @@ class LvsItem(Node):
 
     # Layout side: geometry for highlighting (list of shape dicts)
     layout_shapes = Attr(tuple, optional=True)
+    # Layout side: extracted device parameters (W, L, etc.)
+    layout_params = Attr(tuple, optional=True)
 
     # Schematic side: hierarchical path for highlighting
     schem_path = Attr(tuple, optional=True)

@@ -88,6 +88,18 @@ class Directory:
         basename = cell.escaped_name().lower()
         return self.unique_name(basename, cell, None)
 
+    @staticmethod
+    def basename_of_node(node: Node) -> str:
+        """
+        Returns a base name for node derived from its NPath, or __nid{nid} if
+        no NPath is available. This is the raw name without prefix or uniqueness.
+        """
+        if node.npath_nid is None:
+            return f"__nid{node.nid}"
+        else:
+            basename = "_".join([str(e) for e in node.full_path_list()])
+            return re.sub(r"[^a-zA-Z0-9]", "_", basename).lower()
+
     def name_node(self, node: Node, prefix: str = "") -> str:
         """
         Returns a name for node that is unique within its subgraph. The name
@@ -96,13 +108,7 @@ class Directory:
         if not isinstance(node, Node):
             raise TypeError(f"Expected Node, got {node!r}.")
 
-        if node.npath_nid is None:
-            basename = f"__nid{node.nid}"
-        else:
-            basename = "_".join([str(e) for e in node.full_path_list()])
-            basename = re.sub(r"[^a-zA-Z0-9]", "_", basename).lower()
-
-        basename = prefix + basename
+        basename = prefix + self.basename_of_node(node)
 
         return self.unique_name(basename, node, node.root)
 
