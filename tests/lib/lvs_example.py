@@ -8,6 +8,9 @@ Uses the working Inv cell from ihp130_inv but with a modified PMOS width
 in the layout to create a parameter mismatch.
 """
 
+import subprocess
+from pathlib import Path
+
 from ordec.core import *
 from ordec.core.schema import LvsReport
 from ordec.lib import ihp130
@@ -112,3 +115,21 @@ def lvs_report() -> LvsReport:
     """
     inv = LvsTestInv()
     return run_lvs(inv.layout, inv.symbol, return_report=True)
+
+
+def run_lvs_and_view():
+    """Run LVS in ./lvs/ directory and open result in KLayout."""
+    inv = LvsTestInv()
+    run_lvs(inv.layout, inv.symbol, use_tempdir=False)
+    lvs_dir = Path.cwd() / 'lvs'
+    print(f"LVS output: {lvs_dir / 'out.lvsdb'}")
+    subprocess.Popen([
+        'klayout',
+        '-e',  # editable mode
+        str(lvs_dir / 'layout.gds'),
+        '-mn', str(lvs_dir / 'out.lvsdb'),  # load L2NDB file into layout view
+    ])
+
+
+if __name__ == "__main__":
+    run_lvs_and_view()
