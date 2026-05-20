@@ -30,11 +30,11 @@ Heuristics:
 - Optional congestion/history penalties discourage reuse of busy routed cells.
 - Shortcut mode connects new branches to existing net paths via reverse A* and
   disables congestion cost for that shortcut search.
-- A one-step rip-up/reroute retry is allowed when enabled.
+- On failure, one-route rip-up/reroute tries routes that blocked the search.
 """
 
 SHORTCUT_ENABLED = True       # Enable branch-to-existing-path shortcut routing.
-MAX_RIPUP_REROUTE = 1         # Number of previous routes to temporarily rip up.
+MAX_RIPUP_CANDIDATES = 5      # Blocking routes to try for one-route rip-up.
 CONGESTION_PENALTY = 2.0      # Extra cost multiplier per routed-cell reuse.
 ROUTED_BASE_PENALTY = 0.25    # Base cost for stepping onto an already routed cell.
 
@@ -216,45 +216,9 @@ def preprocess_straight_lines(straight_lines, start_name, height):
         return entry["blocked_moves"], blocked_masks
 
     blocked_moves = set()
-    corner_nodes = set()
-
     for key, value in straight_lines.items():
-        if key == start_name:
-            continue
-
-        for line_start, line_end in value:
-            x1, y1 = line_start
-            x2, y2 = line_end
-
-            # Block movement along existing segments in both directions
-            # to prevent parallel overlap, while orthogonal crossings remain allowed
-            if x1 == x2:
-                y_start, y_end = sorted((y1, y2))
-                for y in range(y_start, y_end):
-                    a, b = (x1, y), (x1, y + 1)
-                    blocked_moves.add((a, b))
-                    blocked_moves.add((b, a))
-
-            # Horizontal
-            elif y1 == y2:
-                x_start, x_end = sorted((x1, x2))
-                for x in range(x_start, x_end):
-                    a, b = (x, y1), (x + 1, y1)
-                    blocked_moves.add((a, b))
-                    blocked_moves.add((b, a))
-
-            # Collect corner nodes where segments meet, these need
-            # all-direction blocking to prevent diagonal touch violations
-            if len(value) > 1:
-                corner_nodes.add(line_start)
-                corner_nodes.add(line_end)
-
-    # Block all movement through corner nodes to prevent touching
-    for x, y in corner_nodes:
-        for dx, dy in DIRECTION_OFFSETS:
-            n = (x + dx, y + dy)
-            blocked_moves.add(((x, y), n))
-            blocked_moves.add((n, (x, y)))
+        if key != start_name:
+            blocked_moves.update(_blocked_moves_for_segments(value))
 
     blocked_masks = _build_blocked_move_masks(blocked_moves, height)
     _cache[start_name] = {
@@ -263,6 +227,47 @@ def preprocess_straight_lines(straight_lines, start_name, height):
         "blocked_masks": {height: blocked_masks},
     }
     return blocked_moves, blocked_masks
+
+
+def _blocked_moves_for_segments(segments):
+    blocked_moves = set()
+    corner_nodes = set()
+
+    for line_start, line_end in segments:
+        x1, y1 = line_start
+        x2, y2 = line_end
+
+        # Block movement along existing segments in both directions
+        # to prevent parallel overlap, while orthogonal crossings remain allowed
+        if x1 == x2:
+            y_start, y_end = sorted((y1, y2))
+            for y in range(y_start, y_end):
+                a, b = (x1, y), (x1, y + 1)
+                blocked_moves.add((a, b))
+                blocked_moves.add((b, a))
+
+        # Horizontal
+        elif y1 == y2:
+            x_start, x_end = sorted((x1, x2))
+            for x in range(x_start, x_end):
+                a, b = (x, y1), (x + 1, y1)
+                blocked_moves.add((a, b))
+                blocked_moves.add((b, a))
+
+        # Collect corner nodes where segments meet, these need
+        # all-direction blocking to prevent diagonal touch violations
+        if len(segments) > 1:
+            corner_nodes.add(line_start)
+            corner_nodes.add(line_end)
+
+    # Block all movement through corner nodes to prevent touching
+    for x, y in corner_nodes:
+        for dx, dy in DIRECTION_OFFSETS:
+            n = (x + dx, y + dy)
+            blocked_moves.add(((x, y), n))
+            blocked_moves.add((n, (x, y)))
+
+    return blocked_moves
 
 
 def _build_blocked_move_masks(blocked_segments, height):
@@ -283,10 +288,9 @@ def _build_blocked_move_masks(blocked_segments, height):
         dx = ex - sx
         dy = ey - sy
 
-        # Map movement delta to direction bit index
-        if dx == 0:
+        if dx == 0 and dy != 0:
             direction_id = 0 if dy > 0 else 1
-        elif dy == 0:
+        elif dy == 0 and dx != 0:
             direction_id = 2 if dx > 0 else 3
         else:
             continue  # skip non-cardinal moves (shouldn't occur)
@@ -301,7 +305,8 @@ def _point_keys(points, height):
 
 
 def a_star(grid, start, end, width, height, straight_lines,
-           start_name, start_dir, route_cell_usage=None, use_congestion=True):
+           start_name, start_dir, route_cell_usage=None, use_congestion=True,
+           blocked_move_hits=None):
     """Perform A* pathfinding between a start and end point.
 
     Args:
@@ -315,6 +320,8 @@ def a_star(grid, start, end, width, height, straight_lines,
         start_dir (tuple): Direction vector to start from.
         route_cell_usage (dict, optional): Routed cell usage counts.
         use_congestion (bool): Whether to apply congestion/history penalties.
+        blocked_move_hits (set, optional): Encoded blocked moves encountered
+            during search.
 
     Returns:
         list: Calculated path as list of (x, y) tuples, or empty list on failure.
@@ -376,6 +383,8 @@ def a_star(grid, start, end, width, height, straight_lines,
         for direction_id, (dx, dy) in enumerate(DIRECTION_OFFSETS):
             # Skip if this direction is blocked by an existing route segment
             if block_mask & (1 << direction_id):
+                if blocked_move_hits is not None:
+                    blocked_move_hits.add(((cx * height + cy) << 2) | direction_id)
                 continue
 
             nx = cx + dx
@@ -428,7 +437,8 @@ def a_star(grid, start, end, width, height, straight_lines,
 
 
 def reverse_a_star(grid, start_points, end, width, height, straight_lines, start_name, end_dir,
-                   endpoint_mapping, route_cell_usage=None, use_congestion=True):
+                   endpoint_mapping, route_cell_usage=None, use_congestion=True,
+                   blocked_move_hits=None):
     """Perform reverse A* from the end point towards any of the start points.
 
     Args:
@@ -444,6 +454,8 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
             marker key set.
         route_cell_usage (dict, optional): Routed cell usage counts.
         use_congestion (bool): Whether to apply congestion/history penalties.
+        blocked_move_hits (set, optional): Encoded blocked moves encountered
+            during search.
 
     Returns:
         list: Shortest path found as list of (x, y) tuples, or empty list.
@@ -523,6 +535,8 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
 
         for direction_id, (dx, dy) in enumerate(DIRECTION_OFFSETS):
             if block_mask & (1 << direction_id):
+                if blocked_move_hits is not None:
+                    blocked_move_hits.add(((cx * height + cy) << 2) | direction_id)
                 continue
 
             nx = cx + dx
@@ -819,7 +833,72 @@ def draw_connections(grid, connections, width, height, name_grid=None):
             else:
                 route_cell_usage[(x, y)] = usage - 1
 
-    def try_route_connection(start, end, start_dir, end_dir, start_name):
+    def pop_path(entry):
+        paths = port_drawing_dict[entry["start_name"]]
+        for index, path in enumerate(paths):
+            if path is entry["path"] or path == entry["path"]:
+                paths.pop(index)
+                rebuild_straight_lines(entry["start_name"])
+                return index
+        return None
+
+    def insert_path(entry, index):
+        paths = port_drawing_dict[entry["start_name"]]
+        if index is None or index >= len(paths):
+            paths.append(entry["path"])
+        else:
+            paths.insert(index, entry["path"])
+        rebuild_straight_lines(entry["start_name"])
+
+    def path_blocked_move_keys(path):
+        blocked_keys = set()
+        segments = transform_to_pairs(keep_corners_and_edges([path]), [])
+        for start_point, end_point in _blocked_moves_for_segments(segments):
+            sx, sy = start_point
+            ex, ey = end_point
+            dx = ex - sx
+            dy = ey - sy
+            if dx == 0 and dy != 0:
+                direction_id = 0 if dy > 0 else 1
+            elif dy == 0 and dx != 0:
+                direction_id = 2 if dx > 0 else 3
+            else:
+                continue
+            blocked_keys.add(((sx * height + sy) << 2) | direction_id)
+        return blocked_keys
+
+    def make_routed_entry(start, end, start_dir, end_dir, start_name, path, path_cells):
+        return {
+            "start": start,
+            "end": end,
+            "start_dir": start_dir,
+            "end_dir": end_dir,
+            "start_name": start_name,
+            "path": path,
+            "path_cells": path_cells,
+            "blocked_move_keys": path_blocked_move_keys(path),
+        }
+
+    def routed_entry_index(entry):
+        for index, routed_entry in enumerate(routed_entries):
+            if routed_entry is entry:
+                return index
+        return None
+
+    def blocking_ripup_candidates(blocked_move_hits):
+        if not blocked_move_hits:
+            return []
+
+        scored_entries = []
+        for index, entry in enumerate(routed_entries):
+            hits = blocked_move_hits & entry["blocked_move_keys"]
+            if hits:
+                scored_entries.append((len(hits), index, entry))
+
+        scored_entries.sort(key=lambda item: (-item[0], -item[1]))
+        return [entry for _, _, entry in scored_entries[:MAX_RIPUP_CANDIDATES]]
+
+    def try_route_connection(start, end, start_dir, end_dir, start_name, blocked_move_hits=None):
         start_new, end_new = adjust_start_end_for_direction(start, start_dir, end, end_dir)
         transformed_start_dir = direction_moves[start_dir]
         transformed_end_dir = direction_moves[end_dir]
@@ -852,20 +931,23 @@ def draw_connections(grid, connections, width, height, name_grid=None):
                         grid, path_list, end_new, width, height,
                         straight_lines, start_name, transformed_end_dir,
                         endpoint_key_mapping, route_cell_usage,
-                        use_congestion=False
+                        use_congestion=False,
+                        blocked_move_hits=blocked_move_hits
                     )
                     # Fall back to forward A* if reverse search fails
                     if not path:
                         path = a_star(
                             grid, start_new, end_new, width, height,
                             straight_lines, start_name, transformed_start_dir,
-                            route_cell_usage, use_congestion=False
+                            route_cell_usage, use_congestion=False,
+                            blocked_move_hits=blocked_move_hits
                         )
             else:
                 # First connection for this net, standard forward A*
                 path = a_star(
                     grid, start_new, end_new, width, height,
-                    straight_lines, start_name, transformed_start_dir, route_cell_usage
+                    straight_lines, start_name, transformed_start_dir, route_cell_usage,
+                    blocked_move_hits=blocked_move_hits
                 )
 
             if not path and start_new != end_new:
@@ -907,62 +989,78 @@ def draw_connections(grid, connections, width, height, name_grid=None):
             end_dir = end.direction
             end = (end.x, end.y)
 
-        path, start_new, end_new = try_route_connection(start, end, start_dir, end_dir, start_name)
+        blocked_move_hits = set()
+        path, start_new, end_new = try_route_connection(
+            start, end, start_dir, end_dir, start_name, blocked_move_hits
+        )
 
-        # Rip-up/reroute: if routing failed, temporarily remove the previous
-        # route and retry. If both can be rerouted, keep the new arrangement;
-        # otherwise restore the original route.
-        if path is None and MAX_RIPUP_REROUTE > 0 and routed_entries:
-            previous_entry = routed_entries.pop()
-            previous_start_name = previous_entry["start_name"]
-            if port_drawing_dict[previous_start_name]:
-                port_drawing_dict[previous_start_name].pop()
-            rebuild_straight_lines(previous_start_name)
-            remove_path_from_grid(previous_entry["path_cells"])
-
-            # Retry current connection with the previous route removed
-            path, start_new, end_new = try_route_connection(start, end, start_dir, end_dir, start_name)
-            if path is not None:
-                path_cells = apply_path_to_grid(path)
-                append_path(start_name, path)
-                routed_entries.append({
-                    "start": start,
-                    "end": end,
-                    "start_dir": start_dir,
-                    "end_dir": end_dir,
-                    "start_name": start_name,
-                    "path": path,
-                    "path_cells": path_cells,
-                })
-
-                # Try to reroute the previously ripped-up connection
-                previous_path, _, _ = try_route_connection(
-                    previous_entry["start"],
-                    previous_entry["end"],
-                    previous_entry["start_dir"],
-                    previous_entry["end_dir"],
-                    previous_start_name,
-                )
-                if previous_path is not None:
-                    # Both succeeded --> keep the new arrangement
-                    previous_cells = apply_path_to_grid(previous_path)
-                    append_path(previous_start_name, previous_path)
-                    previous_entry["path"] = previous_path
-                    previous_entry["path_cells"] = previous_cells
-                    routed_entries.append(previous_entry)
+        # Rip-up/reroute: if routing failed, temporarily remove a
+        # route that blocked the failed search and retry. If both routes can be
+        # completed, keep the new arrangement; otherwise restore the original.
+        if path is None and MAX_RIPUP_CANDIDATES > 0 and routed_entries:
+            for blocking_entry in blocking_ripup_candidates(blocked_move_hits):
+                blocking_index = routed_entry_index(blocking_entry)
+                if blocking_index is None:
                     continue
 
-                # Previous route failed to reroute, undo current and restore
-                if port_drawing_dict[start_name]:
-                    port_drawing_dict[start_name].pop()
-                rebuild_straight_lines(start_name)
-                remove_path_from_grid(path_cells)
+                blocking_entry = routed_entries.pop(blocking_index)
+                blocking_start_name = blocking_entry["start_name"]
+                blocking_path_index = pop_path(blocking_entry)
+                remove_path_from_grid(blocking_entry["path_cells"])
 
-            # Restore the original previous route
-            restore_cells = apply_path_to_grid(previous_entry["path"])
-            append_path(previous_start_name, previous_entry["path"])
-            previous_entry["path_cells"] = restore_cells
-            routed_entries.append(previous_entry)
+                # Retry current connection with the blocking route removed
+                path, start_new, end_new = try_route_connection(
+                    start, end, start_dir, end_dir, start_name
+                )
+                if path is not None:
+                    path_cells = apply_path_to_grid(path)
+                    append_path(start_name, path)
+                    current_entry = make_routed_entry(
+                        start, end, start_dir, end_dir, start_name,
+                        path, path_cells
+                    )
+                    routed_entries.append(current_entry)
+
+                    # Try to reroute the removed blocking connection
+                    blocking_path, _, _ = try_route_connection(
+                        blocking_entry["start"],
+                        blocking_entry["end"],
+                        blocking_entry["start_dir"],
+                        blocking_entry["end_dir"],
+                        blocking_start_name,
+                    )
+                    if blocking_path is not None:
+                        # Both succeeded --> keep the new arrangement
+                        blocking_cells = apply_path_to_grid(blocking_path)
+                        append_path(blocking_start_name, blocking_path)
+                        blocking_entry["path"] = blocking_path
+                        blocking_entry["path_cells"] = blocking_cells
+                        blocking_entry["blocked_move_keys"] = path_blocked_move_keys(blocking_path)
+                        routed_entries.append(blocking_entry)
+                        break
+
+                    # Blocking route failed to reroute, undo current and restore
+                    if port_drawing_dict[start_name]:
+                        port_drawing_dict[start_name].pop()
+                    rebuild_straight_lines(start_name)
+                    remove_path_from_grid(path_cells)
+                    current_index = routed_entry_index(current_entry)
+                    if current_index is not None:
+                        routed_entries.pop(current_index)
+                    path = None
+
+                # Restore the original blocking route
+                restore_cells = apply_path_to_grid(blocking_entry["path"])
+                insert_path(blocking_entry, blocking_path_index)
+                blocking_entry["path_cells"] = restore_cells
+                blocking_entry["blocked_move_keys"] = path_blocked_move_keys(blocking_entry["path"])
+                if blocking_index >= len(routed_entries):
+                    routed_entries.append(blocking_entry)
+                else:
+                    routed_entries.insert(blocking_index, blocking_entry)
+
+            if path is not None:
+                continue
 
         if path is None:
             print(f"Failed to connect {start_new} to {end_new}. Adding terminal taps ...")
@@ -970,15 +1068,9 @@ def draw_connections(grid, connections, width, height, name_grid=None):
 
         path_cells = apply_path_to_grid(path)
         append_path(start_name, path)
-        routed_entries.append({
-            "start": start,
-            "end": end,
-            "start_dir": start_dir,
-            "end_dir": end_dir,
-            "start_name": start_name,
-            "path": path,
-            "path_cells": path_cells,
-        })
+        routed_entries.append(make_routed_entry(
+            start, end, start_dir, end_dir, start_name, path, path_cells
+        ))
 
     # Post-process: reduce full paths to corner/edge vertices for rendering
     for key in port_drawing_dict:
