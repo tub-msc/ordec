@@ -179,6 +179,13 @@ def adjust_start_end_for_direction(start, start_dir, end, end_dir):
 
     return start, end
 
+def adjust_point_for_direction(point, direction):
+    """Step a point by one grid cell in ``direction``."""
+    if direction:
+        dx, dy = direction_moves[direction]
+        return point[0] + dx, point[1] + dy
+    return point
+
 def dependency_versions(start_name):
     """Return a version signature of all straight lines except ``start_name``."""
     if not _straight_line_change_count:
@@ -297,8 +304,7 @@ def _point_keys(points, height):
 
 
 def a_star(grid, start, end, width, height, straight_lines,
-           start_name, start_dir, endpoint_mapping,
-           route_cell_usage=None, use_congestion=True):
+           start_name, start_dir, route_cell_usage=None, use_congestion=True):
     """Perform A* pathfinding between a start and end point.
 
     Args:
@@ -310,7 +316,6 @@ def a_star(grid, start, end, width, height, straight_lines,
         straight_lines (dict): Already calculated paths.
         start_name (str): Name of the starting port.
         start_dir (tuple): Direction vector to start from.
-        endpoint_mapping (dict): Mapping of start name to endpoint key set.
         route_cell_usage (dict, optional): Routed cell usage counts.
         use_congestion (bool): Whether to apply congestion/history penalties.
 
@@ -321,7 +326,6 @@ def a_star(grid, start, end, width, height, straight_lines,
     _, blocked_masks = preprocess_straight_lines(
         straight_lines, start_name, height
     )
-    endpoint_keys = endpoint_mapping[start_name]
 
     end_x, end_y = end
     start_key = start[0] * height + start[1]
@@ -372,13 +376,14 @@ def a_star(grid, start, end, width, height, straight_lines,
             if nx < 0 or nx >= width or ny < 0 or ny >= height:
                 continue
 
-            # Direction markers enforce straight escape from pins/ports:
-            # only allow turning if we're at the start or an endpoint
+            # Direction markers enforce straight escape from pins/ports. A turn
+            # is allowed on this route's start marker, and on the destination
+            # marker if that marker is the current route target.
             if (grid[cy, cx] == GRID_DIR and
                     current_direction != DIR_NONE and
                     current_direction != direction_id and
                     current_key != start_key and
-                    current_key not in endpoint_keys):
+                    current_key != end_key):
                 continue
 
             if grid[ny, nx] >= GRID_BLOCKED:
@@ -428,7 +433,8 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
         straight_lines (dict): Already calculated paths.
         start_name (str): Name of the starting port.
         end_dir (tuple): Direction vector to end with.
-        endpoint_mapping (dict): Mapping of start name to endpoint key set.
+        endpoint_mapping (dict): Mapping of start name to adjusted endpoint
+            marker key set.
         route_cell_usage (dict, optional): Routed cell usage counts.
         use_congestion (bool): Whether to apply congestion/history penalties.
 
@@ -439,12 +445,12 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     _, blocked_masks = preprocess_straight_lines(
         straight_lines, start_name, height
     )
-    endpoint_keys = endpoint_mapping[start_name]
 
     end_x, end_y = end
     end_key = end_x * height + end_y
     end_direction = DIR_TO_INT.get(end_dir, DIR_NONE)
     start_points_keys = _point_keys(start_points, height)
+    endpoint_keys = endpoint_mapping.get(start_name, set())
 
     # Use the closest start point for the heuristic estimate.
     # This may be inadmissible for farther start points but keeps search fast.
@@ -513,7 +519,7 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
                     current_direction != DIR_NONE and
                     current_direction != direction_id and
                     current_key != end_key and
-                    current_key in endpoint_keys):
+                    current_key not in endpoint_keys):
                 continue
 
             if grid[ny, nx] >= GRID_BLOCKED:
@@ -666,7 +672,7 @@ def sort_connections(connections, name_grid=None):
         name_grid (dict, optional): Sparse mapping of (x, y) to string name.
 
     Returns:
-        tuple: (name_endpoint_mapping, sorted_connections).
+        tuple: (name_endpoint_marker_mapping, sorted_connections).
     """
     # Helper function to calculate squared Euclidean distance.
     # sqrt() is monotonic, so squared distance preserves sorting order.
@@ -677,6 +683,7 @@ def sort_connections(connections, name_grid=None):
 
     sortable_connections = []
     name_endpoint_mapping = dict()
+    name_endpoint_marker_mapping = dict()
 
     for index, connection in enumerate(connections):
         start, end = connection
@@ -690,15 +697,20 @@ def sort_connections(connections, name_grid=None):
             start = (start.x, start.y)
 
         # Get the end which defines the endpoint
+        end_dir = None
         if isinstance(end, RoutingPort):
+            end_dir = end.direction
             end = (end.x, end.y)
         elif isinstance(end, CellPin):
+            end_dir = end.direction
             end = (end.x, end.y)
 
         distance = euclidean_distance_sq(start, end)
         sortable_connections.append((start_name, distance, index, connection))
         name_endpoint_mapping.setdefault(start_name, set())
         name_endpoint_mapping[start_name].add(end)
+        name_endpoint_marker_mapping.setdefault(start_name, set())
+        name_endpoint_marker_mapping[start_name].add(adjust_point_for_direction(end, end_dir))
 
     fanout_by_start = {
         start_name: len(endpoints)
@@ -714,7 +726,7 @@ def sort_connections(connections, name_grid=None):
         )
     )
 
-    return name_endpoint_mapping, [item[3] for item in sortable_connections]
+    return name_endpoint_marker_mapping, [item[3] for item in sortable_connections]
 
 
 
@@ -738,10 +750,10 @@ def draw_connections(grid, connections, width, height, name_grid=None):
     straight_lines = defaultdict(list)
     route_cell_usage = dict()
     routed_entries = []
-    name_endpoint_mapping, sorted_connections = sort_connections(connections, name_grid)
+    endpoint_marker_mapping, sorted_connections = sort_connections(connections, name_grid)
     endpoint_key_mapping = {
         start_name: _point_keys(endpoints, height)
-        for start_name, endpoints in name_endpoint_mapping.items()
+        for start_name, endpoints in endpoint_marker_mapping.items()
     }
 
     def append_path(start_name, path):
@@ -803,6 +815,10 @@ def draw_connections(grid, connections, width, height, name_grid=None):
                 path_list = list()
                 for shortcut in shortcut_start_points:
                     path_list.extend(shortcut[1:-1])
+                    if shortcut:
+                        x, y = shortcut[0]
+                        if grid[y][x] < GRID_BLOCKED:
+                            path_list.append(shortcut[0])
                 if end_new in path_list:
                     # Endpoint already lies on an existing path --> trivial connection
                     path = [end_new]
@@ -821,15 +837,13 @@ def draw_connections(grid, connections, width, height, name_grid=None):
                         path = a_star(
                             grid, start_new, end_new, width, height,
                             straight_lines, start_name, transformed_start_dir,
-                            endpoint_key_mapping, route_cell_usage,
-                            use_congestion=False
+                            route_cell_usage, use_congestion=False
                         )
             else:
                 # First connection for this net, standard forward A*
                 path = a_star(
                     grid, start_new, end_new, width, height,
-                    straight_lines, start_name, transformed_start_dir,
-                    endpoint_key_mapping, route_cell_usage
+                    straight_lines, start_name, transformed_start_dir, route_cell_usage
                 )
 
             if not path and start_new != end_new:
