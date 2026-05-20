@@ -29,7 +29,7 @@ def test_schematic_manual_conn_point():
 def test_schematic_net_partitioned():
     s = lib_test.TestNmosInv(variant='net_partitioned', add_conn_points=True, add_terminal_taps=False).schematic
     errors = list(s.all(SchemErrorMarker))
-    assert any(e.error_type == SchemErrorType.NetMissesWiring for e in errors)
+    assert any(e.error_type == SchemErrorType.NetMissesWiring and e.pos == Vec2R(7, 4) for e in errors)
 
 def test_schematic_net_partitioned_tapped():
     lib_test.TestNmosInv(variant='net_partitioned_tapped', add_conn_points=True, add_terminal_taps=False).schematic

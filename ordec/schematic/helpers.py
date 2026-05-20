@@ -352,11 +352,24 @@ def _check_net_connectivity(node: Schematic, g: ConnectivityGraph,
         reachable_terminals = [t for t in terminals if t.pos in g.edges]
         if len(reachable_terminals) == 0:
             continue
-        must_reach = {t.pos for t in reachable_terminals}
-        reaches = set(g.reachable_from(reachable_terminals[0].pos))
-        unconnected = must_reach - reaches
-        if len(unconnected) > 0:
-            node.root % SchemErrorMarker(pos=reachable_terminals[0].pos, error_type=SchemErrorType.NetMissesWiring)
+        terminal_components = []
+        seen_terminals = set()
+        for terminal in reachable_terminals:
+            if terminal.pos in seen_terminals:
+                continue
+            reaches = set(g.reachable_from(terminal.pos))
+            component = [t for t in reachable_terminals if t.pos in reaches]
+            seen_terminals.update(t.pos for t in component)
+            terminal_components.append(component)
+
+        if len(terminal_components) > 1:
+            main_component = max(terminal_components, key=len)
+            for component in terminal_components:
+                if component is not main_component:
+                    node.root % SchemErrorMarker(
+                        pos=component[0].pos,
+                        error_type=SchemErrorType.NetMissesWiring
+                    )
 
 def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=False) -> bool:
     """Validate schematic connectivity and wiring structure.
