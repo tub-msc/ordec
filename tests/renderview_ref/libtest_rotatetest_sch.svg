@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="945.0px" height="525.0px" viewBox="-1.0 -1.0 27.0 15.0">
   <g transform="matrix(1 0 0 -1 0 13.0)">
-    <g>
+    <g data-inst="R0">
       <rect x="1.0" y="1.0" width="5.0" height="5.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 5.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Or2</text>
       <text transform="matrix(0.045 0 0 -0.045 5.875 1.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -24,7 +24,7 @@
       <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 3.5)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 5.875 3.625)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">y</text>
     </g>
-    <g>
+    <g data-inst="R90">
       <rect x="7.0" y="1.0" width="5.0" height="5.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 11.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Or2</text>
       <text transform="matrix(0.045 0 0 -0.045 11.875 1.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -48,7 +48,7 @@
       <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(-1 0 0 -1 9.5 5.8)" class="pinArrow" />
       <text transform="matrix(0 0.045 0.045 0 9.375 5.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">y</text>
     </g>
-    <g>
+    <g data-inst="R180">
       <rect x="13.0" y="1.0" width="5.0" height="5.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 17.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Or2</text>
       <text transform="matrix(0.045 0 0 -0.045 17.875 1.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -72,7 +72,7 @@
       <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 -1 1 0 13.2 3.5)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 13.125 3.625)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">y</text>
     </g>
-    <g>
+    <g data-inst="R270">
       <rect x="19.0" y="1.0" width="5.0" height="5.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 23.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Or2</text>
       <text transform="matrix(0.045 0 0 -0.045 23.875 1.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -96,7 +96,7 @@
       <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(1 0 0 1 21.5 1.2)" class="pinArrow" />
       <text transform="matrix(0 0.045 0.045 0 21.375 1.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">y</text>
     </g>
-    <g>
+    <g data-inst="MY">
       <rect x="1.0" y="7.0" width="5.0" height="5.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 5.875 11.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Or2</text>
       <text transform="matrix(0.045 0 0 -0.045 5.875 7.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -120,7 +120,7 @@
       <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 1 0 1.2 9.5)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 1.125 9.625)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">y</text>
     </g>
-    <g>
+    <g data-inst="MY90">
       <rect x="7.0" y="7.0" width="5.0" height="5.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 11.875 11.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Or2</text>
       <text transform="matrix(0.045 0 0 -0.045 11.875 7.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -144,7 +144,7 @@
       <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(-1 0 0 1 9.5 7.2)" class="pinArrow" />
       <text transform="matrix(0 0.045 0.045 0 9.375 7.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">y</text>
     </g>
-    <g>
+    <g data-inst="MX">
       <rect x="13.0" y="7.0" width="5.0" height="5.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 17.875 11.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Or2</text>
       <text transform="matrix(0.045 0 0 -0.045 17.875 7.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -168,7 +168,7 @@
       <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 -1 -1 0 17.8 9.5)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 17.875 9.625)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">y</text>
     </g>
-    <g>
+    <g data-inst="MX90">
       <rect x="19.0" y="7.0" width="5.0" height="5.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 23.875 11.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Or2</text>
       <text transform="matrix(0.045 0 0 -0.045 23.875 7.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />

@@ -66,13 +66,15 @@ class Renderer:
         return self.group_stack[-1]
 
     @contextmanager
-    def subgroup(self, node=None, existing_group=None):
+    def subgroup(self, node=None, existing_group=None, data_inst=None):
         if existing_group:
             self.group_stack.append(existing_group)
         else:
             self.group_stack.append(ET.SubElement(self.cur_group, 'g'))
         if node and self.include_nids:
             self.cur_group.attrib['class'] = f'nid{node.nid}'
+        if data_inst:
+            self.cur_group.attrib['data-inst'] = data_inst
         try:
             yield
         finally:
@@ -305,9 +307,10 @@ class SchematicRenderer(Renderer):
             self.draw_schem_tappoint(p)
 
         for inst in s.all(SchemInstance):
-            with self.subgroup(node=inst):
+            inst_name = inst.full_path_str()
+            with self.subgroup(node=inst, data_inst=inst_name):
                 trans = inst.loc_transform()
-                self.draw_symbol(inst.symbol, trans, inst.full_path_str())
+                self.draw_symbol(inst.symbol, trans, inst_name)
 
         for port in s.all(SchemPort):
             with self.subgroup(node=port):

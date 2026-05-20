@@ -19,7 +19,7 @@
     <text transform="matrix(0 0.045 0.045 0 5.0 17.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
     <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 5.0 13.0)" class="tapPoint" />
     <text transform="matrix(0 0.045 0.045 0 5.0 12.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
-    <g>
+    <g data-inst="sr1">
       <rect x="10.0" y="5.0" width="5.0" height="5.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 14.875 9.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">SR_flip_flop</text>
       <text transform="matrix(0.045 0 0 -0.045 14.875 5.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -39,7 +39,7 @@
       <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 14.8 8.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 14.875 8.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">Q_not</text>
     </g>
-    <g>
+    <g data-inst="i1">
       <rect x="3.0" y="13.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 6.875 16.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Inv</text>
       <text transform="matrix(0.045 0 0 -0.045 6.875 13.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />

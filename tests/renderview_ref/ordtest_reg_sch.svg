@@ -21,7 +21,7 @@
     <circle cx="3.0" cy="17.0" r="0.1625" class="connPoint" />
     <circle cx="5.0" cy="6.0" r="0.1625" class="connPoint" />
     <circle cx="5.0" cy="14.0" r="0.1625" class="connPoint" />
-    <g>
+    <g data-inst="I[0]">
       <rect x="6.0" y="3.0" width="6.0" height="5.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 11.875 7.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">DFF</text>
       <text transform="matrix(0.045 0 0 -0.045 11.875 3.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -37,7 +37,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 6.2 6.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 6.125 6.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">clk</text>
     </g>
-    <g>
+    <g data-inst="I[1]">
       <rect x="6.0" y="11.0" width="6.0" height="5.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 11.875 15.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">DFF</text>
       <text transform="matrix(0.045 0 0 -0.045 11.875 11.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
@@ -53,7 +53,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 6.2 14.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 6.125 14.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">clk</text>
     </g>
-    <g>
+    <g data-inst="I[2]">
       <rect x="6.0" y="19.0" width="6.0" height="5.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 11.875 23.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">DFF</text>
       <text transform="matrix(0.045 0 0 -0.045 11.875 19.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />

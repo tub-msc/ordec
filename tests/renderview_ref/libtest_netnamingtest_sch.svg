@@ -12,7 +12,7 @@
     <text transform="matrix(0 0.045 0.045 0 11.0 1.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">??4</text>
     <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 11.0 6.0)" class="tapPoint" />
     <text transform="matrix(0 0.045 0.045 0 11.0 6.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">d</text>
-    <g>
+    <g data-inst="i0">
       <rect x="4.0" y="2.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 7.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Res</text>
       <text transform="matrix(0.045 0 0 -0.045 7.875 2.125)" dominant-baseline="ideographic" text-anchor="end" class="params">r=1k</text>
@@ -23,7 +23,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(-1 0 0 -1 6.0 5.8)" class="pinArrow" />
       <text transform="matrix(0 0.045 0.045 0 5.875 5.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">p</text>
     </g>
-    <g>
+    <g data-inst="i2">
       <rect x="9.0" y="2.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 12.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Res</text>
       <text transform="matrix(0.045 0 0 -0.045 12.875 2.125)" dominant-baseline="ideographic" text-anchor="end" class="params">r=1k</text>
