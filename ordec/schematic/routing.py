@@ -139,7 +139,9 @@ def place_cells_and_ports(grid, cells, ports, width, height):
             if 0 <= cy < height and 0 <= cx < width:
                 direction_offset_x = direction_moves[direction][0] + cx
                 direction_offset_y = direction_moves[direction][1] + cy
-                if 0 <= direction_offset_y < height and 0 <= direction_offset_x < width:
+                if (0 <= direction_offset_y < height and
+                        0 <= direction_offset_x < width and
+                        grid[direction_offset_y][direction_offset_x] == GRID_EMPTY):
                     grid[direction_offset_y][direction_offset_x] = GRID_DIR
 
     # Place ports
@@ -149,7 +151,9 @@ def place_cells_and_ports(grid, cells, ports, width, height):
             name_grid[(port.x, port.y)] = port.name
             direction_offset_x = direction_moves[port.direction][0] + port.x
             direction_offset_y = direction_moves[port.direction][1] + port.y
-            if 0 <= direction_offset_y < height and 0 <= direction_offset_x < width:
+            if (0 <= direction_offset_y < height and
+                    0 <= direction_offset_x < width and
+                    grid[direction_offset_y][direction_offset_x] == GRID_EMPTY):
                 grid[direction_offset_y][direction_offset_x] = GRID_DIR
 
     return name_grid
@@ -320,8 +324,18 @@ def a_star(grid, start, end, width, height, straight_lines,
         straight_lines, start_name, height
     )
 
+    start_x, start_y = start
     end_x, end_y = end
-    start_key = start[0] * height + start[1]
+
+    start_in_bounds = 0 <= start_x < width and 0 <= start_y < height
+    end_in_bounds = 0 <= end_x < width and 0 <= end_y < height
+    # Adjusted routing endpoints must stay in passable routing space.
+    if not start_in_bounds or not end_in_bounds:
+        return []
+    if grid[start_y, start_x] >= GRID_BLOCKED or grid[end_y, end_x] >= GRID_BLOCKED:
+        return []
+
+    start_key = start_x * height + start_y
     end_key = end_x * height + end_y
     start_direction = DIR_TO_INT.get(start_dir, DIR_NONE)
 
@@ -440,6 +454,14 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     )
 
     end_x, end_y = end
+
+    end_in_bounds = 0 <= end_x < width and 0 <= end_y < height
+    # Adjusted routing endpoints must stay in passable routing space.
+    if not end_in_bounds:
+        return []
+    if grid[end_y, end_x] >= GRID_BLOCKED:
+        return []
+
     end_key = end_x * height + end_y
     end_direction = DIR_TO_INT.get(end_dir, DIR_NONE)
     start_points_keys = _point_keys(start_points, height)
