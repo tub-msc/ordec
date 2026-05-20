@@ -35,8 +35,7 @@ def emit_drc_clear(web):
 def load_layout_view(web):
     """Load the layoutgl_example in local mode."""
     qs_local = web.key.query_string_local("tests.lib.layoutgl_example", "layoutgl_example()")
-    web.driver.get(web.url + f'app.html#refreshall=true&{qs_local}')
-    web.driver.refresh()
+    web.navigate(f'app.html#refreshall=true&{qs_local}')
     web.wait_for_ready()
 
 
@@ -92,8 +91,7 @@ def test_pending_event_consumed_on_layout_open(web):
     """Pending drc:select should be consumed when layout view opens."""
     # Load layout module but don't auto-select a view
     qs = web.key.query_string_local("tests.lib.layoutgl_example", "")
-    web.driver.get(web.url + f'app.html#refreshall=true&viewsel_flat=true&{qs}')
-    web.driver.refresh()
+    web.navigate(f'app.html#refreshall=true&viewsel_flat=true&{qs}')
     web.wait_for_ready()
 
     # Verify no layout is rendered yet (no view selected)
@@ -182,8 +180,7 @@ def test_lvs_clear_removes_highlight(web):
 def load_schematic_view(web):
     """Load a schematic view using the lvs_example."""
     qs_local = web.key.query_string_local("tests.lib.lvs_example", "schematic()")
-    web.driver.get(web.url + f'app.html#refreshall=true&{qs_local}')
-    web.driver.refresh()
+    web.navigate(f'app.html#refreshall=true&{qs_local}')
     web.wait_for_ready()
     time.sleep(0.5)
 

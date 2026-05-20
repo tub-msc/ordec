@@ -220,6 +220,9 @@ export class LayoutGL {
             this._pendingHighlight = pendingLvs.shapes;
             this.setHighlight(pendingLvs.shapes, false);
         }
+
+        this._onPagehide = () => this.destroy();
+        window.addEventListener('pagehide', this._onPagehide);
     }
 
 
@@ -369,7 +372,8 @@ export class LayoutGL {
     }
 
     destroy() {
-        // Called by ResultViewer when this renderer is being replaced.
+        // Called by ResultViewer when this renderer is being replaced,
+        // or on page unload via pagehide event.
         viewEventBus.off('drc:select', this._onDrcSelect);
         viewEventBus.off('drc:clear', this._onDrcClear);
         viewEventBus.off('lvs:select', this._onLvsSelect);
@@ -377,9 +381,12 @@ export class LayoutGL {
         this.resContent.removeEventListener("keydown", this._onKeydown);
         this.canvas.removeEventListener("mousemove", this._onMousemove);
         this.canvas.removeEventListener("mouseleave", this._onMouseleave);
+        window.removeEventListener('pagehide', this._onPagehide);
         if (!this.gl) return;
         this.resizeObserver.disconnect();
         this.glResources.destroy();
+        const loseContext = this.gl.getExtension('WEBGL_lose_context');
+        if (loseContext) loseContext.loseContext();
         this.gl = null;
     }
 
