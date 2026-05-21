@@ -585,9 +585,9 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                                     layout_item_name = Directory.basename_of_node(best_match)
 
                     if item_type == LvsItemType.Device and schem_id is not None:
-                        dev_names = schem_device_names.get(schem_name, {})
-                        if schem_id in dev_names:
-                            schem_path = (dev_names[schem_id],)
+                        # Use the converted ORDeC name for schem_path (for highlighting)
+                        if schem_item_name:
+                            schem_path = (schem_item_name,)
 
                     items_data.append({
                         'item_type': item_type,

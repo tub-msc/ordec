@@ -205,7 +205,7 @@ export class LayoutGL {
 
         this._onLvsSelect = (data) => this.setHighlight(data.shapes);
         this._onLvsClear = () => this.clearHighlight();
-        viewEventBus.on('lvs:select', this._onLvsSelect);
+        viewEventBus.on('lvs:layout-select', this._onLvsSelect);
         viewEventBus.on('lvs:clear', this._onLvsClear);
 
         const pending = viewEventBus.consumePending('drc:select');
@@ -215,7 +215,7 @@ export class LayoutGL {
             this.setHighlight(pending.shapes, false); // Don't zoom yet
         }
 
-        const pendingLvs = viewEventBus.consumePending('lvs:select');
+        const pendingLvs = viewEventBus.getPending('lvs:select');
         if (pendingLvs) {
             this._pendingHighlight = pendingLvs.shapes;
             this.setHighlight(pendingLvs.shapes, false);
@@ -376,7 +376,7 @@ export class LayoutGL {
         // or on page unload via pagehide event.
         viewEventBus.off('drc:select', this._onDrcSelect);
         viewEventBus.off('drc:clear', this._onDrcClear);
-        viewEventBus.off('lvs:select', this._onLvsSelect);
+        viewEventBus.off('lvs:layout-select', this._onLvsSelect);
         viewEventBus.off('lvs:clear', this._onLvsClear);
         this.resContent.removeEventListener("keydown", this._onKeydown);
         this.canvas.removeEventListener("mousemove", this._onMousemove);

@@ -199,10 +199,10 @@ const viewClassOf = {
 
             this._onLvsSelect = (data) => this.setHighlight(data);
             this._onLvsClear = () => this.clearHighlight();
-            viewEventBus.on('lvs:select', this._onLvsSelect);
+            viewEventBus.on('lvs:schem-select', this._onLvsSelect);
             viewEventBus.on('lvs:clear', this._onLvsClear);
 
-            const pending = viewEventBus.consumePending('lvs:select');
+            const pending = viewEventBus.getPending('lvs:select');
             if (pending) {
                 this._pendingHighlight = pending;
             }
@@ -333,7 +333,7 @@ const viewClassOf = {
             }
         }
         destroy() {
-            viewEventBus.off('lvs:select', this._onLvsSelect);
+            viewEventBus.off('lvs:schem-select', this._onLvsSelect);
             viewEventBus.off('lvs:clear', this._onLvsClear);
             this.clearHighlight();
         }
@@ -683,6 +683,7 @@ const viewClassOf = {
                 });
                 this.selectedItemNid = null;
                 deselectBtn.disabled = true;
+                viewEventBus.clearPending('lvs:select');
                 viewEventBus.emit('lvs:clear');
             });
 
@@ -707,17 +708,26 @@ const viewClassOf = {
                         const hasLayoutShapes = item.layout_shapes && item.layout_shapes.length > 0;
                         const hasSchemPath = item.schem_path && item.schem_path.length > 0;
 
-                        if (viewEventBus.hasListeners('lvs:select')) {
-                            viewEventBus.emit('lvs:select', payload);
-                        } else {
-                            viewEventBus.setPending('lvs:select', payload);
-                            if (hasLayoutShapes) {
+                        // Set pending for viewers that will be opened
+                        viewEventBus.setPending('lvs:select', payload);
+
+                        // Handle layout viewer
+                        if (hasLayoutShapes) {
+                            if (viewEventBus.hasListeners('lvs:layout-select')) {
+                                viewEventBus.emit('lvs:layout-select', payload);
+                            } else {
                                 viewEventBus.emit('layout:request-open', {
                                     view: this.viewName ? `${this.viewName}.ref_layout` : null,
                                     sourceContainer: this.glContainer,
                                 });
                             }
-                            if (hasSchemPath) {
+                        }
+
+                        // Handle schematic viewer
+                        if (hasSchemPath) {
+                            if (viewEventBus.hasListeners('lvs:schem-select')) {
+                                viewEventBus.emit('lvs:schem-select', payload);
+                            } else {
                                 viewEventBus.emit('schematic:request-open', {
                                     view: this.viewName ? `${this.viewName}.ref_schematic` : null,
                                     sourceContainer: this.glContainer,

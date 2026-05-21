@@ -133,12 +133,19 @@ def test_pending_event_consumed_on_layout_open(web):
     assert pending is None, "Pending event should have been consumed"
 
 
-def emit_lvs_select(web, shapes, schem_path=None):
-    """Emit lvs:select event with given shapes."""
+def emit_lvs_layout_select(web, shapes):
+    """Emit lvs:layout-select event with given shapes."""
     web.driver.execute_script(
-        "window.viewEventBus.emit('lvs:select', {shapes: arguments[0], schem_path: arguments[1]});",
-        shapes,
-        schem_path or []
+        "window.viewEventBus.emit('lvs:layout-select', {shapes: arguments[0], schem_path: []});",
+        shapes
+    )
+
+
+def emit_lvs_schem_select(web, schem_path):
+    """Emit lvs:schem-select event with given schem_path."""
+    web.driver.execute_script(
+        "window.viewEventBus.emit('lvs:schem-select', {shapes: [], schem_path: arguments[0]});",
+        schem_path
     )
 
 
@@ -149,17 +156,17 @@ def emit_lvs_clear(web):
 
 @pytest.mark.web
 def test_lvs_select_highlights_layout(web):
-    """Emitting lvs:select should set highlight vertices in layout viewer."""
+    """Emitting lvs:layout-select should set highlight vertices in layout viewer."""
     load_layout_view(web)
 
     state = get_layout_state(web)
     assert state is not None, "Layout viewer not found"
     assert state['highlightNumVertices'] == 0, "Should start with no highlight"
 
-    emit_lvs_select(web, [{'type': 'box', 'rect': [0, 0, 1000, 1000]}])
+    emit_lvs_layout_select(web, [{'type': 'box', 'rect': [0, 0, 1000, 1000]}])
 
     state = get_layout_state(web)
-    assert state['highlightNumVertices'] > 0, "Should have highlight after lvs:select"
+    assert state['highlightNumVertices'] > 0, "Should have highlight after lvs:layout-select"
 
 
 @pytest.mark.web
@@ -167,7 +174,7 @@ def test_lvs_clear_removes_highlight(web):
     """Emitting lvs:clear should remove highlight from layout viewer."""
     load_layout_view(web)
 
-    emit_lvs_select(web, [{'type': 'box', 'rect': [0, 0, 500, 500]}])
+    emit_lvs_layout_select(web, [{'type': 'box', 'rect': [0, 0, 500, 500]}])
     state = get_layout_state(web)
     assert state['highlightNumVertices'] > 0, "Precondition: should have highlight"
 
@@ -197,22 +204,17 @@ def get_schematic_highlight_count(web):
 
 @pytest.mark.web
 def test_lvs_select_highlights_schematic_instance(web):
-    """Emitting lvs:select with schem_path should highlight the instance in schematic."""
+    """Emitting lvs:schem-select with schem_path should highlight the instance in schematic."""
     load_schematic_view(web)
 
     count = get_schematic_highlight_count(web)
     assert count == 0, "Should start with no highlight"
 
-    web.driver.execute_script("""
-        window.viewEventBus.emit('lvs:select', {
-            shapes: [],
-            schem_path: ['pu']
-        });
-    """)
+    emit_lvs_schem_select(web, ['pu'])
 
     time.sleep(0.3)
     count = get_schematic_highlight_count(web)
-    assert count > 0, "Should have highlight after lvs:select with schem_path"
+    assert count > 0, "Should have highlight after lvs:schem-select with schem_path"
 
 
 @pytest.mark.web
@@ -220,12 +222,7 @@ def test_lvs_clear_removes_schematic_highlight(web):
     """Emitting lvs:clear should remove highlight from schematic."""
     load_schematic_view(web)
 
-    web.driver.execute_script("""
-        window.viewEventBus.emit('lvs:select', {
-            shapes: [],
-            schem_path: ['pd']
-        });
-    """)
+    emit_lvs_schem_select(web, ['pd'])
     time.sleep(0.2)
     count = get_schematic_highlight_count(web)
     assert count > 0, "Precondition: should have highlight"
