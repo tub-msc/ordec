@@ -1,0 +1,505 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from ordec.lib.ihp130 import Nmos, Ntap, Pmos, Ptap, SG13G2
+from ordec.lib.base import Cap, Gnd, Ipulse, NoConn, Vdc
+from ordec.layout import SRouter
+from ordec.report import Report
+
+
+def _check_odd_stage_count(stages):
+    if stages < 3 or stages % 2 == 0:
+        raise ParameterError("stages must be an odd integer >= 3.")
+
+
+cell StarvedInvStage:
+    width_n = Parameter(R, default=500n)
+    width_p = Parameter(R, default=1u)
+    length = Parameter(R, default=130n)
+
+    viewgen symbol -> Symbol:
+        inout vdd: .align=North
+        inout vss: .align=South
+        input inp: .align=West
+        input vctrl_n: .align=West
+        input vctrl_p: .align=West
+        output out: .align=East
+
+    viewgen schematic -> Schematic:
+        net p_mid
+        net n_mid
+
+        port vdd: .pos=(8, 21); .align=South
+        port vss: .pos=(8, -3); .align=North
+        port vctrl_p: .pos=(1, 17); .align=East
+        port inp: .pos=(1, 9); .align=East
+        port vctrl_n: .pos=(1, 1); .align=East
+        port out: .pos=(13, 9); .align=West
+
+        Pmos p_lim:
+            .s -- vdd
+            .b -- vdd
+            .g -- vctrl_p
+            .d -- p_mid
+            .pos = (6, 15)
+            .$w = self.width_p
+            .$l = self.length
+
+        Pmos p_drv:
+            .s -- p_mid
+            .b -- vdd
+            .g -- inp
+            .d -- out
+            .pos = (6, 10)
+            .$w = self.width_p
+            .$l = self.length
+
+        Nmos n_drv:
+            .d -- out
+            .g -- inp
+            .s -- n_mid
+            .b -- vss
+            .pos = (6, 4)
+            .$w = self.width_n
+            .$l = self.length
+
+        Nmos n_lim:
+            .d -- n_mid
+            .g -- vctrl_n
+            .s -- vss
+            .b -- vss
+            .pos = (6, -1)
+            .$w = self.width_n
+            .$l = self.length
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        m1_bar_height = 600
+        power_bar_left_ext = 250
+        power_bar_right_ext = 550
+        power_rail_clearance = 220
+        pmos_spacing = 1700
+        out_bar_width = 300
+        gate_tap_size = (500, 400)
+        ctrl_gate_tap_size = (1500, 500)
+        ctrl_gate_extension = 500
+        gate_poly_spacing = 230
+        gate_contact_size = (160, 160)
+        gate_contact_m1_size = (800, m1_bar_height)
+        input_gate_contact_m1_size = (800, 400)
+        tap_size = 600n
+        tap_gap = 500
+
+        nmos = Nmos(w=self.width_n, l=self.length)
+        ntap = Ntap(l=tap_size, w=tap_size)
+        pmos = Pmos(w=self.width_p, l=self.length)
+        ptap = Ptap(l=tap_size, w=tap_size)
+
+        # Device placement
+        nmos n_lim:
+            ! .pos == (0, 0)
+
+        nmos n_drv:
+            ! .sd[0].center == n_lim.sd[1].center
+
+        pmos p_lim:
+            ! .poly[0].cx == n_lim.poly[0].cx
+            ! n_lim.activ.uy + pmos_spacing == .activ.ly
+
+        pmos p_drv:
+            ! .sd[0].center == p_lim.sd[1].center
+            ! .poly[0].cx == n_drv.poly[0].cx
+
+        ntap ntap:
+            ! .m1.lx == p_drv.sd[1].ux + tap_gap
+            ! .m1.cy == p_drv.sd[1].cy
+
+        ptap ptap:
+            ! .m1.lx == n_drv.sd[1].ux + tap_gap
+            ! .m1.cy == n_drv.sd[1].cy
+
+        # Power and internal diffusion straps
+        LayoutRect vdd_bar:
+            .layer=layers.Metal1
+            .create_pin(self.symbol.vdd)
+            ! .height == m1_bar_height
+            ! .ly == p_lim.sd[0].uy + power_rail_clearance
+            ! .lx == p_lim.sd[0].lx - power_bar_left_ext
+            ! .ux == ntap.m1.ux + power_bar_right_ext
+
+        LayoutRect vdd_src_drop:
+            .layer=layers.Metal1
+            ! .x_extent == p_lim.sd[0].x_extent
+            ! .ly == p_lim.sd[0].ly
+            ! .uy == vdd_bar.ly
+
+        LayoutRect vdd_tap_drop:
+            .layer=layers.Metal1
+            ! .x_extent == ntap.m1.x_extent
+            ! .ly == ntap.m1.ly
+            ! .uy == vdd_bar.ly
+
+        LayoutRect vss_bar:
+            .layer=layers.Metal1
+            .create_pin(self.symbol.vss)
+            ! .height == m1_bar_height
+            ! .uy == n_lim.activ.ly - 770
+            ! .lx == n_lim.sd[0].lx - power_bar_left_ext
+            ! .ux == ptap.m1.ux + power_bar_right_ext
+
+        LayoutRect vss_src_drop:
+            .layer=layers.Metal1
+            ! .x_extent == n_lim.sd[0].x_extent
+            ! .ly == vss_bar.uy
+            ! .uy == n_lim.sd[0].uy
+
+        LayoutRect vss_tap_drop:
+            .layer=layers.Metal1
+            ! .x_extent == ptap.m1.x_extent
+            ! .ly == vss_bar.uy
+            ! .uy == ptap.m1.uy
+
+        LayoutRect p_mid_bar:
+            .layer=layers.Metal1
+            ! .height == m1_bar_height
+            ! .cy == p_lim.sd[1].cy
+            ! .lx == p_lim.sd[1].lx
+            ! .ux == p_drv.sd[0].ux
+
+        LayoutRect n_mid_bar:
+            .layer=layers.Metal1
+            ! .height == m1_bar_height
+            ! .cy == n_lim.sd[1].cy
+            ! .lx == n_lim.sd[1].lx
+            ! .ux == n_drv.sd[0].ux
+
+        LayoutRect out_bar:
+            .layer=layers.Metal1
+            .create_pin(self.symbol.out)
+            ! .width == out_bar_width
+            ! .cx == p_drv.sd[1].cx
+            ! .ly == n_drv.sd[1].uy
+            ! .uy == p_drv.sd[1].ly
+
+        # Gate contacts
+        LayoutRect inp_poly:
+            .layer=layers.GatPoly
+            ! .width == p_drv.poly[0].width
+            ! .cx == p_drv.poly[0].cx
+            ! .ly == n_drv.poly[0].uy
+            ! .uy == p_drv.poly[0].ly
+
+        LayoutRect inp_polyext:
+            .layer=layers.GatPoly
+            ! .size == gate_tap_size
+            ! .uy == p_lim.psd.ly - ctrl_gate_extension - gate_poly_spacing
+            ! .ux == inp_poly.lx
+
+        LayoutRect inp_cont:
+            .layer=layers.Cont
+            ! .size == gate_contact_size
+            ! .center == inp_polyext.center
+
+        LayoutRect inp_m1:
+            .layer=layers.Metal1
+            .create_pin(self.symbol.inp)
+            ! .size == input_gate_contact_m1_size
+            ! .center == inp_cont.center
+
+        LayoutRect vctrl_p_poly:
+            .layer=layers.GatPoly
+            ! .width == p_lim.poly[0].width
+            ! .cx == p_lim.poly[0].cx
+            ! .uy == p_lim.poly[0].ly
+            ! .ly == p_lim.psd.ly - ctrl_gate_extension
+
+        LayoutRect vctrl_p_polyext:
+            .layer=layers.GatPoly
+            ! .size == ctrl_gate_tap_size
+            ! .ux == vctrl_p_poly.lx
+            ! .ly == vctrl_p_poly.ly
+
+        LayoutRect vctrl_p_cont:
+            .layer=layers.Cont
+            ! .size == gate_contact_size
+            ! .center == vctrl_p_polyext.center
+
+        LayoutRect vctrl_p_m1:
+            .layer=layers.Metal1
+            .create_pin(self.symbol.vctrl_p)
+            ! .size == gate_contact_m1_size
+            ! .center == vctrl_p_cont.center
+
+        LayoutRect vctrl_n_poly:
+            .layer=layers.GatPoly
+            ! .width == n_lim.poly[0].width
+            ! .cx == n_lim.poly[0].cx
+            ! .ly == n_lim.poly[0].ly - ctrl_gate_extension
+            ! .uy == n_lim.poly[0].ly
+
+        LayoutRect vctrl_n_polyext:
+            .layer=layers.GatPoly
+            ! .size == ctrl_gate_tap_size
+            ! .ux == vctrl_n_poly.lx
+            ! .ly == vctrl_n_poly.ly
+
+        LayoutRect vctrl_n_cont:
+            .layer=layers.Cont
+            ! .size == gate_contact_size
+            ! .center == vctrl_n_polyext.center
+
+        LayoutRect vctrl_n_m1:
+            .layer=layers.Metal1
+            .create_pin(self.symbol.vctrl_n)
+            ! .size == gate_contact_m1_size
+            ! .center == vctrl_n_cont.center
+
+        # Well enclosure
+        LayoutRect nwell:
+            .layer=layers.NWell
+            ! .contains(p_lim.nwell.rect)
+            ! .contains(p_drv.nwell.rect)
+            ! .contains(ntap.nwell.rect)
+
+
+cell StarvedRingOsc:
+    stages = Parameter(int, default=3)
+    width_n = Parameter(R, default=500n)
+    width_p = Parameter(R, default=1u)
+    length = Parameter(R, default=130n)
+
+    viewgen symbol -> Symbol:
+        _check_odd_stage_count(self.stages)
+
+        inout vdd: .align=North
+        inout vss: .align=South
+        input vctrl_p: .align=West
+        input vctrl_n: .align=West
+        output out: .align=East
+
+    viewgen schematic -> Schematic:
+        _check_odd_stage_count(self.stages)
+
+        port vdd: .pos=(1, 11); .align=East
+        port vss: .pos=(1, 3); .align=East
+        port vctrl_p: .pos=(1, 14); .align=East
+        port vctrl_n: .pos=(1, 13); .align=East
+        port out: .pos=(7 * self.stages + 4, 6); .align=West
+
+        path stage
+        path node
+
+        for i in range(self.stages - 1):
+            net node[i]
+
+        for i in range(self.stages):
+            in_net = out if i == 0 else node[i - 1]
+            out_net = out if i == self.stages - 1 else node[i]
+
+            StarvedInvStage stage[i]:
+                .vdd -- vdd
+                .vss -- vss
+                .vctrl_p -- vctrl_p
+                .vctrl_n -- vctrl_n
+                .inp -- in_net
+                .out -- out_net
+                .pos = (5 + 7 * i, 4)
+                .$width_n = self.width_n
+                .$width_p = self.width_p
+                .$length = self.length
+
+    viewgen layout -> Layout:
+        _check_odd_stage_count(self.stages)
+
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        stage_gap = 160
+        feedback_clearance = 700
+        stage_cell = StarvedInvStage(
+            width_n=self.width_n,
+            width_p=self.width_p,
+            length=self.length,
+        )
+
+        path stage
+
+        # Shared supply and control rails
+        LayoutRect vdd_bar:
+            .layer=layers.Metal1
+            .create_pin(self.symbol.vdd)
+
+        LayoutRect vss_bar:
+            .layer=layers.Metal1
+            .create_pin(self.symbol.vss)
+
+        LayoutRect vctrl_p_bar:
+            .layer=layers.Metal1
+            .create_pin(self.symbol.vctrl_p)
+
+        LayoutRect vctrl_n_bar:
+            .layer=layers.Metal1
+            .create_pin(self.symbol.vctrl_n)
+
+        # Stage placement
+        for i in range(self.stages):
+            stage_cell stage[i]:
+                if i == 0:
+                    ! .pos == (0, 0)
+                else:
+                    ! .vdd_bar.lx == stage[i - 1].vdd_bar.ux + stage_gap
+                    ! .vdd_bar.cy == stage[0].vdd_bar.cy
+
+        ! vdd_bar.rect == stage[0].vdd_bar.rect
+        ! vss_bar.rect == stage[0].vss_bar.rect
+        ! vctrl_p_bar.rect == stage[0].vctrl_p_m1.rect
+        ! vctrl_n_bar.rect == stage[0].vctrl_n_m1.rect
+
+        # Shared supply and control routing
+        sr = SRouter(SG13G2().default_routing_spec)
+        for i in range(self.stages - 1):
+            sr.move(layers.Metal1, stage[i].vdd_bar.center)
+            sr.layer(layers.Metal2)
+            sr.wire_x(stage[i + 1].vdd_bar.cx)
+            sr.layer(layers.Metal1)
+
+            sr.move(layers.Metal1, stage[i].vss_bar.center)
+            sr.layer(layers.Metal2)
+            sr.wire_x(stage[i + 1].vss_bar.cx)
+            sr.layer(layers.Metal1)
+
+            sr.move(layers.Metal1, stage[i].vctrl_p_m1.center)
+            sr.layer(layers.Metal2)
+            sr.wire_x(stage[i + 1].vctrl_p_m1.cx)
+            sr.layer(layers.Metal1)
+
+            sr.move(layers.Metal1, stage[i].vctrl_n_m1.center)
+            sr.layer(layers.Metal2)
+            sr.wire_x(stage[i + 1].vctrl_n_m1.cx)
+            sr.layer(layers.Metal1)
+
+        # Inter-stage routing
+        for i in range(self.stages - 1):
+            sr.move(layers.Metal1, stage[i].out_bar.center)
+            sr.layer(layers.Metal2)
+            sr.wire_x(stage[i + 1].inp_m1.cx)
+            sr.wire_y(stage[i + 1].inp_m1.cy)
+            sr.layer(layers.Metal1)
+
+        sr.move(layers.Metal1, stage[self.stages - 1].out_bar.center)
+        sr.layer(layers.Metal3)
+        sr.wire_y(vdd_bar.uy + feedback_clearance)
+        sr.wire_x(stage[0].inp_m1.cx)
+        sr.wire_y(stage[0].inp_m1.cy)
+        sr.layer(layers.Metal1)
+
+        LayoutRect out_pin:
+            .layer=layers.Metal1
+            .create_pin(self.symbol.out)
+            ! .rect == stage[0].inp_m1.rect
+
+
+cell StarvedRingOscTb:
+    stages = Parameter(int, default=3)
+    width_n = Parameter(R, default=500n)
+    width_p = Parameter(R, default=1u)
+    length = Parameter(R, default=130n)
+    vdd_dc = Parameter(R, default=1.2)
+    vctrl_p_dc = Parameter(R, default=0.35)
+    vctrl_n_dc = Parameter(R, default=0.85)
+    load_cap = Parameter(R, default=20f)
+    kick_current = Parameter(R, default=10u)
+    tstep = Parameter(R, default=5p)
+    tstop = Parameter(R, default=20n)
+
+    viewgen symbol -> Symbol:
+        pass
+
+    viewgen schematic -> Schematic:
+        _check_odd_stage_count(self.stages)
+
+        net vdd, vss, vctrl_p, vctrl_n, out
+
+        StarvedRingOsc(
+            stages=self.stages,
+            width_n=self.width_n,
+            width_p=self.width_p,
+            length=self.length,
+        ) dut:
+            .vdd -- vdd
+            .vss -- vss
+            .vctrl_p -- vctrl_p
+            .vctrl_n -- vctrl_n
+            .out -- out
+            .pos = (16, 7)
+
+        Gnd gnd:
+            .p -- vss
+            .pos = (0, -2)
+
+        Vdc vdd_src:
+            .m -- vss
+            .p -- vdd
+            .pos = (0, 8)
+            .$dc = self.vdd_dc
+
+        Vdc vctrl_p_src:
+            .m -- vss
+            .p -- vctrl_p
+            .pos = (5, 4)
+            .$dc = self.vctrl_p_dc
+
+        Vdc vctrl_n_src:
+            .m -- vss
+            .p -- vctrl_n
+            .pos = (10, 4)
+            .$dc = self.vctrl_n_dc
+
+        Cap load:
+            .m -- vss
+            .p -- out
+            .pos = (23, 4)
+            .$c = self.load_cap
+
+        Ipulse kick:
+            .p -- out
+            .m -- vss
+            .pos = (28, 4)
+            .$initial_value = 0
+            .$pulsed_value = self.kick_current
+            .$delay_time = 200p
+            .$rise_time = 20p
+            .$fall_time = 20p
+            .$pulse_width = 200p
+            .$period = self.tstop
+
+        NoConn out_probe:
+            .a -- out
+            .pos = (33, 8)
+            .orientation = East
+
+    viewgen sim_tran -> Simulation:
+        .simulate().tran(self.tstep, self.tstop)
+
+    @generate
+    def report_tran(self) -> Report:
+        sim = self.sim_tran
+        report = Report()
+
+        report.markdown("## Current-starved ring oscillator transient")
+        report.plot2d(
+            x=sim.time,
+            series={
+                "out": sim.out.voltage,
+                "vctrl_p": sim.vctrl_p.voltage,
+                "vctrl_n": sim.vctrl_n.voltage,
+            },
+            xlabel="Time (s)",
+            ylabel="Voltage (V)",
+            height=220,
+            plot_group="starved_ringosc_tran",
+        )
+        return report

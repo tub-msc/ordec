@@ -92,6 +92,9 @@ testcases_integrated = {
     'vco_pseudodiff': {
         'VcoRing().layout': [],
     },
+    'starved_ringosc': {
+        "StarvedRingOsc(stages=3,width_n='500n',width_p='1u',length='130n').layout": [],
+    },
 }
 
 testcases_local = {
