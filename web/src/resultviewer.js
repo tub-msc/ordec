@@ -658,7 +658,56 @@ const viewClassOf = {
             return parts.length > 0 ? ` [${parts.join(', ')}]` : '';
         }
 
+        _setupColumnResize() {
+            const header = this.el.querySelector('.lvs-col-header');
+            if (!header) return;
+
+            const cols = header.querySelectorAll(':scope > span');
+            const body = this.el.querySelector('.lvs-body');
+
+            cols.forEach((col, idx) => {
+                if (idx >= cols.length - 1) return;
+                const handle = document.createElement('div');
+                handle.className = 'lvs-col-resize';
+                handle.dataset.colIdx = idx;
+                col.appendChild(handle);
+            });
+
+            header.addEventListener('mousedown', (e) => {
+                const handle = e.target.closest('.lvs-col-resize');
+                if (!handle) return;
+
+                e.preventDefault();
+                const idx = parseInt(handle.dataset.colIdx, 10);
+                const startX = e.clientX;
+                const startWidths = [
+                    cols[idx].getBoundingClientRect().width,
+                    cols[idx + 1].getBoundingClientRect().width
+                ];
+
+                const onMouseMove = (e) => {
+                    const dx = e.clientX - startX;
+                    body.style.setProperty(`--lvs-col${idx + 1}`, `${Math.max(80, startWidths[0] + dx)}px`);
+                    body.style.setProperty(`--lvs-col${idx + 2}`, `${Math.max(80, startWidths[1] - dx)}px`);
+                };
+
+                const onMouseUp = () => {
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                    document.body.style.removeProperty('cursor');
+                    document.body.style.removeProperty('user-select');
+                };
+
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+        }
+
         _attachEventHandlers(itemMap) {
+            this._setupColumnResize();
+
             this.el.querySelectorAll('.lvs-circuit-header').forEach(header => {
                 header.addEventListener('click', () => {
                     const circuit = header.parentElement;
