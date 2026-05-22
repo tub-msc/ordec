@@ -282,3 +282,61 @@ def test_lvs_select_hightlight_instance_pos(web):
     highlight_y = get_highlight_y()
     assert highlight_y is not None, "Should have highlight rect for pu"
     assert abs(highlight_y - pu_y) < 1.0, f"Highlight Y ({highlight_y}) should be near pu Y ({pu_y}), not pd Y ({pd_y})"
+
+
+@pytest.mark.web
+def test_lvs_select_highlights_net(web):
+    """Verify net/pin highlighting creates overlay elements for wires and connection points."""
+    def get_net_highlight_count():
+        return web.driver.execute_script("""
+            const svg = document.querySelector('.rescontent svg');
+            if (!svg) return {paths: 0, circles: 0};
+            const group = svg.querySelector('.lvs-highlight-group');
+            if (!group) return {paths: 0, circles: 0};
+            return {
+                paths: group.querySelectorAll('path').length,
+                circles: group.querySelectorAll('circle').length
+            };
+        """)
+
+    load_schematic_view(web)
+
+    # Emit a net highlight event (vss is a net that should have wires)
+    web.driver.execute_script(
+        "window.viewEventBus.emit('lvs:schem-select', {item_type: 'net', schem_name: 'vss'});"
+    )
+    time.sleep(0.3)
+
+    counts = get_net_highlight_count()
+    total = counts['paths'] + counts['circles']
+    assert total > 0, f"Should have net highlights (paths={counts['paths']}, circles={counts['circles']})"
+
+
+@pytest.mark.web
+def test_lvs_select_highlights_pin(web):
+    """Verify pin highlighting creates a circle overlay at the port location."""
+    def get_pin_highlight_count():
+        return web.driver.execute_script("""
+            const svg = document.querySelector('.rescontent svg');
+            if (!svg) return {circles: 0, paths: 0, rects: 0};
+            const group = svg.querySelector('.lvs-highlight-group');
+            if (!group) return {circles: 0, paths: 0, rects: 0};
+            return {
+                circles: group.querySelectorAll('circle').length,
+                paths: group.querySelectorAll('path').length,
+                rects: group.querySelectorAll('rect').length
+            };
+        """)
+
+    load_schematic_view(web)
+
+    # Emit a pin highlight event (vss is a pin/port)
+    web.driver.execute_script(
+        "window.viewEventBus.emit('lvs:schem-select', {item_type: 'pin', schem_name: 'vss'});"
+    )
+    time.sleep(0.3)
+
+    counts = get_pin_highlight_count()
+    # Pin highlighting should create exactly one circle, no paths or rects
+    assert counts['circles'] == 1, f"Pin highlight should have 1 circle, got {counts['circles']}"
+    assert counts['paths'] == 0, f"Pin highlight should have no paths (wires), got {counts['paths']}"

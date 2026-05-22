@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="350.0px" height="350.0px" viewBox="-1.0 -1.0 10.0 10.0">
   <g transform="matrix(1 0 0 -1 0 8.0)">
-    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 4.0 6.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 4.0 6.0)" class="tapPoint" data-net="north" />
     <text transform="matrix(0 0.045 0.045 0 4.0 6.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">north</text>
-    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 4.0 2.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 4.0 2.0)" class="tapPoint" data-net="south" />
     <text transform="matrix(0 0.045 0.045 0 4.0 1.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">south</text>
-    <path d="M0 0 L0 0.5" transform="matrix(0 1 -1 0 2.0 4.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(0 1 -1 0 2.0 4.0)" class="tapPoint" data-net="west" />
     <text transform="matrix(0.045 0 0 -0.045 1.35 4.0)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">west</text>
-    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 6.0 4.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 6.0 4.0)" class="tapPoint" data-net="east" />
     <text transform="matrix(0.045 0 0 -0.045 6.65 4.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">east</text>
   </g>
 </svg>

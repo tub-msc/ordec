@@ -1,62 +1,62 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1879.5px" height="1795.5px" viewBox="-15.75 -8.75 53.7 51.3">
   <g transform="matrix(1 0 0 -1 0 33.8)">
-    <path d="M-2.0 -5.0 L-2.0 -4.0 L-2.0 4.0 L-1.0 4.0 L0.0 4.0" class="schemWire" />
-    <path d="M-1.0 4.0 L-1.0 14.0 L0.0 14.0" class="schemWire" />
-    <path d="M-1.0 14.0 L-1.0 24.0 L0.0 24.0" class="schemWire" />
-    <path d="M-1.0 24.0 L-1.0 34.0 L0.0 34.0" class="schemWire" />
-    <path d="M10.0 -5.0 L10.0 -4.0 L10.0 14.0 L11.0 14.0 L12.0 14.0" class="schemWire" />
-    <path d="M11.0 14.0 L11.0 24.0 L12.0 24.0" class="schemWire" />
-    <path d="M4.0 22.0 L12.0 22.0" class="schemWire" />
-    <path d="M4.0 12.0 L9.0 12.0 L9.0 13.0 L12.0 13.0" class="schemWire" />
-    <path d="M36.0 15.0 L29.0 15.0 L29.0 17.0 L28.0 17.0" class="schemWire" />
-    <path d="M16.0 22.0 L23.0 22.0 L23.0 18.0 L24.0 18.0" class="schemWire" />
-    <path d="M16.0 12.0 L23.0 12.0 L23.0 17.0 L24.0 17.0" class="schemWire" />
-    <path d="M-12.0 2.0 L0.0 2.0" class="schemWire" />
-    <path d="M-12.0 3.0 L0.0 3.0" class="schemWire" />
-    <path d="M-12.0 12.0 L0.0 12.0" class="schemWire" />
-    <path d="M-12.0 13.0 L0.0 13.0" class="schemWire" />
-    <path d="M-12.0 22.0 L0.0 22.0" class="schemWire" />
-    <path d="M-12.0 23.0 L0.0 23.0" class="schemWire" />
-    <path d="M-12.0 32.0 L0.0 32.0" class="schemWire" />
-    <path d="M-12.0 33.0 L0.0 33.0" class="schemWire" />
-    <path d="M4.0 32.0 L10.0 32.0 L10.0 23.0 L12.0 23.0" class="schemWire" />
-    <path d="M4.0 2.0 L11.0 2.0 L11.0 12.0 L12.0 12.0" class="schemWire" />
-    <path d="M22.0 -5.0 L22.0 19.0 L24.0 19.0" class="schemWire" />
-    <circle cx="-1.0" cy="4.0" r="0.1625" class="connPoint" />
-    <circle cx="-1.0" cy="14.0" r="0.1625" class="connPoint" />
-    <circle cx="-1.0" cy="24.0" r="0.1625" class="connPoint" />
-    <circle cx="11.0" cy="14.0" r="0.1625" class="connPoint" />
-    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 -12.0 40.0)" class="tapPoint" />
+    <path d="M-2.0 -5.0 L-2.0 -4.0 L-2.0 4.0 L-1.0 4.0 L0.0 4.0" class="schemWire" data-net="s_in[0]" />
+    <path d="M-1.0 4.0 L-1.0 14.0 L0.0 14.0" class="schemWire" data-net="s_in[0]" />
+    <path d="M-1.0 14.0 L-1.0 24.0 L0.0 24.0" class="schemWire" data-net="s_in[0]" />
+    <path d="M-1.0 24.0 L-1.0 34.0 L0.0 34.0" class="schemWire" data-net="s_in[0]" />
+    <path d="M10.0 -5.0 L10.0 -4.0 L10.0 14.0 L11.0 14.0 L12.0 14.0" class="schemWire" data-net="s_in[1]" />
+    <path d="M11.0 14.0 L11.0 24.0 L12.0 24.0" class="schemWire" data-net="s_in[1]" />
+    <path d="M4.0 22.0 L12.0 22.0" class="schemWire" data-net="nets[0][2]" />
+    <path d="M4.0 12.0 L9.0 12.0 L9.0 13.0 L12.0 13.0" class="schemWire" data-net="nets[0][1]" />
+    <path d="M36.0 15.0 L29.0 15.0 L29.0 17.0 L28.0 17.0" class="schemWire" data-net="y" />
+    <path d="M16.0 22.0 L23.0 22.0 L23.0 18.0 L24.0 18.0" class="schemWire" data-net="nets[1][1]" />
+    <path d="M16.0 12.0 L23.0 12.0 L23.0 17.0 L24.0 17.0" class="schemWire" data-net="nets[1][0]" />
+    <path d="M-12.0 2.0 L0.0 2.0" class="schemWire" data-net="d_in[0]" />
+    <path d="M-12.0 3.0 L0.0 3.0" class="schemWire" data-net="d_in[1]" />
+    <path d="M-12.0 12.0 L0.0 12.0" class="schemWire" data-net="d_in[2]" />
+    <path d="M-12.0 13.0 L0.0 13.0" class="schemWire" data-net="d_in[3]" />
+    <path d="M-12.0 22.0 L0.0 22.0" class="schemWire" data-net="d_in[4]" />
+    <path d="M-12.0 23.0 L0.0 23.0" class="schemWire" data-net="d_in[5]" />
+    <path d="M-12.0 32.0 L0.0 32.0" class="schemWire" data-net="d_in[6]" />
+    <path d="M-12.0 33.0 L0.0 33.0" class="schemWire" data-net="d_in[7]" />
+    <path d="M4.0 32.0 L10.0 32.0 L10.0 23.0 L12.0 23.0" class="schemWire" data-net="nets[0][3]" />
+    <path d="M4.0 2.0 L11.0 2.0 L11.0 12.0 L12.0 12.0" class="schemWire" data-net="nets[0][0]" />
+    <path d="M22.0 -5.0 L22.0 19.0 L24.0 19.0" class="schemWire" data-net="s_in[2]" />
+    <circle cx="-1.0" cy="4.0" r="0.1625" class="connPoint" data-net="s_in[0]" />
+    <circle cx="-1.0" cy="14.0" r="0.1625" class="connPoint" data-net="s_in[0]" />
+    <circle cx="-1.0" cy="24.0" r="0.1625" class="connPoint" data-net="s_in[0]" />
+    <circle cx="11.0" cy="14.0" r="0.1625" class="connPoint" data-net="s_in[1]" />
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 -12.0 40.0)" class="tapPoint" data-net="vdd" />
     <text transform="matrix(0 0.045 0.045 0 -12.0 39.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vdd</text>
-    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 -12.0 -5.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 -12.0 -5.0)" class="tapPoint" data-net="vss" />
     <text transform="matrix(0 0.045 0.045 0 -12.0 -4.35)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vss</text>
-    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 2.0 0.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 2.0 0.0)" class="tapPoint" data-net="vss" />
     <text transform="matrix(0 0.045 0.045 0 2.0 -0.65)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
-    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 2.0 6.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 2.0 6.0)" class="tapPoint" data-net="vdd" />
     <text transform="matrix(0 0.045 0.045 0 2.0 6.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
-    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 2.0 10.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 2.0 10.0)" class="tapPoint" data-net="vss" />
     <text transform="matrix(0 0.045 0.045 0 2.0 9.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
-    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 2.0 16.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 2.0 16.0)" class="tapPoint" data-net="vdd" />
     <text transform="matrix(0 0.045 0.045 0 2.0 16.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
-    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 2.0 20.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 2.0 20.0)" class="tapPoint" data-net="vss" />
     <text transform="matrix(0 0.045 0.045 0 2.0 19.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
-    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 2.0 26.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 2.0 26.0)" class="tapPoint" data-net="vdd" />
     <text transform="matrix(0 0.045 0.045 0 2.0 26.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
-    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 2.0 30.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 2.0 30.0)" class="tapPoint" data-net="vss" />
     <text transform="matrix(0 0.045 0.045 0 2.0 29.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
-    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 2.0 36.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 2.0 36.0)" class="tapPoint" data-net="vdd" />
     <text transform="matrix(0 0.045 0.045 0 2.0 36.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
-    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 14.0 10.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 14.0 10.0)" class="tapPoint" data-net="vss" />
     <text transform="matrix(0 0.045 0.045 0 14.0 9.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
-    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 14.0 16.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 14.0 16.0)" class="tapPoint" data-net="vdd" />
     <text transform="matrix(0 0.045 0.045 0 14.0 16.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
-    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 14.0 20.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 14.0 20.0)" class="tapPoint" data-net="vss" />
     <text transform="matrix(0 0.045 0.045 0 14.0 19.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
-    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 14.0 26.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 14.0 26.0)" class="tapPoint" data-net="vdd" />
     <text transform="matrix(0 0.045 0.045 0 14.0 26.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
-    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 26.0 15.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 26.0 15.0)" class="tapPoint" data-net="vss" />
     <text transform="matrix(0 0.045 0.045 0 26.0 14.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
-    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 26.0 21.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 26.0 21.0)" class="tapPoint" data-net="vdd" />
     <text transform="matrix(0 0.045 0.045 0 26.0 21.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>
     <g data-inst="mux[0][0]">
       <rect x="0.0" y="0.0" width="4.0" height="6.0" class="symbolOutline" />
@@ -184,59 +184,59 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 24.2 19.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 24.125 19.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">s</text>
     </g>
-    <g>
+    <g data-net="vdd">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 -0.25 Z" transform="matrix(-1 0 0 -1 -12.0 40.0)" class="portArrow" />
       <text transform="matrix(0 0.045 0.045 0 -12.0 40.65)" dominant-baseline="middle" text-anchor="start" class="portLabel">vdd</text>
     </g>
-    <g>
+    <g data-net="vss">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 -0.25 Z" transform="matrix(1 0 0 1 -12.0 -5.0)" class="portArrow" />
       <text transform="matrix(0 0.045 0.045 0 -12.0 -5.65)" dominant-baseline="middle" text-anchor="end" class="portLabel">vss</text>
     </g>
-    <g>
+    <g data-net="y">
       <path d="M0 0 L0.25 0 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 0 Z" transform="matrix(0 1 -1 0 36.0 15.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 36.65 15.0)" dominant-baseline="middle" text-anchor="start" class="portLabel">y</text>
     </g>
-    <g>
+    <g data-net="d_in[0]">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 -12.0 2.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 -12.65 2.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">d_in[0]</text>
     </g>
-    <g>
+    <g data-net="d_in[1]">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 -12.0 3.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 -12.65 3.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">d_in[1]</text>
     </g>
-    <g>
+    <g data-net="d_in[2]">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 -12.0 12.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 -12.65 12.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">d_in[2]</text>
     </g>
-    <g>
+    <g data-net="d_in[3]">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 -12.0 13.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 -12.65 13.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">d_in[3]</text>
     </g>
-    <g>
+    <g data-net="d_in[4]">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 -12.0 22.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 -12.65 22.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">d_in[4]</text>
     </g>
-    <g>
+    <g data-net="d_in[5]">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 -12.0 23.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 -12.65 23.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">d_in[5]</text>
     </g>
-    <g>
+    <g data-net="d_in[6]">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 -12.0 32.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 -12.65 32.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">d_in[6]</text>
     </g>
-    <g>
+    <g data-net="d_in[7]">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 -12.0 33.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 -12.65 33.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">d_in[7]</text>
     </g>
-    <g>
+    <g data-net="s_in[0]">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(1 0 0 1 -2.0 -5.0)" class="portArrow" />
       <text transform="matrix(0 0.045 0.045 0 -2.0 -5.65)" dominant-baseline="middle" text-anchor="end" class="portLabel">s_in[0]</text>
     </g>
-    <g>
+    <g data-net="s_in[1]">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(1 0 0 1 10.0 -5.0)" class="portArrow" />
       <text transform="matrix(0 0.045 0.045 0 10.0 -5.65)" dominant-baseline="middle" text-anchor="end" class="portLabel">s_in[1]</text>
     </g>
-    <g>
+    <g data-net="s_in[2]">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(1 0 0 1 22.0 -5.0)" class="portArrow" />
       <text transform="matrix(0 0.045 0.045 0 22.0 -5.65)" dominant-baseline="middle" text-anchor="end" class="portLabel">s_in[2]</text>
     </g>

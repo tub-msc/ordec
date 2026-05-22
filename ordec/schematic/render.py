@@ -65,8 +65,16 @@ class Renderer:
     def cur_group(self):
         return self.group_stack[-1]
 
+    def _get_net_name(self, net):
+        """Get net name for data-net attribute. Returns None if net has no name."""
+        if net.pin is not None:
+            return net.pin.full_path_str()
+        elif hasattr(net, 'npath_nid') and net.npath_nid is not None:
+            return net.full_path_str()
+        return None
+
     @contextmanager
-    def subgroup(self, node=None, existing_group=None, data_inst=None):
+    def subgroup(self, node=None, existing_group=None, data_inst=None, data_net=None):
         if existing_group:
             self.group_stack.append(existing_group)
         else:
@@ -75,6 +83,8 @@ class Renderer:
             self.cur_group.attrib['class'] = f'nid{node.nid}'
         if data_inst:
             self.cur_group.attrib['data-inst'] = data_inst
+        if data_net:
+            self.cur_group.attrib['data-net'] = data_net
         try:
             yield
         finally:
@@ -297,11 +307,17 @@ class SchematicRenderer(Renderer):
         for poly in s.all(SchemWire):
             p = ET.SubElement(self.cur_group, 'path', d=poly.svg_path())
             p.attrib['class'] = 'schemWire'
+            net_name = self._get_net_name(poly.ref)
+            if net_name:
+                p.attrib['data-net'] = net_name
 
         for p in s.all(SchemConnPoint):
             cx, cy = p.pos.tofloat()
             circle = ET.SubElement(self.cur_group, 'circle', cx=str(cx), cy=str(cy), r=str(self.conn_point_radius))
-            circle.attrib['class']='connPoint'
+            circle.attrib['class'] = 'connPoint'
+            net_name = self._get_net_name(p.ref)
+            if net_name:
+                circle.attrib['data-net'] = net_name
 
         for p in s.all(SchemTapPoint):
             self.draw_schem_tappoint(p)
@@ -313,7 +329,8 @@ class SchematicRenderer(Renderer):
                 self.draw_symbol(inst.symbol, trans, inst_name)
 
         for port in s.all(SchemPort):
-            with self.subgroup(node=port):
+            net_name = self._get_net_name(port.ref)
+            with self.subgroup(node=port, data_net=net_name):
                 self.draw_schem_port(port)
 
         for err in s.all(SchemErrorMarker):
@@ -443,6 +460,9 @@ class SchematicRenderer(Renderer):
 
         path = ET.SubElement(self.cur_group, 'path', d=d, transform=tran.svg_transform())
         path.attrib['class'] = 'tapPoint'
+        net_name = self._get_net_name(p.ref)
+        if net_name:
+            path.attrib['data-net'] = net_name
 
         if not (is_default_supply or is_default_ground):
             if p.ref.npath_nid is not None:

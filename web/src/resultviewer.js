@@ -213,14 +213,7 @@ const viewClassOf = {
         }
         setHighlight(data) {
             this.clearHighlight();
-            if (!this.svg || !data.schem_path || data.schem_path.length === 0) {
-                return;
-            }
-
-            const instName = data.schem_path.join('.');
-            const instGroup = this.g.select(`[data-inst="${instName}"]`);
-
-            if (instGroup.empty()) {
+            if (!this.svg) {
                 return;
             }
 
@@ -233,18 +226,116 @@ const viewClassOf = {
             const highlightGroup = innerGroup.append("g")
                 .attr("class", "lvs-highlight-group");
 
-            const bbox = instGroup.node().getBBox();
-            const pad = 0.3;
-            highlightGroup.append("rect")
-                .attr("class", "lvs-highlight-border")
-                .attr("x", bbox.x - pad)
-                .attr("y", bbox.y - pad)
-                .attr("width", bbox.width + pad * 2)
-                .attr("height", bbox.height + pad * 2)
-                .attr("rx", 0.5)
-                .attr("ry", 0.5)
-                .attr("fill", "rgba(255, 0, 0, 0.25)")
-                .attr("stroke", "none");
+            const itemType = data.item_type;
+            const hasSchemPath = data.schem_path && data.schem_path.length > 0;
+
+            // For backwards compatibility: if no item_type but schem_path exists, treat as instance
+            if (itemType === 'device' || itemType === 'subcircuit' || (!itemType && hasSchemPath)) {
+                // Instance highlighting: select by data-inst, draw bounding rect
+                if (!data.schem_path || data.schem_path.length === 0) {
+                    highlightGroup.remove();
+                    return;
+                }
+                const instName = data.schem_path.join('.');
+                const instGroup = this.g.select(`[data-inst="${instName}"]`);
+                if (instGroup.empty()) {
+                    highlightGroup.remove();
+                    return;
+                }
+                const bbox = instGroup.node().getBBox();
+                const pad = 0.3;
+                highlightGroup.append("rect")
+                    .attr("class", "lvs-highlight-border")
+                    .attr("x", bbox.x - pad)
+                    .attr("y", bbox.y - pad)
+                    .attr("width", bbox.width + pad * 2)
+                    .attr("height", bbox.height + pad * 2)
+                    .attr("rx", 0.5)
+                    .attr("ry", 0.5)
+                    .attr("fill", "rgba(255, 0, 0, 0.25)")
+                    .attr("stroke", "none");
+            } else if (itemType === 'net') {
+                // Net highlighting: highlight wires and tap points only (not ports)
+                const netName = data.schem_name;
+                if (!netName) {
+                    highlightGroup.remove();
+                    return;
+                }
+                const netElements = this.g.selectAll(`[data-net="${netName}"]`);
+                if (netElements.empty()) {
+                    highlightGroup.remove();
+                    return;
+                }
+                netElements.each(function() {
+                    const el = d3.select(this);
+                    const tagName = this.tagName.toLowerCase();
+                    if (tagName === 'path') {
+                        // Wire/tappoint: draw thicker translucent stroke along the path
+                        const pathD = el.attr('d');
+                        const transform = el.attr('transform');
+                        const pathEl = highlightGroup.append("path")
+                            .attr("d", pathD)
+                            .attr("fill", "none")
+                            .attr("stroke", "rgba(255, 0, 0, 0.4)")
+                            .attr("stroke-width", 0.4)
+                            .attr("stroke-linecap", "round");
+                        if (transform) {
+                            pathEl.attr("transform", transform);
+                        }
+                    } else if (tagName === 'circle') {
+                        // Connection point: draw larger translucent circle (like errorMarker)
+                        highlightGroup.append("circle")
+                            .attr("cx", el.attr('cx'))
+                            .attr("cy", el.attr('cy'))
+                            .attr("r", 0.5)
+                            .attr("fill", "rgba(255, 0, 0, 0.25)")
+                            .attr("stroke", "none");
+                    }
+                    // Skip 'g' elements (ports) - only highlight wires and connection points
+                });
+            } else if (itemType === 'pin') {
+                // Pin highlighting: highlight only the port (not the connected wires)
+                const pinName = data.schem_name;
+                if (!pinName) {
+                    highlightGroup.remove();
+                    return;
+                }
+                // Select only the port group element (not paths/circles which are wires)
+                const portGroup = this.g.select(`g[data-net="${pinName}"]`);
+                if (portGroup.empty()) {
+                    highlightGroup.remove();
+                    return;
+                }
+                // Find the portArrow path and extract position from its transform
+                const portArrow = portGroup.select('path.portArrow');
+                let cx, cy;
+                if (!portArrow.empty()) {
+                    const transform = portArrow.attr('transform');
+                    // Parse matrix(a,b,c,d,e,f) where e,f are the translation
+                    const match = transform && transform.match(/matrix\(([^)]+)\)/);
+                    if (match) {
+                        const vals = match[1].split(/[\s,]+/).map(parseFloat);
+                        cx = vals[4];
+                        cy = vals[5];
+                    }
+                }
+                if (cx === undefined) {
+                    // Fallback to bbox center
+                    const bbox = portGroup.node().getBBox();
+                    cx = bbox.x + bbox.width / 2;
+                    cy = bbox.y + bbox.height / 2;
+                }
+                highlightGroup.append("circle")
+                    .attr("cx", cx)
+                    .attr("cy", cy)
+                    .attr("r", 0.5)
+                    .attr("fill", "rgba(255, 0, 0, 0.25)")
+                    .attr("stroke", "none");
+            } else {
+                // Unknown item type, remove empty group
+                highlightGroup.remove();
+                return;
+            }
 
             this.highlightOverlay = highlightGroup;
         }
@@ -759,9 +850,12 @@ const viewClassOf = {
                         const payload = {
                             shapes: item.layout_shapes || [],
                             schem_path: item.schem_path || [],
+                            item_type: item.item_type,
+                            schem_name: item.schem_name || '',
                         };
                         const hasLayoutShapes = item.layout_shapes && item.layout_shapes.length > 0;
                         const hasSchemPath = item.schem_path && item.schem_path.length > 0;
+                        const hasSchemName = item.schem_name && item.schem_name.length > 0;
 
                         // Set pending for viewers that will be opened
                         viewEventBus.setPending('lvs:select', payload);
@@ -774,10 +868,13 @@ const viewClassOf = {
                             if (hasLayoutListener) {
                                 viewEventBus.emit('lvs:layout-select', payload);
                             }
+                        } else if (hasLayoutListener) {
+                            // Clear layout highlight when selecting item without layout shapes
+                            viewEventBus.emit('lvs:layout-select', { shapes: [] });
                         }
 
-                        // Handle schematic viewer
-                        if (hasSchemPath) {
+                        // Handle schematic viewer (instances use schem_path, pins/nets use schem_name)
+                        if (hasSchemPath || hasSchemName) {
                             if (hasSchemListener) {
                                 viewEventBus.emit('lvs:schem-select', payload);
                             }
@@ -785,7 +882,7 @@ const viewClassOf = {
 
                         // Open new views if needed
                         const needLayoutOpen = hasLayoutShapes && !hasLayoutListener;
-                        const needSchemOpen = hasSchemPath && !hasSchemListener;
+                        const needSchemOpen = (hasSchemPath || hasSchemName) && !hasSchemListener;
 
                         if (needLayoutOpen || needSchemOpen) {
                             viewEventBus.emit('lvs:request-open-views', {

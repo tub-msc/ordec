@@ -1,21 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="420.0px" height="490.0px" viewBox="-1.0 0.0 12.0 14.0">
   <g transform="matrix(1 0 0 -1 0 14.0)">
-    <path d="M0 0 L0 1.0 M0.25 0.5 L0 1.0 L-0.25 0.5" transform="matrix(0 -1 1 0 1.0 13.0)" class="tapPoint" />
-    <path d="M0 0 L0 0.5 M-0.375 0.5 L0.375 0.5 M-0.25 0.75 L0.25 0.75 M-0.125, 1.0 L0.125 1.0" transform="matrix(0 -1 1 0 1.0 1.0)" class="tapPoint" />
-    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 1.0 4.0)" class="tapPoint" />
+    <path d="M0 0 L0 1.0 M0.25 0.5 L0 1.0 L-0.25 0.5" transform="matrix(0 -1 1 0 1.0 13.0)" class="tapPoint" data-net="vdd" />
+    <path d="M0 0 L0 0.5 M-0.375 0.5 L0.375 0.5 M-0.25 0.75 L0.25 0.75 M-0.125, 1.0 L0.125 1.0" transform="matrix(0 -1 1 0 1.0 1.0)" class="tapPoint" data-net="vss" />
+    <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 1.0 4.0)" class="tapPoint" data-net="a" />
     <text transform="matrix(0.045 0 0 -0.045 1.65 4.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">a</text>
-    <path d="M0 0 L0 0.5" transform="matrix(0 1 -1 0 9.0 7.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(0 1 -1 0 9.0 7.0)" class="tapPoint" data-net="y" />
     <text transform="matrix(0.045 0 0 -0.045 8.35 7.0)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">y</text>
-    <path d="M0 0 L0 0.5 M-0.375 0.5 L0.375 0.5 M-0.25 0.75 L0.25 0.75 M-0.125, 1.0 L0.125 1.0" transform="matrix(-1 0 0 -1 5.0 2.0)" class="tapPoint" />
-    <path d="M0 0 L0 0.5 M-0.375 0.5 L0.375 0.5 M-0.25 0.75 L0.25 0.75 M-0.125, 1.0 L0.125 1.0" transform="matrix(0 -1 1 0 7.0 4.0)" class="tapPoint" />
-    <path d="M0 0 L0 0.5" transform="matrix(0 1 -1 0 3.0 4.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5 M-0.375 0.5 L0.375 0.5 M-0.25 0.75 L0.25 0.75 M-0.125, 1.0 L0.125 1.0" transform="matrix(-1 0 0 -1 5.0 2.0)" class="tapPoint" data-net="vss" />
+    <path d="M0 0 L0 0.5 M-0.375 0.5 L0.375 0.5 M-0.25 0.75 L0.25 0.75 M-0.125, 1.0 L0.125 1.0" transform="matrix(0 -1 1 0 7.0 4.0)" class="tapPoint" data-net="vss" />
+    <path d="M0 0 L0 0.5" transform="matrix(0 1 -1 0 3.0 4.0)" class="tapPoint" data-net="a" />
     <text transform="matrix(0.045 0 0 -0.045 2.35 4.0)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">a</text>
-    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 5.0 6.0)" class="tapPoint" />
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 5.0 6.0)" class="tapPoint" data-net="y" />
     <text transform="matrix(0 0.045 0.045 0 5.0 6.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">y</text>
-    <path d="M0 0 L0 1.0 M0.25 0.5 L0 1.0 L-0.25 0.5" transform="matrix(1 0 0 1 5.0 12.0)" class="tapPoint" />
-    <path d="M0 0 L0 0.5 M-0.375 0.5 L0.375 0.5 M-0.25 0.75 L0.25 0.75 M-0.125, 1.0 L0.125 1.0" transform="matrix(0 -1 1 0 7.0 10.0)" class="tapPoint" />
-    <path d="M0 0 L0 1.0 M0.25 0.5 L0 1.0 L-0.25 0.5" transform="matrix(0 1 -1 0 3.0 10.0)" class="tapPoint" />
-    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 5.0 8.0)" class="tapPoint" />
+    <path d="M0 0 L0 1.0 M0.25 0.5 L0 1.0 L-0.25 0.5" transform="matrix(1 0 0 1 5.0 12.0)" class="tapPoint" data-net="vdd" />
+    <path d="M0 0 L0 0.5 M-0.375 0.5 L0.375 0.5 M-0.25 0.75 L0.25 0.75 M-0.125, 1.0 L0.125 1.0" transform="matrix(0 -1 1 0 7.0 10.0)" class="tapPoint" data-net="vss" />
+    <path d="M0 0 L0 1.0 M0.25 0.5 L0 1.0 L-0.25 0.5" transform="matrix(0 1 -1 0 3.0 10.0)" class="tapPoint" data-net="vdd" />
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 5.0 8.0)" class="tapPoint" data-net="y" />
     <text transform="matrix(0 0.045 0.045 0 5.0 7.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">y</text>
     <g data-inst="pd">
       <rect x="3.0" y="2.0" width="4.0" height="4.0" class="symbolOutline" />
@@ -57,19 +57,19 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 1 -1 0 6.8 10.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 6.875 10.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">b</text>
     </g>
-    <g>
+    <g data-net="vdd">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 13.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.35 13.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vdd</text>
     </g>
-    <g>
+    <g data-net="vss">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 1.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.35 1.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vss</text>
     </g>
-    <g>
+    <g data-net="a">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 4.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.35 4.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">a</text>
     </g>
-    <g>
+    <g data-net="y">
       <path d="M0 0 L0.25 0 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 0 Z" transform="matrix(0 1 -1 0 9.0 7.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 9.65 7.0)" dominant-baseline="middle" text-anchor="start" class="portLabel">y</text>
     </g>

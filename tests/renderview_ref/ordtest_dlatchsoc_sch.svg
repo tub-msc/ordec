@@ -1,17 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="962.5px" height="455.0px" viewBox="-1.5499999999999998 6.0 27.5 13.0">
   <g transform="matrix(1 0 0 -1 0 25.0)">
-    <path d="M24.0 12.0 L23.0 12.0 L22.0 12.0" class="schemWire" />
-    <path d="M23.0 12.0 L23.0 9.0 L4.0 9.0 L4.0 12.0 L5.0 12.0" class="schemWire" />
-    <path d="M1.0 18.0 L2.0 18.0 L7.0 18.0 L7.0 17.0 L7.0 16.0" class="schemWire" />
-    <path d="M7.0 17.0 L20.0 17.0 L20.0 14.0" class="schemWire" />
-    <path d="M1.0 7.0 L2.0 7.0 L7.0 7.0 L7.0 8.0 L7.0 10.0" class="schemWire" />
-    <path d="M7.0 8.0 L20.0 8.0 L20.0 10.0" class="schemWire" />
-    <path d="M1.0 13.0 L5.0 13.0" class="schemWire" />
-    <path d="M1.0 14.0 L5.0 14.0" class="schemWire" />
-    <path d="M9.0 12.0 L18.0 12.0" class="schemWire" />
-    <circle cx="7.0" cy="17.0" r="0.1625" class="connPoint" />
-    <circle cx="7.0" cy="8.0" r="0.1625" class="connPoint" />
-    <circle cx="23.0" cy="12.0" r="0.1625" class="connPoint" />
+    <path d="M24.0 12.0 L23.0 12.0 L22.0 12.0" class="schemWire" data-net="Q" />
+    <path d="M23.0 12.0 L23.0 9.0 L4.0 9.0 L4.0 12.0 L5.0 12.0" class="schemWire" data-net="Q" />
+    <path d="M1.0 18.0 L2.0 18.0 L7.0 18.0 L7.0 17.0 L7.0 16.0" class="schemWire" data-net="vdd" />
+    <path d="M7.0 17.0 L20.0 17.0 L20.0 14.0" class="schemWire" data-net="vdd" />
+    <path d="M1.0 7.0 L2.0 7.0 L7.0 7.0 L7.0 8.0 L7.0 10.0" class="schemWire" data-net="vss" />
+    <path d="M7.0 8.0 L20.0 8.0 L20.0 10.0" class="schemWire" data-net="vss" />
+    <path d="M1.0 13.0 L5.0 13.0" class="schemWire" data-net="D" />
+    <path d="M1.0 14.0 L5.0 14.0" class="schemWire" data-net="LE" />
+    <path d="M9.0 12.0 L18.0 12.0" class="schemWire" data-net="mux_out" />
+    <circle cx="7.0" cy="17.0" r="0.1625" class="connPoint" data-net="vdd" />
+    <circle cx="7.0" cy="8.0" r="0.1625" class="connPoint" data-net="vss" />
+    <circle cx="23.0" cy="12.0" r="0.1625" class="connPoint" data-net="Q" />
     <g data-inst="m1">
       <rect x="5.0" y="10.0" width="4.0" height="6.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 8.875 15.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Mux2</text>
@@ -44,23 +44,23 @@
       <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 21.8 12.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 21.875 12.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">y</text>
     </g>
-    <g>
+    <g data-net="D">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 13.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.35 13.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">D</text>
     </g>
-    <g>
+    <g data-net="LE">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 14.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.35 14.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">LE</text>
     </g>
-    <g>
+    <g data-net="vdd">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 18.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.35 18.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vdd</text>
     </g>
-    <g>
+    <g data-net="vss">
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 7.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.35 7.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vss</text>
     </g>
-    <g>
+    <g data-net="Q">
       <path d="M0 0 L0.25 0 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 0 Z" transform="matrix(0 1 -1 0 24.0 12.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 24.65 12.0)" dominant-baseline="middle" text-anchor="start" class="portLabel">Q</text>
     </g>

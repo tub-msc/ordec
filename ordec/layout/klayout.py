@@ -539,10 +539,11 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                         if schem_id is not None:
                             schem_item_name = schem_device_names.get(schem_name, {}).get(schem_id, '')
                     elif item_type == LvsItemType.Pin:
+                        # xref uses 0-based index for pins, but pin dicts are keyed by 1-based IDs
                         if layout_id is not None:
-                            layout_item_name = layout_pin_names.get(layout_name, {}).get(layout_id, '')
+                            layout_item_name = layout_pin_names.get(layout_name, {}).get(layout_id + 1, '')
                         if schem_id is not None:
-                            schem_item_name = schem_pin_names.get(schem_name, {}).get(schem_id, '')
+                            schem_item_name = schem_pin_names.get(schem_name, {}).get(schem_id + 1, '')
 
                     # If directory provided, try to get proper ORDeC names
                     if directory is not None and schematic is not None:
