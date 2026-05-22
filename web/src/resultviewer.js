@@ -217,16 +217,21 @@ const viewClassOf = {
                 return;
             }
 
-            const highlightGroup = this.svg.append("g")
-                .attr("class", "lvs-highlight-group")
-                .attr("transform", this.transform);
-
             const instName = data.schem_path.join('.');
             const instGroup = this.g.select(`[data-inst="${instName}"]`);
 
             if (instGroup.empty()) {
                 return;
             }
+
+            // Find the inner transformed group (with Y-flip) to append highlight in same coordinate space
+            const innerGroup = this.g.select('g[transform]');
+            if (innerGroup.empty()) {
+                return;
+            }
+
+            const highlightGroup = innerGroup.append("g")
+                .attr("class", "lvs-highlight-group");
 
             const bbox = instGroup.node().getBBox();
             const pad = 0.3;
@@ -611,11 +616,12 @@ const viewClassOf = {
                         const layoutName = item.layout_name || '?';
                         const schemName = item.schem_name || '?';
                         const layoutParams = this._formatParams(item.layout_params);
+                        const schemParams = this._formatParams(item.schem_params);
 
                         html += `<div class="lvs-item-row ${statusClass}" data-nid="${item.nid}">
                             <span>${typeIcons[itemType]} ${layoutName} &#8596; ${schemName}</span>
                             <span>${layoutName}${layoutParams}</span>
-                            <span>${schemName}</span>
+                            <span>${schemName}${schemParams}</span>
                         </div>`;
                         if (item.message) {
                             html += `<div class="lvs-item-msg">${item.message}</div>`;

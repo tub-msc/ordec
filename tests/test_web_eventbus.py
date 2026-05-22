@@ -232,3 +232,53 @@ def test_lvs_clear_removes_schematic_highlight(web):
 
     count = get_schematic_highlight_count(web)
     assert count == 0, "Should have no highlight after lvs:clear"
+
+
+@pytest.mark.web
+def test_lvs_select_hightlight_instance_pos(web):
+    """Verify highlight position matches selected instance (regression test for Y-flip bug)."""
+    def get_highlight_y():
+        return web.driver.execute_script("""
+            const svg = document.querySelector('.rescontent svg');
+            if (!svg) return null;
+            const rect = svg.querySelector('.lvs-highlight-group rect');
+            if (!rect) return null;
+            return parseFloat(rect.getAttribute('y'));
+        """)
+
+    def get_instance_y(inst_name):
+        return web.driver.execute_script("""
+            const svg = document.querySelector('.rescontent svg');
+            if (!svg) return null;
+            const inst = svg.querySelector('[data-inst="' + arguments[0] + '"]');
+            if (!inst) return null;
+            const rect = inst.querySelector('rect');
+            if (!rect) return null;
+            return parseFloat(rect.getAttribute('y'));
+        """, inst_name)
+
+    load_schematic_view(web)
+
+    # pd is at y=2, pu is at y=8 in the test schematic
+    emit_lvs_schem_select(web, ['pd'])
+    time.sleep(0.3)
+
+    highlight_y = get_highlight_y()
+    pd_y = get_instance_y('pd')
+    pu_y = get_instance_y('pu')
+
+    assert highlight_y is not None, "Should have highlight rect"
+    assert pd_y is not None, "Should find pd instance"
+    assert pu_y is not None, "Should find pu instance"
+
+    # Highlight should be near pd (y=2), not near pu (y=8)
+    # Allow 1.0 tolerance for padding
+    assert abs(highlight_y - pd_y) < 1.0, f"Highlight Y ({highlight_y}) should be near pd Y ({pd_y}), not pu Y ({pu_y})"
+
+    # Also test pu highlight
+    emit_lvs_schem_select(web, ['pu'])
+    time.sleep(0.3)
+
+    highlight_y = get_highlight_y()
+    assert highlight_y is not None, "Should have highlight rect for pu"
+    assert abs(highlight_y - pu_y) < 1.0, f"Highlight Y ({highlight_y}) should be near pu Y ({pu_y}), not pd Y ({pd_y})"

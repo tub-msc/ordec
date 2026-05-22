@@ -340,9 +340,10 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
     schem_net_names: dict[str, dict[int, str]] = {}
     schem_device_names: dict[str, dict[int, str]] = {}
     schem_pin_names: dict[str, dict[int, str]] = {}
+    schem_device_params: dict[str, dict[int, dict]] = {}
 
-    def extract_names_from_circuit(circuit_sexp, net_dict, device_dict, pin_dict, loc_dict=None):
-        """Extract net/device/pin names and optionally device locations from a circuit."""
+    def extract_names_from_circuit(circuit_sexp, net_dict, device_dict, pin_dict, loc_dict=None, params_dict=None):
+        """Extract net/device/pin names and optionally device locations/params from a circuit."""
         circuit_name = circuit_sexp[1]
         net_dict[circuit_name] = {}
         device_dict[circuit_name] = {}
@@ -371,22 +372,29 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
             name_sexp = _find_sexp(dev_sexp, 'name') or _find_sexp(dev_sexp, 'I')
             if name_sexp and len(name_sexp) > 1:
                 device_dict[circuit_name][dev_id] = str(name_sexp[1])
+
+            # Extract parameters (E entries)
+            params = {}
+            for param_sexp in list(_find_all_sexp(dev_sexp, 'property')) + list(_find_all_sexp(dev_sexp, 'E')):
+                if len(param_sexp) >= 2:
+                    param_name = str(param_sexp[1])
+                    if len(param_sexp) >= 3:
+                        try:
+                            params[param_name] = float(param_sexp[2])
+                        except ValueError:
+                            params[param_name] = str(param_sexp[2])
+
+            if params_dict is not None:
+                if circuit_name not in params_dict:
+                    params_dict[circuit_name] = {}
+                params_dict[circuit_name][dev_id] = params
+
             if loc_dict is not None:
                 loc_sexp = _find_sexp(dev_sexp, 'location') or _find_sexp(dev_sexp, 'Y')
                 if loc_sexp and len(loc_sexp) >= 3:
                     try:
                         x = float(loc_sexp[1])
                         y = float(loc_sexp[2])
-                        # Also extract parameters (E entries)
-                        params = {}
-                        for param_sexp in list(_find_all_sexp(dev_sexp, 'property')) + list(_find_all_sexp(dev_sexp, 'E')):
-                            if len(param_sexp) >= 2:
-                                param_name = str(param_sexp[1])
-                                if len(param_sexp) >= 3:
-                                    try:
-                                        params[param_name] = float(param_sexp[2])
-                                    except ValueError:
-                                        params[param_name] = str(param_sexp[2])
                         loc_dict[circuit_name][dev_id] = (x, y, params)
                     except ValueError:
                         pass
@@ -415,7 +423,8 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
             if len(circuit_sexp) < 2:
                 continue
             extract_names_from_circuit(
-                circuit_sexp, schem_net_names, schem_device_names, schem_pin_names)
+                circuit_sexp, schem_net_names, schem_device_names, schem_pin_names,
+                params_dict=schem_device_params)
 
     overall_status = LvsStatus.Match
     circuits_data = []
@@ -557,6 +566,7 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                     layout_shapes = None
                     schem_path = None
                     layout_params = {}
+                    schem_params = {}
                     if item_type == LvsItemType.Device and layout_id is not None:
                         locs = device_locations.get(layout_name, {})
                         if layout_id in locs:
@@ -588,6 +598,8 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                         # Use the converted ORDeC name for schem_path (for highlighting)
                         if schem_item_name:
                             schem_path = (schem_item_name,)
+                        # Get schematic device parameters
+                        schem_params = schem_device_params.get(schem_name, {}).get(schem_id, {})
 
                     items_data.append({
                         'item_type': item_type,
@@ -598,6 +610,7 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                         'schem_path': schem_path,
                         'message': item_message,
                         'layout_params': layout_params if layout_params else None,
+                        'schem_params': schem_params if schem_params else None,
                     })
 
             circuits_data.append({
@@ -627,6 +640,9 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
             layout_params = item_data.get('layout_params')
             if layout_params:
                 layout_params = tuple(layout_params.items())
+            schem_params = item_data.get('schem_params')
+            if schem_params:
+                schem_params = tuple(schem_params.items())
             report % LvsItem(
                 circuit=circuit,
                 item_type=item_data['item_type'],
@@ -635,6 +651,7 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                 schem_name=item_data['schem_name'],
                 layout_shapes=item_data['layout_shapes'],
                 layout_params=layout_params,
+                schem_params=schem_params,
                 schem_path=item_data.get('schem_path'),
                 message=item_data.get('message', ''),
             )
