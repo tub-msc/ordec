@@ -577,7 +577,6 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                                         break
 
                     layout_shapes = None
-                    schem_path = None
                     layout_params = {}
                     schem_params = {}
                     if item_type == LvsItemType.Device and layout_id is not None:
@@ -608,10 +607,6 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                                     layout_item_name = Directory.basename_of_node(best_match)
 
                     if item_type == LvsItemType.Device and schem_id is not None:
-                        # Use the converted ORDeC name for schem_path (for highlighting)
-                        if schem_item_name:
-                            schem_path = (schem_item_name,)
-                        # Get schematic device parameters
                         schem_params = schem_device_params.get(schem_name, {}).get(schem_id, {})
 
                     items_data.append({
@@ -619,9 +614,8 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                         'status': item_status,
                         'layout_name': layout_item_name,
                         'schem_name': schem_item_name,
-                        'schem_nid': schem_nid,
+                        'schem': schem_nid,
                         'layout_shapes': layout_shapes,
-                        'schem_path': schem_path,
                         'message': item_message,
                         'layout_params': layout_params if layout_params else None,
                         'schem_params': schem_params if schem_params else None,
@@ -663,11 +657,10 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                 status=item_data['status'],
                 layout_name=item_data['layout_name'],
                 schem_name=item_data['schem_name'],
-                schem_nid=item_data.get('schem_nid'),
+                schem=item_data.get('schem'),
                 layout_shapes=item_data['layout_shapes'],
                 layout_params=layout_params,
                 schem_params=schem_params,
-                schem_path=item_data.get('schem_path'),
                 message=item_data.get('message', ''),
             )
 

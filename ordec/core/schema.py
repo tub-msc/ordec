@@ -1833,11 +1833,10 @@ class LvsReport(SubgraphRoot):
                 'status': item.status.value,
                 'layout_name': item.layout_name,
                 'schem_name': item.schem_name,
-                'schem_nid': item.schem_nid,
+                'schem_nid': item.schem.nid if item.schem else None,
                 'layout_shapes': shapes,
                 'layout_params': dict(item.layout_params) if item.layout_params else None,
                 'schem_params': dict(item.schem_params) if item.schem_params else None,
-                'schem_path': list(item.schem_path) if item.schem_path else [],
                 'message': item.message,
             })
 
@@ -1885,10 +1884,8 @@ class LvsItem(Node):
     # Layout side: extracted device parameters (W, L, etc.)
     layout_params = Attr(tuple, optional=True)
 
-    # Schematic side: hierarchical path for highlighting (deprecated, use schem_nid)
-    schem_path = Attr(tuple, optional=True)
-    # Schematic side: ORDB node ID for highlighting
-    schem_nid = Attr(int, optional=True)
+    # Schematic side: node for highlighting (Net for pins/nets, SchemInstance for devices)
+    schem = ExternalRef(Net|SchemInstance, of_subgraph=lambda c: c.root.ref_schematic, optional=True)
     # Schematic side: reference device parameters (W, L, etc.)
     schem_params = Attr(tuple, optional=True)
 
