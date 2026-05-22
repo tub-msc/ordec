@@ -236,10 +236,10 @@ const viewClassOf = {
                 .attr("y", bbox.y - pad)
                 .attr("width", bbox.width + pad * 2)
                 .attr("height", bbox.height + pad * 2)
-                .attr("fill", "none")
-                .attr("stroke", "#e55")
-                .attr("stroke-width", 0.15)
-                .attr("stroke-dasharray", "0.3,0.15");
+                .attr("rx", 0.5)
+                .attr("ry", 0.5)
+                .attr("fill", "rgba(255, 0, 0, 0.25)")
+                .attr("stroke", "none");
 
             this.highlightOverlay = highlightGroup;
         }
