@@ -1521,7 +1521,6 @@ GenericPolyI.vertex_cls = PolyVec2I
 @public
 class DrcReport(SubgraphRoot):
     """DRC report containing design rule check results."""
-    __slots__ = ()
 
     ref_layout = SubgraphRef(Layout)
     top_cell_name = Attr(str)
@@ -1607,7 +1606,6 @@ class DrcReport(SubgraphRoot):
 @public
 class DrcCategory(Node):
     """Category of DRC violations (e.g., 'Minimum spacing', 'Minimum width')."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     name = Attr(str)
@@ -1621,7 +1619,6 @@ class DrcCategory(Node):
 @public
 class DrcItem(Node):
     """Individual DRC violation item within a category."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     category = LocalRef(DrcCategory, optional=False)
@@ -1635,7 +1632,6 @@ class DrcItem(Node):
 @public
 class DrcBox(Node):
     """Box geometry in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     item = LocalRef(DrcItem, optional=False)
@@ -1649,7 +1645,6 @@ class DrcBox(Node):
 @public
 class DrcEdge(Node):
     """Edge geometry in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     item = LocalRef(DrcItem, optional=False)
@@ -1664,7 +1659,6 @@ class DrcEdge(Node):
 @public
 class DrcEdgePair(Node):
     """Edge pair geometry in a DRC item (e.g., for spacing violations)."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     item = LocalRef(DrcItem, optional=False)
@@ -1680,7 +1674,6 @@ class DrcEdgePair(Node):
 
 class DrcPolyBase(GenericPolyI):
     """Base class for DRC polygon nodes."""
-    __slots__ = ()
 
     tag = Attr(str, default='')
 
@@ -1688,7 +1681,6 @@ class DrcPolyBase(GenericPolyI):
 @public
 class DrcPoly(DrcPolyBase):
     """Polygon geometry in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
     vertex_cls = PolyVec2I
 
@@ -1700,7 +1692,6 @@ class DrcPoly(DrcPolyBase):
 
 class DrcPathBase(GenericPolyI):
     """Base class for DRC path nodes."""
-    __slots__ = ()
 
     tag = Attr(str, default='')
     width = Attr(int)
@@ -1710,7 +1701,6 @@ class DrcPathBase(GenericPolyI):
 @public
 class DrcPath(DrcPathBase):
     """Path geometry in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
     vertex_cls = PolyVec2I
 
@@ -1723,7 +1713,6 @@ class DrcPath(DrcPathBase):
 @public
 class DrcText(Node):
     """Text geometry in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     item = LocalRef(DrcItem, optional=False)
@@ -1738,7 +1727,6 @@ class DrcText(Node):
 @public
 class DrcValue(Node):
     """Arbitrary string value in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     item = LocalRef(DrcItem, optional=False)
@@ -1781,10 +1769,9 @@ class LvsItemType(Enum):
 @public
 class LvsReport(SubgraphRoot):
     """LVS report containing layout vs. schematic comparison results."""
-    __slots__ = ()
 
-    ref_layout = SubgraphRef(Layout)
-    ref_schematic = SubgraphRef(Schematic)
+    ref_layout = SubgraphRef(Layout, optional=True)
+    ref_schematic = SubgraphRef(Schematic, optional=True)
     top_cell = Attr(str)
     status = Attr(LvsStatus)
 
@@ -1808,7 +1795,7 @@ class LvsReport(SubgraphRoot):
 
     def webdata(self):
         circuits = []
-        for circuit in self.all(LvsCircuit):
+        for circuit in self.all(LvsCircuitPair):
             circuits.append({
                 'nid': circuit.nid,
                 'layout_name': circuit.layout_name,
@@ -1850,43 +1837,81 @@ class LvsReport(SubgraphRoot):
 
 
 @public
-class LvsCircuit(Node):
-    """A circuit (cell) in the LVS comparison."""
-    __slots__ = ()
+class LvsCircuitPair(Node):
+    """Comparison record for a layout cell vs schematic cell pair."""
     in_subgraphs = [LvsReport]
 
-    layout_name = Attr(str, default='')
-    schem_name = Attr(str, default='')
-    status = Attr(LvsStatus)
-    message = Attr(str, default='')
+    # Direct refs to the Layout/Schematic being compared
+    ref_layout = SubgraphRef(Layout, optional=True)
+    ref_schematic = SubgraphRef(Schematic, optional=True)
 
-    layout_name_idx = Index(layout_name)
-    schem_name_idx = Index(schem_name)
+    status = Attr(LvsStatus)
+    message = Attr(str, optional=True)
+
+    # Cell names from LVSDB (fallback when refs can't be resolved)
+    layout_cell = Attr(str, optional=True)
+    schem_cell = Attr(str, optional=True)
+
+    @property
+    def layout_name(self):
+        """Derive layout cell name from ref, or use fallback."""
+        if self.ref_layout:
+            return type(self.ref_layout.cell).__name__
+        return self.layout_cell or ''
+
+    @property
+    def schem_name(self):
+        """Derive schematic cell name from ref, or use fallback."""
+        if self.ref_schematic:
+            return type(self.ref_schematic.cell).__name__
+        return self.schem_cell or ''
 
 
 @public
 class LvsItem(Node):
     """Individual LVS comparison item (net, device, pin, or subcircuit)."""
-    __slots__ = ()
     in_subgraphs = [LvsReport]
 
-    circuit = LocalRef(LvsCircuit, optional=False)
+    circuit = LocalRef(LvsCircuitPair, optional=False)
     circuit_idx = Index(circuit)
 
     item_type = Attr(LvsItemType)
     status = Attr(LvsStatus)
 
-    layout_name = Attr(str, default='')
-    schem_name = Attr(str, default='')
-
-    # Layout side: geometry for highlighting (list of shape dicts)
+    # Layout side: LayoutInstance for devices (no layout net/pin nodes exist)
+    layout = ExternalRef(LayoutInstance,
+        of_subgraph=lambda c: c.circuit.ref_layout,
+        optional=True)
+    # Layout side: geometry for highlighting (needed for nets/pins without LayoutInstance)
     layout_shapes = Attr(tuple, optional=True)
     # Layout side: extracted device parameters (W, L, etc.)
     layout_params = Attr(tuple, optional=True)
 
     # Schematic side: node for highlighting (Net for pins/nets, SchemInstance for devices)
-    schem = ExternalRef(Net|SchemInstance, of_subgraph=lambda c: c.root.ref_schematic, optional=True)
+    schem = ExternalRef(Net|SchemInstance,
+        of_subgraph=lambda c: c.circuit.ref_schematic,
+        optional=True)
     # Schematic side: reference device parameters (W, L, etc.)
     schem_params = Attr(tuple, optional=True)
 
-    message = Attr(str, default='')
+    message = Attr(str, optional=True)
+
+    # Instance names from LVSDB (fallback when refs can't be resolved)
+    layout_inst_name = Attr(str, optional=True)
+    schem_inst_name = Attr(str, optional=True)
+
+    @property
+    def layout_name(self):
+        """Derive layout name from ref, or use fallback."""
+        if self.layout:
+            from .directory import Directory
+            return Directory.basename_of_node(self.layout)
+        return self.layout_inst_name or ''
+
+    @property
+    def schem_name(self):
+        """Derive schematic name from ref, or use fallback."""
+        if self.schem:
+            from .directory import Directory
+            return Directory.basename_of_node(self.schem)
+        return self.schem_inst_name or ''

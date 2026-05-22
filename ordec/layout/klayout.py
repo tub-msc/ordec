@@ -11,11 +11,6 @@ from typing import Callable
 from lark import Lark, Transformer, v_args
 
 from ..core import *
-from ..core.schema import (
-    DrcReport, DrcCategory, DrcItem, DrcBox, DrcEdge, DrcEdgePair,
-    DrcPoly, DrcPath, DrcText, DrcValue, PolyVec2I,
-    LvsReport, LvsCircuit, LvsItem, LvsStatus, LvsItemType
-)
 
 
 def run(script, cwd, **kwargs):
@@ -342,7 +337,8 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
     schem_pin_names: dict[str, dict[int, str]] = {}
     schem_device_params: dict[str, dict[int, dict]] = {}
 
-    def extract_names_from_circuit(circuit_sexp, net_dict, device_dict, pin_dict, loc_dict=None, params_dict=None):
+    def extract_names_from_circuit(circuit_sexp, net_dict, device_dict, pin_dict,
+                                    loc_dict=None, params_dict=None):
         """Extract net/device/pin names and optionally device locations/params from a circuit."""
         circuit_name = circuit_sexp[1]
         net_dict[circuit_name] = {}
@@ -637,11 +633,19 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
     )
 
     for circuit_data in circuits_data:
-        circuit = report % LvsCircuit(
-            layout_name=circuit_data['layout_name'],
-            schem_name=circuit_data['schem_name'],
+        layout_name = circuit_data['layout_name']
+        schem_name = circuit_data['schem_name']
+
+        # Set refs for top-level circuit (matching top_cell name, or first circuit if top_cell empty)
+        is_top = (not top_cell and circuit_data is circuits_data[0]) or \
+                 layout_name == top_cell or schem_name == top_cell
+        circuit = report % LvsCircuitPair(
+            ref_layout=layout if is_top else None,
+            ref_schematic=schematic if is_top else None,
+            layout_cell=layout_name or None,
+            schem_cell=schem_name or None,
             status=circuit_data['status'],
-            message=circuit_data['message'],
+            message=circuit_data['message'] or None,
         )
 
         for item_data in circuit_data['items']:
@@ -651,17 +655,19 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
             schem_params = item_data.get('schem_params')
             if schem_params:
                 schem_params = tuple(schem_params.items())
+            # Only set schem ref when circuit has ref_schematic
+            schem_nid = item_data.get('schem') if is_top and schematic else None
             report % LvsItem(
                 circuit=circuit,
                 item_type=item_data['item_type'],
                 status=item_data['status'],
-                layout_name=item_data['layout_name'],
-                schem_name=item_data['schem_name'],
-                schem=item_data.get('schem'),
+                layout_inst_name=item_data['layout_name'],
+                schem_inst_name=item_data['schem_name'],
+                schem=schem_nid,
                 layout_shapes=item_data['layout_shapes'],
                 layout_params=layout_params,
                 schem_params=schem_params,
-                message=item_data.get('message', ''),
+                message=item_data.get('message') or None,
             )
 
     return report
