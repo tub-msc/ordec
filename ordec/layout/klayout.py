@@ -541,17 +541,19 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                         if schem_id is not None:
                             schem_item_name = schem_pin_names.get(schem_name, {}).get(schem_id + 1, '')
 
-                    # If directory provided, try to get proper ORDeC names and nids
+                    # Map LVSDB/SPICE names to ORDB nodes. This enables schem_nid
+                    # for highlighting in schematic view when items are selected.
                     schem_nid = None
                     if directory is not None and schematic is not None:
                         spice_name = schem_item_name.lower() if schem_item_name else ''
                         if spice_name:
-                            # Try direct lookup first
+                            # Try direct lookup by SPICE name (case-insensitive)
                             node = None
                             try:
                                 node = directory.node_of_name(schematic, spice_name)
                             except KeyError:
-                                # For devices, SPICE uses M-prefix (Mpd not pd)
+                                # SPICE prefixes MOSFETs with 'M' (e.g., "Mpd" for instance "pd").
+                                # Try with M-prefix if direct lookup fails.
                                 if item_type == LvsItemType.Device:
                                     try:
                                         node = directory.node_of_name(schematic, 'M' + spice_name)
@@ -562,7 +564,8 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                                 schem_item_name = Directory.basename_of_node(node)
                                 schem_nid = node.nid
 
-                        # For pins/nets, find the Net node by looking up pin name
+                        # For pins/nets, directory lookup may fail. Fall back to searching
+                        # all Net nodes and matching by pin.full_path_str() (case-insensitive).
                         if schem_nid is None and item_type in (LvsItemType.Pin, LvsItemType.Net):
                             from ..core.schema import Net
                             pin_name = schem_item_name.lower() if schem_item_name else ''
@@ -586,14 +589,16 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                             layout_shapes = (
                                 ('box', (x - size, y - size, x + size, y + size)),
                             )
-                            # Try to match to ORDeC LayoutInstance by position
+                            # Try to match to ORDeC LayoutInstance by position.
+                            # This uses Manhattan distance to find the closest instance.
+                            # The 5000-unit threshold is heuristic; may need tuning for
+                            # different PDKs or layouts with tightly packed devices.
                             if layout is not None and not layout_item_name:
                                 from ..core.schema import LayoutInstance
                                 from ..core.directory import Directory
                                 best_match = None
                                 best_dist = float('inf')
                                 for inst in layout.all(LayoutInstance):
-                                    # Check if device location is within instance bounds
                                     inst_x, inst_y = int(inst.pos.x), int(inst.pos.y)
                                     dist = abs(x - inst_x) + abs(y - inst_y)
                                     if dist < best_dist:
@@ -636,7 +641,9 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
         layout_name = circuit_data['layout_name']
         schem_name = circuit_data['schem_name']
 
-        # Set refs for top-level circuit (matching top_cell name, or first circuit if top_cell empty)
+        # Determine if this is the top-level circuit. Only top-level gets refs
+        # and schem_nid resolution for items. Caveat: if LVSDB has no top()
+        # element (top_cell is empty), we treat the first circuit as top-level.
         is_top = (not top_cell and circuit_data is circuits_data[0]) or \
                  layout_name == top_cell or schem_name == top_cell
         circuit = report % LvsCircuitPair(

@@ -1841,27 +1841,39 @@ class LvsCircuitPair(Node):
     """Comparison record for a layout cell vs schematic cell pair."""
     in_subgraphs = [LvsReport]
 
-    # Direct refs to the Layout/Schematic being compared
+    #: Direct ref to the Layout being compared. Only set for top-level circuit
+    #: (where LVSDB cell name matches top_cell); None for subcircuits.
     ref_layout = SubgraphRef(Layout, optional=True)
+    #: Direct ref to the Schematic being compared. Only set for top-level.
     ref_schematic = SubgraphRef(Schematic, optional=True)
 
     status = Attr(LvsStatus)
     message = Attr(str, optional=True)
 
-    # Cell names from LVSDB (fallback when refs can't be resolved)
+    #: Layout cell name from LVSDB (GDS-style, e.g. "inv_variant_1"). Used as
+    #: fallback for layout_name property when ref_layout is not available.
     layout_cell = Attr(str, optional=True)
+    #: Schematic cell name from LVSDB. Fallback for schem_name property.
     schem_cell = Attr(str, optional=True)
 
     @property
     def layout_name(self):
-        """Derive layout cell name from ref, or use fallback."""
+        """Derive layout cell name from ref, or use fallback.
+
+        Returns Python class name when ref resolves, LVSDB name otherwise.
+        This means the same circuit may show different names depending on
+        whether refs were resolved.
+        """
         if self.ref_layout:
             return type(self.ref_layout.cell).__name__
         return self.layout_cell or ''
 
     @property
     def schem_name(self):
-        """Derive schematic cell name from ref, or use fallback."""
+        """Derive schematic cell name from ref, or use fallback.
+
+        Returns Python class name when ref resolves, LVSDB name otherwise.
+        """
         if self.ref_schematic:
             return type(self.ref_schematic.cell).__name__
         return self.schem_cell or ''
@@ -1878,16 +1890,20 @@ class LvsItem(Node):
     item_type = Attr(LvsItemType)
     status = Attr(LvsStatus)
 
-    # Layout side: LayoutInstance for devices (no layout net/pin nodes exist)
+    # Layout side: LayoutInstance for devices only. Layout subgraphs have no
+    # Net/Pin node types, so nets/pins cannot have a layout ExternalRef.
+    # Only resolves when circuit.ref_layout is set (top-level circuit).
     layout = ExternalRef(LayoutInstance,
         of_subgraph=lambda c: c.circuit.ref_layout,
         optional=True)
-    # Layout side: geometry for highlighting (needed for nets/pins without LayoutInstance)
+    # Layout geometry for highlighting nets/pins (which have no LayoutInstance).
+    # Format: tuple of ('box', (x1, y1, x2, y2)) tuples in database units.
     layout_shapes = Attr(tuple, optional=True)
-    # Layout side: extracted device parameters (W, L, etc.)
+    # Extracted device parameters from layout (e.g., W, L, AS, AD).
     layout_params = Attr(tuple, optional=True)
 
-    # Schematic side: node for highlighting (Net for pins/nets, SchemInstance for devices)
+    # Schematic side: Net for pins/nets, SchemInstance for devices.
+    # Only resolves when circuit.ref_schematic is set (top-level circuit).
     schem = ExternalRef(Net|SchemInstance,
         of_subgraph=lambda c: c.circuit.ref_schematic,
         optional=True)

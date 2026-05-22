@@ -187,6 +187,9 @@ const reportElementClassOf = {
 };
 
 const viewClassOf = {
+    // SVG viewer for schematics and symbols.
+    // Listens to lvs:schem-select and lvs:clear for LVS highlighting.
+    // Also consumes pending 'lvs:select' on init if schematic opened after LVS item selected.
     svg: class {
         constructor(resContent) {
             this.resContent = resContent;
@@ -611,6 +614,19 @@ const viewClassOf = {
             viewEventBus.emit('drc:clear');
         }
     },
+    // LVS Report viewer.
+    //
+    // Event bus protocol:
+    //   lvs:layout-select {shapes} - sent when item with layout_shapes selected
+    //   lvs:schem-select {schem_nid, item_type} - sent when item with schem_nid selected
+    //   lvs:clear - sent on deselect or destroy
+    //   lvs:request-open-views {layoutView, schemView} - requests new viewer panels
+    //
+    // Pending mechanism: setPending('lvs:select', payload) stores selection for
+    // viewers opened later. Layout/schematic viewers call getPending on init.
+    //
+    // View naming: layoutView/schemView use "<viewName>.ref_layout" and
+    // "<viewName>.ref_schematic" format, matching LvsReport SubgraphRef attributes.
     lvs_report: class {
         constructor(resContent) {
             this.resContent = resContent;
