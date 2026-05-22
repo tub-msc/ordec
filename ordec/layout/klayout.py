@@ -641,14 +641,36 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
         layout_name = circuit_data['layout_name']
         schem_name = circuit_data['schem_name']
 
-        # Determine if this is the top-level circuit. Only top-level gets refs
-        # and schem_nid resolution for items. Caveat: if LVSDB has no top()
-        # element (top_cell is empty), we treat the first circuit as top-level.
+        # Check if this is the top-level circuit
         is_top = (not top_cell and circuit_data is circuits_data[0]) or \
                  layout_name == top_cell or schem_name == top_cell
+
+        # Resolve refs: top-level uses passed-in subgraphs (nids match),
+        # subcircuits use directory lookup
+        if is_top:
+            ref_layout = layout
+            ref_schematic = schematic
+        elif directory is not None:
+            ref_layout = None
+            ref_schematic = None
+            if layout_name:
+                try:
+                    ref_layout = directory.subgraph_of_name(layout_name, Layout)
+                except KeyError:
+                    pass
+            if schem_name:
+                try:
+                    symbol = directory.subgraph_of_name(schem_name, Symbol)
+                    ref_schematic = symbol.cell.schematic
+                except (KeyError, AttributeError):
+                    pass
+        else:
+            ref_layout = None
+            ref_schematic = None
+
         circuit = report % LvsCircuitPair(
-            ref_layout=layout if is_top else None,
-            ref_schematic=schematic if is_top else None,
+            ref_layout=ref_layout,
+            ref_schematic=ref_schematic,
             layout_cell=layout_name or None,
             schem_cell=schem_name or None,
             status=circuit_data['status'],
@@ -662,8 +684,7 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
             schem_params = item_data.get('schem_params')
             if schem_params:
                 schem_params = tuple(schem_params.items())
-            # Only set schem ref when circuit has ref_schematic
-            schem_nid = item_data.get('schem') if is_top and schematic else None
+            schem_nid = item_data.get('schem') if circuit.ref_schematic else None
             report % LvsItem(
                 circuit=circuit,
                 item_type=item_data['item_type'],
