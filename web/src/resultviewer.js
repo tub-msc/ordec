@@ -760,28 +760,33 @@ const viewClassOf = {
                         // Set pending for viewers that will be opened
                         viewEventBus.setPending('lvs:select', payload);
 
+                        const hasLayoutListener = viewEventBus.hasListeners('lvs:layout-select');
+                        const hasSchemListener = viewEventBus.hasListeners('lvs:schem-select');
+
                         // Handle layout viewer
                         if (hasLayoutShapes) {
-                            if (viewEventBus.hasListeners('lvs:layout-select')) {
+                            if (hasLayoutListener) {
                                 viewEventBus.emit('lvs:layout-select', payload);
-                            } else {
-                                viewEventBus.emit('layout:request-open', {
-                                    view: this.viewName ? `${this.viewName}.ref_layout` : null,
-                                    sourceContainer: this.glContainer,
-                                });
                             }
                         }
 
                         // Handle schematic viewer
                         if (hasSchemPath) {
-                            if (viewEventBus.hasListeners('lvs:schem-select')) {
+                            if (hasSchemListener) {
                                 viewEventBus.emit('lvs:schem-select', payload);
-                            } else {
-                                viewEventBus.emit('schematic:request-open', {
-                                    view: this.viewName ? `${this.viewName}.ref_schematic` : null,
-                                    sourceContainer: this.glContainer,
-                                });
                             }
+                        }
+
+                        // Open new views if needed
+                        const needLayoutOpen = hasLayoutShapes && !hasLayoutListener;
+                        const needSchemOpen = hasSchemPath && !hasSchemListener;
+
+                        if (needLayoutOpen || needSchemOpen) {
+                            viewEventBus.emit('lvs:request-open-views', {
+                                layoutView: needLayoutOpen ? (this.viewName ? `${this.viewName}.ref_layout` : null) : null,
+                                schemView: needSchemOpen ? (this.viewName ? `${this.viewName}.ref_schematic` : null) : null,
+                                sourceContainer: this.glContainer,
+                            });
                         }
                     }
                 });
