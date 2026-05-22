@@ -65,26 +65,14 @@ class Renderer:
     def cur_group(self):
         return self.group_stack[-1]
 
-    def _get_net_name(self, net):
-        """Get net name for data-net attribute. Returns None if net has no name."""
-        if net.pin is not None:
-            return net.pin.full_path_str()
-        elif hasattr(net, 'npath_nid') and net.npath_nid is not None:
-            return net.full_path_str()
-        return None
-
     @contextmanager
-    def subgroup(self, node=None, existing_group=None, data_inst=None, data_net=None):
+    def subgroup(self, node=None, existing_group=None, data_nid=None):
         if existing_group:
             self.group_stack.append(existing_group)
         else:
             self.group_stack.append(ET.SubElement(self.cur_group, 'g'))
-        if node and self.include_nids:
-            self.cur_group.attrib['class'] = f'nid{node.nid}'
-        if data_inst:
-            self.cur_group.attrib['data-inst'] = data_inst
-        if data_net:
-            self.cur_group.attrib['data-net'] = data_net
+        if data_nid is not None and self.include_nids:
+            self.cur_group.attrib['data-nid'] = str(data_nid)
         try:
             yield
         finally:
@@ -307,30 +295,26 @@ class SchematicRenderer(Renderer):
         for poly in s.all(SchemWire):
             p = ET.SubElement(self.cur_group, 'path', d=poly.svg_path())
             p.attrib['class'] = 'schemWire'
-            net_name = self._get_net_name(poly.ref)
-            if net_name:
-                p.attrib['data-net'] = net_name
+            if self.include_nids:
+                p.attrib['data-nid'] = str(poly.ref.nid)
 
         for p in s.all(SchemConnPoint):
             cx, cy = p.pos.tofloat()
             circle = ET.SubElement(self.cur_group, 'circle', cx=str(cx), cy=str(cy), r=str(self.conn_point_radius))
             circle.attrib['class'] = 'connPoint'
-            net_name = self._get_net_name(p.ref)
-            if net_name:
-                circle.attrib['data-net'] = net_name
+            if self.include_nids:
+                circle.attrib['data-nid'] = str(p.ref.nid)
 
         for p in s.all(SchemTapPoint):
             self.draw_schem_tappoint(p)
 
         for inst in s.all(SchemInstance):
-            inst_name = inst.full_path_str()
-            with self.subgroup(node=inst, data_inst=inst_name):
+            with self.subgroup(node=inst, data_nid=inst.nid):
                 trans = inst.loc_transform()
-                self.draw_symbol(inst.symbol, trans, inst_name)
+                self.draw_symbol(inst.symbol, trans, inst.full_path_str())
 
         for port in s.all(SchemPort):
-            net_name = self._get_net_name(port.ref)
-            with self.subgroup(node=port, data_net=net_name):
+            with self.subgroup(node=port, data_nid=port.ref.nid):
                 self.draw_schem_port(port)
 
         for err in s.all(SchemErrorMarker):
@@ -460,9 +444,8 @@ class SchematicRenderer(Renderer):
 
         path = ET.SubElement(self.cur_group, 'path', d=d, transform=tran.svg_transform())
         path.attrib['class'] = 'tapPoint'
-        net_name = self._get_net_name(p.ref)
-        if net_name:
-            path.attrib['data-net'] = net_name
+        if self.include_nids:
+            path.attrib['data-nid'] = str(p.ref.nid)
 
         if not (is_default_supply or is_default_ground):
             if p.ref.npath_nid is not None:

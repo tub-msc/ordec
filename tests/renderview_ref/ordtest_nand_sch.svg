@@ -1,30 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="997.5px" height="840.0px" viewBox="-1.5499999999999998 0.0 28.5 24.0">
   <g transform="matrix(1 0 0 -1 0 24.0)">
-    <path d="M1.0 23.0 L2.0 23.0 L7.0 23.0 L7.0 22.0" class="schemWire" data-net="vdd" />
-    <path d="M7.0 23.0 L10.0 23.0 L10.0 20.0 L9.0 20.0" class="schemWire" data-net="vdd" />
-    <path d="M10.0 23.0 L17.0 23.0 L17.0 22.0" class="schemWire" data-net="vdd" />
-    <path d="M17.0 23.0 L20.0 23.0 L20.0 20.0 L19.0 20.0" class="schemWire" data-net="vdd" />
-    <path d="M1.0 1.0 L2.0 1.0 L12.0 1.0 L12.0 2.0" class="schemWire" data-net="vss" />
-    <path d="M12.0 1.0 L15.0 1.0 L15.0 4.0 L14.0 4.0" class="schemWire" data-net="vss" />
-    <path d="M15.0 4.0 L15.0 12.0 L14.0 12.0" class="schemWire" data-net="vss" />
-    <path d="M25.0 6.0 L24.0 6.0 L17.0 6.0 L17.0 15.0 L17.0 18.0" class="schemWire" data-net="y" />
-    <path d="M17.0 15.0 L12.0 15.0 L12.0 14.0" class="schemWire" data-net="y" />
-    <path d="M12.0 15.0 L7.0 15.0 L7.0 18.0" class="schemWire" data-net="y" />
-    <path d="M1.0 4.0 L2.0 4.0 L4.0 4.0 L10.0 4.0" class="schemWire" data-net="a" />
-    <path d="M4.0 4.0 L4.0 20.0 L5.0 20.0" class="schemWire" data-net="a" />
-    <path d="M1.0 17.0 L2.0 17.0 L9.0 17.0 L9.0 12.0 L10.0 12.0" class="schemWire" data-net="b" />
-    <path d="M9.0 17.0 L11.0 17.0 L11.0 20.0 L15.0 20.0" class="schemWire" data-net="b" />
-    <path d="M12.0 6.0 L12.0 10.0" class="schemWire" data-net="net_conn" />
-    <circle cx="17.0" cy="15.0" r="0.1625" class="connPoint" data-net="y" />
-    <circle cx="12.0" cy="15.0" r="0.1625" class="connPoint" data-net="y" />
-    <circle cx="4.0" cy="4.0" r="0.1625" class="connPoint" data-net="a" />
-    <circle cx="9.0" cy="17.0" r="0.1625" class="connPoint" data-net="b" />
-    <circle cx="7.0" cy="23.0" r="0.1625" class="connPoint" data-net="vdd" />
-    <circle cx="10.0" cy="23.0" r="0.1625" class="connPoint" data-net="vdd" />
-    <circle cx="17.0" cy="23.0" r="0.1625" class="connPoint" data-net="vdd" />
-    <circle cx="12.0" cy="1.0" r="0.1625" class="connPoint" data-net="vss" />
-    <circle cx="15.0" cy="4.0" r="0.1625" class="connPoint" data-net="vss" />
-    <g data-inst="n1">
+    <path d="M1.0 23.0 L2.0 23.0 L7.0 23.0 L7.0 22.0" class="schemWire" />
+    <path d="M7.0 23.0 L10.0 23.0 L10.0 20.0 L9.0 20.0" class="schemWire" />
+    <path d="M10.0 23.0 L17.0 23.0 L17.0 22.0" class="schemWire" />
+    <path d="M17.0 23.0 L20.0 23.0 L20.0 20.0 L19.0 20.0" class="schemWire" />
+    <path d="M1.0 1.0 L2.0 1.0 L12.0 1.0 L12.0 2.0" class="schemWire" />
+    <path d="M12.0 1.0 L15.0 1.0 L15.0 4.0 L14.0 4.0" class="schemWire" />
+    <path d="M15.0 4.0 L15.0 12.0 L14.0 12.0" class="schemWire" />
+    <path d="M25.0 6.0 L24.0 6.0 L17.0 6.0 L17.0 15.0 L17.0 18.0" class="schemWire" />
+    <path d="M17.0 15.0 L12.0 15.0 L12.0 14.0" class="schemWire" />
+    <path d="M12.0 15.0 L7.0 15.0 L7.0 18.0" class="schemWire" />
+    <path d="M1.0 4.0 L2.0 4.0 L4.0 4.0 L10.0 4.0" class="schemWire" />
+    <path d="M4.0 4.0 L4.0 20.0 L5.0 20.0" class="schemWire" />
+    <path d="M1.0 17.0 L2.0 17.0 L9.0 17.0 L9.0 12.0 L10.0 12.0" class="schemWire" />
+    <path d="M9.0 17.0 L11.0 17.0 L11.0 20.0 L15.0 20.0" class="schemWire" />
+    <path d="M12.0 6.0 L12.0 10.0" class="schemWire" />
+    <circle cx="17.0" cy="15.0" r="0.1625" class="connPoint" />
+    <circle cx="12.0" cy="15.0" r="0.1625" class="connPoint" />
+    <circle cx="4.0" cy="4.0" r="0.1625" class="connPoint" />
+    <circle cx="9.0" cy="17.0" r="0.1625" class="connPoint" />
+    <circle cx="7.0" cy="23.0" r="0.1625" class="connPoint" />
+    <circle cx="10.0" cy="23.0" r="0.1625" class="connPoint" />
+    <circle cx="17.0" cy="23.0" r="0.1625" class="connPoint" />
+    <circle cx="12.0" cy="1.0" r="0.1625" class="connPoint" />
+    <circle cx="15.0" cy="4.0" r="0.1625" class="connPoint" />
+    <g>
       <rect x="10.0" y="2.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 13.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Nmos</text>
       <text transform="matrix(0.045 0 0 -0.045 13.875 2.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
@@ -44,7 +44,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 1 -1 0 13.8 4.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 13.875 4.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">b</text>
     </g>
-    <g data-inst="n2">
+    <g>
       <rect x="10.0" y="10.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 13.875 13.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Nmos</text>
       <text transform="matrix(0.045 0 0 -0.045 13.875 10.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
@@ -64,7 +64,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 1 -1 0 13.8 12.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 13.875 12.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">b</text>
     </g>
-    <g data-inst="p1">
+    <g>
       <rect x="5.0" y="18.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 8.875 21.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Pmos</text>
       <text transform="matrix(0.045 0 0 -0.045 8.875 18.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
@@ -84,7 +84,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 1 -1 0 8.8 20.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 8.875 20.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">b</text>
     </g>
-    <g data-inst="p2">
+    <g>
       <rect x="15.0" y="18.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 18.875 21.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Pmos</text>
       <text transform="matrix(0.045 0 0 -0.045 18.875 18.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
@@ -104,23 +104,23 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 1 -1 0 18.8 20.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 18.875 20.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">b</text>
     </g>
-    <g data-net="y">
+    <g>
       <path d="M0 0 L0.25 0 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 0 Z" transform="matrix(0 1 -1 0 25.0 6.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 25.65 6.0)" dominant-baseline="middle" text-anchor="start" class="portLabel">y</text>
     </g>
-    <g data-net="a">
+    <g>
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 4.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.35 4.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">a</text>
     </g>
-    <g data-net="b">
+    <g>
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 17.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.35 17.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">b</text>
     </g>
-    <g data-net="vdd">
+    <g>
       <path d="M0 0 L0.25 -0.25 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 23.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.35 23.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vdd</text>
     </g>
-    <g data-net="vss">
+    <g>
       <path d="M0 0 L0.25 -0.25 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 1.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.35 1.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vss</text>
     </g>

@@ -545,7 +545,8 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                         if schem_id is not None:
                             schem_item_name = schem_pin_names.get(schem_name, {}).get(schem_id + 1, '')
 
-                    # If directory provided, try to get proper ORDeC names
+                    # If directory provided, try to get proper ORDeC names and nids
+                    schem_nid = None
                     if directory is not None and schematic is not None:
                         spice_name = schem_item_name.lower() if schem_item_name else ''
                         if spice_name:
@@ -563,6 +564,17 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                             if node is not None:
                                 from ..core.directory import Directory
                                 schem_item_name = Directory.basename_of_node(node)
+                                schem_nid = node.nid
+
+                        # For pins/nets, find the Net node by looking up pin name
+                        if schem_nid is None and item_type in (LvsItemType.Pin, LvsItemType.Net):
+                            from ..core.schema import Net
+                            pin_name = schem_item_name.lower() if schem_item_name else ''
+                            for net in schematic.all(Net):
+                                if net.pin is not None:
+                                    if net.pin.full_path_str().lower() == pin_name:
+                                        schem_nid = net.nid
+                                        break
 
                     layout_shapes = None
                     schem_path = None
@@ -607,6 +619,7 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                         'status': item_status,
                         'layout_name': layout_item_name,
                         'schem_name': schem_item_name,
+                        'schem_nid': schem_nid,
                         'layout_shapes': layout_shapes,
                         'schem_path': schem_path,
                         'message': item_message,
@@ -650,6 +663,7 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                 status=item_data['status'],
                 layout_name=item_data['layout_name'],
                 schem_name=item_data['schem_name'],
+                schem_nid=item_data.get('schem_nid'),
                 layout_shapes=item_data['layout_shapes'],
                 layout_params=layout_params,
                 schem_params=schem_params,

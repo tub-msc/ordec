@@ -227,17 +227,23 @@ const viewClassOf = {
                 .attr("class", "lvs-highlight-group");
 
             const itemType = data.item_type;
-            const hasSchemPath = data.schem_path && data.schem_path.length > 0;
+            const schemNid = data.schem_nid;
 
-            // For backwards compatibility: if no item_type but schem_path exists, treat as instance
-            if (itemType === 'device' || itemType === 'subcircuit' || (!itemType && hasSchemPath)) {
-                // Instance highlighting: select by data-inst, draw bounding rect
-                if (!data.schem_path || data.schem_path.length === 0) {
-                    highlightGroup.remove();
-                    return;
-                }
-                const instName = data.schem_path.join('.');
-                const instGroup = this.g.select(`[data-inst="${instName}"]`);
+            if (schemNid === undefined || schemNid === null) {
+                highlightGroup.remove();
+                return;
+            }
+
+            // Select all elements with matching data-nid
+            const elements = this.g.selectAll(`[data-nid="${schemNid}"]`);
+            if (elements.empty()) {
+                highlightGroup.remove();
+                return;
+            }
+
+            if (itemType === 'device' || itemType === 'subcircuit') {
+                // Instance highlighting: draw bounding rect around the instance group
+                const instGroup = elements.filter('g');
                 if (instGroup.empty()) {
                     highlightGroup.remove();
                     return;
@@ -256,17 +262,7 @@ const viewClassOf = {
                     .attr("stroke", "none");
             } else if (itemType === 'net') {
                 // Net highlighting: highlight wires and tap points only (not ports)
-                const netName = data.schem_name;
-                if (!netName) {
-                    highlightGroup.remove();
-                    return;
-                }
-                const netElements = this.g.selectAll(`[data-net="${netName}"]`);
-                if (netElements.empty()) {
-                    highlightGroup.remove();
-                    return;
-                }
-                netElements.each(function() {
+                elements.each(function() {
                     const el = d3.select(this);
                     const tagName = this.tagName.toLowerCase();
                     if (tagName === 'path') {
@@ -283,7 +279,7 @@ const viewClassOf = {
                             pathEl.attr("transform", transform);
                         }
                     } else if (tagName === 'circle') {
-                        // Connection point: draw larger translucent circle (like errorMarker)
+                        // Connection point: draw larger translucent circle
                         highlightGroup.append("circle")
                             .attr("cx", el.attr('cx'))
                             .attr("cy", el.attr('cy'))
@@ -295,13 +291,7 @@ const viewClassOf = {
                 });
             } else if (itemType === 'pin') {
                 // Pin highlighting: highlight only the port (not the connected wires)
-                const pinName = data.schem_name;
-                if (!pinName) {
-                    highlightGroup.remove();
-                    return;
-                }
-                // Select only the port group element (not paths/circles which are wires)
-                const portGroup = this.g.select(`g[data-net="${pinName}"]`);
+                const portGroup = elements.filter('g');
                 if (portGroup.empty()) {
                     highlightGroup.remove();
                     return;
@@ -849,13 +839,12 @@ const viewClassOf = {
                     if (item) {
                         const payload = {
                             shapes: item.layout_shapes || [],
-                            schem_path: item.schem_path || [],
+                            schem_nid: item.schem_nid,
                             item_type: item.item_type,
                             schem_name: item.schem_name || '',
                         };
                         const hasLayoutShapes = item.layout_shapes && item.layout_shapes.length > 0;
-                        const hasSchemPath = item.schem_path && item.schem_path.length > 0;
-                        const hasSchemName = item.schem_name && item.schem_name.length > 0;
+                        const hasSchemNid = item.schem_nid !== undefined && item.schem_nid !== null;
 
                         // Set pending for viewers that will be opened
                         viewEventBus.setPending('lvs:select', payload);
@@ -873,8 +862,8 @@ const viewClassOf = {
                             viewEventBus.emit('lvs:layout-select', { shapes: [] });
                         }
 
-                        // Handle schematic viewer (instances use schem_path, pins/nets use schem_name)
-                        if (hasSchemPath || hasSchemName) {
+                        // Handle schematic viewer
+                        if (hasSchemNid) {
                             if (hasSchemListener) {
                                 viewEventBus.emit('lvs:schem-select', payload);
                             }
@@ -882,7 +871,7 @@ const viewClassOf = {
 
                         // Open new views if needed
                         const needLayoutOpen = hasLayoutShapes && !hasLayoutListener;
-                        const needSchemOpen = (hasSchemPath || hasSchemName) && !hasSchemListener;
+                        const needSchemOpen = hasSchemNid && !hasSchemListener;
 
                         if (needLayoutOpen || needSchemOpen) {
                             viewEventBus.emit('lvs:request-open-views', {

@@ -136,17 +136,62 @@ def test_pending_event_consumed_on_layout_open(web):
 def emit_lvs_layout_select(web, shapes):
     """Emit lvs:layout-select event with given shapes."""
     web.driver.execute_script(
-        "window.viewEventBus.emit('lvs:layout-select', {shapes: arguments[0], schem_path: []});",
+        "window.viewEventBus.emit('lvs:layout-select', {shapes: arguments[0]});",
         shapes
     )
 
 
-def emit_lvs_schem_select(web, schem_path):
-    """Emit lvs:schem-select event with given schem_path."""
+def emit_lvs_schem_select_nid(web, schem_nid, item_type):
+    """Emit lvs:schem-select event with given schem_nid and item_type."""
     web.driver.execute_script(
-        "window.viewEventBus.emit('lvs:schem-select', {shapes: [], schem_path: arguments[0]});",
-        schem_path
+        "window.viewEventBus.emit('lvs:schem-select', {schem_nid: arguments[0], item_type: arguments[1]});",
+        schem_nid, item_type
     )
+
+
+def get_instance_nid(web, inst_name):
+    """Get the data-nid of an instance group by its data-inst attribute."""
+    return web.driver.execute_script("""
+        const svg = document.querySelector('.rescontent svg');
+        if (!svg) return null;
+        const inst = svg.querySelector(`g[data-nid]`);
+        // Find all groups with data-nid, check if they contain the instance name in class
+        const groups = svg.querySelectorAll('g[data-nid]');
+        for (const g of groups) {
+            // Instance groups have symbolOutline rect inside
+            if (g.querySelector('rect.symbolOutline')) {
+                const nid = g.getAttribute('data-nid');
+                // Check text content for instance name
+                const texts = g.querySelectorAll('text');
+                for (const t of texts) {
+                    if (t.textContent === arguments[0]) {
+                        return parseInt(nid, 10);
+                    }
+                }
+            }
+        }
+        return null;
+    """, inst_name)
+
+
+def get_net_nid(web, net_name):
+    """Get the data-nid of a net by finding a port with matching label."""
+    return web.driver.execute_script("""
+        const svg = document.querySelector('.rescontent svg');
+        if (!svg) return null;
+        // Find port groups (they have portArrow inside)
+        const groups = svg.querySelectorAll('g[data-nid]');
+        for (const g of groups) {
+            if (g.querySelector('path.portArrow')) {
+                // Check if this port's label matches
+                const label = g.querySelector('text.portLabel');
+                if (label && label.textContent.toLowerCase() === arguments[0].toLowerCase()) {
+                    return parseInt(g.getAttribute('data-nid'), 10);
+                }
+            }
+        }
+        return null;
+    """, net_name)
 
 
 def emit_lvs_clear(web):
@@ -204,17 +249,20 @@ def get_schematic_highlight_count(web):
 
 @pytest.mark.web
 def test_lvs_select_highlights_schematic_instance(web):
-    """Emitting lvs:schem-select with schem_path should highlight the instance in schematic."""
+    """Emitting lvs:schem-select with schem_nid should highlight the instance in schematic."""
     load_schematic_view(web)
 
     count = get_schematic_highlight_count(web)
     assert count == 0, "Should start with no highlight"
 
-    emit_lvs_schem_select(web, ['pu'])
+    nid = get_instance_nid(web, 'pu')
+    assert nid is not None, "Should find instance 'pu'"
+
+    emit_lvs_schem_select_nid(web, nid, 'device')
 
     time.sleep(0.3)
     count = get_schematic_highlight_count(web)
-    assert count > 0, "Should have highlight after lvs:schem-select with schem_path"
+    assert count > 0, "Should have highlight after lvs:schem-select with schem_nid"
 
 
 @pytest.mark.web
@@ -222,7 +270,10 @@ def test_lvs_clear_removes_schematic_highlight(web):
     """Emitting lvs:clear should remove highlight from schematic."""
     load_schematic_view(web)
 
-    emit_lvs_schem_select(web, ['pd'])
+    nid = get_instance_nid(web, 'pd')
+    assert nid is not None, "Should find instance 'pd'"
+
+    emit_lvs_schem_select_nid(web, nid, 'device')
     time.sleep(0.2)
     count = get_schematic_highlight_count(web)
     assert count > 0, "Precondition: should have highlight"
@@ -246,37 +297,42 @@ def test_lvs_select_hightlight_instance_pos(web):
             return parseFloat(rect.getAttribute('y'));
         """)
 
-    def get_instance_y(inst_name):
+    def get_instance_y_by_nid(nid):
         return web.driver.execute_script("""
             const svg = document.querySelector('.rescontent svg');
             if (!svg) return null;
-            const inst = svg.querySelector('[data-inst="' + arguments[0] + '"]');
+            const inst = svg.querySelector(`[data-nid="${arguments[0]}"]`);
             if (!inst) return null;
             const rect = inst.querySelector('rect');
             if (!rect) return null;
             return parseFloat(rect.getAttribute('y'));
-        """, inst_name)
+        """, nid)
 
     load_schematic_view(web)
 
+    pd_nid = get_instance_nid(web, 'pd')
+    pu_nid = get_instance_nid(web, 'pu')
+    assert pd_nid is not None, "Should find pd instance"
+    assert pu_nid is not None, "Should find pu instance"
+
     # pd is at y=2, pu is at y=8 in the test schematic
-    emit_lvs_schem_select(web, ['pd'])
+    emit_lvs_schem_select_nid(web, pd_nid, 'device')
     time.sleep(0.3)
 
     highlight_y = get_highlight_y()
-    pd_y = get_instance_y('pd')
-    pu_y = get_instance_y('pu')
+    pd_y = get_instance_y_by_nid(pd_nid)
+    pu_y = get_instance_y_by_nid(pu_nid)
 
     assert highlight_y is not None, "Should have highlight rect"
-    assert pd_y is not None, "Should find pd instance"
-    assert pu_y is not None, "Should find pu instance"
+    assert pd_y is not None, "Should find pd instance Y"
+    assert pu_y is not None, "Should find pu instance Y"
 
     # Highlight should be near pd (y=2), not near pu (y=8)
     # Allow 1.0 tolerance for padding
     assert abs(highlight_y - pd_y) < 1.0, f"Highlight Y ({highlight_y}) should be near pd Y ({pd_y}), not pu Y ({pu_y})"
 
     # Also test pu highlight
-    emit_lvs_schem_select(web, ['pu'])
+    emit_lvs_schem_select_nid(web, pu_nid, 'device')
     time.sleep(0.3)
 
     highlight_y = get_highlight_y()
@@ -301,10 +357,11 @@ def test_lvs_select_highlights_net(web):
 
     load_schematic_view(web)
 
-    # Emit a net highlight event (vss is a net that should have wires)
-    web.driver.execute_script(
-        "window.viewEventBus.emit('lvs:schem-select', {item_type: 'net', schem_name: 'vss'});"
-    )
+    # Get the nid for 'vss' net
+    nid = get_net_nid(web, 'vss')
+    assert nid is not None, "Should find vss net"
+
+    emit_lvs_schem_select_nid(web, nid, 'net')
     time.sleep(0.3)
 
     counts = get_net_highlight_count()
@@ -330,10 +387,11 @@ def test_lvs_select_highlights_pin(web):
 
     load_schematic_view(web)
 
-    # Emit a pin highlight event (vss is a pin/port)
-    web.driver.execute_script(
-        "window.viewEventBus.emit('lvs:schem-select', {item_type: 'pin', schem_name: 'vss'});"
-    )
+    # Get the nid for 'vss' pin (same as net nid)
+    nid = get_net_nid(web, 'vss')
+    assert nid is not None, "Should find vss pin"
+
+    emit_lvs_schem_select_nid(web, nid, 'pin')
     time.sleep(0.3)
 
     counts = get_pin_highlight_count()
