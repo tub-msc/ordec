@@ -37,6 +37,14 @@ class ViewEventBus {
         this.pending.set(event, data);
     }
 
+    getPending(event) {
+        return this.pending.get(event);
+    }
+
+    clearPending(event) {
+        this.pending.delete(event);
+    }
+
     consumePending(event) {
         const data = this.pending.get(event);
         this.pending.delete(event);

@@ -8,10 +8,13 @@ import re
 import warnings
 from typing import Callable
 
+from lark import Lark, Transformer, v_args
+
 from ..core import *
 from ..core.schema import (
     DrcReport, DrcCategory, DrcItem, DrcBox, DrcEdge, DrcEdgePair,
-    DrcPoly, DrcPath, DrcText, DrcValue, PolyVec2I
+    DrcPoly, DrcPath, DrcText, DrcValue, PolyVec2I,
+    LvsReport, LvsCircuit, LvsItem, LvsStatus, LvsItemType
 )
 
 
@@ -221,5 +224,419 @@ def parse_rdb(filename, layout: Layout, directory: Directory = None) -> DrcRepor
                     report % DrcValue(item=item, order=order, tag=tag, value=value_str)
 
                 order += 1
+
+    return report
+
+
+class _LvsdbTransformer(Transformer):
+    """Transform Lark parse tree to nested list structure."""
+
+    def start(self, items):
+        return list(items)
+
+    @v_args(inline=True)
+    def named_sexp(self, name, *children):
+        return [str(name), *children]
+
+    def anon_sexp(self, children):
+        return list(children)
+
+    def ATOM(self, token):
+        return str(token)
+
+    def NUMBER(self, token):
+        return str(token)
+
+    def QUOTED_STRING(self, token):
+        return str(token)[1:-1]
+
+    def EMPTY_PARENS(self, token):
+        return "()"
+
+
+_lvsdb_parser = Lark.open_from_package(
+    __package__,
+    "lvsdb.lark",
+    parser="lalr",
+)
+_lvsdb_transformer = _LvsdbTransformer()
+
+
+def _find_sexp(sexp: list, name: str) -> list | None:
+    """Find first sub-expression starting with given name."""
+    if not isinstance(sexp, list):
+        return None
+    for item in sexp:
+        if isinstance(item, list) and len(item) > 0 and item[0] == name:
+            return item
+    return None
+
+
+def _find_all_sexp(sexp: list, name: str):
+    """Find all sub-expressions starting with given name."""
+    if not isinstance(sexp, list):
+        return
+    for item in sexp:
+        if isinstance(item, list) and len(item) > 0 and item[0] == name:
+            yield item
+
+
+def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) -> LvsReport:
+    """
+    Parse a KLayout LVS database file (.lvsdb) into an LvsReport subgraph.
+
+    The LVSDB format uses shorthand notation:
+    - 'J' for layout section, 'H' for reference, 'Z' for xref
+    - 'X' for circuit, 'N' for net, 'D' for device, 'P' for pin
+    - 'Y' for device location, 'L' for log, 'M' for message
+    - 'B' for message body text
+
+    Args:
+        filename: Path to the .lvsdb file.
+        layout: The Layout subgraph that was checked.
+        schematic: The Schematic subgraph that was compared against.
+        directory: Optional Directory used during netlisting for name lookup.
+
+    Returns:
+        LvsReport subgraph with all parsed comparison results.
+    """
+    with open(filename, 'r') as f:
+        text = f.read()
+
+    tree = _lvsdb_parser.parse(text)
+    sexps = _lvsdb_transformer.transform(tree)
+
+    layout_sexp = None
+    reference_sexp = None
+    xref_sexp = None
+
+    for sexp in sexps:
+        if isinstance(sexp, list) and len(sexp) > 0:
+            name = sexp[0]
+            if name in ('layout', 'J'):
+                layout_sexp = sexp
+            elif name in ('reference', 'H'):
+                reference_sexp = sexp
+            elif name in ('xref', 'Z'):
+                xref_sexp = sexp
+
+    top_cell = ''
+    unit = 0.001
+    if layout_sexp:
+        top_elem = _find_sexp(layout_sexp, 'top') or _find_sexp(layout_sexp, 'T')
+        if top_elem and len(top_elem) > 1:
+            top_cell = top_elem[1]
+        unit_elem = _find_sexp(layout_sexp, 'unit') or _find_sexp(layout_sexp, 'U')
+        if unit_elem and len(unit_elem) > 1:
+            try:
+                unit = float(unit_elem[1])
+            except ValueError:
+                pass
+
+    device_locations: dict[str, dict[int, tuple]] = {}
+    layout_net_names: dict[str, dict[int, str]] = {}
+    layout_device_names: dict[str, dict[int, str]] = {}
+    layout_pin_names: dict[str, dict[int, str]] = {}
+    schem_net_names: dict[str, dict[int, str]] = {}
+    schem_device_names: dict[str, dict[int, str]] = {}
+    schem_pin_names: dict[str, dict[int, str]] = {}
+
+    def extract_names_from_circuit(circuit_sexp, net_dict, device_dict, pin_dict, loc_dict=None):
+        """Extract net/device/pin names and optionally device locations from a circuit."""
+        circuit_name = circuit_sexp[1]
+        net_dict[circuit_name] = {}
+        device_dict[circuit_name] = {}
+        pin_dict[circuit_name] = {}
+        if loc_dict is not None:
+            loc_dict[circuit_name] = {}
+
+        for net_sexp in list(_find_all_sexp(circuit_sexp, 'net')) + list(_find_all_sexp(circuit_sexp, 'N')):
+            if len(net_sexp) < 2:
+                continue
+            try:
+                net_id = int(net_sexp[1])
+            except ValueError:
+                continue
+            name_sexp = _find_sexp(net_sexp, 'name') or _find_sexp(net_sexp, 'I')
+            if name_sexp and len(name_sexp) > 1:
+                net_dict[circuit_name][net_id] = str(name_sexp[1])
+
+        for dev_sexp in list(_find_all_sexp(circuit_sexp, 'device')) + list(_find_all_sexp(circuit_sexp, 'D')):
+            if len(dev_sexp) < 3:
+                continue
+            try:
+                dev_id = int(dev_sexp[1])
+            except ValueError:
+                continue
+            name_sexp = _find_sexp(dev_sexp, 'name') or _find_sexp(dev_sexp, 'I')
+            if name_sexp and len(name_sexp) > 1:
+                device_dict[circuit_name][dev_id] = str(name_sexp[1])
+            if loc_dict is not None:
+                loc_sexp = _find_sexp(dev_sexp, 'location') or _find_sexp(dev_sexp, 'Y')
+                if loc_sexp and len(loc_sexp) >= 3:
+                    try:
+                        x = float(loc_sexp[1])
+                        y = float(loc_sexp[2])
+                        # Also extract parameters (E entries)
+                        params = {}
+                        for param_sexp in list(_find_all_sexp(dev_sexp, 'property')) + list(_find_all_sexp(dev_sexp, 'E')):
+                            if len(param_sexp) >= 2:
+                                param_name = str(param_sexp[1])
+                                if len(param_sexp) >= 3:
+                                    try:
+                                        params[param_name] = float(param_sexp[2])
+                                    except ValueError:
+                                        params[param_name] = str(param_sexp[2])
+                        loc_dict[circuit_name][dev_id] = (x, y, params)
+                    except ValueError:
+                        pass
+
+        for pin_sexp in list(_find_all_sexp(circuit_sexp, 'pin')) + list(_find_all_sexp(circuit_sexp, 'P')):
+            if len(pin_sexp) < 2:
+                continue
+            try:
+                pin_id = int(pin_sexp[1])
+            except ValueError:
+                continue
+            name_sexp = _find_sexp(pin_sexp, 'name') or _find_sexp(pin_sexp, 'I')
+            if name_sexp and len(name_sexp) > 1:
+                pin_dict[circuit_name][pin_id] = str(name_sexp[1])
+
+    if layout_sexp:
+        for circuit_sexp in list(_find_all_sexp(layout_sexp, 'circuit')) + list(_find_all_sexp(layout_sexp, 'X')):
+            if len(circuit_sexp) < 2:
+                continue
+            extract_names_from_circuit(
+                circuit_sexp, layout_net_names, layout_device_names,
+                layout_pin_names, device_locations)
+
+    if reference_sexp:
+        for circuit_sexp in list(_find_all_sexp(reference_sexp, 'circuit')) + list(_find_all_sexp(reference_sexp, 'X')):
+            if len(circuit_sexp) < 2:
+                continue
+            extract_names_from_circuit(
+                circuit_sexp, schem_net_names, schem_device_names, schem_pin_names)
+
+    overall_status = LvsStatus.Match
+    circuits_data = []
+
+    if xref_sexp:
+        for circuit_xref in list(_find_all_sexp(xref_sexp, 'circuit')) + list(_find_all_sexp(xref_sexp, 'X')):
+            if len(circuit_xref) < 4:
+                continue
+
+            layout_name = circuit_xref[1] if circuit_xref[1] != '()' else ''
+            schem_name = circuit_xref[2] if circuit_xref[2] != '()' else ''
+            status_val = circuit_xref[3]
+
+            if status_val in ('match', '1'):
+                circuit_status = LvsStatus.Match
+            elif status_val in ('nomatch', 'NoMatch'):
+                circuit_status = LvsStatus.NoMatch
+                overall_status = LvsStatus.Mismatch
+            elif status_val in ('mismatch', '0', 'X'):
+                circuit_status = LvsStatus.Mismatch
+                overall_status = LvsStatus.Mismatch
+            else:
+                circuit_status = LvsStatus.Mismatch
+                overall_status = LvsStatus.Mismatch
+
+            message = ''
+            has_errors = False
+            log_sexp = _find_sexp(circuit_xref, 'log') or _find_sexp(circuit_xref, 'L')
+            if log_sexp:
+                for entry in list(_find_all_sexp(log_sexp, 'entry')) + list(_find_all_sexp(log_sexp, 'M')):
+                    if len(entry) < 2:
+                        continue
+                    severity = entry[1] if len(entry) > 1 else ''
+                    body = _find_sexp(entry, 'description') or _find_sexp(entry, 'B')
+                    if body and len(body) > 1:
+                        body_text = ' '.join(str(x) for x in body[1:])
+                        if message:
+                            message += '; '
+                        message += body_text
+                        if severity == 'E':
+                            has_errors = True
+
+            if has_errors and circuit_status == LvsStatus.Match:
+                circuit_status = LvsStatus.Mismatch
+                overall_status = LvsStatus.Mismatch
+
+            items_data = []
+            inner_xref = _find_sexp(circuit_xref, 'xref') or _find_sexp(circuit_xref, 'Z')
+            if inner_xref:
+                for item_sexp in inner_xref[1:]:
+                    if not isinstance(item_sexp, list) or len(item_sexp) < 4:
+                        continue
+
+                    item_type_str = item_sexp[0]
+                    type_map = {
+                        'net': LvsItemType.Net, 'N': LvsItemType.Net,
+                        'device': LvsItemType.Device, 'D': LvsItemType.Device,
+                        'pin': LvsItemType.Pin, 'P': LvsItemType.Pin,
+                        'circuit': LvsItemType.Subcircuit, 'C': LvsItemType.Subcircuit,
+                    }
+                    if item_type_str not in type_map:
+                        continue
+
+                    layout_id_str = item_sexp[1]
+                    schem_id_str = item_sexp[2]
+                    item_status_val = item_sexp[3]
+
+                    layout_id = None
+                    schem_id = None
+                    if layout_id_str != '()':
+                        try:
+                            layout_id = int(layout_id_str)
+                        except ValueError:
+                            pass
+                    if schem_id_str != '()':
+                        try:
+                            schem_id = int(schem_id_str)
+                        except ValueError:
+                            pass
+
+                    if item_status_val in ('match', '1'):
+                        item_status = LvsStatus.Match
+                    else:
+                        item_status = LvsStatus.Mismatch
+
+                    item_message = ''
+                    if item_status == LvsStatus.Mismatch:
+                        if item_status_val == '0':
+                            item_message = 'mismatch'
+                        elif item_status_val == 'W':
+                            item_message = 'parameter mismatch (W)'
+                        elif item_status_val == 'L':
+                            item_message = 'parameter mismatch (L)'
+                        elif item_status_val == 'X':
+                            item_message = 'unmatched'
+                        else:
+                            item_message = f'mismatch ({item_status_val})'
+
+                    item_type = type_map[item_type_str]
+
+                    # Look up actual names based on item type
+                    layout_item_name = ''
+                    schem_item_name = ''
+                    if item_type == LvsItemType.Net:
+                        if layout_id is not None:
+                            layout_item_name = layout_net_names.get(layout_name, {}).get(layout_id, '')
+                        if schem_id is not None:
+                            schem_item_name = schem_net_names.get(schem_name, {}).get(schem_id, '')
+                    elif item_type == LvsItemType.Device:
+                        if layout_id is not None:
+                            layout_item_name = layout_device_names.get(layout_name, {}).get(layout_id, '')
+                        if schem_id is not None:
+                            schem_item_name = schem_device_names.get(schem_name, {}).get(schem_id, '')
+                    elif item_type == LvsItemType.Pin:
+                        if layout_id is not None:
+                            layout_item_name = layout_pin_names.get(layout_name, {}).get(layout_id, '')
+                        if schem_id is not None:
+                            schem_item_name = schem_pin_names.get(schem_name, {}).get(schem_id, '')
+
+                    # If directory provided, try to get proper ORDeC names
+                    if directory is not None and schematic is not None:
+                        spice_name = schem_item_name.lower() if schem_item_name else ''
+                        if spice_name:
+                            # Try direct lookup first
+                            node = None
+                            try:
+                                node = directory.node_of_name(schematic, spice_name)
+                            except KeyError:
+                                # For devices, SPICE uses M-prefix (Mpd not pd)
+                                if item_type == LvsItemType.Device:
+                                    try:
+                                        node = directory.node_of_name(schematic, 'M' + spice_name)
+                                    except KeyError:
+                                        pass
+                            if node is not None:
+                                from ..core.directory import Directory
+                                schem_item_name = Directory.basename_of_node(node)
+
+                    layout_shapes = None
+                    schem_path = None
+                    layout_params = {}
+                    if item_type == LvsItemType.Device and layout_id is not None:
+                        locs = device_locations.get(layout_name, {})
+                        if layout_id in locs:
+                            loc_data = locs[layout_id]
+                            x, y = loc_data[0], loc_data[1]
+                            if len(loc_data) > 2:
+                                layout_params = loc_data[2]
+                            size = 500
+                            layout_shapes = (
+                                ('box', (x - size, y - size, x + size, y + size)),
+                            )
+                            # Try to match to ORDeC LayoutInstance by position
+                            if layout is not None and not layout_item_name:
+                                from ..core.schema import LayoutInstance
+                                from ..core.directory import Directory
+                                best_match = None
+                                best_dist = float('inf')
+                                for inst in layout.all(LayoutInstance):
+                                    # Check if device location is within instance bounds
+                                    inst_x, inst_y = int(inst.pos.x), int(inst.pos.y)
+                                    dist = abs(x - inst_x) + abs(y - inst_y)
+                                    if dist < best_dist:
+                                        best_dist = dist
+                                        best_match = inst
+                                if best_match is not None and best_dist < 5000:
+                                    layout_item_name = Directory.basename_of_node(best_match)
+
+                    if item_type == LvsItemType.Device and schem_id is not None:
+                        # Use the converted ORDeC name for schem_path (for highlighting)
+                        if schem_item_name:
+                            schem_path = (schem_item_name,)
+
+                    items_data.append({
+                        'item_type': item_type,
+                        'status': item_status,
+                        'layout_name': layout_item_name,
+                        'schem_name': schem_item_name,
+                        'layout_shapes': layout_shapes,
+                        'schem_path': schem_path,
+                        'message': item_message,
+                        'layout_params': layout_params if layout_params else None,
+                    })
+
+            circuits_data.append({
+                'layout_name': layout_name,
+                'schem_name': schem_name,
+                'status': circuit_status,
+                'message': message,
+                'items': items_data,
+            })
+
+    report = LvsReport(
+        ref_layout=layout,
+        ref_schematic=schematic,
+        top_cell=top_cell,
+        status=overall_status,
+    )
+
+    for circuit_data in circuits_data:
+        circuit = report % LvsCircuit(
+            layout_name=circuit_data['layout_name'],
+            schem_name=circuit_data['schem_name'],
+            status=circuit_data['status'],
+            message=circuit_data['message'],
+        )
+
+        for item_data in circuit_data['items']:
+            layout_params = item_data.get('layout_params')
+            if layout_params:
+                layout_params = tuple(layout_params.items())
+            report % LvsItem(
+                circuit=circuit,
+                item_type=item_data['item_type'],
+                status=item_data['status'],
+                layout_name=item_data['layout_name'],
+                schem_name=item_data['schem_name'],
+                layout_shapes=item_data['layout_shapes'],
+                layout_params=layout_params,
+                schem_path=item_data.get('schem_path'),
+                message=item_data.get('message', ''),
+            )
 
     return report

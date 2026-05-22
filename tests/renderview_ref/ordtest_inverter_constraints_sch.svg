@@ -12,7 +12,7 @@
     <circle cx="6.0" cy="1.0" r="0.1625" class="connPoint" />
     <circle cx="6.0" cy="7.0" r="0.1625" class="connPoint" />
     <circle cx="3.0" cy="7.0" r="0.1625" class="connPoint" />
-    <g>
+    <g data-inst="pd">
       <rect x="4.0" y="2.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 7.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Nmos</text>
       <text transform="matrix(0.045 0 0 -0.045 7.875 2.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=1u</tspan><tspan x="0" y="0em">w=1u</tspan></text>
@@ -32,7 +32,7 @@
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 1 -1 0 7.8 4.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 7.875 4.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">b</text>
     </g>
-    <g>
+    <g data-inst="pu">
       <rect x="4.0" y="8.0" width="4.0" height="4.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 7.875 11.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Pmos</text>
       <text transform="matrix(0.045 0 0 -0.045 7.875 8.125)" dominant-baseline="ideographic" text-anchor="end" class="params"><tspan x="0" y="-1em">l=400n</tspan><tspan x="0" y="0em">w=200n</tspan></text>
