@@ -133,11 +133,11 @@ def test_pending_event_consumed_on_layout_open(web):
     assert pending is None, "Pending event should have been consumed"
 
 
-def emit_lvs_layout_select(web, shapes):
-    """Emit lvs:layout-select event with given shapes."""
+def emit_lvs_layout_select(web, pos):
+    """Emit lvs:layout-select event with given pos [x, y]."""
     web.driver.execute_script(
-        "window.viewEventBus.emit('lvs:layout-select', {shapes: arguments[0]});",
-        shapes
+        "window.viewEventBus.emit('lvs:layout-select', {pos: arguments[0]});",
+        pos
     )
 
 
@@ -150,7 +150,7 @@ def emit_lvs_schem_select_nid(web, schem_nid, item_type):
 
 
 def get_instance_nid(web, inst_name):
-    """Get the data-nid of an instance group by its data-inst attribute."""
+    """Get the data-nid of an instance group by matching its label text."""
     return web.driver.execute_script("""
         const svg = document.querySelector('.rescontent svg');
         if (!svg) return null;
@@ -208,7 +208,7 @@ def test_lvs_select_highlights_layout(web):
     assert state is not None, "Layout viewer not found"
     assert state['highlightNumVertices'] == 0, "Should start with no highlight"
 
-    emit_lvs_layout_select(web, [{'type': 'box', 'rect': [0, 0, 1000, 1000]}])
+    emit_lvs_layout_select(web, [500, 500])
 
     state = get_layout_state(web)
     assert state['highlightNumVertices'] > 0, "Should have highlight after lvs:layout-select"
@@ -219,7 +219,7 @@ def test_lvs_clear_removes_highlight(web):
     """Emitting lvs:clear should remove highlight from layout viewer."""
     load_layout_view(web)
 
-    emit_lvs_layout_select(web, [{'type': 'box', 'rect': [0, 0, 500, 500]}])
+    emit_lvs_layout_select(web, [250, 250])
     state = get_layout_state(web)
     assert state['highlightNumVertices'] > 0, "Precondition: should have highlight"
 

@@ -575,37 +575,16 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                                         schem_nid = net.nid
                                         break
 
-                    layout_shapes = None
+                    layout_pos = None
                     layout_params = {}
                     schem_params = {}
                     if item_type == LvsItemType.Device and layout_id is not None:
                         locs = device_locations.get(layout_name, {})
                         if layout_id in locs:
                             loc_data = locs[layout_id]
-                            x, y = loc_data[0], loc_data[1]
+                            layout_pos = (int(loc_data[0]), int(loc_data[1]))
                             if len(loc_data) > 2:
                                 layout_params = loc_data[2]
-                            size = 500
-                            layout_shapes = (
-                                ('box', (x - size, y - size, x + size, y + size)),
-                            )
-                            # Try to match to ORDeC LayoutInstance by position.
-                            # This uses Manhattan distance to find the closest instance.
-                            # The 5000-unit threshold is heuristic; may need tuning for
-                            # different PDKs or layouts with tightly packed devices.
-                            if layout is not None and not layout_item_name:
-                                from ..core.schema import LayoutInstance
-                                from ..core.directory import Directory
-                                best_match = None
-                                best_dist = float('inf')
-                                for inst in layout.all(LayoutInstance):
-                                    inst_x, inst_y = int(inst.pos.x), int(inst.pos.y)
-                                    dist = abs(x - inst_x) + abs(y - inst_y)
-                                    if dist < best_dist:
-                                        best_dist = dist
-                                        best_match = inst
-                                if best_match is not None and best_dist < 5000:
-                                    layout_item_name = Directory.basename_of_node(best_match)
 
                     if item_type == LvsItemType.Device and schem_id is not None:
                         schem_params = schem_device_params.get(schem_name, {}).get(schem_id, {})
@@ -616,7 +595,7 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                         'layout_name': layout_item_name,
                         'schem_name': schem_item_name,
                         'schem': schem_nid,
-                        'layout_shapes': layout_shapes,
+                        'layout_pos': layout_pos,
                         'message': item_message,
                         'layout_params': layout_params if layout_params else None,
                         'schem_params': schem_params if schem_params else None,
@@ -692,7 +671,7 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                 layout_inst_name=item_data['layout_name'],
                 schem_inst_name=item_data['schem_name'],
                 schem=schem_nid,
-                layout_shapes=item_data['layout_shapes'],
+                layout_pos=item_data.get('layout_pos'),
                 layout_params=layout_params,
                 schem_params=schem_params,
                 message=item_data.get('message') or None,

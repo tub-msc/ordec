@@ -203,7 +203,7 @@ export class LayoutGL {
         viewEventBus.on('drc:select', this._onDrcSelect);
         viewEventBus.on('drc:clear', this._onDrcClear);
 
-        this._onLvsSelect = (data) => this.setHighlight(data.shapes);
+        this._onLvsSelect = (data) => this.highlightPos(data.pos);
         this._onLvsClear = () => this.clearHighlight();
         viewEventBus.on('lvs:layout-select', this._onLvsSelect);
         viewEventBus.on('lvs:clear', this._onLvsClear);
@@ -217,8 +217,7 @@ export class LayoutGL {
 
         const pendingLvs = viewEventBus.getPending('lvs:select');
         if (pendingLvs) {
-            this._pendingHighlight = pendingLvs.shapes;
-            this.setHighlight(pendingLvs.shapes, false);
+            this.highlightPos(pendingLvs.pos, false);
         }
 
         this._onPagehide = () => this.destroy();
@@ -910,6 +909,37 @@ export class LayoutGL {
         mat4.scale(this.projectionMatrix, this.projectionMatrix, [1, -1, 1]);
     }
 
+    highlightPos(pos, zoomTo = true) {
+        if (!pos) {
+            this._highlightPos = null;
+            this.clearHighlight();
+            return;
+        }
+        this._highlightPos = pos;
+        this._updateHighlightPos();
+        if (zoomTo) {
+            const r = 2000;
+            const [x, y] = pos;
+            this.zoomToBox(x - r, y - r, x + r, y + r, true, 0.25);
+        }
+    }
+
+    _updateHighlightPos() {
+        const pos = this._highlightPos;
+        if (!pos) return;
+        const [x, y] = pos;
+        const arm = 10 / this.transform.k;
+        const gl = this.gl;
+        if (!gl) return;
+        const vertices = new Float32Array([
+            x - arm, y, x + arm, y,
+            x, y - arm, x, y + arm,
+        ]);
+        this.highlightNumVertices = 4;
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.highlightVertices);
+        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+    }
+
     setHighlight(shapes, zoomTo = true) {
         const gl = this.gl;
         if (!gl) return;
@@ -964,6 +994,7 @@ export class LayoutGL {
     }
 
     clearHighlight() {
+        this._highlightPos = null;
         this.highlightNumVertices = 0;
         this.drawGL();
     }
@@ -1005,6 +1036,9 @@ export class LayoutGL {
             this.drawGLShapes();
             this.drawGLPost();
             this.drawGLLabels();
+            if (this._highlightPos) {
+                this._updateHighlightPos();
+            }
             if (this.highlightNumVertices > 0) {
                 this.drawGLHighlight();
             }

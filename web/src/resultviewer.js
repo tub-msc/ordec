@@ -617,7 +617,7 @@ const viewClassOf = {
     // LVS Report viewer.
     //
     // Event bus protocol:
-    //   lvs:layout-select {shapes} - sent when item with layout_shapes selected
+    //   lvs:layout-select {pos} - sent when item with layout_pos selected
     //   lvs:schem-select {schem_nid, item_type} - sent when item with schem_nid selected
     //   lvs:clear - sent on deselect or destroy
     //   lvs:request-open-views {layoutView, schemView} - requests new viewer panels
@@ -854,12 +854,12 @@ const viewClassOf = {
 
                     if (item) {
                         const payload = {
-                            shapes: item.layout_shapes || [],
+                            pos: item.layout_pos,
                             schem_nid: item.schem_nid,
                             item_type: item.item_type,
                             schem_name: item.schem_name || '',
                         };
-                        const hasLayoutShapes = item.layout_shapes && item.layout_shapes.length > 0;
+                        const hasLayoutPos = item.layout_pos !== null && item.layout_pos !== undefined;
                         const hasSchemNid = item.schem_nid !== undefined && item.schem_nid !== null;
 
                         // Set pending for viewers that will be opened
@@ -869,13 +869,12 @@ const viewClassOf = {
                         const hasSchemListener = viewEventBus.hasListeners('lvs:schem-select');
 
                         // Handle layout viewer
-                        if (hasLayoutShapes) {
+                        if (hasLayoutPos) {
                             if (hasLayoutListener) {
                                 viewEventBus.emit('lvs:layout-select', payload);
                             }
                         } else if (hasLayoutListener) {
-                            // Clear layout highlight when selecting item without layout shapes
-                            viewEventBus.emit('lvs:layout-select', { shapes: [] });
+                            viewEventBus.emit('lvs:layout-select', { pos: null });
                         }
 
                         // Handle schematic viewer
@@ -886,7 +885,7 @@ const viewClassOf = {
                         }
 
                         // Open new views if needed
-                        const needLayoutOpen = hasLayoutShapes && !hasLayoutListener;
+                        const needLayoutOpen = hasLayoutPos && !hasLayoutListener;
                         const needSchemOpen = hasSchemNid && !hasSchemListener;
 
                         if (needLayoutOpen || needSchemOpen) {

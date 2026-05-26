@@ -1806,13 +1806,7 @@ class LvsReport(SubgraphRoot):
 
         items = []
         for item in self.all(LvsItem):
-            shapes = []
-            if item.layout_shapes:
-                for shape in item.layout_shapes:
-                    if isinstance(shape, tuple) and len(shape) >= 2:
-                        shape_type, coords = shape[0], shape[1]
-                        if shape_type == 'box' and len(coords) >= 4:
-                            shapes.append({'type': 'box', 'rect': list(coords[:4])})
+            pos = item.layout_pos
             items.append({
                 'nid': item.nid,
                 'circuit_nid': item.circuit.nid,
@@ -1821,7 +1815,7 @@ class LvsReport(SubgraphRoot):
                 'layout_name': item.layout_name,
                 'schem_name': item.schem_name,
                 'schem_nid': item.schem.nid if item.schem else None,
-                'layout_shapes': shapes,
+                'layout_pos': [int(pos.x), int(pos.y)] if pos else None,
                 'layout_params': dict(item.layout_params) if item.layout_params else None,
                 'schem_params': dict(item.schem_params) if item.schem_params else None,
                 'message': item.message,
@@ -1890,16 +1884,9 @@ class LvsItem(Node):
     item_type = Attr(LvsItemType)
     status = Attr(LvsStatus)
 
-    # Layout side: LayoutInstance for devices only. Layout subgraphs have no
-    # Net/Pin node types, so nets/pins cannot have a layout ExternalRef.
-    # Only resolves when circuit.ref_layout is set (top-level circuit).
-    layout = ExternalRef(LayoutInstance,
-        of_subgraph=lambda c: c.circuit.ref_layout,
-        optional=True)
-    # Layout geometry for highlighting nets/pins (which have no LayoutInstance).
-    # Format: tuple of ('box', (x1, y1, x2, y2)) tuples in database units.
-    layout_shapes = Attr(tuple, optional=True)
-    # Extracted device parameters from layout (e.g., W, L, AS, AD).
+    # Layout device position from LVSDB in database units. GDS SRef records
+    # are unnamed, so the LVSDB only provides a location for extracted devices.
+    layout_pos = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2), optional=True)
     layout_params = Attr(tuple, optional=True)
 
     # Schematic side: Net for pins/nets, SchemInstance for devices.
@@ -1918,10 +1905,6 @@ class LvsItem(Node):
 
     @property
     def layout_name(self):
-        """Derive layout name from ref, or use fallback."""
-        if self.layout:
-            from .directory import Directory
-            return Directory.basename_of_node(self.layout)
         return self.layout_inst_name or ''
 
     @property
