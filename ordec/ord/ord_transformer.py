@@ -59,9 +59,9 @@ class OrdTransformer(PythonTransformer):
             return ast.Constant(value=number)
 
     def viewgen(self, nodes):
-        """ Funcdef for cell (viewgen name -> Type:\n suite)"""
+        """Funcdef for cell (viewgen name -> view_target_expr:\n suite)."""
         func_name = nodes[0]
-        viewgen_type = nodes[1]
+        view_target_expr = nodes[1]
         suite = nodes[2]
 
         ord_root = self.ast_name("__ord_root__")
@@ -69,11 +69,11 @@ class OrdTransformer(PythonTransformer):
 
         viewgen_call = ast.Call(
             func=self.ast_ord_context("create_view_root"),
-            args=[self.ast_name("self"), self.ast_name(viewgen_type)],
+            args=[self.ast_name("self"), view_target_expr],
             keywords=[]
         )
 
-        # __ord_root__ = __ord_context__.create_view_root(self, Type)
+        # __ord_root__ = __ord_context__.create_view_root(self, view_target_expr)
         root_assign = ast.Assign(
             targets=[ord_root_store],
             value=viewgen_call
@@ -110,7 +110,7 @@ class OrdTransformer(PythonTransformer):
             ),
             body=func_body,
             decorator_list=[self.ast_core("generate")],
-            returns=self.ast_name(viewgen_type),
+            returns=None,
             type_params=[]
         )
         return func_def

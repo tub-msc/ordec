@@ -197,6 +197,41 @@ cell LayoutTestCell:
         ! .r.lx == 0
         ! .r.ly == 0
 
+ViewgenAlias = Symbol
+viewgen_target_calls = []
+
+def choose_view_root():
+    viewgen_target_calls.append("called")
+    return Symbol
+
+cell AliasViewgenReturnCell:
+    viewgen symbol -> ViewgenAlias:
+        input alias_pin
+
+cell DynamicViewgenReturnCell:
+    viewgen symbol -> choose_view_root():
+        input dynamic_pin
+
+cell ConditionalViewgenReturnCell:
+    viewgen symbol -> Symbol if True else Schematic:
+        input conditional_pin
+
+def test_viewgen_return_target_alias():
+    view = AliasViewgenReturnCell().symbol
+    assert isinstance(view.alias_pin, Pin)
+
+def test_viewgen_return_target_expression_runtime():
+    assert viewgen_target_calls == []
+    cell = DynamicViewgenReturnCell()
+    assert viewgen_target_calls == []
+    view = cell.symbol
+    assert viewgen_target_calls == ["called"]
+    assert isinstance(view.dynamic_pin, Pin)
+
+def test_viewgen_return_target_conditional_expression():
+    view = ConditionalViewgenReturnCell().symbol
+    assert isinstance(view.conditional_pin, Pin)
+
 def test_minimal_layout():
     c = LayoutTestCell()
     layout = c.layout

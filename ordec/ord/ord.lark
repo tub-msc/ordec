@@ -432,7 +432,7 @@ RATIONAL: DEC_NUMBER SI?
         | FLOAT_NUMBER SI?
 
 celldef: "cell" name ":" suite
-viewgen: "viewgen" name "->" name ":" suite
+viewgen: "viewgen" name "->" test ":" suite
 constrain_stmt: "!" test
 context_body: ":" suite
 node_stmt: atom_expr context_target context_body
