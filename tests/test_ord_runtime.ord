@@ -197,6 +197,15 @@ cell LayoutTestCell:
         ! .r.lx == 0
         ! .r.ly == 0
 
+cell ReportTestCell:
+    viewgen report -> Report:
+        .markdown("hello")
+
+def test_report_viewgen_uses_schema_runtime():
+    view = ReportTestCell().report
+    assert isinstance(view, Report)
+    assert view.webdata()[1]["elements"][0]["markdown"] == "hello"
+
 def test_minimal_layout():
     c = LayoutTestCell()
     layout = c.layout

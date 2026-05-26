@@ -525,14 +525,12 @@ cell VcoTb:
         """Run sync transient simulation."""
         .simulate().tran(R('10p'), R('30n'))
 
-    @generate
-    def report_tran(self) -> Report:
+    viewgen report_tran -> Report:
         sim = self.sim_tran
-        report = Report()
 
-        report.markdown("## VCO transient main waveforms")
+        .markdown("## VCO transient main waveforms")
         for i in range(2):
-            report.plot2d(
+            .plot2d(
                 x=sim.time,
                 series={
                     sim.out_n[i].full_path_str(): sim.out_n[i].voltage,
@@ -543,7 +541,7 @@ cell VcoTb:
                 height=180,
                 plot_group="vco_tran",
             )
-        report.plot2d(
+        .plot2d(
             x=sim.time,
             series={
                 'rst_n': sim.rst_n.voltage,
@@ -556,7 +554,7 @@ cell VcoTb:
         )
         vdd_src_pin = sim.one(SimPin.instance_eref_idx.query(
             (sim.vdd_src, sim.vdd_src.eref.symbol.p)))
-        report.plot2d(
+        .plot2d(
             x=sim.time,
             series={'vdd_src': [-x for x in vdd_src_pin.current]},
             xlabel="Time (s)",
@@ -564,4 +562,3 @@ cell VcoTb:
             height=120,
             plot_group="vco_tran",
         )
-        return report

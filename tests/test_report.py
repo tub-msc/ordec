@@ -3,7 +3,21 @@
 
 import pytest
 
-from ordec.report import Plot2D, Report, Markdown
+from ordec.core.ordb import SubgraphRoot
+from ordec.core.schema import Markdown, Plot2D, Report
+
+
+def test_report_is_ordb_subgraph_root():
+    report = Report([Markdown("hello")])
+
+    assert isinstance(report, SubgraphRoot)
+    assert [element.markdown for element in report.elements] == ["hello"]
+    assert [element.markdown for element in report.all(Markdown)] == ["hello"]
+
+    frozen = report.freeze()
+    assert isinstance(frozen, SubgraphRoot)
+    assert frozen.mutable is False
+    assert frozen.webdata() == report.webdata()
 
 
 def test_plot2d_webdata():
@@ -15,12 +29,14 @@ def test_plot2d_webdata():
         height=180,
         plot_group="tran",
     )
-    data = plot.element_webdata()
-    assert data["element_type"] == "plot2d"
-    assert data["x"] == [1.0, 2.0, 3.0]
-    assert data["series"] == [{"name": "v(out)", "values": [0.1, 0.2, 0.3]}]
-    assert data["height"] == "180px"
-    assert data["plot_group"] == "tran"
+    report = Report([plot])
+    _, data = report.webdata()
+    plot_data = data["elements"][0]
+    assert plot_data["element_type"] == "plot2d"
+    assert plot_data["x"] == [1.0, 2.0, 3.0]
+    assert plot_data["series"] == [{"name": "v(out)", "values": [0.1, 0.2, 0.3]}]
+    assert plot_data["height"] == "180px"
+    assert plot_data["plot_group"] == "tran"
 
 
 def test_plot2d_rejects_mismatched_series_length():
@@ -46,8 +62,9 @@ def test_plot2d_height_none():
         height=None,
     )
     assert plot.height is None
-    data = plot.element_webdata()
-    assert data["height"] is None
+    report = Report([plot])
+    _, data = report.webdata()
+    assert data["elements"][0]["height"] is None
 
 
 def test_report_fill_height():
