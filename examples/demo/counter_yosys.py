@@ -8,7 +8,6 @@ import json
 import os
 from ordec.extlibrary import ExtLibrary
 from ordec.core import *
-from ordec.report import *
 
 class Yosys(TclTool):
     def cmdline(self):

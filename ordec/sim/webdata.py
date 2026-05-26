@@ -15,7 +15,7 @@ import re
 
 from public import public
 from ..core import *
-from ..report import Report, Plot2D, Markdown
+from ..core.schema import Report, Plot2D, Markdown
 
 
 def get_voltages(sh: SimHierarchy, top_level_only=False):

@@ -352,7 +352,7 @@ class ConnectionHandler:
                 view = eval(view_name, conn_globals, conn_globals)
                 if isinstance(view, str):
                     # Mainly for __ord_py_source__:
-                    from .report import PreformattedText, Report
+                    from .core.schema import PreformattedText, Report
                     view = Report([PreformattedText(view)])
                 viewtype, data = view.webdata()
             msg_ret['type'] = viewtype

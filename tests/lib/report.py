@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import math
-from ordec.report import *
+from ordec.core.schema import Markdown, Plot2D, PreformattedText, Report, Svg
 from ordec.core import R, generate_func
 from .sim import ResdivHier2
 

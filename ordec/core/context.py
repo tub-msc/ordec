@@ -121,3 +121,7 @@ class SimulationViewContext(ViewContext):
     @classmethod
     def create_root(cls, cell, root_cls):
         return root_cls.from_schematic(cell.schematic)
+
+
+class ReportViewContext(ViewContext):
+    pass

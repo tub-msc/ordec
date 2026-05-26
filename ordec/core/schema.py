@@ -4,7 +4,7 @@
 from enum import Enum
 import math
 from functools import partial
-from typing import NamedTuple, Optional
+from typing import Iterable, NamedTuple, Optional
 import re
 from public import public
 
@@ -13,7 +13,10 @@ from .geoprim import *
 from .ordb import *
 from .cell import Cell
 from .constraints import *
-from .context import ViewContext, SymbolViewContext, SchematicViewContext, LayoutViewContext, SimulationViewContext
+from .context import (
+    SymbolViewContext, SchematicViewContext, LayoutViewContext,
+    SimulationViewContext, ReportViewContext,
+)
 from .simarray import SimArray
 
 # Enums
@@ -1123,6 +1126,299 @@ class SimInstance(Node):
         return '.'.join(str(x) for x in self.full_path_list())
 
 public(Simulation = SimHierarchy)
+
+# Report
+# ------
+
+@public
+class Report(SubgraphRoot):
+    """
+    Represents a list of vertically stacked report elements.
+
+    Report elements are stored as ORDB nodes. The helper methods preserve the
+    append-style API for building reports programmatically.
+    """
+    view_context = ReportViewContext
+
+    fill_height = Attr(bool, default=False, optional=False)
+
+    def __new__(
+        cls,
+        elements: Iterable["ReportElement"] = (),
+        fill_height: bool=False,
+    ):
+        report = super().__new__(cls, fill_height=fill_height)
+        report.extend(elements)
+        return report
+
+    @staticmethod
+    def _element_tuple(element):
+        if isinstance(element, NodeTuple):
+            ntype = element._cursor_type
+            if issubclass(ntype, ReportElement) and ntype is not ReportElement:
+                return element
+        elif isinstance(element, ReportElement):
+            ntype = type(element)
+            if ntype is not ReportElement:
+                return element.tuple
+        raise TypeError("All report elements must be ReportElement instances")
+
+    @property
+    def elements(self) -> tuple["ReportElement", ...]:
+        elements = []
+        i = 0
+        while True:
+            try:
+                element = self[i]
+            except QueryException:
+                break
+            if not isinstance(element, ReportElement):
+                break
+            elements.append(element)
+            i += 1
+        return tuple(elements)
+
+    def _next_element_index(self) -> int:
+        elements = self.elements
+        if not elements:
+            return 0
+        return max(element.npath.name for element in elements) + 1
+
+    def add(self, element: "ReportElement") -> "Report":
+        self[self._next_element_index()] = self._element_tuple(element)
+        return self
+
+    def markdown(self, markdown: str) -> "Report":
+        return self.add(Markdown(markdown))
+
+    def preformatted(self, text: str) -> "Report":
+        return self.add(PreformattedText(text))
+
+    def html(self, html: str) -> "Report":
+        return self.add(Html(html))
+
+    def svg(self, view) -> "Report":
+        return self.add(Svg.from_view(view))
+
+    def plot2d(self, *args, **kwargs) -> "Report":
+        return self.add(Plot2D(*args, **kwargs))
+
+    def extend(self, elements: Iterable["ReportElement"]) -> "Report":
+        for element in elements:
+            self.add(element)
+        return self
+
+    def webdata(self):
+        return "report", {
+            "elements": [element.element_webdata() for element in self.elements],
+            "fill_height": self.fill_height,
+        }
+
+
+@public
+class ReportElement(Node):
+    """Base class for all report element nodes."""
+    in_subgraphs = [Report]
+
+    def element_webdata(self) -> dict:
+        """Returns JSON-serializable web representation."""
+        raise NotImplementedError
+
+
+@public
+class Markdown(ReportElement):
+    """Markdown text rendered as HTML in the web interface."""
+    markdown = Attr(str, optional=False)
+
+    def __new__(cls, markdown: str):
+        return super().__new__(cls, markdown=markdown)
+
+    def element_webdata(self) -> dict:
+        import markdown2
+        return {
+            "element_type": "markdown",
+            "markdown": self.markdown,
+            "html": markdown2.markdown(
+                self.markdown,
+                extras=["fenced-code-blocks", "code-friendly", "tables"],
+                safe_mode="escape",
+            ),
+        }
+
+
+@public
+class PreformattedText(ReportElement):
+    """Preformatted text rendered using a monospace font."""
+    text = Attr(str, optional=False)
+
+    def __new__(cls, text: str):
+        return super().__new__(cls, text=text)
+
+    def element_webdata(self) -> dict:
+        return {"element_type": "preformatted_text", "text": self.text}
+
+
+@public
+class Html(ReportElement):
+    """Raw HTML content rendered directly in the web interface."""
+    html = Attr(str, optional=False)
+
+    def __new__(cls, html: str):
+        return super().__new__(cls, html=html)
+
+    def element_webdata(self) -> dict:
+        return {"element_type": "html", "html": self.html}
+
+
+@public
+class Svg(ReportElement):
+    """Static SVG element rendered without zoom."""
+    inner = Attr(str, optional=False)
+    viewbox = Attr(tuple, optional=False)
+    width = Attr(str)
+    height = Attr(str)
+
+    def __new__(cls, inner: str, viewbox, width: str | None, height: str | None):
+        return super().__new__(
+            cls,
+            inner=inner,
+            viewbox=cls._normalize_viewbox(viewbox),
+            width=width,
+            height=height,
+        )
+
+    @staticmethod
+    def _normalize_viewbox(viewbox) -> tuple[float, float, float, float]:
+        values = tuple(float(v) for v in viewbox)
+        if len(values) != 4:
+            raise ValueError("viewbox must contain exactly four numbers")
+        return values
+
+    @classmethod
+    def from_view(cls, view) -> "Svg":
+        """Creates an SVG report element from an object exposing webdata()."""
+        view_type, data = view.webdata()
+        if view_type != "svg":
+            raise ValueError(f"Expected svg webdata, got {view_type!r}")
+        return cls(
+            inner=data["inner"],
+            viewbox=data["viewbox"],
+            width=data["width"],
+            height=data["height"],
+        )
+
+    def element_webdata(self) -> dict:
+        return {
+            "element_type": "svg",
+            "inner": self.inner,
+            "viewbox": list(self.viewbox),
+            "width": self.width,
+            "height": self.height,
+        }
+
+
+@public
+class Plot2D(ReportElement):
+    """2D plot element rendered with the frontend simulation plot component."""
+    x = Attr(tuple, optional=False)
+    series = Attr(tuple, optional=False)
+    xlabel = Attr(str, default="", optional=False)
+    ylabel = Attr(str, default="", optional=False)
+    xscale = Attr(str, default="linear", optional=False)
+    yscale = Attr(str, default="linear", optional=False)
+    height = Attr(str)
+    plot_group = Attr(str)
+
+    def __new__(
+        cls,
+        x: Iterable[float],
+        series,
+        *,
+        xlabel: str = "",
+        ylabel: str = "",
+        xscale: str = "linear",
+        yscale: str = "linear",
+        height: int | float | str | None = 260,
+        plot_group: str | None = None,
+    ):
+        x = tuple(float(v) for v in x)
+        cls._validate_x(x)
+        return super().__new__(
+            cls,
+            x=x,
+            series=cls._normalize_series(series, len(x)),
+            xlabel=xlabel,
+            ylabel=ylabel,
+            xscale=cls._validate_scale(xscale, "xscale"),
+            yscale=cls._validate_scale(yscale, "yscale"),
+            height=cls._normalize_height(height),
+            plot_group=plot_group,
+        )
+
+    @staticmethod
+    def _validate_x(x: tuple[float, ...]):
+        if len(x) < 2:
+            raise ValueError("x must contain at least two values")
+        for i in range(1, len(x)):
+            if x[i] < x[i - 1]:
+                raise ValueError("x values must be sorted in ascending order")
+
+    @staticmethod
+    def _normalize_series(series, expected_len: int) -> tuple:
+        if isinstance(series, dict):
+            pairs = list(series.items())
+        else:
+            pairs = list(series)
+
+        normalized = []
+        for name, values in pairs:
+            vals = tuple(float(v) for v in values)
+            if len(vals) != expected_len:
+                raise ValueError(
+                    f"Series {name!r} has length {len(vals)}, expected "
+                    f"{expected_len}"
+                )
+            normalized.append((str(name), vals))
+
+        if not normalized:
+            raise ValueError("Plot2D requires at least one series")
+        return tuple(normalized)
+
+    @staticmethod
+    def _validate_scale(scale: str, name: str) -> str:
+        if scale not in ("linear", "log"):
+            raise ValueError(f"{name} must be 'linear' or 'log'")
+        return scale
+
+    @staticmethod
+    def _normalize_height(height: int | float | str | None) -> str | None:
+        if height is None:
+            return None
+        if isinstance(height, str):
+            if not height.strip():
+                raise ValueError("height string must not be empty")
+            return height
+        if not isinstance(height, (int, float)):
+            raise TypeError("height must be int, float, string or None")
+        if height <= 0:
+            raise ValueError("height must be greater than zero")
+        return f"{height:g}px"
+
+    def element_webdata(self) -> dict:
+        return {
+            "element_type": "plot2d",
+            "x": list(self.x),
+            "series": [
+                {"name": name, "values": list(values)}
+                for name, values in self.series
+            ],
+            "xlabel": self.xlabel,
+            "ylabel": self.ylabel,
+            "xscale": self.xscale,
+            "yscale": self.yscale,
+            "height": self.height,
+            "plot_group": self.plot_group,
+        }
 
 # LayerStack
 # ----------
