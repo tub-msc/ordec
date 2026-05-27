@@ -204,8 +204,11 @@ def test_viewgen_return_target_expression_runtime():
         viewgen symbol -> choose_view_root():
             input dynamic_pin
 
+    # choose_view_root() should be called at time of class (cell) creation,
+    # so viewgen_target_calls should be populated now:
+    assert viewgen_target_calls == ["called"]
     cell = DynamicViewgenReturnCell()
-    assert viewgen_target_calls == []
+    assert viewgen_target_calls == ["called"]
     view = cell.symbol
     assert viewgen_target_calls == ["called"]
     assert isinstance(view.dynamic_pin, Pin)
