@@ -347,6 +347,76 @@ function openOrActivateView(data) {
 viewEventBus.on('layout:request-open', openOrActivateView);
 viewEventBus.on('schematic:request-open', openOrActivateView);
 
+viewEventBus.on('lvs:request-open-views', (data) => {
+    const { layoutView, schemView, sourceContainer } = data;
+
+    const columnContent = [];
+
+    if (layoutView) {
+        const existing = findResultViewerByView(layoutView);
+        if (existing) {
+            existing.focus();
+        } else {
+            columnContent.push({
+                type: 'component',
+                componentName: 'result',
+                componentState: { view: layoutView, directView: true },
+                title: layoutView,
+            });
+        }
+    }
+
+    if (schemView) {
+        const existing = findResultViewerByView(schemView);
+        if (existing) {
+            existing.focus();
+        } else {
+            columnContent.push({
+                type: 'component',
+                componentName: 'result',
+                componentState: { view: schemView, directView: true },
+                title: schemView,
+            });
+        }
+    }
+
+    if (columnContent.length === 0) {
+        return;
+    }
+
+    const sourceComponentItem = sourceContainer?.parent;
+    const sourceStack = sourceComponentItem?.parent;
+
+    if (!sourceStack?.isStack) {
+        columnContent.forEach(config => {
+            layout.addComponent('result', config.componentState, config.title);
+        });
+        return;
+    }
+
+    const stackParent = sourceStack.parent;
+    const itemToAdd = columnContent.length === 1
+        ? columnContent[0]
+        : { type: 'column', content: columnContent };
+
+    if (stackParent.isRow) {
+        const index = stackParent.contentItems.indexOf(sourceStack) + 1;
+        stackParent.addItem(itemToAdd, index);
+    } else {
+        const stackIndex = stackParent.contentItems.indexOf(sourceStack);
+        stackParent.removeChild(sourceStack, true);
+
+        const rowConfig = {
+            type: 'row',
+            content: [itemToAdd]
+        };
+        stackParent.addItem(rowConfig, stackIndex);
+
+        const newRow = stackParent.contentItems[stackIndex];
+        newRow.addChild(sourceStack, 0);
+    }
+});
+
 document.querySelector("#examples").onclick = () => {
     if (window.onbeforeunload) {
         window.open('/index.html', '_blank');

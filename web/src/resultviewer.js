@@ -187,6 +187,9 @@ const reportElementClassOf = {
 };
 
 const viewClassOf = {
+    // SVG viewer for schematics and symbols.
+    // Listens to lvs:schem-select and lvs:clear for LVS highlighting.
+    // Also consumes pending 'lvs:select' on init if schematic opened after LVS item selected.
     svg: class {
         constructor(resContent) {
             this.resContent = resContent;
@@ -213,33 +216,119 @@ const viewClassOf = {
         }
         setHighlight(data) {
             this.clearHighlight();
-            if (!this.svg || !data.schem_path || data.schem_path.length === 0) {
+            if (!this.svg) {
                 return;
             }
 
-            const highlightGroup = this.svg.append("g")
-                .attr("class", "lvs-highlight-group")
-                .attr("transform", this.transform);
-
-            const instName = data.schem_path.join('.');
-            const instGroup = this.g.select(`[data-inst="${instName}"]`);
-
-            if (instGroup.empty()) {
+            // Find the inner transformed group (with Y-flip) to append highlight in same coordinate space
+            const innerGroup = this.g.select('g[transform]');
+            if (innerGroup.empty()) {
                 return;
             }
 
-            const bbox = instGroup.node().getBBox();
-            const pad = 0.3;
-            highlightGroup.append("rect")
-                .attr("class", "lvs-highlight-border")
-                .attr("x", bbox.x - pad)
-                .attr("y", bbox.y - pad)
-                .attr("width", bbox.width + pad * 2)
-                .attr("height", bbox.height + pad * 2)
-                .attr("fill", "none")
-                .attr("stroke", "#e55")
-                .attr("stroke-width", 0.15)
-                .attr("stroke-dasharray", "0.3,0.15");
+            const highlightGroup = innerGroup.append("g")
+                .attr("class", "lvs-highlight-group");
+
+            const itemType = data.item_type;
+            const schemNid = data.schem_nid;
+
+            if (schemNid === undefined || schemNid === null) {
+                highlightGroup.remove();
+                return;
+            }
+
+            // Select all elements with matching data-nid
+            const elements = this.g.selectAll(`[data-nid="${schemNid}"]`);
+            if (elements.empty()) {
+                highlightGroup.remove();
+                return;
+            }
+
+            if (itemType === 'device' || itemType === 'subcircuit') {
+                // Instance highlighting: draw bounding rect around the instance group
+                const instGroup = elements.filter('g');
+                if (instGroup.empty()) {
+                    highlightGroup.remove();
+                    return;
+                }
+                const bbox = instGroup.node().getBBox();
+                const pad = 0.3;
+                highlightGroup.append("rect")
+                    .attr("class", "lvs-highlight-border")
+                    .attr("x", bbox.x - pad)
+                    .attr("y", bbox.y - pad)
+                    .attr("width", bbox.width + pad * 2)
+                    .attr("height", bbox.height + pad * 2)
+                    .attr("rx", 0.5)
+                    .attr("ry", 0.5)
+                    .attr("fill", "rgba(255, 0, 0, 0.25)")
+                    .attr("stroke", "none");
+            } else if (itemType === 'net') {
+                // Net highlighting: highlight wires and tap points only (not ports)
+                elements.each(function() {
+                    const el = d3.select(this);
+                    const tagName = this.tagName.toLowerCase();
+                    if (tagName === 'path') {
+                        // Wire/tappoint: draw thicker translucent stroke along the path
+                        const pathD = el.attr('d');
+                        const transform = el.attr('transform');
+                        const pathEl = highlightGroup.append("path")
+                            .attr("d", pathD)
+                            .attr("fill", "none")
+                            .attr("stroke", "rgba(255, 0, 0, 0.4)")
+                            .attr("stroke-width", 0.4)
+                            .attr("stroke-linecap", "round");
+                        if (transform) {
+                            pathEl.attr("transform", transform);
+                        }
+                    } else if (tagName === 'circle') {
+                        // Connection point: draw larger translucent circle
+                        highlightGroup.append("circle")
+                            .attr("cx", el.attr('cx'))
+                            .attr("cy", el.attr('cy'))
+                            .attr("r", 0.5)
+                            .attr("fill", "rgba(255, 0, 0, 0.25)")
+                            .attr("stroke", "none");
+                    }
+                    // Skip 'g' elements (ports) - only highlight wires and connection points
+                });
+            } else if (itemType === 'pin') {
+                // Pin highlighting: highlight only the port (not the connected wires)
+                const portGroup = elements.filter('g');
+                if (portGroup.empty()) {
+                    highlightGroup.remove();
+                    return;
+                }
+                // Find the portArrow path and extract position from its transform
+                const portArrow = portGroup.select('path.portArrow');
+                let cx, cy;
+                if (!portArrow.empty()) {
+                    const transform = portArrow.attr('transform');
+                    // Parse matrix(a,b,c,d,e,f) where e,f are the translation
+                    const match = transform && transform.match(/matrix\(([^)]+)\)/);
+                    if (match) {
+                        const vals = match[1].split(/[\s,]+/).map(parseFloat);
+                        cx = vals[4];
+                        cy = vals[5];
+                    }
+                }
+                if (cx === undefined) {
+                    // Fallback to bbox center
+                    const bbox = portGroup.node().getBBox();
+                    cx = bbox.x + bbox.width / 2;
+                    cy = bbox.y + bbox.height / 2;
+                }
+                highlightGroup.append("circle")
+                    .attr("cx", cx)
+                    .attr("cy", cy)
+                    .attr("r", 0.5)
+                    .attr("fill", "rgba(255, 0, 0, 0.25)")
+                    .attr("stroke", "none");
+            } else {
+                // Unknown item type, remove empty group
+                highlightGroup.remove();
+                return;
+            }
 
             this.highlightOverlay = highlightGroup;
         }
@@ -525,6 +614,19 @@ const viewClassOf = {
             viewEventBus.emit('drc:clear');
         }
     },
+    // LVS Report viewer.
+    //
+    // Event bus protocol:
+    //   lvs:layout-select {pos} - sent when item with layout_pos selected
+    //   lvs:schem-select {schem_nid, item_type} - sent when item with schem_nid selected
+    //   lvs:clear - sent on deselect or destroy
+    //   lvs:request-open-views {layoutView, schemView} - requests new viewer panels
+    //
+    // Pending mechanism: setPending('lvs:select', payload) stores selection for
+    // viewers opened later. Layout/schematic viewers call getPending on init.
+    //
+    // View naming: layoutView/schemView use "<viewName>.ref_layout" and
+    // "<viewName>.ref_schematic" format, matching LvsReport SubgraphRef attributes.
     lvs_report: class {
         constructor(resContent) {
             this.resContent = resContent;
@@ -611,11 +713,12 @@ const viewClassOf = {
                         const layoutName = item.layout_name || '?';
                         const schemName = item.schem_name || '?';
                         const layoutParams = this._formatParams(item.layout_params);
+                        const schemParams = this._formatParams(item.schem_params);
 
                         html += `<div class="lvs-item-row ${statusClass}" data-nid="${item.nid}">
                             <span>${typeIcons[itemType]} ${layoutName} &#8596; ${schemName}</span>
                             <span>${layoutName}${layoutParams}</span>
-                            <span>${schemName}</span>
+                            <span>${schemName}${schemParams}</span>
                         </div>`;
                         if (item.message) {
                             html += `<div class="lvs-item-msg">${item.message}</div>`;
@@ -751,37 +854,46 @@ const viewClassOf = {
 
                     if (item) {
                         const payload = {
-                            shapes: item.layout_shapes || [],
-                            schem_path: item.schem_path || [],
+                            pos: item.layout_pos,
+                            schem_nid: item.schem_nid,
+                            item_type: item.item_type,
+                            schem_name: item.schem_name || '',
                         };
-                        const hasLayoutShapes = item.layout_shapes && item.layout_shapes.length > 0;
-                        const hasSchemPath = item.schem_path && item.schem_path.length > 0;
+                        const hasLayoutPos = item.layout_pos !== null && item.layout_pos !== undefined;
+                        const hasSchemNid = item.schem_nid !== undefined && item.schem_nid !== null;
 
                         // Set pending for viewers that will be opened
                         viewEventBus.setPending('lvs:select', payload);
 
+                        const hasLayoutListener = viewEventBus.hasListeners('lvs:layout-select');
+                        const hasSchemListener = viewEventBus.hasListeners('lvs:schem-select');
+
                         // Handle layout viewer
-                        if (hasLayoutShapes) {
-                            if (viewEventBus.hasListeners('lvs:layout-select')) {
+                        if (hasLayoutPos) {
+                            if (hasLayoutListener) {
                                 viewEventBus.emit('lvs:layout-select', payload);
-                            } else {
-                                viewEventBus.emit('layout:request-open', {
-                                    view: this.viewName ? `${this.viewName}.ref_layout` : null,
-                                    sourceContainer: this.glContainer,
-                                });
                             }
+                        } else if (hasLayoutListener) {
+                            viewEventBus.emit('lvs:layout-select', { pos: null });
                         }
 
                         // Handle schematic viewer
-                        if (hasSchemPath) {
-                            if (viewEventBus.hasListeners('lvs:schem-select')) {
+                        if (hasSchemNid) {
+                            if (hasSchemListener) {
                                 viewEventBus.emit('lvs:schem-select', payload);
-                            } else {
-                                viewEventBus.emit('schematic:request-open', {
-                                    view: this.viewName ? `${this.viewName}.ref_schematic` : null,
-                                    sourceContainer: this.glContainer,
-                                });
                             }
+                        }
+
+                        // Open new views if needed
+                        const needLayoutOpen = hasLayoutPos && !hasLayoutListener;
+                        const needSchemOpen = hasSchemNid && !hasSchemListener;
+
+                        if (needLayoutOpen || needSchemOpen) {
+                            viewEventBus.emit('lvs:request-open-views', {
+                                layoutView: needLayoutOpen ? (this.viewName ? `${this.viewName}.ref_layout` : null) : null,
+                                schemView: needSchemOpen ? (this.viewName ? `${this.viewName}.ref_schematic` : null) : null,
+                                sourceContainer: this.glContainer,
+                            });
                         }
                     }
                 });

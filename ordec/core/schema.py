@@ -1724,7 +1724,6 @@ GenericPolyI.vertex_cls = PolyVec2I
 @public
 class DrcReport(SubgraphRoot):
     """DRC report containing design rule check results."""
-    __slots__ = ()
 
     ref_layout = SubgraphRef(Layout)
     top_cell_name = Attr(str)
@@ -1742,75 +1741,13 @@ class DrcReport(SubgraphRoot):
         return counts
 
     def webdata(self):
-        items_dict = {}
-        categories_with_items = set()
-        for item in self.all(DrcItem):
-            items_dict[item.nid] = {
-                'nid': item.nid,
-                'category_nid': item.category.nid,
-                'shapes': [],
-            }
-            categories_with_items.add(item.category.nid)
-
-        categories = []
-        for cat in self.all(DrcCategory):
-            if cat.nid in categories_with_items:
-                categories.append({
-                    'nid': cat.nid,
-                    'name': cat.name,
-                    'description': cat.description,
-                    'parent_nid': cat.parent.nid if cat.parent else None,
-                })
-
-        for box in self.all(DrcBox):
-            items_dict[box.item.nid]['shapes'].append({
-                'type': 'box',
-                'rect': [box.rect.lx, box.rect.ly, box.rect.ux, box.rect.uy]
-            })
-
-        for edge in self.all(DrcEdge):
-            items_dict[edge.item.nid]['shapes'].append({
-                'type': 'edge',
-                'p1': [edge.p1.x, edge.p1.y],
-                'p2': [edge.p2.x, edge.p2.y]
-            })
-
-        for ep in self.all(DrcEdgePair):
-            items_dict[ep.item.nid]['shapes'].append({
-                'type': 'edge_pair',
-                'e1': [[ep.edge1_p1.x, ep.edge1_p1.y], [ep.edge1_p2.x, ep.edge1_p2.y]],
-                'e2': [[ep.edge2_p1.x, ep.edge2_p1.y], [ep.edge2_p2.x, ep.edge2_p2.y]],
-            })
-
-        for poly in self.all(DrcPoly):
-            verts = [[v.x, v.y] for v in poly.vertices()]
-            items_dict[poly.item.nid]['shapes'].append({
-                'type': 'poly', 'vertices': verts
-            })
-
-        for path in self.all(DrcPath):
-            verts = [[v.x, v.y] for v in path.vertices()]
-            items_dict[path.item.nid]['shapes'].append({
-                'type': 'path', 'vertices': verts, 'width': path.width
-            })
-
-        for text in self.all(DrcText):
-            items_dict[text.item.nid]['shapes'].append({
-                'type': 'text', 'pos': [text.pos.x, text.pos.y], 'text': text.text
-            })
-
-        return 'drc_report', {
-            'top_cell': self.top_cell_name,
-            'categories': categories,
-            'items': list(items_dict.values()),
-            'unit': float(self.ref_layout.ref_layers.unit),
-        }
+        from ..layout.drc import webdata
+        return webdata(self)
 
 
 @public
 class DrcCategory(Node):
     """Category of DRC violations (e.g., 'Minimum spacing', 'Minimum width')."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     name = Attr(str)
@@ -1824,7 +1761,6 @@ class DrcCategory(Node):
 @public
 class DrcItem(Node):
     """Individual DRC violation item within a category."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     category = LocalRef(DrcCategory, optional=False)
@@ -1838,7 +1774,6 @@ class DrcItem(Node):
 @public
 class DrcBox(Node):
     """Box geometry in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     item = LocalRef(DrcItem, optional=False)
@@ -1852,7 +1787,6 @@ class DrcBox(Node):
 @public
 class DrcEdge(Node):
     """Edge geometry in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     item = LocalRef(DrcItem, optional=False)
@@ -1867,7 +1801,6 @@ class DrcEdge(Node):
 @public
 class DrcEdgePair(Node):
     """Edge pair geometry in a DRC item (e.g., for spacing violations)."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     item = LocalRef(DrcItem, optional=False)
@@ -1883,7 +1816,6 @@ class DrcEdgePair(Node):
 
 class DrcPolyBase(GenericPolyI):
     """Base class for DRC polygon nodes."""
-    __slots__ = ()
 
     tag = Attr(str, default='')
 
@@ -1891,7 +1823,6 @@ class DrcPolyBase(GenericPolyI):
 @public
 class DrcPoly(DrcPolyBase):
     """Polygon geometry in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
     vertex_cls = PolyVec2I
 
@@ -1903,7 +1834,6 @@ class DrcPoly(DrcPolyBase):
 
 class DrcPathBase(GenericPolyI):
     """Base class for DRC path nodes."""
-    __slots__ = ()
 
     tag = Attr(str, default='')
     width = Attr(int)
@@ -1913,7 +1843,6 @@ class DrcPathBase(GenericPolyI):
 @public
 class DrcPath(DrcPathBase):
     """Path geometry in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
     vertex_cls = PolyVec2I
 
@@ -1926,7 +1855,6 @@ class DrcPath(DrcPathBase):
 @public
 class DrcText(Node):
     """Text geometry in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     item = LocalRef(DrcItem, optional=False)
@@ -1941,7 +1869,6 @@ class DrcText(Node):
 @public
 class DrcValue(Node):
     """Arbitrary string value in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     item = LocalRef(DrcItem, optional=False)
@@ -1984,10 +1911,9 @@ class LvsItemType(Enum):
 @public
 class LvsReport(SubgraphRoot):
     """LVS report containing layout vs. schematic comparison results."""
-    __slots__ = ()
 
-    ref_layout = SubgraphRef(Layout)
-    ref_schematic = SubgraphRef(Schematic)
+    ref_layout = SubgraphRef(Layout, optional=True)
+    ref_schematic = SubgraphRef(Schematic, optional=True)
     top_cell = Attr(str)
     status = Attr(LvsStatus)
 
@@ -1996,97 +1922,54 @@ class LvsReport(SubgraphRoot):
         return sum(1 for item in self.all(LvsItem)
                    if item.status != LvsStatus.Match)
 
-    def summary(self) -> dict[str, dict[str, int]]:
-        """Circuit name -> {item_type: count} for mismatches."""
-        counts = {}
-        for item in self.all(LvsItem):
-            if item.status == LvsStatus.Match:
-                continue
-            circuit_name = item.circuit.layout_name or item.circuit.schem_name
-            if circuit_name not in counts:
-                counts[circuit_name] = {}
-            itype = item.item_type.value
-            counts[circuit_name][itype] = counts[circuit_name].get(itype, 0) + 1
-        return counts
-
     def webdata(self):
-        circuits = []
-        for circuit in self.all(LvsCircuit):
-            circuits.append({
-                'nid': circuit.nid,
-                'layout_name': circuit.layout_name,
-                'schem_name': circuit.schem_name,
-                'status': circuit.status.value,
-                'message': circuit.message,
-            })
-
-        items = []
-        for item in self.all(LvsItem):
-            shapes = []
-            if item.layout_shapes:
-                for shape in item.layout_shapes:
-                    if isinstance(shape, tuple) and len(shape) >= 2:
-                        shape_type, coords = shape[0], shape[1]
-                        if shape_type == 'box' and len(coords) >= 4:
-                            shapes.append({'type': 'box', 'rect': list(coords[:4])})
-            items.append({
-                'nid': item.nid,
-                'circuit_nid': item.circuit.nid,
-                'item_type': item.item_type.value,
-                'status': item.status.value,
-                'layout_name': item.layout_name,
-                'schem_name': item.schem_name,
-                'layout_shapes': shapes,
-                'layout_params': dict(item.layout_params) if item.layout_params else None,
-                'schem_path': list(item.schem_path) if item.schem_path else [],
-                'message': item.message,
-            })
-
-        return 'lvs_report', {
-            'top_cell': self.top_cell,
-            'status': self.status.value,
-            'circuits': circuits,
-            'items': items,
-            'unit': float(self.ref_layout.ref_layers.unit) if self.ref_layout else 1.0,
-        }
+        from ..layout.lvs import webdata
+        return webdata(self)
 
 
 @public
-class LvsCircuit(Node):
-    """A circuit (cell) in the LVS comparison."""
-    __slots__ = ()
+class LvsCircuitPair(Node):
+    """Comparison record for a layout cell vs schematic cell pair."""
     in_subgraphs = [LvsReport]
 
-    layout_name = Attr(str, default='')
-    schem_name = Attr(str, default='')
-    status = Attr(LvsStatus)
-    message = Attr(str, default='')
+    #: Direct ref to the Layout being compared. Only set for top-level circuit
+    #: (where LVSDB cell name matches top_cell); None for subcircuits.
+    ref_layout = SubgraphRef(Layout, optional=True)
+    #: Direct ref to the Schematic being compared. Only set for top-level.
+    ref_schematic = SubgraphRef(Schematic, optional=True)
 
-    layout_name_idx = Index(layout_name)
-    schem_name_idx = Index(schem_name)
+    status = Attr(LvsStatus)
+    message = Attr(str, optional=True)
+
+    layout_cell = Attr(str, optional=True)
+    schem_cell = Attr(str, optional=True)
 
 
 @public
 class LvsItem(Node):
     """Individual LVS comparison item (net, device, pin, or subcircuit)."""
-    __slots__ = ()
     in_subgraphs = [LvsReport]
 
-    circuit = LocalRef(LvsCircuit, optional=False)
+    circuit = LocalRef(LvsCircuitPair, optional=False)
     circuit_idx = Index(circuit)
 
     item_type = Attr(LvsItemType)
     status = Attr(LvsStatus)
 
-    layout_name = Attr(str, default='')
-    schem_name = Attr(str, default='')
-
-    # Layout side: geometry for highlighting (list of shape dicts)
-    layout_shapes = Attr(tuple, optional=True)
-    # Layout side: extracted device parameters (W, L, etc.)
+    # Layout device position from LVSDB in database units. GDS SRef records
+    # are unnamed, so the LVSDB only provides a location for extracted devices.
+    layout_pos = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2), optional=True)
     layout_params = Attr(tuple, optional=True)
 
-    # Schematic side: hierarchical path for highlighting
-    schem_path = Attr(tuple, optional=True)
+    # Schematic side: Net for pins/nets, SchemInstance for devices.
+    # Only resolves when circuit.ref_schematic is set (top-level circuit).
+    schem = ExternalRef(Net|SchemInstance,
+        of_subgraph=lambda c: c.circuit.ref_schematic,
+        optional=True)
+    # Schematic side: reference device parameters (W, L, etc.)
+    schem_params = Attr(tuple, optional=True)
 
-    message = Attr(str, default='')
+    message = Attr(str, optional=True)
+
+    layout_name = Attr(str, optional=True)
+    schem_name = Attr(str, optional=True)
