@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import math
-from ordec.core.schema import Markdown, Plot2D, PreformattedText, Report, Svg
+from ordec.core.schema import Report
 from ordec.core import R, generate_func
 from .sim import ResdivHier2
 
@@ -19,49 +19,49 @@ def report_example() -> Report:
     ac_freq = [10 ** (2 + i * (6 / 79)) for i in range(80)]
     ac_mag = [-20 * math.log10(1 + (f / 2e5)) for f in ac_freq]
     ac_phase = [-math.degrees(math.atan(f / 2e5)) for f in ac_freq]
-    return Report([
-        Markdown(
-            "# Report Example\n"
-            "Rendered in Python with **bold** text and `inline code`."
-        ),
-        PreformattedText("alpha\nbeta\ngamma"),
-        Plot2D(
-            x=time,
-            series={
-                "v(in)": vin,
-                "v(out)": vout,
-            },
-            xlabel="Time (s)",
-            ylabel="Voltage (V)",
-            height=220,
-            plot_group="tran_demo",
-        ),
-        Plot2D(
-            x=time,
-            series={"v(err)": verr},
-            xlabel="Time (s)",
-            ylabel="Voltage (V)",
-            height=100,
-            plot_group="tran_demo",
-        ),
-        Plot2D(
-            x=ac_freq,
-            series={"|v(out)| (dB)": ac_mag},
-            xlabel="Frequency (Hz)",
-            ylabel="Magnitude (dB)",
-            xscale="log",
-            height=220,
-            plot_group="ac_demo",
-        ),
-        Plot2D(
-            x=ac_freq,
-            series={"phase(v(out))": ac_phase},
-            xlabel="Frequency (Hz)",
-            ylabel="Phase (deg)",
-            xscale="log",
-            height=120,
-            plot_group="ac_demo",
-        ),
-        Svg.from_view(resdiv.symbol),
-        Svg.from_view(resdiv.schematic),
-        ])
+    report = Report()
+    report.markdown(
+        "# Report Example\n"
+        "Rendered in Python with **bold** text and `inline code`."
+    )
+    report.preformatted("alpha\nbeta\ngamma")
+    report.plot2d(
+        x=time,
+        series={
+            "v(in)": vin,
+            "v(out)": vout,
+        },
+        xlabel="Time (s)",
+        ylabel="Voltage (V)",
+        height=220,
+        plot_group="tran_demo",
+    )
+    report.plot2d(
+        x=time,
+        series={"v(err)": verr},
+        xlabel="Time (s)",
+        ylabel="Voltage (V)",
+        height=100,
+        plot_group="tran_demo",
+    )
+    report.plot2d(
+        x=ac_freq,
+        series={"|v(out)| (dB)": ac_mag},
+        xlabel="Frequency (Hz)",
+        ylabel="Magnitude (dB)",
+        xscale="log",
+        height=220,
+        plot_group="ac_demo",
+    )
+    report.plot2d(
+        x=ac_freq,
+        series={"phase(v(out))": ac_phase},
+        xlabel="Frequency (Hz)",
+        ylabel="Phase (deg)",
+        xscale="log",
+        height=120,
+        plot_group="ac_demo",
+    )
+    report.svg(resdiv.symbol)
+    report.svg(resdiv.schematic)
+    return report

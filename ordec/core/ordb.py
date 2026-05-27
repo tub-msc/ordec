@@ -1141,8 +1141,10 @@ class SubgraphRoot(NonLeafNode):
         return self.copy()
 
     def webdata(self):
-        from .schema import Report, Html
-        return Report([Html(self.tables(html=True))]).webdata()
+        from .schema import Report
+        report = Report()
+        report.html(self.tables(html=True))
+        return report.webdata()
 
 class SubgraphQueryMixin:
     __slots__ = ()

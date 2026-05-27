@@ -8,7 +8,8 @@ from ordec.core.schema import Markdown, Plot2D, Report
 
 
 def test_report_is_ordb_subgraph_root():
-    report = Report([Markdown("hello")])
+    report = Report()
+    report.markdown("hello")
 
     assert isinstance(report, SubgraphRoot)
     assert [element.markdown for element in report.elements] == ["hello"]
@@ -29,7 +30,8 @@ def test_plot2d_webdata():
         height=180,
         plot_group="tran",
     )
-    report = Report([plot])
+    report = Report()
+    report % plot
     _, data = report.webdata()
     plot_data = data["elements"][0]
     assert plot_data["element_type"] == "plot2d"
@@ -62,16 +64,15 @@ def test_plot2d_height_none():
         height=None,
     )
     assert plot.height is None
-    report = Report([plot])
+    report = Report()
+    report % plot
     _, data = report.webdata()
     assert data["elements"][0]["height"] is None
 
 
 def test_report_fill_height():
-    report = Report(
-        [Markdown("hello")],
-        fill_height=True,
-    )
+    report = Report(fill_height=True)
+    report.markdown("hello")
     assert report.fill_height is True
     view_type, data = report.webdata()
     assert view_type == "report"

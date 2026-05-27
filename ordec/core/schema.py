@@ -1142,71 +1142,27 @@ class Report(SubgraphRoot):
 
     fill_height = Attr(bool, default=False, optional=False)
 
-    def __new__(
-        cls,
-        elements: Iterable["ReportElement"] = (),
-        fill_height: bool=False,
-    ):
-        report = super().__new__(cls, fill_height=fill_height)
-        report.extend(elements)
-        return report
-
-    @staticmethod
-    def _element_tuple(element):
-        if isinstance(element, NodeTuple):
-            ntype = element._cursor_type
-            if issubclass(ntype, ReportElement) and ntype is not ReportElement:
-                return element
-        elif isinstance(element, ReportElement):
-            ntype = type(element)
-            if ntype is not ReportElement:
-                return element.tuple
-        raise TypeError("All report elements must be ReportElement instances")
-
     @property
-    def elements(self) -> tuple["ReportElement", ...]:
-        elements = []
-        i = 0
-        while True:
-            try:
-                element = self[i]
-            except QueryException:
-                break
-            if not isinstance(element, ReportElement):
-                break
-            elements.append(element)
-            i += 1
-        return tuple(elements)
+    def elements(self):
+        for nid in sorted(self.subgraph.nodes):
+            cursor = self.subgraph.cursor_at(nid)
+            if isinstance(cursor, ReportElement):
+                yield cursor
 
-    def _next_element_index(self) -> int:
-        elements = self.elements
-        if not elements:
-            return 0
-        return max(element.npath.name for element in elements) + 1
+    def markdown(self, markdown: str):
+        self % Markdown(markdown=markdown)
 
-    def add(self, element: "ReportElement") -> "Report":
-        self[self._next_element_index()] = self._element_tuple(element)
-        return self
+    def preformatted(self, text: str):
+        self % PreformattedText(text=text)
 
-    def markdown(self, markdown: str) -> "Report":
-        return self.add(Markdown(markdown))
+    def html(self, html: str):
+        self % Html(html=html)
 
-    def preformatted(self, text: str) -> "Report":
-        return self.add(PreformattedText(text))
+    def svg(self, view):
+        self % Svg.from_view(view)
 
-    def html(self, html: str) -> "Report":
-        return self.add(Html(html))
-
-    def svg(self, view) -> "Report":
-        return self.add(Svg.from_view(view))
-
-    def plot2d(self, *args, **kwargs) -> "Report":
-        return self.add(Plot2D(*args, **kwargs))
-
-    def extend(self, elements: Iterable["ReportElement"]) -> "Report":
-        for element in elements:
-            self.add(element)
-        return self
+    def plot2d(self, *args, **kwargs):
+        self % Plot2D(*args, **kwargs)
 
     def webdata(self):
         return "report", {
@@ -1230,14 +1186,10 @@ class Markdown(ReportElement):
     """Markdown text rendered as HTML in the web interface."""
     markdown = Attr(str, optional=False)
 
-    def __new__(cls, markdown: str):
-        return super().__new__(cls, markdown=markdown)
-
     def element_webdata(self) -> dict:
         import markdown2
         return {
             "element_type": "markdown",
-            "markdown": self.markdown,
             "html": markdown2.markdown(
                 self.markdown,
                 extras=["fenced-code-blocks", "code-friendly", "tables"],
@@ -1251,9 +1203,6 @@ class PreformattedText(ReportElement):
     """Preformatted text rendered using a monospace font."""
     text = Attr(str, optional=False)
 
-    def __new__(cls, text: str):
-        return super().__new__(cls, text=text)
-
     def element_webdata(self) -> dict:
         return {"element_type": "preformatted_text", "text": self.text}
 
@@ -1262,9 +1211,6 @@ class PreformattedText(ReportElement):
 class Html(ReportElement):
     """Raw HTML content rendered directly in the web interface."""
     html = Attr(str, optional=False)
-
-    def __new__(cls, html: str):
-        return super().__new__(cls, html=html)
 
     def element_webdata(self) -> dict:
         return {"element_type": "html", "html": self.html}
