@@ -26,6 +26,10 @@ class ViewGenerator:
         # for instances.
         self.__doc__ = func.__doc__
 
+    @property
+    def view_target(self):
+        return self.func.__annotations__.get('return')
+
     def info_dict(self):
         return {
             'auto_refresh': self.auto_refresh,

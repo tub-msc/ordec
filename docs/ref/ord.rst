@@ -121,8 +121,13 @@ To demonstrate how the ORD context works and how the conversion from ORD to Pyth
     ``import ordec.ord.context as context`` for readability when calling helper
     functions such as ``add`` and ``root``.
 
-At the start of a view generator, the compiler creates ``__ord_root__`` and
-opens the root view context with ``__ord_root__.view_context(__ord_root__)``.
+The expression after ``->`` becomes the return annotation of the generated
+method. It is usually a simple name such as ``Symbol`` or ``Schematic``, but it
+can be any ORD expression that evaluates to a view target. Like standard Python
+annotations, it is evaluated at class definition time. At the start of a view
+generator, the annotation value is passed through ``context.create_view_root``
+to create ``__ord_root__``, and the root view context is opened with
+``__ord_root__.view_context(__ord_root__)``.
 Every node statement then saves the created element as a local variable and, if
 the statement has a body, opens a nested node context with ``node.ctx()``. The
 dotted access is converted into ``context.root()``. Accesses outside the context are still possible
@@ -136,7 +141,7 @@ of the example.
     class Inv(Cell):
         @generate
         def symbol(self) -> Symbol:
-            __ord_root__ = Symbol(cell=self)
+            __ord_root__ = context.create_view_root(self, type(self).symbol.view_target)
             with __ord_root__.view_context(__ord_root__):
                 vdd = context.add(('vdd',), Pin(pintype=PinType.Inout))
                 with vdd.ctx():
@@ -154,7 +159,7 @@ of the example.
 
         @generate
         def schematic(self) -> Schematic:
-            __ord_root__ = Schematic(cell=self, symbol=self.symbol)
+            __ord_root__ = context.create_view_root(self, type(self).schematic.view_target)
             with __ord_root__.view_context(__ord_root__):
                 vss = context.add_port(('vss',))
                 with vss.ctx():
