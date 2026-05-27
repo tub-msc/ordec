@@ -4,7 +4,7 @@
 from enum import Enum
 import math
 from functools import partial
-from typing import NamedTuple, Optional
+from typing import Iterable, NamedTuple, Optional
 import re
 from public import public
 
@@ -13,7 +13,10 @@ from .geoprim import *
 from .ordb import *
 from .cell import Cell
 from .constraints import *
-from .context import ViewContext, SymbolViewContext, SchematicViewContext, LayoutViewContext, SimulationViewContext
+from .context import (
+    SymbolViewContext, SchematicViewContext, LayoutViewContext,
+    SimulationViewContext, ReportViewContext,
+)
 from .simarray import SimArray
 
 # Enums
@@ -1123,6 +1126,206 @@ class SimInstance(Node):
         return '.'.join(str(x) for x in self.full_path_list())
 
 public(Simulation = SimHierarchy)
+
+# Report
+# ------
+
+@public
+class Report(SubgraphRoot):
+    """
+    Represents a list of vertically stacked report elements.
+
+    Report elements are stored as ORDB nodes. The helper methods preserve the
+    append-style API for building reports programmatically.
+    """
+    view_context = ReportViewContext
+
+    fill_height = Attr(bool, default=False, optional=False)
+
+    def elements(self):
+        sg = self.subgraph
+        for nid in sorted(sg.nodes):
+            node = sg.nodes[nid]
+            if issubclass(node._cursor_type, ReportElement):
+                yield sg.cursor_at(nid)
+
+    def markdown(self, markdown: str):
+        self % Markdown(markdown=markdown)
+
+    def preformatted(self, text: str):
+        self % PreformattedText(text=text)
+
+    def html(self, html: str):
+        self % Html(html=html)
+
+    def svg(self, view):
+        self % Svg.from_view(view)
+
+    def plot2d(self, series, **kwargs):
+        plot = self % Plot2D(**kwargs)
+        if isinstance(series, dict):
+            series = series.items()
+        for name, values in series:
+            plot % Plot2DSeries(name=str(name), values=values)
+
+    def webdata(self):
+        return "report", {
+            "elements": [element.element_webdata() for element in self.elements()],
+            "fill_height": self.fill_height,
+        }
+
+
+@public
+class ReportElement(Node):
+    """Base class for all report element nodes."""
+    in_subgraphs = [Report]
+
+    def element_webdata(self) -> dict:
+        """Returns JSON-serializable web representation."""
+        raise NotImplementedError
+
+
+@public
+class Markdown(ReportElement):
+    """Markdown text rendered as HTML in the web interface."""
+    markdown = Attr(str, optional=False)
+
+    def element_webdata(self) -> dict:
+        import markdown2
+        return {
+            "element_type": "markdown",
+            "html": markdown2.markdown(
+                self.markdown,
+                extras=["fenced-code-blocks", "code-friendly", "tables"],
+                safe_mode="escape",
+            ),
+        }
+
+
+@public
+class PreformattedText(ReportElement):
+    """Preformatted text rendered using a monospace font."""
+    text = Attr(str, optional=False)
+
+    def element_webdata(self) -> dict:
+        return {"element_type": "preformatted_text", "text": self.text}
+
+
+@public
+class Html(ReportElement):
+    """Raw HTML content rendered directly in the web interface."""
+    html = Attr(str, optional=False)
+
+    def element_webdata(self) -> dict:
+        return {"element_type": "html", "html": self.html}
+
+
+@public
+class Svg(ReportElement):
+    """Static SVG element rendered without zoom."""
+    inner = Attr(str, optional=False) #: SVG markup inside the <svg> element
+    viewbox_min_x = Attr(float, optional=False) #: viewBox left edge
+    viewbox_min_y = Attr(float, optional=False) #: viewBox top edge
+    viewbox_width = Attr(float, optional=False) #: viewBox width
+    viewbox_height = Attr(float, optional=False) #: viewBox height
+    width = Attr(str) #: CSS width string (e.g. "120px")
+    height = Attr(str) #: CSS height string (e.g. "80px")
+
+    @classmethod
+    def from_view(cls, view) -> "Svg":
+        """Creates an SVG report element from an object exposing webdata()."""
+        view_type, data = view.webdata()
+        if view_type != "svg":
+            raise ValueError(f"Expected svg webdata, got {view_type!r}")
+        vb = data["viewbox"]
+        return cls(
+            inner=data["inner"],
+            viewbox_min_x=float(vb[0]),
+            viewbox_min_y=float(vb[1]),
+            viewbox_width=float(vb[2]),
+            viewbox_height=float(vb[3]),
+            width=data["width"],
+            height=data["height"],
+        )
+
+    def element_webdata(self) -> dict:
+        return {
+            "element_type": "svg",
+            "inner": self.inner,
+            "viewbox": [
+                self.viewbox_min_x,
+                self.viewbox_min_y,
+                self.viewbox_width,
+                self.viewbox_height
+            ],
+            "width": self.width,
+            "height": self.height,
+        }
+
+
+@public
+class ScaleType(Enum):
+    Linear = 'linear'
+    Log = 'log'
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+def coerce_plot_x(x):
+    x = tuple(float(v) for v in x)
+    if len(x) < 2:
+        raise ValueError("x must contain at least two values")
+    for i in range(1, len(x)):
+        if x[i] < x[i - 1]:
+            raise ValueError("x values must be sorted in ascending order")
+    return x
+
+@public
+class PlotGroup(Node):
+    """Groups Plot2D elements that share a synchronized x-axis."""
+    in_subgraphs = [Report]
+
+@public
+class Plot2D(ReportElement):
+    """2D plot element rendered with the frontend simulation plot component."""
+    x = Attr(tuple, optional=False, factory=coerce_plot_x)
+    xlabel = Attr(str, default="", optional=False)
+    ylabel = Attr(str, default="", optional=False)
+    xscale = Attr(ScaleType, default=ScaleType.Linear, optional=False, factory=ScaleType)
+    yscale = Attr(ScaleType, default=ScaleType.Linear, optional=False, factory=ScaleType)
+    height = Attr(float, factory=lambda v: float(v) if v is not None else None) #: plot height in pixels
+    plot_group = LocalRef(PlotGroup)
+
+    def series(self):
+        return self.subgraph.all(Plot2DSeries.ref_idx.query(self))
+
+    def element_webdata(self) -> dict:
+        return {
+            "element_type": "plot2d",
+            "x": list(self.x),
+            "series": [
+                {"name": s.name, "values": list(s.values)}
+                for s in self.series()
+            ],
+            "xlabel": self.xlabel,
+            "ylabel": self.ylabel,
+            "xscale": self.xscale.value,
+            "yscale": self.yscale.value,
+            "height": f"{self.height:g}px" if self.height is not None else None,
+            "plot_group": self.plot_group.nid if self.plot_group is not None else None,
+        }
+
+def coerce_plot_values(values):
+    return tuple(float(v) for v in values)
+
+@public
+class Plot2DSeries(Node):
+    """A single data series belonging to a Plot2D element."""
+    in_subgraphs = [Report]
+    ref = LocalRef(Plot2D, optional=False)
+    ref_idx = Index(ref)
+    name = Attr(str, optional=False)
+    values = Attr(tuple, optional=False, factory=coerce_plot_values)
 
 # LayerStack
 # ----------

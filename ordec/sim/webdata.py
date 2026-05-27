@@ -15,7 +15,7 @@ import re
 
 from public import public
 from ..core import *
-from ..report import Report, Plot2D, Markdown
+from ..core.schema import PlotGroup, Report
 
 
 def get_voltages(sh: SimHierarchy, top_level_only=False):
@@ -59,24 +59,26 @@ def webdata(sh: SimHierarchy):
         currents = get_currents(sh)
         x = tuple(sh.time)
         report = Report(fill_height=True)
+        if voltages or currents:
+            report.sim = PlotGroup()
         if voltages:
-            report.add(Plot2D(
+            report.plot2d(
                 x=x,
                 series=[(k, tuple(v)) for k, v in voltages.items()],
                 xlabel='Time (s)',
                 ylabel='Voltage (V)',
                 height=None,
-                plot_group='sim',
-            ))
+                plot_group=report.sim,
+            )
         if currents:
-            report.add(Plot2D(
+            report.plot2d(
                 x=x,
                 series=[(k, tuple(v)) for k, v in currents.items()],
                 xlabel='Time (s)',
                 ylabel='Current (A)',
                 height=None,
-                plot_group='sim',
-            ))
+                plot_group=report.sim,
+            )
         return report.webdata()
 
     elif sh.sim_type == SimType.AC:
@@ -89,6 +91,7 @@ def webdata(sh: SimHierarchy):
 
         report = Report(fill_height=True)
         if all_signals:
+            report.sim = PlotGroup()
             mag_series = []
             phase_series = []
             for name, vals in all_signals.items():
@@ -100,24 +103,24 @@ def webdata(sh: SimHierarchy):
                     name,
                     [cmath.phase(v) * 180 / math.pi for v in vals],
                 ))
-            report.add(Plot2D(
+            report.plot2d(
                 x=x,
                 series=mag_series,
                 xlabel='Frequency (Hz)',
                 ylabel='Magnitude (dB)',
                 xscale='log',
                 height=None,
-                plot_group='sim',
-            ))
-            report.add(Plot2D(
+                plot_group=report.sim,
+            )
+            report.plot2d(
                 x=x,
                 series=phase_series,
                 xlabel='Frequency (Hz)',
                 ylabel='Phase (\u00b0)',
                 xscale='log',
                 height=None,
-                plot_group='sim',
-            ))
+                plot_group=report.sim,
+            )
         return report.webdata()
 
     elif sh.sim_type == SimType.DCSWEEP:
@@ -128,24 +131,26 @@ def webdata(sh: SimHierarchy):
         currents = get_currents(sh)
         x = tuple(sh.sim_data.column(sh.sweep_field))
         sweep_name = sh.sweep_field
+        if voltages or currents:
+            report.sim = PlotGroup()
         if voltages:
-            report.add(Plot2D(
+            report.plot2d(
                 x=x,
                 series=[(k, tuple(v)) for k, v in voltages.items()],
                 xlabel=sweep_name,
                 ylabel='Voltage (V)',
                 height=None,
-                plot_group='sim',
-            ))
+                plot_group=report.sim,
+            )
         if currents:
-            report.add(Plot2D(
+            report.plot2d(
                 x=x,
                 series=[(k, tuple(v)) for k, v in currents.items()],
                 xlabel=sweep_name,
                 ylabel='Current (A)',
                 height=None,
-                plot_group='sim',
-            ))
+                plot_group=report.sim,
+            )
         return report.webdata()
 
     elif sh.sim_type == SimType.DC:
@@ -161,7 +166,7 @@ def webdata(sh: SimHierarchy):
             )
         if op_voltages:
             lines = ["| Net | Voltage |", "| --- | --- |"] + op_voltages
-            report.add(Markdown("\n".join(lines)))
+            report.markdown("\n".join(lines))
 
         op_currents = []
         for sp in sh.all(SimPin):
@@ -175,7 +180,7 @@ def webdata(sh: SimHierarchy):
             )
         if op_currents:
             lines = ["| Branch | Current |", "| --- | --- |"] + op_currents
-            report.add(Markdown("\n".join(lines)))
+            report.markdown("\n".join(lines))
 
         # Device parameters (gm, gds, vth, etc.)
         param_rows = {}
@@ -205,9 +210,11 @@ def webdata(sh: SimHierarchy):
                         cells.append(_fmt_eng(v, ""))
                 cells_str = " | ".join(cells)
                 rows.append(f"| {inst_path} | {cells_str} |")
-            report.add(Markdown("\n".join(rows)))
+            report.markdown("\n".join(rows))
 
         return report.webdata()
 
     else:
-        return Report([Markdown("No simulation was run.")]).webdata()
+        report = Report()
+        report.markdown("No simulation was run.")
+        return report.webdata()
