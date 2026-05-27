@@ -1142,12 +1142,12 @@ class Report(SubgraphRoot):
 
     fill_height = Attr(bool, default=False, optional=False)
 
-    @property
     def elements(self):
-        for nid in sorted(self.subgraph.nodes):
-            cursor = self.subgraph.cursor_at(nid)
-            if isinstance(cursor, ReportElement):
-                yield cursor
+        sg = self.subgraph
+        for nid in sorted(sg.nodes):
+            node = sg.nodes[nid]
+            if issubclass(node._cursor_type, ReportElement):
+                yield sg.cursor_at(nid)
 
     def markdown(self, markdown: str):
         self % Markdown(markdown=markdown)
@@ -1161,12 +1161,16 @@ class Report(SubgraphRoot):
     def svg(self, view):
         self % Svg.from_view(view)
 
-    def plot2d(self, *args, **kwargs):
-        self % Plot2D(*args, **kwargs)
+    def plot2d(self, series, **kwargs):
+        plot = self % Plot2D(**kwargs)
+        if isinstance(series, dict):
+            series = series.items()
+        for name, values in series:
+            plot % Plot2DSeries(name=str(name), values=values)
 
     def webdata(self):
         return "report", {
-            "elements": [element.element_webdata() for element in self.elements],
+            "elements": [element.element_webdata() for element in self.elements()],
             "fill_height": self.fill_height,
         }
 
@@ -1219,26 +1223,13 @@ class Html(ReportElement):
 @public
 class Svg(ReportElement):
     """Static SVG element rendered without zoom."""
-    inner = Attr(str, optional=False)
-    viewbox = Attr(tuple, optional=False)
-    width = Attr(str)
-    height = Attr(str)
-
-    def __new__(cls, inner: str, viewbox, width: str | None, height: str | None):
-        return super().__new__(
-            cls,
-            inner=inner,
-            viewbox=cls._normalize_viewbox(viewbox),
-            width=width,
-            height=height,
-        )
-
-    @staticmethod
-    def _normalize_viewbox(viewbox) -> tuple[float, float, float, float]:
-        values = tuple(float(v) for v in viewbox)
-        if len(values) != 4:
-            raise ValueError("viewbox must contain exactly four numbers")
-        return values
+    inner = Attr(str, optional=False) #: SVG markup inside the <svg> element
+    viewbox_min_x = Attr(float, optional=False) #: viewBox left edge
+    viewbox_min_y = Attr(float, optional=False) #: viewBox top edge
+    viewbox_width = Attr(float, optional=False) #: viewBox width
+    viewbox_height = Attr(float, optional=False) #: viewBox height
+    width = Attr(str) #: CSS width string (e.g. "120px")
+    height = Attr(str) #: CSS height string (e.g. "80px")
 
     @classmethod
     def from_view(cls, view) -> "Svg":
@@ -1246,9 +1237,13 @@ class Svg(ReportElement):
         view_type, data = view.webdata()
         if view_type != "svg":
             raise ValueError(f"Expected svg webdata, got {view_type!r}")
+        vb = data["viewbox"]
         return cls(
             inner=data["inner"],
-            viewbox=data["viewbox"],
+            viewbox_min_x=float(vb[0]),
+            viewbox_min_y=float(vb[1]),
+            viewbox_width=float(vb[2]),
+            viewbox_height=float(vb[3]),
             width=data["width"],
             height=data["height"],
         )
@@ -1257,114 +1252,80 @@ class Svg(ReportElement):
         return {
             "element_type": "svg",
             "inner": self.inner,
-            "viewbox": list(self.viewbox),
+            "viewbox": [
+                self.viewbox_min_x,
+                self.viewbox_min_y,
+                self.viewbox_width,
+                self.viewbox_height
+            ],
             "width": self.width,
             "height": self.height,
         }
 
 
 @public
+class ScaleType(Enum):
+    Linear = 'linear'
+    Log = 'log'
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+def coerce_plot_x(x):
+    x = tuple(float(v) for v in x)
+    if len(x) < 2:
+        raise ValueError("x must contain at least two values")
+    for i in range(1, len(x)):
+        if x[i] < x[i - 1]:
+            raise ValueError("x values must be sorted in ascending order")
+    return x
+
+@public
+class PlotGroup(Node):
+    """Groups Plot2D elements that share a synchronized x-axis."""
+    in_subgraphs = [Report]
+
+@public
 class Plot2D(ReportElement):
     """2D plot element rendered with the frontend simulation plot component."""
-    x = Attr(tuple, optional=False)
-    series = Attr(tuple, optional=False)
+    x = Attr(tuple, optional=False, factory=coerce_plot_x)
     xlabel = Attr(str, default="", optional=False)
     ylabel = Attr(str, default="", optional=False)
-    xscale = Attr(str, default="linear", optional=False)
-    yscale = Attr(str, default="linear", optional=False)
-    height = Attr(str)
-    plot_group = Attr(str)
+    xscale = Attr(ScaleType, default=ScaleType.Linear, optional=False, factory=ScaleType)
+    yscale = Attr(ScaleType, default=ScaleType.Linear, optional=False, factory=ScaleType)
+    height = Attr(float, factory=lambda v: float(v) if v is not None else None) #: plot height in pixels
+    plot_group = LocalRef(PlotGroup)
 
-    def __new__(
-        cls,
-        x: Iterable[float],
-        series,
-        *,
-        xlabel: str = "",
-        ylabel: str = "",
-        xscale: str = "linear",
-        yscale: str = "linear",
-        height: int | float | str | None = 260,
-        plot_group: str | None = None,
-    ):
-        x = tuple(float(v) for v in x)
-        cls._validate_x(x)
-        return super().__new__(
-            cls,
-            x=x,
-            series=cls._normalize_series(series, len(x)),
-            xlabel=xlabel,
-            ylabel=ylabel,
-            xscale=cls._validate_scale(xscale, "xscale"),
-            yscale=cls._validate_scale(yscale, "yscale"),
-            height=cls._normalize_height(height),
-            plot_group=plot_group,
-        )
-
-    @staticmethod
-    def _validate_x(x: tuple[float, ...]):
-        if len(x) < 2:
-            raise ValueError("x must contain at least two values")
-        for i in range(1, len(x)):
-            if x[i] < x[i - 1]:
-                raise ValueError("x values must be sorted in ascending order")
-
-    @staticmethod
-    def _normalize_series(series, expected_len: int) -> tuple:
-        if isinstance(series, dict):
-            pairs = list(series.items())
-        else:
-            pairs = list(series)
-
-        normalized = []
-        for name, values in pairs:
-            vals = tuple(float(v) for v in values)
-            if len(vals) != expected_len:
-                raise ValueError(
-                    f"Series {name!r} has length {len(vals)}, expected "
-                    f"{expected_len}"
-                )
-            normalized.append((str(name), vals))
-
-        if not normalized:
-            raise ValueError("Plot2D requires at least one series")
-        return tuple(normalized)
-
-    @staticmethod
-    def _validate_scale(scale: str, name: str) -> str:
-        if scale not in ("linear", "log"):
-            raise ValueError(f"{name} must be 'linear' or 'log'")
-        return scale
-
-    @staticmethod
-    def _normalize_height(height: int | float | str | None) -> str | None:
-        if height is None:
-            return None
-        if isinstance(height, str):
-            if not height.strip():
-                raise ValueError("height string must not be empty")
-            return height
-        if not isinstance(height, (int, float)):
-            raise TypeError("height must be int, float, string or None")
-        if height <= 0:
-            raise ValueError("height must be greater than zero")
-        return f"{height:g}px"
+    def series(self):
+        return self.subgraph.all(Plot2DSeries.ref_idx.query(self))
 
     def element_webdata(self) -> dict:
         return {
             "element_type": "plot2d",
             "x": list(self.x),
             "series": [
-                {"name": name, "values": list(values)}
-                for name, values in self.series
+                {"name": s.name, "values": list(s.values)}
+                for s in self.series()
             ],
             "xlabel": self.xlabel,
             "ylabel": self.ylabel,
-            "xscale": self.xscale,
-            "yscale": self.yscale,
-            "height": self.height,
-            "plot_group": self.plot_group,
+            "xscale": self.xscale.value,
+            "yscale": self.yscale.value,
+            "height": f"{self.height:g}px" if self.height is not None else None,
+            "plot_group": self.plot_group.nid if self.plot_group is not None else None,
         }
+
+def coerce_plot_values(values):
+    return tuple(float(v) for v in values)
+
+@public
+class Plot2DSeries(Node):
+    """A single data series belonging to a Plot2D element."""
+    in_subgraphs = [Report]
+    ref = LocalRef(Plot2D, optional=False)
+    ref_idx = Index(ref)
+    name = Attr(str, optional=False)
+    values = Attr(tuple, optional=False, factory=coerce_plot_values)
 
 # LayerStack
 # ----------

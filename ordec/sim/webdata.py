@@ -15,7 +15,7 @@ import re
 
 from public import public
 from ..core import *
-from ..core.schema import Report
+from ..core.schema import PlotGroup, Report
 
 
 def get_voltages(sh: SimHierarchy, top_level_only=False):
@@ -59,6 +59,8 @@ def webdata(sh: SimHierarchy):
         currents = get_currents(sh)
         x = tuple(sh.time)
         report = Report(fill_height=True)
+        if voltages or currents:
+            report.sim = PlotGroup()
         if voltages:
             report.plot2d(
                 x=x,
@@ -66,7 +68,7 @@ def webdata(sh: SimHierarchy):
                 xlabel='Time (s)',
                 ylabel='Voltage (V)',
                 height=None,
-                plot_group='sim',
+                plot_group=report.sim,
             )
         if currents:
             report.plot2d(
@@ -75,7 +77,7 @@ def webdata(sh: SimHierarchy):
                 xlabel='Time (s)',
                 ylabel='Current (A)',
                 height=None,
-                plot_group='sim',
+                plot_group=report.sim,
             )
         return report.webdata()
 
@@ -89,6 +91,7 @@ def webdata(sh: SimHierarchy):
 
         report = Report(fill_height=True)
         if all_signals:
+            report.sim = PlotGroup()
             mag_series = []
             phase_series = []
             for name, vals in all_signals.items():
@@ -107,7 +110,7 @@ def webdata(sh: SimHierarchy):
                 ylabel='Magnitude (dB)',
                 xscale='log',
                 height=None,
-                plot_group='sim',
+                plot_group=report.sim,
             )
             report.plot2d(
                 x=x,
@@ -116,7 +119,7 @@ def webdata(sh: SimHierarchy):
                 ylabel='Phase (\u00b0)',
                 xscale='log',
                 height=None,
-                plot_group='sim',
+                plot_group=report.sim,
             )
         return report.webdata()
 
@@ -128,6 +131,8 @@ def webdata(sh: SimHierarchy):
         currents = get_currents(sh)
         x = tuple(sh.sim_data.column(sh.sweep_field))
         sweep_name = sh.sweep_field
+        if voltages or currents:
+            report.sim = PlotGroup()
         if voltages:
             report.plot2d(
                 x=x,
@@ -135,7 +140,7 @@ def webdata(sh: SimHierarchy):
                 xlabel=sweep_name,
                 ylabel='Voltage (V)',
                 height=None,
-                plot_group='sim',
+                plot_group=report.sim,
             )
         if currents:
             report.plot2d(
@@ -144,7 +149,7 @@ def webdata(sh: SimHierarchy):
                 xlabel=sweep_name,
                 ylabel='Current (A)',
                 height=None,
-                plot_group='sim',
+                plot_group=report.sim,
             )
         return report.webdata()
 

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import math
-from ordec.core.schema import Report
+from ordec.core.schema import PlotGroup, Report
 from ordec.core import R, generate_func
 from .sim import ResdivHier2
 
@@ -25,6 +25,8 @@ def report_example() -> Report:
         "Rendered in Python with **bold** text and `inline code`."
     )
     report.preformatted("alpha\nbeta\ngamma")
+    report.tran_demo = PlotGroup()
+    report.ac_demo = PlotGroup()
     report.plot2d(
         x=time,
         series={
@@ -34,7 +36,7 @@ def report_example() -> Report:
         xlabel="Time (s)",
         ylabel="Voltage (V)",
         height=220,
-        plot_group="tran_demo",
+        plot_group=report.tran_demo,
     )
     report.plot2d(
         x=time,
@@ -42,7 +44,7 @@ def report_example() -> Report:
         xlabel="Time (s)",
         ylabel="Voltage (V)",
         height=100,
-        plot_group="tran_demo",
+        plot_group=report.tran_demo,
     )
     report.plot2d(
         x=ac_freq,
@@ -51,7 +53,7 @@ def report_example() -> Report:
         ylabel="Magnitude (dB)",
         xscale="log",
         height=220,
-        plot_group="ac_demo",
+        plot_group=report.ac_demo,
     )
     report.plot2d(
         x=ac_freq,
@@ -60,7 +62,7 @@ def report_example() -> Report:
         ylabel="Phase (deg)",
         xscale="log",
         height=120,
-        plot_group="ac_demo",
+        plot_group=report.ac_demo,
     )
     report.svg(resdiv.symbol)
     report.svg(resdiv.schematic)
