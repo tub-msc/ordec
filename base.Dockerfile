@@ -19,7 +19,7 @@ RUN useradd -ms /bin/bash app && \
 USER app
 
 WORKDIR /home/app
-RUN wget -q https://netcologne.dl.sourceforge.net/project/ngspice/ng-spice-rework/45.2/ngspice-45.2.tar.gz && \
+RUN wget -q https://phoenixnap.dl.sourceforge.net/project/ngspice/ng-spice-rework/old-releases/45.2/ngspice-45.2.tar.gz && \
     echo "ba8345f4c3774714c10f33d7da850d361cec7d14b3a295d0dc9fd96f7423812d ngspice-45.2.tar.gz" | sha256sum -c && \
     tar xf ngspice-45.2.tar.gz && \
     rm ngspice-45.2.tar.gz && \
