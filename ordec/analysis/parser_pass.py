@@ -283,7 +283,7 @@ class _OrdAnalysisBuilder:
             )
             return True
 
-        if target_node.data in ("tuple", "list", "exprlist", "testlist_tuple"):
+        if target_node.data in ("tuple", "parenthesized_tuple", "list", "exprlist", "testlist_tuple"):
             bound_any = False
             for child in target_node.children:
                 if not isinstance(child, Tree):
@@ -391,7 +391,7 @@ class _OrdAnalysisBuilder:
         if name_node is not None:
             return self.binding_type_names(self.resolve_binding(scope_id, tree_text(name_node)))
 
-        if node.data in ("tuple", "list", "testlist_tuple"):
+        if node.data in ("tuple", "parenthesized_tuple", "list", "testlist_tuple"):
             type_names = []
             for child in node.children:
                 if not isinstance(child, Tree):
@@ -635,15 +635,22 @@ class _OrdAnalysisBuilder:
                 )
                 if top_level:
                     self.exports.append(name)
-                if node.data == "viewgen" and len(name_nodes) > 1:
-                    return_type_node = name_nodes[1]
-                    self.viewgen_returns.append({
-                        "name": name,
-                        "return_type": tree_text(return_type_node),
-                        "range": tree_range(node),
-                        "selection_range": tree_range(return_type_node),
-                        "viewgen_range": tree_range(node),
-                    })
+                if node.data == "viewgen":
+                    for child in node.children:
+                        if not isinstance(child, Tree) or child.data in ("name", "suite"):
+                            continue
+                        name_node_ret = self.simple_name_node(child)
+                        if name_node_ret is not None:
+                            ret_name = tree_text(name_node_ret)
+                            self.viewgen_returns.append({
+                                "name": name,
+                                "return_type": ret_name,
+                                "return_binding_id": self.resolve_binding(scope_id, ret_name),
+                                "range": tree_range(node),
+                                "selection_range": tree_range(child),
+                                "viewgen_range": tree_range(node),
+                            })
+                        break
                 child_scope_id = self.add_scope(node, scope_id, name_node=name_node)
                 if node.data == "celldef":
                     self.add_synthetic_binding(

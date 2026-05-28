@@ -132,6 +132,8 @@ class DiagnosticsMixin:
 
         for viewgen in analysis.viewgen_returns:
             type_name = viewgen["return_type"]
+            if viewgen.get("return_binding_id") is not None:
+                continue
             type_definition = self.resolve_completion_type(uri, type_name)
             if type_definition is None:
                 add_diagnostic(
