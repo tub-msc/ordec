@@ -63,7 +63,7 @@ SHOW_MESSAGE_SEVERITY_MAP = {
 }
 
 
-class OrdecLanguageServer:
+class OrdLanguageServer:
     """Minimal stdio LSP server backed by an ``AnalysisSession``."""
     def __init__(self):
         """Initialize server state and LSP method dispatch."""
@@ -726,7 +726,7 @@ def write_message(output_stream, message):
 
 def main():
     """Run the ORDeC language server over stdin/stdout."""
-    server = OrdecLanguageServer()
+    server = OrdLanguageServer()
     input_stream = sys.stdin.buffer
     output_stream = sys.stdout.buffer
 

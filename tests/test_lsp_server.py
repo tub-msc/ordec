@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.lsp.server import OrdecLanguageServer
+from ordec.lsp.server import OrdLanguageServer
 
 
 def source_offset(source, needle, occurrence=1):
@@ -48,7 +48,7 @@ def utf16_source_offset(source, needle, occurrence=1):
 
 def initialize_server(tmp_path, capabilities=None):
     """Create and initialize an ORD language server for a temporary workspace."""
-    server = OrdecLanguageServer()
+    server = OrdLanguageServer()
     params = {
         "rootUri": tmp_path.resolve().as_uri(),
     }
@@ -131,7 +131,7 @@ def text_document(uri):
 
 
 def test_lsp_initialize_exposes_core_capabilities(tmp_path):
-    server = OrdecLanguageServer()
+    server = OrdLanguageServer()
     result = request(
         server,
         "initialize",
