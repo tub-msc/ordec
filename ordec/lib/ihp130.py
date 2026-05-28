@@ -10,6 +10,7 @@ import functools
 
 from ..core import *
 from ..schematic import spice_params, Netlister
+from ..sim.ngspice import NgspiceSetup
 from . import generic_mos
 from .pdk_common import PdkDict, check_dir, check_file, rundir
 from ..layout import makevias, write_gds
@@ -53,7 +54,7 @@ def _tech_nm(name: str) -> int:
     return int(_tech_dist(name) / R("1n"))
 
 def ngspice_setup():
-    """Return ngspice setup commands based on .spiceinit content."""
+    """Return ngspice setup commands and environment variables."""
     commands = [
         "set ngbehavior=hsa",
         "set noinit",
@@ -65,7 +66,10 @@ def ngspice_setup():
         pdk().ngspice_osdi_dir / "r3_cmc.osdi",
         pdk().ngspice_osdi_dir / "mosvar.osdi"]:
         commands.append(f"osdi '{check_file(osdi_file)}'")
-    return commands
+    return NgspiceSetup(
+        commands=commands,
+        env={"PDK": "ihp-sg13g2", "PDK_ROOT": str(pdk().root)},
+    )
 
 def netlister_setup(netlister):
     if netlister.lvs:

@@ -15,6 +15,7 @@ import shutil
 import tempfile
 import logging
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
 import subprocess
 from typing import Iterator, NamedTuple, Optional, Literal
@@ -26,6 +27,19 @@ logger = logging.getLogger(__name__)
 
 class NgspiceError(Exception):
     pass
+
+
+@dataclass
+class NgspiceSetup:
+    """Return type for ngspice setup functions.
+
+    Bundles the spiceinit commands with optional subprocess environment
+    variables needed by the PDK (e.g. PDK_ROOT).
+    """
+    commands: list[str]
+    env: dict[str, str] = field(default_factory=dict)
+
+
 
 
 def check_errors(ngspice_out):
@@ -175,7 +189,8 @@ def _ngspice_executable() -> str:
 
 
 def ngspice_batch(netlist: str, spiceinit_commands: list[str] | None = None,
-    no_auto_gnd: bool = True) -> SimArray:
+    no_auto_gnd: bool = True, env: dict[str, str] | None = None,
+) -> SimArray:
     """Run ngspice in batch mode and return simulation results.
 
     Batch mode streams data to disk during simulation, keeping memory
@@ -206,7 +221,8 @@ def ngspice_batch(netlist: str, spiceinit_commands: list[str] | None = None,
         logger.debug("Running ngspice batch: %s", exe)
         result = subprocess.run(
             [exe, "-b", "-r", "sim.raw", "netlist.sp"],
-            cwd=tmpdir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            cwd=tmpdir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            env=env or None)
 
         stdout_text = result.stdout.decode("ascii", errors="replace")
         logger.debug("ngspice batch stdout:\n%s", stdout_text)
@@ -233,13 +249,14 @@ class Ngspice:
     """
     @classmethod
     @contextmanager
-    def launch(cls):
+    def launch(cls, env: dict[str, str] | None = None):
         exe = _ngspice_executable()
         logger.debug(f"Using ngspice executable: {exe}")
 
         with tempfile.TemporaryDirectory() as cwd_str:
             p = subprocess.Popen([exe, "-p"],
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=cwd_str)
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                cwd=cwd_str, env=env or None)
             logger.debug(f"Process started with PID: {p.pid}")
 
             try:
