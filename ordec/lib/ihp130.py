@@ -668,7 +668,7 @@ def _layoutgen_cmim(cell: Cell) -> Layout:
     return l
 
 
-class _Resistor(SimLeafCell):
+class Res(SimLeafCell):
     """Shared base class for SG13G2 resistors."""
     l = Parameter(R)
     w = Parameter(R)
@@ -734,7 +734,7 @@ class _Resistor(SimLeafCell):
 
 
 @public
-class Rsil(_Resistor):
+class Rsil(Res):
     model_name = "rsil"
     l = Parameter(R, default=R("0.50u"))
     w = Parameter(R, default=R("0.50u"))
@@ -749,7 +749,7 @@ class Rsil(_Resistor):
 
 
 @public
-class Rppd(_Resistor):
+class Rppd(Res):
     model_name = "rppd"
     l = Parameter(R, default=R("0.50u"))
     w = Parameter(R, default=R("0.50u"))
@@ -764,7 +764,7 @@ class Rppd(_Resistor):
 
 
 @public
-class Rhigh(_Resistor):
+class Rhigh(Res):
     model_name = "rhigh"
     l = Parameter(R, default=R("0.96u"))
     w = Parameter(R, default=R("0.50u"))
