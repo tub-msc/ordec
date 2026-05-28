@@ -716,7 +716,7 @@ class _Resistor(SimLeafCell):
         if (not netlister.lvs) or (self.b != 0):
             params["ps"] = self.ps
         if netlister.lvs:
-            pins = [inst.symbol.p, inst.symbol.m]
+            pins = [inst.symbol.p, inst.symbol.m, inst.symbol.bn]
             prefix = "R"
         else:
             pins = [inst.symbol.p, inst.symbol.m, inst.symbol.bn]

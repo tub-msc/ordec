@@ -37,9 +37,10 @@ class ResDevice(Cell):
 
         s.p = Net(pin=self.symbol.p)
         s.m = Net(pin=self.symbol.m)
+        s.bn = Net()
 
         dev = _RESISTORS[self.kind](l=self.l, w=self.w, b=self.b, ps=self.ps).symbol
-        s.r = SchemInstance(dev.portmap(p=s.p, m=s.m, bn=s.m), pos=(3, 4))
+        s.r = SchemInstance(dev.portmap(p=s.p, m=s.m, bn=s.bn), pos=(3, 4))
 
         s.p % SchemPort(pos=(2, 11), align=East)
         s.m % SchemPort(pos=(2, 1), align=East)
