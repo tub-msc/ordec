@@ -10,16 +10,11 @@ from .model import AnalysisDiagnostic, is_identifier, range_contains
 
 class DiagnosticsMixin:
     """Semantic diagnostics derived from parsed ORD analysis data."""
-
     def semantic_diagnostics(self, uri: str):
         """Return semantic diagnostics for a document.
 
-        Args:
-            uri: Document URI to analyze.
-
-        Returns:
-            List of ``AnalysisDiagnostic`` objects for unresolved imports,
-            invalid ORD contexts, unsupported constraints, and unknown members.
+        Covers unresolved imports, invalid ORD contexts, unsupported constraints,
+        and unknown members.
         """
         analysis = self.analyze(uri)
         diagnostics = []

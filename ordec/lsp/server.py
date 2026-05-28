@@ -8,8 +8,7 @@ import sys
 from urllib.parse import unquote, urlparse
 
 # ordec imports
-from ..analysis import AnalysisPosition
-from ..analysis import AnalysisSession
+from ..analysis import AnalysisPosition, AnalysisSession
 from .code_actions import code_actions
 
 
@@ -28,10 +27,44 @@ SEMANTIC_TOKEN_MODIFIERS = [
 SEMANTIC_TOKEN_TYPE_MAP = {name: i for i, name in enumerate(SEMANTIC_TOKEN_TYPES)}
 SEMANTIC_TOKEN_MODIFIER_MAP = {name: i for i, name in enumerate(SEMANTIC_TOKEN_MODIFIERS)}
 
+DIAGNOSTIC_SEVERITY_MAP = {
+    "error": 1,
+    "warning": 2,
+    "information": 3,
+    "hint": 4,
+}
+SYMBOL_KIND_MAP = {
+    "class": 5,
+    "function": 12,
+    "context": 13,
+    "path": 13,
+    "net": 13,
+}
+COMPLETION_KIND_MAP = {
+    "class": 7,
+    "function": 3,
+    "parameter": 6,
+    "variable": 6,
+    "module": 9,
+    "keyword": 14,
+    "path": 6,
+    "net": 6,
+    "context": 6,
+}
+DOCUMENT_HIGHLIGHT_KIND_MAP = {
+    "read": 2,
+    "write": 3,
+}
+SHOW_MESSAGE_SEVERITY_MAP = {
+    "error": 1,
+    "warning": 2,
+    "info": 3,
+    "log": 4,
+}
+
 
 class OrdecLanguageServer:
     """Minimal stdio LSP server backed by an ``AnalysisSession``."""
-
     def __init__(self):
         """Initialize server state and LSP method dispatch."""
         self.shutdown_requested = False
@@ -539,17 +572,11 @@ class OrdecLanguageServer:
 
     def show_message(self, severity: str, message: str):
         """Build a ``window/showMessage`` notification."""
-        severity_code = {
-            "error": 1,
-            "warning": 2,
-            "info": 3,
-            "log": 4,
-        }.get(severity, 3)
         return {
             "jsonrpc": "2.0",
             "method": "window/showMessage",
             "params": {
-                "type": severity_code,
+                "type": SHOW_MESSAGE_SEVERITY_MAP.get(severity, 3),
                 "message": message,
             },
         }
@@ -651,52 +678,20 @@ class OrdecLanguageServer:
         return [result]
 
     def diagnostic_severity(self, severity: str):
-        """Map analysis diagnostic severities to LSP severity constants."""
-        if severity == "error":
-            return 1
-        if severity == "warning":
-            return 2
-        if severity == "information":
-            return 3
-        if severity == "hint":
-            return 4
-        return 3
+        """Map an analysis diagnostic severity to an LSP severity constant."""
+        return DIAGNOSTIC_SEVERITY_MAP.get(severity, 3)
 
     def symbol_kind(self, kind: str):
-        """Map analysis symbol kinds to LSP symbol kind constants."""
-        if kind == "class":
-            return 5
-        if kind == "function":
-            return 12
-        if kind == "context":
-            return 13
-        if kind in ("path", "net"):
-            return 13
-        return 13
+        """Map an analysis symbol kind to an LSP symbol kind constant."""
+        return SYMBOL_KIND_MAP.get(kind, 13)
 
     def completion_kind(self, kind: str):
-        """Map analysis completion kinds to LSP completion item constants."""
-        if kind == "class":
-            return 7
-        if kind == "function":
-            return 3
-        if kind in ("parameter", "variable"):
-            return 6
-        if kind == "module":
-            return 9
-        if kind == "keyword":
-            return 14
-        if kind in ("path", "net", "context"):
-            return 6
-        return 1
+        """Map an analysis completion kind to an LSP completion item kind."""
+        return COMPLETION_KIND_MAP.get(kind, 1)
 
     def document_highlight_kind(self, kind: str):
-        """Map analysis highlight kinds to LSP highlight constants."""
-        if kind == "read":
-            return 2
-        if kind == "write":
-            return 3
-        return 1
+        """Map an analysis highlight kind to an LSP highlight kind constant."""
+        return DOCUMENT_HIGHLIGHT_KIND_MAP.get(kind, 1)
 
 
 def read_message(input_stream):

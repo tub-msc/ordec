@@ -13,26 +13,12 @@ TRAILING_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def is_identifier(value: str):
-    """Return whether a value is an ORD/Python-style identifier.
-
-    Args:
-        value: String to validate.
-
-    Returns:
-        True when value is a single ASCII identifier.
-    """
+    """Return whether ``value`` is a single ASCII identifier."""
     return IDENTIFIER_RE.match(value) is not None
 
 
 def leading_identifier(value: str):
-    """Return the leading identifier in a string.
-
-    Args:
-        value: String to inspect.
-
-    Returns:
-        Leading identifier, or None when the string does not start with one.
-    """
+    """Return the leading identifier in ``value``, or None if none is present."""
     match = LEADING_IDENTIFIER_RE.match(value)
     if match is None:
         return None
@@ -40,14 +26,7 @@ def leading_identifier(value: str):
 
 
 def trailing_identifier(value: str):
-    """Return the trailing identifier in a string.
-
-    Args:
-        value: String to inspect.
-
-    Returns:
-        Trailing identifier, or None when the string does not end with one.
-    """
+    """Return the trailing identifier in ``value``, or None if none is present."""
     match = TRAILING_IDENTIFIER_RE.search(value)
     if match is None:
         return None
@@ -56,16 +35,11 @@ def trailing_identifier(value: str):
 
 class AnalysisPosition(NamedTuple):
     """One-based source position used by the ORD analysis layer."""
-
     line: int
     character: int
 
     def to_dict(self):
-        """Convert the position to a plain dictionary.
-
-        Returns:
-            Dictionary with line and character fields.
-        """
+        """Convert the position to a plain dictionary."""
         return {
             "line": self.line,
             "character": self.character,
@@ -74,16 +48,11 @@ class AnalysisPosition(NamedTuple):
 
 class AnalysisRange(NamedTuple):
     """Half-open source range using ORD analysis positions."""
-
     start: AnalysisPosition
     end: AnalysisPosition
 
     def to_dict(self):
-        """Convert the range to a plain dictionary.
-
-        Returns:
-            Dictionary containing serialized start and end positions.
-        """
+        """Convert the range to a plain dictionary."""
         return {
             "start": self.start.to_dict(),
             "end": self.end.to_dict(),
@@ -92,7 +61,6 @@ class AnalysisRange(NamedTuple):
 
 class AnalysisDiagnostic(NamedTuple):
     """Diagnostic emitted by the parser or semantic analysis passes."""
-
     range: AnalysisRange
     severity: str
     message: str
@@ -100,11 +68,7 @@ class AnalysisDiagnostic(NamedTuple):
     data: Optional[dict] = None
 
     def to_dict(self):
-        """Convert the diagnostic to a plain dictionary.
-
-        Returns:
-            Dictionary containing range, severity, message, code, and data.
-        """
+        """Convert the diagnostic to a plain dictionary."""
         result = {
             "range": self.range.to_dict(),
             "severity": self.severity,
@@ -118,18 +82,13 @@ class AnalysisDiagnostic(NamedTuple):
 
 class AnalysisSymbol(NamedTuple):
     """Named symbol discovered in an ORD document."""
-
     name: str
     kind: str
     range: AnalysisRange
     selection_range: AnalysisRange
 
     def to_dict(self):
-        """Convert the symbol to a dictionary for protocol responses.
-
-        Returns:
-            Dictionary containing the symbol name, kind, and ranges.
-        """
+        """Convert the symbol to a dictionary for protocol responses."""
         return {
             "name": self.name,
             "kind": self.kind,
@@ -140,7 +99,6 @@ class AnalysisSymbol(NamedTuple):
 
 class AnalysisImport(NamedTuple):
     """Import statement captured from an ORD document."""
-
     kind: str
     module: str
     export_name: Optional[str]
@@ -149,11 +107,7 @@ class AnalysisImport(NamedTuple):
     selection_range: AnalysisRange
 
     def to_dict(self):
-        """Convert the import entry to a dictionary.
-
-        Returns:
-            Dictionary containing import metadata and source ranges.
-        """
+        """Convert the import entry to a dictionary."""
         return {
             "kind": self.kind,
             "module": self.module,
@@ -170,7 +124,6 @@ class DocumentAnalysis:
     The object keeps both user-facing analysis data and internal indexes used
     by LSP features such as definition, references, rename, and completions.
     """
-
     def __init__(
         self,
         uri: str,
@@ -250,11 +203,7 @@ class DocumentAnalysis:
         return result
 
     def to_dict(self):
-        """Convert the public analysis fields to a dictionary.
-
-        Returns:
-            Dictionary used by tests and LSP response helpers.
-        """
+        """Convert the public analysis fields to a dictionary."""
         return {
             "uri": self.uri,
             "version": self.version,
@@ -265,27 +214,14 @@ class DocumentAnalysis:
         }
 
     def has_errors(self):
-        """Return whether this analysis contains an error diagnostic.
-
-        Returns:
-            True if any diagnostic has error severity.
-        """
+        """Return whether this analysis contains an error diagnostic."""
         return any(
             diagnostic.severity == "error"
             for diagnostic in self.diagnostics
         )
 
     def with_diagnostics(self, diagnostics, uri: Optional[str] = None, version=_MISSING):
-        """Create a copy with replaced diagnostics.
-
-        Args:
-            diagnostics: Diagnostics to attach to the copied analysis.
-            uri: Optional replacement URI.
-            version: Optional replacement document version.
-
-        Returns:
-            New ``DocumentAnalysis`` with copied structural analysis data.
-        """
+        """Return a copy with replaced diagnostics and optional uri/version."""
         return DocumentAnalysis(
             uri=self.uri if uri is None else uri,
             version=self.version if version is _MISSING else version,
@@ -305,43 +241,19 @@ class DocumentAnalysis:
 
 
 def position_before(left: AnalysisPosition, right: AnalysisPosition):
-    """Return whether one analysis position is strictly before another.
-
-    Args:
-        left: Position to compare first.
-        right: Position to compare against.
-
-    Returns:
-        True if ``left`` sorts before ``right``.
-    """
+    """Return whether ``left`` sorts strictly before ``right``."""
     if left.line != right.line:
         return left.line < right.line
     return left.character < right.character
 
 
 def position_before_or_equal(left: AnalysisPosition, right: AnalysisPosition):
-    """Return whether one analysis position is before or equal to another.
-
-    Args:
-        left: Position to compare first.
-        right: Position to compare against.
-
-    Returns:
-        True if ``left`` is before or equal to ``right``.
-    """
+    """Return whether ``left`` is before or equal to ``right``."""
     return not position_before(right, left)
 
 
 def range_contains(value_range: AnalysisRange, position: AnalysisPosition):
-    """Return whether a half-open analysis range contains a position.
-
-    Args:
-        value_range: Range to test.
-        position: Position that may fall inside the range.
-
-    Returns:
-        True if the position is inside ``value_range``.
-    """
+    """Return whether the half-open ``value_range`` contains ``position``."""
     if not position_before_or_equal(value_range.start, position):
         return False
     return position_before(position, value_range.end)

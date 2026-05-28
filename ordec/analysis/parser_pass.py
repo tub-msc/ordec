@@ -61,7 +61,6 @@ def tree_text(node):
 
 class _OrdAnalysisBuilder:
     """Build a DocumentAnalysis from a parsed ORD syntax tree."""
-
     def __init__(self, syntax_tree, uri: str, version: Optional[int]):
         """Initialize builder state for one parsed document."""
         self.syntax_tree = syntax_tree

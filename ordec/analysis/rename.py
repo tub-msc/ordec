@@ -7,17 +7,8 @@ from .model import AnalysisPosition, is_identifier
 
 class RenameMixin:
     """Rename helpers that reuse definition and reference analysis."""
-
     def prepare_rename(self, uri: str, position: AnalysisPosition):
-        """Return the rename range and placeholder for a valid symbol.
-
-        Args:
-            uri: Document URI containing the request.
-            position: One-based analysis position.
-
-        Returns:
-            LSP prepare-rename result, or None when rename is not valid.
-        """
+        """Return the rename range and placeholder, or None if rename is not valid."""
         if self.member_occurrence_at_position(uri, position) is not None:
             return None
 
@@ -34,19 +25,10 @@ class RenameMixin:
         }
 
     def rename(self, uri: str, position: AnalysisPosition, new_name: str):
-        """Build workspace edits for renaming the symbol at a position.
+        """Build workspace edits for renaming the symbol at ``position``.
 
-        Args:
-            uri: Document URI containing the rename request.
-            position: One-based analysis position.
-            new_name: Replacement identifier.
-
-        Returns:
-            Mapping of document URIs to text edits, or None when rename is not
-            valid at the requested position.
-
-        Raises:
-            ValueError: If ``new_name`` is not a valid Python identifier.
+        Returns a {uri: [edit, ...]} mapping, or None when rename is not valid.
+        Raises ``ValueError`` if ``new_name`` is not a valid Python identifier.
         """
         if not is_identifier(new_name):
             raise ValueError("Invalid identifier: {}".format(new_name))

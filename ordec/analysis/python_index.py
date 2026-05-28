@@ -24,7 +24,6 @@ class PythonModuleIndex:
     installed modules uses ``importlib`` and may execute parent package
     initialization code; failures are treated as unresolved modules.
     """
-
     def __init__(self, workspace_root: Optional[str] = None):
         """Initialize the Python source index."""
         self.workspace_root = workspace_root

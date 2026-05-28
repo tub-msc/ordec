@@ -6,16 +6,7 @@ from ..analysis.model import AnalysisPosition
 
 
 def code_actions(session, uri: str, diagnostics):
-    """Return code actions supported for diagnostics in one document.
-
-    Args:
-        session: Analysis session that owns the document text and symbols.
-        uri: Document URI for the action request.
-        diagnostics: LSP diagnostics supplied by the client.
-
-    Returns:
-        List of LSP code action dictionaries.
-    """
+    """Return LSP code actions for the given diagnostics in one document."""
     actions = []
     if uri not in session.documents:
         return actions
@@ -31,14 +22,7 @@ def code_actions(session, uri: str, diagnostics):
 
 
 def lsp_analysis_position(position):
-    """Convert a zero-based LSP position into a one-based analysis position.
-
-    Args:
-        position: LSP position dictionary.
-
-    Returns:
-        Equivalent ``AnalysisPosition``.
-    """
+    """Convert a zero-based LSP position into a one-based analysis position."""
     return AnalysisPosition(
         line=position["line"] + 1,
         character=position["character"] + 1,
@@ -50,17 +34,13 @@ def line_in_range(value_range, line: int):
     return value_range.start.line <= line <= value_range.end.line
 
 
+def leading_indent(line: str):
+    """Return the run of leading whitespace (spaces and tabs) on a line."""
+    return line[:len(line) - len(line.lstrip(" \t"))]
+
+
 def missing_symbol_port_action(session, uri: str, diagnostic):
-    """Create a quick fix for schematic ports missing from a symbol view.
-
-    Args:
-        session: Analysis session used to inspect document symbols.
-        uri: Document URI for the diagnostic.
-        diagnostic: LSP diagnostic with an ``unknown-symbol-port`` code.
-
-    Returns:
-        LSP code action dictionary, or None when the fix cannot be placed.
-    """
+    """Build a quick-fix action that declares a missing port in the symbol view."""
     data = diagnostic.get("data") or {}
     port_name = data.get("portName")
     if not port_name:
@@ -126,16 +106,13 @@ def symbol_body_indent(session, uri: str, analysis, symbol_view):
             continue
         if not line_in_range(symbol_view.range, symbol.selection_range.start.line):
             continue
-
-        line = lines[symbol.selection_range.start.line - 1]
-        return line[:len(line) - len(line.lstrip(" \t"))]
+        return leading_indent(lines[symbol.selection_range.start.line - 1])
 
     start_line_index = symbol_view.range.start.line
     end_line_index = min(symbol_view.range.end.line, len(lines))
     for line in lines[start_line_index:end_line_index]:
         if line.strip():
-            return line[:len(line) - len(line.lstrip(" \t"))]
+            return leading_indent(line)
 
     header = lines[symbol_view.range.start.line - 1]
-    header_indent = header[:len(header) - len(header.lstrip(" \t"))]
-    return header_indent + "    "
+    return leading_indent(header) + "    "

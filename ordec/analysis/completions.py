@@ -10,17 +10,8 @@ from .model import AnalysisPosition, is_identifier, leading_identifier
 
 class CompletionsMixin:
     """Completion helpers built on document analysis and lightweight type flow."""
-
     def completion_context(self, uri: str, position: AnalysisPosition):
-        """Detect member or parameter completion context at a cursor position.
-
-        Args:
-            uri: Document URI containing the cursor.
-            position: One-based analysis position.
-
-        Returns:
-            Context dictionary for member/parameter completion, or None.
-        """
+        """Detect member/parameter completion context at the cursor, or None."""
         lines = self.documents[uri]["text"].splitlines()
         if position.line < 1 or position.line > len(lines):
             return None
@@ -66,14 +57,7 @@ class CompletionsMixin:
         return None
 
     def completion_inline_context_type_names(self, text: str):
-        """Infer node context type names from an inline ORD node statement.
-
-        Args:
-            text: Source text before a bare member or parameter completion.
-
-        Returns:
-            Candidate type names for a same-line ORD node context.
-        """
+        """Infer context type names from an inline ORD node statement."""
         match = re.match(
             r"^\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)\s+[^:]+:\s*",
             text,
@@ -83,14 +67,7 @@ class CompletionsMixin:
         return self.context_type_names_for_kind(match.group(1))
 
     def completion_subject(self, text: str):
-        """Extract the expression subject immediately before a completion dot.
-
-        Args:
-            text: Source text before the member or parameter completion marker.
-
-        Returns:
-            Subject expression string, or None when no safe subject exists.
-        """
+        """Extract the expression subject immediately before a completion dot."""
         text = text.rstrip()
         if text == "":
             return None
@@ -104,16 +81,7 @@ class CompletionsMixin:
         return match.group(0)
 
     def completion_type_names(self, uri: str, position: AnalysisPosition, context):
-        """Infer candidate type names for a completion context.
-
-        Args:
-            uri: Document URI containing the completion request.
-            position: One-based analysis position.
-            context: Completion context from ``completion_context``.
-
-        Returns:
-            Candidate type names for member lookup.
-        """
+        """Infer candidate type names for a completion context."""
         context_type_names = context.get("type_names")
         if context_type_names:
             return self.normalize_type_names(context_type_names)
@@ -136,15 +104,7 @@ class CompletionsMixin:
         return []
 
     def completion_sort_key(self, item, prefix=None):
-        """Build a stable sort key for completion items.
-
-        Args:
-            item: Completion item dictionary.
-            prefix: Optional text already typed by the user.
-
-        Returns:
-            Tuple suitable for sorting completion labels.
-        """
+        """Build a stable sort key for completion items."""
         kind_rank = {
             "parameter": 0,
             "variable": 1,
@@ -160,16 +120,7 @@ class CompletionsMixin:
         return (prefix_rank, kind_rank, label.lower(), label)
 
     def member_completion_items(self, uri: str, position: AnalysisPosition, context):
-        """Collect member or parameter completion items for a context.
-
-        Args:
-            uri: Document URI containing the completion request.
-            position: One-based analysis position.
-            context: Completion context from ``completion_context``.
-
-        Returns:
-            Mapping of completion labels to item dictionaries.
-        """
+        """Collect member or parameter completion items for a context."""
         items = dict()
         prefix = context.get("prefix") or ""
 
@@ -194,15 +145,7 @@ class CompletionsMixin:
         return items
 
     def completions(self, uri: str, position: AnalysisPosition):
-        """Return completion items visible at a document position.
-
-        Args:
-            uri: Document URI containing the completion request.
-            position: One-based analysis position.
-
-        Returns:
-            List of completion item dictionaries.
-        """
+        """Return completion items visible at ``position`` in ``uri``."""
         if not self.ensure_document(uri):
             return []
 

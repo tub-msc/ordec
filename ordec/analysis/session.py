@@ -48,20 +48,12 @@ class AnalysisSession(
     methods remain part of this facade rather than independent public entry
     points.
     """
-
     def __init__(
         self,
         workspace_root: Optional[str] = None,
         max_closed_documents: int = 512,
     ):
-        """Initialize an analysis session.
-
-        Args:
-            workspace_root: Optional directory used to resolve workspace ORD
-                modules and Python files.
-            max_closed_documents: Maximum number of file-backed closed
-                documents to keep cached after workspace operations.
-        """
+        """Initialize an analysis session for the optional workspace root."""
         if workspace_root:
             self.workspace_root = str(Path(workspace_root).resolve())
         else:
@@ -214,14 +206,7 @@ class AnalysisSession(
         version: Optional[int] = None,
         is_open: bool = True,
     ):
-        """Register a newly opened document.
-
-        Args:
-            uri: Document URI.
-            text: Full document text.
-            version: Optional LSP document version.
-            is_open: Whether the document is open in the editor.
-        """
+        """Register a newly opened document."""
         self.store_document(uri, text, version=version, is_open=is_open)
 
     def update_document(
@@ -231,14 +216,7 @@ class AnalysisSession(
         version: Optional[int] = None,
         is_open: bool = True,
     ):
-        """Replace a document snapshot and invalidate dependent caches.
-
-        Args:
-            uri: Document URI.
-            text: Full replacement document text.
-            version: Optional LSP document version.
-            is_open: Whether the document is open in the editor.
-        """
+        """Replace a document snapshot and invalidate dependent caches."""
         self.store_document(uri, text, version=version, is_open=is_open)
 
     def store_document(
