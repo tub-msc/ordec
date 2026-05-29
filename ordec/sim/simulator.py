@@ -61,6 +61,10 @@ def Simulator(simhier: SimHierarchy, enable_savecurrents: bool = True,
               batch: bool = True) -> 'SimulatorBase':
     """Create a Simulator for the given SimHierarchy.
 
+    Prefer the :meth:`SimHierarchy.simulate` convenience method over calling
+    this directly, e.g. ``simhier.simulate(batch=True).op()`` instead of
+    ``Simulator(simhier, batch=True).op()``.
+
     Args:
         simhier: The simulation hierarchy to simulate.
         enable_savecurrents: Enable .option savecurrents in the netlist.

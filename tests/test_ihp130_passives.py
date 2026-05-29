@@ -3,8 +3,9 @@
 
 import pytest
 
+from ordec.core import *
 from ordec.core import ParameterError
-from ordec.lib import ihp130
+from ordec.lib import ihp130, Gnd, Vdc
 from .lib.thinwrap import thin_wrapper_cell
 
 
@@ -36,3 +37,50 @@ def test_cmim_drc_clean():
     cell = thin_wrapper_cell(ihp130.Cmim())
     res = ihp130.run_drc(cell.layout, use_tempdir=True)
     assert res.summary() == {}
+
+
+# Two parameter sets per resistor type, moving l and w in opposite directions:
+# a short+wide device (low R) vs. a long+narrow one (high R). Both parameters
+# push resistance the same way here, giving a large spread (~3x) that confirms
+# l and w both reach the model. Reference values are op-point results captured
+# from ngspice.
+@pytest.mark.parametrize("cell,expected_r", [
+    (ihp130.Rsil(l="2u", w="2u"), 11.4314),
+    (ihp130.Rsil(l="4u", w="1u"), 36.4522),
+    (ihp130.Rppd(l="2u", w="2u"), 293.500),
+    (ihp130.Rppd(l="4u", w="1u"), 1097.73),
+    (ihp130.Rhigh(l="2u", w="2u"), 1496.98),
+    (ihp130.Rhigh(l="4u", w="1u"), 6073.46),
+])
+def test_resistor_op(cell, expected_r):
+    """Ngspice op-point: drive each resistor with 1 V and check R = V / I."""
+    res_cell = cell
+
+    class Tb(Cell):
+        @generate
+        def schematic(self):
+            s = Schematic(cell=self)
+            s.vdd = Net()
+            s.vss = Net()
+
+            s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
+            s.i_vdc = SchemInstance(
+                Vdc(dc=1).symbol.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 5)
+            )
+            s.r = SchemInstance(
+                res_cell.symbol.portmap(p=s.vdd, m=s.vss, bn=s.vss),
+                pos=Vec2R(12, 5),
+            )
+
+            s.auto_wire()
+            s.check(add_conn_points=True, add_terminal_taps=True)
+            return s
+
+    tb = Tb()
+    h = SimHierarchy.from_schematic(tb.schematic)
+    h.simulate(batch=True).op()
+    # Series loop: the source branch current equals the resistor current. The
+    # subckt resistor's own port currents (i(xr:1) ...) are not mapped to a
+    # SimPin, so read the 1 V source's branch current instead.
+    r = 1.0 / abs(float(h.i_vdc.p.current[0]))
+    assert r == pytest.approx(expected_r, rel=0.02)
