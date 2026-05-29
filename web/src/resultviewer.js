@@ -187,6 +187,9 @@ const reportElementClassOf = {
 };
 
 const viewClassOf = {
+    // SVG viewer for schematics and symbols.
+    // Listens to lvs:schem-select and lvs:clear for LVS highlighting.
+    // Also consumes pending 'lvs:select' on init if schematic opened after LVS item selected.
     svg: class {
         constructor(resContent) {
             this.resContent = resContent;
@@ -194,10 +197,146 @@ const viewClassOf = {
             this.tooltip = document.createElement('div');
             this.tooltip.classList.add('schem-error-tooltip');
             this.coordsDisplay = new CoordinateDisplay();
+            this.highlightOverlay = null;
+            this.svg = null;
+
+            this._onLvsSelect = (data) => this.setHighlight(data);
+            this._onLvsClear = () => this.clearHighlight();
+            viewEventBus.on('lvs:schem-select', this._onLvsSelect);
+            viewEventBus.on('lvs:clear', this._onLvsClear);
+
+            const pending = viewEventBus.getPending('lvs:select');
+            if (pending) {
+                this._pendingHighlight = pending;
+            }
         }
         zoomed({transform}) {
             this.transform = transform;
             this.g.attr("transform", transform);
+        }
+        setHighlight(data) {
+            this.clearHighlight();
+            if (!this.svg) {
+                return;
+            }
+
+            // Find the inner transformed group (with Y-flip) to append highlight in same coordinate space
+            const innerGroup = this.g.select('g[transform]');
+            if (innerGroup.empty()) {
+                return;
+            }
+
+            const highlightGroup = innerGroup.append("g")
+                .attr("class", "lvs-highlight-group");
+
+            const itemType = data.item_type;
+            const schemNid = data.schem_nid;
+
+            if (schemNid === undefined || schemNid === null) {
+                highlightGroup.remove();
+                return;
+            }
+
+            // Select all elements with matching data-nid
+            const elements = this.g.selectAll(`[data-nid="${schemNid}"]`);
+            if (elements.empty()) {
+                highlightGroup.remove();
+                return;
+            }
+
+            if (itemType === 'device' || itemType === 'subcircuit') {
+                // Instance highlighting: draw bounding rect around the instance group
+                const instGroup = elements.filter('g');
+                if (instGroup.empty()) {
+                    highlightGroup.remove();
+                    return;
+                }
+                const bbox = instGroup.node().getBBox();
+                const pad = 0.3;
+                highlightGroup.append("rect")
+                    .attr("class", "lvs-highlight-border")
+                    .attr("x", bbox.x - pad)
+                    .attr("y", bbox.y - pad)
+                    .attr("width", bbox.width + pad * 2)
+                    .attr("height", bbox.height + pad * 2)
+                    .attr("rx", 0.5)
+                    .attr("ry", 0.5)
+                    .attr("fill", "rgba(255, 0, 0, 0.25)")
+                    .attr("stroke", "none");
+            } else if (itemType === 'net') {
+                // Net highlighting: highlight wires and tap points only (not ports)
+                elements.each(function() {
+                    const el = d3.select(this);
+                    const tagName = this.tagName.toLowerCase();
+                    if (tagName === 'path') {
+                        // Wire/tappoint: draw thicker translucent stroke along the path
+                        const pathD = el.attr('d');
+                        const transform = el.attr('transform');
+                        const pathEl = highlightGroup.append("path")
+                            .attr("d", pathD)
+                            .attr("fill", "none")
+                            .attr("stroke", "rgba(255, 0, 0, 0.4)")
+                            .attr("stroke-width", 0.4)
+                            .attr("stroke-linecap", "round");
+                        if (transform) {
+                            pathEl.attr("transform", transform);
+                        }
+                    } else if (tagName === 'circle') {
+                        // Connection point: draw larger translucent circle
+                        highlightGroup.append("circle")
+                            .attr("cx", el.attr('cx'))
+                            .attr("cy", el.attr('cy'))
+                            .attr("r", 0.5)
+                            .attr("fill", "rgba(255, 0, 0, 0.25)")
+                            .attr("stroke", "none");
+                    }
+                    // Skip 'g' elements (ports) - only highlight wires and connection points
+                });
+            } else if (itemType === 'pin') {
+                // Pin highlighting: highlight only the port (not the connected wires)
+                const portGroup = elements.filter('g');
+                if (portGroup.empty()) {
+                    highlightGroup.remove();
+                    return;
+                }
+                // Find the portArrow path and extract position from its transform
+                const portArrow = portGroup.select('path.portArrow');
+                let cx, cy;
+                if (!portArrow.empty()) {
+                    const transform = portArrow.attr('transform');
+                    // Parse matrix(a,b,c,d,e,f) where e,f are the translation
+                    const match = transform && transform.match(/matrix\(([^)]+)\)/);
+                    if (match) {
+                        const vals = match[1].split(/[\s,]+/).map(parseFloat);
+                        cx = vals[4];
+                        cy = vals[5];
+                    }
+                }
+                if (cx === undefined) {
+                    // Fallback to bbox center
+                    const bbox = portGroup.node().getBBox();
+                    cx = bbox.x + bbox.width / 2;
+                    cy = bbox.y + bbox.height / 2;
+                }
+                highlightGroup.append("circle")
+                    .attr("cx", cx)
+                    .attr("cy", cy)
+                    .attr("r", 0.5)
+                    .attr("fill", "rgba(255, 0, 0, 0.25)")
+                    .attr("stroke", "none");
+            } else {
+                // Unknown item type, remove empty group
+                highlightGroup.remove();
+                return;
+            }
+
+            this.highlightOverlay = highlightGroup;
+        }
+        clearHighlight() {
+            if (this.highlightOverlay) {
+                this.highlightOverlay.remove();
+                this.highlightOverlay = null;
+            }
         }
         update(msgData) {
             const viewbox = msgData['viewbox'];
@@ -209,6 +348,7 @@ const viewClassOf = {
             const svg = d3.create("svg")
                 .attr("class", "fit schem-svg")
                 .attr("viewBox", viewbox);
+            this.svg = svg;
 
             this.g = svg.append("g")
                 .html(msgData['inner'])
@@ -275,6 +415,16 @@ const viewClassOf = {
                 .on('mouseout', () => {
                     this.tooltip.style.display = 'none';
                 });
+
+            if (this._pendingHighlight) {
+                this.setHighlight(this._pendingHighlight);
+                this._pendingHighlight = null;
+            }
+        }
+        destroy() {
+            viewEventBus.off('lvs:schem-select', this._onLvsSelect);
+            viewEventBus.off('lvs:clear', this._onLvsClear);
+            this.clearHighlight();
         }
     },
     report: class {
@@ -462,6 +612,296 @@ const viewClassOf = {
 
         destroy() {
             viewEventBus.emit('drc:clear');
+        }
+    },
+    // LVS Report viewer.
+    //
+    // Event bus protocol:
+    //   lvs:layout-select {pos} - sent when item with layout_pos selected
+    //   lvs:schem-select {schem_nid, item_type} - sent when item with schem_nid selected
+    //   lvs:clear - sent on deselect or destroy
+    //   lvs:request-open-views {layoutView, schemView} - requests new viewer panels
+    //
+    // Pending mechanism: setPending('lvs:select', payload) stores selection for
+    // viewers opened later. Layout/schematic viewers call getPending on init.
+    //
+    // View naming: layoutView/schemView use "<viewName>.ref_layout" and
+    // "<viewName>.ref_schematic" format, matching LvsReport SubgraphRef attributes.
+    lvs_report: class {
+        constructor(resContent) {
+            this.resContent = resContent;
+            this.el = document.createElement('div');
+            this.el.className = 'lvs-viewer';
+            this.selectedItemNid = null;
+            resContent.appendChild(this.el);
+        }
+
+        update(data) {
+            const circuitMap = new Map();
+            data.circuits.forEach(circuit => {
+                circuitMap.set(circuit.nid, { ...circuit, itemsByType: { pin: [], net: [], device: [], subcircuit: [] } });
+            });
+
+            const itemMap = new Map();
+            data.items.forEach(item => {
+                itemMap.set(item.nid, item);
+                const circuit = circuitMap.get(item.circuit_nid);
+                if (circuit && circuit.itemsByType[item.item_type]) {
+                    circuit.itemsByType[item.item_type].push(item);
+                }
+            });
+
+            const mismatchItemCount = data.items.filter(i => i.status !== 'match').length;
+            const statusClass = data.status === 'match' ? 'lvs-pass' : 'lvs-fail';
+            const statusText = data.status === 'match' ? 'PASS' : 'FAIL';
+            const summaryText = mismatchItemCount > 0
+                ? `${mismatchItemCount} mismatch${mismatchItemCount > 1 ? 'es' : ''}`
+                : 'All match';
+
+            let html = `<div class="lvs-header ${statusClass}">
+                <span class="lvs-status">${statusText}</span>
+                <span class="lvs-summary">${summaryText}</span>
+                <button class="lvs-deselect" disabled>Deselect</button>
+            </div>`;
+            html += `<div class="lvs-body">
+                <div class="lvs-col-header">
+                    <span>Objects</span>
+                    <span>Layout</span>
+                    <span>Reference</span>
+                </div>`;
+
+            const typeOrder = ['pin', 'net', 'device', 'subcircuit'];
+            const typeLabels = { pin: 'Pins', net: 'Nets', device: 'Devices', subcircuit: 'Subcircuits' };
+            const typeIcons = { pin: '&#8660;', net: '&#8593;', device: '&#9649;', subcircuit: '&#9633;' };
+
+            data.circuits.forEach(circuit => {
+                const circuitData = circuitMap.get(circuit.nid);
+                const allItems = Object.values(circuitData.itemsByType).flat();
+                const hasMismatches = circuit.status !== 'match' || allItems.some(i => i.status !== 'match');
+
+                if (!hasMismatches && allItems.length === 0) return;
+
+                const circuitStatusIcon = this._statusIcon(circuit.status);
+                html += `<div class="lvs-circuit" data-nid="${circuit.nid}">
+                    <div class="lvs-circuit-header">
+                        <span><span class="lvs-toggle">&#9654;</span> ${circuitStatusIcon} Circuit</span>
+                        <span>${circuit.layout_name || '?'}</span>
+                        <span>${circuit.schem_name || '?'}</span>
+                    </div>`;
+
+                for (const itemType of typeOrder) {
+                    const items = circuitData.itemsByType[itemType];
+                    if (items.length === 0) continue;
+
+                    const mismatchCount = items.filter(i => i.status !== 'match').length;
+                    const groupStatusIcon = mismatchCount > 0
+                        ? this._statusIcon('mismatch')
+                        : this._statusIcon('match');
+
+                    html += `<div class="lvs-type-group" data-type="${itemType}">
+                        <div class="lvs-type-header">
+                            <span><span class="lvs-toggle">&#9654;</span> ${groupStatusIcon} ${typeLabels[itemType]} (${items.length})</span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                        <div class="lvs-type-items">`;
+
+                    for (const item of items) {
+                        const statusClass = item.status === 'match'
+                            ? 'lvs-status-match'
+                            : (item.message && item.message.includes('parameter') ? 'lvs-status-warning' : 'lvs-status-mismatch');
+                        const layoutName = item.layout_name || '?';
+                        const schemName = item.schem_name || '?';
+                        const layoutParams = this._formatParams(item.layout_params);
+                        const schemParams = this._formatParams(item.schem_params);
+
+                        html += `<div class="lvs-item-row ${statusClass}" data-nid="${item.nid}">
+                            <span>${typeIcons[itemType]} ${layoutName} &#8596; ${schemName}</span>
+                            <span>${layoutName}${layoutParams}</span>
+                            <span>${schemName}${schemParams}</span>
+                        </div>`;
+                        if (item.message) {
+                            html += `<div class="lvs-item-msg">${item.message}</div>`;
+                        }
+                    }
+
+                    html += `</div></div>`;
+                }
+
+                html += `</div>`;
+            });
+
+            html += '</div>';
+            this.el.innerHTML = html;
+
+            this._attachEventHandlers(itemMap);
+            this.itemMap = itemMap;
+        }
+
+        _statusIcon(status) {
+            const cls = status === 'match' ? 'match' : (status === 'warning' ? 'warning' : 'mismatch');
+            return `<span class="lvs-status-icon ${cls}"></span>`;
+        }
+
+        _formatParams(params) {
+            if (!params || Object.keys(params).length === 0) return '';
+            const keyParams = ['W', 'L'];
+            const parts = [];
+            for (const key of keyParams) {
+                if (key in params) {
+                    let val = params[key];
+                    if (typeof val === 'number') {
+                        if (val < 1e-3) val = (val * 1e6).toFixed(2) + 'u';
+                        else if (val < 1) val = (val * 1e3).toFixed(2) + 'm';
+                        else val = val.toFixed(2);
+                    }
+                    parts.push(`${key}=${val}`);
+                }
+            }
+            return parts.length > 0 ? ` [${parts.join(', ')}]` : '';
+        }
+
+        _setupColumnResize() {
+            const header = this.el.querySelector('.lvs-col-header');
+            if (!header) return;
+
+            const cols = header.querySelectorAll(':scope > span');
+            const body = this.el.querySelector('.lvs-body');
+
+            cols.forEach((col, idx) => {
+                if (idx >= cols.length - 1) return;
+                const handle = document.createElement('div');
+                handle.className = 'lvs-col-resize';
+                handle.dataset.colIdx = idx;
+                col.appendChild(handle);
+            });
+
+            header.addEventListener('mousedown', (e) => {
+                const handle = e.target.closest('.lvs-col-resize');
+                if (!handle) return;
+
+                e.preventDefault();
+                const idx = parseInt(handle.dataset.colIdx, 10);
+                const startX = e.clientX;
+                const startWidths = [
+                    cols[idx].getBoundingClientRect().width,
+                    cols[idx + 1].getBoundingClientRect().width
+                ];
+
+                const onMouseMove = (e) => {
+                    const dx = e.clientX - startX;
+                    body.style.setProperty(`--lvs-col${idx + 1}`, `${Math.max(80, startWidths[0] + dx)}px`);
+                    body.style.setProperty(`--lvs-col${idx + 2}`, `${Math.max(80, startWidths[1] - dx)}px`);
+                };
+
+                const onMouseUp = () => {
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                    document.body.style.removeProperty('cursor');
+                    document.body.style.removeProperty('user-select');
+                };
+
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+        }
+
+        _attachEventHandlers(itemMap) {
+            this._setupColumnResize();
+
+            this.el.querySelectorAll('.lvs-circuit-header').forEach(header => {
+                header.addEventListener('click', () => {
+                    const circuit = header.parentElement;
+                    circuit.classList.toggle('expanded');
+                    header.querySelector('.lvs-toggle').classList.toggle('expanded');
+                });
+            });
+
+            this.el.querySelectorAll('.lvs-type-header').forEach(header => {
+                header.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const group = header.parentElement;
+                    group.classList.toggle('expanded');
+                    header.querySelector('.lvs-toggle').classList.toggle('expanded');
+                });
+            });
+
+            const deselectBtn = this.el.querySelector('.lvs-deselect');
+            deselectBtn.addEventListener('click', () => {
+                this.el.querySelectorAll('.lvs-item-row.selected').forEach(el => {
+                    el.classList.remove('selected');
+                });
+                this.selectedItemNid = null;
+                deselectBtn.disabled = true;
+                viewEventBus.clearPending('lvs:select');
+                viewEventBus.emit('lvs:clear');
+            });
+
+            this.el.querySelectorAll('.lvs-item-row').forEach(itemEl => {
+                itemEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.el.querySelectorAll('.lvs-item-row.selected').forEach(el => {
+                        el.classList.remove('selected');
+                    });
+                    itemEl.classList.add('selected');
+                    deselectBtn.disabled = false;
+
+                    const nid = parseInt(itemEl.dataset.nid, 10);
+                    this.selectedItemNid = nid;
+                    const item = itemMap.get(nid);
+
+                    if (item) {
+                        const payload = {
+                            pos: item.layout_pos,
+                            schem_nid: item.schem_nid,
+                            item_type: item.item_type,
+                            schem_name: item.schem_name || '',
+                        };
+                        const hasLayoutPos = item.layout_pos !== null && item.layout_pos !== undefined;
+                        const hasSchemNid = item.schem_nid !== undefined && item.schem_nid !== null;
+
+                        // Set pending for viewers that will be opened
+                        viewEventBus.setPending('lvs:select', payload);
+
+                        const hasLayoutListener = viewEventBus.hasListeners('lvs:layout-select');
+                        const hasSchemListener = viewEventBus.hasListeners('lvs:schem-select');
+
+                        // Handle layout viewer
+                        if (hasLayoutPos) {
+                            if (hasLayoutListener) {
+                                viewEventBus.emit('lvs:layout-select', payload);
+                            }
+                        } else if (hasLayoutListener) {
+                            viewEventBus.emit('lvs:layout-select', { pos: null });
+                        }
+
+                        // Handle schematic viewer
+                        if (hasSchemNid) {
+                            if (hasSchemListener) {
+                                viewEventBus.emit('lvs:schem-select', payload);
+                            }
+                        }
+
+                        // Open new views if needed
+                        const needLayoutOpen = hasLayoutPos && !hasLayoutListener;
+                        const needSchemOpen = hasSchemNid && !hasSchemListener;
+
+                        if (needLayoutOpen || needSchemOpen) {
+                            viewEventBus.emit('lvs:request-open-views', {
+                                layoutView: needLayoutOpen ? (this.viewName ? `${this.viewName}.ref_layout` : null) : null,
+                                schemView: needSchemOpen ? (this.viewName ? `${this.viewName}.ref_schematic` : null) : null,
+                                sourceContainer: this.glContainer,
+                            });
+                        }
+                    }
+                });
+            });
+        }
+
+        destroy() {
+            viewEventBus.emit('lvs:clear');
         }
     },
 }

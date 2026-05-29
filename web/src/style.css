@@ -1035,3 +1035,187 @@ body.theme-dark .lm_content {
     background: var(--color-bg-plot);
     outline: 1px solid var(--color-border);
 }
+
+/* -- LVS Viewer (KLayout-style three-column layout) --------------- */
+.lvs-viewer {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    font-family: var(--font-mono);
+    font-size: var(--font-sm);
+}
+.lvs-header {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--color-border-light);
+    background: var(--color-bg-secondary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.lvs-status {
+    font-weight: bold;
+    padding: 2px 8px;
+    border-radius: 3px;
+}
+.lvs-pass .lvs-status {
+    background: #2a6f2a;
+    color: #fff;
+}
+.lvs-fail .lvs-status {
+    background: #c43c3c;
+    color: #fff;
+}
+.lvs-summary {
+    color: var(--color-text-secondary);
+}
+.lvs-deselect {
+    font-size: var(--font-xs);
+    padding: 2px 8px;
+    cursor: pointer;
+}
+.lvs-deselect:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.lvs-body {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+.lvs-col-header {
+    display: grid;
+    grid-template-columns: var(--lvs-col1, 1.5fr) var(--lvs-col2, 1fr) var(--lvs-col3, 1fr);
+    gap: 0;
+    padding: 4px 0;
+    background: var(--color-bg-table-header);
+    border-bottom: 1px solid var(--color-border);
+    font-weight: bold;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+.lvs-col-header > span {
+    padding: 0 8px;
+    position: relative;
+}
+.lvs-col-resize {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 5px;
+    cursor: col-resize;
+    z-index: 2;
+    background: linear-gradient(to right, transparent 2px, var(--color-border) 2px, var(--color-border) 3px, transparent 3px);
+}
+.lvs-col-resize:hover {
+    background: linear-gradient(to right, transparent 1px, var(--color-text-secondary) 1px, var(--color-text-secondary) 4px, transparent 4px);
+}
+.lvs-circuit {
+    border-bottom: 1px solid var(--color-border-light);
+}
+.lvs-circuit-header {
+    display: grid;
+    grid-template-columns: var(--lvs-col1, 1.5fr) var(--lvs-col2, 1fr) var(--lvs-col3, 1fr);
+    gap: 0;
+    padding: 4px 0;
+    cursor: pointer;
+    background: var(--color-bg-secondary);
+    user-select: none;
+}
+.lvs-circuit-header > span {
+    padding: 0 8px;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+.lvs-circuit-header:hover {
+    background: var(--color-bg-tertiary);
+}
+.lvs-toggle {
+    display: inline-block;
+    width: 1em;
+    font-size: 0.8em;
+    color: var(--color-text-secondary);
+    transition: transform 0.15s;
+}
+.lvs-toggle.expanded {
+    transform: rotate(90deg);
+}
+.lvs-status-icon {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+.lvs-status-icon.match { background: #2a6f2a; }
+.lvs-status-icon.mismatch { background: #c43c3c; }
+.lvs-status-icon.warning { background: #b87700; }
+.lvs-type-group {
+    display: none;
+    padding-left: 16px;
+}
+.lvs-circuit.expanded > .lvs-type-group {
+    display: block;
+}
+.lvs-type-header {
+    display: grid;
+    grid-template-columns: var(--lvs-col1, 1.5fr) var(--lvs-col2, 1fr) var(--lvs-col3, 1fr);
+    gap: 0;
+    padding: 3px 0;
+    cursor: pointer;
+    font-weight: bold;
+    background: var(--color-bg-tertiary);
+    user-select: none;
+}
+.lvs-type-header > span {
+    padding: 0 8px;
+}
+.lvs-type-header:hover {
+    background: var(--color-bg-secondary);
+}
+.lvs-type-items {
+    display: none;
+}
+.lvs-type-group.expanded > .lvs-type-items {
+    display: block;
+}
+.lvs-item-row {
+    display: grid;
+    grid-template-columns: var(--lvs-col1, 1.5fr) var(--lvs-col2, 1fr) var(--lvs-col3, 1fr);
+    gap: 0;
+    padding: 2px 0;
+    cursor: pointer;
+}
+.lvs-item-row > span {
+    padding: 0 8px 0 24px;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+.lvs-item-row > span:not(:first-child) {
+    padding-left: 8px;
+}
+.lvs-item-row:hover {
+    background: var(--color-bg-tertiary);
+}
+.lvs-item-row.selected {
+    background: var(--color-bg-plot);
+    outline: 1px solid var(--color-border);
+}
+.lvs-item-row.lvs-status-match {
+    color: #2a6f2a;
+}
+.lvs-item-row.lvs-status-mismatch {
+    color: #c43c3c;
+}
+.lvs-item-row.lvs-status-warning {
+    color: #b87700;
+}
+.lvs-item-msg {
+    color: var(--color-text-muted);
+    font-size: 0.85em;
+    grid-column: 1 / -1;
+    padding-left: 24px;
+}

@@ -4,7 +4,7 @@
 from enum import Enum
 import math
 from functools import partial
-from typing import NamedTuple, Optional
+from typing import Iterable, NamedTuple, Optional
 import re
 from public import public
 
@@ -13,7 +13,10 @@ from .geoprim import *
 from .ordb import *
 from .cell import Cell
 from .constraints import *
-from .context import ViewContext, SymbolViewContext, SchematicViewContext, LayoutViewContext, SimulationViewContext
+from .context import (
+    SymbolViewContext, SchematicViewContext, LayoutViewContext,
+    SimulationViewContext, ReportViewContext,
+)
 from .simarray import SimArray
 
 # Enums
@@ -1124,6 +1127,206 @@ class SimInstance(Node):
 
 public(Simulation = SimHierarchy)
 
+# Report
+# ------
+
+@public
+class Report(SubgraphRoot):
+    """
+    Represents a list of vertically stacked report elements.
+
+    Report elements are stored as ORDB nodes. The helper methods preserve the
+    append-style API for building reports programmatically.
+    """
+    view_context = ReportViewContext
+
+    fill_height = Attr(bool, default=False, optional=False)
+
+    def elements(self):
+        sg = self.subgraph
+        for nid in sorted(sg.nodes):
+            node = sg.nodes[nid]
+            if issubclass(node._cursor_type, ReportElement):
+                yield sg.cursor_at(nid)
+
+    def markdown(self, markdown: str):
+        self % Markdown(markdown=markdown)
+
+    def preformatted(self, text: str):
+        self % PreformattedText(text=text)
+
+    def html(self, html: str):
+        self % Html(html=html)
+
+    def svg(self, view):
+        self % Svg.from_view(view)
+
+    def plot2d(self, series, **kwargs):
+        plot = self % Plot2D(**kwargs)
+        if isinstance(series, dict):
+            series = series.items()
+        for name, values in series:
+            plot % Plot2DSeries(name=str(name), values=values)
+
+    def webdata(self):
+        return "report", {
+            "elements": [element.element_webdata() for element in self.elements()],
+            "fill_height": self.fill_height,
+        }
+
+
+@public
+class ReportElement(Node):
+    """Base class for all report element nodes."""
+    in_subgraphs = [Report]
+
+    def element_webdata(self) -> dict:
+        """Returns JSON-serializable web representation."""
+        raise NotImplementedError
+
+
+@public
+class Markdown(ReportElement):
+    """Markdown text rendered as HTML in the web interface."""
+    markdown = Attr(str, optional=False)
+
+    def element_webdata(self) -> dict:
+        import markdown2
+        return {
+            "element_type": "markdown",
+            "html": markdown2.markdown(
+                self.markdown,
+                extras=["fenced-code-blocks", "code-friendly", "tables"],
+                safe_mode="escape",
+            ),
+        }
+
+
+@public
+class PreformattedText(ReportElement):
+    """Preformatted text rendered using a monospace font."""
+    text = Attr(str, optional=False)
+
+    def element_webdata(self) -> dict:
+        return {"element_type": "preformatted_text", "text": self.text}
+
+
+@public
+class Html(ReportElement):
+    """Raw HTML content rendered directly in the web interface."""
+    html = Attr(str, optional=False)
+
+    def element_webdata(self) -> dict:
+        return {"element_type": "html", "html": self.html}
+
+
+@public
+class Svg(ReportElement):
+    """Static SVG element rendered without zoom."""
+    inner = Attr(str, optional=False) #: SVG markup inside the <svg> element
+    viewbox_min_x = Attr(float, optional=False) #: viewBox left edge
+    viewbox_min_y = Attr(float, optional=False) #: viewBox top edge
+    viewbox_width = Attr(float, optional=False) #: viewBox width
+    viewbox_height = Attr(float, optional=False) #: viewBox height
+    width = Attr(str) #: CSS width string (e.g. "120px")
+    height = Attr(str) #: CSS height string (e.g. "80px")
+
+    @classmethod
+    def from_view(cls, view) -> "Svg":
+        """Creates an SVG report element from an object exposing webdata()."""
+        view_type, data = view.webdata()
+        if view_type != "svg":
+            raise ValueError(f"Expected svg webdata, got {view_type!r}")
+        vb = data["viewbox"]
+        return cls(
+            inner=data["inner"],
+            viewbox_min_x=float(vb[0]),
+            viewbox_min_y=float(vb[1]),
+            viewbox_width=float(vb[2]),
+            viewbox_height=float(vb[3]),
+            width=data["width"],
+            height=data["height"],
+        )
+
+    def element_webdata(self) -> dict:
+        return {
+            "element_type": "svg",
+            "inner": self.inner,
+            "viewbox": [
+                self.viewbox_min_x,
+                self.viewbox_min_y,
+                self.viewbox_width,
+                self.viewbox_height
+            ],
+            "width": self.width,
+            "height": self.height,
+        }
+
+
+@public
+class ScaleType(Enum):
+    Linear = 'linear'
+    Log = 'log'
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+def coerce_plot_x(x):
+    x = tuple(float(v) for v in x)
+    if len(x) < 2:
+        raise ValueError("x must contain at least two values")
+    for i in range(1, len(x)):
+        if x[i] < x[i - 1]:
+            raise ValueError("x values must be sorted in ascending order")
+    return x
+
+@public
+class PlotGroup(Node):
+    """Groups Plot2D elements that share a synchronized x-axis."""
+    in_subgraphs = [Report]
+
+@public
+class Plot2D(ReportElement):
+    """2D plot element rendered with the frontend simulation plot component."""
+    x = Attr(tuple, optional=False, factory=coerce_plot_x)
+    xlabel = Attr(str, default="", optional=False)
+    ylabel = Attr(str, default="", optional=False)
+    xscale = Attr(ScaleType, default=ScaleType.Linear, optional=False, factory=ScaleType)
+    yscale = Attr(ScaleType, default=ScaleType.Linear, optional=False, factory=ScaleType)
+    height = Attr(float, factory=lambda v: float(v) if v is not None else None) #: plot height in pixels
+    plot_group = LocalRef(PlotGroup)
+
+    def series(self):
+        return self.subgraph.all(Plot2DSeries.ref_idx.query(self))
+
+    def element_webdata(self) -> dict:
+        return {
+            "element_type": "plot2d",
+            "x": list(self.x),
+            "series": [
+                {"name": s.name, "values": list(s.values)}
+                for s in self.series()
+            ],
+            "xlabel": self.xlabel,
+            "ylabel": self.ylabel,
+            "xscale": self.xscale.value,
+            "yscale": self.yscale.value,
+            "height": f"{self.height:g}px" if self.height is not None else None,
+            "plot_group": self.plot_group.nid if self.plot_group is not None else None,
+        }
+
+def coerce_plot_values(values):
+    return tuple(float(v) for v in values)
+
+@public
+class Plot2DSeries(Node):
+    """A single data series belonging to a Plot2D element."""
+    in_subgraphs = [Report]
+    ref = LocalRef(Plot2D, optional=False)
+    ref_idx = Index(ref)
+    name = Attr(str, optional=False)
+    values = Attr(tuple, optional=False, factory=coerce_plot_values)
+
 # LayerStack
 # ----------
 
@@ -1521,7 +1724,6 @@ GenericPolyI.vertex_cls = PolyVec2I
 @public
 class DrcReport(SubgraphRoot):
     """DRC report containing design rule check results."""
-    __slots__ = ()
 
     ref_layout = SubgraphRef(Layout)
     top_cell_name = Attr(str)
@@ -1539,75 +1741,13 @@ class DrcReport(SubgraphRoot):
         return counts
 
     def webdata(self):
-        items_dict = {}
-        categories_with_items = set()
-        for item in self.all(DrcItem):
-            items_dict[item.nid] = {
-                'nid': item.nid,
-                'category_nid': item.category.nid,
-                'shapes': [],
-            }
-            categories_with_items.add(item.category.nid)
-
-        categories = []
-        for cat in self.all(DrcCategory):
-            if cat.nid in categories_with_items:
-                categories.append({
-                    'nid': cat.nid,
-                    'name': cat.name,
-                    'description': cat.description,
-                    'parent_nid': cat.parent.nid if cat.parent else None,
-                })
-
-        for box in self.all(DrcBox):
-            items_dict[box.item.nid]['shapes'].append({
-                'type': 'box',
-                'rect': [box.rect.lx, box.rect.ly, box.rect.ux, box.rect.uy]
-            })
-
-        for edge in self.all(DrcEdge):
-            items_dict[edge.item.nid]['shapes'].append({
-                'type': 'edge',
-                'p1': [edge.p1.x, edge.p1.y],
-                'p2': [edge.p2.x, edge.p2.y]
-            })
-
-        for ep in self.all(DrcEdgePair):
-            items_dict[ep.item.nid]['shapes'].append({
-                'type': 'edge_pair',
-                'e1': [[ep.edge1_p1.x, ep.edge1_p1.y], [ep.edge1_p2.x, ep.edge1_p2.y]],
-                'e2': [[ep.edge2_p1.x, ep.edge2_p1.y], [ep.edge2_p2.x, ep.edge2_p2.y]],
-            })
-
-        for poly in self.all(DrcPoly):
-            verts = [[v.x, v.y] for v in poly.vertices()]
-            items_dict[poly.item.nid]['shapes'].append({
-                'type': 'poly', 'vertices': verts
-            })
-
-        for path in self.all(DrcPath):
-            verts = [[v.x, v.y] for v in path.vertices()]
-            items_dict[path.item.nid]['shapes'].append({
-                'type': 'path', 'vertices': verts, 'width': path.width
-            })
-
-        for text in self.all(DrcText):
-            items_dict[text.item.nid]['shapes'].append({
-                'type': 'text', 'pos': [text.pos.x, text.pos.y], 'text': text.text
-            })
-
-        return 'drc_report', {
-            'top_cell': self.top_cell_name,
-            'categories': categories,
-            'items': list(items_dict.values()),
-            'unit': float(self.ref_layout.ref_layers.unit),
-        }
+        from ..layout.drc import webdata
+        return webdata(self)
 
 
 @public
 class DrcCategory(Node):
     """Category of DRC violations (e.g., 'Minimum spacing', 'Minimum width')."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     name = Attr(str)
@@ -1621,7 +1761,6 @@ class DrcCategory(Node):
 @public
 class DrcItem(Node):
     """Individual DRC violation item within a category."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     category = LocalRef(DrcCategory, optional=False)
@@ -1635,7 +1774,6 @@ class DrcItem(Node):
 @public
 class DrcBox(Node):
     """Box geometry in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     item = LocalRef(DrcItem, optional=False)
@@ -1649,7 +1787,6 @@ class DrcBox(Node):
 @public
 class DrcEdge(Node):
     """Edge geometry in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     item = LocalRef(DrcItem, optional=False)
@@ -1664,7 +1801,6 @@ class DrcEdge(Node):
 @public
 class DrcEdgePair(Node):
     """Edge pair geometry in a DRC item (e.g., for spacing violations)."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     item = LocalRef(DrcItem, optional=False)
@@ -1680,7 +1816,6 @@ class DrcEdgePair(Node):
 
 class DrcPolyBase(GenericPolyI):
     """Base class for DRC polygon nodes."""
-    __slots__ = ()
 
     tag = Attr(str, default='')
 
@@ -1688,7 +1823,6 @@ class DrcPolyBase(GenericPolyI):
 @public
 class DrcPoly(DrcPolyBase):
     """Polygon geometry in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
     vertex_cls = PolyVec2I
 
@@ -1700,7 +1834,6 @@ class DrcPoly(DrcPolyBase):
 
 class DrcPathBase(GenericPolyI):
     """Base class for DRC path nodes."""
-    __slots__ = ()
 
     tag = Attr(str, default='')
     width = Attr(int)
@@ -1710,7 +1843,6 @@ class DrcPathBase(GenericPolyI):
 @public
 class DrcPath(DrcPathBase):
     """Path geometry in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
     vertex_cls = PolyVec2I
 
@@ -1723,7 +1855,6 @@ class DrcPath(DrcPathBase):
 @public
 class DrcText(Node):
     """Text geometry in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     item = LocalRef(DrcItem, optional=False)
@@ -1738,7 +1869,6 @@ class DrcText(Node):
 @public
 class DrcValue(Node):
     """Arbitrary string value in a DRC item."""
-    __slots__ = ()
     in_subgraphs = [DrcReport]
 
     item = LocalRef(DrcItem, optional=False)
@@ -1750,3 +1880,96 @@ class DrcValue(Node):
 
 
 PolyVec2I.in_subgraphs.append(DrcReport)
+
+
+# LVS (Layout vs Schematic) Results
+# ----------------------------------
+
+@public
+class LvsStatus(Enum):
+    """Status of an LVS comparison item."""
+    Match = 'match'
+    Mismatch = 'mismatch'
+    NoMatch = 'nomatch'  # Circuit-level: no corresponding circuit found
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+
+@public
+class LvsItemType(Enum):
+    """Type of LVS comparison item."""
+    Net = 'net'
+    Device = 'device'
+    Pin = 'pin'
+    Subcircuit = 'subcircuit'
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+
+@public
+class LvsReport(SubgraphRoot):
+    """LVS report containing layout vs. schematic comparison results."""
+
+    ref_layout = SubgraphRef(Layout, optional=True)
+    ref_schematic = SubgraphRef(Schematic, optional=True)
+    top_cell = Attr(str)
+    status = Attr(LvsStatus)
+
+    def nresults(self) -> int:
+        """Count total LvsItems with mismatch status."""
+        return sum(1 for item in self.all(LvsItem)
+                   if item.status != LvsStatus.Match)
+
+    def webdata(self):
+        from ..layout.lvs import webdata
+        return webdata(self)
+
+
+@public
+class LvsCircuitPair(Node):
+    """Comparison record for a layout cell vs schematic cell pair."""
+    in_subgraphs = [LvsReport]
+
+    #: Direct ref to the Layout being compared. Only set for top-level circuit
+    #: (where LVSDB cell name matches top_cell); None for subcircuits.
+    ref_layout = SubgraphRef(Layout, optional=True)
+    #: Direct ref to the Schematic being compared. Only set for top-level.
+    ref_schematic = SubgraphRef(Schematic, optional=True)
+
+    status = Attr(LvsStatus)
+    message = Attr(str, optional=True)
+
+    layout_cell = Attr(str, optional=True)
+    schem_cell = Attr(str, optional=True)
+
+
+@public
+class LvsItem(Node):
+    """Individual LVS comparison item (net, device, pin, or subcircuit)."""
+    in_subgraphs = [LvsReport]
+
+    circuit = LocalRef(LvsCircuitPair, optional=False)
+    circuit_idx = Index(circuit)
+
+    item_type = Attr(LvsItemType)
+    status = Attr(LvsStatus)
+
+    # Layout device position from LVSDB in database units. GDS SRef records
+    # are unnamed, so the LVSDB only provides a location for extracted devices.
+    layout_pos = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2), optional=True)
+    layout_params = Attr(tuple, optional=True)
+
+    # Schematic side: Net for pins/nets, SchemInstance for devices.
+    # Only resolves when circuit.ref_schematic is set (top-level circuit).
+    schem = ExternalRef(Net|SchemInstance,
+        of_subgraph=lambda c: c.circuit.ref_schematic,
+        optional=True)
+    # Schematic side: reference device parameters (W, L, etc.)
+    schem_params = Attr(tuple, optional=True)
+
+    message = Attr(str, optional=True)
+
+    layout_name = Attr(str, optional=True)
+    schem_name = Attr(str, optional=True)

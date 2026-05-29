@@ -183,6 +183,44 @@ def test_wire_op():
     all_conns = list(root.all(SchemInstanceConn))
     assert len(all_conns) == 5
 
+def test_viewgen_return_target_alias():
+    ViewgenAlias = Symbol
+
+    cell AliasViewgenReturnCell:
+        viewgen symbol -> ViewgenAlias:
+            input alias_pin
+
+    view = AliasViewgenReturnCell().symbol
+    assert isinstance(view.alias_pin, Pin)
+
+def test_viewgen_return_target_expression_runtime():
+    viewgen_target_calls = []
+
+    def choose_view_root():
+        viewgen_target_calls.append("called")
+        return Symbol
+
+    cell DynamicViewgenReturnCell:
+        viewgen symbol -> choose_view_root():
+            input dynamic_pin
+
+    # choose_view_root() should be called at time of class (cell) creation,
+    # so viewgen_target_calls should be populated now:
+    assert viewgen_target_calls == ["called"]
+    cell = DynamicViewgenReturnCell()
+    assert viewgen_target_calls == ["called"]
+    view = cell.symbol
+    assert viewgen_target_calls == ["called"]
+    assert isinstance(view.dynamic_pin, Pin)
+
+def test_viewgen_return_target_conditional_expression():
+    cell ConditionalViewgenReturnCell:
+        viewgen symbol -> Symbol if True else Schematic:
+            input conditional_pin
+
+    view = ConditionalViewgenReturnCell().symbol
+    assert isinstance(view.conditional_pin, Pin)
+
 cell LayoutTestCell:
     viewgen symbol -> Symbol:
         pass
@@ -196,6 +234,15 @@ cell LayoutTestCell:
         ! .r.height == 100
         ! .r.lx == 0
         ! .r.ly == 0
+
+cell ReportTestCell:
+    viewgen report -> Report:
+        .markdown("hello")
+
+def test_report_viewgen_uses_schema_runtime():
+    view = ReportTestCell().report
+    assert isinstance(view, Report)
+    assert "hello" in view.webdata()[1]["elements"][0]["html"]
 
 def test_minimal_layout():
     c = LayoutTestCell()

@@ -66,13 +66,13 @@ class Renderer:
         return self.group_stack[-1]
 
     @contextmanager
-    def subgroup(self, node=None, existing_group=None):
+    def subgroup(self, node=None, existing_group=None, data_nid=None):
         if existing_group:
             self.group_stack.append(existing_group)
         else:
             self.group_stack.append(ET.SubElement(self.cur_group, 'g'))
-        if node and self.include_nids:
-            self.cur_group.attrib['class'] = f'nid{node.nid}'
+        if data_nid is not None and self.include_nids:
+            self.cur_group.attrib['data-nid'] = str(data_nid)
         try:
             yield
         finally:
@@ -295,22 +295,26 @@ class SchematicRenderer(Renderer):
         for poly in s.all(SchemWire):
             p = ET.SubElement(self.cur_group, 'path', d=poly.svg_path())
             p.attrib['class'] = 'schemWire'
+            if self.include_nids:
+                p.attrib['data-nid'] = str(poly.ref.nid)
 
         for p in s.all(SchemConnPoint):
             cx, cy = p.pos.tofloat()
             circle = ET.SubElement(self.cur_group, 'circle', cx=str(cx), cy=str(cy), r=str(self.conn_point_radius))
-            circle.attrib['class']='connPoint'
+            circle.attrib['class'] = 'connPoint'
+            if self.include_nids:
+                circle.attrib['data-nid'] = str(p.ref.nid)
 
         for p in s.all(SchemTapPoint):
             self.draw_schem_tappoint(p)
 
         for inst in s.all(SchemInstance):
-            with self.subgroup(node=inst):
+            with self.subgroup(node=inst, data_nid=inst.nid):
                 trans = inst.loc_transform()
                 self.draw_symbol(inst.symbol, trans, inst.full_path_str())
 
         for port in s.all(SchemPort):
-            with self.subgroup(node=port):
+            with self.subgroup(node=port, data_nid=port.ref.nid):
                 self.draw_schem_port(port)
 
         for err in s.all(SchemErrorMarker):
@@ -440,6 +444,8 @@ class SchematicRenderer(Renderer):
 
         path = ET.SubElement(self.cur_group, 'path', d=d, transform=tran.svg_transform())
         path.attrib['class'] = 'tapPoint'
+        if self.include_nids:
+            path.attrib['data-nid'] = str(p.ref.nid)
 
         if not (is_default_supply or is_default_ground):
             if p.ref.npath_nid is not None:

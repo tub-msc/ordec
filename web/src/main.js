@@ -146,6 +146,16 @@ function getResultViewers() {
     return ret;
 }
 
+function findResultViewerByView(viewName) {
+    for (const item of layout.root.getAllContentItems()) {
+        if (!item.isComponent || item.componentName !== 'result') continue;
+        if (item.component.viewSelected === viewName) {
+            return item;
+        }
+    }
+    return null;
+}
+
 function getEditor() {
     let ret;
     layout.root.getAllContentItems().forEach(e => {
@@ -284,10 +294,19 @@ autoRefreshToggle.onclick = () => {
 window.ordecClient = client;
 window.viewEventBus = viewEventBus;
 
-viewEventBus.on('layout:request-open', (data) => {
+function openOrActivateView(data) {
     const view = data.view;
+
+    if (view) {
+        const existing = findResultViewerByView(view);
+        if (existing) {
+            existing.focus();
+            return;
+        }
+    }
+
     const componentState = view ? { view, directView: true } : undefined;
-    const title = view || 'Layout';
+    const title = view || 'Result View';
 
     const componentConfig = {
         type: 'component',
@@ -317,6 +336,79 @@ viewEventBus.on('layout:request-open', (data) => {
         const rowConfig = {
             type: 'row',
             content: [componentConfig]
+        };
+        stackParent.addItem(rowConfig, stackIndex);
+
+        const newRow = stackParent.contentItems[stackIndex];
+        newRow.addChild(sourceStack, 0);
+    }
+}
+
+viewEventBus.on('layout:request-open', openOrActivateView);
+viewEventBus.on('schematic:request-open', openOrActivateView);
+
+viewEventBus.on('lvs:request-open-views', (data) => {
+    const { layoutView, schemView, sourceContainer } = data;
+
+    const columnContent = [];
+
+    if (layoutView) {
+        const existing = findResultViewerByView(layoutView);
+        if (existing) {
+            existing.focus();
+        } else {
+            columnContent.push({
+                type: 'component',
+                componentName: 'result',
+                componentState: { view: layoutView, directView: true },
+                title: layoutView,
+            });
+        }
+    }
+
+    if (schemView) {
+        const existing = findResultViewerByView(schemView);
+        if (existing) {
+            existing.focus();
+        } else {
+            columnContent.push({
+                type: 'component',
+                componentName: 'result',
+                componentState: { view: schemView, directView: true },
+                title: schemView,
+            });
+        }
+    }
+
+    if (columnContent.length === 0) {
+        return;
+    }
+
+    const sourceComponentItem = sourceContainer?.parent;
+    const sourceStack = sourceComponentItem?.parent;
+
+    if (!sourceStack?.isStack) {
+        columnContent.forEach(config => {
+            layout.addComponent('result', config.componentState, config.title);
+        });
+        return;
+    }
+
+    const stackParent = sourceStack.parent;
+    const itemToAdd = columnContent.length === 1
+        ? columnContent[0]
+        : { type: 'column', content: columnContent };
+
+    if (stackParent.isRow) {
+        const index = stackParent.contentItems.indexOf(sourceStack) + 1;
+        stackParent.addItem(itemToAdd, index);
+    } else {
+        const stackIndex = stackParent.contentItems.indexOf(sourceStack);
+        stackParent.removeChild(sourceStack, true);
+
+        const rowConfig = {
+            type: 'row',
+            content: [itemToAdd]
         };
         stackParent.addItem(rowConfig, stackIndex);
 
