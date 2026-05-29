@@ -840,74 +840,6 @@ class Cmim(SimLeafCell):
 #     -rd         drc_json='/home/tobias/workspace/IHP-Open-PDK/ihp-sg13g2/libs.tech/klayout/python/sg13g2_pycell_lib/sg13g2_tech_mod.json'
 
 
-def _copy_drc_item_shapes(src_report: DrcReport, dst_report: DrcReport, item_map: dict[int, DrcItem]):
-    for box in src_report.all(DrcBox):
-        dst_report % DrcBox(item=item_map[box.item.nid], order=box.order, tag=box.tag, rect=box.rect)
-
-    for edge in src_report.all(DrcEdge):
-        dst_report % DrcEdge(item=item_map[edge.item.nid], order=edge.order, tag=edge.tag, p1=edge.p1, p2=edge.p2)
-
-    for edge_pair in src_report.all(DrcEdgePair):
-        dst_report % DrcEdgePair(
-            item=item_map[edge_pair.item.nid],
-            order=edge_pair.order,
-            tag=edge_pair.tag,
-            edge1_p1=edge_pair.edge1_p1,
-            edge1_p2=edge_pair.edge1_p2,
-            edge2_p1=edge_pair.edge2_p1,
-            edge2_p2=edge_pair.edge2_p2,
-        )
-
-    for poly in src_report.all(DrcPoly):
-        new_poly = dst_report % DrcPoly(item=item_map[poly.item.nid], order=poly.order, tag=poly.tag)
-        for order, pos in enumerate(poly.vertices()):
-            dst_report % PolyVec2I(ref=new_poly, order=order, pos=pos)
-
-    for path in src_report.all(DrcPath):
-        new_path = dst_report % DrcPath(
-            item=item_map[path.item.nid],
-            order=path.order,
-            tag=path.tag,
-            width=path.width,
-            endtype=path.endtype,
-        )
-        for order, pos in enumerate(path.vertices()):
-            dst_report % PolyVec2I(ref=new_path, order=order, pos=pos)
-
-    for text in src_report.all(DrcText):
-        dst_report % DrcText(item=item_map[text.item.nid], order=text.order, tag=text.tag, pos=text.pos, text=text.text)
-
-    for value in src_report.all(DrcValue):
-        dst_report % DrcValue(item=item_map[value.item.nid], order=value.order, tag=value.tag, value=value.value)
-
-
-def merge_drc_reports(reports: list[DrcReport], layout: Layout) -> DrcReport:
-    """Merge several parsed KLayout DRC reports into one schema report."""
-    if len(reports) == 1:
-        return reports[0]
-
-    merged = DrcReport(ref_layout=layout, top_cell_name=reports[0].top_cell_name if reports else "")
-    category_by_name = {}
-
-    for report in reports:
-        for category in report.all(DrcCategory):
-            if category.name not in category_by_name:
-                category_by_name[category.name] = merged % DrcCategory(
-                    name=category.name,
-                    description=category.description,
-                )
-
-    for report in reports:
-        item_map = {}
-        for item in report.all(DrcItem):
-            item_map[item.nid] = merged % DrcItem(
-                category=category_by_name[item.category.name],
-                cell=item.cell,
-            )
-        _copy_drc_item_shapes(report, merged, item_map)
-
-    return merged
-
 @public
 def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
     if variant not in ('minimal', 'maximal'):
@@ -936,8 +868,6 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
             no_recommended="false",
         )
 
-        reports = []
-
         (cwd / 'main.log').unlink(missing_ok=True)
         klayout.run(pdk().klayout_drc_main_deck, cwd,
             report="main.lyrdb",
@@ -946,7 +876,8 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
             tables="main",
             **klayout_shared_opts
             )
-        reports.append(klayout.parse_rdb(cwd / "main.lyrdb", l, directory))
+        report = DrcReport(ref_layout=l, top_cell_name=directory.name_subgraph(l))
+        klayout.parse_rdb(cwd / "main.lyrdb", report, directory)
 
         if variant == 'maximal':
             (cwd / 'maximal.log').unlink(missing_ok=True)
@@ -956,9 +887,9 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
                 table_name="sg13g2_maximal",
                 **klayout_shared_opts
                 )
-            reports.append(klayout.parse_rdb(cwd / "maximal.lyrdb", l, directory))
+            klayout.parse_rdb(cwd / "maximal.lyrdb", report, directory)
 
-        return merge_drc_reports(reports, l)
+        return report
 
 
 @public

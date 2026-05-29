@@ -111,32 +111,27 @@ def _parse_text(value_str: str, conv: Callable[[float], int]) -> tuple[Vec2I, st
     return (pos, text)
 
 
-def parse_rdb(filename, layout: Layout, directory: Directory = None) -> DrcReport:
+def parse_rdb(filename, report: DrcReport, directory: Directory = None):
     """
-    Parse a KLayout XML result database file (RDB) into a DrcReport subgraph.
+    Parse a KLayout XML result database file (RDB), appending the parsed
+    violations into the given DrcReport subgraph.
 
     Args:
         filename: Path to the .lyrdb file.
-        layout: The Layout subgraph that was checked.
+        report: Existing DrcReport to append parsed violations into. The checked
+            Layout is taken from report.ref_layout.
         directory: Optional Directory for looking up cell names to LayoutInstances.
             If not provided, DrcItem.cell will be None.
-
-    Returns:
-        DrcReport subgraph with all parsed violations.
 
     See also: https://www.klayout.de/rdb_format.html
     """
     tree = ET.parse(filename)
     root = tree.getroot()
 
-    unit = layout.ref_layers.unit
+    unit = report.ref_layout.ref_layers.unit
     conv = lambda um: _microns_to_dbu(um, unit)
 
-    top_cell_elem = root.find('top-cell')
-    top_cell_name = top_cell_elem.text if top_cell_elem is not None else ''
-
-    report = DrcReport(ref_layout=layout, top_cell_name=top_cell_name)
-    category_by_name: dict[str, DrcCategory] = {}
+    category_by_name = {cat.name: cat for cat in report.all(DrcCategory)}
 
     categories_elem = root.find('categories')
     if categories_elem is not None:
@@ -145,8 +140,9 @@ def parse_rdb(filename, layout: Layout, directory: Directory = None) -> DrcRepor
             desc_elem = cat_elem.find('description')
             name = name_elem.text if name_elem is not None else ''
             description = desc_elem.text if desc_elem is not None else ''
-            cat = report % DrcCategory(name=name, description=description)
-            category_by_name[name] = cat
+            if name not in category_by_name:
+                cat = report % DrcCategory(name=name, description=description)
+                category_by_name[name] = cat
 
     cells_elem = root.find('cells')
     cell_id_to_name: dict[str, str] = {}
@@ -221,5 +217,3 @@ def parse_rdb(filename, layout: Layout, directory: Directory = None) -> DrcRepor
                     report % DrcValue(item=item, order=order, tag=tag, value=value_str)
 
                 order += 1
-
-    return report
