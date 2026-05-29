@@ -1,11 +1,13 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import math
+
 import pytest
 
 from ordec.core import *
 from ordec.core import ParameterError
-from ordec.lib import ihp130, Gnd, Vdc
+from ordec.lib import ihp130, Gnd, Vdc, Vsin
 from .lib.thinwrap import thin_wrapper_cell
 
 
@@ -84,3 +86,49 @@ def test_resistor_op(cell, expected_r):
     # SimPin, so read the 1 V source's branch current instead.
     r = 1.0 / abs(float(h.i_vdc.p.current[0]))
     assert r == pytest.approx(expected_r, rel=0.02)
+
+
+# Two sizes for the MiM capacitor. A capacitor passes no DC current, so it is
+# characterized with a single-frequency AC analysis driven by a 1 V AC source:
+# C = |I| / (2*pi*f) since |Z| = 1 / (2*pi*f*C) at V = 1. The larger plate area
+# (l*w) yields the larger capacitance, confirming both l and w reach the model.
+# Reference values are AC results captured from ngspice.
+@pytest.mark.parametrize("cell,expected_c", [
+    (ihp130.Cmim(l="5u", w="5u"), 3.8300e-14),
+    (ihp130.Cmim(l="10u", w="8u"), 1.2144e-13),
+])
+def test_cmim_ac(cell, expected_c):
+    """Ngspice AC: drive the MiM cap with a 1 V AC source and check C = |I|/(2*pi*f)."""
+    cap_cell = cell
+    freq = 1e6
+
+    class Tb(Cell):
+        @generate
+        def schematic(self):
+            s = Schematic(cell=self)
+            s.vdd = Net()
+            s.vss = Net()
+
+            s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
+            s.i_vac = SchemInstance(
+                Vsin(ac=1, freq=freq).symbol.portmap(m=s.vss, p=s.vdd),
+                pos=Vec2R(0, 5),
+            )
+            s.c = SchemInstance(
+                cap_cell.symbol.portmap(p=s.vdd, m=s.vss),
+                pos=Vec2R(12, 5),
+            )
+
+            s.auto_wire()
+            s.check(add_conn_points=True, add_terminal_taps=True)
+            return s
+
+    tb = Tb()
+    h = SimHierarchy.from_schematic(tb.schematic)
+    h.simulate(batch=True).ac("lin", 1, freq, freq)
+    # Series loop: the source branch current equals the cap current. The subckt
+    # cap's own port currents are not mapped to a SimPin, so read the AC source's
+    # complex branch current instead.
+    i = complex(h.i_vac.p.current[0])
+    c = abs(i) / (2 * math.pi * freq)
+    assert c == pytest.approx(expected_c, rel=0.02)
