@@ -219,7 +219,7 @@ def test_parse_simple_rdb():
               <category>'test_rule'</category>
               <cell>c1</cell>
               <values>
-                <value>(0,0;0.1,0.1)</value>
+                <value>box: (0,0;0.1,0.1)</value>
               </values>
             </item>
           </items>
@@ -228,7 +228,8 @@ def test_parse_simple_rdb():
     with tempfile.NamedTemporaryFile(mode='w', suffix='.lyrdb') as f:
         f.write(rdb_content)
         f.flush()
-        report = parse_rdb(f.name, layout)
+        report = DrcReport(ref_layout=layout, top_cell_name='top')
+        parse_rdb(f.name, report)
         assert report.top_cell_name == 'top'
         assert report.nresults() == 1
         categories = list(report.all(DrcCategory))
@@ -254,7 +255,7 @@ def test_parse_edge_pair():
               <category>'spacing'</category>
               <cell>top</cell>
               <values>
-                <value>(0,0;0.1,0)/(0,0.05;0.1,0.05)</value>
+                <value>edge-pair: (0,0;0.1,0)|(0,0.05;0.1,0.05)</value>
               </values>
             </item>
           </items>
@@ -263,7 +264,8 @@ def test_parse_edge_pair():
     with tempfile.NamedTemporaryFile(mode='w', suffix='.lyrdb') as f:
         f.write(rdb_content)
         f.flush()
-        report = parse_rdb(f.name, layout)
+        report = DrcReport(ref_layout=layout, top_cell_name='top')
+        parse_rdb(f.name, report)
         assert report.nresults() == 1
         items = list(report.all(DrcItem))
         edge_pairs = list(report.all(DrcEdgePair.item_idx.query(items[0])))
@@ -290,7 +292,7 @@ def test_parse_polygon():
               <category>'poly_rule'</category>
               <cell>top</cell>
               <values>
-                <value>(0,0;0.1,0;0.1,0.1;0,0.1)</value>
+                <value>polygon: (0,0;0.1,0;0.1,0.1;0,0.1)</value>
               </values>
             </item>
           </items>
@@ -299,7 +301,8 @@ def test_parse_polygon():
     with tempfile.NamedTemporaryFile(mode='w', suffix='.lyrdb') as f:
         f.write(rdb_content)
         f.flush()
-        report = parse_rdb(f.name, layout)
+        report = DrcReport(ref_layout=layout, top_cell_name='top')
+        parse_rdb(f.name, report)
         items = list(report.all(DrcItem))
         polys = list(report.all(DrcPoly.item_idx.query(items[0])))
         assert len(polys) == 1

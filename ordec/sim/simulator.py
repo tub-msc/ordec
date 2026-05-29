@@ -8,6 +8,7 @@ low-level Ngspice wrapper, and maps rawfile results back onto SimNet,
 SimPin and SimParam nodes."""
 
 import logging
+import os
 from contextlib import contextmanager
 from typing import Literal
 
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 from ..core import *
 from ..core.context import NodeContext
-from .ngspice import Ngspice, ngspice_batch
+from .ngspice import Ngspice, NgspiceSetup, ngspice_batch
 from ..schematic import Netlister
 
 
@@ -60,6 +61,10 @@ def Simulator(simhier: SimHierarchy, enable_savecurrents: bool = True,
               batch: bool = True) -> 'SimulatorBase':
     """Create a Simulator for the given SimHierarchy.
 
+    Prefer the :meth:`SimHierarchy.simulate` convenience method over calling
+    this directly, e.g. ``simhier.simulate(batch=True).op()`` instead of
+    ``Simulator(simhier, batch=True).op()``.
+
     Args:
         simhier: The simulation hierarchy to simulate.
         enable_savecurrents: Enable .option savecurrents in the netlist.
@@ -90,6 +95,20 @@ class SimulatorBase:
     def ctx(self):
         """Return a context for ORD simulation view generators."""
         return NodeContext(self)
+
+    def collect_ngspice_setup(self):
+        commands = []
+        env = dict(os.environ)
+        for func in self.netlister.ngspice_setup_funcs:
+            setup = func()
+            commands.extend(setup.commands)
+            for k, v in setup.env.items():
+                if k in env and env[k] != v:
+                    raise ValueError(
+                        f"Conflicting ngspice env for {k!r}: "
+                        f"{env[k]!r} vs {v!r}")
+                env[k] = v
+        return commands, env
 
     def _store_results(self, sim_array: SimArray):
         """Store SimArray and assign field names to SimNet/SimPin/SimParam."""
@@ -197,12 +216,11 @@ class SimulatorNgspiceBatch(SimulatorBase):
                 self.netlister.add(f".save @{device_name}[{param}]")
 
     def _run(self) -> SimArray:
-        commands = []
-        for func in self.netlister.ngspice_setup_funcs:
-            commands.extend(func())
+        commands, env = self.collect_ngspice_setup()
         return ngspice_batch(
             self.netlister.out(),
             spiceinit_commands=commands,
+            env=env,
         )
 
     def op(self, save_params=False):
@@ -255,10 +273,10 @@ class SimulatorNgspicePiped(SimulatorBase):
 
     @contextmanager
     def _launch(self, save_params=False):
-        with Ngspice.launch() as sim:
-            for func in self.netlister.ngspice_setup_funcs:
-                for cmd in func():
-                    sim.command(cmd)
+        commands, env = self.collect_ngspice_setup()
+        with Ngspice.launch(env=env) as sim:
+            for cmd in commands:
+                sim.command(cmd)
             sim.load_netlist(self.netlister.out())
             if save_params:
                 self._save_all_params(sim)

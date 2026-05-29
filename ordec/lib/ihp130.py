@@ -3,12 +3,14 @@
 
 import os
 import tempfile
+import json
 from pathlib import Path
 from public import public
 import functools
 
 from ..core import *
 from ..schematic import spice_params, Netlister
+from ..sim.ngspice import NgspiceSetup
 from . import generic_mos
 from .pdk_common import PdkDict, check_dir, check_file, rundir
 from ..layout import makevias, write_gds
@@ -28,14 +30,31 @@ def pdk() -> PdkDict:
     pdk.stdcell_spice_dir        =  check_dir(pdk.root / "libs.ref/sg13g2_stdcell/spice")
     pdk.iocell_spice_dir         =  check_dir(pdk.root / "libs.ref/sg13g2_io/spice")
     pdk.klayout_lvs_deck         = check_file(pdk.root / "libs.tech/klayout/tech/lvs/sg13g2.lvs")
+    pdk.klayout_drc_main_deck    = check_file(pdk.root / "libs.tech/klayout/tech/drc/ihp-sg13g2.drc")
     pdk.klayout_drc_decks_dir    =  check_dir(pdk.root / "libs.tech/klayout/tech/drc/rule_decks")
     pdk.klayout_drc_mod_json     = check_file(pdk.root / "libs.tech/klayout/python/sg13g2_pycell_lib/sg13g2_tech_mod.json")
     pdk.klayout_drc_default_json = check_file(pdk.root / "libs.tech/klayout/tech/drc/rule_decks/sg13g2_tech_default.json")
 
     return pdk
 
+@functools.cache
+def tech_params() -> dict:
+    """Return merged SG13G2 technology and DRC parameters."""
+    data = json.loads(pdk().klayout_drc_mod_json.read_text())
+    return data["techParams"] | data["drc_rules"] | data["pcells"]
+
+def _tech_dist(name: str) -> R:
+    """Read a distance-like tech parameter as a Rational."""
+    value = tech_params()[name]
+    if isinstance(value, str):
+        return R(value)
+    return R(f"{value}u")
+
+def _tech_nm(name: str) -> int:
+    return int(_tech_dist(name) / R("1n"))
+
 def ngspice_setup():
-    """Return ngspice setup commands based on .spiceinit content."""
+    """Return ngspice setup commands and environment variables."""
     commands = [
         "set ngbehavior=hsa",
         "set noinit",
@@ -47,7 +66,10 @@ def ngspice_setup():
         pdk().ngspice_osdi_dir / "r3_cmc.osdi",
         pdk().ngspice_osdi_dir / "mosvar.osdi"]:
         commands.append(f"osdi '{check_file(osdi_file)}'")
-    return commands
+    return NgspiceSetup(
+        commands=commands,
+        env={"PDK": "ihp-sg13g2", "PDK_ROOT": str(pdk().root)},
+    )
 
 def netlister_setup(netlister):
     if netlister.lvs:
@@ -56,6 +78,10 @@ def netlister_setup(netlister):
     # Load corner library with typical corner
     model_lib = pdk().ngspice_models_dir / "cornerMOSlv.lib"
     netlister.add(".lib", f"\"{model_lib}\" mos_tt")
+    model_lib = pdk().ngspice_models_dir / "cornerRES.lib"
+    netlister.add(".lib", f"\"{model_lib}\" res_typ")
+    model_lib = pdk().ngspice_models_dir / "cornerCAP.lib"
+    netlister.add(".lib", f"\"{model_lib}\" cap_typ")
 
     # Add options from .spiceinit
     netlister.add(".option", "tnom=28")
@@ -98,6 +124,11 @@ class SG13G2(Cell):
         s.pSD = Layer(
             gdslayer_shapes=GdsLayer(layer=14, data_type=0),
             style_fill=rgb_color("#ccb899"),
+            )
+
+        s.nSD = Layer(
+            gdslayer_shapes=GdsLayer(layer=7, data_type=0),
+            style_fill=rgb_color("#99b8d9"),
             )
 
         s.NWell = Layer(
@@ -154,6 +185,16 @@ class SG13G2(Cell):
             style_fill=rgb_color("#5e00e6"),
             )
 
+        s.RES = Layer(
+            gdslayer_shapes=GdsLayer(layer=24, data_type=0),
+            style_fill=rgb_color("#ff9966"),
+            )
+
+        s.SalBlock = Layer(
+            gdslayer_shapes=GdsLayer(layer=28, data_type=0),
+            style_fill=rgb_color("#996633"),
+            )
+
         s.MIM = Layer(
             gdslayer_shapes=GdsLayer(layer=36, data_type=0),
             style_fill=rgb_color("#268c6b"),
@@ -181,6 +222,16 @@ class SG13G2(Cell):
         s.Vmim = Layer(
             gdslayer_shapes=GdsLayer(layer=129, data_type=0),
             style_fill=rgb_color("#ffe6bf"),
+            )
+
+        s.PolyRes = Layer(
+            gdslayer_shapes=GdsLayer(layer=128, data_type=0),
+            style_fill=rgb_color("#cc6633"),
+            )
+        s.PolyRes.pin = Layer(
+            gdslayer_shapes=GdsLayer(layer=128, data_type=2),
+            style_fill=rgb_color("#cc6633"),
+            is_pinlayer=True,
             )
         
         s.prBoundary = Layer(
@@ -424,29 +475,375 @@ class Ptap(Cell):
     def layout(self) -> Layout:
         return layoutgen_tap(self, self.l, self.w, nwell=False)
 
+
+def _layoutgen_resistor(
+        cell: Cell,
+        kind: str,
+        *,
+        add_res: bool = False,
+        add_psd: bool = False,
+        add_nsd: bool = False) -> Layout:
+    """
+    Generate an SG13G2 poly resistor.
+
+    This is still simpler than the foundry PCells and currently supports only
+    the straight-body case. The IHP resistor PCells have several asymmetry and
+    contact-push corner cases for bent devices which are intentionally kept out
+    of scope until ORDeC has a PCell-compatible implementation.
+    """
+    if cell.m != 1:
+        raise ParameterError("m != 1 not supported for layout.")
+    if cell.b != 0:
+        raise ParameterError("b != 0 not supported for layout.")
+
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+
+    width = int(cell.w / R("1n"))
+    length = int(cell.l / R("1n"))
+    ps = int(cell.ps / R("1n"))
+    bends = cell.b
+
+    if width < _tech_nm(f"{kind}_minW"):
+        raise ParameterError(f"w below {kind} minimum width.")
+    if length < _tech_nm(f"{kind}_minL"):
+        raise ParameterError(f"l below {kind} minimum length.")
+    if bends != 0 and ps < _tech_nm(f"{kind}_minPS"):
+        raise ParameterError(f"ps below {kind} minimum spacing.")
+
+    cont_size = _tech_nm("Cnt_a")
+    poly_over_cont = _tech_nm("Cnt_d")
+    contbar_poly_over = _tech_nm("CntB_d")
+    contbar_min_len = _tech_nm("CntB_a1")
+    metal_x_enc = _tech_nm("M1_c1")
+    metal_y_enc = max(_tech_nm("M1_c1"), _tech_nm(f"{kind}_met_over_cont"))
+    cont_to_body = _tech_nm(f"{kind}_cont_to_body")
+    head_len = cont_to_body + cont_size + poly_over_cont
+
+    if width - 2 * contbar_poly_over < contbar_min_len:
+        raise ParameterError("Width too small for resistor terminal contact bars.")
+
+    def make_terminal(name, x0, base_y, direction):
+        if direction > 0:
+            head_rect = Rect4I(x0, base_y, x0 + width, base_y + head_len)
+            cont_rect = Rect4I(
+                x0 + contbar_poly_over,
+                base_y + cont_to_body,
+                x0 + width - contbar_poly_over,
+                base_y + cont_to_body + cont_size,
+            )
+        else:
+            head_rect = Rect4I(x0, base_y - head_len, x0 + width, base_y)
+            cont_rect = Rect4I(
+                x0 + contbar_poly_over,
+                base_y - (cont_to_body + cont_size),
+                x0 + width - contbar_poly_over,
+                base_y - cont_to_body,
+            )
+        term_rect = Rect4I(
+            cont_rect.lx - metal_x_enc,
+            cont_rect.ly - metal_y_enc,
+            cont_rect.ux + metal_x_enc,
+            cont_rect.uy + metal_y_enc,
+        )
+        setattr(l, f"poly_head_{name}", LayoutRect(layer=layers.GatPoly, rect=head_rect))
+        setattr(l, f"cont_{name}", LayoutRect(layer=layers.Cont, rect=cont_rect))
+        setattr(l, f"term_{name}", LayoutRect(layer=layers.Metal1, rect=term_rect))
+        return head_rect, cont_rect, term_rect
+
+    body_x_lo = 0
+    body_y_lo = 0
+    body_x_hi = width
+    body_y_hi = length
+
+    body_rect = Rect4I(0, 0, width, length)
+    l.poly_body = LayoutRect(layer=layers.PolyRes, rect=body_rect)
+
+    if add_res:
+        l.res = LayoutRect(layer=layers.RES, rect=body_rect)
+
+    make_terminal("m", 0, 0, -1)
+    make_terminal("p", 0, length, 1)
+
+    total_x_lo = body_x_lo
+    total_x_hi = body_x_hi
+    total_y_lo = min(body_y_lo, l.poly_head_m.ly, l.poly_head_p.ly)
+    total_y_hi = max(body_y_hi, l.poly_head_m.uy, l.poly_head_p.uy)
+
+    if add_psd or add_nsd:
+        sd_enc = _tech_nm("Rhi_c" if add_nsd else "Rppd_b")
+        sal_enc = _tech_nm("Sal_c")
+
+        if add_psd:
+            l.psd = LayoutRect(
+                layer=layers.pSD,
+                rect=(total_x_lo - sd_enc, total_y_lo - sd_enc, total_x_hi + sd_enc, total_y_hi + sd_enc),
+            )
+
+        if add_nsd:
+            l.nsd = LayoutRect(
+                layer=layers.nSD,
+                rect=(total_x_lo - sd_enc, total_y_lo - sd_enc, total_x_hi + sd_enc, total_y_hi + sd_enc),
+            )
+
+        l.salblock = LayoutRect(
+            layer=layers.SalBlock,
+            # Straight Rppd/Rhigh devices keep SalBlock flush with the resistor
+            # body in the longitudinal direction; only the lateral enclosure is
+            # present. Extending SalBlock beyond the body collapses the required
+            # 0.20 um spacing to the terminal contact.
+            rect=(body_x_lo - sal_enc, body_y_lo, body_x_hi + sal_enc, body_y_hi),
+        )
+        l.extblock = LayoutRect(
+            layer=layers.EXTBlock,
+            rect=(total_x_lo - sal_enc, total_y_lo - sal_enc, total_x_hi + sal_enc, total_y_hi + sal_enc),
+        )
+    else:
+        ext_enc = _tech_nm("Rsil_e")
+        l.extblock = LayoutRect(
+            layer=layers.EXTBlock,
+            rect=(total_x_lo - ext_enc, total_y_lo - ext_enc, total_x_hi + ext_enc, total_y_hi + ext_enc),
+        )
+
+    l.term_m.create_pin(cell.symbol.m)
+    l.term_p.create_pin(cell.symbol.p)
+
+    return l
+
+
+def _layoutgen_cmim(cell: Cell) -> Layout:
+    """Generate the fixed SG13G2 MiM capacitor layout."""
+    if cell.m != 1:
+        raise ParameterError("m != 1 not supported for layout.")
+
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+
+    width = int(cell.w / R("1n"))
+    length = int(cell.l / R("1n"))
+    min_lw = _tech_nm("cmim_minLW")
+    if width < min_lw or length < min_lw:
+        raise ParameterError("w and l must be at least cmim_minLW.")
+
+    mim_c = _tech_nm("Mim_c")
+    mim_d = _tech_nm("Mim_d")
+    tv1_size = _tech_nm("TV1_a")
+    tv1_space = _tech_nm("TV1_a") + _tech_nm("TV1_b")
+    tv1_enc = _tech_nm("TV1_d")
+
+    l.mim = LayoutRect(layer=layers.MIM, rect=(0, 0, width, length))
+    l.term_m = LayoutRect(
+        layer=layers.Metal5,
+        rect=(-mim_c, -mim_c, width + mim_c, length + mim_c),
+    )
+    via_bbox = makevias(
+        l,
+        l.mim.rect,
+        layers.Vmim,
+        size=Vec2I(tv1_size, tv1_size),
+        spacing=Vec2I(tv1_space, tv1_space),
+        margin=Vec2I(mim_d, mim_d),
+    )
+    makevias(
+        l,
+        l.mim.rect,
+        layers.TopVia1,
+        size=Vec2I(tv1_size, tv1_size),
+        spacing=Vec2I(tv1_space, tv1_space),
+        margin=Vec2I(mim_d, mim_d),
+    )
+    l.term_p = LayoutRect(
+        layer=layers.TopMetal1,
+        rect=(
+            via_bbox.lx - tv1_enc,
+            via_bbox.ly - tv1_enc,
+            via_bbox.ux + tv1_enc,
+            via_bbox.uy + tv1_enc,
+        ),
+    )
+
+    l.term_m.create_pin(cell.symbol.m)
+    l.term_p.create_pin(cell.symbol.p)
+
+    return l
+
+
+class Res(SimLeafCell):
+    """Shared base class for SG13G2 resistors."""
+    l = Parameter(R)
+    w = Parameter(R)
+    b = Parameter(int, default=0)
+    ps = Parameter(R, default=R("0.18u"))
+    m = Parameter(int, default=1)
+
+    def ngspice_current_pins(self):
+        return {"i": "p"}
+
+    @generate
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+
+        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.bn = Pin(pos=Vec2R(4, 2), pintype=PinType.In, align=East)
+
+        zigzag_height = R(2)
+        zigzag_width_half = R(0.625)
+        zigzag_start = (R(4) - zigzag_height) / R(2)
+        s % SymbolPoly(vertices=[
+            Vec2R(2, 0),
+            Vec2R(2, zigzag_start),
+            Vec2R(2 - zigzag_width_half, zigzag_start + zigzag_height * R(1) / R(12)),
+            Vec2R(2 + zigzag_width_half, zigzag_start + zigzag_height * R(3) / R(12)),
+            Vec2R(2 - zigzag_width_half, zigzag_start + zigzag_height * R(5) / R(12)),
+            Vec2R(2 + zigzag_width_half, zigzag_start + zigzag_height * R(7) / R(12)),
+            Vec2R(2 - zigzag_width_half, zigzag_start + zigzag_height * R(9) / R(12)),
+            Vec2R(2 + zigzag_width_half, zigzag_start + zigzag_height * R(11) / R(12)),
+            Vec2R(2, zigzag_start + zigzag_height),
+            Vec2R(2, 4),
+        ])
+        s % SymbolPoly(vertices=[Vec2R(2.6, 2), Vec2R(4, 2)])
+
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        netlister.require_netlist_setup(netlister_setup)
+        netlister.require_ngspice_setup(ngspice_setup)
+
+        params = {
+            "w": self.w,
+            "l": self.l,
+            "m": self.m,
+            "b": self.b,
+        }
+        if (not netlister.lvs) or (self.b != 0):
+            params["ps"] = self.ps
+        if netlister.lvs:
+            pins = [inst.symbol.p, inst.symbol.m, inst.symbol.bn]
+            prefix = "R"
+        else:
+            pins = [inst.symbol.p, inst.symbol.m, inst.symbol.bn]
+            prefix = "x"
+        netlister.add(
+            netlister.name_obj(inst, prefix=prefix),
+            netlister.portmap(inst, pins),
+            self.model_name,
+            *spice_params(params),
+        )
+
+
+@public
+class Rsil(Res):
+    model_name = "rsil"
+    l = Parameter(R, default=R("0.50u"))
+    w = Parameter(R, default=R("0.50u"))
+
+    @generate
+    def layout(self) -> Layout:
+        return _layoutgen_resistor(self, "rsil", add_res=True)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls()]
+
+
+@public
+class Rppd(Res):
+    model_name = "rppd"
+    l = Parameter(R, default=R("0.50u"))
+    w = Parameter(R, default=R("0.50u"))
+
+    @generate
+    def layout(self) -> Layout:
+        return _layoutgen_resistor(self, "rppd", add_psd=True)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls()]
+
+
+@public
+class Rhigh(Res):
+    model_name = "rhigh"
+    l = Parameter(R, default=R("0.96u"))
+    w = Parameter(R, default=R("0.50u"))
+
+    @generate
+    def layout(self) -> Layout:
+        return _layoutgen_resistor(self, "rhigh", add_psd=True, add_nsd=True)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls()]
+
+
+@public
+class Cmim(SimLeafCell):
+    """Fixed SG13G2 MIM capacitor."""
+    l = Parameter(R, default=R("6.99u"))
+    w = Parameter(R, default=R("6.99u"))
+    m = Parameter(int, default=1)
+    ic = Parameter(R, optional=True)
+
+    def ngspice_current_pins(self):
+        return {"i": "p"}
+
+    @generate
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+
+        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+
+        s % SymbolPoly(vertices=[Vec2R(1.25, 1.8), Vec2R(2.75, 1.8)])
+        s % SymbolPoly(vertices=[Vec2R(1.25, 2.2), Vec2R(2.75, 2.2)])
+        s % SymbolPoly(vertices=[Vec2R(2, 2.2), Vec2R(2, 4)])
+        s % SymbolPoly(vertices=[Vec2R(2, 1.8), Vec2R(2, 0)])
+
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        netlister.require_netlist_setup(netlister_setup)
+        netlister.require_ngspice_setup(ngspice_setup)
+
+        pins = [inst.symbol.p, inst.symbol.m]
+        params = {
+            "w": self.w,
+            "l": self.l,
+            "m": self.m,
+        }
+        if netlister.lvs:
+            prefix = "C"
+        else:
+            prefix = "x"
+            if self.ic is not None:
+                params["ic"] = self.ic
+        netlister.add(
+            netlister.name_obj(inst, prefix=prefix),
+            netlister.portmap(inst, pins),
+            "cap_cmim",
+            *spice_params(params),
+        )
+
+    @generate
+    def layout(self) -> Layout:
+        return _layoutgen_cmim(self)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls()]
+
 # klayout-new -b -r '/home/tobias/workspace/ordec/lvs/drc_run_2025_11_26_13_11_34/main.drc'
 #     -rd drc_json_default='/home/tobias/workspace/IHP-Open-PDK/ihp-sg13g2/libs.tech/klayout/tech/drc/rule_decks/sg13g2_tech_default.json'
 #     -rd         drc_json='/home/tobias/workspace/IHP-Open-PDK/ihp-sg13g2/libs.tech/klayout/python/sg13g2_pycell_lib/sg13g2_tech_mod.json'
 
 
-def drc_build_main_deck():
-    drc_decks_dir = pdk().klayout_drc_decks_dir
-    drc_deck = []
-    drc_deck.append((drc_decks_dir / 'main.drc').read_text())
-    for fn in drc_decks_dir.glob("*.drc"):
-        if fn.stem in ('antenna', 'density', 'sg13g2_maximal', 'main', 'layers_def', 'tail'):
-            continue
-        drc_deck.append(fn.read_text())
-    drc_deck.append((drc_decks_dir / 'tail.drc').read_text())
-
-    return "\n".join(drc_deck)
-
 @public
 def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
     if variant not in ('minimal', 'maximal'):
         raise ValueError("variant must be either 'minimal' or 'maximal'.")
-
-    drc_decks_dir = pdk().klayout_drc_decks_dir
 
     directory = Directory()
 
@@ -455,7 +852,7 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
             write_gds(l, f, directory)
 
         klayout_shared_opts = dict(
-            thr=str(os.cpu_count()), # Number of threads for density checks
+            threads=str(os.cpu_count()),
             drc_json_default=pdk().klayout_drc_default_json,
             drc_json=pdk().klayout_drc_mod_json,
             topcell=directory.name_subgraph(l),
@@ -465,31 +862,34 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
             disable_extra_rules="false",
             no_feol="false",
             no_beol="false",
+            no_forbidden="false",
+            no_pin="false",
             no_offgrid="false",
-            density="true",
+            no_recommended="false",
         )
 
         (cwd / 'main.log').unlink(missing_ok=True)
-        (cwd / 'main.drc').write_text(drc_build_main_deck())
-        (cwd / 'layers_def.drc').write_text((drc_decks_dir / 'layers_def.drc').read_text())
-
-        klayout.run(cwd / 'main.drc', cwd,
+        klayout.run(pdk().klayout_drc_main_deck, cwd,
             report="main.lyrdb",
             log="main.log",
             table_name="main",
+            tables="main",
             **klayout_shared_opts
             )
+        report = DrcReport(ref_layout=l, top_cell_name=directory.name_subgraph(l))
+        klayout.parse_rdb(cwd / "main.lyrdb", report, directory)
 
-        # (cwd / 'density.log').unlink(missing_ok=True)
-        # klayout.run(drc_decks_dir / 'density.drc', cwd,
-        #    report="density.lyrdb",
-        #    log="density.log",
-        #    table_name="density",
-        #    **klayout_shared_opts
-        #    )
-    
-        log = (cwd / "main.log").read_text() # currently ignored
-        return klayout.parse_rdb(cwd / "main.lyrdb", l, directory)
+        if variant == 'maximal':
+            (cwd / 'maximal.log').unlink(missing_ok=True)
+            klayout.run(pdk().klayout_drc_decks_dir / 'sg13g2_maximal.drc', cwd,
+                report="maximal.lyrdb",
+                log="maximal.log",
+                table_name="sg13g2_maximal",
+                **klayout_shared_opts
+                )
+            klayout.parse_rdb(cwd / "maximal.lyrdb", report, directory)
+
+        return report
 
 
 @public

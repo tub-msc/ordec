@@ -1,0 +1,52 @@
+// SPDX-FileCopyrightText: 2026 ORDeC contributors
+// SPDX-License-Identifier: Apache-2.0
+
+// KLayout RDB value mini-language grammar.
+// Parses the text content of <value> elements in .lyrdb files. The grammar
+// follows KLayout's own reader (rdb.cc ValueBase::create_from_string and the
+// db::*::to_string serializers) so that every value KLayout writes can be
+// parsed. Forms that the DRC schema cannot represent (polygon holes, non-zero
+// path extensions / rounded paths) parse here but are rejected by parse_rdb
+// rather than being silently dropped.
+//
+// A value may carry a leading tag in brackets, e.g. "[name] box: (...)" or
+// "[#name] text: a"; the '#' marks a user tag.
+
+start: tag? value_body
+
+tag: "[" "#"? tag_name "]"
+tag_name: QUOTED_STRING | WORD
+
+?value_body: box | edge | edge_pair | polygon | path | label | text | number_value
+
+box: "box:" "(" point ";" point ")"
+edge: "edge:" "(" point ";" point ")"
+edge_pair: ("edge-pair:" | "edge_pair:") edge_geom ("/" | "|") edge_geom
+edge_geom: "(" point ";" point ")"
+// A polygon is one or more rings (outer hull plus holes) within one pair of
+// parentheses, the rings separated by "/".
+polygon: "polygon:" "(" ring ("/" ring)* ")"
+path: "path:" "(" ring ")" attr*
+// Positioned text: a quoted string and a transformation, plus optional
+// size/font/alignment attributes (s=, f=, ha=, va=).
+label: "label:" "(" QUOTED_STRING "," trans ")" attr*
+// Plain string value (not positioned).
+text: "text:" (QUOTED_STRING | WORD)
+number_value: ("float:" | "int:") NUMBER
+
+// Transformation as written by db::simple_trans::to_string: an optional
+// rotation/mirror code followed by a displacement.
+trans: ROTCODE? point
+ring: point (";" point)*
+attr: ATTR
+point: NUMBER "," NUMBER
+
+ROTCODE: "r0" | "r90" | "r180" | "r270" | "m0" | "m45" | "m90" | "m135"
+ATTR: /[a-z]+=[^\s)]+/
+NUMBER: /[-+]?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?/
+QUOTED_STRING: "'" /[^']*/ "'"
+// Lower priority so the geometric keyword literals (e.g. "box:") and ROTCODE
+// win over WORD when both could match the same leading characters.
+WORD.-2: /[A-Za-z_][A-Za-z0-9_]*/
+
+%ignore /[\s]+/

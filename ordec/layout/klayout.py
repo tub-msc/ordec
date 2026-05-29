@@ -6,7 +6,6 @@ import subprocess
 import xml.etree.ElementTree as ET
 import re
 import warnings
-from typing import Callable
 
 from lark import Lark, Transformer, v_args
 
@@ -24,117 +23,138 @@ def run(script, cwd, **kwargs):
     subprocess.check_call(cmdline, cwd=cwd)
 
 
-def _microns_to_dbu(value_um: float, unit: R) -> int:
-    """Convert micron value to database units."""
-    um_in_m = R('1u')
-    dbu_per_um = um_in_m / unit
-    return int(round(float(value_um * dbu_per_um)))
+def unquote(tok) -> str:
+    s = str(tok)
+    if s.startswith("'") and s.endswith("'"):
+        return s[1:-1]
+    return s
 
 
-def _parse_coord(s: str, conv: Callable[[float], int]) -> int:
-    """Parse a coordinate string and convert to dbu."""
-    return conv(float(s))
+class RdbValueTransformer(Transformer):
+    """Transform a parsed RDB value into a (tag, kind, payload) tuple, where
+    coordinates are raw (x, y) micron float pairs. Conversion to dbu and ORDB
+    node creation happen in parse_rdb, since the dbu scale is per-report.
 
-
-def _parse_point(s: str, conv: Callable[[float], int]) -> Vec2I:
-    """Parse 'x,y' coordinate string to Vec2I in dbu."""
-    x_str, y_str = s.split(',')
-    return Vec2I(_parse_coord(x_str, conv), _parse_coord(y_str, conv))
-
-
-def _parse_box(value_str: str, conv: Callable[[float], int]) -> Rect4I:
-    """Parse KLayout box value string: '(x1,y1;x2,y2)'."""
-    match = re.match(r'\(([^;]+);([^)]+)\)', value_str)
-    if not match:
-        raise ValueError(f"Invalid box format: {value_str}")
-    p1 = _parse_point(match.group(1), conv)
-    p2 = _parse_point(match.group(2), conv)
-    return Rect4I(min(p1.x, p2.x), min(p1.y, p2.y), max(p1.x, p2.x), max(p1.y, p2.y))
-
-
-def _parse_edge(value_str: str, conv: Callable[[float], int]) -> tuple[Vec2I, Vec2I]:
-    """Parse KLayout edge value string: '(x1,y1;x2,y2)'."""
-    match = re.match(r'\(([^;]+);([^)]+)\)', value_str)
-    if not match:
-        raise ValueError(f"Invalid edge format: {value_str}")
-    return (_parse_point(match.group(1), conv), _parse_point(match.group(2), conv))
-
-
-def _parse_edge_pair(value_str: str, conv: Callable[[float], int]) -> tuple[Vec2I, Vec2I, Vec2I, Vec2I]:
-    """Parse KLayout edge pair value string: '(x1,y1;x2,y2)/(x3,y3;x4,y4)' or '(x1,y1;x2,y2)|(x3,y3;x4,y4)'."""
-    match = re.match(r'\(([^;]+);([^)]+)\)[/|]\(([^;]+);([^)]+)\)', value_str)
-    if not match:
-        raise ValueError(f"Invalid edge_pair format: {value_str}")
-    return (
-        _parse_point(match.group(1), conv),
-        _parse_point(match.group(2), conv),
-        _parse_point(match.group(3), conv),
-        _parse_point(match.group(4), conv),
-    )
-
-
-def _parse_polygon(value_str: str, conv: Callable[[float], int]) -> list[Vec2I]:
-    """Parse KLayout polygon value string: '(x1,y1;x2,y2;x3,y3;...)'."""
-    match = re.match(r'\(([^)]+)\)', value_str)
-    if not match:
-        raise ValueError(f"Invalid polygon format: {value_str}")
-    points_str = match.group(1).split(';')
-    return [_parse_point(p, conv) for p in points_str]
-
-
-def _parse_path(value_str: str, conv: Callable[[float], int]) -> tuple[list[Vec2I], int]:
-    """Parse KLayout path value string: '(x1,y1;x2,y2;...) w=WIDTH'.
-
-    Returns (vertices, width).
+    tag is the bracketed value tag ('' if none). Payloads by kind:
+        box, edge:    [point, point]
+        edge_pair:    [point, point, point, point]
+        polygon:      [ring, ...] where ring is a list of points (ring[0] is
+                          the outer hull, the rest are holes)
+        path:         (ring, attrs) where attrs maps attribute name -> str
+                          (KLayout writes 'w', 'bx', 'ex', 'r')
+        label:        (text, point) for positioned text
+        value:        the raw scalar string (text:/float:/int: value)
     """
-    match = re.match(r'\(([^)]+)\)\s*w=([0-9.eE+-]+)', value_str)
-    if not match:
-        raise ValueError(f"Invalid path format: {value_str}")
-    points_str = match.group(1).split(';')
-    vertices = [_parse_point(p, conv) for p in points_str]
-    width = conv(float(match.group(2)))
-    return (vertices, width)
+
+    @v_args(inline=True)
+    def point(self, x, y):
+        return (float(x), float(y))
+
+    def ring(self, points):
+        return list(points)
+
+    @v_args(inline=True)
+    def edge_geom(self, p1, p2):
+        return (p1, p2)
+
+    @v_args(inline=True)
+    def tag(self, name):
+        return unquote(name)
+
+    @v_args(inline=True)
+    def tag_name(self, tok):
+        return tok
+
+    def start(self, items):
+        if len(items) == 2:
+            tag, (kind, payload) = items
+        else:
+            tag, (kind, payload) = '', items[0]
+        return (tag, kind, payload)
+
+    def box(self, points):
+        return ('box', points)
+
+    def edge(self, points):
+        return ('edge', points)
+
+    @v_args(inline=True)
+    def edge_pair(self, g1, g2):
+        return ('edge_pair', [g1[0], g1[1], g2[0], g2[1]])
+
+    def polygon(self, rings):
+        return ('polygon', list(rings))
+
+    def path(self, children):
+        ring, *attrs = children
+        return ('path', (ring, dict(attrs)))
+
+    @v_args(inline=True)
+    def trans(self, *children):
+        # children is (ROTCODE, point) or (point,); we keep only the
+        # displacement, since DrcText has no rotation.
+        return children[-1]
+
+    @v_args(inline=True)
+    def attr(self, tok):
+        key, value = str(tok).split('=', 1)
+        return (key, value)
+
+    @v_args(inline=True)
+    def label(self, quoted, pos, *attrs):
+        return ('label', (unquote(quoted), pos))
+
+    @v_args(inline=True)
+    def text(self, tok):
+        return ('value', unquote(tok))
+
+    @v_args(inline=True)
+    def number_value(self, num):
+        return ('value', str(num))
 
 
-def _parse_text(value_str: str, conv: Callable[[float], int]) -> tuple[Vec2I, str]:
-    """Parse KLayout text value string: '('TEXT' x,y)'.
+rdb_value_parser = Lark.open_from_package(
+    __package__,
+    "rdb_value.lark",
+    parser="lalr",
+)
 
-    Returns (position, text).
+
+def parse_rdb_value(value_str: str):
+    """Parse an RDB <value> string into a (tag, kind, payload) tuple.
+
+    The grammar covers the full value space accepted by KLayout's own reader;
+    see RdbValueTransformer for the payload shape of each kind. Raises LarkError
+    if the string is not a valid RDB value.
     """
-    match = re.match(r"\('([^']+)'\s+([^)]+)\)", value_str)
-    if not match:
-        raise ValueError(f"Invalid text format: {value_str}")
-    text = match.group(1)
-    pos = _parse_point(match.group(2), conv)
-    return (pos, text)
+    return RdbValueTransformer().transform(rdb_value_parser.parse(value_str))
 
 
-def parse_rdb(filename, layout: Layout, directory: Directory = None) -> DrcReport:
+def parse_rdb(filename, report: DrcReport, directory: Directory = None):
     """
-    Parse a KLayout XML result database file (RDB) into a DrcReport subgraph.
+    Parse a KLayout XML result database file (RDB), appending the parsed
+    violations into the given DrcReport subgraph.
 
     Args:
         filename: Path to the .lyrdb file.
-        layout: The Layout subgraph that was checked.
+        report: Existing DrcReport to append parsed violations into. The checked
+            Layout is taken from report.ref_layout.
         directory: Optional Directory for looking up cell names to LayoutInstances.
             If not provided, DrcItem.cell will be None.
-
-    Returns:
-        DrcReport subgraph with all parsed violations.
 
     See also: https://www.klayout.de/rdb_format.html
     """
     tree = ET.parse(filename)
     root = tree.getroot()
 
-    unit = layout.ref_layers.unit
-    conv = lambda um: _microns_to_dbu(um, unit)
+    unit = report.ref_layout.ref_layers.unit
+    dbu_per_um = R('1u') / unit
 
-    top_cell_elem = root.find('top-cell')
-    top_cell_name = top_cell_elem.text if top_cell_elem is not None else ''
+    def conv(value_um: float) -> int:
+        """Convert a micron value to database units."""
+        return int(round(float(value_um * dbu_per_um)))
 
-    report = DrcReport(ref_layout=layout, top_cell_name=top_cell_name)
-    category_by_name: dict[str, DrcCategory] = {}
+    category_by_name = {cat.name: cat for cat in report.all(DrcCategory)}
 
     categories_elem = root.find('categories')
     if categories_elem is not None:
@@ -143,8 +163,9 @@ def parse_rdb(filename, layout: Layout, directory: Directory = None) -> DrcRepor
             desc_elem = cat_elem.find('description')
             name = name_elem.text if name_elem is not None else ''
             description = desc_elem.text if desc_elem is not None else ''
-            cat = report % DrcCategory(name=name, description=description)
-            category_by_name[name] = cat
+            if name not in category_by_name:
+                cat = report % DrcCategory(name=name, description=description)
+                category_by_name[name] = cat
 
     cells_elem = root.find('cells')
     cell_id_to_name: dict[str, str] = {}
@@ -180,47 +201,54 @@ def parse_rdb(filename, layout: Layout, directory: Directory = None) -> DrcRepor
                 value_str = value_elem.text
                 if value_str is None:
                     continue
-                tag = value_elem.attrib.get('tag', '')
+                pt = lambda p: Vec2I(conv(p[0]), conv(p[1]))
+                tag, kind, payload = parse_rdb_value(value_str)
 
-                try:
-                    if value_str.startswith('box:') or (value_str.startswith('(') and ';' in value_str and '/' not in value_str and 'w=' not in value_str and value_str.count(';') == 1):
-                        value_str = value_str.replace('box:', '').strip()
-                        rect = _parse_box(value_str, conv)
-                        report % DrcBox(item=item, order=order, tag=tag, rect=rect)
-                    elif value_str.startswith('edge:') or (value_str.startswith('(') and ';' in value_str and value_str.count(';') == 1 and '/' not in value_str):
-                        value_str = value_str.replace('edge:', '').strip()
-                        p1, p2 = _parse_edge(value_str, conv)
-                        report % DrcEdge(item=item, order=order, tag=tag, p1=p1, p2=p2)
-                    elif value_str.startswith('edge_pair:') or value_str.startswith('edge-pair:') or (('/' in value_str or '|' in value_str) and '(' in value_str):
-                        value_str = value_str.replace('edge_pair:', '').replace('edge-pair:', '').strip()
-                        e1p1, e1p2, e2p1, e2p2 = _parse_edge_pair(value_str, conv)
-                        report % DrcEdgePair(item=item, order=order, tag=tag,
-                            edge1_p1=e1p1, edge1_p2=e1p2, edge2_p1=e2p1, edge2_p2=e2p2)
-                    elif value_str.startswith('polygon:') or (value_str.startswith('(') and ';' in value_str and value_str.count(';') >= 2 and 'w=' not in value_str):
-                        value_str = value_str.replace('polygon:', '').strip()
-                        vertices = _parse_polygon(value_str, conv)
-                        poly = report % DrcPoly(item=item, order=order, tag=tag)
-                        for i, v in enumerate(vertices):
-                            report % PolyVec2I(ref=poly, order=i, pos=v)
-                    elif value_str.startswith('path:') or 'w=' in value_str:
-                        value_str = value_str.replace('path:', '').strip()
-                        vertices, width = _parse_path(value_str, conv)
-                        path = report % DrcPath(item=item, order=order, tag=tag, width=width)
-                        for i, v in enumerate(vertices):
-                            report % PolyVec2I(ref=path, order=i, pos=v)
-                    elif value_str.startswith('text:') or (value_str.startswith("('") and "'" in value_str):
-                        value_str = value_str.replace('text:', '').strip()
-                        pos, text = _parse_text(value_str, conv)
-                        report % DrcText(item=item, order=order, tag=tag, pos=pos, text=text)
-                    else:
-                        report % DrcValue(item=item, order=order, tag=tag, value=value_str)
-                except ValueError as e:
-                    warnings.warn(f"Failed to parse DRC value '{value_str}': {e}")
-                    report % DrcValue(item=item, order=order, tag=tag, value=value_str)
+                if kind == 'box':
+                    p1, p2 = pt(payload[0]), pt(payload[1])
+                    rect = Rect4I(min(p1.x, p2.x), min(p1.y, p2.y),
+                        max(p1.x, p2.x), max(p1.y, p2.y))
+                    report % DrcBox(item=item, order=order, tag=tag, rect=rect)
+                elif kind == 'edge':
+                    p1, p2 = pt(payload[0]), pt(payload[1])
+                    report % DrcEdge(item=item, order=order, tag=tag, p1=p1, p2=p2)
+                elif kind == 'edge_pair':
+                    e1p1, e1p2, e2p1, e2p2 = [pt(p) for p in payload]
+                    report % DrcEdgePair(item=item, order=order, tag=tag,
+                        edge1_p1=e1p1, edge1_p2=e1p2, edge2_p1=e2p1, edge2_p2=e2p2)
+                elif kind == 'polygon':
+                    rings = payload
+                    if len(rings) > 1:
+                        raise NotImplementedError(
+                            f"DRC polygon with holes is not supported: {value_str!r}")
+                    poly = report % DrcPoly(item=item, order=order, tag=tag)
+                    for i, p in enumerate(rings[0]):
+                        report % PolyVec2I(ref=poly, order=i, pos=pt(p))
+                elif kind == 'path':
+                    ring, attrs = payload
+                    # KLayout always writes w=, bx=, ex=, r=. The DRC schema
+                    # stores only the width, so reject begin/end extensions and
+                    # rounded paths rather than dropping them silently.
+                    if float(attrs.get('bx', 0)) != 0 or float(attrs.get('ex', 0)) != 0:
+                        raise NotImplementedError(
+                            f"DRC path with begin/end extension not supported: {value_str!r}")
+                    if attrs.get('r', 'false') == 'true':
+                        raise NotImplementedError(
+                            f"DRC rounded path not supported: {value_str!r}")
+                    if 'w' not in attrs:
+                        raise ValueError(f"DRC path without width: {value_str!r}")
+                    path = report % DrcPath(item=item, order=order, tag=tag,
+                        width=conv(float(attrs['w'])))
+                    for i, p in enumerate(ring):
+                        report % PolyVec2I(ref=path, order=i, pos=pt(p))
+                elif kind == 'label':
+                    text, pos = payload
+                    report % DrcText(item=item, order=order, tag=tag,
+                        pos=pt(pos), text=text)
+                else:  # kind == 'value'
+                    report % DrcValue(item=item, order=order, tag=tag, value=payload)
 
                 order += 1
-
-    return report
 
 
 class _LvsdbTransformer(Transformer):
