@@ -219,7 +219,7 @@ def test_parse_simple_rdb():
               <category>'test_rule'</category>
               <cell>c1</cell>
               <values>
-                <value>(0,0;0.1,0.1)</value>
+                <value>box: (0,0;0.1,0.1)</value>
               </values>
             </item>
           </items>
@@ -255,7 +255,7 @@ def test_parse_edge_pair():
               <category>'spacing'</category>
               <cell>top</cell>
               <values>
-                <value>(0,0;0.1,0)/(0,0.05;0.1,0.05)</value>
+                <value>edge-pair: (0,0;0.1,0)|(0,0.05;0.1,0.05)</value>
               </values>
             </item>
           </items>
@@ -292,7 +292,7 @@ def test_parse_polygon():
               <category>'poly_rule'</category>
               <cell>top</cell>
               <values>
-                <value>(0,0;0.1,0;0.1,0.1;0,0.1)</value>
+                <value>polygon: (0,0;0.1,0;0.1,0.1;0,0.1)</value>
               </values>
             </item>
           </items>
