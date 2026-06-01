@@ -592,6 +592,11 @@ class Solver:
         n_variables = len(variables)
         idx_of_var = {variable: index for index, variable in enumerate(variables)}
 
+        # Nothing to solve: with no constraints there are no variables, and
+        # linprog rejects a zero-length objective vector.
+        if n_variables == 0:
+            return
+
         A_eq, b_eq = constraints_to_Ab(self.equalities, n_variables, idx_of_var)
         A_ub, b_ub = constraints_to_Ab(self.inequalities, n_variables, idx_of_var)
 
