@@ -553,7 +553,23 @@ class Solver:
         else:
             raise TypeError("constrain() expects LessThanOrEqualsZero or EqualsZero.")
 
-    def solve(self, allow_ambiguous: bool=False):
+    def undefined_attrs(self) -> set[MissingAttrVal]:
+        """
+        Returns a MissingAttrVal for every ConstrainableAttr in the subgraph
+        whose stored value is still None. After solving and any manual
+        assignments are complete, such attributes were neither constrained nor
+        assigned; reading them yields an unusable placeholder. Use this to
+        validate that a layout is fully defined before it is consumed.
+        """
+        sg = self.subgraph.subgraph
+        mavs = set()
+        for nid, nt in sg.nodes.items():
+            for ad in nt._layout:
+                if isinstance(ad.attr, ConstrainableAttr) and nt[ad.index] is None:
+                    mavs.add(MissingAttrVal(sg, nid, ad.attr))
+        return mavs
+
+    def solve(self, allow_ambiguous: bool=False, allow_undefined: bool=False):
         """
         Using linear programming, calculates a solution that satisfies all
         specified constraints. The solution values are then written to all
@@ -564,10 +580,15 @@ class Solver:
                 Raises SolverError if multiple optimal solutions exist,
                 indicating missing constraints. If True, skips uniqueness
                 checking and allows ambiguous solutions.
+            allow_undefined: If False (default), verifies after solving that no
+                ConstrainableAttr remains undefined (None). Pass True when more
+                attributes are assigned manually after solve() returns (e.g. the
+                makevias pattern, which needs solved geometry first).
 
         Raises:
-            SolverError: If the LP solver fails, or if allow_ambiguous=False and
-                the solution is not unique (has degrees of freedom).
+            SolverError: If the LP solver fails, if allow_ambiguous=False and
+                the solution is not unique (has degrees of freedom), or if
+                allow_undefined=False and a ConstrainableAttr is left undefined.
         """
 
         from scipy.optimize import linprog
@@ -592,37 +613,50 @@ class Solver:
         n_variables = len(variables)
         idx_of_var = {variable: index for index, variable in enumerate(variables)}
 
-        # Nothing to solve: with no constraints there are no variables, and
-        # linprog rejects a zero-length objective vector.
-        if n_variables == 0:
-            return
+        # With no constraints there are no variables to solve. linprog rejects
+        # a zero-length objective vector, so skip it; the allow_undefined check
+        # below still runs to catch attributes never constrained nor assigned.
+        if n_variables > 0:
+            A_eq, b_eq = constraints_to_Ab(self.equalities, n_variables, idx_of_var)
+            A_ub, b_ub = constraints_to_Ab(self.inequalities, n_variables, idx_of_var)
 
-        A_eq, b_eq = constraints_to_Ab(self.equalities, n_variables, idx_of_var)
-        A_ub, b_ub = constraints_to_Ab(self.inequalities, n_variables, idx_of_var)
+            c = np.zeros(n_variables, dtype=np.float64)
+            # (c * variables) is minimized. By subtracting each row of A_ub, the
+            # speicified inequalities are optimized towards equality. Each
+            # inequality is given the same weight in this process.
+            for x in A_ub:
+                c -= x
 
-        c = np.zeros(n_variables, dtype=np.float64)
-        # (c * variables) is minimized. By subtracting each row of A_ub, the
-        # speicified inequalities are optimized towards equality. Each
-        # inequality is given the same weight in this process.
-        for x in A_ub:
-            c -= x
+            bounds = n_variables*[(None, None)]
+            res = linprog(c=c, A_eq=A_eq, b_eq=b_eq, A_ub=A_ub, b_ub=b_ub, bounds=bounds)
 
-        bounds = n_variables*[(None, None)]
-        res = linprog(c=c, A_eq=A_eq, b_eq=b_eq, A_ub=A_ub, b_ub=b_ub, bounds=bounds)
+            if not res.success:
+                raise SolverError(res.message)
 
-        if not res.success:
-            raise SolverError(res.message)
+            # Check solution uniqueness unless explicitly allowed to be ambiguous
+            if not allow_ambiguous:
+                ambiguity_info = check_solution_uniqueness(res, A_eq, A_ub, b_ub, variables)
 
-        # Check solution uniqueness unless explicitly allowed to be ambiguous
-        if not allow_ambiguous:
-            ambiguity_info = check_solution_uniqueness(res, A_eq, A_ub, b_ub, variables)
+                if ambiguity_info is not None:
+                    raise UnderconstrainedError(ambiguity_info)
 
-            if ambiguity_info is not None:
-                raise UnderconstrainedError(ambiguity_info)
+            # Keep float values here; int/R conversion happens in make_solution
+            value_of_var = {variable: value for variable, value in zip(variables, res.x)}
 
-        # Keep float values here; int/R conversion happens in make_solution
-        value_of_var = {variable: value for variable, value in zip(variables, res.x)}
+            for mav in mavs:
+                node = self.subgraph.cursor_at(mav.nid, lookup_npath=False)
+                node.update_byattr(mav.attr, mav.attr.placeholder.make_solution(mav, value_of_var))
 
-        for mav in mavs:
-            node = self.subgraph.cursor_at(mav.nid, lookup_npath=False)
-            node.update_byattr(mav.attr, mav.attr.placeholder.make_solution(mav, value_of_var))
+        # Unless more attributes will be assigned manually afterward, every
+        # ConstrainableAttr must now have a concrete value. Any still left
+        # undefined would yield an unusable placeholder downstream.
+        if not allow_undefined:
+            undefined = self.undefined_attrs()
+            if undefined:
+                locations = sorted(
+                    f"{self.subgraph.cursor_at(mav.nid).full_path_str()}.{mav.attr.name}"
+                    for mav in undefined
+                )
+                raise SolverError(
+                    "Undefined constrainable attribute(s) found. Please add "
+                    "constraints or assign them directly: " + ", ".join(locations))

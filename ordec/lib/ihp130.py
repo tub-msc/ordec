@@ -359,7 +359,9 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
         s.constrain(l.nwell.ux == l.activ.ux + 310)
         s.constrain(l.nwell.uy == max_activ.uy + 310)
 
-    s.solve()
+    # l.sd[i].rect/l.m1 are assigned after solve() via makevias, which needs
+    # the solved geometry; defer the undefined-attribute check until then.
+    s.solve(allow_undefined=True)
 
     for i in range(num_gates + 1):
         makevias(l, l.sd[i].rect, layers.Cont, 
@@ -444,9 +446,11 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
         s.constrain(l.psd.center == l.activ.center)
         s.constrain(l.psd.size == l.activ.size + Vec2I(60, 60))
 
-    s.solve()
+    # l.m1.rect is assigned after solve() from the via stack, which needs the
+    # solved geometry; defer the undefined-attribute check until then.
+    s.solve(allow_undefined=True)
 
-    vias_rect = makevias(l, l.activ.rect, layers.Cont, 
+    vias_rect = makevias(l, l.activ.rect, layers.Cont,
         size=Vec2I(160, 160),
         spacing=Vec2I(180, 180),
         margin=Vec2I(70, 70),
