@@ -19,7 +19,7 @@ RUN useradd -ms /bin/bash app && \
 USER app
 
 WORKDIR /home/app
-RUN wget -q https://netcologne.dl.sourceforge.net/project/ngspice/ng-spice-rework/45.2/ngspice-45.2.tar.gz && \
+RUN wget -q https://phoenixnap.dl.sourceforge.net/project/ngspice/ng-spice-rework/old-releases/45.2/ngspice-45.2.tar.gz && \
     echo "ba8345f4c3774714c10f33d7da850d361cec7d14b3a295d0dc9fd96f7423812d ngspice-45.2.tar.gz" | sha256sum -c && \
     tar xf ngspice-45.2.tar.gz && \
     rm ngspice-45.2.tar.gz && \
@@ -36,12 +36,13 @@ RUN wget -q https://openva.fra1.cdn.digitaloceanspaces.com/openvaf_23_5_0_linux_
     tar xf openvaf_23_5_0_linux_amd64.tar.gz && \
     rm openvaf_23_5_0_linux_amd64.tar.gz
 
-# The IHP PDK version is pinned to a specific commit hash (on the main branch) below:
+# The IHP PDK version is pinned to a specific tag below.
+# To pin to a commit hash instead, replace "tag v0.3.0" with the full sha hash.
 # Note: Some stuff (like libs.doc) are deleted to save space.
 WORKDIR /home/app/IHP-Open-PDK
 RUN git init && \
     git remote add origin https://github.com/IHP-GmbH/IHP-Open-PDK.git && \
-    git fetch --depth 1 origin 488ba975fc7836fe75a871c9cc5969650cc90acc && \
+    git fetch --depth 1 origin tag v0.3.0 && \
     git checkout FETCH_HEAD && \
     git submodule update --init --recursive && \
     rm -r ihp-sg13g2/libs.doc ihp-sg13g2/libs.tech/openems .git
