@@ -481,6 +481,7 @@ class SchemInstance(Node):
         factory=coerce_tuple(Vec2R, 2))
     orientation = Attr(D4, default=D4.R0)
     symbol = SubgraphRef(Symbol, optional=False)
+    src_loc = Attr(tuple)
 
     def __new__(cls, connect=None, **kwargs):
         main = super().__new__(cls, **kwargs)
@@ -594,6 +595,7 @@ class SchemInstanceUnresolved(Node):
     orientation = Attr(D4, default=D4.R0)
 
     resolver = Attr(object) # closure?
+    src_loc = Attr(tuple)
 
     @property
     def params(self):

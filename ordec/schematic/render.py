@@ -310,6 +310,11 @@ class SchematicRenderer(Renderer):
 
         for inst in s.all(SchemInstance):
             with self.subgroup(node=inst, data_nid=inst.nid):
+                # Source location for click-to-source
+                if self.include_nids and inst.src_loc is not None:
+                    src_file, src_line = inst.src_loc
+                    self.cur_group.attrib['data-srcfile'] = str(src_file)
+                    self.cur_group.attrib['data-srcline'] = str(src_line)
                 trans = inst.loc_transform()
                 self.draw_symbol(inst.symbol, trans, inst.full_path_str())
 

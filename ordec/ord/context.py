@@ -1,6 +1,9 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+# standard imports
+import sys
+
 # ordec imports
 from ..core import *
 from ..core.context import _ctx_var, _view_ctx_var
@@ -53,7 +56,7 @@ def constrain(constraint):
     return _view_ctx_var.get().constrain(constraint)
 
 
-def add_element(name_tuple, element):
+def add_element(name_tuple, element, src_line=None):
     """
     Add an element from a node statement, dispatching based on type.
 
@@ -66,8 +69,11 @@ def add_element(name_tuple, element):
         name_tuple: path components for naming the element.
         element: Cell class, Cell instance, Node subclass,
             or NodeTuple instance.
+        src_line: line of the defining ORD statement
     """
     ctx = _ctx_var.get()
+    # Source location for click-to-source
+    src_loc = (sys._getframe(1).f_code.co_filename, src_line) if src_line is not None else None
     # Layout context: create LayoutInstance from Cell instances
     if isinstance(ctx.root, Layout):
         if isinstance(element, Cell):
@@ -77,13 +83,14 @@ def add_element(name_tuple, element):
     if isinstance(element, type) and issubclass(element, Cell):
         # Cell class: deferred resolution with parameters
         ref = SchemInstanceUnresolved(
-            resolver=lambda **params: element(**params).symbol
+            resolver=lambda **params: element(**params).symbol,
+            src_loc=src_loc,
         )
         return add(name_tuple, ref)
 
     if isinstance(element, Cell):
         # Cell instance: symbol already determined, create SchemInstance directly
-        ref = SchemInstance(symbol=element.symbol)
+        ref = SchemInstance(symbol=element.symbol, src_loc=src_loc)
         return add(name_tuple, ref)
 
     if isinstance(element, type) and issubclass(element, Node):

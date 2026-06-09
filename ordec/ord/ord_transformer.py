@@ -5,6 +5,9 @@
 import ast
 import copy
 
+# third-party imports
+from lark import v_args
+
 # ordec imports
 from .python_transformer import PythonTransformer
 
@@ -157,7 +160,11 @@ class OrdTransformer(PythonTransformer):
         else:
             raise Exception(f"Incompatible path type: {nodes!r}")
 
-    def node_stmt(self, nodes):
+    @v_args(meta=True)
+    def node_stmt(self, meta, nodes):
+        return self._node_stmt(nodes, meta.line)
+
+    def _node_stmt(self, nodes, src_line):
         """Node statement: 'Type name' with optional body.
 
         There are three types of node statements:
@@ -228,7 +235,11 @@ class OrdTransformer(PythonTransformer):
                 context_type_expr
             ]
             func = self.ast_ord_context("add_element")
-            rhs = ast.Call(func=func, args=args, keywords=[])
+            rhs = ast.Call(
+                func=func,
+                args=args,
+                keywords=[ast.keyword(arg="src_line", value=ast.Constant(value=src_line))],
+            )
 
         # Path accesses must not be assigned
         if path_node:
@@ -254,7 +265,11 @@ class OrdTransformer(PythonTransformer):
         )
         return [assignment, with_stmt]
 
-    def anon_node_stmt(self, nodes):
+    @v_args(meta=True)
+    def anon_node_stmt(self, meta, nodes):
+        return self._anon_node_stmt(nodes, meta.line)
+
+    def _anon_node_stmt(self, nodes, src_line):
         """Anonymous node statement: 'anonymous Type name' with optional body.
 
         Like node_stmt but passes None as name_tuple, so no NPath is created.
@@ -266,7 +281,7 @@ class OrdTransformer(PythonTransformer):
         rhs = ast.Call(
             func=self.ast_ord_context("add_element"),
             args=[ast.Constant(value=None), context_type],
-            keywords=[]
+            keywords=[ast.keyword(arg="src_line", value=ast.Constant(value=src_line))],
         )
 
         target = copy.copy(context_name)
@@ -290,18 +305,20 @@ class OrdTransformer(PythonTransformer):
         )
         return [assignment, with_stmt]
 
-    def anon_node_stmt_nobody(self, nodes):
+    @v_args(meta=True)
+    def anon_node_stmt_nobody(self, meta, nodes):
         """Anonymous node statement without body, supports multiple names."""
         result = []
         for context_target in nodes[1:]:
-            result.extend(self.anon_node_stmt([nodes[0], context_target]))
+            result.extend(self._anon_node_stmt([nodes[0], context_target], meta.line))
         return result
 
-    def node_stmt_nobody(self, nodes):
+    @v_args(meta=True)
+    def node_stmt_nobody(self, meta, nodes):
         """Node statement without body, supports multiple names (e.g., 'Nmos a, b, c')"""
         result = []
         for context_target in nodes[1:]:
-            result.extend(self.node_stmt([nodes[0], context_target]))
+            result.extend(self._node_stmt([nodes[0], context_target], meta.line))
         return result
 
     def dotted_atom(self, nodes):
