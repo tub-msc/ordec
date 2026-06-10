@@ -1124,6 +1124,22 @@ body.theme-dark .lm_content {
     background: var(--color-bg-secondary);
     user-select: none;
 }
+.lvs-circuit-link {
+    text-decoration: underline dotted;
+    cursor: pointer;
+}
+.lvs-circuit-link:hover {
+    text-decoration: underline;
+    color: var(--color-accent, #39bfff);
+}
+/* Item-row names that selecting the row highlights in the layout/schematic
+   viewer. The whole row is the click target; the underline is the cue. */
+.lvs-item-link {
+    text-decoration: underline dotted;
+}
+.lvs-item-row:hover .lvs-item-link {
+    text-decoration: underline;
+}
 .lvs-circuit-header > span {
     padding: 0 8px;
     word-break: break-all;
