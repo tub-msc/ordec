@@ -651,7 +651,8 @@ const viewClassOf = {
                 }
             });
 
-            const mismatchItemCount = data.items.filter(i => i.status !== 'match').length;
+            const isMismatch = (i) => i.status !== 'match' && i.status !== 'warning';
+            const mismatchItemCount = data.items.filter(isMismatch).length;
             const statusClass = data.status === 'match' ? 'lvs-pass' : 'lvs-fail';
             const statusText = data.status === 'match' ? 'PASS' : 'FAIL';
             const summaryText = mismatchItemCount > 0
@@ -677,7 +678,7 @@ const viewClassOf = {
             data.circuits.forEach(circuit => {
                 const circuitData = circuitMap.get(circuit.nid);
                 const allItems = Object.values(circuitData.itemsByType).flat();
-                const hasMismatches = circuit.status !== 'match' || allItems.some(i => i.status !== 'match');
+                const hasMismatches = circuit.status !== 'match' || allItems.some(isMismatch);
 
                 if (!hasMismatches && allItems.length === 0) return;
 
@@ -693,10 +694,11 @@ const viewClassOf = {
                     const items = circuitData.itemsByType[itemType];
                     if (items.length === 0) continue;
 
-                    const mismatchCount = items.filter(i => i.status !== 'match').length;
+                    const mismatchCount = items.filter(isMismatch).length;
+                    const warningCount = items.filter(i => i.status === 'warning').length;
                     const groupStatusIcon = mismatchCount > 0
                         ? this._statusIcon('mismatch')
-                        : this._statusIcon('match');
+                        : this._statusIcon(warningCount > 0 ? 'warning' : 'match');
 
                     html += `<div class="lvs-type-group" data-type="${itemType}">
                         <div class="lvs-type-header">
@@ -709,7 +711,7 @@ const viewClassOf = {
                     for (const item of items) {
                         const statusClass = item.status === 'match'
                             ? 'lvs-status-match'
-                            : (item.message && item.message.includes('parameter') ? 'lvs-status-warning' : 'lvs-status-mismatch');
+                            : (item.status === 'warning' ? 'lvs-status-warning' : 'lvs-status-mismatch');
                         const layoutName = item.layout_name || '?';
                         const schemName = item.schem_name || '?';
                         const layoutParams = this._formatParams(item.layout_params);

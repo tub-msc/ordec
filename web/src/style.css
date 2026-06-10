@@ -1152,7 +1152,7 @@ body.theme-dark .lm_content {
 }
 .lvs-status-icon.match { background: #2a6f2a; }
 .lvs-status-icon.mismatch { background: #c43c3c; }
-.lvs-status-icon.warning { background: #b87700; }
+.lvs-status-icon.warning { background: #d98e00; }
 .lvs-type-group {
     display: none;
     padding-left: 16px;
@@ -1211,7 +1211,7 @@ body.theme-dark .lm_content {
     color: #c43c3c;
 }
 .lvs-item-row.lvs-status-warning {
-    color: #b87700;
+    color: #d98e00;
 }
 .lvs-item-msg {
     color: var(--color-text-muted);

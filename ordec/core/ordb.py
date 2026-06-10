@@ -950,6 +950,15 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         """Returns whether the selected subgraph is mutable."""
         raise TypeError("n.mutable is unavailable where n is not subclass of MutableNode or FrozenNode.")
 
+    @classmethod
+    def canonical_cls(cls) -> type:
+        """
+        Returns the plain Node subclass for cursor classes, e.g. Layout for
+        Layout.Frozen or Layout.Mutable (see overrides in FrozenNode and
+        MutableNode). A plain Node subclass is its own canonical class.
+        """
+        return cls
+
     def ctx(self):
         """Return a Context for use as a context manager: ``with node.ctx(): ...``"""
         from .context import NodeContext
@@ -1051,12 +1060,23 @@ class FrozenNode(Node, build_node=False):
     def mutable(self):
         return False
 
+    @classmethod
+    def canonical_cls(cls) -> type:
+        # NodeMeta generates Frozen cursor classes with the plain class as
+        # first base (and this override precedes Node in their MRO).
+        return cls.__bases__[0]
+
 @public
 class MutableNode(Node, build_node=False):
     """Auxiliary base class for auto-generated :attr:`Node.Mutable` classes."""
     @property
     def mutable(self):
         return True
+
+    @classmethod
+    def canonical_cls(cls) -> type:
+        # See FrozenNode.canonical_cls.
+        return cls.__bases__[0]
 
 @public
 class SubgraphRoot(NonLeafNode):

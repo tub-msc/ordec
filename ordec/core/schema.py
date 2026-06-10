@@ -1891,6 +1891,10 @@ class LvsStatus(Enum):
     Match = 'match'
     Mismatch = 'mismatch'
     NoMatch = 'nomatch'  # Circuit-level: no corresponding circuit found
+    #: Matched with warning (KLayout 'W'): a device that matched topologically
+    #: but with deviating parameters, or an ambiguous net/pin/subcircuit match
+    #: (e.g. between topologically symmetric nets).
+    MatchWarning = 'warning'
 
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'
@@ -1918,9 +1922,9 @@ class LvsReport(SubgraphRoot):
     status = Attr(LvsStatus)
 
     def nresults(self) -> int:
-        """Count total LvsItems with mismatch status."""
+        """Count total LvsItems with mismatch status (warnings not counted)."""
         return sum(1 for item in self.all(LvsItem)
-                   if item.status != LvsStatus.Match)
+                   if item.status not in (LvsStatus.Match, LvsStatus.MatchWarning))
 
     def webdata(self):
         from ..layout.lvs import webdata
