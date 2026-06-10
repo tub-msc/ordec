@@ -142,7 +142,7 @@ def parse_rdb(filename, report: DrcReport, directory: Directory = None):
         directory: Optional Directory for looking up cell names to LayoutInstances.
             If not provided, DrcItem.cell will be None.
 
-    See also: https://www.klayout.de/rdb_format.html
+    RDB format documentation: https://www.klayout.de/rdb_format.html
     """
     tree = ET.parse(filename)
     root = tree.getroot()
@@ -322,6 +322,9 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
 
     Returns:
         LvsReport subgraph with all parsed comparison results.
+
+    The LVSDB format documentation is hidden in KLayout's sources:
+    https://github.com/KLayout/klayout/blob/master/src/db/db/dbLayoutVsSchematicFormatDefs.h
     """
     with open(filename, 'r') as f:
         text = f.read()
