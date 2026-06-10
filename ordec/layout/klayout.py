@@ -481,16 +481,19 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
             schem_name = circuit_xref[2] if circuit_xref[2] != '()' else ''
             status_val = circuit_xref[3]
 
+            # Status tokens follow dbLayoutVsSchematicFormatDefs.h: '1' match,
+            # '0' mismatch, 'X' nomatch, 'W' warning, 'S' skipped.
             if status_val in ('match', '1'):
                 circuit_status = LvsStatus.Match
-            elif status_val in ('nomatch', 'NoMatch'):
+            elif status_val in ('warning', 'W'):
+                circuit_status = LvsStatus.MatchWarning
+            elif status_val in ('nomatch', 'NoMatch', 'X'):
                 circuit_status = LvsStatus.NoMatch
-                overall_status = LvsStatus.Mismatch
-            elif status_val in ('mismatch', '0', 'X'):
+            elif status_val in ('skipped', 'S'):
+                circuit_status = LvsStatus.Skipped
+            else:  # 'mismatch', '0' and anything unexpected
                 circuit_status = LvsStatus.Mismatch
-                overall_status = LvsStatus.Mismatch
-            else:
-                circuit_status = LvsStatus.Mismatch
+            if circuit_status not in (LvsStatus.Match, LvsStatus.MatchWarning):
                 overall_status = LvsStatus.Mismatch
 
             message = ''
@@ -510,7 +513,7 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
                         if severity == 'E':
                             has_errors = True
 
-            if has_errors and circuit_status == LvsStatus.Match:
+            if has_errors and circuit_status in (LvsStatus.Match, LvsStatus.MatchWarning):
                 circuit_status = LvsStatus.Mismatch
                 overall_status = LvsStatus.Mismatch
 
@@ -551,30 +554,34 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
 
                     item_type = type_map[item_type_str]
 
-                    # Status characters: '1' match, '0' mismatch, 'X' skipped/
-                    # unmatched, 'W' match-with-warning. For devices, 'W' means
-                    # the device matched topologically but its parameters
-                    # deviate (an LVS error, reflected in the circuit status);
-                    # for nets/pins/subcircuits, 'W' flags an ambiguous match
-                    # (e.g. between topologically symmetric nets), which is
-                    # harmless.
+                    # Status tokens follow dbLayoutVsSchematicFormatDefs.h:
+                    # '1' match, '0' mismatch (paired, but comparison failed),
+                    # 'X' nomatch (no counterpart), 'W' match-with-warning,
+                    # 'S' skipped. For devices, 'W' means the device matched
+                    # topologically but its parameters deviate (an LVS error,
+                    # reflected in the circuit status); for nets/pins/
+                    # subcircuits, 'W' flags an ambiguous match (e.g. between
+                    # topologically symmetric nets), which is harmless.
                     item_message = ''
                     if item_status_val in ('match', '1'):
                         item_status = LvsStatus.Match
-                    elif item_status_val == 'W':
+                    elif item_status_val in ('warning', 'W'):
                         item_status = LvsStatus.MatchWarning
                         if item_type == LvsItemType.Device:
                             item_message = 'parameter mismatch'
                         else:
                             item_message = 'ambiguous match'
+                    elif item_status_val in ('nomatch', 'X'):
+                        item_status = LvsStatus.NoMatch
+                        item_message = 'unmatched'
+                    elif item_status_val in ('skipped', 'S'):
+                        item_status = LvsStatus.Skipped
+                    elif item_status_val in ('mismatch', '0'):
+                        item_status = LvsStatus.Mismatch
+                        item_message = 'mismatch'
                     else:
                         item_status = LvsStatus.Mismatch
-                        if item_status_val == '0':
-                            item_message = 'mismatch'
-                        elif item_status_val == 'X':
-                            item_message = 'unmatched'
-                        else:
-                            item_message = f'mismatch ({item_status_val})'
+                        item_message = f'mismatch ({item_status_val})'
 
                     # Look up actual names based on item type
                     layout_item_name = ''
