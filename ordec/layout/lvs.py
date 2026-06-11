@@ -29,12 +29,38 @@ def item_schem_name(item: LvsItem):
 
 
 def webdata(report: LvsReport):
+    # KLayout emits circuit pairs in bottom-up topological order (every callee
+    # precedes its callers); report.all() preserves that insertion order.
+    # Reversing yields top-down order (top cell first, leaves last), which is
+    # the natural reading order for the report. As a safety anchor, the top
+    # pair is forced to the front: it is identified independently via is_top
+    # (its refs equal the report's own), so this holds even if KLayout's
+    # ordering ever changes.
+    pairs = list(report.all(LvsCircuitPair))
+    pairs.reverse()
+    pairs.sort(key=lambda c: not (
+        (c.ref_layout is not None and c.ref_layout == report.ref_layout)
+        or (c.ref_schematic is not None
+            and c.ref_schematic == report.ref_schematic)))
+
     circuits = []
-    for circuit in report.all(LvsCircuitPair):
+    for circuit in pairs:
+        is_top = (circuit.ref_layout is not None
+                  and circuit.ref_layout == report.ref_layout) \
+                 or (circuit.ref_schematic is not None
+                     and circuit.ref_schematic == report.ref_schematic)
         circuits.append({
             'nid': circuit.nid,
             'layout_name': circuit_layout_name(circuit),
             'schem_name': circuit_schem_name(circuit),
+            # Whether ref_layout/ref_schematic resolved; the web viewer only
+            # offers opening the layout/schematic of a circuit pair if so.
+            'has_layout_ref': circuit.ref_layout is not None,
+            'has_schem_ref': circuit.ref_schematic is not None,
+            # Top-level circuit pair (refs the same layout/schematic as the
+            # report itself). Item selections of subcircuit pairs must target
+            # the pair's own views instead of the report-level ones.
+            'is_top': is_top,
             'status': circuit.status.value,
             'message': circuit.message,
         })

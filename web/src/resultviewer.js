@@ -200,7 +200,14 @@ const viewClassOf = {
             this.highlightOverlay = null;
             this.svg = null;
 
-            this._onLvsSelect = (data) => this.setHighlight(data);
+            this._onLvsSelect = (data) => {
+                // Selections targeted at a specific schematic view (items of
+                // LVS subcircuit pairs) only apply to that view.
+                if (data && data.schemView && data.schemView !== this.viewName) {
+                    return;
+                }
+                this.setHighlight(data);
+            };
             this._onLvsClear = () => this.clearHighlight();
             viewEventBus.on('lvs:schem-select', this._onLvsSelect);
             viewEventBus.on('lvs:clear', this._onLvsClear);
@@ -417,8 +424,13 @@ const viewClassOf = {
                 });
 
             if (this._pendingHighlight) {
-                this.setHighlight(this._pendingHighlight);
+                const pending = this._pendingHighlight;
                 this._pendingHighlight = null;
+                // viewName is only assigned after construction, so targeted
+                // pending selections are filtered here instead.
+                if (!pending.schemView || pending.schemView === this.viewName) {
+                    this.setHighlight(pending);
+                }
             }
         }
         destroy() {
@@ -617,16 +629,24 @@ const viewClassOf = {
     // LVS Report viewer.
     //
     // Event bus protocol:
-    //   lvs:layout-select {pos} - sent when item with layout_pos selected
-    //   lvs:schem-select {schem_nid, item_type} - sent when item with schem_nid selected
+    //   lvs:layout-select {pos, layoutView} - sent when item with layout_pos selected
+    //   lvs:schem-select {schem_nid, item_type, schemView} - sent when item with schem_nid selected
     //   lvs:clear - sent on deselect or destroy
     //   lvs:request-open-views {layoutView, schemView} - requests new viewer panels
     //
     // Pending mechanism: setPending('lvs:select', payload) stores selection for
     // viewers opened later. Layout/schematic viewers call getPending on init.
     //
-    // View naming: layoutView/schemView use "<viewName>.ref_layout" and
-    // "<viewName>.ref_schematic" format, matching LvsReport SubgraphRef attributes.
+    // View naming: for the top-level circuit pair, layoutView/schemView use
+    // "<viewName>.ref_layout" and "<viewName>.ref_schematic", matching
+    // LvsReport SubgraphRef attributes. Circuit rows and item selections of
+    // subcircuit pairs use the per-pair views
+    // "<viewName>.subgraph.cursor_at(<nid>).ref_layout|ref_schematic",
+    // addressing the LvsCircuitPair node by nid. Select payloads of
+    // subcircuit pairs carry layoutView/schemView so that only the matching
+    // viewers highlight; top-level payloads leave them null (any open
+    // layout/schematic viewer applies them, as their nids/positions refer to
+    // the report's top-level subgraphs).
     lvs_report: class {
         constructor(resContent) {
             this.resContent = resContent;
@@ -651,7 +671,8 @@ const viewClassOf = {
                 }
             });
 
-            const mismatchItemCount = data.items.filter(i => i.status !== 'match').length;
+            const isMismatch = (i) => i.status !== 'match' && i.status !== 'warning';
+            const mismatchItemCount = data.items.filter(isMismatch).length;
             const statusClass = data.status === 'match' ? 'lvs-pass' : 'lvs-fail';
             const statusText = data.status === 'match' ? 'PASS' : 'FAIL';
             const summaryText = mismatchItemCount > 0
@@ -677,26 +698,35 @@ const viewClassOf = {
             data.circuits.forEach(circuit => {
                 const circuitData = circuitMap.get(circuit.nid);
                 const allItems = Object.values(circuitData.itemsByType).flat();
-                const hasMismatches = circuit.status !== 'match' || allItems.some(i => i.status !== 'match');
+                const hasMismatches = circuit.status !== 'match' || allItems.some(isMismatch);
 
                 if (!hasMismatches && allItems.length === 0) return;
 
                 const circuitStatusIcon = this._statusIcon(circuit.status);
+                // Layout/reference cells link to the circuit pair's layout/
+                // schematic view if the corresponding ref resolved.
+                const layoutCell = circuit.has_layout_ref
+                    ? `<span class="lvs-circuit-link" data-nid="${circuit.nid}" data-kind="layout" title="Open layout">${circuit.layout_name || '?'}</span>`
+                    : (circuit.layout_name || '?');
+                const schemCell = circuit.has_schem_ref
+                    ? `<span class="lvs-circuit-link" data-nid="${circuit.nid}" data-kind="schem" title="Open schematic">${circuit.schem_name || '?'}</span>`
+                    : (circuit.schem_name || '?');
                 html += `<div class="lvs-circuit" data-nid="${circuit.nid}">
                     <div class="lvs-circuit-header">
                         <span><span class="lvs-toggle">&#9654;</span> ${circuitStatusIcon} Circuit</span>
-                        <span>${circuit.layout_name || '?'}</span>
-                        <span>${circuit.schem_name || '?'}</span>
+                        <span>${layoutCell}</span>
+                        <span>${schemCell}</span>
                     </div>`;
 
                 for (const itemType of typeOrder) {
                     const items = circuitData.itemsByType[itemType];
                     if (items.length === 0) continue;
 
-                    const mismatchCount = items.filter(i => i.status !== 'match').length;
+                    const mismatchCount = items.filter(isMismatch).length;
+                    const warningCount = items.filter(i => i.status === 'warning').length;
                     const groupStatusIcon = mismatchCount > 0
                         ? this._statusIcon('mismatch')
-                        : this._statusIcon('match');
+                        : this._statusIcon(warningCount > 0 ? 'warning' : 'match');
 
                     html += `<div class="lvs-type-group" data-type="${itemType}">
                         <div class="lvs-type-header">
@@ -709,14 +739,25 @@ const viewClassOf = {
                     for (const item of items) {
                         const statusClass = item.status === 'match'
                             ? 'lvs-status-match'
-                            : (item.message && item.message.includes('parameter') ? 'lvs-status-warning' : 'lvs-status-mismatch');
+                            : (item.status === 'warning' ? 'lvs-status-warning' : 'lvs-status-mismatch');
                         const layoutName = item.layout_name || '?';
                         const schemName = item.schem_name || '?';
                         const layoutParams = this._formatParams(item.layout_params);
                         const schemParams = this._formatParams(item.schem_params);
+                        // The whole row is one click target; underline the
+                        // first cell as the suggested click target if
+                        // selecting the row highlights anything in the
+                        // layout/schematic viewer.
+                        const highlightTargets = [];
+                        if (item.layout_pos !== null && item.layout_pos !== undefined) highlightTargets.push('layout');
+                        if (item.schem_nid !== null && item.schem_nid !== undefined) highlightTargets.push('schematic');
+                        const rowLabel = `${layoutName} &#8596; ${schemName}`;
+                        const labelCell = highlightTargets.length > 0
+                            ? `<span class="lvs-item-link" title="Highlight in ${highlightTargets.join(' and ')}">${rowLabel}</span>`
+                            : rowLabel;
 
                         html += `<div class="lvs-item-row ${statusClass}" data-nid="${item.nid}">
-                            <span>${typeIcons[itemType]} ${layoutName} &#8596; ${schemName}</span>
+                            <span>${typeIcons[itemType]} ${labelCell}</span>
                             <span>${layoutName}${layoutParams}</span>
                             <span>${schemName}${schemParams}</span>
                         </div>`;
@@ -734,7 +775,7 @@ const viewClassOf = {
             html += '</div>';
             this.el.innerHTML = html;
 
-            this._attachEventHandlers(itemMap);
+            this._attachEventHandlers(itemMap, circuitMap);
             this.itemMap = itemMap;
         }
 
@@ -808,7 +849,7 @@ const viewClassOf = {
             });
         }
 
-        _attachEventHandlers(itemMap) {
+        _attachEventHandlers(itemMap, circuitMap) {
             this._setupColumnResize();
 
             this.el.querySelectorAll('.lvs-circuit-header').forEach(header => {
@@ -816,6 +857,25 @@ const viewClassOf = {
                     const circuit = header.parentElement;
                     circuit.classList.toggle('expanded');
                     header.querySelector('.lvs-toggle').classList.toggle('expanded');
+                });
+            });
+
+            // Open the circuit pair's layout/schematic view (without
+            // selecting/highlighting anything in it). The view expression
+            // addresses the LvsCircuitPair node by nid relative to this
+            // report view.
+            this.el.querySelectorAll('.lvs-circuit-link').forEach(linkEl => {
+                linkEl.addEventListener('click', (e) => {
+                    e.stopPropagation();  // don't toggle circuit expansion
+                    if (!this.viewName) return;
+                    const nid = linkEl.dataset.nid;
+                    const kind = linkEl.dataset.kind;
+                    const ref = kind === 'layout' ? 'ref_layout' : 'ref_schematic';
+                    const event = kind === 'layout' ? 'layout:request-open' : 'schematic:request-open';
+                    viewEventBus.emit(event, {
+                        view: `${this.viewName}.subgraph.cursor_at(${nid}).${ref}`,
+                        sourceContainer: this.glContainer,
+                    });
                 });
             });
 
@@ -853,11 +913,28 @@ const viewClassOf = {
                     const item = itemMap.get(nid);
 
                     if (item) {
+                        // Item positions/nids refer to the item's circuit
+                        // pair: report-level views for the top pair,
+                        // per-pair views (addressed by circuit nid) for
+                        // subcircuit pairs. Subcircuit payloads carry the
+                        // target view names so that only the matching
+                        // viewers highlight (nids/positions of different
+                        // subgraphs would collide otherwise).
+                        const circuit = circuitMap.get(item.circuit_nid);
+                        const isTop = !circuit || circuit.is_top;
+                        const viewBase = this.viewName
+                            ? (isTop ? this.viewName : `${this.viewName}.subgraph.cursor_at(${item.circuit_nid})`)
+                            : null;
+                        const layoutView = viewBase ? `${viewBase}.ref_layout` : null;
+                        const schemView = viewBase ? `${viewBase}.ref_schematic` : null;
+
                         const payload = {
                             pos: item.layout_pos,
                             schem_nid: item.schem_nid,
                             item_type: item.item_type,
                             schem_name: item.schem_name || '',
+                            layoutView: isTop ? null : layoutView,
+                            schemView: isTop ? null : schemView,
                         };
                         const hasLayoutPos = item.layout_pos !== null && item.layout_pos !== undefined;
                         const hasSchemNid = item.schem_nid !== undefined && item.schem_nid !== null;
@@ -884,14 +961,20 @@ const viewClassOf = {
                             }
                         }
 
-                        // Open new views if needed
-                        const needLayoutOpen = hasLayoutPos && !hasLayoutListener;
-                        const needSchemOpen = hasSchemNid && !hasSchemListener;
+                        // Open new views if needed. For the top pair, views
+                        // are opened only if no viewer listens at all (an
+                        // open layout/schematic of the top cell highlights
+                        // regardless of the view name it was opened under).
+                        // For subcircuit pairs, the pair's own views are
+                        // requested; request-open-views focuses them if they
+                        // are already open.
+                        const needLayoutOpen = hasLayoutPos && (!isTop || !hasLayoutListener);
+                        const needSchemOpen = hasSchemNid && (!isTop || !hasSchemListener);
 
                         if (needLayoutOpen || needSchemOpen) {
                             viewEventBus.emit('lvs:request-open-views', {
-                                layoutView: needLayoutOpen ? (this.viewName ? `${this.viewName}.ref_layout` : null) : null,
-                                schemView: needSchemOpen ? (this.viewName ? `${this.viewName}.ref_schematic` : null) : null,
+                                layoutView: needLayoutOpen ? layoutView : null,
+                                schemView: needSchemOpen ? schemView : null,
                                 sourceContainer: this.glContainer,
                             });
                         }

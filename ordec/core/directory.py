@@ -57,15 +57,20 @@ class Directory:
         """
         If the subgraph has an associated cell, the unique name of that cell is
         returned. Otherwise, a unique name of the subgraph is returned.
+
+        subgraph_of_cell is keyed by the canonical class (e.g. Layout), so
+        that subgraphs can be looked up independently of the mutability of
+        the cursor they were registered through (Layout.Frozen etc.).
         """
         if subgraph.cell is None:
             return self.unique_name(f"__subgraph{id(subgraph.subgraph):x}", subgraph, None)
         else:
-            if (subgraph.cell, type(subgraph)) in self.subgraph_of_cell:
-                if self.subgraph_of_cell[subgraph.cell, type(subgraph)] != subgraph:
+            key = subgraph.cell, subgraph.canonical_cls()
+            if key in self.subgraph_of_cell:
+                if self.subgraph_of_cell[key] != subgraph:
                     raise Exception(f"Multiple subgraphs of type {type(subgraph)} associated with {subgraph.cell}.")
             else:
-                self.subgraph_of_cell[subgraph.cell, type(subgraph)] = subgraph
+                self.subgraph_of_cell[key] = subgraph
             return self.name_cell(subgraph.cell)
 
     def subgraph_of_name(self, name: str, subgraph_type: type) -> 'Subgraph':
@@ -80,7 +85,7 @@ class Directory:
         if isinstance(cell_or_subgraph, subgraph_type):
             return cell_or_subgraph
         elif isinstance(cell_or_subgraph, Cell):
-            return self.subgraph_of_cell[cell_or_subgraph, subgraph_type]
+            return self.subgraph_of_cell[cell_or_subgraph, subgraph_type.canonical_cls()]
         else:
             raise Exception(f"Could not find {subgraph_type!r} of {name!r}.")
 

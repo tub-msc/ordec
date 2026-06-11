@@ -1887,10 +1887,21 @@ PolyVec2I.in_subgraphs.append(DrcReport)
 
 @public
 class LvsStatus(Enum):
-    """Status of an LVS comparison item."""
+    """Status of an LVS comparison item or circuit pair, following KLayout's
+    LVSDB status vocabulary (see dbLayoutVsSchematicFormatDefs.h)."""
     Match = 'match'
+    #: Paired, but the comparison failed (KLayout '0'), e.g. paired nets
+    #: whose connectivity differs.
     Mismatch = 'mismatch'
-    NoMatch = 'nomatch'  # Circuit-level: no corresponding circuit found
+    #: No correspondence found on the other side (KLayout 'X').
+    NoMatch = 'nomatch'
+    #: Matched with warning (KLayout 'W'): a device that matched topologically
+    #: but with deviating parameters, or an ambiguous net/pin/subcircuit match
+    #: (e.g. between topologically symmetric nets).
+    MatchWarning = 'warning'
+    #: Not compared (KLayout 'S'), e.g. a circuit pair whose subcircuits
+    #: already failed to compare.
+    Skipped = 'skipped'
 
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'
@@ -1918,9 +1929,9 @@ class LvsReport(SubgraphRoot):
     status = Attr(LvsStatus)
 
     def nresults(self) -> int:
-        """Count total LvsItems with mismatch status."""
+        """Count total LvsItems with mismatch status (warnings not counted)."""
         return sum(1 for item in self.all(LvsItem)
-                   if item.status != LvsStatus.Match)
+                   if item.status not in (LvsStatus.Match, LvsStatus.MatchWarning))
 
     def webdata(self):
         from ..layout.lvs import webdata

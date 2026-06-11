@@ -950,6 +950,27 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         """Returns whether the selected subgraph is mutable."""
         raise TypeError("n.mutable is unavailable where n is not subclass of MutableNode or FrozenNode.")
 
+    @classmethod
+    def canonical_cls(cls) -> type:
+        """
+        Returns the plain (canonical) Node subclass, e.g.
+        :class:`ordec.core.schema.Layout` for Layout.Frozen or
+        Layout.Mutable. On a plain Node subclass, this method returns the
+        class itself.
+
+        Background: plain Node subclasses are never instantiated as cursors.
+        Every cursor object is an instance of one of the auto-generated
+        subclasses :attr:`Node.Frozen` or :attr:`Node.Mutable` (depending on
+        whether its subgraph is frozen or mutable), so ``type(node)`` never
+        returns the plain class. ``isinstance(node, Layout)`` works as
+        expected, because the cursor classes subclass the plain class. But
+        code that uses node classes as dictionary keys or compares them with
+        ``==``/``is`` must normalize cursor classes via
+        ``type(node).canonical_cls()`` — otherwise lookups silently miss
+        (e.g. ``d[Layout]`` vs. an entry keyed by ``Layout.Frozen``).
+        """
+        return cls
+
     def ctx(self):
         """Return a Context for use as a context manager: ``with node.ctx(): ...``"""
         from .context import NodeContext
@@ -1051,12 +1072,23 @@ class FrozenNode(Node, build_node=False):
     def mutable(self):
         return False
 
+    @classmethod
+    def canonical_cls(cls) -> type:
+        # NodeMeta generates Frozen cursor classes with the plain class as
+        # first base (and this override precedes Node in their MRO).
+        return cls.__bases__[0]
+
 @public
 class MutableNode(Node, build_node=False):
     """Auxiliary base class for auto-generated :attr:`Node.Mutable` classes."""
     @property
     def mutable(self):
         return True
+
+    @classmethod
+    def canonical_cls(cls) -> type:
+        # See FrozenNode.canonical_cls.
+        return cls.__bases__[0]
 
 @public
 class SubgraphRoot(NonLeafNode):

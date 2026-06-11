@@ -119,6 +119,8 @@ The following inheritance diagram around :class:`ordec.core.schema.Net` exemplif
 
 Note that the class :class:`ordec.core.schema.Net` itself will never be instantiated. Instead, either Net.Frozen or Net.Mutable will be used, depending on whether a :class:`FrozenSubgraph` or a :class:`MutableSubgraph` is selected.
 
+This leads to a noteworthy pitfall: ``type(node)`` returns the auto-generated cursor class (e.g. ``Net.Frozen``), never the plain class (``Net``). ``isinstance(node, Net)`` still works as expected, since the cursor classes subclass the plain class. However, code that uses node classes as dictionary keys or compares them with ``==``/``is`` must normalize via :meth:`Node.canonical_cls`: ``type(node).canonical_cls()`` returns ``Net`` for both ``Net.Frozen`` and ``Net.Mutable`` cursors, whereas a dictionary lookup like ``d[Net]`` silently misses an entry keyed by ``Net.Frozen``.
+
 .. An example of a :class:`SubgraphRoot` is :class:`ordec.core.schema.Schematic`. Its inheritance diagram looks as follows:
 
 .. .. inheritance-diagram:: ordec.core.schema.Schematic

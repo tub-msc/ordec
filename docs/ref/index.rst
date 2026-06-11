@@ -14,6 +14,7 @@ User Reference
    constraints
    extlibrary
    layout
+   layout_klayout
 
 .. _data-schema:
 

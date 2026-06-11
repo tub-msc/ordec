@@ -398,3 +398,102 @@ def test_lvs_select_highlights_pin(web):
     # Pin highlighting should create exactly one circle, no paths or rects
     assert counts['circles'] == 1, f"Pin highlight should have 1 circle, got {counts['circles']}"
     assert counts['paths'] == 0, f"Pin highlight should have no paths (wires), got {counts['paths']}"
+
+
+def load_lvs_report_view(web):
+    """Load the LVS report view of the lvs_example in local mode."""
+    qs_local = web.key.query_string_local("tests.lib.lvs_example", "lvs_report()")
+    web.navigate(f'app.html#refreshall=true&{qs_local}')
+    web.wait_for_ready()
+    time.sleep(0.5)
+
+
+@pytest.mark.web
+def test_lvs_circuit_links_open_views(web):
+    """Clicking the Layout/Reference cells of a circuit row opens the
+    corresponding layout/schematic view, without highlighting anything."""
+    load_lvs_report_view(web)
+
+    kinds = web.driver.execute_script("""
+        return Array.from(document.querySelectorAll('.lvs-circuit-link'))
+            .map(el => el.dataset.kind);
+    """)
+    assert 'layout' in kinds, "Circuit row should have a clickable layout cell"
+    assert 'schem' in kinds, "Circuit row should have a clickable reference cell"
+
+    # Item rows mark the names that selecting them highlights (devices in
+    # lvs_example have both layout_pos and schem_nid).
+    item_links = web.driver.execute_script(
+        "return document.querySelectorAll('.lvs-item-link').length;")
+    assert item_links > 0, "Item rows should mark highlightable names"
+
+    web.driver.execute_script(
+        'document.querySelector(\'.lvs-circuit-link[data-kind="layout"]\').click();')
+    web.wait_for_ready()
+    time.sleep(0.5)
+
+    views = web.driver.execute_script(
+        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+    assert any(v and 'cursor_at' in v and v.endswith('.ref_layout') for v in views), \
+        f"Expected a per-circuit ref_layout view, got {views}"
+    state = get_layout_state(web)
+    assert state is not None, "Layout viewer should have opened and rendered"
+    assert state['highlightNumVertices'] == 0, "Nothing should be highlighted"
+
+    web.driver.execute_script(
+        'document.querySelector(\'.lvs-circuit-link[data-kind="schem"]\').click();')
+    web.wait_for_ready()
+    time.sleep(0.5)
+
+    views = web.driver.execute_script(
+        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+    assert any(v and 'cursor_at' in v and v.endswith('.ref_schematic') for v in views), \
+        f"Expected a per-circuit ref_schematic view, got {views}"
+    svg_count = web.driver.execute_script(
+        "return document.querySelectorAll('.rescontent svg').length;")
+    assert svg_count > 0, "Schematic viewer should have opened and rendered"
+
+
+@pytest.mark.web
+def test_lvs_subcircuit_item_select(web):
+    """Selecting an LvsItem of a subcircuit pair opens the pair's own
+    layout/schematic views and highlights the item there."""
+    qs_local = web.key.query_string_local(
+        "tests.lib.lvs_example_hier", "C_Hier().lvs_report")
+    web.navigate(f'app.html#refreshall=true&{qs_local}')
+    web.wait_for_ready()
+    time.sleep(0.5)
+
+    # Click a device item row of the A_Default subcircuit pair (devices have
+    # both layout_pos and schem_nid, so both viewers should open).
+    clicked = web.driver.execute_script("""
+        const circuits = Array.from(document.querySelectorAll('.lvs-circuit'));
+        const sub = circuits.find(c =>
+            c.querySelector('.lvs-circuit-header').textContent.includes('A_Default'));
+        if (!sub) return false;
+        const link = sub.querySelector(
+            '.lvs-item-row .lvs-item-link[title="Highlight in layout and schematic"]');
+        if (!link) return false;
+        link.closest('.lvs-item-row').click();
+        return true;
+    """)
+    assert clicked, "Should find and click an item row of the A_Default pair"
+    web.wait_for_ready()
+    time.sleep(0.5)
+
+    views = web.driver.execute_script(
+        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+    assert any(v and 'cursor_at' in v and v.endswith('.ref_layout') for v in views), \
+        f"Expected the pair's layout view to open, got {views}"
+    assert any(v and 'cursor_at' in v and v.endswith('.ref_schematic') for v in views), \
+        f"Expected the pair's schematic view to open, got {views}"
+
+    state = get_layout_state(web)
+    assert state is not None, "Layout viewer should have opened and rendered"
+    assert state['highlightNumVertices'] > 0, \
+        "Item should be highlighted in the pair's layout view"
+
+    highlight_groups = web.driver.execute_script(
+        "return document.querySelectorAll('.lvs-highlight-group').length;")
+    assert highlight_groups > 0, \
+        "Item should be highlighted in the pair's schematic view"

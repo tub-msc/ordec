@@ -203,7 +203,14 @@ export class LayoutGL {
         viewEventBus.on('drc:select', this._onDrcSelect);
         viewEventBus.on('drc:clear', this._onDrcClear);
 
-        this._onLvsSelect = (data) => this.highlightPos(data.pos);
+        this._onLvsSelect = (data) => {
+            // Selections targeted at a specific layout view (items of LVS
+            // subcircuit pairs) only apply to that view.
+            if (data && data.layoutView && data.layoutView !== this.viewName) {
+                return;
+            }
+            this.highlightPos(data.pos);
+        };
         this._onLvsClear = () => this.clearHighlight();
         viewEventBus.on('lvs:layout-select', this._onLvsSelect);
         viewEventBus.on('lvs:clear', this._onLvsClear);
@@ -215,10 +222,9 @@ export class LayoutGL {
             this.setHighlight(pending.shapes, false); // Don't zoom yet
         }
 
-        const pendingLvs = viewEventBus.getPending('lvs:select');
-        if (pendingLvs) {
-            this.highlightPos(pendingLvs.pos, false);
-        }
+        // Applied in update(): viewName is only assigned after construction,
+        // so targeted pending selections cannot be filtered yet here.
+        this._pendingLvs = viewEventBus.getPending('lvs:select');
 
         this._onPagehide = () => this.destroy();
         window.addEventListener('pagehide', this._onPagehide);
@@ -288,6 +294,14 @@ export class LayoutGL {
 
     update(msgData) {
         this.data = msgData;
+
+        if (this._pendingLvs) {
+            const pendingLvs = this._pendingLvs;
+            this._pendingLvs = null;
+            if (!pendingLvs.layoutView || pendingLvs.layoutView === this.viewName) {
+                this.highlightPos(pendingLvs.pos, false);
+            }
+        }
 
         if(!this.initialZoomDone) {
             if (this._pendingHighlight) {

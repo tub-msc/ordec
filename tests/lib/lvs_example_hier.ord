@@ -1,0 +1,617 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Hierarchical LVS example: one resistor network, four hierarchy cuts.
+
+The same circuit is described with different hierarchy boundaries to test
+hierarchical LVS (see tests/test_ihp130_lvs_hier.py):
+
+1. C_Hier          -- hierarchical layout vs. hierarchical schematic
+                      (cells A_Default, B_Hier, C_Hier)
+2. C_FlatLayout    -- flat layout vs. hierarchical schematic
+3. C_FlatSchematic -- hierarchical layout vs. flat schematic
+4. C_Moved         -- hierarchical layout whose hierarchy boundaries differ
+                      from the schematic: A_Default's y-arm resistor is moved
+                      up into B_Hier (cells A_Moved, B_Moved, C_Moved);
+                      electrically equivalent.
+
+Circuit: cell A_Default is a star of three Rsil resistors around internal net c, with
+terminals x (north), y (east), z (south). Cell B_Hier chains two A_Default instances:
+a1.x--rp1--a2.z and a1.y--rp2--a2.y, ports z (=a1.z) and x (=a2.x). Cell C_Hier
+puts two B_Hier instances and one more Rsil in parallel between ports z and x.
+All resistors differ pairwise in length where LVS distinguishes them.
+"""
+
+from ordec.core import *
+from ordec.lib.ihp130 import Rsil, Rppd, Ptap, SG13G2, run_drc, run_lvs
+from ordec.layout import SRouter
+
+# Resistor lengths (w stays at the 0.5u default). Pairwise different within
+# each cell so that LVS cannot confuse the devices.
+L_RX = 500n   # A_Default.r1, x-arm
+L_RY = 1.5u   # A_Default.r2, y-arm (the resistor that moves into B_Hier in the *Moved cells)
+L_RZ = 1u     # A_Default.r3, z-arm
+L_RP1 = 500n  # B_Hier.rp1, in the z-chain
+L_RP2 = 1u    # B_Hier.rp2, in the y-loop
+L_RS = 2u     # C_Hier.rs, in parallel to the two B_Hier instances
+
+cell A_Default:
+    """Star of three Rsil resistors around internal net c."""
+
+    viewgen symbol -> Symbol:
+        inout x: .align=North
+        inout y: .align=East
+        inout z: .align=South
+        inout sub: .align=West
+
+    viewgen schematic -> Schematic:
+        net c  # star center
+
+        port x: .pos=(5,18); .align=South
+        port y: .pos=(14,10); .align=West
+        port z: .pos=(5,2); .align=North
+        port sub: .pos=(1,8); .align=East
+
+        Rsil r1: .$l=L_RX; .pos=(3,12); .m -- c; .p -- x; .bn -- sub
+        Rsil r2: .$l=L_RY; .pos=(8,12); .orientation=East; .m -- c; .p -- y; .bn -- sub
+        Rsil r3: .$l=L_RZ; .pos=(3,9); .orientation=FlippedNorth; .m -- c; .p -- z; .bn -- sub
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        # r1 and r3 form a vertical column (x pin up, z pin down), r2 lies
+        # horizontally east of the column (y pin to the east).
+        Rsil(l=L_RX) r1:
+            ! .pos == (0, 3000)
+        Rsil(l=L_RZ) r3:
+            .orientation = FlippedNorth  # term_p faces south
+            ! .term_m.cx == r1.term_m.cx
+            ! r1.term_m.cy == .term_m.cy + 2500
+        Rsil(l=L_RY) r2:
+            .orientation = East  # term_m west (star side), term_p east
+            ! .term_m.lx == r1.poly_body.ux + 1500
+            ! .term_m.cy == 0.5*r1.term_m.cy + 0.5*r3.term_m.cy
+
+        # Star net c: vertical Metal1 spine r1.m -- r3.m, T-branch to r2.m.
+        sr = SRouter(SG13G2().default_routing_spec)
+        sr.move(layers.Metal1, r1.term_m.center)
+        sr.wire_y(r3.term_m.cy)
+        sr.move(layers.Metal1, r2.term_m.center)
+        sr.wire_x(r1.term_m.cx)
+
+        LayoutRect x:
+            .layer=layers.Metal1
+            ! .rect == r1.term_p.rect
+            .create_pin(self.symbol.x)
+        LayoutRect y:
+            .layer=layers.Metal1
+            ! .rect == r2.term_p.rect
+            .create_pin(self.symbol.y)
+        LayoutRect z:
+            .layer=layers.Metal1
+            ! .rect == r3.term_p.rect
+            .create_pin(self.symbol.z)
+        # No layout pin for sub: like the bn pin of the resistor leaf cells,
+        # the bulk has no shape inside A_Default; the extracted subcircuit still gets
+        # a substrate pin (propagated pwell), which LVS matches topologically
+        # against the schematic's sub port. Only the top cell (C_Hier) materializes
+        # the substrate connection with a tap and a labeled Metal1 pin.
+
+cell B_Hier:
+    """Two A_Default instances chained through rp1, with the y-loop through rp2."""
+
+    viewgen symbol -> Symbol:
+        inout x: .align=North
+        inout z: .align=South
+        inout sub: .align=West
+
+    viewgen schematic -> Schematic:
+        net i1, i2  # z-chain: a1.x -- rp1 -- a2.z
+        net y1, y2  # y-loop: a1.y -- rp2 -- a2.y
+
+        port z: .pos=(6,2); .align=North
+        port x: .pos=(6,24); .align=South
+        port sub: .pos=(1,13); .align=East
+
+        A_Default a1: .pos=(4,4); .x -- i1; .y -- y1; .z -- z; .sub -- sub
+        Rppd rp1: .$l=L_RP1; .pos=(8,11); .orientation=FlippedSouth; .m -- i1; .p -- i2; .bn -- sub
+        A_Default a2: .pos=(4,18); .x -- x; .y -- y2; .z -- i2; .sub -- sub
+        Rppd rp2: .$l=L_RP2; .pos=(15,11); .orientation=FlippedSouth; .m -- y1; .p -- y2; .bn -- sub
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        # a1 below, a2 above in one column, rp1 between them; rp2 sits in a
+        # vertical channel east of the column for the y-loop.
+        A_Default() a1:
+            ! .pos == (0, 0)
+        Rppd(l=L_RP1) rp1:
+            ! .term_m.cx == a1.x.cx
+            ! .term_m.cy == a1.x.cy + 1500
+        A_Default() a2:
+            ! .pos.x == a1.pos.x
+            ! .z.cy == rp1.term_p.cy + 1500
+        Rppd(l=L_RP2) rp2:
+            ! .term_m.cx == a1.y.ux + 1500
+            ! 0.5*.term_m.cy + 0.5*.term_p.cy == 0.5*a1.y.cy + 0.5*a2.y.cy
+
+        sr = SRouter(SG13G2().default_routing_spec)
+        # z-chain on the column: a1.x -- rp1.m, rp1.p -- a2.z
+        sr.move(layers.Metal1, a1.x.center)
+        sr.wire_y(rp1.term_m.cy)
+        sr.move(layers.Metal1, rp1.term_p.center)
+        sr.wire_y(a2.z.cy)
+        # y-loop in the east channel: a1.y -- rp2.m, a2.y -- rp2.p
+        sr.move(layers.Metal1, a1.y.center)
+        sr.wire_x(rp2.term_m.cx)
+        sr.wire_y(rp2.term_m.cy)
+        sr.move(layers.Metal1, a2.y.center)
+        sr.wire_x(rp2.term_p.cx)
+        sr.wire_y(rp2.term_p.cy)
+
+        LayoutRect z:
+            .layer=layers.Metal1
+            ! .rect == a1.z.rect
+            .create_pin(self.symbol.z)
+        LayoutRect x:
+            .layer=layers.Metal1
+            ! .rect == a2.x.rect
+            .create_pin(self.symbol.x)
+        # sub has no layout pin here either, see cell A_Default.
+
+cell C_Hier:
+    """Two B_Hier instances and one Rsil in parallel between ports z and x."""
+
+    viewgen symbol -> Symbol:
+        inout x: .align=North
+        inout z: .align=South
+        inout sub: .align=West
+
+    viewgen schematic -> Schematic:
+        port z: .pos=(1,3); .align=East
+        port x: .pos=(1,10); .align=East
+        port sub: .pos=(1,6); .align=East
+
+        B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
+        B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
+        Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .m -- z; .p -- x; .bn -- sub
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        # b1 and b2 side by side, rs in a column east of them, substrate tap
+        # west of b1. Net z runs along the south edge, net x along the north
+        # edge with a drop onto rs in the far east channel.
+        B_Hier() b1:
+            ! .pos == (0, 0)
+        B_Hier() b2:
+            ! .pos.y == b1.pos.y
+            ! .pos.x == b1.pos.x + 9000
+        Rsil(l=L_RS) rs:
+            ! .term_m.cx == b2.z.cx + 9000
+            ! .term_m.cy == b1.z.cy
+
+        # Substrate tap, wired to a Metal1 pin (bulk of the poly resistors).
+        Ptap(l='0.7u', w='0.7u') tap:
+            ! .m1.cx == b1.z.cx - 2500
+            ! .m1.cy == b1.z.cy
+
+        sr = SRouter(SG13G2().default_routing_spec)
+        # Net z: south rail through b1.z and b2.z onto rs.term_m.
+        sr.move(layers.Metal1, b1.z.center)
+        sr.wire_x(rs.term_m.cx)
+        # Net x: north rail through b1.x and b2.x, then down the east channel
+        # and back onto rs.term_p.
+        sr.move(layers.Metal1, b1.x.center)
+        sr.wire_x(rs.term_p.cx + 2500)
+        sr.wire_y(rs.term_p.cy)
+        sr.wire_x(rs.term_p.cx)
+
+        LayoutRect z:
+            .layer=layers.Metal1
+            ! .rect == b1.z.rect
+            .create_pin(self.symbol.z)
+        LayoutRect x:
+            .layer=layers.Metal1
+            ! .rect == b1.x.rect
+            .create_pin(self.symbol.x)
+        LayoutRect sub:
+            .layer=layers.Metal1
+            ! .rect == tap.m1.rect
+            .create_pin(self.symbol.sub)
+
+    @generate
+    def drc_report(self) -> DrcReport:
+        """Run IHP130 DRC (maximal rule set) on the layout."""
+        return run_drc(self.layout)
+
+    @generate
+    def lvs_report(self) -> LvsReport:
+        """Run IHP130 LVS, layout vs. schematic."""
+        return run_lvs(self.layout, self.symbol, return_report=True)
+
+cell C_FlatLayout:
+    """Case 2: flat layout vs. hierarchical schematic.
+
+    Schematic is a copy of C_Hier's (instantiating B_Hier); the layout places all 17
+    leaf resistors at top level, replicating C_Hier's geometry without the A_Default/B_Hier
+    hierarchy. Star cluster index i = 2*k + j (k: B_Hier copy, j=0: a1, j=1: a2).
+    """
+
+    viewgen symbol -> Symbol:
+        inout x: .align=North
+        inout z: .align=South
+        inout sub: .align=West
+
+    viewgen schematic -> Schematic:
+        port z: .pos=(1,3); .align=East
+        port x: .pos=(1,10); .align=East
+        port sub: .pos=(1,6); .align=East
+
+        B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
+        B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
+        Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .m -- z; .p -- x; .bn -- sub
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+        sr = SRouter(SG13G2().default_routing_spec)
+
+        path r1, r2, r3, rp1, rp2
+        for k in range(2):
+            for j in range(2):
+                i = 2*k + j
+                Rsil(l=L_RX) r1[i]:
+                    if j == 0:
+                        ! .pos == (9000*k, 3000)
+                Rsil(l=L_RZ) r3[i]:
+                    .orientation = FlippedNorth
+                    ! .term_m.cx == r1[i].term_m.cx
+                    ! r1[i].term_m.cy == .term_m.cy + 2500
+                Rsil(l=L_RY) r2[i]:
+                    .orientation = East
+                    ! .term_m.lx == r1[i].poly_body.ux + 1500
+                    ! .term_m.cy == 0.5*r1[i].term_m.cy + 0.5*r3[i].term_m.cy
+                # Star net of cluster i (cf. cell A_Default).
+                sr.move(layers.Metal1, r1[i].term_m.center)
+                sr.wire_y(r3[i].term_m.cy)
+                sr.move(layers.Metal1, r2[i].term_m.center)
+                sr.wire_x(r1[i].term_m.cx)
+
+            Rppd(l=L_RP1) rp1[k]:
+                ! .term_m.cx == r1[2*k].term_p.cx
+                ! .term_m.cy == r1[2*k].term_p.cy + 1500
+            # The upper star (j=1) hangs off the z-chain (cf. cell B_Hier).
+            ! r1[2*k+1].pos.x == r1[2*k].pos.x
+            ! r3[2*k+1].term_p.cy == rp1[k].term_p.cy + 1500
+            Rppd(l=L_RP2) rp2[k]:
+                ! .term_m.cx == r2[2*k].term_p.ux + 1500
+                ! 0.5*.term_m.cy + 0.5*.term_p.cy == 0.5*r2[2*k].term_p.cy + 0.5*r2[2*k+1].term_p.cy
+
+            # z-chain (cf. cell B_Hier)
+            sr.move(layers.Metal1, r1[2*k].term_p.center)
+            sr.wire_y(rp1[k].term_m.cy)
+            sr.move(layers.Metal1, rp1[k].term_p.center)
+            sr.wire_y(r3[2*k+1].term_p.cy)
+            # y-loop (cf. cell B_Hier)
+            sr.move(layers.Metal1, r2[2*k].term_p.center)
+            sr.wire_x(rp2[k].term_m.cx)
+            sr.wire_y(rp2[k].term_m.cy)
+            sr.move(layers.Metal1, r2[2*k+1].term_p.center)
+            sr.wire_x(rp2[k].term_p.cx)
+            sr.wire_y(rp2[k].term_p.cy)
+
+        Rsil(l=L_RS) rs:
+            ! .term_m.cx == r3[2].term_p.cx + 9000
+            ! .term_m.cy == r3[0].term_p.cy
+        Ptap(l='0.7u', w='0.7u') tap:
+            ! .m1.cx == r3[0].term_p.cx - 2500
+            ! .m1.cy == r3[0].term_p.cy
+
+        # Rails (cf. cell C_Hier)
+        sr.move(layers.Metal1, r3[0].term_p.center)
+        sr.wire_x(rs.term_m.cx)
+        sr.move(layers.Metal1, r1[1].term_p.center)
+        sr.wire_x(rs.term_p.cx + 2500)
+        sr.wire_y(rs.term_p.cy)
+        sr.wire_x(rs.term_p.cx)
+
+        LayoutRect z:
+            .layer=layers.Metal1
+            ! .rect == r3[0].term_p.rect
+            .create_pin(self.symbol.z)
+        LayoutRect x:
+            .layer=layers.Metal1
+            ! .rect == r1[1].term_p.rect
+            .create_pin(self.symbol.x)
+        LayoutRect sub:
+            .layer=layers.Metal1
+            ! .rect == tap.m1.rect
+            .create_pin(self.symbol.sub)
+
+    @generate
+    def drc_report(self) -> DrcReport:
+        """Run IHP130 DRC (maximal rule set) on the layout."""
+        return run_drc(self.layout)
+
+    @generate
+    def lvs_report(self) -> LvsReport:
+        """Run IHP130 LVS, layout vs. schematic."""
+        return run_lvs(self.layout, self.symbol, return_report=True)
+
+cell C_FlatSchematic:
+    """Case 3: hierarchical layout vs. flat schematic.
+
+    Layout is a copy of C_Hier's (instantiating B_Hier); the schematic describes all 17
+    leaf resistors at top level. Instance names mirror the hierarchy they
+    replace (a1r1[k] = B_Hier copy k, instance a1, resistor r1, etc.).
+    """
+
+    viewgen symbol -> Symbol:
+        inout x: .align=North
+        inout z: .align=South
+        inout sub: .align=West
+
+    viewgen schematic -> Schematic:
+        port z: .pos=(1,3); .align=East
+        port x: .pos=(1,36); .align=East
+        port sub: .pos=(1,20); .align=East
+
+        path c1, c2, i1, i2, y1, y2
+        path a1r1, a1r2, a1r3, a2r1, a2r2, a2r3, rp1, rp2
+
+        for k in range(2):
+            xo = 18 * k
+            net c1[k]  # star center of lower star (was B_Hier.a1's A_Default-internal c)
+            net c2[k]  # star center of upper star (was B_Hier.a2's)
+            net i1[k]  # z-chain (was B_Hier's i1)
+            net i2[k]
+            net y1[k]  # y-loop (was B_Hier's y1)
+            net y2[k]
+
+            # lower star (was b<k+1>.a1)
+            Rsil a1r1[k]: .$l=L_RX; .pos=(3+xo,12); .m -- c1[k]; .p -- i1[k]; .bn -- sub
+            Rsil a1r2[k]: .$l=L_RY; .pos=(8+xo,12); .orientation=East; .m -- c1[k]; .p -- y1[k]; .bn -- sub
+            Rsil a1r3[k]: .$l=L_RZ; .pos=(3+xo,9); .orientation=FlippedNorth; .m -- c1[k]; .p -- z; .bn -- sub
+            # z-chain resistor (was b<k+1>.rp1)
+            Rppd rp1[k]: .$l=L_RP1; .pos=(3+xo,18); .m -- i1[k]; .p -- i2[k]; .bn -- sub
+            # upper star (was b<k+1>.a2)
+            Rsil a2r3[k]: .$l=L_RZ; .pos=(3+xo,27); .orientation=FlippedNorth; .m -- c2[k]; .p -- i2[k]; .bn -- sub
+            Rsil a2r1[k]: .$l=L_RX; .pos=(3+xo,30); .m -- c2[k]; .p -- x; .bn -- sub
+            Rsil a2r2[k]: .$l=L_RY; .pos=(8+xo,30); .orientation=East; .m -- c2[k]; .p -- y2[k]; .bn -- sub
+            # y-loop resistor (was b<k+1>.rp2)
+            Rppd rp2[k]: .$l=L_RP2; .pos=(17+xo,17); .orientation=FlippedSouth; .m -- y1[k]; .p -- y2[k]; .bn -- sub
+
+        Rsil rs: .$l=L_RS; .pos=(42,12); .orientation=FlippedSouth; .m -- z; .p -- x; .bn -- sub
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        # Copy of C_Hier's hierarchical layout.
+        B_Hier() b1:
+            ! .pos == (0, 0)
+        B_Hier() b2:
+            ! .pos.y == b1.pos.y
+            ! .pos.x == b1.pos.x + 9000
+        Rsil(l=L_RS) rs:
+            ! .term_m.cx == b2.z.cx + 9000
+            ! .term_m.cy == b1.z.cy
+        Ptap(l='0.7u', w='0.7u') tap:
+            ! .m1.cx == b1.z.cx - 2500
+            ! .m1.cy == b1.z.cy
+
+        sr = SRouter(SG13G2().default_routing_spec)
+        sr.move(layers.Metal1, b1.z.center)
+        sr.wire_x(rs.term_m.cx)
+        sr.move(layers.Metal1, b1.x.center)
+        sr.wire_x(rs.term_p.cx + 2500)
+        sr.wire_y(rs.term_p.cy)
+        sr.wire_x(rs.term_p.cx)
+
+        LayoutRect z:
+            .layer=layers.Metal1
+            ! .rect == b1.z.rect
+            .create_pin(self.symbol.z)
+        LayoutRect x:
+            .layer=layers.Metal1
+            ! .rect == b1.x.rect
+            .create_pin(self.symbol.x)
+        LayoutRect sub:
+            .layer=layers.Metal1
+            ! .rect == tap.m1.rect
+            .create_pin(self.symbol.sub)
+
+    @generate
+    def drc_report(self) -> DrcReport:
+        """Run IHP130 DRC (maximal rule set) on the layout."""
+        return run_drc(self.layout)
+
+    @generate
+    def lvs_report(self) -> LvsReport:
+        """Run IHP130 LVS, layout vs. schematic."""
+        return run_lvs(self.layout, self.symbol, return_report=True)
+
+cell A_Moved:
+    """Case 4: A_Default with the y-arm resistor (r2) moved out into B_Moved.
+
+    The star center becomes an explicit terminal c. Only symbol and layout
+    are defined: the schematic side of case 4 uses the original A_Default/B_Hier/C_Hier
+    hierarchy, so A_Moved/B_Moved schematics are never netlisted.
+    """
+
+    viewgen symbol -> Symbol:
+        inout x: .align=North
+        inout c: .align=East
+        inout z: .align=South
+        inout sub: .align=West
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        Rsil(l=L_RX) r1:
+            ! .pos == (0, 3000)
+        Rsil(l=L_RZ) r3:
+            .orientation = FlippedNorth
+            ! .term_m.cx == r1.term_m.cx
+            ! r1.term_m.cy == .term_m.cy + 2500
+
+        # Star spine; exposed as terminal c (the moved resistor connects here).
+        sr = SRouter(SG13G2().default_routing_spec)
+        sr.move(layers.Metal1, r1.term_m.center)
+        sr.wire_y(r3.term_m.cy)
+        sr.path.create_pin(self.symbol.c)
+
+        LayoutRect x:
+            .layer=layers.Metal1
+            ! .rect == r1.term_p.rect
+            .create_pin(self.symbol.x)
+        LayoutRect z:
+            .layer=layers.Metal1
+            ! .rect == r3.term_p.rect
+            .create_pin(self.symbol.z)
+
+cell B_Moved:
+    """Case 4: B_Hier with the moved y-arm resistor inserted twice (ry1, ry2).
+
+    Geometrically equivalent to B_Hier, but the hierarchy boundary differs: the
+    L_RY resistors live here instead of inside the A_Default instances.
+    """
+
+    viewgen symbol -> Symbol:
+        inout x: .align=North
+        inout z: .align=South
+        inout sub: .align=West
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        A_Moved() a1:
+            ! .pos == (0, 0)
+        Rppd(l=L_RP1) rp1:
+            ! .term_m.cx == a1.x.cx
+            ! .term_m.cy == a1.x.cy + 1500
+        A_Moved() a2:
+            ! .pos.x == a1.pos.x
+            ! .z.cy == rp1.term_p.cy + 1500
+
+        # The two moved y-arm resistors, placed where A_Default.r2 sat inside a1/a2.
+        # (a1.x.cx + 1750 == a1.r1.poly_body.ux + 1500; nested subcursors like
+        # a1.r1.poly_body cannot be used in constraints yet.)
+        Rsil(l=L_RY) ry1:
+            .orientation = East
+            ! .term_m.lx == a1.x.cx + 1750
+            ! .term_m.cy == 0.5*a1.x.cy + 0.5*a1.z.cy
+        Rsil(l=L_RY) ry2:
+            .orientation = East
+            ! .term_m.lx == a2.x.cx + 1750
+            ! .term_m.cy == 0.5*a2.x.cy + 0.5*a2.z.cy
+
+        Rppd(l=L_RP2) rp2:
+            ! .term_m.cx == ry1.term_p.ux + 1500
+            ! 0.5*.term_m.cy + 0.5*.term_p.cy == 0.5*ry1.term_p.cy + 0.5*ry2.term_p.cy
+
+        sr = SRouter(SG13G2().default_routing_spec)
+        # z-chain (as in B_Hier)
+        sr.move(layers.Metal1, a1.x.center)
+        sr.wire_y(rp1.term_m.cy)
+        sr.move(layers.Metal1, rp1.term_p.center)
+        sr.wire_y(a2.z.cy)
+        # branches from the moved resistors onto the star spines (c pins)
+        sr.move(layers.Metal1, ry1.term_m.center)
+        sr.wire_x(a1.x.cx)
+        sr.move(layers.Metal1, ry2.term_m.center)
+        sr.wire_x(a2.x.cx)
+        # y-loop (as in B_Hier)
+        sr.move(layers.Metal1, ry1.term_p.center)
+        sr.wire_x(rp2.term_m.cx)
+        sr.wire_y(rp2.term_m.cy)
+        sr.move(layers.Metal1, ry2.term_p.center)
+        sr.wire_x(rp2.term_p.cx)
+        sr.wire_y(rp2.term_p.cy)
+
+        LayoutRect z:
+            .layer=layers.Metal1
+            ! .rect == a1.z.rect
+            .create_pin(self.symbol.z)
+        LayoutRect x:
+            .layer=layers.Metal1
+            ! .rect == a2.x.rect
+            .create_pin(self.symbol.x)
+
+cell C_Moved:
+    """Case 4: hierarchical layout vs. hierarchical schematic with moved
+    hierarchy boundaries.
+
+    The schematic is a copy of C_Hier's (instantiating the original B_Hier); the layout
+    instantiates B_Moved instead. Electrically equivalent, but the layout cells
+    a_moved/b_moved have no schematic counterparts and vice versa
+    (a_default/b_hier).
+    """
+
+    viewgen symbol -> Symbol:
+        inout x: .align=North
+        inout z: .align=South
+        inout sub: .align=West
+
+    viewgen schematic -> Schematic:
+        port z: .pos=(1,3); .align=East
+        port x: .pos=(1,10); .align=East
+        port sub: .pos=(1,6); .align=East
+
+        B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
+        B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
+        Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .m -- z; .p -- x; .bn -- sub
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        B_Moved() b1:
+            ! .pos == (0, 0)
+        B_Moved() b2:
+            ! .pos.y == b1.pos.y
+            ! .pos.x == b1.pos.x + 9000
+        Rsil(l=L_RS) rs:
+            ! .term_m.cx == b2.z.cx + 9000
+            ! .term_m.cy == b1.z.cy
+        Ptap(l='0.7u', w='0.7u') tap:
+            ! .m1.cx == b1.z.cx - 2500
+            ! .m1.cy == b1.z.cy
+
+        sr = SRouter(SG13G2().default_routing_spec)
+        sr.move(layers.Metal1, b1.z.center)
+        sr.wire_x(rs.term_m.cx)
+        sr.move(layers.Metal1, b1.x.center)
+        sr.wire_x(rs.term_p.cx + 2500)
+        sr.wire_y(rs.term_p.cy)
+        sr.wire_x(rs.term_p.cx)
+
+        LayoutRect z:
+            .layer=layers.Metal1
+            ! .rect == b1.z.rect
+            .create_pin(self.symbol.z)
+        LayoutRect x:
+            .layer=layers.Metal1
+            ! .rect == b1.x.rect
+            .create_pin(self.symbol.x)
+        LayoutRect sub:
+            .layer=layers.Metal1
+            ! .rect == tap.m1.rect
+            .create_pin(self.symbol.sub)
+
+    @generate
+    def drc_report(self) -> DrcReport:
+        """Run IHP130 DRC (maximal rule set) on the layout."""
+        return run_drc(self.layout)
+
+    @generate
+    def lvs_report(self) -> LvsReport:
+        """Run IHP130 LVS, layout vs. schematic."""
+        return run_lvs(self.layout, self.symbol, return_report=True)
