@@ -953,9 +953,21 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
     @classmethod
     def canonical_cls(cls) -> type:
         """
-        Returns the plain Node subclass for cursor classes, e.g. Layout for
-        Layout.Frozen or Layout.Mutable (see overrides in FrozenNode and
-        MutableNode). A plain Node subclass is its own canonical class.
+        Returns the plain (canonical) Node subclass, e.g.
+        :class:`ordec.core.schema.Layout` for Layout.Frozen or
+        Layout.Mutable. On a plain Node subclass, this method returns the
+        class itself.
+
+        Background: plain Node subclasses are never instantiated as cursors.
+        Every cursor object is an instance of one of the auto-generated
+        subclasses :attr:`Node.Frozen` or :attr:`Node.Mutable` (depending on
+        whether its subgraph is frozen or mutable), so ``type(node)`` never
+        returns the plain class. ``isinstance(node, Layout)`` works as
+        expected, because the cursor classes subclass the plain class. But
+        code that uses node classes as dictionary keys or compares them with
+        ``==``/``is`` must normalize cursor classes via
+        ``type(node).canonical_cls()`` — otherwise lookups silently miss
+        (e.g. ``d[Layout]`` vs. an entry keyed by ``Layout.Frozen``).
         """
         return cls
 

@@ -8,6 +8,7 @@ Welcome to ORDeC's documentation!
    readme
    webui
    ord_tutorial
+   howto_layout
    ref/index
    cell_lib/index
    dev/index

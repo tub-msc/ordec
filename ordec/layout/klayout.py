@@ -308,23 +308,132 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
     """
     Parse a KLayout LVS database file (.lvsdb) into an LvsReport subgraph.
 
-    The LVSDB format uses shorthand notation:
-    - 'J' for layout section, 'H' for reference, 'Z' for xref
-    - 'X' for circuit, 'N' for net, 'D' for device, 'P' for pin
-    - 'Y' for device location, 'L' for log, 'M' for message
-    - 'B' for message body text
-
     Args:
         filename: Path to the .lvsdb file.
-        layout: The Layout subgraph that was checked.
-        schematic: The Schematic subgraph that was compared against.
-        directory: Optional Directory used during netlisting for name lookup.
+        layout: The Layout subgraph that was checked. Becomes ref_layout of
+            the report and of the top-level LvsCircuitPair. May be None.
+        schematic: The Schematic subgraph that was compared against. Becomes
+            ref_schematic analogously. May be None.
+        directory: Optional Directory used during netlisting and GDS export.
+            If given, it is used to resolve subcircuit pairs to their
+            Layout/Schematic subgraphs and item names to ORDB nodes; without
+            it, only the raw LVSDB names are reported.
 
     Returns:
         LvsReport subgraph with all parsed comparison results.
 
-    The LVSDB format documentation is hidden in KLayout's sources:
-    https://github.com/KLayout/klayout/blob/master/src/db/db/dbLayoutVsSchematicFormatDefs.h
+    **LVSDB format.** The format is only documented in the KLayout sources,
+    of which this repository keeps a copy:
+
+    - ``experiments/klayout/src/db/db/dbLayoutVsSchematicFormatDefs.h``
+      defines the LVSDB top level,
+    - ``experiments/klayout/src/db/db/dbLayoutToNetlistFormatDefs.h``
+      defines the embedded netlist sections (shared with L2N databases).
+
+    An LVSDB file is a tree of parenthesized s-expressions. Every element
+    type has a long and a short key (e.g. ``circuit`` and ``X``); KLayout
+    writes short keys, this parser accepts both. After the magic line
+    ``#%lvsdb-klayout``, the file has three top-level sections::
+
+        J(...)   layout:    netlist extracted from the GDS
+        H(...)   reference: netlist read from the SPICE file
+        Z(...)   xref:      comparison results (pairing + status)
+
+    Keys relevant to this parser (long form in parentheses):
+
+    ========= ============================================================
+    Key       Meaning
+    ========= ============================================================
+    ``W``     (top) top cell name, in the layout/reference sections
+    ``U``     (unit) database unit in µm
+    ``X``     (circuit) circuit; *inside* a circuit, ``X`` with a numeric
+              first element is a subcircuit instance
+    ``N``     (net) net definition: id, then optional ``I`` and geometry
+    ``P``     (pin) pin definition: id, then optional ``I``
+    ``D``     (device) device: id, device class, then ``I``/``E``/``Y``
+    ``I``     (name) name of the enclosing net/device/pin/subcircuit
+    ``E``     (param) device parameter, e.g. ``E(l 0.5)``
+    ``Y``     (location) device/instance location in database units
+    ``L``     in the xref section: (log) message log of a circuit pair;
+              in the netlist sections: (layer) layer definition!
+    ``M``     (entry) one log message inside ``L(...)``
+    ``B``     (description) message text inside ``M(...)``
+    ========= ============================================================
+
+    Pitfalls:
+
+    - Short keys are context-dependent: ``H`` is the reference section at
+      the top level but a message inside netlist sections, ``J`` is the
+      layout section at the top level but a text label in net geometry,
+      ``X`` may be a circuit, a subcircuit instance or the *nomatch*
+      status, and ``L`` is a log in the xref section but a layer in the
+      netlist sections.
+    - Absent values (unpaired ids, missing names) are written as ``()``.
+    - In xref items, pin ids are 0-based, while pin *definitions* in the
+      netlist sections use 1-based ids.
+    - In the layout section, devices and subcircuit instances are usually
+      unnamed (GDS structure references carry no instance names) and only
+      identified by their location (``Y``). In the reference section,
+      names come from the SPICE netlist and are upper-cased.
+
+    Status codes (used for circuit pairs and xref items alike):
+
+    ======= ============ ==================================================
+    Code    Long form    Meaning
+    ======= ============ ==================================================
+    ``1``   match        objects were paired and compare clean
+    ``0``   mismatch     objects were paired, but their comparison failed
+    ``X``   nomatch      no counterpart found on the other side
+    ``W``   warning      matched with warning: for devices, parameters
+                         deviate (an LVS error); for nets, pins and
+                         subcircuits, the match was ambiguous (harmless)
+    ``S``   skipped      comparison skipped
+    ======= ============ ==================================================
+
+    Annotated example (shortened, from a hierarchical resistor design)::
+
+        #%lvsdb-klayout
+        J(                        # layout netlist (extracted from GDS)
+         W(c_hier)                # top cell
+         U(0.001)                 # database unit in µm
+         L(l6 '6/0')              # layer definition ("L" = layer here!)
+         X(a_default              # circuit = extracted cell "a_default"
+          N(1 I(x)                # net 1, named "x", with geometry:
+           R(l6 (70 3620) (360 160))  # rect on layer l6
+           J(l26 x (-180 -80))        # text label ("J" = text here!)
+          )
+          P(1 I(x))               # pin 1, named "x"
+          D(1 D$rsil$1            # device 1 of device class "D$rsil$1",
+           Y(-5 2995)             # unnamed, at location (-5, 2995)
+           E(w 0.5) E(l 0.5)      # device parameters
+           T(rsil_1 5)            # terminal "rsil_1" connects to net 5
+          )
+          X(1 a_default Y(0 0)    # subcircuit instance 1 of "a_default"
+           P(0 4)                 # instance pin 0 connects to net 4
+          )
+         )
+        )
+        H(                        # reference netlist (from SPICE)
+         X(A_DEFAULT              # names are upper-cased SPICE names
+          N(1 I(X))
+          D(1 RSIL I(R1) ...)     # devices/subcircuits are named here
+          X(1 A_DEFAULT I(A1) ...)
+         )
+        )
+        Z(                        # comparison results
+         X(a_default A_DEFAULT 1  # circuit pair: layout circuit,
+          Z(                      # reference circuit, status
+           N(5 5 1)               # item xref: layout id, reference id,
+           P(0 0 1)               # status (pin ids 0-based here!)
+           D(3 1 1)
+           X(1 1 1)
+          )
+         )
+        )
+
+    A real specimen of this format is kept at ``tests/lvsdb/c_hier.lvsdb``;
+    ``tests/test_parse_lvsdb.py`` parses it to pin down this parser's
+    behavior independently of KLayout.
     """
     with open(filename, 'r') as f:
         text = f.read()

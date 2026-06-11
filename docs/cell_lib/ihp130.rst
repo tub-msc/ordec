@@ -3,6 +3,27 @@
 
 This cell library provides part of the `IHP Open PDK <https://github.com/IHP-GmbH/IHP-Open-PDK>`_.
 
+.. _ihp130_substrate_lvs:
+
+Substrate handling in LVS
+-------------------------
+
+All SG13G2 resistors (``Rsil``, ``Rppd``, ``Rhigh``) have a third pin ``bn`` connecting the device's bulk/substrate node. In LVS netlists, the resistors are emitted as three-terminal SPICE elements, so substrate connectivity is part of the layout vs. schematic comparison.
+
+On the layout side, the SG13G2 LVS deck merges the resistors' bulk into a single chip-wide substrate (pwell) net. For hierarchical designs, this has the following consequences:
+
+* Every cell whose layout contains a resistor (directly or in a subcell) is extracted with an *additional, implicit pin* for the propagated substrate net — even though the cell's layout draws no substrate pin shape.
+* For LVS to pass, the schematic of each such cell needs a matching substrate port (named ``sub`` by convention) wired to the ``bn`` pins of all resistors and propagated down the hierarchy. Within the hierarchy, KLayout matches the extracted substrate pin against this port *topologically*; subcell layouts need neither a pin shape nor a label for it.
+* The *top* cell is the exception: top-level pins are compared by name, so the top layout must materialize the substrate connection explicitly. Place a substrate tap (``Ptap``) and attach a labeled Metal1 pin to it (see cell ``C_Hier`` in ``tests/lib/lvs_example_hier.ord`` for a working example).
+
+Approaches that do **not** work:
+
+* A pin label directly on the substrate region: the deck's connectivity setup attaches no text/pin layer to the substrate, so such labels are ignored and the top-level substrate pin remains unnamed.
+* Netlisting ``bn`` as a global net (``.global sub!``) instead of explicit ``sub`` ports: the subcells then match, but the top-level pin comparison fails because the layout's implicit substrate pin has no name to match against ``SUB!``.
+
+Cells
+-----
+
 .. automodule:: ordec.lib.ihp130
   :members:
   :member-order: groupwise

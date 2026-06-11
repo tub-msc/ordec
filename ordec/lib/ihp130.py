@@ -673,7 +673,14 @@ def _layoutgen_cmim(cell: Cell) -> Layout:
 
 
 class Res(SimLeafCell):
-    """Shared base class for SG13G2 resistors."""
+    """
+    Shared base class for SG13G2 resistors.
+
+    Besides the resistor terminals ``p`` and ``m``, the symbol has a third
+    pin ``bn`` connecting the device's bulk/substrate node. ``bn`` is part
+    of the LVS comparison and requires care in hierarchical designs; see
+    :ref:`ihp130_substrate_lvs`.
+    """
     l = Parameter(R)
     w = Parameter(R)
     b = Parameter(int, default=0)
@@ -739,6 +746,11 @@ class Res(SimLeafCell):
 
 @public
 class Rsil(Res):
+    """
+    Salicided polysilicon resistor (low sheet resistance). For the
+    substrate pin ``bn`` and its LVS handling, see
+    :ref:`ihp130_substrate_lvs`.
+    """
     model_name = "rsil"
     l = Parameter(R, default=R("0.50u"))
     w = Parameter(R, default=R("0.50u"))
@@ -754,6 +766,11 @@ class Rsil(Res):
 
 @public
 class Rppd(Res):
+    """
+    Unsalicided p+ polysilicon resistor (medium sheet resistance). For the
+    substrate pin ``bn`` and its LVS handling, see
+    :ref:`ihp130_substrate_lvs`.
+    """
     model_name = "rppd"
     l = Parameter(R, default=R("0.50u"))
     w = Parameter(R, default=R("0.50u"))
@@ -769,6 +786,11 @@ class Rppd(Res):
 
 @public
 class Rhigh(Res):
+    """
+    High-resistive polysilicon resistor (high sheet resistance). For the
+    substrate pin ``bn`` and its LVS handling, see
+    :ref:`ihp130_substrate_lvs`.
+    """
     model_name = "rhigh"
     l = Parameter(R, default=R("0.96u"))
     w = Parameter(R, default=R("0.50u"))
