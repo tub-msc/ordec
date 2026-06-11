@@ -53,6 +53,7 @@ SPDX-License-Identifier = "CC0-1.0"
 path = [
     "tests/layout_gds/__init__.py",
     "tests/layout_gds/*.gds",
+    "tests/lvsdb/c_hier.lvsdb",
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"
