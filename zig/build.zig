@@ -13,10 +13,30 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // C-ABI shared library for the Python bridge (ordec/zigbridge/):
+    const capi_mod = b.createModule(.{
+        .root_source_file = b.path("src/capi.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "ordb", .module = mod },
+        },
+        .link_libc = true,
+    });
+    const lib = b.addLibrary(.{
+        .name = "ordec_zig",
+        .linkage = .dynamic,
+        .root_module = capi_mod,
+    });
+    b.installArtifact(lib);
+
     const mod_tests = b.addTest(.{ .root_module = mod });
     const run_mod_tests = b.addRunArtifact(mod_tests);
+    const capi_tests = b.addTest(.{ .root_module = capi_mod });
+    const run_capi_tests = b.addRunArtifact(capi_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_mod_tests.step);
+    test_step.dependOn(&run_capi_tests.step);
 
     // Demo executables: zig build demo-placer / zig build demo-ordb
     const demos = [_]struct { name: []const u8, src: []const u8, desc: []const u8 }{

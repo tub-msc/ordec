@@ -20,7 +20,13 @@ Requires Zig 0.16.0.
 zig build test          # run the full test suite
 zig build demo-ordb     # tour of the ORDB principles (port of docs/ref/ordb_demo.py)
 zig build demo-placer   # standard-cell placer demo
+zig build               # also builds zig-out/lib/libordec_zig.so (Python bridge)
 ```
+
+`zig build` produces `libordec_zig.so` (C ABI in `src/capi.zig`), through
+which Python uses this implementation for compute-heavy work via
+`ordec.zigbridge` — see `docs/dev/zigbridge.rst` for the bridge architecture
+and wire-format contract.
 
 `demo-ordb` (source: `src/demos/demo_ordb.zig`) is the best starting point:
 it ports the Python notebook `docs/ref/ordb_demo.py` and walks through the
