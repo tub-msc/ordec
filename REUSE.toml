@@ -17,6 +17,7 @@ path = [
     ".gitignore",
     "docs/.gitignore",
     "web/.gitignore",
+    "zig/.gitignore",
     ".dockerignore",
     "MANIFEST.in",
     "docs/requirements.txt",
