@@ -244,6 +244,9 @@ class SchematicRenderer(Renderer):
             fill: none;
             stroke-width: 0.1;
         }
+        g[data-srcline] .symbolOutline {
+            pointer-events: all;
+        }
         .grid {
             fill: #ccc;
         }

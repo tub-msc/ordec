@@ -60,8 +60,9 @@ def test_srcloc_in_rendered_svg():
     assert len(re.findall(r'data-srcline="\d+"', svg)) == 2  # pd and pu
 
     svg_nonids = sch.render(include_nids=False).svg().decode()
-    assert 'data-srcline' not in svg_nonids
-    assert 'data-srcfile' not in svg_nonids
+    # '=' matches the attribute, not the CSS selector g[data-srcline].
+    assert 'data-srcline=' not in svg_nonids
+    assert 'data-srcfile=' not in svg_nonids
 
 
 def test_srcloc_python_schematic_is_none():
@@ -69,4 +70,4 @@ def test_srcloc_python_schematic_is_none():
     and emit no data-srcline."""
     sch = PyInv().schematic
     assert all(i.src_loc is None for i in sch.all(SchemInstance))
-    assert 'data-srcline' not in sch.render().svg().decode()
+    assert 'data-srcline=' not in sch.render().svg().decode()
