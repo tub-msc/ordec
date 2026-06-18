@@ -352,7 +352,9 @@ viewEventBus.on('schematic:request-open', openOrActivateView);
 viewEventBus.on('editor:goto-source', (data) => {
     const editorComponent = getEditor();
     if (editorComponent && data.file === '<webeditor>' && data.line) {
-        editorComponent.editor.gotoLine(data.line, 0, true);
+        // ORD columns are 1-based; Ace's gotoLine expects a 0-based column.
+        const aceColumn = data.column ? data.column - 1 : 0;
+        editorComponent.editor.gotoLine(data.line, aceColumn, true);
         editorComponent.editor.focus();
     } else if (data.line) {
         console.info(`Instance defined at ${data.file}:${data.line}`);

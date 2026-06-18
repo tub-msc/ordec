@@ -121,6 +121,16 @@ def coerce_tuple(target_type, tuple_length):
         return val
     return func
 
+# Source location
+# ---------------
+
+@public
+class SourceLocInfo(NamedTuple):
+    """Source location of the ORD/Python statement that created a node."""
+    filename: str
+    line: int
+    column: int
+
 # Symbol
 # ------
 
@@ -481,7 +491,7 @@ class SchemInstance(Node):
         factory=coerce_tuple(Vec2R, 2))
     orientation = Attr(D4, default=D4.R0)
     symbol = SubgraphRef(Symbol, optional=False)
-    src_loc = Attr(tuple)
+    src_loc = Attr(SourceLocInfo)
 
     def __new__(cls, connect=None, **kwargs):
         main = super().__new__(cls, **kwargs)
@@ -595,7 +605,7 @@ class SchemInstanceUnresolved(Node):
     orientation = Attr(D4, default=D4.R0)
 
     resolver = Attr(object) # closure?
-    src_loc = Attr(tuple)
+    src_loc = Attr(SourceLocInfo)
 
     @property
     def params(self):

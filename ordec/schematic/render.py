@@ -315,9 +315,9 @@ class SchematicRenderer(Renderer):
             with self.subgroup(node=inst, data_nid=inst.nid):
                 # Source location for click-to-source
                 if self.include_nids and inst.src_loc is not None:
-                    src_file, src_line = inst.src_loc
-                    self.cur_group.attrib['data-srcfile'] = str(src_file)
-                    self.cur_group.attrib['data-srcline'] = str(src_line)
+                    self.cur_group.attrib['data-srcfile'] = str(inst.src_loc.filename)
+                    self.cur_group.attrib['data-srcline'] = str(inst.src_loc.line)
+                    self.cur_group.attrib['data-srccol'] = str(inst.src_loc.column)
                 trans = inst.loc_transform()
                 self.draw_symbol(inst.symbol, trans, inst.full_path_str())
 

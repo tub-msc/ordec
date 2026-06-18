@@ -56,7 +56,7 @@ def constrain(constraint):
     return _view_ctx_var.get().constrain(constraint)
 
 
-def add_element(name_tuple, element, src_line=None):
+def add_element(name_tuple, element, src_line=None, src_column=None):
     """
     Add an element from a node statement, dispatching based on type.
 
@@ -69,11 +69,14 @@ def add_element(name_tuple, element, src_line=None):
         name_tuple: path components for naming the element.
         element: Cell class, Cell instance, Node subclass,
             or NodeTuple instance.
-        src_line: line of the defining ORD statement
+        src_line: line of the defining ORD statement.
+        src_column: column of the defining ORD statement.
     """
     ctx = _ctx_var.get()
-    # Source location for click-to-source
-    src_loc = (sys._getframe(1).f_code.co_filename, src_line) if src_line is not None else None
+    # Source location for click-to-source.
+    src_loc = SourceLocInfo(
+        sys._getframe(1).f_code.co_filename, src_line, src_column
+    ) if src_line is not None else None
     # Layout context: create LayoutInstance from Cell instances
     if isinstance(ctx.root, Layout):
         if isinstance(element, Cell):

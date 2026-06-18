@@ -423,17 +423,18 @@ const viewClassOf = {
                     this.tooltip.style.display = 'none';
                 });
 
-            // Click-to-source: emit the instance's data-srcline/data-srcfile
-            // set in render.py. main.js owns the editor and does the jump.
+            // Click-to-source: emit the instance's data-srcline/data-srccol/
+            // data-srcfile set in render.py. main.js owns the editor and jumps.
             this.g.selectAll('g[data-srcline]')
                 .style('cursor', 'pointer')
                 .on('click', function(event) {
                     event.stopPropagation();
                     const el = d3.select(this);
                     const line = parseInt(el.attr('data-srcline'), 10);
+                    const column = parseInt(el.attr('data-srccol'), 10);
                     const file = el.attr('data-srcfile');
                     if (!Number.isNaN(line)) {
-                        viewEventBus.emit('editor:goto-source', { file, line });
+                        viewEventBus.emit('editor:goto-source', { file, line, column });
                     }
                 });
 
