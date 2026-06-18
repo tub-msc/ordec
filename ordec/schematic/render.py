@@ -244,6 +244,9 @@ class SchematicRenderer(Renderer):
             fill: none;
             stroke-width: 0.1;
         }
+        g[data-srcline] .symbolOutline {
+            pointer-events: all;
+        }
         .grid {
             fill: #ccc;
         }
@@ -310,6 +313,11 @@ class SchematicRenderer(Renderer):
 
         for inst in s.all(SchemInstance):
             with self.subgroup(node=inst, data_nid=inst.nid):
+                # Source location for click-to-source
+                if self.include_nids and inst.src_loc is not None:
+                    self.cur_group.attrib['data-srcfile'] = str(inst.src_loc.filename)
+                    self.cur_group.attrib['data-srcline'] = str(inst.src_loc.line)
+                    self.cur_group.attrib['data-srccol'] = str(inst.src_loc.column)
                 trans = inst.loc_transform()
                 self.draw_symbol(inst.symbol, trans, inst.full_path_str())
 

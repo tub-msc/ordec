@@ -443,6 +443,7 @@ def resolve_instances(schematic: Schematic):
                 pos=ui.pos,
                 orientation=ui.orientation,
                 symbol=symbol,
+                src_loc=ui.src_loc,
                 )
 
             sgu.remove_nid(ui.nid)

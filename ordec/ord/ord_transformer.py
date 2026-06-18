@@ -5,6 +5,9 @@
 import ast
 import copy
 
+# third-party imports
+from lark import v_args
+
 # ordec imports
 from .python_transformer import PythonTransformer
 
@@ -28,6 +31,13 @@ class OrdTransformer(PythonTransformer):
 
     def ast_ord_context(self, attr):
         return self.ast_attribute(self.ast_name("__ord_context__"), attr)
+
+    def ast_src_loc_keywords(self, meta):
+        """Keyword arguments carrying the statement's source line and column."""
+        return [
+            ast.keyword(arg="src_line", value=ast.Constant(value=meta.line)),
+            ast.keyword(arg="src_column", value=ast.Constant(value=meta.column)),
+        ]
 
     def celldef(self, nodes):
         """ Definition of a ORDeC cell class"""
@@ -157,7 +167,8 @@ class OrdTransformer(PythonTransformer):
         else:
             raise Exception(f"Incompatible path type: {nodes!r}")
 
-    def node_stmt(self, nodes):
+    @v_args(meta=True)
+    def node_stmt(self, meta, nodes):
         """Node statement: 'Type name' with optional body.
 
         There are three types of node statements:
@@ -228,7 +239,11 @@ class OrdTransformer(PythonTransformer):
                 context_type_expr
             ]
             func = self.ast_ord_context("add_element")
-            rhs = ast.Call(func=func, args=args, keywords=[])
+            rhs = ast.Call(
+                func=func,
+                args=args,
+                keywords=self.ast_src_loc_keywords(meta),
+            )
 
         # Path accesses must not be assigned
         if path_node:
@@ -254,7 +269,8 @@ class OrdTransformer(PythonTransformer):
         )
         return [assignment, with_stmt]
 
-    def anon_node_stmt(self, nodes):
+    @v_args(meta=True)
+    def anon_node_stmt(self, meta, nodes):
         """Anonymous node statement: 'anonymous Type name' with optional body.
 
         Like node_stmt but passes None as name_tuple, so no NPath is created.
@@ -266,7 +282,7 @@ class OrdTransformer(PythonTransformer):
         rhs = ast.Call(
             func=self.ast_ord_context("add_element"),
             args=[ast.Constant(value=None), context_type],
-            keywords=[]
+            keywords=self.ast_src_loc_keywords(meta),
         )
 
         target = copy.copy(context_name)
@@ -290,18 +306,20 @@ class OrdTransformer(PythonTransformer):
         )
         return [assignment, with_stmt]
 
-    def anon_node_stmt_nobody(self, nodes):
+    @v_args(meta=True)
+    def anon_node_stmt_nobody(self, meta, nodes):
         """Anonymous node statement without body, supports multiple names."""
         result = []
         for context_target in nodes[1:]:
-            result.extend(self.anon_node_stmt([nodes[0], context_target]))
+            result.extend(self.anon_node_stmt(meta, [nodes[0], context_target]))
         return result
 
-    def node_stmt_nobody(self, nodes):
+    @v_args(meta=True)
+    def node_stmt_nobody(self, meta, nodes):
         """Node statement without body, supports multiple names (e.g., 'Nmos a, b, c')"""
         result = []
         for context_target in nodes[1:]:
-            result.extend(self.node_stmt([nodes[0], context_target]))
+            result.extend(self.node_stmt(meta, [nodes[0], context_target]))
         return result
 
     def dotted_atom(self, nodes):

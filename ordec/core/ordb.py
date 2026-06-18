@@ -677,21 +677,33 @@ class NodeMeta(type):
     def _collect_raw_attrs(d, bases):
         raw_attrs = {} # The order in raw_attrs defines the tuple layout later on.
 
+        def register(k, v):
+            raw_attrs[k] = v
+            if v.name is None:
+                v.name = k
+            else:
+                assert v.name == k
+
         # First come inherited attributes:
         for b in bases:
             try:
+                # Base with already-collected raw attributes (a built Node
+                # subclass): inherit them.
                 raw_attrs |= b._raw_attrs
             except AttributeError:
-                pass
+                # Base without _raw_attrs: either a plain mixin or Node itself
+                # (build_node=False). Collect Attr instances declared anywhere
+                # in its MRO. These stay in the base's __dict__; the per-class
+                # descriptor built later shadows them via the MRO.
+                for cls in reversed(b.__mro__):
+                    for k, v in vars(cls).items():
+                        if isinstance(v, Attr):
+                            register(k, v)
 
         # Then newly added attributes:
         for k, v in list(d.items()):
             if isinstance(v, Attr):
-                raw_attrs[k] = v
-                if v.name is None:
-                    v.name = k
-                else:
-                    assert v.name == k
+                register(k, v)
                 del d[k] # Gets repopulated later.
 
         return raw_attrs

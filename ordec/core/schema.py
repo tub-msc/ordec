@@ -121,6 +121,16 @@ def coerce_tuple(target_type, tuple_length):
         return val
     return func
 
+# Source location
+# ---------------
+
+@public
+class SourceLocInfo(NamedTuple):
+    """Source location of the ORD/Python statement that created a node."""
+    filename: str
+    line: int
+    column: int
+
 # Symbol
 # ------
 
@@ -470,8 +480,18 @@ class SchemInstanceSubcursor(tuple):
             return inner_ret
 
 
+class MixinSourceLoc:
+    """
+    Provides src_loc attribute for Nodes that support back link to source.
+    This enables click-to-source for ORD code in the web UI. Currently, src_loc
+    is None for nodes not built from ORD code.
+    """
+    __slots__=()
+    src_loc = Attr(SourceLocInfo)
+
+
 @public
-class SchemInstance(Node):
+class SchemInstance(Node, MixinSourceLoc):
     """
     An instance of a Symbol in a Schematic (foundation for schematic hierarchy).
     """
@@ -575,7 +595,7 @@ class SchemInstanceUnresolvedSubcursor(tuple):
         return NotImplemented
     
 @public
-class SchemInstanceUnresolved(Node):
+class SchemInstanceUnresolved(Node, MixinSourceLoc):
     """An instance of a Symbol that is not determined yet."""
 
     class ParamWrapper:

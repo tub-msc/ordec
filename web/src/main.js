@@ -347,6 +347,20 @@ function openOrActivateView(data) {
 viewEventBus.on('layout:request-open', openOrActivateView);
 viewEventBus.on('schematic:request-open', openOrActivateView);
 
+// Click-to-source: jump the editor to a clicked instance's definition line.
+// In local mode the user edits files externally, so we just log.
+viewEventBus.on('editor:goto-source', (data) => {
+    const editorComponent = getEditor();
+    if (editorComponent && data.file === '<webeditor>' && data.line) {
+        // ORD columns are 1-based; Ace's gotoLine expects a 0-based column.
+        const aceColumn = data.column ? data.column - 1 : 0;
+        editorComponent.editor.gotoLine(data.line, aceColumn, true);
+        editorComponent.editor.focus();
+    } else if (data.line) {
+        console.info(`Instance defined at ${data.file}:${data.line}`);
+    }
+});
+
 viewEventBus.on('lvs:request-open-views', (data) => {
     const { layoutView, schemView, sourceContainer } = data;
 
