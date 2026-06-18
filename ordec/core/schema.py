@@ -480,8 +480,18 @@ class SchemInstanceSubcursor(tuple):
             return inner_ret
 
 
+class MixinSourceLoc:
+    """
+    Provides src_loc attribute for Nodes that support back link to source.
+    This enables click-to-source for ORD code in the web UI. Currently, src_loc
+    is None for nodes not built from ORD code.
+    """
+    __slots__=()
+    src_loc = Attr(SourceLocInfo)
+
+
 @public
-class SchemInstance(Node):
+class SchemInstance(Node, MixinSourceLoc):
     """
     An instance of a Symbol in a Schematic (foundation for schematic hierarchy).
     """
@@ -491,7 +501,6 @@ class SchemInstance(Node):
         factory=coerce_tuple(Vec2R, 2))
     orientation = Attr(D4, default=D4.R0)
     symbol = SubgraphRef(Symbol, optional=False)
-    src_loc = Attr(SourceLocInfo)
 
     def __new__(cls, connect=None, **kwargs):
         main = super().__new__(cls, **kwargs)
@@ -586,7 +595,7 @@ class SchemInstanceUnresolvedSubcursor(tuple):
         return NotImplemented
     
 @public
-class SchemInstanceUnresolved(Node):
+class SchemInstanceUnresolved(Node, MixinSourceLoc):
     """An instance of a Symbol that is not determined yet."""
 
     class ParamWrapper:
@@ -605,7 +614,6 @@ class SchemInstanceUnresolved(Node):
     orientation = Attr(D4, default=D4.R0)
 
     resolver = Attr(object) # closure?
-    src_loc = Attr(SourceLocInfo)
 
     @property
     def params(self):
