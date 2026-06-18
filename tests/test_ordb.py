@@ -56,6 +56,25 @@ def test_schema_attr_inheritance():
     assert ExtMyNode3.weight != ExtMyNode2.weight
     assert ExtMyNode3.Tuple.indices == [ExtMyNode2.C2] # ExtMyNode2.C1 is not in indices anymore, because the corresponding attribute was removed.
 
+def test_mixin_attr_inheritance():
+    class MixinA:
+        __slots__ = ()
+        attr_a = Attr(int)
+
+    class MixinB(MixinA):
+        __slots__ = ()
+        attr_b = Attr(int)
+
+    # MixinB contributes both its own attr_b and attr_a from its base MixinA.
+    class MixinNode(Node, MixinB):
+        own = Attr(int)
+    assert [ad.name for ad in MixinNode.Tuple._layout] == ['attr_a', 'attr_b', 'own']
+    assert isinstance(MixinNode.attr_a, Attr) # AttrDescriptor works on the class.
+    assert isinstance(MixinNode.attr_b, Attr)
+
+    n = MixinNode(attr_a=1, attr_b=2, own=3)
+    assert (n.attr_a, n.attr_b, n.own) == (1, 2, 3)
+
 def test_node():
     #n = Node()
     n = Pin(pintype=PinType.Inout, pos=Vec2R(x=2, y=4), align=R180)
