@@ -66,6 +66,13 @@ export class CourseController {
         this.navElements = []; // navigator DOM roots (re-created per Editor)
         this.reportStatus = 'busy'; // 'busy' | 'unchecked' | 'pass' | 'fail' | 'error'
         this.suspendUistateSave = false;
+        // Callout shown over the lesson report: null | 'intro' | 'success'.
+        this.calloutKind = null;
+        // Both callouts' dismissals are per visit (in-memory): they are reset
+        // on every lesson (re)activation, so a callout reappears when its lesson
+        // is revisited.
+        this.introDismissed = false;
+        this.successDismissed = false;
 
         this.state = this.loadState();
     }
@@ -148,6 +155,8 @@ export class CourseController {
         this.state.currentLesson = i;
         this.saveState();
         this.reportStatus = 'busy';
+        this.introDismissed = false;
+        this.successDismissed = false;
 
         const uistate = JSON.parse(JSON.stringify(this.lessonUistate(i)));
         uistate.header = { popout: false };
@@ -370,6 +379,147 @@ export class CourseController {
     attachCourseViewer(viewer, navEl) {
         this.courseViewer = viewer;
         this.mountNavigator(navEl);
+        this.updateCallout();
+    }
+
+    // -- Callout over the lesson report ----------------------------------
+    //
+    // A hint floating over the top of the lesson report. The report renderer
+    // owns rescontent and replaces its children on every refresh, so the
+    // callout lives in the surrounding reswrapper instead, with an arrow
+    // pointing up into the header. Two kinds:
+    //   'intro'   - red, shown until the lesson passes: edit the source below
+    //               until all checks pass; arrow points at the status marker.
+    //   'success' - green, shown once the lesson passes: press the next arrow
+    //               to continue (or, on the last lesson, a closing note with no
+    //               arrow); replaces the intro callout.
+    // Both callouts are dismissable for the current visit only and reappear
+    // when their lesson is revisited (see introDismissed/successDismissed).
+
+    desiredCalloutKind() {
+        if (this.reportStatus === 'pass') {
+            return this.successDismissed ? null : 'success';
+        }
+        // The intro hint explains the course mechanics, so it is only shown on
+        // the first lesson, until dismissed.
+        if (this.state.currentLesson === 0 && !this.introDismissed) {
+            return 'intro';
+        }
+        return null;
+    }
+
+    // Reconciles the displayed callout with desiredCalloutKind(): rebuilds it
+    // when the kind changed, otherwise just re-aligns it. Called whenever the
+    // report status or navigator changes.
+    updateCallout() {
+        if (!this.courseViewer) {
+            return;
+        }
+        const desired = this.desiredCalloutKind();
+        if (desired === this.calloutKind) {
+            this.alignCallout();
+            return;
+        }
+        this.removeCallout();
+        if (desired) {
+            this.buildCallout(desired);
+        }
+    }
+
+    buildCallout(kind) {
+        const viewer = this.courseViewer;
+        const isLast =
+            this.state.currentLesson === this.course.lessons.length - 1;
+        // The success callout's arrow points at the next-lesson button, which
+        // does not exist on the last lesson.
+        const showArrow = (kind !== 'success') || !isLast;
+
+        let text;
+        if (kind === 'success' && isLast) {
+            text = `<strong>Lesson completed!</strong>
+                <p>Well done &mdash; all checks pass. This was the last lesson
+                of the course.</p>`;
+        } else if (kind === 'success') {
+            text = `<strong>Lesson completed!</strong>
+                <p>All checks pass. Press the <em>next</em> arrow above to
+                continue with the next lesson.</p>`;
+        } else {
+            text = `<strong>How this lesson works</strong>
+                <p>Edit the source code in the editor below until every check
+                passes. The status indicator above shows <em>unsolved</em> for
+                now &mdash; once you have completed all tasks of this lesson, it
+                will turn into <em>solved</em>.</p>`;
+        }
+
+        const callout = document.createElement('div');
+        callout.className = 'course-callout course-callout-' + kind;
+        callout.innerHTML = `
+            ${showArrow ? '<div class="course-callout-arrow"></div>' : ''}
+            <button class="course-callout-close" title="Hide this hint" aria-label="Hide this hint">&times;</button>
+            <div class="course-callout-text">${text}</div>
+        `;
+        callout.querySelector('.course-callout-close').onclick =
+            () => this.dismissCallout();
+        viewer.resWrapper.appendChild(callout);
+        this.calloutEl = callout;
+        this.calloutKind = kind;
+
+        // Keep the reserved space and the arrow position in sync as the panel
+        // (and hence the target button position and the callout's wrapped
+        // height) change size.
+        this.calloutObserver = new ResizeObserver(() => this.alignCallout());
+        this.calloutObserver.observe(viewer.resWrapper);
+        this.calloutObserver.observe(callout);
+        this.alignCallout();
+    }
+
+    removeCallout() {
+        if (this.calloutObserver) {
+            this.calloutObserver.disconnect();
+            this.calloutObserver = null;
+        }
+        if (this.calloutEl) {
+            this.calloutEl.remove();
+            this.calloutEl = null;
+        }
+        this.calloutKind = null;
+        if (this.courseViewer) {
+            this.courseViewer.resContent.style.paddingTop = '';
+        }
+    }
+
+    dismissCallout() {
+        if (this.calloutKind === 'success') {
+            this.successDismissed = true;
+        } else {
+            this.introDismissed = true;
+        }
+        this.removeCallout();
+    }
+
+    alignCallout() {
+        const callout = this.calloutEl;
+        const viewer = this.courseViewer;
+        if (!callout || !viewer) {
+            return;
+        }
+        // Reserve space at the top of the scrollable report so the floating
+        // callout does not cover the lesson heading.
+        viewer.resContent.style.paddingTop = callout.offsetHeight + 'px';
+        const arrow = callout.querySelector('.course-callout-arrow');
+        if (!arrow) {
+            return;
+        }
+        // Point the arrow up at the marker (intro) or the next button (success).
+        const targetSel = (this.calloutKind === 'success')
+            ? '.course-next' : '.course-marker';
+        const target = viewer.resViewHead.querySelector(targetSel);
+        if (target) {
+            const wrapRect = viewer.resWrapper.getBoundingClientRect();
+            const tRect = target.getBoundingClientRect();
+            const center = tRect.left + tRect.width / 2 - wrapRect.left;
+            arrow.style.left = center + 'px';
+        }
     }
 
     // -- Navigator UI ----------------------------------------------------
@@ -432,6 +582,7 @@ export class CourseController {
     renderNavigators() {
         this.navElements = this.navElements.filter(e => e.isConnected);
         this.navElements.forEach(nav => this.renderNavigator(nav));
+        this.updateCallout();
     }
 
     renderNavigator(nav) {

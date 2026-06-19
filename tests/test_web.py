@@ -315,6 +315,20 @@ def test_course(web):
     assert state['lessonsLocked'] == [False, False, True]
     assert state['nextDisabled'] is False
 
+    # Passing replaces the intro callout with the green success callout, whose
+    # arrow points at the next button (lesson 1 is not the last lesson).
+    success = web.driver.execute_script("""
+        return {
+            success: !!document.querySelector('.course-callout-success'),
+            intro: !!document.querySelector('.course-callout-intro'),
+            hasArrow: !!document.querySelector(
+                '.course-callout-success .course-callout-arrow'),
+        };
+    """)
+    assert success['success'] is True
+    assert success['intro'] is False
+    assert success['hasArrow'] is True
+
     # Switch to lesson 2 via the dropdown.
     web.driver.execute_script("""
         const sel = document.querySelector('.course-lessonsel');
@@ -344,6 +358,48 @@ def test_course(web):
     assert state['currentLesson'] == 0
     assert state['lessonsLocked'] == [False, True, True]
     assert state['editorSrc'] == lessons[0]['src']
+
+
+@pytest.mark.web
+def test_course_intro_callout(web):
+    """The intro callout appears above the lesson report on first open, points
+    its arrow at the status marker, and stays dismissed once closed."""
+    web.resize_viewport()
+    web.driver.get(web.url)
+    web.driver.execute_script(
+        "window.localStorage.removeItem('ordecCourse:intro');")
+
+    web.navigate('app.html#course=intro')
+    web.wait_for_ready()
+
+    info = web.driver.execute_script("""
+        const callout = document.querySelector('.course-callout');
+        const arrow = callout && callout.querySelector('.course-callout-arrow');
+        return {
+            present: !!callout,
+            arrowAligned: !!(arrow && arrow.style.left),
+            hasClose: !!(callout
+                && callout.querySelector('.course-callout-close')),
+        };
+    """)
+    assert info['present'] is True
+    assert info['arrowAligned'] is True
+    assert info['hasClose'] is True
+
+    # Closing the callout hides it for the current visit only (in-memory, not
+    # persisted to localStorage).
+    removed = web.driver.execute_script("""
+        document.querySelector('.course-callout-close').click();
+        return !document.querySelector('.course-callout');
+    """)
+    assert removed is True
+
+    # The dismissal is not persisted, so re-opening the course shows it again.
+    web.navigate('app.html#course=intro')
+    web.wait_for_ready()
+    present_again = web.driver.execute_script(
+        "return !!document.querySelector('.course-callout');")
+    assert present_again is True
 
 
 @pytest.mark.web

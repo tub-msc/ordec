@@ -889,6 +889,92 @@ body:not(.show-debug) .debug {
 .course-marker-error     { --color-status: #ee2222; }
 .course-marker-unchecked { --color-status: #999; }
 
+/* Hint floating over the top of the lesson report, with an arrow extending up
+   to a button in the header (left position set in alignCallout). Coloured like
+   a PassFail report element via --callout-bg/--callout-fg: the 'intro' variant
+   is red (edit until the lesson passes), the 'success' variant green (lesson
+   passed). */
+.course-callout {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    box-sizing: border-box;
+    padding: 8px 30px 8px 12px;
+    background-color: var(--callout-bg);
+    color: var(--callout-fg);
+    border-bottom: 1px solid var(--callout-fg);
+    font-size: var(--font-size-sm);
+    line-height: 1.4;
+}
+.course-callout-intro {
+    --callout-bg: var(--color-fail-bg);
+    --callout-fg: var(--color-fail-fg);
+}
+.course-callout-success {
+    --callout-bg: var(--color-pass-bg);
+    --callout-fg: var(--color-pass-fg);
+}
+.course-callout-text strong {
+    font-weight: bold;
+}
+.course-callout-text p {
+    margin: 4px 0 0;
+}
+.course-callout-text em {
+    font-style: normal;
+    font-weight: bold;
+}
+.course-callout-close {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    border: none;
+    background: none;
+    color: var(--callout-fg);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+}
+.course-callout-close:hover {
+    opacity: 0.7;
+}
+/* While a callout is shown, recolour the toolbar's bottom border (the line
+   along the top of the popup) to the callout's own border colour, so the popup
+   is framed in the same colour top and bottom. */
+.resview:has(.course-callout-intro) .resviewhead {
+    border-bottom-color: var(--color-fail-fg);
+}
+.resview:has(.course-callout-success) .resviewhead {
+    border-bottom-color: var(--color-pass-fg);
+}
+/* Upward-pointing triangle bridging the callout and the button above it. Two
+   stacked triangles: the element itself is the (slightly larger) outline in the
+   same colour as the callout border, and ::before is the 1px-smaller fill in
+   the callout background colour. */
+.course-callout-arrow,
+.course-callout-arrow::before {
+    position: absolute;
+    width: 0;
+    height: 0;
+    border-style: solid;
+}
+.course-callout-arrow {
+    top: -10px;
+    border-width: 0 10px 10px 10px;
+    border-color: transparent transparent var(--callout-fg) transparent;
+    transform: translateX(-50%);
+}
+.course-callout-arrow::before {
+    content: '';
+    top: 1px;
+    left: -9px;
+    border-width: 0 9px 9px 9px;
+    border-color: transparent transparent var(--callout-bg) transparent;
+}
+
 /* -- Layout viewer ----------------------------------------------- */
 .layout {
     background-color: var(--color-layout-bg);
