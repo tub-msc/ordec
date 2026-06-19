@@ -113,8 +113,10 @@ def test_index(web):
         if href.path == '/app.html':
             app_html_link_queries.add(href.fragment)
 
-    # Check that we link to each expected example.
-    assert app_html_link_queries == {f'example={testcase}' for testcase in testcases_integrated.keys()}
+    # Check that we link to each expected example and course.
+    expected = {f'example={testcase}' for testcase in testcases_integrated.keys()}
+    expected.add('course=intro')
+    assert app_html_link_queries == expected
 
 # Visual browser-based testing was painful (fonts, different browser versions,
 # comparison algorithms, large PNGs in repo). For those reasons, it is no
@@ -211,6 +213,100 @@ def test_local(web, testcase):
 
         for checker in checkers:
             checker(res_viewer)
+
+def course_nav_state(web):
+    """Returns the state of the course navigator for assertions."""
+    return web.driver.execute_script("""
+        const cc = window.courseController;
+        const nav = document.querySelector('.course-nav');
+        return {
+            currentLesson: cc.currentLesson,
+            marker: nav.querySelector('.course-marker').innerText,
+            lessonsLocked: Array.from(
+                nav.querySelectorAll('.course-lessonsel option'),
+                o => o.disabled),
+            nextDisabled: nav.querySelector('.course-next').disabled,
+            editorSrc: cc.editor.editor.getValue(),
+        };
+    """)
+
+def wait_for_course_marker(web, text, timeout=30):
+    deadline = time.time() + timeout
+    marker = None
+    while time.time() < deadline:
+        marker = web.driver.execute_script(
+            "return document.querySelector('.course-marker').innerText;")
+        if marker == text:
+            return
+        time.sleep(0.2)
+    raise AssertionError(f"course marker did not become {text!r} "
+        f"(last state: {marker!r})")
+
+@pytest.mark.web
+def test_course(web):
+    """Course mode: navigator, lesson gating, pass detection, start over."""
+    from .test_course import course_data, solution_src
+
+    lessons = course_data()['lessons']
+
+    web.resize_viewport()
+
+    # Make sure we start without progress from earlier runs:
+    web.driver.get(web.url)
+    web.driver.execute_script(
+        "window.localStorage.removeItem('ordecCourse:intro');")
+
+    web.navigate('app.html#course=intro')
+    web.wait_for_ready()
+
+    # Lesson 1 skeleton: not passed, lessons 2+3 locked.
+    state = course_nav_state(web)
+    assert state['currentLesson'] == 0
+    assert state['marker'] == 'unsolved'
+    assert state['lessonsLocked'] == [False, True, True]
+    assert state['nextDisabled'] is True
+    assert state['editorSrc'] == lessons[0]['src']
+
+    # Enter the lesson 1 solution into the editor; auto-refresh rebuilds and
+    # re-checks, the pass must unlock lesson 2.
+    sol = solution_src(lessons[0], ".$c=1n", ".$c=16n")
+    web.driver.execute_script(
+        "window.courseController.editor.editor.setValue(arguments[0]);", sol)
+    wait_for_course_marker(web, 'solved')
+
+    state = course_nav_state(web)
+    assert state['lessonsLocked'] == [False, False, True]
+    assert state['nextDisabled'] is False
+
+    # Switch to lesson 2 via the dropdown.
+    web.driver.execute_script("""
+        const sel = document.querySelector('.course-lessonsel');
+        sel.value = '1';
+        sel.dispatchEvent(new Event('change'));
+    """)
+    web.wait_for_ready()
+    state = course_nav_state(web)
+    assert state['currentLesson'] == 1
+    assert state['marker'] == 'unsolved'
+    assert state['editorSrc'] == lessons[1]['src']
+
+    # Progress (incl. edited lesson 1 source) must survive a reload.
+    web.navigate('app.html#course=intro')
+    web.wait_for_ready()
+    state = course_nav_state(web)
+    assert state['currentLesson'] == 1
+    assert state['lessonsLocked'] == [False, False, True]
+
+    # Start over (with confirmation) resets everything. This reloads the page
+    # from app JS, so wait for the reload before reading state.
+    web.run_and_wait_for_reload("""
+        window.confirm = () => true;
+        document.querySelector('.course-startover').click();
+    """)
+    state = course_nav_state(web)
+    assert state['currentLesson'] == 0
+    assert state['lessonsLocked'] == [False, True, True]
+    assert state['editorSrc'] == lessons[0]['src']
 
 def myhistogram(img, thresh=50):
     h = {}

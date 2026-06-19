@@ -1,0 +1,23 @@
+{
+  "title": "Introduction to ORDeC",
+  "lessons": [
+    {
+      "file": "lesson1.ord",
+      "title": "RC lowpass",
+      "description": "Tune an RC lowpass filter to a 10 kHz corner frequency.",
+      "lesson_gen": "gen_lesson1"
+    },
+    {
+      "file": "lesson2.ord",
+      "title": "NAND2 gate",
+      "description": "Extend an inverter into a NAND2 gate.",
+      "lesson_gen": "gen_lesson2"
+    },
+    {
+      "file": "lesson3.ord",
+      "title": "Inverter layout routing",
+      "description": "Finish the metal routing of an inverter layout.",
+      "lesson_gen": "gen_lesson3"
+    }
+  ]
+}

@@ -132,6 +132,65 @@ const reportElementClassOf = {
         svg.append("g").html(msgData.inner);
         return svg.node();
     }),
+    // Stateful class (not simpleReportElementClass) so that hint visibility
+    // survives report re-renders (renderer instances are reused by index).
+    passfail: class {
+        constructor(container) {
+            this.container = container;
+            this.hintVisible = false;
+        }
+
+        update(msgData) {
+            const root = document.createElement('div');
+            root.classList.add('report-passfail');
+            root.classList.add(msgData.passed
+                ? 'report-passfail-pass' : 'report-passfail-fail');
+
+            const head = document.createElement('div');
+            head.classList.add('report-passfail-head');
+
+            const badge = document.createElement('span');
+            badge.classList.add('report-passfail-badge');
+            badge.innerText = msgData.passed ? 'PASS' : 'FAIL';
+            head.appendChild(badge);
+
+            const label = document.createElement('span');
+            label.classList.add('report-passfail-label');
+            label.innerText = msgData.label;
+            head.appendChild(label);
+
+            root.appendChild(head);
+
+            if (msgData.instructions) {
+                const instructions = document.createElement('div');
+                instructions.classList.add('report-passfail-instructions');
+                instructions.innerText = msgData.instructions;
+                root.appendChild(instructions);
+            }
+
+            if (msgData.hint) {
+                const hintBtn = document.createElement('button');
+                hintBtn.classList.add('report-passfail-hintbtn');
+                const hint = document.createElement('div');
+                hint.classList.add('report-passfail-hint');
+                hint.innerText = msgData.hint;
+                const applyHintVisibility = () => {
+                    hint.style.display = this.hintVisible ? '' : 'none';
+                    hintBtn.innerText = this.hintVisible
+                        ? 'Hide hint' : 'Show hint';
+                };
+                hintBtn.onclick = () => {
+                    this.hintVisible = !this.hintVisible;
+                    applyHintVisibility();
+                };
+                applyHintVisibility();
+                root.appendChild(hintBtn);
+                root.appendChild(hint);
+            }
+
+            this.container.replaceChildren(root);
+        }
+    },
     plot2d: class {
         constructor(container, reportContext) {
             this.container = container;

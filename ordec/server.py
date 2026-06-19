@@ -365,7 +365,8 @@ class ConnectionHandler:
         return msg_ret
 
 
-    def build_cells(self, source_type: str, source_data: str) -> (dict, dict):
+    def build_cells(self, source_type: str, source_data: str,
+            check_src: str=None) -> (dict, dict):
         conn_globals = {}
         exc = None
         filename = '<webeditor>'
@@ -397,6 +398,18 @@ class ConnectionHandler:
                     exc = e
         else:
             raise NotImplementedError(f'source_type {source_type} not implemented')
+
+        # Course mode: bind the lesson's check as the special lesson() view.
+        # The epilogue is executed separately (not concatenated to the user
+        # source), so its tracebacks and line numbers stay independent of the
+        # student's code. Skipped if the user code already raised.
+        if exc is None and check_src:
+            with self.import_lock.write():
+                try:
+                    exec(compile(check_src, '<lesson-check>', 'exec'),
+                        conn_globals, conn_globals)
+                except Exception as e:
+                    exc = e
         return conn_globals, exc
 
     def purge_modules(self):
@@ -465,7 +478,9 @@ class ConnectionHandler:
 
         try:
             if msg_first_type == 'source':
-                conn_globals, exc = self.build_cells(msg_first['srctype'], msg_first['src'])
+                conn_globals, exc = self.build_cells(
+                    msg_first['srctype'], msg_first['src'],
+                    check_src=msg_first.get('check_src'))
                 watch_files = []
             elif msg_first_type == 'localmodule':
                 conn_globals, watch_files, exc = self.build_localmodule(msg_first['module'])
@@ -599,6 +614,25 @@ def tar_path(p: Path) -> str:
     else:
         return f'./{p}'
 
+def lesson_check_src(course_name, entry):
+    """Epilogue source binding a course lesson's check as the lesson() view.
+
+    ``entry`` is the lesson's course.json manifest entry; it provides
+    ``lesson_gen``, the name of a generator function in the course's checks
+    module (e.g.
+    ``gen_lesson1``) that takes the lesson globals and returns a ``lesson()``
+    view generator bound to the student's cell. This epilogue is executed (as a
+    separate exec, not concatenated to the user source) in the lesson namespace
+    after the student's code, so the cell is in scope. Only the named generator
+    is imported, so the checks module and the cells it imports do not leak into
+    the lesson globals.
+    """
+    gen = entry['lesson_gen']
+    return (
+        f"from ordec.courses.{course_name}.checks import {gen}\n"
+        f"lesson = {gen}(globals())\n"
+    )
+
 class StaticHandler:
     """
     This adds a static file HTTP server to the websockets HTTP server.
@@ -633,6 +667,10 @@ class StaticHandler:
                 query = parse_qs(url.query)
                 return self.process_request_example(query['name'][0])
 
+            if req_path == Path('api/course'):
+                query = parse_qs(url.query)
+                return self.process_request_course(query['name'][0])
+
             if req_path == Path('api/version'):
                 return self.process_request_version()
 
@@ -662,6 +700,39 @@ class StaticHandler:
             'src':src,
             'srctype': srctype,
             'uistate':uistate,
+        })
+        return build_response(data=data.encode('utf8'), mime_type='application/json')
+
+    def process_request_course(self, name):
+        from . import courses
+        # Find the course by comparing directory names (instead of building a
+        # path from the request) to prevent path traversal:
+        course_dir = None
+        for p in importlib.resources.files(courses).iterdir():
+            if p.is_dir() and p.name == name:
+                course_dir = p
+                break
+        if course_dir is None:
+            raise Exception(f"Requested course {name!r} not found.")
+        manifest = json.loads((course_dir / 'course.json').read_text())
+        lessons = []
+        for lesson in manifest['lessons']:
+            lesson_path = course_dir / lesson['file']
+            srctype = {'.ord': 'ord', '.py': 'python'}[Path(lesson['file']).suffix]
+            uistate_path = course_dir / f"{Path(lesson['file']).stem}.uistate.json"
+            lessons.append({
+                'file': lesson['file'],
+                'title': lesson['title'],
+                'description': lesson.get('description', ''),
+                'srctype': srctype,
+                'src': lesson_path.read_text(),
+                'uistate': json.loads(uistate_path.read_text()),
+                'check_src': lesson_check_src(name, lesson),
+            })
+        data = json.dumps({
+            'name': name,
+            'title': manifest['title'],
+            'lessons': lessons,
         })
         return build_response(data=data.encode('utf8'), mime_type='application/json')
 

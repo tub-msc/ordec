@@ -54,6 +54,12 @@
     --color-report-separator:#cfcfcf;
     --color-report-fill-bg:  #fff;
 
+    /* PassFail report elements / course marker */
+    --color-pass-bg:         #e4f5e4;
+    --color-pass-fg:         #1a7a1a;
+    --color-fail-bg:         #fbe4e4;
+    --color-fail-fg:         #b41818;
+
     /* Markdown tables */
     --color-md-table-border: black;
 
@@ -141,6 +147,11 @@ body.theme-dark {
 
     --color-report-separator:#333;
     --color-report-fill-bg:  #1a1a1a;
+
+    --color-pass-bg:         #173317;
+    --color-pass-fg:         #6fdc6f;
+    --color-fail-bg:         #3a1717;
+    --color-fail-fg:         #ff7a7a;
 
     --color-md-table-border: #444;
 
@@ -752,6 +763,124 @@ body:not(.show-debug) .debug {
     border: 1px solid var(--color-md-table-border);
     padding: 2px;
 }
+.report-passfail {
+    border-radius: 4px;
+    padding: 5px 8px;
+}
+.report-passfail-pass {
+    background-color: var(--color-pass-bg);
+}
+.report-passfail-fail {
+    background-color: var(--color-fail-bg);
+}
+.report-passfail-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+.report-passfail-badge {
+    font-weight: bold;
+    font-family: var(--font-mono);
+}
+.report-passfail-pass .report-passfail-badge {
+    color: var(--color-pass-fg);
+}
+.report-passfail-fail .report-passfail-badge {
+    color: var(--color-fail-fg);
+}
+.report-passfail-label {
+    font-weight: bold;
+}
+.report-passfail-instructions {
+    margin-top: 3px;
+    white-space: pre-wrap;
+}
+.report-passfail-hintbtn {
+    margin-top: 4px;
+    font: inherit;
+    font-size: 90%;
+    cursor: pointer;
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text);
+    border: 1px solid var(--color-border-light);
+    border-radius: 3px;
+}
+.report-passfail-hint {
+    margin-top: 3px;
+    font-style: italic;
+}
+
+/* -- Course mode --------------------------------------------------- */
+.course-editor-container {
+    display: flex;
+    flex-direction: column;
+}
+.course-editor-host {
+    flex: 1;
+    min-height: 0;
+}
+.course-nav {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 2px 4px;
+    background-color: var(--color-bg-toolbar);
+    border-bottom: 1px solid var(--color-toolbar-border);
+}
+.course-nav .toolbar-btn {
+    min-height: 22px;
+}
+.course-nav .toolbar-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+/* Chevron arrows for the prev/next lesson buttons. */
+.course-arrow {
+    display: block;
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: butt;
+    stroke-linejoin: round;
+}
+/* Vertical divider between nav elements (like the main toolbar). Explicit
+   elements rather than ::before pseudos, which don't render on the native
+   <select> dropdown. */
+.course-nav-sep {
+    align-self: stretch;
+    width: 1px;
+    margin: 3px 0;
+    background-color: var(--color-toolbar-border);
+}
+.course-nav-spacer {
+    flex: 1;
+}
+/* Check status indicator: colored dot + plain text, like the top-bar
+   #status indicator. */
+.course-marker {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 6px;
+    font-size: var(--font-size-sm);
+    white-space: nowrap;
+}
+.course-marker::before {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background-color: var(--color-status);
+}
+.course-marker-busy      { --color-status: #e0b000; }
+.course-marker-pass      { --color-status: #00cc44; }
+.course-marker-fail,
+.course-marker-error     { --color-status: #ee2222; }
+.course-marker-unchecked { --color-status: #999; }
 
 /* -- Layout viewer ----------------------------------------------- */
 .layout {

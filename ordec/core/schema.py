@@ -1168,6 +1168,10 @@ class Report(SubgraphRoot):
         for name, values in series:
             plot % Plot2DSeries(name=str(name), values=values)
 
+    def passfail(self, label: str, passed: bool, instructions: str="", hint: str=None):
+        self % PassFail(label=label, passed=passed, instructions=instructions,
+            hint=hint)
+
     def webdata(self):
         return "report", {
             "elements": [element.element_webdata() for element in self.elements()],
@@ -1218,6 +1222,27 @@ class Html(ReportElement):
 
     def element_webdata(self) -> dict:
         return {"element_type": "html", "html": self.html}
+
+
+@public
+class PassFail(ReportElement):
+    """
+    Single pass/fail check result, e.g. for course lessons. A lesson is
+    considered passed when all PassFail elements of its report pass.
+    """
+    label = Attr(str, optional=False) #: short name of the check
+    passed = Attr(bool, optional=False)
+    instructions = Attr(str, default="", optional=False) #: what the user should achieve / status details
+    hint = Attr(str) #: optional hint, shown only on user request
+
+    def element_webdata(self) -> dict:
+        return {
+            "element_type": "passfail",
+            "label": self.label,
+            "passed": self.passed,
+            "instructions": self.instructions,
+            "hint": self.hint,
+        }
 
 
 @public

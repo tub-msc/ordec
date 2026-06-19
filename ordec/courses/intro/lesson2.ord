@@ -1,0 +1,25 @@
+from ordec.core import *
+from ordec.lib.generic_mos import Nmos, Pmos
+
+cell Nand2:
+    viewgen symbol -> Symbol:
+        output y: .align=East
+        input a: .align=West
+        input b: .align=West
+        inout vdd: .align=North
+        inout vss: .align=South
+    viewgen schematic -> Schematic:
+        port y: .align=West; .pos=(17,13)
+        port a: .align=East; .pos=(1,10)
+        port b: .align=East; .pos=(1,21)
+        port vdd: .align=East; .pos=(1,19)
+        port vss: .align=East; .pos=(1,0)
+
+        # TODO: Turn this inverter into a NAND2 gate.
+        Nmos n1: .pos=(4,1); .s -- vss; .d -- y; .g -- a; .b -- vss
+        Pmos p1: .pos=(4,14); .s -- vdd; .d -- y; .g -- a; .b -- vdd
+
+        # Set width and length parameters for all transistors:
+        for t in p1, n1:
+            t.$w = 1u
+            t.$l = 500n
