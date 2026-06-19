@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import logging
 import shlex
 import subprocess
 import xml.etree.ElementTree as ET
@@ -11,6 +12,8 @@ from lark import Lark, Transformer, v_args
 
 from ..core import *
 
+logger = logging.getLogger(__name__)
+
 
 def run(script, cwd, **kwargs):
     """
@@ -19,7 +22,7 @@ def run(script, cwd, **kwargs):
     cmdline = ['klayout', '-b', '-r', str(script)]
     for k, v in kwargs.items():
         cmdline += ['-rd', f'{k}={v}']
-    print(cwd, shlex.join(cmdline))
+    logger.debug("%s %s", cwd, shlex.join(cmdline))
     subprocess.check_call(cmdline, cwd=cwd)
 
 
