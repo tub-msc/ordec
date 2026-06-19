@@ -41,6 +41,16 @@ SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "CC0-1.0"
 
 [[annotations]]
+# ordec.courses lesson content:
+path = [
+    "ordec/courses/intro/*.ord",
+    "ordec/courses/intro/*.py",
+    "ordec/courses/intro/*.json",
+]
+SPDX-FileCopyrightText = "2026 ORDeC contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
 # Basic Jupyter example:
 path = [
     "examples/JupyterExample.py",

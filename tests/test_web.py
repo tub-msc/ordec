@@ -113,8 +113,10 @@ def test_index(web):
         if href.path == '/app.html':
             app_html_link_queries.add(href.fragment)
 
-    # Check that we link to each expected example.
-    assert app_html_link_queries == {f'example={testcase}' for testcase in testcases_integrated.keys()}
+    # Check that we link to each expected example and course.
+    expected = {f'example={testcase}' for testcase in testcases_integrated.keys()}
+    expected.add('course=intro')
+    assert app_html_link_queries == expected
 
 # Visual browser-based testing was painful (fonts, different browser versions,
 # comparison algorithms, large PNGs in repo). For those reasons, it is no
@@ -211,6 +213,233 @@ def test_local(web, testcase):
 
         for checker in checkers:
             checker(res_viewer)
+
+def course_nav_state(web):
+    """Returns the state of the course navigator for assertions."""
+    return web.driver.execute_script("""
+        const cc = window.courseController;
+        const nav = document.querySelector('.course-nav');
+        return {
+            currentLesson: cc.currentLesson,
+            marker: nav.querySelector('.course-marker').innerText,
+            lessonsLocked: Array.from(
+                nav.querySelectorAll('.course-lessonsel option'),
+                o => o.disabled),
+            nextDisabled: nav.querySelector('.course-next').disabled,
+            editorSrc: cc.editor.editor.getValue(),
+        };
+    """)
+
+def course_panel_lock_state(web):
+    """Draggability and close-control visibility of the locked panels (the
+    Course panel and the source editor)."""
+    return web.driver.execute_script("""
+        const items = window.courseController.layout.root.getAllContentItems();
+        const find = (pred) => {
+            let r = null;
+            items.forEach(e => { if (e.isComponent && pred(e)) r = e; });
+            return r;
+        };
+        const course = find(e => e.componentName === 'result'
+            && e.component && e.component.courseMode);
+        const editor = find(e => e.componentName === 'editor');
+        // Closable (so GoldenLayout keeps it draggable) + reorderEnabled.
+        const draggable = (e) => Boolean(e && e.reorderEnabled && e.isClosable);
+        const allHidden = (sel) => {
+            const els = Array.from(document.querySelectorAll(sel));
+            return els.length > 0
+                && els.every(el => getComputedStyle(el).display === 'none');
+        };
+        return {
+            courseDraggable: draggable(course),
+            editorDraggable: draggable(editor),
+            tabClosesHidden: allHidden('.panel-locked-tab .lm_close_tab'),
+            headerClosesHidden: allHidden('.panel-locked-header .lm_close'),
+        };
+    """)
+
+def wait_for_course_marker(web, text, timeout=30):
+    deadline = time.time() + timeout
+    marker = None
+    while time.time() < deadline:
+        marker = web.driver.execute_script(
+            "return document.querySelector('.course-marker').innerText;")
+        if marker == text:
+            return
+        time.sleep(0.2)
+    raise AssertionError(f"course marker did not become {text!r} "
+        f"(last state: {marker!r})")
+
+@pytest.mark.web
+def test_course(web):
+    """Course mode: navigator, lesson gating, pass detection, start over."""
+    from .test_course import course_data, solution_src
+
+    lessons = course_data()['lessons']
+
+    web.resize_viewport()
+
+    # Make sure we start without progress from earlier runs:
+    web.driver.get(web.url)
+    web.driver.execute_script(
+        "window.localStorage.removeItem('ordecCourse:intro');")
+
+    web.navigate('app.html#course=intro')
+    web.wait_for_ready()
+
+    # Lesson 1 skeleton: not passed, lessons 2+3 locked.
+    state = course_nav_state(web)
+    assert state['currentLesson'] == 0
+    assert state['marker'] == 'unsolved'
+    assert state['lessonsLocked'] == [False, True, True]
+    assert state['nextDisabled'] is True
+    assert state['editorSrc'] == lessons[0]['src']
+
+    # The Course panel and the source editor must be movable but not closable.
+    # GoldenLayout couples the two, so they stay closable (draggable) and their
+    # close controls are hidden instead (see course.js suppressCloseControls).
+    lock = course_panel_lock_state(web)
+    assert lock['courseDraggable'] is True       # Course panel draggable
+    assert lock['editorDraggable'] is True       # editor draggable
+    assert lock['tabClosesHidden'] is True        # but tab closes hidden
+    assert lock['headerClosesHidden'] is True     # and header closes hidden
+
+    # Enter the lesson 1 solution into the editor; auto-refresh rebuilds and
+    # re-checks, the pass must unlock lesson 2.
+    sol = solution_src(lessons[0], ".$c=1n", ".$c=16n")
+    web.driver.execute_script(
+        "window.courseController.editor.editor.setValue(arguments[0]);", sol)
+    wait_for_course_marker(web, 'solved')
+
+    state = course_nav_state(web)
+    assert state['lessonsLocked'] == [False, False, True]
+    assert state['nextDisabled'] is False
+
+    # Passing replaces the intro callout with the green success callout, whose
+    # arrow points at the next button (lesson 1 is not the last lesson).
+    success = web.driver.execute_script("""
+        return {
+            success: !!document.querySelector('.course-callout-success'),
+            intro: !!document.querySelector('.course-callout-intro'),
+            hasArrow: !!document.querySelector(
+                '.course-callout-success .course-callout-arrow'),
+        };
+    """)
+    assert success['success'] is True
+    assert success['intro'] is False
+    assert success['hasArrow'] is True
+
+    # Switch to lesson 2 via the dropdown.
+    web.driver.execute_script("""
+        const sel = document.querySelector('.course-lessonsel');
+        sel.value = '1';
+        sel.dispatchEvent(new Event('change'));
+    """)
+    web.wait_for_ready()
+    state = course_nav_state(web)
+    assert state['currentLesson'] == 1
+    assert state['marker'] == 'unsolved'
+    assert state['editorSrc'] == lessons[1]['src']
+
+    # Progress (incl. edited lesson 1 source) must survive a reload.
+    web.navigate('app.html#course=intro')
+    web.wait_for_ready()
+    state = course_nav_state(web)
+    assert state['currentLesson'] == 1
+    assert state['lessonsLocked'] == [False, False, True]
+
+    # Start over (with confirmation) resets everything. This reloads the page
+    # from app JS, so wait for the reload before reading state.
+    web.run_and_wait_for_reload("""
+        window.confirm = () => true;
+        document.querySelector('.course-startover').click();
+    """)
+    state = course_nav_state(web)
+    assert state['currentLesson'] == 0
+    assert state['lessonsLocked'] == [False, True, True]
+    assert state['editorSrc'] == lessons[0]['src']
+
+
+@pytest.mark.web
+def test_course_intro_callout(web):
+    """The intro callout appears above the lesson report on first open, points
+    its arrow at the status marker, and stays dismissed once closed."""
+    web.resize_viewport()
+    web.driver.get(web.url)
+    web.driver.execute_script(
+        "window.localStorage.removeItem('ordecCourse:intro');")
+
+    web.navigate('app.html#course=intro')
+    web.wait_for_ready()
+
+    info = web.driver.execute_script("""
+        const callout = document.querySelector('.course-callout');
+        const arrow = callout && callout.querySelector('.course-callout-arrow');
+        return {
+            present: !!callout,
+            arrowAligned: !!(arrow && arrow.style.left),
+            hasClose: !!(callout
+                && callout.querySelector('.course-callout-close')),
+        };
+    """)
+    assert info['present'] is True
+    assert info['arrowAligned'] is True
+    assert info['hasClose'] is True
+
+    # Closing the callout hides it for the current visit only (in-memory, not
+    # persisted to localStorage).
+    removed = web.driver.execute_script("""
+        document.querySelector('.course-callout-close').click();
+        return !document.querySelector('.course-callout');
+    """)
+    assert removed is True
+
+    # The dismissal is not persisted, so re-opening the course shows it again.
+    web.navigate('app.html#course=intro')
+    web.wait_for_ready()
+    present_again = web.driver.execute_script(
+        "return !!document.querySelector('.course-callout');")
+    assert present_again is True
+
+
+@pytest.mark.web
+def test_course_lesson3_refresh_overlay(web):
+    """Lessons whose checks don't auto-run (lesson 3: LVS/DRC) show the standard
+    in-panel Refresh overlay (not a toolbar Check button). debug=true unlocks
+    lesson 3 so we can reach it without running the earlier checks."""
+    web.resize_viewport()
+    web.driver.get(web.url)
+    web.driver.execute_script(
+        "window.localStorage.removeItem('ordecCourse:intro');")
+
+    web.navigate('app.html#course=intro&debug=true')
+    web.wait_for_ready()
+    web.driver.execute_script("""
+        const sel = document.querySelector('.course-lessonsel');
+        sel.value = '2';
+        sel.dispatchEvent(new Event('change'));
+    """)
+    web.wait_for_ready()
+
+    info = web.driver.execute_script("""
+        let comp = null;
+        window.courseController.layout.root.getAllContentItems().forEach(e => {
+            if (e.isComponent && e.componentName === 'result'
+                && e.component && e.component.courseMode) comp = e;
+        });
+        const overlay = comp.component.resOverlayRefreshable;
+        return {
+            currentLesson: window.courseController.currentLesson,
+            marker: document.querySelector('.course-marker').innerText,
+            refreshOverlayShown: getComputedStyle(overlay).display !== 'none',
+            noCheckButton: !document.querySelector('.course-check'),
+        };
+    """)
+    assert info['currentLesson'] == 2
+    assert info['marker'] == 'not checked'
+    assert info['refreshOverlayShown'] is True   # standard Refresh overlay
+    assert info['noCheckButton'] is True          # toolbar Check button gone
+
 
 def myhistogram(img, thresh=50):
     h = {}

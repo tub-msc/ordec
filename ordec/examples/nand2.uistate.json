@@ -10,7 +10,7 @@
             "size": "1fr",
             "id": "",
             "maximised": false,
-            "isClosable": false,
+            "isClosable": true,
             "reorderEnabled": true,
             "title": "Source Editor",
             "componentType": "editor",
@@ -21,7 +21,7 @@
         "size": "50%",
         "id": "",
         "maximised": false,
-        "isClosable": false,
+        "isClosable": true,
         "activeItemIndex": 0
       },
       {

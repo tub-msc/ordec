@@ -61,6 +61,28 @@ def test_plot2d_height_none():
     assert data["elements"][0]["height"] is None
 
 
+def test_passfail_webdata():
+    report = Report()
+    report.passfail("Check A", True, instructions="Do the thing.",
+        hint="Try harder.")
+    report.passfail("Check B", False)
+    _, data = report.webdata()
+    assert data["elements"][0] == {
+        "element_type": "passfail",
+        "label": "Check A",
+        "passed": True,
+        "instructions": "Do the thing.",
+        "hint": "Try harder.",
+    }
+    assert data["elements"][1] == {
+        "element_type": "passfail",
+        "label": "Check B",
+        "passed": False,
+        "instructions": "",
+        "hint": None,
+    }
+
+
 def test_report_fill_height():
     report = Report(fill_height=True)
     report.markdown("hello")

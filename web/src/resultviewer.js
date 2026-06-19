@@ -9,6 +9,7 @@ import { SimPlot } from './simplot.js';
 import { HierSelector } from './hier-selector.js';
 import { viewEventBus } from './event-bus.js';
 import { CoordinateDisplay } from './viewer-coordinates.js';
+import { getCourseController, suppressCloseControls } from './course.js';
 
 let idCounter = 0;
 export function generateId() {
@@ -132,6 +133,65 @@ const reportElementClassOf = {
         svg.append("g").html(msgData.inner);
         return svg.node();
     }),
+    // Stateful class (not simpleReportElementClass) so that hint visibility
+    // survives report re-renders (renderer instances are reused by index).
+    passfail: class {
+        constructor(container) {
+            this.container = container;
+            this.hintVisible = false;
+        }
+
+        update(msgData) {
+            const root = document.createElement('div');
+            root.classList.add('report-passfail');
+            root.classList.add(msgData.passed
+                ? 'report-passfail-pass' : 'report-passfail-fail');
+
+            const head = document.createElement('div');
+            head.classList.add('report-passfail-head');
+
+            const badge = document.createElement('span');
+            badge.classList.add('report-passfail-badge');
+            badge.innerText = msgData.passed ? 'PASS' : 'FAIL';
+            head.appendChild(badge);
+
+            const label = document.createElement('span');
+            label.classList.add('report-passfail-label');
+            label.innerText = msgData.label;
+            head.appendChild(label);
+
+            root.appendChild(head);
+
+            if (msgData.instructions) {
+                const instructions = document.createElement('div');
+                instructions.classList.add('report-passfail-instructions');
+                instructions.innerText = msgData.instructions;
+                root.appendChild(instructions);
+            }
+
+            if (msgData.hint) {
+                const hintBtn = document.createElement('button');
+                hintBtn.classList.add('report-passfail-hintbtn');
+                const hint = document.createElement('div');
+                hint.classList.add('report-passfail-hint');
+                hint.innerText = msgData.hint;
+                const applyHintVisibility = () => {
+                    hint.style.display = this.hintVisible ? '' : 'none';
+                    hintBtn.innerText = this.hintVisible
+                        ? 'Hide hint' : 'Show hint';
+                };
+                hintBtn.onclick = () => {
+                    this.hintVisible = !this.hintVisible;
+                    applyHintVisibility();
+                };
+                applyHintVisibility();
+                root.appendChild(hintBtn);
+                root.appendChild(hint);
+            }
+
+            this.container.replaceChildren(root);
+        }
+    },
     plot2d: class {
         constructor(container, reportContext) {
             this.container = container;
@@ -1040,8 +1100,22 @@ export class ResultViewer {
         this.viewSelected = null;
         this.refreshRequestedByUser = false;
         this.directView = state && state.directView;
+        // Course mode: the special "Course" panel (see course.js). It shows a
+        // fixed lesson() report, hosts the course navigator toolbar in its
+        // header instead of a view selector, and is titled "Course".
+        this.courseMode = Boolean(state && state.course);
 
-        if (this.directView) {
+        if (this.courseMode) {
+            this.hierSelector = null;
+            this.viewSelector = null;
+            this.viewSelected = (state && state.view) || 'lesson()';
+            this.resEmpty.style.display = 'none';
+            this.courseController = getCourseController();
+            this.courseController.attachCourseViewer(this, this.resViewHead);
+            this.container.setTitle('Course');
+            // The Course panel must be movable but not closable.
+            suppressCloseControls(this.container);
+        } else if (this.directView) {
             const label = document.createElement('span');
             label.className = 'direct-view-label';
             label.textContent = state.view;
@@ -1081,6 +1155,10 @@ export class ResultViewer {
     refreshOnClick() {
         this.refreshRequestedByUser = true;
         this.showRefreshOverlay('refreshing');
+        if (this.courseMode) {
+            // Running the (expensive) check: reflect it in the course marker.
+            this.courseController.onReportPending();
+        }
         this.client.requestNextView();
     }
 
@@ -1172,6 +1250,14 @@ export class ResultViewer {
     }
 
     updateViewList() {
+        if (this.courseMode) {
+            // Fixed lesson() view, no selector; the navigator toolbar lives in
+            // the header and the title stays "Course".
+            this.container.setTitle('Course');
+            this.viewListInitialized = true;
+            return;
+        }
+
         if (this.directView) {
             this.container.setTitle(this.viewSelected);
             this.viewListInitialized = true;
@@ -1235,6 +1321,25 @@ export class ResultViewer {
             this.invalidate();
             this.updateOverlay();
         }
+        if (this.courseMode) {
+            this._notifyCourseStatus();
+        }
+    }
+
+    // Reflect the post-build state of the lesson() view in the course marker:
+    // an error from the build, a pending check (auto-refresh or Check just
+    // clicked), or an unchecked state awaiting the Check button.
+    _notifyCourseStatus() {
+        if (this.client.exception) {
+            this.courseController.onReportResult({ exception: this.client.exception });
+        } else if (this.requestsView()) {
+            this.courseController.onReportPending();
+        } else {
+            // The lesson() view does not auto-refresh (expensive checks, e.g.
+            // LVS/DRC): it is evaluated only when the user clicks the in-panel
+            // Refresh overlay. The marker reflects this "not checked" state.
+            this.courseController.onReportUnchecked();
+        }
     }
 
     registerClient(client) {
@@ -1260,27 +1365,38 @@ export class ResultViewer {
         this.viewUpToDate = true;
         this.showRefreshOverlay(null);
 
-        if(msg.exception) {
-            // In this case, the exception was generated during view generation:
-            this.showException(msg.exception);
-        } else {
-            this.showException(null);
-            const viewClass = viewClassOf[msg.type];
-            if(!viewClass) {
-                let pre = document.createElement("pre");
-                pre.innerText = 'no handler found for type ' + msg.type;
-                this.resContent.replaceChildren(pre);
-            } else if(this.view instanceof viewClass) {
-                this.view.update(msg.data);
+        try {
+            if(msg.exception) {
+                // In this case, the exception was generated during view generation:
+                this.showException(msg.exception);
             } else {
-                this.view = new viewClass(this.resContent);
-                this.view.viewName = this.viewSelected;
-                this.view.glContainer = this.container;
-                this.view.update(msg.data);
+                this.showException(null);
+                const viewClass = viewClassOf[msg.type];
+                if(!viewClass) {
+                    let pre = document.createElement("pre");
+                    pre.innerText = 'no handler found for type ' + msg.type;
+                    this.resContent.replaceChildren(pre);
+                } else if(this.view instanceof viewClass) {
+                    this.view.update(msg.data);
+                } else {
+                    this.view = new viewClass(this.resContent);
+                    this.view.viewName = this.viewSelected;
+                    this.view.glContainer = this.container;
+                    this.view.update(msg.data);
+                }
+            }
+
+            this.updateOverlay();
+        } finally {
+            if (this.courseMode) {
+                // Feed the result (pass/fail elements) back to the course
+                // controller for the marker and lesson gating, even if
+                // rendering threw: the report data is valid regardless of a
+                // render glitch (e.g. a plot failing to lay out in a headless
+                // browser).
+                this.courseController.onReportResult(msg);
             }
         }
-
-        this.updateOverlay();
     }
 
     testInfo() {

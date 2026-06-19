@@ -24,6 +24,7 @@ import { ResultViewer } from "./resultviewer.js";
 import { OrdecClient } from './client.js';
 import { initTheme, registerAceEditor } from './theme.js';
 import { viewEventBus } from './event-bus.js';
+import { initCourseMode, getCourseController, suppressCloseControls } from './course.js';
 
 initTheme();
 
@@ -53,6 +54,9 @@ if(Boolean(urlParams.get('viewsel_flat'))) {
 const queryLocal = urlParams.get('local');
 const queryHmac = urlParams.get('hmac');
 
+// the course= URL parameter activates course mode (see course.js).
+const queryCourse = urlParams.get('course');
+
 function getSourceType() {
     return sourceTypeSelect.options[sourceTypeSelect.selectedIndex].value;
 }
@@ -80,14 +84,30 @@ class Editor {
             fontFamily: "Inconsolata",
             fontSize: "12pt"
         });
+
+        // The source editor is movable but not closable in every mode (see
+        // suppressCloseControls).
+        suppressCloseControls(container);
+
+        // In course mode, register with the controller so it can read/replace
+        // the editor source on lesson switches. The navigator toolbar lives in
+        // the Course result viewer's header, not here (see course.js).
+        getCourseController()?.setEditor(this);
     }
 
     registerChangeHandler(client) {
         this.client = client;
         this.editor.session.on('change', (delta) => {
-            // After the user has modified the example code, he must confirm
-            // when he wants to close the browser window.
-            window.onbeforeunload = unloadMsg;
+            const courseController = getCourseController();
+            if (courseController) {
+                // Course mode: edits are autosaved to localStorage, no
+                // confirmation on unload needed.
+                courseController.autosaveSrc(this.editor.getValue());
+            } else {
+                // After the user has modified the example code, he must
+                // confirm when he wants to close the browser window.
+                window.onbeforeunload = unloadMsg;
+            }
 
             window.clearTimeout(this.timeout);
             if (client.autoRefreshEnabled) {
@@ -222,6 +242,30 @@ if(queryLocal) {
     } else {
         console.error("HMAC authentication of 'local' parameter failed.");
     }
+} else if (queryCourse) {
+    // If queryCourse is set, the web UI is used in **course mode**.
+    // The CourseController loads sources and per-lesson layouts from the
+    // /api/course endpoint (combined with progress saved in localStorage)
+    // and rebuilds editor + result views on each lesson switch.
+
+    document.querySelector("#toolSourcetype").style.display = 'none';
+
+    const controller = await initCourseMode(queryCourse, {
+        getResultViewers,
+        saveUistate: () => LayoutConfig.fromResolved(layout.saveLayout()),
+        registerChangeHandler: (editor, c) => editor.registerChangeHandler(c),
+        setSourceType: (srctype) => { sourceTypeSelect.value = srctype; },
+        // debug=true in the URL fragment unlocks all lessons at once.
+        debug,
+    });
+
+    client = new OrdecClient(getSourceType(), [], setStatus);
+    controller.client = client;
+    controller.layout = layout;
+    controller.activateLesson(controller.currentLesson, { save: false });
+
+    // Make the controller easy to access for automated testing & debugging:
+    window.courseController = controller;
 } else {
     // If localModule is null, the web UI is used in **integrated mode**.
     // In this case, the source code is entered through the web editor.
@@ -249,6 +293,7 @@ if(queryLocal) {
 
 layout.addEventListener('stateChanged', () => {
     client.registerResultViewers(getResultViewers());
+    getCourseController()?.uistateChanged();
 });
 
 function refresh() {

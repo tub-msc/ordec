@@ -54,6 +54,12 @@
     --color-report-separator:#cfcfcf;
     --color-report-fill-bg:  #fff;
 
+    /* PassFail report elements / course marker */
+    --color-pass-bg:         #e4f5e4;
+    --color-pass-fg:         #1a7a1a;
+    --color-fail-bg:         #fbe4e4;
+    --color-fail-fg:         #b41818;
+
     /* Markdown tables */
     --color-md-table-border: black;
 
@@ -141,6 +147,11 @@ body.theme-dark {
 
     --color-report-separator:#333;
     --color-report-fill-bg:  #1a1a1a;
+
+    --color-pass-bg:         #173317;
+    --color-pass-fg:         #6fdc6f;
+    --color-fail-bg:         #3a1717;
+    --color-fail-fg:         #ff7a7a;
 
     --color-md-table-border: #444;
 
@@ -751,6 +762,217 @@ body:not(.show-debug) .debug {
 .report-markdown table td, .report-markdown table th {
     border: 1px solid var(--color-md-table-border);
     padding: 2px;
+}
+.report-passfail {
+    border-radius: 4px;
+    padding: 5px 8px;
+}
+.report-passfail-pass {
+    background-color: var(--color-pass-bg);
+}
+.report-passfail-fail {
+    background-color: var(--color-fail-bg);
+}
+.report-passfail-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+.report-passfail-badge {
+    font-weight: bold;
+    font-family: var(--font-mono);
+}
+.report-passfail-pass .report-passfail-badge {
+    color: var(--color-pass-fg);
+}
+.report-passfail-fail .report-passfail-badge {
+    color: var(--color-fail-fg);
+}
+.report-passfail-label {
+    font-weight: bold;
+}
+.report-passfail-instructions {
+    margin-top: 3px;
+    white-space: pre-wrap;
+}
+.report-passfail-hintbtn {
+    margin-top: 4px;
+    font: inherit;
+    font-size: 90%;
+    cursor: pointer;
+    background-color: var(--color-bg-tertiary);
+    color: var(--color-text);
+    border: 1px solid var(--color-border-light);
+    border-radius: 3px;
+}
+.report-passfail-hint {
+    margin-top: 3px;
+    font-style: italic;
+}
+
+/* -- Course mode --------------------------------------------------- */
+/* The navigator toolbar fills the header of the Course result viewer, which
+   already provides the toolbar background and bottom border. */
+.course-nav {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 2px 4px;
+}
+/* The header (.resviewhead) draws an automatic divider before each non-first
+   child; in course mode the dividers are explicit .course-nav-sep elements
+   instead, so suppress the automatic ones to avoid doubled-up bars. */
+.resviewhead.course-nav > :not(:first-child) {
+    background-image: none;
+}
+/* "Movable but not closable" panels (the Course panel and the source editor)
+   are kept closable so GoldenLayout still lets them be dragged, but their close
+   controls are hidden: the tab's own close button, and the close button of the
+   header of whatever stack currently holds the panel. See suppressCloseControls
+   in course.js. */
+.panel-locked-tab .lm_close_tab,
+.panel-locked-header .lm_close {
+    display: none;
+}
+.course-nav .toolbar-btn {
+    min-height: 22px;
+}
+.course-nav .toolbar-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+/* Chevron arrows for the prev/next lesson buttons. */
+.course-arrow {
+    display: block;
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: butt;
+    stroke-linejoin: round;
+}
+/* Vertical divider between nav elements (like the main toolbar). Explicit
+   elements rather than ::before pseudos, which don't render on the native
+   <select> dropdown. */
+.course-nav-sep {
+    align-self: stretch;
+    width: 1px;
+    margin: 3px 0;
+    background-color: var(--color-toolbar-border);
+}
+.course-nav-spacer {
+    flex: 1;
+}
+/* Check status indicator: colored dot + plain text, like the top-bar
+   #status indicator. */
+.course-marker {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 6px;
+    font-size: var(--font-size-sm);
+    white-space: nowrap;
+}
+.course-marker::before {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background-color: var(--color-status);
+}
+.course-marker-busy      { --color-status: #e0b000; }
+.course-marker-pass      { --color-status: #00cc44; }
+.course-marker-fail,
+.course-marker-error     { --color-status: #ee2222; }
+.course-marker-unchecked { --color-status: #999; }
+
+/* Hint floating over the top of the lesson report, with an arrow extending up
+   to a button in the header (left position set in alignCallout). Coloured like
+   a PassFail report element via --callout-bg/--callout-fg: the 'intro' variant
+   is red (edit until the lesson passes), the 'success' variant green (lesson
+   passed). */
+.course-callout {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    box-sizing: border-box;
+    padding: 8px 30px 8px 12px;
+    background-color: var(--callout-bg);
+    color: var(--callout-fg);
+    border-bottom: 1px solid var(--callout-fg);
+    font-size: var(--font-size-sm);
+    line-height: 1.4;
+}
+.course-callout-intro {
+    --callout-bg: var(--color-fail-bg);
+    --callout-fg: var(--color-fail-fg);
+}
+.course-callout-success {
+    --callout-bg: var(--color-pass-bg);
+    --callout-fg: var(--color-pass-fg);
+}
+.course-callout-text strong {
+    font-weight: bold;
+}
+.course-callout-text p {
+    margin: 4px 0 0;
+}
+.course-callout-text em {
+    font-style: normal;
+    font-weight: bold;
+}
+.course-callout-close {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    border: none;
+    background: none;
+    color: var(--callout-fg);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+}
+.course-callout-close:hover {
+    opacity: 0.7;
+}
+/* While a callout is shown, recolour the toolbar's bottom border (the line
+   along the top of the popup) to the callout's own border colour, so the popup
+   is framed in the same colour top and bottom. */
+.resview:has(.course-callout-intro) .resviewhead {
+    border-bottom-color: var(--color-fail-fg);
+}
+.resview:has(.course-callout-success) .resviewhead {
+    border-bottom-color: var(--color-pass-fg);
+}
+/* Upward-pointing triangle bridging the callout and the button above it. Two
+   stacked triangles: the element itself is the (slightly larger) outline in the
+   same colour as the callout border, and ::before is the 1px-smaller fill in
+   the callout background colour. */
+.course-callout-arrow,
+.course-callout-arrow::before {
+    position: absolute;
+    width: 0;
+    height: 0;
+    border-style: solid;
+}
+.course-callout-arrow {
+    top: -10px;
+    border-width: 0 10px 10px 10px;
+    border-color: transparent transparent var(--callout-fg) transparent;
+    transform: translateX(-50%);
+}
+.course-callout-arrow::before {
+    content: '';
+    top: 1px;
+    left: -9px;
+    border-width: 0 9px 9px 9px;
+    border-color: transparent transparent var(--callout-bg) transparent;
 }
 
 /* -- Layout viewer ----------------------------------------------- */

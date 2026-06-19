@@ -9,6 +9,9 @@ export class OrdecClient {
         this.reqPending = false;
         this.srctype = srctype;
         this.src = ""; // set by Editor from the outside
+        // Course mode: epilogue source binding the lesson's check as the
+        // lesson() view, executed server-side after src (see course.js).
+        this.checkSrc = null;
         this.registerResultViewers(resultViewers);
         this.setStatus = setStatus;
         this.localModule = null; // Set to module name when in localModule mode.
@@ -62,9 +65,15 @@ export class OrdecClient {
             this.resultViewers.forEach(rv => rv.updateViewListAndException());
             this.requestNextView();
         } else if (msg['msg'] == 'view') {
-            this.nextView.updateView(msg);
-            this.reqPending = false;
-            this.requestNextView();
+            // Always clear reqPending and advance the queue, even if a viewer
+            // throws while rendering: otherwise one broken view (e.g. a report
+            // probe) would wedge the request queue for all viewers.
+            try {
+                this.nextView.updateView(msg);
+            } finally {
+                this.reqPending = false;
+                this.requestNextView();
+            }
         } else if (msg['msg'] == 'localmodule_changed') {
             if (this.autoRefreshEnabled) {
                 console.log("ordecClient.connect() triggered by localmodule_changed message.");
@@ -112,6 +121,9 @@ export class OrdecClient {
                 src: this.src,
                 auth: session.authKey,
             };
+            if (this.checkSrc) {
+                msg.check_src = this.checkSrc;
+            }
         }
         this.sock.send(JSON.stringify(msg));
     }

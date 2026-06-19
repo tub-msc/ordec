@@ -47,6 +47,20 @@ class WebInfo:
         WebDriverWait(self.driver, 10).until(
             EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
 
+    def run_and_wait_for_reload(self, script):
+        """
+        Run script (which triggers a same-URL reload, e.g. via
+        window.location.reload()), then wait until the page has actually
+        reloaded and reached the 'ready' state.
+
+        Without the staleness wait, wait_for_ready() can race: the old page
+        already shows 'ready', so it returns before the reload happened.
+        """
+        old_html = self.driver.find_element(By.TAG_NAME, 'html')
+        self.driver.execute_script(script)
+        WebDriverWait(self.driver, 10).until(EC.staleness_of(old_html))
+        self.wait_for_ready()
+
     def navigate(self, path_with_fragment):
         """
         Navigate to a URL, forcing full reload even if only fragment changed.
