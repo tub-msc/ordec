@@ -1169,6 +1169,17 @@ body.theme-dark .lm_tab:hover,
 body.theme-dark .lm_tab.lm_active {
     background: #444444;
 }
+/* When maximised, the theme hard-codes a solid white header background; the
+   non-maximised header is transparent and shows the layout container color, so
+   the white strip around the tab looks out of place. Match the container.
+   The theme CSS is appended to <head> at runtime (after this bundle), so we
+   need the extra `body` to win the specificity tie against its rule. */
+body .lm_maximised .lm_header {
+    background-color: #f4f4f4;
+}
+body.theme-dark .lm_maximised .lm_header {
+    background-color: #000000;
+}
 body.theme-dark .lm_content {
     background: #444444;
 }
