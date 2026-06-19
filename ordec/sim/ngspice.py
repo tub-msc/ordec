@@ -254,7 +254,11 @@ class Ngspice:
         logger.debug(f"Using ngspice executable: {exe}")
 
         with tempfile.TemporaryDirectory() as cwd_str:
-            p = subprocess.Popen([exe, "-p"],
+            # -n / --no-spiceinit: don't load any .spiceinit config file.
+            # In piped mode the temp cwd has no .spiceinit, so ngspice would
+            # otherwise fall through to the user's ~/.spiceinit. All settings
+            # ORDeC needs are sent explicitly as commands after launch.
+            p = subprocess.Popen([exe, "-n", "-p"],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 cwd=cwd_str, env=env or None)
             logger.debug(f"Process started with PID: {p.pid}")
