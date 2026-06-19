@@ -24,7 +24,7 @@ import { ResultViewer } from "./resultviewer.js";
 import { OrdecClient } from './client.js';
 import { initTheme, registerAceEditor } from './theme.js';
 import { viewEventBus } from './event-bus.js';
-import { initCourseMode, getCourseController } from './course.js';
+import { initCourseMode, getCourseController, suppressCloseControls } from './course.js';
 
 initTheme();
 
@@ -77,23 +77,7 @@ class Editor {
         this.container = container;
         this.resizeWithContainerAutomatically = true;
 
-        // In course mode, the editor panel is extended by the course
-        // navigator bar; ace is then attached to a child div instead of
-        // container.element directly.
-        const courseController = getCourseController();
-        let courseNav = null;
-        let editorHost = container.element;
-        if (courseController) {
-            container.element.classList.add('course-editor-container');
-            courseNav = document.createElement('div');
-            editorHost = document.createElement('div');
-            editorHost.classList.add('course-editor-host');
-            container.element.appendChild(courseNav);
-            container.element.appendChild(editorHost);
-            container.on('resize', () => this.editor.resize());
-        }
-
-        this.editor = ace.edit(editorHost);
+        this.editor = ace.edit(container.element);
         registerAceEditor(this.editor);
         this.updateMode();
         this.editor.setOptions({
@@ -101,9 +85,14 @@ class Editor {
             fontSize: "12pt"
         });
 
-        if (courseController) {
-            courseController.mountNavigator(courseNav, this);
-        }
+        // The source editor is movable but not closable in every mode (see
+        // suppressCloseControls).
+        suppressCloseControls(container);
+
+        // In course mode, register with the controller so it can read/replace
+        // the editor source on lesson switches. The navigator toolbar lives in
+        // the Course result viewer's header, not here (see course.js).
+        getCourseController()?.setEditor(this);
     }
 
     registerChangeHandler(client) {
@@ -174,12 +163,6 @@ function getResultViewers() {
         if (e.componentName != 'result') return;
         ret.push(e.component);
     });
-    // In course mode, the report probe rides the same request queue as the
-    // visible result viewers:
-    const courseController = getCourseController();
-    if (courseController) {
-        ret.push(courseController.probe);
-    }
     return ret;
 }
 

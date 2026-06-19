@@ -811,22 +811,29 @@ body:not(.show-debug) .debug {
 }
 
 /* -- Course mode --------------------------------------------------- */
-.course-editor-container {
-    display: flex;
-    flex-direction: column;
-}
-.course-editor-host {
-    flex: 1;
-    min-height: 0;
-}
+/* The navigator toolbar fills the header of the Course result viewer, which
+   already provides the toolbar background and bottom border. */
 .course-nav {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 4px;
     padding: 2px 4px;
-    background-color: var(--color-bg-toolbar);
-    border-bottom: 1px solid var(--color-toolbar-border);
+}
+/* The header (.resviewhead) draws an automatic divider before each non-first
+   child; in course mode the dividers are explicit .course-nav-sep elements
+   instead, so suppress the automatic ones to avoid doubled-up bars. */
+.resviewhead.course-nav > :not(:first-child) {
+    background-image: none;
+}
+/* "Movable but not closable" panels (the Course panel and the source editor)
+   are kept closable so GoldenLayout still lets them be dragged, but their close
+   controls are hidden: the tab's own close button, and the close button of the
+   header of whatever stack currently holds the panel. See suppressCloseControls
+   in course.js. */
+.panel-locked-tab .lm_close_tab,
+.panel-locked-header .lm_close {
+    display: none;
 }
 .course-nav .toolbar-btn {
     min-height: 22px;

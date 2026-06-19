@@ -230,6 +230,34 @@ def course_nav_state(web):
         };
     """)
 
+def course_panel_lock_state(web):
+    """Draggability and close-control visibility of the locked panels (the
+    Course panel and the source editor)."""
+    return web.driver.execute_script("""
+        const items = window.courseController.layout.root.getAllContentItems();
+        const find = (pred) => {
+            let r = null;
+            items.forEach(e => { if (e.isComponent && pred(e)) r = e; });
+            return r;
+        };
+        const course = find(e => e.componentName === 'result'
+            && e.component && e.component.courseMode);
+        const editor = find(e => e.componentName === 'editor');
+        // Closable (so GoldenLayout keeps it draggable) + reorderEnabled.
+        const draggable = (e) => Boolean(e && e.reorderEnabled && e.isClosable);
+        const allHidden = (sel) => {
+            const els = Array.from(document.querySelectorAll(sel));
+            return els.length > 0
+                && els.every(el => getComputedStyle(el).display === 'none');
+        };
+        return {
+            courseDraggable: draggable(course),
+            editorDraggable: draggable(editor),
+            tabClosesHidden: allHidden('.panel-locked-tab .lm_close_tab'),
+            headerClosesHidden: allHidden('.panel-locked-header .lm_close'),
+        };
+    """)
+
 def wait_for_course_marker(web, text, timeout=30):
     deadline = time.time() + timeout
     marker = None
@@ -266,6 +294,15 @@ def test_course(web):
     assert state['lessonsLocked'] == [False, True, True]
     assert state['nextDisabled'] is True
     assert state['editorSrc'] == lessons[0]['src']
+
+    # The Course panel and the source editor must be movable but not closable.
+    # GoldenLayout couples the two, so they stay closable (draggable) and their
+    # close controls are hidden instead (see course.js suppressCloseControls).
+    lock = course_panel_lock_state(web)
+    assert lock['courseDraggable'] is True       # Course panel draggable
+    assert lock['editorDraggable'] is True       # editor draggable
+    assert lock['tabClosesHidden'] is True        # but tab closes hidden
+    assert lock['headerClosesHidden'] is True     # and header closes hidden
 
     # Enter the lesson 1 solution into the editor; auto-refresh rebuilds and
     # re-checks, the pass must unlock lesson 2.
@@ -307,6 +344,46 @@ def test_course(web):
     assert state['currentLesson'] == 0
     assert state['lessonsLocked'] == [False, True, True]
     assert state['editorSrc'] == lessons[0]['src']
+
+
+@pytest.mark.web
+def test_course_lesson3_refresh_overlay(web):
+    """Lessons whose checks don't auto-run (lesson 3: LVS/DRC) show the standard
+    in-panel Refresh overlay (not a toolbar Check button). debug=true unlocks
+    lesson 3 so we can reach it without running the earlier checks."""
+    web.resize_viewport()
+    web.driver.get(web.url)
+    web.driver.execute_script(
+        "window.localStorage.removeItem('ordecCourse:intro');")
+
+    web.navigate('app.html#course=intro&debug=true')
+    web.wait_for_ready()
+    web.driver.execute_script("""
+        const sel = document.querySelector('.course-lessonsel');
+        sel.value = '2';
+        sel.dispatchEvent(new Event('change'));
+    """)
+    web.wait_for_ready()
+
+    info = web.driver.execute_script("""
+        let comp = null;
+        window.courseController.layout.root.getAllContentItems().forEach(e => {
+            if (e.isComponent && e.componentName === 'result'
+                && e.component && e.component.courseMode) comp = e;
+        });
+        const overlay = comp.component.resOverlayRefreshable;
+        return {
+            currentLesson: window.courseController.currentLesson,
+            marker: document.querySelector('.course-marker').innerText,
+            refreshOverlayShown: getComputedStyle(overlay).display !== 'none',
+            noCheckButton: !document.querySelector('.course-check'),
+        };
+    """)
+    assert info['currentLesson'] == 2
+    assert info['marker'] == 'not checked'
+    assert info['refreshOverlayShown'] is True   # standard Refresh overlay
+    assert info['noCheckButton'] is True          # toolbar Check button gone
+
 
 def myhistogram(img, thresh=50):
     h = {}

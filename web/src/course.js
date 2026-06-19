@@ -15,66 +15,35 @@ export function getCourseController() {
     return courseController;
 }
 
-// Probe that fetches the lesson() view through OrdecClient's existing
-// one-at-a-time request queue, regardless of whether any visible result
-// view shows the report. It implements the same interface as ResultViewer
-// (registerClient / updateViewListAndException / requestsView / updateView)
-// and is appended to the client's resultViewers list.
-class ReportProbe {
-    constructor(controller) {
-        this.controller = controller;
-        this.viewSelected = 'lesson()';
-        this.viewUpToDate = false;
-        this.checkRequestedByUser = false;
-        this.client = null;
-    }
-
-    registerClient(client) {
-        this.client = client;
-    }
-
-    updateViewListAndException() {
-        this.viewUpToDate = false;
-        if (this.client.exception) {
-            this.controller.onReportResult({ exception: this.client.exception });
-        } else if (this.autoRefreshes() || this.checkRequestedByUser) {
-            this.controller.onReportPending();
-        } else {
-            // lesson() has auto_refresh=False (expensive checks): it is only
-            // evaluated when the user clicks the Check button.
-            this.controller.onReportUnchecked();
-        }
-    }
-
-    requestsView() {
-        if (this.viewUpToDate) {
-            return false;
-        }
-        if (!this.client.views.has(this.viewSelected)) {
-            return false;
-        }
-        const autoRefresh = this.client.views.get(this.viewSelected).auto_refresh;
-        return autoRefresh || this.checkRequestedByUser;
-    }
-
-    autoRefreshes() {
-        const info = this.client?.views?.get(this.viewSelected);
-        return Boolean(info && info.auto_refresh);
-    }
-
-    // Trigger one report evaluation for lessons whose lesson() has
-    // auto_refresh=False (expensive checks, e.g. LVS/DRC).
-    requestCheck() {
-        this.checkRequestedByUser = true;
-        this.controller.onReportPending();
-        this.client.requestNextView();
-    }
-
-    updateView(msg) {
-        this.viewUpToDate = true;
-        this.checkRequestedByUser = false;
-        this.controller.onReportResult(msg);
-    }
+// Make a GoldenLayout panel movable but not closable. GoldenLayout couples the
+// two (a non-closable tab cannot be dragged out of its stack, see
+// Header._canRemoveComponent), so the panel is left closable and its close
+// controls are hidden instead: the tab's own close button, and the close button
+// of the header of whatever stack currently holds it (which removes the whole
+// stack). Re-applied on every 'tab' event, as the tab and its header are
+// re-created when the panel is moved; deferred to a microtask because the tab
+// is not yet attached to its header's DOM when 'tab' fires.
+export function suppressCloseControls(container) {
+    let lockedHeader = null;
+    const apply = (tab) => {
+        queueMicrotask(() => {
+            if (lockedHeader) {
+                lockedHeader.classList.remove('panel-locked-header');
+                lockedHeader = null;
+            }
+            if (!tab || !tab.element.isConnected) {
+                return;
+            }
+            tab.element.classList.add('panel-locked-tab');
+            const header = tab.element.closest('.lm_header');
+            if (header) {
+                header.classList.add('panel-locked-header');
+                lockedHeader = header;
+            }
+        });
+    };
+    container.on('tab', apply);
+    apply(container.tab);
 }
 
 const STORAGE_VERSION = 1;
@@ -87,10 +56,13 @@ function lessonStem(file) {
 export class CourseController {
     constructor(course) {
         this.course = course; // {name, title, lessons: [...]} from /api/course
-        this.probe = new ReportProbe(this);
         this.client = null; // set by main.js
         this.layout = null; // set by main.js
         this.editor = null; // set when the Editor component mounts
+        // The special "Course" result viewer that renders lesson() and hosts
+        // the navigator toolbar (see resultviewer.js course mode); set when
+        // that viewer mounts.
+        this.courseViewer = null;
         this.navElements = []; // navigator DOM roots (re-created per Editor)
         this.reportStatus = 'busy'; // 'busy' | 'unchecked' | 'pass' | 'fail' | 'error'
         this.suspendUistateSave = false;
@@ -185,11 +157,13 @@ export class CourseController {
         // re-created by loadLayout below.
         this.deps.setSourceType(this.course.lessons[i].srctype);
 
-        // loadLayout() recreates the Editor (incl. navigator) and all
-        // ResultViewers; suspend uistate autosaving while the layout is in
-        // flux.
+        // loadLayout() recreates the Editor and all ResultViewers (including
+        // the Course viewer that hosts the navigator); they re-register
+        // themselves via setEditor/attachCourseViewer. Suspend uistate
+        // autosaving while the layout is in flux.
         this.suspendUistateSave = true;
         this.editor = null;
+        this.courseViewer = null;
         this.layout.loadLayout(uistate);
         this.suspendUistateSave = false;
 
@@ -374,17 +348,36 @@ export class CourseController {
             + 'will be lost.')) {
             return;
         }
+        // Cancel any pending debounced uistate save so it cannot re-create the
+        // storage entry between removeItem and the reload completing.
+        this.suspendUistateSave = true;
+        window.clearTimeout(this.uistateSaveTimeout);
         localStorage.removeItem(this.storageKey);
         window.location.reload();
     }
 
+    // -- Component registration ------------------------------------------
+
+    // The Editor component registers itself here when it mounts, so the
+    // controller can read/replace the editor source on lesson switches.
+    setEditor(editor) {
+        this.editor = editor;
+    }
+
+    // The special "Course" result viewer (resultviewer.js course mode)
+    // registers itself here and provides its header element as the host for
+    // the navigator toolbar.
+    attachCourseViewer(viewer, navEl) {
+        this.courseViewer = viewer;
+        this.mountNavigator(navEl);
+    }
+
     // -- Navigator UI ----------------------------------------------------
 
-    // Mounts the course navigator into nav (a div created by the Editor
-    // component). Called each time an Editor is (re-)created by loadLayout.
-    mountNavigator(nav, editor) {
-        this.editor = editor;
-
+    // Mounts the course navigator into nav (the header element of the Course
+    // result viewer). Called each time that viewer is (re-)created by
+    // loadLayout.
+    mountNavigator(nav) {
         nav.classList.add('course-nav');
         nav.innerHTML = `
             <button class="toolbar-btn course-prev" title="Previous lesson"><svg class="course-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 L5 8 L10 13"/></svg></button>
@@ -394,8 +387,6 @@ export class CourseController {
             <button class="toolbar-btn course-next" title="Next lesson"><svg class="course-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3 L11 8 L6 13"/></svg></button>
             <span class="course-nav-sep"></span>
             <span class="course-marker"></span>
-            <span class="course-nav-sep course-check-sep"></span>
-            <button class="toolbar-btn course-check">Check</button>
             <span class="course-nav-spacer"></span>
             <span class="course-nav-sep"></span>
             <button class="toolbar-btn course-export" title="Download all lesson sources and progress as zip">Export</button>
@@ -421,9 +412,6 @@ export class CourseController {
         nav.querySelector('.course-lessonsel').onchange = (ev) => {
             this.activateLesson(parseInt(ev.target.value, 10));
         };
-        nav.querySelector('.course-check').onclick = () => {
-            this.probe.requestCheck();
-        };
         nav.querySelector('.course-export').onclick = () => this.exportZip();
         const fileInput = nav.querySelector('.course-import-file');
         nav.querySelector('.course-import').onclick = () => fileInput.click();
@@ -434,8 +422,8 @@ export class CourseController {
         };
         nav.querySelector('.course-startover').onclick = () => this.startOver();
 
-        // Editors are destroyed and re-created by loadLayout; drop stale
-        // navigator roots.
+        // The Course viewer is destroyed and re-created by loadLayout; drop
+        // stale navigator roots.
         this.navElements = this.navElements.filter(e => e.isConnected);
         this.navElements.push(nav);
         this.renderNavigator(nav);
@@ -480,12 +468,6 @@ export class CourseController {
             ? 'The lesson source or its checks raised an exception. See the '
                 + 'report view for details.'
             : 'Lesson check status. See the report view for details.';
-
-        // The Check button is only needed for lessons whose lesson() does
-        // not auto-refresh (expensive checks). Hide its leading divider too.
-        const hideCheck = this.probe.autoRefreshes();
-        nav.querySelector('.course-check').style.display = hideCheck ? 'none' : '';
-        nav.querySelector('.course-check-sep').style.display = hideCheck ? 'none' : '';
     }
 }
 
