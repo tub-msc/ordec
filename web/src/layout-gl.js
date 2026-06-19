@@ -18,6 +18,13 @@ import glslPostVert from './glsl/layout-post.vert';
 import glslPostFrag from './glsl/layout-post.frag';
 import glslLabelsVert from './glsl/layout-labels.vert';
 import glslLabelsFrag from './glsl/layout-labels.frag';
+import glslHighlightVert from './glsl/layout-highlight.vert';
+import glslHighlightFrag from './glsl/layout-highlight.frag';
+
+// Width in CSS pixels of DRC/LVS highlight outlines (box/edge/poly shapes):
+const HIGHLIGHT_LINE_WIDTH = 2.0;
+// Width in CSS pixels of the LVS crosshair marker lines:
+const CROSSHAIR_LINE_WIDTH = 2.0;
 
 function loadShader(gl, type, source) {
     const shader = gl.createShader(type);
@@ -441,6 +448,24 @@ export class LayoutGL {
                 pixelScale: gl.getUniformLocation(prog, "uPixelScale"),
                 //layerColor: gl.getUniformLocation(prog, "uLayerColor"),
                 sampler: gl.getUniformLocation(prog, "uSampler"),
+            },
+        };
+
+        prog = this.glResources.createProgram(glslHighlightVert, glslHighlightFrag);
+        this.programInfos.highlight = {
+            program: prog,
+            attribLocations: {
+                position: gl.getAttribLocation(prog, "aPosition"),
+                segStart: gl.getAttribLocation(prog, "aSegStart"),
+                segEnd: gl.getAttribLocation(prog, "aSegEnd"),
+                side: gl.getAttribLocation(prog, "aSide"),
+            },
+            uniformLocations: {
+                projectionMatrix: gl.getUniformLocation(prog, "uProjectionMatrix"),
+                modelViewMatrix: gl.getUniformLocation(prog, "uModelViewMatrix"),
+                viewport: gl.getUniformLocation(prog, "uViewport"),
+                halfWidth: gl.getUniformLocation(prog, "uHalfWidth"),
+                color: gl.getUniformLocation(prog, "uColor"),
             },
         };
 
@@ -943,20 +968,37 @@ export class LayoutGL {
         if (!pos) return;
         const [x, y] = pos;
         const arm = 10 / this.transform.k;
-        const gl = this.gl;
-        if (!gl) return;
-        const vertices = new Float32Array([
+        // Two crosshair segments (horizontal + vertical), each as a flat
+        // [x1, y1, x2, y2] segment for _uploadHighlightSegments:
+        this._uploadHighlightSegments([
             x - arm, y, x + arm, y,
             x, y - arm, x, y + arm,
         ]);
-        this.highlightNumVertices = 4;
+    }
+
+    // Builds the highlight vertex buffer from a flat list of line segments
+    // (every 4 numbers describe one segment: x1, y1, x2, y2). Each segment is
+    // expanded into a quad (2 triangles, 6 vertices) so the highlight shader can
+    // give it a constant pixel width regardless of zoom.
+    _uploadHighlightSegments(segments) {
+        const gl = this.gl;
+        if (!gl) return;
+        const data = [];
+        for (let i = 0; i + 3 < segments.length; i += 4) {
+            const ax = segments[i], ay = segments[i + 1];
+            const bx = segments[i + 2], by = segments[i + 3];
+            // Per vertex: aPosition (2), aSegStart (2), aSegEnd (2), aSide (1).
+            const push = (px, py, side) => data.push(px, py, ax, ay, bx, by, side);
+            push(ax, ay, 1); push(ax, ay, -1); push(bx, by, -1);
+            push(ax, ay, 1); push(bx, by, -1); push(bx, by, 1);
+        }
+        this.highlightNumVertices = data.length / 7;
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.highlightVertices);
-        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.DYNAMIC_DRAW);
     }
 
     setHighlight(shapes, zoomTo = true) {
-        const gl = this.gl;
-        if (!gl) return;
+        if (!this.gl) return;
 
         const vertices = [];
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -996,9 +1038,9 @@ export class LayoutGL {
             }
         });
 
-        this.highlightNumVertices = vertices.length / 2;
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.highlightVertices);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
+        // `vertices` is a flat list of line-segment endpoint pairs (GL_LINES
+        // layout). _uploadHighlightSegments expands each segment into a quad.
+        this._uploadHighlightSegments(vertices);
 
         if (zoomTo && minX !== Infinity) {
             this.zoomToBox(minX, minY, maxX, maxY, true, 0.25);
@@ -1022,20 +1064,38 @@ export class LayoutGL {
 
     drawGLHighlight() {
         const gl = this.gl;
-        const programInfo = this.programInfos.shapes;
+        const programInfo = this.programInfos.highlight;
 
         gl.useProgram(programInfo.program);
+        gl.disable(gl.DEPTH_TEST);
+        // MAX blend so overlapping quads (e.g. at segment joins) don't stack and
+        // so the red highlight is forced on top of the underlying pixels:
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        gl.blendEquation(gl.MAX);
+
         gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, this.projectionMatrix);
         gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, mat4.create());
-        gl.uniform4fv(programInfo.uniformLocations.layerColor, [1.0, 0.0, 0.0, 1.0]);
-        gl.uniform1f(programInfo.uniformLocations.brightness, 1.0);
+        gl.uniform4fv(programInfo.uniformLocations.color, [1.0, 0.0, 0.0, 1.0]);
+        gl.uniform2fv(programInfo.uniformLocations.viewport, [this.width, this.height]);
 
+        // A crosshair (highlightPos) and shape outlines (setHighlight) are never
+        // shown at the same time, so _highlightPos distinguishes the two widths:
+        const lineWidth = this._highlightPos ? CROSSHAIR_LINE_WIDTH : HIGHLIGHT_LINE_WIDTH;
+        gl.uniform1f(programInfo.uniformLocations.halfWidth, lineWidth / 2.0);
+
+        const stride = 7 * 4; // 7 floats per vertex
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.highlightVertices);
-        gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
-        gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+        gl.vertexAttribPointer(programInfo.attribLocations.position, 2, gl.FLOAT, false, stride, 0);
+        gl.vertexAttribPointer(programInfo.attribLocations.segStart, 2, gl.FLOAT, false, stride, 2 * 4);
+        gl.vertexAttribPointer(programInfo.attribLocations.segEnd, 2, gl.FLOAT, false, stride, 4 * 4);
+        gl.vertexAttribPointer(programInfo.attribLocations.side, 1, gl.FLOAT, false, stride, 6 * 4);
+        gl.enableVertexAttribArray(programInfo.attribLocations.position);
+        gl.enableVertexAttribArray(programInfo.attribLocations.segStart);
+        gl.enableVertexAttribArray(programInfo.attribLocations.segEnd);
+        gl.enableVertexAttribArray(programInfo.attribLocations.side);
 
-        gl.lineWidth(2.0);
-        gl.drawArrays(gl.LINES, 0, this.highlightNumVertices);
+        gl.drawArrays(gl.TRIANGLES, 0, this.highlightNumVertices);
     }
 
     drawGL() {
