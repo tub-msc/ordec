@@ -101,8 +101,10 @@ pytest -m web           # Web interface tests
 # Use this when changes don't affect web interface or ngspice integration
 pytest -m "not web"
 
-# IMPORTANT: After modifying frontend code (web/src/), rebuild before running web tests:
-cd web/ && npm run build && cd ..
+# Web tests rebuild web/dist automatically when it is missing or older than
+# the frontend sources (web/src/), so no manual build step is needed. This
+# requires npm on PATH; if a rebuild is needed and npm is missing, the web
+# tests fail rather than silently skip.
 pytest -m web
 ```
 

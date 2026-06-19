@@ -9,9 +9,9 @@ Components
 * **Backend** (``ordec/server.py``): a WebSocket server that evaluates ORD/Python sources, discovers views, and serializes view data to the browser. In production it also serves the static frontend from ``ordec/webdist.tar``; during development, a separate Vite dev server (``cd web && npm run dev``) serves the frontend with hot reload while ``ordec -b`` provides only the backend.
 * **Frontend** (``web/src/``): vanilla JS built with Vite, using `Golden Layout <https://golden-layout.com/>`_ for the tabbed/split panel arrangement.
 
-.. warning::
+.. note::
 
-    The web tests (``pytest -m web``) run against the **built** bundle. After changing anything under ``web/src/``, run ``cd web && npm run build`` first — otherwise the tests silently exercise the stale previous bundle and may pass although the new code is broken (or fail although it is fine).
+    The web tests (``pytest -m web``) run against the **built** bundle, but rebuild it automatically: the ``web`` fixture runs ``npm run build`` whenever ``web/dist`` is missing or older than the sources under ``web/src/`` (and ``package.json``/``vite.config.js``), so no manual build step is needed. This requires ``npm`` on ``PATH``; if a rebuild is needed and ``npm`` is unavailable, the web tests fail rather than silently running against a stale bundle.
 
 Frontend module map
 -------------------

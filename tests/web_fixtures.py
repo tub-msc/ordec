@@ -4,11 +4,15 @@
 """
 Pytest fixture for web UI testing with Selenium.
 
-Important: You have to run 'npm run build' in web/ before running web tests.
+The web fixture rebuilds web/dist automatically (via build_web_dist) when it is
+missing or older than the frontend sources, so a manual 'npm run build' is no
+longer required before running web tests.
 """
 
 import threading
 import queue
+import shutil
+import subprocess
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -23,6 +27,51 @@ try:
     _selenium_available = True
 except ImportError:
     _selenium_available = False
+
+
+WEB_DIR = (Path(__file__).parent.parent / 'web').resolve()
+
+
+def _newest_mtime(paths):
+    """Return the newest mtime among the given files/directories (0 if none exist)."""
+    newest = 0.0
+    for path in paths:
+        if not path.exists():
+            continue
+        if path.is_dir():
+            for sub in path.rglob('*'):
+                newest = max(newest, sub.stat().st_mtime)
+        else:
+            newest = max(newest, path.stat().st_mtime)
+    return newest
+
+
+def build_web_dist():
+    """
+    Ensure web/dist is built and up-to-date before serving it in tests.
+
+    Rebuilds via 'npm run build' only when web/dist is missing or older than
+    the frontend sources, so a Python-only iteration loop pays no build cost.
+    'npm ci' is intentionally not run here: dependencies are assumed installed
+    (see CLAUDE.md). If a build is needed but npm is unavailable, this raises
+    rather than skipping, so the missing toolchain is reported as a failure.
+    """
+    dist_dir = WEB_DIR / 'dist'
+    src_mtime = _newest_mtime([
+        WEB_DIR / 'src',
+        WEB_DIR / 'package.json',
+        WEB_DIR / 'vite.config.js',
+    ])
+    dist_mtime = _newest_mtime([dist_dir])
+    if dist_dir.is_dir() and dist_mtime >= src_mtime:
+        return  # web/dist is fresh, nothing to do.
+
+    if shutil.which('npm') is None:
+        raise RuntimeError(
+            "web/dist is missing or stale and 'npm' was not found on PATH. "
+            "Install Node.js/npm, or run 'npm run build' in web/ manually.")
+
+    subprocess.check_call(['npm', '--prefix', str(WEB_DIR), 'run', 'build'])
 
 
 @dataclass
@@ -83,6 +132,8 @@ def web():
     """
     if not _selenium_available:
         pytest.skip("Selenium not installed")
+
+    build_web_dist()
 
     webdriver_options = webdriver.ChromeOptions()
     webdriver_options.add_argument("--no-sandbox")

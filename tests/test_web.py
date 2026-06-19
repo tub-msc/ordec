@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Important: You have to run 'npm run build' in web/ before running the tests.
+The web fixture rebuilds web/dist automatically when it is missing or older
+than the frontend sources, so no manual 'npm run build' is required.
 """
 
 import pytest
