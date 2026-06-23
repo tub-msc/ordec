@@ -8,6 +8,7 @@ from pathlib import Path
 from public import public
 import functools
 
+from ..schematic.spice_in import DeviceMapping
 from ..core import *
 from ..schematic import spice_params, Netlister
 from ..sim.ngspice import NgspiceSetup
@@ -860,6 +861,16 @@ class Cmim(SimLeafCell):
     @classmethod
     def discoverable_instances(cls):
         return [cls()]
+
+
+#: Device map for spice_in:
+device_map = {
+    "sg13_lv_nmos": DeviceMapping(Nmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
+    "sg13_lv_pmos": DeviceMapping(Pmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
+}
+# TODO: In the future, this device_map dictionary should be automatically derived
+# from the PDK's cell definitions?!
+
 
 # klayout-new -b -r '/home/tobias/workspace/ordec/lvs/drc_run_2025_11_26_13_11_34/main.drc'
 #     -rd drc_json_default='/home/tobias/workspace/IHP-Open-PDK/ihp-sg13g2/libs.tech/klayout/tech/drc/rule_decks/sg13g2_tech_default.json'
