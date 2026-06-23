@@ -9,6 +9,7 @@ missing or older than the frontend sources, so a manual 'npm run build' is no
 longer required before running web tests.
 """
 
+import os
 import threading
 import queue
 import shutil
@@ -46,6 +47,37 @@ def _newest_mtime(paths):
     return newest
 
 
+# Top-level entries under web/ to ignore when checking whether dist is stale.
+# dist is the build output we compare against; node_modules is a dependency
+# (not a source), is huge/slow to walk, and is touched by npm so it would look
+# spuriously newer than dist; .coverage is a pytest artifact rewritten on every
+# test run, which would otherwise force a rebuild each session. These are pruned
+# only at the root of web/ so that any like-named files deeper in the tree (real
+# build inputs) still count.
+_WEB_SRC_PRUNE = {'dist', 'node_modules', '.coverage'}
+
+
+def _newest_web_src_mtime():
+    """
+    Return the newest mtime of any build input under web/.
+
+    Walks web/ recursively rather than listing specific files so that any
+    source affecting the build (index.html, app.html, public/, config files,
+    etc.) is covered. Prunes build outputs, dependencies, and test artifacts
+    (_WEB_SRC_PRUNE) at the web/ root so they don't force spurious rebuilds.
+    """
+    newest = WEB_DIR.stat().st_mtime
+    web_root = str(WEB_DIR)
+    for dirpath, dirnames, filenames in os.walk(WEB_DIR):
+        if dirpath == web_root:
+            # Prune in place so os.walk doesn't descend into excluded dirs.
+            dirnames[:] = [d for d in dirnames if d not in _WEB_SRC_PRUNE]
+            filenames = [f for f in filenames if f not in _WEB_SRC_PRUNE]
+        for name in filenames:
+            newest = max(newest, os.stat(os.path.join(dirpath, name)).st_mtime)
+    return newest
+
+
 def build_web_dist():
     """
     Ensure web/dist is built and up-to-date before serving it in tests.
@@ -57,11 +89,7 @@ def build_web_dist():
     rather than skipping, so the missing toolchain is reported as a failure.
     """
     dist_dir = WEB_DIR / 'dist'
-    src_mtime = _newest_mtime([
-        WEB_DIR / 'src',
-        WEB_DIR / 'package.json',
-        WEB_DIR / 'vite.config.js',
-    ])
+    src_mtime = _newest_web_src_mtime()
     dist_mtime = _newest_mtime([dist_dir])
     if dist_dir.is_dir() and dist_mtime >= src_mtime:
         return  # web/dist is fresh, nothing to do.
