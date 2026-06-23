@@ -1,19 +1,5 @@
-# SPDX-FileCopyrightText: 2026 ORDeC contributors
-# SPDX-License-Identifier: Apache-2.0
-
 """
-Load the IHP SG13G2 standard cell library into a single ExtLibrary.
-
-The standard cells are a component *on top of* the IHP130 PDK (not part of it),
-so all wiring lives here in the example rather than in ordec.lib.ihp130:
-
-- symbols  <- LEF   (read_lef, provides correct pin directions)
-- layouts  <- GDS   (read_gds)
-- schematics <- SPICE (read_spice, transistor-level netlists)
-
-Run with the integrated web server from this directory::
-
-    ordec -bm stdcells
+This example loads the IHP SG13G2 standard cell library into an ExtLibrary.
 
 This exposes the symbol, schematic and layout of every standard cell, plus an
 inverter voltage-transfer-curve testbench and DRC/LVS reports defined below.
@@ -35,62 +21,61 @@ extlib.read_spice(stdcell_root / "spice/sg13g2_stdcell.spice", device_map=ihp130
 
 inv = extlib["sg13g2_inv_1"]
 
-class InvTb(Cell):
+cell InvTb:
     """DC voltage-transfer-curve testbench for the inv standard cell."""
 
-    @generate
-    def schematic(self) -> Schematic:
-        s = Schematic(cell=self)
+    viewgen symbol -> Symbol:
+        pass
 
-        s.vdd = Net()
-        s.vss = Net()
-        s.i = Net()
-        s.o = Net()
+    viewgen schematic -> Schematic:
+        Net vdd
+        Net vss
+        Net i
+        Net o
 
-        s.i_inv = SchemInstance(
-            inv.symbol.portmap(VDD=s.vdd, VSS=s.vss, A=s.i, Y=s.o), pos=Vec2R(11, 9)
-        )
-        s.i_nc = SchemInstance(NoConn().symbol.portmap(a=s.o), pos=Vec2R(20, 9))
-        s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(11, 0))
-        s.i_vdd = SchemInstance(
-            Vdc(dc=1.2).symbol.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 6)
-        )
-        s.i_in = SchemInstance(
-            Vdc(dc=0).symbol.portmap(m=s.vss, p=s.i), pos=Vec2R(5, 6)
-        )
+        inv s:
+            .pos = (11, 9)
+            .VDD -- vdd
+            .VSS -- vss
+            .A -- i
+            .Y -- o
 
-        s.outline = Rect4R(lx=0, ly=0, ux=20, uy=14)
-        s.check(add_conn_points=True, add_terminal_taps=True)
-        return s
+        NoConn i_nc:
+            .pos = (20, 9)
+            .a -- o
 
-    @generate
-    def sim_dc(self) -> SimHierarchy:
-        h = SimHierarchy.from_schematic(self.schematic)
-        h.simulate().dc_sweep(self.schematic.i_in, 0, self.schematic.i_vdd.cell.dc, 100)
-        return h
+        Gnd i_gnd:
+            .pos = (11, 0)
+            .p -- vss
 
-    @generate
-    def report_vtc(self) -> Report:
-        h = self.sim_dc
-        r = Report()
-        r.markdown(
-            f"# Inverter voltage transfer curve\n"
-            "Input swept from 0 V to the supply; output is the inverter response."
-        )
-        r.plot2d(
-            x=list(h.i.voltage),
-            series={"Vout": list(h.o.voltage)},
+        Vdc i_vdd:
+            .pos = (0, 6)
+            .$dc = 1.2
+            .m -- vss
+            .p -- vdd
+
+        Vdc i_in:
+            .pos = (5, 6)
+            .$dc = 0
+            .m -- vss
+            .p -- i
+
+    viewgen sim_dc -> SimHierarchy:
+        .simulate().dc_sweep(self.schematic.i_in, 0, self.schematic.i_vdd.cell.dc, 100)
+
+    viewgen report_vtc -> Report:
+        sim = self.sim_dc
+        .markdown("# Inverter voltage transfer curve\n")
+        .plot2d(
+            x=list(sim.i.voltage),
+            series={"Vout": list(sim.o.voltage)},
             xlabel="Vin (V)",
             ylabel="Vout (V)",
-            height=300,
-        )
-        return r
-
+            height=300)
 
 @generate_func
 def inv_drc() -> DrcReport:
     return ihp130.run_drc(inv.layout, variant="minimal")
-
 
 @generate_func
 def inv_lvs() -> LvsReport:
