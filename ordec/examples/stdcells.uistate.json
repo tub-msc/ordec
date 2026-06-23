@@ -1,0 +1,170 @@
+{
+  "root": {
+    "type": "row",
+    "content": [
+      {
+        "type": "column",
+        "content": [
+          {
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "Source Editor",
+                "componentType": "editor",
+                "componentState": {}
+              }
+            ],
+            "size": "47.92060491493384%",
+            "id": "",
+            "maximised": false,
+            "isClosable": true,
+            "activeItemIndex": 0
+          },
+          {
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "InvTb().report_vtc",
+                "componentType": "result",
+                "componentState": {
+                  "view": "InvTb().report_vtc"
+                }
+              }
+            ],
+            "size": "52.07939508506616%",
+            "id": "",
+            "maximised": false,
+            "isClosable": true,
+            "activeItemIndex": 0
+          }
+        ],
+        "size": "50%",
+        "id": "",
+        "isClosable": true
+      },
+      {
+        "type": "column",
+        "content": [
+          {
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "extlib['sg13g2_inv_1'].schematic",
+                "componentType": "result",
+                "componentState": {
+                  "view": "extlib['sg13g2_inv_1'].schematic"
+                }
+              }
+            ],
+            "size": "35.35353535353536%",
+            "id": "",
+            "maximised": false,
+            "isClosable": true,
+            "activeItemIndex": 0
+          },
+          {
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "extlib['sg13g2_inv_1'].layout",
+                "componentType": "result",
+                "componentState": {
+                  "view": "extlib['sg13g2_inv_1'].layout"
+                }
+              }
+            ],
+            "size": "38.38383838383838%",
+            "id": "",
+            "maximised": false,
+            "isClosable": true,
+            "activeItemIndex": 0
+          },
+          {
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "inv_drc()",
+                "componentType": "result",
+                "componentState": {
+                  "view": "inv_drc()"
+                }
+              }
+            ],
+            "size": "26.262626262626267%",
+            "id": "",
+            "maximised": false,
+            "isClosable": true,
+            "activeItemIndex": 0
+          }
+        ],
+        "size": "50%",
+        "id": "",
+        "isClosable": true
+      }
+    ],
+    "size": "1fr",
+    "id": "",
+    "isClosable": true
+  },
+  "openPopouts": [],
+  "settings": {
+    "constrainDragToContainer": true,
+    "reorderEnabled": true,
+    "popoutWholeStack": false,
+    "blockedPopoutsThrowError": true,
+    "closePopoutsOnUnload": true,
+    "responsiveMode": "none",
+    "tabOverlapAllowance": 0,
+    "reorderOnTabMenuClick": true,
+    "tabControlOffset": 10,
+    "popInOnClose": false
+  },
+  "dimensions": {
+    "borderWidth": 5,
+    "borderGrabWidth": 5,
+    "defaultMinItemHeight": "0px",
+    "defaultMinItemWidth": "10px",
+    "headerHeight": 20,
+    "dragProxyWidth": 300,
+    "dragProxyHeight": 200
+  },
+  "header": {
+    "show": "top",
+    "popout": false,
+    "dock": "dock",
+    "close": "close",
+    "maximise": "maximise",
+    "minimise": "minimise",
+    "tabDropdown": "additional tabs"
+  }
+}

@@ -72,6 +72,34 @@ class ExtLibrary:
         json_data = verilog_to_yosys_json(verilog)
         self.read_yosys_json(json_data)
 
+    def read_spice(self, path, device_map: dict):
+        """
+        Add schematic(s) from a SPICE subcircuit netlist file.
+
+        Each ``.subckt`` becomes a schematic; device instances are mapped to
+        ORDeC leaf cells via device_map (model name -> DeviceMapping).
+
+        Symbols are auto-generated from the subckt port lists as a fallback
+        only: a symbol already registered by another reader (e.g. read_lef,
+        which also provides pin directions) takes precedence. Call read_lef
+        before read_spice to get correct pin directions.
+
+        Args:
+            path: Filesystem path to a SPICE netlist file.
+            device_map: Mapping of SPICE model name to
+                ordec.schematic.spice_in.DeviceMapping.
+        """
+        from .schematic.spice_in import spice_subckt_discover
+        symbol_funcs_add, schematic_funcs_add = spice_subckt_discover(path, self, device_map)
+        for name in schematic_funcs_add.keys():
+            if name in self.schematic_funcs:
+                raise ExtLibraryError(f"Multiple schematic sources found for cell {name!r}.")
+        self.schematic_funcs |= schematic_funcs_add
+        # Auto-generated symbols are a fallback: only fill in names that have no
+        # symbol source yet (so a prior read_lef wins, without a conflict error).
+        for name, func in symbol_funcs_add.items():
+            self.symbol_funcs.setdefault(name, func)
+
     def __getitem__(self, name):
         return ExtLibraryCell(self, name)
 

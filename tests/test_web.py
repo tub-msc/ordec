@@ -93,6 +93,12 @@ testcases_integrated = {
     'vco_pseudodiff': {
         'VcoRing().layout': [],
     },
+    'stdcells': {
+        "extlib['sg13g2_inv_1'].layout": [],
+        "extlib['sg13g2_inv_1'].schematic": [],
+        'inv_drc()': [],
+        'InvTb().report_vtc': [],
+    },
 }
 
 testcases_local = {

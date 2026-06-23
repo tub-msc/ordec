@@ -1,0 +1,84 @@
+"""
+This example loads the IHP SG13G2 standard cell library into an ExtLibrary.
+
+This exposes the symbol, schematic and layout of every standard cell, plus an
+inverter voltage-transfer-curve testbench and DRC/LVS reports defined below.
+"""
+
+from ordec.core import *
+from ordec.extlibrary import ExtLibrary
+from ordec.lib import ihp130
+from ordec.lib.base import Vdc, Gnd, NoConn
+
+stdcell_root = ihp130.pdk().root / "libs.ref/sg13g2_stdcell"
+
+# Build the combined library. Order matters: read_lef first so its symbols (with
+# proper pin directions) win over the auto-generated symbols from read_spice.
+extlib = ExtLibrary()
+extlib.read_lef(stdcell_root / "lef/sg13g2_stdcell.lef")
+extlib.read_gds(stdcell_root / "gds/sg13g2_stdcell.gds", ihp130.SG13G2().layers)
+extlib.read_spice(stdcell_root / "spice/sg13g2_stdcell.spice", device_map=ihp130.device_map)
+
+inv = extlib["sg13g2_inv_1"]
+
+cell InvTb:
+    """DC voltage-transfer-curve testbench for the inv standard cell."""
+
+    viewgen symbol -> Symbol:
+        pass
+
+    viewgen schematic -> Schematic:
+        Net vdd
+        Net vss
+        Net i
+        Net o
+
+        inv s:
+            .pos = (11, 9)
+            .VDD -- vdd
+            .VSS -- vss
+            .A -- i
+            .Y -- o
+
+        NoConn i_nc:
+            .pos = (20, 9)
+            .a -- o
+
+        Gnd i_gnd:
+            .pos = (11, 0)
+            .p -- vss
+
+        Vdc i_vdd:
+            .pos = (0, 6)
+            .$dc = 1.2
+            .m -- vss
+            .p -- vdd
+
+        Vdc i_in:
+            .pos = (5, 6)
+            .$dc = 0
+            .m -- vss
+            .p -- i
+
+    viewgen sim_dc -> SimHierarchy:
+        .simulate().dc_sweep(self.schematic.i_in, 0, self.schematic.i_vdd.cell.dc, 100)
+
+    viewgen report_vtc -> Report:
+        sim = self.sim_dc
+        .markdown("# Inverter voltage transfer curve\n")
+        .plot2d(
+            x=list(sim.i.voltage),
+            series={"Vout": list(sim.o.voltage)},
+            xlabel="Vin (V)",
+            ylabel="Vout (V)",
+            height=300)
+
+@generate_func
+def inv_drc() -> DrcReport:
+    return ihp130.run_drc(inv.layout, variant="minimal")
+
+@generate_func
+def inv_lvs() -> LvsReport:
+    # TODO: Not working yet due to name mismatch!
+
+    return ihp130.run_lvs(inv.layout, inv.symbol, return_report=True)
