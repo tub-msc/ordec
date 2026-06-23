@@ -1,0 +1,24 @@
+{
+  "content": [
+    {
+      "type": "row",
+      "content": [
+        {
+          "type": "component",
+          "title": "Source Editor",
+          "componentName": "editor",
+          "componentState": {
+          },
+          "isClosable": true
+        },
+        {
+          "type": "component",
+          "title": "Result View",
+          "componentName": "result",
+          "componentState": {
+          }
+        }
+      ]
+    }
+  ]
+}

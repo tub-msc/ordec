@@ -35,6 +35,7 @@ path = [
     "ordec/examples/rc_curve.py",
     "ordec/examples/voltagedivider.ord",
     "ordec/examples/voltagedivider_py.py",
+    "ordec/examples/stdcells.ord",
     "ordec/examples/*.uistate.json",
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
