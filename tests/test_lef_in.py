@@ -22,3 +22,9 @@ def test_read_lef_symbol():
     assert inv.Y.pintype == PinType.Out
     assert inv.VSS.pintype == PinType.Inout
     assert inv.VDD.pintype == PinType.Inout
+
+@pytest.mark.xfail(reason="Undesirable behavior of sc-leflib, raising cryptic LefReaderException instead of FileNotFoundError.")
+def test_read_lef_file_not_found():
+    lib = ExtLibrary()
+    with pytest.raises(FileNotFoundError):
+        lib.read_lef("/does_not_exist")
