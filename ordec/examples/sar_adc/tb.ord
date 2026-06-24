@@ -1,0 +1,295 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Testbenches for the SAR ADC building blocks. Each testbench is a self-contained
+cell with a transient simulation view, used to verify the cells against the
+IHP SG13G2 PDK models before they are composed into the full converter.
+"""
+
+from ordec.core import *
+from ordec.lib.base import Gnd, Vdc, Vpwl, Vpulse, Cap
+from .comparator import Comparator
+from .cdac import CapDac
+from .sar_logic import SarLogic
+from .sar_adc import SarAdc
+
+VDD = 1.2  # supply voltage used throughout the SAR ADC example
+
+cell SarAdcConvTb:
+    """
+    Closed-loop SAR ADC check: hold `vin` constant, pulse reset, and run one
+    conversion. Clock period 50 ns (so the DAC and comparator settle each step);
+    rising edges at 40/90/140/190 ns capture the MSB..LSB. `done` pulses around
+    190-240 ns and `code` holds the result.
+
+    Expected code = round(vin / VDD * 2**n - 0.5), i.e. vin = (code+0.5)/2**n*VDD
+    lands in the middle of each code bin.
+    """
+    n       = Parameter(int, default=4)
+    vin_val = Parameter(R, default=0.525)
+
+    viewgen symbol -> Symbol:
+        pass
+
+    viewgen schematic -> Schematic:
+        net vdd, vss, vin, vcm, clk, rst, done, vx
+
+        SarAdc(n=self.n) dut:
+            .pos=(25,10)
+            .vdd -- vdd; .vss -- vss
+            .vin -- vin; .vcm -- vcm; .clk -- clk; .rst -- rst
+            .done -- done; .vx -- vx
+
+        path code
+        for i in range(self.n):
+            net code[i]
+            dut.code[i] -- code[i]
+
+        Gnd gnd:     .pos=(0,0); .p -- vss
+        Vdc vdd_src: .pos=(0,6);  .$dc=VDD; .m -- vss; .p -- vdd
+        Vdc vcm_src: .pos=(5,6);  .$dc=0.6; .m -- vss; .p -- vcm
+        Vdc vin_src: .pos=(10,6);  .$dc=self.vin_val; .m -- vss; .p -- vin
+        Vpulse clk_src:
+            .pos=(15,6); .m -- vss; .p -- clk
+            .$pulsed_value=VDD; .$delay_time=40n; .$rise_time=1n; .$fall_time=1n
+            .$pulse_width=20n; .$period=50n
+        Vpwl rst_src: .pos=(20,6); .m -- vss; .p -- rst; .$V=((0,VDD),(20n,VDD),(22n,0))
+
+    viewgen sim_tran -> Simulation:
+        .simulate().tran(R('100p'), R('300n'))
+
+    viewgen report_tran -> Report:
+        sim = self.sim_tran
+        pg = . % PlotGroup()   # shared, synchronized x-axis
+        vref = VDD
+
+        # Decode the code bits sample by sample and reconstruct an analogue
+        # staircase; the value held at the end of the run is the result.
+        code_v = [list(sim.code[i].voltage) for i in range(self.n)]
+        nsamp = len(code_v[0])
+        recon = [sum(1 << i for i in range(self.n) if code_v[i][k] > vref / 2)
+                 / (1 << self.n) * vref for k in range(nsamp)]
+        measured = sum(1 << i for i in range(self.n) if code_v[i][-1] > vref / 2)
+        expected = max(0, min((1 << self.n) - 1,
+            round(self.vin_val / vref * (1 << self.n) - 0.5)))
+
+        .markdown(
+            f"# {self.n}-bit SAR ADC conversion\n"
+            f"vin = {self.vin_val} V, Vref = {vref} V, 1 LSB = "
+            f"{vref / (1 << self.n) * 1000:.0f} mV. Expected code "
+            f"**{expected}** (0b{expected:0{self.n}b}); measured at end of run "
+            f"**{measured}** (0b{measured:0{self.n}b})."
+        )
+        .markdown("## DAC search node `vx` vs input")
+        .plot2d(x=sim.time,
+            series={'vin (input)': sim.vin.voltage,
+                    'vx (DAC top plate)': sim.vx.voltage,
+                    'vcm (reference)': sim.vcm.voltage},
+            xlabel="Time (s)", ylabel="Voltage (V)", height=220, plot_group=pg)
+        .markdown("## Control: clk / rst / done")
+        .plot2d(x=sim.time,
+            series={'clk': sim.clk.voltage, 'rst': sim.rst.voltage,
+                    'done': sim.done.voltage},
+            xlabel="Time (s)", ylabel="Voltage (V)", height=180, plot_group=pg)
+        .markdown("## Output code bits and reconstruction")
+        .plot2d(x=sim.time,
+            series={f'code[{i}]': [v + 1.4 * i for v in sim.code[i].voltage]
+                    for i in reversed(range(self.n))},
+            xlabel="Time (s)", ylabel="Bit (offset for clarity)", height=180,
+            plot_group=pg)
+        .plot2d(x=sim.time,
+            series={'vin (input)': sim.vin.voltage, 'reconstructed code': recon},
+            xlabel="Time (s)", ylabel="Voltage (V)", height=200, plot_group=pg)
+
+cell SarLogicTb:
+    """
+    Digital check of the SAR controller. A fixed comparator-decision pattern is
+    fed in MSB-first -- 1, then 0, then 1 held for the remaining bits -- so the
+    registered code comes out 0b1011 = 11 at the default n=4 (0b101 = 5 at n=3),
+    with `done` asserted after N+2 clocks.
+
+    Clock rising edges every 20 ns from 10 ns; cmp is held stable across each
+    capturing edge.
+    """
+    n = Parameter(int, default=4)
+
+    viewgen symbol -> Symbol:
+        pass
+
+    viewgen schematic -> Schematic:
+        net vdd, vss, clk, rst, cmp, sample, done
+
+        SarLogic(n=self.n) dut:
+            .pos=(20,12)
+            .vdd -- vdd; .vss -- vss
+            .clk -- clk; .rst -- rst; .cmp -- cmp
+            .sample -- sample; .done -- done
+
+        path dac, code
+        for i in range(self.n):
+            net dac[i]
+            net code[i]
+            dut.dac[i] -- dac[i]
+            dut.code[i] -- code[i]
+
+        Gnd gnd:     .pos=(0,0); .p -- vss
+        Vdc vdd_src: .pos=(0,6); .$dc=VDD; .m -- vss; .p -- vdd
+        Vpulse clk_src:
+            .pos=(5,6); .m -- vss; .p -- clk
+            .$pulsed_value=VDD; .$delay_time=10n; .$rise_time=1n; .$fall_time=1n
+            .$pulse_width=8n; .$period=20n
+        Vpwl rst_src: .pos=(10,6); .m -- vss; .p -- rst; .$V=((0,VDD),(5n,VDD),(6n,0))
+        # cmp decision pattern: MSB=1 (t<34), bit1=0, bit0=1 (t>56)
+        Vpwl cmp_src:
+            .pos=(15,6); .m -- vss; .p -- cmp
+            .$V=((0,VDD),(34n,VDD),(36n,0),(54n,0),(56n,VDD),(130n,VDD))
+
+    viewgen sim_tran -> Simulation:
+        .simulate().tran(R('50p'), R('130n'))
+
+    viewgen report_tran -> Report:
+        sim = self.sim_tran
+        pg = . % PlotGroup()
+        code_v = [list(sim.code[i].voltage) for i in range(self.n)]
+        measured = sum(1 << i for i in range(self.n) if code_v[i][-1] > VDD / 2)
+        decisions = [1, 0] + [1] * (self.n - 2)   # MSB-first, matches cmp_src
+        expected = sum(d << (self.n - 1 - m) for m, d in enumerate(decisions))
+
+        .markdown(
+            f"# SAR controller (n={self.n})\n"
+            f"Comparator decisions {', '.join(map(str, decisions))} (MSB-first) "
+            f"must latch as code **{expected}** (0b{expected:0{self.n}b}); measured "
+            f"**{measured}** (0b{measured:0{self.n}b}), with `done` after N+2 clocks."
+        )
+        .markdown("## Inputs: clk / rst / cmp")
+        .plot2d(x=sim.time,
+            series={'clk': sim.clk.voltage, 'rst': sim.rst.voltage,
+                    'cmp': sim.cmp.voltage},
+            xlabel="Time (s)", ylabel="Voltage (V)", height=200, plot_group=pg)
+        .markdown("## Sequencer phase outputs: sample / done")
+        .plot2d(x=sim.time,
+            series={'sample': sim.sample.voltage, 'done': sim.done.voltage},
+            xlabel="Time (s)", ylabel="Voltage (V)", height=160, plot_group=pg)
+        .markdown("## DAC drive `dac[i]` and registered code `code[i]`")
+        .plot2d(x=sim.time,
+            series={f'dac[{i}]': [v + 1.4 * i for v in sim.dac[i].voltage]
+                    for i in reversed(range(self.n))},
+            xlabel="Time (s)", ylabel="Bit (offset)", height=180, plot_group=pg)
+        .plot2d(x=sim.time,
+            series={f'code[{i}]': [v + 1.4 * i for v in sim.code[i].voltage]
+                    for i in reversed(range(self.n))},
+            xlabel="Time (s)", ylabel="Bit (offset)", height=180, plot_group=pg)
+
+cell CdacTb:
+    """
+    CDAC charge-redistribution check. Sample `vin` for 20 ns, then apply a fixed
+    digital `code` and read the top-plate node `vx`. Expected (Vref=VDD):
+
+        vx = vcm - vin + (code / 2**n) * VDD
+    """
+    n       = Parameter(int, default=4)
+    code    = Parameter(int, default=4)
+    vin_val = Parameter(R, default=0.7)
+
+    viewgen symbol -> Symbol:
+        pass
+
+    viewgen schematic -> Schematic:
+        net vdd, vss, vx, vin, vcm, sample, sample_n
+
+        CapDac(n=self.n) dut:
+            .pos=(25,16)
+            .vdd -- vdd; .vss -- vss
+            .vx -- vx; .vin -- vin; .vcm -- vcm
+            .sample -- sample; .sample_n -- sample_n
+
+        Gnd gnd:     .pos=(0,0); .p -- vss
+        Vdc vdd_src: .pos=(0,6);  .$dc=VDD; .m -- vss; .p -- vdd
+        Vdc vcm_src: .pos=(5,6);  .$dc=0.6; .m -- vss; .p -- vcm
+        Vdc vin_src: .pos=(10,6);  .$dc=self.vin_val; .m -- vss; .p -- vin
+        Vpwl smp_src:  .pos=(15,6); .m -- vss; .p -- sample;   .$V=((0,VDD),(20n,VDD),(20.1n,0))
+        Vpwl smpn_src: .pos=(20,6); .m -- vss; .p -- sample_n; .$V=((0,0),(20n,0),(20.1n,VDD))
+
+        path dac, dsrc
+        for i in range(self.n):
+            net dac[i]
+            bit = (self.code >> i) & 1
+            Vdc dsrc[i]: .pos=(-5, 12 + 7*i); .m -- vss; .p -- dac[i]; .$dc = VDD * bit
+            dut.dac[i] -- dac[i]
+
+    viewgen sim_tran -> Simulation:
+        .simulate().tran(R('20p'), R('40n'))
+
+    viewgen report_tran -> Report:
+        sim = self.sim_tran
+        pg = . % PlotGroup()
+        vref, vcm = VDD, 0.6
+        vx_final = list(sim.vx.voltage)[-1]
+        expected = vcm - self.vin_val + (self.code / (1 << self.n)) * vref
+
+        .markdown(
+            f"# CDAC charge redistribution (n={self.n}, code={self.code})\n"
+            f"After sampling vin and applying the code, the top plate settles to "
+            f"vx = vcm - vin + code/2^n * Vref = "
+            f"{vcm} - {self.vin_val} + {self.code}/{1 << self.n} * {vref} = "
+            f"**{expected:.3f} V**; measured **{vx_final:.3f} V**."
+        )
+        .markdown("## Top-plate node `vx`")
+        .plot2d(x=sim.time,
+            series={'vx (top plate)': sim.vx.voltage, 'vin': sim.vin.voltage,
+                    'vcm': sim.vcm.voltage},
+            xlabel="Time (s)", ylabel="Voltage (V)", height=240, plot_group=pg)
+        .markdown("## Sampling control")
+        .plot2d(x=sim.time,
+            series={'sample': sim.sample.voltage, 'sample_n': sim.sample_n.voltage},
+            xlabel="Time (s)", ylabel="Voltage (V)", height=160, plot_group=pg)
+
+cell CompTb:
+    """
+    Comparator check: hold in_n at mid-supply (0.6 V) and ramp in_p from 0.4 to
+    0.8 V. The output must switch low->high as in_p crosses in_n. The crossing
+    point relative to 0.6 V is the input-referred offset.
+    """
+    viewgen symbol -> Symbol:
+        pass
+
+    viewgen schematic -> Schematic:
+        net vdd, vss, in_p, in_n, out
+
+        Comparator dut:
+            .pos=(17,6)
+            .vdd -- vdd; .vss -- vss
+            .in_p -- in_p; .in_n -- in_n; .out -- out
+
+        Gnd gnd:     .pos=(0,0); .p -- vss
+        Vdc vdd_src: .pos=(0,6); .$dc=VDD; .m -- vss; .p -- vdd
+        Vdc inn_src: .pos=(5,6); .$dc=0.6; .m -- vss; .p -- in_n
+        Vpwl inp_src: .pos=(10,6); .m -- vss; .p -- in_p; .$V=((0,0.4),(100n,0.8))
+        Cap cl: .pos=(22,3); .$c=5f; .p -- out; .m -- vss
+
+    viewgen sim_tran -> Simulation:
+        .simulate().tran(R('50p'), R('100n'))
+
+    viewgen report_tran -> Report:
+        sim = self.sim_tran
+        pg = . % PlotGroup()
+        inp = list(sim.in_p.voltage); out = list(sim.out.voltage)
+        cross = next((inp[k] for k in range(len(out)) if out[k] > VDD / 2), None)
+        if cross is None:
+            cross_s, offset_s = "no switch", "n/a"
+        else:
+            cross_s, offset_s = f"{cross:.3f} V", f"{(cross - 0.6) * 1000:+.0f} mV"
+
+        .markdown(
+            f"# Continuous-time comparator\n"
+            f"in_n is held at 0.6 V and in_p ramps 0.4 -> 0.8 V; `out` must switch "
+            f"low->high as in_p crosses in_n. Switching in_p ~ **{cross_s}** -> "
+            f"input-referred offset **{offset_s}**."
+        )
+        .markdown("## Inputs vs output")
+        .plot2d(x=sim.time,
+            series={'in_p (ramp)': sim.in_p.voltage,
+                    'in_n (0.6 V)': sim.in_n.voltage,
+                    'out': sim.out.voltage},
+            xlabel="Time (s)", ylabel="Voltage (V)", height=240, plot_group=pg)
