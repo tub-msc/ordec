@@ -8,10 +8,12 @@ The CDAC doubles as the sample-and-hold network. It is built from IHP SG13G2
 MIM capacitors (ordec.lib.ihp130.Cmim) and transmission-gate bottom-plate
 switches (tgate.Tgate).
 
-Array (N bits): one binary-weighted capacitor per bit (weight 2**i unit caps
-via the Cmim ``m`` multiplier) plus one unit "dummy" capacitor, so the total
-weight is 2**N units. All top plates join the floating node ``vx`` that drives
-the comparator.
+Array (N bits): each bit is built from 2**i identical *unit* capacitors wired in
+parallel (a matched array, not one length-scaled cap), plus one unit "dummy"
+capacitor, so the total weight is 2**N units. Matching the weights as a ratio of
+identical devices -- rather than by scaling one cap's dimensions -- is what keeps
+the bit weights, and hence INL/DNL, accurate across process gradients. All top
+plates join the floating node ``vx`` that drives the comparator.
 
 Operation (reference voltage Vref = VDD):
 
@@ -91,17 +93,22 @@ cell CapDac:
 
         # Binary-weighted bit capacitors with their bottom-plate switches:
         path cap, bp, t_vin, t_dac
+        cu = 0   # running unit-cap index
         for i in range(self.n):
             net bp[i]
             col = 24 * i
 
-            # Binary weight 2**i via the length (C scales with l*w), so each bit
-            # is a single m=1 MIM cap -- the Cmim PCell layout supports only m=1,
-            # and length-weighting keeps one layoutable cap per bit.
-            Cmim cap[i]:
-                .pos=(24 + col, 22)
-                .p -- vx; .m -- bp[i]
-                .$m = 1; .$l = self.cu_l * (2 ** i); .$w = self.cu_w
+            # Binary weight 2**i built from 2**i IDENTICAL unit caps in parallel
+            # (matched array), not one length-scaled cap: identical devices track
+            # over process gradients, so the bit weights -- hence INL/DNL -- are set
+            # by an exact device-count ratio. The Cmim PCell supports only m=1, so
+            # each unit is its own instance.
+            for j in range(2 ** i):
+                Cmim cap[cu]:
+                    .pos=(24 + col, 22 + 7 * j)
+                    .p -- vx; .m -- bp[i]
+                    .$m = 1; .$l = self.cu_l; .$w = self.cu_w
+                cu = cu + 1
 
             Tgate t_vin[i]:
                 .pos=(22 + col, 12)
@@ -133,13 +140,13 @@ cell CapDac:
 
     viewgen layout -> Layout:
         # Hand layout: a row of transmission-gate switches (Metal1 cells) along
-        # the bottom, the binary-weighted (length-weighted) MIM caps in a row
-        # above. Each cap bottom plate (Metal5) drops onto its bit's two switch
-        # ``b`` pins via a Metal2->Metal5 stack; the top plates join on the vx
-        # TopMetal1 bus (hand-placed TopVia1, since TopVia1 = 0.42 um and the
-        # TopMetal1 min width is 1.64 um, far above the default router's vias).
-        # The digital control (sample/sample_n) and supply (vin/vdd/vss) nets run
-        # on Metal3 buses over the row, reached by short Metal1->Metal3 risers.
+        # the bottom; above each bit's switches a column of identical unit MIM caps
+        # (bit i = 2**i units stacked) forms the matched binary-weighted array. A
+        # per-column Metal5 strap ties that bit's unit bottom plates to bp[i]; one
+        # TopMetal1 plate over the whole array ties every top plate to vx (a single
+        # plate avoids TopMetal1's wide same-net spacing). The digital control
+        # (sample/sample_n) and supply (vin/vdd/vss) nets run on Metal3 buses over
+        # the switch row, reached by short Metal1->Metal3 risers.
         .ref_layers = SG13G2().layers
         layers = .ref_layers
         L1 = layers.Metal1; M2 = layers.Metal2; M3 = layers.Metal3
@@ -159,14 +166,30 @@ cell CapDac:
         tgx['vin_d'] = xd; tgx['gnd_d'] = xd + TGP
         for k, xx in tgx.items():
             . % LayoutInstance(ref=Tgate().layout, pos=Vec2I(xx, 0), orientation=R0)
-        capx = {}
+        # ---- matched unit-cap array: bit i = 2**i identical unit caps stacked in
+        # its column (exact-ratio matching), all bottom plates tied on a Metal5
+        # strap to bp[i], all top plates on a TopMetal1 strap to vx. The strap/gap
+        # parasitic to vx scales with column height (~2**i), so it adds in
+        # proportion to every bit and leaves the binary ratios -- hence INL/DNL --
+        # intact.
+        UL = int(self.cu_l / R('1n')); UW = int(self.cu_w / R('1n'))
+        SY = UL + 1500                       # stacked-unit y-pitch (gap >= MIM spacing)
+        def capcol(cx, count):
+            for j in range(count):
+                . % LayoutInstance(ref=Cmim(l=self.cu_l, w=self.cu_w).layout,
+                    pos=Vec2I(cx, YC + j * SY), orientation=R0)
+            top = YC + (count - 1) * SY + UL
+            . % LayoutRect(layer=M5, rect=Rect4I(cx, YC - 300, cx + UW, top + 300))   # bp[i]
+            return top
+        capx = {}; tops = []
         for i in range(n):
             capx[i] = tgx[('vin', i)] - 1100
-            . % LayoutInstance(ref=Cmim(l=self.cu_l * (2 ** i), w=self.cu_w).layout,
-                pos=Vec2I(capx[i], YC), orientation=R0)
+            tops.append(capcol(capx[i], 2 ** i))
         capx['d'] = tgx['vin_d'] - 1100
-        . % LayoutInstance(ref=Cmim(l=self.cu_l, w=self.cu_w).layout,
-            pos=Vec2I(capx['d'], YC), orientation=R0)
+        tops.append(capcol(capx['d'], 1))
+        # One vx TopMetal1 plate over the whole array (all top plates are vx; a
+        # single shape avoids TopMetal1 same-net spacing between column straps).
+        . % LayoutRect(layer=TM1, rect=Rect4I(capx[0], YC, capx['d'] + UW, max(tops)))
 
         # Tgate pin centres for a cell at (X, 0):
         def aP(x):   return (x + 150, 2980)

@@ -40,9 +40,10 @@ the result on `code[n-1..0]` is valid.
 
 ## How it works
 
-* **CapDac** (`cdac.ord`) — binary-weighted MIM-capacitor array (`Cmim`, weight
-  `2**i` via the `m` multiplier) plus a dummy unit cap, and transmission-gate
-  bottom-plate switches. Doubles as the sample-and-hold. Because `Vref = VDD`,
+* **CapDac** (`cdac.ord`) — binary-weighted MIM-capacitor array built as a
+  *matched array of identical unit caps* (bit `i` = `2**i` units in parallel, so
+  the weights track as an exact device-count ratio) plus a dummy unit cap, with
+  transmission-gate bottom-plate switches. Doubles as the sample-and-hold. Because `Vref = VDD`,
   the digital bit signals drive the bottom plates directly (through a switch that
   opens during sampling). Charge conservation gives
   `vx = vcm - vin + (code / 2**n)·Vref`.
@@ -135,12 +136,13 @@ rule set) and LVS-clean (see `tests/test_sar_adc.py`):
   device PCells; the two output-buffer inverters are placed as foundry `Inv`
   instances and wired in with `ordec.layout.SRouter`.
 * **`CapDac`** — a hand layout (`cdac.ord`) of the MIM-capacitor array and its
-  transmission-gate switches. Each bit is binary-weighted by capacitor *length*
-  (one `m=1` MIM cap per bit) rather than the `m` multiplier, because the `Cmim`
-  PCell layout supports only `m=1`. The cap bottom plates (Metal5) drop onto the
-  switch `b` pins through Metal2→Metal5 stacks; the top plates join on a
-  TopMetal1 `vx` bus; the digital control and supply nets run on Metal3 buses
-  over the switch row.
+  transmission-gate switches. Each bit is a *matched array of identical unit caps*
+  (bit `i` = `2**i` `m=1` units stacked in its column — the `Cmim` PCell supports
+  only `m=1`), so the binary weights track as an exact device-count ratio rather
+  than by scaling one cap's dimensions; this is what keeps INL/DNL accurate over
+  process gradients. A per-column Metal5 strap ties each bit's unit bottom plates
+  to its `bp[i]`; one TopMetal1 plate ties all top plates to `vx`; the digital
+  control and supply nets run on Metal3 buses over the switch row.
 
 **`SarAdc` top level** (`sar_adc.ord`) — **DRC-clean and LVS-match.** It places all
 four sub-blocks (`CapDac`, `Comparator`, `SarLogic`, sample inverter) and routes the
