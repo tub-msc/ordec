@@ -1,0 +1,252 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Binary-weighted charge-redistribution capacitive DAC (CDAC) for the SAR ADC.
+
+The CDAC doubles as the sample-and-hold network. It is built from IHP SG13G2
+MIM capacitors (ordec.lib.ihp130.Cmim) and transmission-gate bottom-plate
+switches (tgate.Tgate).
+
+Array (N bits): one binary-weighted capacitor per bit (weight 2**i unit caps
+via the Cmim ``m`` multiplier) plus one unit "dummy" capacitor, so the total
+weight is 2**N units. All top plates join the floating node ``vx`` that drives
+the comparator.
+
+Operation (reference voltage Vref = VDD):
+
+  * Sample phase (sample=1): the top plate is shorted to vcm through a reset
+    switch and every bottom plate is driven to vin. Charge Q = Ctot*(vcm - vin)
+    is stored.
+  * Convert phase (sample=0): the reset switch opens (vx floats) and each bit's
+    bottom plate is driven by its digital control dac[i] (0 -> GND, 1 -> Vref).
+    Charge conservation gives
+
+        vx = vcm - vin + D*Vref,     D = sum(dac[i]*2**i) / 2**N
+
+    so the comparator, comparing vx against vcm, effectively tests vin against
+    D*Vref -- exactly the SAR search.
+
+Because Vref = VDD, the digital bit signals can drive the bottom plates directly
+through a transmission gate (closed only during convert); no extra reference
+multiplexing logic is required. ``r_bleed`` gives the otherwise floating top
+plate a DC path for ngspice; it is many orders of magnitude too slow to disturb
+the conversion.
+"""
+
+from ordec.core import *
+from ordec.lib.ihp130 import Cmim, SG13G2
+from ordec.layout import SRouter
+from .tgate import Tgate
+
+cell CapDac:
+    n    = Parameter(int, default=4)    #: resolution in bits
+    cu_l = Parameter(R, default=5u)     #: unit-capacitor length
+    cu_w = Parameter(R, default=5u)     #: unit-capacitor width
+
+    viewgen symbol -> Symbol:
+        inout vx:       .align=East   # top plate -> comparator
+        input vin:      .align=West   # sampled input
+        input vcm:      .align=West   # common-mode / reset level
+        input sample:   .align=North  # 1 = sample, 0 = convert
+        input sample_n: .align=South  # complement of sample
+        inout vdd:      .align=North
+        inout vss:      .align=South
+
+        path dac
+        for i in range(self.n):
+            input dac[i]: .align=West  # per-bit bottom-plate control (0/VDD)
+
+    viewgen schematic -> Schematic:
+        # vx runs along the top; supplies/controls enter from the left; the
+        # per-bit cap + switch columns are spread along the x-axis with the dac
+        # control ports entering from the bottom.
+        port vx:       .align=South; .pos=(24, 42)
+        port vin:      .align=East;  .pos=(8, 9)
+        port vcm:      .align=East;  .pos=(8, 36)
+        port sample:   .align=East;  .pos=(8, 19)
+        port sample_n: .align=East;  .pos=(8, 18)
+        port vdd:      .align=East;  .pos=(8, 40)
+        port vss:      .align=East;  .pos=(8, 8)
+
+        path dac
+        for i in range(self.n):
+            port dac[i]: .align=North; .pos=(32 + 24*i, 10)
+
+        vdd.auto_wire = False
+        vss.auto_wire = False
+        #sample.auto_wire = False
+        #sample_n.auto_wire = False
+        #vx.auto_wire = False
+        #vin.auto_wire = False
+        #vcm.auto_wire = False
+
+        # Top-plate reset switch: shorts vx to vcm during sample, then opens so
+        # the top plate floats during convert (held by the capacitor array).
+        Tgate t_rst:
+            .pos=(20, 34)
+            .a -- vx; .b -- vcm; .en -- sample; .en_n -- sample_n
+            .vdd -- vdd; .vss -- vss
+            .orientation = MY
+
+        # Binary-weighted bit capacitors with their bottom-plate switches:
+        path cap, bp, t_vin, t_dac
+        for i in range(self.n):
+            net bp[i]
+            col = 24 * i
+
+            # Binary weight 2**i via the length (C scales with l*w), so each bit
+            # is a single m=1 MIM cap -- the Cmim PCell layout supports only m=1,
+            # and length-weighting keeps one layoutable cap per bit.
+            Cmim cap[i]:
+                .pos=(24 + col, 22)
+                .p -- vx; .m -- bp[i]
+                .$m = 1; .$l = self.cu_l * (2 ** i); .$w = self.cu_w
+
+            Tgate t_vin[i]:
+                .pos=(22 + col, 12)
+                .a -- vin; .b -- bp[i]; .en -- sample; .en_n -- sample_n
+                .vdd -- vdd; .vss -- vss
+                .orientation = West
+
+            Tgate t_dac[i]:
+                .pos=(34 + col, 12)
+                .a -- dac[i]; .b -- bp[i]; .en -- sample_n; .en_n -- sample
+                .vdd -- vdd; .vss -- vss
+                .orientation = West
+        # Dummy unit capacitor: vin while sampling, GND while converting.
+        net bp_d
+        cold = 24 * self.n
+        Cmim cap_d:
+            .pos=(24 + cold, 22)
+            .p -- vx; .m -- bp_d; .$m = 1; .$l = self.cu_l; .$w = self.cu_w
+        Tgate t_vin_d:
+            .pos=(22 + cold, 12)
+            .a -- vin; .b -- bp_d; .en -- sample; .en_n -- sample_n
+            .vdd -- vdd; .vss -- vss
+            .orientation = West
+        Tgate t_gnd_d:
+            .pos=(34 + cold, 12)
+            .a -- vss; .b -- bp_d; .en -- sample_n; .en_n -- sample
+            .vdd -- vdd; .vss -- vss
+            .orientation = West
+
+    viewgen layout -> Layout:
+        # Hand layout: a row of transmission-gate switches (Metal1 cells) along
+        # the bottom, the binary-weighted (length-weighted) MIM caps in a row
+        # above. Each cap bottom plate (Metal5) drops onto its bit's two switch
+        # ``b`` pins via a Metal2->Metal5 stack; the top plates join on the vx
+        # TopMetal1 bus (hand-placed TopVia1, since TopVia1 = 0.42 um and the
+        # TopMetal1 min width is 1.64 um, far above the default router's vias).
+        # The digital control (sample/sample_n) and supply (vin/vdd/vss) nets run
+        # on Metal3 buses over the row, reached by short Metal1->Metal3 risers.
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+        L1 = layers.Metal1; M2 = layers.Metal2; M3 = layers.Metal3
+        M5 = layers.Metal5; TM1 = layers.TopMetal1; TV1 = layers.TopVia1
+        n = self.n
+        TGP = 3300   # within-pair switch pitch (>=620 nm n-well spacing, NW.b)
+        BP  = 7000   # per-bit pitch (keeps the 6.2 um-wide caps apart)
+        YC  = 11000  # cap row y
+
+        # ---- switch + cap placement ----
+        tgx = {'rst': 0}
+        x0 = 3600
+        for i in range(n):
+            tgx[('vin', i)] = x0 + i * BP
+            tgx[('dac', i)] = x0 + i * BP + TGP
+        xd = x0 + n * BP
+        tgx['vin_d'] = xd; tgx['gnd_d'] = xd + TGP
+        for k, xx in tgx.items():
+            . % LayoutInstance(ref=Tgate().layout, pos=Vec2I(xx, 0), orientation=R0)
+        capx = {}
+        for i in range(n):
+            capx[i] = tgx[('vin', i)] - 1100
+            . % LayoutInstance(ref=Cmim(l=self.cu_l * (2 ** i), w=self.cu_w).layout,
+                pos=Vec2I(capx[i], YC), orientation=R0)
+        capx['d'] = tgx['vin_d'] - 1100
+        . % LayoutInstance(ref=Cmim(l=self.cu_l, w=self.cu_w).layout,
+            pos=Vec2I(capx['d'], YC), orientation=R0)
+
+        # Tgate pin centres for a cell at (X, 0):
+        def aP(x):   return (x + 150, 2980)
+        def bP(x):   return (x + 660, 2980)
+        def enP(x):  return (x + 405, -350)
+        def ennP(x): return (x + 405, 6310)
+        def vddP(x): return (x - 850, 4780)
+        def vssP(x): return (x - 850, 1180)
+
+        M4 = layers.Metal4
+        xbl = -2200; xbr = tgx['gnd_d'] + 400      # supply-bus x span
+        xcl = -400;  xcr = tgx['gnd_d'] + 2600     # control-seg x span
+
+        sr = SRouter(SG13G2().default_routing_spec)
+        def riser(px, py, by):
+            # M1->M3 via stack; only draw an M2 wire when the bus is at a
+            # different y (a same-y riser uses the via-landing rect directly,
+            # which already meets Metal2 min area / enclosure).
+            sr.move(L1, (px, py)); sr.layer(M2)
+            if py != by:
+                sr.wire_y(by)
+            sr.layer(M3)
+        def mpad(x, y):
+            return . % LayoutRect(layer=L1, rect=Rect4I(x-160, y-160, x+160, y+160))
+
+        # ---- bottom plates bp[i]/bp_d: join the bit's two b-pins (Metal2 over
+        # the dac a-bar) and stack to the cap Metal5 plate. Pads enclose the via.
+        bp_pairs = [(tgx[('vin', i)], tgx[('dac', i)]) for i in range(n)]
+        bp_pairs.append((tgx['vin_d'], tgx['gnd_d']))
+        for (xv, xdc) in bp_pairs:
+            mpad(xv + 660, 2980); mpad(xdc + 660, 2980)
+            sr.move(L1, bP(xdc))
+            sr.layer(M2); sr.wire_x(xv + 660)
+            sr.push(); sr.layer(L1); sr.pop()
+            # rise on Metal4 (clear of the en_n Metal2 risers), then to Metal5
+            sr.layer(M4); sr.wire_y(YC + 200); sr.layer(M5)
+
+        # ---- vx: TopMetal1 bus over the cap top plates + a hand TopVia1 stack
+        # up from t_rst.a (which is also the vx pin). ----
+        . % LayoutRect(layer=TM1, rect=Rect4I(xbl, YC + 1000, capx['d'] + 5020, YC + 2640))
+        mpad(150, 2980).create_pin(self.symbol.vx)
+        sr.move(L1, (150, 2980)); sr.layer(M5); sr.wire_y(YC + 1820)
+        . % LayoutRect(layer=M5,  rect=Rect4I(150-820, YC+1820-820, 150+820, YC+1820+820))
+        . % LayoutRect(layer=TV1, rect=Rect4I(150-210, YC+1820-210, 150+210, YC+1820+210))
+
+        # ---- Metal3 supply buses + risers ----
+        for by in (1180, 2300, 4780):                 # vss, vin, vdd
+            . % LayoutRect(layer=M3, rect=Rect4I(xbl, by-150, xbr, by+150))
+        for k, xx in tgx.items():
+            riser(*vssP(xx), 1180)
+            riser(*vddP(xx), 4780)
+        for k in [('vin', i) for i in range(n)] + ['vin_d']:
+            mpad(tgx[k]+150, 2300); riser(tgx[k]+150, 2300, 2300)
+        mpad(tgx['gnd_d']+150, 1180); riser(tgx['gnd_d']+150, 1180, 1180)
+
+        # ---- Metal3 control buses (sample/sample_n each have a bottom + top
+        # segment joined by a Metal2 link past the right end) + risers ----
+        for sy in (-1300, 7600, -1900, 8200):
+            . % LayoutRect(layer=M3, rect=Rect4I(xcl, sy-150, xcr, sy+150))
+        sr.move(M3, (tgx['gnd_d']+1600, -1300)); sr.layer(M2); sr.wire_y(7600); sr.layer(M3)
+        sr.move(M3, (tgx['gnd_d']+2200, -1900)); sr.layer(M2); sr.wire_y(8200); sr.layer(M3)
+        ctrl = [('rst', -1300, 8200)]
+        for i in range(n):
+            ctrl.append((('vin', i), -1300, 8200))
+            ctrl.append((('dac', i), -1900, 7600))
+        ctrl += [('vin_d', -1300, 8200), ('gnd_d', -1900, 7600)]
+        for (k, en_by, enn_by) in ctrl:
+            riser(*enP(tgx[k]), en_by)
+            riser(*ennP(tgx[k]), enn_by)
+
+        # ---- remaining pins (Metal1 pads) ----
+        # vcm is t_rst.b; expose it high on the b-bar so a top-level via stack on
+        # it stays clear (>=0.69 um) of the vx via stack on the adjacent a-bar.
+        mpad(660, 5600).create_pin(self.symbol.vcm)        # t_rst.b
+        # Expose dac[i] high on the t_dac a-bar, clear of the bottom-plate Metal2
+        # join at y=2980 -- else a top-level via stack here shorts dac<->bp.
+        for i in range(n):
+            mpad(tgx[('dac', i)]+150, 5500).create_pin(self.symbol.dac[i])
+        mpad(-2000, 2300).create_pin(self.symbol.vin);  riser(-2000, 2300, 2300)
+        mpad(-2000, 4780).create_pin(self.symbol.vdd);  riser(-2000, 4780, 4780)
+        mpad(-2000, 1180).create_pin(self.symbol.vss);  riser(-2000, 1180, 1180)
+        mpad(-300, -1300).create_pin(self.symbol.sample);    riser(-300, -1300, -1300)
+        mpad(-300, -1900).create_pin(self.symbol.sample_n);  riser(-300, -1900, -1900)

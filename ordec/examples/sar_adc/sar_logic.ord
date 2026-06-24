@@ -1,0 +1,153 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Successive-approximation register (SAR) control logic, built from the IHP
+SG13G2 standard cells.
+
+The controller runs a textbook binary search, MSB first:
+
+  * A shift-register *sequencer* of N+2 flip-flops carries a one-hot token.
+    Reset presets the token into stage 0 (the sample state) and clears the rest;
+    every clock shifts the token one stage toward "done".
+
+        stage s[0]        -> sample phase          (sample = s[0])
+        stage s[m], m=1..N -> bit (N-m) on trial
+        stage s[N+1]      -> conversion finished    (done = s[N+1])
+
+  * For each bit k there is a load-enable *code register*. While its bit is on
+    trial (sequencer in state s[N-k]) a 2:1 mux feeds the comparator output into
+    the register; otherwise the register recirculates. So the comparator
+    decision for bit k is latched on the clock edge that ends its trial.
+
+  * The DAC control for bit k is ``dac[k] = code[k] OR s[N-k]``: the bit is
+    forced to 1 while on trial, then holds the decided value afterwards.
+
+Interface: clk, rst (active high), cmp (comparator out) -> sample, done,
+dac[0..N-1] (to the CDAC) and code[0..N-1] (the registered result).
+A full conversion takes N+2 clocks after reset is released.
+"""
+
+from ordec.core import *
+from .stdcell_lib import extlib
+from .pnr import place_and_route
+from ordec.lib.ihp130 import run_drc, run_lvs
+
+# Standard cells come straight from the IHP sg13g2 library (LEF symbol, GDS
+# layout, SPICE schematic) -- no hand reimplementation. Foundry pin names are
+# used as-is (A/B/Y, mux X/A0/A1/S, dff D/CLK/RESET_B/Q/Q_N).
+Inv  = extlib["sg13g2_inv_1"]
+Mux2 = extlib["sg13g2_mux2_1"]
+Or2  = extlib["sg13g2_or2_1"]
+Dff  = extlib["sg13g2_dfrbp_1"]
+
+cell SarLogic:
+    n = Parameter(int, default=4)   #: resolution in bits
+
+    viewgen symbol -> Symbol:
+        input clk:     .align=West
+        input rst:     .align=West
+        input cmp:     .align=West
+        output sample: .align=East
+        output done:   .align=East
+        inout vdd:     .align=North
+        inout vss:     .align=South
+
+        path dac, code
+        for i in range(self.n):
+            output dac[i]:  .align=East
+            output code[i]: .align=East
+
+    viewgen schematic -> Schematic:
+        # Inputs on the left, outputs on the right. The sequencer runs along the
+        # top; the per-bit slices (mux -> code register -> OR) stack below it,
+        # one generously-spaced row per bit.
+        port vdd:  .align=East; .pos=(0, 58)
+        port vss:  .align=East; .pos=(0, 2)
+        port rst:  .align=East; .pos=(0, 52)
+        port clk:  .align=East; .pos=(0, 48)
+        port cmp:  .align=East; .pos=(0, 24)
+        port sample: .align=South; .pos=(28, 62)
+        port done:   .align=South; .pos=(28 + 18*(self.n+1), 62)
+
+        path dac, code
+        for i in range(self.n):
+            port code[i]: .align=West; .pos=(120, 40 - 16*i)
+            port dac[i]:  .align=West; .pos=(120, 33 - 16*i)
+
+        net rst_n
+        path s, mux_out, qn_seq, qn_code   # net buses
+        path seq, mux, codereg, org        # instance buses
+        # Internal sequencer taps s[1..n]; stage 0 drives `sample`, the final
+        # stage drives `done`.
+        for i in range(1, self.n + 1):
+            net s[i]
+        for i in range(self.n + 2):
+            net qn_seq[i]    # unused q_n of each sequencer flip-flop
+        for i in range(self.n):
+            net mux_out[i]
+            net qn_code[i]   # unused q_n of each code flip-flop
+
+        vdd.auto_wire = False
+        vss.auto_wire = False
+        clk.auto_wire = False
+        rst.auto_wire = False
+        rst_n.auto_wire = False
+        cmp.auto_wire = False
+
+        Inv inv_rst: .pos=(6,48); .A -- rst; .Y -- rst_n; .VDD -- vdd; .VSS -- vss
+
+        # --- sequencer: shift register carrying the one-hot token ---
+        # The foundry dfrbp has only an async RESET_B (clear), no preset. To start
+        # the token at stage 0 the moment reset asserts (the reset pulse is too
+        # short to span a clock edge), stage 0 is *cleared* by reset and its Q_N
+        # drives `sample`: Q_N=1 while reset holds, then D=1 is clocked in so Q_N
+        # falls to 0 -- identical to the old preset behaviour. Stages 1..N+1 are
+        # cleared by reset (RESET_B=rst_n) and shift the token; the last drives `done`.
+        Dff seq0:
+            .pos=(28,48)
+            .D -- vdd; .CLK -- clk; .RESET_B -- rst_n
+            .Q -- qn_seq[0]; .Q_N -- sample
+            .VDD -- vdd; .VSS -- vss
+        for i in range(1, self.n + 2):
+            d_in  = sample if i == 1 else s[i-1]
+            q_out = done   if i == (self.n + 1) else s[i]
+            Dff seq[i]:
+                .pos=(28 + 18*i, 48)
+                .D -- d_in; .CLK -- clk; .RESET_B -- rst_n
+                .Q -- q_out; .Q_N -- qn_seq[i]
+                .VDD -- vdd; .VSS -- vss
+
+        # --- per-bit load-enable code registers + DAC-control OR gates ---
+        for k in range(self.n):
+            yk = 36 - 16*k
+
+            # 2:1 mux: capture comparator while on trial (S=1 -> A1), else
+            # recirculate the stored code bit (S=0 -> A0).
+            Mux2 mux[k]:
+                .pos=(34, yk)
+                .A1 -- cmp; .A0 -- code[k]; .S -- s[self.n - k]; .X -- mux_out[k]
+                .VDD -- vdd; .VSS -- vss
+
+            Dff codereg[k]:
+                .pos=(60, yk)
+                .D -- mux_out[k]; .CLK -- clk; .RESET_B -- rst_n
+                .Q -- code[k]; .Q_N -- qn_code[k]
+                .VDD -- vdd; .VSS -- vss
+
+            # dac[k] = code[k] OR (bit k currently on trial)
+            Or2 org[k]:
+                .pos=(90, yk)
+                .A -- code[k]; .B -- s[self.n - k]; .X -- dac[k]
+                .VDD -- vdd; .VSS -- vss
+
+    viewgen layout -> Layout:
+        return place_and_route(self)
+
+    @generate
+    def drc(self) -> DrcReport:
+        return run_drc(self.layout)
+
+    @generate
+    def lvs(self) -> LvsReport:
+        return run_lvs(self.layout, self.symbol)

@@ -1,0 +1,136 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+CMOS transmission gate (analog switch) for the SAR ADC.
+
+The logic standard cells now come straight from the IHP sg13g2 library via the
+ExtLibrary (see stdcell_lib.py). This hand-crafted transmission gate is the one
+custom cell -- the foundry library has no transmission-gate macro -- and is used
+as the capacitor-DAC sampling switch.
+"""
+
+from ordec.core import *
+from ordec.lib.ihp130 import Nmos, Pmos, Ntap, Ptap, SG13G2
+
+L   = 130n    # channel length (PDK minimum)
+WSW = 2u      # switch / transmission-gate width
+
+
+cell Tgate:
+    """
+    CMOS transmission gate (analog switch).
+
+    Conducts between `a` and `b` when en=1 / en_n=0. Both control polarities
+    must be supplied. vdd/vss connect the device bulks.
+    """
+    viewgen symbol -> Symbol:
+        inout a:    .align=West
+        inout b:    .align=East
+        input en:   .align=North
+        input en_n: .align=South
+        inout vdd:  .align=North
+        inout vss:  .align=South
+
+    viewgen schematic -> Schematic:
+        port a:    .align=East;  .pos=(0,10)
+        port b:    .align=West;  .pos=(24,10)
+        port en:   .align=South; .pos=(10,24)
+        port en_n: .align=North; .pos=(10,-6)
+        port vdd:  .align=East;  .pos=(0,22)
+        port vss:  .align=East;  .pos=(0,-4)
+
+        Nmos n: .pos=(8,2);  .d -- a; .s -- b; .g -- en;   .b -- vss; .$w=WSW; .$l=L
+        Pmos p: .pos=(8,16); .d -- a; .s -- b; .g -- en_n; .b -- vdd; .$w=WSW; .$l=L
+
+    viewgen layout -> Layout:
+        # Hand-crafted: the NMOS and PMOS sit in one stacked column with their
+        # source/drain bridged by two vertical Metal1 bars (a on the left column,
+        # b on the right). The two gates are independent, so each is contacted
+        # *outside* the a/b bars -- the NMOS gate below the device, the PMOS gate
+        # above -- which keeps the gate Metal1 clear of the rails (no Metal2
+        # needed). Bulk ties: a Ptap to vss (substrate) and an Ntap to vdd (well).
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        Nmos(w=WSW, l=L) n:
+            ! .pos == (0, 0)
+        Pmos(w=WSW, l=L) p:
+            ! .activ.lx == n.activ.lx
+            ! .activ.ly == n.activ.uy + 1600
+
+        Ptap(l=0.7u, w=WSW) ptap:
+            ! .activ.cy == n.activ.cy
+            ! .activ.ux + 500 == n.activ.lx
+        Ntap(l=0.7u, w=WSW) ntap:
+            ! .activ.cy == p.activ.cy
+            ! .activ.ux + 500 == p.activ.lx
+
+        # a / b: vertical Metal1 bars bridging the shared source/drain columns.
+        LayoutRect m1_a:
+            .layer = layers.Metal1
+            ! .contains(n.sd[0].rect)
+            ! .contains(p.sd[0].rect)
+            .create_pin(self.symbol.a)
+        LayoutRect m1_b:
+            .layer = layers.Metal1
+            ! .contains(n.sd[1].rect)
+            ! .contains(p.sd[1].rect)
+            .create_pin(self.symbol.b)
+
+        # en: contact the NMOS gate poly in a head *well below* the device. The
+        # gate sits between the a and b Metal1 bars, so the contact Metal1 must
+        # clear them by >= 0.18 um (M1.b); a long GatPoly head carries the gate
+        # down to a contact whose Metal1 is entirely below the bars. The head is
+        # 300 wide (>= 70 nm enclosure of the 160 Cont, Cnt.d) and starts 100 nm
+        # clear of the Activ (Gat.d).
+        anonymous LayoutRect pext_en:
+            .layer = layers.GatPoly
+            ! .size == (300, 540)
+            ! .cx == n.poly[0].cx
+            ! .uy == n.activ.ly - 100
+        LayoutRect cont_en:
+            .layer = layers.Cont
+            ! .size == (160, 160)
+            ! .cx == pext_en.cx
+            ! .ly == pext_en.ly + 70
+        LayoutRect m1_en:
+            .layer = layers.Metal1
+            ! .size == (300, 340)
+            ! .cx == cont_en.cx
+            ! .uy == cont_en.uy + 50
+            .create_pin(self.symbol.en)
+
+        # en_n: contact the PMOS gate poly in a head well above the device.
+        anonymous LayoutRect pext_enn:
+            .layer = layers.GatPoly
+            ! .size == (300, 540)
+            ! .cx == p.poly[0].cx
+            ! .ly == p.activ.uy + 100
+        LayoutRect cont_enn:
+            .layer = layers.Cont
+            ! .size == (160, 160)
+            ! .cx == pext_enn.cx
+            ! .uy == pext_enn.uy - 70
+        LayoutRect m1_enn:
+            .layer = layers.Metal1
+            ! .size == (300, 340)
+            ! .cx == cont_enn.cx
+            ! .ly == cont_enn.ly - 50
+            .create_pin(self.symbol.en_n)
+
+        # Bulk taps -> supply pins.
+        LayoutRect m1_vss:
+            .layer = layers.Metal1
+            ! .contains(ptap.m1.rect)
+            .create_pin(self.symbol.vss)
+        LayoutRect m1_vdd:
+            .layer = layers.Metal1
+            ! .contains(ntap.m1.rect)
+            .create_pin(self.symbol.vdd)
+
+        # n-well around the PMOS and its bulk tap.
+        LayoutRect nwell:
+            .layer = layers.NWell
+            ! .contains(p.nwell.rect)
+            ! .contains(ntap.nwell.rect)
