@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Synthetic cells that exercise the place-and-route engine (pnr.py) on circuit
+shapes deliberately different from SarLogic, so we can check that the engine
+generalises rather than being tuned to one netlist:
+
+  * InvChain  -- n inverters in series (long linear dataflow, one net per stage).
+  * DffArray  -- n flip-flops with a high-fan-out clock and reset (wide cells,
+                 nets that touch every instance).
+
+Each gets its layout straight from ``place_and_route`` and is DRC/LVS-checked in
+tests/test_pnr.py. These are structural stress tests (LVS checks connectivity,
+not logical function), so e.g. the chain's logic value is irrelevant.
+"""
+
+from ordec.core import *
+from .stdcell_lib import extlib
+from .pnr import place_and_route
+
+Inv = extlib["sg13g2_inv_1"]
+Dff = extlib["sg13g2_dfrbp_1"]
+
+
+cell InvChain:
+    """n inverters in series: a -> inv0 -> inv1 -> ... -> y."""
+    n = Parameter(int, default=8)
+
+    viewgen symbol -> Symbol:
+        input a:   .align=West
+        output y:  .align=East
+        inout vdd: .align=North
+        inout vss: .align=South
+
+    viewgen schematic -> Schematic:
+        port a:   .align=East; .pos=(0, 10)
+        port y:   .align=West; .pos=(20 + 8 * self.n, 10)
+        port vdd: .align=East; .pos=(0, 18)
+        port vss: .align=East; .pos=(0, 2)
+
+        path inv, nd
+        for i in range(self.n - 1):
+            net nd[i]
+        for i in range(self.n):
+            src = a if i == 0 else nd[i - 1]
+            dst = y if i == self.n - 1 else nd[i]
+            Inv inv[i]:
+                .pos = (10 + 8 * i, 10)
+                .A -- src; .Y -- dst
+                .VDD -- vdd; .VSS -- vss
+
+    viewgen layout -> Layout:
+        return place_and_route(self)
+
+
+cell DffArray:
+    """n flip-flops sharing clk and rst (high fan-out), with per-bit d[i]/q[i]."""
+    n = Parameter(int, default=4)
+
+    viewgen symbol -> Symbol:
+        input clk: .align=West
+        input rst: .align=West
+        inout vdd: .align=North
+        inout vss: .align=South
+        path d, q
+        for i in range(self.n):
+            input d[i]:  .align=West
+            output q[i]: .align=East
+
+    viewgen schematic -> Schematic:
+        port clk: .align=East; .pos=(0, 48)
+        port rst: .align=East; .pos=(0, 44)
+        port vdd: .align=East; .pos=(0, 52)
+        port vss: .align=East; .pos=(0, 2)
+        path d, q
+        for i in range(self.n):
+            port d[i]: .align=East; .pos=(0, 8 + 8 * i)
+            port q[i]: .align=West; .pos=(60, 8 + 8 * i)
+
+        path ff, qn
+        for i in range(self.n):
+            net qn[i]
+            Dff ff[i]:
+                .pos = (20, 8 + 8 * i)
+                .D -- d[i]; .CLK -- clk; .RESET_B -- rst
+                .Q -- q[i]; .Q_N -- qn[i]
+                .VDD -- vdd; .VSS -- vss
+
+    viewgen layout -> Layout:
+        return place_and_route(self)
