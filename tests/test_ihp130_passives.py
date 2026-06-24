@@ -15,7 +15,7 @@ from .lib.thinwrap import thin_wrapper_cell
 def test_resistor_lvs_clean(kind):
     cell = thin_wrapper_cell(kind())
     lvs_report = ihp130.run_lvs(cell.layout, cell.symbol, use_tempdir=True)
-    assert lvs_report.nresults() == 0
+    assert lvs_report.clean()
 
 
 @pytest.mark.parametrize("kind", [ihp130.Rsil, ihp130.Rppd, ihp130.Rhigh])
@@ -34,7 +34,7 @@ def test_resistor_drc_clean(kind):
 def test_cmim_lvs_clean():
     cell = thin_wrapper_cell(ihp130.Cmim())
     lvs_report = ihp130.run_lvs(cell.layout, cell.symbol, use_tempdir=True)
-    assert lvs_report.nresults() == 0
+    assert lvs_report.clean()
 
 
 def test_cmim_drc_clean():

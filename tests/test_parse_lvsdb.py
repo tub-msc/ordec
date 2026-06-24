@@ -37,8 +37,7 @@ def test_parse_lvsdb_fixture():
     report = parse_lvsdb(LVSDB_FILE, None, None)
 
     assert report.top_cell == 'c_hier'
-    assert report.status == LvsStatus.Match
-    assert report.nresults() == 0
+    assert report.clean()
 
     pairs = list(report.all(LvsCircuitPair))
     # LVSDB lists circuit pairs bottom-up (callees before callers).

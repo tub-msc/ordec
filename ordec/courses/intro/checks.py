@@ -196,7 +196,7 @@ def gen_lesson3(g):
             "This check runs KLayout LVS and DRC, which can take a while."
         )
         try:
-            lvs_clean = cell.lvs.status == LvsStatus.Match
+            lvs_clean = cell.lvs.clean()
             lvs_instructions = "Layout-versus-schematic comparison " + (
                 "succeeded." if lvs_clean else "failed: the extracted "
                 "layout netlist does not match the schematic.")

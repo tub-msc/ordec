@@ -68,7 +68,7 @@ def test_lvs_hier_vs_hier():
     report = c.lvs_report
 
     assert report.status == LvsStatus.Match
-    assert report.nresults() == 0
+    assert report.clean()
     assert report.top_cell == 'c_hier'
     assert report.ref_layout == c.layout
     assert report.ref_schematic == c.schematic
@@ -141,7 +141,9 @@ def check_flattened_report(cell, top_name, expected_devices, warn_nets):
     report = cell.lvs_report
 
     assert report.status == LvsStatus.Match
-    assert report.nresults() == 0
+    nresults = sum(1 for item in report.all(LvsItem)
+        if item.status not in (LvsStatus.Match, LvsStatus.MatchWarning))
+    assert nresults == 0
     assert report.top_cell == top_name
 
     pairs = pairs_of(report)

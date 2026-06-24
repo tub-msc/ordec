@@ -1973,10 +1973,8 @@ class LvsReport(SubgraphRoot):
     top_cell = Attr(str)
     status = Attr(LvsStatus)
 
-    def nresults(self) -> int:
-        """Count total LvsItems with mismatch status (warnings not counted)."""
-        return sum(1 for item in self.all(LvsItem)
-                   if item.status not in (LvsStatus.Match, LvsStatus.MatchWarning))
+    def clean(self):
+        return self.status in (LvsStatus.Match, LvsStatus.MatchWarning)
 
     def webdata(self):
         from ..layout.lvs import webdata

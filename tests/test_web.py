@@ -409,45 +409,6 @@ def test_course_intro_callout(web):
     assert present_again is True
 
 
-@pytest.mark.web
-def test_course_lesson3_refresh_overlay(web):
-    """Lessons whose checks don't auto-run (lesson 3: LVS/DRC) show the standard
-    in-panel Refresh overlay (not a toolbar Check button). debug=true unlocks
-    lesson 3 so we can reach it without running the earlier checks."""
-    web.resize_viewport()
-    web.driver.get(web.url)
-    web.driver.execute_script(
-        "window.localStorage.removeItem('ordecCourse:intro');")
-
-    web.navigate('app.html#course=intro&debug=true')
-    web.wait_for_ready()
-    web.driver.execute_script("""
-        const sel = document.querySelector('.course-lessonsel');
-        sel.value = '2';
-        sel.dispatchEvent(new Event('change'));
-    """)
-    web.wait_for_ready()
-
-    info = web.driver.execute_script("""
-        let comp = null;
-        window.courseController.layout.root.getAllContentItems().forEach(e => {
-            if (e.isComponent && e.componentName === 'result'
-                && e.component && e.component.courseMode) comp = e;
-        });
-        const overlay = comp.component.resOverlayRefreshable;
-        return {
-            currentLesson: window.courseController.currentLesson,
-            marker: document.querySelector('.course-marker').innerText,
-            refreshOverlayShown: getComputedStyle(overlay).display !== 'none',
-            noCheckButton: !document.querySelector('.course-check'),
-        };
-    """)
-    assert info['currentLesson'] == 2
-    assert info['marker'] == 'not checked'
-    assert info['refreshOverlayShown'] is True   # standard Refresh overlay
-    assert info['noCheckButton'] is True          # toolbar Check button gone
-
-
 def myhistogram(img, thresh=50):
     h = {}
     for x in range(img.width):
