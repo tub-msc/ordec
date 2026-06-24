@@ -1,0 +1,388 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Top-level successive-approximation-register (SAR) ADC.
+
+This cell closes the SAR feedback loop around the three subsystems that were
+each verified on their own:
+
+      vin --->|            |
+              |   CapDac   |---- vx (top plate) ----+
+   dac[ ] --->|  (S/H+DAC) |                        |
+              +------------+                        v
+                   ^                          +-----------+
+                   | dac[ ]                   | Comparator|  in_p = vcm
+                   |                cmp <------|  (static) |  in_n = vx
+              +----------+                    +-----------+
+   clk  ----->|          |                         |
+   rst  ----->| SarLogic |<------------- cmp -------+
+              |          |---- sample / done / code[ ]
+              +----------+
+
+The comparator (in_p = vcm, in_n = vx) outputs ``cmp = 1`` whenever the sampled
+input still exceeds the current DAC value, which is exactly the bit decision the
+SAR controller needs. ``sample_n`` is generated locally with one inverter.
+
+Reference voltage Vref = VDD, common mode vcm = VDD/2. A conversion is started
+by pulsing ``rst`` and completes N+2 clocks later, signalled by ``done``; the
+result appears on ``code[N-1..0]``.
+"""
+
+from ordec.core import *
+from ordec.lib.base import Gnd, Vdc, Vpwl, Vpulse
+from ordec.lib.ihp130 import SG13G2, run_drc, run_lvs
+from ordec.layout import SRouter
+from .stdcell_lib import extlib, lef_pin_rects
+from .comparator import Comparator
+from .cdac import CapDac
+from .sar_logic import SarLogic
+
+Inv = extlib["sg13g2_inv_1"]
+
+VDD = 1.2  # supply / reference voltage
+
+cell SarAdc:
+    n = Parameter(int, default=4)   #: resolution in bits
+
+    viewgen symbol -> Symbol:
+        input vin:   .align=West
+        input vcm:   .align=West
+        input clk:   .align=West
+        input rst:   .align=West
+        output done: .align=East
+        output vx:   .align=East   # DAC top-plate node, exposed for observability
+        inout vdd:   .align=North
+        inout vss:   .align=South
+
+        path code
+        for i in range(self.n):
+            output code[i]: .align=East
+
+    viewgen schematic -> Schematic:
+        port vin:  .align=East; .pos=(10,18)
+        port vcm:  .align=East; .pos=(10,19)
+        port clk:  .align=East; .pos=(10,8)
+        port rst:  .align=East; .pos=(10,9)
+        port done: .align=West; .pos=(55,9)
+        port vx:   .align=West; .pos=(55,25)
+        port vdd:  .align=East; .pos=(10,26)
+        port vss:  .align=East; .pos=(10,2)
+
+        path code
+        for i in range(self.n):
+            port code[i]: .align=West; .pos=(55, 11 + 2*i)
+
+        net cmp, sample, sample_n   # vx is created by its port statement above
+
+        vdd.auto_wire = False
+        vss.auto_wire = False
+
+        # Continuous-time comparator: cmp = 1 while vin still exceeds the DAC.
+        Comparator comp:
+            .pos=(36,18)
+            .in_p -- vcm; .in_n -- vx; .out -- cmp
+            .vdd -- vdd; .vss -- vss
+
+        # Local generation of sample_n.
+        Inv inv_s: .pos=(30,1); .orientation=MY;.A -- sample; .Y -- sample_n; .VDD -- vdd; .VSS -- vss
+
+        # Sample-and-hold + binary-weighted DAC.
+        CapDac(n=self.n) dac:
+            .pos=(20,16)
+            .vx -- vx; .vin -- vin; .vcm -- vcm
+            .sample -- sample; .sample_n -- sample_n
+            .vdd -- vdd; .vss -- vss
+
+        # SAR controller.
+        SarLogic(n=self.n) logic:
+            .pos=(44,6)
+            .clk -- clk; .rst -- rst; .cmp -- cmp
+            .sample -- sample; .done -- done
+            .vdd -- vdd; .vss -- vss
+
+        # DAC bit controls and registered result code.
+        path dacbit
+        for i in range(self.n):
+            net dacbit[i]
+            logic.dac[i] -- dacbit[i]
+            dac.dac[i] -- dacbit[i]
+            logic.code[i] -- code[i]
+
+    viewgen layout -> Layout:
+        # Top-level composition: place the four sub-blocks and route the ten
+        # inter-block nets on Metal4 horizontal trunks + Metal5 verticals in the
+        # channel between CapDac and SarLogic. Each block exposes its ports on its
+        # EDGE -- SarLogic's signals on Metal4 pads above its top rail and its
+        # supplies on the side power-ring straps (pnr.py edge-escape), CapDac's on
+        # its bottom edge -- so the parent only routes in the channel and never
+        # crosses a block interior. That edge interface is what makes the
+        # composition robust: a placement change cannot create a new over-cell
+        # short. DRC-clean + LVS-match, see tests/test_sar_adc.py.
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+        L1 = layers.Metal1; M4 = layers.Metal4; M5 = layers.Metal5
+        n = self.n
+
+        comp_cell = Comparator(); dac_cell = CapDac(n=n); logic_cell = SarLogic(n=n)
+
+        # Computed floorplan -- positions come from the blocks' own bounding boxes,
+        # so the placement adapts to n (verified at n=3 and n=4) without hand-tuned
+        # magic numbers:
+        #   * CapDac on top, its connection pins along its bottom edge;
+        #   * a horizontal Metal4 trunk band just below it (one trunk per routed
+        #     net), where all inter-block routing lives;
+        #   * SarLogic directly beneath the band, its escaped pins along its top
+        #     edge facing up;
+        #   * the Comparator to the left of CapDac, raised so every pin sits above
+        #     the band (it is Metal1-only, so the trunks pass over its body), and
+        #     as close to CapDac as non-overlap allows to keep the vx net short;
+        #   * the sample inverter just left of the Comparator, pins above the band.
+        def bbox(lay):
+            xs = []; ys = []
+            for r in lay.all(LayoutRect):
+                q = r.rect; xs += [q.lx, q.ux]; ys += [q.ly, q.uy]
+            return min(xs), min(ys), max(xs), max(ys)
+        cap = bbox(dac_cell.layout)
+        log = bbox(logic_cell.layout)
+        cmpb = bbox(comp_cell.layout)
+        ipr = [r for v in lef_pin_rects("sg13g2_inv_1").values() for r in v]
+        inv_x0 = min(r[0] for r in ipr); inv_w = max(r[2] for r in ipr) - inv_x0
+        inv_y0 = min(r[1] for r in ipr)
+
+        GAP = 900                            # generic block-to-band / block-to-block clearance
+        n_nets = n + 7                       # vx,vcm,cmp,sample,sample_n + n*dac + vdd,vss
+        band_top = cap[1] - GAP              # first (highest) trunk, just below CapDac
+        band_bot = band_top - 600 * (n_nets - 1)
+
+        POS = {'dac': (0, 0)}
+        POS['logic'] = (0, band_bot - GAP - log[3])                       # top edge below band
+        POS['comp'] = (cap[0] - GAP - cmpb[2], band_top + GAP - cmpb[1])  # left of CapDac, above band
+        POS['inv'] = (POS['comp'][0] + cmpb[0] - GAP - inv_w - inv_x0,    # left of Comparator
+                      band_top + GAP - inv_y0)                            # pins above band
+        . % LayoutInstance(ref=dac_cell.layout,   pos=Vec2I(*POS['dac']),   orientation=R0)
+        . % LayoutInstance(ref=comp_cell.layout,  pos=Vec2I(*POS['comp']),  orientation=R0)
+        . % LayoutInstance(ref=logic_cell.layout, pos=Vec2I(*POS['logic']), orientation=R0)
+        . % LayoutInstance(ref=Inv.layout,        pos=Vec2I(*POS['inv']),   orientation=R0)
+
+        def pinmap(blay, key):
+            ox, oy = POS[key]; m = {}
+            for lp in blay.all(LayoutPin):
+                r = lp.ref.rect
+                cx = int(ox + r.cx); cy = int(oy + r.cy)
+                # (x, y, on_metal4): SarLogic exposes some ports on Metal4, which
+                # the top level lands on directly instead of stacking up from M1.
+                m4 = 'Metal4' in lp.ref.layer.full_path_str()
+                m[lp.pin.full_path_str()] = (cx - cx % 10, cy - cy % 10, m4)
+            return m
+        D = pinmap(dac_cell.layout, 'dac')
+        C = pinmap(comp_cell.layout, 'comp')
+        S = pinmap(logic_cell.layout, 'logic')
+        ip = lef_pin_rects("sg13g2_inv_1")
+        def invpin(nm):
+            x0, y0, x1, y1 = ip[nm][0]
+            cx = POS['inv'][0] + (x0 + x1) // 2; cy = POS['inv'][1] + (y0 + y1) // 2
+            return (cx - cx % 10, cy - cy % 10, False)
+        I = {k: invpin(k) for k in ('A', 'Y', 'VDD', 'VSS')}
+        # Y is a tall pin: stack on it well clear of A's row so the two via
+        # stacks (sample / sample_n) do not collide.
+        I['Y'] = (I['Y'][0], POS['inv'][1] + 700, False)
+
+        sr = SRouter(SG13G2().default_routing_spec)
+        # Global Metal5 column allocator: each routed pin gets a unique column on
+        # a 700 nm grid (480 nm via landing + >=210 nm spacing), so the via
+        # stacks never clash; a pin is jogged to its column on Metal4 at the pin
+        # row, dropped on Metal5 to the net's Metal4 trunk, and met there.
+        used_cols = []
+        def col_for(px):
+            # keep the pin's own column when it is already clear (no needless
+            # jog); otherwise snap to the nearest free 700 nm grid column.
+            if all(abs(px - u) >= 700 for u in used_cols):
+                used_cols.append(px); return px
+            cand = round(px / 700) * 700
+            for d in range(120):
+                for c in (cand + d * 700, cand - d * 700):
+                    if all(abs(c - u) >= 700 for u in used_cols):
+                        used_cols.append(c); return c
+            used_cols.append(cand); return cand
+        def route(pts, ty, sym=None):
+            # Column per pin: a Metal4 edge pad keeps its own x and drops straight
+            # down (no jog/landing at the crowded block edge); a Metal1 pin gets a
+            # free 700 nm-grid column with a 300 nm landing. Each column drops on
+            # Metal5 to the net's Metal4 trunk at ty and ALWAYS vias onto it --
+            # including the first column (tx) -- so no pin is left floating.
+            cols = [None] * len(pts)
+            for i, (px, py, m4) in enumerate(pts):
+                if m4:
+                    used_cols.append(px); cols[i] = px
+            for i, (px, py, m4) in enumerate(pts):
+                if not m4:
+                    cols[i] = col_for(px)
+            tx = cols[0]; pad0 = None
+            for (px, py, m4), colx in zip(pts, cols):
+                if m4:
+                    sr.move(M4, (px, py))
+                else:
+                    pad = . % LayoutRect(layer=L1, rect=Rect4I(px-140, py-165, px+140, py+165))
+                    if pad0 is None:
+                        pad0 = pad
+                    sr.move(L1, (px, py)); sr.layer(M4)
+                    if colx != px:
+                        sr.wire_x(colx)
+                    . % LayoutRect(layer=M4, rect=Rect4I(colx-240, py-180, colx+240, py+180))
+                sr.layer(M5); sr.wire_y(ty)
+                sr.layer(M4)                  # via the column down onto the M4 trunk
+                if tx != colx:
+                    sr.wire_x(tx)
+            . % LayoutRect(layer=M4, rect=Rect4I(tx-240, ty-180, tx+240, ty+180))
+            if sym is not None and pad0 is not None:
+                pad0.create_pin(sym)
+        def expose(pt, sym):
+            # narrow-tall pad on the pin's own layer (clears the dense Metal1
+            # around interior block pins; lands on a Metal4 escape directly).
+            lyr = M4 if pt[2] else L1
+            (. % LayoutRect(layer=lyr, rect=Rect4I(pt[0]-100, pt[1]-230, pt[0]+100, pt[1]+230))).create_pin(sym)
+
+        # ---- routed inter-block nets (distinct Metal4 trunk y per net) ----
+        nets = [([D['vx'], C['in_n']], self.symbol.vx),
+                ([D['vcm'], C['in_p']], self.symbol.vcm),
+                ([C['out'], S['cmp']], None),
+                ([D['sample'], S['sample'], I['A']], None),
+                ([D['sample_n'], I['Y']], None)]
+        for i in range(n):
+            nets.append(([D[f'dac[{i}]'], S[f'dac[{i}]']], None))
+        nets.append(([D['vdd'], C['vdd'], S['vdd'], I['VDD']], self.symbol.vdd))
+        nets.append(([D['vss'], C['vss'], S['vss'], I['VSS']], self.symbol.vss))
+        for k, (pts, sym) in enumerate(nets):
+            route(pts, band_top - 600 * k, sym)
+
+        # ---- single-block port pins ----
+        expose(D['vin'], self.symbol.vin)
+        expose(S['clk'], self.symbol.clk)
+        expose(S['rst'], self.symbol.rst)
+        expose(S['done'], self.symbol.done)
+        for i in range(n):
+            expose(S[f'code[{i}]'], self.symbol.code[i])
+
+    @generate
+    def drc(self) -> DrcReport:
+        return run_drc(self.layout)
+
+    @generate
+    def lvs(self) -> LvsReport:
+        return run_lvs(self.layout, self.symbol)
+
+
+cell SarAdcTb:
+    """
+    Demonstration testbench: a staircase input is converted over several cycles.
+    The reset pulses (300 ns apart) start a new conversion each window; the input
+    steps during reset so it is settled before sampling. The report overlays the
+    input, the DAC search waveform and the reconstructed output staircase.
+    """
+    n = Parameter(int, default=4)
+
+    viewgen symbol -> Symbol:
+        pass
+
+    viewgen schematic -> Schematic:
+        net vdd, vss, vin, vcm, clk, rst, done, vx
+
+        # Stimulus sources along the bottom (spaced wide so their parameter text
+        # does not collide), DUT to the right.
+        Gnd gnd:     .pos=(2,0);   .p -- vss
+        Vdc vdd_src: .pos=(4,16);  .$dc=VDD; .m -- vss; .p -- vdd
+        Vdc vcm_src: .pos=(22,16); .$dc=0.6; .m -- vss; .p -- vcm
+        Vpulse clk_src:
+            .pos=(40,16); .m -- vss; .p -- clk
+            .$pulsed_value=VDD; .$delay_time=40n; .$rise_time=1n; .$fall_time=1n
+            .$pulse_width=20n; .$period=50n
+        Vpulse rst_src:
+            .pos=(60,16); .m -- vss; .p -- rst
+            .$pulsed_value=VDD; .$rise_time=1n; .$fall_time=1n
+            .$pulse_width=20n; .$period=300n
+        # Input staircase, stepping during each reset window (mid-bin values):
+        Vpwl vin_src:
+            .pos=(80,16); .m -- vss; .p -- vin
+            .$V=((0,0.225),(300n,0.225),(305n,0.375),(600n,0.375),(605n,0.675),
+                 (900n,0.675),(905n,0.825),(1200n,0.825),(1205n,1.125),(1500n,1.125))
+
+        SarAdc(n=self.n) dut:
+            .pos=(108,14)
+            .vdd -- vdd; .vss -- vss
+            .vin -- vin; .vcm -- vcm; .clk -- clk; .rst -- rst
+            .done -- done; .vx -- vx
+
+        path code
+        for i in range(self.n):
+            net code[i]
+            dut.code[i] -- code[i]
+
+    viewgen sim_tran -> Simulation:
+        """Transient simulation covering five back-to-back conversions."""
+        .simulate().tran(R('200p'), R('1500n'))
+
+    viewgen report_tran -> Report:
+        sim = self.sim_tran
+        pg = . % PlotGroup()   # shared, synchronized x-axis for all plots
+
+        vref = VDD
+        # Reconstruct the output as an analogue staircase from the code bits:
+        code_v = [list(sim.code[i].voltage) for i in range(self.n)]
+        nsamp = len(code_v[0])
+        recon = []
+        for k in range(nsamp):
+            word = 0
+            for i in range(self.n):
+                if code_v[i][k] > 0.6:
+                    word += 1 << i
+            recon.append(word / (1 << self.n) * vref)
+
+        .markdown(
+            f"# {self.n}-bit SAR ADC (IHP SG13G2)\n"
+            f"Charge-redistribution successive-approximation ADC. Reference "
+            f"Vref = VDD = {vref} V, so 1 LSB = {vref/(1<<self.n)*1000:.0f} mV. "
+            f"Each conversion samples the input, then resolves the bits MSB-first "
+            f"by binary search on the capacitive DAC node `vx`."
+        )
+
+        .markdown("## Input vs. DAC search node `vx`")
+        .plot2d(
+            x=sim.time,
+            series={
+                'vin (input)': sim.vin.voltage,
+                'vx (DAC top plate)': sim.vx.voltage,
+                'vcm (reference)': sim.vcm.voltage,
+            },
+            xlabel="Time (s)",
+            ylabel="Voltage (V)",
+            height=220,
+            plot_group=pg,
+        )
+
+        .markdown("## Reconstructed output staircase")
+        .plot2d(
+            x=sim.time,
+            series={
+                'vin (input)': sim.vin.voltage,
+                'reconstructed code': recon,
+            },
+            xlabel="Time (s)",
+            ylabel="Voltage (V)",
+            height=220,
+            plot_group=pg,
+        )
+
+        .markdown("## Digital output bits")
+        .plot2d(
+            x=sim.time,
+            series={
+                f'code[{i}]': [v + 1.4*i for v in sim.code[i].voltage]
+                for i in reversed(range(self.n))
+            },
+            xlabel="Time (s)",
+            ylabel="Bit (offset for clarity)",
+            height=200,
+            plot_group=pg,
+        )
+
