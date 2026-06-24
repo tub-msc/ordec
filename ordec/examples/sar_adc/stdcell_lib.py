@@ -23,6 +23,7 @@ from ordec.core import *
 from ordec.extlibrary import ExtLibrary
 from ordec.schematic.spice_in import DeviceMapping
 from ordec.lib import ihp130
+from ordec.layout.pnr import place_and_route as _engine_pnr
 
 _root = Path(os.environ["ORDEC_PDK_IHP_SG13G2"]) / "libs.ref/sg13g2_stdcell"
 
@@ -73,3 +74,20 @@ def lef_pin_rects(fdry_name: str) -> dict:
             x0, y0, x1, y1 = (round(float(v) * 1000) for v in t[1:5])
             out[pin].append((x0, y0, x1, y1))
     return out
+
+
+def _is_sg13g2_leaf(cell) -> bool:
+    """A routing leaf is an sg13g2 foundry standard cell, recognised by its LEF
+    macro name (e.g. ``sg13g2_inv_1``); any other cell is flattened by P&R."""
+    return getattr(cell, "name", "").startswith("sg13g2_")
+
+
+def place_and_route(cell, cfg=None):
+    """Place-and-route ``cell`` with the sg13g2 standard-cell library.
+
+    This binds the PDK-specific inputs -- the layer set, the LEF pin rectangles
+    (:func:`lef_pin_rects`) and the foundry-leaf predicate -- to the generic
+    engine :func:`ordec.layout.pnr.place_and_route`.
+    """
+    return _engine_pnr(cell, ihp130.SG13G2().layers, lef_pin_rects,
+        _is_sg13g2_leaf, cfg=cfg)

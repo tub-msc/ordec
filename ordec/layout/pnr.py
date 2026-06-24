@@ -33,13 +33,6 @@ import random
 
 from ordec.core import *
 from ordec.core.schema import SchemInstanceConn
-from ordec.lib.ihp130 import SG13G2
-from .stdcell_lib import lef_pin_rects
-
-def _is_fdry_leaf(cell):
-    """True for an IHP sg13g2 standard cell (routing leaf). Recognised by the
-    library macro name (e.g. "sg13g2_inv_1"); any other cell is flattened."""
-    return getattr(cell, "name", "").startswith("sg13g2_")
 
 
 # --- routing grid configuration -------------------------------------------
@@ -117,11 +110,11 @@ def _conns_of(sch, inst):
     return out
 
 
-def _flatten(cell):
+def _flatten(cell, is_leaf):
     """
     Flatten a (possibly hierarchical) schematic down to Metal1-only foundry leaf
     instances, the way a standard-cell flow flattens a netlist before detailed
-    routing. Sub-cells matched by ``_is_fdry_leaf`` are leaves; any other instance
+    routing. Sub-cells for which ``is_leaf`` is true are leaves; any other instance
     is expanded into its own schematic, with internal nets uniquified by an
     instance prefix and port nets mapped to the parent's nets.
 
@@ -141,7 +134,7 @@ def _flatten(cell):
             iname = prefix + inst.full_path_str().split('.')[-1]
             sub = inst.symbol.cell
             pinconn = {p: canon(n) for p, n in _conns_of(sch, inst).items()}
-            if _is_fdry_leaf(sub):
+            if is_leaf(sub):
                 leaf_insts[iname] = sub
                 for pin, net in pinconn.items():
                     net_terminals.setdefault(net, []).append((iname, pin))
@@ -152,14 +145,16 @@ def _flatten(cell):
     return leaf_insts, net_terminals
 
 
-def extract(cell):
+def extract(cell, pin_rects, is_leaf):
     """Return ``(cells, nets)`` for a cell's flattened schematic: cells maps each
-    leaf instance name to a LeafCell, nets maps each net name to a NetInfo."""
-    leaf_insts, net_terminals = _flatten(cell)
+    leaf instance name to a LeafCell, nets maps each net name to a NetInfo.
+    ``pin_rects`` and ``is_leaf`` are the PDK hooks documented on
+    :func:`place_and_route`."""
+    leaf_insts, net_terminals = _flatten(cell, is_leaf)
 
     cells = {}
     for name, leaf in leaf_insts.items():
-        rects = lef_pin_rects(leaf.name)
+        rects = pin_rects(leaf.name)
         # Cell pitch = power-rail width (the rail rect spans the whole cell).
         width = max(r[2] - r[0] for r in rects['VDD'])
         cells[name] = LeafCell(leaf, rects, width)
@@ -813,12 +808,25 @@ def _emit_net_direct(l, layers, edges, term_m2, cfg):
             xi * xp + STRAP_HALF_W, yi * yp + M1_LAND_HALF_H))
 
 
-def place_and_route(cell, cfg=None):
+def place_and_route(cell, layers, pin_rects, is_leaf, cfg=None):
     """Place + route a cell whose schematic instantiates Metal1-only leaf cells.
-    Returns a DRC/LVS-clean Layout."""
+    Returns a DRC/LVS-clean :class:`~ordec.core.schema.Layout`.
+
+    The engine is PDK-agnostic; the standard-cell library is supplied through
+    three hooks:
+
+    Args:
+        cell: the cell to lay out; its schematic is flattened to leaf cells.
+        layers: the PDK layer set (e.g. ``SG13G2().layers``).
+        pin_rects: callable ``name -> {pin: [(x0, y0, x1, y1), ...]}`` giving a
+            leaf cell's per-pin Metal1 LEF rectangles, in nm.
+        is_leaf: callable ``cell -> bool``, true for a routing leaf (a standard
+            cell placed as-is) and false for a composite to flatten.
+        cfg: routing-grid parameters (:class:`GridConfig`); defaults to the IHP
+            sg13g2 grid.
+    """
     cfg = cfg or GridConfig()
-    layers = SG13G2().layers
-    cells, nets = extract(cell)
+    cells, nets = extract(cell, pin_rects, is_leaf)
     sig = {nn: net for nn, net in nets.items()
         if len(net.terminals) >= 2 and nn not in ('vdd', 'vss')}
     # A signal pin tied to a supply (e.g. an inactive preset/clear input held
