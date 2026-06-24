@@ -16,6 +16,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from dataclasses import dataclass
+from itertools import chain
 
 import pytest
 from ordec import server
@@ -29,53 +30,36 @@ try:
 except ImportError:
     _selenium_available = False
 
+web_path = (Path(__file__).parent.parent / 'web').resolve()
 
-WEB_DIR = (Path(__file__).parent.parent / 'web').resolve()
+def web_dist_latest_mtime():
+    """Return the latest mtime of any entry under web/dist (0 if dist is missing/empty)."""
+    latest = 0.0
+    for dirpath, dirnames, filenames in os.walk(web_path / 'dist'):
+        for name in chain(dirnames, filenames):
+            latest = max(latest, os.stat(os.path.join(dirpath, name)).st_mtime)
+    return latest
 
-
-def _newest_mtime(paths):
-    """Return the newest mtime among the given files/directories (0 if none exist)."""
-    newest = 0.0
-    for path in paths:
-        if not path.exists():
-            continue
-        if path.is_dir():
-            for sub in path.rglob('*'):
-                newest = max(newest, sub.stat().st_mtime)
-        else:
-            newest = max(newest, path.stat().st_mtime)
-    return newest
-
-
-# Top-level entries under web/ to ignore when checking whether dist is stale.
-# dist is the build output we compare against; node_modules is a dependency
-# (not a source), is huge/slow to walk, and is touched by npm so it would look
-# spuriously newer than dist; .coverage is a pytest artifact rewritten on every
-# test run, which would otherwise force a rebuild each session. These are pruned
-# only at the root of web/ so that any like-named files deeper in the tree (real
-# build inputs) still count.
-_WEB_SRC_PRUNE = {'dist', 'node_modules', '.coverage'}
-
-
-def _newest_web_src_mtime():
+def web_src_latest_mtime():
     """
-    Return the newest mtime of any build input under web/.
+    Return the latest mtime of any build input under web/.
 
     Walks web/ recursively rather than listing specific files so that any
     source affecting the build (index.html, app.html, public/, config files,
-    etc.) is covered. Prunes build outputs, dependencies, and test artifacts
-    (_WEB_SRC_PRUNE) at the web/ root so they don't force spurious rebuilds.
+    etc.) is covered. The dist/ and node_modules directories and .coverage files
+    are ignored.
     """
-    newest = WEB_DIR.stat().st_mtime
-    web_root = str(WEB_DIR)
-    for dirpath, dirnames, filenames in os.walk(WEB_DIR):
+    latest = web_path.stat().st_mtime
+    web_root = str(web_path)
+    for dirpath, dirnames, filenames in os.walk(web_path):
         if dirpath == web_root:
-            # Prune in place so os.walk doesn't descend into excluded dirs.
-            dirnames[:] = [d for d in dirnames if d not in _WEB_SRC_PRUNE]
-            filenames = [f for f in filenames if f not in _WEB_SRC_PRUNE]
-        for name in filenames:
-            newest = max(newest, os.stat(os.path.join(dirpath, name)).st_mtime)
-    return newest
+            # Prune in place so os.walk does not descend into dist and node_modules.
+            dirnames[:] = [d for d in dirnames if d not in ('dist', 'node_modules')]
+        for name in chain(dirnames, filenames):
+            if name in ('.coverage',):
+                continue
+            latest = max(latest, os.stat(os.path.join(dirpath, name)).st_mtime)
+    return latest
 
 
 def build_web_dist():
@@ -88,10 +72,7 @@ def build_web_dist():
     (see CLAUDE.md). If a build is needed but npm is unavailable, this raises
     rather than skipping, so the missing toolchain is reported as a failure.
     """
-    dist_dir = WEB_DIR / 'dist'
-    src_mtime = _newest_web_src_mtime()
-    dist_mtime = _newest_mtime([dist_dir])
-    if dist_dir.is_dir() and dist_mtime >= src_mtime:
+    if web_dist_latest_mtime() >= web_src_latest_mtime():
         return  # web/dist is fresh, nothing to do.
 
     if shutil.which('npm') is None:
@@ -99,7 +80,7 @@ def build_web_dist():
             "web/dist is missing or stale and 'npm' was not found on PATH. "
             "Install Node.js/npm, or run 'npm run build' in web/ manually.")
 
-    subprocess.check_call(['npm', '--prefix', str(WEB_DIR), 'run', 'build'])
+    subprocess.check_call(['npm', '--prefix', str(web_path), 'run', 'build'])
 
 
 @dataclass
@@ -170,7 +151,7 @@ def web():
 
     key = server.ServerKey()
     port = 8102
-    web_dist_path = (Path(__file__).parent.parent/'web'/'dist').resolve()
+    web_dist_path = web_path / 'dist'
     tar = server.anonymous_tar(web_dist_path)
     static_handler = server.StaticHandler(tar)
     startup_queue = queue.Queue(maxsize=1)
