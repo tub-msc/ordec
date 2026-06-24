@@ -31,7 +31,7 @@ result appears on ``code[N-1..0]``.
 
 from ordec.core import *
 from ordec.lib.base import Gnd, Vdc, Vpwl, Vpulse
-from ordec.lib.ihp130 import SG13G2, run_drc, run_lvs
+from ordec.lib.ihp130 import SG13G2, run_drc, run_lvs, Ptap
 from ordec.layout import SRouter
 from .stdcell_lib import extlib, lef_pin_rects
 from .comparator import Comparator
@@ -162,8 +162,9 @@ cell SarAdc:
         band_top = cap[1] - GAP              # first (highest) trunk, just below CapDac
         band_bot = band_top - 600 * (n_nets - 1)
 
+        ISO = 5000                           # analog<->digital separation (room for a guard bar)
         POS = {'dac': (0, 0)}
-        POS['logic'] = (0, band_bot - GAP - log[3])                       # top edge below band
+        POS['logic'] = (0, band_bot - ISO - log[3])                       # top edge below band
         # Comparator left of CapDac, with its in_n row aligned to CapDac.vx so the
         # critical vx net is a straight Metal4 wire -- but never let a pin drop into
         # the band (the max() keeps every comparator pin above band_top).
@@ -254,6 +255,17 @@ cell SarAdc:
             lyr = M4 if pt[2] else L1
             (. % LayoutRect(layer=lyr, rect=Rect4I(pt[0]-100, pt[1]-230, pt[0]+100, pt[1]+230))).create_pin(sym)
 
+        # ---- substrate guard bar: a vss-tied Ptap strip in the analog/digital gap
+        # (between SarLogic below and the band/analog above) that collects substrate
+        # noise from the logic before it reaches the comparator/CDAC. It is tied to
+        # vss simply by adding its contact point to the vss net routed below, so the
+        # trunk router stitches it in like any other vss terminal.
+        gb_x0 = POS['logic'][0] + log[0]; gb_len = log[2] - log[0]
+        gb_y0 = band_bot - ISO // 2
+        . % LayoutInstance(ref=Ptap(l=R(f'{gb_len}n'), w=R('700n')).layout,
+            pos=Vec2I(gb_x0, gb_y0), orientation=R0)
+        guard_vss = (gb_x0 + gb_len // 2, gb_y0 + 350, False)
+
         # ---- routed inter-block nets (distinct Metal4 trunk y per net) ----
         # vx (the analog-critical DAC-top-plate -> comparator net) is routed
         # separately below, NOT on a trunk -- a trunk would force it down to the
@@ -265,7 +277,7 @@ cell SarAdc:
         for i in range(n):
             nets.append(([D[f'dac[{i}]'], S[f'dac[{i}]']], None))
         nets.append(([D['vdd'], C['vdd'], S['vdd'], I['VDD']], self.symbol.vdd))
-        nets.append(([D['vss'], C['vss'], S['vss'], I['VSS']], self.symbol.vss))
+        nets.append(([D['vss'], C['vss'], S['vss'], I['VSS'], guard_vss], self.symbol.vss))
         for k, (pts, sym) in enumerate(nets):
             route(pts, band_top - 600 * k, sym)
 
