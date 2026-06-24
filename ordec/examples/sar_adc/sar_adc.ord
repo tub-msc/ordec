@@ -110,15 +110,15 @@ cell SarAdc:
             logic.code[i] -- code[i]
 
     viewgen layout -> Layout:
-        # Top-level composition: place the four sub-blocks and route the ten
-        # inter-block nets on Metal4 horizontal trunks + Metal5 verticals in the
-        # channel between CapDac and SarLogic. Each block exposes its ports on its
-        # EDGE -- SarLogic's signals on Metal4 pads above its top rail and its
-        # supplies on the side power-ring straps (pnr.py edge-escape), CapDac's on
-        # its bottom edge -- so the parent only routes in the channel and never
-        # crosses a block interior. That edge interface is what makes the
-        # composition robust: a placement change cannot create a new over-cell
-        # short. DRC-clean + LVS-match, see tests/test_sar_adc.py.
+        # Top-level composition: place the four sub-blocks and route the inter-block
+        # nets on Metal4 horizontal trunks + Metal5 verticals in the channel between
+        # CapDac and SarLogic (the analog-critical vx net is routed directly instead,
+        # see below). Each block exposes its ports on its EDGE -- SarLogic's signals
+        # on Metal4 pads above its top rail and its supplies on the side power-ring
+        # straps (pnr.py edge-escape), CapDac's on its bottom edge -- so the parent
+        # only routes in the channel and never crosses a block interior. That edge
+        # interface is what makes the composition robust: a placement change cannot
+        # create a new over-cell short. DRC-clean + LVS-match, see tests/test_sar_adc.py.
         .ref_layers = SG13G2().layers
         layers = .ref_layers
         L1 = layers.Metal1; M4 = layers.Metal4; M5 = layers.Metal5
@@ -150,14 +150,25 @@ cell SarAdc:
         inv_x0 = min(r[0] for r in ipr); inv_w = max(r[2] for r in ipr) - inv_x0
         inv_y0 = min(r[1] for r in ipr)
 
+        def pin_cy(lay, name):
+            return next(int(lp.ref.rect.cy) for lp in lay.all(LayoutPin)
+                        if lp.pin.full_path_str() == name)
+        vx_y = pin_cy(dac_cell.layout, 'vx')     # CapDac is at origin -> also its top-level y
+        inn_y = pin_cy(comp_cell.layout, 'in_n')
+        vss_y = pin_cy(comp_cell.layout, 'vss')  # lowest comparator pin
+
         GAP = 900                            # generic block-to-band / block-to-block clearance
-        n_nets = n + 7                       # vx,vcm,cmp,sample,sample_n + n*dac + vdd,vss
+        n_nets = n + 6                       # vcm,cmp,sample,sample_n + n*dac + vdd,vss (vx routed separately)
         band_top = cap[1] - GAP              # first (highest) trunk, just below CapDac
         band_bot = band_top - 600 * (n_nets - 1)
 
         POS = {'dac': (0, 0)}
         POS['logic'] = (0, band_bot - GAP - log[3])                       # top edge below band
-        POS['comp'] = (cap[0] - GAP - cmpb[2], band_top + GAP - cmpb[1])  # left of CapDac, above band
+        # Comparator left of CapDac, with its in_n row aligned to CapDac.vx so the
+        # critical vx net is a straight Metal4 wire -- but never let a pin drop into
+        # the band (the max() keeps every comparator pin above band_top).
+        comp_y = max(vx_y - inn_y, band_top + GAP - vss_y)
+        POS['comp'] = (cap[0] - GAP - cmpb[2], comp_y)
         POS['inv'] = (POS['comp'][0] + cmpb[0] - GAP - inv_w - inv_x0,    # left of Comparator
                       band_top + GAP - inv_y0)                            # pins above band
         . % LayoutInstance(ref=dac_cell.layout,   pos=Vec2I(*POS['dac']),   orientation=R0)
@@ -244,8 +255,10 @@ cell SarAdc:
             (. % LayoutRect(layer=lyr, rect=Rect4I(pt[0]-100, pt[1]-230, pt[0]+100, pt[1]+230))).create_pin(sym)
 
         # ---- routed inter-block nets (distinct Metal4 trunk y per net) ----
-        nets = [([D['vx'], C['in_n']], self.symbol.vx),
-                ([D['vcm'], C['in_p']], self.symbol.vcm),
+        # vx (the analog-critical DAC-top-plate -> comparator net) is routed
+        # separately below, NOT on a trunk -- a trunk would force it down to the
+        # band and back up to the raised comparator (~20 um detour).
+        nets = [([D['vcm'], C['in_p']], self.symbol.vcm),
                 ([C['out'], S['cmp']], None),
                 ([D['sample'], S['sample'], I['A']], None),
                 ([D['sample_n'], I['Y']], None)]
@@ -255,6 +268,20 @@ cell SarAdc:
         nets.append(([D['vss'], C['vss'], S['vss'], I['VSS']], self.symbol.vss))
         for k, (pts, sym) in enumerate(nets):
             route(pts, band_top - 600 * k, sym)
+
+        # vx: short, direct Metal4 wire from CapDac.vx straight across to the
+        # comparator's in_n (aligned to the same row above). The comparator is
+        # Metal1-only, so the wire passes over its body; in_p sits further left
+        # than in_n, so the wire reaches in_n without crossing it.
+        vxp = D['vx']; inn = C['in_n']
+        vpad = . % LayoutRect(layer=L1, rect=Rect4I(vxp[0]-140, vxp[1]-165, vxp[0]+140, vxp[1]+165))
+        sr.move(L1, (vxp[0], vxp[1])); sr.layer(M4)
+        sr.wire_x(inn[0])
+        if inn[1] != vxp[1]:
+            sr.wire_y(inn[1])
+        sr.layer(L1)
+        . % LayoutRect(layer=L1, rect=Rect4I(inn[0]-140, inn[1]-165, inn[0]+140, inn[1]+165))
+        vpad.create_pin(self.symbol.vx)
 
         # ---- single-block port pins ----
         expose(D['vin'], self.symbol.vin)
