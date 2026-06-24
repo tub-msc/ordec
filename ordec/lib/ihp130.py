@@ -930,8 +930,7 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
 
 
 @public
-def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True,
-            return_report: bool=False):
+def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> LvsReport:
     """
     Run LVS (Layout vs. Schematic) check.
 
@@ -939,11 +938,6 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True,
         layout: The Layout to check.
         symbol: The Symbol containing the reference schematic.
         use_tempdir: If True, use a temporary directory for intermediate files.
-        return_report: If True, return an LvsReport subgraph instead of a bool.
-
-    Returns:
-        If return_report is False: True if LVS is clean, else False.
-        If return_report is True: LvsReport subgraph with detailed results.
     """
     directory = Directory()
     nl = Netlister(directory, lvs=True)
@@ -984,12 +978,4 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True,
 
         log = (cwd / "out.log").read_text()
 
-        if return_report:
-            return klayout.parse_lvsdb(cwd / 'out.lvsdb', layout, schematic, directory)
-
-        if log.find("INFO : Congratulations! Netlists match.") >= 0:
-            return True
-        elif log.find("ERROR : Netlists don't match") >= 0:
-            return False
-        else:
-            raise Exception("Failed to evaluate LVS log file.")
+        return klayout.parse_lvsdb(cwd / 'out.lvsdb', layout, schematic, directory)

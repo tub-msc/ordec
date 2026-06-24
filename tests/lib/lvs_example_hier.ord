@@ -232,7 +232,7 @@ cell C_Hier:
     @generate
     def lvs_report(self) -> LvsReport:
         """Run IHP130 LVS, layout vs. schematic."""
-        return run_lvs(self.layout, self.symbol, return_report=True)
+        return run_lvs(self.layout, self.symbol)
 
 cell C_FlatLayout:
     """Case 2: flat layout vs. hierarchical schematic.
@@ -341,7 +341,7 @@ cell C_FlatLayout:
     @generate
     def lvs_report(self) -> LvsReport:
         """Run IHP130 LVS, layout vs. schematic."""
-        return run_lvs(self.layout, self.symbol, return_report=True)
+        return run_lvs(self.layout, self.symbol)
 
 cell C_FlatSchematic:
     """Case 3: hierarchical layout vs. flat schematic.
@@ -434,7 +434,7 @@ cell C_FlatSchematic:
     @generate
     def lvs_report(self) -> LvsReport:
         """Run IHP130 LVS, layout vs. schematic."""
-        return run_lvs(self.layout, self.symbol, return_report=True)
+        return run_lvs(self.layout, self.symbol)
 
 cell A_Moved:
     """Case 4: A_Default with the y-arm resistor (r2) moved out into B_Moved.
@@ -614,4 +614,4 @@ cell C_Moved:
     @generate
     def lvs_report(self) -> LvsReport:
         """Run IHP130 LVS, layout vs. schematic."""
-        return run_lvs(self.layout, self.symbol, return_report=True)
+        return run_lvs(self.layout, self.symbol)

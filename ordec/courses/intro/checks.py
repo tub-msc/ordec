@@ -45,7 +45,6 @@ def corner_frequency(freq, mag):
 
 
 def gen_lesson1(g):
-    """Build the lesson() view for lesson 1, closing over the lesson globals g."""
     @generate_func
     def lesson() -> Report:
         cell = g['Lowpass']()
@@ -102,7 +101,6 @@ def gen_lesson1(g):
 # --------------------
 
 def gen_lesson2(g):
-    """Build the lesson() view for lesson 2, closing over the lesson globals g."""
     dut = g['Nand2']
 
     class Nand2Tb(Cell):
@@ -184,12 +182,7 @@ def gen_lesson2(g):
 # ---------------------------------
 
 def gen_lesson3(g):
-    """Build the lesson() view for lesson 3, closing over the lesson globals g.
-
-    auto_refresh=False: the LVS/DRC checks are expensive and run only when the
-    user clicks the Check button.
-    """
-    @generate_func(auto_refresh=False)
+    @generate_func
     def lesson() -> Report:
         from ordec.lib import ihp130
         cell = g['Inv']()
@@ -203,27 +196,24 @@ def gen_lesson3(g):
             "This check runs KLayout LVS and DRC, which can take a while."
         )
         try:
-            lvs_clean = ihp130.run_lvs(cell.layout, cell.symbol)
-            report.passfail("LVS clean", lvs_clean,
-                hint="Three Metal1 connections are missing: from the vdd stub "
-                "to the PMOS source (the left source/drain region of the "
-                "PMOS), from the vss stub to the NMOS source, and from the "
-                "NMOS drain up to the PMOS drain (output y). Use the "
-                "commented-out SRouter code as a starting point and take "
-                "coordinates from the layout view.",
-                instructions="Layout-versus-schematic comparison "
-                + ("succeeded." if lvs_clean else "failed: the extracted "
-                "layout netlist does not match the schematic."))
+            lvs_clean = cell.lvs.status == LvsStatus.Match
+            lvs_instructions = "Layout-versus-schematic comparison " + (
+                "succeeded." if lvs_clean else "failed: the extracted "
+                "layout netlist does not match the schematic.")
         except Exception:
-            report.passfail("LVS clean", False, instructions=exception_text(),
-                hint="Three Metal1 connections are missing: from the vdd stub "
-                "to the PMOS source (the left source/drain region of the "
-                "PMOS), from the vss stub to the NMOS source, and from the "
-                "NMOS drain up to the PMOS drain (output y). Use the "
-                "commented-out SRouter code as a starting point and take "
-                "coordinates from the layout view.")
+            lvs_clean = False
+            lvs_instructions=exception_text()
+
+        report.passfail("LVS clean", lvs_clean,
+            hint="Three Metal1 connections are missing: from the vdd stub "
+            "to the PMOS source (the left source/drain region of the "
+            "PMOS), from the vss stub to the NMOS source, and from the "
+            "NMOS drain up to the PMOS drain (output y). Use the "
+            "commented-out SRouter code as a starting point and take "
+            "coordinates from the layout view.",
+            instructions=lvs_instructions)
         try:
-            summary = ihp130.run_drc(cell.layout).summary()
+            summary = cell.drc.summary()
             if summary:
                 details = "DRC violations: " + ", ".join(
                     f"{rule} ({count}x)"

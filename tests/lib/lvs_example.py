@@ -114,7 +114,7 @@ def lvs_report() -> LvsReport:
     - Parameter mismatch: PMOS W=1.2u in layout vs W=1u in schematic
     """
     inv = LvsTestInv()
-    return run_lvs(inv.layout, inv.symbol, return_report=True)
+    return run_lvs(inv.layout, inv.symbol)
 
 
 def run_lvs_and_view():

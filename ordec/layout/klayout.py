@@ -291,7 +291,9 @@ class LvsdbTransformer(Transformer):
         return str(token)
 
     def QUOTED_STRING(self, token):
-        return str(token)[1:-1]
+        # Strip surrounding quotes and unescape backslash escapes (KLayout
+        # escapes embedded quotes and backslashes, e.g. \' and \\).
+        return re.sub(r'\\(.)', r'\1', str(token)[1:-1])
 
     def EMPTY_PARENS(self, token):
         return "()"

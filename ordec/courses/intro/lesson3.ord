@@ -1,5 +1,5 @@
 from ordec.core import *
-from ordec.lib.ihp130 import Nmos, Pmos, Ntap, Ptap, SG13G2
+from ordec.lib.ihp130 import Nmos, Pmos, Ntap, Ptap, SG13G2, run_lvs, run_drc
 from ordec.layout import SRouter
 
 cell Inv:
@@ -94,3 +94,11 @@ cell Inv:
             ! .ux == polycont.ux + 200
             ! .width == 1500
             .create_pin(self.symbol.a)
+
+    @generate
+    def lvs(self) -> LvsReport:
+        return run_lvs(self.layout, self.symbol)
+
+    @generate
+    def drc(self) -> DrcReport:
+        return run_drc(self.layout)

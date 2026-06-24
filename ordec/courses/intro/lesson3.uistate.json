@@ -56,27 +56,81 @@
         "isClosable": true
       },
       {
-        "type": "stack",
+        "type": "column",
         "content": [
           {
-            "type": "component",
-            "size": "1fr",
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "Inv().layout",
+                "componentType": "result",
+                "componentState": {
+                  "view": "Inv().layout"
+                }
+              }
+            ],
+            "size": "39.07344853577511%",
             "id": "",
             "maximised": false,
             "isClosable": true,
-            "reorderEnabled": true,
-            "title": "Result View",
-            "componentType": "result",
-            "componentState": {
-              "view": "Inv().layout"
-            }
+            "activeItemIndex": 0
+          },
+          {
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "Inv().lvs",
+                "componentType": "result",
+                "componentState": {
+                  "view": "Inv().lvs"
+                }
+              }
+            ],
+            "size": "36.01996638958703%",
+            "id": "",
+            "maximised": false,
+            "isClosable": true,
+            "activeItemIndex": 0
+          },
+          {
+            "type": "stack",
+            "content": [
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "Inv().drc",
+                "componentType": "result",
+                "componentState": {
+                  "view": "Inv().drc"
+                }
+              }
+            ],
+            "size": "24.906585074637864%",
+            "id": "",
+            "maximised": false,
+            "isClosable": true,
+            "activeItemIndex": 0
           }
         ],
         "size": "50%",
         "id": "",
-        "maximised": false,
-        "isClosable": true,
-        "activeItemIndex": 0
+        "isClosable": true
       }
     ],
     "size": "1fr",
