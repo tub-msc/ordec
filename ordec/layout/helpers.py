@@ -158,6 +158,16 @@ def expand_geom(layout: Layout):
     expand_rects(layout)
     expand_paths(layout)
 
+def check_ref_layers(dst: Layout, inst: LayoutInstance):
+    # All shapes are copied into dst and resolve their .layer against
+    # dst.ref_layers. Flattening an instance whose layout uses a different
+    # LayerStack would silently reinterpret its layers, so reject it.
+    if inst.ref.ref_layers != dst.ref_layers:
+        raise ModelViolation(
+            f"Cannot flatten the child's ref_layers ({inst.ref.ref_layers!r})"
+            f" differs from the parent's ref_layers ({dst.ref_layers!r})."
+        )
+
 def flatten_instance(dst: Layout, src: Layout, tran: TD4I, first_level: bool):
     # At the first level, src is dst and mutable. We need to process only the
     # LayoutInstances and LayoutInstanceArarys and remove them.
@@ -168,12 +178,14 @@ def flatten_instance(dst: Layout, src: Layout, tran: TD4I, first_level: bool):
     assert first_level == (dst is src)
 
     for src_e in src.all(LayoutInstance):
+        check_ref_layers(dst, src_e)
         sub_tran = tran * src_e.loc_transform()
         flatten_instance(dst, src_e.ref, sub_tran, False)
         if first_level:
             src_e.remove()
 
     for src_e in src.all(LayoutInstanceArray):
+        check_ref_layers(dst, src_e)
         for col in range(src_e.cols):
             for row in range(src_e.rows):
                 sub_tran = tran \

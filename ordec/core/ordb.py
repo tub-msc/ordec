@@ -324,7 +324,13 @@ class ExternalRef(Attr):
         cursor = sgu.cursor_at(nid, lookup_npath=False)
         subgraph_root = self.of_subgraph(cursor)
         if subgraph_root is None:
-            raise ModelViolation("ExternalRef could not resolve referenced subgraph.")
+            refs_name = getattr(self.refs_ntype, '__name__', str(self.refs_ntype))
+            raise ModelViolation(
+                f"ExternalRef {node._cursor_type.__name__}.{attrdesc.name}"
+                f" (-> {refs_name}) could not resolve its referenced subgraph:"
+                f" the corresponding SubgraphRef is unset (None). Make sure it"
+                f" is assigned on the enclosing subgraph."
+            )
         if not isinstance(subgraph_root, SubgraphRoot):
             raise ModelViolation(
                 f"ExternalRef expected SubgraphRoot from of_subgraph, got {type(subgraph_root).__name__}."
