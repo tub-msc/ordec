@@ -530,6 +530,9 @@ canvas.layoutFit {
 /* -- Exception --------------------------------------------------- */
 .exception {
     color: var(--color-exception);
+    /* Preserve <pre> formatting but wrap long lines instead of overflowing. */
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
 }
 pre {
     margin: 0px;
