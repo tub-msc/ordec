@@ -359,19 +359,32 @@ HORIZ = (M3, M5)       # horizontal routing layers (move in x)
 
 
 def access_nodes(rects, cfg, allow_rail=False):
-    """Candidate M2-grid access nodes (xi, yi) for a pin (list of Metal1 rects).
+    """Candidate access points for a pin (list of Metal1 rects), each returned as
+    ``(xi, yi, vx, vy, land)``: the routing track node ``(xi, yi)`` the router
+    connects to, the Via1 position ``(vx, vy)`` in nm, and ``land`` -- the Metal1
+    endcap-landing rect for the via, grown the full height only along the axis the
+    pin encloses as a pair, so it stays within the pin's own metal and never
+    notches a neighbour cell's pin (``None`` for off-track vias, which take their
+    endcap from the pin directly).
 
-    A pin is reached by a Via1 at a vertical (Metal2) track inside its Metal1
-    x-extent and a horizontal (Metal3) track inside its y-extent. Using the clean
-    LEF rectangles (not a poly bbox) guarantees the access lands on this pin only.
-    Signal pins use signal tracks only; power pins (allow_rail=True) may be reached
-    on the rail track itself, where the wide rail easily encloses the via.
+    A pin is normally reached by a Via1 at a vertical (Metal2) track inside its
+    Metal1 x-extent and a horizontal (Metal3) track inside its y-extent, so the via
+    sits on the track intersection (``vx, vy == xi*x_pitch, yi*y_pitch``). Using the
+    clean LEF rectangles (not a poly bbox) guarantees the access lands on this pin
+    only. Signal pins use signal tracks only; power pins (allow_rail=True) may be
+    reached on the rail track itself, where the wide rail easily encloses the via.
+
+    A pin whose metal lands *between* vertical tracks (e.g. xor2's Y) has no
+    on-track via; :func:`_offtrack_access` then places the via on the pin and the
+    emitter bridges it to the nearest track with a short Metal2 jog.
     """
     via_half, encl, encl_endcap = cfg.via_half, cfg.encl, cfg.encl_endcap
-    pair, single = set(), set()   # access nodes with endcap on a pair / single side
+    sw, lh = cfg.strap_half_w, cfg.m1_land_half_h
+    xp, yp = cfg.x_pitch, cfg.y_pitch
+    found = {}   # (xi, yi) -> (vx, vy, land, tier); tier 0 = endcap on a pair of sides
     for (x0, y0, x1, y1) in rects:
-        for xi in range(x0 // cfg.x_pitch, x1 // cfg.x_pitch + 2):
-            xc = xi * cfg.x_pitch
+        for xi in range(x0 // xp, x1 // xp + 2):
+            xc = xi * xp
             left, right = xc - via_half - x0, x1 - (xc + via_half)   # x via enclosures
             if left < encl or right < encl:
                 continue
@@ -379,7 +392,7 @@ def access_nodes(rects, cfg, allow_rail=False):
             for yi in range(ylo, yhi + 1):
                 if not allow_rail and not cfg.is_signal_track(yi):
                     continue
-                yc = yi * cfg.y_pitch
+                yc = yi * yp
                 bottom, top = yc - via_half - y0, y1 - (yc + via_half)   # y via enclosures
                 if bottom < encl or top < encl:
                     continue
@@ -387,12 +400,69 @@ def access_nodes(rects, cfg, allow_rail=False):
                 # signal pins give it top/bottom, wide rails left/right. Prefer
                 # those; fall back to a single endcap side for small pins so they
                 # stay routable.
-                if (bottom >= encl_endcap and top >= encl_endcap) or \
-                        (left >= encl_endcap and right >= encl_endcap):
-                    pair.add((xi, yi))
-                elif max(left, right, bottom, top) >= encl_endcap:
-                    single.add((xi, yi))
-    return list(pair) if pair else list(single)
+                pair = (bottom >= encl_endcap and top >= encl_endcap) or \
+                    (left >= encl_endcap and right >= encl_endcap)
+                if not (pair or max(left, right, bottom, top) >= encl_endcap):
+                    continue
+                # Endcap landing. V1.c1 wants Metal1 on a *pair* of opposite sides
+                # of the via. Grow the landing the full m1_land_half_h along the
+                # axis the pin itself encloses as a pair -- vertical when the pin is
+                # tall, horizontal when it is wide -- so that full-height pair stays
+                # inside the pin and never notches a neighbouring cell's pin. (A pin
+                # that only encloses on a single side keeps the vertical landing; it
+                # has to reach past the pin to make a pair regardless.)
+                hpair = left >= encl_endcap and right >= encl_endcap
+                vpair = bottom >= encl_endcap and top >= encl_endcap
+                if hpair and not vpair:
+                    land = (xc - lh, yc - sw, xc + lh, yc + sw)
+                else:
+                    land = (xc - sw, yc - lh, xc + sw, yc + lh)
+                key = (xi, yi)
+                tier = 0 if pair else 1
+                if key not in found or tier < found[key][3]:
+                    found[key] = (xc, yc, land, tier)
+    if found:
+        # Keep the all-pair-or-all-single set the simple version returned, so the
+        # router sees the same candidate nodes (placement/routing unchanged).
+        best = min(v[3] for v in found.values())
+        return [(xi, yi, v[0], v[1], v[2])
+            for (xi, yi), v in found.items() if v[3] == best]
+    if allow_rail:
+        return []
+    return [(xi, yi, vx, vy, None) for (xi, yi, vx, vy) in _offtrack_access(rects, cfg)]
+
+
+def _offtrack_access(rects, cfg):
+    """Access for a pin with no on-track via point: drop the Via1 on the pin at a
+    manufacturing-grid x (``vx``) on a signal y-track (``vy``), with full via metal
+    enclosure, and report the nearest vertical track ``xi``. The emitter lands the
+    via there and bridges across to track ``xi`` with a short Metal2 segment (the
+    Metal2 is free over the Metal1-only leaf cells). Returns ``(xi, yi, vx, vy)``."""
+    via_half, encl, mgrid = cfg.via_half, cfg.encl, 5   # MANUFACTURINGGRID = 5 nm
+    encl_endcap = cfg.encl_endcap
+    xp, yp = cfg.x_pitch, cfg.y_pitch
+    out = []
+    for (x0, y0, x1, y1) in rects:
+        xlo, xhi = x0 + via_half + encl, x1 - via_half - encl   # via-x range in rect
+        if xhi < xlo:
+            continue
+        for yi in range(1, cfg.y_track_max):
+            if not cfg.is_signal_track(yi):
+                continue
+            yc = yi * yp
+            bottom, top = yc - via_half - y0, y1 - (yc + via_half)   # y enclosures
+            if bottom < encl or top < encl:
+                continue
+            # Snap to the in-rect manufacturing-grid x nearest a track (short jog).
+            xi = round(((xlo + xhi) / 2) / xp)
+            vx = max(xlo, min(xhi, round(xi * xp / mgrid) * mgrid))
+            left, right = vx - via_half - x0, x1 - (vx + via_half)
+            # The pin's own metal must give the Via1 its endcap (>= encl_endcap on
+            # one side), since off-track vias add no Metal1 landing.
+            if max(left, right, bottom, top) < encl_endcap:
+                continue
+            out.append((xi, yi, vx, yc))
+    return out
 
 
 def _neighbors(node, cfg, xmax):
@@ -510,6 +580,9 @@ def global_route(routed_nets, term_access, cfg, xmax, gw=5, gh=5):
 
     def route(nn):
         gcells = net_gcells[nn]
+        if not gcells:
+            raise RuntimeError(f"net {nn!r} has no routable pin access "
+                "(a terminal pin could not be reached on or off the track grid)")
         tree = {gcells[0]}
         for gc in gcells[1:]:
             if gc not in tree:
@@ -575,15 +648,29 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
     Returns {net_name: (edges, term_m2nodes)}.
     """
     # term_access[net] is, per terminal, the list of candidate (xi, yi, M2)
-    # access nodes for that pin.
+    # access nodes for that pin. term_via maps an off-track access node to the
+    # actual on-pin Via1 position (vx, vy); the emitter jogs it back to the track.
+    # term_land maps an on-track access node to its pin-aware Metal1 landing.
     term_access = {}
+    term_via = {}
+    term_land = {}
+    xp, yp = cfg.x_pitch, cfg.y_pitch
     for nn, net in routed_nets.items():
         # A power *pin* (vdd/vss) is reached on its wide rail track; key off the
         # pin name so a tie-off net's rail terminal also uses rail access.
-        term_access[nn] = [[(xi, yi, M2)
-            for (xi, yi) in access_nodes(placed[iname].pins[pname], cfg,
-                pname in ('VDD', 'VSS'))]
-            for iname, pname in net.terminals]
+        cands = []
+        for iname, pname in net.terminals:
+            term = []
+            for (xi, yi, vx, vy, land) in access_nodes(placed[iname].pins[pname],
+                    cfg, pname in ('VDD', 'VSS')):
+                node = (xi, yi, M2)
+                term.append(node)
+                if (vx, vy) != (xi * xp, yi * yp):
+                    term_via[node] = (vx, vy)
+                elif land is not None:
+                    term_land[node] = land
+            cands.append(term)
+        term_access[nn] = cands
 
     # Global routing assigns each net a corridor of gcells; detailed routing
     # stays inside the corridor (cheap, congestion-balanced), falling back to the
@@ -723,7 +810,8 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
     for it in range(3000):
         bad_nodes, bad_nets = conflicts()
         if not bad_nodes:
-            return {nn: (r[0], r[1]) for nn, r in routes.items()}, port_escape
+            return ({nn: (r[0], r[1]) for nn, r in routes.items()},
+                port_escape, term_via, term_land)
         for node in bad_nodes:
             history[node] = history.get(node, 0.0) + 1.0
         penalty[0] = min(penalty[0] * 1.05, 50.0)
@@ -738,7 +826,7 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
 
 # --- geometry emission + top-level orchestration --------------------------
 
-def _emit_net_direct(l, layers, edges, term_m2, cfg):
+def _emit_net_direct(l, layers, edges, term_m2, cfg, term_via=None, term_land=None):
     """
     Emit one routed net's geometry directly with concrete coordinates -- no
     constraint solver. (Routing everything through ORDeC's general solver, as
@@ -802,15 +890,36 @@ def _emit_net_direct(l, layers, edges, term_m2, cfg):
         l % LayoutRect(layer=via_layer[layer_pair], rect=Rect4I(
             xi * xp - cfg.via_half, yi * yp - cfg.via_half,
             xi * xp + cfg.via_half, yi * yp + cfg.via_half))
-    for xi, yi, _lyr in term_m2:    # Via1 from the Metal1 pin up to Metal2
-        l % LayoutRect(layer=layers.Via1, rect=Rect4I(
-            xi * xp - cfg.via_half, yi * yp - cfg.via_half,
-            xi * xp + cfg.via_half, yi * yp + cfg.via_half))
-        # Metal1 endcap landing (merges with the cell pin) so the via meets the
-        # 50 nm endcap rule (V1.c1) even on short foundry pins.
-        l % LayoutRect(layer=layers.Metal1, rect=Rect4I(
-            xi * xp - cfg.strap_half_w, yi * yp - cfg.m1_land_half_h,
-            xi * xp + cfg.strap_half_w, yi * yp + cfg.m1_land_half_h))
+    term_via = term_via or {}
+    for node in term_m2:            # Via1 from the Metal1 pin up to Metal2
+        xi, yi, _lyr = node
+        if node in term_via:
+            # Off-track pin (no track lands inside it): drop the via on the pin at
+            # vx and bridge to track xi with a short Metal2 jog (Metal2 is free over
+            # the cell). The pin's own metal gives the Via1 endcap, so -- unlike a
+            # short on-track pin -- no Metal1 landing is added (it would notch the
+            # pin and break Metal1 spacing).
+            vx, vy = term_via[node]
+            l % LayoutRect(layer=layers.Via1, rect=Rect4I(
+                vx - cfg.via_half, vy - cfg.via_half,
+                vx + cfg.via_half, vy + cfg.via_half))
+            lo, hi = min(vx, xi * xp), max(vx, xi * xp)
+            l % LayoutRect(layer=layers.Metal2, rect=Rect4I(
+                lo - cfg.strap_half_w, vy - cfg.land_half_h,
+                hi + cfg.strap_half_w, vy + cfg.land_half_h))
+        else:
+            vx, vy = xi * xp, yi * yp
+            l % LayoutRect(layer=layers.Via1, rect=Rect4I(
+                vx - cfg.via_half, vy - cfg.via_half,
+                vx + cfg.via_half, vy + cfg.via_half))
+            # Metal1 endcap landing (merges with the cell pin) so the via meets the
+            # 50 nm endcap rule (V1.c1) even on short foundry pins. access_nodes
+            # shapes it along the pin's enclosing axis so it never notches a
+            # neighbouring cell pin.
+            land = (term_land or {}).get(node, (
+                vx - cfg.strap_half_w, vy - cfg.m1_land_half_h,
+                vx + cfg.strap_half_w, vy + cfg.m1_land_half_h))
+            l % LayoutRect(layer=layers.Metal1, rect=Rect4I(*land))
 
 
 def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
@@ -874,7 +983,8 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
         die_w = -(-max(round(core_area / (nrows * rh)), packed_w) // xp) * xp
         xmax = die_w // xp
         try:
-            routing, port_escape = route_nets(sig, placed, cfg, xmax, port_nets)
+            routing, port_escape, term_via, term_land = route_nets(
+                sig, placed, cfg, xmax, port_nets)
             break
         except RuntimeError:
             if i == 4:
@@ -890,7 +1000,7 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
     # Emit routing directly with concrete coordinates (no constraint solver, so
     # it scales to hundreds of nets).
     for nn, (edges, term_m2) in routing.items():
-        _emit_net_direct(l, layers, edges, term_m2, cfg)
+        _emit_net_direct(l, layers, edges, term_m2, cfg, term_via, term_land)
 
     # Pad every row's rail out to the die width so the block is a flush rectangle
     # (like filler cells) and the right power strap ties into every rail.
@@ -921,7 +1031,12 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
                     xi * xp - cfg.strap_half_w, yi * yp - cfg.land_half_h,
                     xi * xp + cfg.strap_half_w, yi * yp + cfg.land_half_h))
         else:                                    # vdd/vss
-            iname, pname = net.terminals[0]
+            # Expose on an actual supply pin: a signal pin tied to this rail (e.g. a
+            # held-high RESET_B on the vdd net) is also a terminal here, but the port
+            # belongs on the VDD/VSS rail, not on that tied pin (which would put the
+            # pad off-grid and on the wrong net).
+            iname, pname = next((i, p) for i, p in net.terminals
+                if p in ('VDD', 'VSS'))
             rail = _largest_rect(placed[iname].pins[pname])
             if len(_supply_rails(placed, pname)) >= 2:
                 # This supply has its own side strap (>= 2 rails; see

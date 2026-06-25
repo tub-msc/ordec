@@ -1,0 +1,289 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Generalization tests for the place-and-route engine (ordec/layout/pnr.py).
+
+SarLogic exercises one netlist; each test below defines a synthetic cell with a
+circuit shape deliberately different from it, then DRC/LVS-checks its P&R layout
+across several sizes -- so a clean result is evidence the engine generalises
+rather than being tuned to one netlist:
+
+  * InvChain    -- n inverters in series (long linear dataflow, one net per stage).
+  * DffArray    -- n flip-flops with a high-fan-out clock and reset (wide cells,
+                   nets that touch every instance).
+  * Crossbar    -- n mux2 cells selecting between two shared buses busA/busB; each
+                   bus spans every cell -> two max-fan-out nets that stress channel
+                   congestion, and a second standard-cell type with its own pins.
+  * RippleAdder -- n-bit ripple-carry adder from xor2/and2/or2: a mix of macros
+                   with different pin geometry, threaded by a carry chain (xor2's
+                   output is off-track, exercising off-track pin access).
+  * TiedReset   -- n flip-flops with RESET_B tied to vdd, exercising the engine's
+                   signal-pin-tied-to-a-supply routing path (a tie net to the rail).
+
+These are structural stress tests (LVS checks connectivity, not logical
+function), so e.g. the chain's logic value is irrelevant. (They caught a real
+bug: a supply whose boustrophedon rows share a single rail got no strap, leaving
+its port floating.)
+"""
+
+from ordec.core import *
+from ordec.lib import ihp130
+from ordec.layout.ihp_pnr import place_and_route
+from ordec.examples.sar_adc.stdcell_lib import extlib
+
+
+def test_invchain_pnr_drc_lvs():
+    """n inverters in series (long linear dataflow): P&R layout is DRC/LVS-clean
+    for n = 4, 8, 16."""
+    Inv = extlib["sg13g2_inv_1"]
+
+    cell InvChain:
+        """n inverters in series: a -> inv0 -> inv1 -> ... -> y."""
+        n = Parameter(int, default=8)
+
+        viewgen symbol -> Symbol:
+            input a:   .align=West
+            output y:  .align=East
+            inout vdd: .align=North
+            inout vss: .align=South
+
+        viewgen schematic -> Schematic:
+            port a:   .align=East; .pos=(0, 10)
+            port y:   .align=West; .pos=(20 + 8 * self.n, 10)
+            port vdd: .align=East; .pos=(0, 18)
+            port vss: .align=East; .pos=(0, 2)
+
+            path inv, nd
+            for i in range(self.n - 1):
+                net nd[i]
+            for i in range(self.n):
+                src = a if i == 0 else nd[i - 1]
+                dst = y if i == self.n - 1 else nd[i]
+                Inv inv[i]:
+                    .pos = (10 + 8 * i, 10)
+                    .A -- src; .Y -- dst
+                    .VDD -- vdd; .VSS -- vss
+
+        viewgen layout -> Layout:
+            return place_and_route(self)
+
+    for n in (4, 8, 16):
+        c = InvChain(n=n)
+        assert ihp130.run_drc(c.layout, use_tempdir=True).summary() == {}
+        assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True)
+
+
+def test_dffarray_pnr_drc_lvs():
+    """n flip-flops sharing a high-fan-out clk/rst (wide cells, nets touching
+    every instance): P&R layout is DRC/LVS-clean for n = 4, 8."""
+    Dff = extlib["sg13g2_dfrbp_1"]
+
+    cell DffArray:
+        """n flip-flops sharing clk and rst (high fan-out), with per-bit d[i]/q[i]."""
+        n = Parameter(int, default=4)
+
+        viewgen symbol -> Symbol:
+            input clk: .align=West
+            input rst: .align=West
+            inout vdd: .align=North
+            inout vss: .align=South
+            path d, q
+            for i in range(self.n):
+                input d[i]:  .align=West
+                output q[i]: .align=East
+
+        viewgen schematic -> Schematic:
+            port clk: .align=East; .pos=(0, 48)
+            port rst: .align=East; .pos=(0, 44)
+            port vdd: .align=East; .pos=(0, 52)
+            port vss: .align=East; .pos=(0, 2)
+            path d, q
+            for i in range(self.n):
+                port d[i]: .align=East; .pos=(0, 8 + 8 * i)
+                port q[i]: .align=West; .pos=(60, 8 + 8 * i)
+
+            path ff, qn
+            for i in range(self.n):
+                net qn[i]
+                Dff ff[i]:
+                    .pos = (20, 8 + 8 * i)
+                    .D -- d[i]; .CLK -- clk; .RESET_B -- rst
+                    .Q -- q[i]; .Q_N -- qn[i]
+                    .VDD -- vdd; .VSS -- vss
+
+        viewgen layout -> Layout:
+            return place_and_route(self)
+
+    for n in (4, 8):
+        c = DffArray(n=n)
+        assert ihp130.run_drc(c.layout, use_tempdir=True).summary() == {}
+        assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True)
+
+
+def test_crossbar_pnr_drc_lvs():
+    """n mux2 cells selecting between two shared buses busA/busB. Each bus spans
+    every cell (two max-fan-out nets -> channel congestion), and mux2 brings a
+    second standard-cell type into the flow. DRC/LVS-clean for n = 4, 8."""
+    Mux = extlib["sg13g2_mux2_1"]
+
+    cell Crossbar:
+        """n mux2 cells: y[i] = sel[i] ? busB : busA, with busA/busB shared by all."""
+        n = Parameter(int, default=4)
+
+        viewgen symbol -> Symbol:
+            input busA: .align=West
+            input busB: .align=West
+            inout vdd:  .align=North
+            inout vss:  .align=South
+            path sel, y
+            for i in range(self.n):
+                input sel[i]: .align=West
+                output y[i]:  .align=East
+
+        viewgen schematic -> Schematic:
+            port vdd:  .align=East; .pos=(0, 0)
+            port vss:  .align=East; .pos=(0, 4)
+            port busA: .align=East; .pos=(0, 8)
+            port busB: .align=East; .pos=(0, 12)
+            path sel, y, m
+            for i in range(self.n):
+                port sel[i]: .align=East; .pos=(0, 20 + 6 * i)
+                port y[i]:   .align=West; .pos=(40, 10 * i)
+            for i in range(self.n):
+                Mux m[i]:
+                    .pos = (20, 10 * i)
+                    .A0 -- busA; .A1 -- busB; .S -- sel[i]; .X -- y[i]
+                    .VDD -- vdd; .VSS -- vss
+
+        viewgen layout -> Layout:
+            return place_and_route(self)
+
+    for n in (4, 8):
+        c = Crossbar(n=n)
+        assert ihp130.run_drc(c.layout, use_tempdir=True).summary() == {}
+        assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True)
+
+
+def test_ripple_adder_pnr_drc_lvs():
+    """n-bit ripple-carry adder built from xor2/and2/or2 -- a mix of macros with
+    different pin geometry, threaded by a carry chain across the bits. xor2's
+    output pin lands between routing tracks, so this also exercises the engine's
+    off-track pin access. DRC/LVS-clean for n = 2, 4."""
+    Xor = extlib["sg13g2_xor2_1"]
+    And = extlib["sg13g2_and2_1"]
+    Or  = extlib["sg13g2_or2_1"]
+
+    cell RippleAdder:
+        """n-bit ripple-carry adder: sum[i] = a[i]^b[i]^carry[i],
+        carry[i+1] = (a[i]&b[i]) | (carry[i] & (a[i]^b[i])); carry[0]=cin."""
+        n = Parameter(int, default=4)
+
+        viewgen symbol -> Symbol:
+            input cin:   .align=West
+            output cout: .align=East
+            inout vdd:   .align=North
+            inout vss:   .align=South
+            path a, b, sum
+            for i in range(self.n):
+                input a[i]:    .align=West
+                input b[i]:    .align=West
+                output sum[i]: .align=East
+
+        viewgen schematic -> Schematic:
+            path a, b, sum
+            for i in range(self.n):
+                port a[i]:   .align=East; .pos=(0, 16 * i)
+                port b[i]:   .align=East; .pos=(0, 16 * i + 4)
+                port sum[i]: .align=West; .pos=(46, 16 * i)
+            port cin:  .align=East; .pos=(0, 16 * self.n)
+            port cout: .align=West; .pos=(46, 16 * self.n)
+            port vdd:  .align=East; .pos=(0, 16 * self.n + 4)
+            port vss:  .align=East; .pos=(0, 16 * self.n + 8)
+
+            # carry[i] is the carry into bit i: carry[0]=cin, carry[n]=cout.
+            path cy
+            carry = [cin]
+            for i in range(self.n - 1):
+                net cy[i]
+                carry.append(cy[i])
+            carry.append(cout)
+
+            path t, g, p, txor, sxor, gand, pand, cor
+            for i in range(self.n):
+                net t[i]
+                net g[i]
+                net p[i]
+                Xor txor[i]:
+                    .pos = (10, 16 * i)
+                    .A -- a[i]; .B -- b[i]; .X -- t[i]
+                    .VDD -- vdd; .VSS -- vss
+                Xor sxor[i]:
+                    .pos = (22, 16 * i)
+                    .A -- t[i]; .B -- carry[i]; .X -- sum[i]
+                    .VDD -- vdd; .VSS -- vss
+                And gand[i]:
+                    .pos = (34, 16 * i)
+                    .A -- a[i]; .B -- b[i]; .X -- g[i]
+                    .VDD -- vdd; .VSS -- vss
+                And pand[i]:
+                    .pos = (10, 16 * i + 8)
+                    .A -- carry[i]; .B -- t[i]; .X -- p[i]
+                    .VDD -- vdd; .VSS -- vss
+                Or cor[i]:
+                    .pos = (22, 16 * i + 8)
+                    .A -- g[i]; .B -- p[i]; .X -- carry[i + 1]
+                    .VDD -- vdd; .VSS -- vss
+
+        viewgen layout -> Layout:
+            return place_and_route(self)
+
+    for n in (2, 4):
+        c = RippleAdder(n=n)
+        assert ihp130.run_drc(c.layout, use_tempdir=True).summary() == {}
+        assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True)
+
+
+def test_tied_reset_pnr_drc_lvs():
+    """n flip-flops sharing clk, each with RESET_B tied to vdd (held inactive).
+    The tied signal pin exercises the engine's tie-to-supply path: a short net is
+    synthesised from the pin to the cell's own rail. DRC/LVS-clean for n = 4, 8."""
+    Dff = extlib["sg13g2_dfrbp_1"]
+
+    cell TiedReset:
+        """n flip-flops sharing clk, RESET_B held high on each (no reset port)."""
+        n = Parameter(int, default=4)
+
+        viewgen symbol -> Symbol:
+            input clk: .align=West
+            inout vdd: .align=North
+            inout vss: .align=South
+            path d, q
+            for i in range(self.n):
+                input d[i]:  .align=West
+                output q[i]: .align=East
+
+        viewgen schematic -> Schematic:
+            port clk: .align=East; .pos=(0, 0)
+            port vdd: .align=East; .pos=(0, 4)
+            port vss: .align=East; .pos=(0, 8)
+            path d, q
+            for i in range(self.n):
+                port d[i]: .align=East; .pos=(0, 14 + 10 * i)
+                port q[i]: .align=West; .pos=(40, 10 * i)
+            path ff, qn
+            for i in range(self.n):
+                net qn[i]
+                Dff ff[i]:
+                    .pos = (20, 10 * i)
+                    .D -- d[i]; .CLK -- clk; .RESET_B -- vdd
+                    .Q -- q[i]; .Q_N -- qn[i]
+                    .VDD -- vdd; .VSS -- vss
+
+        viewgen layout -> Layout:
+            return place_and_route(self)
+
+    for n in (4, 8):
+        c = TiedReset(n=n)
+        assert ihp130.run_drc(c.layout, use_tempdir=True).summary() == {}
+        assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True)
