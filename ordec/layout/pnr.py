@@ -23,9 +23,16 @@ does make these structural assumptions about the standard-cell flow:
 * Power (vdd/vss) connects by rail abutment, like a real standard-cell row.
 
 The geometry (wires, via stacks) is emitted directly as concrete grid
-coordinates (``_emit_net_direct``): routing everything through ORDeC's general
+coordinates (``emit_net_direct``): routing everything through ORDeC's general
 constraint solver does not scale to hundreds of nets, so this module decides the
 paths *and* lays down the metal itself.
+
+Standard-cell coverage: it routes most IHP sg13g2 logic/sequential cells (~60 of
+~74; ``tests/test_pnr.ord`` checks a representative subset). The rest
+fail *loudly* -- a clear exception or a sign-off DRC violation -- on one hard case:
+a Via1 endcap landing that small or staircase pins (e.g. a21o, dlhrq, sdfbbp) can't
+satisfy without an M1.b/V1.c1 violation, which would take a polygon-exact via-access
+engine to fix. Non-logic cells (antenna, fill, decap) are out of scope.
 """
 
 from collections import namedtuple
@@ -56,12 +63,14 @@ class GridConfig:
     via_half: int            # half the Via1..Via4 cut size (V*.a / 2)
     encl: int                # min metal enclosure of via on every side (V1.c)
     encl_endcap: int         # min metal enclosure on >= 1 side (V1.c1)
+    manufacturing_grid: int  # layout quantum; off-track vias snap to it (MANUFACTURINGGRID)
     # Emitted geometry, sized to the PDK DRC rules:
     wire_width: int          # Mn routing-wire width (= Mn min width)
     wire_ext: int            # wire overhang past its last via (via half + endcap)
     strap_half_w: int        # half a wire / strap / via-landing width (= wire_width / 2)
     land_half_h: int         # half the long side of a min-area via landing
     m1_land_half_h: int      # half-height of the Metal1 endcap landing under a Via1
+    min_area_tracks: int     # min wire span in track pitches to meet Mn min area
     port_pad_below: int      # port-pad extent below the top rail
     port_pad_above: int      # port-pad extent above the top rail
     strap_vdd_x: int         # VDD strap x (left margin; the right strap mirrors to die_w - x)
@@ -100,7 +109,6 @@ class PlacedInst:
     pin rectangles in die coordinates."""
     name: str
     cell: object          # the leaf Cell instance
-    x: int                # placement x offset (nm)
     width: int            # cell width (nm)
     pos: tuple = (0, 0)   # LayoutInstance position
     orient: object = None # LayoutInstance orientation (D4.R0 or D4.MX)
@@ -120,9 +128,21 @@ class NetInfo:
 # One leaf cell before placement: the Cell, its Metal1 pin rects, and its width.
 LeafCell = namedtuple('LeafCell', 'cell pins width')
 
+# One net's detailed route: its wire edges, the Via1 access nodes (term_m2), and
+# the full set of grid nodes it occupies (for congestion bookkeeping).
+_Route = namedtuple('_Route', 'edges term_m2 tree')
+
 
 def _conns_of(sch, inst):
-    """{pin_name: net_name} for one instance in a schematic."""
+    """Map each pin of one instance to the net it connects to.
+
+    Args:
+        sch: the Schematic containing the instance.
+        inst: the SchemInstance whose connections are read.
+
+    Returns:
+        ``{pin_name: net_name}`` for ``inst``.
+    """
     out = {}
     for conn in sch.all(SchemInstanceConn):
         if conn.ref.nid == inst.nid:
@@ -131,17 +151,23 @@ def _conns_of(sch, inst):
     return out
 
 
-def _flatten(cell, is_leaf):
-    """
-    Flatten a (possibly hierarchical) schematic down to Metal1-only foundry leaf
+def flatten(cell, is_leaf):
+    """Flatten a (possibly hierarchical) schematic to Metal1-only foundry leaf
     instances, the way a standard-cell flow flattens a netlist before detailed
-    routing. Sub-cells for which ``is_leaf`` is true are leaves; any other instance
-    is expanded into its own schematic, with internal nets uniquified by an
-    instance prefix and port nets mapped to the parent's nets.
+    routing.
 
-    Returns ``(leaf_insts, net_terminals)`` where ``leaf_insts`` maps a flat
-    instance name to its leaf Cell, and ``net_terminals`` maps a net name to a
-    list of ``(flat_inst_name, pin_name)``.
+    Sub-cells for which ``is_leaf`` is true are leaves; any other instance is
+    expanded into its own schematic, with internal nets uniquified by an instance
+    prefix and port nets mapped to the parent's nets.
+
+    Args:
+        cell: the top cell whose ``schematic`` view is flattened.
+        is_leaf: predicate ``cell -> bool``, true for a routing leaf cell.
+
+    Returns:
+        ``(leaf_insts, net_terminals)`` -- ``leaf_insts`` maps a flat instance
+        name to its leaf Cell, and ``net_terminals`` maps a net name to a list of
+        ``(flat_inst_name, pin_name)`` terminals.
     """
     leaf_insts = {}
     net_terminals = {}
@@ -167,11 +193,20 @@ def _flatten(cell, is_leaf):
 
 
 def extract(cell, pin_rects, is_leaf):
-    """Return ``(cells, nets)`` for a cell's flattened schematic: cells maps each
-    leaf instance name to a LeafCell, nets maps each net name to a NetInfo.
-    ``pin_rects`` and ``is_leaf`` are the PDK hooks documented on
-    :func:`place_and_route`."""
-    leaf_insts, net_terminals = _flatten(cell, is_leaf)
+    """Build the placement + net data for a cell's flattened schematic.
+
+    Args:
+        cell: the top cell to lay out.
+        pin_rects: callable ``cell_name -> {pin: [(x0, y0, x1, y1), ...]}`` giving a
+            leaf cell's per-pin Metal1 rectangles (a PDK hook; see
+            :func:`place_and_route`).
+        is_leaf: predicate ``cell -> bool``, true for a routing leaf (a PDK hook).
+
+    Returns:
+        ``(cells, nets)`` -- ``cells`` maps each leaf instance name to a
+        :class:`LeafCell`, ``nets`` maps each net name to a :class:`NetInfo`.
+    """
+    leaf_insts, net_terminals = flatten(cell, is_leaf)
 
     cells = {}
     for name, leaf in leaf_insts.items():
@@ -194,35 +229,52 @@ def extract(cell, pin_rects, is_leaf):
 
 
 def order_cells(cells, nets, iters=30):
-    """
-    Order the cells in the row to keep nets short (low wirelength), which is what
-    makes a single-row channel routable. Iterated barycenter placement: repeatedly
-    move each cell toward the average position of the cells it shares a net with,
-    then re-rank. Power nets (which touch every cell) are ignored.
+    """Order the row's cells to keep nets short (low wirelength), which is what
+    makes a single-row channel routable.
+
+    Uses iterated barycenter placement: repeatedly move each cell toward the mean
+    position of the cells it shares a net with, then re-rank. Power nets (which
+    touch every cell) are ignored.
+
+    Args:
+        cells: ``{name: LeafCell}`` for the cells to order.
+        nets: ``{name: NetInfo}`` giving the connectivity.
+        iters: number of barycenter refinement passes.
+
+    Returns:
+        The cell names as a wirelength-ordered list.
     """
     order = sorted(cells)
-    sig_nets = [n for n in nets.values()
+    sig_insts = [[t[0] for t in n.terminals] for n in nets.values()
         if n.name not in ('vdd', 'vss') and len(n.terminals) >= 2]
     for _ in range(iters):
         pos = {name: i for i, name in enumerate(order)}
         barycenter = {}
         for name in order:
-            acc, cnt = 0.0, 0
-            for net in sig_nets:
-                net_insts = [t[0] for t in net.terminals]
-                if name in net_insts:
-                    for other in net_insts:
+            total, count = 0.0, 0
+            for insts in sig_insts:
+                if name in insts:
+                    for other in insts:
                         if other != name:
-                            acc += pos[other]; cnt += 1
-            barycenter[name] = acc / cnt if cnt else pos[name]
+                            total += pos[other]; count += 1
+            barycenter[name] = total / count if count else pos[name]
         order = sorted(order, key=lambda n: (barycenter[n], n))
     return order
 
 
-def _cell_xy(cells, order, cfg):
-    """Fast cell-center (x, y) lookup for a folded order -- used to score
-    placements without building geometry."""
-    rh = cfg.row_height
+def _cell_centers(cells, order, cfg):
+    """Estimate each cell's ``(x, y)`` center for a folded order, to score a
+    placement without building geometry.
+
+    Args:
+        cells: ``{name: LeafCell}`` (used for cell widths).
+        order: the 1-D cell order to fold into rows.
+        cfg: the routing/floorplan :class:`GridConfig`.
+
+    Returns:
+        ``{name: (x_center, y_center)}`` in nm.
+    """
+    row_height = cfg.row_height
     row_target = sum(cells[n].width for n in order) / cfg.n_rows
     center = {}
     row, row_w, x = 0, 0, 0
@@ -230,18 +282,30 @@ def _cell_xy(cells, order, cfg):
         w = cells[name].width
         if row < cfg.n_rows - 1 and row_w + w > row_target and row_w > 0:
             row += 1; row_w = 0; x = 0
-        center[name] = (x + w // 2, row * rh + rh // 2)
+        center[name] = (x + w // 2, row * row_height + row_height // 2)
         x += w; row_w += w
     return center
 
 
 def order_cells_sa(cells, nets, cfg, iters=6000, seed=1):
-    """
-    Wirelength-driven placement by simulated annealing (the classic standard-cell
-    placement method). Starts from the barycenter order and perturbs the cell
-    sequence to minimize half-perimeter wirelength, weighting vertical span more
-    (a net that stays within one row routes far more easily than one that crosses
-    rows). Deterministic via a fixed seed.
+    """Order cells by wirelength using simulated annealing -- the classic
+    standard-cell placement method.
+
+    Starts from the barycenter order (:func:`order_cells`) and perturbs the cell
+    sequence to minimise half-perimeter wirelength, weighting vertical span 2x (a
+    net that stays within one row routes far more easily than one crossing rows). A
+    single row, or a netlist with no multi-terminal signal nets, skips annealing
+    and returns the barycenter order directly.
+
+    Args:
+        cells: ``{name: LeafCell}`` for the cells to order.
+        nets: ``{name: NetInfo}`` giving the connectivity.
+        cfg: the routing/floorplan :class:`GridConfig` (``n_rows`` sets the fold).
+        iters: number of annealing moves.
+        seed: RNG seed; fixed so the result is deterministic.
+
+    Returns:
+        The cell names as a wirelength-ordered list.
     """
     sig_insts = [[t[0] for t in n.terminals] for n in nets.values()
         if n.name not in ('vdd', 'vss') and len(n.terminals) >= 2]
@@ -249,7 +313,7 @@ def order_cells_sa(cells, nets, cfg, iters=6000, seed=1):
         return order_cells(cells, nets)
 
     def hpwl(order):
-        center = _cell_xy(cells, order, cfg)
+        center = _cell_centers(cells, order, cfg)
         total = 0
         for insts in sig_insts:
             xs = [center[i][0] for i in insts]; ys = [center[i][1] for i in insts]
@@ -277,25 +341,33 @@ def order_cells_sa(cells, nets, cfg, iters=6000, seed=1):
     return best_order
 
 
-def _partition_width(widths, nrows):
-    """
-    Minimum achievable maximum row width when a cell *sequence* is split into at
-    most ``nrows`` contiguous rows -- the classic "split array largest sum",
-    solved by binary search on the width. This keeps the rows balanced so no
-    single row blows up the die width (a fixed per-row target instead
-    systematically under-fills and dumps the leftover into the last row).
+def partition_width(widths, nrows):
+    """Smallest achievable maximum row width when a cell *sequence* is split into
+    at most ``nrows`` contiguous rows.
+
+    This is the classic "split array largest sum", solved by binary search on the
+    width. Balancing the rows this way stops any single row from blowing up the die
+    width (a fixed per-row target instead under-fills and dumps the leftover into
+    the last row).
+
+    Args:
+        widths: the cell widths in placement order (nm).
+        nrows: the maximum number of rows.
+
+    Returns:
+        The minimised maximum row width (nm).
     """
     if not widths:
         return 0
     lo, hi = max(widths), sum(widths)
     while lo < hi:
         mid = (lo + hi) // 2
-        cnt, acc = 1, 0
+        count, total = 1, 0
         for w in widths:
-            if acc + w > mid:
-                cnt += 1; acc = 0
-            acc += w
-        if cnt <= nrows:
+            if total + w > mid:
+                count += 1; total = 0
+            total += w
+        if count <= nrows:
             hi = mid
         else:
             lo = mid + 1
@@ -303,18 +375,28 @@ def _partition_width(widths, nrows):
 
 
 def place_rows(cells, order, cfg):
+    """Fold the 1-D cell order into ``cfg.n_rows`` abutted standard-cell rows.
+
+    Odd rows are mirrored (D4.MX) and their cell order reversed (a boustrophedon /
+    snake), so power rails abut between rows and the dataflow stays adjacent across
+    the turn -- exactly how standard-cell rows are built.
+
+    Args:
+        cells: ``{name: LeafCell}`` for the cells to place.
+        order: the wirelength-ordered cell names from :func:`order_cells_sa`.
+        cfg: the routing/floorplan :class:`GridConfig`.
+
+    Returns:
+        ``(placed, max_width)`` -- ``placed`` maps each name to a
+        :class:`PlacedInst` (absolute position, orientation, pin rects), and
+        ``max_width`` is the widest packed row (nm).
     """
-    Fold the 1-D cell order into ``cfg.n_rows`` abutted standard-cell rows. Odd
-    rows are mirrored (D4.MX) and their cell order reversed (a boustrophedon /
-    snake), so power rails abut between rows and the dataflow stays adjacent
-    across the turn -- exactly how standard-cell rows are built.
-    """
-    rh = cfg.row_height
+    row_height = cfg.row_height
     nrows = cfg.n_rows
 
     # Balanced fold: pack greedily to the minimum max-row-width (the optimal
     # contiguous partition), so the rows come out even.
-    max_row_w = _partition_width([cells[n].width for n in order], nrows)
+    max_row_w = partition_width([cells[n].width for n in order], nrows)
     rows = [[]]
     row_w = 0
     for name in order:
@@ -331,7 +413,7 @@ def place_rows(cells, order, cfg):
         mirror = (row % 2 == 1)
         if mirror:
             row_cells = row_cells[::-1]
-        row_y = (row + 1) * rh if mirror else row * rh
+        row_y = (row + 1) * row_height if mirror else row * row_height
         orient = D4.MX if mirror else D4.R0
         x = 0
         for name in row_cells:
@@ -342,7 +424,7 @@ def place_rows(cells, order, cfg):
             else:
                 abs_pins = {pin: [(x0 + x, y0 + row_y, x1 + x, y1 + row_y)
                     for (x0, y0, x1, y1) in rects] for pin, rects in local_pins.items()}
-            placed[name] = PlacedInst(name, leaf, x, width, (x, row_y), orient, row, abs_pins)
+            placed[name] = PlacedInst(name, leaf, width, (x, row_y), orient, row, abs_pins)
             x += width
         max_w = max(max_w, x)
     return placed, max_w
@@ -359,32 +441,35 @@ HORIZ = (M3, M5)       # horizontal routing layers (move in x)
 
 
 def access_nodes(rects, cfg, allow_rail=False):
-    """Candidate access points for a pin (list of Metal1 rects), each returned as
-    ``(xi, yi, vx, vy, land)``: the routing track node ``(xi, yi)`` the router
-    connects to, the Via1 position ``(vx, vy)`` in nm, and ``land`` -- the Metal1
-    endcap-landing rect for the via, grown the full height only along the axis the
-    pin encloses as a pair, so it stays within the pin's own metal and never
-    notches a neighbour cell's pin (``None`` for off-track vias, which take their
-    endcap from the pin directly).
+    """Find candidate Via1 access points for a pin from its Metal1 rectangles.
 
     A pin is normally reached by a Via1 at a vertical (Metal2) track inside its
     Metal1 x-extent and a horizontal (Metal3) track inside its y-extent, so the via
-    sits on the track intersection (``vx, vy == xi*x_pitch, yi*y_pitch``). Using the
-    clean LEF rectangles (not a poly bbox) guarantees the access lands on this pin
-    only. Signal pins use signal tracks only; power pins (allow_rail=True) may be
-    reached on the rail track itself, where the wide rail easily encloses the via.
+    sits on the track intersection. Using the clean LEF rectangles (not a polygon
+    bbox) guarantees the access lands on this pin only. A pin whose metal lands
+    *between* vertical tracks (e.g. xor2's Y) has no on-track via, so this falls
+    back to :func:`union_access` and then :func:`offtrack_access`.
 
-    A pin whose metal lands *between* vertical tracks (e.g. xor2's Y) has no
-    on-track via; :func:`_offtrack_access` then places the via on the pin and the
-    emitter bridges it to the nearest track with a short Metal2 jog.
+    Args:
+        rects: the pin's Metal1 rectangles ``[(x0, y0, x1, y1), ...]`` in nm.
+        cfg: the routing grid + DRC geometry (:class:`GridConfig`).
+        allow_rail: if true (a power pin), the via may sit on a rail track, where
+            the wide rail easily encloses it; signal pins use signal tracks only.
+
+    Returns:
+        A list of ``(xi, yi, vx, vy, land)`` candidates: the routing track node
+        ``(xi, yi)`` the router connects to, the Via1 position ``(vx, vy)`` in nm,
+        and ``land`` -- the via's Metal1 endcap-landing rect (grown along the axis
+        the pin encloses as a pair so it stays within the pin's own metal), or
+        ``None`` for an off-track via, which takes its endcap from the pin itself.
     """
     via_half, encl, encl_endcap = cfg.via_half, cfg.encl, cfg.encl_endcap
-    sw, lh = cfg.strap_half_w, cfg.m1_land_half_h
-    xp, yp = cfg.x_pitch, cfg.y_pitch
+    half_w, endcap = cfg.strap_half_w, cfg.m1_land_half_h
+    x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     found = {}   # (xi, yi) -> (vx, vy, land, tier); tier 0 = endcap on a pair of sides
     for (x0, y0, x1, y1) in rects:
-        for xi in range(x0 // xp, x1 // xp + 2):
-            xc = xi * xp
+        for xi in range(x0 // x_pitch, x1 // x_pitch + 2):
+            xc = xi * x_pitch
             left, right = xc - via_half - x0, x1 - (xc + via_half)   # x via enclosures
             if left < encl or right < encl:
                 continue
@@ -392,33 +477,25 @@ def access_nodes(rects, cfg, allow_rail=False):
             for yi in range(ylo, yhi + 1):
                 if not allow_rail and not cfg.is_signal_track(yi):
                     continue
-                yc = yi * yp
+                yc = yi * y_pitch
                 bottom, top = yc - via_half - y0, y1 - (yc + via_half)   # y via enclosures
                 if bottom < encl or top < encl:
                     continue
-                # Via1 wants its endcap on a *pair* of opposite sides (V1.c1): tall
-                # signal pins give it top/bottom, wide rails left/right. Prefer
-                # those; fall back to a single endcap side for small pins so they
-                # stay routable.
-                pair = (bottom >= encl_endcap and top >= encl_endcap) or \
-                    (left >= encl_endcap and right >= encl_endcap)
-                if not (pair or max(left, right, bottom, top) >= encl_endcap):
-                    continue
-                # Endcap landing. V1.c1 wants Metal1 on a *pair* of opposite sides
-                # of the via. Grow the landing the full m1_land_half_h along the
-                # axis the pin itself encloses as a pair -- vertical when the pin is
-                # tall, horizontal when it is wide -- so that full-height pair stays
-                # inside the pin and never notches a neighbouring cell's pin. (A pin
-                # that only encloses on a single side keeps the vertical landing; it
-                # has to reach past the pin to make a pair regardless.)
+                # Via1 wants its Metal1 endcap on a *pair* of opposite sides
+                # (V1.c1): a tall pin encloses top/bottom, a wide one left/right. The
+                # landing grows the full height on that axis so it stays inside the
+                # pin; a single-endcap pin (no pair) still routes, the vertical
+                # landing reaching past it to make the pair.
                 hpair = left >= encl_endcap and right >= encl_endcap
                 vpair = bottom >= encl_endcap and top >= encl_endcap
+                pair = hpair or vpair
+                if not (pair or max(left, right, bottom, top) >= encl_endcap):
+                    continue
                 if hpair and not vpair:
-                    land = (xc - lh, yc - sw, xc + lh, yc + sw)
+                    land = (xc - endcap, yc - half_w, xc + endcap, yc + half_w)
                 else:
-                    land = (xc - sw, yc - lh, xc + sw, yc + lh)
-                key = (xi, yi)
-                tier = 0 if pair else 1
+                    land = (xc - half_w, yc - endcap, xc + half_w, yc + endcap)
+                key, tier = (xi, yi), 0 if pair else 1
                 if key not in found or tier < found[key][3]:
                     found[key] = (xc, yc, land, tier)
     if found:
@@ -429,18 +506,35 @@ def access_nodes(rects, cfg, allow_rail=False):
             for (xi, yi), v in found.items() if v[3] == best]
     if allow_rail:
         return []
-    return [(xi, yi, vx, vy, None) for (xi, yi, vx, vy) in _offtrack_access(rects, cfg)]
+    # Per-rect found nothing. Try an on-track via enclosed by the *union* of the
+    # pin's rects (a staircase pin), then fall back to an off-track via.
+    union = union_access(rects, cfg)
+    if union:
+        return union
+    return [(xi, yi, vx, vy, None) for (xi, yi, vx, vy) in offtrack_access(rects, cfg)]
 
 
-def _offtrack_access(rects, cfg):
-    """Access for a pin with no on-track via point: drop the Via1 on the pin at a
-    manufacturing-grid x (``vx``) on a signal y-track (``vy``), with full via metal
-    enclosure, and report the nearest vertical track ``xi``. The emitter lands the
-    via there and bridges across to track ``xi`` with a short Metal2 segment (the
-    Metal2 is free over the Metal1-only leaf cells). Returns ``(xi, yi, vx, vy)``."""
-    via_half, encl, mgrid = cfg.via_half, cfg.encl, 5   # MANUFACTURINGGRID = 5 nm
+def offtrack_access(rects, cfg):
+    """Access a pin that has no on-track via point: drop the Via1 on the pin and
+    bridge to the nearest track.
+
+    The via goes on the pin at a manufacturing-grid x on a signal y-track, with full
+    via metal enclosure; the emitter then bridges across to the reported vertical
+    track with a short Metal2 segment (Metal2 is free over the Metal1-only leaf
+    cells). The pin's own metal must give the via its endcap, since off-track vias
+    add no Metal1 landing.
+
+    Args:
+        rects: the pin's Metal1 rectangles ``[(x0, y0, x1, y1), ...]`` in nm.
+        cfg: the routing grid + DRC geometry (:class:`GridConfig`).
+
+    Returns:
+        A list of ``(xi, yi, vx, vy)`` candidates: the nearest vertical track ``xi``
+        and signal y-track ``yi``, and the on-pin Via1 position ``(vx, vy)`` in nm.
+    """
+    via_half, encl, mgrid = cfg.via_half, cfg.encl, cfg.manufacturing_grid
     encl_endcap = cfg.encl_endcap
-    xp, yp = cfg.x_pitch, cfg.y_pitch
+    x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     out = []
     for (x0, y0, x1, y1) in rects:
         xlo, xhi = x0 + via_half + encl, x1 - via_half - encl   # via-x range in rect
@@ -449,13 +543,13 @@ def _offtrack_access(rects, cfg):
         for yi in range(1, cfg.y_track_max):
             if not cfg.is_signal_track(yi):
                 continue
-            yc = yi * yp
+            yc = yi * y_pitch
             bottom, top = yc - via_half - y0, y1 - (yc + via_half)   # y enclosures
             if bottom < encl or top < encl:
                 continue
             # Snap to the in-rect manufacturing-grid x nearest a track (short jog).
-            xi = round(((xlo + xhi) / 2) / xp)
-            vx = max(xlo, min(xhi, round(xi * xp / mgrid) * mgrid))
+            xi = round(((xlo + xhi) / 2) / x_pitch)
+            vx = max(xlo, min(xhi, round(xi * x_pitch / mgrid) * mgrid))
             left, right = vx - via_half - x0, x1 - (vx + via_half)
             # The pin's own metal must give the Via1 its endcap (>= encl_endcap on
             # one side), since off-track vias add no Metal1 landing.
@@ -465,38 +559,116 @@ def _offtrack_access(rects, cfg):
     return out
 
 
+def union_access(rects, cfg):
+    """On-track access for a staircase pin whose via enclosure comes from the
+    *union* of its Metal1 rects.
+
+    A pin like nand4's A is enclosed by no single LEF rect, so
+    :func:`access_nodes`'s per-rect test misses it. Center-line ray casts measure
+    how far the merged metal reaches around a track via, and the landing grows along
+    the axis the merged metal reaches furthest on, so it stays on real metal.
+
+    Args:
+        rects: the pin's Metal1 rectangles ``[(x0, y0, x1, y1), ...]`` in nm.
+        cfg: the routing grid + DRC geometry (:class:`GridConfig`).
+
+    Returns:
+        A list of ``(xi, yi, vx, vy, land)`` candidates, in the same form as the
+        on-track branch of :func:`access_nodes`.
+    """
+    via_half, encl, encl_endcap = cfg.via_half, cfg.encl, cfg.encl_endcap
+    half_w, endcap = cfg.strap_half_w, cfg.m1_land_half_h
+    x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
+    mgrid = cfg.manufacturing_grid
+
+    def covered(px, py):
+        return any(x0 <= px <= x1 and y0 <= py <= y1 for (x0, y0, x1, y1) in rects)
+
+    def reach(xc, yc, dx, dy):   # contiguous Metal1 extent from the via centre
+        d = 0
+        while covered(xc + dx * (d + mgrid), yc + dy * (d + mgrid)):
+            d += mgrid
+        return d
+
+    xlo, xhi = min(r[0] for r in rects), max(r[2] for r in rects)
+    out = {}
+    for xi in range(xlo // x_pitch, xhi // x_pitch + 2):
+        xc = xi * x_pitch
+        for yi in range(1, cfg.y_track_max):
+            if not cfg.is_signal_track(yi) or not covered(xc, yi * y_pitch):
+                continue
+            yc = yi * y_pitch
+            left, right = reach(xc, yc, -1, 0) - via_half, reach(xc, yc, 1, 0) - via_half
+            bottom, top = reach(xc, yc, 0, -1) - via_half, reach(xc, yc, 0, 1) - via_half
+            if min(left, right, bottom, top) < encl or max(left, right, bottom, top) < encl_endcap:
+                continue
+            hpair = left >= encl_endcap and right >= encl_endcap
+            vpair = bottom >= encl_endcap and top >= encl_endcap
+            if hpair and not vpair:
+                land = (xc - endcap, yc - half_w, xc + endcap, yc + half_w)
+            else:
+                land = (xc - half_w, yc - endcap, xc + half_w, yc + endcap)
+            out[(xi, yi)] = (xc, yc, land)
+    return [(xi, yi, v[0], v[1], v[2]) for (xi, yi), v in out.items()]
+
+
 def _neighbors(node, cfg, xmax):
-    """Yield ``(neighbor_node, move_cost)`` for a maze-router node. Vertical
-    layers (M2, M4) step in y, horizontal layers (M3, M5) step in x; a layer
-    change costs ``cfg.via_cost`` and is only allowed off the rail tracks."""
-    xi, yi, lyr = node
+    """Yield the maze-router moves out of one grid node.
+
+    Vertical layers (Metal2, Metal4) step in y, horizontal layers (Metal3, Metal5)
+    step in x; a layer change costs ``cfg.via_cost`` and is only allowed off the
+    rail tracks.
+
+    Args:
+        node: the current grid node ``(xi, yi, layer)``.
+        cfg: the routing grid + cost knobs (:class:`GridConfig`).
+        xmax: the maximum x track index (the right die edge).
+
+    Yields:
+        ``(neighbor_node, move_cost)`` for each legal move.
+    """
+    xi, yi, layer = node
     on_signal = cfg.is_signal_track(yi)
     via_cost = cfg.via_cost
-    if lyr == M2:                      # vertical (move in y, rails pass through)
+    if layer == M2:                      # vertical (move in y, rails pass through)
         if yi + 1 < cfg.y_track_max: yield (xi, yi + 1, M2), 1.0
         if yi - 1 > 0:               yield (xi, yi - 1, M2), 1.0
         if on_signal:                yield (xi, yi, M3), via_cost
-    elif lyr == M3:                    # horizontal (move in x); via down to M2, up to M4
+    elif layer == M3:                    # horizontal (move in x); via down to M2, up to M4
         if xi + 1 <= xmax: yield (xi + 1, yi, M3), 1.0
         if xi - 1 >= 0:    yield (xi - 1, yi, M3), 1.0
         yield (xi, yi, M2), via_cost
         if on_signal and cfg.use_upper: yield (xi, yi, M4), via_cost
-    elif lyr == M4:                    # vertical (second vertical layer)
+    elif layer == M4:                    # vertical (second vertical layer)
         if yi + 1 < cfg.y_track_max: yield (xi, yi + 1, M4), 1.0
         if yi - 1 > 0:               yield (xi, yi - 1, M4), 1.0
-        if on_signal: yield (xi, yi, M3), via_cost
-        if on_signal: yield (xi, yi, M5), via_cost
-    elif lyr == M5:                    # horizontal (second horizontal layer)
+        if on_signal:
+            yield (xi, yi, M3), via_cost
+            yield (xi, yi, M5), via_cost
+    elif layer == M5:                    # horizontal (second horizontal layer)
         if xi + 1 <= xmax: yield (xi + 1, yi, M5), 1.0
         if xi - 1 >= 0:    yield (xi - 1, yi, M5), 1.0
         yield (xi, yi, M4), via_cost
 
 
 def _astar(starts, goals, cfg, xmax, node_cost, allowed=None):
-    """A* from any start (set) to any goal (set). node_cost(node)->float adds
-    congestion. ``allowed(node)->bool`` restricts the search region (the net's
-    global-routing corridor), keeping the maze search local on large layouts.
-    Returns the path (list of nodes) or None."""
+    """Route one connection by A* from any start node to any goal node.
+
+    Args:
+        starts: the set of start nodes (a terminal's access nodes, or the tree
+            built so far).
+        goals: the set of goal nodes (the next terminal's access nodes).
+        cfg: the routing grid + cost knobs (:class:`GridConfig`).
+        xmax: the maximum x track index.
+        node_cost: callable ``node -> float`` adding congestion cost.
+        allowed: optional predicate ``node -> bool`` restricting the search to the
+            net's global-routing corridor, keeping the maze search local on large
+            layouts.
+
+    Returns:
+        The path as a list of nodes from a start to a goal, or ``None`` if no path
+        exists within ``allowed``.
+    """
     goal_set = set(goals)
     goal_xs = [n[0] for n in goals]; goal_ys = [n[1] for n in goals]
 
@@ -511,25 +683,35 @@ def _astar(starts, goals, cfg, xmax, node_cost, allowed=None):
         cost[start] = node_cost(start)
         heapq.heappush(frontier, (cost[start] + heuristic(start), start))
     while frontier:
-        _, cur = heapq.heappop(frontier)
-        if cur in goal_set:
-            path = [cur]
-            while cur in came_from:
-                cur = came_from[cur]; path.append(cur)
+        _, current = heapq.heappop(frontier)
+        if current in goal_set:
+            path = [current]
+            while current in came_from:
+                current = came_from[current]; path.append(current)
             return path[::-1]
-        for nbr, step in _neighbors(cur, cfg, xmax):
-            if allowed is not None and not allowed(nbr):
+        for neighbor, step in _neighbors(current, cfg, xmax):
+            if allowed is not None and not allowed(neighbor):
                 continue
-            new_cost = cost[cur] + step + node_cost(nbr)
-            if nbr not in cost or new_cost < cost[nbr]:
-                cost[nbr] = new_cost; came_from[nbr] = cur
-                heapq.heappush(frontier, (new_cost + heuristic(nbr), nbr))
+            new_cost = cost[current] + step + node_cost(neighbor)
+            if neighbor not in cost or new_cost < cost[neighbor]:
+                cost[neighbor] = new_cost; came_from[neighbor] = current
+                heapq.heappush(frontier, (new_cost + heuristic(neighbor), neighbor))
     return None
 
 
 def _gcell_astar(starts, goal, gxmax, gymax, gcost):
-    """A* on the coarse gcell grid (2-D, 4-connected), used by the global router.
-    Returns the list of gcells on the cheapest path from any start to `goal`."""
+    """Route on the coarse gcell grid (2-D, 4-connected) for the global router.
+
+    Args:
+        starts: the set of start gcells (the net's tree so far).
+        goal: the gcell to reach.
+        gxmax: the maximum gcell x index.
+        gymax: the maximum gcell y index.
+        gcost: callable ``gcell -> float`` giving per-gcell congestion cost.
+
+    Returns:
+        The list of gcells on the cheapest path from any start to ``goal``.
+    """
     frontier = []
     cost = {}
     came_from = {}
@@ -537,39 +719,53 @@ def _gcell_astar(starts, goal, gxmax, gymax, gcost):
         cost[start] = 0.0
         heapq.heappush(frontier, (abs(start[0] - goal[0]) + abs(start[1] - goal[1]), start))
     while frontier:
-        _, cur = heapq.heappop(frontier)
-        if cur == goal:
-            path = [cur]
-            while cur in came_from:
-                cur = came_from[cur]; path.append(cur)
+        _, current = heapq.heappop(frontier)
+        if current == goal:
+            path = [current]
+            while current in came_from:
+                current = came_from[current]; path.append(current)
             return path
-        cx, cy = cur
+        cx, cy = current
         for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
             if not (0 <= nx <= gxmax and 0 <= ny <= gymax):
                 continue
-            new_cost = cost[cur] + gcost((nx, ny))
+            new_cost = cost[current] + gcost((nx, ny))
             if (nx, ny) not in cost or new_cost < cost[(nx, ny)]:
-                cost[(nx, ny)] = new_cost; came_from[(nx, ny)] = cur
+                cost[(nx, ny)] = new_cost; came_from[(nx, ny)] = current
                 heapq.heappush(frontier, (new_cost + abs(nx - goal[0]) + abs(ny - goal[1]), (nx, ny)))
     return [goal]
 
 
-def global_route(routed_nets, term_access, cfg, xmax, gw=5, gh=5):
-    """
-    Coarse global routing. The track grid is tiled into
-    gcells; each net's terminals are connected by a cheap tree on the gcell grid
-    with negotiated congestion on per-gcell demand, so nets spread off hotspots.
-    Returns ``(corridors, gw, gh)`` where corridors[net] is the set of gcells the
-    detailed router is then allowed to use for that net (plus a one-gcell halo).
+def global_route(routed_nets, term_access, cfg, xmax, gcell_w=5, gcell_h=5):
+    """Assign each net a coarse routing corridor by negotiated-congestion global
+    routing.
+
+    The track grid is tiled into gcells; each net's terminals are connected by a
+    cheap tree on the gcell grid, with a congestion penalty on per-gcell demand so
+    nets spread off hotspots. Detailed routing is then confined to each net's
+    corridor (plus a one-gcell halo), which keeps the maze search local.
+
+    Args:
+        routed_nets: the nets to route, ``{name: NetInfo}``.
+        term_access: per net, the list of per-terminal candidate access nodes
+            (from :func:`route_nets`).
+        cfg: the routing grid (:class:`GridConfig`).
+        xmax: the maximum x track index.
+        gcell_w: gcell width in tracks.
+        gcell_h: gcell height in tracks.
+
+    Returns:
+        ``(corridors, gcell_w, gcell_h)`` -- ``corridors`` maps each net to the set
+        of gcells its detailed routing may use (its tree plus a one-gcell halo).
     """
     def gcell_of(node):
-        return (node[0] // gw, node[1] // gh)
+        return (node[0] // gcell_w, node[1] // gcell_h)
 
-    gxmax = xmax // gw + 1
-    gymax = cfg.y_track_max // gh + 1
+    gxmax = xmax // gcell_w + 1
+    gymax = cfg.y_track_max // gcell_h + 1
     net_gcells = {nn: list({gcell_of(n) for term in term_access[nn] for n in term})
         for nn in routed_nets}
-    gcell_cap = gw + gh
+    gcell_cap = gcell_w + gcell_h
     history = {}
     penalty = [0.5]
     demand = {}
@@ -618,34 +814,57 @@ def global_route(routed_nets, term_access, cfg, xmax, gw=5, gh=5):
                 for dy in (-1, 0, 1):
                     halo.add((gx + dx, gy + dy))
         corridors[nn] = halo
-    return corridors, gw, gh
+    return corridors, gcell_w, gcell_h
 
 
 def _conflict_neighbors(node):
-    """Same-layer grid nodes that would violate spacing against `node` if used by
-    a *different* net. Only the same-track, facing-ends case matters: the wire-end
-    overhang (``cfg.wire_ext``) puts two facing wire ends one grid step apart,
-    closer than the min metal spacing.
-    Adjacent-track parallels are a full pitch apart (legal) and must NOT be flagged
-    -- doing so rejects legal routing and stalls convergence. 'One step' is along x
-    for horizontal layers, along y for vertical."""
-    xi, yi, lyr = node
-    if lyr in HORIZ:
-        return ((xi + 1, yi, lyr), (xi - 1, yi, lyr))
-    if lyr in VERT:
-        return ((xi, yi + 1, lyr), (xi, yi - 1, lyr))
+    """Same-layer grid nodes that would violate metal spacing against ``node`` if
+    used by a *different* net.
+
+    Only the same-track, facing-ends case matters: the wire-end overhang
+    (``cfg.wire_ext``) puts two facing wire ends one grid step apart, closer than
+    the min metal spacing. Adjacent-track parallels are a full pitch apart (legal)
+    and must NOT be flagged -- doing so rejects legal routing and stalls
+    convergence. "One step" is along x for horizontal layers, along y for vertical.
+
+    Args:
+        node: the grid node ``(xi, yi, layer)`` to check around.
+
+    Returns:
+        The conflicting same-layer neighbor nodes (a tuple, possibly empty).
+    """
+    xi, yi, layer = node
+    if layer in HORIZ:
+        return ((xi + 1, yi, layer), (xi - 1, yi, layer))
+    if layer in VERT:
+        return ((xi, yi + 1, layer), (xi, yi - 1, layer))
     return ()
 
 
 def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
-    """
-    Route the signal nets with negotiated-congestion maze routing,
-    using *incremental* rip-up-and-reroute: after an initial pass, each iteration
+    """Route the signal nets with negotiated-congestion maze routing.
+
+    Uses *incremental* rip-up-and-reroute: after an initial pass, each iteration
     reroutes only the nets touching a conflict (a shared node, or two nets too
-    close), raising the cost of the contested nodes each time, until the routing
-    is legal. Rerouting a handful of nets per pass -- rather than all of them --
-    plus bounded A* is what lets this scale to a few hundred cells.
-    Returns {net_name: (edges, term_m2nodes)}.
+    close), raising the cost of the contested nodes each time, until the routing is
+    legal. Rerouting a handful of nets per pass -- rather than all of them -- plus
+    bounded A* is what lets this scale to a few hundred cells.
+
+    Args:
+        routed_nets: the signal nets to route, ``{name: NetInfo}``.
+        placed: ``{name: PlacedInst}`` from :func:`place_rows` (for pin rects).
+        cfg: the routing grid + DRC geometry (:class:`GridConfig`).
+        xmax: the maximum x track index (the right die edge).
+        port_nets: the names of nets that need a top-edge Metal4 escape.
+
+    Returns:
+        ``(routing, port_escape, term_via, term_land)`` -- ``routing`` maps each net
+        to its ``(edges, term_m2)``; the rest are per-net overrides the emitter
+        needs (port-escape x, off-track Via1 positions, Metal1 landings).
+
+    Raises:
+        RuntimeError: if a net cannot be routed or the rip-up loop does not
+            converge (the caller then grows the floorplan and retries).
     """
     # term_access[net] is, per terminal, the list of candidate (xi, yi, M2)
     # access nodes for that pin. term_via maps an off-track access node to the
@@ -654,7 +873,7 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
     term_access = {}
     term_via = {}
     term_land = {}
-    xp, yp = cfg.x_pitch, cfg.y_pitch
+    x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     for nn, net in routed_nets.items():
         # A power *pin* (vdd/vss) is reached on its wide rail track; key off the
         # pin name so a tie-off net's rail terminal also uses rail access.
@@ -665,7 +884,7 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
                     cfg, pname in ('VDD', 'VSS')):
                 node = (xi, yi, M2)
                 term.append(node)
-                if (vx, vy) != (xi * xp, yi * yp):
+                if (vx, vy) != (xi * x_pitch, yi * y_pitch):
                     term_via[node] = (vx, vy)
                 elif land is not None:
                     term_land[node] = land
@@ -675,16 +894,16 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
     # Global routing assigns each net a corridor of gcells; detailed routing
     # stays inside the corridor (cheap, congestion-balanced), falling back to the
     # whole grid only if a net can't be realized there.
-    corridors, gw, gh = global_route(routed_nets, term_access, cfg, xmax)
+    corridors, gcell_w, gcell_h = global_route(routed_nets, term_access, cfg, xmax)
 
     def corridor_of(nn):
         cor = corridors[nn]
-        return lambda node: (node[0] // gw, node[1] // gh) in cor
+        return lambda node: (node[0] // gcell_w, node[1] // gcell_h) in cor
 
     history = {}          # node -> accumulated historical-congestion cost
     occupancy = {}        # node -> number of nets currently using it
     node_nets = {}        # node -> set(net)
-    routes = {}           # nn -> (edges, term_m2, nodes)
+    routes = {}           # nn -> _Route
     port_escape = {}      # port net -> x track of its top-edge Metal4 pad (or None)
     penalty = [0.5]       # present-congestion penalty, raised each rip-up pass
 
@@ -722,17 +941,17 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
             tree.update(path); own = set(tree)
             term_m2.append(path[-1])
 
-        # Grow each per-track run to >= 2 grid steps so its wire meets Metal min
-        # area. Doing it here (not at emit time) lets the rip-up loop negotiate any
-        # conflict the extension causes, instead of silently shorting a neighbor.
+        # Grow each per-track run to the min-area track span so its wire meets Metal
+        # min area. Doing it here (not at emit time) lets the rip-up loop negotiate
+        # any conflict the extension causes, instead of silently shorting a neighbor.
         vert_runs, horiz_runs = {}, {}
-        for (xi, yi, lyr) in tree:
-            if lyr in VERT: vert_runs.setdefault((lyr, xi), set()).add(yi)
-            elif lyr in HORIZ: horiz_runs.setdefault((lyr, yi), set()).add(xi)
+        for (xi, yi, layer) in tree:
+            if layer in VERT: vert_runs.setdefault((layer, xi), set()).add(yi)
+            elif layer in HORIZ: horiz_runs.setdefault((layer, yi), set()).add(xi)
 
         def grow(coords, make_node, lo_b, hi_b):
             run = sorted(coords)
-            while run[-1] - run[0] < 2:
+            while run[-1] - run[0] < cfg.min_area_tracks:
                 hi, lo = run[-1] + 1, run[0] - 1
                 hi_ok, lo_ok = hi <= hi_b, lo >= lo_b
                 # When both sides are legal, grow toward the cheaper (less
@@ -748,10 +967,10 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
                     break
 
         # Default-arg capture (X/Y/L) freezes the loop vars into each lambda.
-        for (lyr, xi), yis in list(vert_runs.items()):
-            grow(yis, lambda p, X=xi, L=lyr: (X, p, L), 1, cfg.y_track_max - 1)
-        for (lyr, yi), xis in list(horiz_runs.items()):
-            grow(xis, lambda p, Y=yi, L=lyr: (p, Y, L), 0, xmax)
+        for (layer, xi), yis in list(vert_runs.items()):
+            grow(yis, lambda p, X=xi, L=layer: (X, p, L), 1, cfg.y_track_max - 1)
+        for (layer, yi), xis in list(horiz_runs.items()):
+            grow(xis, lambda p, Y=yi, L=layer: (p, Y, L), 0, xmax)
 
         # Port escape: route the net up to the block's TOP edge and lift it to
         # Metal4, so its pin sits in the channel above the rows -- the parent then
@@ -772,16 +991,16 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
                              ((xi, yi, M3), (xi, yi, M4))):
                     edges.append((a, b)); tree.add(a); tree.add(b)
                 port_escape[nn] = None
-        return (edges, term_m2, tree)
+        return _Route(edges, term_m2, tree)
 
     def add(nn, r):
         routes[nn] = r
-        for node in r[2]:
+        for node in r.tree:
             occupancy[node] = occupancy.get(node, 0) + 1
             node_nets.setdefault(node, set()).add(nn)
 
     def remove(nn):
-        for node in routes.pop(nn)[2]:
+        for node in routes.pop(nn).tree:
             occupancy[node] -= 1
             node_nets[node].discard(nn)
 
@@ -802,15 +1021,24 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
                     nodes.add(node); nodes.add(adj); bad_nets |= here | there
         return nodes, bad_nets
 
+    def routed(nn, allowed):
+        # route_one returns None when a net can't be realised in the corridor or on
+        # the full grid. Surface that as a convergence failure so place_and_route
+        # grows the floorplan and retries, instead of crashing in add() on a None.
+        r = route_one(nn, allowed) or route_one(nn, None)
+        if r is None:
+            raise RuntimeError(f"net {nn!r} could not be routed")
+        return r
+
     # Initial pass: route every net once in its corridor (fall back to the grid).
     for nn in routed_nets:
-        add(nn, route_one(nn, corridor_of(nn)) or route_one(nn, None))
+        add(nn, routed(nn, corridor_of(nn)))
 
     # Incremental negotiated-congestion rip-up.
     for it in range(3000):
         bad_nodes, bad_nets = conflicts()
         if not bad_nodes:
-            return ({nn: (r[0], r[1]) for nn, r in routes.items()},
+            return ({nn: (r.edges, r.term_m2) for nn, r in routes.items()},
                 port_escape, term_via, term_land)
         for node in bad_nodes:
             history[node] = history.get(node, 0.0) + 1.0
@@ -820,22 +1048,33 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
         for nn in sorted(bad_nets):
             remove(nn)
             allowed = None if allow_escape else corridor_of(nn)
-            add(nn, route_one(nn, allowed) or route_one(nn, None))
+            add(nn, routed(nn, allowed))
     raise RuntimeError(f"router did not converge: {len(bad_nodes)} conflict nodes")
 
 
 # --- geometry emission + top-level orchestration --------------------------
 
-def _emit_net_direct(l, layers, edges, term_m2, cfg, term_via=None, term_land=None):
+def emit_net_direct(l, layers, edges, term_m2, cfg, term_via=None, term_land=None):
+    """Emit one routed net's geometry directly with concrete coordinates.
+
+    No constraint solver is used (routing everything through ORDeC's general solver
+    does not scale: it is fast per cell but takes minutes for a few-hundred-net
+    block). Wire runs become Metal2/3/4/5 paths; each layer change is a via cut; the
+    overlapping wires provide the via landings, and the router's via-access pass
+    keeps every run long enough to meet min area + endcap.
+
+    Args:
+        l: the mutable :class:`~ordec.core.schema.Layout` to emit into.
+        layers: the PDK layer set.
+        edges: the net's routed edges, each a pair of grid nodes.
+        term_m2: the net's Via1 access nodes (terminal landings on Metal2).
+        cfg: the routing grid + DRC geometry (:class:`GridConfig`).
+        term_via: ``{node: (vx, vy)}`` overriding off-track terminals to an on-pin
+            Via1 position the emitter jogs back to the track.
+        term_land: ``{node: rect}`` giving the pin-aware Metal1 landing for an
+            on-track terminal.
     """
-    Emit one routed net's geometry directly with concrete coordinates -- no
-    constraint solver. (Routing everything through ORDeC's general solver, as
-    SRouter does, does not scale: it is fast per cell but takes minutes for a
-    few-hundred-net block.) Wire runs become Metal2/3/4/5 paths; each layer change
-    is a via cut; the overlapping wires provide the via landings, and the router's
-    via-access pass keeps every run >= 2 steps so it meets area + endcap.
-    """
-    xp, yp = cfg.x_pitch, cfg.y_pitch
+    x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     metal_layer = {M2: layers.Metal2, M3: layers.Metal3, M4: layers.Metal4, M5: layers.Metal5}
     via_layer = {frozenset((M1, M2)): layers.Via1, frozenset((M2, M3)): layers.Via2,
         frozenset((M3, M4)): layers.Via3, frozenset((M4, M5)): layers.Via4}
@@ -844,9 +1083,9 @@ def _emit_net_direct(l, layers, edges, term_m2, cfg, term_via=None, term_land=No
     vias = set()  # (xi, yi, frozenset(layer pair))
 
     def add_node(n):
-        xi, yi, lyr = n
-        if lyr in VERT: vert_runs.setdefault((lyr, xi), set()).add(yi)
-        elif lyr in HORIZ: horiz_runs.setdefault((lyr, yi), set()).add(xi)
+        xi, yi, layer = n
+        if layer in VERT: vert_runs.setdefault((layer, xi), set()).add(yi)
+        elif layer in HORIZ: horiz_runs.setdefault((layer, yi), set()).add(xi)
 
     for a, b in edges:
         # Add *both* endpoints of every edge -- including via edges -- so a layer
@@ -868,47 +1107,46 @@ def _emit_net_direct(l, layers, edges, term_m2, cfg, term_via=None, term_land=No
 
     # A single-node run is a pass-through via landing (e.g. Metal3 in a
     # Metal2->Metal3->Metal4 stack). A zero-length path emits no metal, so lay a
-    # min-area landing rect instead (2*cfg.land_half_h long, >= Mn min area). Multi-node
-    # runs already met min area via the grow / _extend_min_area passes.
-    for (lyr, xi), yis in vert_runs.items():
+    # min-area landing rect instead; multi-node runs already meet min area via the
+    # grow / extend_min_area passes.
+    for (layer, xi), yis in vert_runs.items():
         for y0, y1 in runs(yis):
             if y0 != y1:
-                path(metal_layer[lyr], Vec2I(xi * xp, y0 * yp), Vec2I(xi * xp, y1 * yp))
+                path(metal_layer[layer], Vec2I(xi * x_pitch, y0 * y_pitch), Vec2I(xi * x_pitch, y1 * y_pitch))
                 continue
-            l % LayoutRect(layer=metal_layer[lyr], rect=Rect4I(
-                xi * xp - cfg.strap_half_w, y0 * yp - cfg.land_half_h,
-                xi * xp + cfg.strap_half_w, y0 * yp + cfg.land_half_h))
-    for (lyr, yi), xis in horiz_runs.items():
+            l % LayoutRect(layer=metal_layer[layer], rect=Rect4I(
+                xi * x_pitch - cfg.strap_half_w, y0 * y_pitch - cfg.land_half_h,
+                xi * x_pitch + cfg.strap_half_w, y0 * y_pitch + cfg.land_half_h))
+    for (layer, yi), xis in horiz_runs.items():
         for x0, x1 in runs(xis):
             if x0 != x1:
-                path(metal_layer[lyr], Vec2I(x0 * xp, yi * yp), Vec2I(x1 * xp, yi * yp))
+                path(metal_layer[layer], Vec2I(x0 * x_pitch, yi * y_pitch), Vec2I(x1 * x_pitch, yi * y_pitch))
                 continue
-            l % LayoutRect(layer=metal_layer[lyr], rect=Rect4I(
-                x0 * xp - cfg.land_half_h, yi * yp - cfg.strap_half_w,
-                x0 * xp + cfg.land_half_h, yi * yp + cfg.strap_half_w))
+            l % LayoutRect(layer=metal_layer[layer], rect=Rect4I(
+                x0 * x_pitch - cfg.land_half_h, yi * y_pitch - cfg.strap_half_w,
+                x0 * x_pitch + cfg.land_half_h, yi * y_pitch + cfg.strap_half_w))
     for xi, yi, layer_pair in vias:
         l % LayoutRect(layer=via_layer[layer_pair], rect=Rect4I(
-            xi * xp - cfg.via_half, yi * yp - cfg.via_half,
-            xi * xp + cfg.via_half, yi * yp + cfg.via_half))
+            xi * x_pitch - cfg.via_half, yi * y_pitch - cfg.via_half,
+            xi * x_pitch + cfg.via_half, yi * y_pitch + cfg.via_half))
     term_via = term_via or {}
     for node in term_m2:            # Via1 from the Metal1 pin up to Metal2
-        xi, yi, _lyr = node
+        xi, yi, _layer = node
         if node in term_via:
             # Off-track pin (no track lands inside it): drop the via on the pin at
-            # vx and bridge to track xi with a short Metal2 jog (Metal2 is free over
-            # the cell). The pin's own metal gives the Via1 endcap, so -- unlike a
-            # short on-track pin -- no Metal1 landing is added (it would notch the
+            # vx and jog to track xi with a short Metal2 segment. The pin's own metal
+            # gives the Via1 endcap, so no Metal1 landing is added (it would notch the
             # pin and break Metal1 spacing).
             vx, vy = term_via[node]
             l % LayoutRect(layer=layers.Via1, rect=Rect4I(
                 vx - cfg.via_half, vy - cfg.via_half,
                 vx + cfg.via_half, vy + cfg.via_half))
-            lo, hi = min(vx, xi * xp), max(vx, xi * xp)
+            lo, hi = min(vx, xi * x_pitch), max(vx, xi * x_pitch)
             l % LayoutRect(layer=layers.Metal2, rect=Rect4I(
                 lo - cfg.strap_half_w, vy - cfg.land_half_h,
                 hi + cfg.strap_half_w, vy + cfg.land_half_h))
         else:
-            vx, vy = xi * xp, yi * yp
+            vx, vy = xi * x_pitch, yi * y_pitch
             l % LayoutRect(layer=layers.Via1, rect=Rect4I(
                 vx - cfg.via_half, vy - cfg.via_half,
                 vx + cfg.via_half, vy + cfg.via_half))
@@ -938,6 +1176,9 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
             cell placed as-is) and false for a composite to flatten.
         cfg: the routing grid + DRC geometry for this PDK (:class:`GridConfig`);
             build one per PDK, e.g. :func:`ordec.layout.ihp_pnr.sg13g2_grid`.
+
+    Returns:
+        A frozen, DRC/LVS-clean :class:`~ordec.core.schema.Layout` for ``cell``.
     """
     cfg = replace(cfg)   # private copy: the floorplan loop below mutates cfg.n_rows
     cells, nets = extract(cell, pin_rects, is_leaf)
@@ -968,20 +1209,19 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
     port_nets = {nn for nn, net in sig.items() if net.port_pin is not None}
 
     # Floorplan: pick the row count from the target aspect over the core area
-    # (cell_area / utilization), then add rows
-    # until the channel routes. The die width is max(floorplan target, balanced
-    # partition width), so the cells always fit and the die stays tight.
-    # Utilization sets the area; the aspect sets the shape.
+    # (cell_area / utilization), then add rows until the channel routes. The die
+    # width is max(floorplan target, balanced partition width), so the cells always
+    # fit and the die stays tight. Utilization sets the area; the aspect, the shape.
     total_w = sum(cells[n].width for n in cells)
     core_area = total_w * cfg.row_height / cfg.target_util
-    rh, xp = cfg.row_height, cfg.x_pitch
-    base = max(1, round((core_area * cfg.target_aspect) ** 0.5 / rh))
+    row_height, x_pitch = cfg.row_height, cfg.x_pitch
+    base = max(1, round((core_area * cfg.target_aspect) ** 0.5 / row_height))
     for i, nrows in enumerate(range(base, base + 5)):
         cfg.n_rows = nrows
         order = order_cells_sa(cells, nets, cfg)
         placed, packed_w = place_rows(cells, order, cfg)
-        die_w = -(-max(round(core_area / (nrows * rh)), packed_w) // xp) * xp
-        xmax = die_w // xp
+        die_w = -(-max(round(core_area / (nrows * row_height)), packed_w) // x_pitch) * x_pitch
+        xmax = die_w // x_pitch
         try:
             routing, port_escape, term_via, term_land = route_nets(
                 sig, placed, cfg, xmax, port_nets)
@@ -990,7 +1230,7 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
             if i == 4:
                 raise
     if cfg.min_area_pass:
-        _extend_min_area(routing, cfg, xmax)
+        extend_min_area(routing, cfg, xmax)
 
     l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
     for name, pi in placed.items():
@@ -1000,36 +1240,36 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
     # Emit routing directly with concrete coordinates (no constraint solver, so
     # it scales to hundreds of nets).
     for nn, (edges, term_m2) in routing.items():
-        _emit_net_direct(l, layers, edges, term_m2, cfg, term_via, term_land)
+        emit_net_direct(l, layers, edges, term_m2, cfg, term_via, term_land)
 
     # Pad every row's rail out to the die width so the block is a flush rectangle
     # (like filler cells) and the right power strap ties into every rail.
-    _pad_rails(l, layers, placed, die_w)
+    pad_rails(l, layers, placed, die_w)
     if cfg.n_rows >= 2:
-        _emit_power_straps(l, layers, placed, cfg, die_w)
+        emit_power_straps(l, layers, placed, cfg, die_w)
 
     # Ports. A signal port was escaped to the TOP edge (route_nets): expose its
     # pin on a Metal4 pad straddling the top rail, up in the channel above the
     # block, so the parent lands there without ever routing over the interior.
     # (Fallback: an interior Metal4 pad if the escape could not reach the edge.)
     # vdd/vss carry by rail abutment, so their port stays a Metal1 rail handle.
-    xp, yp = cfg.x_pitch, cfg.y_pitch
+    x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     top_abs = cfg.n_rows * cfg.row_height        # absolute y of the top rail
     for nn, net in nets.items():
         if net.port_pin is None:
             continue
         if nn in routing:                        # signal port
-            ex = port_escape.get(nn)
-            if ex is not None:                   # top-edge pad, above the rows
-                xc = ex * xp
+            escape_x = port_escape.get(nn)
+            if escape_x is not None:                   # top-edge pad, above the rows
+                xc = escape_x * x_pitch
                 r = l % LayoutRect(layer=layers.Metal4, rect=Rect4I(
                     xc - cfg.strap_half_w, top_abs - cfg.port_pad_below,
                     xc + cfg.strap_half_w, top_abs + cfg.port_pad_above))
             else:                                # interior fallback pad
                 xi, yi, _ = routing[nn][1][0]
                 r = l % LayoutRect(layer=layers.Metal4, rect=Rect4I(
-                    xi * xp - cfg.strap_half_w, yi * yp - cfg.land_half_h,
-                    xi * xp + cfg.strap_half_w, yi * yp + cfg.land_half_h))
+                    xi * x_pitch - cfg.strap_half_w, yi * y_pitch - cfg.land_half_h,
+                    xi * x_pitch + cfg.strap_half_w, yi * y_pitch + cfg.land_half_h))
         else:                                    # vdd/vss
             # Expose on an actual supply pin: a signal pin tied to this rail (e.g. a
             # held-high RESET_B on the vdd net) is also a terminal here, but the port
@@ -1039,19 +1279,20 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
                 if p in ('VDD', 'VSS'))
             rail = _largest_rect(placed[iname].pins[pname])
             if len(_supply_rails(placed, pname)) >= 2:
-                # This supply has its own side strap (>= 2 rails; see
-                # _emit_power_straps). Expose it on the strap, lifted to Metal4, so
-                # a parent lands in the margin and never stacks onto an interior
-                # rail (which would touch a block-internal net). Tall (690 nm)
-                # landings meet Metal min area; the strap is tall enough for the
-                # via endcap (V.c1) on its long pair of sides.
-                sx = cfg.strap_vdd_x if pname == 'VDD' else cfg.strap_vss_x
-                cy = (rail[1] + rail[3]) // 2
-                vh, sw, lh = cfg.via_half, cfg.strap_half_w, cfg.land_half_h
-                l % LayoutRect(layer=layers.Via2, rect=Rect4I(sx - vh, cy - vh, sx + vh, cy + vh))
-                l % LayoutRect(layer=layers.Metal3, rect=Rect4I(sx - sw, cy - lh, sx + sw, cy + lh))
-                l % LayoutRect(layer=layers.Via3, rect=Rect4I(sx - vh, cy - vh, sx + vh, cy + vh))
-                r = l % LayoutRect(layer=layers.Metal4, rect=Rect4I(sx - sw, cy - lh, sx + sw, cy + lh))
+                # Supply with its own side strap (see emit_power_straps): expose it
+                # on the strap, lifted to Metal4, so a parent lands in the margin and
+                # never stacks onto an interior rail (which carries a block net).
+                strap_x = cfg.strap_vdd_x if pname == 'VDD' else cfg.strap_vss_x
+                rail_yc = (rail[1] + rail[3]) // 2
+                via_half, half_w, land_half = cfg.via_half, cfg.strap_half_w, cfg.land_half_h
+                l % LayoutRect(layer=layers.Via2, rect=Rect4I(
+                    strap_x - via_half, rail_yc - via_half, strap_x + via_half, rail_yc + via_half))
+                l % LayoutRect(layer=layers.Metal3, rect=Rect4I(
+                    strap_x - half_w, rail_yc - land_half, strap_x + half_w, rail_yc + land_half))
+                l % LayoutRect(layer=layers.Via3, rect=Rect4I(
+                    strap_x - via_half, rail_yc - via_half, strap_x + via_half, rail_yc + via_half))
+                r = l % LayoutRect(layer=layers.Metal4, rect=Rect4I(
+                    strap_x - half_w, rail_yc - land_half, strap_x + half_w, rail_yc + land_half))
             else:
                 # Few rows: the boustrophedon shares this supply's single rail, so
                 # that one rail already ties the whole supply -- expose it directly.
@@ -1061,16 +1302,31 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
 
 
 def _largest_rect(rects):
-    """The largest-area rect among `rects` (a pin may have several; its rail/body
-    is the big one)."""
+    """Return the largest-area rect among ``rects``.
+
+    Args:
+        rects: ``(x0, y0, x1, y1)`` rectangles (a pin may have several).
+
+    Returns:
+        The biggest one -- a pin's rail/body rect.
+    """
     return max(rects, key=lambda r: (r[2] - r[0]) * (r[3] - r[1]))
 
 
 def _supply_rails(placed, pname):
-    """Sorted distinct ``(y0, y1)`` rail spans for supply ``pname`` -- one per
-    row, deduplicated where the boustrophedon shares a rail between adjacent
-    rows. A side strap is emitted only when there are >= 2 of them (a single
-    shared rail already ties the whole supply together)."""
+    """Distinct rail spans for one supply, sorted bottom-to-top.
+
+    Rails are deduplicated where the boustrophedon shares one between adjacent rows;
+    a side strap is emitted only when there are >= 2 of them (a single shared rail
+    already ties the whole supply together).
+
+    Args:
+        placed: ``{name: PlacedInst}`` from :func:`place_rows`.
+        pname: the supply pin name (``'VDD'`` or ``'VSS'``).
+
+    Returns:
+        The sorted distinct ``(y0, y1)`` rail spans (nm).
+    """
     rails = set()
     for pi in placed.values():
         if pname in pi.pins:
@@ -1079,13 +1335,19 @@ def _supply_rails(placed, pname):
     return sorted(rails)
 
 
-def _pad_rails(l, layers, placed, die_w):
-    """
-    Extend every row's VDD/VSS rail rightward to a common die-width edge, the way
-    filler cells do, so the block is a flush rectangle (composes cleanly, hits
-    the floorplan aspect ratio) and the right-side power strap can tap every row
-    (rows come out at slightly different packed widths, so without this the
-    shorter rows would not reach the strap).
+def pad_rails(l, layers, placed, die_w):
+    """Extend every row's VDD/VSS rail rightward to a common die-width edge.
+
+    Like filler cells, this makes the block a flush rectangle (composes cleanly,
+    hits the floorplan aspect ratio) and lets the right-side power strap tap every
+    row -- rows come out at slightly different packed widths, so without this the
+    shorter rows would not reach the strap.
+
+    Args:
+        l: the mutable :class:`~ordec.core.schema.Layout` to emit into.
+        layers: the PDK layer set.
+        placed: ``{name: PlacedInst}`` from :func:`place_rows`.
+        die_w: the die width to pad each rail out to (nm).
     """
     rails = {}   # (row, supply) -> [x1, y0, y1]
     for pi in placed.values():
@@ -1094,48 +1356,67 @@ def _pad_rails(l, layers, placed, die_w):
                 continue
             rect = _largest_rect(pi.pins[pn])
             key = (pi.row, pn)
-            cur = rails.get(key)
-            if cur is None:
+            existing = rails.get(key)
+            if existing is None:
                 rails[key] = [rect[2], rect[1], rect[3]]
             else:
-                cur[0] = max(cur[0], rect[2])
+                existing[0] = max(existing[0], rect[2])
     for (row, pn), (x1, y0, y1) in rails.items():
         if x1 < die_w:
             l % LayoutRect(layer=layers.Metal1, rect=Rect4I(x1, y0, die_w, y1))
 
 
-def _emit_power_straps(l, layers, placed, cfg, die_w):
+def emit_power_straps(l, layers, placed, cfg, die_w):
+    """Form a power ring per supply: a vertical Metal2 strap in the empty margin on
+    each side of the cell area, tapping every rail through a short Metal1 extension
+    + Via1.
+
+    The boustrophedon shares a rail between adjacent rows, so the inner rails would
+    otherwise float; the ring ties them and halves rail IR drop. Skipped for a
+    supply with one shared rail (it already ties itself).
+
+    Args:
+        l: the mutable :class:`~ordec.core.schema.Layout` to emit into.
+        layers: the PDK layer set.
+        placed: ``{name: PlacedInst}`` from :func:`place_rows`.
+        cfg: the routing grid + geometry (:class:`GridConfig`).
+        die_w: the die width (nm); the right strap mirrors to it.
     """
-    Form a power ring per supply: a vertical Metal2 strap on each side of the
-    cell area, tapping every rail through short Metal1 extensions + a Via1. The
-    boustrophedon shares a rail between adjacent rows, so with several rows the
-    inner rails would otherwise float; the strap ties them. A ring (vs a single
-    strap) roughly halves the rail IR drop and gives a parent supply access on
-    both sides. Straps sit in the empty margins left of x=0 and right of die_w
-    (the flush rail edge from _pad_rails). Skipped for a supply with one shared
-    rail, which already ties itself.
-    """
-    vh = cfg.via_half
-    for pname, sxl, sxr in (('VDD', cfg.strap_vdd_x, die_w - cfg.strap_vdd_x),
-                            ('VSS', cfg.strap_vss_x, die_w - cfg.strap_vss_x)):
+    via_half = cfg.via_half
+    for pname, strap_left_x, strap_right_x in (
+            ('VDD', cfg.strap_vdd_x, die_w - cfg.strap_vdd_x),
+            ('VSS', cfg.strap_vss_x, die_w - cfg.strap_vss_x)):
         rails = _supply_rails(placed, pname)
         if len(rails) < 2:
             continue
-        ylo, yhi = rails[0][0], rails[-1][1]
-        for sx, edge in ((sxl, 0), (sxr, die_w)):
-            l % LayoutRect(layer=layers.Metal2, rect=Rect4I(sx - cfg.strap_half_w, ylo, sx + cfg.strap_half_w, yhi))
-            for (y0, y1) in rails:
-                yc = (y0 + y1) // 2
-                x0e, x1e = (sx - cfg.rail_ext, edge) if sx < edge else (edge, sx + cfg.rail_ext)
-                l % LayoutRect(layer=layers.Metal1, rect=Rect4I(x0e, y0, x1e, y1))
-                l % LayoutRect(layer=layers.Via1, rect=Rect4I(sx - vh, yc - vh, sx + vh, yc + vh))
+        strap_y0, strap_y1 = rails[0][0], rails[-1][1]
+        for strap_x, edge in ((strap_left_x, 0), (strap_right_x, die_w)):
+            l % LayoutRect(layer=layers.Metal2, rect=Rect4I(
+                strap_x - cfg.strap_half_w, strap_y0, strap_x + cfg.strap_half_w, strap_y1))
+            for (rail_y0, rail_y1) in rails:
+                rail_yc = (rail_y0 + rail_y1) // 2
+                # Metal1 tap from the strap across to the rail edge.
+                tap_x0, tap_x1 = ((strap_x - cfg.rail_ext, edge) if strap_x < edge
+                    else (edge, strap_x + cfg.rail_ext))
+                l % LayoutRect(layer=layers.Metal1, rect=Rect4I(tap_x0, rail_y0, tap_x1, rail_y1))
+                l % LayoutRect(layer=layers.Via1, rect=Rect4I(
+                    strap_x - via_half, rail_yc - via_half, strap_x + via_half, rail_yc + via_half))
 
 
-def _extend_min_area(result, cfg, xmax):
-    """
-    Post-pass: a min-width wire must be long enough to meet the metal min-area
-    rule and give its end-via the required endcap. Extend every per-net, per-track
-    wire span to at least 2 grid steps, growing into free tracks.
+def extend_min_area(result, cfg, xmax):
+    """Post-pass: lengthen any too-short wire so it meets the metal min-area rule.
+
+    A min-width wire must span enough tracks to meet min area and give its end-via
+    the required endcap. Each per-net, per-track wire run is extended to at least
+    ``cfg.min_area_tracks`` grid steps, growing into free tracks.
+
+    Args:
+        result: the routing ``{net: (edges, term_m2)}`` to extend in place.
+        cfg: the routing grid + geometry (:class:`GridConfig`).
+        xmax: the maximum x track index.
+
+    Returns:
+        The same ``result`` mapping (mutated in place).
     """
     occ = {}   # (xi,yi,layer) -> net
     for nn, (edges, _t) in result.items():
@@ -1159,14 +1440,14 @@ def _extend_min_area(result, cfg, xmax):
             nodes.add(a); nodes.add(b)
         vert = {}    # (layer, xi) -> set(yi)   for the vertical layers
         horiz = {}   # (layer, yi) -> set(xi)   for the horizontal layers
-        for (xi, yi, lyr) in nodes:
-            if lyr in VERT: vert.setdefault((lyr, xi), set()).add(yi)
-            elif lyr in HORIZ: horiz.setdefault((lyr, yi), set()).add(xi)
+        for (xi, yi, layer) in nodes:
+            if layer in VERT: vert.setdefault((layer, xi), set()).add(yi)
+            elif layer in HORIZ: horiz.setdefault((layer, yi), set()).add(xi)
 
         def grow(fixed, coords, lo, hi, make_node):
-            """Extend a 1-D run [min..max] of `coords` to span >= 2 steps."""
+            """Extend a 1-D run of ``coords`` to span ``cfg.min_area_tracks`` steps."""
             run = sorted(coords)
-            need = 2 - (run[-1] - run[0])
+            need = cfg.min_area_tracks - (run[-1] - run[0])
             while need > 0:
                 lo_ok = run[0] - 1 >= lo and free(make_node(fixed, run[0] - 1), nn)
                 hi_ok = run[-1] + 1 <= hi and free(make_node(fixed, run[-1] + 1), nn)
@@ -1182,10 +1463,10 @@ def _extend_min_area(result, cfg, xmax):
                     break
                 need -= 1
 
-        for (lyr, xi), yis in vert.items():
+        for (layer, xi), yis in vert.items():
             grow(xi, yis, 1, cfg.y_track_max - 1,
-                lambda xi, yi, L=lyr: (xi, yi, L))
-        for (lyr, yi), xis in horiz.items():
+                lambda xi, yi, L=layer: (xi, yi, L))
+        for (layer, yi), xis in horiz.items():
             grow(yi, xis, 0, xmax,
-                lambda yi, xi, L=lyr: (xi, yi, L))
+                lambda yi, xi, L=layer: (xi, yi, L))
     return result
