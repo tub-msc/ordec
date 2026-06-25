@@ -16,7 +16,8 @@ not logical function), so e.g. the chain's logic value is irrelevant.
 """
 
 from ordec.core import *
-from .stdcell_lib import extlib, place_and_route
+from ordec.layout.ihp_pnr import place_and_route
+from .stdcell_lib import extlib
 
 Inv = extlib["sg13g2_inv_1"]
 Dff = extlib["sg13g2_dfrbp_1"]

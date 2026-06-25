@@ -9,14 +9,17 @@ standard cells, then **negotiated-congestion maze routing** on a per-layer track
 grid -- place cells in rows, then rip-up-and-reroute nets with A* until the
 routing is congestion-free.
 
-Assumptions / scope (matched to the IHP sg13g2 standard cells used here):
+The engine is PDK-agnostic: every pitch and DRC dimension arrives through the
+:class:`GridConfig`, so retargeting a PDK is a new profile, not an edit here. It
+does make these structural assumptions about the standard-cell flow:
 
-* Leaf cells are Metal1-only for signals (foundry GDS cells), so Metal2/Metal3
-  over the cells is free for routing -- routing stays *within* the cell-row
-  height instead of being pushed above it.
-* Routing grid follows the PDK tech LEF: Metal2 vertical (pitch 0.48 um), Metal3
-  horizontal (pitch 0.42 um), Metal1 for pin access. Cells are an integer number
-  of vertical tracks wide and 9 horizontal tracks (3.78 um) tall.
+* Leaf cells are Metal1-only for signals (foundry GDS cells), so the metals above
+  them are free for routing -- routing stays *within* the cell-row height instead
+  of being pushed above it.
+* The routing grid (track pitches, row height) comes from the supplied
+  ``GridConfig``: vertical tracks on one routing metal, horizontal on the next,
+  the lowest metal for pin access. Cells are an integer number of vertical tracks
+  wide and ``tracks_per_row`` tracks tall.
 * Power (vdd/vss) connects by rail abutment, like a real standard-cell row.
 
 The geometry (wires, via stacks) is emitted directly as concrete grid
@@ -26,7 +29,7 @@ paths *and* lays down the metal itself.
 """
 
 from collections import namedtuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import heapq
 import math
 import random
@@ -39,16 +42,34 @@ from ordec.core.schema import SchemInstanceConn
 
 @dataclass
 class GridConfig:
-    """Routing-grid parameters (defaults: IHP sg13g2 from the tech LEF)."""
-    x_pitch: int = 480       # Metal2 vertical track pitch (nm)
-    y_pitch: int = 420       # Metal3 horizontal track pitch (nm)
-    row_height: int = 3780   # standard-cell row height (= 9 * y_pitch)
-    tracks_per_row: int = 9  # y-tracks per row (row_height / y_pitch)
+    """Routing grid + emitted-geometry parameters. PDK-agnostic: the engine reads
+    every dimension from here, so retargeting a PDK is a new profile, not an edit
+    to the engine. The grid and geometry fields have no defaults -- they come from
+    a PDK profile (e.g. :func:`ordec.layout.ihp_pnr.sg13g2_grid`); only the flow
+    knobs at the bottom carry universal defaults. All lengths are in nm.
+    """
+    # Routing grid, from the PDK tech LEF:
+    x_pitch: int             # vertical (Metal2) track pitch
+    y_pitch: int             # horizontal (Metal3) track pitch
+    row_height: int          # standard-cell row height (= tracks_per_row * y_pitch)
+    tracks_per_row: int      # y-tracks per row (row_height / y_pitch)
+    via_half: int            # half the Via1..Via4 cut size (V*.a / 2)
+    encl: int                # min metal enclosure of via on every side (V1.c)
+    encl_endcap: int         # min metal enclosure on >= 1 side (V1.c1)
+    # Emitted geometry, sized to the PDK DRC rules:
+    wire_width: int          # Mn routing-wire width (= Mn min width)
+    wire_ext: int            # wire overhang past its last via (via half + endcap)
+    strap_half_w: int        # half a wire / strap / via-landing width (= wire_width / 2)
+    land_half_h: int         # half the long side of a min-area via landing
+    m1_land_half_h: int      # half-height of the Metal1 endcap landing under a Via1
+    port_pad_below: int      # port-pad extent below the top rail
+    port_pad_above: int      # port-pad extent above the top rail
+    strap_vdd_x: int         # VDD strap x (left margin; the right strap mirrors to die_w - x)
+    strap_vss_x: int         # VSS strap x (just outside VDD)
+    rail_ext: int            # Metal1 overlap of a strap onto the rail it taps
+    # --- flow knobs (PDK-independent; universal defaults) ---------------------
     n_rows: int = 1          # number of abutted (flipped) standard-cell rows
     via_cost: float = 4.0    # A* cost of a layer change (in track units)
-    via_half: int = 95       # half the Via1/Via2 cut size (V1_a/2 = 0.19/2)
-    encl: int = 10           # min metal enclosure of via on every side (V1.c)
-    encl_endcap: int = 50    # min metal enclosure on >=1 side (V1.c1)
     min_area_pass: bool = True
     use_upper: bool = True   # allow routing on Metal4/Metal5 (else Metal2/3 only)
     # Floorplan controls: size a die from cell_area / utilization, shaped to the
@@ -67,7 +88,7 @@ class GridConfig:
         return self.n_rows * self.tracks_per_row
 
     def is_signal_track(self, yi):
-        # Tracks on a row boundary (multiples of 9) sit on a vdd/vss rail.
+        # Tracks on a row boundary (multiples of tracks_per_row) sit on a rail.
         return 0 < yi < self.y_track_max and yi % self.tracks_per_row != 0
 
 
@@ -336,23 +357,6 @@ M2, M3, M1, M4, M5 = 0, 1, 2, 3, 4
 VERT = (M2, M4)        # vertical routing layers (move in y)
 HORIZ = (M3, M5)       # horizontal routing layers (move in x)
 
-# Emitted geometry (nm), sized to the track grid and the IHP sg13g2 DRC rules
-# (the relevant rule is noted per constant): wires keep their adjacent-track
-# spacing while enclosing the via cut and giving it an endcap.
-WIRE_WIDTH = 210       # Mn routing-wire width (= Mn min width)
-WIRE_EXT = 150         # wire overhang past its last via (cut half 95 + 55 endcap): Mn.c1 / V*.c1
-VIA_CUT = 190          # Via1..Via4 cut size (V1.a)
-VIA_CUT_HALF = 95      # VIA_CUT / 2 (== GridConfig.via_half)
-STRAP_HALF_W = 105     # half a wire / strap / via-landing width (= WIRE_WIDTH / 2)
-LAND_HALF_H = 345      # half the long side of a min-area via landing (690 nm -> Mn min area)
-M1_LAND_HALF_H = 145   # half-height of the Metal1 endcap landing under a Via1 (V1.c1 on short pins)
-PORT_PAD_BELOW = 600   # Metal4 port-pad extent below the top rail
-PORT_PAD_ABOVE = 360   # Metal4 port-pad extent above the top rail
-# Power-ring straps, in the empty margins beside the rows:
-STRAP_VDD_X = -520     # VDD strap x (left margin); the right strap mirrors to die_w+520
-STRAP_VSS_X = -1080    # VSS strap x (just outside VDD)
-RAIL_EXT = 150         # Metal1 overlap of a strap onto the rail it taps
-
 
 def access_nodes(rects, cfg, allow_rail=False):
     """Candidate M2-grid access nodes (xi, yi) for a pin (list of Metal1 rects).
@@ -546,8 +550,9 @@ def global_route(routed_nets, term_access, cfg, xmax, gw=5, gh=5):
 
 def _conflict_neighbors(node):
     """Same-layer grid nodes that would violate spacing against `node` if used by
-    a *different* net. Only the same-track, facing-ends case matters: WIRE_EXT
-    overhang puts two wire ends one step apart at ~180 nm (< 210 nm spacing).
+    a *different* net. Only the same-track, facing-ends case matters: the wire-end
+    overhang (``cfg.wire_ext``) puts two facing wire ends one grid step apart,
+    closer than the min metal spacing.
     Adjacent-track parallels are a full pitch apart (legal) and must NOT be flagged
     -- doing so rejects legal routing and stalls convergence. 'One step' is along x
     for horizontal layers, along y for vertical."""
@@ -770,12 +775,12 @@ def _emit_net_direct(l, layers, edges, term_m2, cfg):
         out.append((s, e)); return out
 
     def path(layer, p0, p1):
-        l % LayoutPath(layer=layer, width=WIRE_WIDTH, endtype=PathEndType.Custom,
-            ext_bgn=WIRE_EXT, ext_end=WIRE_EXT, vertices=[p0, p1])
+        l % LayoutPath(layer=layer, width=cfg.wire_width, endtype=PathEndType.Custom,
+            ext_bgn=cfg.wire_ext, ext_end=cfg.wire_ext, vertices=[p0, p1])
 
     # A single-node run is a pass-through via landing (e.g. Metal3 in a
     # Metal2->Metal3->Metal4 stack). A zero-length path emits no metal, so lay a
-    # min-area landing rect instead (2*LAND_HALF_H long, >= Mn min area). Multi-node
+    # min-area landing rect instead (2*cfg.land_half_h long, >= Mn min area). Multi-node
     # runs already met min area via the grow / _extend_min_area passes.
     for (lyr, xi), yis in vert_runs.items():
         for y0, y1 in runs(yis):
@@ -783,37 +788,37 @@ def _emit_net_direct(l, layers, edges, term_m2, cfg):
                 path(metal_layer[lyr], Vec2I(xi * xp, y0 * yp), Vec2I(xi * xp, y1 * yp))
                 continue
             l % LayoutRect(layer=metal_layer[lyr], rect=Rect4I(
-                xi * xp - STRAP_HALF_W, y0 * yp - LAND_HALF_H,
-                xi * xp + STRAP_HALF_W, y0 * yp + LAND_HALF_H))
+                xi * xp - cfg.strap_half_w, y0 * yp - cfg.land_half_h,
+                xi * xp + cfg.strap_half_w, y0 * yp + cfg.land_half_h))
     for (lyr, yi), xis in horiz_runs.items():
         for x0, x1 in runs(xis):
             if x0 != x1:
                 path(metal_layer[lyr], Vec2I(x0 * xp, yi * yp), Vec2I(x1 * xp, yi * yp))
                 continue
             l % LayoutRect(layer=metal_layer[lyr], rect=Rect4I(
-                x0 * xp - LAND_HALF_H, yi * yp - STRAP_HALF_W,
-                x0 * xp + LAND_HALF_H, yi * yp + STRAP_HALF_W))
+                x0 * xp - cfg.land_half_h, yi * yp - cfg.strap_half_w,
+                x0 * xp + cfg.land_half_h, yi * yp + cfg.strap_half_w))
     for xi, yi, layer_pair in vias:
         l % LayoutRect(layer=via_layer[layer_pair], rect=Rect4I(
-            xi * xp - VIA_CUT_HALF, yi * yp - VIA_CUT_HALF,
-            xi * xp + VIA_CUT_HALF, yi * yp + VIA_CUT_HALF))
+            xi * xp - cfg.via_half, yi * yp - cfg.via_half,
+            xi * xp + cfg.via_half, yi * yp + cfg.via_half))
     for xi, yi, _lyr in term_m2:    # Via1 from the Metal1 pin up to Metal2
         l % LayoutRect(layer=layers.Via1, rect=Rect4I(
-            xi * xp - VIA_CUT_HALF, yi * yp - VIA_CUT_HALF,
-            xi * xp + VIA_CUT_HALF, yi * yp + VIA_CUT_HALF))
+            xi * xp - cfg.via_half, yi * yp - cfg.via_half,
+            xi * xp + cfg.via_half, yi * yp + cfg.via_half))
         # Metal1 endcap landing (merges with the cell pin) so the via meets the
         # 50 nm endcap rule (V1.c1) even on short foundry pins.
         l % LayoutRect(layer=layers.Metal1, rect=Rect4I(
-            xi * xp - STRAP_HALF_W, yi * yp - M1_LAND_HALF_H,
-            xi * xp + STRAP_HALF_W, yi * yp + M1_LAND_HALF_H))
+            xi * xp - cfg.strap_half_w, yi * yp - cfg.m1_land_half_h,
+            xi * xp + cfg.strap_half_w, yi * yp + cfg.m1_land_half_h))
 
 
-def place_and_route(cell, layers, pin_rects, is_leaf, cfg=None):
+def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
     """Place + route a cell whose schematic instantiates Metal1-only leaf cells.
     Returns a DRC/LVS-clean :class:`~ordec.core.schema.Layout`.
 
-    The engine is PDK-agnostic; the standard-cell library is supplied through
-    three hooks:
+    The engine is PDK-agnostic: every PDK-specific input is supplied by the
+    caller -- no layer, pitch or DRC dimension is baked into this module.
 
     Args:
         cell: the cell to lay out; its schematic is flattened to leaf cells.
@@ -822,10 +827,10 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg=None):
             leaf cell's per-pin Metal1 LEF rectangles, in nm.
         is_leaf: callable ``cell -> bool``, true for a routing leaf (a standard
             cell placed as-is) and false for a composite to flatten.
-        cfg: routing-grid parameters (:class:`GridConfig`); defaults to the IHP
-            sg13g2 grid.
+        cfg: the routing grid + DRC geometry for this PDK (:class:`GridConfig`);
+            build one per PDK, e.g. :func:`ordec.layout.ihp_pnr.sg13g2_grid`.
     """
-    cfg = cfg or GridConfig()
+    cfg = replace(cfg)   # private copy: the floorplan loop below mutates cfg.n_rows
     cells, nets = extract(cell, pin_rects, is_leaf)
     sig = {nn: net for nn, net in nets.items()
         if len(net.terminals) >= 2 and nn not in ('vdd', 'vss')}
@@ -908,13 +913,13 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg=None):
             if ex is not None:                   # top-edge pad, above the rows
                 xc = ex * xp
                 r = l % LayoutRect(layer=layers.Metal4, rect=Rect4I(
-                    xc - STRAP_HALF_W, top_abs - PORT_PAD_BELOW,
-                    xc + STRAP_HALF_W, top_abs + PORT_PAD_ABOVE))
+                    xc - cfg.strap_half_w, top_abs - cfg.port_pad_below,
+                    xc + cfg.strap_half_w, top_abs + cfg.port_pad_above))
             else:                                # interior fallback pad
                 xi, yi, _ = routing[nn][1][0]
                 r = l % LayoutRect(layer=layers.Metal4, rect=Rect4I(
-                    xi * xp - STRAP_HALF_W, yi * yp - LAND_HALF_H,
-                    xi * xp + STRAP_HALF_W, yi * yp + LAND_HALF_H))
+                    xi * xp - cfg.strap_half_w, yi * yp - cfg.land_half_h,
+                    xi * xp + cfg.strap_half_w, yi * yp + cfg.land_half_h))
         else:                                    # vdd/vss
             iname, pname = net.terminals[0]
             rail = _largest_rect(placed[iname].pins[pname])
@@ -925,9 +930,9 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg=None):
                 # rail (which would touch a block-internal net). Tall (690 nm)
                 # landings meet Metal min area; the strap is tall enough for the
                 # via endcap (V.c1) on its long pair of sides.
-                sx = STRAP_VDD_X if pname == 'VDD' else STRAP_VSS_X
+                sx = cfg.strap_vdd_x if pname == 'VDD' else cfg.strap_vss_x
                 cy = (rail[1] + rail[3]) // 2
-                vh, sw, lh = cfg.via_half, STRAP_HALF_W, LAND_HALF_H
+                vh, sw, lh = cfg.via_half, cfg.strap_half_w, cfg.land_half_h
                 l % LayoutRect(layer=layers.Via2, rect=Rect4I(sx - vh, cy - vh, sx + vh, cy + vh))
                 l % LayoutRect(layer=layers.Metal3, rect=Rect4I(sx - sw, cy - lh, sx + sw, cy + lh))
                 l % LayoutRect(layer=layers.Via3, rect=Rect4I(sx - vh, cy - vh, sx + vh, cy + vh))
@@ -996,26 +1001,26 @@ def _emit_power_straps(l, layers, placed, cfg, die_w):
     rail, which already ties itself.
     """
     vh = cfg.via_half
-    for pname, sxl, sxr in (('VDD', STRAP_VDD_X, die_w - STRAP_VDD_X),
-                            ('VSS', STRAP_VSS_X, die_w - STRAP_VSS_X)):
+    for pname, sxl, sxr in (('VDD', cfg.strap_vdd_x, die_w - cfg.strap_vdd_x),
+                            ('VSS', cfg.strap_vss_x, die_w - cfg.strap_vss_x)):
         rails = _supply_rails(placed, pname)
         if len(rails) < 2:
             continue
         ylo, yhi = rails[0][0], rails[-1][1]
         for sx, edge in ((sxl, 0), (sxr, die_w)):
-            l % LayoutRect(layer=layers.Metal2, rect=Rect4I(sx - STRAP_HALF_W, ylo, sx + STRAP_HALF_W, yhi))
+            l % LayoutRect(layer=layers.Metal2, rect=Rect4I(sx - cfg.strap_half_w, ylo, sx + cfg.strap_half_w, yhi))
             for (y0, y1) in rails:
                 yc = (y0 + y1) // 2
-                x0e, x1e = (sx - RAIL_EXT, edge) if sx < edge else (edge, sx + RAIL_EXT)
+                x0e, x1e = (sx - cfg.rail_ext, edge) if sx < edge else (edge, sx + cfg.rail_ext)
                 l % LayoutRect(layer=layers.Metal1, rect=Rect4I(x0e, y0, x1e, y1))
                 l % LayoutRect(layer=layers.Via1, rect=Rect4I(sx - vh, yc - vh, sx + vh, yc + vh))
 
 
 def _extend_min_area(result, cfg, xmax):
     """
-    Post-pass: a 210 nm wire must be >= ~686 nm long to meet Metal2/Metal3 min
-    area (0.144 um^2) and to give the via a 50 nm endcap. Extend every per-net,
-    per-track wire span to at least 2 grid steps, growing into free tracks.
+    Post-pass: a min-width wire must be long enough to meet the metal min-area
+    rule and give its end-via the required endcap. Extend every per-net, per-track
+    wire span to at least 2 grid steps, growing into free tracks.
     """
     occ = {}   # (xi,yi,layer) -> net
     for nn, (edges, _t) in result.items():

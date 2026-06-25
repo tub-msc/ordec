@@ -4,12 +4,14 @@
 .. automodule:: ordec.layout.pnr
 
 The engine is PDK-agnostic: :func:`~ordec.layout.pnr.place_and_route` takes the layer
-set, a per-cell LEF pin-rectangle lookup and an "is this a routing leaf?" predicate as
-arguments, with the routing-grid pitches held in :class:`~ordec.layout.pnr.GridConfig`
-(defaulting to the IHP sg13g2 grid). It sits alongside :doc:`SRouter <layout>` and the
-:doc:`KLayout integration <layout_klayout>`. The SAR ADC example binds these hooks to the
-sg13g2 standard-cell library in its ``stdcell_lib.py`` (which re-exports a one-argument
-``place_and_route(cell)``) and uses the engine to lay out its digital control block
+set, a per-cell LEF pin-rectangle lookup, an "is this a routing leaf?" predicate and a
+:class:`~ordec.layout.pnr.GridConfig` -- the routing grid *and* the DRC-driven emission
+geometry (wire/via/landing/strap dimensions) -- as arguments. No PDK pitch or design-rule
+dimension is baked into the engine; the engine reads every value from the config. It sits
+alongside :doc:`SRouter <layout>` and the :doc:`KLayout integration <layout_klayout>`.
+:mod:`ordec.layout.ihp_pnr` binds these inputs to the sg13g2 standard-cell library -- its
+grid/geometry profile is ``sg13g2_grid()`` -- and exposes a one-argument
+``place_and_route(cell)``; the SAR ADC example uses it to lay out its digital control block
 (``SarLogic``).
 
 ``place_and_route`` runs the same pipeline a production flow does, applied to a single
@@ -23,7 +25,8 @@ heuristic stand-in (see `Algorithmic fidelity and scope`_).
 The routing grid
 ----------------
 
-Tracks come straight from the IHP tech LEF (``sg13g2_tech.lef``): Metal2 is vertical on a
+Tracks come from the ``GridConfig`` profile, not from the engine. For the sg13g2 binding
+(``ihp_pnr.sg13g2_grid``) they are the IHP tech-LEF values: Metal2 is vertical on a
 0.48 µm pitch, Metal3 is horizontal on 0.42 µm, and the row is 3.78 µm = 9 Metal3 tracks
 tall. Cells are an integer number of Metal2 tracks wide. Because the foundry leaf cells
 are Metal1-only for signals, Metal2 and Metal3 over them are free, so routing happens *on
@@ -79,8 +82,9 @@ is DRC-clean by construction rather than clean by luck.
 Geometry, and the DRC details that bite
 ----------------------------------------
 
-Wires and via stacks are emitted through ``SRouter`` (see :doc:`layout`). Three sg13g2
-specifics drove the parameters:
+Wires and via stacks are emitted through ``SRouter`` (see :doc:`layout`). The engine reads
+every dimension from the ``GridConfig``; three sg13g2 DRC specifics set the values in its
+profile (``ihp_pnr.sg13g2_grid``):
 
 * **Pin access uses the LEF rectangles**, not GDS-polygon bounding boxes. ``Nor2``'s Y
   and B pins overlap *by bounding box*, so a bbox-driven via would short two nets; the

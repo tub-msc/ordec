@@ -29,7 +29,8 @@ A full conversion takes N+2 clocks after reset is released.
 """
 
 from ordec.core import *
-from .stdcell_lib import extlib, place_and_route
+from ordec.layout.ihp_pnr import place_and_route
+from .stdcell_lib import extlib
 from ordec.lib.ihp130 import run_drc, run_lvs
 
 # Standard cells come straight from the IHP sg13g2 library (LEF symbol, GDS
