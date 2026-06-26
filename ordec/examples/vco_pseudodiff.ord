@@ -527,6 +527,7 @@ cell VcoTb:
 
     viewgen report_tran -> Report:
         sim = self.sim_tran
+        .grp = PlotGroup()
 
         .markdown("## VCO transient main waveforms")
         for i in range(2):
@@ -539,7 +540,7 @@ cell VcoTb:
                 xlabel="Time (s)",
                 ylabel="Voltage (V)",
                 height=180,
-                plot_group="vco_tran",
+                plot_group=.grp,
             )
         .plot2d(
             x=sim.time,
@@ -550,7 +551,7 @@ cell VcoTb:
             xlabel="Time (s)",
             ylabel="Voltage (V)",
             height=120,
-            plot_group="vco_tran",
+            plot_group=.grp,
         )
         vdd_src_pin = sim.one(SimPin.instance_eref_idx.query(
             (sim.vdd_src, sim.vdd_src.eref.symbol.p)))
@@ -560,5 +561,5 @@ cell VcoTb:
             xlabel="Time (s)",
             ylabel="Current (A)",
             height=120,
-            plot_group="vco_tran",
+            plot_group=.grp,
         )

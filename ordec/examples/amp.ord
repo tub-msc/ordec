@@ -55,6 +55,8 @@ cell AmpTb:
         def phase_deg(cvals):
             return [math.degrees(math.atan2(v.imag, v.real)) for v in cvals]
 
+        .grp = PlotGroup()
+
         .markdown("## Amplifier AC bode plot")
         .plot2d(
             x=freq,
@@ -66,7 +68,7 @@ cell AmpTb:
             ylabel="Magnitude (dB)",
             xscale="log",
             height=200,
-            plot_group="bode",
+            plot_group=.grp,
         )
         .plot2d(
             x=freq,
@@ -78,5 +80,5 @@ cell AmpTb:
             ylabel="Phase (deg)",
             xscale="log",
             height=200,
-            plot_group="bode",
+            plot_group=.grp,
         )
