@@ -102,8 +102,8 @@ cell SarLogic:
         # the token at stage 0 the moment reset asserts (the reset pulse is too
         # short to span a clock edge), stage 0 is *cleared* by reset and its Q_N
         # drives `sample`: Q_N=1 while reset holds, then D=1 is clocked in so Q_N
-        # falls to 0 -- identical to the old preset behaviour. Stages 1..N+1 are
-        # cleared by reset (RESET_B=rst_n) and shift the token; the last drives `done`.
+        # falls to 0, asserting the sample phase. Stages 1..N+1 are cleared by reset
+        # (RESET_B=rst_n) and shift the token; the last drives `done`.
         Dff seq0:
             .pos=(28,48)
             .D -- vdd; .CLK -- clk; .RESET_B -- rst_n

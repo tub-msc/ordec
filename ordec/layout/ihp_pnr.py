@@ -19,10 +19,6 @@ import functools
 from ordec.lib import ihp130
 from ordec.layout.pnr import GridConfig, RoutingStack, place_and_route as engine_pnr
 
-# sg13g2 standard-cell reference files, relative to the PDK root.
-_STDCELL_LEF = "libs.ref/sg13g2_stdcell/lef/sg13g2_stdcell.lef"
-
-
 @functools.cache
 def lef_pin_rects(macro_name: str) -> dict:
     """Read the per-pin Metal1 pin rectangles for one stdcell LEF macro.
@@ -37,7 +33,7 @@ def lef_pin_rects(macro_name: str) -> dict:
     Returns:
         dict: ``{PIN: [(x0, y0, x1, y1), ...]}`` in nm.
     """
-    lef = ihp130.pdk().root / _STDCELL_LEF
+    lef = ihp130.pdk().root / "libs.ref/sg13g2_stdcell/lef/sg13g2_stdcell.lef"
     rects = {}
     in_macro = pin = None
     on_metal1 = False
@@ -138,11 +134,11 @@ def place_and_route(cell, cfg=None):
 
     Args:
         cell: the cell to lay out (its schematic instantiates sg13g2 leaf cells).
-        cfg: an optional :class:`~ordec.layout.pnr.GridConfig`; defaults to
+        cfg: an optional :class:`GridConfig`; defaults to
             :func:`sg13g2_grid`. Pass one to override grid/geometry knobs.
 
     Returns:
-        A frozen, DRC/LVS-clean :class:`~ordec.core.schema.Layout` for ``cell``.
+        A frozen, DRC/LVS-clean :class:`Layout` for ``cell``.
     """
     return engine_pnr(cell, sg13g2_layers(), lef_pin_rects,
         is_sg13g2_leaf, cfg or sg13g2_grid())

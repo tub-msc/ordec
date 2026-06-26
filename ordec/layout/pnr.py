@@ -36,12 +36,14 @@ satisfy without an M1.b/V1.c1 violation, which would take a polygon-exact via-ac
 engine to fix. Non-logic cells (antenna, fill, decap) are out of scope.
 """
 
+# Standard imports
 from collections import namedtuple
 from dataclasses import dataclass, field, replace
 import heapq
 import math
 import random
 
+# ORDeC imports
 from ordec.core import *
 from ordec.core.schema import SchemInstanceConn
 
@@ -212,9 +214,13 @@ def extract(cell, pin_rects, is_leaf):
 
     cells = {}
     for name, leaf in leaf_insts.items():
-        rects = pin_rects(leaf.name)
+        # Wrap the PDK hook's raw nm tuples as Rect4I, so the rest of the engine
+        # works with named geometry (rect.lx / .cx / .width, vertex-in-rect) rather
+        # than positional indexing.
+        rects = {pin: [Rect4I(*r) for r in raw]
+            for pin, raw in pin_rects(leaf.name).items()}
         # Cell pitch = power-rail width (the rail rect spans the whole cell).
-        width = max(r[2] - r[0] for r in rects['VDD'])
+        width = max(r.width for r in rects['VDD'])
         cells[name] = LeafCell(leaf, rects, width)
 
     nets = {net_name: NetInfo(net_name, list(terms))
@@ -421,11 +427,11 @@ def place_rows(cells, order, cfg):
         for name in row_cells:
             leaf, local_pins, width = cells[name]
             if mirror:   # MX: shift by x, flip y about row_y
-                abs_pins = {pin: [(x0 + x, row_y - y1, x1 + x, row_y - y0)
-                    for (x0, y0, x1, y1) in rects] for pin, rects in local_pins.items()}
+                abs_pins = {pin: [Rect4I(r.lx + x, row_y - r.uy, r.ux + x, row_y - r.ly)
+                    for r in rects] for pin, rects in local_pins.items()}
             else:
-                abs_pins = {pin: [(x0 + x, y0 + row_y, x1 + x, y1 + row_y)
-                    for (x0, y0, x1, y1) in rects] for pin, rects in local_pins.items()}
+                abs_pins = {pin: [Rect4I(r.lx + x, r.ly + row_y, r.ux + x, r.uy + row_y)
+                    for r in rects] for pin, rects in local_pins.items()}
             placed[name] = PlacedInst(name, leaf, width, (x, row_y), orient, row, abs_pins)
             x += width
         max_w = max(max_w, x)
@@ -534,8 +540,8 @@ def access_nodes(rects, cfg, allow_rail=False):
                 if key not in found or tier < found[key][3]:
                     found[key] = (track_x, track_y, land, tier)
     if found:
-        # Keep the all-pair-or-all-single set the simple version returned, so the
-        # router sees the same candidate nodes (placement/routing unchanged).
+        # Keep only the best-tier candidates (all pair-enclosed, else all single),
+        # so the router sees one consistent set of access nodes for this pin.
         best = min(v[3] for v in found.values())
         return [(xi, yi, v[0], v[1], v[2])
             for (xi, yi), v in found.items() if v[3] == best]
@@ -620,7 +626,8 @@ def union_access(rects, cfg):
     mgrid = cfg.manufacturing_grid
 
     def covered(px, py):
-        return any(x0 <= px <= x1 and y0 <= py <= y1 for (x0, y0, x1, y1) in rects)
+        return any(rect.lx <= px <= rect.ux and rect.ly <= py <= rect.uy
+            for rect in rects)
 
     def reach(cx, cy, dx, dy):   # contiguous Metal1 extent from the via centre
         d = 0
@@ -628,7 +635,7 @@ def union_access(rects, cfg):
             d += mgrid
         return d
 
-    xlo, xhi = min(r[0] for r in rects), max(r[2] for r in rects)
+    xlo, xhi = min(r.lx for r in rects), max(r.ux for r in rects)
     out = {}
     for xi in range(xlo // x_pitch, xhi // x_pitch + 2):
         track_x = xi * x_pitch
@@ -1115,7 +1122,7 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
     keeps every run long enough to meet min area + endcap.
 
     Args:
-        layout: the mutable :class:`~ordec.core.schema.Layout` to emit into.
+        layout: the mutable :class:`Layout` to emit into.
         stack: the :class:`RoutingStack` mapping routing codes to PDK layers.
         edges: the net's routed edges, each a pair of grid nodes.
         term_m2: the net's Via1 access nodes (terminal landings on Metal2).
@@ -1216,7 +1223,7 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
 
 def place_and_route(cell, stack, pin_rects, is_leaf, cfg):
     """Place + route a cell whose schematic instantiates Metal1-only leaf cells.
-    Returns a DRC/LVS-clean :class:`~ordec.core.schema.Layout`.
+    Returns a DRC/LVS-clean :class:`Layout`.
 
     The engine is PDK-agnostic: every PDK-specific input is supplied by the
     caller -- no layer, pitch or DRC dimension is baked into this module.
@@ -1232,7 +1239,7 @@ def place_and_route(cell, stack, pin_rects, is_leaf, cfg):
             build one per PDK, e.g. :func:`ordec.layout.ihp_pnr.sg13g2_grid`.
 
     Returns:
-        A frozen, DRC/LVS-clean :class:`~ordec.core.schema.Layout` for ``cell``.
+        A frozen, DRC/LVS-clean :class:`Layout` for ``cell``.
     """
     cfg = replace(cfg)   # private copy: the floorplan loop below mutates cfg.n_rows
     cells, nets = extract(cell, pin_rects, is_leaf)
@@ -1340,7 +1347,7 @@ def place_and_route(cell, stack, pin_rects, is_leaf, cfg):
                 # on the strap, lifted to Metal4, so a parent lands in the margin and
                 # never stacks onto an interior rail (which carries a block net).
                 strap_x = cfg.strap_vdd_x if pname == 'VDD' else cfg.strap_vss_x
-                rail_y_center = (rail[1] + rail[3]) // 2
+                rail_y_center = (rail.ly + rail.uy) // 2
                 via_half, half_w, land_half = (
                     cfg.via_half, cfg.strap_half_w, cfg.land_half_h)
                 layout % LayoutRect(layer=stack.via2, rect=Rect4I(
@@ -1358,8 +1365,7 @@ def place_and_route(cell, stack, pin_rects, is_leaf, cfg):
             else:
                 # Few rows: the boustrophedon shares this supply's single rail, so
                 # that one rail already ties the whole supply -- expose it directly.
-                port_rect = layout % LayoutRect(layer=stack.m1,
-                    rect=Rect4I(*rail))
+                port_rect = layout % LayoutRect(layer=stack.m1, rect=rail)
         port_rect.create_pin(net.port_pin)
     return layout.freeze()
 
@@ -1373,7 +1379,7 @@ def _largest_rect(rects):
     Returns:
         The biggest one -- a pin's rail/body rect.
     """
-    return max(rects, key=lambda r: (r[2] - r[0]) * (r[3] - r[1]))
+    return max(rects, key=lambda r: r.width * r.height)
 
 
 def _supply_rails(placed, pname):
@@ -1394,7 +1400,7 @@ def _supply_rails(placed, pname):
     for inst in placed.values():
         if pname in inst.pins:
             rail = _largest_rect(inst.pins[pname])
-            rails.add((rail[1], rail[3]))
+            rails.add((rail.ly, rail.uy))
     return sorted(rails)
 
 
@@ -1407,7 +1413,7 @@ def pad_rails(layout, stack, placed, die_w):
     shorter rows would not reach the strap.
 
     Args:
-        layout: the mutable :class:`~ordec.core.schema.Layout` to emit into.
+        layout: the mutable :class:`Layout` to emit into.
         stack: the :class:`RoutingStack` mapping routing codes to PDK layers.
         placed: ``{name: PlacedInst}`` from :func:`place_rows`.
         die_w: the die width to pad each rail out to (nm).
@@ -1421,9 +1427,9 @@ def pad_rails(layout, stack, placed, die_w):
             key = (inst.row, supply)
             existing = rails.get(key)
             if existing is None:
-                rails[key] = [rect[2], rect[1], rect[3]]
+                rails[key] = [rect.ux, rect.ly, rect.uy]
             else:
-                existing[0] = max(existing[0], rect[2])
+                existing[0] = max(existing[0], rect.ux)
     for (row, supply), (x1, y0, y1) in rails.items():
         if x1 < die_w:
             layout % LayoutRect(layer=stack.m1, rect=Rect4I(x1, y0, die_w, y1))
@@ -1439,7 +1445,7 @@ def emit_power_straps(layout, stack, placed, cfg, die_w):
     supply with one shared rail (it already ties itself).
 
     Args:
-        layout: the mutable :class:`~ordec.core.schema.Layout` to emit into.
+        layout: the mutable :class:`Layout` to emit into.
         stack: the :class:`RoutingStack` mapping routing codes to PDK layers.
         placed: ``{name: PlacedInst}`` from :func:`place_rows`.
         cfg: the routing grid + geometry (:class:`GridConfig`).

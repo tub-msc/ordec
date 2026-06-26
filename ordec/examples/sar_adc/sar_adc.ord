@@ -117,9 +117,9 @@ cell SarAdc:
         # see below). Each block exposes its ports on its EDGE -- SarLogic's signals
         # on Metal4 pads above its top rail and its supplies on the side power-ring
         # straps (pnr.py edge-escape), CapDac's on its bottom edge -- so the parent
-        # only routes in the channel and never crosses a block interior. That edge
-        # interface is what makes the composition robust: a placement change cannot
-        # create a new over-cell short. DRC-clean + LVS-match, see tests/test_sar_adc.py.
+        # only routes in the channel and never crosses a block interior, and a
+        # placement change can't create a new over-cell short. DRC-clean + LVS-match,
+        # see tests/test_sar_adc.py.
         .ref_layers = SG13G2().layers
         layers = .ref_layers
         L1 = layers.Metal1; M4 = layers.Metal4; M5 = layers.Metal5

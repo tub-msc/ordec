@@ -77,11 +77,6 @@ cell CapDac:
 
         vdd.auto_wire = False
         vss.auto_wire = False
-        #sample.auto_wire = False
-        #sample_n.auto_wire = False
-        #vx.auto_wire = False
-        #vin.auto_wire = False
-        #vcm.auto_wire = False
 
         # Top-plate reset switch: shorts vx to vcm during sample, then opens so
         # the top plate floats during convert (held by the capacitor array).

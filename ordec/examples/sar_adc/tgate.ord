@@ -4,10 +4,10 @@
 """
 CMOS transmission gate (analog switch) for the SAR ADC.
 
-The logic standard cells now come straight from the IHP sg13g2 library via the
-ExtLibrary (see stdcell_lib.py). This hand-crafted transmission gate is the one
-custom cell -- the foundry library has no transmission-gate macro -- and is used
-as the capacitor-DAC sampling switch.
+The logic standard cells come from the IHP sg13g2 library via the ExtLibrary
+(see stdcell_lib.py). This hand-crafted transmission gate is the one custom cell
+-- the foundry library has no transmission-gate macro -- used as the
+capacitor-DAC sampling switch.
 """
 
 from ordec.core import *
