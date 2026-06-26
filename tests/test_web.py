@@ -91,7 +91,9 @@ testcases_integrated = {
         'CurrentMirror().sim_dc': [check_sim_dc, check_min_size(300, 200)],
     },
     'vco_pseudodiff': {
-        'VcoRing().layout': [],
+       "Vco(width='1u',length='500n').layout": [],
+       "Vco(width='1u',length='500n').drc": [],
+       "Vco(width='1u',length='500n').lvs": [],
     },
     'stdcells': {
         "extlib['sg13g2_inv_1'].layout": [],

@@ -10,7 +10,7 @@ degree phase differences.
 
 from itertools import pairwise
 from ordec.core import *
-from ordec.lib.ihp130 import Nmos, Pmos, SG13G2
+from ordec.lib.ihp130 import Nmos, Pmos, Ntap, Ptap, SG13G2, run_drc, run_lvs
 from ordec.lib.base import Res, Cap, Gnd, Vdc, NoConn, Vpwl
 from ordec.layout import makevias, SRouter
 
@@ -21,8 +21,8 @@ cell VcoHalfStage:
     viewgen symbol -> Symbol:
         inout vdd_st: .align=North
         inout vss_st: .align=South
-        inout vdd: .align=North
-        inout vss: .align=South
+        inout nwell: .align=North
+        inout psub: .align=South
 
         input rst_n: .align=West
         input inp: .align=West
@@ -34,25 +34,25 @@ cell VcoHalfStage:
         net b
 
         port vdd_st: .align=East; .pos=(1,24)
-        port vdd: .align=East; .pos=(1,26)
+        port nwell: .align=East; .pos=(1,26)
         port vss_st: .align=East; .pos=(1,6)
-        port vss: .align=East; .pos=(1,4)
+        port psub: .align=East; .pos=(1,4)
         port inp: .align=East; .pos=(1,21)
         port rst_n: .align=East; .pos=(1,9)
         port fb: .align=East; .pos=(15,15)
         port out: .align=West; .pos=(24,18)
         port out_n: .align=West; .pos=(30,18)
 
-        Pmos m1: .s -- vdd_st; .b -- vdd; .g -- inp; .d -- out; .pos=(3, 19)
-        Nmos m2: .s -- b; .b -- vss; .g -- inp; .d -- out; .pos=(3, 13)
-        Nmos m3: .s -- vss_st; .b -- vss; .g -- rst_n; .d -- b; .pos=(3, 7)
-        Pmos m4: .s -- vdd_st; .b -- vdd; .g -- rst_n; .d -- out; .pos=(10, 19)
+        Pmos m1: .s -- vdd_st; .b -- nwell; .g -- inp; .d -- out; .pos=(3, 19)
+        Nmos m2: .s -- b; .b -- psub; .g -- inp; .d -- out; .pos=(3, 13)
+        Nmos m3: .s -- vss_st; .b -- psub; .g -- rst_n; .d -- b; .pos=(3, 7)
+        Pmos m4: .s -- vdd_st; .b -- nwell; .g -- rst_n; .d -- out; .pos=(10, 19)
 
-        Pmos m5: .s -- vdd_st; .b -- vdd; .g -- fb; .d -- out; .pos=(17, 19)
-        Nmos m6: .s -- vss_st; .b -- vss; .g -- fb; .d -- out; .pos=(17, 13)
+        Pmos m5: .s -- vdd_st; .b -- nwell; .g -- fb; .d -- out; .pos=(17, 19)
+        Nmos m6: .s -- vss_st; .b -- psub; .g -- fb; .d -- out; .pos=(17, 13)
 
-        Pmos m7: .s -- vdd; .b -- vdd; .g -- out; .d -- out_n; .pos=(25, 19)
-        Nmos m8: .s -- vss; .b -- vss; .g -- out; .d -- out_n; .pos=(25, 13)
+        Pmos m7: .s -- vdd_st; .b -- nwell; .g -- out; .d -- out_n; .pos=(25, 19)
+        Nmos m8: .s -- vss_st; .b -- psub; .g -- out; .d -- out_n; .pos=(25, 13)
 
         for mos in m1, m2, m3, m4, m5, m6, m7, m8:
             mos.$w = self.width
@@ -163,7 +163,7 @@ cell VcoHalfStage:
 
         LayoutRect vddbar:
             .layer=layers.Metal1
-            .create_pin(self.symbol.vdd)
+            .create_pin(self.symbol.vdd_st)
             ! .southwest == m1.sd[0].northwest + (-500,400)
             ! .height == 400
             ! .ux == m7.sd[1].ux + 500
@@ -176,7 +176,7 @@ cell VcoHalfStage:
 
         LayoutRect vssbar:
             .layer=layers.Metal1
-            .create_pin(self.symbol.vss)
+            .create_pin(self.symbol.vss_st)
             ! .width == vddbar.width
             ! .height == 400
             ! .northwest == m2.sd[0].southwest - (500,500)
@@ -200,8 +200,8 @@ cell VcoRing:
     viewgen symbol -> Symbol:
         inout vdd_st: .align=North
         inout vss_st: .align=South
-        inout vdd: .align=North
-        inout vss: .align=South
+        inout nwell: .align=North
+        inout psub: .align=South
         input rst_n: .align=West
 
         path out_p, out_n
@@ -212,17 +212,17 @@ cell VcoRing:
 
     viewgen schematic -> Schematic:
         port vdd_st: .pos=(1,21); .align=East
-        port vdd: .pos=(1,22); .align=East
+        port nwell: .pos=(1,23); .align=East
         port vss_st: .pos=(1,1); .align=East
-        port vss: .pos=(1,0); .align=East
+        port psub: .pos=(1,-1); .align=East
         port rst_n: .pos=(1,10); .align=East
 
         path out_p, out_n
 
         vdd_st.auto_wire = False
         vss_st.auto_wire = False
-        vdd.auto_wire = False
-        vss.auto_wire = False
+        nwell.auto_wire = False
+        psub.auto_wire = False
 
         path int_p, int_n
         for i in range(2):
@@ -239,12 +239,12 @@ cell VcoRing:
             VcoHalfStage stage_p[i]:
                 .out    -- int_p[i]
                 .fb     -- int_n[i]
-                .vdd    -- vdd
+                .nwell  -- nwell
                 .out_n  -- out_p[i]
                 .vdd_st -- vdd_st
-                .vss    -- vss
+                .psub   -- psub
                 .vss_st -- vss_st
-                .rst_n  -- (rst_n if (i % 2) == 0 else vdd)
+                .rst_n  -- (rst_n if (i % 2) == 0 else vdd_st)
                 .inp    -- (int_p[i-1] if i > 0 else int_n[1])
                 .pos = (5 + xoffset, 13)
 
@@ -252,11 +252,11 @@ cell VcoRing:
                 .out    -- int_n[i]
                 .fb     -- int_p[i]
                 .out_n  -- out_n[i]
-                .vdd    -- vdd
+                .nwell  -- nwell
                 .vdd_st -- vdd_st
-                .vss    -- vss
+                .psub   -- psub
                 .vss_st -- vss_st
-                .rst_n  -- (rst_n if (i % 2) == 1 else vdd)
+                .rst_n  -- (rst_n if (i % 2) == 1 else vdd_st)
                 .inp    -- (int_n[i-1] if i > 0 else int_p[1])
                 .pos = (5 + xoffset, 3)
 
@@ -336,7 +336,8 @@ cell VcoRing:
         sr.layer(layers.Metal1)
         sr.pop()
         sr.wire_y(stage_p[0].rst_n.cy+2500)
-        sr.path.create_pin(self.symbol.rst_n)
+        .rst_n = sr.path
+        .rst_n.create_pin(self.symbol.rst_n)
 
         # Connect matching fb -- out -- inp pins:
 
@@ -392,9 +393,16 @@ cell VcoRing:
         sr.wire_y(stage_p[0].inp.cy)
         sr.layer(layers.Metal1)
 
+        # Strap the two vss_st rails together:
+        strap_x = vss_st_bar_n.lx - 500
+        sr.move(layers.Metal1, vss_st_bar_n.west)
+        sr.wire_x(strap_x)
+        sr.wire_y(vss_st_bar_p.cy)
+        sr.wire_x(vss_st_bar_p.lx)
+
 cell Vco:
-    width = Parameter(R, default=300n)
-    length = Parameter(R, default=130n)
+    width = Parameter(R, default=1000n)
+    length = Parameter(R, default=500n)
     viewgen symbol -> Symbol:
         inout vdd: .align=North
         inout vss: .align=South
@@ -423,8 +431,9 @@ cell Vco:
             port out_n[i]: .pos=(22,10 + 2 * i); .align=West
 
         VcoRing ring:
-            .vss     -- vss
-            .vdd     -- vdd
+            # Wells biased to the supplies at the top, where the taps live:
+            .nwell   -- vdd
+            .psub    -- vss
             .vss_st  -- vss_st
             .vdd_st  -- vdd_st
             .rst_n   -- rst_n
@@ -448,7 +457,14 @@ cell Vco:
             .g -- cm_mid
             .pos = (15, 16)
 
-        Pmos m3:
+        Nmos m3:
+            .d -- cm_mid
+            .s -- vss
+            .b -- vss
+            .g -- vbias
+            .pos = (7, 1)
+
+        Pmos m4:
             .d -- cm_mid
             .g -- cm_mid
             .s -- vdd
@@ -456,16 +472,143 @@ cell Vco:
             .pos = (11, 16)
             .orientation = FlippedSouth
 
-        Nmos m4:
-            .d -- cm_mid
-            .s -- vss
-            .b -- vss
-            .g -- vbias
-            .pos = (7, 1)
-
         for mos in m1, m2, m3, m4:
             mos.$l = self.length
             mos.$w = self.width
+    
+    viewgen layout -> Layout:
+        layers = SG13G2().layers
+        .ref_layers = layers
+        VcoRing() ring_i:
+            ! .pos == (0,0)
+            
+        
+        nmos = self.schematic.m1.symbol.cell
+        pmos = self.schematic.m2.symbol.cell
+        nmos m1:
+            ! .sd[1].cy == ring_i.vdd_st_bar.cy
+            ! .sd[1].cx == ring_i.vdd_st_bar.lx - 800
+        
+        pmos m2:
+            ! .sd[0].cy == ring_i.vdd_st_bar.cy
+            ! .sd[0].cx == ring_i.vdd_st_bar.ux + 800
+        
+        nmos m3:
+            ! .poly[0].cx == m1.poly[0].cx
+            ! .poly[0].uy == ring_i.vss_st_bar_n.ly - 300
+            
+        pmos m4:
+            ! .poly[0].cx == m2.poly[0].cx
+            ! .poly[0].uy == ring_i.vss_st_bar_n.ly - 300
+
+        LayoutRect poly13:
+            .layer = layers.GatPoly
+            ! .contains(m1.poly[0].rect)
+            ! .ly == m4.poly[0].ly - 500
+        
+        LayoutRect poly24:
+            .layer = layers.GatPoly
+            ! .contains(m2.poly[0].rect)
+            ! .ly == m4.poly[0].ly - 500
+        
+        LayoutRect cont_m4:
+            .layer=layers.Cont
+            ! .size == (160, 160)
+            ! .center == m4.poly[0].south - (0, 200)
+            
+        LayoutRect cont_m3:
+            .layer=layers.Cont
+            ! .size == (160, 160)
+            ! .center == m3.poly[0].south - (0, 200)
+        
+        Ntap(l="0.7u", w="0.7u") ntap_i:
+            ! .activ.south == m2.sd[1].north + (0, 1000)
+        
+        Ptap(l="0.7u", w="0.7u") ptap_i:
+            ! .activ.east == m1.activ.west - (1000, 0)
+        
+        sr = SRouter(SG13G2().default_routing_spec)
+        # vss_st_bar_n and vss_st_bar_p are now strapped together inside the
+        # ring, so only one of them needs tying to m1's drain here.
+        sr.move(layers.Metal1, ring_i.vss_st_bar_n.west)
+        sr.wire_x(m1.sd[1].cx)
+        sr.wire_y(m1.sd[1].cy)
+        
+        sr.move(layers.Metal1, ring_i.vdd_st_bar.east)
+        sr.wire_x(m2.sd[0].lx)
+        
+        sr.move(layers.Metal1, m3.sd[1].rect.east)
+        sr.wire_x(m4.sd[0].rect.lx - 1000)
+        sr.push()
+        sr.wire_y(cont_m4.cy)
+        sr.wire_x(cont_m4.cx)
+        sr.pop()
+        sr.wire_x(m4.sd[0].rect.lx)
+        
+        sr.move(layers.Metal1, m1.sd[0].west)
+        sr.wire_x(ptap_i.m1.cx)
+        
+        #sr.move(layers.Metal1, m2.sd[1].north)
+        #sr.wire_y(ntap_i.m1.cy)
+        
+        LayoutRect vdd:
+            .layer = layers.Metal1
+            ! .contains(m2.sd[1].rect)
+            ! .contains(m4.sd[1].rect)
+            ! .uy >= ntap_i.m1.ly
+            .create_pin(self.symbol.vdd)
+        
+        LayoutRect vss:
+            .layer = layers.Metal1
+            ! .contains(m1.sd[0].rect)
+            ! .contains(m3.sd[0].rect)
+            .create_pin(self.symbol.vss)
+            
+        LayoutRect vbias:
+            .layer = layers.Metal1
+            ! .size == (1200,160)
+            ! .north == cont_m3.north
+            .create_pin(self.symbol.vbias)
+            
+        LayoutRect rst_n:
+            .layer = layers.Metal2
+            ! .width == 200
+            ! .south == ring_i.rst_n.vertices()[0]
+            ! .north == ring_i.rst_n.vertices()[1]
+            .create_pin(self.symbol.rst_n)
+
+        path out_p, out_n
+        for i in range(2):
+            LayoutRect out_p[i]:
+                .layer = layers.Metal1
+                ! .rect == ring_i.out_p[i].rect
+                .create_pin(self.symbol.out_p[i])
+                
+            LayoutRect out_n[i]:
+                .layer = layers.Metal1
+                ! .rect == ring_i.out_n[i].rect
+                .create_pin(self.symbol.out_n[i])
+
+        # Nwell additions:
+        LayoutRect nwell_right:
+            .layer = layers.NWell
+            ! .contains(m2.nwell.rect)
+            ! .contains(m4.nwell.rect)
+            ! .contains(ntap_i.nwell.rect)
+            
+        LayoutRect nwell_middle:
+            .layer = layers.NWell
+            ! .y_extent == ring_i.nwell.y_extent
+            ! .lx == ring_i.nwell.ux
+            ! .ux == nwell_right.ux
+        
+    @generate(auto_refresh=False)
+    def drc(self) -> DrcReport:
+        return run_drc(self.layout)
+
+    @generate(auto_refresh=False)
+    def lvs(self) -> LvsReport:
+        return run_lvs(self.layout, self.symbol)
 
 cell VcoTb:
     viewgen symbol -> Symbol:
