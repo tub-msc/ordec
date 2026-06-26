@@ -1145,3 +1145,22 @@ def test_set_byattr():
     # Passing an Attr that belongs to an unrelated node type must raise:
     with pytest.raises(OrdbException):
         h.a.update_byattr(UnrelatedNode.text2, 'test')
+
+def test_assign_npath():
+    """Assign a NPath to a node that as previously inserted anonymously."""
+
+    class NodeA(NonLeafNode):
+        in_subgraphs=[MyHead]
+        text = Attr(str)
+
+    s = MyHead()
+    x = s % NodeA(text='hello')
+    s.x = x
+    assert s.x.nid == x.nid
+
+    # TODO: This is bad behaviour at the moment as the cursor 'caches' the NPath nid:
+    assert s.x != x
+
+    with pytest.raises(UniqueViolation):
+        # Ensure that we cannot assign multiple paths to a node:
+        s.y = x

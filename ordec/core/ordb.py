@@ -1036,7 +1036,18 @@ class NonLeafNode(Node, build_node=False):
 
     def __setitem__(self, k, v):
         with self.subgraph.updater() as u:
-            if v == PathNode.Tuple():
+            if isinstance(v, Node):
+                # v is a cursor to a node already in the subgraph: name that
+                # existing node rather than inserting a copy. This is what makes
+                # 'root.foo = some_existing_cursor' attach the name 'foo' to the
+                # node some_existing_cursor points at (e.g. naming an SRouter
+                # path created anonymously via '%').
+                if v.subgraph is not self.subgraph:
+                    raise OrdbException("Cannot name a node from a different subgraph.")
+                if v.nid is None:
+                    raise OrdbException("Cannot name a cursor without an associated node.")
+                v_nid = v.nid
+            elif v == PathNode.Tuple():
                 # Create a new NPath without associated node.
                 v_nid = None
             else:
