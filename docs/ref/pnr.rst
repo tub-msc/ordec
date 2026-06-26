@@ -38,11 +38,11 @@ everything downstream.
 Placement
 ---------
 
-#. **Flatten** (``flatten``) — the schematic is expanded recursively to Metal1-only
-   foundry leaf cells. A nested cell such as ``Mux2`` is replaced by its own ``Inv`` +
-   ``Nand2`` instances, internal nets are uniquified by an instance prefix, and the
-   sub-cell's ports are rewired to the parent's nets. (This is why ``MuxDff``, written as
-   2·``Mux2`` + 5·``Inv``, routes as 13 leaf cells.)
+#. **Flatten** (``flatten``) — the schematic is expanded recursively to its foundry
+   leaf cells. Foundry standard cells (``sg13g2_*`` — inverter, mux2, dff, …) are
+   leaves, kept as-is; any instance that is itself a non-foundry composite is replaced
+   by the contents of its schematic, with internal nets uniquified by an instance
+   prefix and the sub-cell's ports rewired to the parent's nets.
 #. **Order** (``order_cells_sa``) — cells are ordered to minimise wirelength by
    *simulated annealing*, seeded from an iterated-barycenter order. The cost is
    half-perimeter wirelength with the vertical span weighted 2× (a net that crosses rows
@@ -66,21 +66,23 @@ first gives each net a *corridor* of grid cells, balancing congestion on a cheap
 grid; detailed routing then stays inside that corridor (falling back to the full grid only
 when a net cannot be realised there), which keeps the maze search local as blocks grow:
 
-* Each net is routed with **A\*** (``_astar``) on the three-layer grid: move along Metal2
-  (vertical) or Metal3 (horizontal), or pay a via cost to switch layer. Multi-terminal
-  nets grow a tree (connect terminal 1→2, then each remaining terminal to the tree).
-  Metal2 may pass *through* a rail track to reach another row; vias and Metal3 are only
-  allowed on signal tracks.
+* Each net is routed with **A\*** (``_astar``) on the track grid: vertical layers
+  (Metal2, Metal4) step in y, horizontal layers (Metal3, Metal5) step in x, and a via
+  cost switches layer (Metal4/Metal5 are enabled by ``use_upper``, doubling routing
+  capacity; Metal2/Metal3 alone otherwise). Multi-terminal nets grow a tree (connect
+  terminal 1→2, then each remaining terminal to the tree). Vertical wires may pass
+  *through* a rail track to reach another row; vias and horizontal wires sit only on
+  signal tracks.
 * After the initial routing, each **conflict** raises the cost of the offending grid
   nodes and *only the nets touching it* are ripped up and rerouted — incremental rip-up,
-  a handful of nets per pass rather than all of them, is what lets this scale. Conflicts
-  are: a node used by two nets, **or** two nets too close given the 210 nm wires + 150 nm
-  end extensions — Metal3
-  on adjacent tracks (parallel runs) or one x-step apart on the same track (facing wire
-  ends), Metal2 one y-step apart on the same track. The penalty accumulates as
-  *historical* congestion, so nets that keep colliding are progressively pushed apart
-  until the routing is legal. The net order is rotated each pass to stop two nets
-  oscillating over one resource.
+  a handful of nets per pass rather than all of them, is what lets this scale. A conflict
+  is a node used by two nets, **or** two nets whose facing wire *ends* are one grid step
+  apart on the same track: the 150 nm end extension puts those ends closer than the metal
+  spacing (a horizontal wire one x-step apart, a vertical wire one y-step apart). Adjacent
+  *parallel* tracks are a full pitch apart and legal, so they are deliberately not
+  flagged. The penalty accumulates as *historical* congestion, so nets that keep colliding
+  are progressively pushed apart until the routing is legal. The net order is rotated each
+  pass to stop two nets oscillating over one resource.
 
 Because the spacing rules are encoded directly in the conflict model, a converged routing
 is DRC-clean by construction rather than clean by luck.
@@ -103,8 +105,10 @@ from the ``GridConfig``; three sg13g2 DRC specifics set the values in its profil
   190 nm cut by 10 nm) and extend 150 nm past each end (a 50 nm endcap at an end-via), and
   a post-pass (``extend_min_area``) lengthens any too-short segment into free tracks to
   reach min area.
-* **Metal3 spacing (210 nm)** is exactly one track pitch minus the wire width, which is
-  the whole reason the adjacency conflicts and row-growth above exist.
+* **Metal3 spacing (210 nm)** is exactly one track pitch minus the wire width, so
+  adjacent parallel tracks sit at exactly the minimum spacing — legal, but with no slack.
+  That tightness is why facing wire-ends conflict and why a too-full channel forces the
+  row-count growth above.
 
 Algorithmic fidelity and scope
 ------------------------------
