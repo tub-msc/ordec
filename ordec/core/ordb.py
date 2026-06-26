@@ -78,14 +78,14 @@ class GenericIndex(ABC):
         pass
 
 @public
-@dataclass(frozen=True, eq=True)
+@dataclass(eq=True)
 class UniqueViolation(ModelViolation):
     """Exception raised when a unique constraint is violated."""
     index: GenericIndex #: :class:`GenericIndex` violating the unique constraint.
     value: tuple #: Value violating the unique constraint.
 
 @public
-@dataclass(frozen=True, eq=True)
+@dataclass(eq=True)
 class DanglingLocalRef(ModelViolation):
     """
     Exception raised when a :class:`LocalRef` attribute ends up referencing
