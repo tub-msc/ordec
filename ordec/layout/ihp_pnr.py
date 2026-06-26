@@ -5,19 +5,19 @@
 IHP SG13G2 binding of the generic place-and-route engine
 (:func:`ordec.layout.pnr.place_and_route`).
 
-The engine is PDK-agnostic: it lays out a cell given a layer set, a per-cell
-pin-rectangle lookup, a routing-leaf predicate and a :class:`GridConfig` (the
-routing grid + DRC-driven emission geometry). This module supplies all four for
-the IHP sg13g2 standard cells -- so every sg13g2 number lives here, not in the
-engine -- and exposes a one-argument :func:`place_and_route` that the designs
-call directly. A sibling module (e.g. ``sky130_pnr.py``) would bind the same
-engine to another PDK.
+The engine is PDK-agnostic: it lays out a cell given a :class:`RoutingStack`
+(routing codes -> PDK layers), a per-cell pin-rectangle lookup, a routing-leaf
+predicate and a :class:`GridConfig` (the routing grid + DRC-driven emission
+geometry). This module supplies all four for the IHP sg13g2 standard cells -- so
+every sg13g2 number and layer name lives here, not in the engine -- and exposes a
+one-argument :func:`place_and_route` that the designs call directly. A sibling
+module (e.g. ``sky130_pnr.py``) would bind the same engine to another PDK.
 """
 
 import functools
 
 from ordec.lib import ihp130
-from ordec.layout.pnr import GridConfig, place_and_route as engine_pnr
+from ordec.layout.pnr import GridConfig, RoutingStack, place_and_route as engine_pnr
 
 # sg13g2 standard-cell reference files, relative to the PDK root.
 _STDCELL_LEF = "libs.ref/sg13g2_stdcell/lef/sg13g2_stdcell.lef"
@@ -110,12 +110,30 @@ def sg13g2_grid() -> GridConfig:
     )
 
 
+def sg13g2_layers() -> RoutingStack:
+    """Bind the engine's abstract routing stack to the sg13g2 metal/via layers.
+
+    sg13g2 routes on Metal2..Metal5 (Metal1 is pin access only), with Via1..Via4,
+    so the engine's codes map 1:1 onto the like-numbered PDK layers.
+
+    Returns:
+        RoutingStack: the sg13g2 layer binding for the engine.
+    """
+    layers = ihp130.SG13G2().layers
+    return RoutingStack(
+        layer_set=layers,
+        m1=layers.Metal1, m2=layers.Metal2, m3=layers.Metal3,
+        m4=layers.Metal4, m5=layers.Metal5,
+        via1=layers.Via1, via2=layers.Via2, via3=layers.Via3, via4=layers.Via4,
+    )
+
+
 def place_and_route(cell, cfg=None):
     """Place-and-route ``cell`` with the IHP sg13g2 standard-cell library.
 
-    Binds the PDK-specific inputs -- the layer set, the LEF pin rectangles
-    (:func:`lef_pin_rects`), the foundry-leaf predicate and the sg13g2 grid
-    (:func:`sg13g2_grid`) -- to the generic engine
+    Binds the PDK-specific inputs -- the layer stack (:func:`sg13g2_layers`), the
+    LEF pin rectangles (:func:`lef_pin_rects`), the foundry-leaf predicate and the
+    sg13g2 grid (:func:`sg13g2_grid`) -- to the generic engine
     :func:`ordec.layout.pnr.place_and_route`.
 
     Args:
@@ -126,5 +144,5 @@ def place_and_route(cell, cfg=None):
     Returns:
         A frozen, DRC/LVS-clean :class:`~ordec.core.schema.Layout` for ``cell``.
     """
-    return engine_pnr(cell, ihp130.SG13G2().layers, lef_pin_rects,
+    return engine_pnr(cell, sg13g2_layers(), lef_pin_rects,
         is_sg13g2_leaf, cfg or sg13g2_grid())

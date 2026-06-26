@@ -3,11 +3,13 @@
 
 .. automodule:: ordec.layout.pnr
 
-The engine is PDK-agnostic: :func:`~ordec.layout.pnr.place_and_route` takes the layer
-set, a per-cell LEF pin-rectangle lookup, an "is this a routing leaf?" predicate and a
-:class:`~ordec.layout.pnr.GridConfig` -- the routing grid *and* the DRC-driven emission
-geometry (wire/via/landing/strap dimensions) -- as arguments. No PDK pitch or design-rule
-dimension is baked into the engine; the engine reads every value from the config. It sits
+The engine is PDK-agnostic: :func:`~ordec.layout.pnr.place_and_route` takes a
+:class:`~ordec.layout.pnr.RoutingStack` (the engine's abstract routing codes mapped to
+concrete PDK layers), a per-cell LEF pin-rectangle lookup, an "is this a routing leaf?"
+predicate and a :class:`~ordec.layout.pnr.GridConfig` -- the routing grid *and* the
+DRC-driven emission geometry (wire/via/landing/strap dimensions) -- as arguments. No PDK
+layer, pitch or design-rule dimension is baked into the engine; it reads every value from
+these inputs. It sits
 alongside :doc:`SRouter <layout>` and the :doc:`KLayout integration <layout_klayout>`.
 :mod:`ordec.layout.ihp_pnr` binds these inputs to the sg13g2 standard-cell library -- its
 grid/geometry profile is ``sg13g2_grid()`` -- and exposes a one-argument
@@ -138,6 +140,9 @@ Public API
 ----------
 
 .. autofunction:: ordec.layout.pnr.place_and_route
+
+.. autoclass:: ordec.layout.pnr.RoutingStack
+   :members:
 
 .. autoclass:: ordec.layout.pnr.GridConfig
    :members:

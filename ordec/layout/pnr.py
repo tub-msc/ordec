@@ -10,8 +10,9 @@ grid -- place cells in rows, then rip-up-and-reroute nets with A* until the
 routing is congestion-free.
 
 The engine is PDK-agnostic: every pitch and DRC dimension arrives through the
-:class:`GridConfig`, so retargeting a PDK is a new profile, not an edit here. It
-does make these structural assumptions about the standard-cell flow:
+:class:`GridConfig` and every layer through the :class:`RoutingStack`, so
+retargeting a PDK is a new profile, not an edit here. It does make these
+structural assumptions about the standard-cell flow:
 
 * Leaf cells are Metal1-only for signals (foundry GDS cells), so the metals above
   them are free for routing -- routing stays *within* the cell-row height instead
@@ -433,12 +434,40 @@ def place_rows(cells, order, cfg):
 
 # --- routing grid + maze router -------------------------------------------
 
-# Internal layer codes. Routing uses two vertical layers (Metal2, Metal4) and two
-# horizontal layers (Metal3, Metal5); Metal1 is pin access only. Doubling the
-# layers ~doubles routing capacity, which is what production routers do.
+# Internal layer codes -- abstract routing-stack positions, NOT PDK layers. The
+# engine routes on two vertical layers (codes M2, M4) and two horizontal (M3, M5),
+# with M1 reserved for pin access; doubling the routing layers ~doubles capacity,
+# as production routers do. A RoutingStack from the PDK binding maps these abstract
+# codes to concrete PDK layers, so no PDK layer name is baked into the engine.
 M2, M3, M1, M4, M5 = 0, 1, 2, 3, 4
 VERT = (M2, M4)        # vertical routing layers (move in y)
 HORIZ = (M3, M5)       # horizontal routing layers (move in x)
+
+
+@dataclass
+class RoutingStack:
+    """Maps the engine's abstract routing stack onto concrete PDK layers.
+
+    PDK-agnostic hook, the layer counterpart of :class:`GridConfig`: the binding
+    supplies the layer objects, so no PDK layer name is baked into the engine
+    (retargeting a PDK is a new profile, not an edit here). The engine assumes a
+    Metal1-only pin-access layer plus four routing metals -- two vertical (``m2``,
+    ``m4``), two horizontal (``m3``, ``m5``) -- stacked with four vias (``via1``
+    bridges the pin metal up to ``m2``, then one via between each routing metal).
+
+    Every field is a concrete layer object from the caller's PDK layer set; ``m1``
+    .. ``m5`` and ``via1`` .. ``via4`` mirror the like-named internal codes.
+    """
+    layer_set: object   # full PDK layer set, passed through as Layout.ref_layers
+    m1: object          # pin-access metal (code M1)
+    m2: object          # first vertical routing metal (code M2)
+    m3: object          # first horizontal routing metal (code M3)
+    m4: object          # second vertical routing metal (code M4)
+    m5: object          # second horizontal routing metal (code M5)
+    via1: object        # pin metal <-> m2
+    via2: object        # m2 <-> m3
+    via3: object        # m3 <-> m4
+    via4: object        # m4 <-> m5
 
 
 def access_nodes(rects, cfg, allow_rail=False):
@@ -628,8 +657,8 @@ def union_access(rects, cfg):
 def _neighbors(node, cfg, xmax):
     """Yield the maze-router moves out of one grid node.
 
-    Vertical layers (Metal2, Metal4) step in y, horizontal layers (Metal3, Metal5)
-    step in x; a layer change costs ``cfg.via_cost`` and is only allowed off the
+    Vertical layers (codes M2, M4) step in y, horizontal layers (M3, M5) step in
+    x; a layer change costs ``cfg.via_cost`` and is only allowed off the
     rail tracks.
 
     Args:
@@ -1075,7 +1104,7 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
 
 # --- geometry emission + top-level orchestration --------------------------
 
-def emit_net_direct(layout, layers, edges, term_m2, cfg,
+def emit_net_direct(layout, stack, edges, term_m2, cfg,
         term_via=None, term_land=None):
     """Emit one routed net's geometry directly with concrete coordinates.
 
@@ -1087,7 +1116,7 @@ def emit_net_direct(layout, layers, edges, term_m2, cfg,
 
     Args:
         layout: the mutable :class:`~ordec.core.schema.Layout` to emit into.
-        layers: the PDK layer set.
+        stack: the :class:`RoutingStack` mapping routing codes to PDK layers.
         edges: the net's routed edges, each a pair of grid nodes.
         term_m2: the net's Via1 access nodes (terminal landings on Metal2).
         cfg: the routing grid + DRC geometry (:class:`GridConfig`).
@@ -1097,9 +1126,9 @@ def emit_net_direct(layout, layers, edges, term_m2, cfg,
             on-track terminal.
     """
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
-    metal_layer = {M2: layers.Metal2, M3: layers.Metal3, M4: layers.Metal4, M5: layers.Metal5}
-    via_layer = {frozenset((M1, M2)): layers.Via1, frozenset((M2, M3)): layers.Via2,
-        frozenset((M3, M4)): layers.Via3, frozenset((M4, M5)): layers.Via4}
+    metal_layer = {M2: stack.m2, M3: stack.m3, M4: stack.m4, M5: stack.m5}
+    via_layer = {frozenset((M1, M2)): stack.via1, frozenset((M2, M3)): stack.via2,
+        frozenset((M3, M4)): stack.via3, frozenset((M4, M5)): stack.via4}
     vert_runs = {}    # (layer, xi) -> set(yi)   on vertical layers (M2, M4)
     horiz_runs = {}   # (layer, yi) -> set(xi)   on horizontal layers (M3, M5)
     vias = set()  # (xi, yi, frozenset(layer pair))
@@ -1163,16 +1192,16 @@ def emit_net_direct(layout, layers, edges, term_m2, cfg,
             # metal gives the Via1 endcap, so no Metal1 landing is added (it would
             # notch the pin and break Metal1 spacing).
             via_x, via_y = term_via[node]
-            layout % LayoutRect(layer=layers.Via1, rect=Rect4I(
+            layout % LayoutRect(layer=stack.via1, rect=Rect4I(
                 via_x - cfg.via_half, via_y - cfg.via_half,
                 via_x + cfg.via_half, via_y + cfg.via_half))
             lo, hi = min(via_x, xi * x_pitch), max(via_x, xi * x_pitch)
-            layout % LayoutRect(layer=layers.Metal2, rect=Rect4I(
+            layout % LayoutRect(layer=stack.m2, rect=Rect4I(
                 lo - cfg.strap_half_w, via_y - cfg.land_half_h,
                 hi + cfg.strap_half_w, via_y + cfg.land_half_h))
         else:
             via_x, via_y = xi * x_pitch, yi * y_pitch
-            layout % LayoutRect(layer=layers.Via1, rect=Rect4I(
+            layout % LayoutRect(layer=stack.via1, rect=Rect4I(
                 via_x - cfg.via_half, via_y - cfg.via_half,
                 via_x + cfg.via_half, via_y + cfg.via_half))
             # Metal1 endcap landing (merges with the cell pin) so the via meets the
@@ -1182,10 +1211,10 @@ def emit_net_direct(layout, layers, edges, term_m2, cfg,
             land = (term_land or {}).get(node, (
                 via_x - cfg.strap_half_w, via_y - cfg.m1_land_half_h,
                 via_x + cfg.strap_half_w, via_y + cfg.m1_land_half_h))
-            layout % LayoutRect(layer=layers.Metal1, rect=Rect4I(*land))
+            layout % LayoutRect(layer=stack.m1, rect=Rect4I(*land))
 
 
-def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
+def place_and_route(cell, stack, pin_rects, is_leaf, cfg):
     """Place + route a cell whose schematic instantiates Metal1-only leaf cells.
     Returns a DRC/LVS-clean :class:`~ordec.core.schema.Layout`.
 
@@ -1194,7 +1223,7 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
 
     Args:
         cell: the cell to lay out; its schematic is flattened to leaf cells.
-        layers: the PDK layer set (e.g. ``SG13G2().layers``).
+        stack: the :class:`RoutingStack` binding routing codes to this PDK's layers.
         pin_rects: callable ``name -> {pin: [(x0, y0, x1, y1), ...]}`` giving a
             leaf cell's per-pin Metal1 LEF rectangles, in nm.
         is_leaf: callable ``cell -> bool``, true for a routing leaf (a standard
@@ -1260,7 +1289,7 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
     if cfg.min_area_pass:
         extend_min_area(routing, cfg, xmax)
 
-    layout = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+    layout = Layout(ref_layers=stack.layer_set, cell=cell, symbol=cell.symbol)
     for name, inst in placed.items():
         setattr(layout, name, LayoutInstance(ref=inst.cell.layout,
             pos=Vec2I(*inst.pos), orientation=inst.orient))
@@ -1268,13 +1297,13 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
     # Emit routing directly with concrete coordinates (no constraint solver, so
     # it scales to hundreds of nets).
     for net_name, (edges, term_m2) in routing.items():
-        emit_net_direct(layout, layers, edges, term_m2, cfg, term_via, term_land)
+        emit_net_direct(layout, stack, edges, term_m2, cfg, term_via, term_land)
 
     # Pad every row's rail out to the die width so the block is a flush rectangle
     # (like filler cells) and the right power strap ties into every rail.
-    pad_rails(layout, layers, placed, die_w)
+    pad_rails(layout, stack, placed, die_w)
     if cfg.n_rows >= 2:
-        emit_power_straps(layout, layers, placed, cfg, die_w)
+        emit_power_straps(layout, stack, placed, cfg, die_w)
 
     # Ports. A signal port was escaped to the TOP edge (route_nets): expose its
     # pin on a Metal4 pad straddling the top rail, up in the channel above the
@@ -1290,12 +1319,12 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
             escape_x = port_escape.get(net_name)
             if escape_x is not None:                   # top-edge pad, above the rows
                 track_x = escape_x * x_pitch
-                port_rect = layout % LayoutRect(layer=layers.Metal4, rect=Rect4I(
+                port_rect = layout % LayoutRect(layer=stack.m4, rect=Rect4I(
                     track_x - cfg.strap_half_w, top_abs - cfg.port_pad_below,
                     track_x + cfg.strap_half_w, top_abs + cfg.port_pad_above))
             else:                                # interior fallback pad
                 xi, yi, _ = routing[net_name][1][0]
-                port_rect = layout % LayoutRect(layer=layers.Metal4, rect=Rect4I(
+                port_rect = layout % LayoutRect(layer=stack.m4, rect=Rect4I(
                     xi * x_pitch - cfg.strap_half_w, yi * y_pitch - cfg.land_half_h,
                     xi * x_pitch + cfg.strap_half_w, yi * y_pitch + cfg.land_half_h))
         else:                                    # vdd/vss
@@ -1314,22 +1343,22 @@ def place_and_route(cell, layers, pin_rects, is_leaf, cfg):
                 rail_y_center = (rail[1] + rail[3]) // 2
                 via_half, half_w, land_half = (
                     cfg.via_half, cfg.strap_half_w, cfg.land_half_h)
-                layout % LayoutRect(layer=layers.Via2, rect=Rect4I(
+                layout % LayoutRect(layer=stack.via2, rect=Rect4I(
                     strap_x - via_half, rail_y_center - via_half,
                     strap_x + via_half, rail_y_center + via_half))
-                layout % LayoutRect(layer=layers.Metal3, rect=Rect4I(
+                layout % LayoutRect(layer=stack.m3, rect=Rect4I(
                     strap_x - half_w, rail_y_center - land_half,
                     strap_x + half_w, rail_y_center + land_half))
-                layout % LayoutRect(layer=layers.Via3, rect=Rect4I(
+                layout % LayoutRect(layer=stack.via3, rect=Rect4I(
                     strap_x - via_half, rail_y_center - via_half,
                     strap_x + via_half, rail_y_center + via_half))
-                port_rect = layout % LayoutRect(layer=layers.Metal4, rect=Rect4I(
+                port_rect = layout % LayoutRect(layer=stack.m4, rect=Rect4I(
                     strap_x - half_w, rail_y_center - land_half,
                     strap_x + half_w, rail_y_center + land_half))
             else:
                 # Few rows: the boustrophedon shares this supply's single rail, so
                 # that one rail already ties the whole supply -- expose it directly.
-                port_rect = layout % LayoutRect(layer=layers.Metal1,
+                port_rect = layout % LayoutRect(layer=stack.m1,
                     rect=Rect4I(*rail))
         port_rect.create_pin(net.port_pin)
     return layout.freeze()
@@ -1369,7 +1398,7 @@ def _supply_rails(placed, pname):
     return sorted(rails)
 
 
-def pad_rails(layout, layers, placed, die_w):
+def pad_rails(layout, stack, placed, die_w):
     """Extend every row's VDD/VSS rail rightward to a common die-width edge.
 
     Like filler cells, this makes the block a flush rectangle (composes cleanly,
@@ -1379,7 +1408,7 @@ def pad_rails(layout, layers, placed, die_w):
 
     Args:
         layout: the mutable :class:`~ordec.core.schema.Layout` to emit into.
-        layers: the PDK layer set.
+        stack: the :class:`RoutingStack` mapping routing codes to PDK layers.
         placed: ``{name: PlacedInst}`` from :func:`place_rows`.
         die_w: the die width to pad each rail out to (nm).
     """
@@ -1397,10 +1426,10 @@ def pad_rails(layout, layers, placed, die_w):
                 existing[0] = max(existing[0], rect[2])
     for (row, supply), (x1, y0, y1) in rails.items():
         if x1 < die_w:
-            layout % LayoutRect(layer=layers.Metal1, rect=Rect4I(x1, y0, die_w, y1))
+            layout % LayoutRect(layer=stack.m1, rect=Rect4I(x1, y0, die_w, y1))
 
 
-def emit_power_straps(layout, layers, placed, cfg, die_w):
+def emit_power_straps(layout, stack, placed, cfg, die_w):
     """Form a power ring per supply: a vertical Metal2 strap in the empty margin on
     each side of the cell area, tapping every rail through a short Metal1 extension
     + Via1.
@@ -1411,7 +1440,7 @@ def emit_power_straps(layout, layers, placed, cfg, die_w):
 
     Args:
         layout: the mutable :class:`~ordec.core.schema.Layout` to emit into.
-        layers: the PDK layer set.
+        stack: the :class:`RoutingStack` mapping routing codes to PDK layers.
         placed: ``{name: PlacedInst}`` from :func:`place_rows`.
         cfg: the routing grid + geometry (:class:`GridConfig`).
         die_w: the die width (nm); the right strap mirrors to it.
@@ -1425,7 +1454,7 @@ def emit_power_straps(layout, layers, placed, cfg, die_w):
             continue
         strap_y0, strap_y1 = rails[0][0], rails[-1][1]
         for strap_x, edge in ((strap_left_x, 0), (strap_right_x, die_w)):
-            layout % LayoutRect(layer=layers.Metal2, rect=Rect4I(
+            layout % LayoutRect(layer=stack.m2, rect=Rect4I(
                 strap_x - cfg.strap_half_w, strap_y0,
                 strap_x + cfg.strap_half_w, strap_y1))
             for (rail_y0, rail_y1) in rails:
@@ -1433,9 +1462,9 @@ def emit_power_straps(layout, layers, placed, cfg, die_w):
                 # Metal1 tap from the strap across to the rail edge.
                 tap_x0, tap_x1 = ((strap_x - cfg.rail_ext, edge) if strap_x < edge
                     else (edge, strap_x + cfg.rail_ext))
-                layout % LayoutRect(layer=layers.Metal1,
+                layout % LayoutRect(layer=stack.m1,
                     rect=Rect4I(tap_x0, rail_y0, tap_x1, rail_y1))
-                layout % LayoutRect(layer=layers.Via1, rect=Rect4I(
+                layout % LayoutRect(layer=stack.via1, rect=Rect4I(
                     strap_x - via_half, rail_y_center - via_half,
                     strap_x + via_half, rail_y_center + via_half))
 
