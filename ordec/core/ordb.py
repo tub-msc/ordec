@@ -1679,6 +1679,27 @@ class FrozenSubgraph(Subgraph):
         raise TypeError("Unsupported operation on FrozenSubgraph.")
 
 @public
+def subgraph_view_id(view) -> str|None:
+    """Session-scoped identity token for a view, for web UI panel reuse.
+
+    Returns a stable token for the frozen subgraph that ``view`` (a
+    SubgraphRoot or any cursor into one) belongs to. Two view-request
+    expressions that resolve to the same (content-equal) subgraph yield the
+    same token, so the web UI can recognize that they denote the same view and
+    reuse a single result panel for both.
+
+    The token derives from the subgraph's content hash and is therefore stable
+    only within a single process (Python's hash seed is per-process); it is
+    intentionally not suitable for persistence. Returns None when ``view`` has
+    no associated subgraph (e.g. None refs).
+    """
+    try:
+        sg = view.subgraph
+    except AttributeError:
+        return None
+    return f"sg{hash(sg) & 0xffffffffffffffff:016x}"
+
+@public
 class MutableSubgraph(Subgraph):
     """
     MutableSubgraph does not override object.__eq__ and object.__hash__. Thus,

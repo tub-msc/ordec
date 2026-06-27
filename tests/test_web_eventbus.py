@@ -497,3 +497,70 @@ def test_lvs_subcircuit_item_select(web):
         "return document.querySelectorAll('.lvs-highlight-group').length;")
     assert highlight_groups > 0, \
         "Item should be highlighted in the pair's schematic view"
+
+
+@pytest.mark.web
+def test_lvs_item_reuses_manually_opened_views(web):
+    """An LVS item click reuses an already-open layout/schematic panel that was
+    opened under a *different* expression (but the same underlying view),
+    instead of opening a duplicate. Regression test for the LVS viewer matching
+    panels only by request string."""
+    qs_local = web.key.query_string_local(
+        "tests.lib.lvs_example_hier", "C_Hier().lvs_report")
+    web.navigate(f'app.html#refreshall=true&{qs_local}')
+    web.wait_for_ready()
+    time.sleep(0.5)
+
+    # Manually open the A_Default subcircuit's layout and schematic under their
+    # own standalone expressions, distinct from the LVS report's cursor_at(...)
+    # expressions but resolving to the same underlying views.
+    web.driver.execute_script("""
+        window.viewEventBus.emit('layout:request-open', {view: 'A_Default().layout'});
+        window.viewEventBus.emit('schematic:request-open', {view: 'A_Default().schematic'});
+    """)
+    web.wait_for_ready()
+    time.sleep(0.5)
+
+    def opened_view_exprs():
+        return web.driver.execute_script(
+            "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+
+    before = opened_view_exprs()
+    assert 'A_Default().layout' in before, before
+    assert 'A_Default().schematic' in before, before
+    # No per-circuit cursor_at(...) views opened yet.
+    assert not any(v and 'cursor_at' in v for v in before), before
+
+    # Click a device item row of the A_Default subcircuit pair.
+    clicked = web.driver.execute_script("""
+        const circuits = Array.from(document.querySelectorAll('.lvs-circuit'));
+        const sub = circuits.find(c =>
+            c.querySelector('.lvs-circuit-header').textContent.includes('A_Default'));
+        if (!sub) return false;
+        const link = sub.querySelector(
+            '.lvs-item-row .lvs-item-link[title="Highlight in layout and schematic"]');
+        if (!link) return false;
+        link.closest('.lvs-item-row').click();
+        return true;
+    """)
+    assert clicked, "Should find and click an item row of the A_Default pair"
+    web.wait_for_ready()
+    time.sleep(0.5)
+
+    # The manually-opened panels are reused: no cursor_at(...) duplicate opened.
+    after = opened_view_exprs()
+    assert not any(v and 'cursor_at' in v for v in after), \
+        f"LVS item should reuse the manually-opened panels, not open duplicates: {after}"
+    assert 'A_Default().layout' in after, after
+    assert 'A_Default().schematic' in after, after
+
+    # The highlight landed in the reused panels.
+    state = get_layout_state(web)
+    assert state is not None, "Manually-opened layout panel should still be present"
+    assert state['highlightNumVertices'] > 0, \
+        "Item should be highlighted in the reused layout panel"
+
+    highlight_groups = web.driver.execute_script(
+        "return document.querySelectorAll('.lvs-highlight-group').length;")
+    assert highlight_groups > 0, \
+        "Item should be highlighted in the reused schematic panel"

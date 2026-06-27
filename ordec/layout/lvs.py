@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from ..core.directory import Directory
+from ..core.ordb import subgraph_view_id
 from ..core.schema import LvsReport, LvsCircuitPair, LvsItem
 
 
@@ -57,6 +58,12 @@ def webdata(report: LvsReport):
             # offers opening the layout/schematic of a circuit pair if so.
             'has_layout_ref': circuit.ref_layout is not None,
             'has_schem_ref': circuit.ref_schematic is not None,
+            # Content-based identity of the pair's resolved layout/schematic,
+            # matching the view_id the server reports for that view. Lets the
+            # web UI reuse an already-open layout/schematic panel (however it
+            # was opened) instead of opening a duplicate. None if unresolved.
+            'layout_id': subgraph_view_id(circuit.ref_layout),
+            'schem_id': subgraph_view_id(circuit.ref_schematic),
             # Top-level circuit pair (refs the same layout/schematic as the
             # report itself). Item selections of subcircuit pairs must target
             # the pair's own views instead of the report-level ones.

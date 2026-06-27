@@ -89,7 +89,7 @@ from websockets.exceptions import ConnectionClosedOK
 
 from . import importer, language
 from .version import version
-from .core import Cell, generate, generate_func, SubgraphRoot
+from .core import Cell, generate, generate_func, SubgraphRoot, subgraph_view_id
 from .language import compile_ord
 from .extlibrary import ExtLibrary
 
@@ -357,8 +357,14 @@ class ConnectionHandler:
                     report.preformatted(view)
                     view = report
                 viewtype, data = view.webdata()
+                # Content-based identity so the web UI can recognize when two
+                # different view expressions resolve to the same view and reuse
+                # one panel (e.g. an LVS subcircuit's layout vs. that layout
+                # opened directly). Session-scoped, not persisted.
+                view_id = subgraph_view_id(view)
             msg_ret['type'] = viewtype
             msg_ret['data'] = data
+            msg_ret['view_id'] = view_id
         except Exception as e:
             msg_ret['exception'] = format_user_exception(e)
 

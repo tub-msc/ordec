@@ -211,10 +211,15 @@ export class LayoutGL {
         viewEventBus.on('drc:clear', this._onDrcClear);
 
         this._onLvsSelect = (data) => {
-            // Selections targeted at a specific layout view (items of LVS
-            // subcircuit pairs) only apply to that view.
-            if (data && data.layoutView && data.layoutView !== this.viewName) {
-                return;
+            // Selections targeted at a specific layout view only apply to that
+            // view. Prefer the content id (matches the view however it was
+            // opened); fall back to the view name for not-yet-identified panels.
+            if (data) {
+                if (data.layoutId != null) {
+                    if (data.layoutId !== this.viewId) return;
+                } else if (data.layoutView && data.layoutView !== this.viewName) {
+                    return;
+                }
             }
             this.highlightPos(data.pos);
         };
@@ -305,7 +310,10 @@ export class LayoutGL {
         if (this._pendingLvs) {
             const pendingLvs = this._pendingLvs;
             this._pendingLvs = null;
-            if (!pendingLvs.layoutView || pendingLvs.layoutView === this.viewName) {
+            const matches = pendingLvs.layoutId != null
+                ? pendingLvs.layoutId === this.viewId
+                : (!pendingLvs.layoutView || pendingLvs.layoutView === this.viewName);
+            if (matches) {
                 this.highlightPos(pendingLvs.pos, false);
             }
         }

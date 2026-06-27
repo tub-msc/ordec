@@ -261,10 +261,16 @@ const viewClassOf = {
             this.svg = null;
 
             this._onLvsSelect = (data) => {
-                // Selections targeted at a specific schematic view (items of
-                // LVS subcircuit pairs) only apply to that view.
-                if (data && data.schemView && data.schemView !== this.viewName) {
-                    return;
+                // Selections targeted at a specific schematic view only apply to
+                // that view. Prefer the content id (matches the view however it
+                // was opened); fall back to the view name for not-yet-identified
+                // panels.
+                if (data) {
+                    if (data.schemId != null) {
+                        if (data.schemId !== this.viewId) return;
+                    } else if (data.schemView && data.schemView !== this.viewName) {
+                        return;
+                    }
                 }
                 this.setHighlight(data);
             };
@@ -501,9 +507,12 @@ const viewClassOf = {
             if (this._pendingHighlight) {
                 const pending = this._pendingHighlight;
                 this._pendingHighlight = null;
-                // viewName is only assigned after construction, so targeted
-                // pending selections are filtered here instead.
-                if (!pending.schemView || pending.schemView === this.viewName) {
+                // Targeted pending selections are filtered here. Prefer the
+                // content id, fall back to the view name.
+                const matches = pending.schemId != null
+                    ? pending.schemId === this.viewId
+                    : (!pending.schemView || pending.schemView === this.viewName);
+                if (matches) {
                     this.setHighlight(pending);
                 }
             }
@@ -947,8 +956,13 @@ const viewClassOf = {
                     const kind = linkEl.dataset.kind;
                     const ref = kind === 'layout' ? 'ref_layout' : 'ref_schematic';
                     const event = kind === 'layout' ? 'layout:request-open' : 'schematic:request-open';
+                    const circuit = circuitMap.get(parseInt(nid, 10));
+                    const viewId = circuit
+                        ? (kind === 'layout' ? circuit.layout_id : circuit.schem_id)
+                        : null;
                     viewEventBus.emit(event, {
                         view: `${this.viewName}.subgraph.cursor_at(${nid}).${ref}`,
+                        viewId,
                         sourceContainer: this.glContainer,
                     });
                 });
@@ -1002,6 +1016,14 @@ const viewClassOf = {
                             : null;
                         const layoutView = viewBase ? `${viewBase}.ref_layout` : null;
                         const schemView = viewBase ? `${viewBase}.ref_schematic` : null;
+                        // Content identity of the pair's layout/schematic. When
+                        // known, viewers filter highlights by this (so an
+                        // already-open panel of that view highlights regardless
+                        // of the expression it was opened under); the view-name
+                        // filter remains as a fallback for not-yet-identified
+                        // panels.
+                        const layoutId = circuit ? circuit.layout_id : null;
+                        const schemId = circuit ? circuit.schem_id : null;
 
                         const payload = {
                             pos: item.layout_pos,
@@ -1010,6 +1032,8 @@ const viewClassOf = {
                             schem_name: item.schem_name || '',
                             layoutView: isTop ? null : layoutView,
                             schemView: isTop ? null : schemView,
+                            layoutId,
+                            schemId,
                         };
                         const hasLayoutPos = item.layout_pos !== null && item.layout_pos !== undefined;
                         const hasSchemNid = item.schem_nid !== undefined && item.schem_nid !== null;
@@ -1036,20 +1060,19 @@ const viewClassOf = {
                             }
                         }
 
-                        // Open new views if needed. For the top pair, views
-                        // are opened only if no viewer listens at all (an
-                        // open layout/schematic of the top cell highlights
-                        // regardless of the view name it was opened under).
-                        // For subcircuit pairs, the pair's own views are
-                        // requested; request-open-views focuses them if they
-                        // are already open.
-                        const needLayoutOpen = hasLayoutPos && (!isTop || !hasLayoutListener);
-                        const needSchemOpen = hasSchemNid && (!isTop || !hasSchemListener);
+                        // Ensure the pair's layout/schematic is open and focused.
+                        // request-open-views focuses an existing panel showing
+                        // that view (matched by content id, so a manually-opened
+                        // panel counts too) and only opens a new one otherwise.
+                        const needLayoutOpen = hasLayoutPos && layoutView;
+                        const needSchemOpen = hasSchemNid && schemView;
 
                         if (needLayoutOpen || needSchemOpen) {
                             viewEventBus.emit('lvs:request-open-views', {
                                 layoutView: needLayoutOpen ? layoutView : null,
                                 schemView: needSchemOpen ? schemView : null,
+                                layoutId: needLayoutOpen ? layoutId : null,
+                                schemId: needSchemOpen ? schemId : null,
                                 sourceContainer: this.glContainer,
                             });
                         }
@@ -1098,6 +1121,7 @@ export class ResultViewer {
         this.resViewHead = container.element.querySelector(".resviewhead");
         this.viewUpToDate = false;
         this.viewSelected = null;
+        this.viewId = null;
         this.refreshRequestedByUser = false;
         this.directView = state && state.directView;
         // Course mode: the special "Course" panel (see course.js). It shows a
@@ -1381,13 +1405,20 @@ export class ResultViewer {
                     pre.innerText = 'no handler found for type ' + msg.type;
                     this.resContent.replaceChildren(pre);
                 } else if(this.view instanceof viewClass) {
+                    this.view.viewId = msg.view_id ?? null;
                     this.view.update(msg.data);
                 } else {
                     this.view = new viewClass(this.resContent);
                     this.view.viewName = this.viewSelected;
+                    // Content-based identity of the displayed view (server-
+                    // supplied). Set before update() so the pending-highlight
+                    // path can filter by it. Used to reuse this panel for other
+                    // expressions resolving to the same view.
+                    this.view.viewId = msg.view_id ?? null;
                     this.view.glContainer = this.container;
                     this.view.update(msg.data);
                 }
+                this.viewId = msg.view_id ?? null;
             }
 
             this.updateOverlay();

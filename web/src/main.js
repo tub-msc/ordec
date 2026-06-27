@@ -177,6 +177,20 @@ function findResultViewerByView(viewName) {
     return null;
 }
 
+// Match an open panel by the displayed view's content identity (server-supplied
+// view_id), independent of the expression it was opened under. Lets clicks reuse
+// a panel showing the same view even when the request strings differ.
+function findResultViewerByViewId(viewId) {
+    if (!viewId) return null;
+    for (const item of layout.root.getAllContentItems()) {
+        if (!item.isComponent || item.componentName !== 'result') continue;
+        if (item.component.viewId === viewId) {
+            return item;
+        }
+    }
+    return null;
+}
+
 function getEditor() {
     let ret;
     layout.root.getAllContentItems().forEach(e => {
@@ -343,12 +357,13 @@ window.viewEventBus = viewEventBus;
 function openOrActivateView(data) {
     const view = data.view;
 
-    if (view) {
-        const existing = findResultViewerByView(view);
-        if (existing) {
-            existing.focus();
-            return;
-        }
+    // Reuse an already-open panel: by content identity first (matches a panel
+    // showing the same view under any expression), else by exact expression.
+    const existing = findResultViewerByViewId(data.viewId)
+        || (view ? findResultViewerByView(view) : null);
+    if (existing) {
+        existing.focus();
+        return;
     }
 
     const componentState = view ? { view, directView: true } : undefined;
@@ -408,12 +423,13 @@ viewEventBus.on('editor:goto-source', (data) => {
 });
 
 viewEventBus.on('lvs:request-open-views', (data) => {
-    const { layoutView, schemView, sourceContainer } = data;
+    const { layoutView, schemView, layoutId, schemId, sourceContainer } = data;
 
     const columnContent = [];
 
     if (layoutView) {
-        const existing = findResultViewerByView(layoutView);
+        const existing = findResultViewerByViewId(layoutId)
+            || findResultViewerByView(layoutView);
         if (existing) {
             existing.focus();
         } else {
@@ -427,7 +443,8 @@ viewEventBus.on('lvs:request-open-views', (data) => {
     }
 
     if (schemView) {
-        const existing = findResultViewerByView(schemView);
+        const existing = findResultViewerByViewId(schemId)
+            || findResultViewerByView(schemView);
         if (existing) {
             existing.focus();
         } else {
