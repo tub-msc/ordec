@@ -11,16 +11,20 @@ degree phase differences.
 from itertools import pairwise
 from ordec.core import *
 from ordec.lib.ihp130 import Nmos, Pmos, Ntap, Ptap, SG13G2, run_drc, run_lvs
-from ordec.lib.base import Res, Cap, Gnd, Vdc, NoConn, Vpwl
-from ordec.layout import makevias, SRouter
+from ordec.lib.base import Gnd, Vdc, NoConn, Vpwl
+from ordec.layout import SRouter
 
 cell VcoHalfStage:
     width = Parameter(R, default=300n)
     length = Parameter(R, default=130n)
 
     viewgen symbol -> Symbol:
+        # vdd_st and vss_st are the current-starved supplies coming in
         inout vdd_st: .align=North
         inout vss_st: .align=South
+        inout vdd: .align=North
+        inout vss: .align=South
+
         inout nwell: .align=North
         inout psub: .align=South
 
@@ -34,8 +38,10 @@ cell VcoHalfStage:
         net b
 
         port vdd_st: .align=East; .pos=(1,24)
+        port vdd: .align=East; .pos=(1,28)
         port nwell: .align=East; .pos=(1,26)
         port vss_st: .align=East; .pos=(1,6)
+        port vss: .align=East; .pos=(1,2)
         port psub: .align=East; .pos=(1,4)
         port inp: .align=East; .pos=(1,21)
         port rst_n: .align=East; .pos=(1,9)
@@ -51,8 +57,10 @@ cell VcoHalfStage:
         Pmos m5: .s -- vdd_st; .b -- nwell; .g -- fb; .d -- out; .pos=(17, 19)
         Nmos m6: .s -- vss_st; .b -- psub; .g -- fb; .d -- out; .pos=(17, 13)
 
-        Pmos m7: .s -- vdd_st; .b -- nwell; .g -- out; .d -- out_n; .pos=(25, 19)
-        Nmos m8: .s -- vss_st; .b -- psub; .g -- out; .d -- out_n; .pos=(25, 13)
+        # Output buffer runs off the clean supplies (vdd/vss), not the
+        # current-starved rails, so out_n swings rail-to-rail.
+        Pmos m7: .s -- vdd; .b -- nwell; .g -- out; .d -- out_n; .pos=(25, 19)
+        Nmos m8: .s -- vss; .b -- psub; .g -- out; .d -- out_n; .pos=(25, 13)
 
         for mos in m1, m2, m3, m4, m5, m6, m7, m8:
             mos.$w = self.width
@@ -76,11 +84,22 @@ cell VcoHalfStage:
 
         grid = ((m2, m1), (m3, m4), (m5, m6), (m7, m8))
 
-        for left, right in pairwise(grid):
+        for idx, (left, right) in enumerate(pairwise(grid)):
             left_nmos, left_pmos = left
             right_nmos, right_pmos = right
-            ! right_nmos.sd[0].center == left_nmos.sd[1].center
-            ! right_pmos.sd[0].center == left_pmos.sd[1].center
+            if idx < 2:
+                # Columns 0..2 (rst_n / inp / fb inverter) share diffusion.
+                ! right_nmos.sd[0].center == left_nmos.sd[1].center
+                ! right_pmos.sd[0].center == left_pmos.sd[1].center
+            else:
+                # Break the output-buffer column (3) off the inverter with a
+                # diffusion gap so its sources sit on their own diffusion and
+                # can connect to the clean supplies vdd/vss instead of vdd_st/
+                # vss_st. Keep the rows aligned.
+                ! right_nmos.sd[0].cy == left_nmos.sd[1].cy
+                ! right_nmos.sd[0].lx == left_nmos.sd[1].ux + 900
+                ! right_pmos.sd[0].cy == left_pmos.sd[1].cy
+                ! right_pmos.sd[0].lx == left_pmos.sd[1].ux + 900
 
         path poly
         for idx, insts in enumerate(grid):
@@ -168,7 +187,9 @@ cell VcoHalfStage:
             ! .height == 400
             ! .ux == m7.sd[1].ux + 500
 
-        for sd in (.m4.sd[0], .m8.sd[0]):
+        # m6.sd[1] is the fb-inverter pmos source (was the shared node with the
+        # buffer before the diffusion break); it stays on the starved vdd_st.
+        for sd in (.m4.sd[0], .m6.sd[1]):
             anonymous LayoutRect r:
                 .layer=layers.Metal1
                 ! .contains(sd.rect)
@@ -181,7 +202,9 @@ cell VcoHalfStage:
             ! .height == 400
             ! .northwest == m2.sd[0].southwest - (500,500)
 
-        for sd in (.m2.sd[0], .m7.sd[0]):
+        # m5.sd[1] is the fb-inverter nmos source (shared node with the buffer
+        # before the break); it stays on the starved vss_st.
+        for sd in (.m2.sd[0], .m5.sd[1]):
             r = . % LayoutRect(layer=layers.Metal1)
             ! r.contains(sd.rect)
             ! r.ly == vssbar.uy
@@ -190,6 +213,41 @@ cell VcoHalfStage:
         ! r.contains(m2.sd[1].rect)
         ! r.height == 600
         ! r.uy == m2.sd[1].uy
+
+        # Clean (un-starved) supplies for the output buffer (column 3):
+        LayoutRect clean_vdd:
+            .layer=layers.Metal2
+            .create_pin(self.symbol.vdd)
+            ! .lx == m8.sd[0].lx - 250
+            ! .ux == m8.sd[0].ux + 250
+            ! .cy == vddbar.cy
+            ! .height == 400
+
+        LayoutRect clean_vss:
+            .layer=layers.Metal2
+            .create_pin(self.symbol.vss)
+            ! .lx == m7.sd[0].lx - 250
+            ! .ux == m7.sd[0].ux + 250
+            ! .cy == vssbar.cy
+            ! .height == 400
+
+        # Metal1 landing pads on the buffer sources (min-area + Via endcap).
+        for sd in (.m7.sd[0], .m8.sd[0]):
+            anonymous LayoutRect r:
+                .layer=layers.Metal1
+                ! .contains(sd.rect)
+                ! .size == (300, 400)
+                ! .center == sd.center
+
+        sr = SRouter(SG13G2().default_routing_spec)
+        # Buffer nmos source -> clean vss (Metal2 over vss_st):
+        sr.move(layers.Metal1, m7.sd[0].center)
+        sr.layer(layers.Metal2)
+        sr.wire_y(clean_vss.cy)
+        # Buffer pmos source -> clean vdd (Metal2 over vdd_st):
+        sr.move(layers.Metal1, m8.sd[0].center)
+        sr.layer(layers.Metal2)
+        sr.wire_y(clean_vdd.cy)
 
         LayoutRect nwell:
             .layer=layers.NWell
@@ -200,6 +258,8 @@ cell VcoRing:
     viewgen symbol -> Symbol:
         inout vdd_st: .align=North
         inout vss_st: .align=South
+        inout vdd: .align=North
+        inout vss: .align=South
         inout nwell: .align=North
         inout psub: .align=South
         input rst_n: .align=West
@@ -212,8 +272,10 @@ cell VcoRing:
 
     viewgen schematic -> Schematic:
         port vdd_st: .pos=(1,21); .align=East
+        port vdd: .pos=(1,25); .align=East
         port nwell: .pos=(1,23); .align=East
         port vss_st: .pos=(1,1); .align=East
+        port vss: .pos=(1,-3); .align=East
         port psub: .pos=(1,-1); .align=East
         port rst_n: .pos=(1,10); .align=East
 
@@ -221,6 +283,8 @@ cell VcoRing:
 
         vdd_st.auto_wire = False
         vss_st.auto_wire = False
+        vdd.auto_wire = False
+        vss.auto_wire = False
         nwell.auto_wire = False
         psub.auto_wire = False
 
@@ -242,8 +306,10 @@ cell VcoRing:
                 .nwell  -- nwell
                 .out_n  -- out_p[i]
                 .vdd_st -- vdd_st
+                .vdd    -- vdd
                 .psub   -- psub
                 .vss_st -- vss_st
+                .vss    -- vss
                 .rst_n  -- (rst_n if (i % 2) == 0 else vdd_st)
                 .inp    -- (int_p[i-1] if i > 0 else int_n[1])
                 .pos = (5 + xoffset, 13)
@@ -254,8 +320,10 @@ cell VcoRing:
                 .out_n  -- out_n[i]
                 .nwell  -- nwell
                 .vdd_st -- vdd_st
+                .vdd    -- vdd
                 .psub   -- psub
                 .vss_st -- vss_st
+                .vss    -- vss
                 .rst_n  -- (rst_n if (i % 2) == 1 else vdd_st)
                 .inp    -- (int_n[i-1] if i > 0 else int_p[1])
                 .pos = (5 + xoffset, 3)
@@ -272,12 +340,10 @@ cell VcoRing:
         LayoutRect vdd_st_bar:
             .layer=layers.Metal1
             .create_pin(self.symbol.vdd_st)
-
-        LayoutRect vss_st_bar_n:
+        LayoutRect vss_st_bar_p:
             .layer=layers.Metal1
             .create_pin(self.symbol.vss_st)
-
-        LayoutRect vss_st_bar_p:
+        LayoutRect vss_st_bar_n:
             .layer=layers.Metal1
             .create_pin(self.symbol.vss_st)
 
@@ -286,10 +352,10 @@ cell VcoRing:
                 .orientation=MX
                 if i == 0:
                     .orientation *= MY
+                ! vss_st_bar_p.contains(.vssbar.rect)
                 ! vdd_st_bar.contains(.vddbar.rect)
                 ! nwell.contains(.nwell.rect)
-                ! vss_st_bar_p.contains(.vssbar.rect)
-            
+
             VcoHalfStage() stage_n[i]:
                 if i == 0:
                     .orientation *= MY
@@ -297,6 +363,7 @@ cell VcoRing:
                 ! vss_st_bar_n.contains(.vssbar.rect)
                 ! nwell.contains(.nwell.rect)
 
+            # Share vdd_st in the middle: stage_p sits directly above stage_n.
             ! stage_n[i].vddbar.southwest == stage_p[i].vddbar.southwest
 
             if i > 0:
@@ -317,7 +384,37 @@ cell VcoRing:
         ! .stage_p[0].pos == (0,0)
 
         sr = SRouter(SG13G2().default_routing_spec)
-        
+
+        # Stitch the per-buffer clean supplies together:
+        LayoutRect clean_vdd:
+            .layer=layers.Metal2
+            .create_pin(self.symbol.vdd)
+            ! .rect == stage_p[0].clean_vdd.rect
+
+        # Bridge on Metal3:
+        sr.move(layers.Metal2, (stage_p[0].clean_vdd.lx + 350, stage_p[0].clean_vdd.cy))
+        sr.wire_y(stage_p[0].clean_vdd.cy + 700)
+        sr.layer(layers.Metal3)
+        sr.wire_x(stage_p[1].clean_vdd.ux - 350)
+        sr.layer(layers.Metal2)
+        sr.wire_y(stage_p[1].clean_vdd.cy)
+
+        LayoutRect clean_vss:
+            .layer=layers.Metal2
+            .create_pin(self.symbol.vss)
+            ! .rect == stage_p[0].clean_vss.rect
+        sr.move(layers.Metal2, stage_p[0].clean_vss.center)
+        sr.wire_x(stage_p[1].clean_vss.cx)
+
+        sr.move(layers.Metal2, stage_p[0].clean_vss.center)
+        sr.wire_x(vss_st_bar_p.lx - 450)
+        sr.wire_y(stage_n[0].clean_vss.cy)
+        sr.wire_x(stage_n[0].clean_vss.cx)
+        sr.move(layers.Metal2, stage_p[1].clean_vss.center)
+        sr.wire_x(vss_st_bar_p.ux + 450)
+        sr.wire_y(stage_n[1].clean_vss.cy)
+        sr.wire_x(stage_n[1].clean_vss.cx)
+
         # Connect rst_n of stage_n[0] and stage_p[1] to VDD:
         for stage in [.stage_n[0], .stage_p[1]]:
             sr.move(layers.Metal1, stage.rst_n.center)
@@ -326,7 +423,6 @@ cell VcoRing:
             sr.layer(layers.Metal1)
 
         # Connect rst_n of stage_n[1] and stage_p[0] to own rst_n:
-
         sr.move(layers.Metal1, stage_n[1].rst_n.center)
         sr.layer(layers.Metal2)
         sr.wire_x(0.5*stage_p[0].rst_n.cx + 0.5*stage_n[1].rst_n.cx)
@@ -335,9 +431,19 @@ cell VcoRing:
         sr.wire_x(stage_p[0].rst_n.cx)
         sr.layer(layers.Metal1)
         sr.pop()
+        # Exit north on Metal3 so it clears the full-width clean-vss Metal2 rail.
+        sr.layer(layers.Metal3)
         sr.wire_y(stage_p[0].rst_n.cy+2500)
         .rst_n = sr.path
         .rst_n.create_pin(self.symbol.rst_n)
+
+        # Metal2 pad at the rst_n Metal2->Metal3 turn-via: the popped path turns
+        # up on Metal3 with only ~5nm of Metal2 enclosure on one side (V2.c1).
+        anonymous LayoutRect rstn_via_pad:
+            .layer=layers.Metal2
+            ! .size == (500, 500)
+            ! .cx == 0.5*stage_p[0].rst_n.cx + 0.5*stage_n[1].rst_n.cx
+            ! .cy == stage_p[0].rst_n.cy
 
         # Connect matching fb -- out -- inp pins:
 
@@ -369,11 +475,12 @@ cell VcoRing:
         sr.move(layers.Metal1, stage_p[0].fb.center)
         sr.layer(layers.Metal2)
         sr.wire_x(stage_n[0].outbar_h.lx + 150)
+        # Cross the middle on Metal3 so it clears the col0 clean-vdd Metal2 pad.
+        sr.layer(layers.Metal3)
         sr.wire_y(stage_n[0].outbar_h.cy)
         sr.push()
         sr.layer(layers.Metal1)
         sr.pop()
-        sr.layer(layers.Metal3)
         sr.wire_x(stage_n[1].inp.cx)
         sr.layer(layers.Metal2)
         sr.wire_y(stage_n[1].inp.cy)
@@ -382,23 +489,29 @@ cell VcoRing:
         sr.move(layers.Metal1, stage_p[1].fb.center)
         sr.layer(layers.Metal2)
         sr.wire_x(stage_n[1].outbar_h.ux - 150)
-        sr.wire_y(stage_p[i].outbar_h.cy - 500)
+        # Cross the middle at -930 on Metal3. The clean-vdd bridge via columns
+        # are dropped to -1600 (below), so only the vdd_st Metal1 rail and the
+        # clean-vdd Metal2 risers sit here -- both crossed without a via.
+        sr.layer(layers.Metal3)
+        sr.wire_y(stage_p[1].outbar_h.cy - 1100)
         sr.push()
         sr.wire_y(stage_n[1].outbar_h.cy)
         sr.layer(layers.Metal1)
         sr.pop()
-        sr.layer(layers.Metal3)
         sr.wire_x(stage_p[0].inp.cx)
         sr.layer(layers.Metal2)
         sr.wire_y(stage_p[0].inp.cy)
         sr.layer(layers.Metal1)
 
-        # Strap the two vss_st rails together:
-        strap_x = vss_st_bar_n.lx - 500
-        sr.move(layers.Metal1, vss_st_bar_n.west)
-        sr.wire_x(strap_x)
-        sr.wire_y(vss_st_bar_p.cy)
-        sr.wire_x(vss_st_bar_p.lx)
+        # Only vss_st (Metal1) is doubled top/bottom; strap it in the empty west
+        # margin, west of the shared rail edge so nothing is crossed. (vdd_st and
+        # clean vdd are shared in the middle; clean vss is stitched via the side
+        # margins on Metal2.)
+        west_x = vss_st_bar_p.lx
+        sr.move(layers.Metal1, vss_st_bar_p.west)
+        sr.wire_x(west_x - 350)
+        sr.wire_y(vss_st_bar_n.cy)
+        sr.wire_x(vss_st_bar_n.lx)
 
 cell Vco:
     width = Parameter(R, default=1000n)
@@ -436,6 +549,9 @@ cell Vco:
             .psub    -- vss
             .vss_st  -- vss_st
             .vdd_st  -- vdd_st
+            # Clean supplies feed the per-stage output buffers:
+            .vdd     -- vdd
+            .vss     -- vss
             .rst_n   -- rst_n
             .pos = (15, 7)
 
@@ -485,21 +601,26 @@ cell Vco:
         
         nmos = self.schematic.m1.symbol.cell
         pmos = self.schematic.m2.symbol.cell
+        # The four bias/current-source devices form a compact bank below the
+        # ring (m1|m2 on top, m3|m4 below). m1/m2 drains route up the rail-free
+        # side margins to the ring's vss_st/vdd_st rails; cm_mid (m3<->m4) runs
+        # along the very bottom, clear of the ring.
         nmos m1:
-            ! .sd[1].cy == ring_i.vdd_st_bar.cy
-            ! .sd[1].cx == ring_i.vdd_st_bar.lx - 800
-        
+            ! .sd[1].cy == ring_i.vss_st_bar_n.ly - 700
+            # West of the ring's west margin.
+            ! .sd[1].cx == ring_i.vdd_st_bar.lx - 600
+
         pmos m2:
-            ! .sd[0].cy == ring_i.vdd_st_bar.cy
+            ! .sd[0].cy == m1.sd[1].cy
             ! .sd[0].cx == ring_i.vdd_st_bar.ux + 800
-        
+
         nmos m3:
             ! .poly[0].cx == m1.poly[0].cx
-            ! .poly[0].uy == ring_i.vss_st_bar_n.ly - 300
-            
+            ! .poly[0].uy == m1.activ.ly - 900
+
         pmos m4:
             ! .poly[0].cx == m2.poly[0].cx
-            ! .poly[0].uy == ring_i.vss_st_bar_n.ly - 300
+            ! .poly[0].uy == m1.activ.ly - 900
 
         LayoutRect poly13:
             .layer = layers.GatPoly
@@ -526,19 +647,46 @@ cell Vco:
         
         Ptap(l="0.7u", w="0.7u") ptap_i:
             ! .activ.east == m1.activ.west - (1000, 0)
+
         
+        # Explicit Metal1 landing pads over the current-source drains: SRouter's
+        # move()-then-layer() does not draw a Metal1 via throughrect at the start
+        # point, so the M1->M3 via stack lacks Metal1 enclosure (V1.c1) on the
+        # bare MOS S/D. A 400x400 pad gives ample enclosure.
+        for sd in (.m1.sd[1], .m2.sd[0]):
+            anonymous LayoutRect r:
+                .layer=layers.Metal1
+                ! .size == (400, 400)
+                ! .center == sd.center
+
         sr = SRouter(SG13G2().default_routing_spec)
-        # vss_st_bar_n and vss_st_bar_p are now strapped together inside the
-        # ring, so only one of them needs tying to m1's drain here.
-        sr.move(layers.Metal1, ring_i.vss_st_bar_n.west)
-        sr.wire_x(m1.sd[1].cx)
-        sr.wire_y(m1.sd[1].cy)
+        # The clean buffer supplies only sit (on Metal2) over the buffer columns
+        # of each rail, so the current sources tap the starved rails at a GAP
+        # between buffers, reaching it on Metal3 to clear the clean Metal2.
+        # m1 drain -> vss_st, in the clear middle of the rail (left of centre,
+        # well away from both buffer columns and the clean-vdd bridge vias):
+        sr.move(layers.Metal1, m1.sd[1].center)
+        sr.layer(layers.Metal3)
+        # Tap the bottom rail in its clear centre: the clean-vss bridge is gone (the
+        # bottom buffers tie up the side margins instead), so the rail centre is free.
+        sr.wire_x(ring_i.vss_st_bar_n.cx - 1500)
+        sr.wire_y(ring_i.vss_st_bar_n.cy)
+        sr.layer(layers.Metal1)
+
+        # m2 drain -> vdd_st (shared middle). Climb on Metal2 (clear of both the
+        # fb Metal3 that crosses the middle and the clean-vdd Metal2 pads, which
+        # are at the buffer columns, not here), then drop onto the rail.
+        sr.move(layers.Metal1, m2.sd[0].center)
+        sr.layer(layers.Metal2)
+        # Climb in the clear window EAST of fb-B's column (~2500) and WEST of the
+        # col1 buffer (~3270); +1930 puts it at ~2360... use +2450 -> ~2880.
+        sr.wire_x(ring_i.vdd_st_bar.cx + 2450)
+        sr.wire_y(ring_i.vdd_st_bar.cy)
+        sr.layer(layers.Metal1)
         
-        sr.move(layers.Metal1, ring_i.vdd_st_bar.east)
-        sr.wire_x(m2.sd[0].lx)
-        
+        # cm_mid: m3 drain -> m4 gate contact (-> shared m2/m4 poly) -> m4 drain.
         sr.move(layers.Metal1, m3.sd[1].rect.east)
-        sr.wire_x(m4.sd[0].rect.lx - 1000)
+        sr.wire_x(0.5 * m3.sd[1].rect.ux + 0.5 * m4.sd[0].rect.lx)
         sr.push()
         sr.wire_y(cont_m4.cy)
         sr.wire_x(cont_m4.cx)
@@ -547,23 +695,56 @@ cell Vco:
         
         sr.move(layers.Metal1, m1.sd[0].west)
         sr.wire_x(ptap_i.m1.cx)
-        
-        #sr.move(layers.Metal1, m2.sd[1].north)
-        #sr.wire_y(ntap_i.m1.cy)
-        
+
+        # nwell tie -> vdd (route the ntap M1 down to the vdd rail / m2 source):
+        sr.move(layers.Metal1, m2.sd[1].north)
+        sr.wire_y(ntap_i.m1.cy)
+
         LayoutRect vdd:
             .layer = layers.Metal1
             ! .contains(m2.sd[1].rect)
             ! .contains(m4.sd[1].rect)
-            ! .uy >= ntap_i.m1.ly
+            # Run up past the middle so the clean-vdd tie clears the m2-drain run.
+            ! .uy >= ring_i.clean_vdd.cy + 900
             .create_pin(self.symbol.vdd)
-        
+
         LayoutRect vss:
             .layer = layers.Metal1
             ! .contains(m1.sd[0].rect)
             ! .contains(m3.sd[0].rect)
             .create_pin(self.symbol.vss)
-            
+
+        # Tie the clean supplies to the ring:
+        sr.move(layers.Metal2, ring_i.clean_vdd.center)
+        sr.layer(layers.Metal3)
+        sr.wire_y(3850)
+        sr.wire_x(vdd.cx)
+        sr.wire_y(vdd.uy - 200)
+        sr.layer(layers.Metal1)
+        # Metal1 landing pad for the Metal3->Metal1 drop (final-layer via lacks an
+        # M1 throughrect -> V1.c1).
+        anonymous LayoutRect cleanvdd_tie_pad:
+            .layer=layers.Metal1
+            ! .size == (400, 400)
+            ! .cx == vdd.cx
+            ! .cy == vdd.uy - 200
+
+        sr.move(layers.Metal2, ring_i.clean_vss.center)
+        # Step west on Metal2 first:
+        sr.wire_x(ring_i.clean_vss.lx - 300)
+        sr.layer(layers.Metal3)
+        sr.wire_x(vss.cx)
+        sr.wire_y(vss.uy - 200)
+        sr.layer(layers.Metal1)
+        # Metal1 landing pad: the Metal3->Metal1 drop lands on the 160nm-wide
+        # m1.sd[0] tap M1, too narrow to enclose Via1 (V1.c1). A 400x400 pad fixes
+        # the enclosure.
+        anonymous LayoutRect cleanvss_tie_pad:
+            .layer=layers.Metal1
+            ! .size == (400, 400)
+            ! .cx == vss.cx
+            ! .cy == vss.uy - 200
+
         LayoutRect vbias:
             .layer = layers.Metal1
             ! .size == (1200,160)
@@ -571,7 +752,7 @@ cell Vco:
             .create_pin(self.symbol.vbias)
             
         LayoutRect rst_n:
-            .layer = layers.Metal2
+            .layer = layers.Metal3
             ! .width == 200
             ! .south == ring_i.rst_n.vertices()[0]
             ! .north == ring_i.rst_n.vertices()[1]
@@ -589,19 +770,24 @@ cell Vco:
                 ! .rect == ring_i.out_n[i].rect
                 .create_pin(self.symbol.out_n[i])
 
-        # Nwell additions:
+        # Nwell for the bias bank, bridged up to the ring's nwell so the whole
+        # well is one net tied to vdd through the ntap. The bridge stays east of
+        # the core (no nmos there) and tabs west into the ring's pmos band.
         LayoutRect nwell_right:
             .layer = layers.NWell
             ! .contains(m2.nwell.rect)
             ! .contains(m4.nwell.rect)
             ! .contains(ntap_i.nwell.rect)
-            
-        LayoutRect nwell_middle:
+            ! .lx == ring_i.nwell.ux + 300
+            ! .uy >= ring_i.nwell.ly + 1000
+
+        LayoutRect nwell_tab:
             .layer = layers.NWell
-            ! .y_extent == ring_i.nwell.y_extent
-            ! .lx == ring_i.nwell.ux
-            ! .ux == nwell_right.ux
-        
+            ! .ly == ring_i.nwell.ly
+            ! .uy == ring_i.nwell.uy
+            ! .lx == ring_i.nwell.ux - 300
+            ! .ux == nwell_right.lx + 800
+
     @generate(auto_refresh=False)
     def drc(self) -> DrcReport:
         return run_drc(self.layout)
