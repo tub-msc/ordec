@@ -788,9 +788,11 @@ cell Vco:
             ! .lx == ring_i.nwell.ux - 300
             ! .ux == nwell_right.lx + 800
 
+    @generate(auto_refresh=False)
     viewgen drc -> DrcReport:
         . = run_drc(self.layout)
 
+    @generate(auto_refresh=False)
     viewgen lvs -> LvsReport:
         . = run_lvs(self.layout, self.symbol)
 
