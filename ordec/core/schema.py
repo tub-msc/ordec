@@ -15,7 +15,7 @@ from .cell import Cell
 from .constraints import *
 from .context import (
     SymbolViewContext, SchematicViewContext, LayoutViewContext,
-    SimulationViewContext, ReportViewContext,
+    SimulationViewContext, ReportViewContext, AssignableViewContext,
 )
 from .simarray import SimArray
 
@@ -1769,6 +1769,7 @@ GenericPolyI.vertex_cls = PolyVec2I
 @public
 class DrcReport(SubgraphRoot):
     """DRC report containing design rule check results."""
+    view_context = AssignableViewContext
 
     ref_layout = SubgraphRef(Layout)
     top_cell_name = Attr(str)
@@ -1967,6 +1968,7 @@ class LvsItemType(Enum):
 @public
 class LvsReport(SubgraphRoot):
     """LVS report containing layout vs. schematic comparison results."""
+    view_context = AssignableViewContext
 
     ref_layout = SubgraphRef(Layout, optional=True)
     ref_schematic = SubgraphRef(Schematic, optional=True)

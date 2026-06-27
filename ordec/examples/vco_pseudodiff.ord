@@ -788,13 +788,11 @@ cell Vco:
             ! .lx == ring_i.nwell.ux - 300
             ! .ux == nwell_right.lx + 800
 
-    @generate(auto_refresh=False)
-    def drc(self) -> DrcReport:
-        return run_drc(self.layout)
+    viewgen drc -> DrcReport:
+        . = run_drc(self.layout)
 
-    @generate(auto_refresh=False)
-    def lvs(self) -> LvsReport:
-        return run_lvs(self.layout, self.symbol)
+    viewgen lvs -> LvsReport:
+        . = run_lvs(self.layout, self.symbol)
 
 cell VcoTb:
     viewgen symbol -> Symbol:

@@ -42,14 +42,29 @@ def view_context():
     return _view_ctx_var.get()
 
 
-def create_view_root(cell, root_cls):
+def create_view_context(cell, root_cls):
+    """
+    Create the ViewContext for an ORD viewgen method.
+
+    The context's ViewContext subclass is taken from the view's return type
+    (root_cls.view_context). The initial root is created via create_root(),
+    which may return None for views whose root is assigned within the viewgen
+    body (see set_root()).
+    """
     try:
         view_context_cls = root_cls.view_context
     except AttributeError as e:
         raise TypeError(
             f"{root_cls!r} cannot be used as an ORD viewgen return type."
         ) from e
-    return view_context_cls.create_root(cell, root_cls)
+    root = view_context_cls.create_root(cell, root_cls)
+    return view_context_cls(root)
+
+
+def set_root(value):
+    """Assign the root of the current view context (the `. = ...` statement)."""
+    _view_ctx_var.get().set_root(value)
+    return value
 
 
 def constrain(constraint):

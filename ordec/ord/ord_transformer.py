@@ -74,8 +74,8 @@ class OrdTransformer(PythonTransformer):
         view_target_expr = nodes[1]
         suite = nodes[2]
 
-        ord_root = self.ast_name("__ord_root__")
-        ord_root_store = self.ast_name("__ord_root__", ctx=ast.Store())
+        ord_ctx = self.ast_name("__ord_view_ctx__")
+        ord_ctx_store = self.ast_name("__ord_view_ctx__", ctx=ast.Store())
 
         # type(self).<func_name>.view_target
         view_target_ref = self.ast_attribute(
@@ -91,36 +91,32 @@ class OrdTransformer(PythonTransformer):
         )
 
         viewgen_call = ast.Call(
-            func=self.ast_ord_context("create_view_root"),
+            func=self.ast_ord_context("create_view_context"),
             args=[self.ast_name("self"), view_target_ref],
             keywords=[]
         )
 
-        # __ord_root__ = __ord_context__.create_view_root(self, type(self).<func_name>.view_target)
-        root_assign = ast.Assign(
-            targets=[ord_root_store],
+        # __ord_view_ctx__ = __ord_context__.create_view_context(self, type(self).<func_name>.view_target)
+        ctx_assign = ast.Assign(
+            targets=[ord_ctx_store],
             value=viewgen_call
         )
 
-        # __ord_root__.view_context(__ord_root__) — access class attr, instantiate
-        view_context_call = ast.Call(
-            func=self.ast_attribute(ord_root, "view_context"),
-            args=[ord_root],
-            keywords=[]
-        )
-
-        # return __ord_root__
-        return_value = ast.Return(ord_root)
+        # return __ord_view_ctx__.root
+        # The root is created by the context (normal views) or assigned within
+        # the body via `. = ...` (e.g. DRC/LVS reports); either way the context
+        # holds the final root.
+        return_value = ast.Return(self.ast_attribute(ord_ctx, "root"))
 
         with_context = ast.With(
             items=[
-                ast.withitem(context_expr=view_context_call),
+                ast.withitem(context_expr=ord_ctx),
             ],
             body=suite
         )
         # Wrap with statement with context in a decorated function call
         # --> See Python implementation
-        func_body = [root_assign, with_context, return_value]
+        func_body = [ctx_assign, with_context, return_value]
         func_def = ast.FunctionDef(
             name=func_name,
             args=ast.arguments(
@@ -327,7 +323,22 @@ class OrdTransformer(PythonTransformer):
         root = ast.Call(self.ast_ord_context("root"), args=[], keywords=[])
         if nodes:
             return self.ast_attribute(root, nodes[0])
+        # Mark the bare-dot node so `assign` can recognize `. = ...` (assigning
+        # the view root) instead of producing an invalid assignment target.
+        root._ord_bare_root = True
         return root
+
+    def assign(self, nodes):
+        """Assignment, with special handling for `. = ...` (set view root)."""
+        targets = nodes[:-1]
+        value = nodes[-1]
+        if len(targets) == 1 and getattr(targets[0], "_ord_bare_root", False):
+            return ast.Expr(ast.Call(
+                func=self.ast_ord_context("set_root"),
+                args=[value],
+                keywords=[]
+            ))
+        return super().assign(nodes)
 
     def getparam(self, nodes):
         """ get/set param (.$l = 100n) """

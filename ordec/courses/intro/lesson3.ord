@@ -95,10 +95,8 @@ cell Inv:
             ! .width == 1500
             .create_pin(self.symbol.a)
 
-    @generate
-    def lvs(self) -> LvsReport:
-        return run_lvs(self.layout, self.symbol)
+    viewgen lvs -> LvsReport:
+        . = run_lvs(self.layout, self.symbol)
 
-    @generate
-    def drc(self) -> DrcReport:
-        return run_drc(self.layout)
+    viewgen drc -> DrcReport:
+        . = run_drc(self.layout)

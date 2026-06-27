@@ -224,15 +224,13 @@ cell C_Hier:
             ! .rect == tap.m1.rect
             .create_pin(self.symbol.sub)
 
-    @generate
-    def drc_report(self) -> DrcReport:
+    viewgen drc_report -> DrcReport:
         """Run IHP130 DRC (maximal rule set) on the layout."""
-        return run_drc(self.layout)
+        . = run_drc(self.layout)
 
-    @generate
-    def lvs_report(self) -> LvsReport:
+    viewgen lvs_report -> LvsReport:
         """Run IHP130 LVS, layout vs. schematic."""
-        return run_lvs(self.layout, self.symbol)
+        . = run_lvs(self.layout, self.symbol)
 
 cell C_FlatLayout:
     """Case 2: flat layout vs. hierarchical schematic.
@@ -333,15 +331,13 @@ cell C_FlatLayout:
             ! .rect == tap.m1.rect
             .create_pin(self.symbol.sub)
 
-    @generate
-    def drc_report(self) -> DrcReport:
+    viewgen drc_report -> DrcReport:
         """Run IHP130 DRC (maximal rule set) on the layout."""
-        return run_drc(self.layout)
+        . = run_drc(self.layout)
 
-    @generate
-    def lvs_report(self) -> LvsReport:
+    viewgen lvs_report -> LvsReport:
         """Run IHP130 LVS, layout vs. schematic."""
-        return run_lvs(self.layout, self.symbol)
+        . = run_lvs(self.layout, self.symbol)
 
 cell C_FlatSchematic:
     """Case 3: hierarchical layout vs. flat schematic.
@@ -426,15 +422,13 @@ cell C_FlatSchematic:
             ! .rect == tap.m1.rect
             .create_pin(self.symbol.sub)
 
-    @generate
-    def drc_report(self) -> DrcReport:
+    viewgen drc_report -> DrcReport:
         """Run IHP130 DRC (maximal rule set) on the layout."""
-        return run_drc(self.layout)
+        . = run_drc(self.layout)
 
-    @generate
-    def lvs_report(self) -> LvsReport:
+    viewgen lvs_report -> LvsReport:
         """Run IHP130 LVS, layout vs. schematic."""
-        return run_lvs(self.layout, self.symbol)
+        . = run_lvs(self.layout, self.symbol)
 
 cell A_Moved:
     """Case 4: A_Default with the y-arm resistor (r2) moved out into B_Moved.
@@ -606,12 +600,10 @@ cell C_Moved:
             ! .rect == tap.m1.rect
             .create_pin(self.symbol.sub)
 
-    @generate
-    def drc_report(self) -> DrcReport:
+    viewgen drc_report -> DrcReport:
         """Run IHP130 DRC (maximal rule set) on the layout."""
-        return run_drc(self.layout)
+        . = run_drc(self.layout)
 
-    @generate
-    def lvs_report(self) -> LvsReport:
+    viewgen lvs_report -> LvsReport:
         """Run IHP130 LVS, layout vs. schematic."""
-        return run_lvs(self.layout, self.symbol)
+        . = run_lvs(self.layout, self.symbol)

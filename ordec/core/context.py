@@ -78,6 +78,12 @@ class ViewContext:
     def constrain(self, constraint):
         raise TypeError(f"Constraints not supported in {type(self.root).__name__} views.")
 
+    def set_root(self, value):
+        raise TypeError(
+            f"Cannot assign the view root via `.` in "
+            f"{type(self.root).__name__} views."
+        )
+
 
 class SymbolViewContext(ViewContext):
     @classmethod
@@ -125,3 +131,37 @@ class SimulationViewContext(ViewContext):
 
 class ReportViewContext(ViewContext):
     pass
+
+
+class AssignableViewContext(ViewContext):
+    """
+    View context for views whose root subgraph is produced by the viewgen body
+    itself and assigned via ``.`` (e.g. ``. = run_drc(self.layout)``), rather
+    than being pre-created by the context.
+
+    This is used for views like DRC/LVS reports, where an external tool
+    generates the complete subgraph in one step. Because the root does not
+    exist when the context is entered, no NodeContext is established and
+    relative (dotted) accesses are unavailable; the body is expected to assign
+    a finished subgraph.
+    """
+    @classmethod
+    def create_root(cls, cell, root_cls):
+        # The root is assigned within the viewgen body, not pre-created here.
+        return None
+
+    def __enter__(self):
+        self._token = _view_ctx_var.set(self)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            if self.root is None:
+                raise TypeError("viewgen body must assign the view root via `.`.")
+            self.postprocess()
+        _view_ctx_var.reset(self._token)
+
+    def set_root(self, value):
+        if self.root is not None:
+            raise TypeError("view root assigned more than once via `.`.")
+        self.root = value
