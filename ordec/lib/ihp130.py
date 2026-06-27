@@ -889,7 +889,10 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
             write_gds(l, f, directory)
 
         klayout_shared_opts = dict(
-            threads=str(os.cpu_count()),
+            # threads=1 is a workaround for an intermittent KLayout SIGSEGV in
+            # multithreaded deep-mode DRC. Single-threaded runs seem reliable
+            # and are only marginally slower.
+            threads="1",
             drc_json_default=pdk().klayout_drc_default_json,
             drc_json=pdk().klayout_drc_mod_json,
             topcell=directory.name_subgraph(l),
