@@ -108,6 +108,22 @@ class OrdTransformer(PythonTransformer):
         # holds the final root.
         return_value = ast.Return(self.ast_attribute(ord_ctx, "root"))
 
+        # Hoist a leading docstring out of the body so Python recognizes it as
+        # the generated function's docstring. Left in `suite` it would land
+        # inside the `with` block as an inert expression and never reach
+        # func.__doc__.
+        docstring_stmt = None
+        if (suite
+                and isinstance(suite[0], ast.Expr)
+                and isinstance(suite[0].value, ast.Constant)
+                and isinstance(suite[0].value.value, str)):
+            docstring_stmt = suite[0]
+            suite = suite[1:]
+        # A `with` body cannot be empty (e.g. a viewgen that is only a
+        # docstring), so keep it syntactically valid.
+        if not suite:
+            suite = [ast.Pass()]
+
         with_context = ast.With(
             items=[
                 ast.withitem(context_expr=ord_ctx),
@@ -117,6 +133,8 @@ class OrdTransformer(PythonTransformer):
         # Wrap with statement with context in a decorated function call
         # --> See Python implementation
         func_body = [ctx_assign, with_context, return_value]
+        if docstring_stmt is not None:
+            func_body.insert(0, docstring_stmt)
         func_def = ast.FunctionDef(
             name=func_name,
             args=ast.arguments(

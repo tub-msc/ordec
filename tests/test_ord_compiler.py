@@ -1354,3 +1354,16 @@ def test_fstring_concat_empty_str_nonempty_fstring_guard():
 def test_fstring_concat_two_empty_fstrings_guard():
     ord_string = "x = f'' f''"
     compare_asts(ord_string)
+
+def test_viewgen_docstring_hoisted():
+    # A leading docstring in a viewgen body must become the generated
+    # function's docstring (hoisted out of the `with` block), not an inert
+    # statement inside it.
+    ord_string = (
+        "cell Foo:\n"
+        "    viewgen drc -> DrcReport:\n"
+        '        """Run DRC on the layout."""\n'
+        "        . = run_drc(self.layout)\n"
+    )
+    fn = ord_to_py(ord_string).body[0].body[0]
+    assert ast.get_docstring(fn) == "Run DRC on the layout."
