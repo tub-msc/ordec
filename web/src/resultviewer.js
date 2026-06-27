@@ -1074,8 +1074,8 @@ export class ResultViewer {
             <div class="resview">
                 <div class="resviewhead"></div>
                 <div class="reswrapper">
-                    <div class="resoverlay-topleft refreshing"><img src="/loading.gif" /> Refreshing view...</div>
-                    <div class="resoverlay-topleft refreshable">View is out of date. <button>Refresh</button></div>
+                    <div class="refreshing"><span class="refresh-spinner" aria-hidden="true"></span><span>Refreshing view…</span></div>
+                    <div class="refreshable"><button><svg class="refresh-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8 A5 5 0 1 1 11.5 4.5"/><path d="M11.5 1.5 L11.5 4.5 L8.5 4.5"/></svg>Refresh</button><span>View is out of date.</span></div>
                     <div class="rescontent" tabindex="1"></div>
                     <div class="resexception"></div>
                     <div class="resview-empty">Select a view from the dropdown above</div>
@@ -1165,6 +1165,10 @@ export class ResultViewer {
     showRefreshOverlay(config) {
         this.resOverlayRefreshable.style.display = (config == 'refreshable')?'':'none';
         this.resOverlayRefreshing.style.display = (config == 'refreshing')?'':'none';
+        // When a status bar is shown it occupies a fixed-height strip at the top
+        // of the view; this class insets the content below it (see style.css).
+        this.resOverlayRefreshing.parentElement.classList.toggle(
+            'refreshbar-active', config == 'refreshing' || config == 'refreshable');
     }
 
     requestsView() {

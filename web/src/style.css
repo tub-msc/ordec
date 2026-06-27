@@ -38,8 +38,8 @@
     --color-exception:       red;
 
     /* Refreshing / refreshable overlays */
-    --color-refreshing:      #ff0;
-    --color-refreshable:     #f00;
+    --color-refreshable-bg:  #fdf1dc;
+    --color-refreshable-fg:  #9a6400;
 
     /* ORDB table */
     --color-ordb-border:     black;
@@ -124,8 +124,8 @@ body.theme-dark {
 
     --color-exception:       #ff6666;
 
-    --color-refreshing:      #665500;
-    --color-refreshable:     #662200;
+    --color-refreshable-bg:  #352a14;
+    --color-refreshable-fg:  #e0b000;
 
     --color-ordb-border:     #444;
     --color-ordb-header:     #2a2a2a;
@@ -168,8 +168,9 @@ body {
 .boxitem,
 .rescontent,
 .resviewhead,
-.resoverlay-topleft,
 .resoverlay-bottomright,
+.refreshing,
+.refreshable,
 .simplot-container,
 .simplot svg,
 .simplot-legend,
@@ -394,6 +395,20 @@ body.theme-dark .toolbar-btn option {
     display: flex;
     align-items: stretch;
     position: relative;
+    /* Height of the refresh status bar; the content below is inset by this
+       same amount when .refreshbar-active is set (see .refreshing/.refreshable
+       and the inset rules below). */
+    --refreshbar-h: 32px;
+}
+/* Push the (absolutely-positioned) content down below the status bar so the
+   bar never covers it. */
+.reswrapper.refreshbar-active .rescontent,
+.reswrapper.refreshbar-active .resview-empty {
+    top: var(--refreshbar-h);
+    height: calc(100% - var(--refreshbar-h));
+}
+.reswrapper.refreshbar-active .resexception {
+    margin-top: var(--refreshbar-h);
 }
 .rescontent {
     background-color: var(--color-bg);
@@ -501,17 +516,76 @@ body.theme-dark .resviewhead button:hover {
     bottom: 0px;
     right: 0px;
 }
-.refreshing {
-    background-color: var(--color-refreshing);
+
+/* Refresh status bars: full-width strip flush to the top of the result view,
+   styled like the course callouts (soft tinted background + matching
+   foreground/border). --overlay-bg/--overlay-fg are set per variant; the
+   spinner, icon and button all inherit the foreground colour. */
+.refreshing, .refreshable {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 3;
+    box-sizing: border-box;
+    height: var(--refreshbar-h);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px;
+    background-color: var(--overlay-bg);
+    color: var(--overlay-fg);
+    border-bottom: 1px solid var(--overlay-fg);
+    font-size: var(--font-size-sm);
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
 }
-.refreshing img {
-    height: 1.2em;
-    alignment-baseline: middle;
-    display: inline-block;
-    margin-bottom: -0.2em;
+.refreshing, .refreshable {
+    --overlay-bg: var(--color-refreshable-bg);
+    --overlay-fg: var(--color-refreshable-fg);
 }
-.refreshable {
-    background-color: var(--color-refreshable);
+/* Like the course callout, the bar has no top border of its own: its top edge
+   is the view selector's bottom border, recoloured to the overlay colour. */
+.resview:has(.reswrapper.refreshbar-active) .resviewhead {
+    border-bottom-color: var(--color-refreshable-fg);
+}
+/* Theme-aware CSS spinner (replaces the old loading.gif). */
+.refresh-spinner {
+    width: 13px;
+    height: 13px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: refresh-spin 0.7s linear infinite;
+}
+@keyframes refresh-spin {
+    to { transform: rotate(360deg); }
+}
+/* Same shape as the DRC viewer's "Deselect" button, recoloured to the
+   overlay's own background and border (foreground) colours. */
+.refreshable button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px;
+    cursor: pointer;
+    border: 1px solid var(--overlay-fg);
+    border-radius: 3px;
+    background: var(--overlay-bg);
+    color: var(--overlay-fg);
+}
+.refreshable button:hover {
+    background: color-mix(in srgb, var(--overlay-fg) 12%, var(--overlay-bg));
+}
+.refresh-icon {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 /* -- SVG / Canvas ------------------------------------------------ */
@@ -1214,13 +1288,26 @@ body.theme-dark .lm_content {
     justify-content: space-between;
     align-items: center;
 }
-.drc-deselect {
+/* Theme-aware deselect buttons, shared by the DRC and LVS viewers. Native
+   buttons render light in both themes; these use theme tokens instead, and the
+   disabled state stays legible (muted text) rather than relying on opacity. */
+.drc-deselect, .lvs-deselect {
     font-size: var(--font-xs);
     padding: 2px 8px;
     cursor: pointer;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    background: var(--color-bg-tertiary);
+    color: var(--color-text);
 }
-.drc-deselect:disabled {
-    opacity: 0.5;
+.drc-deselect:hover:not(:disabled),
+.lvs-deselect:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-text) 8%, var(--color-bg-tertiary));
+}
+.drc-deselect:disabled, .lvs-deselect:disabled {
+    color: var(--color-text-muted);
+    background: var(--color-bg-secondary);
+    border-color: var(--color-border-light);
     cursor: default;
 }
 .drc-categories {
@@ -1303,15 +1390,6 @@ body.theme-dark .lm_content {
 }
 .lvs-summary {
     color: var(--color-text-secondary);
-}
-.lvs-deselect {
-    font-size: var(--font-xs);
-    padding: 2px 8px;
-    cursor: pointer;
-}
-.lvs-deselect:disabled {
-    opacity: 0.5;
-    cursor: default;
 }
 .lvs-body {
     flex: 1;
