@@ -2,18 +2,29 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from ..core.schema import (
-    DrcReport, DrcItem, DrcCategory, DrcBox, DrcEdge, DrcEdgePair,
+    DrcReport, DrcItem, DrcCategory, DrcCell, DrcBox, DrcEdge, DrcEdgePair,
     DrcPoly, DrcPath, DrcText,
 )
 
 
 def webdata(report: DrcReport):
+    cells = []
+    for cell in report.all(DrcCell):
+        cells.append({
+            'nid': cell.nid,
+            'name': cell.name,
+            'has_layout_ref': cell.ref_layout is not None,
+            'is_top': cell.ref_layout is not None
+                and cell.ref_layout == report.ref_layout,
+        })
+
     items_dict = {}
     categories_with_items = set()
     for item in report.all(DrcItem):
         items_dict[item.nid] = {
             'nid': item.nid,
             'category_nid': item.category.nid,
+            'cell_nid': item.cell.nid if item.cell is not None else None,
             'shapes': [],
         }
         categories_with_items.add(item.category.nid)
@@ -68,6 +79,7 @@ def webdata(report: DrcReport):
     return 'drc_report', {
         'top_cell': report.top_cell_name,
         'categories': categories,
+        'cells': cells,
         'items': list(items_dict.values()),
         'unit': float(report.ref_layout.ref_layers.unit),
     }

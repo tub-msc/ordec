@@ -1358,6 +1358,13 @@ body.theme-dark .lm_content {
     background: var(--color-bg-plot);
     outline: 1px solid var(--color-border);
 }
+.drc-item.drc-item-nohighlight {
+    cursor: default;
+    opacity: 0.6;
+}
+.drc-item.drc-item-nohighlight:hover {
+    background: none;
+}
 
 /* -- LVS Viewer (KLayout-style three-column layout) --------------- */
 .lvs-viewer {

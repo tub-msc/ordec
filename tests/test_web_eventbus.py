@@ -87,8 +87,9 @@ def test_multiple_shape_types(web):
 
 
 @pytest.mark.web
-def test_pending_event_consumed_on_layout_open(web):
-    """Pending drc:select should be consumed when layout view opens."""
+def test_pending_event_applied_on_layout_open(web):
+    """A pending drc:select is applied when a matching layout view opens,
+    and stays pending until deselect (reopening restores the highlight)."""
     # Load layout module but don't auto-select a view
     qs = web.key.query_string_local("tests.lib.layoutgl_example", "")
     web.navigate(f'app.html#refreshall=true&viewsel_flat=true&{qs}')
@@ -121,16 +122,141 @@ def test_pending_event_consumed_on_layout_open(web):
     web.wait_for_ready()
     time.sleep(0.5)
 
-    # Verify layout opened and consumed pending event
+    # Verify layout opened and applied the pending event
     state = get_layout_state(web)
     assert state is not None, "Layout should be open after selecting view"
     assert state['highlightNumVertices'] > 0, "Should have highlight from pending event"
 
-    # Verify pending was consumed
+    # The selection stays pending until deselect, like lvs:select.
+    pending = web.driver.execute_script(
+        "return window.viewEventBus.getPending('drc:select');"
+    )
+    assert pending is not None, "Pending selection should be kept until deselect"
+
+
+@pytest.mark.web
+def test_drc_select_targeted_filtering(web):
+    """drc:select payloads carrying a layoutView only apply to the layout
+    viewer with that viewName; untargeted payloads apply to any viewer."""
+    load_layout_view(web)
+
+    web.driver.execute_script("""
+        window.viewEventBus.emit('drc:select', {
+            shapes: [{type: 'box', rect: [0, 0, 1000, 1000]}],
+            layoutView: 'other.ref_layout',
+        });
+    """)
+    state = get_layout_state(web)
+    assert state['highlightNumVertices'] == 0, \
+        "Selection targeted at another view must not highlight here"
+
+    emit_drc_select(web, [{'type': 'box', 'rect': [0, 0, 1000, 1000]}])
+    state = get_layout_state(web)
+    assert state['highlightNumVertices'] > 0, \
+        "Untargeted selection should highlight"
+
+
+@pytest.mark.web
+def test_drc_pending_targeted_not_applied(web):
+    """A pending drc:select targeted at a different view is not applied
+    when a non-matching layout view opens."""
+    qs = web.key.query_string_local("tests.lib.layoutgl_example", "")
+    web.navigate(f'app.html#refreshall=true&viewsel_flat=true&{qs}')
+    web.wait_for_ready()
+
+    web.driver.execute_script("""
+        window.viewEventBus.setPending('drc:select', {
+            shapes: [{type: 'box', rect: [100, 100, 500, 500]}],
+            layoutView: 'other.ref_layout',
+        });
+    """)
+
+    web.driver.execute_script("""
+        const rv = window.ordecClient.resultViewers[0];
+        const sel = rv.viewSelector;
+        for (let i = 0; i < sel.options.length; i++) {
+            if (sel.options[i].value === 'layoutgl_example()') {
+                sel.selectedIndex = i;
+                rv.viewSelectorOnChange();
+                break;
+            }
+        }
+    """)
+    web.wait_for_ready()
+    time.sleep(0.5)
+
+    state = get_layout_state(web)
+    assert state is not None, "Layout should be open after selecting view"
+    assert state['highlightNumVertices'] == 0, \
+        "Mismatching pending selection must not be applied"
+
     pending = web.driver.execute_script(
         "return window.viewEventBus.consumePending('drc:select');"
     )
-    assert pending is None, "Pending event should have been consumed"
+    assert pending is not None, \
+        "Mismatching pending selection must not be consumed"
+
+
+def get_layout_states_by_view(web):
+    """viewSelected -> testState() for all rendered layout viewers."""
+    return web.driver.execute_script("""
+        const states = {};
+        for (const rv of window.ordecClient.resultViewers) {
+            if (rv.view && rv.view.testState) {
+                states[rv.viewSelected] = rv.view.testState();
+            }
+        }
+        return states;
+    """)
+
+
+@pytest.mark.web
+def test_drc_subcell_item_select(web):
+    """Selecting a DRC item opens the layout view of the violation's cell
+    and highlights it only there: the subcell item in the subcell's view
+    (cell-local coordinates), the top item in the top layout view."""
+    qs_local = web.key.query_string_local(
+        "tests.lib.drc_example_hier", "Top().drc_report")
+    web.navigate(f'app.html#refreshall=true&{qs_local}')
+    web.wait_for_ready()
+    time.sleep(0.5)
+
+    clicked = web.driver.execute_script("""
+        const item = document.querySelector('.drc-item.drc-item-subcell');
+        if (!item) return false;
+        item.click();
+        return true;
+    """)
+    assert clicked, "Should find and click the subcell violation item"
+    web.wait_for_ready()
+    time.sleep(0.5)
+
+    states = get_layout_states_by_view(web)
+    sub_views = [v for v in states if 'cursor_at' in v and v.endswith('.ref_layout')]
+    assert sub_views, f"Expected the subcell's layout view to open, got {list(states)}"
+    assert states[sub_views[0]]['highlightNumVertices'] > 0, \
+        "Violation should be highlighted in the subcell's layout view"
+
+    # Now select the top-level item: the top layout view opens and gets the
+    # highlight, while the subcell viewer's highlight is cleared (top-cell
+    # coordinates must not be painted into the subcell's view).
+    clicked = web.driver.execute_script("""
+        const item = document.querySelector('.drc-item:not(.drc-item-subcell)');
+        if (!item) return false;
+        item.click();
+        return true;
+    """)
+    assert clicked, "Should find and click the top-level violation item"
+    web.wait_for_ready()
+    time.sleep(0.5)
+
+    states = get_layout_states_by_view(web)
+    top_views = [v for v in states if 'cursor_at' not in v and v.endswith('.ref_layout')]
+    assert top_views, f"Expected the top layout view to open, got {list(states)}"
+    assert states[top_views[0]]['highlightNumVertices'] > 0, \
+        "Violation should be highlighted in the top layout view"
+    assert states[sub_views[0]]['highlightNumVertices'] == 0, \
+        "Top-level selection must not leave a highlight in the subcell's view"
 
 
 def emit_lvs_layout_select(web, pos):
@@ -497,3 +623,34 @@ def test_lvs_subcircuit_item_select(web):
         "return document.querySelectorAll('.lvs-highlight-group').length;")
     assert highlight_groups > 0, \
         "Item should be highlighted in the pair's schematic view"
+
+    # Now select a device item of the top-level pair: the report-level
+    # layout view opens and gets the highlight, while the subcircuit
+    # viewer's highlight is cleared (top-level positions must not be
+    # painted into the subcircuit's view).
+    states = get_layout_states_by_view(web)
+    sub_views = [v for v in states if 'cursor_at' in v and v.endswith('.ref_layout')]
+    assert sub_views, f"Expected the pair's layout view among {list(states)}"
+
+    clicked = web.driver.execute_script("""
+        const circuits = Array.from(document.querySelectorAll('.lvs-circuit'));
+        const top = circuits.find(c =>
+            c.querySelector('.lvs-circuit-header').textContent.includes('C_Hier'));
+        if (!top) return false;
+        const link = top.querySelector(
+            '.lvs-item-row .lvs-item-link[title="Highlight in layout and schematic"]');
+        if (!link) return false;
+        link.closest('.lvs-item-row').click();
+        return true;
+    """)
+    assert clicked, "Should find and click an item row of the C_Hier pair"
+    web.wait_for_ready()
+    time.sleep(0.5)
+
+    states = get_layout_states_by_view(web)
+    top_views = [v for v in states if 'cursor_at' not in v and v.endswith('.ref_layout')]
+    assert top_views, f"Expected the report-level layout view to open, got {list(states)}"
+    assert states[top_views[0]]['highlightNumVertices'] > 0, \
+        "Item should be highlighted in the report-level layout view"
+    assert states[sub_views[0]]['highlightNumVertices'] == 0, \
+        "Top-level selection must not leave a highlight in the subcircuit's view"

@@ -216,8 +216,10 @@ def parse_rdb(filename, report: DrcReport, directory: Directory = None):
         filename: Path to the .lyrdb file.
         report: Existing DrcReport to append parsed violations into. The checked
             Layout is taken from report.ref_layout.
-        directory: Optional Directory for looking up cell names to LayoutInstances.
-            If not provided, DrcItem.cell will be None.
+        directory: Optional Directory for resolving RDB cell names to Layout
+            subgraphs (DrcCell.ref_layout). Without it, only the top cell
+            resolves (via report.top_cell_name); subcell DrcCells keep
+            ref_layout=None.
 
     RDB format documentation: https://www.klayout.de/rdb_format.html
     """
@@ -242,6 +244,30 @@ def parse_rdb(filename, report: DrcReport, directory: Directory = None):
             if cell_id and name_elem is not None:
                 cell_id_to_name[cell_id] = name_elem.text
 
+    # DrcCells are deduplicated across parse_rdb calls (run_drc parses the
+    # main and the maximal RDB into the same report), like categories.
+    cell_by_name = {c.name: c for c in report.all(DrcCell)}
+
+    def drc_cell(cell_name: str):
+        if cell_name in cell_by_name:
+            return cell_by_name[cell_name]
+        if cell_name == report.top_cell_name:
+            ref_layout = report.ref_layout
+        else:
+            # Subcells resolve through the directory populated by write_gds
+            # (lowercase names, cf. resolve_pair_refs). Unresolvable names
+            # (e.g. KLayout deep-mode variant cells like 'sub$VAR1') keep
+            # ref_layout=None.
+            ref_layout = None
+            if directory is not None:
+                try:
+                    ref_layout = directory.subgraph_of_name(cell_name.lower(), Layout)
+                except KeyError:
+                    pass
+        cell = report % DrcCell(name=cell_name, ref_layout=ref_layout)
+        cell_by_name[cell_name] = cell
+        return cell
+
     items_elem = root.find('items')
     if items_elem is not None:
         for item_elem in items_elem.iter('item'):
@@ -253,14 +279,16 @@ def parse_rdb(filename, report: DrcReport, directory: Directory = None):
                 continue
 
             cell_elem = item_elem.find('cell')
-            cell_ref = None
-            if cell_elem is not None and directory is not None:
-                cell_name = cell_elem.text
-                if cell_name in cell_id_to_name:
-                    cell_name = cell_id_to_name[cell_name]
-                # TODO: Look up LayoutInstance from layout hierarchy
+            if cell_elem is not None and cell_elem.text:
+                # <cell> may reference the <cells> section by id.
+                cell_name = cell_id_to_name.get(cell_elem.text, cell_elem.text)
+            else:
+                # KLayout writes a <cell> for every item; items without one
+                # (hand-written RDBs) belong to the top cell, whose
+                # coordinate space matches the flat interpretation.
+                cell_name = report.top_cell_name
 
-            item = report % DrcItem(category=category, cell=cell_ref)
+            item = report % DrcItem(category=category, cell=drc_cell(cell_name))
 
             order = 0
             for value_elem in item_elem.iter('value'):

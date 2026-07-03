@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from ordec.core import *
-from ordec.core.schema import DrcReport
 from ordec.lib.ihp130 import SG13G2, run_drc
 
 

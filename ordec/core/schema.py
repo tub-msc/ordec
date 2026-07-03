@@ -1805,6 +1805,22 @@ class DrcCategory(Node):
 
 
 @public
+class DrcCell(Node):
+    """Cell of the checked layout hierarchy that DRC violations attach to.
+
+    Analogous to LvsCircuitPair for LVS reports. KLayout deep-mode DRC
+    reports each violation once, attached to the cell it occurs in, with
+    coordinates in that cell's local space. ref_layout resolves the cell
+    name back to its Layout subgraph; None if the name is unresolvable
+    (e.g. KLayout variant cells like 'sub$VAR1').
+    """
+    in_subgraphs = [DrcReport]
+
+    name = Attr(str)
+    ref_layout = SubgraphRef(Layout, optional=True)
+
+
+@public
 class DrcItem(Node):
     """Individual DRC violation item within a category."""
     in_subgraphs = [DrcReport]
@@ -1812,9 +1828,8 @@ class DrcItem(Node):
     category = LocalRef(DrcCategory, optional=False)
     category_idx = Index(category)
 
-    cell = ExternalRef(LayoutInstance,
-        of_subgraph=lambda c: c.root.ref_layout,
-        optional=True)
+    cell = LocalRef(DrcCell, optional=True)
+    cell_idx = Index(cell)
 
 
 @public

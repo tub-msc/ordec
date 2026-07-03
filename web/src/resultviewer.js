@@ -588,6 +588,27 @@ const viewClassOf = {
         }
     },
     layout_gl: LayoutGL,
+    // DRC Report viewer.
+    //
+    // Event bus protocol:
+    //   drc:select {shapes, layoutView} - sent when an item is selected
+    //   drc:clear - sent on deselect or destroy
+    //
+    // Pending mechanism: setPending('drc:select', payload) stores the
+    // selection for layout viewers opened later; it stays pending until
+    // deselect or destroy, like lvs:select. Payloads are targeted, so a
+    // later-opened viewer applies it only if it shows the target view
+    // (reopening that view restores the highlight).
+    //
+    // View naming: items of the top cell target "<viewName>.ref_layout",
+    // items of subcells target
+    // "<viewName>.subgraph.cursor_at(<cell_nid>).ref_layout", addressing
+    // the DrcCell node by nid. Every payload carries its layoutView, so
+    // only the viewer showing exactly that view highlights: shape
+    // coordinates are only meaningful in the item's own cell, and an
+    // untargeted broadcast would paint them into unrelated layout views.
+    // Subcell items whose DrcCell has no resolved ref_layout (e.g. KLayout
+    // variant cells) cannot be highlighted anywhere and are not selectable.
     drc_report: class {
         constructor(resContent) {
             this.resContent = resContent;
@@ -601,6 +622,11 @@ const viewClassOf = {
             const catMap = new Map();
             data.categories.forEach(cat => {
                 catMap.set(cat.nid, { ...cat, items: [], count: 0 });
+            });
+
+            const cellMap = new Map();
+            (data.cells || []).forEach(cell => {
+                cellMap.set(cell.nid, cell);
             });
 
             const itemMap = new Map();
@@ -633,10 +659,23 @@ const viewClassOf = {
                 }
                 html += '<div class="drc-items">';
                 catData.items.forEach((item, idx) => {
-                    const label = item.shapes.length > 0
+                    let label = item.shapes.length > 0
                         ? item.shapes[0].type
                         : 'item';
-                    html += `<div class="drc-item" data-nid="${item.nid}">#${idx + 1}: ${label}</div>`;
+                    const cell = cellMap.get(item.cell_nid);
+                    let cls = 'drc-item';
+                    let title = '';
+                    if (cell && !cell.is_top) {
+                        label += ` (in ${cell.name})`;
+                        cls += ' drc-item-subcell';
+                        if (!cell.has_layout_ref) {
+                            // Cannot be highlighted (see click handler);
+                            // styled non-clickable, with an explanation.
+                            cls += ' drc-item-nohighlight';
+                            title = ` title="Cell '${cell.name}' has no layout view to highlight in"`;
+                        }
+                    }
+                    html += `<div class="${cls}" data-nid="${item.nid}"${title}>#${idx + 1}: ${label}</div>`;
                 });
                 html += '</div></div>';
             });
@@ -664,32 +703,47 @@ const viewClassOf = {
                 });
                 this.selectedItemNid = null;
                 deselectBtn.disabled = true;
+                viewEventBus.clearPending('drc:select');
                 viewEventBus.emit('drc:clear');
             };
             deselectBtn.addEventListener('click', deselect);
 
             this.el.querySelectorAll('.drc-item').forEach(itemEl => {
                 itemEl.addEventListener('click', () => {
+                    const nid = parseInt(itemEl.dataset.nid, 10);
+                    const item = itemMap.get(nid);
+                    if (!item) return;
+                    const cell = cellMap.get(item.cell_nid);
+                    const isTop = !cell || cell.is_top;
+                    // Subcell shapes are in the cell's local coordinate
+                    // space; without a resolved ref_layout there is no view
+                    // where they could be highlighted correctly.
+                    if (!isTop && !cell.has_layout_ref) return;
+
                     this.el.querySelectorAll('.drc-item.selected').forEach(el => {
                         el.classList.remove('selected');
                     });
                     itemEl.classList.add('selected');
                     deselectBtn.disabled = false;
-                    const nid = parseInt(itemEl.dataset.nid, 10);
                     this.selectedItemNid = nid;
-                    const item = itemMap.get(nid);
-                    if (item) {
-                        const payload = { shapes: item.shapes };
-                        if (viewEventBus.hasListeners('drc:select')) {
-                            viewEventBus.emit('drc:select', payload);
-                        } else {
-                            viewEventBus.setPending('drc:select', payload);
-                            const layoutView = this.viewName ? `${this.viewName}.ref_layout` : null;
-                            viewEventBus.emit('layout:request-open', {
-                                view: layoutView,
-                                sourceContainer: this.glContainer,
-                            });
-                        }
+
+                    const layoutView = this.viewName
+                        ? (isTop
+                            ? `${this.viewName}.ref_layout`
+                            : `${this.viewName}.subgraph.cursor_at(${item.cell_nid}).ref_layout`)
+                        : null;
+                    // Clear the previous selection everywhere: its highlight
+                    // may sit in a viewer the new selection does not target.
+                    viewEventBus.emit('drc:clear');
+                    const payload = { shapes: item.shapes, layoutView };
+                    viewEventBus.setPending('drc:select', payload);
+                    viewEventBus.emit('drc:select', payload);
+                    if (layoutView) {
+                        // Focuses the target view if open, opens it otherwise.
+                        viewEventBus.emit('layout:request-open', {
+                            view: layoutView,
+                            sourceContainer: this.glContainer,
+                        });
                     }
                 });
             });
@@ -698,6 +752,7 @@ const viewClassOf = {
         }
 
         destroy() {
+            viewEventBus.clearPending('drc:select');
             viewEventBus.emit('drc:clear');
         }
     },
@@ -717,11 +772,11 @@ const viewClassOf = {
     // LvsReport SubgraphRef attributes. Circuit rows and item selections of
     // subcircuit pairs use the per-pair views
     // "<viewName>.subgraph.cursor_at(<nid>).ref_layout|ref_schematic",
-    // addressing the LvsCircuitPair node by nid. Select payloads of
-    // subcircuit pairs carry layoutView/schemView so that only the matching
-    // viewers highlight; top-level payloads leave them null (any open
-    // layout/schematic viewer applies them, as their nids/positions refer to
-    // the report's top-level subgraphs).
+    // addressing the LvsCircuitPair node by nid. Every select payload
+    // carries its target views, so only the viewers showing exactly those
+    // views highlight: nids/positions are only meaningful in the pair's own
+    // subgraphs, and an untargeted broadcast would paint them into
+    // unrelated layout/schematic views.
     lvs_report: class {
         constructor(resContent) {
             this.resContent = resContent;
@@ -991,10 +1046,7 @@ const viewClassOf = {
                         // Item positions/nids refer to the item's circuit
                         // pair: report-level views for the top pair,
                         // per-pair views (addressed by circuit nid) for
-                        // subcircuit pairs. Subcircuit payloads carry the
-                        // target view names so that only the matching
-                        // viewers highlight (nids/positions of different
-                        // subgraphs would collide otherwise).
+                        // subcircuit pairs.
                         const circuit = circuitMap.get(item.circuit_nid);
                         const isTop = !circuit || circuit.is_top;
                         const viewBase = this.viewName
@@ -1008,48 +1060,31 @@ const viewClassOf = {
                             schem_nid: item.schem_nid,
                             item_type: item.item_type,
                             schem_name: item.schem_name || '',
-                            layoutView: isTop ? null : layoutView,
-                            schemView: isTop ? null : schemView,
+                            layoutView,
+                            schemView,
                         };
                         const hasLayoutPos = item.layout_pos !== null && item.layout_pos !== undefined;
                         const hasSchemNid = item.schem_nid !== undefined && item.schem_nid !== null;
 
-                        // Set pending for viewers that will be opened
+                        // Clear the previous selection everywhere: its
+                        // highlight may sit in a viewer the new selection
+                        // does not target.
+                        viewEventBus.emit('lvs:clear');
                         viewEventBus.setPending('lvs:select', payload);
 
-                        const hasLayoutListener = viewEventBus.hasListeners('lvs:layout-select');
-                        const hasSchemListener = viewEventBus.hasListeners('lvs:schem-select');
-
-                        // Handle layout viewer
                         if (hasLayoutPos) {
-                            if (hasLayoutListener) {
-                                viewEventBus.emit('lvs:layout-select', payload);
-                            }
-                        } else if (hasLayoutListener) {
-                            viewEventBus.emit('lvs:layout-select', { pos: null });
+                            viewEventBus.emit('lvs:layout-select', payload);
                         }
-
-                        // Handle schematic viewer
                         if (hasSchemNid) {
-                            if (hasSchemListener) {
-                                viewEventBus.emit('lvs:schem-select', payload);
-                            }
+                            viewEventBus.emit('lvs:schem-select', payload);
                         }
 
-                        // Open new views if needed. For the top pair, views
-                        // are opened only if no viewer listens at all (an
-                        // open layout/schematic of the top cell highlights
-                        // regardless of the view name it was opened under).
-                        // For subcircuit pairs, the pair's own views are
-                        // requested; request-open-views focuses them if they
-                        // are already open.
-                        const needLayoutOpen = hasLayoutPos && (!isTop || !hasLayoutListener);
-                        const needSchemOpen = hasSchemNid && (!isTop || !hasSchemListener);
-
-                        if (needLayoutOpen || needSchemOpen) {
+                        // Focuses the target views if open, opens them
+                        // otherwise.
+                        if ((hasLayoutPos && layoutView) || (hasSchemNid && schemView)) {
                             viewEventBus.emit('lvs:request-open-views', {
-                                layoutView: needLayoutOpen ? layoutView : null,
-                                schemView: needSchemOpen ? schemView : null,
+                                layoutView: hasLayoutPos ? layoutView : null,
+                                schemView: hasSchemNid ? schemView : null,
                                 sourceContainer: this.glContainer,
                             });
                         }
@@ -1059,6 +1094,7 @@ const viewClassOf = {
         }
 
         destroy() {
+            viewEventBus.clearPending('lvs:select');
             viewEventBus.emit('lvs:clear');
         }
     },

@@ -205,7 +205,14 @@ export class LayoutGL {
         this.canvas.addEventListener("mousemove", this._onMousemove);
         this.canvas.addEventListener("mouseleave", this._onMouseleave);
 
-        this._onDrcSelect = (data) => this.setHighlight(data.shapes);
+        this._onDrcSelect = (data) => {
+            // DRC selections target the view of the violation's cell; they
+            // only apply to the viewer showing exactly that view.
+            if (data && data.layoutView && data.layoutView !== this.viewName) {
+                return;
+            }
+            this.setHighlight(data.shapes);
+        };
         this._onDrcClear = () => this.clearHighlight();
         viewEventBus.on('drc:select', this._onDrcSelect);
         viewEventBus.on('drc:clear', this._onDrcClear);
@@ -222,15 +229,9 @@ export class LayoutGL {
         viewEventBus.on('lvs:layout-select', this._onLvsSelect);
         viewEventBus.on('lvs:clear', this._onLvsClear);
 
-        const pending = viewEventBus.consumePending('drc:select');
-        if (pending) {
-            // Store pending shapes - zoom will be applied after first update()
-            this._pendingHighlight = pending.shapes;
-            this.setHighlight(pending.shapes, false); // Don't zoom yet
-        }
-
         // Applied in update(): viewName is only assigned after construction,
         // so targeted pending selections cannot be filtered yet here.
+        this._pendingDrc = viewEventBus.getPending('drc:select');
         this._pendingLvs = viewEventBus.getPending('lvs:select');
 
         this._onPagehide = () => this.destroy();
@@ -301,6 +302,16 @@ export class LayoutGL {
 
     update(msgData) {
         this.data = msgData;
+
+        if (this._pendingDrc) {
+            const pendingDrc = this._pendingDrc;
+            this._pendingDrc = null;
+            if (!pendingDrc.layoutView || pendingDrc.layoutView === this.viewName) {
+                // Zoom to the highlight instead of the full view below.
+                this._pendingHighlight = pendingDrc.shapes;
+                this.setHighlight(pendingDrc.shapes, false); // Don't zoom yet
+            }
+        }
 
         if (this._pendingLvs) {
             const pendingLvs = this._pendingLvs;
