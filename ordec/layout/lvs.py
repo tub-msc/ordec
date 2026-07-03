@@ -6,14 +6,14 @@ from ..core.schema import LvsReport, LvsCircuitPair, LvsItem
 
 
 def circuit_layout_name(circuit: LvsCircuitPair):
-    if circuit.ref_layout:
-        return type(circuit.ref_layout.cell).__name__
+    if circuit.ref_layout and circuit.ref_layout.cell:
+        return circuit.ref_layout.cell.escaped_name()
     return circuit.layout_cell
 
 
 def circuit_schem_name(circuit: LvsCircuitPair):
-    if circuit.ref_schematic:
-        return type(circuit.ref_schematic.cell).__name__
+    if circuit.ref_schematic and circuit.ref_schematic.cell:
+        return circuit.ref_schematic.cell.escaped_name()
     return circuit.schem_cell
 
 

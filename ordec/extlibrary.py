@@ -107,6 +107,15 @@ class ExtLibraryCell(Cell):
     extlib = Parameter(ExtLibrary)
     name = Parameter(str)
 
+    def unescaped_name(self):
+        # Name exports (netlists, GDS, LVS) after the external cell alone; the
+        # default would stringify all parameters and embed the ExtLibrary's
+        # repr (including its memory address). Cells of the same name from
+        # different ExtLibrary instances cannot collide: Directory.unique_name
+        # suffixes duplicate basenames, and layout/schematic names are paired
+        # via the shared cell object, not by string comparison.
+        return self.name
+
     @generate
     def layout(self) -> Layout:
         logger.debug("generating layout %s", self.name)

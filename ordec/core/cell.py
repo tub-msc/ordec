@@ -347,13 +347,25 @@ class Cell(metaclass=MetaCell):
     def __repr__(self):
         return f"{type(self).__name__}({','.join(self.params_list(use_repr=True))})"
 
-    def escaped_name(self):
+    def unescaped_name(self):
+        """
+        Human-readable name of this cell instance, overridable by subclasses.
+        May contain arbitrary characters; use :meth:`escaped_name` where a
+        restricted character set is required.
+        """
         params = self.params_list()
         if len(params) > 0:
-            basename = f"{type(self).__name__}_{'_'.join(params)}"
+            return f"{type(self).__name__}_{'_'.join(params)}"
         else:
-            basename = type(self).__name__
-        return re.sub(r"[^a-zA-Z0-9]", "_", basename)
+            return type(self).__name__
+
+    def escaped_name(self):
+        """
+        Like :meth:`unescaped_name`, but restricted to the characters
+        a-z, A-Z, 0-9 and underscore (_), for use in netlists, GDS and
+        other exports.
+        """
+        return re.sub(r"[^a-zA-Z0-9]", "_", self.unescaped_name())
 
     @classmethod
     def discoverable_instances(cls) -> list[Self]:

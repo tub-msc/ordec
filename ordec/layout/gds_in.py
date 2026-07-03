@@ -66,7 +66,9 @@ def read_gds_structure(structure: Structure, layers: LayerStack, unit: R, extlib
                 elemtype = "shape"
             raise GdsReaderException(f"Unknown GDS layer {l} for {elemtype}.")
 
-    layout = Layout(ref_layers=layers)
+    # Associating the layout with its ExtLibraryCell makes exports (GDS, LVS)
+    # name it consistently with the symbol/schematic of the same cell.
+    layout = Layout(ref_layers=layers, cell=extlib[structure.name.decode('ascii')])
     for elem in structure:
         if isinstance(elem, elements.Boundary):
             layer = lookup_layer(elem.layer, elem.data_type, text=False)    

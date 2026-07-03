@@ -76,6 +76,4 @@ def inv_drc() -> DrcReport:
 
 @generate_func
 def inv_lvs() -> LvsReport:
-    # TODO: Not working yet due to name mismatch!
-
     return ihp130.run_lvs(inv.layout, inv.symbol)
