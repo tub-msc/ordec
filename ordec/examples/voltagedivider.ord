@@ -4,8 +4,6 @@ from ordec.core import *
 from ordec.lib import Vdc, Res, Gnd
 
 cell VoltageDivider:
-    viewgen symbol -> Symbol:
-        pass
     viewgen schematic -> Schematic:
         net vss, vdd, a, b
 

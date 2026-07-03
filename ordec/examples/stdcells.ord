@@ -24,9 +24,6 @@ inv = extlib["sg13g2_inv_1"]
 cell InvTb:
     """DC voltage-transfer-curve testbench for the inv standard cell."""
 
-    viewgen symbol -> Symbol:
-        pass
-
     viewgen schematic -> Schematic:
         Net vdd
         Net vss

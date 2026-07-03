@@ -24,8 +24,6 @@ cell Amp:
         Pmos m1: .pos=(13,12); .d--vout; .g--vbias; .s--vdd; .b--vdd; .$l=130n; .$w=1u
 
 cell AmpTb:
-    viewgen symbol -> Symbol:
-        pass
     viewgen schematic -> Schematic:
         net vin, vout, vdd, vss, vbias
         Amp DUT: .pos=(17,6); .vss--vss; .vdd--vdd; .vin--vin; .vout--vout; .vbias--vbias

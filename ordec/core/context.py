@@ -97,7 +97,14 @@ class SymbolViewContext(ViewContext):
 class SchematicViewContext(ViewContext):
     @classmethod
     def create_root(cls, cell, root_cls):
-        return root_cls(cell=cell, symbol=cell.symbol)
+        # A symbol is optional: a cell may define a schematic without a
+        # corresponding symbol viewgen (e.g. an empty schematic or testbench).
+        # Check the class for a symbol viewgen without evaluating it.
+        if hasattr(type(cell), 'symbol'):
+            symbol = cell.symbol
+        else:
+            symbol = None
+        return root_cls(cell=cell, symbol=symbol)
 
     def postprocess(self):
         self.root.resolve_instances()
@@ -108,7 +115,15 @@ class SchematicViewContext(ViewContext):
 class LayoutViewContext(ViewContext):
     @classmethod
     def create_root(cls, cell, root_cls):
-        return root_cls(cell=cell, symbol=cell.symbol)
+        # A symbol is optional: a cell may define a layout without a
+        # corresponding symbol viewgen (LayoutPins reference the symbol, so a
+        # pin-less layout needs none). Check the class for a symbol viewgen
+        # without evaluating it.
+        if hasattr(type(cell), 'symbol'):
+            symbol = cell.symbol
+        else:
+            symbol = None
+        return root_cls(cell=cell, symbol=symbol)
 
     def __enter__(self):
         super().__enter__()

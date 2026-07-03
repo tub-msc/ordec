@@ -2,8 +2,6 @@ from ordec.core import *
 from ordec.lib import Res, Cap, Gnd, Vsin
 
 cell Lowpass:
-    viewgen symbol -> Symbol:
-        pass
     viewgen schematic -> Schematic:
         net vss, vin, out
 

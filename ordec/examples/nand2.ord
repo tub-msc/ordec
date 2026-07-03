@@ -42,8 +42,6 @@ cell Nand2:
             t.$l = 500n
 
 cell Nand2Tb:
-    viewgen symbol -> Symbol:
-        pass
     viewgen schematic -> Schematic:
         net vdd
         net vss

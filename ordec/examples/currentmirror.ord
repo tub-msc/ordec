@@ -3,8 +3,6 @@ from ordec.lib.generic_mos import Nmos, Pmos
 from ordec.lib import Res, Vdc, Idc, Gnd
 
 cell CurrentMirror:
-    viewgen symbol -> Symbol:
-        pass
     viewgen schematic -> Schematic:
         net vss, vdd, l, r
 
