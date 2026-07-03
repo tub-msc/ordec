@@ -59,10 +59,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "CurrentMirror().sim_dc",
+                "title": "CurrentMirror().sim_op",
                 "componentType": "result",
                 "componentState": {
-                  "view": "CurrentMirror().sim_dc"
+                  "view": "CurrentMirror().sim_op"
                 }
               }
             ],

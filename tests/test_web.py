@@ -29,7 +29,7 @@ class WebResViewer:
     width: int
     height: int
 
-# TODO: check_schematic, check_symbol and check_sim_dc seem a bit too primitive at the moment.
+# TODO: check_schematic, check_symbol and check_sim_op seem a bit too primitive at the moment.
 
 def check_schematic(res_viewer):
     assert res_viewer.html.find('<svg') >= 0
@@ -37,7 +37,7 @@ def check_schematic(res_viewer):
 def check_symbol(res_viewer):
     assert res_viewer.html.find('<svg') >= 0
 
-def check_sim_dc(res_viewer):
+def check_sim_op(res_viewer):
     assert res_viewer.html.find('report-view') >= 0
 
 def check_sim_tran(res_viewer):
@@ -64,18 +64,18 @@ testcases_integrated = {
     "nand2": {
         'Nand2().schematic': [check_schematic, check_min_size(300, 100)],
         'Nand2Tb().schematic': [check_schematic, check_min_size(300, 50)],
-        'Nand2Tb().sim_dc': [check_sim_dc, check_min_size(300, 50)],
+        'Nand2Tb().sim_op': [check_sim_op, check_min_size(300, 50)],
     },
     "voltagedivider_py": {
         'VoltageDivider().schematic': [check_schematic, check_min_size(300, 200)],
-        'VoltageDivider().sim_dc': [check_sim_dc, check_min_size(300, 200)],
+        'VoltageDivider().sim_op': [check_sim_op, check_min_size(300, 200)],
     },
     "blank": {
         'null':[],
     },
     "voltagedivider":{
         'VoltageDivider().schematic': [check_schematic, check_min_size(300, 200)],
-        'VoltageDivider().sim_dc': [check_sim_dc, check_min_size(300, 200)],
+        'VoltageDivider().sim_op': [check_sim_op, check_min_size(300, 200)],
     },
     "rc_curve": {
         'RC().schematic': [check_schematic, check_min_size(300, 100)],
@@ -88,7 +88,7 @@ testcases_integrated = {
     },
     'currentmirror': {
         'CurrentMirror().schematic': [check_schematic, check_min_size(300, 100)],
-        'CurrentMirror().sim_dc': [check_sim_dc, check_min_size(300, 200)],
+        'CurrentMirror().sim_op': [check_sim_op, check_min_size(300, 200)],
     },
     'vco_pseudodiff': {
        "Vco(width='1u',length='500n').layout": [],

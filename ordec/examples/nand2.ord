@@ -63,5 +63,5 @@ cell Nand2Tb:
         Vdc src_a: .pos=(10,6); .m -- vss; .p -- a; .$dc=5
         Vdc src_b: .pos=(5,6); .m -- vss; .p -- b; .$dc=0
 
-    viewgen sim_dc -> Simulation:
+    viewgen sim_op -> Simulation:
         .simulate().op()

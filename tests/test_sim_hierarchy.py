@@ -111,7 +111,7 @@ def test_to_numpy_all():
     """Test to_numpy() with all fields (include=None), raw names."""
     import numpy as np
     tb = lib_test.ResdivHierTb()
-    h = tb.sim_dc_batch
+    h = tb.sim_op_batch
     arr = h.to_numpy(translate_names=False)
     assert isinstance(arr, np.ndarray)
     assert len(arr) == len(h.sim_data)
@@ -123,7 +123,7 @@ def test_to_numpy_include():
     """Test to_numpy() with specific nodes in include, raw names."""
     import numpy as np
     tb = lib_test.ResdivHierTb()
-    h = tb.sim_dc_batch
+    h = tb.sim_op_batch
     arr = h.to_numpy(include=[h.r, h.I2.p], translate_names=False)
     assert isinstance(arr, np.ndarray)
     assert len(arr) == len(h.sim_data)
@@ -136,7 +136,7 @@ def test_to_numpy_include():
 def test_to_numpy_invalid_include():
     """Test to_numpy() raises TypeError for invalid include nodes."""
     tb = lib_test.ResdivHierTb()
-    h = tb.sim_dc_batch
+    h = tb.sim_op_batch
     with pytest.raises(TypeError, match="SimNet, SimPin, or SimParam"):
         h.to_numpy(include=[h.I0])
 
@@ -145,7 +145,7 @@ def test_write_csv_all(tmp_path):
     """Test write_csv() with all fields (include=None), raw names."""
     import csv
     tb = lib_test.ResdivHierTb()
-    h = tb.sim_dc_batch
+    h = tb.sim_op_batch
     outfile = tmp_path / "sim_all.csv"
     h.write_csv(outfile, translate_names=False)
     with open(outfile) as f:
@@ -161,7 +161,7 @@ def test_write_csv_include(tmp_path):
     """Test write_csv() with specific nodes in include, raw names."""
     import csv
     tb = lib_test.ResdivHierTb()
-    h = tb.sim_dc_batch
+    h = tb.sim_op_batch
     outfile = tmp_path / "sim_include.csv"
     h.write_csv(outfile, include=[h.r, h.I2.p], translate_names=False)
     with open(outfile) as f:
@@ -253,7 +253,7 @@ def test_translate_names():
     """Test translate_names=True converts ngspice names to ORDB paths."""
     import numpy as np
     tb = lib_test.ResdivHierTb()
-    h = tb.sim_dc_batch
+    h = tb.sim_op_batch
 
     # Voltage and current translation
     arr = h.to_numpy(include=[h.r, h.I2.p])

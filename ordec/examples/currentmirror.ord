@@ -19,5 +19,5 @@ cell CurrentMirror:
         Vdc vsrc: .pos=(0,9); .p -- vdd; .m -- vss; .$dc=5
         Res r0: .pos=(14,12); .p--vdd; .m--r; .$r=10k
 
-    viewgen sim_dc -> Simulation:
+    viewgen sim_op -> Simulation:
         .simulate().op(save_params=True)

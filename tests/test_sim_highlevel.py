@@ -141,15 +141,15 @@ def expected_sin_value(t, src):
 # Passive & ideal components
 # --------------------------
 
-def test_sim_dc_flat(sim_batch):
+def test_sim_op_flat(sim_batch):
     tb = lib_test.ResdivFlatTb()
-    h = tb.sim_dc_batch if sim_batch else tb.sim_dc_piped
+    h = tb.sim_op_batch if sim_batch else tb.sim_op_piped
     assert h.a.voltage[0] == pytest.approx(1.0 / 3.0, abs=1e-12)
     assert h.b.voltage[0] == pytest.approx(2.0 / 3.0, abs=1e-12)
 
-def test_sim_dc_hier(sim_batch):
+def test_sim_op_hier(sim_batch):
     tb = lib_test.ResdivHierTb()
-    h = tb.sim_dc_batch if sim_batch else tb.sim_dc_piped
+    h = tb.sim_op_batch if sim_batch else tb.sim_op_piped
     assert h.r.voltage[0] == pytest.approx(0.3589743589743596, abs=1e-10)
     assert h.I0.I1.m.voltage[0] == pytest.approx(0.5897435897435901, abs=1e-10)
     # Top-level: voltage source current
@@ -266,15 +266,15 @@ def test_generic_mos_netlister():
 
 def test_generic_mos_nmos_sourcefollower(sim_batch):
     tb = lib_test.NmosSourceFollowerTb(vin=2)
-    h = tb.sim_dc_batch if sim_batch else tb.sim_dc_piped
+    h = tb.sim_op_batch if sim_batch else tb.sim_op_piped
     assert h.o.voltage[0] == pytest.approx(1.2837721914145377, abs=1e-6)
     tb = lib_test.NmosSourceFollowerTb(vin=3)
-    h = tb.sim_dc_batch if sim_batch else tb.sim_dc_piped
+    h = tb.sim_op_batch if sim_batch else tb.sim_op_piped
     assert h.o.voltage[0] == pytest.approx(2.2837721567191442, abs=1e-6)
 
 def test_op_save_params(sim_batch):
     tb = lib_test.NmosSourceFollowerTb(vin=2)
-    h = tb.sim_dc_batch if sim_batch else tb.sim_dc_piped
+    h = tb.sim_op_batch if sim_batch else tb.sim_op_piped
     nmos = h.I0
     assert nmos.params['gm'].value[0] > 0
     assert nmos.params['gds'].value[0] == pytest.approx(0)

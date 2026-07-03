@@ -86,7 +86,7 @@
                 "title": "Result View",
                 "componentType": "result",
                 "componentState": {
-                  "view": "Nand2Tb().sim_dc"
+                  "view": "Nand2Tb().sim_op"
                 }
               }
             ],

@@ -692,7 +692,7 @@ class SchemErrorMarker(Node):
 
 @public
 class SimType(Enum):
-    DC = 'dc'
+    OP = 'op'
     TRAN = 'tran'
     AC = 'ac'
     DCSWEEP = 'dcsweep'

@@ -40,7 +40,7 @@
                 "title": "Result View",
                 "componentType": "result",
                 "componentState": {
-                  "view": "VoltageDivider().sim_dc"
+                  "view": "VoltageDivider().sim_op"
                 }
               }
             ],

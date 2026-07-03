@@ -13,7 +13,7 @@ cell VoltageDivider:
         Res res_3: .$r = 100; .m -- b; .p -- vdd; .pos = (5,18)
         Gnd gnd: .p -- vss; .pos = (0,0)
 
-    viewgen sim_dc -> Simulation:
+    viewgen sim_op -> Simulation:
         .simulate().op()
 
     @generate

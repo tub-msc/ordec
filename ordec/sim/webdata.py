@@ -153,7 +153,7 @@ def webdata(sh: SimHierarchy):
             )
         return report.webdata()
 
-    elif sh.sim_type == SimType.DC:
+    elif sh.sim_type == SimType.OP:
         report = Report(fill_height=False)
 
         op_voltages = []

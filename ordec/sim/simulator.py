@@ -224,7 +224,7 @@ class SimulatorNgspiceBatch(SimulatorBase):
         )
 
     def op(self, save_params=False):
-        self.simhier.sim_type = SimType.DC
+        self.simhier.sim_type = SimType.OP
         if save_params:
             self._save_all_params()
         self.netlister.add(".op")
@@ -297,7 +297,7 @@ class SimulatorNgspicePiped(SimulatorBase):
                 sim.command(f"save @{device_name}[{param}]")
 
     def op(self, save_params=False):
-        self.simhier.sim_type = SimType.DC
+        self.simhier.sim_type = SimType.OP
         with self._launch(save_params) as sim:
             self._store_results(sim.op())
 

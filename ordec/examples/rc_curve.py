@@ -41,7 +41,7 @@ class RC(Cell):
         return s
 
     @generate(auto_refresh=False)
-    def sim_dc(self):
+    def sim_op(self):
         s = SimHierarchy.from_schematic(self.schematic)
         sim = Simulator(s)
         sim.op()
