@@ -44,11 +44,26 @@ GRID_BLOCKED = 3  # impassable cell body
 GRID_PIN = 4      # impassable cell pin
 GRID_PORT = 5     # impassable port
 
-_cache = dict()
-_straight_line_change_count = defaultdict(int)
-def mark_changed(start_name):
-    global _straight_line_change_count
-    _straight_line_change_count[start_name] += 1
+class RoutingCache:
+    """Per-run state for a single ``draw_connections`` invocation.
+
+    Holds the memoized blocked-move results and the per-net change counters
+    used to invalidate them. This state is local to one routing run so that
+    concurrent ``draw_connections`` calls (e.g. the server building several
+    schematics in parallel) do not clobber each other.
+    """
+    def __init__(self):
+        self.cache = dict()
+        self.change_count = defaultdict(int)
+
+    def mark_changed(self, start_name):
+        self.change_count[start_name] += 1
+
+    def dependency_versions(self, start_name):
+        """Return a version signature of all straight lines except ``start_name``."""
+        if not self.change_count:
+            return 0
+        return sum(v for k, v in self.change_count.items() if k != start_name)
 
 class CellPin(NamedTuple):
     x: int
@@ -179,13 +194,7 @@ def adjust_start_end_for_direction(start, start_dir, end, end_dir):
 
     return start, end
 
-def dependency_versions(start_name):
-    """Return a version signature of all straight lines except ``start_name``."""
-    if not _straight_line_change_count:
-        return 0
-    return sum(v for k, v in _straight_line_change_count.items() if k != start_name)
-
-def preprocess_straight_lines(straight_lines, start_name, height):
+def preprocess_straight_lines(straight_lines, start_name, height, routing_cache):
     """Preprocess straight lines into blocked movements with corner-touch prevention.
 
     Allows orthogonal crossings. Results are cached per ``start_name`` and
@@ -195,15 +204,15 @@ def preprocess_straight_lines(straight_lines, start_name, height):
         straight_lines (dict): Already routed paths keyed by net name.
         start_name (str): Name of the net currently being routed (excluded).
         height (int): Grid height used for key encoding.
+        routing_cache (RoutingCache): Per-run memoization state.
 
     Returns:
         tuple: (blocked_moves set, blocked_masks dict).
     """
-    global _cache
     # Cache is keyed by net name and invalidated when other nets change
-    dep_version = dependency_versions(start_name)
+    dep_version = routing_cache.dependency_versions(start_name)
 
-    entry = _cache.get(start_name)
+    entry = routing_cache.cache.get(start_name)
     if entry and entry["dep_version"] == dep_version:
         blocked_masks = entry["blocked_masks"].get(height)
         if blocked_masks is None:
@@ -217,7 +226,7 @@ def preprocess_straight_lines(straight_lines, start_name, height):
             blocked_moves.update(_blocked_moves_for_segments(value))
 
     blocked_masks = _build_blocked_move_masks(blocked_moves, height)
-    _cache[start_name] = {
+    routing_cache.cache[start_name] = {
         "dep_version": dep_version,
         "blocked_moves": blocked_moves,
         "blocked_masks": {height: blocked_masks},
@@ -301,8 +310,8 @@ def _point_keys(points, height):
 
 
 def a_star(grid, start, end, width, height, straight_lines,
-           start_name, start_dir, route_cell_usage=None, use_congestion=True,
-           blocked_move_hits=None):
+           start_name, start_dir, routing_cache, route_cell_usage=None,
+           use_congestion=True, blocked_move_hits=None):
     """Perform A* pathfinding between a start and end point.
 
     Args:
@@ -314,6 +323,7 @@ def a_star(grid, start, end, width, height, straight_lines,
         straight_lines (dict): Already calculated paths.
         start_name (str): Name of the starting port.
         start_dir (tuple): Direction vector to start from.
+        routing_cache (RoutingCache): Per-run memoization state.
         route_cell_usage (dict, optional): Routed cell usage counts.
         use_congestion (bool): Whether to apply congestion/history penalties.
         blocked_move_hits (set, optional): Encoded blocked moves encountered
@@ -324,7 +334,7 @@ def a_star(grid, start, end, width, height, straight_lines,
     """
 
     _, blocked_masks = preprocess_straight_lines(
-        straight_lines, start_name, height
+        straight_lines, start_name, height, routing_cache
     )
 
     start_x, start_y = start
@@ -433,8 +443,8 @@ def a_star(grid, start, end, width, height, straight_lines,
 
 
 def reverse_a_star(grid, start_points, end, width, height, straight_lines, start_name, end_dir,
-                   endpoint_mapping, route_cell_usage=None, use_congestion=True,
-                   blocked_move_hits=None):
+                   endpoint_mapping, routing_cache, route_cell_usage=None,
+                   use_congestion=True, blocked_move_hits=None):
     """Perform reverse A* from the end point towards any of the start points.
 
     Args:
@@ -448,6 +458,7 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
         end_dir (tuple): Direction vector to end with.
         endpoint_mapping (dict): Mapping of start name to adjusted endpoint
             marker key set.
+        routing_cache (RoutingCache): Per-run memoization state.
         route_cell_usage (dict, optional): Routed cell usage counts.
         use_congestion (bool): Whether to apply congestion/history penalties.
         blocked_move_hits (set, optional): Encoded blocked moves encountered
@@ -458,7 +469,7 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     """
 
     _, blocked_masks = preprocess_straight_lines(
-        straight_lines, start_name, height
+        straight_lines, start_name, height, routing_cache
     )
 
     end_x, end_y = end
@@ -775,8 +786,7 @@ def draw_connections(grid, connections, width, height, name_grid=None):
     Returns:
         dict: Drawing dict mapping net name to list of vertex paths.
     """
-    _cache.clear()
-    _straight_line_change_count.clear()
+    routing_cache = RoutingCache()
     port_drawing_dict = defaultdict(list)
     straight_lines = defaultdict(list)
     route_cell_usage = dict()
@@ -795,7 +805,7 @@ def draw_connections(grid, connections, width, height, name_grid=None):
         straight_lines[start_name] = transform_to_pairs(
             current_path_stripped, straight_lines[start_name]
         )
-        mark_changed(start_name)
+        routing_cache.mark_changed(start_name)
 
     def rebuild_straight_lines(start_name):
         paths = port_drawing_dict[start_name]
@@ -805,7 +815,7 @@ def draw_connections(grid, connections, width, height, name_grid=None):
             )
         else:
             straight_lines[start_name] = []
-        mark_changed(start_name)
+        routing_cache.mark_changed(start_name)
 
     def apply_path_to_grid(path):
         path_cells = []
@@ -926,7 +936,7 @@ def draw_connections(grid, connections, width, height, name_grid=None):
                     path = reverse_a_star(
                         grid, path_list, end_new, width, height,
                         straight_lines, start_name, transformed_end_dir,
-                        endpoint_key_mapping, route_cell_usage,
+                        endpoint_key_mapping, routing_cache, route_cell_usage,
                         use_congestion=False,
                         blocked_move_hits=blocked_move_hits
                     )
@@ -935,14 +945,15 @@ def draw_connections(grid, connections, width, height, name_grid=None):
                         path = a_star(
                             grid, start_new, end_new, width, height,
                             straight_lines, start_name, transformed_start_dir,
-                            route_cell_usage, use_congestion=False,
+                            routing_cache, route_cell_usage, use_congestion=False,
                             blocked_move_hits=blocked_move_hits
                         )
             else:
                 # First connection for this net, standard forward A*
                 path = a_star(
                     grid, start_new, end_new, width, height,
-                    straight_lines, start_name, transformed_start_dir, route_cell_usage,
+                    straight_lines, start_name, transformed_start_dir,
+                    routing_cache, route_cell_usage,
                     blocked_move_hits=blocked_move_hits
                 )
 
