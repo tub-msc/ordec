@@ -1162,7 +1162,14 @@ def auto_wire(node, outline=None, routing=None):
     if routing is None:
         routing = dict()
     if outline is None:
+        # No outline provided, so we need to figure the outline out
+        # from the schematic elements.
         outline = adjust_outline_initial(node)
+        if outline is None:
+            # adjust_outline_initial returns None for an empty schematic (no
+            # ports, no instances). The remaining routing steps are then all
+            # no-ops, so an empty outline at the origin is enough.
+            outline = Rect4R(lx=0, ly=0, ux=0, uy=0)
     width = int(outline.ux - outline.lx)
     height = int(outline.uy - outline.ly)
     # Calculate offset for positive coordinates while routing
