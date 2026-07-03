@@ -1,8 +1,6 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-#standard imports
-
 import numpy as np
 import heapq
 import sys
@@ -10,9 +8,7 @@ from collections import defaultdict
 from typing import NamedTuple
 from dataclasses import dataclass
 
-#ordec imports
-
-from ..core import Pin, SchemPort, Vec2R, SchemInstance, Net, SchemWire, Rect4R
+from ..core import *
 from .render import Renderer
 
 """Routing constraints and heuristics used by this module.
@@ -1146,24 +1142,19 @@ def adjust_outline_initial(node):
             outline = instance_geometry
     return outline
 
-def auto_wire(node, outline=None, routing=None):
+def auto_wire(node: Schematic):
     """Calculate routing vertices via A* pathfinding and attach wires to the node.
 
-    Sets ``node.outline`` to the adjusted outline extended to cover all routed
-    wires.
+    Routing starts from the node's existing ``node.outline`` if set; otherwise
+    the initial outline is computed from the schematic elements. On return,
+    ``node.outline`` is that initial outline extended to cover all routed wires.
 
     Args:
         node: Current node containing schematic elements.
-        outline (Rect4R, optional): Outline coordinates. Computed if not given.
-        routing (dict, optional): Port routing overrides. Keys are port IDs,
-            values are booleans enabling/disabling routing.
     """
-    # Get all the connections of ports and instances
-    if routing is None:
-        routing = dict()
+    outline = node.outline
     if outline is None:
-        # No outline provided, so we need to figure the outline out
-        # from the schematic elements.
+        # No outline set on the node, so compute it from the schematic elements.
         outline = adjust_outline_initial(node)
         if outline is None:
             # adjust_outline_initial returns None for an empty schematic (no
@@ -1245,9 +1236,8 @@ def auto_wire(node, outline=None, routing=None):
             connection_position = cells[instance_nid].connections[inner_connection_nid]
             if connected_nid in ports:
                 # External port or previously seen inter-instance net
-                if routing.get(int(connected_nid) if connected_nid.isdigit() else connected_nid, True):
-                    if ports[connected_nid].auto_wire:
-                        connections.append((ports[connected_nid], connection_position))
+                if ports[connected_nid].auto_wire:
+                    connections.append((ports[connected_nid], connection_position))
             else:
                 # Inter-instance net: create routing port on first encounter
                 ports[connected_nid] = RoutingPort(
