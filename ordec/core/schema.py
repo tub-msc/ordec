@@ -106,6 +106,7 @@ class RGBColor(NamedTuple):
 
 @public
 def rgb_color(s) -> RGBColor:
+    """Parse a hex color string like '#0012EF' into an RGBColor."""
     if not re.match("#[0-9a-fA-F]{6}", s):
         raise ValueError("rgb_color expects string like '#0012EF'.")
     return RGBColor(int(s[1:3], 16), int(s[3:5], 16), int(s[5:7], 16))
