@@ -29,11 +29,12 @@ constraint solver does not scale to hundreds of nets, so this module decides the
 paths *and* lays down the metal itself.
 
 Standard-cell coverage: it routes most IHP sg13g2 logic/sequential cells (~60 of
-~74; ``tests/test_pnr.ord`` checks a representative subset). The rest
-fail *loudly* -- a clear exception or a sign-off DRC violation -- on one hard case:
-a Via1 endcap landing that small or staircase pins (e.g. a21o, dlhrq, sdfbbp) can't
-satisfy without an M1.b/V1.c1 violation, which would take a polygon-exact via-access
-engine to fix. Non-logic cells (antenna, fill, decap) are out of scope.
+~74; ``tests/test_pnr.ord`` checks a representative subset). The rest fail
+*loudly*: a cell with LEF geometry above Metal1 (sdfbbp) is rejected with a clear
+exception by the PDK binding, and a few cells with very small or staircase pins
+(e.g. a21o, dlhrq) can hit a Via1 endcap landing that cannot be satisfied without
+an M1.b/V1.c1 violation, which would take a polygon-exact via-access engine to
+fix. Non-logic cells (antenna, fill, decap) are out of scope.
 """
 
 # Standard imports
@@ -45,7 +46,15 @@ import random
 
 # ORDeC imports
 from ordec.core import *
-from ordec.core.schema import SchemInstanceConn
+
+
+class PinAccessError(RuntimeError):
+    """A terminal cannot be connected on the routing grid.
+
+    Unlike congestion, this is permanent: growing the floorplan and retrying
+    cannot make a pin reachable, so :func:`place_and_route` re-raises it
+    immediately instead of burning retries.
+    """
 
 
 # --- routing grid configuration -------------------------------------------
@@ -131,26 +140,26 @@ class NetInfo:
 # One leaf cell before placement: the Cell, its Metal1 pin rects, and its width.
 LeafCell = namedtuple('LeafCell', 'cell pins width')
 
-# One net's detailed route: its wire edges, the Via1 access nodes (term_m2), and
-# the full set of grid nodes it occupies (for congestion bookkeeping).
-_Route = namedtuple('_Route', 'edges term_m2 tree')
+# One routed *segment* of a net (a 2-pin MST edge, the min-area extensions, or
+# the port escape): its wire edges, the grid nodes it occupies (congestion
+# bookkeeping), and its terminal endpoints as (terminal index, node) pairs.
+_Seg = namedtuple('_Seg', 'edges nodes pairs')
 
 
-def _conns_of(sch, inst):
+def _conns_of(inst):
     """Map each pin of one instance to the net it connects to.
 
     Args:
-        sch: the Schematic containing the instance.
-        inst: the SchemInstance whose connections are read.
+        inst: the SchemInstance whose connections are read (via the
+            ``SchemInstanceConn.ref_idx`` index, not a full-schematic scan).
 
     Returns:
         ``{pin_name: net_name}`` for ``inst``.
     """
     out = {}
-    for conn in sch.all(SchemInstanceConn):
-        if conn.ref.nid == inst.nid:
-            out[conn.there.full_path_str().split('.')[-1]] = \
-                conn.here.full_path_str().split('.')[-1]
+    for conn in inst.conns():
+        out[conn.there.full_path_str().split('.')[-1]] = \
+            conn.here.full_path_str().split('.')[-1]
     return out
 
 
@@ -184,7 +193,7 @@ def flatten(cell, is_leaf):
             iname = prefix + inst.full_path_str().split('.')[-1]
             subcell = inst.symbol.cell
             pin_to_net = {pin: canon(net)
-                for pin, net in _conns_of(sch, inst).items()}
+                for pin, net in _conns_of(inst).items()}
             if is_leaf(subcell):
                 leaf_insts[iname] = subcell
                 for pin, net in pin_to_net.items():
@@ -270,9 +279,44 @@ def order_cells(cells, nets, iters=30):
     return order
 
 
+def fold_rows(cells, order, cfg):
+    """Fold the 1-D cell order into ``cfg.n_rows`` contiguous rows, balanced to
+    the minimal max-row-width (:func:`partition_width`).
+
+    This is the single fold used both to score a candidate order
+    (:func:`_cell_centers`) and to build the placement (:func:`place_rows`), so
+    the annealer optimises exactly the geometry that gets built.
+
+    Args:
+        cells: ``{name: LeafCell}`` (used for cell widths).
+        order: the 1-D cell order to fold.
+        cfg: the routing/floorplan :class:`GridConfig`.
+
+    Returns:
+        The rows as lists of cell names, still in order (odd-row mirroring is
+        the caller's concern); padded with empty rows up to ``cfg.n_rows``.
+    """
+    max_row_w = partition_width([cells[n].width for n in order], cfg.n_rows)
+    rows = [[]]
+    row_w = 0
+    for name in order:
+        w = cells[name].width
+        if rows[-1] and row_w + w > max_row_w and len(rows) < cfg.n_rows:
+            rows.append([]); row_w = 0
+        rows[-1].append(name); row_w += w
+    while len(rows) < cfg.n_rows:
+        rows.append([])
+    return rows
+
+
 def _cell_centers(cells, order, cfg):
     """Estimate each cell's ``(x, y)`` center for a folded order, to score a
     placement without building geometry.
+
+    Uses the same balanced fold *and* odd-row (boustrophedon) reversal as
+    :func:`place_rows`: a mirrored row is placed right-to-left, so a cell's
+    scored x must mirror too, or the annealer would systematically mis-score
+    every net that touches an odd row.
 
     Args:
         cells: ``{name: LeafCell}`` (used for cell widths).
@@ -283,15 +327,16 @@ def _cell_centers(cells, order, cfg):
         ``{name: (x_center, y_center)}`` in nm.
     """
     row_height = cfg.row_height
-    row_target = sum(cells[n].width for n in order) / cfg.n_rows
     center = {}
-    row, row_w, x = 0, 0, 0
-    for name in order:
-        w = cells[name].width
-        if row < cfg.n_rows - 1 and row_w + w > row_target and row_w > 0:
-            row += 1; row_w = 0; x = 0
-        center[name] = (x + w // 2, row * row_height + row_height // 2)
-        x += w; row_w += w
+    for row, row_cells in enumerate(fold_rows(cells, order, cfg)):
+        if row % 2 == 1:
+            row_cells = row_cells[::-1]
+        x = 0
+        y = row * row_height + row_height // 2
+        for name in row_cells:
+            w = cells[name].width
+            center[name] = (x + w // 2, y)
+            x += w
     return center
 
 
@@ -400,20 +445,10 @@ def place_rows(cells, order, cfg):
         ``max_width`` is the widest packed row (nm).
     """
     row_height = cfg.row_height
-    nrows = cfg.n_rows
 
     # Balanced fold: pack greedily to the minimum max-row-width (the optimal
     # contiguous partition), so the rows come out even.
-    max_row_w = partition_width([cells[n].width for n in order], nrows)
-    rows = [[]]
-    row_w = 0
-    for name in order:
-        w = cells[name].width
-        if rows[-1] and row_w + w > max_row_w and len(rows) < nrows:
-            rows.append([]); row_w = 0
-        rows[-1].append(name); row_w += w
-    while len(rows) < nrows:
-        rows.append([])
+    rows = fold_rows(cells, order, cfg)
 
     placed = {}
     max_w = 0
@@ -679,18 +714,21 @@ def _neighbors(node, cfg, xmax):
     xi, yi, layer = node
     on_signal = cfg.is_signal_track(yi)
     via_cost = cfg.via_cost
+    # Vertical moves span the full track range 0..y_track_max INCLUSIVE: the
+    # outermost tracks sit on the die-edge rails, and a terminal on such a rail
+    # (a tie-off to a rail-only supply pin) must be reachable as a goal.
     if layer == M2:                      # vertical (move in y, rails pass through)
-        if yi + 1 < cfg.y_track_max: yield (xi, yi + 1, M2), 1.0
-        if yi - 1 > 0:               yield (xi, yi - 1, M2), 1.0
-        if on_signal:                yield (xi, yi, M3), via_cost
+        if yi + 1 <= cfg.y_track_max: yield (xi, yi + 1, M2), 1.0
+        if yi - 1 >= 0:               yield (xi, yi - 1, M2), 1.0
+        if on_signal:                 yield (xi, yi, M3), via_cost
     elif layer == M3:                    # horizontal (move in x); via down to M2, up to M4
         if xi + 1 <= xmax: yield (xi + 1, yi, M3), 1.0
         if xi - 1 >= 0:    yield (xi - 1, yi, M3), 1.0
         yield (xi, yi, M2), via_cost
         if on_signal and cfg.use_upper: yield (xi, yi, M4), via_cost
     elif layer == M4:                    # vertical (second vertical layer)
-        if yi + 1 < cfg.y_track_max: yield (xi, yi + 1, M4), 1.0
-        if yi - 1 > 0:               yield (xi, yi - 1, M4), 1.0
+        if yi + 1 <= cfg.y_track_max: yield (xi, yi + 1, M4), 1.0
+        if yi - 1 >= 0:               yield (xi, yi - 1, M4), 1.0
         if on_signal:
             yield (xi, yi, M3), via_cost
             yield (xi, yi, M5), via_cost
@@ -700,7 +738,31 @@ def _neighbors(node, cfg, xmax):
         yield (xi, yi, M4), via_cost
 
 
-def _astar(starts, goals, cfg, xmax, node_cost, allowed=None):
+def _grid_adjacency(cfg, xmax):
+    """Precompute every grid node's ``((neighbor, cost), ...)`` moves.
+
+    The move set (:func:`_neighbors`) depends only on the grid, not on the nets,
+    so computing it once per :func:`route_nets` run takes the generator, the
+    signal-track test and the property lookups out of the maze router's inner
+    loop -- the hottest code in the engine.
+
+    Args:
+        cfg: the routing grid + cost knobs (:class:`GridConfig`).
+        xmax: the maximum x track index.
+
+    Returns:
+        ``{node: ((neighbor, cost), ...)}`` for all grid nodes.
+    """
+    adj = {}
+    for xi in range(xmax + 1):
+        for yi in range(cfg.y_track_max + 1):
+            for layer in (M2, M3, M4, M5):
+                node = (xi, yi, layer)
+                adj[node] = tuple(_neighbors(node, cfg, xmax))
+    return adj
+
+
+def _astar(starts, goals, cfg, xmax, node_cost, allowed=None, adj=None):
     """Route one connection by A* from any start node to any goal node.
 
     Args:
@@ -713,17 +775,26 @@ def _astar(starts, goals, cfg, xmax, node_cost, allowed=None):
         allowed: optional predicate ``node -> bool`` restricting the search to the
             net's global-routing corridor, keeping the maze search local on large
             layouts.
+        adj: optional precomputed :func:`_grid_adjacency` table; falls back to
+            generating moves per expansion.
 
     Returns:
         The path as a list of nodes from a start to a goal, or ``None`` if no path
         exists within ``allowed``.
     """
     goal_set = set(goals)
-    goal_xs = [n[0] for n in goals]; goal_ys = [n[1] for n in goals]
+    # Bounding-box heuristic: distance to the goals' bbox is a lower bound on the
+    # distance to any goal (admissible) and is O(1) per node -- scanning the goal
+    # list per expansion instead dominated the whole engine's runtime on searches
+    # with large goal sets (a port escape targets every top-row track).
+    gx_lo = min(n[0] for n in goals); gx_hi = max(n[0] for n in goals)
+    gy_lo = min(n[1] for n in goals); gy_hi = max(n[1] for n in goals)
 
     def heuristic(node):
-        return (min(abs(node[0] - goal_x) for goal_x in goal_xs)
-                + min(abs(node[1] - goal_y) for goal_y in goal_ys))
+        xi, yi = node[0], node[1]
+        dx = gx_lo - xi if xi < gx_lo else (xi - gx_hi if xi > gx_hi else 0)
+        dy = gy_lo - yi if yi < gy_lo else (yi - gy_hi if yi > gy_hi else 0)
+        return dx + dy
 
     frontier = []
     cost = {}            # node -> cheapest known cost to reach it
@@ -731,20 +802,23 @@ def _astar(starts, goals, cfg, xmax, node_cost, allowed=None):
     for start in starts:
         cost[start] = node_cost(start)
         heapq.heappush(frontier, (cost[start] + heuristic(start), start))
+    heappush, heappop = heapq.heappush, heapq.heappop
     while frontier:
-        _, current = heapq.heappop(frontier)
+        _, current = heappop(frontier)
         if current in goal_set:
             path = [current]
             while current in came_from:
                 current = came_from[current]; path.append(current)
             return path[::-1]
-        for neighbor, step in _neighbors(current, cfg, xmax):
+        moves = adj[current] if adj is not None else _neighbors(current, cfg, xmax)
+        cur_cost = cost[current]
+        for neighbor, step in moves:
             if allowed is not None and not allowed(neighbor):
                 continue
-            new_cost = cost[current] + step + node_cost(neighbor)
+            new_cost = cur_cost + step + node_cost(neighbor)
             if neighbor not in cost or new_cost < cost[neighbor]:
                 cost[neighbor] = new_cost; came_from[neighbor] = current
-                heapq.heappush(frontier, (new_cost + heuristic(neighbor), neighbor))
+                heappush(frontier, (new_cost + heuristic(neighbor), neighbor))
     return None
 
 
@@ -832,7 +906,7 @@ def global_route(routed_nets, term_access, cfg, xmax, gcell_w=5, gcell_h=5):
     def route(net_name):
         gcells = net_gcells[net_name]
         if not gcells:
-            raise RuntimeError(f"net {net_name!r} has no routable pin access "
+            raise PinAccessError(f"net {net_name!r} has no routable pin access "
                 "(a terminal pin could not be reached on or off the track grid)")
         tree = {gcells[0]}
         for gcell in gcells[1:]:
@@ -873,6 +947,47 @@ def global_route(routed_nets, term_access, cfg, xmax, gcell_w=5, gcell_h=5):
     return corridors, gcell_w, gcell_h
 
 
+def _mst_edges(points):
+    """Prim's minimum spanning tree over terminal positions (Manhattan metric).
+
+    The MST fixes each multi-terminal net's 2-pin decomposition: every edge
+    becomes an independently routable (and independently rip-up-able) segment,
+    which is what lets the negotiation loop reroute one broken connection of a
+    high-fan-out net instead of the whole tree.
+
+    Args:
+        points: the terminals' proxy positions ``[(xi, yi), ...]``.
+
+    Returns:
+        The MST as ``[(i, j), ...]`` index pairs into ``points``.
+    """
+    n = len(points)
+    if n <= 1:
+        return []
+    INF = float('inf')
+    dist = [INF] * n
+    near = [0] * n
+    in_tree = [False] * n
+    dist[0] = 0
+    edges = []
+    for _ in range(n):
+        best, bi = INF, -1
+        for i in range(n):
+            if not in_tree[i] and dist[i] < best:
+                best, bi = dist[i], i
+        in_tree[bi] = True
+        if bi != 0:
+            edges.append((near[bi], bi))
+        bx, by = points[bi]
+        for j in range(n):
+            if not in_tree[j]:
+                d = abs(points[j][0] - bx) + abs(points[j][1] - by)
+                if d < dist[j]:
+                    dist[j] = d
+                    near[j] = bi
+    return edges
+
+
 def _conflict_neighbors(node):
     """Same-layer grid nodes that would violate metal spacing against ``node`` if
     used by a *different* net.
@@ -900,11 +1015,14 @@ def _conflict_neighbors(node):
 def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
     """Route the signal nets with negotiated-congestion maze routing.
 
-    Uses *incremental* rip-up-and-reroute: after an initial pass, each iteration
-    reroutes only the nets touching a conflict (a shared node, or two nets too
-    close), raising the cost of the contested nodes each time, until the routing is
-    legal. Rerouting a handful of nets per pass -- rather than all of them -- plus
-    bounded A* is what lets this scale to a few hundred cells.
+    Each net is decomposed into 2-pin *segments* along an MST over its terminals
+    (plus min-area-extension and port-escape segments), and rip-up-and-reroute
+    runs at segment granularity: after an initial pass, each iteration reroutes
+    only the segments touching a conflict (a shared node, or two nets too
+    close), raising the cost of the contested nodes each time, until the routing
+    is legal. Rerouting single 2-pin connections per pass -- rather than whole
+    multi-terminal trees -- plus corridor-bounded A* is what lets this scale to
+    a few hundred cells.
 
     Args:
         routed_nets: the signal nets to route, ``{name: NetInfo}``.
@@ -914,36 +1032,58 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
         port_nets: the names of nets that need a top-edge Metal4 escape.
 
     Returns:
-        ``(routing, port_escape, term_via, term_land)`` -- ``routing`` maps each net
-        to its ``(edges, term_m2)``; the rest are per-net overrides the emitter
-        needs (port-escape x, off-track Via1 positions, Metal1 landings).
+        ``(routing, port_escape, net_via, net_land)`` -- ``routing`` maps each net
+        to its ``(edges, term_m2)``; ``port_escape`` maps a port net to its
+        top-edge pad x; ``net_via``/``net_land`` map each net to the
+        ``{node: ...}`` off-track Via1 / Metal1-landing overrides its emitter
+        call needs.
 
     Raises:
-        RuntimeError: if a net cannot be routed or the rip-up loop does not
-            converge (the caller then grows the floorplan and retries).
+        PinAccessError: if a terminal is unreachable on the grid (permanent --
+            the caller re-raises instead of retrying).
+        RuntimeError: if the rip-up loop does not converge (the caller then
+            grows the floorplan and retries).
     """
     # term_access[net] is, per terminal, the list of candidate (xi, yi, M2)
-    # access nodes for that pin. term_via maps an off-track access node to the
-    # actual on-pin Via1 position (via_x, via_y); the emitter jogs it back to the
-    # track. term_land maps an on-track access node to its pin-aware Metal1 landing.
+    # access nodes for that pin. term_via maps an off-track terminal candidate to
+    # the actual on-pin Via1 position (via_x, via_y); the emitter jogs it back to
+    # the track. term_land maps an on-track candidate to its pin-aware Metal1
+    # landing. Both are keyed per (net, terminal index, node): different pins may
+    # legitimately share a *candidate* node, so a node-only key could silently
+    # attribute one pin's via geometry to another.
     term_access = {}
     term_via = {}
     term_land = {}
+    sole = {}   # node -> (net, inst, pin) for terminals with a single candidate
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     for net_name, net in routed_nets.items():
         # A power *pin* (vdd/vss) is reached on its wide rail track; key off the
         # pin name so a tie-off net's rail terminal also uses rail access.
         cands = []
-        for iname, pname in net.terminals:
+        for ti, (iname, pname) in enumerate(net.terminals):
             term = []
             for (xi, yi, via_x, via_y, land) in access_nodes(
                     placed[iname].pins[pname], cfg, pname in ('VDD', 'VSS')):
                 node = (xi, yi, M2)
                 term.append(node)
                 if (via_x, via_y) != (xi * x_pitch, yi * y_pitch):
-                    term_via[node] = (via_x, via_y)
+                    term_via[(net_name, ti, node)] = (via_x, via_y)
                 elif land is not None:
-                    term_land[node] = land
+                    term_land[(net_name, ti, node)] = land
+            if not term:
+                raise PinAccessError(f"pin {iname}.{pname} (net {net_name!r}) "
+                    "has no routable access point on or off the track grid")
+            # Two pins on different nets whose *only* candidate is the same node
+            # can never both be routed; fail with the pin names now instead of
+            # after a full non-converging rip-up run.
+            if len(term) == 1:
+                other = sole.get(term[0])
+                if other is not None and other[0] != net_name:
+                    raise PinAccessError(
+                        f"pins {other[1]}.{other[2]} (net {other[0]!r}) and "
+                        f"{iname}.{pname} (net {net_name!r}) share their only "
+                        "grid access node; both nets cannot be routed")
+                sole[term[0]] = (net_name, iname, pname)
             cands.append(term)
         term_access[net_name] = cands
 
@@ -956,54 +1096,110 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
         corridor = corridors[net_name]
         return lambda node: (node[0] // gcell_w, node[1] // gcell_h) in corridor
 
+    # Every port net gets a unique top-row escape column near the mean x of its
+    # pin candidates. Uniqueness removes pad contention by construction, and a
+    # single-goal escape search is directed (cheap). A shared full-width goal
+    # row also converges but pays a fan-out search per escape; per-net goal
+    # *windows* do not converge at all (overlapping nets fight for the same few
+    # top-row tracks instead of spreading).
+    escape_col = {}
+    if port_nets:
+        if len(port_nets) > xmax + 1:
+            raise PinAccessError(f"{len(port_nets)} port escapes need more "
+                f"top-row columns than the die has tracks ({xmax + 1})")
+        prefs = []
+        for port_name in sorted(port_nets):
+            xs = [n[0] for term in term_access[port_name] for n in term]
+            prefs.append((sum(xs) / len(xs), port_name))
+        prefs.sort()
+        prev = -1
+        for k, (pref, port_name) in enumerate(prefs):
+            hi = xmax - (len(prefs) - 1 - k)   # room for the ports right of us
+            prev = escape_col[port_name] = min(max(prev + 1, round(pref)), hi)
+
     history = {}          # node -> accumulated historical-congestion cost
     occupancy = {}        # node -> number of nets currently using it
     node_nets = {}        # node -> set(net)
-    routes = {}           # net_name -> _Route
+    routes = {}           # net -> {segment key: _Seg}
+    net_use = {}          # net -> {node: number of the net's segments using it}
     port_escape = {}      # port net -> x track of its top-edge Metal4 pad (or None)
     penalty = [0.5]       # present-congestion penalty, raised each rip-up pass
+    adj = _grid_adjacency(cfg, xmax)   # static per run; hoisted out of A*
 
-    def route_one(net_name, allowed):
-        terms = term_access[net_name]
-        own = set()
+    # Fixed 2-pin decomposition: each net's terminals are spanned by an MST
+    # (over first-candidate positions), and every MST edge is an independently
+    # routable -- and independently rip-up-able -- segment. Segment keys per
+    # net: ('t', k) for MST edge k, 'seat' for a 1-terminal net's access node,
+    # 'ext' for the min-area extensions, 'esc' for the port escape.
+    topo = {net_name: _mst_edges([term[0][:2] for term in term_access[net_name]])
+        for net_name in routed_nets}
 
-        def node_cost(node):
-            base = history.get(node, 0.0)
-            if node in own:
+    def make_node_cost(net_name):
+        # A node used by this net's *other* segments costs only history, so
+        # segments share track (Steiner-like reuse); foreign occupancy pays
+        # the present-congestion penalty.
+        own = net_use[net_name]
+        def node_cost(node, _hist=history.get, _occ=occupancy.get, _own=own):
+            base = _hist(node, 0.0)
+            if node in _own:
                 return base
-            return base + penalty[0] * occupancy.get(node, 0)
+            return base + penalty[0] * _occ(node, 0)
+        return node_cost
 
-        edges, term_m2, tree = [], [], set()
-        if len(terms) == 1:
-            # 1-terminal port: nothing to wire together, just seat the access
-            # node so the escape stack below can lift it to Metal4.
-            if not terms[0]:
-                return None
+    def route_seg(net_name, key, allowed):
+        node_cost = make_node_cost(net_name)
+        terms = term_access[net_name]
+
+        if key == 'seat':
+            # 1-terminal port: seat the access node so 'esc' can lift it.
             node = terms[0][0]
-            tree.add(node); own = {node}; term_m2.append(node)
-            path = [node]
-        else:
-            path = _astar(terms[0], terms[1], cfg, xmax, node_cost, allowed)
-            if path is None:
-                return None
-            edges += list(zip(path, path[1:]))
-            tree.update(path); own = set(tree)
-            term_m2 += [path[0], path[-1]]
-        for term_idx in range(2, len(terms)):
-            path = _astar(tree, terms[term_idx], cfg, xmax, node_cost, allowed)
-            if path is None:
-                return None
-            edges += list(zip(path, path[1:]))
-            tree.update(path); own = set(tree)
-            term_m2.append(path[-1])
+            return _Seg((), frozenset((node,)), ((0, node),))
 
-        # Grow each per-track run to the min-area track span so its wire meets Metal
-        # min area. Doing it here (not at emit time) lets the rip-up loop negotiate
-        # any conflict the extension causes, instead of silently shorting a neighbor.
+        if isinstance(key, tuple):        # ('t', k): one MST edge, 2-pin A*
+            ti, tj = topo[net_name][key[1]]
+            path = (_astar(terms[ti], terms[tj], cfg, xmax, node_cost, allowed, adj)
+                or _astar(terms[ti], terms[tj], cfg, xmax, node_cost, None, adj))
+            if path is None:
+                # The full grid is connected and congestion only adds cost, so
+                # this means a terminal is unreachable -- permanent.
+                raise PinAccessError(f"net {net_name!r} could not be routed: a "
+                    "terminal is unreachable on the routing grid")
+            return _Seg(tuple(zip(path, path[1:])), frozenset(path),
+                ((ti, path[0]), (tj, path[-1])))
+
+        if key == 'esc':
+            # Port escape: lift the net to its reserved top-row Metal4 column,
+            # so its pin sits in the channel above the rows -- the parent then
+            # connects there, never over the interior. That edge interface is
+            # what keeps the block composable (a placement change can't drop a
+            # parent wire onto an internal net). vdd/vss go to the side straps.
+            tree = set(net_use[net_name])
+            ytop = cfg.y_track_max - 1
+            path = _astar(tree, [(escape_col[net_name], ytop, M4)],
+                cfg, xmax, node_cost, None, adj)
+            if path is None:   # blocked column: any top-row node will do
+                path = _astar(tree, [(x, ytop, M4) for x in range(xmax + 1)],
+                    cfg, xmax, node_cost, None, adj)
+            if path is None:   # last resort: interior pad on the first terminal
+                _ti, node = next(p for seg in routes[net_name].values()
+                    for p in seg.pairs)
+                xi, yi, _layer = node
+                stack = ((xi, yi, M2), (xi, yi, M3), (xi, yi, M4))
+                port_escape[net_name] = None
+                return _Seg(tuple(zip(stack, stack[1:])), frozenset(stack), ())
+            port_escape[net_name] = path[-1][0]   # x of the top-edge M4 pad
+            return _Seg(tuple(zip(path, path[1:])), frozenset(path), ())
+
+        # key == 'ext': grow each per-track run of the net to the min-area
+        # span (the escape, routed after this, is covered by the
+        # extend_min_area post-pass instead). Doing it inside the negotiation
+        # lets a conflicting extension be rerouted rather than silently
+        # shorting a neighbor.
         vert_runs, horiz_runs = {}, {}
-        for (xi, yi, layer) in tree:
+        for (xi, yi, layer) in net_use[net_name]:
             if layer in VERT: vert_runs.setdefault((layer, xi), set()).add(yi)
             elif layer in HORIZ: horiz_runs.setdefault((layer, yi), set()).add(xi)
+        ext_edges, ext_nodes = [], set()
 
         def grow(coords, make_node, lo_b, hi_b):
             run = sorted(coords)
@@ -1012,58 +1208,50 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
                 hi_ok, lo_ok = hi <= hi_b, lo >= lo_b
                 # When both sides are legal, grow toward the cheaper (less
                 # congested) one so the extension is least likely to conflict.
-                pick_hi = hi_ok and (not lo_ok or node_cost(make_node(hi)) <= node_cost(make_node(lo)))
+                pick_hi = hi_ok and (not lo_ok
+                    or node_cost(make_node(hi)) <= node_cost(make_node(lo)))
                 if pick_hi:
-                    edges.append((make_node(run[-1]), make_node(hi)))
-                    tree.add(make_node(hi)); run.append(hi)
+                    ext_edges.append((make_node(run[-1]), make_node(hi)))
+                    ext_nodes.add(make_node(hi)); run.append(hi)
                 elif lo_ok:
-                    edges.append((make_node(run[0]), make_node(lo)))
-                    tree.add(make_node(lo)); run.insert(0, lo)
+                    ext_edges.append((make_node(run[0]), make_node(lo)))
+                    ext_nodes.add(make_node(lo)); run.insert(0, lo)
                 else:
                     break
 
         # Default-arg capture (X/Y/L) freezes the loop vars into each lambda.
-        for (layer, xi), y_tracks in list(vert_runs.items()):
+        for (layer, xi), y_tracks in vert_runs.items():
             grow(y_tracks, lambda p, X=xi, L=layer: (X, p, L), 1, cfg.y_track_max - 1)
-        for (layer, yi), x_tracks in list(horiz_runs.items()):
+        for (layer, yi), x_tracks in horiz_runs.items():
             grow(x_tracks, lambda p, Y=yi, L=layer: (p, Y, L), 0, xmax)
+        return _Seg(tuple(ext_edges), frozenset(ext_nodes), ())
 
-        # Port escape: route the net up to the block's TOP edge and lift it to
-        # Metal4, so its pin sits in the channel above the rows -- the parent then
-        # connects there, never over the interior. That edge interface is what
-        # keeps the block composable (a placement change can't drop a parent wire
-        # onto an internal net). vdd/vss go to the side straps instead.
-        if net_name in port_nets:
-            ytop = cfg.y_track_max - 1
-            escape_path = _astar(tree, [(x, ytop, M4) for x in range(xmax + 1)],
-                                 cfg, xmax, node_cost, None)
-            if escape_path is not None:
-                edges += list(zip(escape_path, escape_path[1:]))
-                tree.update(escape_path)
-                port_escape[net_name] = escape_path[-1][0]   # x of top-edge M4 pad
-            else:   # fallback: lift the first terminal in place (interior pad)
-                xi, yi, _ = term_m2[0]
-                for a, b in (((xi, yi, M2), (xi, yi, M3)),
-                             ((xi, yi, M3), (xi, yi, M4))):
-                    edges.append((a, b)); tree.add(a); tree.add(b)
-                port_escape[net_name] = None
-        return _Route(edges, term_m2, tree)
+    def add_seg(net_name, key, seg):
+        routes[net_name][key] = seg
+        use = net_use[net_name]
+        for node in seg.nodes:
+            count = use.get(node, 0)
+            use[node] = count + 1
+            if count == 0:   # first segment of this net on the node
+                occupancy[node] = occupancy.get(node, 0) + 1
+                node_nets.setdefault(node, set()).add(net_name)
 
-    def add(net_name, route):
-        routes[net_name] = route
-        for node in route.tree:
-            occupancy[node] = occupancy.get(node, 0) + 1
-            node_nets.setdefault(node, set()).add(net_name)
-
-    def remove(net_name):
-        for node in routes.pop(net_name).tree:
-            occupancy[node] -= 1
-            node_nets[node].discard(net_name)
+    def remove_seg(net_name, key):
+        seg = routes[net_name].pop(key)
+        use = net_use[net_name]
+        for node in seg.nodes:
+            count = use[node] - 1
+            if count:
+                use[node] = count
+            else:
+                del use[node]
+                occupancy[node] -= 1
+                node_nets[node].discard(net_name)
 
     def conflicts():
         # A conflict is a node shared by >1 net, or two different nets on
         # spacing-violating neighbor nodes. Returns the offending nodes and the
-        # set of nets touching them (the nets to rip up and reroute).
+        # set of nets touching them (whose segments are then ripped up).
         nodes, bad_nets = set(), set()
         for node, count in occupancy.items():
             if count > 1:
@@ -1071,42 +1259,92 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
         for node, here in node_nets.items():
             if not here:
                 continue
-            for adj in _conflict_neighbors(node):
-                there = node_nets.get(adj)
+            for neighbor in _conflict_neighbors(node):
+                there = node_nets.get(neighbor)
                 if there and there - here:
-                    nodes.add(node); nodes.add(adj); bad_nets |= here | there
+                    nodes.add(node); nodes.add(neighbor); bad_nets |= here | there
         return nodes, bad_nets
 
-    def routed(net_name, allowed):
-        # route_one returns None when a net can't be realised in the corridor or on
-        # the full grid. Surface that as a convergence failure so place_and_route
-        # grows the floorplan and retries, instead of crashing in add() on a None.
-        route = route_one(net_name, allowed) or route_one(net_name, None)
-        if route is None:
-            raise RuntimeError(f"net {net_name!r} could not be routed")
-        return route
-
-    # Initial pass: route every net once in its corridor (fall back to the grid).
+    # Initial pass: route every net's segments once in its corridor (each
+    # segment falls back to the full grid if the corridor is blocked).
     for net_name in routed_nets:
-        add(net_name, routed(net_name, corridor_of(net_name)))
+        routes[net_name] = {}
+        net_use[net_name] = {}
+        allowed = corridor_of(net_name)
+        if len(term_access[net_name]) == 1:
+            add_seg(net_name, 'seat', route_seg(net_name, 'seat', allowed))
+        for k in range(len(topo[net_name])):
+            add_seg(net_name, ('t', k), route_seg(net_name, ('t', k), allowed))
+        add_seg(net_name, 'ext', route_seg(net_name, 'ext', allowed))
+        if net_name in port_nets:
+            add_seg(net_name, 'esc', route_seg(net_name, 'esc', allowed))
 
-    # Incremental negotiated-congestion rip-up.
+    # Incremental negotiated-congestion rip-up at SEGMENT granularity: only the
+    # segments whose nodes touch a conflict are rerouted, so a conflict on a
+    # high-fan-out net redoes one 2-pin connection, not the whole tree. A moved
+    # segment invalidates the net's min-area extensions and the escape's
+    # attachment point, so those are recomputed with it (cheap: 'ext' needs no
+    # search, 'esc' one directed search).
     for iteration in range(3000):
         bad_nodes, bad_nets = conflicts()
         if not bad_nodes:
-            routing = {net_name: (route.edges, route.term_m2)
-                for net_name, route in routes.items()}
-            return routing, port_escape, term_via, term_land
+            break
         for node in bad_nodes:
             history[node] = history.get(node, 0.0) + 1.0
         penalty[0] = min(penalty[0] * 1.05, 50.0)
         # Once congestion has built up, let stubborn nets leave their corridor.
         allow_escape = iteration > 200
         for net_name in sorted(bad_nets):
-            remove(net_name)
+            segs = routes[net_name]
+            redo = {key for key, seg in segs.items()
+                if not bad_nodes.isdisjoint(seg.nodes)}
+            if redo - {'esc'}:   # net structure moved: ext + esc must follow
+                redo |= {'ext', 'esc'} & segs.keys()
+            order = [key for key in segs if key in redo]   # seat/topo, ext, esc
+            for key in order:
+                remove_seg(net_name, key)
             allowed = None if allow_escape else corridor_of(net_name)
-            add(net_name, routed(net_name, allowed))
-    raise RuntimeError(f"router did not converge: {len(bad_nodes)} conflict nodes")
+            for key in order:
+                add_seg(net_name, key, route_seg(net_name, key, allowed))
+    else:
+        raise RuntimeError(
+            f"router did not converge: {len(bad_nodes)} conflict nodes")
+
+    # Consolidate the per-(net, terminal) via/landing overrides down to the
+    # access nodes the router actually picked (the segments' terminal pairs),
+    # per net. Two terminals of one net may land on the same node only if they
+    # agree on the via geometry -- otherwise the emitter could realise one
+    # pin's access but not the other's.
+    routing, net_via, net_land = {}, {}, {}
+    for net_name, segs in routes.items():
+        edges, pairs = [], []
+        for seg in segs.values():
+            edges.extend(seg.edges)
+            pairs.extend(seg.pairs)
+        routing[net_name] = (edges, [node for _ti, node in pairs])
+        tv = net_via.setdefault(net_name, {})
+        tl = net_land.setdefault(net_name, {})
+        seen = {}   # node -> terminal index that claimed it
+        for ti, node in pairs:
+            via = term_via.get((net_name, ti, node))
+            if node in seen:
+                if (seen[node] != ti
+                        and via != term_via.get((net_name, seen[node], node))):
+                    terms = routed_nets[net_name].terminals
+                    a, b = terms[seen[node]], terms[ti]
+                    raise PinAccessError(
+                        f"net {net_name!r}: pins {a[0]}.{a[1]} and "
+                        f"{b[0]}.{b[1]} landed on one grid node with "
+                        "different via geometry")
+                continue
+            seen[node] = ti
+            if via is not None:
+                tv[node] = via
+            else:
+                land = term_land.get((net_name, ti, node))
+                if land is not None:
+                    tl[node] = land
+    return routing, port_escape, net_via, net_land
 
 
 # --- geometry emission + top-level orchestration --------------------------
@@ -1127,10 +1365,11 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
         edges: the net's routed edges, each a pair of grid nodes.
         term_m2: the net's Via1 access nodes (terminal landings on Metal2).
         cfg: the routing grid + DRC geometry (:class:`GridConfig`).
-        term_via: ``{node: (via_x, via_y)}`` overriding off-track terminals to an
-            on-pin Via1 position the emitter jogs back to the track.
-        term_land: ``{node: rect}`` giving the pin-aware Metal1 landing for an
-            on-track terminal.
+        term_via: this net's ``{node: (via_x, via_y)}`` overrides (from
+            :func:`route_nets`), moving an off-track terminal's Via1 onto the pin;
+            the emitter jogs it back to the track.
+        term_land: this net's ``{node: rect}`` pin-aware Metal1 landings for
+            on-track terminals.
     """
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     metal_layer = {M2: stack.m2, M3: stack.m3, M4: stack.m4, M5: stack.m5}
@@ -1191,7 +1430,9 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
             xi * x_pitch - cfg.via_half, yi * y_pitch - cfg.via_half,
             xi * x_pitch + cfg.via_half, yi * y_pitch + cfg.via_half))
     term_via = term_via or {}
-    for node in term_m2:            # Via1 from the Metal1 pin up to Metal2
+    # dict.fromkeys: two terminals of one net may share an access node; emit its
+    # via stack once.
+    for node in dict.fromkeys(term_m2):   # Via1 from the Metal1 pin up to Metal2
         xi, yi, _layer = node
         if node in term_via:
             # Off-track pin (no track lands inside it): drop the via on the pin at
@@ -1243,6 +1484,22 @@ def place_and_route(cell, stack, pin_rects, is_leaf, cfg):
     """
     cfg = replace(cfg)   # private copy: the floorplan loop below mutates cfg.n_rows
     cells, nets = extract(cell, pin_rects, is_leaf)
+
+    # Rail abutment shorts every VDD rail in the block together (likewise VSS),
+    # so the engine supports exactly one net per supply pin -- and it must carry
+    # the conventional name, since supply handling is keyed off 'vdd'/'vss'.
+    # Anything else would produce a layout that silently merges nets.
+    for pname, expected in (('VDD', 'vdd'), ('VSS', 'vss')):
+        domains = sorted({net_name for net_name, net in nets.items()
+            if any(p == pname for _i, p in net.terminals)})
+        if len(domains) > 1:
+            raise ValueError(f"nets {domains} all drive {pname} pins: rail "
+                "abutment would short them together; the engine supports only "
+                "one supply domain")
+        if domains and domains[0] != expected:
+            raise ValueError(f"the net on the {pname} pins is named "
+                f"{domains[0]!r}; the engine requires it to be {expected!r}")
+
     signal_nets = {net_name: net for net_name, net in nets.items()
         if len(net.terminals) >= 2 and net_name not in ('vdd', 'vss')}
     # A signal pin tied to a supply (e.g. an inactive preset/clear input held
@@ -1284,12 +1541,17 @@ def place_and_route(cell, stack, pin_rects, is_leaf, cfg):
         cfg.n_rows = nrows
         order = order_cells_sa(cells, nets, cfg)
         placed, packed_w = place_rows(cells, order, cfg)
-        die_w = -(-max(round(core_area / (nrows * row_height)), packed_w) // x_pitch) * x_pitch
+        # Die width: the floorplan target or the widest packed row -- or, like a
+        # pad-limited chip, the top-edge port pads (one escape column each).
+        die_w = -(-max(round(core_area / (nrows * row_height)), packed_w,
+            (len(port_nets) - 1) * x_pitch) // x_pitch) * x_pitch
         xmax = die_w // x_pitch
         try:
             routing, port_escape, term_via, term_land = route_nets(
                 signal_nets, placed, cfg, xmax, port_nets)
             break
+        except PinAccessError:
+            raise   # permanent: more rows cannot make a pin reachable
         except RuntimeError:
             if i == 4:
                 raise
@@ -1304,7 +1566,8 @@ def place_and_route(cell, stack, pin_rects, is_leaf, cfg):
     # Emit routing directly with concrete coordinates (no constraint solver, so
     # it scales to hundreds of nets).
     for net_name, (edges, term_m2) in routing.items():
-        emit_net_direct(layout, stack, edges, term_m2, cfg, term_via, term_land)
+        emit_net_direct(layout, stack, edges, term_m2, cfg,
+            term_via.get(net_name), term_land.get(net_name))
 
     # Pad every row's rail out to the die width so the block is a flush rectangle
     # (like filler cells) and the right power strap ties into every rail.

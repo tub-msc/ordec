@@ -55,7 +55,9 @@ Placement
    transformed to match.
 #. **Grow rows on failure** — the row count starts near a square aspect ratio and is
    incremented until the router succeeds (the Metal3 spacing rule limits how many nets
-   fit in one channel).
+   fit in one channel). Only congestion triggers a retry: a *permanent* failure — a pin
+   with no reachable access point (``PinAccessError``) — is raised immediately, since
+   more rows cannot fix it.
 
 Routing: negotiated congestion
 ------------------------------
@@ -81,8 +83,9 @@ when a net cannot be realised there), which keeps the maze search local as block
   spacing (a horizontal wire one x-step apart, a vertical wire one y-step apart). Adjacent
   *parallel* tracks are a full pitch apart and legal, so they are deliberately not
   flagged. The penalty accumulates as *historical* congestion, so nets that keep colliding
-  are progressively pushed apart until the routing is legal. The net order is rotated each
-  pass to stop two nets oscillating over one resource.
+  are progressively pushed apart until the routing is legal; that growing history cost on
+  the contested nodes is what stops two nets oscillating over one resource (the conflicting
+  nets themselves are rerouted in a deterministic sorted order each pass).
 
 Because the spacing rules are encoded directly in the conflict model, a converged routing
 is DRC-clean by construction rather than clean by luck.
@@ -124,15 +127,25 @@ What separates it from a production flow is scale and scope, not correctness:
 * **Scale** — it targets blocks of tens of cells, where production tools handle millions.
   At that scale modern placement is *analytical* (electrostatics/quadratic) rather than
   annealing, and the global/detailed routing split — which this engine mirrors in miniature
-  with gcell corridors — relies on far more elaborate congestion models.
+  with gcell corridors — relies on far more elaborate congestion models. Measured envelope
+  (DFF+INV benchmark, single core): ~100 cells routes in ~2 s, ~200 cells in ~9 s,
+  ~250 cells in ~24 s. The two structural choices that carry this scaling are the MST
+  2-pin decomposition with segment-level rip-up (a conflict on a high-fan-out net
+  reroutes one 2-pin connection, not the whole tree) and the per-port reserved escape
+  columns (single-goal, contention-free escape searches).
 * **Timing** — production P&R is timing-driven (STA-guided placement, buffering,
   useful-skew clock-tree synthesis); this engine optimises wirelength and leaves timing
   closure to the designer.
 * **Design rules** — it encodes the handful of rules that actually constrain this
   geometry (via enclosure, min area, M2/M3 spacing) directly into the router, so the
   result is correct by construction; full sign-off DRC is hundreds of rules
-  (parallel-run-length tables, end-of-line, cut spacing, min-step, antenna…), for which
-  the KLayout deck remains the authority.
+  (parallel-run-length tables, end-of-line, cut spacing, min-step…), for which
+  the KLayout deck remains the authority. Note the scope of that sign-off: the PDK's
+  **antenna** and **density** rules live in separate KLayout decks that
+  ``ihp130.run_drc`` does not run, so "DRC-clean" here excludes them. Density is
+  intrinsically a chip-assembly concern (checked in 200 µm windows, larger than these
+  blocks), but antenna ratios on long upper-metal routes into gate pins are exactly the
+  pattern this router produces — check them at top level before tapeout.
 * **Out of scope by design** — clock-tree synthesis, power planning beyond rail abutment,
   antenna fixing, fill, multi-Vt and deep (5–15 layer) routing.
 

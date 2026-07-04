@@ -20,6 +20,9 @@ rather than being tuned to one netlist:
                    output is off-track, exercising off-track pin access).
   * TiedReset   -- n flip-flops with RESET_B tied to vdd, exercising the engine's
                    signal-pin-tied-to-a-supply routing path (a tie net to the rail).
+  * PairChain   -- a chain of composite (non-foundry) sub-cells, exercising the
+                   hierarchical flatten path: composite expansion, internal-net
+                   uniquification and port-to-parent rewiring.
 
 These are structural stress tests (LVS checks connectivity, not logical
 function), so e.g. the chain's logic value is irrelevant. (They caught a real
@@ -27,10 +30,16 @@ bug: a supply whose boustrophedon rows share a single rail got no strap, leaving
 its port floating.)
 """
 
+import os
+import pytest
+
+if "ORDEC_PDK_IHP_SG13G2" not in os.environ:
+    pytest.skip("ORDEC_PDK_IHP_SG13G2 not set", allow_module_level=True)
+
 from ordec.core import *
 from ordec.lib import ihp130
+from ordec.lib.ihp130_stdcells import extlib
 from ordec.layout.ihp_pnr import place_and_route
-from ordec.examples.sar_adc.stdcell_lib import extlib
 
 
 def test_invchain_pnr_drc_lvs():
@@ -71,7 +80,7 @@ def test_invchain_pnr_drc_lvs():
     for n in (4, 8, 16):
         c = InvChain(n=n)
         assert ihp130.run_drc(c.layout, use_tempdir=True).summary() == {}
-        assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True)
+        assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True).clean()
 
 
 def test_dffarray_pnr_drc_lvs():
@@ -118,7 +127,7 @@ def test_dffarray_pnr_drc_lvs():
     for n in (4, 8):
         c = DffArray(n=n)
         assert ihp130.run_drc(c.layout, use_tempdir=True).summary() == {}
-        assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True)
+        assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True).clean()
 
 
 def test_crossbar_pnr_drc_lvs():
@@ -162,7 +171,7 @@ def test_crossbar_pnr_drc_lvs():
     for n in (4, 8):
         c = Crossbar(n=n)
         assert ihp130.run_drc(c.layout, use_tempdir=True).summary() == {}
-        assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True)
+        assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True).clean()
 
 
 def test_ripple_adder_pnr_drc_lvs():
@@ -241,7 +250,7 @@ def test_ripple_adder_pnr_drc_lvs():
     for n in (2, 4):
         c = RippleAdder(n=n)
         assert ihp130.run_drc(c.layout, use_tempdir=True).summary() == {}
-        assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True)
+        assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True).clean()
 
 
 def test_tied_reset_pnr_drc_lvs():
@@ -286,4 +295,66 @@ def test_tied_reset_pnr_drc_lvs():
     for n in (4, 8):
         c = TiedReset(n=n)
         assert ihp130.run_drc(c.layout, use_tempdir=True).summary() == {}
-        assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True)
+        assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True).clean()
+
+
+def test_hierarchical_pnr_drc_lvs():
+    """A netlist with a level of hierarchy: the chain instantiates composite
+    (non-foundry) InvPair sub-cells, so flatten must expand each composite,
+    uniquify its internal net and rewire its ports to the parent's nets.
+    DRC/LVS-clean for n = 3."""
+    Inv = extlib["sg13g2_inv_1"]
+
+    cell InvPair:
+        """Two inverters in series (a composite, non-foundry sub-cell)."""
+        viewgen symbol -> Symbol:
+            input a:   .align=West
+            output y:  .align=East
+            inout vdd: .align=North
+            inout vss: .align=South
+
+        viewgen schematic -> Schematic:
+            port a:   .align=East; .pos=(0, 10)
+            port y:   .align=West; .pos=(30, 10)
+            port vdd: .align=East; .pos=(0, 18)
+            port vss: .align=East; .pos=(0, 2)
+            net mid
+            Inv i0:
+                .pos = (10, 10)
+                .A -- a; .Y -- mid; .VDD -- vdd; .VSS -- vss
+            Inv i1:
+                .pos = (20, 10)
+                .A -- mid; .Y -- y; .VDD -- vdd; .VSS -- vss
+
+    cell PairChain:
+        """n InvPairs in series -- one level of hierarchy above the leaves."""
+        n = Parameter(int, default=3)
+
+        viewgen symbol -> Symbol:
+            input a:   .align=West
+            output y:  .align=East
+            inout vdd: .align=North
+            inout vss: .align=South
+
+        viewgen schematic -> Schematic:
+            port a:   .align=East; .pos=(0, 10)
+            port y:   .align=West; .pos=(20 + 10 * self.n, 10)
+            port vdd: .align=East; .pos=(0, 18)
+            port vss: .align=East; .pos=(0, 2)
+            path pr, nd
+            for i in range(self.n - 1):
+                net nd[i]
+            for i in range(self.n):
+                src = a if i == 0 else nd[i - 1]
+                dst = y if i == self.n - 1 else nd[i]
+                InvPair pr[i]:
+                    .pos = (10 + 10 * i, 10)
+                    .a -- src; .y -- dst
+                    .vdd -- vdd; .vss -- vss
+
+        viewgen layout -> Layout:
+            return place_and_route(self)
+
+    c = PairChain(n=3)
+    assert ihp130.run_drc(c.layout, use_tempdir=True).summary() == {}
+    assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True).clean()

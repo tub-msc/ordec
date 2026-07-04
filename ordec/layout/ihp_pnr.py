@@ -37,6 +37,7 @@ def lef_pin_rects(macro_name: str) -> dict:
     rects = {}
     in_macro = pin = None
     on_metal1 = False
+    upper = set()   # non-Metal1 layers in the macro's PIN or OBS geometry
     for line in lef.read_text().splitlines():
         tokens = line.split()
         if not tokens:
@@ -47,7 +48,9 @@ def lef_pin_rects(macro_name: str) -> dict:
             pin = tokens[1]; rects[pin] = []; on_metal1 = False
         elif in_macro and tokens[0] == "END" and len(tokens) > 1 and tokens[1] == macro_name:
             break
-        elif in_macro and pin is not None and tokens[0] == "LAYER":
+        elif in_macro and tokens[0] == "LAYER":
+            if tokens[1] != "Metal1":
+                upper.add(tokens[1])
             on_metal1 = (tokens[1] == "Metal1")
         elif in_macro and pin is not None and tokens[0] == "END" and len(tokens) > 1 \
                 and tokens[1] == pin:
@@ -55,6 +58,14 @@ def lef_pin_rects(macro_name: str) -> dict:
         elif in_macro and pin is not None and on_metal1 and tokens[0] == "RECT":
             x0, y0, x1, y1 = (round(float(v) * 1000) for v in tokens[1:5])
             rects[pin].append((x0, y0, x1, y1))
+    if upper:
+        # The engine routes Metal2..Metal5 freely over the placed cells, so a
+        # cell with its own geometry up there (e.g. sg13g2_sdfbbp_1's Metal2/Via1
+        # pin and obstruction shapes) would be silently shorted or violated.
+        raise ValueError(
+            f"{macro_name}: LEF pin/obstruction geometry on {sorted(upper)}; "
+            "the P&R engine requires Metal1-only leaf cells (it routes on the "
+            "metals above them)")
     return rects
 
 

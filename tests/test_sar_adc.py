@@ -9,13 +9,18 @@ IHP SG13G2 models, the digital SAR controller in isolation, and DRC/LVS of the
 inverter standard-cell layout.
 """
 
+import os
 import pytest
+
+if "ORDEC_PDK_IHP_SG13G2" not in os.environ:
+    pytest.skip("ORDEC_PDK_IHP_SG13G2 not set", allow_module_level=True)
+
 import ordec.importer
 from ordec.core import *
 from ordec.lib import ihp130
+from ordec.lib.ihp130_stdcells import extlib
 from ordec.examples.sar_adc import (
     tgate, comparator, cdac, sar_logic, sar_adc, tb)
-from ordec.examples.sar_adc.stdcell_lib import extlib
 
 
 def _bit(v):
@@ -93,7 +98,7 @@ def test_stdcell_layout_drc_clean(cellname):
 @pytest.mark.parametrize("cellname", LAID_OUT_CELLS)
 def test_stdcell_layout_lvs_clean(cellname):
     cell = getattr(tgate, cellname)()
-    assert ihp130.run_lvs(cell.layout, cell.symbol, use_tempdir=True)
+    assert ihp130.run_lvs(cell.layout, cell.symbol, use_tempdir=True).clean()
 
 
 def test_comparator_layout_drc_clean():
@@ -104,7 +109,7 @@ def test_comparator_layout_drc_clean():
 
 def test_comparator_layout_lvs_clean():
     c = comparator.Comparator()
-    assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True)
+    assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True).clean()
 
 
 def test_cdac_layout_drc_clean():
@@ -115,7 +120,7 @@ def test_cdac_layout_drc_clean():
 
 def test_cdac_layout_lvs_clean():
     c = cdac.CapDac()
-    assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True)
+    assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True).clean()
 
 
 def test_sar_logic_layout_drc_clean():
@@ -126,7 +131,7 @@ def test_sar_logic_layout_drc_clean():
 
 def test_sar_logic_layout_lvs_clean():
     c = sar_logic.SarLogic()
-    assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True)
+    assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True).clean()
 
 
 def test_sar_adc_layout_drc_clean():
@@ -141,4 +146,4 @@ def test_sar_adc_layout_lvs_clean():
     Metal4, supplies on the power-ring straps), so the parent routes only in the
     channels -- the property that keeps this robust to placement changes."""
     c = sar_adc.SarAdc()
-    assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True)
+    assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True).clean()
