@@ -57,6 +57,15 @@ This is load-bearing for the LVS viewer: an ``LvsReport`` references the compare
 
 (Arbitrary expression evaluation is intentional and consistent with the security model: it is only reachable on an authenticated WebSocket, and the authenticated user may execute arbitrary code by design.)
 
+Version-matched documentation links
+-----------------------------------
+
+The landing page (``web/index.html``) links into the documentation on Read the Docs. Because a given ORDeC install may be an older release, these links must point at the docs slug matching the *installed* version rather than always at ``latest``.
+
+The slug is computed server-side by ``doc_url()`` in ``ordec/version.py`` (``vX.Y.Z`` for releases, ``latest`` for development/unknown versions) and served as ``docs_url`` alongside ``version`` by ``/api/version``. In the markup, each documentation link carries a ``data-docs-page`` attribute naming the target page relative to the docs root (e.g. ``webui.html``; empty means the docs root) and has **no** static ``href``. The inline script rewrites every ``a[data-docs-page]`` on load, setting ``href = docs_url + dataset.docsPage``.
+
+Keeping the links href-less makes ``doc_url()`` the single source of truth for the documentation URL: there is no hard-coded URL in the markup to drift out of sync. The trade-off is that the links only become clickable once ``/api/version`` has been fetched (fine for a page served by that same backend).
+
 The view event bus
 ------------------
 

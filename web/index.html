@@ -201,14 +201,21 @@
       <li><a href="/app.html#course=intro">Introduction to ORDeC <span class="desc">Game-like course: tune an RC filter, build a NAND2 gate and route an inverter layout.</span></a></li>
     </ul>
 
+    <!--
+      Documentation links carry no static href. The data-docs-page attribute
+      names the target page relative to the docs root (empty = docs root); the
+      script below turns it into a version-matched href once /api/version is
+      fetched. This keeps the docs URL a single source of truth (the server's
+      doc_url()) instead of duplicating it in the markup.
+    -->
     <div class="local-hint">
-      Working on a larger project? Use <a href="https://ordec.readthedocs.io/en/latest/webui.html">local mode</a>
+      Working on a larger project? Use <a data-docs-page="webui.html">local mode</a>
       to store your designs as files on disk and edit them with your preferred editor.
     </div>
 
     <footer>
       <span id="version"></span>
-      <a href="https://ordec.readthedocs.io">Documentation</a>
+      <a data-docs-page="">Documentation</a>
     </footer>
 
     <script>
@@ -230,11 +237,17 @@
         updateToggleBtn(nowDark);
       });
 
-      // Version info
+      // Version info; documentation links get their href set to the
+      // version-matched URL (see the data-docs-page comment above).
       fetch('/api/version')
         .then(r => r.json())
-        .then(data => { document.querySelector('#version').textContent = data['version']; })
-        .catch(() => {});
+        .then(data => {
+          document.querySelector('#version').textContent = data['version'];
+          document.querySelectorAll('a[data-docs-page]').forEach(a => {
+            a.href = data['docs_url'] + a.dataset.docsPage;
+          });
+        })
+        .catch(err => console.error('Failed to fetch /api/version:', err));
     </script>
     <script type="module" src="/src/auth.js"></script>
   </body>

@@ -88,7 +88,7 @@ from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosedOK
 
 from . import importer, language
-from .version import version
+from .version import version, doc_url
 from .core import Cell, generate, generate_func, SubgraphRoot
 from .language import compile_ord
 from .extlibrary import ExtLibrary
@@ -737,7 +737,7 @@ class StaticHandler:
         return build_response(data=data.encode('utf8'), mime_type='application/json')
 
     def process_request_version(self):
-        data = json.dumps({'version': version})
+        data = json.dumps({'version': version, 'docs_url': doc_url()})
         return build_response(data=data.encode('utf8'), mime_type='application/json')
 
     def process_request_schematic_css(self):

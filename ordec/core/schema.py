@@ -1211,18 +1211,34 @@ class ReportElement(Node):
 
 @public
 class Markdown(ReportElement):
-    """Markdown text rendered as HTML in the web interface."""
+    """
+    Markdown text rendered as HTML in the web interface.
+
+    Links using the 'docs:' pseudo-scheme, e.g. [WebUI](docs:webui.html),
+    point to the ORDeC documentation matching the installed version.
+    """
     markdown = Attr(str, optional=False)
 
     def element_webdata(self) -> dict:
         import markdown2
+        from ..version import doc_url
+        base = doc_url()
+        # Rewrite 'docs:' pseudo-scheme links to version-matched documentation
+        # URLs. This must happen before rendering, as markdown2's safe_mode
+        # replaces links with unknown URL schemes by '#'.
+        md = self.markdown.replace('](docs:', f']({base}')
+        html = markdown2.markdown(
+            md,
+            extras=["fenced-code-blocks", "code-friendly", "tables"],
+            safe_mode="escape",
+        )
+        # target=_blank so that following a documentation link does not
+        # navigate away from the web app.
+        html = html.replace(f'href="{base}',
+            f'target="_blank" rel="noopener" href="{base}')
         return {
             "element_type": "markdown",
-            "html": markdown2.markdown(
-                self.markdown,
-                extras=["fenced-code-blocks", "code-friendly", "tables"],
-                safe_mode="escape",
-            ),
+            "html": html,
         }
 
 
