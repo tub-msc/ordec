@@ -46,8 +46,10 @@ Placement
 #. **Order** (``order_cells_sa``) — cells are ordered to minimise wirelength by
    *simulated annealing*, seeded from an iterated-barycenter order. The cost is
    half-perimeter wirelength with the vertical span weighted 2× (a net that crosses rows
-   is far harder to route than one that stays within a row). A fixed seed keeps the
-   result deterministic.
+   is far harder to route than one that stays within a row). Moves are scored
+   *incrementally*, as production annealers do: a swap re-measures only the nets touching
+   the two swapped cells, with a periodic exact re-fold bounding the drift. A fixed seed
+   keeps the result deterministic.
 #. **Fold into rows** (``place_rows``) — the one-dimensional order is folded into *N*
    abutted rows. Odd rows are *mirrored* (D4.MX) *and reversed* — a boustrophedon, or
    snake: mirroring lets adjacent rows share a vdd/vss rail (the standard flipped-row
@@ -68,13 +70,17 @@ first gives each net a *corridor* of grid cells, balancing congestion on a cheap
 grid; detailed routing then stays inside that corridor (falling back to the full grid only
 when a net cannot be realised there), which keeps the maze search local as blocks grow:
 
-* Each net is routed with **A\*** (``_astar``) on the track grid: vertical layers
-  (Metal2, Metal4) step in y, horizontal layers (Metal3, Metal5) step in x, and a via
-  cost switches layer (Metal4/Metal5 are enabled by ``use_upper``, doubling routing
-  capacity; Metal2/Metal3 alone otherwise). Multi-terminal nets grow a tree (connect
-  terminal 1→2, then each remaining terminal to the tree). Vertical wires may pass
-  *through* a rail track to reach another row; vias and horizontal wires sit only on
-  signal tracks.
+* Multi-terminal nets are decomposed into independent 2-pin *segments* along a minimum
+  spanning tree over their terminals. Each segment first tries the two one-bend
+  **L patterns** on conflict-free nodes (a few dict probes instead of a maze search, and
+  in the uncongested initial pass almost every segment is a clean L); only a blocked
+  segment falls back to **A\*** (``_astar``) on the track
+  grid: vertical layers (Metal2, Metal4) step in y, horizontal layers (Metal3, Metal5)
+  step in x, and a via cost switches layer (Metal4/Metal5 are enabled by ``use_upper``,
+  doubling routing capacity; Metal2/Metal3 alone otherwise). The A\* heuristic is
+  *via-aware* — it adds the provable minimum number of layer changes to the distance
+  bound, which prunes most off-layer exploration. Vertical wires may pass *through* a
+  rail track to reach another row; vias and horizontal wires sit only on signal tracks.
 * After the initial routing, each **conflict** raises the cost of the offending grid
   nodes and *only the nets touching it* are ripped up and rerouted — incremental rip-up,
   a handful of nets per pass rather than all of them, is what lets this scale. A conflict
@@ -85,7 +91,10 @@ when a net cannot be realised there), which keeps the maze search local as block
   flagged. The penalty accumulates as *historical* congestion, so nets that keep colliding
   are progressively pushed apart until the routing is legal; that growing history cost on
   the contested nodes is what stops two nets oscillating over one resource (the conflicting
-  nets themselves are rerouted in a deterministic sorted order each pass).
+  nets themselves are rerouted in a deterministic sorted order each pass). The conflict
+  sets are maintained *incrementally* as segments are placed and ripped up, so a
+  negotiation pass costs proportional to the conflicts it fixes, not to the total
+  wirelength routed so far.
 
 Because the spacing rules are encoded directly in the conflict model, a converged routing
 is DRC-clean by construction rather than clean by luck.
@@ -128,11 +137,13 @@ What separates it from a production flow is scale and scope, not correctness:
   At that scale modern placement is *analytical* (electrostatics/quadratic) rather than
   annealing, and the global/detailed routing split — which this engine mirrors in miniature
   with gcell corridors — relies on far more elaborate congestion models. Measured envelope
-  (DFF+INV benchmark, single core): ~100 cells routes in ~2 s, ~200 cells in ~9 s,
-  ~250 cells in ~24 s. The two structural choices that carry this scaling are the MST
+  (DFF+INV benchmark, single core): ~100 cells routes in well under a second, ~200 cells
+  in ~2 s, ~250 cells in ~4 s. The structural choices that carry this scaling are the MST
   2-pin decomposition with segment-level rip-up (a conflict on a high-fan-out net
-  reroutes one 2-pin connection, not the whole tree) and the per-port reserved escape
-  columns (single-goal, contention-free escape searches).
+  reroutes one 2-pin connection, not the whole tree), the L-pattern fast path with
+  incremental conflict bookkeeping (the maze search and the congestion scan both stay
+  proportional to the contested part of the design, not to all of it), and the per-port
+  reserved escape columns (single-goal, contention-free escape searches).
 * **Timing** — production P&R is timing-driven (STA-guided placement, buffering,
   useful-skew clock-tree synthesis); this engine optimises wirelength and leaves timing
   closure to the designer.

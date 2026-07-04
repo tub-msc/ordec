@@ -6,8 +6,8 @@ A gridded standard-cell place-and-route engine.
 
 It follows the structure of a modern detailed flow: row-based placement of
 standard cells, then **negotiated-congestion maze routing** on a per-layer track
-grid -- place cells in rows, then rip-up-and-reroute nets with A* until the
-routing is congestion-free.
+grid -- place cells in rows, then rip-up-and-reroute nets (an L-pattern fast
+path first, A* where contested) until the routing is congestion-free.
 
 The engine is PDK-agnostic: every pitch and DRC dimension arrives through the
 :class:`GridConfig` and every layer through the :class:`RoutingStack`, so
@@ -264,16 +264,28 @@ def order_cells(cells, nets, iters=30):
     order = sorted(cells)
     sig_insts = [[t[0] for t in n.terminals] for n in nets.values()
         if n.name not in ('vdd', 'vss') and len(n.terminals) >= 2]
+    # Inverted index: per cell, (net id, occurrences) for the nets it is on.
+    # The sum over a cell's co-members is the net's position sum minus the
+    # cell's own contribution, so a pass needs only the per-net sums (computed
+    # once) rather than a membership scan of every net per cell -- O(sum of
+    # net degrees) instead of O(cells * nets * degree).
+    cell_nets = {name: [] for name in order}
+    for ni, insts in enumerate(sig_insts):
+        occurrences = {}
+        for inst in insts:
+            occurrences[inst] = occurrences.get(inst, 0) + 1
+        for inst, occ in occurrences.items():
+            cell_nets[inst].append((ni, occ))
+    net_len = [len(insts) for insts in sig_insts]
     for _ in range(iters):
         pos = {name: i for i, name in enumerate(order)}
+        net_sum = [sum(pos[inst] for inst in insts) for insts in sig_insts]
         barycenter = {}
         for name in order:
             total, count = 0.0, 0
-            for insts in sig_insts:
-                if name in insts:
-                    for other in insts:
-                        if other != name:
-                            total += pos[other]; count += 1
+            for ni, occ in cell_nets[name]:
+                total += net_sum[ni] - occ * pos[name]
+                count += net_len[ni] - occ
             barycenter[name] = total / count if count else pos[name]
         order = sorted(order, key=lambda n: (barycenter[n], n))
     return order
@@ -340,7 +352,7 @@ def _cell_centers(cells, order, cfg):
     return center
 
 
-def order_cells_sa(cells, nets, cfg, iters=6000, seed=1):
+def order_cells_sa(cells, nets, cfg, iters=6000, seed=1, resync=500):
     """Order cells by wirelength using simulated annealing -- the classic
     standard-cell placement method.
 
@@ -350,47 +362,102 @@ def order_cells_sa(cells, nets, cfg, iters=6000, seed=1):
     single row, or a netlist with no multi-terminal signal nets, skips annealing
     and returns the barycenter order directly.
 
+    A move is scored *incrementally*, as production annealers do: a swap
+    exchanges the two cells' scored positions and re-derives the bounding boxes
+    of just the nets touching them (a net holding both cells is unchanged), so
+    a move costs O(degree) instead of a full fold + every-net HPWL pass. Slot
+    positions drift from the true fold when unequal-width cells swap, so every
+    ``resync`` accepted moves the fold and every bbox are recomputed exactly and
+    the incumbent is re-scored against the best -- bounding the drift while
+    keeping the amortised move cost constant.
+
     Args:
         cells: ``{name: LeafCell}`` for the cells to order.
         nets: ``{name: NetInfo}`` giving the connectivity.
         cfg: the routing/floorplan :class:`GridConfig` (``n_rows`` sets the fold).
         iters: number of annealing moves.
         seed: RNG seed; fixed so the result is deterministic.
+        resync: accepted moves between exact re-folds (drift bound).
 
     Returns:
         The cell names as a wirelength-ordered list.
     """
-    sig_insts = [[t[0] for t in n.terminals] for n in nets.values()
+    net_members = [sorted({t[0] for t in n.terminals}) for n in nets.values()
         if n.name not in ('vdd', 'vss') and len(n.terminals) >= 2]
-    if cfg.n_rows == 1 or not sig_insts:
+    net_members = [members for members in net_members if len(members) >= 2]
+    if cfg.n_rows == 1 or not net_members:
         return order_cells(cells, nets)
+    membership = [frozenset(members) for members in net_members]
+    nets_of = {name: [] for name in cells}
+    for ni, members in enumerate(net_members):
+        for name in members:
+            nets_of[name].append(ni)
 
-    def hpwl(order):
+    def half_perim(box):
+        return (box[1] - box[0]) + 2 * (box[3] - box[2])
+
+    def full_state(order):
         center = _cell_centers(cells, order, cfg)
-        total = 0
-        for insts in sig_insts:
-            xs = [center[i][0] for i in insts]; ys = [center[i][1] for i in insts]
-            total += (max(xs) - min(xs)) + 2 * (max(ys) - min(ys))
-        return total
+        bbox = []
+        for members in net_members:
+            xs = [center[m][0] for m in members]
+            ys = [center[m][1] for m in members]
+            bbox.append((min(xs), max(xs), min(ys), max(ys)))
+        return center, bbox, sum(half_perim(box) for box in bbox)
+
+    def moved_bbox(ni, box, moved, new_pos):
+        # One member of net ni moves off box to new_pos: extend for a growing
+        # move; only a cell leaving the boundary forces an O(degree) rescan.
+        old = center[moved]
+        if (old[0] <= box[0] or old[0] >= box[1]
+                or old[1] <= box[2] or old[1] >= box[3]):
+            xs = [new_pos[0] if m == moved else center[m][0]
+                for m in net_members[ni]]
+            ys = [new_pos[1] if m == moved else center[m][1]
+                for m in net_members[ni]]
+            return (min(xs), max(xs), min(ys), max(ys))
+        return (min(box[0], new_pos[0]), max(box[1], new_pos[0]),
+                min(box[2], new_pos[1]), max(box[3], new_pos[1]))
 
     rng = random.Random(seed)
     order = order_cells(cells, nets)
-    cur_cost = hpwl(order)
+    center, bbox, cur_cost = full_state(order)
     best_order, best_cost = order[:], cur_cost
     temp = max(cur_cost / max(len(order), 1), 1.0)
+    accepted = 0
     for _ in range(iters):
         a, b = rng.randrange(len(order)), rng.randrange(len(order))
         if a == b:
             continue
-        order[a], order[b] = order[b], order[a]
-        new_cost = hpwl(order)
-        if new_cost <= cur_cost or rng.random() < math.exp(-(new_cost - cur_cost) / temp):
-            cur_cost = new_cost
-            if new_cost < best_cost:
-                best_cost, best_order = new_cost, order[:]
-        else:
+        cell_a, cell_b = order[a], order[b]
+        pos_a, pos_b = center[cell_a], center[cell_b]
+        # A net holding both cells sees the same position multiset after the
+        # swap -- its bbox cannot change, so only the one-sided nets rescore.
+        touched = ([(ni, cell_a, pos_b) for ni in nets_of[cell_a]
+                if cell_b not in membership[ni]]
+            + [(ni, cell_b, pos_a) for ni in nets_of[cell_b]
+                if cell_a not in membership[ni]])
+        delta = 0.0
+        new_boxes = []
+        for ni, moved, new_pos in touched:
+            box = moved_bbox(ni, bbox[ni], moved, new_pos)
+            new_boxes.append((ni, box))
+            delta += half_perim(box) - half_perim(bbox[ni])
+        if delta <= 0 or rng.random() < math.exp(-delta / temp):
             order[a], order[b] = order[b], order[a]
+            center[cell_a], center[cell_b] = pos_b, pos_a
+            for ni, box in new_boxes:
+                bbox[ni] = box
+            cur_cost += delta
+            accepted += 1
+            if accepted % resync == 0:   # exact re-fold: cancel slot drift
+                center, bbox, cur_cost = full_state(order)
+                if cur_cost < best_cost:
+                    best_cost, best_order = cur_cost, order[:]
         temp *= 0.9995
+    _, _, final_cost = full_state(order)
+    if final_cost < best_cost:
+        best_cost, best_order = final_cost, order[:]
     return best_order
 
 
@@ -738,28 +805,28 @@ def _neighbors(node, cfg, xmax):
         yield (xi, yi, M4), via_cost
 
 
-def _grid_adjacency(cfg, xmax):
-    """Precompute every grid node's ``((neighbor, cost), ...)`` moves.
+class _GridAdjacency(dict):
+    """Per-node ``((neighbor, cost), ...)`` move table, built lazily.
 
     The move set (:func:`_neighbors`) depends only on the grid, not on the nets,
-    so computing it once per :func:`route_nets` run takes the generator, the
-    signal-track test and the property lookups out of the maze router's inner
-    loop -- the hottest code in the engine.
-
-    Args:
-        cfg: the routing grid + cost knobs (:class:`GridConfig`).
-        xmax: the maximum x track index.
-
-    Returns:
-        ``{node: ((neighbor, cost), ...)}`` for all grid nodes.
+    so each node's moves are computed once per :func:`route_nets` run and then
+    served as a plain dict hit -- taking the generator, the signal-track test
+    and the property lookups out of the maze router's inner loop. It is filled
+    on first touch rather than precomputed: the pattern-routing fast path keeps
+    the maze searches to a small fraction of the grid, so eagerly tabulating
+    every node (grids run to hundreds of thousands of nodes) costs more than
+    all the lookups it serves.
     """
-    adj = {}
-    for xi in range(xmax + 1):
-        for yi in range(cfg.y_track_max + 1):
-            for layer in (M2, M3, M4, M5):
-                node = (xi, yi, layer)
-                adj[node] = tuple(_neighbors(node, cfg, xmax))
-    return adj
+
+    def __init__(self, cfg, xmax):
+        super().__init__()
+        self.cfg = cfg
+        self.xmax = xmax
+
+    def __missing__(self, node):
+        moves = tuple(_neighbors(node, self.cfg, self.xmax))
+        self[node] = moves
+        return moves
 
 
 def _astar(starts, goals, cfg, xmax, node_cost, allowed=None, adj=None):
@@ -775,7 +842,7 @@ def _astar(starts, goals, cfg, xmax, node_cost, allowed=None, adj=None):
         allowed: optional predicate ``node -> bool`` restricting the search to the
             net's global-routing corridor, keeping the maze search local on large
             layouts.
-        adj: optional precomputed :func:`_grid_adjacency` table; falls back to
+        adj: optional :class:`_GridAdjacency` move table; falls back to
             generating moves per expansion.
 
     Returns:
@@ -789,22 +856,40 @@ def _astar(starts, goals, cfg, xmax, node_cost, allowed=None, adj=None):
     # with large goal sets (a port escape targets every top-row track).
     gx_lo = min(n[0] for n in goals); gx_hi = max(n[0] for n in goals)
     gy_lo = min(n[1] for n in goals); gy_hi = max(n[1] for n in goals)
+    # Via-aware term: a vertical layer only moves in y and a horizontal one only
+    # in x, so covering a nonzero dx and/or dy and finishing on the goals' layer
+    # class needs a provable minimum number of layer changes (each >= via_cost).
+    # Tightening h with it prunes most off-layer exploration (via_cost dominates
+    # short in-channel hops). All goal layers agree in practice (terminal
+    # goals are M2, escapes M4); a mixed set drops the finishing constraint.
+    goal_classes = {n[2] in VERT for n in goals}
+    goal_vert = goal_classes.pop() if len(goal_classes) == 1 else None
+    via_cost = cfg.via_cost
 
     def heuristic(node):
         xi, yi = node[0], node[1]
         dx = gx_lo - xi if xi < gx_lo else (xi - gx_hi if xi > gx_hi else 0)
         dy = gy_lo - yi if yi < gy_lo else (yi - gy_hi if yi > gy_hi else 0)
-        return dx + dy
+        vert = node[2] in VERT
+        if dx and dy:            # needs both classes: 1 change, 2 if it must return
+            changes = 1 if goal_vert is None else (2 if vert == goal_vert else 1)
+        elif dx:                 # needs a horizontal layer at some point
+            changes = vert + (1 if goal_vert else 0)
+        elif dy:                 # needs a vertical layer at some point
+            changes = (not vert) + (0 if goal_vert or goal_vert is None else 1)
+        else:
+            changes = 0 if goal_vert is None or vert == goal_vert else 1
+        return dx + dy + changes * via_cost
 
     frontier = []
     cost = {}            # node -> cheapest known cost to reach it
     came_from = {}
     for start in starts:
         cost[start] = node_cost(start)
-        heapq.heappush(frontier, (cost[start] + heuristic(start), start))
+        heapq.heappush(frontier, (cost[start] + heuristic(start), 0.0, start))
     heappush, heappop = heapq.heappush, heapq.heappop
     while frontier:
-        _, current = heappop(frontier)
+        _, _, current = heappop(frontier)
         if current in goal_set:
             path = [current]
             while current in came_from:
@@ -818,7 +903,11 @@ def _astar(starts, goals, cfg, xmax, node_cost, allowed=None, adj=None):
             new_cost = cur_cost + step + node_cost(neighbor)
             if neighbor not in cost or new_cost < cost[neighbor]:
                 cost[neighbor] = new_cost; came_from[neighbor] = current
-                heappush(frontier, (new_cost + heuristic(neighbor), neighbor))
+                # Tie-break equal f toward the deeper node (-g): on the plateaus
+                # of equal-cost Manhattan paths this walks one path to the goal
+                # instead of flooding the whole equal-f diamond.
+                heappush(frontier,
+                    (new_cost + heuristic(neighbor), -new_cost, neighbor))
     return None
 
 
@@ -1021,8 +1110,9 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
     only the segments touching a conflict (a shared node, or two nets too
     close), raising the cost of the contested nodes each time, until the routing
     is legal. Rerouting single 2-pin connections per pass -- rather than whole
-    multi-terminal trees -- plus corridor-bounded A* is what lets this scale to
-    a few hundred cells.
+    multi-terminal trees -- plus an L-pattern fast path that reserves the
+    corridor-bounded maze search for contested segments is what lets this scale
+    to a few hundred cells.
 
     Args:
         routed_nets: the signal nets to route, ``{name: NetInfo}``.
@@ -1124,7 +1214,7 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
     net_use = {}          # net -> {node: number of the net's segments using it}
     port_escape = {}      # port net -> x track of its top-edge Metal4 pad (or None)
     penalty = [0.5]       # present-congestion penalty, raised each rip-up pass
-    adj = _grid_adjacency(cfg, xmax)   # static per run; hoisted out of A*
+    adj = _GridAdjacency(cfg, xmax)   # lazy per-run move table for A*
 
     # Fixed 2-pin decomposition: each net's terminals are spanned by an MST
     # (over first-candidate positions), and every MST edge is an independently
@@ -1146,6 +1236,60 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
             return base + penalty[0] * _occ(node, 0)
         return node_cost
 
+    def pattern_route(net_name, starts, goals):
+        # L-pattern fast path, as production global routers do: before
+        # the maze search, try the two 1-bend routes between the closest
+        # access-node pairs and take one whose nodes are all conflict-free.
+        # Checking a path is a few dict probes per node; a maze search is a
+        # heap expansion over a whole region -- and in the initial pass almost
+        # every segment is a clean L. Contested nodes (history) are left to
+        # A*, which negotiates.
+        own = {net_name}
+
+        def free(node):
+            if history.get(node):
+                return False
+            here = node_nets.get(node)
+            if here and here != own:
+                return False
+            for neighbor in _conflict_neighbors(node):
+                there = node_nets.get(neighbor)
+                if there and there - own:
+                    return False
+            return True
+
+        def m2_run(xi, y0, y1):
+            step = 1 if y1 >= y0 else -1
+            return [(xi, y, M2) for y in range(y0, y1 + step, step)]
+
+        def m3_run(yi, x0, x1):
+            step = 1 if x1 >= x0 else -1
+            return [(x, yi, M3) for x in range(x0, x1 + step, step)]
+
+        # Try the closest few start/goal combinations only: a pin with many
+        # access candidates must not turn the fast path into a pair sweep.
+        pairs = sorted(((s, g) for s in starts for g in goals),
+            key=lambda sg: abs(sg[0][0] - sg[1][0]) + abs(sg[0][1] - sg[1][1]))
+        for s, g in pairs[:8]:
+            if s[2] != M2 or g[2] != M2:
+                continue
+            (x1, y1, _layer), (x2, y2, _layer) = s, g
+            cands = []
+            if x1 == x2:
+                cands.append(m2_run(x1, y1, y2))
+            else:
+                # Vias sit on the bend tracks; both must allow a layer change.
+                if cfg.is_signal_track(y2):
+                    cands.append(m2_run(x1, y1, y2)
+                        + m3_run(y2, x1, x2) + [(x2, y2, M2)])
+                if cfg.is_signal_track(y1):
+                    cands.append([(x1, y1, M2)] + m3_run(y1, x1, x2)
+                        + m2_run(x2, y1, y2))
+            for path in cands:
+                if all(map(free, path)):
+                    return path
+        return None
+
     def route_seg(net_name, key, allowed):
         node_cost = make_node_cost(net_name)
         terms = term_access[net_name]
@@ -1157,7 +1301,8 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
 
         if isinstance(key, tuple):        # ('t', k): one MST edge, 2-pin A*
             ti, tj = topo[net_name][key[1]]
-            path = (_astar(terms[ti], terms[tj], cfg, xmax, node_cost, allowed, adj)
+            path = (pattern_route(net_name, terms[ti], terms[tj])
+                or _astar(terms[ti], terms[tj], cfg, xmax, node_cost, allowed, adj)
                 or _astar(terms[ti], terms[tj], cfg, xmax, node_cost, None, adj))
             if path is None:
                 # The full grid is connected and congestion only adds cost, so
@@ -1226,6 +1371,25 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
             grow(x_tracks, lambda p, Y=yi, L=layer: (p, Y, L), 0, xmax)
         return _Seg(tuple(ext_edges), frozenset(ext_nodes), ())
 
+    # Conflicts are tracked INCREMENTALLY: scanning every occupied node per
+    # negotiation pass instead scales with the total wirelength routed so far
+    # and dominated large runs. overused holds the nodes shared by >1 net;
+    # spacing_bad the same-layer neighbor pairs owned by different nets. Both
+    # only change when a node gains its first or loses its last net, so they
+    # are maintained right there, in add_seg/remove_seg.
+    overused = set()
+    spacing_bad = set()   # canonical (min(node, nbr), max(node, nbr)) pairs
+
+    def update_spacing(node):
+        here = node_nets.get(node)
+        for neighbor in _conflict_neighbors(node):
+            there = node_nets.get(neighbor)
+            pair = (node, neighbor) if node < neighbor else (neighbor, node)
+            if here and there and here != there:
+                spacing_bad.add(pair)
+            else:
+                spacing_bad.discard(pair)
+
     def add_seg(net_name, key, seg):
         routes[net_name][key] = seg
         use = net_use[net_name]
@@ -1233,8 +1397,12 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
             count = use.get(node, 0)
             use[node] = count + 1
             if count == 0:   # first segment of this net on the node
-                occupancy[node] = occupancy.get(node, 0) + 1
+                occ = occupancy.get(node, 0) + 1
+                occupancy[node] = occ
+                if occ > 1:
+                    overused.add(node)
                 node_nets.setdefault(node, set()).add(net_name)
+                update_spacing(node)
 
     def remove_seg(net_name, key):
         seg = routes[net_name].pop(key)
@@ -1245,24 +1413,23 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=()):
                 use[node] = count
             else:
                 del use[node]
-                occupancy[node] -= 1
+                occ = occupancy[node] - 1
+                occupancy[node] = occ
+                if occ <= 1:
+                    overused.discard(node)
                 node_nets[node].discard(net_name)
+                update_spacing(node)
 
     def conflicts():
         # A conflict is a node shared by >1 net, or two different nets on
         # spacing-violating neighbor nodes. Returns the offending nodes and the
         # set of nets touching them (whose segments are then ripped up).
-        nodes, bad_nets = set(), set()
-        for node, count in occupancy.items():
-            if count > 1:
-                nodes.add(node); bad_nets |= node_nets[node]
-        for node, here in node_nets.items():
-            if not here:
-                continue
-            for neighbor in _conflict_neighbors(node):
-                there = node_nets.get(neighbor)
-                if there and there - here:
-                    nodes.add(node); nodes.add(neighbor); bad_nets |= here | there
+        nodes = set(overused)
+        for pair in spacing_bad:
+            nodes.update(pair)
+        bad_nets = set()
+        for node in nodes:
+            bad_nets.update(node_nets.get(node, ()))
         return nodes, bad_nets
 
     # Initial pass: route every net's segments once in its corridor (each
