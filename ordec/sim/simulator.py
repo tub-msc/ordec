@@ -230,12 +230,35 @@ class SimulatorNgspiceBatch(SimulatorBase):
         self.netlister.add(".op")
         self._store_results(self._run())
 
-    def tran(self, tstep, tstop, save_params=False):
+    def tran(self, tstep, tstop, tstart=R(0), tmax=None, uic=False,
+             save_params=False):
+        """
+        Run a transient analysis (ngspice ``.tran``).
+
+        Args:
+            tstep: Output/save interval in seconds (not the internal step).
+            tstop: Stop time in seconds.
+            tstart: Time at which output recording starts; the simulation
+                itself always begins at t=0.
+            tmax: Optional cap on the internal timestep in seconds.
+            uic: "Use initial conditions": skip the initial DC operating
+                point and start from the ``ic=`` values of capacitors and
+                inductors (e.g. Cap.ic, Cmim.ic); all other node voltages
+                start at 0. Useful to precharge a state deterministically
+                or when the DC solution is ill-defined (oscillators).
+            save_params: Also record the device parameters listed by each
+                cell's ngspice_save_params().
+        """
         self.simhier.sim_type = SimType.TRAN
         if save_params:
             self._save_all_params()
-        self.netlister.add(
-            ".tran", R(tstep).compat_str(), R(tstop).compat_str())
+        args = [R(tstep).compat_str(), R(tstop).compat_str(),
+                R(tstart).compat_str()]
+        if tmax is not None:
+            args.append(R(tmax).compat_str())
+        if uic:
+            args.append("uic")
+        self.netlister.add(".tran", *args)
         self._store_results(self._run())
 
     def ac(self, scheme: Literal["dec", "oct", "lin"], n: int,
@@ -301,10 +324,16 @@ class SimulatorNgspicePiped(SimulatorBase):
         with self._launch(save_params) as sim:
             self._store_results(sim.op())
 
-    def tran(self, tstep, tstop, save_params=False):
+    def tran(self, tstep, tstop, tstart=R(0), tmax=None, uic=False,
+             save_params=False):
+        """
+        Run a transient analysis; see SimulatorNgspiceBatch.tran for the
+        meaning of the arguments.
+        """
         self.simhier.sim_type = SimType.TRAN
         with self._launch(save_params) as sim:
-            self._store_results(sim.tran(tstep, tstop))
+            self._store_results(
+                sim.tran(tstep, tstop, tstart=tstart, tmax=tmax, uic=uic))
 
     def ac(self, scheme: Literal["dec", "oct", "lin"], n: int,
            fstart: R, fstop: R, save_params=False):
