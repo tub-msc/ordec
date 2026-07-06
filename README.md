@@ -6,6 +6,9 @@
 [![Read the Docs](https://img.shields.io/readthedocs/ordec)](https://ordec.readthedocs.io)
 [![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/tub-msc/ordec/tests.yaml?label=tests)](https://github.com/tub-msc/ordec/actions/workflows/tests.yaml)
 
+> [!TIP]
+> We are offering an **ORDeC online workshop** on July 29, 2026. **[Details & sign-up](https://github.com/tub-msc/ordec/discussions/60)**
+
 **ORDeC** (Open Rapid Design Composer) is an open-source **custom IC design platform**. Its goal is to provide an accessible and streamlined interface to design and analyze analog, mixed-signal and custom digital integrated circuits from schematic to layout. ORDeC consists of:
 
 - the ORD hardware description language (HDL) for design entry,
