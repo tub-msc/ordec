@@ -434,8 +434,9 @@ class SchemWire(GenericPolyR, MixinPolygonalChain):
 class SchemInstanceSubcursor(tuple):
     """
     Cursor providing transformed access to Symbol contents from SchemInstance.
-    Transforms Symbol-space coordinates to Schematic-space based on the
-    instance's position and orientation.
+    Transforms Symbol-space coordinates (Vec2R, Rect4R) to Schematic-space
+    based on the instance's position and orientation; directions (D4, e.g.
+    Pin.align) are composed with the instance's orientation.
     """
     def __repr__(self):
         return f"{type(self).__name__}{tuple.__repr__(self)}"
@@ -475,6 +476,9 @@ class SchemInstanceSubcursor(tuple):
             # Returns Rect4LinearTerm/Vec2LinearTerm if inst.pos is None,
             # or Rect4R/Vec2R if inst.pos is defined
             return self.transform() * inner_ret
+        elif isinstance(inner_ret, D4):
+            # Directions rotate/mirror with the instance, like coordinates do.
+            return self.inst().orientation * inner_ret
         elif isinstance(inner_ret, Node):
             return SchemInstanceSubcursor((self.inst(), inner_ret))
         else:
