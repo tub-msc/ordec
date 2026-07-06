@@ -871,6 +871,15 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
             return "root_cursor"  # TODO: This seems wrong.
         return Node.format_path_list(path_list)
 
+    def full_path_label(self) -> str:
+        """
+        Like full_path_str(), but returns a "??<nid>" placeholder for nodes
+        without an NPath name instead of raising TypeError.
+        """
+        if self.nid != 0 and self.npath_nid is None:
+            return f"??{self.nid}"
+        return self.full_path_str()
+
     def __repr__(self):
         info = []
         if self.npath_nid is not None:

@@ -56,51 +56,54 @@ class RoutingCache:
         self.cache = dict()
         self.change_count = defaultdict(int)
 
-    def mark_changed(self, start_name):
-        self.change_count[start_name] += 1
+    def mark_changed(self, net_key):
+        self.change_count[net_key] += 1
 
-    def dependency_versions(self, start_name):
-        """Return a version signature of all straight lines except ``start_name``."""
+    def dependency_versions(self, net_key):
+        """Return a version signature of all straight lines except ``net_key``."""
         if not self.change_count:
             return 0
-        return sum(v for k, v in self.change_count.items() if k != start_name)
+        return sum(v for k, v in self.change_count.items() if k != net_key)
 
+# The 'key'/'cell_key' fields of CellPin, RoutingPort and RoutingCell are
+# opaque hashable identifiers: auto_wire passes ORDB Node cursors (Net,
+# SchemInstance), while e.g. the __main__ demo uses plain strings.
 class CellPin(NamedTuple):
     x: int
     y: int
     direction: str
-    cell_name: str
+    cell_key: object
 
 @dataclass
 class RoutingPort:
     x: int
     y: int
-    name: str
+    key: object
     direction: str
     auto_wire: bool = True
 
 class RoutingCell:
-    def __init__(self, x, y, x_size, y_size, name, connections=None):
+    def __init__(self, x, y, x_size, y_size, key, connections=None):
         self.x = x
         self.y = y
         self.x_size = x_size
         self.y_size = y_size
-        self.name = name
+        self.key = key
         if connections is None:
             self.connections = dict(
-                S=CellPin(x + x_size // 2, y, 'S', self.name),
-                N=CellPin(x + x_size // 2, y + y_size - 1, 'N', self.name),
-                W=CellPin(x, y + y_size // 2, 'W', self.name),
-                E=CellPin(x + x_size - 1, y + y_size // 2, 'E', self.name),
+                S=CellPin(x + x_size // 2, y, 'S', self.key),
+                N=CellPin(x + x_size // 2, y + y_size - 1, 'N', self.key),
+                W=CellPin(x, y + y_size // 2, 'W', self.key),
+                E=CellPin(x + x_size - 1, y + y_size // 2, 'E', self.key),
             )
         else:
-            # dict with name, position and direction
+            # dict mapping pin key to CellPin (position and direction)
             self.connections = connections
 
     def __str__(self):
-        ret_str = f"X= {self.x} Y= {self.y} X_SIZE= {self.x_size} Y_SIZE= {self.y_size} NAME= {self.name}\n"
-        for connection_name, pin in self.connections.items():
-           ret_str += f"Name: {connection_name} Inner_x: {pin.x} " \
+        ret_str = f"X= {self.x} Y= {self.y} X_SIZE= {self.x_size} Y_SIZE= {self.y_size} KEY= {self.key}\n"
+        for pin_key, pin in self.connections.items():
+           ret_str += f"Key: {pin_key} Inner_x: {pin.x} " \
                         f"Inner_y: {pin.y} Orientation: {pin.direction}\n"
         return ret_str
 
@@ -133,10 +136,11 @@ def place_cells_and_ports(grid, cells, ports, width, height):
         height (int): Height of the schematic.
 
     Returns:
-        dict: Sparse mapping of (x, y) to string name for cell pins/ports.
+        dict: Sparse mapping of (x, y) to key for cell pins ((cell key,
+        pin key) tuple) and ports (port key).
     """
 
-    name_grid = dict()  # sparse dict: (x, y) -> string name (for cell pins/ports)
+    key_grid = dict()  # sparse dict: (x, y) -> key (for cell pins/ports)
 
     # Place cells
     for cell in cells:
@@ -144,9 +148,9 @@ def place_cells_and_ports(grid, cells, ports, width, height):
         for i in range(cell.x_size):
             for j in range(cell.y_size):
                 grid[y + j][x + i] = GRID_BLOCKED
-        for name, (cx, cy, direction, _) in cell.connections.items():
+        for pin_key, (cx, cy, direction, _) in cell.connections.items():
             grid[cy][cx] = GRID_PIN
-            name_grid[(cx, cy)] = f"{cell.name}.{name}"
+            key_grid[(cx, cy)] = (cell.key, pin_key)
             if 0 <= cy < height and 0 <= cx < width:
                 direction_offset_x = direction_moves[direction][0] + cx
                 direction_offset_y = direction_moves[direction][1] + cy
@@ -159,7 +163,7 @@ def place_cells_and_ports(grid, cells, ports, width, height):
     for port in ports:
         if 0 <= port.y < height and 0 <= port.x < width:
             grid[port.y][port.x] = GRID_PORT
-            name_grid[(port.x, port.y)] = port.name
+            key_grid[(port.x, port.y)] = port.key
             direction_offset_x = direction_moves[port.direction][0] + port.x
             direction_offset_y = direction_moves[port.direction][1] + port.y
             if (0 <= direction_offset_y < height and
@@ -167,7 +171,7 @@ def place_cells_and_ports(grid, cells, ports, width, height):
                     grid[direction_offset_y][direction_offset_x] == GRID_EMPTY):
                 grid[direction_offset_y][direction_offset_x] = GRID_DIR
 
-    return name_grid
+    return key_grid
 
 def adjust_start_end_for_direction(start, start_dir, end, end_dir):
     """Adjust start and end points by stepping one cell in their direction.
@@ -194,25 +198,25 @@ def adjust_start_end_for_direction(start, start_dir, end, end_dir):
 
     return start, end
 
-def preprocess_straight_lines(straight_lines, start_name, height, routing_cache):
+def preprocess_straight_lines(straight_lines, net_key, height, routing_cache):
     """Preprocess straight lines into blocked movements with corner-touch prevention.
 
-    Allows orthogonal crossings. Results are cached per ``start_name`` and
+    Allows orthogonal crossings. Results are cached per ``net_key`` and
     invalidated when dependency versions change.
 
     Args:
-        straight_lines (dict): Already routed paths keyed by net name.
-        start_name (str): Name of the net currently being routed (excluded).
+        straight_lines (dict): Already routed paths keyed by net key.
+        net_key (hashable): Key of the net currently being routed (excluded).
         height (int): Grid height used for key encoding.
         routing_cache (RoutingCache): Per-run memoization state.
 
     Returns:
         tuple: (blocked_moves set, blocked_masks dict).
     """
-    # Cache is keyed by net name and invalidated when other nets change
-    dep_version = routing_cache.dependency_versions(start_name)
+    # Cache is keyed by net key and invalidated when other nets change
+    dep_version = routing_cache.dependency_versions(net_key)
 
-    entry = routing_cache.cache.get(start_name)
+    entry = routing_cache.cache.get(net_key)
     if entry and entry["dep_version"] == dep_version:
         blocked_masks = entry["blocked_masks"].get(height)
         if blocked_masks is None:
@@ -222,11 +226,11 @@ def preprocess_straight_lines(straight_lines, start_name, height, routing_cache)
 
     blocked_moves = set()
     for key, value in straight_lines.items():
-        if key != start_name:
+        if key != net_key:
             blocked_moves.update(_blocked_moves_for_segments(value))
 
     blocked_masks = _build_blocked_move_masks(blocked_moves, height)
-    routing_cache.cache[start_name] = {
+    routing_cache.cache[net_key] = {
         "dep_version": dep_version,
         "blocked_moves": blocked_moves,
         "blocked_masks": {height: blocked_masks},
@@ -310,7 +314,7 @@ def _point_keys(points, height):
 
 
 def a_star(grid, start, end, width, height, straight_lines,
-           start_name, start_dir, routing_cache, route_cell_usage=None,
+           net_key, start_dir, routing_cache, route_cell_usage=None,
            use_congestion=True, blocked_move_hits=None):
     """Perform A* pathfinding between a start and end point.
 
@@ -321,7 +325,7 @@ def a_star(grid, start, end, width, height, straight_lines,
         width (int): Width of the schematic.
         height (int): Height of the schematic.
         straight_lines (dict): Already calculated paths.
-        start_name (str): Name of the starting port.
+        net_key (hashable): Key of the net currently being routed.
         start_dir (tuple): Direction vector to start from.
         routing_cache (RoutingCache): Per-run memoization state.
         route_cell_usage (dict, optional): Routed cell usage counts.
@@ -334,7 +338,7 @@ def a_star(grid, start, end, width, height, straight_lines,
     """
 
     _, blocked_masks = preprocess_straight_lines(
-        straight_lines, start_name, height, routing_cache
+        straight_lines, net_key, height, routing_cache
     )
 
     start_x, start_y = start
@@ -442,7 +446,7 @@ def a_star(grid, start, end, width, height, straight_lines,
     return []
 
 
-def reverse_a_star(grid, start_points, end, width, height, straight_lines, start_name, end_dir,
+def reverse_a_star(grid, start_points, end, width, height, straight_lines, net_key, end_dir,
                    endpoint_mapping, routing_cache, route_cell_usage=None,
                    use_congestion=True, blocked_move_hits=None):
     """Perform reverse A* from the end point towards any of the start points.
@@ -454,9 +458,9 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
         width (int): Width of the schematic.
         height (int): Height of the schematic.
         straight_lines (dict): Already calculated paths.
-        start_name (str): Name of the starting port.
+        net_key (hashable): Key of the net currently being routed.
         end_dir (tuple): Direction vector to end with.
-        endpoint_mapping (dict): Mapping of start name to adjusted endpoint
+        endpoint_mapping (dict): Mapping of net key to adjusted endpoint
             marker key set.
         routing_cache (RoutingCache): Per-run memoization state.
         route_cell_usage (dict, optional): Routed cell usage counts.
@@ -469,7 +473,7 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     """
 
     _, blocked_masks = preprocess_straight_lines(
-        straight_lines, start_name, height, routing_cache
+        straight_lines, net_key, height, routing_cache
     )
 
     end_x, end_y = end
@@ -484,7 +488,7 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines, start
     end_key = end_x * height + end_y
     end_direction = DIR_TO_INT.get(end_dir, DIR_NONE)
     start_points_keys = _point_keys(start_points, height)
-    endpoint_keys = endpoint_mapping.get(start_name, set())
+    endpoint_keys = endpoint_mapping.get(net_key, set())
 
     # Use the closest start point for the heuristic estimate.
     # This may be inadmissible for farther start points but keeps search fast.
@@ -697,7 +701,7 @@ def transform_to_pairs(list_of_lists, straights):
     return straights
 
 
-def sort_connections(connections, name_grid=None):
+def sort_connections(connections, key_grid=None):
     """Sort connections by routing difficulty.
 
     Higher fanout nets are routed first, then shorter distances within
@@ -705,10 +709,10 @@ def sort_connections(connections, name_grid=None):
 
     Args:
         connections (list): Connections between subcells.
-        name_grid (dict, optional): Sparse mapping of (x, y) to string name.
+        key_grid (dict, optional): Sparse mapping of (x, y) to key.
 
     Returns:
-        tuple: (name_endpoint_marker_mapping, sorted_connections).
+        tuple: (key_endpoint_marker_mapping, sorted_connections).
     """
     def adjust_point_for_direction(point, direction):
         if direction:
@@ -724,18 +728,18 @@ def sort_connections(connections, name_grid=None):
         return dx * dx + dy * dy
 
     sortable_connections = []
-    name_endpoint_mapping = dict()
-    name_endpoint_marker_mapping = dict()
+    key_endpoint_mapping = dict()
+    key_endpoint_marker_mapping = dict()
 
     for index, connection in enumerate(connections):
         start, end = connection
         # Get the start which defines the drawing dictionary
-        start_name = ""
+        net_key = ""
         if isinstance(start, RoutingPort):
-            start_name = start.name
+            net_key = start.key
             start = (start.x, start.y)
         elif isinstance(start, CellPin):
-            start_name = name_grid.get((start.x, start.y), "") if name_grid else ""
+            net_key = key_grid.get((start.x, start.y), "") if key_grid else ""
             start = (start.x, start.y)
 
         # Get the end which defines the endpoint
@@ -748,15 +752,15 @@ def sort_connections(connections, name_grid=None):
             end = (end.x, end.y)
 
         distance = euclidean_distance_sq(start, end)
-        sortable_connections.append((start_name, distance, index, connection))
-        name_endpoint_mapping.setdefault(start_name, set())
-        name_endpoint_mapping[start_name].add(end)
-        name_endpoint_marker_mapping.setdefault(start_name, set())
-        name_endpoint_marker_mapping[start_name].add(adjust_point_for_direction(end, end_dir))
+        sortable_connections.append((net_key, distance, index, connection))
+        key_endpoint_mapping.setdefault(net_key, set())
+        key_endpoint_mapping[net_key].add(end)
+        key_endpoint_marker_mapping.setdefault(net_key, set())
+        key_endpoint_marker_mapping[net_key].add(adjust_point_for_direction(end, end_dir))
 
     fanout_by_start = {
-        start_name: len(endpoints)
-        for start_name, endpoints in name_endpoint_mapping.items()
+        net_key: len(endpoints)
+        for net_key, endpoints in key_endpoint_mapping.items()
     }
 
     # Fanout-aware ordering: higher fanout first, then shorter distance.
@@ -768,12 +772,24 @@ def sort_connections(connections, name_grid=None):
         )
     )
 
-    return name_endpoint_marker_mapping, [item[3] for item in sortable_connections]
+    return key_endpoint_marker_mapping, [item[3] for item in sortable_connections]
 
+
+
+def net_label(net_key):
+    """Human-readable label of a net key for diagnostic messages.
+
+    Net keys are opaque; ORDB Node cursors (the auto_wire case) are labeled
+    by their path, other keys (e.g. plain strings) are shown as-is.
+    """
+    try:
+        return f"net '{net_key.full_path_label()}'"
+    except AttributeError:
+        return f"net {net_key}"
 
 
 # Draw all connections with paths
-def draw_connections(grid, connections, width, height, name_grid=None):
+def draw_connections(grid, connections, width, height, key_grid=None):
     """Route all connections and return the calculated vertices.
 
     Args:
@@ -781,41 +797,42 @@ def draw_connections(grid, connections, width, height, name_grid=None):
         connections (list): Connections between subcells.
         width (int): Width of the schematic.
         height (int): Height of the schematic.
-        name_grid (dict, optional): Sparse mapping of (x, y) to string name.
+        key_grid (dict, optional): Sparse mapping of (x, y) to key.
 
     Returns:
-        dict: Drawing dict mapping net name to list of vertex paths.
+        dict: Drawing dict mapping net key to list of vertex paths.
     """
     routing_cache = RoutingCache()
     port_drawing_dict = defaultdict(list)
     straight_lines = defaultdict(list)
     route_cell_usage = dict()
     routed_entries = []
-    endpoint_marker_mapping, sorted_connections = sort_connections(connections, name_grid)
+
+    endpoint_marker_mapping, sorted_connections = sort_connections(connections, key_grid)
     endpoint_key_mapping = {
-        start_name: _point_keys(endpoints, height)
-        for start_name, endpoints in endpoint_marker_mapping.items()
+        net_key: _point_keys(endpoints, height)
+        for net_key, endpoints in endpoint_marker_mapping.items()
     }
 
-    def append_path(start_name, path):
-        port_drawing_dict[start_name].append(path)
+    def append_path(net_key, path):
+        port_drawing_dict[net_key].append(path)
         current_path_stripped = keep_corners_and_edges([path])
-        if start_name not in straight_lines:
-            straight_lines[start_name] = []
-        straight_lines[start_name] = transform_to_pairs(
-            current_path_stripped, straight_lines[start_name]
+        if net_key not in straight_lines:
+            straight_lines[net_key] = []
+        straight_lines[net_key] = transform_to_pairs(
+            current_path_stripped, straight_lines[net_key]
         )
-        routing_cache.mark_changed(start_name)
+        routing_cache.mark_changed(net_key)
 
-    def rebuild_straight_lines(start_name):
-        paths = port_drawing_dict[start_name]
+    def rebuild_straight_lines(net_key):
+        paths = port_drawing_dict[net_key]
         if paths:
-            straight_lines[start_name] = transform_to_pairs(
+            straight_lines[net_key] = transform_to_pairs(
                 keep_corners_and_edges(paths), []
             )
         else:
-            straight_lines[start_name] = []
-        routing_cache.mark_changed(start_name)
+            straight_lines[net_key] = []
+        routing_cache.mark_changed(net_key)
 
     def apply_path_to_grid(path):
         path_cells = []
@@ -840,21 +857,21 @@ def draw_connections(grid, connections, width, height, name_grid=None):
                 route_cell_usage[(x, y)] = usage - 1
 
     def pop_path(entry):
-        paths = port_drawing_dict[entry["start_name"]]
+        paths = port_drawing_dict[entry["net_key"]]
         for index, path in enumerate(paths):
             if path is entry["path"] or path == entry["path"]:
                 paths.pop(index)
-                rebuild_straight_lines(entry["start_name"])
+                rebuild_straight_lines(entry["net_key"])
                 return index
         return None
 
     def insert_path(entry, index):
-        paths = port_drawing_dict[entry["start_name"]]
+        paths = port_drawing_dict[entry["net_key"]]
         if index is None or index >= len(paths):
             paths.append(entry["path"])
         else:
             paths.insert(index, entry["path"])
-        rebuild_straight_lines(entry["start_name"])
+        rebuild_straight_lines(entry["net_key"])
 
     def path_blocked_move_keys(path):
         blocked_keys = set()
@@ -873,13 +890,13 @@ def draw_connections(grid, connections, width, height, name_grid=None):
             blocked_keys.add(((sx * height + sy) << 2) | direction_id)
         return blocked_keys
 
-    def make_routed_entry(start, end, start_dir, end_dir, start_name, path, path_cells):
+    def make_routed_entry(start, end, start_dir, end_dir, net_key, path, path_cells):
         return {
             "start": start,
             "end": end,
             "start_dir": start_dir,
             "end_dir": end_dir,
-            "start_name": start_name,
+            "net_key": net_key,
             "path": path,
             "path_cells": path_cells,
             "blocked_move_keys": path_blocked_move_keys(path),
@@ -904,7 +921,7 @@ def draw_connections(grid, connections, width, height, name_grid=None):
         scored_entries.sort(key=lambda item: (-item[0], -item[1]))
         return [entry for _, _, entry in scored_entries[:MAX_RIPUP_CANDIDATES]]
 
-    def try_route_connection(start, end, start_dir, end_dir, start_name, blocked_move_hits=None):
+    def try_route_connection(start, end, start_dir, end_dir, net_key, blocked_move_hits=None):
         start_new, end_new = adjust_start_end_for_direction(start, start_dir, end, end_dir)
         transformed_start_dir = direction_moves[start_dir]
         transformed_end_dir = direction_moves[end_dir]
@@ -914,9 +931,9 @@ def draw_connections(grid, connections, width, height, name_grid=None):
             # Shortcut mode: if this net already has routed paths, try to
             # branch off an existing path via reverse A* instead of routing
             # all the way back to the original start
-            if SHORTCUT_ENABLED and len(port_drawing_dict[start_name]) != 0:
+            if SHORTCUT_ENABLED and len(port_drawing_dict[net_key]) != 0:
                 shortcut_available = True
-                shortcut_start_points = port_drawing_dict[start_name]
+                shortcut_start_points = port_drawing_dict[net_key]
                 # Collect interior points of existing paths as branch candidates
                 path_list = list()
                 for shortcut in shortcut_start_points:
@@ -930,12 +947,12 @@ def draw_connections(grid, connections, width, height, name_grid=None):
                     # Endpoint already lies on an existing path --> trivial connection
                     path = [end_new]
                 elif not path_list:
-                    raise IndexError(f"Shortcut doesn't have valid branch point to connect nid:{start_name}")
+                    raise IndexError(f"Shortcut doesn't have valid branch point to connect {net_label(net_key)}")
                 else:
                     # Try reverse A* from endpoint to any existing path point
                     path = reverse_a_star(
                         grid, path_list, end_new, width, height,
-                        straight_lines, start_name, transformed_end_dir,
+                        straight_lines, net_key, transformed_end_dir,
                         endpoint_key_mapping, routing_cache, route_cell_usage,
                         use_congestion=False,
                         blocked_move_hits=blocked_move_hits
@@ -944,7 +961,7 @@ def draw_connections(grid, connections, width, height, name_grid=None):
                     if not path:
                         path = a_star(
                             grid, start_new, end_new, width, height,
-                            straight_lines, start_name, transformed_start_dir,
+                            straight_lines, net_key, transformed_start_dir,
                             routing_cache, route_cell_usage, use_congestion=False,
                             blocked_move_hits=blocked_move_hits
                         )
@@ -952,7 +969,7 @@ def draw_connections(grid, connections, width, height, name_grid=None):
                 # First connection for this net, standard forward A*
                 path = a_star(
                     grid, start_new, end_new, width, height,
-                    straight_lines, start_name, transformed_start_dir,
+                    straight_lines, net_key, transformed_start_dir,
                     routing_cache, route_cell_usage,
                     blocked_move_hits=blocked_move_hits
                 )
@@ -973,18 +990,18 @@ def draw_connections(grid, connections, width, height, name_grid=None):
         return path, start_new, end_new
 
     for start, end in sorted_connections:
-        # start and end direction and name of the starting point
+        # start and end direction and net key of the starting point
         start_dir = None
         end_dir = None
-        start_name = None
+        net_key = None
 
         # Get the start which defines the drawing dictionary
         if isinstance(start, RoutingPort):
-            start_name = start.name
+            net_key = start.key
             start_dir = start.direction
             start = (start.x, start.y)
         elif isinstance(start, CellPin):
-            start_name = name_grid.get((start.x, start.y), "") if name_grid else ""
+            net_key = key_grid.get((start.x, start.y), "") if key_grid else ""
             start_dir = start.direction
             start = (start.x, start.y)
 
@@ -998,7 +1015,7 @@ def draw_connections(grid, connections, width, height, name_grid=None):
 
         blocked_move_hits = set()
         path, start_new, end_new = try_route_connection(
-            start, end, start_dir, end_dir, start_name, blocked_move_hits
+            start, end, start_dir, end_dir, net_key, blocked_move_hits
         )
 
         # Rip-up/reroute: if routing failed, temporarily remove a
@@ -1011,19 +1028,19 @@ def draw_connections(grid, connections, width, height, name_grid=None):
                     continue
 
                 blocking_entry = routed_entries.pop(blocking_index)
-                blocking_start_name = blocking_entry["start_name"]
+                blocking_net_key = blocking_entry["net_key"]
                 blocking_path_index = pop_path(blocking_entry)
                 remove_path_from_grid(blocking_entry["path_cells"])
 
                 # Retry current connection with the blocking route removed
                 path, start_new, end_new = try_route_connection(
-                    start, end, start_dir, end_dir, start_name
+                    start, end, start_dir, end_dir, net_key
                 )
                 if path is not None:
                     path_cells = apply_path_to_grid(path)
-                    append_path(start_name, path)
+                    append_path(net_key, path)
                     current_entry = make_routed_entry(
-                        start, end, start_dir, end_dir, start_name,
+                        start, end, start_dir, end_dir, net_key,
                         path, path_cells
                     )
                     routed_entries.append(current_entry)
@@ -1034,12 +1051,12 @@ def draw_connections(grid, connections, width, height, name_grid=None):
                         blocking_entry["end"],
                         blocking_entry["start_dir"],
                         blocking_entry["end_dir"],
-                        blocking_start_name,
+                        blocking_net_key,
                     )
                     if blocking_path is not None:
                         # Both succeeded --> keep the new arrangement
                         blocking_cells = apply_path_to_grid(blocking_path)
-                        append_path(blocking_start_name, blocking_path)
+                        append_path(blocking_net_key, blocking_path)
                         blocking_entry["path"] = blocking_path
                         blocking_entry["path_cells"] = blocking_cells
                         blocking_entry["blocked_move_keys"] = path_blocked_move_keys(blocking_path)
@@ -1047,9 +1064,9 @@ def draw_connections(grid, connections, width, height, name_grid=None):
                         break
 
                     # Blocking route failed to reroute, undo current and restore
-                    if port_drawing_dict[start_name]:
-                        port_drawing_dict[start_name].pop()
-                    rebuild_straight_lines(start_name)
+                    if port_drawing_dict[net_key]:
+                        port_drawing_dict[net_key].pop()
+                    rebuild_straight_lines(net_key)
                     remove_path_from_grid(path_cells)
                     current_index = routed_entry_index(current_entry)
                     if current_index is not None:
@@ -1070,13 +1087,14 @@ def draw_connections(grid, connections, width, height, name_grid=None):
                 continue
 
         if path is None:
-            print(f"Failed to connect {start_new} to {end_new}. Adding terminal taps ...")
+            print(f"Failed to connect {net_label(net_key)} from "
+                  f"{start_new} to {end_new}. Adding terminal taps ...")
             continue
 
         path_cells = apply_path_to_grid(path)
-        append_path(start_name, path)
+        append_path(net_key, path)
         routed_entries.append(make_routed_entry(
-            start, end, start_dir, end_dir, start_name, path, path_cells
+            start, end, start_dir, end_dir, net_key, path, path_cells
         ))
 
     # Post-process: reduce full paths to corner/edge vertices for rendering
@@ -1099,19 +1117,19 @@ def calculate_vertices(outline, cells, ports, connections):
         connections (list): Connections between subcells.
 
     Returns:
-        dict: Calculated vertices of routes keyed by net name.
+        dict: Calculated vertices of routes keyed by net key.
     """
     width = int(outline.ux - outline.lx) * 2
     height = int(outline.uy - outline.ly) * 2
     grid = np.zeros((height, width), dtype=np.int8)
-    name_grid = place_cells_and_ports(grid, list(cells.values()), list(ports.values()), width, height)
+    key_grid = place_cells_and_ports(grid, list(cells.values()), list(ports.values()), width, height)
     # _GRID_SYMBOLS = {GRID_EMPTY: '.', GRID_ROUTED: '+', GRID_DIR: 'D',
     #                  GRID_BLOCKED: '#', GRID_PIN: 'P', GRID_PORT: 'O'}
     # cell_width = 5
     # for ry in range(height - 1, -1, -1):
-    #     print(''.join(f"{name_grid.get((x, ry), _GRID_SYMBOLS.get(grid[ry][x], '?')):<{cell_width}}"
+    #     print(''.join(f"{str(key_grid.get((x, ry), _GRID_SYMBOLS.get(grid[ry][x], '?'))):<{cell_width}}"
     #                   for x in range(width)))
-    vertices = draw_connections(grid, connections, width, height, name_grid)
+    vertices = draw_connections(grid, connections, width, height, key_grid)
     return vertices
 
 
@@ -1136,7 +1154,7 @@ def adjust_outline_initial(node):
             outline = Rect4R(lx=port.pos.x, ly=port.pos.y,
                              ux=port.pos.x, uy=port.pos.y)
         # Extend outline to fit port label text
-        label = port.ref.pin.full_path_str()
+        label = port.ref.pin.full_path_label()
         text_width = len(label) * label_char_width
         total = port_text_space + text_width
         direction = port.align * Vec2R(0, -1)
@@ -1184,6 +1202,9 @@ def auto_wire(node: Schematic):
     # Build Cells and Ports
     #======================
 
+    # Cells are keyed by SchemInstance cursor, ports by Net cursor and inner
+    # connections by symbol Pin cursor. ORDB Node cursors are hashable and
+    # stable dict keys while the schematic is mutated below.
     for instance in node.all(SchemInstance):
         instance_transform = instance.loc_transform()
         # Add instance for cells
@@ -1191,41 +1212,31 @@ def auto_wire(node: Schematic):
         pos = Vec2R(x=symbol_size.lx + offset_x, y=symbol_size.ly + offset_y)
         x_size = symbol_size.ux - symbol_size.lx
         y_size = symbol_size.uy - symbol_size.ly
-        instance_nid = str(instance.nid)
         # Add inner connections for the cell (symbol)
         inner_connections = dict()
         for pin in instance.symbol.all(Pin):
             alignment = (instance.orientation * pin.align).unflip().lefdef()
             inner_pos = instance_transform * pin.pos
-            # Get the parent instance name to get a unique assignment
-            pin_nid = str(pin.nid)
             inner_x = int(inner_pos.x)
             inner_y = int(inner_pos.y)
-            inner_connections[pin_nid] = CellPin(inner_x + offset_x,
-                                                   inner_y + offset_y,
-                                                   alignment,
-                                                   instance_nid)
+            inner_connections[pin] = CellPin(inner_x + offset_x,
+                inner_y + offset_y, alignment, instance)
         # Add to cells dictionary
-        cells[instance_nid] = RoutingCell(int(pos.x),
-                                    int(pos.y),
-                                    int(x_size) + 1,
-                                    int(y_size) + 1,
-                                    instance_nid,
-                                    inner_connections)
+        cells[instance] = RoutingCell(int(pos.x), int(pos.y),
+            int(x_size) + 1, int(y_size) + 1, instance, inner_connections)
     for instance in node.all(SchemPort):
         # Add instances for ports
         port_alignment = instance.align.lefdef()
         pos = instance.pos
-        net_nid = str(instance.ref.nid)
+        net = instance.ref
         inner_x = int(pos.x)
         inner_y = int(pos.y)
-        aw = instance.ref.auto_wire
-        ports[net_nid] = RoutingPort(
+        ports[net] = RoutingPort(
             inner_x + offset_x,
             inner_y + offset_y,
-            net_nid,
+            net,
             port_alignment,
-            aw)
+            net.auto_wire)
 
     # Early return when ports exist but none need auto-wiring
     if ports and not any(p.auto_wire for p in ports.values()):
@@ -1238,57 +1249,40 @@ def auto_wire(node: Schematic):
 
     connections = list()
     for instance in node.all(SchemInstance):
-        instance_nid = str(instance.nid)
         for conn in instance.conns():
-            inner_connection = conn.there
-            connected_to = conn.here
-            inner_connection_nid = str(inner_connection.nid)
-            connected_nid = str(connected_to.nid)
-            connection_position = cells[instance_nid].connections[inner_connection_nid]
-            if connected_nid in ports:
+            pin = conn.there
+            net = conn.here
+            connection_position = cells[instance].connections[pin]
+            if net in ports:
                 # External port or previously seen inter-instance net
-                if ports[connected_nid].auto_wire:
-                    connections.append((ports[connected_nid], connection_position))
+                if ports[net].auto_wire:
+                    connections.append((ports[net], connection_position))
             else:
                 # Inter-instance net: create routing port on first encounter
-                ports[connected_nid] = RoutingPort(
+                ports[net] = RoutingPort(
                     int(connection_position.x),
                     int(connection_position.y),
-                    connected_nid,
+                    net,
                     connection_position.direction,
-                    connected_to.auto_wire)
+                    net.auto_wire)
 
     #=====================================================
     # Calculate the vertices and add them to the schematic
     #=====================================================
-    
+
     vertices_dict = dict()
     if len(connections) > 0:
         vertices_dict = calculate_vertices(outline, cells, ports, connections)
-    named_vertice_counter = 0
-    for name, vertices_lists in vertices_dict.items():
+    for net, vertices_lists in vertices_dict.items():
         # Example: node.vss % SchemWire(vertices=[Vec2R(x=6, y=1), Vec2R(x=6, y=2)])
         for vertices in vertices_lists:
-            schem_element = node.cursor_at(int(name) if name.isdigit() else name)
             converted_vertices = list()
-            # Case for inner nets
-            if isinstance(schem_element, Net):
-                for vert in vertices:
-                    # Remove the offset
-                    converted_vertex = Vec2R(x=vert[0] - offset_x, y=vert[1] - offset_y)
-                    outline = outline.extend(converted_vertex)
-                    converted_vertices.append(converted_vertex)
-                schem_element % SchemWire(vertices=converted_vertices)
-            # Case for external ports
-            else:
-                for vert in vertices:
-                    # Remove the offset
-                    converted_vertex = Vec2R(x=vert[0] - offset_x, y=vert[1] - offset_y)
-                    outline = outline.extend(converted_vertex)
-                    converted_vertices.append(converted_vertex)
-                setattr(schem_element.ref, f"vert_{named_vertice_counter}",
-                        SchemWire(vertices=converted_vertices))
-            named_vertice_counter += 1
+            for vert in vertices:
+                # Remove the offset
+                converted_vertex = Vec2R(x=vert[0] - offset_x, y=vert[1] - offset_y)
+                outline = outline.extend(converted_vertex)
+                converted_vertices.append(converted_vertex)
+            net % SchemWire(vertices=converted_vertices)
     node.outline = outline
 
 
@@ -1333,12 +1327,16 @@ if __name__ == "__main__":
         (ports[2], cells[1].connections['S']),
     ]
 
-    name_grid = place_cells_and_ports(grid, cells, ports, width, height)
-    draw_connections(grid, connections, width, height, name_grid)
-    # Print grid with readable names
+    key_grid = place_cells_and_ports(grid, cells, ports, width, height)
+    draw_connections(grid, connections, width, height, key_grid)
+    # Print grid with readable keys ((cell, pin) tuples are dot-joined)
     _GRID_SYMBOLS = {GRID_EMPTY: '.', GRID_ROUTED: '+', GRID_DIR: 'D',
                      GRID_BLOCKED: '#', GRID_PIN: 'P', GRID_PORT: 'O'}
+    def _fmt_key(key):
+        if isinstance(key, tuple):
+            return '.'.join(str(part) for part in key)
+        return str(key)
     cell_width = 5
     for ry in range(height - 1, -1, -1):
-        print(''.join(f"{name_grid.get((x, ry), _GRID_SYMBOLS.get(grid[ry][x], '?')):<{cell_width}}"
+        print(''.join(f"{_fmt_key(key_grid.get((x, ry), _GRID_SYMBOLS.get(grid[ry][x], '?'))):<{cell_width}}"
                       for x in range(width)))

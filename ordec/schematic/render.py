@@ -415,7 +415,7 @@ class SchematicRenderer(Renderer):
         trans = p.pos.transl() * p.align
         self.draw_arrow(ArrowType.Port, p.ref.pin.pintype, trans)
 
-        label = p.ref.pin.full_path_str()
+        label = p.ref.pin.full_path_label()
         self.draw_label(label, trans*R180,
             space=self.port_text_space, halign=HAlign.Left, valign=VAlign.Middle,
             svg_class='portLabel')
@@ -456,10 +456,7 @@ class SchematicRenderer(Renderer):
             path.attrib['data-nid'] = str(p.ref.nid)
 
         if not (is_default_supply or is_default_ground):
-            if p.ref.npath_nid is not None:
-                label = p.ref.full_path_str()
-            else:
-                label = f"??{p.ref.nid}"
+            label = p.ref.full_path_label()
             self.draw_label(label, tran,
                 space=self.port_text_space, valign=VAlign.Middle,
                 svg_class="tapPointLabel")
