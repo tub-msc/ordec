@@ -567,14 +567,25 @@ class SchemInstanceUnresolvedSubcursor(tuple):
             return getattr(upgraded_cursor, name)
 
     def _upgrade_cursor(self):
-        # Convert this unresolved cursor into a resolved SchemInstanceSubcursor
-        node = self.instanceunresolved.resolver()
+        # Convert this unresolved cursor into a resolved SchemInstanceSubcursor.
+        # Parameters recorded so far are passed to the resolver so that
+        # geometry reads match the symbol that resolve_instances() will
+        # produce (parameters may change symbol size and pin positions).
+        ui = self.instanceunresolved
+        params = {
+            p.name: p.value
+            for p in ui.root.all(SchemInstanceUnresolvedParameter.ref_idx.query(ui))
+        }
+        # Walk the recorded path through a SchemInstanceSubcursor so that
+        # geometry values (Vec2R/Rect4R) are transformed to schematic space
+        # at the step where they appear, exactly as on resolved instances.
+        cursor = SchemInstanceSubcursor((ui, ui.resolver(**params)))
         for step in self.instancepath:
             if isinstance(step, int):
-                node = node[step]
+                cursor = cursor[step]
             else:
-                node = getattr(node, step)
-        return SchemInstanceSubcursor((self.instanceunresolved, node))
+                cursor = getattr(cursor, step)
+        return cursor
 
     @property
     def instanceunresolved(self):

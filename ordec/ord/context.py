@@ -7,6 +7,7 @@ import sys
 # ordec imports
 from ..core import *
 from ..core.context import _ctx_var, _view_ctx_var
+from ..core.placement import PlacementGroup
 from ..schematic.helpers import recursive_setitem, recursive_getitem
 
 
@@ -15,26 +16,54 @@ def root():
     return _ctx_var.get().root
 
 
+def register_in_group(ref):
+    """Records ref as child of the innermost active placement group."""
+    view_ctx = _view_ctx_var.get()
+    if view_ctx is not None and view_ctx.group_stack:
+        view_ctx.group_stack[-1].add(ref)
+
+
 def add(name_tuple, ref):
     """ Add a value to the current context"""
     ctx = _ctx_var.get()
     if name_tuple is None:
         # Anonymous: add to subgraph without NPath
         nid_new = ctx.root.subgraph.add(ref)
-        return ctx.root.subgraph.cursor_at(nid_new, lookup_npath=False)
-    recursive_setitem(ctx.root, name_tuple, ref)
-    return recursive_getitem(ctx.root, name_tuple)
+        cursor = ctx.root.subgraph.cursor_at(nid_new, lookup_npath=False)
+    else:
+        recursive_setitem(ctx.root, name_tuple, ref)
+        cursor = recursive_getitem(ctx.root, name_tuple)
+    if isinstance(cursor, (SchemInstance, SchemInstanceUnresolved)):
+        register_in_group(cursor)
+    return cursor
 
 
 def add_port(name_tuple):
-    """ Add a port to the current context"""
+    """
+    Add a port to the current context. If a Net of the same name was
+    forward-declared (net statement), the port attaches to that net. This
+    allows connecting to the net before the port statement is reached,
+    e.g. in an instance body that precedes the port in a placement group.
+    """
     ctx = _ctx_var.get()
     pin = recursive_getitem(ctx.root.symbol, name_tuple)
     subgraph_root = ctx.root
     while not isinstance(subgraph_root, SubgraphRoot):
         subgraph_root = subgraph_root.parent
-    net = add(name_tuple, Net(pin=pin))
-    subgraph_root % SchemPort(ref=net)
+    try:
+        net = recursive_getitem(ctx.root, name_tuple)
+    except QueryException:
+        net = add(name_tuple, Net(pin=pin))
+    else:
+        if not isinstance(net, Net):
+            name = '.'.join(str(part) for part in name_tuple)
+            raise TypeError(
+                f"Port name {name!r} is already used by {net!r}.")
+        # Forward-declared net: attach the symbol pin to it. The unique
+        # index on SchemPort.ref rejects a second port on the same net.
+        net.pin = pin
+    port = subgraph_root % SchemPort(ref=net)
+    register_in_group(port)
     return net
 
 
@@ -92,6 +121,21 @@ def add_element(name_tuple, element, src_line=None, src_column=None):
     src_loc = SourceLocInfo(
         sys._getframe(1).f_code.co_filename, src_line, src_column
     ) if src_line is not None else None
+    # Placement groups are not inserted into the subgraph; they are
+    # recorded on the view context (or on their parent group) and emitted
+    # as constraints during postprocessing.
+    if isinstance(element, type) and issubclass(element, PlacementGroup):
+        element = element()
+    if isinstance(element, PlacementGroup):
+        view_ctx = _view_ctx_var.get()
+        if view_ctx is None:
+            raise TypeError(
+                "Placement groups can only be used within a viewgen.")
+        if view_ctx.group_stack:
+            view_ctx.group_stack[-1].add(element)
+        else:
+            view_ctx.placement_groups.append(element)
+        return element
     # Layout context: create LayoutInstance from Cell instances
     if isinstance(ctx.root, Layout):
         if isinstance(element, Cell):

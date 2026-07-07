@@ -42,6 +42,8 @@ class ViewContext:
     """
     def __init__(self, root):
         self.root = root
+        self.placement_groups = [] #: top-level placement groups, emitted in postprocess
+        self.group_stack = [] #: placement groups whose body is currently executing
 
     @classmethod
     def create_root(cls, cell, root_cls):
@@ -106,8 +108,43 @@ class SchematicViewContext(ViewContext):
             symbol = None
         return root_cls(cell=cell, symbol=symbol)
 
+    def __enter__(self):
+        super().__enter__()
+        from .constraints import Solver
+        self.solver = Solver(self.root)
+        return self
+
+    def constrain(self, constraint):
+        self.solver.constrain(constraint)
+
     def postprocess(self):
+        from .constraints import SolverError
+        from .placement import describe
+        from ..schematic.helpers import schem_place_ports
+        # Solving happens before resolve_instances(): constraints captured in
+        # the viewgen body reference the SchemInstanceUnresolved nodes, and
+        # resolve_instances() carries the solved positions over.
+        # Auto-anchored top-level groups line up side by side, left to
+        # right in declaration order, with routing space in between.
+        origin = 0
+        for group in self.placement_groups:
+            if group.emit(self.solver, auto_anchor=(origin, 0)):
+                width = group.arrangement()[2][0]
+                origin += width + 4
+        self.solver.solve(allow_undefined=True)
         self.root.resolve_instances()
+        # Ports may legitimately still be undefined after solving; they are
+        # auto-placed based on their align. Everything else must be defined.
+        schem_place_ports(self.root)
+        undefined = self.solver.undefined_attrs()
+        if undefined:
+            locations = sorted(
+                f"{describe(self.root.cursor_at(mav.nid))}.{mav.attr.name}"
+                for mav in undefined
+            )
+            raise SolverError(
+                "Undefined constrainable attribute(s) found. Please add "
+                "constraints or assign them directly: " + ", ".join(locations))
         self.root.auto_wire()
         self.root.check(add_conn_points=True, add_terminal_taps=True)
 

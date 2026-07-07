@@ -173,3 +173,18 @@ def test_loc_transform_with_placeholder_pos():
     sch = Schematic()
     sch.inst1 = SchemInstance(symbol=SimpleSymbol().symbol)
     assert isinstance(sch.inst1.loc_transform(), TD4LinearTerm)
+
+
+def test_unresolved_subcursor_uses_recorded_params():
+    # Geometry reads on a SchemInstanceUnresolved must resolve the symbol
+    # with the parameters recorded so far, not with defaults (MultiPinSymbol
+    # has no default for bits, so this raises if params are dropped).
+    sch = Schematic()
+    sch.inst1 = SchemInstanceUnresolved(
+        resolver=lambda **p: MultiPinSymbol(**p).symbol,
+        pos=Vec2R(1, 1),
+    )
+    sch.inst1 % SchemInstanceUnresolvedParameter(name='bits', value=2)
+
+    assert sch.inst1['q'][1].pos == Vec2R(5, 3)
+    assert sch.inst1.outline.uy == R(5)

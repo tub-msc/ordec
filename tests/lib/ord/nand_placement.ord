@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from ordec.lib.generic_mos import Nmos, Pmos
+
+cell Nand2:
+    viewgen symbol -> Symbol:
+        inout vdd: .align=North
+        inout vss: .align=South
+        input a: .align=West
+        input b: .align=West
+        output y: .align=East
+
+    viewgen schematic -> Schematic:
+        port a : .align=East
+        port b : .align=East
+        port y : .align=West
+        net vss
+
+        # The NAND is described by its series/parallel structure alone:
+        # from vdd to vss, the parallel pull-up pair is in series with the
+        # two pull-down transistors. The nested Parallel connects to the
+        # stack through its rail nets: sources to vdd, drains to the y
+        # junction (named by wiring pu_b.d -- y). The pull-down junction
+        # between pd_a and pd_b remains anonymous.
+        Series(gap=4) core:
+            port vdd: .align=South
+            Parallel(gap=4) pullup:
+                Pmos pu_a:
+                    .g -- a
+                    .b -- vdd
+                Pmos pu_b:
+                    .g -- b
+                    .b -- vdd
+                    .d -- y
+            Nmos pd_a:
+                .g -- a
+                .b -- vss
+            Nmos pd_b:
+                .g -- b
+                .b -- vss
+            port vss: .align=North

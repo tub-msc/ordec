@@ -12,6 +12,7 @@ User Reference
    geoprim
    rational
    constraints
+   placement
    extlibrary
    layout
    layout_klayout

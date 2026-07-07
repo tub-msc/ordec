@@ -1,8 +1,8 @@
-# SPDX-FileCopyrightText: 2025 ORDeC contributors
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
 from ordec.core import *
-from ordec.lib.generic_mos import Nmos,Pmos
+from ordec.lib.generic_mos import Nmos, Pmos
 
 cell Inv:
     viewgen symbol -> Symbol:
@@ -12,10 +12,13 @@ cell Inv:
         output y: .align=East
 
     viewgen schematic -> Schematic:
-        port vdd: .align=North
-        port vss: .align=South
-        port y : .align=West
+        # No port positions given: ports are auto-placed on the content
+        # bounding box edge such that their align (the port arrow) points
+        # into the drawing.
+        port vdd: .align=South
+        port vss: .align=North
         port a : .align=East
+        port y : .align=West
 
         Nmos pd:
             .s -- vss
@@ -25,16 +28,9 @@ cell Inv:
             .s -- vdd
             .b -- vdd
             .d -- y
-            .$l = 400n
-        pu.$w = 200n
 
-        ! vss.pos == (2, 1)
-        ! vdd.pos == vss.pos + (0, 12)
-        ! y.pos.y == pd.d.pos.y + 1
-        ! y.pos.x == pd.b.pos.x + 2
-        ! a.pos == vss.pos + (0, 6)
-        ! pd.pos == vss.pos + (2, 1)
-        ! pd.outline.north + (0, 2) == pu.outline.south
+        ! pd.pos == (2, 2)
+        ! pd.outline.north + (0, 4) == pu.outline.south
 
         for instance in pu, pd:
             instance.g -- a
