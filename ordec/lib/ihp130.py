@@ -926,6 +926,18 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
                 )
             klayout.parse_rdb(cwd / "maximal.lyrdb", report, directory)
 
+            # The antenna rules live in their own deck; without this, long
+            # upper-metal routes into gate pins would go unchecked. (The
+            # sibling density deck stays out: its 200 um check windows exceed
+            # these block sizes, making it a chip-assembly concern.)
+            (cwd / 'antenna.log').unlink(missing_ok=True)
+            klayout.run(pdk().klayout_drc_decks_dir / 'antenna.drc', cwd,
+                report="antenna.lyrdb",
+                log="antenna.log",
+                **klayout_shared_opts
+                )
+            klayout.parse_rdb(cwd / "antenna.lyrdb", report, directory)
+
         return report
 
 

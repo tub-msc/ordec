@@ -102,6 +102,11 @@ def sg13g2_grid() -> GridConfig:
         encl=10,
         encl_endcap=50,
         manufacturing_grid=5, # sg13g2 layout quantum (MANUFACTURINGGRID)
+        # Supply naming (sg13g2 stdcell library pins + ORDeC net conventions):
+        vdd_pin="VDD",
+        vss_pin="VSS",
+        vdd_net="vdd",
+        vss_net="vss",
         # Emitted geometry (sg13g2 sign-off DRC rules):
         wire_width=210,       # Mn min width
         wire_ext=150,         # via half 95 + 55 endcap (Mn.c1 / V*.c1)
@@ -114,6 +119,7 @@ def sg13g2_grid() -> GridConfig:
         strap_vdd_x=-520,     # left margin; right strap mirrors to die_w + 520
         strap_vss_x=-1080,    # just outside VDD
         rail_ext=150,
+        mesh_half_w=210,      # 420 nm Metal5 mesh straps (2x wire width)
     )
 
 

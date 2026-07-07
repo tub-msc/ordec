@@ -72,9 +72,10 @@ when a net cannot be realised there), which keeps the maze search local as block
 
 * Multi-terminal nets are decomposed into independent 2-pin *segments* along a minimum
   spanning tree over their terminals. Each segment first tries the two one-bend
-  **L patterns** on conflict-free nodes (a few dict probes instead of a maze search, and
-  in the uncongested initial pass almost every segment is a clean L); only a blocked
-  segment falls back to **A\*** (``_astar``) on the track
+  **L patterns**, then the two-bend **Z patterns** (sweeping the crossover track), on
+  conflict-free nodes (a few dict probes instead of a maze search, and in the
+  uncongested initial pass almost every segment is a clean pattern); only a blocked
+  segment falls back to **A\*** (``astar``) on the track
   grid: vertical layers (Metal2, Metal4) step in y, horizontal layers (Metal3, Metal5)
   step in x, and a via cost switches layer (Metal4/Metal5 are enabled by ``use_upper``,
   doubling routing capacity; Metal2/Metal3 alone otherwise). The A\* heuristic is
@@ -122,6 +123,41 @@ from the ``GridConfig``; three sg13g2 DRC specifics set the values in its profil
   That tightness is why facing wire-ends conflict and why a too-full channel forces the
   row-count growth above.
 
+Power delivery
+--------------
+
+Within a row, power is carried by rail abutment, as in any standard-cell flow. A
+multi-row block gets two more structures (a single-row block needs neither -- its one
+shared rail per supply already ties everything):
+
+* **Side straps** (``emit_power_straps``) — a vertical Metal2 strap per supply in the
+  margin on each side of the cell area, tapping every rail: a ring that ties the rails
+  the boustrophedon leaves separate and exposes the supply ports on Metal4 pads in the
+  margin.
+* **Power mesh** (``emit_power_mesh``) — a horizontal Metal5 strap over every
+  *interior* rail (the ones shared between two abutted rows, carrying the most
+  current), stitched down to its rail by via stacks at regular tap columns; the rails
+  carry the mesh current on to the side straps. Rail current then flows at most half a
+  tap pitch on thin Metal1 instead of the full row length, which is what bounds IR
+  drop as blocks grow wider. The straps sit on the rail lines, where the router can
+  never place a wire (a layer change is forbidden on rail tracks), so the mesh costs
+  almost no routing capacity; the tap via stacks and the tracks beside the wide straps
+  are reserved as hard blockages (``mesh_blocked_nodes``) that terminal access, the
+  pattern router, the maze router and the min-area growth all respect. Because those
+  blockages are hard, the tap columns are chosen around the placement's pin accesses
+  (``tap_avoid_columns``): a tap that invalidates a terminal's every access candidate
+  -- by strangling its min-area growth against a neighbor, or by crowding out its
+  off-track access bridge -- would deadlock the rip-up negotiation, since such a
+  terminal cannot retreat to an alternative; each nominal tap is nudged to the
+  nearest harmless column instead. The mesh stays strictly within the die: the side
+  margins and the strip above the top rail are the *parent's* territory (its risers
+  to the edge pads run there), which is what keeps the block composable.
+  ``GridConfig.power_mesh`` switches the mesh, ``mesh_tap_pitch`` sets the stitch
+  density.
+
+The supply pin and net names (``VDD``/``vdd`` etc.) are part of the ``GridConfig``
+profile, not the engine -- the sg13g2 conventions live in ``ihp_pnr.sg13g2_grid()``.
+
 Algorithmic fidelity and scope
 ------------------------------
 
@@ -140,7 +176,7 @@ What separates it from a production flow is scale and scope, not correctness:
   (DFF+INV benchmark, single core): ~100 cells routes in well under a second, ~200 cells
   in ~2 s, ~250 cells in ~4 s. The structural choices that carry this scaling are the MST
   2-pin decomposition with segment-level rip-up (a conflict on a high-fan-out net
-  reroutes one 2-pin connection, not the whole tree), the L-pattern fast path with
+  reroutes one 2-pin connection, not the whole tree), the L/Z-pattern fast path with
   incremental conflict bookkeeping (the maze search and the congestion scan both stay
   proportional to the contested part of the design, not to all of it), and the per-port
   reserved escape columns (single-goal, contention-free escape searches).
@@ -151,14 +187,13 @@ What separates it from a production flow is scale and scope, not correctness:
   geometry (via enclosure, min area, M2/M3 spacing) directly into the router, so the
   result is correct by construction; full sign-off DRC is hundreds of rules
   (parallel-run-length tables, end-of-line, cut spacing, min-step…), for which
-  the KLayout deck remains the authority. Note the scope of that sign-off: the PDK's
-  **antenna** and **density** rules live in separate KLayout decks that
-  ``ihp130.run_drc`` does not run, so "DRC-clean" here excludes them. Density is
-  intrinsically a chip-assembly concern (checked in 200 µm windows, larger than these
-  blocks), but antenna ratios on long upper-metal routes into gate pins are exactly the
-  pattern this router produces — check them at top level before tapeout.
-* **Out of scope by design** — clock-tree synthesis, power planning beyond rail abutment,
-  antenna fixing, fill, multi-Vt and deep (5–15 layer) routing.
+  the KLayout deck remains the authority. That sign-off (``ihp130.run_drc``) covers the
+  main and maximal rule sets plus the PDK's **antenna** deck — antenna ratios on long
+  upper-metal routes into gate pins are exactly the pattern this router produces, so
+  they are checked rather than assumed. The **density** deck stays out: its 200 µm check
+  windows exceed these block sizes, making it intrinsically a chip-assembly concern.
+* **Out of scope by design** — clock-tree synthesis, antenna fixing, fill, multi-Vt and
+  deep (5–15 layer) routing.
 
 The result is a compact but genuinely faithful flow: the right algorithms, applied end to
 end, producing sign-off-clean layout for real foundry cells — with production scale and the
