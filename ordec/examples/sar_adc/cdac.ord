@@ -12,8 +12,14 @@ Array (N bits): each bit is built from 2**i identical *unit* capacitors wired in
 parallel (a matched array, not one length-scaled cap), plus one unit "dummy"
 capacitor, so the total weight is 2**N units. Matching the weights as a ratio of
 identical devices -- rather than by scaling one cap's dimensions -- is what keeps
-the bit weights, and hence INL/DNL, accurate across process gradients. All top
-plates join the floating node ``vx`` that drives the comparator.
+the bit weights, and hence INL/DNL, accurate across process gradients. In the
+layout the 2**N units form a *common-centroid* 2-D array: units are assigned to
+bits in point-symmetric pairs about the array centre, so every bit's centroid
+coincides with the array centre and a linear process gradient cancels exactly.
+A ring of grounded dummy units surrounds the array, so every functional unit
+sees the same etch/lithography neighborhood as its peers (edge units would
+otherwise mismatch systematically). All top plates of the functional units
+join the floating node ``vx`` that drives the comparator.
 
 Operation (reference voltage Vref = VDD):
 
@@ -62,7 +68,13 @@ cell CapDac:
     viewgen schematic -> Schematic:
         # vx runs along the top; supplies/controls enter from the left; the
         # per-bit cap + switch columns are spread along the x-axis with the dac
-        # control ports entering from the bottom.
+        # control ports entering from the bottom. A bit's units fold into
+        # sub-columns of 8 so wide bit counts stay readable.
+        xoff = [0]
+        for i in range(self.n):
+            subs = ((1 << i) + 7) // 8
+            xoff.append(xoff[i] + max(24, 9 * subs + 15))
+
         port vx:       .align=South; .pos=(24, 42)
         port vin:      .align=East;  .pos=(8, 9)
         port vcm:      .align=East;  .pos=(8, 36)
@@ -73,7 +85,7 @@ cell CapDac:
 
         path dac
         for i in range(self.n):
-            port dac[i]: .align=North; .pos=(32 + 24*i, 10)
+            port dac[i]: .align=North; .pos=(32 + xoff[i], 10)
 
         vdd.auto_wire = False
         vss.auto_wire = False
@@ -91,7 +103,7 @@ cell CapDac:
         cu = 0   # running unit-cap index
         for i in range(self.n):
             net bp[i]
-            col = 24 * i
+            col = xoff[i]
 
             # Binary weight 2**i built from 2**i IDENTICAL unit caps in parallel
             # (matched array), not one length-scaled cap: identical devices track
@@ -100,7 +112,7 @@ cell CapDac:
             # each unit is its own instance.
             for j in range(2 ** i):
                 Cmim cap[cu]:
-                    .pos=(24 + col, 22 + 7 * j)
+                    .pos=(24 + col + 9 * (j // 8), 22 + 7 * (j % 8))
                     .p -- vx; .m -- bp[i]
                     .$m = 1; .$l = self.cu_l; .$w = self.cu_w
                 cu = cu + 1
@@ -118,7 +130,7 @@ cell CapDac:
                 .orientation = West
         # Dummy unit capacitor: vin while sampling, GND while converting.
         net bp_d
-        cold = 24 * self.n
+        cold = xoff[self.n]
         Cmim cap_d:
             .pos=(24 + cold, 22)
             .p -- vx; .m -- bp_d; .$m = 1; .$l = self.cu_l; .$w = self.cu_w
@@ -133,25 +145,55 @@ cell CapDac:
             .vdd -- vdd; .vss -- vss
             .orientation = West
 
+        # Grounded dummy-ring units (matching only, electrically inert: both
+        # plates on vss). They mirror the layout's ring so LVS matches; one
+        # ring cell is omitted there for the vx entry, hence the -1.
+        rows = 1 << (self.n // 2); cols = 1 << ((self.n + 1) // 2)
+        ring_n = (rows + 2) * (cols + 2) - rows * cols - 1
+        path cap_ring
+        xr = xoff[self.n] + 15
+        for j in range(ring_n):
+            Cmim cap_ring[j]:
+                .pos=(24 + xr + 9 * (j // 8), 22 + 7 * (j % 8))
+                .p -- vss; .m -- vss
+                .$m = 1; .$l = self.cu_l; .$w = self.cu_w
+
     viewgen layout -> Layout:
         # Hand layout: a row of transmission-gate switches (Metal1 cells) along
-        # the bottom; above each bit's switches a column of identical unit MIM caps
-        # (bit i = 2**i units stacked) forms the matched binary-weighted array. A
-        # per-column Metal5 strap ties that bit's unit bottom plates to bp[i]; one
-        # TopMetal1 plate over the whole array ties every top plate to vx (a single
-        # plate avoids TopMetal1's wide same-net spacing). The digital control
-        # (sample/sample_n) and supply (vin/vdd/vss) nets run on Metal3 buses over
-        # the switch row, reached by short Metal1->Metal3 risers.
+        # the bottom; above it, the 2**n unit MIM caps form a COMMON-CENTROID
+        # 2-D array (near-square: 2^floor(n/2) rows x 2^ceil(n/2) columns).
+        # Units are assigned to bits in point-symmetric pairs about the array
+        # centre -- so every bit's centroid is exactly the array centre and a
+        # linear oxide/thickness gradient cancels -- with the pairs dealt to the
+        # bits in radially interleaved order (each bit samples all radii, which
+        # also averages second-order effects). Bit 0 and the dummy unit share
+        # the most central pair.
+        #
+        # Bottom-plate collection: every grid column carries one vertical
+        # Metal4 *bit line* per net (n+1 nets: bp[0..n-1] + dummy) at a fixed
+        # slot inside the column pitch; a unit taps its own line with a single
+        # Via4 from its Metal5 bottom plate (the MIM DRC rules do not restrict
+        # Via4/Metal4 under the cap -- only MIM.c/MIM.d enclosures apply). The
+        # lines drop below the array onto per-net horizontal Metal3 buses,
+        # which the switch row reaches with Metal2 risers from each bit's
+        # bottom-plate join. A TopMetal1 mesh over the array (see below) ties
+        # every unit top plate to vx; the sensitive vx node is shielded from
+        # the digital bit lines underneath by the driven bottom plates in
+        # between. The digital control (sample/sample_n) and supply
+        # (vin/vdd/vss) nets run on Metal3 buses over the switch row, reached
+        # by short Metal1->Metal3 risers, exactly as in the switch-row-only
+        # floorplan.
         .ref_layers = SG13G2().layers
         layers = .ref_layers
         L1 = layers.Metal1; M2 = layers.Metal2; M3 = layers.Metal3
-        M5 = layers.Metal5; TM1 = layers.TopMetal1; TV1 = layers.TopVia1
+        M4 = layers.Metal4; M5 = layers.Metal5
+        V3 = layers.Via3; V4 = layers.Via4
+        TM1 = layers.TopMetal1; TV1 = layers.TopVia1
         n = self.n
         TGP = 3300   # within-pair switch pitch (>=620 nm n-well spacing, NW.b)
-        BP  = 7000   # per-bit pitch (keeps the 6.2 um-wide caps apart)
-        YC  = 11000  # cap row y
+        BP  = 7000   # per-bit switch pitch
 
-        # ---- switch + cap placement ----
+        # ---- switch row ----
         tgx = {'rst': 0}
         x0 = 3600
         for i in range(n):
@@ -161,30 +203,126 @@ cell CapDac:
         tgx['vin_d'] = xd; tgx['gnd_d'] = xd + TGP
         for k, xx in tgx.items():
             . % LayoutInstance(ref=Tgate().layout, pos=Vec2I(xx, 0), orientation=R0)
-        # ---- matched unit-cap array: bit i = 2**i identical unit caps stacked in
-        # its column (exact-ratio matching), all bottom plates tied on a Metal5
-        # strap to bp[i], all top plates on a TopMetal1 strap to vx. The strap/gap
-        # parasitic to vx scales with column height (~2**i), so it adds in
-        # proportion to every bit and leaves the binary ratios -- hence INL/DNL --
-        # intact.
+
+        # ---- common-centroid unit-cap array ----
         UL = int(self.cu_l / R('1n')); UW = int(self.cu_w / R('1n'))
-        SY = UL + 1500                       # stacked-unit y-pitch (gap >= MIM spacing)
-        def capcol(cx, count):
-            for j in range(count):
-                . % LayoutInstance(ref=Cmim(l=self.cu_l, w=self.cu_w).layout,
-                    pos=Vec2I(cx, YC + j * SY), orientation=R0)
-            top = YC + (count - 1) * SY + UL
-            . % LayoutRect(layer=M5, rect=Rect4I(cx, YC - 300, cx + UW, top + 300))   # bp[i]
-            return top
-        capx = {}; tops = []
-        for i in range(n):
-            capx[i] = tgx[('vin', i)] - 1100
-            tops.append(capcol(capx[i], 2 ** i))
-        capx['d'] = tgx['vin_d'] - 1100
-        tops.append(capcol(capx['d'], 1))
-        # One vx TopMetal1 plate over the whole array (all top plates are vx; a
-        # single shape avoids TopMetal1 same-net spacing between column straps).
-        . % LayoutRect(layer=TM1, rect=Rect4I(capx[0], YC, capx['d'] + UW, max(tops)))
+        ENC = 600                      # Mim_c: M5 bottom plate beyond MIM, each side
+        GAP = 800                      # plate-to-plate space (different nets)
+        PX = UW + 2 * ENC + GAP        # unit pitch
+        PY = UL + 2 * ENC + GAP
+        rows = 1 << (n // 2); cols = 1 << ((n + 1) // 2)   # rows*cols = 2**n
+        nets_ = n + 1                  # bp[0..n-1] + dummy (net id n)
+        # Bit-line slot pitch inside a column: all nets_ lines must fit within
+        # the plate width (200 nm plate margin each side), snapped to the 5 nm
+        # manufacturing grid so the vias stay on-grid.
+        SLOT = (UW + 2 * ENC - 400) // nets_ // 5 * 5
+        LW = 300 if SLOT >= 510 else 210   # bit-line width
+        if SLOT < LW + 210:
+            raise ValueError(f"n={n} bit lines do not fit under cu_w={self.cu_w} units")
+
+        # Point-symmetric pair assignment: pairing guarantees the common
+        # centroid; the deal order below spreads each bit across all radii.
+        pairs = [((r, c), (rows - 1 - r, cols - 1 - c))
+            for r in range(rows) for c in range(cols)
+            if (r, c) < (rows - 1 - r, cols - 1 - c)]
+        pairs.sort(key=lambda p: ((2 * p[0][0] - rows + 1) ** 2 * PY * PY
+            + (2 * p[0][1] - cols + 1) ** 2 * PX * PX, p))
+        assign = {}
+        a0, b0 = pairs.pop(0)
+        assign[a0] = 0; assign[b0] = n     # bit 0 + dummy share the centre pair
+        left = {i: 1 << (i - 1) for i in range(1, n)}
+        for a, b in pairs:
+            # proportional deal: pick the bit with the largest remaining share
+            # of its quota, so every bit's pairs interleave radially
+            i = max(left, key=lambda j: (left[j] << (n - j), j))
+            assign[a] = i; assign[b] = i
+            left[i] = left[i] - 1
+            if not left[i]:
+                del left[i]
+
+        # The functional array is inset one pitch from (2500, just above the
+        # buses): the surrounding grounded dummy ring (rows/cols -1 and
+        # rows/cols) occupies that first pitch, so every functional unit sees
+        # interior lithography. 2500 keeps the ring clear of the vx riser.
+        AX0 = 2500 + PX                  # plate left edge of column 0
+        BUSY0 = 9600                     # lowest bottom-plate collection bus
+        AY0 = BUSY0 + nets_ * 600 + 800 + PY  # plate bottom edge of row 0
+        IX0 = AX0 + ENC; IY0 = AY0 + ENC # Cmim instance origin of cell (0, 0)
+
+        def busy(k):
+            return BUSY0 + k * 600
+        def linex(c, k):
+            # x of net k's Metal4 bit line inside grid column c (centred band)
+            band = (nets_ - 1) * SLOT
+            return AX0 + c * PX + (UW + 2 * ENC - band) // 2 // 5 * 5 + k * SLOT
+
+        cap_ref = Cmim(l=self.cu_l, w=self.cu_w).layout
+        for (r, c), k in sorted(assign.items()):
+            ux = IX0 + c * PX; uy = IY0 + r * PY
+            . % LayoutInstance(ref=cap_ref, pos=Vec2I(ux, uy), orientation=R0)
+            # Bottom-plate tap: one Via4 from the unit's Metal5 plate onto its
+            # net's Metal4 bit line, which runs down onto the net's Metal3 bus.
+            lx = linex(c, k); cy = uy + UL // 2
+            . % LayoutRect(layer=V4, rect=Rect4I(lx - 95, cy - 95, lx + 95, cy + 95))
+            . % LayoutRect(layer=M4,
+                rect=Rect4I(lx - LW // 2, busy(k) - 150, lx + LW // 2, cy + 150))
+            . % LayoutRect(layer=V3,
+                rect=Rect4I(lx - 95, busy(k) - 95, lx + 95, busy(k) + 95))
+
+        # ---- per-net Metal3 collection buses below the array (left end
+        # reaches the switch row's bp risers at x0 + 1800) ----
+        arr_r = AX0 + (cols - 1) * PX + UW + 2 * ENC   # array right edge
+        for k in range(nets_):
+            . % LayoutRect(layer=M3,
+                rect=Rect4I(x0 + 1400, busy(k) - 150, max(arr_r, tgx['gnd_d'] + 2600), busy(k) + 150))
+
+        # ---- grounded dummy ring: one ring of identical units around the
+        # array, so the functional edge units see the same etch neighborhood
+        # as interior ones. Both plates tie to vss: the bottom plates are
+        # bridged into one Metal5 loop and dropped on Metal4 to the vss
+        # supply bus; the top plates are bridged into a TopMetal1 loop, tied
+        # down once through a TopVia1 stack onto a Metal5 tab. The ring cell
+        # at (0, -1) is omitted: the vx TopMetal1 finger enters there, and a
+        # ring cell's top plate would short vx to the ring.
+        tp = cap_ref.term_p.rect   # unit top-plate TM1, relative to the Cmim origin
+        tpm = (tp.lx + tp.ux) // 2
+        ring = [(r, c) for r in range(-1, rows + 1) for c in range(-1, cols + 1)
+            if (r in (-1, rows) or c in (-1, cols)) and (r, c) != (0, -1)]
+        ring_set = set(ring)
+        for (r, c) in ring:
+            x = IX0 + c * PX; y = IY0 + r * PY
+            . % LayoutInstance(ref=cap_ref, pos=Vec2I(x, y), orientation=R0)
+            if (r, c + 1) in ring_set:      # bridge to the right neighbor
+                . % LayoutRect(layer=M5, rect=Rect4I(
+                    x + UW + 100, y + UL // 2 - 1000, x + PX - 100, y + UL // 2 + 1000))
+                . % LayoutRect(layer=TM1, rect=Rect4I(
+                    x + tp.ux - 500, y + tpm - 1000, x + PX + tp.lx + 500, y + tpm + 1000))
+            if (r + 1, c) in ring_set:      # bridge to the upper neighbor
+                . % LayoutRect(layer=M5, rect=Rect4I(
+                    x + UW // 2 - 1000, y + UL + 100, x + UW // 2 + 1000, y + PY - 100))
+                . % LayoutRect(layer=TM1, rect=Rect4I(
+                    x + tpm - 1000, y + tp.uy - 500, x + tpm + 1000, y + PY + tp.ly + 500))
+        # bottom-plate tie: a short Metal4 stub drops the bottom-left corner
+        # unit onto a dedicated Metal3 ring bus just above the bp buses; a
+        # Metal2 riser at the left edge ties the bus down to the vss supply
+        # bus. Deliberately NO Metal4 through the switch/pin band: the parent's
+        # column allocator may park a jogged Metal4/Metal5 column anywhere in
+        # that band and cannot see block-internal metal -- an M4 drop there
+        # gets shorted (found the hard way: dac[0] jog landed on it).
+        rbus_y = busy(nets_)
+        rx = IX0 - PX + UW // 2
+        ry0 = IY0 - PY + UL // 2
+        . % LayoutRect(layer=V4, rect=Rect4I(rx - 95, ry0 - 95, rx + 95, ry0 + 95))
+        . % LayoutRect(layer=M4, rect=Rect4I(rx - 150, rbus_y - 150, rx + 150, ry0 + 150))
+        . % LayoutRect(layer=V3, rect=Rect4I(rx - 95, rbus_y - 95, rx + 95, rbus_y + 95))
+        . % LayoutRect(layer=M3, rect=Rect4I(-2950, rbus_y - 150, rx + 150, rbus_y + 150))
+        # top-plate tie: Metal5 tab off the right-middle ring unit, one
+        # TopVia1 on it, TopMetal1 tab from that unit's top plate over the via.
+        tx = IX0 + cols * PX; tcy = IY0 + (rows // 2) * PY + UL // 2
+        tex = tx + UW + ENC              # that unit's plate right edge
+        . % LayoutRect(layer=M5,  rect=Rect4I(tex - 320, tcy - 820, tex + 1320, tcy + 820))
+        . % LayoutRect(layer=TV1, rect=Rect4I(tex + 290, tcy - 210, tex + 710, tcy + 210))
+        . % LayoutRect(layer=TM1, rect=Rect4I(tx + tp.ux - 500, tcy - 820, tex + 1130, tcy + 820))
 
         # Tgate pin centres for a cell at (X, 0):
         def aP(x):   return (x + 150, 2980)
@@ -194,8 +332,8 @@ cell CapDac:
         def vddP(x): return (x - 850, 4780)
         def vssP(x): return (x - 850, 1180)
 
-        M4 = layers.Metal4
-        xbl = -2200; xbr = tgx['gnd_d'] + 400      # supply-bus x span
+        xbl = -3100; xbr = tgx['gnd_d'] + 400      # supply-bus x span (left end
+        # reaches the dummy-ring vss riser at -2800)
         xcl = -400;  xcr = tgx['gnd_d'] + 2600     # control-seg x span
 
         sr = SRouter(SG13G2().default_routing_spec)
@@ -211,24 +349,49 @@ cell CapDac:
             return . % LayoutRect(layer=L1, rect=Rect4I(x-160, y-160, x+160, y+160))
 
         # ---- bottom plates bp[i]/bp_d: join the bit's two b-pins (Metal2 over
-        # the dac a-bar) and stack to the cap Metal5 plate. Pads enclose the via.
-        bp_pairs = [(tgx[('vin', i)], tgx[('dac', i)]) for i in range(n)]
-        bp_pairs.append((tgx['vin_d'], tgx['gnd_d']))
-        for (xv, xdc) in bp_pairs:
+        # the dac a-bar), then rise to the net's collection bus on a Metal2
+        # column at x+1800 -- clear of the en_n risers (x+405), the vin riser
+        # (x+150) and the dac-side tap risers (xdc-850). Pads enclose the via.
+        bp_pairs = [(tgx[('vin', i)], tgx[('dac', i)], i) for i in range(n)]
+        bp_pairs.append((tgx['vin_d'], tgx['gnd_d'], n))
+        for (xv, xdc, k) in bp_pairs:
             mpad(xv + 660, 2980); mpad(xdc + 660, 2980)
             sr.move(L1, bP(xdc))
             sr.layer(M2); sr.wire_x(xv + 660)
             sr.push(); sr.layer(L1); sr.pop()
-            # rise on Metal4 (clear of the en_n Metal2 risers), then to Metal5
-            sr.layer(M4); sr.wire_y(YC + 200); sr.layer(M5)
+            sr.wire_x(xv + 1800)
+            sr.wire_y(busy(k))
+            sr.layer(M3)
 
-        # ---- vx: TopMetal1 bus over the cap top plates + a hand TopVia1 stack
-        # up from t_rst.a (which is also the vx pin). ----
-        . % LayoutRect(layer=TM1, rect=Rect4I(xbl, YC + 1000, capx['d'] + 5020, YC + 2640))
+        # ring bus -> vss supply bus: a Metal2 riser LEFT of the -2000 pin
+        # risers (and invisible to the parent's allocator, which never places
+        # Metal2). Between the pin risers and t_rst's tap risers there is no
+        # 210 nm-clear window for another M2 column.
+        sr.move(M3, (-2800, rbus_y)); sr.layer(M2); sr.wire_y(1180); sr.layer(M3)
+
+        # ---- vx: a TopMetal1 MESH over the array ties all unit top plates --
+        # per-column bridges between vertically adjacent plates plus one
+        # horizontal spine -- rather than one solid plate: vx connects to the
+        # comparator gate at the top level, and a solid plate's area would
+        # push the antenna metal/gate ratio (Ant.e) past its limit at n >= 8.
+        # The 1.88 um plate-to-plate gaps satisfy TM1.b (1.64 um, no wide-metal
+        # rule on TopMetal1). A TopVia1 stack left of the array brings vx down
+        # to Metal5 and a Metal5 riser to t_rst.a (which is also the vx pin).
+        bx = IX0 + tpm
+        for c in range(cols):
+            for r in range(rows - 1):
+                . % LayoutRect(layer=TM1, rect=Rect4I(
+                    bx + c * PX - 1000, IY0 + r * PY + tp.uy - 500,
+                    bx + c * PX + 1000, IY0 + (r + 1) * PY + tp.ly + 500))
+        ry = IY0 + (rows // 2) * PY + (tp.ly + tp.uy) // 2
+        . % LayoutRect(layer=TM1, rect=Rect4I(
+            IX0 + tp.lx, ry - 1000, IX0 + (cols - 1) * PX + tp.ux, ry + 1000))
+        yv = IY0 + 1500
+        . % LayoutRect(layer=TM1, rect=Rect4I(150 - 820, yv - 820, IX0 + tp.lx + 1000, yv + 820))
+        . % LayoutRect(layer=TV1, rect=Rect4I(150 - 210, yv - 210, 150 + 210, yv + 210))
+        . % LayoutRect(layer=M5,  rect=Rect4I(150 - 820, yv - 820, 150 + 820, yv + 820))
         mpad(150, 2980).create_pin(self.symbol.vx)
-        sr.move(L1, (150, 2980)); sr.layer(M5); sr.wire_y(YC + 1820)
-        . % LayoutRect(layer=M5,  rect=Rect4I(150-820, YC+1820-820, 150+820, YC+1820+820))
-        . % LayoutRect(layer=TV1, rect=Rect4I(150-210, YC+1820-210, 150+210, YC+1820+210))
+        sr.move(L1, (150, 2980)); sr.layer(M5); sr.wire_y(yv)
 
         # ---- Metal3 supply buses + risers ----
         for by in (1180, 2300, 4780):                 # vss, vin, vdd

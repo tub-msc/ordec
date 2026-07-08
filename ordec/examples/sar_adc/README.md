@@ -97,18 +97,37 @@ those, each block has a complete, sign-off-clean layout:
   rip-up-and-reroute until DRC-clean). The engine is documented in detail in the ORDeC
   reference, [*Gridded standard-cell place and route*](../../../docs/ref/pnr.rst).
 * **`Comparator`** — a hand-crafted **analog** layout (`comparator.ord`): the
-  single-stage OTA core (a two-finger matched differential pair, a current-mirror load,
-  a fingered tail current sink and a self-bias column, all in one shared n-well) is
-  built from constrained device PCells; the two output-buffer inverters are placed as
-  foundry `Inv` instances and wired in with `ordec.layout.SRouter`.
+  single-stage OTA core is built from constrained device PCells, with the matched
+  devices **interdigitated A-B-B-A** — each side of the differential pair (and of the
+  current-mirror load) is two parallel one-finger halves, drains facing out (`n1`,
+  joined by a Metal2 crossover) and in (`n2`), so a lateral gradient cancels to first
+  order — and **dummy devices flank both bands** so the outer fingers see the same
+  etch neighborhood as inner ones. The fingered tail sink and self-bias column sit
+  below/left, everything PMOS in one shared n-well; the two output-buffer inverters
+  are placed as foundry `Inv` instances and wired in with `ordec.layout.SRouter`.
 * **`CapDac`** — a hand layout (`cdac.ord`) of the capacitor array and its
   transmission-gate switches. Each bit is a *matched array of identical unit capacitors*
-  (bit `i` = `2**i` `m=1` units stacked in its column — the `Cmim` PCell supports only
-  `m=1`), so the binary weights track as an exact device-count ratio rather than by
-  scaling one capacitor's dimensions; this is what keeps INL/DNL accurate across process
-  gradients. A per-column Metal5 strap ties each bit's unit bottom plates to its
-  `bp[i]`, a single TopMetal1 plate ties all top plates to `vx`, and the digital control
-  and supply nets run on Metal3 buses over the switch row.
+  (bit `i` = `2**i` `m=1` units — the `Cmim` PCell supports only `m=1`), so the binary
+  weights track as an exact device-count ratio rather than by scaling one capacitor's
+  dimensions; this is what keeps INL/DNL accurate across process gradients. The `2**n`
+  units form a **common-centroid 2-D array** (near-square, scales to 8 bits and beyond):
+  units are assigned to bits in point-symmetric pairs about the array centre — every
+  bit's centroid coincides with the centre, so a linear process gradient cancels
+  exactly — with the pairs dealt radially interleaved so each bit also samples all
+  radii. Each unit taps its bit's vertical Metal4 *bit line* (running under the caps;
+  the MIM rules allow it) with a single Via4; the lines collect on per-net Metal3 buses
+  below the array, which the switch row reaches with Metal2 risers. A **ring of
+  grounded dummy units** surrounds the array, so every functional unit sees interior
+  lithography (edge units would otherwise mismatch systematically). A TopMetal1 *mesh*
+  (per-column bridges plus a spine, rather than one solid plate) ties all top plates to
+  `vx` — keeping the metal/gate antenna ratio at the comparator input legal at n ≥ 8 —
+  and the digital control and supply nets run on Metal3 buses over the switch row.
+  A split/bridge-cap (segmented) DAC was considered and deliberately **not** used: at
+  8 bits the plain binary array is small (~0.1 mm on a side would be needed only past
+  10 bits), the fractional bridge capacitor would break the exact unit-count matching
+  that is this DAC's strongest property, and the converter's accuracy ceiling is the
+  comparator offset anyway — segmentation would buy area the design doesn't need at
+  the cost of a linearity hazard it can't afford.
 
 ### Top-level composition (`SarAdc`)
 
@@ -122,11 +141,22 @@ interior. A placement change therefore cannot create a new over-cell short. The
 floorplan is **computed from the blocks' bounding boxes** rather than hand-placed, so it
 re-derives itself whenever the resolution changes.
 
-Two analog-specific touches go beyond simply passing DRC/LVS:
+Several analog-specific touches go beyond simply passing DRC/LVS:
 
 * the critical **`vx` net** (DAC top plate → comparator input) is routed as a short,
   direct Metal4 wire, with the comparator aligned to it, instead of detouring down
-  through the trunk band and back; and
+  through the trunk band and back — and where it crosses the comparator's output-buffer
+  column (rail-to-rail transitions at exactly the decision moment), a **vss-tied Metal3
+  shield strip** under the wire blocks the coupling path;
+* the **trunk band is ordered by sensitivity**: `vcm` (the analog reference) takes the
+  trunk nearest the analog blocks, the supply pair follows as a shield, and the
+  full-swing digital nets sit below, nearest `SarLogic` — no digital trunk neighbors an
+  analog one;
+* the **positive supply is split** into `vdda` (comparator, CDAC, sample inverter) and
+  `vddd` (`SarLogic`), each with its own trunk/pin, so digital switching currents stay
+  off the analog rail. The ground is deliberately one net: SG13G2 has no triple well,
+  so every p-tap contacts the single substrate and separately-named grounds would be
+  shorted through it anyway (the LVS deck rightly flags them); and
 * a **`vss`-tied substrate guard bar** sits in the gap between the digital `SarLogic`
   and the analog blocks, collecting substrate noise before it reaches the comparator and
   CDAC.

@@ -27,6 +27,18 @@ SAR controller needs. ``sample_n`` is generated locally with one inverter.
 Reference voltage Vref = VDD, common mode vcm = VDD/2. A conversion is started
 by pulsing ``rst`` and completes N+2 clocks later, signalled by ``done``; the
 result appears on ``code[N-1..0]``.
+
+The positive supply is split into an analog domain (``vdda``: comparator, CDAC
+and the sample inverter) and a digital domain (``vddd``: the SAR controller),
+so the controller's switching currents do not ride on the supply of the
+sensitive analog blocks; the domains join only outside the ADC (testbench,
+standing in for the board/pad ring). The ground is deliberately a single net:
+SG13G2 has no triple well, so every p-tap contacts the one continuous
+p-substrate -- separately-named grounds would be shorted through it anyway
+(and the LVS deck, which connects all p-taps through the p-well sheet, would
+rightly flag them). Ground-noise separation is done the way a single-well
+process does it: a substrate guard bar between the domains and star-style
+trunk routing, not separate nets.
 """
 
 from ordec.core import *
@@ -44,7 +56,7 @@ Inv = extlib["sg13g2_inv_1"]
 VDD = 1.2  # supply / reference voltage
 
 cell SarAdc:
-    n = Parameter(int, default=4)   #: resolution in bits
+    n = Parameter(int, default=8)   #: resolution in bits
 
     viewgen symbol -> Symbol:
         input vin:   .align=West
@@ -53,8 +65,9 @@ cell SarAdc:
         input rst:   .align=West
         output done: .align=East
         output vx:   .align=East   # DAC top-plate node, exposed for observability
-        inout vdd:   .align=North
-        inout vss:   .align=South
+        inout vdda:  .align=North  # analog supply: comparator, CDAC, sample inverter
+        inout vddd:  .align=North  # digital supply: SAR controller
+        inout vss:   .align=South  # shared ground (single p-substrate, no triple well)
 
         path code
         for i in range(self.n):
@@ -67,7 +80,8 @@ cell SarAdc:
         port rst:  .align=East; .pos=(10,9)
         port done: .align=West; .pos=(55,9)
         port vx:   .align=West; .pos=(55,25)
-        port vdd:  .align=East; .pos=(10,26)
+        port vdda: .align=East; .pos=(10,26)
+        port vddd: .align=East; .pos=(10,28)
         port vss:  .align=East; .pos=(10,2)
 
         path code
@@ -76,31 +90,32 @@ cell SarAdc:
 
         net cmp, sample, sample_n   # vx is created by its port statement above
 
-        vdd.auto_wire = False
+        vdda.auto_wire = False
+        vddd.auto_wire = False
         vss.auto_wire = False
 
         # Continuous-time comparator: cmp = 1 while vin still exceeds the DAC.
         Comparator comp:
             .pos=(36,18)
             .in_p -- vcm; .in_n -- vx; .out -- cmp
-            .vdd -- vdd; .vss -- vss
+            .vdd -- vdda; .vss -- vss
 
-        # Local generation of sample_n.
-        Inv inv_s: .pos=(30,1); .orientation=MY;.A -- sample; .Y -- sample_n; .VDD -- vdd; .VSS -- vss
+        # Local generation of sample_n (drives the CDAC switches -> analog domain).
+        Inv inv_s: .pos=(30,1); .orientation=MY;.A -- sample; .Y -- sample_n; .VDD -- vdda; .VSS -- vss
 
         # Sample-and-hold + binary-weighted DAC.
         CapDac(n=self.n) dac:
             .pos=(20,16)
             .vx -- vx; .vin -- vin; .vcm -- vcm
             .sample -- sample; .sample_n -- sample_n
-            .vdd -- vdd; .vss -- vss
+            .vdd -- vdda; .vss -- vss
 
-        # SAR controller.
+        # SAR controller (digital supply domain).
         SarLogic(n=self.n) logic:
             .pos=(44,6)
             .clk -- clk; .rst -- rst; .cmp -- cmp
             .sample -- sample; .done -- done
-            .vdd -- vdd; .vss -- vss
+            .vdd -- vddd; .vss -- vss
 
         # DAC bit controls and registered result code.
         path dacbit
@@ -122,7 +137,8 @@ cell SarAdc:
         # see tests/test_sar_adc.py.
         .ref_layers = SG13G2().layers
         layers = .ref_layers
-        L1 = layers.Metal1; M4 = layers.Metal4; M5 = layers.Metal5
+        L1 = layers.Metal1; M2 = layers.Metal2; M3 = layers.Metal3
+        M4 = layers.Metal4; M5 = layers.Metal5
         n = self.n
 
         comp_cell = Comparator(); dac_cell = CapDac(n=n); logic_cell = SarLogic(n=n)
@@ -136,8 +152,9 @@ cell SarAdc:
         #   * SarLogic directly beneath the band, its escaped pins along its top
         #     edge facing up;
         #   * the Comparator to the left of CapDac, raised so every pin sits above
-        #     the band (it is Metal1-only, so the trunks pass over its body), and
-        #     as close to CapDac as non-overlap allows to keep the vx net short;
+        #     the band (its internal routing stays on Metal1/Metal2, so the Metal4
+        #     trunks pass over its body), and as close to CapDac as non-overlap
+        #     allows to keep the vx net short;
         #   * the sample inverter just left of the Comparator, pins above the band.
         def bbox(lay):
             xs = []; ys = []
@@ -159,7 +176,10 @@ cell SarAdc:
         vss_y = pin_cy(comp_cell.layout, 'vss')  # lowest comparator pin
 
         GAP = 900                            # generic block-to-band / block-to-block clearance
-        n_nets = n + 6                       # vcm,cmp,sample,sample_n + n*dac + vdd,vss (vx routed separately)
+        # Trunk count: vcm,cmp,sample,sample_n + n*dac + vdda,vss. vx is routed
+        # separately; vddd feeds only SarLogic, so it is a pin on the block's
+        # own strap pad and needs no trunk.
+        n_nets = n + 6
         band_top = cap[1] - GAP              # first (highest) trunk, just below CapDac
         band_bot = band_top - 600 * (n_nets - 1)
 
@@ -265,20 +285,43 @@ cell SarAdc:
         gb_y0 = band_bot - ISO // 2
         . % LayoutInstance(ref=Ptap(l=R(f'{gb_len}n'), w=R('700n')).layout,
             pos=Vec2I(gb_x0, gb_y0), orientation=R0)
-        guard_vss = (gb_x0 + gb_len // 2, gb_y0 + 350, False)
+        guard_tie = (gb_x0 + gb_len // 2, gb_y0 + 350, False)
 
         # ---- routed inter-block nets (distinct Metal4 trunk y per net) ----
         # vx (the analog-critical DAC-top-plate -> comparator net) is routed
         # separately below, NOT on a trunk -- a trunk would force it down to the
         # band and back up to the raised comparator (~20 um detour).
+        #
+        # Trunk order = sensitivity order: vcm (the analog reference) takes the
+        # trunk nearest the analog blocks, the supply pair follows as a shield,
+        # and the full-swing digital nets (cmp/sample/dac) sit below, nearest
+        # SarLogic -- so no digital trunk neighbors an analog one.
+        #
+        # Split positive supplies: the analog trunk feeds the analog blocks only
+        # (SarLogic's vddd is a pin on its own strap pad, no trunk). The ground
+        # trunk is shared -- see the module docstring: on this single-well
+        # process every p-tap contacts the one substrate, so a second ground
+        # net would only pretend to be separate. The vss trunk also picks up
+        # the guard bar and the vx shield strip's tie pad (drawn below).
+        vx_row = D['vx'][1]
+        comp_r = POS['comp'][0] + cmpb[2]
+        shield_x = (comp_r + cap[0]) // 2 // 10 * 10
         nets = [([D['vcm'], C['in_p']], self.symbol.vcm),
+                ([D['vdd'], C['vdd'], I['VDD']], self.symbol.vdda),
+                ([D['vss'], C['vss'], S['vss'], I['VSS'], guard_tie,
+                  (shield_x, vx_row - 1200, False)], self.symbol.vss),
                 ([C['out'], S['cmp']], None),
                 ([D['sample'], S['sample'], I['A']], None),
                 ([D['sample_n'], I['Y']], None)]
         for i in range(n):
             nets.append(([D[f'dac[{i}]'], S[f'dac[{i}]']], None))
-        nets.append(([D['vdd'], C['vdd'], S['vdd'], I['VDD']], self.symbol.vdd))
-        nets.append(([D['vss'], C['vss'], S['vss'], I['VSS'], guard_vss], self.symbol.vss))
+        # Metal4 edge pads keep their own x and cannot move; register ALL of
+        # them before any column is allocated, so an early-routed net cannot
+        # park a jogged column next to a pad whose net only routes later.
+        for pts, _sym in nets:
+            for (px, _py, m4) in pts:
+                if m4:
+                    used_cols.append(px)
         for k, (pts, sym) in enumerate(nets):
             route(pts, band_top - 600 * k, sym)
 
@@ -295,12 +338,25 @@ cell SarAdc:
         sr.layer(L1)
         . % LayoutRect(layer=L1, rect=Rect4I(inn[0]-140, inn[1]-165, inn[0]+140, inn[1]+165))
         vpad.create_pin(self.symbol.vx)
+        # The vx wire crosses the comparator's output-buffer column (the
+        # rightmost devices in the cell), whose rail-to-rail transitions fire
+        # exactly at the decision moment; a vss-tied Metal3 strip under the
+        # wire blocks that coupling path. (Chosen over rerouting: every entry
+        # path to in_n crosses some part of the Metal1-only cell.) The strip
+        # starts clear of the in_n via stack and ends at its tie riser in the
+        # comparator-CapDac gap, whose Metal1 pad the vss trunk picks up.
+        . % LayoutRect(layer=M3, rect=Rect4I(inn[0] + 700, vxp[1] - 450,
+            shield_x + 160, vxp[1] + 450))
+        sr.move(L1, (shield_x, vxp[1] - 1200)); sr.layer(M2); sr.wire_y(vxp[1]); sr.layer(M3)
 
         # ---- single-block port pins ----
         expose(D['vin'], self.symbol.vin)
         expose(S['clk'], self.symbol.clk)
         expose(S['rst'], self.symbol.rst)
         expose(S['done'], self.symbol.done)
+        # Digital supply: a pin directly on SarLogic's power-ring strap pad
+        # (vddd feeds nothing else, so it needs no trunk).
+        expose(S['vdd'], self.symbol.vddd)
         for i in range(n):
             expose(S[f'code[{i}]'], self.symbol.code[i])
 
@@ -326,13 +382,21 @@ cell SarAdcTb:
         pass
 
     viewgen schematic -> Schematic:
-        net vdd, vss, vin, vcm, clk, rst, done, vx
+        net vdda, vddd, vss, vin, vcm, clk, rst, done, vx
+
+        # One conversion window: rst pulse + n+2 decision clocks, with margin.
+        # Everything below (reset period, staircase timing, sim length) derives
+        # from it, so the demo works at any resolution.
+        P = (self.n + 3) * 50   # ns
 
         # Stimulus sources along the bottom (spaced wide so their parameter text
-        # does not collide), DUT to the right.
-        Gnd gnd:     .pos=(2,0);   .p -- vss
-        Vdc vdd_src: .pos=(4,16);  .$dc=VDD; .m -- vss; .p -- vdd
-        Vdc vcm_src: .pos=(22,16); .$dc=0.6; .m -- vss; .p -- vcm
+        # does not collide), DUT to the right. The analog and digital positive
+        # supplies are separate sources, so their currents can be observed
+        # independently; the ground is one net (see the SarAdc docstring).
+        Gnd gnd:      .pos=(2,0);   .p -- vss
+        Vdc vdda_src: .pos=(4,16);  .$dc=VDD; .m -- vss; .p -- vdda
+        Vdc vddd_src: .pos=(13,16); .$dc=VDD; .m -- vss; .p -- vddd
+        Vdc vcm_src:  .pos=(22,16); .$dc=0.6; .m -- vss; .p -- vcm
         Vpulse clk_src:
             .pos=(40,16); .m -- vss; .p -- clk
             .$pulsed_value=VDD; .$delay_time=40n; .$rise_time=1n; .$fall_time=1n
@@ -340,16 +404,21 @@ cell SarAdcTb:
         Vpulse rst_src:
             .pos=(60,16); .m -- vss; .p -- rst
             .$pulsed_value=VDD; .$rise_time=1n; .$fall_time=1n
-            .$pulse_width=20n; .$period=300n
+            .$pulse_width=20n; .$period=R(f'{P}n')
         # Input staircase, stepping during each reset window (mid-bin values):
+        stair = (0.225, 0.375, 0.675, 0.825, 1.125)
+        pw = [(0, stair[0])]
+        for k in range(1, len(stair)):
+            pw.append((R(f'{k*P}n'), stair[k-1]))
+            pw.append((R(f'{k*P+5}n'), stair[k]))
+        pw.append((R(f'{len(stair)*P}n'), stair[-1]))
         Vpwl vin_src:
             .pos=(80,16); .m -- vss; .p -- vin
-            .$V=((0,0.225),(300n,0.225),(305n,0.375),(600n,0.375),(605n,0.675),
-                 (900n,0.675),(905n,0.825),(1200n,0.825),(1205n,1.125),(1500n,1.125))
+            .$V=tuple(pw)
 
         SarAdc(n=self.n) dut:
             .pos=(108,14)
-            .vdd -- vdd; .vss -- vss
+            .vdda -- vdda; .vddd -- vddd; .vss -- vss
             .vin -- vin; .vcm -- vcm; .clk -- clk; .rst -- rst
             .done -- done; .vx -- vx
 
@@ -360,7 +429,7 @@ cell SarAdcTb:
 
     viewgen sim_tran -> Simulation:
         """Transient simulation covering five back-to-back conversions."""
-        .simulate().tran(R('200p'), R('1500n'))
+        .simulate().tran(R('200p'), R(f'{5 * (self.n + 3) * 50}n'))
 
     viewgen report_tran -> Report:
         sim = self.sim_tran

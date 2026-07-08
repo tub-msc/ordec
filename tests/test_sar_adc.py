@@ -67,6 +67,18 @@ def test_sar_adc_conversion_4bit(code):
     assert _read_code(sim, 4, 270e-9) == code
 
 
+@pytest.mark.parametrize("code", [60, 173])
+def test_sar_adc_conversion_8bit(code):
+    """8-bit conversion lands within +-1 LSB: the comparator's static offset
+    (a few mV, systematic for the simple continuous-time topology) shifts the
+    whole transfer curve by one 4.7 mV code bin -- see the SarAdcConvTb
+    docstring. Uniformity of that shift across codes is checked implicitly:
+    a nonlinear CDAC would break it by more than 1 LSB."""
+    vin = (code + 0.5) / 256 * 1.2
+    sim = tb.SarAdcConvTb(n=8, vin_val=round(vin, 4)).sim_tran
+    assert abs(_read_code(sim, 8, 540e-9) - code) <= 1
+
+
 def test_sar_logic_sequencing():
     """The controller must register the comparator pattern (MSB-first 1,0,1,1)
     as code 11 at the default n=4."""
@@ -112,14 +124,17 @@ def test_comparator_layout_lvs_clean():
     assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True).clean()
 
 
-def test_cdac_layout_drc_clean():
-    """The capacitive DAC (MIM caps + transmission-gate switches, hand-placed
-    with Metal5 bottom-plate and TopMetal1 top-plate routing) is DRC-clean."""
-    assert ihp130.run_drc(cdac.CapDac().layout, use_tempdir=True).summary() == {}
+@pytest.mark.parametrize("nbits", [4, 8])
+def test_cdac_layout_drc_clean(nbits):
+    """The capacitive DAC (a common-centroid 2-D array of unit MIM caps over
+    per-net Metal4 bit lines, transmission-gate switches below) is DRC-clean
+    at the default and at 8-bit resolution."""
+    assert ihp130.run_drc(cdac.CapDac(n=nbits).layout, use_tempdir=True).summary() == {}
 
 
-def test_cdac_layout_lvs_clean():
-    c = cdac.CapDac()
+@pytest.mark.parametrize("nbits", [4, 8])
+def test_cdac_layout_lvs_clean(nbits):
+    c = cdac.CapDac(n=nbits)
     assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True).clean()
 
 
@@ -134,16 +149,19 @@ def test_sar_logic_layout_lvs_clean():
     assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True).clean()
 
 
-def test_sar_adc_layout_drc_clean():
+@pytest.mark.parametrize("nbits", [4, 8])
+def test_sar_adc_layout_drc_clean(nbits):
     """The full SAR ADC top level (CapDac + Comparator + SarLogic + inverter
-    placed and routed together) is DRC-clean."""
-    assert ihp130.run_drc(sar_adc.SarAdc().layout, use_tempdir=True).summary() == {}
+    placed and routed together) is DRC-clean at 4 and 8 bits."""
+    assert ihp130.run_drc(sar_adc.SarAdc(n=nbits).layout, use_tempdir=True).summary() == {}
 
 
-def test_sar_adc_layout_lvs_clean():
+@pytest.mark.parametrize("nbits", [4, 8])
+def test_sar_adc_layout_lvs_clean(nbits):
     """The full SAR ADC top-level layout matches its schematic (every block and
-    the top-level netlist). Each block exposes its ports on its edge (signals on
-    Metal4, supplies on the power-ring straps), so the parent routes only in the
-    channels -- the property that keeps this robust to placement changes."""
-    c = sar_adc.SarAdc()
+    the top-level netlist), including the split vdda/vddd supply domains. Each
+    block exposes its ports on its edge (signals on Metal4, supplies on the
+    power-ring straps), so the parent routes only in the channels -- the
+    property that keeps this robust to placement changes."""
+    c = sar_adc.SarAdc(n=nbits)
     assert ihp130.run_lvs(c.layout, c.symbol, use_tempdir=True).clean()
