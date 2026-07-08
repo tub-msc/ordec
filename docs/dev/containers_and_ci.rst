@@ -52,6 +52,8 @@ The `ordec <https://github.com/tub-msc/ordec/pkgs/container/ordec>`_ image is bu
 
 This image is automatically built through *.github/workflows/build.yaml* using *Dockerfile*. It can also be built manually using this *Dockerfile*.
 
+Before pushing the image, *build.yaml* tests it. This is important because the automated pytest runs (see below) use the ordec-base image, not the ordec image: a runtime tool that is present in ordec-base but missing from the ordec image (e.g. KLayout not copied over from the base image) is invisible to *tests.yaml*. The test suite is run inside the freshly built image (excluding web tests, which need chromium-driver and npm — deliberately not part of the user image).
+
 In the future, ordec Docker images should be released in sync with the PyPI package ordec, both using git version tags (vX.Y.Z).
 
 Automated pytest runs

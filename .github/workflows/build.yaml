@@ -38,6 +38,26 @@ jobs:
             type=ref,event=branch
             type=ref,event=tag
             type=raw,value=latest,enable={{is_default_branch}}
+      - name: Build Docker image for testing
+        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+        with:
+          context: .
+          load: true
+          file: Dockerfile
+          tags: ordec-imagetest
+          provenance: false
+          sbom: false
+      # Regression test for the user-facing image: tests.yaml runs pytest in
+      # ordec-base, so it cannot detect runtime tools (klayout, ngspice, ...)
+      # missing from the ordec image. Run the test suite inside the freshly
+      # built image. Web tests are excluded: they need chromium-driver and
+      # npm, which are deliberately not part of the user image. Coverage/cache
+      # addopts are dropped because the mounted checkout is not writable for
+      # the container user.
+      - name: Test image
+        run: |
+          docker run --rm -v "$PWD":/mnt -w /mnt ordec-imagetest sh -xc \
+            'pip install --no-cache-dir pytest pillow && pytest -m "not web" -p no:cacheprovider -o addopts="--tb=short"'
       - name: Build and push Docker image
         id: push
         uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
