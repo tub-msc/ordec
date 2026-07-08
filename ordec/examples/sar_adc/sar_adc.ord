@@ -144,8 +144,7 @@ cell SarAdc:
         comp_cell = Comparator(); dac_cell = CapDac(n=n); logic_cell = SarLogic(n=n)
 
         # Computed floorplan -- positions come from the blocks' own bounding boxes,
-        # so the placement adapts to n (verified at n=3 and n=4) without hand-tuned
-        # magic numbers:
+        # so the placement adapts to n without hand-tuned magic numbers:
         #   * CapDac on top, its connection pins along its bottom edge;
         #   * a horizontal Metal4 trunk band just below it (one trunk per routed
         #     net), where all inter-block routing lives;
@@ -302,14 +301,10 @@ cell SarAdc:
         # trunk is shared -- see the module docstring: on this single-well
         # process every p-tap contacts the one substrate, so a second ground
         # net would only pretend to be separate. The vss trunk also picks up
-        # the guard bar and the vx shield strip's tie pad (drawn below).
-        vx_row = D['vx'][1]
-        comp_r = POS['comp'][0] + cmpb[2]
-        shield_x = (comp_r + cap[0]) // 2 // 10 * 10
+        # the guard bar.
         nets = [([D['vcm'], C['in_p']], self.symbol.vcm),
                 ([D['vdd'], C['vdd'], I['VDD']], self.symbol.vdda),
-                ([D['vss'], C['vss'], S['vss'], I['VSS'], guard_tie,
-                  (shield_x, vx_row - 1200, False)], self.symbol.vss),
+                ([D['vss'], C['vss'], S['vss'], I['VSS'], guard_tie], self.symbol.vss),
                 ([C['out'], S['cmp']], None),
                 ([D['sample'], S['sample'], I['A']], None),
                 ([D['sample_n'], I['Y']], None)]
@@ -326,9 +321,12 @@ cell SarAdc:
             route(pts, band_top - 600 * k, sym)
 
         # vx: short, direct Metal4 wire from CapDac.vx straight across to the
-        # comparator's in_n (aligned to the same row above). The comparator is
-        # Metal1-only, so the wire passes over its body; in_p sits further left
-        # than in_n, so the wire reaches in_n without crossing it.
+        # comparator's in_n (aligned to the same row above). in_n is the
+        # comparator's leftmost pin, so the wire crosses the whole cell -- but
+        # at the gate-tie row, a quiet corridor: only the input poly bars, the
+        # tail devices and vss geometry sit under it (the output buffers and
+        # every switching Metal2 lane lie several um above the row), so no
+        # shield is needed under the wire.
         vxp = D['vx']; inn = C['in_n']
         vpad = . % LayoutRect(layer=L1, rect=Rect4I(vxp[0]-140, vxp[1]-165, vxp[0]+140, vxp[1]+165))
         sr.move(L1, (vxp[0], vxp[1])); sr.layer(M4)
@@ -338,16 +336,6 @@ cell SarAdc:
         sr.layer(L1)
         . % LayoutRect(layer=L1, rect=Rect4I(inn[0]-140, inn[1]-165, inn[0]+140, inn[1]+165))
         vpad.create_pin(self.symbol.vx)
-        # The vx wire crosses the comparator's output-buffer column (the
-        # rightmost devices in the cell), whose rail-to-rail transitions fire
-        # exactly at the decision moment; a vss-tied Metal3 strip under the
-        # wire blocks that coupling path. (Chosen over rerouting: every entry
-        # path to in_n crosses some part of the Metal1-only cell.) The strip
-        # starts clear of the in_n via stack and ends at its tie riser in the
-        # comparator-CapDac gap, whose Metal1 pad the vss trunk picks up.
-        . % LayoutRect(layer=M3, rect=Rect4I(inn[0] + 700, vxp[1] - 450,
-            shield_x + 160, vxp[1] + 450))
-        sr.move(L1, (shield_x, vxp[1] - 1200)); sr.layer(M2); sr.wire_y(vxp[1]); sr.layer(M3)
 
         # ---- single-block port pins ----
         expose(D['vin'], self.symbol.vin)

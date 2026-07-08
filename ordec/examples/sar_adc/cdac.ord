@@ -16,10 +16,11 @@ the bit weights, and hence INL/DNL, accurate across process gradients. In the
 layout the 2**N units form a *common-centroid* 2-D array: units are assigned to
 bits in point-symmetric pairs about the array centre, so every bit's centroid
 coincides with the array centre and a linear process gradient cancels exactly.
-A ring of grounded dummy units surrounds the array, so every functional unit
-sees the same etch/lithography neighborhood as its peers (edge units would
-otherwise mismatch systematically). All top plates of the functional units
-join the floating node ``vx`` that drives the comparator.
+A ring of dummy units surrounds the array, so every functional unit sees the
+same etch/lithography neighborhood as its peers (edge units would otherwise
+mismatch systematically); the ring doubles as a vx-to-vss shunt capacitor that
+damps the redistribution transient (see below). All top plates of the
+functional units join the floating node ``vx`` that drives the comparator.
 
 Operation (reference voltage Vref = VDD):
 
@@ -145,9 +146,19 @@ cell CapDac:
             .vdd -- vdd; .vss -- vss
             .orientation = West
 
-        # Grounded dummy-ring units (matching only, electrically inert: both
-        # plates on vss). They mirror the layout's ring so LVS matches; one
-        # ring cell is omitted there for the vx entry, hence the -1.
+        # Dummy-ring units: matching ring AND top-plate shunt. Their top plates
+        # join vx (the layout's TopMetal1 mesh simply extends over the ring),
+        # their bottom plates stay on vss, adding a fixed ~26% (at n=8) shunt
+        # capacitance from vx to ground. That damps the sample->convert
+        # redistribution transient: the small bits' bottom plates slew rail to
+        # rail in a fraction of the MSB switch's RC, so the floating top plate
+        # transiently overshoots to ~2x its static target and would hit the
+        # substrate-diode clamp near the input-range ends, corrupting the
+        # sampled charge. The shunt is a pure attenuator around the vcm
+        # crossing, so the comparator's decision points are unaffected; only
+        # the per-trial overdrive shrinks (4.7 -> 3.7 mV per LSB at n=8, still
+        # far above the comparator offset). One ring cell is omitted in the
+        # layout for the vx entry, hence the -1.
         rows = 1 << (self.n // 2); cols = 1 << ((self.n + 1) // 2)
         ring_n = (rows + 2) * (cols + 2) - rows * cols - 1
         path cap_ring
@@ -155,7 +166,7 @@ cell CapDac:
         for j in range(ring_n):
             Cmim cap_ring[j]:
                 .pos=(24 + xr + 9 * (j // 8), 22 + 7 * (j % 8))
-                .p -- vss; .m -- vss
+                .p -- vx; .m -- vss
                 .$m = 1; .$l = self.cu_l; .$w = self.cu_w
 
     viewgen layout -> Layout:
@@ -276,14 +287,15 @@ cell CapDac:
             . % LayoutRect(layer=M3,
                 rect=Rect4I(x0 + 1400, busy(k) - 150, max(arr_r, tgx['gnd_d'] + 2600), busy(k) + 150))
 
-        # ---- grounded dummy ring: one ring of identical units around the
-        # array, so the functional edge units see the same etch neighborhood
-        # as interior ones. Both plates tie to vss: the bottom plates are
-        # bridged into one Metal5 loop and dropped on Metal4 to the vss
-        # supply bus; the top plates are bridged into a TopMetal1 loop, tied
-        # down once through a TopVia1 stack onto a Metal5 tab. The ring cell
-        # at (0, -1) is omitted: the vx TopMetal1 finger enters there, and a
-        # ring cell's top plate would short vx to the ring.
+        # ---- dummy ring: one ring of identical units around the array, so
+        # the functional edge units see the same etch neighborhood as interior
+        # ones -- doubling as the vx-to-vss SHUNT that damps the
+        # sample->convert redistribution transient (see the schematic). The
+        # bottom plates are bridged into one Metal5 loop and dropped on
+        # Metal4 to the vss supply bus; the top plates are bridged into a
+        # TopMetal1 loop that joins the vx mesh (the mesh's column bridges
+        # extend one row past the array at both ends). The ring cell at
+        # (0, -1) is omitted: the vx TopMetal1 finger enters there.
         tp = cap_ref.term_p.rect   # unit top-plate TM1, relative to the Cmim origin
         tpm = (tp.lx + tp.ux) // 2
         ring = [(r, c) for r in range(-1, rows + 1) for c in range(-1, cols + 1)
@@ -316,13 +328,7 @@ cell CapDac:
         . % LayoutRect(layer=M4, rect=Rect4I(rx - 150, rbus_y - 150, rx + 150, ry0 + 150))
         . % LayoutRect(layer=V3, rect=Rect4I(rx - 95, rbus_y - 95, rx + 95, rbus_y + 95))
         . % LayoutRect(layer=M3, rect=Rect4I(-2950, rbus_y - 150, rx + 150, rbus_y + 150))
-        # top-plate tie: Metal5 tab off the right-middle ring unit, one
-        # TopVia1 on it, TopMetal1 tab from that unit's top plate over the via.
-        tx = IX0 + cols * PX; tcy = IY0 + (rows // 2) * PY + UL // 2
-        tex = tx + UW + ENC              # that unit's plate right edge
-        . % LayoutRect(layer=M5,  rect=Rect4I(tex - 320, tcy - 820, tex + 1320, tcy + 820))
-        . % LayoutRect(layer=TV1, rect=Rect4I(tex + 290, tcy - 210, tex + 710, tcy + 210))
-        . % LayoutRect(layer=TM1, rect=Rect4I(tx + tp.ux - 500, tcy - 820, tex + 1130, tcy + 820))
+        # (the ring top plates deliberately have NO tie to vss: they carry vx)
 
         # Tgate pin centres for a cell at (X, 0):
         def aP(x):   return (x + 150, 2980)
@@ -375,11 +381,13 @@ cell CapDac:
         # comparator gate at the top level, and a solid plate's area would
         # push the antenna metal/gate ratio (Ant.e) past its limit at n >= 8.
         # The 1.88 um plate-to-plate gaps satisfy TM1.b (1.64 um, no wide-metal
-        # rule on TopMetal1). A TopVia1 stack left of the array brings vx down
-        # to Metal5 and a Metal5 riser to t_rst.a (which is also the vx pin).
+        # rule on TopMetal1). The column bridges run one row PAST the array at
+        # both ends, picking up the dummy ring's top plates (the vx shunt).
+        # A TopVia1 stack left of the array brings vx down to Metal5 and a
+        # Metal5 riser to t_rst.a (which is also the vx pin).
         bx = IX0 + tpm
         for c in range(cols):
-            for r in range(rows - 1):
+            for r in range(-1, rows):
                 . % LayoutRect(layer=TM1, rect=Rect4I(
                     bx + c * PX - 1000, IY0 + r * PY + tp.uy - 500,
                     bx + c * PX + 1000, IY0 + (r + 1) * PY + tp.ly + 500))

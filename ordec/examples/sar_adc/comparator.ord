@@ -4,9 +4,9 @@
 """
 Continuous-time comparator for the SAR ADC, built from IHP SG13G2 transistors.
 
-Topology: a self-biased NMOS differential pair with a PMOS current-mirror load
-(a single-stage OTA) followed by two CMOS inverters that square the result up to
-full digital levels.
+Topology: two cascaded differential stages -- a self-biased NMOS pair with a
+PMOS current-mirror load, then a PMOS pair with an NMOS current-mirror load --
+followed by two CMOS inverters that square the result up to full digital levels.
 
     out = 1  when  in_p > in_n
     out = 0  when  in_p < in_n
@@ -15,6 +15,25 @@ A continuous-time (rather than clocked/dynamic) comparator is used on purpose:
 its output simply tracks the sign of the input difference, so there is no strobe
 edge to line up with the DAC settling. That makes the closed SAR loop much
 easier to bring up in transient simulation.
+
+Offset budget (what makes this good for 8 bits, 1 LSB = 4.7 mV):
+
+* Systematic: a single diff stage driving an inverter trips where the stage
+  output equals the inverter threshold -- several hundred mV from the balanced
+  point, which referred to the input is (threshold error)/A1: measured -6.8 mV
+  for the old single-stage design, more than 1 LSB at n=8. And A1 cannot be
+  raised much: at VDD=1.2 V the input devices sit at Vds ~ 0.3 V where the
+  SG13G2 NMOS's own output conductance caps gm/gds at ~20 (measured), at any
+  channel length. The fix is structural, not more gain per stage: the second
+  stage is again DIFFERENTIAL, taking both first-stage outputs (n2, and the
+  diode node n1 as its balance reference), so the first stage's anchor error
+  cancels as common mode; and its NMOS mirror load self-anchors its output at
+  the mirror diode's ~0.42 V, only ~0.1 V from the inverter threshold. The
+  residual trip error is then ~0.1 V / (A1*A2) -- a few tenths of a mV.
+* Random: mismatch of the input pair, sigma(Vt) ~ A_vt / sqrt(W*L). The pair
+  uses l=1u instead of minimum length (0.52 -> 8 um^2 per side), cutting
+  sigma to a fraction of an LSB at n=8. Second-stage mismatch refers back
+  divided by A1 and is negligible.
 """
 
 from ordec.core import *
@@ -36,13 +55,16 @@ cell Comparator:
     viewgen schematic -> Schematic:
         port in_p: .align=East; .pos=(1,14)
         port in_n: .align=East; .pos=(1,13)
-        port out:  .align=West; .pos=(59,13)
+        port out:  .align=West; .pos=(77,13)
         port vdd:  .align=East; .pos=(1,22)
         port vss:  .align=East; .pos=(1,0)
 
-        net vbias    # internal bias node
-        net tail     # diff-pair common source
-        net n1, n2   # diff-pair drains (n2 is the gain output)
+        net vbias    # internal bias node (NMOS current mirrors)
+        net pbias    # PMOS bias for the second-stage tail
+        net tail     # first-stage common source
+        net tail2    # second-stage common source
+        net n1, n2   # first-stage drains (n1 = diode side, n2 = output)
+        net nd, n4   # second-stage mirror diode / output
         net nb       # buffered gain node
 
         vdd.auto_wire = False
@@ -52,104 +74,129 @@ cell Comparator:
         Pmos m_bp: .pos=(4,16); .g -- vss;    .s -- vdd; .b -- vdd; .d -- vbias; .$w=1u; .$l=2u
         Nmos m_bd: .pos=(4,4);  .g -- vbias;  .s -- vss; .b -- vss; .d -- vbias; .$w=2u; .$l=1u
 
-        # --- tail current sink (mirrors the bias diode) ---
-        Nmos m_tail: .pos=(18,1); .g -- vbias; .s -- vss; .b -- vss; .d -- tail; .$w=8u; .$l=500n; .$ng=4
+        # --- tail current sink (mirrors the bias diode, 4x) ---
+        Nmos m_tail: .pos=(18,1); .g -- vbias; .s -- vss; .b -- vss; .d -- tail; .$w=8u; .$l=1u; .$ng=4
 
         # --- NMOS input differential pair. Each side is TWO parallel
         # one-finger halves -- electrically identical to one 2-finger device
-        # (same 2 um fingers), but the halves interdigitate A-B-B-A in the
-        # layout so a lateral gradient cancels to first order. ---
-        Nmos m1a: .pos=(12,7); .g -- in_p; .s -- tail; .b -- vss; .d -- n1; .$w=2u; .$l=130n
-        Nmos m2a: .pos=(18,7); .g -- in_n; .s -- tail; .b -- vss; .d -- n2; .$w=2u; .$l=130n
-        Nmos m2b: .pos=(24,7); .g -- in_n; .s -- tail; .b -- vss; .d -- n2; .$w=2u; .$l=130n
-        Nmos m1b: .pos=(30,7); .g -- in_p; .s -- tail; .b -- vss; .d -- n1; .$w=2u; .$l=130n
+        # (same 4 um fingers), but the halves interdigitate A-B-B-A in the
+        # layout so a lateral gradient cancels to first order. l=1u for
+        # matching (see module docstring). in_n drives the OUTER halves (whose
+        # drains form the diode node n1 = the second stage's reference input),
+        # in_p the inner ones, so that out = 1 when in_p > in_n.
+        Nmos m1a: .pos=(12,7); .g -- in_n; .s -- tail; .b -- vss; .d -- n1; .$w=4.2u; .$l=1u
+        Nmos m2a: .pos=(18,7); .g -- in_p; .s -- tail; .b -- vss; .d -- n2; .$w=4.2u; .$l=1u
+        Nmos m2b: .pos=(24,7); .g -- in_p; .s -- tail; .b -- vss; .d -- n2; .$w=4.2u; .$l=1u
+        Nmos m1b: .pos=(30,7); .g -- in_n; .s -- tail; .b -- vss; .d -- n1; .$w=4.2u; .$l=1u
 
-        # --- PMOS current-mirror load (diode on the in_p side), split and
+        # --- PMOS current-mirror load (diode on the in_n side), split and
         # interdigitated the same way ---
-        Pmos m3a: .pos=(12,16); .g -- n1; .s -- vdd; .b -- vdd; .d -- n1; .$w=2u; .$l=130n
-        Pmos m4a: .pos=(18,16); .g -- n1; .s -- vdd; .b -- vdd; .d -- n2; .$w=2u; .$l=130n
-        Pmos m4b: .pos=(24,16); .g -- n1; .s -- vdd; .b -- vdd; .d -- n2; .$w=2u; .$l=130n
-        Pmos m3b: .pos=(30,16); .g -- n1; .s -- vdd; .b -- vdd; .d -- n1; .$w=2u; .$l=130n
+        Pmos m3a: .pos=(12,16); .g -- n1; .s -- vdd; .b -- vdd; .d -- n1; .$w=2u; .$l=1u
+        Pmos m4a: .pos=(18,16); .g -- n1; .s -- vdd; .b -- vdd; .d -- n2; .$w=2u; .$l=1u
+        Pmos m4b: .pos=(24,16); .g -- n1; .s -- vdd; .b -- vdd; .d -- n2; .$w=2u; .$l=1u
+        Pmos m3b: .pos=(30,16); .g -- n1; .s -- vdd; .b -- vdd; .d -- n1; .$w=2u; .$l=1u
 
         # --- matching dummies flanking both bands (electrically inert:
         # every terminal on the band's rail) ---
-        Nmos md_l:  .pos=(6,7);   .g -- vss; .s -- vss; .b -- vss; .d -- vss; .$w=2u; .$l=130n
-        Nmos md_r:  .pos=(38,7);  .g -- vss; .s -- vss; .b -- vss; .d -- vss; .$w=2u; .$l=130n
-        Pmos pmd_l: .pos=(6,16);  .g -- vdd; .s -- vdd; .b -- vdd; .d -- vdd; .$w=2u; .$l=130n
-        Pmos pmd_r: .pos=(38,16); .g -- vdd; .s -- vdd; .b -- vdd; .d -- vdd; .$w=2u; .$l=130n
+        Nmos md_l:  .pos=(6,7);   .g -- vss; .s -- vss; .b -- vss; .d -- vss; .$w=4.2u; .$l=1u
+        Nmos md_r:  .pos=(38,7);  .g -- vss; .s -- vss; .b -- vss; .d -- vss; .$w=4.2u; .$l=1u
+        Pmos pmd_l: .pos=(6,16);  .g -- vdd; .s -- vdd; .b -- vdd; .d -- vdd; .$w=2u; .$l=1u
+        Pmos pmd_r: .pos=(38,16); .g -- vdd; .s -- vdd; .b -- vdd; .d -- vdd; .$w=2u; .$l=1u
+
+        # --- pbias generator: an NMOS mirror slave pulls the bias current
+        # through a PMOS diode, giving the second-stage tail its gate bias ---
+        Nmos m_bn:  .pos=(44,4);  .g -- vbias; .s -- vss; .b -- vss; .d -- pbias; .$w=2u; .$l=1u
+        Pmos m_bpd: .pos=(44,16); .g -- pbias; .s -- vdd; .b -- vdd; .d -- pbias; .$w=2u; .$l=1u
+
+        # --- second stage: PMOS differential pair reading BOTH first-stage
+        # outputs (m5a: signal n2, m5b: the diode node n1 as the balance
+        # reference -- the first stage's anchor error cancels as common mode),
+        # with an NMOS current-mirror load whose output n4 self-anchors near
+        # the mirror diode's Vgs, close to the buffer inverter's threshold
+        # (module docstring). The pair is wide (Vov ~ 0.1 V) because its
+        # common-mode input n1/n2 sits at ~0.45 V, leaving the tail little
+        # headroom; the triode-squeezed tail is fine, the stage is ratiometric.
+        Pmos m5a:  .pos=(50,16); .g -- n2; .s -- tail2; .b -- vdd; .d -- n4; .$w=8u; .$l=1u; .$ng=4
+        Pmos m5b:  .pos=(56,16); .g -- n1; .s -- tail2; .b -- vdd; .d -- nd; .$w=8u; .$l=1u; .$ng=4
+        Pmos m_t2: .pos=(53,22); .g -- pbias; .s -- vdd; .b -- vdd; .d -- tail2; .$w=8u; .$l=1u; .$ng=4
+        Nmos m6a:  .pos=(50,7);  .g -- nd; .s -- vss; .b -- vss; .d -- n4; .$w=2u; .$l=1u
+        Nmos m6b:  .pos=(56,7);  .g -- nd; .s -- vss; .b -- vss; .d -- nd; .$w=2u; .$l=1u
 
         # --- output buffer: two foundry inverters square the gain node up to
         # full digital levels. Foundry cells (placed as layout instances) keep
         # the tight inverter gate/source/drain pitch pre-routed -- a min-length
         # inverter cannot be hand-contacted on Metal1 at the 0.18 um pitch. ---
-        Inv i1: .pos=(43,11); .A -- n2; .Y -- nb;  .VDD -- vdd; .VSS -- vss
-        Inv i2: .pos=(51,11); .A -- nb; .Y -- out; .VDD -- vdd; .VSS -- vss
+        Inv i1: .pos=(62,11); .A -- n4; .Y -- nb;  .VDD -- vdd; .VSS -- vss
+        Inv i2: .pos=(70,11); .A -- nb; .Y -- out; .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        # Flat, hand-crafted single-stage OTA + 2-inverter output buffer.
+        # Flat, hand-crafted two-stage comparator + 2-inverter output buffer.
         # Floorplan -- NMOS in p-substrate below, every PMOS in one shared
         # n-well above, matched rows INTERDIGITATED A-B-B-A with flanking
-        # dummies so a lateral gradient cancels to first order:
+        # dummies so a lateral gradient cancels to first order; the second
+        # stage sits to the right of the core, its PMOS devices built from
+        # 2 um fingers so they stay inside the same PMOS band:
         #
-        #   [m_bp]  [pmd_l m3a m4a | m4b m3b pmd_r]   <- PMOS band (n-well)
-        #   [m_bd]  [md_l  m1a m2a | m2b m1b md_r ]   <- NMOS band
-        #                  [     m_tail    ]          <- tail current sink
+        #  [m_bpd][m_bp] [pmd_l m3a m4a | m4b m3b pmd_r] [m5a m5b m_t2] <- PMOS band
+        #  [m_bn ][m_bd] [md_l  m1a m2a | m2b m1b md_r ] [m6a m6b]      <- NMOS band
+        #                       [     m_tail    ]                 <- tail sink
         #
-        # Each matched device is ONE finger; two halves in parallel replace
-        # the old 2-finger device (identical 2 um fingers, so the electrical
-        # behavior is unchanged). Drains face OUTWARD on the A halves and
-        # INWARD on the B halves: n1 is the two outer columns (joined by a
-        # Metal2 crossover) and n2 the two adjacent middle columns (joined on
-        # Metal1). Mirror columns sit exactly over pair columns, so one
-        # Metal1 bar joins each pair/mirror drain pair; sources fold to the
-        # tail bus / vdd rail as before.
+        # Each matched core device is ONE finger; two halves in parallel form
+        # each side (identical 4 um fingers). Drains face OUTWARD on the A
+        # halves and INWARD on the B halves: n1 is the two outer columns
+        # (joined by a Metal2 crossover) and n2 the two adjacent middle
+        # columns (joined on Metal1). Mirror columns sit exactly over pair
+        # columns (same l), so one Metal1 bar joins each pair/mirror drain
+        # pair; sources fold to the tail bus / vdd rail.
         .ref_layers = SG13G2().layers
         layers = .ref_layers
         L1 = layers.Metal1
+        i1x = 34800   # buffer-column x (right of the second stage); defined
+        i1y = 1900    # early because the m_t2 gate tie reaches over to it
 
-        # ===== interdigitated matched core =====
-        Nmos(w=2u, l=130n) m1a:
+        # ===== interdigitated matched core (l=1u, see module docstring) =====
+        Nmos(w=4.2u, l=1u) m1a:
             ! .pos == (0, 0)
-        Nmos(w=2u, l=130n) m2a:
+        Nmos(w=4.2u, l=1u) m2a:
             ! .activ.lx == m1a.activ.ux + 700
             ! .activ.ly == m1a.activ.ly
-        Nmos(w=2u, l=130n) m2b:
-            # widened middle gap: the in_n gate contact sits here
+        Nmos(w=4.2u, l=1u) m2b:
+            # widened middle gap: the in_p gate contact sits here
             ! .activ.lx == m2a.activ.ux + 900
             ! .activ.ly == m1a.activ.ly
-        Nmos(w=2u, l=130n) m1b:
+        Nmos(w=4.2u, l=1u) m1b:
             ! .activ.lx == m2b.activ.ux + 700
             ! .activ.ly == m1a.activ.ly
-        Pmos(w=2u, l=130n) m3a:
+        Pmos(w=2u, l=1u) m3a:
             ! .activ.lx == m1a.activ.lx
             ! .activ.ly == m1a.activ.uy + 2600
-        Pmos(w=2u, l=130n) m4a:
+        Pmos(w=2u, l=1u) m4a:
             ! .activ.lx == m2a.activ.lx
             ! .activ.ly == m3a.activ.ly
-        Pmos(w=2u, l=130n) m4b:
+        Pmos(w=2u, l=1u) m4b:
             ! .activ.lx == m2b.activ.lx
             ! .activ.ly == m3a.activ.ly
-        Pmos(w=2u, l=130n) m3b:
+        Pmos(w=2u, l=1u) m3b:
             ! .activ.lx == m1b.activ.lx
             ! .activ.ly == m3a.activ.ly
 
         # ===== flanking dummies: the outermost matched fingers see the same
         # poly/etch neighborhood as inner ones. Tied off below. =====
-        Nmos(w=2u, l=130n) md_l:
+        Nmos(w=4.2u, l=1u) md_l:
             ! .activ.ux == m1a.activ.lx - 800
             ! .activ.ly == m1a.activ.ly
-        Nmos(w=2u, l=130n) md_r:
+        Nmos(w=4.2u, l=1u) md_r:
             ! .activ.lx == m1b.activ.ux + 800
             ! .activ.ly == m1a.activ.ly
-        Pmos(w=2u, l=130n) pmd_l:
+        Pmos(w=2u, l=1u) pmd_l:
             ! .activ.ux == m3a.activ.lx - 800
             ! .activ.ly == m3a.activ.ly
-        Pmos(w=2u, l=130n) pmd_r:
+        Pmos(w=2u, l=1u) pmd_r:
             ! .activ.lx == m3b.activ.ux + 800
             ! .activ.ly == m3a.activ.ly
 
         # tail current sink (4 fingers) centred below the pair
-        Nmos(w=8u, l=500n, ng=4) m_tail:
+        Nmos(w=8u, l=1u, ng=4) m_tail:
             ! .activ.cx == 0.5*m2a.activ.ux + 0.5*m2b.activ.lx
             ! .activ.uy == m1a.activ.ly - 2600
 
@@ -164,6 +211,38 @@ cell Comparator:
         Pmos(w=1u, l=2u) m_bp:
             ! .activ.ly == m3a.activ.ly
             ! .activ.lx == m_bd.activ.lx
+
+        # ===== pbias column further left: an NMOS mirror slave (m_bn) pulls
+        # the bias current through a PMOS diode (m_bpd), generating the
+        # second-stage tail bias. Same drain-on-sd[0] orientation as the
+        # main bias column. =====
+        Nmos(w=2u, l=1u) m_bn:
+            ! .activ.ly == m1a.activ.ly
+            ! .activ.ux == m_bd.activ.lx - 900
+        Pmos(w=2u, l=1u) m_bpd:
+            ! .activ.ly == m3a.activ.ly
+            ! .activ.lx == m_bn.activ.lx
+
+        # ===== second stage to the right of the core: PMOS pair (m5a =
+        # signal n2, m5b = reference n1) and its tail m_t2 in the PMOS band
+        # (four 2 um fingers each keep the band height), NMOS mirror
+        # (m6b diode, m6a output) in the NMOS band below, each centred
+        # under its pair device so one Metal1 column joins the drains. =====
+        Pmos(w=8u, l=1u, ng=4) m5a:
+            ! .activ.ly == m3a.activ.ly
+            ! .activ.lx == pmd_r.activ.ux + 1500
+        Pmos(w=8u, l=1u, ng=4) m5b:
+            ! .activ.ly == m3a.activ.ly
+            ! .activ.lx == m5a.activ.ux + 800
+        Pmos(w=8u, l=1u, ng=4) m_t2:
+            ! .activ.ly == m3a.activ.ly
+            ! .activ.lx == m5b.activ.ux + 800
+        Nmos(w=2u, l=1u) m6a:
+            ! .activ.ly == m1a.activ.ly
+            ! .sd[0].cx == m5a.activ.cx
+        Nmos(w=2u, l=1u) m6b:
+            ! .activ.ly == m1a.activ.ly
+            ! .sd[0].cx == m5b.activ.cx
 
         # ===== drain columns: A-halves' drains face OUT (n1), B-halves' face
         # IN (n2). One Metal1 bar per column joins pair and mirror strips; the
@@ -230,8 +309,8 @@ cell Comparator:
         # the substrate tap ties into it. =====
         LayoutRect vss_bar:
             .layer = L1
-            ! .lx == m_bd.activ.lx - 200
-            ! .ux == md_r.activ.ux + 200
+            ! .lx == m_bn.activ.lx - 200
+            ! .ux == m6b.activ.ux + 200
             ! .uy == m_tail.activ.ly - 350
             ! .ly == m_tail.activ.ly - 650
         # Dedicated pin pad merged with a tail fold: the parent's via-stack pad
@@ -257,12 +336,20 @@ cell Comparator:
             .layer = L1
             ! .contains(ptap.m1.rect)
             ! .uy == vss_bar.cy
+        # second substrate tap under the second stage (tap-distance rules)
+        Ptap(l=2u, w=0.7u) ptap2:
+            ! .activ.cx == 0.5*m6a.activ.ux + 0.5*m6b.activ.lx
+            ! .activ.uy == vss_bar.ly - 300
+        LayoutRect ptap2_con:
+            .layer = L1
+            ! .contains(ptap2.m1.rect)
+            ! .uy == vss_bar.cy
 
         # ===== vdd rail above the mirror; mirror sources fold up, well tap
         # ties in. =====
         LayoutRect vdd_bar:
             .layer = L1
-            ! .lx == m_bp.activ.lx - 200
+            ! .lx == m_bpd.activ.lx - 200
             ! .ux == pmd_r.activ.ux + 200
             ! .ly == m3a.activ.uy + 350
             ! .uy == m3a.activ.uy + 650
@@ -298,59 +385,63 @@ cell Comparator:
         # middle strip, so input contacts go to the *outer* side.
         # ============================================================
 
-        # ---- diff-pair inputs on two poly-bar levels. in_n: a bar between
-        # the inner B halves, contacted in the widened middle gap. in_p: a
+        # ---- diff-pair inputs on two poly-bar levels. in_p: a bar between
+        # the inner B halves, contacted in the widened middle gap. in_n: a
         # lower bar spanning the whole row, reached by poly drops from the
-        # outer A fingers (the drops run beside the in_n bar, never through
+        # outer A fingers (the drops run beside the in_p bar, never through
         # it), contacted at the far left. Metal1 source folds cross both bars
-        # freely (different layers). ----
-        anonymous LayoutRect g_inn_tie:
+        # freely (different layers). The lower bar sits 700 nm below the upper
+        # one so the parent's Metal4 vx wire (routed at the in_n row) clears
+        # the in_p pin's via-stack landing pad. ----
+        anonymous LayoutRect g_inp_tie:
             .layer = layers.GatPoly
             ! .lx == m2a.poly[0].lx
             ! .ux == m2b.poly[0].ux
             ! .uy == m1a.activ.ly - 250
             ! .ly == m1a.activ.ly - 570
         for g in (m2a.poly[0], m2b.poly[0]):
+            # full finger width: a narrower drop would leave a sliver of the
+            # finger's bottom edge 70 nm from the bar (Gat.b)
             anonymous LayoutRect r:
                 .layer = layers.GatPoly
-                ! .cx == g.cx
-                ! .width == 180
+                ! .lx == g.lx
+                ! .ux == g.ux
                 ! .ly == m1a.activ.ly - 570
-                ! .uy == m1a.activ.ly - 100    # Gat.d: 70 nm to Activ
-        LayoutRect c_inn:
-            .layer = layers.Cont
-            ! .size == (160, 160)
-            ! .cx == 0.5*m2a.activ.ux + 0.5*m2b.activ.lx
-            ! .cy == g_inn_tie.cy
-        LayoutRect m2_inn:
-            .layer = L1
-            ! .size == (300, 320)
-            ! .center == c_inn.center
-            .create_pin(self.symbol.in_n)
-
-        anonymous LayoutRect g_inp_tie:
-            .layer = layers.GatPoly
-            ! .lx == m1a.activ.lx - 460
-            ! .ux == m1b.poly[0].ux
-            ! .uy == m1a.activ.ly - 750
-            ! .ly == m1a.activ.ly - 1070
-        for g in (m1a.poly[0], m1b.poly[0]):
-            anonymous LayoutRect r:
-                .layer = layers.GatPoly
-                ! .cx == g.cx
-                ! .width == 180
-                ! .ly == m1a.activ.ly - 1070
                 ! .uy == m1a.activ.ly - 100    # Gat.d: 70 nm to Activ
         LayoutRect c_inp:
             .layer = layers.Cont
             ! .size == (160, 160)
-            ! .cx == m1a.activ.lx - 300
+            ! .cx == 0.5*m2a.activ.ux + 0.5*m2b.activ.lx
             ! .cy == g_inp_tie.cy
-        LayoutRect m1_inp:
+        LayoutRect m2_inp:
             .layer = L1
             ! .size == (300, 320)
             ! .center == c_inp.center
             .create_pin(self.symbol.in_p)
+
+        anonymous LayoutRect g_inn_tie:
+            .layer = layers.GatPoly
+            ! .lx == m1a.activ.lx - 460
+            ! .ux == m1b.poly[0].ux
+            ! .uy == m1a.activ.ly - 950
+            ! .ly == m1a.activ.ly - 1270
+        for g in (m1a.poly[0], m1b.poly[0]):
+            anonymous LayoutRect r:
+                .layer = layers.GatPoly
+                ! .lx == g.lx
+                ! .ux == g.ux
+                ! .ly == m1a.activ.ly - 1270
+                ! .uy == m1a.activ.ly - 100    # Gat.d: 70 nm to Activ
+        LayoutRect c_inn:
+            .layer = layers.Cont
+            ! .size == (160, 160)
+            ! .cx == m1a.activ.lx - 300
+            ! .cy == g_inn_tie.cy
+        LayoutRect m1_inn:
+            .layer = L1
+            ! .size == (300, 320)
+            ! .center == c_inn.center
+            .create_pin(self.symbol.in_n)
 
         # ---- current-mirror gates = n1: one GatPoly bar below the mirror
         # ties all four fingers; a Cont onto a widened pad on the LEFT n1
@@ -430,7 +521,9 @@ cell Comparator:
             ! .size == (300, 320)
             ! .center == c_tail.center
 
-        # ---- bias branch: vbias column (m_bp.d over m_bd.d), m_bd diode tie ----
+        # ---- bias branch: vbias column (m_bp.d over m_bd.d), m_bd diode tie.
+        # The diode's gate-tie bar extends left to overlap m_bn's finger
+        # endcap, handing vbias to the pbias column on poly. ----
         LayoutRect vbias_bar:
             .layer = L1
             ! .contains(m_bp.sd[0].rect)
@@ -438,7 +531,7 @@ cell Comparator:
             ! .ly == m_bd.activ.ly - 420
         anonymous LayoutRect g_mbd_tie:
             .layer = layers.GatPoly
-            ! .lx == m_bd.sd[0].lx - 90
+            ! .lx == m_bn.poly[0].lx
             ! .ux == m_bd.poly[0].ux
             ! .uy == m_bd.activ.ly - 100
             ! .ly == m_bd.activ.ly - 460
@@ -447,6 +540,24 @@ cell Comparator:
             ! .size == (160, 160)
             ! .cx == m_bd.sd[0].cx
             ! .cy == g_mbd_tie.cy
+
+        # ---- pbias branch: pbias column (m_bpd.d over m_bn.d), m_bpd diode
+        # tie in the band gap ----
+        LayoutRect pbias_bar:
+            .layer = L1
+            ! .contains(m_bpd.sd[0].rect)
+            ! .contains(m_bn.sd[0].rect)
+        anonymous LayoutRect g_mbpd_tie:
+            .layer = layers.GatPoly
+            ! .lx == m_bpd.sd[0].lx - 90
+            ! .ux == m_bpd.poly[0].ux
+            ! .uy == m_bpd.activ.ly - 100
+            ! .ly == m_bpd.activ.ly - 460
+        LayoutRect c_mbpd:
+            .layer = layers.Cont
+            ! .size == (160, 160)
+            ! .cx == m_bpd.sd[0].cx
+            ! .cy == g_mbpd_tie.cy
 
         # m_bp gate = vss: tie its finger and bring the contact out to the left
         # (clear of the core), routed down to the vss rail below.
@@ -466,35 +577,214 @@ cell Comparator:
             ! .size == (300, 320)
             ! .center == c_mbp.center
 
-        # ---- bias supply folds: m_bp source up to vdd, m_bd source down to vss ----
-        anonymous LayoutRect r_mbp_s:
-            .layer = L1
-            ! .lx == m_bp.sd[1].lx
-            ! .ux == m_bp.sd[1].ux
-            ! .ly == m_bp.sd[1].uy - 100
-            ! .uy == vdd_bar.uy
-        anonymous LayoutRect r_mbd_s:
-            .layer = L1
-            ! .lx == m_bd.sd[1].lx
-            ! .ux == m_bd.sd[1].ux
-            ! .uy == m_bd.sd[1].ly + 100
-            ! .ly == vss_bar.ly
+        # ---- bias supply folds: PMOS sources up to vdd, NMOS sources down
+        # to vss (both bias columns) ----
+        for sd in (m_bp.sd[1], m_bpd.sd[1]):
+            anonymous LayoutRect r:
+                .layer = L1
+                ! .lx == sd.lx
+                ! .ux == sd.ux
+                ! .ly == sd.uy - 100
+                ! .uy == vdd_bar.uy
+        for sd in (m_bd.sd[1], m_bn.sd[1]):
+            anonymous LayoutRect r:
+                .layer = L1
+                ! .lx == sd.lx
+                ! .ux == sd.ux
+                ! .uy == sd.ly + 100
+                ! .ly == vss_bar.ly
 
-        # ===== shared n-well over the mirror + bias PMOS + well tap =====
+        # ============================================================
+        # SECOND STAGE: bars, folds and ties. The pair's sources fold UP to a
+        # tail2 bar in the vdd-rail lane (x-disjoint from vdd_bar); m_t2's
+        # drains fold DOWN to a stub, joined to tail2 by a strip in the
+        # m5b/m_t2 seam; m_t2's sources fold UP PAST the tail2 lane to its
+        # own vdd2 bar (x-disjoint from tail2), which Metal2 ties back to the
+        # main vdd rail. The pair's drain strips join below the band and
+        # continue as one Metal1 column down to the NMOS mirror.
+        # ============================================================
+        LayoutRect tail2_bar:
+            .layer = L1
+            ! .lx == m5a.sd[0].lx
+            ! .ux == m5b.activ.ux + 550
+            ! .ly == m3a.activ.uy + 350
+            ! .uy == m3a.activ.uy + 650
+        for sd in (m5a.sd[0], m5a.sd[2], m5a.sd[4], m5b.sd[0], m5b.sd[2], m5b.sd[4]):
+            anonymous LayoutRect r:
+                .layer = L1
+                ! .lx == sd.lx
+                ! .ux == sd.ux
+                ! .ly == sd.uy - 200
+                ! .uy == tail2_bar.uy
+        LayoutRect tail2_stub:
+            .layer = L1
+            ! .lx == m5b.activ.ux + 250
+            ! .ux == m_t2.sd[3].ux
+            ! .uy == m_t2.activ.ly - 350
+            ! .ly == m_t2.activ.ly - 550
+        for i in (1, 3):
+            anonymous LayoutRect r:
+                .layer = L1
+                ! .lx == m_t2.sd[i].lx
+                ! .ux == m_t2.sd[i].ux
+                ! .uy == m_t2.sd[i].ly + 200
+                ! .ly == tail2_stub.ly
+        LayoutRect tail2_link:
+            .layer = L1
+            ! .lx == m5b.activ.ux + 250
+            ! .ux == m5b.activ.ux + 550
+            ! .ly == tail2_stub.ly
+            ! .uy == tail2_bar.uy
+        LayoutRect vdd2_bar:
+            .layer = L1
+            ! .lx == m_t2.sd[0].lx - 200
+            ! .ux == m_t2.sd[4].ux + 200
+            ! .ly == m3a.activ.uy + 950
+            ! .uy == m3a.activ.uy + 1250
+        for i in (0, 2, 4):
+            anonymous LayoutRect r:
+                .layer = L1
+                ! .lx == m_t2.sd[i].lx
+                ! .ux == m_t2.sd[i].ux
+                ! .ly == m_t2.sd[i].uy - 200
+                ! .uy == vdd2_bar.uy
+        # n-well tap for the second-stage well region, tied into vdd2
+        Ntap(l=2u, w=0.7u) ntap2:
+            ! .activ.cx == m_t2.activ.cx
+            ! .activ.ly == vdd2_bar.uy + 300
+        LayoutRect ntap2_con:
+            .layer = L1
+            ! .contains(ntap2.m1.rect)
+            ! .ly == vdd2_bar.cy
+
+        # pair drain strips (odd) join below the band; one Metal1 column per
+        # side continues down to the NMOS mirror's drain strip
+        LayoutRect n4_join:
+            .layer = L1
+            ! .lx == m5a.sd[1].lx
+            ! .ux == m5a.sd[3].ux
+            ! .uy == m3a.activ.ly - 350
+            ! .ly == m3a.activ.ly - 550
+        LayoutRect nd_join:
+            .layer = L1
+            ! .lx == m5b.sd[1].lx
+            ! .ux == m5b.sd[3].ux
+            ! .uy == m3a.activ.ly - 350
+            ! .ly == m3a.activ.ly - 550
+        for (m, join) in ((m5a, n4_join), (m5b, nd_join)):
+            for i in (1, 3):
+                anonymous LayoutRect r:
+                    .layer = L1
+                    ! .lx == m.sd[i].lx
+                    ! .ux == m.sd[i].ux
+                    ! .uy == m.sd[i].ly + 200
+                    ! .ly == join.ly
+        LayoutRect n4_col:
+            .layer = L1
+            ! .lx == m6a.sd[0].lx
+            ! .ux == m6a.sd[0].ux
+            ! .uy == n4_join.uy
+            ! .ly == m6a.sd[0].ly
+        LayoutRect nd_col:
+            .layer = L1
+            ! .lx == m6b.sd[0].lx
+            ! .ux == m6b.sd[0].ux
+            ! .uy == nd_join.uy
+            ! .ly == m6b.sd[0].ly
+
+        # NMOS mirror gates = nd: one bar over both fingers (merging their
+        # top endcaps), contacted under a widened pad on the nd column
+        anonymous LayoutRect g_m6_tie:
+            .layer = layers.GatPoly
+            ! .lx == m6a.poly[0].lx
+            ! .ux == m6b.poly[0].ux
+            ! .ly == m6a.activ.uy + 100
+            ! .uy == m6a.activ.uy + 420
+        LayoutRect nd_gpad:
+            .layer = L1
+            ! .size == (300, 300)
+            ! .cx == m6b.sd[0].cx
+            ! .cy == g_m6_tie.cy
+        LayoutRect c_m6:
+            .layer = layers.Cont
+            ! .size == (160, 160)
+            ! .cx == m6b.sd[0].cx
+            ! .cy == g_m6_tie.cy
+        # mirror sources fold down to the vss rail
+        for m in (m6a, m6b):
+            anonymous LayoutRect r:
+                .layer = L1
+                ! .lx == m.sd[1].lx
+                ! .ux == m.sd[1].ux
+                ! .uy == m.activ.ly + 200
+                ! .ly == vss_bar.uy
+
+        # stage-2 gate ties: bars below the band for the pair (contacted just
+        # left of each device -- m5a takes the signal n2, m5b the reference
+        # n1); the tail's bar sits ABOVE its device, contacted to the right,
+        # where the pbias route comes down over the top.
+        anonymous LayoutRect g_m5a_tie:
+            .layer = layers.GatPoly
+            ! .lx == m5a.activ.lx - 600
+            ! .ux == m5a.poly[3].ux
+            ! .uy == m5a.activ.ly - 100
+            ! .ly == m5a.activ.ly - 420
+        LayoutRect c_m5a:
+            .layer = layers.Cont
+            ! .size == (160, 160)
+            ! .cx == m5a.activ.lx - 450
+            ! .cy == g_m5a_tie.cy
+        LayoutRect m5ag_pad:
+            .layer = L1
+            ! .size == (300, 320)
+            ! .center == c_m5a.center
+        anonymous LayoutRect g_m5b_tie:
+            .layer = layers.GatPoly
+            ! .lx == m5b.activ.lx - 600
+            ! .ux == m5b.poly[3].ux
+            ! .uy == m5b.activ.ly - 100
+            ! .ly == m5b.activ.ly - 420
+        LayoutRect c_m5b:
+            .layer = layers.Cont
+            ! .size == (160, 160)
+            ! .cx == m5b.activ.lx - 450
+            ! .cy == g_m5b_tie.cy
+        LayoutRect m5bg_pad:
+            .layer = L1
+            ! .size == (300, 320)
+            ! .center == c_m5b.center
+        # the bar runs right past the vdd2 region so the pbias Metal2 descent
+        # lands above the buffer column, clear of every vdd Metal2 wire
+        anonymous LayoutRect g_mt2_tie:
+            .layer = layers.GatPoly
+            ! .lx == m_t2.poly[0].lx
+            ! .ux == i1x + 950
+            ! .ly == m_t2.activ.uy + 100
+            ! .uy == m_t2.activ.uy + 420
+        LayoutRect c_mt2:
+            .layer = layers.Cont
+            ! .size == (160, 160)
+            ! .cx == i1x + 800
+            ! .cy == g_mt2_tie.cy
+        LayoutRect mt2g_pad:
+            .layer = L1
+            ! .size == (300, 320)
+            ! .center == c_mt2.center
+
+        # ===== shared n-well over every PMOS + the well taps =====
         LayoutRect nwell:
             .layer = layers.NWell
-            for m in (m3a, m4a, m4b, m3b, pmd_l, pmd_r, m_bp):
+            for m in (m3a, m4a, m4b, m3b, pmd_l, pmd_r, m_bp, m_bpd, m5a, m5b, m_t2):
                 ! .contains(m.nwell.rect)
             ! .contains(ntap.nwell.rect)
+            ! .contains(ntap2.nwell.rect)
 
         # ============================================================
         # OUTPUT BUFFER: two foundry inverters (i1, i2) placed to the right of
-        # the OTA core, routed in by SRouter. The foundry cell keeps the tight
-        # inverter gate/source/drain pitch pre-routed.
+        # the second stage, routed in by SRouter. The foundry cell keeps the
+        # tight inverter gate/source/drain pitch pre-routed.
         # ============================================================
         ip = lef_pin_rects("sg13g2_inv_1")
-        i1x = 9200                        # right of md_r, clear of the n1 crossover
-        i1y = 1900
         i2x = i1x + 1440
         i2y = i1y
         i1 = . % LayoutInstance(ref=Inv.layout, pos=Vec2I(i1x, i1y), orientation=R0)
@@ -524,6 +814,16 @@ cell Comparator:
             ! .size == (300, 300)
             ! .cx == vbias_bar.cx
             ! .cy == vbias_bar.uy - 200
+        LayoutRect pbias_via_pad:
+            .layer = L1
+            ! .size == (300, 300)
+            ! .cx == pbias_bar.cx
+            ! .cy == m_bpd.sd[0].uy - 150
+        LayoutRect n4_via_pad:
+            .layer = L1
+            ! .size == (300, 300)
+            ! .cx == n4_col.cx
+            ! .cy == m1a.activ.uy + 670
 
         sr = SRouter(SG13G2().default_routing_spec)
 
@@ -532,9 +832,27 @@ cell Comparator:
         sr.move(L1, (n1l_bar.cx, m1a.activ.uy + 1300))
         sr.layer(M2); sr.wire_x(n1r_bar.cx); sr.layer(L1)
 
-        # n2 (right n2 column) -> i1.A
+        # first-stage outputs into the second-stage pair gates:
+        # n2 (right n2 column) -> m5a gate, n1 (right n1 column) -> m5b gate
+        # on two separate band-gap lanes whose x-ranges do not overlap
         sr.move(L1, (n2r_bar.cx, m3a.activ.ly - 600))
+        sr.layer(M2); sr.wire_x(m5ag_pad.cx); sr.wire_y(m5ag_pad.cy); sr.layer(L1)
+        sr.move(L1, (n1r_bar.cx, m1a.activ.uy + 1300))
+        sr.layer(M2); sr.wire_x(m5bg_pad.cx); sr.wire_y(m5bg_pad.cy); sr.layer(L1)
+
+        # pbias over the top of the cell down to the second-stage tail gate
+        sr.move(L1, (pbias_bar.cx, m_bpd.sd[0].uy - 150))
+        sr.layer(M2); sr.wire_y(m3a.activ.uy + 1870); sr.wire_x(mt2g_pad.cx)
+        sr.wire_y(mt2g_pad.cy); sr.layer(L1)
+
+        # second-stage output n4 -> i1.A (lane below the n1 crossover's)
+        sr.move(L1, (n4_col.cx, m1a.activ.uy + 670))
         sr.layer(M2); sr.wire_x(i1A[0]); sr.wire_y(i1A[1]); sr.layer(L1)
+
+        # main vdd rail -> the second-stage tail's vdd2 bar (Metal2 hop over
+        # the tail2 lane)
+        sr.move(L1, (vdd_bar.ux - 200, vdd_bar.cy))
+        sr.layer(M2); sr.wire_x(m_t2.activ.cx); sr.wire_y(vdd2_bar.cy); sr.layer(L1)
 
         # i1.Y -> i2.A  (the internal node nb)
         sr.move(L1, i1Y)
@@ -549,11 +867,11 @@ cell Comparator:
             ! .uy == i2y + 1200
             .create_pin(self.symbol.out)
 
-        # i1/i2 VDD rails up to the OTA vdd rail; VSS rails down to the vss rail
+        # i1 VDD rail up to the vdd2 bar; i2 VSS rail down to the vss rail
         sr.move(L1, i1VDD)
-        sr.layer(M2); sr.wire_y(vdd_bar.cy); sr.wire_x(pmd_r.activ.ux); sr.layer(L1)
+        sr.layer(M2); sr.wire_y(vdd2_bar.cy); sr.wire_x(vdd2_bar.ux - 200); sr.layer(L1)
         sr.move(L1, i2VSS)
-        sr.layer(M2); sr.wire_y(vss_bar.cy); sr.wire_x(md_r.activ.ux); sr.layer(L1)
+        sr.layer(M2); sr.wire_y(vss_bar.cy); sr.wire_x(m6b.activ.ux); sr.layer(L1)
 
         # vbias: tail-gate pad over to the bias column
         sr.move(L1, (tailg_pad.cx, tailg_pad.cy))

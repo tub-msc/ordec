@@ -67,16 +67,19 @@ def test_sar_adc_conversion_4bit(code):
     assert _read_code(sim, 4, 270e-9) == code
 
 
-@pytest.mark.parametrize("code", [60, 173])
+@pytest.mark.parametrize("code", [0, 60, 173, 255])
 def test_sar_adc_conversion_8bit(code):
-    """8-bit conversion lands within +-1 LSB: the comparator's static offset
-    (a few mV, systematic for the simple continuous-time topology) shifts the
-    whole transfer curve by one 4.7 mV code bin -- see the SarAdcConvTb
-    docstring. Uniformity of that shift across codes is checked implicitly:
-    a nonlinear CDAC would break it by more than 1 LSB."""
+    """8-bit conversions are EXACT, including the range extremes. Three
+    mechanisms had to be solved for this (see the SarAdcConvTb docstring):
+    the comparator's trip offset (two-stage topology, 0.26 mV « 4.7 mV LSB),
+    the all-zeros DAC glitch at the sample->trial handoff (MSB-phase flop in
+    SarLogic), and the redistribution transient clamping the top plate at
+    the substrate diode for near-full-scale inputs (the CDAC's dummy ring
+    doubles as a vx shunt). Codes 0 and 255 exercise the extremes where the
+    latter two failed."""
     vin = (code + 0.5) / 256 * 1.2
     sim = tb.SarAdcConvTb(n=8, vin_val=round(vin, 4)).sim_tran
-    assert abs(_read_code(sim, 8, 540e-9) - code) <= 1
+    assert _read_code(sim, 8, 540e-9) == code
 
 
 def test_sar_logic_sequencing():
@@ -87,12 +90,13 @@ def test_sar_logic_sequencing():
 
 
 def test_comparator_resolves():
-    """Continuous-time comparator switches as in_p crosses in_n (=0.6 V)."""
+    """Continuous-time comparator switches as in_p crosses in_n (=0.6 V), in
+    both sweep directions (the CompTb stimulus is a slow triangle)."""
     sim = tb.CompTb().sim_tran
     out = list(sim.out.voltage)
     inp = list(sim.in_p.voltage)
-    lo = [out[k] for k in range(len(out)) if inp[k] < 0.55]
-    hi = [out[k] for k in range(len(out)) if inp[k] > 0.65]
+    lo = [out[k] for k in range(len(out)) if inp[k] < 0.58]
+    hi = [out[k] for k in range(len(out)) if inp[k] > 0.62]
     assert max(lo) < 0.6 and min(hi) > 0.6
 
 
@@ -114,8 +118,8 @@ def test_stdcell_layout_lvs_clean(cellname):
 
 
 def test_comparator_layout_drc_clean():
-    """The custom analog comparator (single-stage OTA + self-bias + two foundry
-    inverter buffers, routed by SRouter) is DRC-clean."""
+    """The custom analog comparator (two cascaded differential stages +
+    self-bias + two foundry inverter buffers, routed by SRouter) is DRC-clean."""
     assert ihp130.run_drc(comparator.Comparator().layout, use_tempdir=True).summary() == {}
 
 

@@ -26,14 +26,19 @@ cell SarAdcConvTb:
     Expected code = round(vin / VDD * 2**n - 0.5), i.e. vin = (code+0.5)/2**n*VDD
     lands in the middle of each code bin.
 
-    Accuracy note: the continuous-time comparator has an uncompensated static
-    input-referred offset of a few mV (systematic for its single-stage,
-    self-biased topology). It shifts the whole ADC transfer curve uniformly --
-    invisible at n <= 4 (1 LSB = 75 mV) but a constant +1 code at n = 8
-    (1 LSB = 4.7 mV, verified identical at codes across the full range, i.e.
-    the CDAC itself is linear). Resolving true 8-bit accuracy would need an
-    offset-cancelled (auto-zeroed or latched) comparator, which is beyond this
-    example's scope; tests at n = 8 therefore assert within +-1 LSB.
+    Accuracy note: conversions are exact at n = 8 (1 LSB = 4.7 mV) across the
+    full range including the extremes. Three mechanisms each cost about one
+    code until they were engineered out:
+
+    * comparator trip offset (-6.8 mV for a single diff stage driving an
+      inverter): fixed structurally with a second differential stage --
+      measured +0.26 mV (see the Comparator docstring);
+    * the DAC passing through all-zeros at the sample->trial handoff, flinging
+      the floating top plate into the substrate diode for near-full-scale
+      inputs: fixed with SarLogic's glitch-free MSB-phase flop;
+    * the redistribution transient itself overshooting ~2x (the small bits'
+      switches outrun the MSB's RC): damped by the CDAC dummy ring doubling
+      as a vx-to-vss shunt.
     """
     n       = Parameter(int, default=4)
     vin_val = Parameter(R, default=0.525)
@@ -264,9 +269,12 @@ cell CdacTb:
 
 cell CompTb:
     """
-    Comparator check: hold in_n at mid-supply (0.6 V) and ramp in_p from 0.4 to
-    0.8 V. The output must switch low->high as in_p crosses in_n. The crossing
-    point relative to 0.6 V is the input-referred offset.
+    Comparator check: hold in_n at mid-supply (0.6 V) and sweep in_p as a slow
+    triangle 0.55 -> 0.65 -> 0.55 V. The output must switch low->high as in_p
+    crosses in_n and back. Averaging the up- and down-going trip points cancels
+    the comparator's propagation delay (which would otherwise read as tens of
+    mV of fake offset at this ramp rate), leaving the true input-referred
+    offset.
     """
     viewgen symbol -> Symbol:
         pass
@@ -282,31 +290,34 @@ cell CompTb:
         Gnd gnd:     .pos=(0,0); .p -- vss
         Vdc vdd_src: .pos=(0,6); .$dc=VDD; .m -- vss; .p -- vdd
         Vdc inn_src: .pos=(5,6); .$dc=0.6; .m -- vss; .p -- in_n
-        Vpwl inp_src: .pos=(10,6); .m -- vss; .p -- in_p; .$V=((0,0.4),(100n,0.8))
+        Vpwl inp_src: .pos=(10,6); .m -- vss; .p -- in_p; .$V=((0,0.55),(200n,0.65),(400n,0.55))
         Cap cl: .pos=(22,3); .$c=5f; .p -- out; .m -- vss
 
     viewgen sim_tran -> Simulation:
-        .simulate().tran(R('50p'), R('100n'))
+        .simulate().tran(R('100p'), R('400n'))
 
     viewgen report_tran -> Report:
         sim = self.sim_tran
         pg = . % PlotGroup()
         inp = list(sim.in_p.voltage); out = list(sim.out.voltage)
-        cross = next((inp[k] for k in range(len(out)) if out[k] > VDD / 2), None)
-        if cross is None:
-            cross_s, offset_s = "no switch", "n/a"
+        up = next((inp[k] for k in range(len(out)) if out[k] > VDD / 2), None)
+        dn = next((inp[k] for k in range(len(out) - 1, -1, -1) if out[k] > VDD / 2), None)
+        if up is None or dn is None:
+            trip_s, offset_s = "no switch", "n/a"
         else:
-            cross_s, offset_s = f"{cross:.3f} V", f"{(cross - 0.6) * 1000:+.0f} mV"
+            trip_s = f"{up:.4f} V up / {dn:.4f} V down"
+            offset_s = f"{((up + dn) / 2 - 0.6) * 1000:+.2f} mV"
 
         .markdown(
             f"# Continuous-time comparator\n"
-            f"in_n is held at 0.6 V and in_p ramps 0.4 -> 0.8 V; `out` must switch "
-            f"low->high as in_p crosses in_n. Switching in_p ~ **{cross_s}** -> "
-            f"input-referred offset **{offset_s}**."
+            f"in_n is held at 0.6 V and in_p sweeps a 0.55 -> 0.65 -> 0.55 V "
+            f"triangle; `out` must switch as in_p crosses in_n in each "
+            f"direction. Trip points {trip_s}; delay-cancelled input-referred "
+            f"offset **{offset_s}**."
         )
         .markdown("## Inputs vs output")
         .plot2d(x=sim.time,
-            series={'in_p (ramp)': sim.in_p.voltage,
+            series={'in_p (triangle)': sim.in_p.voltage,
                     'in_n (0.6 V)': sim.in_n.voltage,
                     'out': sim.out.voltage},
             xlabel="Time (s)", ylabel="Voltage (V)", height=240, plot_group=pg)

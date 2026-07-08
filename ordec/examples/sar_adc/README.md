@@ -14,9 +14,8 @@ block has a complete physical layout that is DRC-clean against the maximal sign-
 rule set and LVS-matched to its schematic, up to and including the assembled top level.
 
 The architecture is a **charge-redistribution SAR ADC** parameterized in resolution
-`n`, verified at the default **4 bits** and at **3 bits** (`n=3`). Higher `n` is not
-supported as-is — the testbench clocking and the largest capacitor would need
-revisiting first. The reference voltage is `Vref = VDD = 1.2 V` and the common mode is
+`n`, verified at the default **8 bits** (exact conversions, 1 LSB = 4.7 mV) and at
+3 and 4 bits. The reference voltage is `Vref = VDD = 1.2 V` and the common mode is
 `vcm = VDD/2`.
 
 ```
@@ -49,13 +48,25 @@ result on `code[n-1..0]` is valid.
   `Vref = VDD`, the digital bit signals drive the bottom plates directly (through a
   switch that opens during sampling), and charge conservation gives
   `vx = vcm - vin + (code / 2**n)·Vref`.
-* **Comparator** (`comparator.ord`) — a self-biased NMOS differential pair with a PMOS
-  current-mirror load and two inverter output buffers. It is continuous-time rather than
-  clocked, so there is no strobe edge to align with DAC settling — which is what makes
-  the closed loop easy to bring up. Measured input offset ≈ 1.3 mV.
+* **Comparator** (`comparator.ord`) — **two cascaded differential stages**: a
+  self-biased NMOS pair with PMOS current-mirror load, then a PMOS pair reading both
+  first-stage outputs (the diode node serves as the balance reference, so the first
+  stage's anchor error cancels as common mode) with an NMOS mirror load, then two
+  inverter output buffers. It is continuous-time rather than clocked, so there is no
+  strobe edge to align with DAC settling — which is what makes the closed loop easy to
+  bring up. The two-stage structure exists for offset: a single stage driving an
+  inverter trips several mV from balance (measured −6.8 mV, >1 LSB at 8 bits), and at
+  VDD = 1.2 V the squeezed input devices cap the per-stage gain at ~20, so the fix has
+  to be structural rather than "more gain". Measured input offset **+0.26 mV**
+  (delay-cancelled two-direction ramp), ~0.06 LSB at 8 bits.
 * **SarLogic** (`sar_logic.ord`) — a shift-register sequencer carries a one-hot token
   (sample → MSB → … → LSB → done); per-bit load-enable registers capture the comparator
-  decision at the right clock, with `dac[k] = code[k] OR on_trial[k]`.
+  decision at the right clock, with `dac[k] = code[k] OR on_trial[k]`. The MSB's trial
+  term comes from a dedicated **glitch-free phase flop** that is high from reset through
+  the end of the MSB trial: an OR of `sample` and the trial token would glitch low for
+  ~1 ns at the sample→trial edge, passing the DAC through all-zeros right as the bottom
+  plates connect — enough to fling the sampled top plate into the substrate diode for
+  near-full-scale inputs.
 * **Standard cells** (`stdcell_lib.py`) — the logic cells (`Inv`, `Nand2`, `Nor2`,
   `Mux2`, `Or2`, the `dfrbp` flip-flop, …) are loaded straight from the IHP SG13G2
   library as an `ExtLibrary`: LEF symbol + GDS layout + SPICE schematic. The SAR design
@@ -72,9 +83,11 @@ The example ships with a test suite (`tests/test_sar_adc.py`) covering both func
 physical correctness:
 
 * Every cell elaborates, and the top level netlists with all pins connected.
-* **Conversion** — at the default 4 bits, representative mid-bin inputs convert to the
-  expected codes; at 3 bits the full transfer function is checked (all eight mid-bin
-  inputs map to codes 0…7), exercising the design at both resolutions.
+* **Conversion** — at 8 bits, mid-bin inputs convert to the **exact** expected codes
+  including the range extremes 0 and 255 (the hardest cases: they exercise the
+  handoff-glitch and redistribution-clamp mechanisms described above); at 3 bits the
+  full transfer function is checked (all eight mid-bin inputs map to codes 0…7); 4-bit
+  spot checks cover the intermediate resolution.
 * The SAR controller, comparator and CDAC are each verified in isolation.
 * **Layout sign-off** — the `Tgate` standard cell, the `SarLogic` control block, the
   analog `Comparator` and `CapDac`, and the full `SarAdc` top level (all four sub-blocks
@@ -97,14 +110,18 @@ those, each block has a complete, sign-off-clean layout:
   rip-up-and-reroute until DRC-clean). The engine is documented in detail in the ORDeC
   reference, [*Gridded standard-cell place and route*](../../../docs/ref/pnr.rst).
 * **`Comparator`** — a hand-crafted **analog** layout (`comparator.ord`): the
-  single-stage OTA core is built from constrained device PCells, with the matched
-  devices **interdigitated A-B-B-A** — each side of the differential pair (and of the
-  current-mirror load) is two parallel one-finger halves, drains facing out (`n1`,
-  joined by a Metal2 crossover) and in (`n2`), so a lateral gradient cancels to first
-  order — and **dummy devices flank both bands** so the outer fingers see the same
-  etch neighborhood as inner ones. The fingered tail sink and self-bias column sit
-  below/left, everything PMOS in one shared n-well; the two output-buffer inverters
-  are placed as foundry `Inv` instances and wired in with `ordec.layout.SRouter`.
+  first-stage core is built from constrained device PCells at **l = 1 µm** (8 µm² of
+  gate area per input side keeps random offset to a fraction of an LSB), with the
+  matched devices **interdigitated A-B-B-A** — each side of the differential pair (and
+  of the current-mirror load) is two parallel one-finger halves, drains facing out
+  (`n1`, joined by a Metal2 crossover) and in (`n2`), so a lateral gradient cancels to
+  first order — and **dummy devices flank both bands** so the outer fingers see the
+  same etch neighborhood as inner ones. The fingered tail sink and two self-bias
+  columns (the second generates the `pbias` tail bias) sit below/left; the second
+  stage sits to the right, its PMOS pair, tail and NMOS mirror built from the same
+  2 µm fingers so they share the core's two device bands; everything PMOS in one
+  shared n-well. The two output-buffer inverters are placed as foundry `Inv`
+  instances and wired in with `ordec.layout.SRouter`.
 * **`CapDac`** — a hand layout (`cdac.ord`) of the capacitor array and its
   transmission-gate switches. Each bit is a *matched array of identical unit capacitors*
   (bit `i` = `2**i` `m=1` units — the `Cmim` PCell supports only `m=1`), so the binary
@@ -116,18 +133,26 @@ those, each block has a complete, sign-off-clean layout:
   exactly — with the pairs dealt radially interleaved so each bit also samples all
   radii. Each unit taps its bit's vertical Metal4 *bit line* (running under the caps;
   the MIM rules allow it) with a single Via4; the lines collect on per-net Metal3 buses
-  below the array, which the switch row reaches with Metal2 risers. A **ring of
-  grounded dummy units** surrounds the array, so every functional unit sees interior
-  lithography (edge units would otherwise mismatch systematically). A TopMetal1 *mesh*
-  (per-column bridges plus a spine, rather than one solid plate) ties all top plates to
-  `vx` — keeping the metal/gate antenna ratio at the comparator input legal at n ≥ 8 —
-  and the digital control and supply nets run on Metal3 buses over the switch row.
+  below the array, which the switch row reaches with Metal2 risers. A **ring of dummy
+  units** surrounds the array, so every functional unit sees interior lithography
+  (edge units would otherwise mismatch systematically) — and it doubles as a
+  **vx-to-vss shunt capacitor** (~26% of the array at n = 8): its bottom plates stay
+  on `vss` while its top plates join the `vx` mesh. The shunt damps the
+  sample→convert redistribution transient, whose ~2× overshoot (the small bits'
+  switches slew rail-to-rail in a fraction of the MSB switch's RC) would otherwise
+  clamp the floating top plate at the substrate diode near the input-range ends and
+  corrupt the sampled charge; being a pure attenuator around the `vcm` crossing, it
+  leaves the decision points untouched and only shrinks the per-trial overdrive
+  (4.7 → 3.7 mV per LSB at n = 8, still ~14× the comparator offset). A TopMetal1
+  *mesh* (per-column bridges plus a spine, rather than one solid plate, extending one
+  row past the array to pick up the ring) ties all top plates to `vx` — keeping the
+  metal/gate antenna ratio at the comparator input legal at n ≥ 8 — and the digital
+  control and supply nets run on Metal3 buses over the switch row.
   A split/bridge-cap (segmented) DAC was considered and deliberately **not** used: at
   8 bits the plain binary array is small (~0.1 mm on a side would be needed only past
   10 bits), the fractional bridge capacitor would break the exact unit-count matching
-  that is this DAC's strongest property, and the converter's accuracy ceiling is the
-  comparator offset anyway — segmentation would buy area the design doesn't need at
-  the cost of a linearity hazard it can't afford.
+  that is this DAC's strongest property — segmentation would buy area the design
+  doesn't need at the cost of a linearity hazard it can't afford.
 
 ### Top-level composition (`SarAdc`)
 
@@ -145,9 +170,10 @@ Several analog-specific touches go beyond simply passing DRC/LVS:
 
 * the critical **`vx` net** (DAC top plate → comparator input) is routed as a short,
   direct Metal4 wire, with the comparator aligned to it, instead of detouring down
-  through the trunk band and back — and where it crosses the comparator's output-buffer
-  column (rail-to-rail transitions at exactly the decision moment), a **vss-tied Metal3
-  shield strip** under the wire blocks the coupling path;
+  through the trunk band and back — the wire crosses the comparator at its gate-tie
+  row, a quiet corridor where only the input poly bars, tail devices and vss geometry
+  sit under it (the output buffers and all switching Metal2 lanes lie several µm
+  above that row);
 * the **trunk band is ordered by sensitivity**: `vcm` (the analog reference) takes the
   trunk nearest the analog blocks, the supply pair follows as a shield, and the
   full-swing digital nets sit below, nearest `SarLogic` — no digital trunk neighbors an

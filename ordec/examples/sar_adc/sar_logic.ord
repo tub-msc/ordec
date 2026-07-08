@@ -22,6 +22,13 @@ The controller runs a textbook binary search, MSB first:
 
   * The DAC control for bit k is ``dac[k] = code[k] OR s[N-k]``: the bit is
     forced to 1 while on trial, then holds the decided value afterwards.
+    The MSB additionally ORs in ``sample``, so the DAC already shows the
+    MSB-trial pattern during the sample phase: at the sample->trial handoff
+    the CDAC bottom plates then switch straight to their trial levels. If the
+    MSB rose only a few gate delays after the sample switches opened, the DAC
+    would pass through the all-zeros state and fling the top plate to
+    vcm - vin -- below the substrate diode's clamp for near-full-scale
+    inputs, irrecoverably corrupting the sampled charge.
 
 Interface: clk, rst (active high), cmp (comparator out) -> sample, done,
 dac[0..N-1] (to the CDAC) and code[0..N-1] (the registered result).
@@ -118,6 +125,27 @@ cell SarLogic:
                 .Q -- q_out; .Q_N -- qn_seq[i]
                 .VDD -- vdd; .VSS -- vss
 
+        # --- MSB phase flop: its Q_N is high from reset through the END of the
+        # MSB trial, replacing `sample OR s[1]` in the MSB's DAC control. An OR
+        # of the two would glitch low at the sample->trial clock edge (`sample`
+        # is seq0's Q_N and falls before seq[1]'s Q rises) right as the CDAC's
+        # bit switches close -- long enough to fling the top plate into the
+        # substrate diode (module docstring). This flop is glitch-free by
+        # construction: cleared by reset (Q_N=1), it captures D = s[1] = 0 at
+        # the handoff edge -- no transition at all -- and first flips at the
+        # trial-end edge, together with the decided code[MSB]. The OR makes it
+        # latch: once set at the trial-end edge, D = Q holds it until reset. ---
+        net msb_trial, q_pre, d_pre
+        Or2 or_pre:
+            .pos=(40, 54)
+            .A -- s[1]; .B -- q_pre; .X -- d_pre
+            .VDD -- vdd; .VSS -- vss
+        Dff pre_msb:
+            .pos=(48, 54)
+            .D -- d_pre; .CLK -- clk; .RESET_B -- rst_n
+            .Q -- q_pre; .Q_N -- msb_trial
+            .VDD -- vdd; .VSS -- vss
+
         # --- per-bit load-enable code registers + DAC-control OR gates ---
         for k in range(self.n):
             yk = 36 - 16*k
@@ -135,10 +163,11 @@ cell SarLogic:
                 .Q -- code[k]; .Q_N -- qn_code[k]
                 .VDD -- vdd; .VSS -- vss
 
-            # dac[k] = code[k] OR (bit k currently on trial)
+            # dac[k] = code[k] OR (bit k currently on trial); the MSB's trial
+            # term also covers the sample phase
             Or2 org[k]:
                 .pos=(90, yk)
-                .A -- code[k]; .B -- s[self.n - k]; .X -- dac[k]
+                .A -- code[k]; .B -- (msb_trial if k == self.n - 1 else s[self.n - k]); .X -- dac[k]
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
