@@ -654,7 +654,7 @@ class Solver:
             undefined = self.undefined_attrs()
             if undefined:
                 locations = sorted(
-                    f"{self.subgraph.cursor_at(mav.nid).full_path_str()}.{mav.attr.name}"
+                    f"{self.subgraph.cursor_at(mav.nid).full_path_label()}.{mav.attr.name}"
                     for mav in undefined
                 )
                 raise SolverError(

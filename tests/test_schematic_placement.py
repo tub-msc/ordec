@@ -635,7 +635,7 @@ def test_group_errors_on_anonymous_instance():
     group.add(i2)
 
     with pytest.raises(ValueError,
-            match=r"upward-facing pin on SchemInstance(\.Mutable)?\(nid="):
+            match=r"upward-facing pin on SchemInstance(\.Mutable)? \?\?\d+"):
         group.emit(Solver(sch))
 
 
@@ -653,7 +653,7 @@ def test_group_conflict_error_on_anonymous_nets():
     group.add(sch.m2)
 
     with pytest.raises(ValueError,
-            match=r"Connection conflict: .* Net(\.Mutable)?\(nid=\d+\)"):
+            match=r"Connection conflict: .* Net(\.Mutable)? \?\?\d+"):
         group.emit(Solver(sch))
 
 

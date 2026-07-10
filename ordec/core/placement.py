@@ -44,11 +44,12 @@ SIDE_NAMES = {
 def describe(node: Node) -> str:
     """
     Returns the name of a node for error messages: its NPath path, or
-    its type and nid for anonymous nodes.
+    its type and placeholder label (??nid) for anonymous nodes.
     """
+    label = node.full_path_label()
     if node.npath_nid is None:
-        return f"{type(node).__name__}(nid={node.nid})"
-    return node.full_path_str()
+        return f"{type(node).__name__} {label}"
+    return label
 
 
 class GroupContext:
@@ -137,7 +138,7 @@ class Arrangement(NamedTuple):
     Rigid relative layout of a group's children, see
     PlacementGroup.arrangement().
     """
-    rects: list #: Child bounding boxes as (lx, ly, ux, uy) LinearTerms.
+    rects: list #: Child bounding boxes as Rect4LinearTerms.
     offsets: list #: Constant (x, y) offset of each child from the group's southwest corner.
     width: float #: Extent of the group along the x axis.
     height: float #: Extent of the group along the y axis.
@@ -200,11 +201,11 @@ class PlacementGroup:
             return child.root
         raise ValueError("Placement group has no children.")
 
-    def child_rect(self, child) -> tuple:
+    def child_rect(self, child) -> Rect4LinearTerm:
         """
-        Returns a child's bounding box in view coordinates as an
-        (lx, ly, ux, uy) tuple of LinearTerms. A net is placed through
-        its port; ports are zero-size points at their position.
+        Returns a child's bounding box in view coordinates. A net is
+        placed through its port; ports are zero-size points at their
+        position.
         """
         from .schema import Net, SchemPort
         if isinstance(child, PlacementGroup):
@@ -217,12 +218,10 @@ class PlacementGroup:
                     f"Cannot place net {describe(child)}: it has no "
                     "port.") from None
         if isinstance(child, SchemPort):
-            x = coerce_term(child.pos.x)
-            y = coerce_term(child.pos.y)
-            return (x, y, x, y)
+            pos = child.pos
+            return Rect4LinearTerm(pos.x, pos.y, pos.x, pos.y)
         outline = child.outline
-        return (coerce_term(outline.lx), coerce_term(outline.ly),
-            coerce_term(outline.ux), coerce_term(outline.uy))
+        return Rect4LinearTerm(outline.lx, outline.ly, outline.ux, outline.uy)
 
     def arrangement(self) -> Arrangement:
         """
@@ -274,22 +273,22 @@ class PlacementGroup:
             offsets = [span - size for size in sizes]
         return offsets, span
 
-    def rect(self) -> tuple:
+    def rect(self) -> Rect4LinearTerm:
         """
-        Returns the group's bounding box as (lx, ly, ux, uy) LinearTerms,
-        anchored on the first child. Reading it seals the group against
-        further children (terms derived from it would not follow).
+        Returns the group's bounding box, anchored on the first child.
+        Reading it seals the group against further children (terms
+        derived from it would not follow).
         """
         rects, offsets, width, height = self.arrangement()
         self.sealed = True
         lx = rects[0][0] - offsets[0][0]
         ly = rects[0][1] - offsets[0][1]
-        return (lx, ly, lx + width, ly + height)
+        return Rect4LinearTerm(lx, ly, lx + width, ly + height)
 
     @property
     def outline(self) -> Rect4LinearTerm:
-        """Group bounding box as Rect4LinearTerm, usable in constraints."""
-        return Rect4LinearTerm(*self.rect())
+        """Group bounding box, usable in constraints."""
+        return self.rect()
 
     def __getattr__(self, name):
         # Convenience access to outline properties (south, center, lx, ...).
@@ -502,14 +501,13 @@ class ConnectingGroup(PlacementGroup, ABC):
         from .schema import (SchemInstance, SchemInstanceConn,
             SchemInstanceUnresolvedConn)
         if isinstance(inst, SchemInstance):
-            pin_nid = getattr(inst.symbol, pin_name).nid
-            for conn in inst.root.all(SchemInstanceConn.ref_idx.query(inst)):
-                if conn.there.nid == pin_nid:
-                    return conn.here
-        else:
-            for conn in inst.root.all(SchemInstanceUnresolvedConn.ref_idx.query(inst)):
-                if conn.there == (pin_name,):
-                    return conn.here
+            pin = getattr(inst.symbol, pin_name)
+            query = SchemInstanceConn.ref_pin_idx.query((inst, pin))
+            conn = next(iter(inst.root.all(query)), None)
+            return conn.here if conn is not None else None
+        for conn in inst.root.all(SchemInstanceUnresolvedConn.ref_idx.query(inst)):
+            if conn.there == (pin_name,):
+                return conn.here
         return None
 
     def endpoint(self, child, side: D4) -> Endpoint:

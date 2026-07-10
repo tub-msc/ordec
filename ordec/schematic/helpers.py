@@ -144,6 +144,9 @@ def schem_content_bbox(node: Schematic) -> Rect4R | None:
     outlines, port positions, tap points and wire vertices. Elements
     whose position is still unresolved (Vec2LinearTerm) are ignored;
     returns None for a schematic without placed content.
+
+    Related: routing.adjust_outline_initial(), which assumes placed
+    elements and adds space for port labels.
     """
     points = []
     for inst in node.all(SchemInstance):
