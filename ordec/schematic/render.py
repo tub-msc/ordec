@@ -44,6 +44,16 @@ class Renderer:
     port_text_space = 0.15 + 0.5
     pixel_per_unit = 35
     conn_point_radius = 0.1625
+    # font_size_internal_pt must match the font-size in the css class
+    # attribute. It has no effect on the rendered text size: draw_label()
+    # divides it back out via its scale transform. Its value is a more-or-less
+    # arbitrary constant kept near the browser default (12pt), so that text
+    # degrades gracefully in contexts where the CSS is not applied.
+    font_size_internal_pt = 11
+    # The actual rendered font size, measured in schematic coordinates where
+    # the grid pitch is 1: 0.66 makes one line of text about 2/3 of a grid
+    # square tall, regardless of font_size_internal_pt and pixel_per_unit.
+    font_size_actual_grid_units = 0.66
     css = ""
 
     def __init__(self, include_nids: bool=True, enable_css: bool=True):
@@ -103,7 +113,15 @@ class Renderer:
             y = {VAlign.Bottom: +1, VAlign.Top: -1, VAlign.Middle: 0}[valign]*space,
             ).transl()
 
-        scale = 0.045 # 1/self.pixel_per_unit (?) Not sure why this is so off.
+        # The CSS font-size resolves in the <text> element's local coordinate
+        # system, where one em is font_size_internal_pt*96/72 user units
+        # (1in = 96px = 72pt, see
+        # https://www.w3.org/TR/css-values-4/#absolute-lengths).
+        # The scale below divides that out again, so that
+        # one em spans font_size_actual_grid_units schematic units.
+        # Rounding avoids float noise (0.045000000000000005) in the SVG.
+        # The negative y_scale un-flips the y-axis flip of setup_canvas.
+        scale = round(self.font_size_actual_grid_units / (self.font_size_internal_pt * 96/72), 6)
         tag = ET.SubElement(self.cur_group, 'text', transform=g_matrix.svg_transform(x_scale=scale, y_scale=-scale))
 
         lines = text.split('\n')
@@ -159,7 +177,11 @@ class Renderer:
         self.root.attrib['height'] = f'{h_p*self.pixel_per_unit}px'
         self.viewbox = [scale_viewbox*lx_p, scale_viewbox*ly_p, scale_viewbox*w_p, scale_viewbox*h_p]
         self.root.attrib['viewBox'] = ' '.join([str(x) for x in self.viewbox])
-        # Not sure why this is the correct transform matrix:
+        # This matrix maps (x, y) to (x, (uy+ly)-y), both scaled by
+        # scale_viewbox: it flips the y axis (schematic y points up, SVG y
+        # points down) by mirroring about the canvas midline y=(uy+ly)/2,
+        # which maps the canvas y range [ly, uy] onto itself. This also
+        # holds for the padded range, because the padding is symmetric.
         self.cur_group.attrib['transform']=f"matrix({scale_viewbox} 0 0 {-scale_viewbox} 0 {(uy+ly)*scale_viewbox})"
 
     def indent_xml_recursive(self, elem, depth):

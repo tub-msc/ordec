@@ -123,7 +123,7 @@ def test_renderview(testcase, tmp_path, update_ref):
     render_opts = dict(
         include_nids=False, # Do not include nids to make the output independent of nids.
         enable_grid=False, # Disable grid to make the files smaller.
-        enable_css=False # CSS is tested via web/src/schematic.css; use add_style.py to re-inject for visual inspection.
+        enable_css=False # Keep CSS out of the refs. The web UI loads the same CSS (SchematicRenderer.css) separately via /api/schematic.css. For visual inspection, render with enable_css=True.
     ) | testcase.render_opts 
 
     svg = view.render(**render_opts).svg()
