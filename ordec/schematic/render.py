@@ -319,7 +319,7 @@ class SchematicRenderer(Renderer):
                     self.cur_group.attrib['data-srcline'] = str(inst.src_loc.line)
                     self.cur_group.attrib['data-srccol'] = str(inst.src_loc.column)
                 trans = inst.loc_transform()
-                self.draw_symbol(inst.symbol, trans, inst.full_path_str())
+                self.draw_symbol(inst.symbol, trans, inst.full_path_label())
 
         for port in s.all(SchemPort):
             with self.subgroup(node=port, data_nid=port.ref.nid):
@@ -372,7 +372,7 @@ class SchematicRenderer(Renderer):
 
         self.draw_arrow(ArrowType.Pin, pin.pintype, trans_local)
 
-        label = str(pin.full_path_str())
+        label = pin.full_path_label()
         self.draw_label(label, trans_local,
             valign=VAlign.Bottom, svg_class='pinLabel')
 
