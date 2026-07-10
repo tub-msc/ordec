@@ -155,14 +155,16 @@ def place_cells_and_ports(grid: np.ndarray, cells: list[RoutingCell],
 
     return key_grid
 
-def adjust_start_end_for_direction(start, start_dir: D4, end, end_dir: D4):
+def adjust_start_end_for_direction(start: tuple[int, int], start_dir: D4,
+                                   end: tuple[int, int], end_dir: D4
+                                   ) -> tuple[tuple[int, int], tuple[int, int]]:
     """Step the start and end points one grid cell in their facing direction.
 
     Args:
-        start (tuple): Start point (x, y).
-        start_dir (D4): Facing direction of the start port.
-        end (tuple): End point (x, y).
-        end_dir (D4): Facing direction of the end port.
+        start: Start point (x, y).
+        start_dir: Facing direction of the start port.
+        end: End point (x, y).
+        end_dir: Facing direction of the end port.
 
     Returns:
         tuple: Adjusted (start, end) points.
@@ -173,17 +175,18 @@ def adjust_start_end_for_direction(start, start_dir: D4, end, end_dir: D4):
             (end[0] + int(ev.x), end[1] + int(ev.y)))
 
 def preprocess_straight_lines(straight_lines: dict[Net, list], net: Net,
-                              height: int, routing_cache: RoutingCache):
+                              height: int, routing_cache: RoutingCache
+                              ) -> tuple[set, dict]:
     """Preprocess straight lines into blocked movements with corner-touch prevention.
 
     Allows orthogonal crossings. Results are cached per ``net`` and
     invalidated when dependency versions change.
 
     Args:
-        straight_lines (dict): Already routed paths keyed by Net.
-        net (Net): The net currently being routed (excluded).
-        height (int): Grid height used for key encoding.
-        routing_cache (RoutingCache): Per-run memoization state.
+        straight_lines: Already routed paths keyed by Net.
+        net: The net currently being routed (excluded).
+        height: Grid height used for key encoding.
+        routing_cache: Per-run memoization state.
 
     Returns:
         tuple: (blocked_moves set, blocked_masks dict).
@@ -271,12 +274,12 @@ def _direction_bit(dx, dy) -> int:
     return 0
 
 
-def _blocked_masks_by_node(blocked_moves, height):
+def _blocked_masks_by_node(blocked_moves: set, height: int) -> dict:
     """Encode blocked moves as per-node direction bitmasks.
 
     Args:
-        blocked_moves (set): Set of ((x1, y1), (x2, y2)) unit moves.
-        height (int): Grid height used for key encoding.
+        blocked_moves: Set of ((x1, y1), (x2, y2)) unit moves.
+        height: Grid height used for key encoding.
 
     Returns:
         dict: Mapping of node key to bitmask of blocked move directions
@@ -303,25 +306,27 @@ def _point_keys(points, height):
     return {x * height + y for x, y in points}
 
 
-def a_star(grid, start, end, width, height, straight_lines,
-           net: Net, start_dir: D4, routing_cache, route_cell_usage=None,
-           use_congestion=True, blocked_move_hits=None) -> list[tuple[int, int]]:
+def a_star(grid: np.ndarray, start: tuple[int, int], end: tuple[int, int],
+           width: int, height: int, straight_lines: dict[Net, list],
+           net: Net, start_dir: D4, routing_cache: RoutingCache,
+           route_cell_usage: dict | None = None, use_congestion: bool = True,
+           blocked_move_hits: set | None = None) -> list[tuple[int, int]]:
     """Perform A* pathfinding between a start and end point.
 
     Args:
-        grid (np.ndarray): Schematic grid (int8 array).
-        start (tuple): Point to start from (x, y).
-        end (tuple): Point to reach (x, y).
-        width (int): Width of the schematic.
-        height (int): Height of the schematic.
-        straight_lines (dict): Already calculated paths.
-        net (Net): The net currently being routed.
-        start_dir (D4): Facing direction of the start terminal.
-        routing_cache (RoutingCache): Per-run memoization state.
-        route_cell_usage (dict, optional): Routed cell usage counts.
-        use_congestion (bool): Whether to apply congestion/history penalties.
-        blocked_move_hits (set, optional): Blocked moves encountered during
-            search, encoded as (node_key << 4) | _direction_bit().
+        grid: Routing grid (int8 array).
+        start: Point to start from (x, y).
+        end: Point to reach (x, y).
+        width: Width of the grid.
+        height: Height of the grid.
+        straight_lines: Already calculated paths.
+        net: The net currently being routed.
+        start_dir: Facing direction of the start terminal.
+        routing_cache: Per-run memoization state.
+        route_cell_usage: Routed cell usage counts (optional).
+        use_congestion: Whether to apply congestion/history penalties.
+        blocked_move_hits: If given, blocked moves encountered during search
+            are added to this set, encoded as (node_key << 4) | _direction_bit().
 
     Returns:
         list: Calculated path as list of (x, y) tuples, or empty list on failure.
@@ -445,28 +450,30 @@ def a_star(grid, start, end, width, height, straight_lines,
     return []
 
 
-def reverse_a_star(grid, start_points, end, width, height, straight_lines,
-                   net: Net, end_dir: D4, endpoint_mapping, routing_cache,
-                   route_cell_usage=None, use_congestion=True,
-                   blocked_move_hits=None) -> list[tuple[int, int]]:
+def reverse_a_star(grid: np.ndarray, start_points: list,
+                   end: tuple[int, int], width: int, height: int,
+                   straight_lines: dict[Net, list], net: Net, end_dir: D4,
+                   endpoint_mapping: dict, routing_cache: RoutingCache,
+                   route_cell_usage: dict | None = None,
+                   use_congestion: bool = True,
+                   blocked_move_hits: set | None = None) -> list[tuple[int, int]]:
     """Perform reverse A* from the end point towards any of the start points.
 
     Args:
-        grid (np.ndarray): Schematic grid (int8 array).
-        start_points (list): Target points to reach.
-        end (tuple): Endpoint to start search from (x, y).
-        width (int): Width of the schematic.
-        height (int): Height of the schematic.
-        straight_lines (dict): Already calculated paths.
-        net (Net): The net currently being routed.
-        end_dir (D4): Facing direction of the end terminal.
-        endpoint_mapping (dict): Mapping of Net to adjusted endpoint
-            marker key set.
-        routing_cache (RoutingCache): Per-run memoization state.
-        route_cell_usage (dict, optional): Routed cell usage counts.
-        use_congestion (bool): Whether to apply congestion/history penalties.
-        blocked_move_hits (set, optional): Blocked moves encountered during
-            search, encoded as (node_key << 4) | _direction_bit().
+        grid: Routing grid (int8 array).
+        start_points: Target points to reach.
+        end: Endpoint to start search from (x, y).
+        width: Width of the grid.
+        height: Height of the grid.
+        straight_lines: Already calculated paths.
+        net: The net currently being routed.
+        end_dir: Facing direction of the end terminal.
+        endpoint_mapping: Mapping of Net to adjusted endpoint marker key set.
+        routing_cache: Per-run memoization state.
+        route_cell_usage: Routed cell usage counts (optional).
+        use_congestion: Whether to apply congestion/history penalties.
+        blocked_move_hits: If given, blocked moves encountered during search
+            are added to this set, encoded as (node_key << 4) | _direction_bit().
 
     Returns:
         list: Shortest path found as list of (x, y) tuples, or empty list.
@@ -604,13 +611,13 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines,
 
 
 
-def shorten_lists(list_of_lists):
+def shorten_lists(list_of_lists: list) -> list:
     """Shorten lists by removing overlapping prefixes with the first list.
 
     The first list remains unchanged. Important for intersecting paths.
 
     Args:
-        list_of_lists (list): Lists to shorten.
+        list_of_lists: Lists to shorten.
 
     Returns:
         list: Shortened lists with shared prefixes removed.
@@ -641,11 +648,11 @@ def shorten_lists(list_of_lists):
     return shortened_lists
 
 
-def keep_corners_and_edges(lines):
+def keep_corners_and_edges(lines: list) -> list:
     """Filter full paths down to corners and edge points only.
 
     Args:
-        lines (list): Calculated paths as lists of (x, y) tuples.
+        lines: Calculated paths as lists of (x, y) tuples.
 
     Returns:
         list: Paths reduced to corner and edge vertices.
@@ -688,15 +695,15 @@ def keep_corners_and_edges(lines):
     return result
 
 
-def transform_to_pairs(list_of_lists, straights):
+def transform_to_pairs(list_of_lists: list, straights: list) -> list:
     """Transform point lists into consecutive pairs and append to straights.
 
     Example: ``[(2, 1), (5, 1), (5, 2)]`` becomes
     ``[((2, 1), (5, 1)), ((5, 1), (5, 2))]``.
 
     Args:
-        list_of_lists (list): List of point lists.
-        straights (list): Accumulator list to append pairs to.
+        list_of_lists: List of point lists.
+        straights: Accumulator list to append pairs to.
 
     Returns:
         list: The straights list with new pairs appended.
