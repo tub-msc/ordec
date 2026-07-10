@@ -138,6 +138,31 @@ def schematic_place(schem: Schematic, gap=None, port_pitch=2, port_margin=None):
     schem.outline = outline
 
 
+def schem_content_bbox(node: Schematic):
+    """
+    Returns the bounding box (Rect4R) of the placed schematic content:
+    instance outlines, port positions, tap points and wire vertices.
+    Elements whose position is still unresolved (Vec2LinearTerm) are
+    ignored. Returns None for a schematic without placed content.
+    """
+    points = []
+    for inst in node.all(SchemInstance):
+        if isinstance(inst.pos, Vec2LinearTerm):
+            continue
+        r = inst.loc_transform() * inst.symbol.outline
+        points += [Vec2R(r.lx, r.ly), Vec2R(r.ux, r.uy)]
+    points += [port.pos for port in node.all(SchemPort)
+        if not isinstance(port.pos, Vec2LinearTerm)]
+    points += [tap.pos for tap in node.all(SchemTapPoint)]
+    points += [pv.pos for pv in node.all(PolyVec2R)
+        if isinstance(pv.ref, SchemWire)]
+    if not points:
+        return None
+    return Rect4R(
+        lx=min(p.x for p in points), ly=min(p.y for p in points),
+        ux=max(p.x for p in points), uy=max(p.y for p in points))
+
+
 def schem_place_ports(node: Schematic, clearance=2):
     """
     Places all SchemPorts whose pos is still undefined, based on their align.
@@ -165,29 +190,7 @@ def schem_place_ports(node: Schematic, clearance=2):
     if not any(pending.values()):
         return
 
-    # Content bounding box over all placed elements.
-    bbox = None
-    def extend(v):
-        nonlocal bbox
-        if bbox is None:
-            bbox = Rect4R(lx=v.x, ly=v.y, ux=v.x, uy=v.y)
-        else:
-            bbox = bbox.extend(v)
-
-    for inst in node.all(SchemInstance):
-        if isinstance(inst.pos, Vec2LinearTerm):
-            continue
-        r = inst.loc_transform() * inst.symbol.outline
-        extend(Vec2R(r.lx, r.ly))
-        extend(Vec2R(r.ux, r.uy))
-    for port in node.all(SchemPort):
-        if not isinstance(port.pos, Vec2LinearTerm):
-            extend(port.pos)
-    for tap in node.all(SchemTapPoint):
-        extend(tap.pos)
-    for pv in node.all(PolyVec2R):
-        if isinstance(pv.ref, SchemWire):
-            extend(pv.pos)
+    bbox = schem_content_bbox(node)
     if bbox is None:
         bbox = Rect4R(lx=0, ly=0, ux=0, uy=0)
 
@@ -200,59 +203,59 @@ def schem_place_ports(node: Schematic, clearance=2):
         pin_positions[conn.here.nid].append(
             conn.ref.loc_transform() * conn.there.pos)
 
+    # Key selecting the connected pin nearest to the port's edge
+    # (primary), first along the edge's stacking direction (secondary).
+    nearest_pin_key = {
+        East: lambda p: (p.x, p.y), West: lambda p: (-p.x, p.y),
+        North: lambda p: (p.y, p.x), South: lambda p: (-p.y, p.x),
+    }
+
     def aligned_cross(port, align):
         """
-        Cross-axis coordinate of the port's connected pin nearest to the
-        port's edge (y on the left/right edges, x on the bottom/top
-        edges); None if the port's net has no placed pins.
+        Returns the cross-axis coordinate of the port's connected pin
+        nearest to the port's edge (y on the left/right edges, x on the
+        bottom/top edges), or None if the port's net has no placed pins.
         """
         pins = pin_positions.get(port.ref.nid)
         if not pins:
             return None
-        if align == East:
-            return math.floor(min(pins, key=lambda p: (p.x, p.y)).y)
-        if align == West:
-            return math.floor(min(pins, key=lambda p: (-p.x, p.y)).y)
-        if align == North:
-            return math.floor(min(pins, key=lambda p: (p.y, p.x)).x)
-        return math.floor(min(pins, key=lambda p: (-p.y, p.x)).x)
+        pin = min(pins, key=nearest_pin_key[align])
+        return math.floor(pin.y if align in (East, West) else pin.x)
 
-    def run(n, center):
-        # n integer grid positions, roughly centered on center, decreasing
-        # (used top-to-bottom directly; reversed for left-to-right).
-        start = math.floor(center) + (n - 1) // 2
-        return [start - i for i in range(n)]
-
-    # (edge align, fixed coordinate, step): ports advance top to bottom
-    # (step -1) on the left/right edges and left to right (step +1) on the
-    # bottom/top edges; occupied positions are skipped along step.
+    # One edge per port align. Ports stack along step: top to bottom
+    # (step -1) on the left/right edges, left to right (step +1) on the
+    # bottom/top edges. Occupied positions are skipped along step.
     edges = (
-        (East, math.floor(bbox.lx) - clearance, -1),
-        (West, math.ceil(bbox.ux) + clearance, -1),
-        (North, math.floor(bbox.ly) - clearance, +1),
-        (South, math.ceil(bbox.uy) + clearance, +1),
+        # align, vertical edge, fixed coordinate, step
+        (East, True, math.floor(bbox.lx) - clearance, -1),
+        (West, True, math.ceil(bbox.ux) + clearance, -1),
+        (North, False, math.floor(bbox.ly) - clearance, +1),
+        (South, False, math.ceil(bbox.uy) + clearance, +1),
     )
-    for align, fixed, step in edges:
-        targets = [(port, aligned_cross(port, align)) for port in pending[align]]
-        aligned = sorted((pt for pt in targets if pt[1] is not None),
-            key=lambda pt: step * pt[1])
-        rest = [port for port, cross in targets if cross is None]
-        if align in (East, West):
-            center = (bbox.ly + bbox.uy) / 2
-        else:
-            center = (bbox.lx + bbox.ux) / 2
-        coords = run(len(rest), center)
-        if step > 0:
-            coords.reverse() # left to right in declaration order
+    for align, vertical, fixed, step in edges:
+        aligned = []
+        rest = []
+        for port in pending[align]:
+            cross = aligned_cross(port, align)
+            if cross is None:
+                rest.append(port)
+            else:
+                aligned.append((cross, port))
+        aligned.sort(key=lambda cp: step * cp[0])
+
+        # Ports without a pin to line up with occupy a run of consecutive
+        # grid coordinates centered on the edge, in declaration order along step.
+        center = (bbox.ly + bbox.uy) / 2 if vertical else (bbox.lx + bbox.ux) / 2
+        top = math.floor(center) + (len(rest) - 1) // 2
+        first = top if step < 0 else top - (len(rest) - 1)
+        fallback = [(first + step * i, port) for i, port in enumerate(rest)]
+
         used = set()
-        for port, cross in aligned + list(zip(rest, coords)):
+        for cross, port in aligned + fallback:
             while cross in used:
                 cross += step
             used.add(cross)
-            if align in (East, West):
-                port.pos = Vec2R(fixed, cross)
-            else:
-                port.pos = Vec2R(cross, fixed)
+            port.pos = Vec2R(fixed, cross) if vertical else Vec2R(cross, fixed)
 
 
 def schem_add_pin_tap(inst: SchemInstance, pin: Pin):
