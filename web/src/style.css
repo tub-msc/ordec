@@ -403,12 +403,10 @@ body.theme-dark .toolbar-btn option {
 /* Push the (absolutely-positioned) content down below the status bar so the
    bar never covers it. */
 .reswrapper.refreshbar-active .rescontent,
-.reswrapper.refreshbar-active .resview-empty {
+.reswrapper.refreshbar-active .resview-empty,
+.reswrapper.refreshbar-active .resexception {
     top: var(--refreshbar-h);
     height: calc(100% - var(--refreshbar-h));
-}
-.reswrapper.refreshbar-active .resexception {
-    margin-top: var(--refreshbar-h);
 }
 .rescontent {
     background-color: var(--color-bg);
@@ -423,8 +421,15 @@ body.theme-dark .toolbar-btn option {
     overflow-x: clip;
 }
 .resexception {
-    flex-grow: 1;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
     padding: 3px;
+    /* Long tracebacks must scroll instead of being clipped by the panel. */
+    overflow-y: auto;
 }
 .resviewhead {
     display: flex;
