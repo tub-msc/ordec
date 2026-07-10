@@ -74,15 +74,6 @@ class RoutingPort:
     net: Net
     direction: D4       # unflipped rotation: North/East/South/West
 
-@dataclass
-class RoutingCell:
-    """Blocked instance body, in raw schematic coordinates (lower-left)."""
-    x: int
-    y: int
-    x_size: int
-    y_size: int
-    inst: SchemInstance
-
 # A connection to route: from a net's routing terminal to an instance pin.
 Connection = tuple[RoutingPort, SchemInstanceSubcursor]
 
@@ -100,7 +91,7 @@ class GridConn(NamedTuple):
 # rotation applied to the "up" vector: d * Vec2R(0, 1).
 
 # Place cells and ports on the grid
-def place_cells_and_ports(grid: np.ndarray, cells: list[RoutingCell],
+def place_cells_and_ports(grid: np.ndarray, cells: Iterable[SchemInstance],
                           ports: Iterable[RoutingPort], width: int, height: int,
                           offset_x: int, offset_y: int
                           ) -> dict[tuple[int, int], Net | SchemInstanceSubcursor]:
@@ -108,7 +99,7 @@ def place_cells_and_ports(grid: np.ndarray, cells: list[RoutingCell],
 
     Args:
         grid: Routing grid.
-        cells: Cells in the schematic.
+        cells: Instances whose bodies and pins block the grid.
         ports: Ports in the schematic.
         width: Width of the grid.
         height: Height of the grid.
@@ -131,13 +122,16 @@ def place_cells_and_ports(grid: np.ndarray, cells: list[RoutingCell],
             grid[my][mx] = GRID_DIR
 
     # Place cells
-    for cell in cells:
-        x, y = cell.x + offset_x, cell.y + offset_y
-        for i in range(cell.x_size):
-            for j in range(cell.y_size):
+    for inst in cells:
+        # Block the instance body: the symbol outline in schematic space,
+        # covering grid cells up to and including its upper edge.
+        body = inst.loc_transform() * inst.symbol.outline
+        x, y = int(body.lx) + offset_x, int(body.ly) + offset_y
+        for i in range(int(body.ux - body.lx) + 1):
+            for j in range(int(body.uy - body.ly) + 1):
                 grid[y + j][x + i] = GRID_BLOCKED
-        for pin in cell.inst.symbol.all(Pin):
-            sc = SchemInstanceSubcursor((cell.inst, pin))
+        for pin in inst.symbol.all(Pin):
+            sc = SchemInstanceSubcursor((inst, pin))
             pos = sc.pos
             cx, cy = int(pos.x) + offset_x, int(pos.y) + offset_y
             grid[cy][cx] = GRID_PIN
@@ -1066,7 +1060,7 @@ def draw_connections(grid: np.ndarray, connections: list[Connection],
     return port_drawing_dict
 
 
-def calculate_vertices(outline: Rect4R, cells: list[RoutingCell],
+def calculate_vertices(outline: Rect4R, cells: Iterable[SchemInstance],
                        ports: Iterable[RoutingPort],
                        connections: list[Connection]
                        ) -> dict[Net, list[list[Vec2R]]]:
@@ -1078,7 +1072,7 @@ def calculate_vertices(outline: Rect4R, cells: list[RoutingCell],
 
     Args:
         outline: Current schematic outline.
-        cells: Cells in the schematic.
+        cells: Instances in the schematic.
         ports: Ports in the schematic.
         connections: Connections from net terminals to instance pins.
 
@@ -1164,14 +1158,7 @@ def auto_wire(node: Schematic) -> None:
     # Build Cells and Ports
     #======================
 
-    cells: list[RoutingCell] = list()
-    for instance in node.all(SchemInstance):
-        body = instance.loc_transform() * instance.symbol.outline
-        cells.append(RoutingCell(
-            x=int(body.lx), y=int(body.ly),
-            x_size=int(body.ux - body.lx) + 1,
-            y_size=int(body.uy - body.ly) + 1,
-            inst=instance))
+    cells = list(node.all(SchemInstance))
 
     ports: dict[Net, RoutingPort] = dict()
     for port in node.all(SchemPort):

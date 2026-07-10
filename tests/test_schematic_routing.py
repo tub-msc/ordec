@@ -11,7 +11,7 @@ import numpy as np
 from ordec.core import *
 from ordec.core.schema import SchemInstanceSubcursor
 from ordec.schematic.routing import (
-    RoutingCell, RoutingPort, place_cells_and_ports, draw_connections,
+    RoutingPort, place_cells_and_ports, draw_connections,
     _blocked_masks_by_node, _direction_bit,
     GRID_EMPTY, GRID_ROUTED, GRID_DIR, GRID_BLOCKED, GRID_PIN, GRID_PORT,
 )
@@ -101,12 +101,9 @@ def test_place_and_draw_connections():
     def gridpos(x, y):
         return int(x) + offset_x, int(y) + offset_y
 
-    # Cell bodies (5x5, bottom-left corner) and net terminals, in raw
-    # schematic coordinates
-    cells = [
-        RoutingCell(4, 2, 5, 5, s.pd),
-        RoutingCell(4, 10, 5, 5, s.pu),
-    ]
+    # Instances (bodies derived from their 4x4 symbol outlines) and net
+    # terminals, in raw schematic coordinates
+    cells = [s.pd, s.pu]
     ports = [
         RoutingPort(-1, -5, s.vss, East),
         RoutingPort(1, 15, s.vdd, East),
