@@ -78,12 +78,26 @@ class RoutingPort:
 Connection = tuple[RoutingPort, SchemInstanceSubcursor]
 
 class GridConn(NamedTuple):
-    """A Connection projected onto the routing grid."""
+    """A Connection translated onto the routing grid."""
     net: Net
     start: tuple[int, int]
     start_dir: D4
     end: tuple[int, int]
     end_dir: D4
+
+    @classmethod
+    def from_connection(cls, conn: Connection, offset_x: int, offset_y: int
+                        ) -> "GridConn":
+        """Build a GridConn from a schematic-space Connection, applying the
+        schematic-to-grid offset."""
+        port, pin_sc = conn
+        end_pos = pin_sc.pos
+        return cls(
+            net=port.net,
+            start=(port.x + offset_x, port.y + offset_y),
+            start_dir=port.direction,
+            end=(int(end_pos.x) + offset_x, int(end_pos.y) + offset_y),
+            end_dir=pin_sc.align.unflip())
 
 
 # Directions (terminal facing and move directions) are the unflipped D4
@@ -712,17 +726,15 @@ def transform_to_pairs(list_of_lists: list, straights: list) -> list:
     return straights
 
 
-def sort_connections(connections: list[Connection], offset_x: int, offset_y: int
+def sort_connections(connections: list[GridConn]
                      ) -> tuple[dict[Net, set], list[GridConn]]:
-    """Project connections onto the grid and sort them by routing difficulty.
+    """Sort grid connections by routing difficulty.
 
     Higher fanout nets are routed first, then shorter distances within
     the same fanout group.
 
     Args:
-        connections: Connections from net terminals to instance pins.
-        offset_x: X offset from schematic to grid coordinates.
-        offset_y: Y offset from schematic to grid coordinates.
+        connections: Grid connections to sort.
 
     Returns:
         tuple: (net_endpoint_marker_mapping, sorted grid connections).
@@ -738,20 +750,14 @@ def sort_connections(connections: list[Connection], offset_x: int, offset_y: int
     net_endpoint_mapping = dict()
     net_endpoint_marker_mapping = dict()
 
-    for index, (port, pin_sc) in enumerate(connections):
-        start = (port.x + offset_x, port.y + offset_y)
-        end_pos = pin_sc.pos
-        end = (int(end_pos.x) + offset_x, int(end_pos.y) + offset_y)
-        end_dir = pin_sc.align.unflip()
-        gconn = GridConn(port.net, start, port.direction, end, end_dir)
-
-        distance = euclidean_distance_sq(start, end)
+    for index, gconn in enumerate(connections):
+        distance = euclidean_distance_sq(gconn.start, gconn.end)
         sortable_connections.append((distance, index, gconn))
-        net_endpoint_mapping.setdefault(gconn.net, set()).add(end)
+        net_endpoint_mapping.setdefault(gconn.net, set()).add(gconn.end)
         # The endpoint marker is the cell one step in front of the endpoint
-        ev = end_dir * Vec2R(0, 1)
+        ev = gconn.end_dir * Vec2R(0, 1)
         net_endpoint_marker_mapping.setdefault(gconn.net, set()).add(
-            (end[0] + int(ev.x), end[1] + int(ev.y)))
+            (gconn.end[0] + int(ev.x), gconn.end[1] + int(ev.y)))
 
     fanout_by_net = {
         net: len(endpoints)
@@ -771,18 +777,16 @@ def sort_connections(connections: list[Connection], offset_x: int, offset_y: int
 
 
 # Draw all connections with paths
-def draw_connections(grid: np.ndarray, connections: list[Connection],
-                     width: int, height: int, offset_x: int, offset_y: int
+def draw_connections(grid: np.ndarray, connections: list[GridConn],
+                     width: int, height: int
                      ) -> dict[Net, list[list[tuple[int, int]]]]:
     """Route all connections and return the calculated vertices.
 
     Args:
         grid: Routing grid (int8 array).
-        connections: Connections from net terminals to instance pins.
+        connections: Grid connections to route.
         width: Width of the grid.
         height: Height of the grid.
-        offset_x: X offset from schematic to grid coordinates.
-        offset_y: Y offset from schematic to grid coordinates.
 
     Returns:
         dict: Grid-space vertex paths per Net.
@@ -793,8 +797,7 @@ def draw_connections(grid: np.ndarray, connections: list[Connection],
     route_cell_usage = dict()
     routed_entries = []
 
-    endpoint_marker_mapping, sorted_connections = sort_connections(
-        connections, offset_x, offset_y)
+    endpoint_marker_mapping, sorted_connections = sort_connections(connections)
     endpoint_key_mapping = {
         net: _point_keys(endpoints, height)
         for net, endpoints in endpoint_marker_mapping.items()
@@ -1086,8 +1089,9 @@ def calculate_vertices(outline: Rect4R, cells: Iterable[SchemInstance],
     grid = np.zeros((height * 2, width * 2), dtype=np.int8)
     place_cells_and_ports(grid, cells, ports, width * 2, height * 2,
                           offset_x, offset_y)
-    vertices = draw_connections(grid, connections, width * 2, height * 2,
-                                offset_x, offset_y)
+    gconns = [GridConn.from_connection(c, offset_x, offset_y)
+              for c in connections]
+    vertices = draw_connections(grid, gconns, width * 2, height * 2)
     return {
         net: [[Vec2R(x=x - offset_x, y=y - offset_y) for x, y in path]
               for path in paths]

@@ -11,7 +11,7 @@ import numpy as np
 from ordec.core import *
 from ordec.core.schema import SchemInstanceSubcursor
 from ordec.schematic.routing import (
-    RoutingPort, place_cells_and_ports, draw_connections,
+    RoutingPort, GridConn, place_cells_and_ports, draw_connections,
     _blocked_masks_by_node, _direction_bit,
     GRID_EMPTY, GRID_ROUTED, GRID_DIR, GRID_BLOCKED, GRID_PIN, GRID_PORT,
 )
@@ -138,8 +138,9 @@ def test_place_and_draw_connections():
     x, y = gridpos(6, 4)  # center of pd
     assert grid[y][x] == GRID_BLOCKED
 
-    vertices = draw_connections(grid, connections, width, height,
-                                offset_x, offset_y)
+    gconns = [GridConn.from_connection(c, offset_x, offset_y)
+              for c in connections]
+    vertices = draw_connections(grid, gconns, width, height)
     print_grid(grid, key_grid, width, height)
 
     # Every net is routed, with one path per connection (no failed routes).
