@@ -11,4 +11,3 @@ Developer's Corner
    ipython_integration
    ngspice_pipe_mode
    design_decisions
-   todos
