@@ -28,6 +28,9 @@ Heuristics:
 - Shortcut mode connects new branches to existing net paths via reverse A* and
   disables congestion cost for that shortcut search.
 - On failure, one-route rip-up/reroute tries routes that blocked the search.
+  A reroute must keep its net connected: paths that anchor the net's terminal
+  are rerouted in full (no shortcut), and rearrangements that strand a branch
+  of the removed route are rejected.
 """
 
 SHORTCUT_ENABLED = True       # Enable branch-to-existing-path shortcut routing.
@@ -672,8 +675,10 @@ def keep_corners_and_edges(lines: list) -> list:
 
     result = []
     first_line = True
-    # start of consecutive lines
-    starters = {line[0] for line in lines[1:]}
+    # Starts of all lines: branch points must survive as vertices on the
+    # path they attach to. Rip-up/reroute can reorder paths, so the
+    # attaching path is not necessarily behind its host in the list.
+    starters = {line[0] for line in lines}
 
     for line in lines:
         if len(line) <= 2:  # If the line has two or fewer points, include all points
@@ -862,6 +867,27 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
             paths.insert(index, entry["path"])
         rebuild_straight_lines(entry["net"])
 
+    # Paths of a net attach where one path's first point lies on another path
+    # (terminal anchor and branch junctions); mere crossings do not connect
+    # wires. Rip-up reroutes can violate this by no longer covering the branch
+    # points of paths that branched off the removed route.
+    def net_paths_attached(net):
+        paths = port_drawing_dict[net]
+        if len(paths) <= 1:
+            return True
+        point_sets = [set(path) for path in paths]
+        pending = set(range(1, len(paths)))
+        frontier = [0]
+        while frontier:
+            i = frontier.pop()
+            attached = {
+                j for j in pending
+                if paths[j][0] in point_sets[i] or paths[i][0] in point_sets[j]
+            }
+            pending -= attached
+            frontier.extend(attached)
+        return not pending
+
     def path_blocked_move_keys(path):
         blocked_keys = set()
         segments = transform_to_pairs(keep_corners_and_edges([path]), [])
@@ -902,7 +928,8 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
         scored_entries.sort(key=lambda item: (-item[0], -item[1]))
         return [entry for _, _, entry in scored_entries[:MAX_RIPUP_CANDIDATES]]
 
-    def try_route_connection(start, end, start_dir, end_dir, net, blocked_move_hits=None):
+    def try_route_connection(start, end, start_dir, end_dir, net,
+                             blocked_move_hits=None, allow_shortcut=True):
         start_new, end_new = adjust_start_end_for_direction(start, start_dir, end, end_dir)
 
         if start != end_new and end != start_new:
@@ -910,7 +937,7 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
             # Shortcut mode: if this net already has routed paths, try to
             # branch off an existing path via reverse A* instead of routing
             # all the way back to the original start
-            if SHORTCUT_ENABLED and len(port_drawing_dict[net]) != 0:
+            if allow_shortcut and SHORTCUT_ENABLED and len(port_drawing_dict[net]) != 0:
                 shortcut_available = True
                 shortcut_start_points = port_drawing_dict[net]
                 # Collect interior points of existing paths as branch candidates
@@ -1001,23 +1028,36 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
                     )
                     routed_entries.append(current_entry)
 
-                    # Try to reroute the removed blocking connection
+                    # Try to reroute the removed blocking connection. If the
+                    # removed path anchored the net's start terminal, a shortcut
+                    # reroute would only reconnect the end pin and silently
+                    # leave the terminal unwired, so reroute it in full.
+                    anchors_terminal = (
+                        blocking_entry["path"][0] == blocking_entry["start"])
                     blocking_path, _, _ = try_route_connection(
                         blocking_entry["start"],
                         blocking_entry["end"],
                         blocking_entry["start_dir"],
                         blocking_entry["end_dir"],
                         blocking_net,
+                        allow_shortcut=not anchors_terminal,
                     )
                     if blocking_path is not None:
-                        # Both succeeded --> keep the new arrangement
                         blocking_cells = apply_path_to_grid(blocking_path)
                         append_path(blocking_net, blocking_path)
-                        blocking_entry["path"] = blocking_path
-                        blocking_entry["path_cells"] = blocking_cells
-                        blocking_entry["blocked_move_keys"] = path_blocked_move_keys(blocking_path)
-                        routed_entries.append(blocking_entry)
-                        break
+                        if net_paths_attached(blocking_net):
+                            # Both succeeded --> keep the new arrangement
+                            blocking_entry["path"] = blocking_path
+                            blocking_entry["path_cells"] = blocking_cells
+                            blocking_entry["blocked_move_keys"] = path_blocked_move_keys(blocking_path)
+                            routed_entries.append(blocking_entry)
+                            break
+                        # The reroute stranded another path of the net (a
+                        # branch off the removed route whose branch point the
+                        # new route misses): undo it and treat it as failed.
+                        port_drawing_dict[blocking_net].pop()
+                        rebuild_straight_lines(blocking_net)
+                        remove_path_from_grid(blocking_cells)
 
                     # Blocking route failed to reroute, undo current and restore
                     if port_drawing_dict[net]:
