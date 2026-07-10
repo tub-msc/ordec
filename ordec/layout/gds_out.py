@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import io
-from datetime import datetime, timezone
 from typing import IO, Optional
 from public import public
 from gdsii.library import Library
@@ -13,12 +12,6 @@ from gdsii import types, tags
 
 from ..core import *
 from .helpers import expand_rects, expand_pins
-
-
-def _gds_now() -> datetime:
-    # gdsii defaults its timestamps via the deprecated datetime.utcnow();
-    # pass an explicit naive-UTC time instead (GDS stores no timezone).
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 def d4_to_gds(d4: D4) -> tuple[float,int]:
     return {
@@ -34,11 +27,7 @@ def d4_to_gds(d4: D4) -> tuple[float,int]:
 
 class GdsGenerator:
     def layout_to_struc(self, layout: Layout):
-        struc = Structure(
-            name=self.directory.name_subgraph(layout).encode('ascii'),
-            mod_time=_gds_now(),
-            acc_time=_gds_now(),
-        )
+        struc = Structure(name=self.directory.name_subgraph(layout).encode('ascii'))
 
         if layout.ref_layers != self.layers:
             raise ValueError(f"ref_layers mismatch during write_gds: {layout.ref_layers!r} != {self.layers!r}")
@@ -138,8 +127,6 @@ class GdsGenerator:
             name=b'LIB',
             physical_unit=float(layers.unit),
             logical_unit=0.001, # Not sure what this is exactly supposed to mean.
-            mod_time=_gds_now(),
-            acc_time=_gds_now(),
         )
 
     def add_layout(self, layout: Layout):

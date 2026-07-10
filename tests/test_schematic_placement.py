@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Tests for the schematic placement pipeline: ! constraints solved in
-SchematicViewContext.postprocess and align-based auto-placement of ports
+Tests for the schematic placement pipeline: constraints from ORD `!`
+statements solved in SchematicViewContext.postprocess, placement groups
+(Col/Row/Series/Parallel) and align-based auto-placement of ports
 (schem_place_ports).
 """
 
@@ -11,11 +12,21 @@ import pytest
 
 import ordec.importer
 from ordec.core import *
+from ordec.lib.generic_mos import Nmos, Pmos
 from ordec.schematic.helpers import schem_place_ports
 
 
+def net_of(sch, inst, pin_name):
+    """Returns the Net connected to a pin of a resolved SchemInstance."""
+    pin_nid = getattr(inst.symbol, pin_name).nid
+    for conn in sch.all(SchemInstanceConn.ref_idx.query(inst)):
+        if conn.there.nid == pin_nid:
+            return conn.here
+    return None
+
+
 def test_ord_schematic_solver_and_port_autoplace():
-    from tests.lib.ord.inverter_solver import Inv
+    from .lib.ord.inverter_solver import Inv
 
     sch = Inv().schematic
 
@@ -61,7 +72,7 @@ def test_place_ports_declaration_order_and_stacking():
 
 
 def test_ord_col_group_auto_anchor():
-    from tests.lib.ord.inverter_stack import Inv
+    from .lib.ord.inverter_stack import Inv
 
     sch = Inv().schematic
 
@@ -80,7 +91,7 @@ def test_ord_col_group_auto_anchor():
 
 
 def test_ord_col_group_manual_anchor():
-    from tests.lib.ord.inverter_stack import InvAnchored
+    from .lib.ord.inverter_stack import InvAnchored
 
     sch = InvAnchored().schematic
 
@@ -120,17 +131,8 @@ def test_nested_groups_python_api():
     assert sch.c.pos == Vec2R(7, 3)
 
 
-def net_of(sch, inst, pin_name):
-    """The Net connected to a pin of a resolved SchemInstance."""
-    pin_nid = getattr(inst.symbol, pin_name).nid
-    for conn in sch.all(SchemInstanceConn.ref_idx.query(inst)):
-        if conn.there.nid == pin_nid:
-            return conn.here
-    return None
-
-
 def test_ord_series_auto_connection():
-    from tests.lib.ord.inverter_series import Inv
+    from .lib.ord.inverter_series import Inv
 
     sch = Inv().schematic
 
@@ -273,7 +275,7 @@ def test_parallel_auto_connection():
 
 
 def test_ord_nand_nested_parallel_in_series():
-    from tests.lib.ord.nand_placement import Nand2
+    from .lib.ord.nand_placement import Nand2
 
     sch = Nand2().schematic
 
@@ -303,7 +305,7 @@ def test_ord_nand_nested_parallel_in_series():
 
 
 def test_ord_two_toplevel_groups_side_by_side():
-    from tests.lib.ord.two_stacks import TwoStacks
+    from .lib.ord.two_stacks import TwoStacks
 
     sch = TwoStacks().schematic
 
@@ -316,7 +318,6 @@ def test_ord_two_toplevel_groups_side_by_side():
 
 
 def test_group_follows_pinned_child():
-    from ordec.lib.generic_mos import Nmos, Pmos
     sch = Schematic()
     sch.pu = SchemInstance(symbol=Pmos().symbol, pos=Vec2R(3, 7))
     sch.pd = SchemInstance(symbol=Nmos().symbol)
@@ -333,7 +334,6 @@ def test_group_follows_pinned_child():
 
 
 def test_group_contradiction_clear_error():
-    from ordec.lib.generic_mos import Nmos
     sch = Schematic()
     sch.m = SchemInstance(symbol=Nmos().symbol)
     group = Col(gap=2)
@@ -345,7 +345,6 @@ def test_group_contradiction_clear_error():
 
 
 def test_group_net_without_port_error():
-    from ordec.lib.generic_mos import Nmos
     sch = Schematic()
     sch.m = SchemInstance(symbol=Nmos().symbol)
     sch.n = Net()
@@ -365,7 +364,7 @@ def test_group_unknown_attribute_does_not_seal():
 
 
 def test_ord_hierarchical_buf():
-    from tests.lib.ord.buf_hier import Buf
+    from .lib.ord.buf_hier import Buf
 
     sch = Buf().schematic
 
@@ -389,7 +388,6 @@ def test_ord_hierarchical_buf():
 
 def test_series_nested_in_parallel():
     # AOI-style pull-down: (n1 in series with n2) in parallel with n3.
-    from ordec.lib.generic_mos import Nmos
     sym = Nmos().symbol
     sch = Schematic()
     sch.n1 = SchemInstance(symbol=sym)
@@ -523,7 +521,6 @@ def test_groups_snap_odd_sizes_to_grid():
     # A Parallel with gap 3 spans 11 units; centering the 4-wide pull-down
     # under it must stay on the unit grid (the router cannot reach
     # half-grid pins).
-    from ordec.lib.generic_mos import Nmos, Pmos
     sch = Schematic()
     sch.pu_a = SchemInstance(symbol=Pmos().symbol)
     sch.pu_b = SchemInstance(symbol=Pmos().symbol)
@@ -546,7 +543,7 @@ def test_groups_snap_odd_sizes_to_grid():
 
 
 def test_ord_amp_two_multi_pin_symbols():
-    from tests.lib.ord.amp_multipin import Amp
+    from .lib.ord.amp_multipin import Amp
 
     sch = Amp().schematic
 
@@ -643,7 +640,6 @@ def test_group_errors_on_anonymous_instance():
 
 
 def test_group_conflict_error_on_anonymous_nets():
-    from ordec.lib.generic_mos import Nmos
     sym = Nmos().symbol
     sch = Schematic()
     sch.m1 = SchemInstance(symbol=sym)
