@@ -72,7 +72,7 @@ class RoutingPort:
     x: int
     y: int
     net: Net
-    direction: str      # lefdef 'N'/'S'/'E'/'W'
+    direction: D4       # unflipped rotation: North/East/South/West
     auto_wire: bool = True
 
 @dataclass
@@ -91,26 +91,14 @@ class GridConn(NamedTuple):
     """A Connection projected onto the routing grid."""
     net: Net
     start: tuple[int, int]
-    start_dir: str
+    start_dir: D4
     end: tuple[int, int]
-    end_dir: str
+    end_dir: D4
 
 
-# valid moves for each direction
-direction_moves = {
-    'N': (0, 1),
-    'S': (0, -1),
-    'E': (1, 0),
-    'W': (-1, 0),
-}
-DIRECTION_OFFSETS = tuple(direction_moves.values())  # Neighbor expansion order for A*.
-DIR_NONE = -1  # Sentinel for "no previous move direction".
-DIR_TO_INT = {  # Map direction vectors to compact integer IDs.
-    (0, 1): 0,
-    (0, -1): 1,
-    (1, 0): 2,
-    (-1, 0): 3,
-}
+# Directions (terminal facing and move directions) are the unflipped D4
+# rotations North/East/South/West. A direction's unit grid step is its
+# rotation applied to the "up" vector: d * Vec2R(0, 1).
 
 # Place cells and ports on the grid
 def place_cells_and_ports(grid: np.ndarray, cells: list[RoutingCell],
@@ -135,6 +123,14 @@ def place_cells_and_ports(grid: np.ndarray, cells: list[RoutingCell],
 
     key_grid = dict()
 
+    def place_direction_marker(x, y, direction: D4):
+        # The empty cell one step in front of a terminal becomes a
+        # turn-restricted direction marker.
+        v = direction * Vec2R(0, 1)
+        mx, my = x + int(v.x), y + int(v.y)
+        if 0 <= my < height and 0 <= mx < width and grid[my][mx] == GRID_EMPTY:
+            grid[my][mx] = GRID_DIR
+
     # Place cells
     for cell in cells:
         x, y = cell.x + offset_x, cell.y + offset_y
@@ -145,16 +141,10 @@ def place_cells_and_ports(grid: np.ndarray, cells: list[RoutingCell],
             sc = SchemInstanceSubcursor((cell.inst, pin))
             pos = sc.pos
             cx, cy = int(pos.x) + offset_x, int(pos.y) + offset_y
-            direction = sc.align.unflip().lefdef()
             grid[cy][cx] = GRID_PIN
             key_grid[(cx, cy)] = sc
             if 0 <= cy < height and 0 <= cx < width:
-                direction_offset_x = direction_moves[direction][0] + cx
-                direction_offset_y = direction_moves[direction][1] + cy
-                if (0 <= direction_offset_y < height and
-                        0 <= direction_offset_x < width and
-                        grid[direction_offset_y][direction_offset_x] == GRID_EMPTY):
-                    grid[direction_offset_y][direction_offset_x] = GRID_DIR
+                place_direction_marker(cx, cy, sc.align.unflip())
 
     # Place ports
     for port in ports:
@@ -162,39 +152,26 @@ def place_cells_and_ports(grid: np.ndarray, cells: list[RoutingCell],
         if 0 <= py < height and 0 <= px < width:
             grid[py][px] = GRID_PORT
             key_grid[(px, py)] = port.net
-            direction_offset_x = direction_moves[port.direction][0] + px
-            direction_offset_y = direction_moves[port.direction][1] + py
-            if (0 <= direction_offset_y < height and
-                    0 <= direction_offset_x < width and
-                    grid[direction_offset_y][direction_offset_x] == GRID_EMPTY):
-                grid[direction_offset_y][direction_offset_x] = GRID_DIR
+            place_direction_marker(px, py, port.direction)
 
     return key_grid
 
-def adjust_start_end_for_direction(start, start_dir, end, end_dir):
-    """Adjust start and end points by stepping one cell in their direction.
+def adjust_start_end_for_direction(start, start_dir: D4, end, end_dir: D4):
+    """Step the start and end points one grid cell in their facing direction.
 
     Args:
         start (tuple): Start point (x, y).
-        start_dir (str): Direction of the start port.
+        start_dir (D4): Facing direction of the start port.
         end (tuple): End point (x, y).
-        end_dir (str): Direction of the end port.
+        end_dir (D4): Facing direction of the end port.
 
     Returns:
         tuple: Adjusted (start, end) points.
     """
-
-    # Adjust the start point based on start_dir
-    if start_dir:
-        dx, dy = direction_moves[start_dir]
-        start = (start[0] + dx, start[1] + dy)
-
-    # Adjust the end point based on end_dir
-    if end_dir:
-        dx, dy = direction_moves[end_dir]
-        end = (end[0] + dx, end[1] + dy)
-
-    return start, end
+    sv = start_dir * Vec2R(0, 1)
+    ev = end_dir * Vec2R(0, 1)
+    return ((start[0] + int(sv.x), start[1] + int(sv.y)),
+            (end[0] + int(ev.x), end[1] + int(ev.y)))
 
 def preprocess_straight_lines(straight_lines: dict[Net, list], net: Net,
                               height: int, routing_cache: RoutingCache):
@@ -219,7 +196,7 @@ def preprocess_straight_lines(straight_lines: dict[Net, list], net: Net,
     if entry and entry["dep_version"] == dep_version:
         blocked_masks = entry["blocked_masks"].get(height)
         if blocked_masks is None:
-            blocked_masks = _build_blocked_move_masks(entry["blocked_moves"], height)
+            blocked_masks = _blocked_masks_by_node(entry["blocked_moves"], height)
             entry["blocked_masks"][height] = blocked_masks
         return entry["blocked_moves"], blocked_masks
 
@@ -228,7 +205,7 @@ def preprocess_straight_lines(straight_lines: dict[Net, list], net: Net,
         if key != net:
             blocked_moves.update(_blocked_moves_for_segments(value))
 
-    blocked_masks = _build_blocked_move_masks(blocked_moves, height)
+    blocked_masks = _blocked_masks_by_node(blocked_moves, height)
     routing_cache.cache[net] = {
         "dep_version": dep_version,
         "blocked_moves": blocked_moves,
@@ -269,8 +246,9 @@ def _blocked_moves_for_segments(segments):
             corner_nodes.add(line_end)
 
     # Block all movement through corner nodes to prevent touching
+    steps = ((0, 1), (0, -1), (1, 0), (-1, 0))
     for x, y in corner_nodes:
-        for dx, dy in DIRECTION_OFFSETS:
+        for dx, dy in steps:
             n = (x + dx, y + dy)
             blocked_moves.add(((x, y), n))
             blocked_moves.add((n, (x, y)))
@@ -278,33 +256,47 @@ def _blocked_moves_for_segments(segments):
     return blocked_moves
 
 
-def _build_blocked_move_masks(blocked_segments, height):
+# Blocked move directions are encoded as int bitmasks rather than as
+# set[D4]. This is a performance optimization: with sets, per-move set
+# insertion churn and D4 hashing (Enum.__hash__ is a Python-level method)
+# in _blocked_masks_by_node made overall routing of larger schematics
+# ~1.5x slower.
+def _direction_bit(dx, dy) -> int:
+    """Bit identifying the direction of a unit grid move (dx, dy):
+    N=1, S=2, E=4, W=8. Returns 0 if the move is not cardinal
+    (shouldn't occur)."""
+    if dx == 0 and dy != 0:
+        return 1 if dy > 0 else 2
+    if dy == 0 and dx != 0:
+        return 4 if dx > 0 else 8
+    return 0
+
+
+def _blocked_masks_by_node(blocked_moves, height):
     """Encode blocked moves as per-node direction bitmasks.
 
     Args:
-        blocked_segments (set): Set of (start_point, end_point) tuples.
+        blocked_moves (set): Set of ((x1, y1), (x2, y2)) unit moves.
         height (int): Grid height used for key encoding.
 
     Returns:
-        dict: Mapping of node key to direction bitmask.
+        dict: Mapping of node key to bitmask of blocked move directions
+        (_direction_bit() encoding).
     """
-    # Each node key maps to a 4-bit mask: bit 0=N, 1=S, 2=E, 3=W
     blocked_masks = dict()
-    for start_point, end_point in blocked_segments:
-        sx, sy = start_point
-        ex, ey = end_point
+    for (sx, sy), (ex, ey) in blocked_moves:
+        # _direction_bit() inlined: this loop runs over every blocked move of
+        # every routed net, on each cache rebuild.
         dx = ex - sx
         dy = ey - sy
-
         if dx == 0 and dy != 0:
-            direction_id = 0 if dy > 0 else 1
+            bit = 1 if dy > 0 else 2
         elif dy == 0 and dx != 0:
-            direction_id = 2 if dx > 0 else 3
+            bit = 4 if dx > 0 else 8
         else:
             continue  # skip non-cardinal moves (shouldn't occur)
-
-        start_key = sx * height + sy
-        blocked_masks[start_key] = blocked_masks.get(start_key, 0) | (1 << direction_id)
+        key = sx * height + sy
+        blocked_masks[key] = blocked_masks.get(key, 0) | bit
     return blocked_masks
 
 
@@ -313,7 +305,7 @@ def _point_keys(points, height):
 
 
 def a_star(grid, start, end, width, height, straight_lines,
-           net: Net, start_dir, routing_cache, route_cell_usage=None,
+           net: Net, start_dir: D4, routing_cache, route_cell_usage=None,
            use_congestion=True, blocked_move_hits=None) -> list[tuple[int, int]]:
     """Perform A* pathfinding between a start and end point.
 
@@ -325,12 +317,12 @@ def a_star(grid, start, end, width, height, straight_lines,
         height (int): Height of the schematic.
         straight_lines (dict): Already calculated paths.
         net (Net): The net currently being routed.
-        start_dir (tuple): Direction vector to start from.
+        start_dir (D4): Facing direction of the start terminal.
         routing_cache (RoutingCache): Per-run memoization state.
         route_cell_usage (dict, optional): Routed cell usage counts.
         use_congestion (bool): Whether to apply congestion/history penalties.
-        blocked_move_hits (set, optional): Encoded blocked moves encountered
-            during search.
+        blocked_move_hits (set, optional): Blocked moves encountered during
+            search, encoded as (node_key << 4) | _direction_bit().
 
     Returns:
         list: Calculated path as list of (x, y) tuples, or empty list on failure.
@@ -353,7 +345,6 @@ def a_star(grid, start, end, width, height, straight_lines,
 
     start_key = start_x * height + start_y
     end_key = end_x * height + end_y
-    start_direction = DIR_TO_INT.get(start_dir, DIR_NONE)
 
     # Flat arrays indexed by node key (x * height + y) for O(1) lookup
     grid_size = width * height
@@ -362,9 +353,19 @@ def a_star(grid, start, end, width, height, straight_lines,
     came_from = [-1] * grid_size
     g_score[start_key] = 0.0
 
-    # Priority queue: (f_score, node_key, direction_id, g_score)
+    # Unit grid steps and blocked-move mask bits of the four directions,
+    # precomputed for the search loop.
+    moves = []
+    for d in (North, South, East, West):
+        v = d * Vec2R(0, 1)
+        dx, dy = int(v.x), int(v.y)
+        moves.append((d, _direction_bit(dx, dy), dx, dy))
+
+    # Priority queue: (f_score, node_key, direction, g_score). The direction
+    # (a D4, which is not orderable) is never compared: re-pushes of a node
+    # strictly improve g_score, so (f_score, node_key) pairs are unique.
     h_start = abs(start[0] - end_x) + abs(start[1] - end_y)
-    open_set = [(h_start, start_key, start_direction, 0.0)]
+    open_set = [(h_start, start_key, start_dir, 0.0)]
 
     while open_set:
         _, current_key, current_direction, popped_g_score = heapq.heappop(open_set)
@@ -389,11 +390,11 @@ def a_star(grid, start, end, width, height, straight_lines,
         block_mask = blocked_masks.get(current_key, 0)
         current_g_score = g_score[current_key]
 
-        for direction_id, (dx, dy) in enumerate(DIRECTION_OFFSETS):
+        for d, bit, dx, dy in moves:
             # Skip if this direction is blocked by an existing route segment
-            if block_mask & (1 << direction_id):
+            if block_mask & bit:
                 if blocked_move_hits is not None:
-                    blocked_move_hits.add(((cx * height + cy) << 2) | direction_id)
+                    blocked_move_hits.add((current_key << 4) | bit)
                 continue
 
             nx = cx + dx
@@ -405,8 +406,8 @@ def a_star(grid, start, end, width, height, straight_lines,
             # is allowed on this route's start marker, and on the destination
             # marker if that marker is the current route target.
             if (grid[cy, cx] == GRID_DIR and
-                    current_direction != DIR_NONE and
-                    current_direction != direction_id and
+                    current_direction is not None and
+                    current_direction != d and
                     current_key != start_key and
                     current_key != end_key):
                 continue
@@ -416,7 +417,7 @@ def a_star(grid, start, end, width, height, straight_lines,
 
             # Penalize direction changes proportional to remaining distance
             # to encourage straight runs near the destination
-            if current_direction != DIR_NONE and current_direction != direction_id:
+            if current_direction is not None and current_direction != d:
                 direction_change_penalty = remaining_distance * 0.5
                 if direction_change_penalty < 10:
                     direction_change_penalty = 10
@@ -439,14 +440,14 @@ def a_star(grid, start, end, width, height, straight_lines,
                 came_from[neighbor_key] = current_key
                 g_score[neighbor_key] = tentative_g_score
                 f_score = tentative_g_score + abs(nx - end_x) + abs(ny - end_y)
-                heapq.heappush(open_set, (f_score, neighbor_key, direction_id,
+                heapq.heappush(open_set, (f_score, neighbor_key, d,
                                           tentative_g_score))
 
     return []
 
 
 def reverse_a_star(grid, start_points, end, width, height, straight_lines,
-                   net: Net, end_dir, endpoint_mapping, routing_cache,
+                   net: Net, end_dir: D4, endpoint_mapping, routing_cache,
                    route_cell_usage=None, use_congestion=True,
                    blocked_move_hits=None) -> list[tuple[int, int]]:
     """Perform reverse A* from the end point towards any of the start points.
@@ -459,14 +460,14 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines,
         height (int): Height of the schematic.
         straight_lines (dict): Already calculated paths.
         net (Net): The net currently being routed.
-        end_dir (tuple): Direction vector to end with.
+        end_dir (D4): Facing direction of the end terminal.
         endpoint_mapping (dict): Mapping of Net to adjusted endpoint
             marker key set.
         routing_cache (RoutingCache): Per-run memoization state.
         route_cell_usage (dict, optional): Routed cell usage counts.
         use_congestion (bool): Whether to apply congestion/history penalties.
-        blocked_move_hits (set, optional): Encoded blocked moves encountered
-            during search.
+        blocked_move_hits (set, optional): Blocked moves encountered during
+            search, encoded as (node_key << 4) | _direction_bit().
 
     Returns:
         list: Shortest path found as list of (x, y) tuples, or empty list.
@@ -486,7 +487,6 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines,
         return []
 
     end_key = end_x * height + end_y
-    end_direction = DIR_TO_INT.get(end_dir, DIR_NONE)
     start_points_keys = _point_keys(start_points, height)
     endpoint_keys = endpoint_mapping.get(net, set())
 
@@ -506,7 +506,18 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines,
     g_score = [inf_score] * grid_size
     came_from = [-1] * grid_size
     g_score[end_key] = 0.0
-    open_set = [(min_distance, end_key, end_direction, 0.0)]
+
+    # Unit grid steps and blocked-move mask bits of the four directions,
+    # precomputed for the search loop.
+    moves = []
+    for d in (North, South, East, West):
+        v = d * Vec2R(0, 1)
+        dx, dy = int(v.x), int(v.y)
+        moves.append((d, _direction_bit(dx, dy), dx, dy))
+
+    # Priority queue: (f_score, node_key, direction, g_score); the direction
+    # is never compared, see a_star().
+    open_set = [(min_distance, end_key, end_dir, 0.0)]
 
     # Track the best path found so far; search continues to find shorter ones
     best_path = []
@@ -544,10 +555,10 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines,
         block_mask = blocked_masks.get(current_key, 0)
         current_g_score = g_score[current_key]
 
-        for direction_id, (dx, dy) in enumerate(DIRECTION_OFFSETS):
-            if block_mask & (1 << direction_id):
+        for d, bit, dx, dy in moves:
+            if block_mask & bit:
                 if blocked_move_hits is not None:
-                    blocked_move_hits.add(((cx * height + cy) << 2) | direction_id)
+                    blocked_move_hits.add((current_key << 4) | bit)
                 continue
 
             nx = cx + dx
@@ -556,8 +567,8 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines,
                 continue
 
             if (grid[cy, cx] == GRID_DIR and
-                    current_direction != DIR_NONE and
-                    current_direction != direction_id and
+                    current_direction is not None and
+                    current_direction != d and
                     current_key != end_key and
                     current_key not in endpoint_keys):
                 continue
@@ -565,7 +576,7 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines,
             if grid[ny, nx] >= GRID_BLOCKED:
                 continue
 
-            if current_direction != DIR_NONE and current_direction != direction_id:
+            if current_direction is not None and current_direction != d:
                 direction_change_penalty = remaining_distance * 0.5
                 if direction_change_penalty < 10:
                     direction_change_penalty = 10
@@ -587,7 +598,7 @@ def reverse_a_star(grid, start_points, end, width, height, straight_lines,
                 came_from[neighbor_key] = current_key
                 g_score[neighbor_key] = tentative_g_score
                 f_score = tentative_g_score + abs(nx - spm_x) + abs(ny - spm_y)
-                heapq.heappush(open_set, (f_score, neighbor_key, direction_id,
+                heapq.heappush(open_set, (f_score, neighbor_key, d,
                                           tentative_g_score))
 
     return best_path
@@ -716,12 +727,6 @@ def sort_connections(connections: list[Connection], offset_x: int, offset_y: int
     Returns:
         tuple: (net_endpoint_marker_mapping, sorted grid connections).
     """
-    def adjust_point_for_direction(point, direction):
-        if direction:
-            dx, dy = direction_moves[direction]
-            return point[0] + dx, point[1] + dy
-        return point
-
     # Helper function to calculate squared Euclidean distance.
     # sqrt() is monotonic, so squared distance preserves sorting order.
     def euclidean_distance_sq(point1, point2):
@@ -737,14 +742,16 @@ def sort_connections(connections: list[Connection], offset_x: int, offset_y: int
         start = (port.x + offset_x, port.y + offset_y)
         end_pos = pin_sc.pos
         end = (int(end_pos.x) + offset_x, int(end_pos.y) + offset_y)
-        end_dir = pin_sc.align.unflip().lefdef()
+        end_dir = pin_sc.align.unflip()
         gconn = GridConn(port.net, start, port.direction, end, end_dir)
 
         distance = euclidean_distance_sq(start, end)
         sortable_connections.append((distance, index, gconn))
         net_endpoint_mapping.setdefault(gconn.net, set()).add(end)
+        # The endpoint marker is the cell one step in front of the endpoint
+        ev = end_dir * Vec2R(0, 1)
         net_endpoint_marker_mapping.setdefault(gconn.net, set()).add(
-            adjust_point_for_direction(end, end_dir))
+            (end[0] + int(ev.x), end[1] + int(ev.y)))
 
     fanout_by_net = {
         net: len(endpoints)
@@ -855,18 +862,10 @@ def draw_connections(grid: np.ndarray, connections: list[Connection],
     def path_blocked_move_keys(path):
         blocked_keys = set()
         segments = transform_to_pairs(keep_corners_and_edges([path]), [])
-        for start_point, end_point in _blocked_moves_for_segments(segments):
-            sx, sy = start_point
-            ex, ey = end_point
-            dx = ex - sx
-            dy = ey - sy
-            if dx == 0 and dy != 0:
-                direction_id = 0 if dy > 0 else 1
-            elif dy == 0 and dx != 0:
-                direction_id = 2 if dx > 0 else 3
-            else:
-                continue
-            blocked_keys.add(((sx * height + sy) << 2) | direction_id)
+        for (sx, sy), (ex, ey) in _blocked_moves_for_segments(segments):
+            bit = _direction_bit(ex - sx, ey - sy)
+            if bit:
+                blocked_keys.add(((sx * height + sy) << 4) | bit)
         return blocked_keys
 
     def make_routed_entry(start, end, start_dir, end_dir, net, path, path_cells):
@@ -902,8 +901,6 @@ def draw_connections(grid: np.ndarray, connections: list[Connection],
 
     def try_route_connection(start, end, start_dir, end_dir, net, blocked_move_hits=None):
         start_new, end_new = adjust_start_end_for_direction(start, start_dir, end, end_dir)
-        transformed_start_dir = direction_moves[start_dir]
-        transformed_end_dir = direction_moves[end_dir]
 
         if start != end_new and end != start_new:
             shortcut_available = False
@@ -931,7 +928,7 @@ def draw_connections(grid: np.ndarray, connections: list[Connection],
                     # Try reverse A* from endpoint to any existing path point
                     path = reverse_a_star(
                         grid, path_list, end_new, width, height,
-                        straight_lines, net, transformed_end_dir,
+                        straight_lines, net, end_dir,
                         endpoint_key_mapping, routing_cache, route_cell_usage,
                         use_congestion=False,
                         blocked_move_hits=blocked_move_hits
@@ -940,7 +937,7 @@ def draw_connections(grid: np.ndarray, connections: list[Connection],
                     if not path:
                         path = a_star(
                             grid, start_new, end_new, width, height,
-                            straight_lines, net, transformed_start_dir,
+                            straight_lines, net, start_dir,
                             routing_cache, route_cell_usage, use_congestion=False,
                             blocked_move_hits=blocked_move_hits
                         )
@@ -948,7 +945,7 @@ def draw_connections(grid: np.ndarray, connections: list[Connection],
                 # First connection for this net, standard forward A*
                 path = a_star(
                     grid, start_new, end_new, width, height,
-                    straight_lines, net, transformed_start_dir,
+                    straight_lines, net, start_dir,
                     routing_cache, route_cell_usage,
                     blocked_move_hits=blocked_move_hits
                 )
@@ -1175,7 +1172,7 @@ def auto_wire(node: Schematic) -> None:
         net = port.ref
         ports[net] = RoutingPort(
             x=int(port.pos.x), y=int(port.pos.y),
-            net=net, direction=port.align.lefdef(),
+            net=net, direction=port.align.unflip(),
             auto_wire=net.auto_wire)
 
     # Early return when ports exist but none need auto-wiring
@@ -1202,7 +1199,7 @@ def auto_wire(node: Schematic) -> None:
                 pos = pin_sc.pos
                 ports[net] = RoutingPort(
                     x=int(pos.x), y=int(pos.y), net=net,
-                    direction=pin_sc.align.unflip().lefdef(),
+                    direction=pin_sc.align.unflip(),
                     auto_wire=net.auto_wire)
 
     #=====================================================
@@ -1264,10 +1261,10 @@ if __name__ == "__main__":
         RoutingCell(4, 10, 5, 5, s.pu),
     ]
     ports = [
-        RoutingPort(-1, -5, s.vss, 'E'),
-        RoutingPort(1, 15, s.vdd, 'E'),
-        RoutingPort(10, 8, s.y, 'W'),
-        RoutingPort(1, 8, s.a, 'E'),
+        RoutingPort(-1, -5, s.vss, East),
+        RoutingPort(1, 15, s.vdd, East),
+        RoutingPort(10, 8, s.y, West),
+        RoutingPort(1, 8, s.a, East),
     ]
 
     # Connections list for drawing paths
