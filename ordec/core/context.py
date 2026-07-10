@@ -121,26 +121,25 @@ class SchematicViewContext(ViewContext):
         from .constraints import SolverError
         from .placement import describe
         from ..schematic.helpers import schem_place_ports
-        # Solving happens before resolve_instances(): constraints captured in
-        # the viewgen body reference the SchemInstanceUnresolved nodes, and
+        # Constraints captured in the viewgen body reference unresolved nodes, and
         # resolve_instances() carries the solved positions over.
         # Auto-anchored top-level groups line up side by side, left to
         # right in declaration order, with routing space in between.
         origin = 0
+        default_group_spacing = 4
         for group in self.placement_groups:
             if group.emit(self.solver, auto_anchor=(origin, 0)):
-                width = group.arrangement()[2][0]
-                origin += width + 4
+                origin += group.arrangement().width + default_group_spacing
         self.solver.solve(allow_undefined=True)
         self.root.resolve_instances()
-        # Ports may legitimately still be undefined after solving; they are
-        # auto-placed based on their align. Everything else must be defined.
+        # Ports may legitimately still be undefined after solving. They are
+        # auto-placed based on their align.
         schem_place_ports(self.root)
         undefined = self.solver.undefined_attrs()
         if undefined:
             locations = sorted(
-                f"{describe(self.root.cursor_at(mav.nid))}.{mav.attr.name}"
-                for mav in undefined
+                f"{describe(self.root.cursor_at(missing_attr_value.nid))}.{missing_attr_value.attr.name}"
+                for missing_attr_value in undefined
             )
             raise SolverError(
                 "Undefined constrainable attribute(s) found. Please add "
