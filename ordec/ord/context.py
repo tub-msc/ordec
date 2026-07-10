@@ -41,9 +41,8 @@ def add(name_tuple, ref):
 def add_port(name_tuple):
     """
     Add a port to the current context. If a Net of the same name was
-    forward-declared (net statement), the port attaches to that net. This
-    allows connecting to the net before the port statement is reached,
-    e.g. in an instance body that precedes the port in a placement group.
+    forward-declared (net statement), the port attaches to that net,
+    allowing connections before the port statement is reached.
     """
     ctx = _ctx_var.get()
     pin = recursive_getitem(ctx.root.symbol, name_tuple)
@@ -122,8 +121,7 @@ def add_element(name_tuple, element, src_line=None, src_column=None):
         sys._getframe(1).f_code.co_filename, src_line, src_column
     ) if src_line is not None else None
     # Placement groups are not inserted into the subgraph; they are
-    # recorded on the view context (or on their parent group) and emitted
-    # as constraints during postprocessing.
+    # recorded on the view context or parent group and emitted later.
     if isinstance(element, type) and issubclass(element, PlacementGroup):
         element = element()
     if isinstance(element, PlacementGroup):

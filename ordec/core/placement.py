@@ -5,37 +5,35 @@
 Placement groups arrange schematic elements (instances, ports, nested
 groups) relative to each other without explicit coordinates. A group
 records its children in declaration order and emits constraints for the
-view's Solver during postprocessing. Because only relative constraints are
-emitted, children of different sizes (e.g. symbols whose size depends on
-their pin count) are handled without user intervention.
+view's Solver during postprocessing, so children of different sizes are
+placed without user intervention.
 
-Row and Col place their children geometrically. Series and Parallel
+Row and Col place their children geometrically; Series and Parallel
 additionally connect them electrically, so circuit structures can be
-described by nesting alone, e.g. a NAND as a Series of vdd, a Parallel
-pull-up pair, the pull-down transistors and vss.
-
-In ORD, groups are used as node statements::
+described by nesting alone. In ORD, groups are used as node statements::
 
     Col(gap=2) stack:
         Pmos pu
         Nmos pd
 
-Group blocks are naming-transparent: children declared inside the body are
-added to the view root as usual and only additionally recorded in the
-group.
+Group blocks are naming-transparent: children declared inside the body
+are added to the view root as usual and only additionally recorded in
+the group.
 """
 
 import math
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from itertools import chain
 from typing import Callable, NamedTuple
 
 from public import public
 
-from .constraints import EqualsZero, Rect4LinearTerm, coerce_term
+from .constraints import (EqualsZero, LinearTerm, Rect4LinearTerm, Solver,
+    Variable, coerce_term)
 from .context import _view_ctx_var
 from .geoprim import D4
-from .ordb import QueryException
+from .ordb import Node, QueryException, SubgraphRoot
 
 SIDE_NAMES = {
     D4.North: 'upward', D4.South: 'downward',
@@ -43,11 +41,10 @@ SIDE_NAMES = {
 }
 
 
-def describe(node):
+def describe(node: Node) -> str:
     """
-    Returns the name of a node for use in error messages: its NPath path,
-    or its type and nid for anonymous nodes (nodes are not required to
-    have a path).
+    Returns the name of a node for error messages: its NPath path, or
+    its type and nid for anonymous nodes.
     """
     if node.npath_nid is None:
         return f"{type(node).__name__}(nid={node.nid})"
@@ -61,7 +58,7 @@ class GroupContext:
     unchanged; the group is only marked as the innermost active group so
     that elements declared in the body register as its children.
     """
-    def __init__(self, group):
+    def __init__(self, group: 'PlacementGroup'):
         self.group = group
 
     def __enter__(self):
@@ -75,15 +72,11 @@ class GroupContext:
         _view_ctx_var.get().group_stack.pop()
 
 
-def term_constant(term):
+def term_constant(term: LinearTerm) -> float:
     """
-    Returns the constant value of a LinearTerm that has no variable part,
-    as float.
-
-    Raises:
-        ValueError: If the term does have a variable part, i.e. it
-            depends on positions that are not fixed relative to each
-            other.
+    Returns the constant value of a LinearTerm that has no variable
+    part. Raises ValueError if it has one, i.e. it depends on positions
+    that are not fixed relative to each other.
     """
     if any(abs(c) >= 1e-9 for c in term.coefficients):
         raise ValueError("Size of a placement group child is not constant; cannot arrange the group.")
@@ -95,24 +88,12 @@ class Endpoint:
     """
     Connectable boundary of a placement group child: an instance pin, a
     port's net or a nested group's boundary/rail.
-
-    Attributes:
-        net: Net the endpoint is already connected to, or None.
-        attach: Callback that connects the endpoint to a given net. None
-            for endpoints that are themselves nets (ports), which are
-            always connected.
     """
-    net: object = None
-    attach: Callable = None
+    net: 'Net' = None #: Net the endpoint is already connected to, or None.
+    attach: Callable = None #: Connects the endpoint to a given net; None for endpoints that are themselves nets (ports).
 
-    def connect(self, net):
-        """
-        Connects the endpoint to net.
-
-        Raises:
-            ValueError: If the endpoint is already connected to a
-                different net (connection conflict).
-        """
+    def connect(self, net: 'Net'):
+        """Connects the endpoint to net; raises ValueError on a conflict."""
         if self.net is not None:
             if self.net.nid != net.nid:
                 raise ValueError(
@@ -122,14 +103,11 @@ class Endpoint:
         self.attach(net)
 
 
-def adopted_net(endpoints):
+def adopted_net(endpoints: list[Endpoint]) -> 'Net | None':
     """
     Returns the net some of the endpoints are already connected to, or
-    None if none of them is connected yet.
-
-    Raises:
-        ValueError: If the endpoints are connected to more than one
-            distinct net (connection conflict).
+    None. Raises ValueError if they are connected to more than one
+    distinct net (connection conflict).
     """
     nets = {ep.net.nid: ep.net for ep in endpoints if ep.net is not None}
     if len(nets) > 1:
@@ -140,15 +118,11 @@ def adopted_net(endpoints):
     return next(iter(nets.values()), None)
 
 
-def connect_endpoints(endpoints, root):
+def connect_endpoints(endpoints: list[Endpoint], root: SubgraphRoot):
     """
-    Connects all endpoints to one shared net.
-
-    Args:
-        endpoints: Endpoints to connect. A net that an endpoint is
-            already on is adopted (see adopted_net).
-        root: SubgraphRoot on which an anonymous net is created if no
-            endpoint contributes an existing net.
+    Connects all endpoints to one shared net: a net an endpoint is
+    already on is adopted (see adopted_net), otherwise an anonymous net
+    is created on root.
     """
     from .schema import Net
     net = adopted_net(endpoints)
@@ -177,23 +151,20 @@ class PlacementGroup:
 
     Args:
         gap: Distance between adjacent children along the main axis. The
-            default leaves room for auto_wire() routing; tighter gaps can
-            exceed the router's capacity.
+            default leaves room for auto_wire() routing.
         align: Cross-axis alignment of the children: 'center' (snapped
             down to the unit grid), 'start' (bottom/left edge) or 'end'
             (top/right edge). None picks the group's default_align.
-        anchor: Position of the group's southwest corner. The default
-            'auto' anchors a top-level group at (0, 0) — several
-            auto-anchored groups in one view line up side by side —
-            unless a member appears in a user constraint or has a
-            directly assigned position. Pass an (x, y) tuple to anchor
-            explicitly, or None to never emit an anchor.
+        anchor: Position of the group's southwest corner: an (x, y)
+            tuple, None to never emit an anchor, or 'auto' (default) to
+            anchor a top-level group at (0, 0) unless a member appears
+            in a user constraint or has a directly assigned position.
     """
     axis = None #: Main axis along which children are placed: 0 = x, 1 = y.
     aligns = ('center', 'start', 'end') #: Supported align values.
     default_align = 'center' #: align used when None is passed.
 
-    def __init__(self, gap=2, align=None, anchor='auto'):
+    def __init__(self, gap: int = 2, align: str | None = None, anchor='auto'):
         if align is None:
             align = self.default_align
         if align not in self.aligns:
@@ -204,21 +175,15 @@ class PlacementGroup:
         self.anchor = anchor
         self.sealed = False #: Set by rect(); blocks further add().
 
-    def ctx(self):
+    def ctx(self) -> GroupContext:
         """Returns the GroupContext entered by the group's body."""
         return GroupContext(self)
 
     def add(self, child):
         """
-        Appends a child to the group and returns it.
-
-        Args:
-            child: Element to place: an instance, a port/net or a nested
-                group.
-
-        Raises:
-            TypeError: If the group is sealed because its outline was
-                already used (see rect()).
+        Appends a child (an instance, a port/net or a nested group) and
+        returns it. Raises TypeError if the group is sealed because its
+        outline was already used (see rect()).
         """
         if self.sealed:
             raise TypeError(
@@ -227,30 +192,19 @@ class PlacementGroup:
         self.children.append(child)
         return child
 
-    def subgraph_root(self):
-        """
-        Returns the SubgraphRoot cursor of the subgraph the children
-        belong to.
-        """
+    def subgraph_root(self) -> SubgraphRoot:
+        """Returns the SubgraphRoot cursor of the children's subgraph."""
         for child in self.children:
             if isinstance(child, PlacementGroup):
                 return child.subgraph_root()
             return child.root
         raise ValueError("Placement group has no children.")
 
-    def child_rect(self, child):
+    def child_rect(self, child) -> tuple:
         """
-        Returns a child's bounding box in view coordinates.
-
-        Args:
-            child: Direct child of the group. A net is placed through its
-                port; ports are zero-size points at their position.
-
-        Returns:
-            (lx, ly, ux, uy) tuple of LinearTerms.
-
-        Raises:
-            ValueError: If a net child has no port.
+        Returns a child's bounding box in view coordinates as an
+        (lx, ly, ux, uy) tuple of LinearTerms. A net is placed through
+        its port; ports are zero-size points at their position.
         """
         from .schema import Net, SchemPort
         if isinstance(child, PlacementGroup):
@@ -274,16 +228,8 @@ class PlacementGroup:
         """
         Computes the relative arrangement of the children. Since child
         sizes are constants, the arrangement is rigid. Center alignment
-        is snapped down to the unit grid so that on-grid children stay on
-        grid regardless of size differences.
-
-        Returns:
-            Arrangement, where offsets[i] is child i's constant (x, y)
-            offset from the group's southwest corner.
-
-        Raises:
-            ValueError: If the group has no children or a child's size is
-                not constant.
+        is snapped down to the unit grid so that on-grid children stay
+        on grid regardless of size differences.
         """
         if not self.children:
             raise ValueError("Placement group has no children.")
@@ -292,8 +238,6 @@ class PlacementGroup:
         main_sizes = [term_constant(r[main+2] - r[main]) for r in rects]
         cross_offsets, cross_span = self.cross_arrangement(rects, cross)
 
-        # Main axis: sizes and gaps accumulate in declaration order,
-        # left to right (Row) or top to bottom (Col).
         main_offsets = []
         position = 0
         for size in main_sizes:
@@ -314,18 +258,11 @@ class PlacementGroup:
             width, height = cross_span, main_span
         return Arrangement(rects, offsets, width, height)
 
-    def cross_arrangement(self, rects, cross):
+    def cross_arrangement(self, rects: list, cross: int) -> tuple[list, float]:
         """
-        Arranges the children on the cross axis according to align.
-
-        Args:
-            rects: Child bounding boxes as returned by child_rect().
-            cross: Index of the cross axis (0 = x, 1 = y).
-
-        Returns:
-            (offsets, span) tuple: the children's constant cross-axis
-            offsets from the group's edge and the group's cross-axis
-            extent.
+        Arranges the children on the cross axis according to align,
+        returning (offsets, span): their constant offsets from the
+        group's edge and the group's cross-axis extent.
         """
         sizes = [term_constant(r[cross+2] - r[cross]) for r in rects]
         span = max(sizes)
@@ -337,7 +274,7 @@ class PlacementGroup:
             offsets = [span - size for size in sizes]
         return offsets, span
 
-    def rect(self):
+    def rect(self) -> tuple:
         """
         Returns the group's bounding box as (lx, ly, ux, uy) LinearTerms,
         anchored on the first child. Reading it seals the group against
@@ -350,7 +287,7 @@ class PlacementGroup:
         return (lx, ly, lx + width, ly + height)
 
     @property
-    def outline(self):
+    def outline(self) -> Rect4LinearTerm:
         """Group bounding box as Rect4LinearTerm, usable in constraints."""
         return Rect4LinearTerm(*self.rect())
 
@@ -362,11 +299,8 @@ class PlacementGroup:
             raise AttributeError(name)
         return getattr(self.outline, name)
 
-    def variables(self):
-        """
-        Returns the solver Variables of all (transitive) children's
-        positions.
-        """
+    def variables(self) -> set[Variable]:
+        """Returns the solver Variables of all (transitive) children's positions."""
         variables = set()
         for child in self.children:
             if isinstance(child, PlacementGroup):
@@ -376,11 +310,11 @@ class PlacementGroup:
                     variables |= set(term.variables)
         return variables
 
-    def pinned(self):
+    def pinned(self) -> bool:
         """
         Returns True if any (transitive) child's position is already
-        fixed (assigned directly instead of left to the solver); the
-        group then follows that child and anchor='auto' does not apply.
+        fixed; the group then follows that child and anchor='auto' does
+        not apply.
         """
         for child in self.children:
             if isinstance(child, PlacementGroup):
@@ -393,36 +327,22 @@ class PlacementGroup:
     def resolve_connectivity(self):
         """
         Establishes the group's electrical connections; a no-op for the
-        purely geometric groups, overridden by Series and Parallel.
-
-        emit() resolves a group's connectivity before its children's: a
-        nested group receives its boundary nets from the enclosing group
-        here and ties its internals to them when its own turn comes
-        (ORDB cannot merge nets afterwards).
+        purely geometric groups. emit() resolves a group's connectivity
+        before its children's: a nested group receives its boundary nets
+        from the enclosing group here and ties its internals to them
+        when its own turn comes (ORDB cannot merge nets afterwards).
         """
         pass
 
-    def emit(self, solver, toplevel=True, auto_anchor=(0, 0)):
+    def emit(self, solver: Solver, toplevel: bool = True,
+            auto_anchor: tuple = (0, 0)) -> bool:
         """
         Resolves the group's connectivity and emits its placement
         constraints into solver. Called by the view context during
         postprocessing; call manually when using groups outside a
-        viewgen.
-
-        Args:
-            solver: Solver that receives the constraints.
-            toplevel: False when the group is emitted as a nested child
-                of an enclosing group; nested groups are never anchored.
-            auto_anchor: Position used for anchor='auto'; the view
-                context spreads several top-level groups side by side
-                through it.
-
-        Returns:
-            True if the automatic anchor was applied.
-
-        Raises:
-            ValueError: If the arrangement contradicts already fixed
-                child positions.
+        viewgen. Nested groups are emitted with toplevel=False and never
+        anchored; auto_anchor is the position used for anchor='auto'.
+        Returns True if the automatic anchor was applied.
         """
         if toplevel:
             constrained = set()
@@ -454,8 +374,8 @@ class PlacementGroup:
         anchor = self.anchor
         applied_auto = False
         if anchor == 'auto':
-            # Do not anchor groups that the user placed through their own
-            # constraints or through a directly assigned child position.
+            # Groups placed by the user (own constraints or a directly
+            # assigned child position) are not anchored.
             if self.variables() & constrained or self.pinned():
                 anchor = None
             else:
@@ -480,38 +400,28 @@ class Col(PlacementGroup):
     axis = 1
 
 
-class ConnectingGroup(PlacementGroup):
+class ConnectingGroup(PlacementGroup, ABC):
     """
-    Common base of the electrically connecting groups Series and Parallel:
-    pin detection by facing side and shared net handling.
+    Common base of the electrically connecting groups Series and
+    Parallel: pin detection by facing side and shared net handling.
 
     Pin detection relies on the symbol convention that the pins carrying
-    the current path face along its direction (pin align, after applying
-    the instance's orientation). Detection must be unambiguous: with
-    several pins on a facing side, the top=/bottom= (vertical) or
-    left=/right= (horizontal) pin names select the pin, uniformly for all
-    instance children. Heterogeneous cases that a uniform override cannot
-    express should use Col/Row with explicit wiring instead.
-
-    gap, align and anchor are inherited from PlacementGroup.
-
-    Args:
-        horizontal: Orientation of the current path: the children carry
-            it vertically (False) or horizontally (True). The placement
-            axis follows from it, see flow_along_axis.
-        top: Pin name selecting the upward-facing pin on all instance
-            children whose upward side has several pins (vertical groups).
-        bottom: Like top, for downward-facing pins.
-        left: Pin name selecting the left-facing pin (horizontal groups).
-        right: Like left, for right-facing pins.
+    the current path face along its direction. It must be unambiguous:
+    with several pins on a facing side, the top=/bottom= (vertical) or
+    left=/right= (horizontal) pin names select the pin, uniformly for
+    all instance children. horizontal chooses the orientation of the
+    current path; the placement axis follows from it and
+    flow_along_axis. gap, align and anchor are inherited from
+    PlacementGroup.
     """
     #: Whether the children are placed along the current path (Series)
-    #: or across it (Parallel); together with the horizontal argument
-    #: this determines the placement axis.
+    #: or across it (Parallel).
     flow_along_axis = None
 
-    def __init__(self, gap=2, align=None, anchor='auto',
-            horizontal=False, top=None, bottom=None, left=None, right=None):
+    def __init__(self, gap: int = 2, align: str | None = None, anchor='auto',
+            horizontal: bool = False, top: str | None = None,
+            bottom: str | None = None, left: str | None = None,
+            right: str | None = None):
         super().__init__(gap=gap, align=align, anchor=anchor)
         if horizontal and (top is not None or bottom is not None):
             raise ValueError(
@@ -524,9 +434,9 @@ class ConnectingGroup(PlacementGroup):
         self.horizontal = horizontal
         self.pin_overrides = {D4.North: top, D4.South: bottom,
             D4.West: left, D4.East: right}
-        # The two sides through which the current path enters and leaves
-        # the children, ordered (facing the next child, facing the
-        # previous child) in declaration order; the rails of a Parallel.
+        # Sides through which the current path enters and leaves the
+        # children, ordered (facing the next child, facing the previous
+        # child); the rails of a Parallel.
         if horizontal:
             self.flow_sides = (D4.East, D4.West)
         else:
@@ -536,10 +446,18 @@ class ConnectingGroup(PlacementGroup):
         #: Nets forced onto a side by an enclosing group (Parallel rails).
         self.rail_nets = {}
 
-    def child_symbol(self, inst):
+    @abstractmethod
+    def resolve_connectivity(self):
         """
-        Returns the Symbol of an instance child. For unresolved
-        instances, the symbol is generated from the recorded parameters.
+        Connects the children electrically; mandatory for connecting
+        groups (see PlacementGroup.resolve_connectivity for the
+        ordering contract).
+        """
+
+    def child_symbol(self, inst) -> 'Symbol':
+        """
+        Returns the Symbol of an instance child; for unresolved
+        instances, it is generated from the recorded parameters.
         """
         from .schema import SchemInstance, SchemInstanceUnresolvedParameter
         if isinstance(inst, SchemInstance):
@@ -550,15 +468,11 @@ class ConnectingGroup(PlacementGroup):
         }
         return inst.resolver(**params)
 
-    def facing_pin(self, inst, side):
+    def facing_pin(self, inst, side: D4) -> str:
         """
         Returns the name of the single pin of an instance child that
-        faces side, honoring the group's pin name overrides.
-
-        Raises:
-            ValueError: If several or no pins face the side and no
-                override selects one, or if the facing pin has no plain
-                name usable for auto-connection.
+        faces side, honoring the group's pin name overrides. Raises
+        ValueError if no unambiguous, plainly named pin is found.
         """
         from .schema import Pin
         override = self.pin_overrides[side]
@@ -575,7 +489,6 @@ class ConnectingGroup(PlacementGroup):
         pin = candidates[0]
         # Auto-connection needs a plain pin name: it is matched against
         # name-based unresolved connections and passed to getattr().
-        # Hierarchical and anonymous pins do not qualify.
         path = pin.full_path_list() if pin.npath_nid is not None else None
         if path is None or len(path) != 1:
             raise ValueError(
@@ -584,11 +497,8 @@ class ConnectingGroup(PlacementGroup):
                 "overrides to select pins explicitly.")
         return path[0]
 
-    def pin_net(self, inst, pin_name):
-        """
-        Returns the net a pin of an instance child is connected to, or
-        None if the pin is unconnected.
-        """
+    def pin_net(self, inst, pin_name: str) -> 'Net | None':
+        """Returns the net a pin of an instance child is connected to, or None."""
         from .schema import (SchemInstance, SchemInstanceConn,
             SchemInstanceUnresolvedConn)
         if isinstance(inst, SchemInstance):
@@ -602,14 +512,8 @@ class ConnectingGroup(PlacementGroup):
                     return conn.here
         return None
 
-    def endpoint(self, child, side):
-        """
-        Returns the Endpoint of a direct child on the given side.
-
-        Raises:
-            ValueError: If the child is a purely geometric nested group
-                (Col/Row), which has no connectable boundary.
-        """
+    def endpoint(self, child, side: D4) -> Endpoint:
+        """Returns the Endpoint of a direct child on the given side."""
         from .schema import Net, SchemPort
         if isinstance(child, ConnectingGroup):
             return child.side_endpoint(side)
@@ -625,14 +529,11 @@ class ConnectingGroup(PlacementGroup):
         return Endpoint(net=self.pin_net(child, name),
             attach=lambda net: getattr(child, name).__wire_op__(net))
 
-    def side_endpoint(self, side):
-        """
-        Returns the boundary Endpoint offered to an enclosing connecting
-        group.
-        """
-        raise NotImplementedError
+    @abstractmethod
+    def side_endpoint(self, side: D4) -> Endpoint:
+        """Returns the boundary Endpoint offered to an enclosing connecting group."""
 
-    def boundary_junction_offset(self, side, cross):
+    def boundary_junction_offset(self, side: D4, cross: int) -> float | None:
         """
         Returns the cross-axis offset of the group's boundary connection
         point within its bounding box, or None if there is no single
@@ -646,15 +547,11 @@ class Series(ConnectingGroup):
     """
     Places children in a stack like Col (side by side like Row with
     horizontal=True) and connects them in series, modeling a current
-    path: the pin of each child facing the next child is connected to the
-    next child's pin facing back. Port children connect through their
-    net.
-
-    A pair's net is adopted from whichever facing pin is already
-    connected, so junctions can be named by wiring one pin explicitly
-    (e.g. ``.d -- y``); otherwise an anonymous net is created. Series and
-    Parallel nest: a nested group connects through its boundary (the
-    outward-facing pins of a Series, the rails of a Parallel).
+    path: the pin of each child facing the next child is connected to
+    the next child's pin facing back; port children connect through
+    their net. A junction's net is adopted from whichever facing pin is
+    already connected, so it can be named by wiring one pin explicitly
+    (e.g. ``.d -- y``); otherwise an anonymous net is created.
 
     The default alignment 'pins' aligns each pair's facing pins on one
     line, giving straight junction wires; pass align='center' to center
@@ -665,8 +562,6 @@ class Series(ConnectingGroup):
     default_align = 'pins'
 
     def resolve_connectivity(self):
-        # Connect each pair of neighbors: the pin facing the next child
-        # to the next child's pin facing back.
         to_next, to_prev = self.flow_sides
         for prev, cur in zip(self.children, self.children[1:]):
             connect_endpoints([
@@ -674,18 +569,11 @@ class Series(ConnectingGroup):
                 self.endpoint(cur, to_prev),
             ], self.subgraph_root())
 
-    def side_endpoint(self, side):
+    def side_endpoint(self, side: D4) -> Endpoint:
         return self.endpoint(self.children[self.boundary_index(side)], side)
 
-    def boundary_index(self, side):
-        """
-        Returns the index of the child forming the group's boundary on
-        side.
-
-        Raises:
-            ValueError: If the group has no boundary on side (orientation
-                mismatch with the enclosing group).
-        """
+    def boundary_index(self, side: D4) -> int:
+        """Returns the index of the child forming the group's boundary on side."""
         to_next, to_prev = self.flow_sides
         if side == to_prev:
             return 0
@@ -695,12 +583,12 @@ class Series(ConnectingGroup):
             f"Series has no {SIDE_NAMES[side]}-facing boundary "
             "(orientation mismatch with the enclosing group).")
 
-    def cross_arrangement(self, rects, cross):
+    def cross_arrangement(self, rects: list, cross: int) -> tuple[list, float]:
         if self.align != 'pins':
             return super().cross_arrangement(rects, cross)
         sizes = [term_constant(r[cross+2] - r[cross]) for r in rects]
-        # Chain the offsets such that each pair's facing pins line up;
-        # snapped down to the unit grid where center fallbacks (nested
+        # Chain the offsets so that each pair's facing pins line up;
+        # floor snaps to the unit grid where center fallbacks (nested
         # Parallel) introduce half units.
         to_next, to_prev = self.flow_sides
         offsets = [0]
@@ -714,12 +602,11 @@ class Series(ConnectingGroup):
         span = max(offset + size for offset, size in zip(offsets, sizes))
         return offsets, span
 
-    def junction_offset(self, child, side, rect, cross):
+    def junction_offset(self, child, side: D4, rect: tuple, cross: int) -> float:
         """
         Returns the cross-axis offset of a child's connection point on
-        side, relative to its bounding box. Falls back to the center
-        where there is no single connection point (nested Parallel
-        rails).
+        side, relative to its bounding box; the center where there is no
+        single connection point (nested Parallel rails).
         """
         from .schema import Net, SchemPort
         if isinstance(child, ConnectingGroup):
@@ -733,7 +620,7 @@ class Series(ConnectingGroup):
         coord = pin.x if cross == 0 else pin.y
         return term_constant(coerce_term(coord) - rect[cross])
 
-    def boundary_junction_offset(self, side, cross):
+    def boundary_junction_offset(self, side: D4, cross: int) -> float:
         index = self.boundary_index(side)
         arrangement = self.arrangement()
         return (arrangement.offsets[index][cross]
@@ -745,31 +632,22 @@ class Series(ConnectingGroup):
 class Parallel(ConnectingGroup):
     """
     Places children side by side like Row (stacked like Col with
-    horizontal=True, for children whose current path runs horizontally)
-    and connects them in parallel: all upward-facing pins are tied to one
-    rail net and all downward-facing pins to another (left-/right-facing
-    with horizontal=True).
-
-    To name a rail net, wire one child pin explicitly (e.g. ``.d -- y``);
-    nested inside a Series, the rails connect through the enclosing
-    stack. Port children are not supported; wire ports to the rail nets
-    explicitly.
+    horizontal=True) and connects them in parallel: all upward-facing
+    pins are tied to one rail net and all downward-facing pins to
+    another (left-/right-facing with horizontal=True). To name a rail
+    net, wire one child pin explicitly (e.g. ``.d -- y``). Port children
+    are not supported; wire ports to the rail nets explicitly.
     """
     flow_along_axis = False
 
     def resolve_connectivity(self):
-        # Tie all children between the two rails.
         for side in self.flow_sides:
             connect_endpoints(self.rail_endpoints(side), self.subgraph_root())
 
-    def rail_endpoints(self, side):
+    def rail_endpoints(self, side: D4) -> list[Endpoint]:
         """
         Returns the Endpoints of one rail: one per child, plus a net an
         enclosing group forced onto the rail.
-
-        Raises:
-            ValueError: If a child is a port; Parallel does not support
-                port children.
         """
         from .schema import Net, SchemPort
         endpoints = []
@@ -784,7 +662,7 @@ class Parallel(ConnectingGroup):
             endpoints.append(Endpoint(net=forced))
         return endpoints
 
-    def side_endpoint(self, side):
+    def side_endpoint(self, side: D4) -> Endpoint:
         if side not in self.flow_sides:
             raise ValueError(
                 f"Parallel has no {SIDE_NAMES[side]}-facing rail "

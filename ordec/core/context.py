@@ -121,8 +121,6 @@ class SchematicViewContext(ViewContext):
         from .constraints import SolverError
         from .placement import describe
         from ..schematic.helpers import schem_place_ports
-        # Constraints captured in the viewgen body reference unresolved nodes, and
-        # resolve_instances() carries the solved positions over.
         # Auto-anchored top-level groups line up side by side, left to
         # right in declaration order, with routing space in between.
         origin = 0
@@ -131,9 +129,9 @@ class SchematicViewContext(ViewContext):
             if group.emit(self.solver, auto_anchor=(origin, 0)):
                 origin += group.arrangement().width + default_group_spacing
         self.solver.solve(allow_undefined=True)
+        # resolve_instances() preserves nids, carrying solved positions over.
         self.root.resolve_instances()
-        # Ports may legitimately still be undefined after solving. They are
-        # auto-placed based on their align.
+        # Ports may legitimately still be undefined; place them by align.
         schem_place_ports(self.root)
         undefined = self.solver.undefined_attrs()
         if undefined:

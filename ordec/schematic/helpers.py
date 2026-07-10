@@ -138,12 +138,12 @@ def schematic_place(schem: Schematic, gap=None, port_pitch=2, port_margin=None):
     schem.outline = outline
 
 
-def schem_content_bbox(node: Schematic):
+def schem_content_bbox(node: Schematic) -> Rect4R | None:
     """
-    Returns the bounding box (Rect4R) of the placed schematic content:
-    instance outlines, port positions, tap points and wire vertices.
-    Elements whose position is still unresolved (Vec2LinearTerm) are
-    ignored. Returns None for a schematic without placed content.
+    Returns the bounding box of the placed schematic content: instance
+    outlines, port positions, tap points and wire vertices. Elements
+    whose position is still unresolved (Vec2LinearTerm) are ignored;
+    returns None for a schematic without placed content.
     """
     points = []
     for inst in node.all(SchemInstance):
@@ -163,25 +163,19 @@ def schem_content_bbox(node: Schematic):
         ux=max(p.x for p in points), uy=max(p.y for p in points))
 
 
-def schem_place_ports(node: Schematic, clearance=2):
+def schem_place_ports(node: Schematic, clearance: int = 2):
     """
-    Places all SchemPorts whose pos is still undefined, based on their align.
-
-    The align is interpreted as the direction the port arrow points, which is
-    into the drawing: ports with align=East are placed on the left edge of
-    the content bounding box, West on the right, North on the bottom and
-    South on the top edge, clearance units outside the content (the default
-    leaves enough room for auto_wire() to route towards the ports).
+    Places all SchemPorts whose pos is still undefined, based on their
+    align. The align is the direction the port arrow points, into the
+    drawing: ports with align=East are placed on the left edge of the
+    content bounding box, West on the right, North on the bottom and
+    South on the top edge, clearance units outside the content.
 
     Along the edge, each port lines up with the connected pin nearest to
     the port's edge, so that the wire towards it can run straight. Ports
-    whose net has no placed instance pins are placed in declaration order
-    (top to bottom on the left/right edges, left to right on the bottom/top
-    edges), one grid unit apart, centered on the edge. Positions taken by
-    an earlier port are skipped.
-
-    Ports whose pos is already defined (assigned directly or through
-    constraints) are left untouched.
+    whose net has no placed instance pins are placed in declaration
+    order, one unit apart, centered on the edge; occupied positions are
+    skipped. Ports whose pos is already defined are left untouched.
     """
     pending = {East: [], West: [], North: [], South: []}
     for port in node.all(SchemPort):
@@ -194,8 +188,7 @@ def schem_place_ports(node: Schematic, clearance=2):
     if bbox is None:
         bbox = Rect4R(lx=0, ly=0, ux=0, uy=0)
 
-    # Positions of the pins of placed instances, by net nid, as alignment
-    # targets for the ports.
+    # Pin positions of placed instances by net nid: alignment targets.
     pin_positions = defaultdict(list)
     for conn in node.all(SchemInstanceConn):
         if isinstance(conn.ref.pos, Vec2LinearTerm):
@@ -203,8 +196,7 @@ def schem_place_ports(node: Schematic, clearance=2):
         pin_positions[conn.here.nid].append(
             conn.ref.loc_transform() * conn.there.pos)
 
-    # Key selecting the connected pin nearest to the port's edge
-    # (primary), first along the edge's stacking direction (secondary).
+    # Sort key: nearest to the port's edge, then along the stacking direction.
     nearest_pin_key = {
         East: lambda p: (p.x, p.y), West: lambda p: (-p.x, p.y),
         North: lambda p: (p.y, p.x), South: lambda p: (-p.y, p.x),
@@ -212,9 +204,8 @@ def schem_place_ports(node: Schematic, clearance=2):
 
     def aligned_cross(port, align):
         """
-        Returns the cross-axis coordinate of the port's connected pin
-        nearest to the port's edge (y on the left/right edges, x on the
-        bottom/top edges), or None if the port's net has no placed pins.
+        Cross-axis coordinate of the port's nearest connected pin, or
+        None if the port's net has no placed pins.
         """
         pins = pin_positions.get(port.ref.nid)
         if not pins:
@@ -222,9 +213,8 @@ def schem_place_ports(node: Schematic, clearance=2):
         pin = min(pins, key=nearest_pin_key[align])
         return math.floor(pin.y if align in (East, West) else pin.x)
 
-    # One edge per port align. Ports stack along step: top to bottom
-    # (step -1) on the left/right edges, left to right (step +1) on the
-    # bottom/top edges. Occupied positions are skipped along step.
+    # One edge per port align; ports stack along step, top to bottom on
+    # the left/right edges, left to right on the bottom/top edges.
     edges = (
         # align, vertical edge, fixed coordinate, step
         (East, True, math.floor(bbox.lx) - clearance, -1),
@@ -243,8 +233,8 @@ def schem_place_ports(node: Schematic, clearance=2):
                 aligned.append((cross, port))
         aligned.sort(key=lambda cp: step * cp[0])
 
-        # Ports without a pin to line up with occupy a run of consecutive
-        # grid coordinates centered on the edge, in declaration order along step.
+        # Ports without a pin to line up with stack centered on the edge,
+        # in declaration order along step.
         center = (bbox.ly + bbox.uy) / 2 if vertical else (bbox.lx + bbox.ux) / 2
         top = math.floor(center) + (len(rest) - 1) // 2
         first = top if step < 0 else top - (len(rest) - 1)
