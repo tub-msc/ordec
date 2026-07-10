@@ -678,7 +678,11 @@ def test_cursor_paths():
 def test_full_path():
     s = MyHead()
     assert s.full_path_list() == []
-    assert s.full_path_str() == "root_cursor"
+    # The root has no hierarchical path: full_path_str() raises, while the
+    # non-raising full_path_label() returns the "??<nid>" placeholder.
+    with pytest.raises(TypeError):
+        s.full_path_str()
+    assert s.full_path_label() == "??0"
     s.hello = PathNode()
     assert s.hello.full_path_list() == ['hello']
     assert s.hello.full_path_str() == 'hello'
