@@ -73,7 +73,6 @@ class RoutingPort:
     y: int
     net: Net
     direction: D4       # unflipped rotation: North/East/South/West
-    auto_wire: bool = True
 
 @dataclass
 class RoutingCell:
@@ -1172,11 +1171,10 @@ def auto_wire(node: Schematic) -> None:
         net = port.ref
         ports[net] = RoutingPort(
             x=int(port.pos.x), y=int(port.pos.y),
-            net=net, direction=port.align.unflip(),
-            auto_wire=net.auto_wire)
+            net=net, direction=port.align.unflip())
 
     # Early return when ports exist but none need auto-wiring
-    if ports and not any(p.auto_wire for p in ports.values()):
+    if ports and not any(net.auto_wire for net in ports):
         node.outline = outline
         return
 
@@ -1191,7 +1189,7 @@ def auto_wire(node: Schematic) -> None:
             pin_sc = SchemInstanceSubcursor((instance, conn.there))
             if net in ports:
                 # External port or previously seen inter-instance net
-                if ports[net].auto_wire:
+                if net.auto_wire:
                     connections.append((ports[net], pin_sc))
             else:
                 # Inter-instance net: the first pin encountered becomes the
@@ -1199,8 +1197,7 @@ def auto_wire(node: Schematic) -> None:
                 pos = pin_sc.pos
                 ports[net] = RoutingPort(
                     x=int(pos.x), y=int(pos.y), net=net,
-                    direction=pin_sc.align.unflip(),
-                    auto_wire=net.auto_wire)
+                    direction=pin_sc.align.unflip())
 
     #=====================================================
     # Calculate the vertices and add them to the schematic
