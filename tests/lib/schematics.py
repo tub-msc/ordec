@@ -266,6 +266,7 @@ class TestNmosInv(Cell):
             ('unconnected_conn_point', True, False),
             ('net_partitioned', True, False),
             ('net_partitioned_tapped', True, False),
+            ('net_partitioned_port_labeled', True, False),
             ('skip_vdd_wiring', True, False),
             ('skip_single_pin', True, False),
             ('stray_conn_point', True, False),
@@ -358,11 +359,16 @@ class TestNmosInv(Cell):
                 s.vss % SchemWire(
                     vertices=[Vec2R(7, 4), Vec2R(8, 4), Vec2R(8, 10), Vec2R(7, 10)]
                 )
-            if self.variant not in ("net_partitioned", "net_partitioned_tapped"):
+            if self.variant not in ("net_partitioned", "net_partitioned_tapped",
+                                    "net_partitioned_port_labeled"):
                 s.vss % SchemWire(vertices=[Vec2R(8, 4), Vec2R(8, 1), Vec2R(5, 1)])
 
-            if self.variant == "net_partitioned_tapped":
+            # Both partitions carry a tap, or one carries a tap and the
+            # other contains the vss port (the port labels its island).
+            if self.variant in ("net_partitioned_tapped",
+                                "net_partitioned_port_labeled"):
                 s.vss % SchemTapPoint(pos=Vec2R(8, 4), align=South)
+            if self.variant == "net_partitioned_tapped":
                 s.vss % SchemTapPoint(pos=Vec2R(5, 1), align=East)
 
             if self.variant == "vdd_bad_wiring":

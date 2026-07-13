@@ -210,11 +210,23 @@ def test_ripup_keeps_terminal_connected():
     # terminals, which stay label-connected and error-free.)
     assert not s.has_errors()
     # The y2 port is the terminal whose path gets ripped up while routing
-    # y1; it must remain wire-connected.
+    # y1. It must remain wire-connected.
     y2_vertices = {
         v for w in s.all(SchemWire.ref_idx.query(s.y2)) for v in w.vertices()
     }
     assert Vec2R(20, 6) in y2_vertices
+
+
+def route_maze(open_cells, ports, conns, width=15, height=12):
+    """Route conns on a grid that is fully blocked except for open_cells.
+    The given terminals are placed on top by place_cells_and_ports."""
+    grid = np.full((height, width), GRID_BLOCKED, dtype=np.int8)
+    for x, y in open_cells:
+        grid[y][x] = GRID_EMPTY
+    key_grid = place_cells_and_ports(grid, [], ports, width, height, 0, 0)
+    vertices = draw_connections(grid, conns, width, height)
+    print_grid(grid, key_grid, width, height)
+    return vertices
 
 
 def route_ripup_branch_maze(cross_slot):
@@ -233,8 +245,6 @@ def route_ripup_branch_maze(cross_slot):
 
     Returns (vertices, net_y, net_a).
     """
-    width, height = 15, 12
-    grid = np.full((height, width), GRID_BLOCKED, dtype=np.int8)
     open_cells = [(x, 5) for x in range(1, 14)]     # channel A
     open_cells += [(x, 8) for x in range(1, 8)]     # channel B
     open_cells += [(1, 6), (1, 7)]                  # connector A-B at x=1
@@ -244,8 +254,6 @@ def route_ripup_branch_maze(cross_slot):
         open_cells += [(5, 3), (5, 4)]               # slot x=5 from A only
         open_cells += [(7, y) for y in range(2, 8)]  # slot x=7 from B
         open_cells += [(5, 2), (6, 2)]               # row joining the slots
-    for x, y in open_cells:
-        grid[y][x] = GRID_EMPTY
 
     s = Schematic()
     s.y = Net()
@@ -257,42 +265,87 @@ def route_ripup_branch_maze(cross_slot):
         RoutingPort(2, 4, s.a, North),
         RoutingPort(4, 4, s.a, North),   # a pin
     ]
-    key_grid = place_cells_and_ports(grid, [], ports, width, height, 0, 0)
     conns = [
         GridConn(s.y, (0, 5), East, (14, 5), West),
         GridConn(s.y, (0, 5), East, (5, 1), North),
         GridConn(s.a, (2, 4), North, (4, 4), North),
     ]
-    vertices = draw_connections(grid, conns, width, height)
-    print_grid(grid, key_grid, width, height)
-    return vertices, s.y, s.a
+    return route_maze(open_cells, ports, conns), s.y, s.a
 
 
-def assert_anchor_hosts_branch(paths):
+def route_ripup_overlap_maze():
+    """Corridor maze in which the reroute would ride on top of its own net.
+
+    Net y routes an anchor from its port (0, 5) through channel A (y=5)
+    and down slot x=5 to pin1 (5, 1), plus a branch from (5, 5) up the
+    slot to pin2 (7, 7). Net a can only route through channel A cells
+    x=2..4, fails there, and rips up y's anchor. The only reroute of the
+    anchor reaches pin1 by descending the slot from channel B (y=8) on
+    top of the branch's segment (5, 5)-(5, 7), which would duplicate the
+    wire. Riding the own net is a blocked move, so the reroute fails and
+    the rip-up is rolled back.
+
+    Returns (vertices, net_y, net_a).
+    """
+    open_cells = [(x, 5) for x in range(1, 6)]      # channel A
+    open_cells += [(x, 8) for x in range(1, 6)]     # channel B
+    open_cells += [(1, 6), (1, 7)]                  # connector A-B at x=1
+    open_cells += [(5, y) for y in range(2, 8)]     # slot x=5, A and B
+    open_cells += [(6, 7)]                          # approach to pin2
+
+    s = Schematic()
+    s.y = Net()
+    s.a = Net()
+    ports = [
+        RoutingPort(0, 5, s.y, East),
+        RoutingPort(5, 1, s.y, North),   # y pin1 (closer, anchor target)
+        RoutingPort(7, 7, s.y, West),    # y pin2 (branch target)
+        RoutingPort(2, 4, s.a, North),
+        RoutingPort(4, 4, s.a, North),   # a pin
+    ]
+    conns = [
+        GridConn(s.y, (0, 5), East, (5, 1), North),
+        GridConn(s.y, (0, 5), East, (7, 7), West),
+        GridConn(s.a, (2, 4), North, (4, 4), North),
+    ]
+    return route_maze(open_cells, ports, conns), s.y, s.a
+
+
+def assert_anchor_hosts_branch(paths, ends):
     """Net y must keep both paths, with the branch path's first point an
     explicit vertex of the anchor path (a shared vertex is what connects
-    wires at the schematic level; mere crossings do not)."""
+    wires at the schematic level, a mere crossing does not)."""
     assert len(paths) == 2
     anchor = next(p for p in paths if tuple(p[0]) == (0, 5))
     branch = next(p for p in paths if tuple(p[0]) != (0, 5))
     assert tuple(branch[0]) in {tuple(v) for v in anchor}
-    assert {tuple(p[-1]) for p in paths} == {(5, 1), (14, 5)}
+    assert {tuple(p[-1]) for p in paths} == ends
 
 
 def test_ripup_reroute_keeps_branch_vertex():
-    """The rerouted anchor re-crosses the branch point; that point must
+    """The rerouted anchor re-crosses the branch point. That point must
     survive path reduction as a vertex even though rip-up reordered the
     paths (the branch now precedes its host in the net's path list)."""
     vertices, net_y, net_a = route_ripup_branch_maze(cross_slot=True)
     assert len(vertices[net_a]) == 1
-    assert_anchor_hosts_branch(vertices[net_y])
+    assert_anchor_hosts_branch(vertices[net_y], ends={(5, 1), (14, 5)})
 
 
 def test_ripup_rejected_when_reroute_strands_branch():
     """Every possible reroute of the ripped-up anchor misses the branch
     point, so keeping it would fragment net y. The rip-up must be rejected
-    and the original arrangement restored; net a falls back to terminal
+    and the original arrangement restored. Net a falls back to terminal
     taps instead."""
     vertices, net_y, net_a = route_ripup_branch_maze(cross_slot=False)
     assert not vertices[net_a]
-    assert_anchor_hosts_branch(vertices[net_y])
+    assert_anchor_hosts_branch(vertices[net_y], ends={(5, 1), (14, 5)})
+
+
+def test_ripup_rejected_when_reroute_rides_own_net():
+    """The only reroute of the ripped-up anchor would run on top of its own
+    net's branch, duplicating the wire (OverlappingWires at the schematic
+    level). The reroute must fail instead, rolling back the rip-up. Net a
+    falls back to terminal taps."""
+    vertices, net_y, net_a = route_ripup_overlap_maze()
+    assert not vertices[net_a]
+    assert_anchor_hosts_branch(vertices[net_y], ends={(5, 1), (7, 7)})

@@ -10,6 +10,7 @@ this module instead.
 import pytest
 from ordec.core import *
 from .lib import schematics as lib_test
+from ordec.lib.base import Res
 from ordec.lib.generic_mos import Nmos
 from ordec.schematic import SchematicError
 
@@ -32,7 +33,38 @@ def test_schematic_net_partitioned():
     assert any(e.error_type == SchemErrorType.NetMissesWiring and e.pos == Vec2R(7, 4) for e in errors)
 
 def test_schematic_net_partitioned_tapped():
-    lib_test.TestNmosInv(variant='net_partitioned_tapped', add_conn_points=True, add_terminal_taps=False).schematic
+    s = lib_test.TestNmosInv(variant='net_partitioned_tapped', add_conn_points=True, add_terminal_taps=False).schematic
+    assert not s.has_errors()
+
+def test_schematic_net_partitioned_port_labeled():
+    # One partition carries a tap and the other contains the vss port. Both
+    # display the net name, so the partition is connected by label.
+    s = lib_test.TestNmosInv(variant='net_partitioned_port_labeled', add_conn_points=True, add_terminal_taps=False).schematic
+    assert not s.has_errors()
+
+def test_schematic_net_partitioned_unlabeled_main():
+    # The port labels the smaller island of net n. The larger, pins-only
+    # island must still be flagged, since nothing displays its net
+    # membership -- even though it is the net's largest component.
+    res = Res(r=R(1000)).symbol
+    s = Schematic()
+    s.n = Net()
+    s.n2 = Net()
+    s.r1 = SchemInstance(res.portmap(p=s.n, m=s.n2), pos=Vec2R(0, 2))
+    s.r2 = SchemInstance(res.portmap(p=s.n, m=s.n2), pos=Vec2R(6, 2))
+    s.r3 = SchemInstance(res.portmap(p=s.n, m=s.n), pos=Vec2R(12, 2))
+    s.n % SchemPort(pos=Vec2R(0, 8), align=East)
+    s.n % SchemWire(vertices=[Vec2R(0, 8), Vec2R(2, 8), Vec2R(2, 6)])
+    s.n % SchemWire(vertices=[Vec2R(8, 6), Vec2R(8, 8), Vec2R(11, 8),
+                              Vec2R(14, 8), Vec2R(14, 6)])
+    s.n % SchemWire(vertices=[Vec2R(14, 2), Vec2R(14, 0), Vec2R(18, 0),
+                              Vec2R(18, 10), Vec2R(11, 10), Vec2R(11, 8)])
+    s.n2 % SchemWire(vertices=[Vec2R(2, 2), Vec2R(2, 0), Vec2R(8, 0), Vec2R(8, 2)])
+    s.check(add_conn_points=True)
+    errors = list(s.all(SchemErrorMarker))
+    assert [e.error_type for e in errors] == [SchemErrorType.NetMissesWiring]
+    # The marker sits on a terminal of the unlabeled island.
+    assert errors[0].pos in (Vec2R(8, 6), Vec2R(14, 6), Vec2R(14, 2))
 
 def test_schematic_bad_wiring():
     s = lib_test.TestNmosInv(variant='vdd_bad_wiring', add_conn_points=True, add_terminal_taps=True).schematic

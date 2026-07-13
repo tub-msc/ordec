@@ -334,7 +334,12 @@ def _check_wiring_validity(node: Schematic, g: ConnectivityGraph,
 
 def _check_net_connectivity(node: Schematic, g: ConnectivityGraph,
                             suppress_errors: bool = False):
-    """Check that all terminals of each net are reachable."""
+    """Check that all terminals of each net are reachable.
+
+    Wiring components that carry a tap or contain a port count as connected
+    by label (both display the net name). All other components must be
+    wire-connected and are flagged with NetMissesWiring otherwise.
+    """
     if suppress_errors:
         return
     # Build terminals-of-net from indices
@@ -360,16 +365,22 @@ def _check_net_connectivity(node: Schematic, g: ConnectivityGraph,
             reaches = set(g.reachable_from(terminal.pos))
             component = [t for t in reachable_terminals if t.pos in reaches]
             seen_terminals.update(t.pos for t in component)
-            terminal_components.append(component)
+            # Taps reach the Net node and ports display the net name directly.
+            labeled = net in reaches or any(
+                not isinstance(t, PinOfInstance) for t in component)
+            terminal_components.append((component, labeled))
 
         if len(terminal_components) > 1:
-            main_component = max(terminal_components, key=len)
-            for component in terminal_components:
-                if component is not main_component:
-                    node.root % SchemErrorMarker(
-                        pos=component[0].pos,
-                        error_type=SchemErrorType.NetMissesWiring
-                    )
+            # Only unlabeled components are cut off. With no label anywhere,
+            # keep the largest component as the net's main part instead.
+            stray = [c for c, labeled in terminal_components if not labeled]
+            if len(stray) == len(terminal_components):
+                stray.remove(max(stray, key=len))
+            for component in stray:
+                node.root % SchemErrorMarker(
+                    pos=component[0].pos,
+                    error_type=SchemErrorType.NetMissesWiring
+                )
 
 def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=False) -> bool:
     """Validate schematic connectivity and wiring structure.

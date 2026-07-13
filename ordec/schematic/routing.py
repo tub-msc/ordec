@@ -20,7 +20,9 @@ Constraints:
 - Direction marker cells (`GRID_DIR`) restrict turning near terminal escape
   points unless the move stays aligned.
 - Existing straight segments of other nets are converted into blocked moves,
-  including corner-touch prevention.
+  including corner-touch prevention. The net's own segments block riding
+  moves only (running along them would duplicate wires). Crossing and
+  attaching stay allowed.
 Heuristics:
 - A* uses Manhattan distance.
 - Direction changes are penalized to prefer cleaner tracks.
@@ -63,11 +65,11 @@ class RoutingCache:
     def mark_changed(self, net: Net):
         self.change_count[net] += 1
 
-    def dependency_versions(self, net: Net):
-        """Return a version signature of all straight lines except ``net``."""
+    def dependency_versions(self):
+        """Return a version signature of all nets' straight lines."""
         if not self.change_count:
             return 0
-        return sum(v for k, v in self.change_count.items() if k != net)
+        return sum(self.change_count.values())
 
 @dataclass
 class RoutingPort:
@@ -195,15 +197,17 @@ def preprocess_straight_lines(straight_lines: dict[Net, list], net: Net,
 
     Args:
         straight_lines: Already routed paths keyed by Net.
-        net: The net currently being routed (excluded).
+        net: The net currently being routed. Its own segments block riding
+            moves only, without corner-touch prevention, so branches can
+            still cross and attach.
         height: Grid height used for key encoding.
         routing_cache: Per-run memoization state.
 
     Returns:
         tuple: (blocked_moves set, blocked_masks dict).
     """
-    # Cache is keyed by Net and invalidated when other nets change
-    dep_version = routing_cache.dependency_versions(net)
+    # Cache is keyed by Net and invalidated when any net's lines change
+    dep_version = routing_cache.dependency_versions()
 
     entry = routing_cache.cache.get(net)
     if entry and entry["dep_version"] == dep_version:
@@ -217,6 +221,9 @@ def preprocess_straight_lines(straight_lines: dict[Net, list], net: Net,
     for key, value in straight_lines.items():
         if key != net:
             blocked_moves.update(_blocked_moves_for_segments(value))
+        else:
+            blocked_moves.update(
+                _blocked_moves_for_segments(value, corner_touch=False))
 
     blocked_masks = _blocked_masks_by_node(blocked_moves, height)
     routing_cache.cache[net] = {
@@ -227,7 +234,7 @@ def preprocess_straight_lines(straight_lines: dict[Net, list], net: Net,
     return blocked_moves, blocked_masks
 
 
-def _blocked_moves_for_segments(segments):
+def _blocked_moves_for_segments(segments, corner_touch=True):
     blocked_moves = set()
     corner_nodes = set()
 
@@ -254,7 +261,7 @@ def _blocked_moves_for_segments(segments):
 
         # Collect corner nodes where segments meet, these need
         # all-direction blocking to prevent diagonal touch violations
-        if len(segments) > 1:
+        if corner_touch and len(segments) > 1:
             corner_nodes.add(line_start)
             corner_nodes.add(line_end)
 
@@ -868,7 +875,7 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
         rebuild_straight_lines(entry["net"])
 
     # Paths of a net attach where one path's first point lies on another path
-    # (terminal anchor and branch junctions); mere crossings do not connect
+    # (terminal anchor and branch junctions). Mere crossings do not connect
     # wires. Rip-up reroutes can violate this by no longer covering the branch
     # points of paths that branched off the removed route.
     def net_paths_attached(net):
@@ -1052,9 +1059,8 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
                             blocking_entry["blocked_move_keys"] = path_blocked_move_keys(blocking_path)
                             routed_entries.append(blocking_entry)
                             break
-                        # The reroute stranded another path of the net (a
-                        # branch off the removed route whose branch point the
-                        # new route misses): undo it and treat it as failed.
+                        # The reroute stranded a branch of the removed route:
+                        # undo it and treat it as failed.
                         port_drawing_dict[blocking_net].pop()
                         rebuild_straight_lines(blocking_net)
                         remove_path_from_grid(blocking_cells)
