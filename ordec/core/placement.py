@@ -41,11 +41,14 @@ SIDE_NAMES = {
 }
 
 
-def describe(node: Node) -> str:
+def describe(node: 'Node | PlacementGroup') -> str:
     """
     Returns the name of a node for error messages: its NPath path, or
-    its type and placeholder label (??nid) for anonymous nodes.
+    its type and placeholder label (??nid) for anonymous nodes. A
+    placement group is named by its type.
     """
+    if isinstance(node, PlacementGroup):
+        return f"{type(node).__name__} group"
     label = node.full_path_label()
     if node.npath_nid is None:
         return f"{type(node).__name__} {label}"
@@ -73,14 +76,17 @@ class GroupContext:
         _view_ctx_var.get().group_stack.pop()
 
 
-def term_constant(term: LinearTerm) -> float:
+def term_constant(term: LinearTerm, child) -> float:
     """
-    Returns the constant value of a LinearTerm that has no variable
-    part. Raises ValueError if it has one, i.e. it depends on positions
-    that are not fixed relative to each other.
+    Returns the constant value of a LinearTerm derived from child's
+    geometry that has no variable part. Raises ValueError naming the
+    child if it has one, i.e. it depends on positions that are not
+    fixed relative to each other.
     """
     if any(abs(c) >= 1e-9 for c in term.coefficients):
-        raise ValueError("Size of a placement group child is not constant; cannot arrange the group.")
+        raise ValueError(
+            f"Size of placement group child {describe(child)} is not "
+            "constant; cannot arrange the group.")
     return term.constant
 
 
@@ -194,11 +200,17 @@ class PlacementGroup:
         return child
 
     def subgraph_root(self) -> SubgraphRoot:
-        """Returns the SubgraphRoot cursor of the children's subgraph."""
+        """
+        Returns the SubgraphRoot cursor of the children's subgraph,
+        skipping over empty nested groups.
+        """
         for child in self.children:
-            if isinstance(child, PlacementGroup):
+            if not isinstance(child, PlacementGroup):
+                return child.root
+            try:
                 return child.subgraph_root()
-            return child.root
+            except ValueError:
+                continue
         raise ValueError("Placement group has no children.")
 
     def child_rect(self, child) -> Rect4LinearTerm:
@@ -234,7 +246,8 @@ class PlacementGroup:
             raise ValueError("Placement group has no children.")
         main, cross = self.axis, 1 - self.axis
         rects = [self.child_rect(child) for child in self.children]
-        main_sizes = [term_constant(r[main+2] - r[main]) for r in rects]
+        main_sizes = [term_constant(r[main+2] - r[main], child)
+            for child, r in zip(self.children, rects)]
         cross_offsets, cross_span = self.cross_arrangement(rects, cross)
 
         main_offsets = []
@@ -263,7 +276,8 @@ class PlacementGroup:
         returning (offsets, span): their constant offsets from the
         group's edge and the group's cross-axis extent.
         """
-        sizes = [term_constant(r[cross+2] - r[cross]) for r in rects]
+        sizes = [term_constant(r[cross+2] - r[cross], child)
+            for child, r in zip(self.children, rects)]
         span = max(sizes)
         if self.align == 'center':
             offsets = [math.floor((span - size) / 2) for size in sizes]
@@ -584,7 +598,8 @@ class Series(ConnectingGroup):
     def cross_arrangement(self, rects: list, cross: int) -> tuple[list, float]:
         if self.align != 'pins':
             return super().cross_arrangement(rects, cross)
-        sizes = [term_constant(r[cross+2] - r[cross]) for r in rects]
+        sizes = [term_constant(r[cross+2] - r[cross], child)
+            for child, r in zip(self.children, rects)]
         # Chain the offsets so that each pair's facing pins line up;
         # floor snaps to the unit grid where center fallbacks (nested
         # Parallel) introduce half units.
@@ -610,13 +625,13 @@ class Series(ConnectingGroup):
         if isinstance(child, ConnectingGroup):
             offset = child.boundary_junction_offset(side, cross)
             if offset is None:
-                offset = term_constant(rect[cross+2] - rect[cross]) / 2
+                offset = term_constant(rect[cross+2] - rect[cross], child) / 2
             return offset
         if isinstance(child, (Net, SchemPort)):
             return 0
         pin = getattr(child, self.facing_pin(child, side)).pos
         coord = pin.x if cross == 0 else pin.y
-        return term_constant(coerce_term(coord) - rect[cross])
+        return term_constant(coerce_term(coord) - rect[cross], child)
 
     def boundary_junction_offset(self, side: D4, cross: int) -> float:
         index = self.boundary_index(side)

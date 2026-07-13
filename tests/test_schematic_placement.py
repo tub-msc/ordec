@@ -356,6 +356,26 @@ def test_group_net_without_port_error():
         group.emit(Solver(sch))
 
 
+def test_group_size_error_names_child():
+    from ordec.core.placement import term_constant
+    sch = Schematic()
+    sch.m = SchemInstance(symbol=Nmos().symbol)
+
+    # m.pos is still a placeholder, so this term has a variable part.
+    with pytest.raises(ValueError, match="child m is not constant"):
+        term_constant(sch.m.pos.x, sch.m)
+
+
+def test_group_subgraph_root_skips_empty_nested_group():
+    sch = Schematic()
+    sch.m = SchemInstance(symbol=Nmos().symbol)
+    group = Col(gap=2)
+    group.add(Row())
+    group.add(sch.m)
+
+    assert group.subgraph_root().subgraph is sch.subgraph
+
+
 def test_group_unknown_attribute_does_not_seal():
     group = Col(gap=2)
     with pytest.raises(AttributeError):
