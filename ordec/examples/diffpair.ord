@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from ordec.lib.generic_mos import Nmos
+from ordec.lib import Res, Vdc, Gnd, NoConn
+
+cell DiffPair:
+    viewgen symbol -> Symbol:
+        input inp: .align=West
+        input inn: .align=West
+        input bias: .align=West
+        output outp: .align=East
+        output outn: .align=East
+        inout vdd: .align=North
+        inout vss: .align=South
+
+    viewgen schematic -> Schematic:
+        port inp: .align=East
+        port bias: .align=East
+        port outp: .align=East
+        port inn: .align=West
+        port outn: .align=West
+        net vss
+
+        Series(gap=4) core:
+            port vdd: .align=South
+            Parallel(gap=6) branches:
+                Series left:
+                    Res rl: .$r=10k
+                    Nmos m1: .g -- inp; .b -- vss; .d -- outp; .$w=10u
+                Series right:
+                    Res rr: .$r=10k
+                    Nmos m2: .orientation=FlippedSouth; .g -- inn; .b -- vss; .d -- outn; .$w=10u
+            Nmos mtail: .g -- bias; .b -- vss; .$w=20u
+            port vss: .align=North
+
+cell DiffPairTb:
+    viewgen schematic -> Schematic:
+        net inp, inn, bias, outp, outn, vdd, vss
+
+        Row(gap=6) tb:
+            Col(gap=2, align='start') supplies:
+                Row(gap=3) srcs:
+                    Vdc vsupply: .$dc=5; .m -- vss; .p -- vdd
+                    Vdc vbias: .$dc=1.1; .m -- vss; .p -- bias
+                    Vdc vinn: .$dc=2.5; .m -- vss; .p -- inn
+                    Vdc vinp: .$dc=2.5; .m -- vss; .p -- inp
+                Gnd gnd: .p -- vss
+            DiffPair dut: .inp -- inp; .inn -- inn; .bias -- bias; .outp -- outp; .outn -- outn; .vdd -- vdd; .vss -- vss
+            Col(gap=2) ncs:
+                NoConn nc0: .a -- outn
+                NoConn nc1: .a -- outp
+
+    viewgen sim_op -> Simulation:
+        .simulate().op()
+
+    viewgen sim_dc -> Simulation:
+        .simulate().dc_sweep(self.schematic.vinp, 1.5, 3.5, 100)
+
+    viewgen report_dc -> Report:
+        sim = self.sim_dc
+        .markdown("# Differential pair transfer curve\n")
+        .plot2d(
+            x=list(sim.inp.voltage),
+            series={"outp": list(sim.outp.voltage), "outn": list(sim.outn.voltage)},
+            xlabel="Vinp (V)",
+            ylabel="Vout (V)",
+            height=300)

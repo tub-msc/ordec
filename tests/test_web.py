@@ -90,6 +90,11 @@ testcases_integrated = {
         'CurrentMirror().schematic': [check_schematic, check_min_size(300, 100)],
         'CurrentMirror().sim_op': [check_sim_op, check_min_size(300, 200)],
     },
+    'diffpair': {
+        'DiffPair().schematic': [check_schematic, check_min_size(300, 100)],
+        'DiffPairTb().schematic': [check_schematic, check_min_size(300, 100)],
+        'DiffPairTb().report_dc': [],
+    },
     'vco_pseudodiff': {
        "Vco(width='1u',length='500n').layout": [],
        "Vco(width='1u',length='500n').drc": [],
