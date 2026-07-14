@@ -357,7 +357,7 @@ def test_group_net_without_port_error():
 
 
 def test_group_size_error_names_child():
-    from ordec.core.placement import term_constant
+    from ordec.schematic.placement import term_constant
     sch = Schematic()
     sch.m = SchemInstance(symbol=Nmos().symbol)
 

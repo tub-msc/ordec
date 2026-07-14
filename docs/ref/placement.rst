@@ -1,7 +1,7 @@
-:mod:`ordec.core.placement` --- Placement groups
-================================================
+:mod:`ordec.schematic.placement` --- Placement groups
+=====================================================
 
-.. automodule:: ordec.core.placement
+.. automodule:: ordec.schematic.placement
 
 **Example (ORD):**
 
@@ -153,8 +153,8 @@ Positions of schematic elements are determined in this order:
    group with a constrained or directly positioned member follows that
    member instead of being anchored.
 3. Remaining ports are auto-placed on the edge of the content bounding box
-   based on their align (see
-   :func:`ordec.schematic.helpers.schem_place_ports`): the align is the
+   based on their align (see ``schem_place_ports()`` in
+   ``ordec.schematic.helpers``): the align is the
    direction the port arrow points, into the drawing. A port with
    ``align=East`` is placed on the left edge, ``West`` on the right,
    ``North`` on the bottom and ``South`` on the top edge. Along the edge,

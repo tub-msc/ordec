@@ -119,7 +119,7 @@ class SchematicViewContext(ViewContext):
 
     def postprocess(self):
         from .constraints import SolverError
-        from .placement import describe
+        from ..schematic.placement import describe
         from ..schematic.helpers import schem_place_ports
         # Auto-anchored top-level groups line up side by side, left to
         # right in declaration order, with routing space in between.

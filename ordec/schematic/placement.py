@@ -29,11 +29,11 @@ from typing import Callable, NamedTuple
 
 from public import public
 
-from .constraints import (EqualsZero, LinearTerm, Rect4LinearTerm, Solver,
-    Variable, coerce_term)
-from .context import _view_ctx_var
-from .geoprim import D4
-from .ordb import Node, QueryException, SubgraphRoot
+from ..core.constraints import (EqualsZero, LinearTerm, Rect4LinearTerm,
+    Solver, Variable, coerce_term)
+from ..core.context import _view_ctx_var
+from ..core.geoprim import D4
+from ..core.ordb import Node, QueryException, SubgraphRoot
 
 SIDE_NAMES = {
     D4.North: 'upward', D4.South: 'downward',
@@ -131,7 +131,7 @@ def connect_endpoints(endpoints: list[Endpoint], root: SubgraphRoot):
     already on is adopted (see adopted_net), otherwise an anonymous net
     is created on root.
     """
-    from .schema import Net
+    from ..core.schema import Net
     net = adopted_net(endpoints)
     if net is None:
         net = root % Net()
@@ -219,7 +219,7 @@ class PlacementGroup:
         placed through its port; ports are zero-size points at their
         position.
         """
-        from .schema import Net, SchemPort
+        from ..core.schema import Net, SchemPort
         if isinstance(child, PlacementGroup):
             return child.rect()
         if isinstance(child, Net):
@@ -472,7 +472,7 @@ class ConnectingGroup(PlacementGroup, ABC):
         Returns the Symbol of an instance child; for unresolved
         instances, it is generated from the recorded parameters.
         """
-        from .schema import SchemInstance, SchemInstanceUnresolvedParameter
+        from ..core.schema import SchemInstance, SchemInstanceUnresolvedParameter
         if isinstance(inst, SchemInstance):
             return inst.symbol
         params = {
@@ -487,7 +487,7 @@ class ConnectingGroup(PlacementGroup, ABC):
         faces side, honoring the group's pin name overrides. Raises
         ValueError if no unambiguous, plainly named pin is found.
         """
-        from .schema import Pin
+        from ..core.schema import Pin
         override = self.pin_overrides[side]
         if override is not None:
             return override
@@ -512,7 +512,7 @@ class ConnectingGroup(PlacementGroup, ABC):
 
     def pin_net(self, inst, pin_name: str) -> 'Net | None':
         """Returns the net a pin of an instance child is connected to, or None."""
-        from .schema import (SchemInstance, SchemInstanceConn,
+        from ..core.schema import (SchemInstance, SchemInstanceConn,
             SchemInstanceUnresolvedConn)
         if isinstance(inst, SchemInstance):
             pin = getattr(inst.symbol, pin_name)
@@ -526,7 +526,7 @@ class ConnectingGroup(PlacementGroup, ABC):
 
     def endpoint(self, child, side: D4) -> Endpoint:
         """Returns the Endpoint of a direct child on the given side."""
-        from .schema import Net, SchemPort
+        from ..core.schema import Net, SchemPort
         if isinstance(child, ConnectingGroup):
             return child.side_endpoint(side)
         if isinstance(child, PlacementGroup):
@@ -621,7 +621,7 @@ class Series(ConnectingGroup):
         side, relative to its bounding box; the center where there is no
         single connection point (nested Parallel rails).
         """
-        from .schema import Net, SchemPort
+        from ..core.schema import Net, SchemPort
         if isinstance(child, ConnectingGroup):
             offset = child.boundary_junction_offset(side, cross)
             if offset is None:
@@ -662,7 +662,7 @@ class Parallel(ConnectingGroup):
         Returns the Endpoints of one rail: one per child, plus a net an
         enclosing group forced onto the rail.
         """
-        from .schema import Net, SchemPort
+        from ..core.schema import Net, SchemPort
         endpoints = []
         for child in self.children:
             if isinstance(child, (Net, SchemPort)):

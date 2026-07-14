@@ -7,7 +7,7 @@ from .ordb import *
 from .schema import *
 from .cell import *
 from .constraints import *
-from .placement import *
 from .directory import *
 from .simarray import SimArray, SimArrayField, SimColumn
 from .genrun import *
+from ..schematic.placement import *

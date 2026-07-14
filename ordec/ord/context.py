@@ -7,7 +7,7 @@ import sys
 # ordec imports
 from ..core import *
 from ..core.context import _ctx_var, _view_ctx_var
-from ..core.placement import PlacementGroup
+from ..schematic.placement import PlacementGroup
 from ..schematic.helpers import recursive_setitem, recursive_getitem
 
 
