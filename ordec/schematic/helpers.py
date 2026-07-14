@@ -3,6 +3,7 @@
 
 import bisect
 import itertools
+import math
 from collections import defaultdict
 from dataclasses import dataclass
 from ..core import *
@@ -41,6 +42,100 @@ def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
         pin.pos = Vec2R(x=width,y=vpadding+i)
 
     node.outline = Rect4R(lx=0, ly=0, ux=width, uy=height)
+
+
+def schematic_place(schem: Schematic, gap=None, port_pitch=2, port_margin=None):
+    """
+    Automatic placement for programmatically built schematics (e.g. netlist
+    importers). All existing pos values are overwritten.
+
+    SchemInstances are arranged in a simple row-based grid targeting a roughly
+    square overall shape. SchemPorts are placed on the edges of the resulting
+    bounding box based on their align attribute; align points into the
+    schematic, so East-aligned ports go on the left edge, North-aligned ports
+    on the bottom edge, and so on.
+
+    No SchemWires are drawn. The schematic is checked with
+    add_terminal_taps=True, so connectivity is represented by SchemTapPoints;
+    Nets should be created with auto_wire=False. The outline is set to the
+    resulting bounding box; freezing is left to the caller.
+
+    Args:
+        schem: Mutable schematic to place.
+        gap: Spacing between adjacent instances. Defaults to enough room for
+            two facing tap point labels of the longest net name.
+        port_pitch: Spacing between adjacent ports on the same edge.
+        port_margin: Distance between ports and the instance bounding box.
+            Defaults to gap (the port's tap label extends into this space).
+    """
+    from .routing import adjust_outline_initial
+    from .render import Renderer
+
+    if gap is None:
+        # Every pin gets a SchemTapPoint whose label extends away from the
+        # instance (port_text_space, then ~0.35 units per character), so two
+        # facing labels must fit between adjacent instances.
+        max_label = max((len(net.full_path_label()) for net in schem.all(Net)),
+                        default=0)
+        gap = math.ceil(2 * (Renderer.port_text_space + 0.35 * max_label) + 1)
+    if port_margin is None:
+        port_margin = gap
+
+    instances = list(schem.all(SchemInstance))
+    sizes = []
+    for inst in instances:
+        o = inst.symbol.outline
+        sizes.append((o.ux - o.lx, o.uy - o.ly))
+
+    # Wrap rows at a target width chosen so the grid comes out roughly square
+    # (but never narrower than the widest instance).
+    area = sum(float((w + gap) * (h + gap)) for w, h in sizes)
+    target_w = max([math.sqrt(area)] + [float(w) for w, h in sizes])
+
+    x = y = row_h = R(0)
+    box_w = box_h = R(0)
+    for inst, (w, h) in zip(instances, sizes):
+        if float(x) > 0 and float(x + w) > target_w:
+            x = R(0)
+            y = y + row_h + gap
+            row_h = R(0)
+        o = inst.symbol.outline
+        # Place so the instance geometry (pos + outline) starts at (x, y).
+        inst.pos = Vec2R(x - o.lx, y - o.ly)
+        row_h = max(row_h, h)
+        box_w = max(box_w, x + w)
+        box_h = max(box_h, y + h)
+        x = x + w + gap
+
+    port_by_align = {East: [], West: [], North: [], South: []}
+    for port in schem.all(SchemPort):
+        port_by_align[port.align].append(port)
+
+    # Widen the box if a port row/column needs more room than the instances.
+    box_w = max(box_w, port_pitch * max(len(port_by_align[North]),
+                                        len(port_by_align[South])))
+    box_h = max(box_h, port_pitch * max(len(port_by_align[East]),
+                                        len(port_by_align[West])))
+
+    for i, port in enumerate(port_by_align[East]):
+        port.pos = Vec2R(-port_margin, 1 + port_pitch * i)
+    for i, port in enumerate(port_by_align[West]):
+        port.pos = Vec2R(box_w + port_margin, 1 + port_pitch * i)
+    for i, port in enumerate(port_by_align[North]):
+        port.pos = Vec2R(1 + port_pitch * i, -port_margin)
+    for i, port in enumerate(port_by_align[South]):
+        port.pos = Vec2R(1 + port_pitch * i, box_h + port_margin)
+
+    schem.check(add_terminal_taps=True)
+    outline = adjust_outline_initial(schem)
+    if outline is None:
+        outline = Rect4R(0, 0, 1, 1)
+    # adjust_outline_initial covers port labels but not tap point labels,
+    # which this placement relies on for connectivity.
+    for tap in schem.all(SchemTapPoint):
+        label_len = Renderer.port_text_space + 0.35 * len(tap.ref.full_path_label())
+        outline = outline.extend(tap.pos + (tap.align * Vec2R(0, 1)) * label_len)
+    schem.outline = outline
 
 
 def schem_add_pin_tap(inst: SchemInstance, pin: Pin):

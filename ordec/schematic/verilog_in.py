@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 
 from ..core import *
-from .routing import adjust_outline_initial
+from .helpers import schematic_place
 
 @public
 def verilog_to_yosys_json(verilog: str) -> dict[str, Any]:
@@ -163,43 +163,20 @@ def create_schematic(extlib, module_name, module_data: dict[str, Any]) -> Schema
         path_name = unique_path(base_name)
         pin = port_bits.get(bit)
         if pin is None:
-            schematic[path_name] = Net()
+            schematic[path_name] = Net(auto_wire=False)
         else:
-            schematic[path_name] = Net(pin=pin)
+            schematic[path_name] = Net(pin=pin, auto_wire=False)
         bit_to_net[bit] = schematic[path_name]
 
-    port_count_by_align = {
-        West: 0,
-        East: 0,
-        North: 0,
-        South: 0,
-    }
-
-    def next_port_pos(align: D4) -> Vec2R:
-        i = port_count_by_align[align]
-        port_count_by_align[align] = i + 1
-        if align == West:
-            return Vec2R(24, 2 * i + 1)
-        if align == East:
-            return Vec2R(0, 2 * i + 1)
-        if align == North:
-            return Vec2R(2 * i + 1, 24)
-        return Vec2R(2 * i + 1, 0)
-
     for bit, pin in port_bits.items():
-        schematic % SchemPort(ref=bit_to_net[bit], pos=next_port_pos(pin.align*R180), align=pin.align*R180)
+        schematic % SchemPort(ref=bit_to_net[bit], align=pin.align*R180)
 
-    cur_y =0
-    for inst_i, (cell_name, cell_data) in enumerate(module_data.get('cells', {}).items()):
+    for cell_name, cell_data in module_data.get('cells', {}).items():
         cell_type = cell_data.get('type')
         if not isinstance(cell_type, str):
             raise ValueError(f"Invalid cell type in module {module_name!r}: {cell_type!r}.")
         inst_name = unique_path(cell_name)
-        schematic[inst_name] = SchemInstance(
-            symbol=extlib[cell_type].symbol,
-            pos=Vec2R(10, cur_y)
-        )
-        cur_y += extlib[cell_type].symbol.outline.height + 2
+        schematic[inst_name] = SchemInstance(symbol=extlib[cell_type].symbol)
         inst = schematic[inst_name]
         for port_name, bits in cell_data.get('connections', {}).items():
             width = len(bits)
@@ -217,12 +194,8 @@ def create_schematic(extlib, module_name, module_data: dict[str, Any]) -> Schema
             if pin.nid in connected_pins:
                 continue
             nc_name = unique_path(f"nc_{inst_name}_{pin.nid}")
-            schematic[nc_name] = Net(route=False)
+            schematic[nc_name] = Net(auto_wire=False)
             schematic % SchemInstanceConn(ref=inst, here=schematic[nc_name], there=pin)
 
-    schematic.check(add_terminal_taps=True)
-    outline = adjust_outline_initial(schematic)
-    if outline is None:
-        outline = Rect4R(0, 0, 1, 1)
-    schematic.outline = outline
+    schematic_place(schematic)
     return schematic.freeze()

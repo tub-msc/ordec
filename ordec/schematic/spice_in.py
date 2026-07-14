@@ -27,7 +27,7 @@ from public import public
 import re
 
 from ..core import *
-from .routing import adjust_outline_initial
+from .helpers import schematic_place
 
 @public
 class SpiceImportError(Exception):
@@ -336,43 +336,22 @@ def create_schematic_from_subckt(extlib, deck, name, device_map) -> Schematic:
     for nd in dict.fromkeys(ordered_nodes):  # preserve order, de-duplicate
         path = unique_name(nd)
         if nd in port_set:
-            schematic[path] = Net(pin=symbol[nd])
+            schematic[path] = Net(pin=symbol[nd], auto_wire=False)
         else:
-            schematic[path] = Net()
+            schematic[path] = Net(auto_wire=False)
         node_to_net[nd] = schematic[path]
 
-    # External ports, placed automatically opposite their symbol pin alignment.
-    port_count = {West: 0, East: 0, North: 0, South: 0}
-
-    def next_port_pos(align):
-        i = port_count[align]
-        port_count[align] = i + 1
-        if align == West:
-            return Vec2R(0, 2 * i + 1)
-        if align == East:
-            return Vec2R(24, 2 * i + 1)
-        if align == North:
-            return Vec2R(2 * i + 1, 24)
-        return Vec2R(2 * i + 1, 0)
-
+    # External ports, aligned opposite their symbol pin alignment.
     for port in subckt.ports:
         pin = symbol[port]
-        align = pin.align * R180
-        schematic % SchemPort(ref=node_to_net[port], pos=next_port_pos(align), align=align)
+        schematic % SchemPort(ref=node_to_net[port], align=pin.align * R180)
 
-    # Instances, stacked vertically in an auto-layout column.
-    cur_y = 0
     for inst in subckt.instances:
         child_sym, conns = resolve_instance(extlib, deck, device_map, name, inst, node_to_net)
         path = unique_name(inst.name)
-        schematic[path] = SchemInstance(child_sym.portmap(**conns), pos=Vec2R(10, cur_y))
-        cur_y += child_sym.outline.height + 5
+        schematic[path] = SchemInstance(child_sym.portmap(**conns))
 
-    schematic.check(add_terminal_taps=True)
-    outline = adjust_outline_initial(schematic)
-    if outline is None:
-        outline = Rect4R(0, 0, 1, 1)
-    schematic.outline = outline
+    schematic_place(schematic)
     return schematic.freeze()
 
 
