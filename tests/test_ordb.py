@@ -4,9 +4,9 @@
 import pytest
 import re
 from ordec.core import *
-from ordec.core.ordb import IndexKey
+from ordec.core.ordb.base import IndexKey
 from tabulate import tabulate
-import ordec.core.ordb
+import ordec.core.ordb.base
 
 # Custom schema for testing:
 class MyHead(SubgraphRoot):
@@ -23,7 +23,7 @@ class test_node_tuple():
     assert t.label == 'hello'
     assert t.set(label='world') == MyNode.Tuple(label='world')
 
-    assert isinstance(MyNode.Tuple.label, ordec.core.ordb.NodeTupleAttrDescriptor)
+    assert isinstance(MyNode.Tuple.label, ordec.core.ordb.base.NodeTupleAttrDescriptor)
 
 def test_schema_attr_inheritance():
     assert [ad.name for ad in MyNode.Tuple._layout] == ['label']
@@ -812,7 +812,7 @@ def test_index_sort_nid():
         u.add_single(MyItem(order=5, ref=1), 101)
 
     index_values = s.all(MyItem.idx_ref.query(1), wrap_cursor=False)
-    assert index_values == [98, 99, 100, 101, 102] # ordered by nid
+    assert list(index_values) == [98, 99, 100, 101, 102] # ordered by nid
 
 def test_index_custom_sort():
     class MyItem(Node):
