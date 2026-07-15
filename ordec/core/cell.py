@@ -4,12 +4,14 @@
 from abc import ABC, ABCMeta, abstractmethod
 from typing import Self
 from functools import partial
+from concurrent.futures import Future
 import re
 import threading
 from pyrsistent import freeze, PMap
 from public import public
 from .ordb import MutableNode
 from .rational import R
+from .genrun import checkpoint, cancelable_wait, GenCancelled
 
 class ViewGenerator:
     def __new__(cls, func=None, **kwargs):
@@ -54,6 +56,59 @@ class ViewGenerator:
 
         return ret
 
+    def eval_cached(self, cache: dict, cache_lock, *args):
+        """
+        Evaluate func_eval(*args) with per-view Future-based caching.
+
+        cache maps self to a Future; cache_lock is held only to guard the
+        dict, never for the duration of the generation, so views of the
+        same cell can be generated concurrently by different threads.
+
+        Successful results are cached permanently. Exceptions propagate to
+        the owner and all current waiters, but are not cached (later calls
+        regenerate). A waiter whose owner got cancelled (GenCancelled)
+        retries the generation itself; a waiter that is itself cancelled
+        raises instead of returning the owner's result.
+
+        A waiter blocks on an Event that both the owner's Future and its
+        own cancellation set, so neither wakeup needs polling.
+        """
+        while True:
+            with cache_lock:
+                fut = cache.get(self)
+                if fut is None:
+                    fut = Future()
+                    # Ad-hoc attribute on Future, used below to detect a
+                    # generator asking for the view it is generating.
+                    fut.owner_thread = threading.get_ident()
+                    cache[self] = fut
+                    is_owner = True
+                else:
+                    is_owner = False
+            if is_owner:
+                try:
+                    result = self.func_eval(*args)
+                except BaseException as e:
+                    with cache_lock:
+                        del cache[self]
+                    fut.set_exception(e)
+                    raise
+                fut.set_result(result)
+                return result
+            if not fut.done() and fut.owner_thread == threading.get_ident():
+                raise RuntimeError("Recursive evaluation of view generator.")
+            # Wait for the owner, but stay interruptible: cancelable_wait
+            # makes our own cancellation set wake, too.
+            wake = threading.Event()
+            fut.add_done_callback(lambda _: wake.set())
+            with cancelable_wait(wake):
+                wake.wait()
+            checkpoint()  # raises if it was our own cancellation
+            try:
+                return fut.result()  # done, so this does not block
+            except GenCancelled:
+                continue  # owner was cancelled, not us: retry as owner
+
 @public
 class generate(ViewGenerator):
     """
@@ -69,11 +124,7 @@ class generate(ViewGenerator):
         if obj is None: # for the class: return self
             return self
         else: # for instances: create view if not present yet, return view
-            # Thread-safe lazy evaluation: acquire lock before check-then-act
-            with obj.cached_results_lock:
-                if self not in obj.cached_results:
-                    obj.cached_results[self] = self.func_eval(obj)
-                return obj.cached_results[self]
+            return self.eval_cached(obj.cached_results, obj.cached_results_lock, obj)
 
     def __set__(self, cursor, value):
         raise TypeError("ViewGenerator cannot be set.")
@@ -96,18 +147,12 @@ class generate_func(ViewGenerator):
     ``@generate_func`` is similar to Python's functools.cache.
     """
     def __init__(self, *args, **kwargs):
-        self.result = None
-        self.evaluated = False
-        self.lock = threading.RLock()  # Protect result/evaluated from concurrent access
+        self.cache = {}
+        self.cache_lock = threading.Lock()
         return super().__init__(*args, **kwargs)
 
     def __call__(self):
-        # Thread-safe lazy evaluation: acquire lock before check-then-act
-        with self.lock:
-            if not self.evaluated:
-                self.result = self.func_eval()
-                self.evaluated = True
-            return self.result
+        return self.eval_cached(self.cache, self.cache_lock)
 
 @public
 class ParameterError(Exception):
