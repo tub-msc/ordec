@@ -129,3 +129,112 @@ x0 1 2 3 nonexistent_subckt
 """
     with pytest.raises(NgspiceError):
         ngspice_batch(netlist)
+
+# -- RawfileMonitor + batch-mode progress/cancellation ------------------------
+
+import struct
+import threading
+import time
+from ordec.core import R
+from ordec.core.genrun import GenRun, GenCancelled
+from ordec.sim.ngspice import RawfileMonitor
+
+
+def write_synthetic_rawfile(path, n_vars=3, times=(), is_complex=False,
+        truncate_tail=0):
+    """Build a rawfile as ngspice batch mode would while still writing:
+    header with 'No. Points: 0', then one row per entry in times."""
+    flags = "complex" if is_complex else "real"
+    header = ("Title: synthetic\nDate: today\nPlotname: Transient Analysis\n"
+        f"Flags: {flags}\nNo. Variables: {n_vars}\nNo. Points: 0\n"
+        "Variables:\n")
+    header += "".join(f"\t{i}\tv{i}\tvoltage\n" for i in range(n_vars))
+    header += "Binary:\n"
+    data = b""
+    val_size = 16 if is_complex else 8
+    for t in times:
+        row = struct.pack("<d", t) + b"\0" * (val_size - 8)
+        row += b"\0" * (val_size * (n_vars - 1))
+        data += row
+    if truncate_tail:
+        data = data[:-truncate_tail]
+    path.write_bytes(header.encode("ascii") + data)
+
+
+def test_rawfile_monitor(tmp_path):
+    fn = tmp_path / "sim.raw"
+    monitor = RawfileMonitor(fn, R(2))
+
+    assert monitor.poll() is None  # no file yet
+
+    fn.write_bytes(b"Title: incomplete hea")
+    assert monitor.poll() is None  # header incomplete
+
+    write_synthetic_rawfile(fn, times=())
+    assert monitor.poll() is None  # header only, no rows yet
+
+    write_synthetic_rawfile(fn, times=(0.5,))
+    assert monitor.poll() == pytest.approx(0.25)
+
+    # Partial trailing row must not be interpreted as data.
+    write_synthetic_rawfile(fn, times=(0.5, 1.0), truncate_tail=4)
+    assert monitor.poll() == pytest.approx(0.25)
+
+    write_synthetic_rawfile(fn, times=(0.5, 1.0))
+    assert monitor.poll() == pytest.approx(0.5)
+
+    # Fraction is clamped to 1.0 (tstart/roundoff can overshoot slightly).
+    write_synthetic_rawfile(fn, times=(0.5, 1.0, 2.5))
+    assert monitor.poll() == 1.0
+
+
+def test_rawfile_monitor_complex(tmp_path):
+    fn = tmp_path / "sim.raw"
+    monitor = RawfileMonitor(fn, R(4))
+    write_synthetic_rawfile(fn, times=(1.0, 2.0), is_complex=True)
+    assert monitor.poll() == pytest.approx(0.5)
+
+
+def test_ngspice_batch_tran_progress():
+    netlist = """.title batch tran progress test
+V1 in 0 pulse(0 1 0 1u 1u 1m 2m)
+R1 in out 1k
+C1 out 0 1u
+.tran 1u 500m
+.end
+"""
+    events = []
+    run = GenRun(on_progress=lambda s, f: events.append((s, f)))
+    with run.activate():
+        sa = ngspice_batch(netlist, tran_tstop=R('500m'))
+    assert len(sa.column("time")) > 1
+    fractions = [f for s, f in events if s == "Transient simulation"]
+    # Sampling is wall-clock-driven: assert invariants, not counts.
+    assert len(fractions) >= 1
+    assert all(0.0 <= f <= 1.0 for f in fractions)
+    assert fractions == sorted(fractions)
+
+
+def test_ngspice_batch_cancel():
+    netlist = """.title batch cancel test
+V1 in 0 pulse(0 1 0 1u 1u 1m 2m)
+R1 in out 1k
+C1 out 0 1u
+.tran 10n 10
+.end
+"""
+    run = GenRun()
+    result = []
+    def worker():
+        try:
+            with run.activate():
+                ngspice_batch(netlist, tran_tstop=R(10))
+        except (GenCancelled, NgspiceError):
+            result.append("cancelled")
+    t = threading.Thread(target=worker)
+    t.start()
+    time.sleep(1.0)  # let ngspice get going
+    run.request_cancel()
+    t.join(timeout=10)
+    assert not t.is_alive()
+    assert result == ["cancelled"]

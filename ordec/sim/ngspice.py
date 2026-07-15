@@ -8,11 +8,13 @@ running simulations (op, tran, ac, dc), and parsing binary rawfiles into
 SimArray results."""
 
 import mmap
+import os
 import re
 import struct
 import sys
 import shutil
 import tempfile
+import threading
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -21,6 +23,7 @@ import subprocess
 from typing import Iterator, NamedTuple, Optional, Literal
 
 from ..core import R, SimArray, SimArrayField
+from ..core.genrun import progress, checkpoint, cancelable_subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +183,65 @@ class NgspiceVector(NamedTuple):
     rest: str
 
 
+class RawfileMonitor:
+    """Progress monitor for a binary rawfile that ngspice batch mode is
+    still writing.
+
+    Batch mode streams the rawfile during simulation: header first (with
+    "No. Points: 0", patched on completion), then data rows appended
+    continuously. The first variable of each row is the independent
+    variable (time for tran), so the last complete row tells how far the
+    simulation has come.
+    """
+    def __init__(self, fn, tstop: R):
+        self.fn = Path(fn)
+        self.tstop = float(R(tstop))
+        self.data_offset = None
+        self.row_size = None
+
+    def _parse_header(self) -> bool:
+        """Try to parse the rawfile header; returns True once complete."""
+        try:
+            with open(self.fn, "rb") as f:
+                head = f.read(65536)
+        except OSError:
+            return False
+        m = re.search(rb"^Binary:\n", head, re.MULTILINE)
+        if not m:
+            return False
+        header = head[:m.end()]
+        m_nvars = re.search(rb"No\. Variables:\s*(\d+)", header)
+        if not m_nvars:
+            return False
+        n_vars = int(m_nvars.group(1))
+        m_flags = re.search(rb"Flags:\s*([^\n]*)", header)
+        is_complex = m_flags and (b"complex" in m_flags.group(1))
+        self.row_size = n_vars * (16 if is_complex else 8)
+        self.data_offset = m.end()
+        return True
+
+    def poll(self) -> Optional[float]:
+        """Current progress as fraction of tstop, or None if unknown yet."""
+        if self.data_offset is None and not self._parse_header():
+            return None
+        if self.tstop <= 0:
+            return None
+        try:
+            file_size = os.path.getsize(self.fn)
+            n_rows = (file_size - self.data_offset) // self.row_size
+            if n_rows <= 0:
+                return None
+            with open(self.fn, "rb") as f:
+                f.seek(self.data_offset + (n_rows - 1) * self.row_size)
+                buf = f.read(8)
+        except OSError:
+            return None
+        if len(buf) < 8:
+            return None
+        t_last = struct.unpack("<d", buf)[0]
+        return min(t_last / self.tstop, 1.0)
+
+
 
 def _ngspice_executable() -> str:
     """Return the ngspice executable name for the current platform."""
@@ -190,6 +252,7 @@ def _ngspice_executable() -> str:
 
 def ngspice_batch(netlist: str, spiceinit_commands: list[str] | None = None,
     no_auto_gnd: bool = True, env: dict[str, str] | None = None,
+    tran_tstop: Optional[R] = None,
 ) -> SimArray:
     """Run ngspice in batch mode and return simulation results.
 
@@ -197,11 +260,18 @@ def ngspice_batch(netlist: str, spiceinit_commands: list[str] | None = None,
     usage constant regardless of result size. The netlist must contain
     embedded analysis directives (.tran, .ac, .dc, .op).
 
+    Runs are cancellable via view-generation cancellation (the ngspice
+    process is killed) and report progress while running. If tran_tstop
+    is given, a progress fraction is derived from the growing rawfile;
+    otherwise only a status message is reported.
+
     Args:
         netlist: Complete SPICE netlist with analysis directives.
         spiceinit_commands: Extra commands for .spiceinit (from PDK
             setup funcs).
         no_auto_gnd: Disable ngspice auto-grounding of 'gnd' net.
+        tran_tstop: Stop time of the netlist's .tran directive, enabling
+            a progress fraction (simulated time / tstop).
     """
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
@@ -217,22 +287,59 @@ def ngspice_batch(netlist: str, spiceinit_commands: list[str] | None = None,
         # Write netlist.
         (tmppath / "netlist.sp").write_text(netlist)
 
+        rawfile = tmppath / "sim.raw"
+        if tran_tstop is not None:
+            monitor = RawfileMonitor(rawfile, tran_tstop)
+        else:
+            monitor = None
+            progress("Running ngspice")
+
         exe = _ngspice_executable()
         logger.debug("Running ngspice batch: %s", exe)
-        result = subprocess.run(
+        p = subprocess.Popen(
             [exe, "-b", "-r", "sim.raw", "netlist.sp"],
             cwd=tmpdir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             env=env or None)
 
-        stdout_text = result.stdout.decode("ascii", errors="replace")
+        # Drain stdout on a side thread: reading here would block the
+        # progress-poll loop, not reading at all could stall ngspice on a
+        # full pipe buffer.
+        stdout_chunks = []
+        def drain_stdout():
+            for chunk in iter(lambda: p.stdout.read(65536), b""):
+                stdout_chunks.append(chunk)
+        reader = threading.Thread(target=drain_stdout, daemon=True)
+        reader.start()
+
+        try:
+            with cancelable_subprocess(p):
+                while True:
+                    try:
+                        p.wait(timeout=0.25)
+                        break
+                    except subprocess.TimeoutExpired:
+                        pass
+                    checkpoint()
+                    if monitor is not None:
+                        frac = monitor.poll()
+                        if frac is not None:
+                            progress("Transient simulation", frac)
+        finally:
+            # On cancellation, make sure ngspice is dead before the
+            # temp dir is cleaned up.
+            if p.poll() is None:
+                p.kill()
+                p.wait()
+            reader.join()
+
+        stdout_text = b"".join(stdout_chunks).decode("ascii", errors="replace")
         logger.debug("ngspice batch stdout:\n%s", stdout_text)
 
         check_errors(stdout_text)
-        if result.returncode != 0:
+        if p.returncode != 0:
             raise NgspiceError(
-                f"ngspice exited with code {result.returncode}:\n{stdout_text}")
+                f"ngspice exited with code {p.returncode}:\n{stdout_text}")
 
-        rawfile = tmppath / "sim.raw"
         if not rawfile.exists():
             raise NgspiceError(
                 f"ngspice did not produce a rawfile:\n{stdout_text}")
