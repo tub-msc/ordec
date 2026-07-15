@@ -404,3 +404,15 @@ class SimLeafCell(Cell, ABC):
     def ngspice_save_params(self) -> list[str]:
         """Return device parameter names to save via ngspice."""
         return []
+
+    def ngspice_internal_device(self) -> str | None:
+        """
+        Name of the real device inside the model subcircuit that
+        ngspice_netlist wraps this cell in, or None if it netlists a plain
+        device.
+
+        Device parameters live on the inner device, so they must be
+        addressed as @<letter>.<path>.<inner>[param] rather than through the
+        subcircuit call (see SimulatorBase._param_save_directives).
+        """
+        return None

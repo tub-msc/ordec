@@ -110,6 +110,33 @@ class SimulatorBase:
                 env[k] = v
         return commands, env
 
+    def _param_save_directives(self):
+        """
+        Yield ngspice save directives for all device parameters known to the
+        instantiated cells (via ngspice_save_params).
+
+        Devices below the top level must be referenced with their device
+        type letter prefixed (e.g. ``@m.xdut.mm1[gm]``). PDK cells that
+        wrap the actual device in a model subcircuit report the inner
+        device name via ngspice_internal_device (e.g. ihp130's
+        ``nsg13_lv_nmos``), which is appended to the path.
+        """
+        for si in self.simhier.all(SimInstance):
+            if si.schematic is not None:
+                continue
+            cell = si.eref.symbol.cell
+            params = cell.ngspice_save_params()
+            if not params:
+                continue
+            name = self.netlister.name_hier_simobj(si)
+            internal = cell.ngspice_internal_device()
+            if internal is not None:
+                name = f"{internal[0]}.{name}.{internal}"
+            elif "." in name:
+                name = f"{name.split('.')[-1][0]}.{name}"
+            for param in params:
+                yield f"@{name}[{param}]"
+
     def _store_results(self, sim_array: SimArray):
         """Store SimArray and assign field names to SimNet/SimPin/SimParam."""
         sim_type = self.simhier.sim_type
@@ -157,8 +184,14 @@ class SimulatorBase:
                     else:
                         full_subname = subname
 
+                    # siminstance can be a hierarchical cell here; only leaf
+                    # cells carry the ngspice_* hooks.
                     cell = siminstance.eref.symbol.cell
-                    pin_map = cell.ngspice_current_pins() if hasattr(cell, 'ngspice_current_pins') else {}
+                    is_leaf = isinstance(cell, SimLeafCell)
+                    if is_leaf:
+                        pin_map = cell.ngspice_current_pins()
+                    else:
+                        pin_map = {}
 
                     if subname in pin_map and not remaining_path:
                         pin = getattr(siminstance.eref.symbol, pin_map[subname])
@@ -191,6 +224,12 @@ class SimulatorBase:
                         # Port currents (i(inst:port)) that couldn't be mapped to SimPins
                         continue
                     else:
+                        # Parameters of a device wrapped in a PDK model
+                        # subcircuit belong to the wrapping instance:
+                        if is_leaf:
+                            internal = cell.ngspice_internal_device()
+                            if internal is not None and remaining_path == [internal]:
+                                full_subname = subname
                         simparam = self.simhier % SimParam(
                             instance=siminstance, name=full_subname)
                         simparam.field = fid
@@ -204,16 +243,8 @@ class SimulatorNgspiceBatch(SimulatorBase):
     def _save_all_params(self):
         """Add .save directives to the netlist for device parameters."""
         self.netlister.add(".save all")
-        for si in self.simhier.all(SimInstance):
-            if si.schematic is not None:
-                continue
-            cell = si.eref.symbol.cell
-            params = cell.ngspice_save_params()
-            if not params:
-                continue
-            device_name = self.netlister.name_hier_simobj(si)
-            for param in params:
-                self.netlister.add(f".save @{device_name}[{param}]")
+        for directive in self._param_save_directives():
+            self.netlister.add(f".save {directive}")
 
     def _run(self) -> SimArray:
         commands, env = self.collect_ngspice_setup()
@@ -308,16 +339,8 @@ class SimulatorNgspicePiped(SimulatorBase):
     def _save_all_params(self, sim):
         """Issue ngspice save commands for all known device parameters."""
         sim.command("save all")
-        for si in self.simhier.all(SimInstance):
-            if si.schematic is not None:
-                continue
-            cell = si.eref.symbol.cell
-            params = cell.ngspice_save_params()
-            if not params:
-                continue
-            device_name = self.netlister.name_hier_simobj(si)
-            for param in params:
-                sim.command(f"save @{device_name}[{param}]")
+        for directive in self._param_save_directives():
+            sim.command(f"save {directive}")
 
     def op(self, save_params=False):
         self.simhier.sim_type = SimType.OP

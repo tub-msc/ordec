@@ -330,6 +330,19 @@ class InvTb(Cell):
     def sim_dc_piped(self):
         return self._sim_dc(False)
 
+    def _sim_op(self, batch):
+        s = SimHierarchy.from_schematic(self.schematic)
+        Simulator(s, batch=batch).op(save_params=True)
+        return s
+
+    @generate
+    def sim_op_batch(self):
+        return self._sim_op(True)
+
+    @generate
+    def sim_op_piped(self):
+        return self._sim_op(False)
+
 class InvSkyTb(InvTb):
 
     def add_inv_instance(self, s):

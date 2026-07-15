@@ -392,7 +392,14 @@ class Mos(SimLeafCell):
     ng = Parameter(int, default=1)  #: Number of gate fingers
 
     def ngspice_save_params(self):
-        return ["gm", "gds", "vth", "vdsat", "region"]
+        # PSP103 (OSDI) operating-point outputs:
+        return ["gm", "gds", "vth", "vgs", "vds", "ids"]
+
+    def ngspice_internal_device(self):
+        # The PDK netlists a model subcircuit around a single PSP103
+        # (OSDI) device named N<model_name>; needed to save/read device
+        # parameters (see Simulator._param_save_directives).
+        return f"n{self.model_name}"
 
     def ngspice_netlist(self, netlister, inst):
         netlister.require_netlist_setup(netlister_setup)
