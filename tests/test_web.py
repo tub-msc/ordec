@@ -465,3 +465,62 @@ def test_layoutgl(web):
     
     expect_black = img.crop((256, 256+128, 256+64, 256+128+64))
     assert myhistogram(expect_black)[(0, 0, 0)] > 2000
+
+
+SLOW_VIEW_SRC = '''
+from ordec.core import *
+import time
+
+@generate_func
+def slow():
+    for i in range(100):
+        progress(f"step {i}", i/100)
+        time.sleep(0.05)
+    return "slow result"
+'''
+
+@pytest.mark.web
+def test_progress_and_cancel(web):
+    """Progress bar, cancel button and cancelled-state overlay of a slow
+    view generator."""
+    from selenium.webdriver.support.wait import WebDriverWait
+
+    web.resize_viewport()
+    web.navigate('app.html#example=blank')
+    web.wait_for_ready()
+
+    # Replace the source with a slow view and reconnect.
+    web.driver.execute_script("""
+        window.ordecClient.src = arguments[0];
+        window.ordecClient.connect();
+    """, SLOW_VIEW_SRC)
+    web.wait_for_ready()
+
+    def rv_js(script):
+        return web.driver.execute_script(
+            "let rv = window.ordecClient.resultViewers[0];" + script)
+
+    rv_js("rv._onViewSelected('slow()');")
+
+    # Progress message and bar appear.
+    WebDriverWait(web.driver, 10).until(lambda d:
+        rv_js("return rv.refreshStatus.textContent;").startswith("step"))
+    WebDriverWait(web.driver, 10).until(lambda d:
+        rv_js("return parseFloat(rv.refreshProgressFill.style.width) > 0;"))
+
+    # Cancel via the overlay's cancel button. (The transient "Cancelling…"
+    # label is not asserted: the cancelled terminal may arrive faster than
+    # the next poll.)
+    rv_js("rv.refreshCancel.click();")
+    WebDriverWait(web.driver, 10).until(lambda d:
+        rv_js("return rv.generationCancelled;"))
+    assert rv_js("return rv.refreshableText.textContent;") \
+        == "View generation cancelled."
+    web.wait_for_ready()  # no re-request of the cancelled view
+
+    # The overlay's Refresh button retries and the view now loads fully
+    # (result is a str, shown as preformatted Report).
+    rv_js("rv.resOverlayRefreshable.querySelector('button').click();")
+    WebDriverWait(web.driver, 30).until(lambda d:
+        rv_js("return rv.viewUpToDate;"))
+    assert "slow result" in rv_js("return rv.testInfo().html;")

@@ -19,7 +19,7 @@ Frontend module map
 ``main.js``
     Entry point: Golden Layout setup, toolbar, editor, opening/focusing result views, event-bus wiring for ``*:request-open`` events.
 ``client.js``
-    ``OrdecClient``: WebSocket connection, view list, sequential view requests, dispatch to result viewers.
+    ``OrdecClient``: WebSocket connection, view list, concurrent view requests (tracked per request id in ``inflight``), dispatch of view results and progress updates to result viewers.
 ``auth.js``
     Session/auth token management, HMAC verification of module/view query parameters in local mode.
 ``resultviewer.js``
@@ -44,9 +44,11 @@ All communication runs over one WebSocket (``/api/websocket``) with JSON message
 
 1. On connect, the client authenticates and submits the source: ``{msg: 'source', srctype, src, auth}`` (integrated mode, code from the browser editor) or ``{msg: 'localmodule', module, auth}`` (local mode, module on the server's filesystem).
 2. The server builds the cells, discovers all views (``discover_views``: every ``@generate`` method and ``@generate_func`` function reachable from the module) and answers with ``{msg: 'viewlist', views: [...]}`` — or ``{msg: 'exception', exception}`` if evaluation failed.
-3. For each result panel that has a view selected, the client requests ``{msg: 'getview', view: <view name>}``. Requests are strictly sequential (``reqPending`` flag): the next ``getview`` is sent only after the previous ``{msg: 'view', ...}`` response arrived.
-4. The server evaluates the view and responds ``{msg: 'view', view, type, data}``, where ``type`` selects the frontend view class and ``data`` is the output of the view's ``webdata()`` method. Errors during view generation are reported per-view via an ``exception`` field instead.
-5. In local mode, the server watches the source files with inotify and pushes ``{msg: 'localmodule_changed'}``, upon which the client reconnects (unless auto-refresh is disabled).
+3. For each result panel that has a view selected, the client requests ``{msg: 'getview', view: <view name>, req: <id>}``. ``req`` is a client-chosen id, unique per connection; multiple requests may be in flight at once (the client tracks them in the ``inflight`` map). The server hands each request to its *job runner* (``ordec/jobrunner.py``), which decides how many view generators run concurrently (``ordec -j N``, default 4; ``-j 0`` evaluates inline without progress/cancel support).
+4. While a view generates, the server may push ``{msg: 'viewprogress', req, view, status, fraction}`` messages (rate-limited to ~10/s): ``status`` is a message like ``"Transient simulation"``, ``fraction`` a value in [0, 1] for the progress bar or ``null`` if unknown. They come from ``progress()`` calls (``ordec/core/genrun.py``) inside the view generator; the ngspice batch runner emits them automatically during ``tran`` by watching the growing rawfile.
+5. The server answers every ``getview`` with exactly one terminal ``{msg: 'view', req, view, ...}`` message carrying either ``type`` + ``data`` (``type`` selects the frontend view class, ``data`` is the output of the view's ``webdata()`` method), an ``exception`` field (error during view generation), or ``cancelled: true``.
+6. The client can abort an in-flight generation with ``{msg: 'cancelview', req}`` (idempotent; unknown ids are ignored). Cancellation is cooperative with escalation (see ``ThreadedJobRunner.cancel``): cancel flag → kill of registered external-tool subprocesses (e.g. ngspice) → optional async-exception injection for runaway Python loops (disable by setting ``ordec.jobrunner.ASYNC_CANCEL_ENABLED`` to False). The terminal message of a cancelled request has ``cancelled: true``; the panel then shows a "View generation cancelled." overlay and is not auto-re-requested until the user refreshes it.
+7. In local mode, the server watches the source files with inotify and pushes ``{msg: 'localmodule_changed'}``, upon which the client reconnects (unless auto-refresh is disabled). Disconnecting cancels all in-flight generations of that connection, so the rebuild does not wait behind stale long-running simulations.
 
 View names are evaluated with ``eval()``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
