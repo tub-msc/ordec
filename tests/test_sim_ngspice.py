@@ -137,7 +137,20 @@ import threading
 import time
 from ordec.core import R
 from ordec.core.genrun import GenRun, GenCancelled
-from ordec.sim.ngspice import RawfileMonitor
+from ordec.sim.ngspice import RawfileMonitor, format_time
+
+
+@pytest.mark.parametrize("t, expected", [
+    (0.0, "0s"),
+    (2.5e-12, "2.5ps"),
+    (1.2345e-9, "1.235ns"),      # rounded to 4 significant digits
+    (0.0012345678901234, "1.235ms"),
+    (0.09999999999999999, "100ms"),  # float noise must not leak through
+    (1.5, "1.5s"),
+    (3.0, "3s"),                 # no stray trailing "." from R
+])
+def test_format_time(t, expected):
+    assert format_time(t) == expected
 
 
 def write_synthetic_rawfile(path, n_vars=3, times=(), is_complex=False,
@@ -174,25 +187,25 @@ def test_rawfile_monitor(tmp_path):
     assert monitor.poll() is None  # header only, no rows yet
 
     write_synthetic_rawfile(fn, times=(0.5,))
-    assert monitor.poll() == pytest.approx(0.25)
+    assert monitor.poll() == pytest.approx((0.25, 0.5))
 
     # Partial trailing row must not be interpreted as data.
     write_synthetic_rawfile(fn, times=(0.5, 1.0), truncate_tail=4)
-    assert monitor.poll() == pytest.approx(0.25)
+    assert monitor.poll() == pytest.approx((0.25, 0.5))
 
     write_synthetic_rawfile(fn, times=(0.5, 1.0))
-    assert monitor.poll() == pytest.approx(0.5)
+    assert monitor.poll() == pytest.approx((0.5, 1.0))
 
     # Fraction is clamped to 1.0 (tstart/roundoff can overshoot slightly).
     write_synthetic_rawfile(fn, times=(0.5, 1.0, 2.5))
-    assert monitor.poll() == 1.0
+    assert monitor.poll() == pytest.approx((1.0, 2.5))
 
 
 def test_rawfile_monitor_complex(tmp_path):
     fn = tmp_path / "sim.raw"
     monitor = RawfileMonitor(fn, R(4))
     write_synthetic_rawfile(fn, times=(1.0, 2.0), is_complex=True)
-    assert monitor.poll() == pytest.approx(0.5)
+    assert monitor.poll() == pytest.approx((0.5, 2.0))
 
 
 def test_ngspice_batch_tran_progress():
@@ -204,15 +217,18 @@ C1 out 0 1u
 .end
 """
     events = []
-    run = GenRun(on_progress=lambda s, f: events.append((s, f)))
+    run = GenRun(on_progress=lambda s, f, d: events.append((s, f, d)))
     with run.activate():
         sa = ngspice_batch(netlist, tran_tstop=R('500m'))
     assert len(sa.column("time")) > 1
-    fractions = [f for s, f in events if s == "Transient simulation"]
+    tran = [(f, d) for s, f, d in events if s == "Transient simulation"]
     # Sampling is wall-clock-driven: assert invariants, not counts.
-    assert len(fractions) >= 1
+    assert len(tran) >= 1
+    fractions = [f for f, d in tran]
     assert all(0.0 <= f <= 1.0 for f in fractions)
     assert fractions == sorted(fractions)
+    # Every update carries the simulated time against the total.
+    assert all(d.endswith(" / 500ms") for f, d in tran)
 
 
 def test_ngspice_batch_cancel():

@@ -183,6 +183,15 @@ class NgspiceVector(NamedTuple):
     rest: str
 
 
+def format_time(t: float) -> str:
+    """
+    Format a time in seconds for display, e.g. 0.0012345 -> "1.235ms".
+    Rounds to 4 significant digits and reuses R's SI suffixes; the
+    trailing "." that R appends to suffix-less numbers is dropped.
+    """
+    return str(R(float(f"{t:.4g}"))).rstrip('.') + 's'
+
+
 class RawfileMonitor:
     """Progress monitor for a binary rawfile that ngspice batch mode is
     still writing.
@@ -220,8 +229,11 @@ class RawfileMonitor:
         self.data_offset = m.end()
         return True
 
-    def poll(self) -> Optional[float]:
-        """Current progress as fraction of tstop, or None if unknown yet."""
+    def poll(self) -> Optional[tuple[float, float]]:
+        """
+        Simulation progress as (fraction of tstop, simulated time in
+        seconds), or None if not known yet.
+        """
         if self.data_offset is None and not self._parse_header():
             return None
         if self.tstop <= 0:
@@ -239,7 +251,7 @@ class RawfileMonitor:
         if len(buf) < 8:
             return None
         t_last = struct.unpack("<d", buf)[0]
-        return min(t_last / self.tstop, 1.0)
+        return min(t_last / self.tstop, 1.0), t_last
 
 
 
@@ -321,9 +333,12 @@ def ngspice_batch(netlist: str, spiceinit_commands: list[str] | None = None,
                         pass
                     checkpoint()
                     if monitor is not None:
-                        frac = monitor.poll()
-                        if frac is not None:
-                            progress("Transient simulation", frac)
+                        polled = monitor.poll()
+                        if polled is not None:
+                            frac, t_now = polled
+                            progress("Transient simulation", frac,
+                                detail=f"{format_time(t_now)} / "
+                                    f"{format_time(monitor.tstop)}")
         finally:
             # On cancellation, make sure ngspice is dead before the
             # temp dir is cleaned up.

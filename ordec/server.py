@@ -323,11 +323,13 @@ def progress_sender(send_msg, req, view_name, min_interval=0.1):
     """
     Returns an on_progress callback for a view-generation job that sends
     viewprogress messages, rate-limited to one per min_interval. Status
-    *changes* always pass so no phase transition is lost.
+    *changes* always pass so no phase transition is lost. detail is not
+    part of that check: it is expected to change on every update, and
+    doing so must not bypass the rate limit.
     """
     last_time = 0.0
     last_status = None
-    def on_progress(status, fraction):
+    def on_progress(status, fraction, detail=None):
         nonlocal last_time, last_status
         now = time.monotonic()
         if status == last_status and now - last_time < min_interval:
@@ -340,6 +342,7 @@ def progress_sender(send_msg, req, view_name, min_interval=0.1):
             'view': view_name,
             'status': status,
             'fraction': fraction,
+            'detail': detail,
         })
     return on_progress
 

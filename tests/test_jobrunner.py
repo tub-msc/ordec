@@ -18,7 +18,7 @@ class Collector:
         self.result = None
         self.cancelled = None
 
-    def on_progress(self, status, fraction):
+    def on_progress(self, status, fraction, detail=None):
         self.progress.append((status, fraction))
 
     def on_done(self, job, result, cancelled):

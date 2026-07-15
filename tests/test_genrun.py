@@ -20,11 +20,22 @@ def test_noop_without_active_run():
 
 def test_progress_reported():
     events = []
-    run = GenRun(on_progress=lambda s, f: events.append((s, f)))
+    run = GenRun(on_progress=lambda s, f, d: events.append((s, f)))
     with run.activate():
         progress("step 1")
         progress("step 2", 0.5)
     assert events == [("step 1", None), ("step 2", 0.5)]
+
+def test_progress_detail_reported():
+    events = []
+    run = GenRun(on_progress=lambda s, f, d: events.append((s, f, d)))
+    with run.activate():
+        progress("Transient simulation", 0.25, detail="1.2ms / 5ms")
+        progress("plain")
+    assert events == [
+        ("Transient simulation", 0.25, "1.2ms / 5ms"),
+        ("plain", None, None),
+    ]
 
 def test_progress_without_sink():
     run = GenRun()
@@ -41,7 +52,7 @@ def test_checkpoint_raises_after_cancel():
 
 def test_progress_raises_after_cancel():
     events = []
-    run = GenRun(on_progress=lambda s, f: events.append((s, f)))
+    run = GenRun(on_progress=lambda s, f, d: events.append((s, f)))
     with run.activate():
         run.request_cancel()
         with pytest.raises(GenCancelled):
@@ -53,7 +64,7 @@ def test_cancelled_is_not_exception_subclass():
     assert not issubclass(GenCancelled, Exception)
 
 def test_contextvar_reset_after_activate():
-    run = GenRun(on_progress=lambda s, f: pytest.fail("run leaked"))
+    run = GenRun(on_progress=lambda s, f, d: pytest.fail("run leaked"))
     with run.activate():
         pass
     progress("outside")  # no-op again
@@ -148,7 +159,7 @@ def test_noop_wait_without_active_run():
 def test_run_is_thread_local():
     # A run activated in one thread must not leak into another thread.
     events = []
-    run = GenRun(on_progress=lambda s, f: events.append(s))
+    run = GenRun(on_progress=lambda s, f, d: events.append(s))
     barrier = threading.Barrier(2)
     def other_thread():
         barrier.wait()

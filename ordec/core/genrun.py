@@ -43,7 +43,8 @@ class GenRun:
     :meth:`request_cancel`.
     """
     def __init__(self, on_progress=None):
-        self.on_progress = on_progress  # callable(status: str, fraction: float|None)
+        # callable(status: str, fraction: float|None, detail: str|None)
+        self.on_progress = on_progress
         self.cancel_event = threading.Event()
         self._procs = {}  # id(popen) -> popen
         self._wakeups = set()  # threading.Events to set on cancellation
@@ -51,11 +52,11 @@ class GenRun:
 
     # -- generator side --------------------------------------------------
 
-    def progress(self, status: str, fraction: float=None):
+    def progress(self, status: str, fraction: float=None, detail: str=None):
         """Report progress; doubles as a cancellation checkpoint."""
         self.checkpoint()
         if self.on_progress:
-            self.on_progress(status, fraction)
+            self.on_progress(status, fraction, detail)
 
     def checkpoint(self):
         """Raise GenCancelled if cancellation has been requested."""
@@ -124,16 +125,19 @@ class GenRun:
                 ev.set()
 
 @public
-def progress(status: str, fraction: float=None):
+def progress(status: str, fraction: float=None, detail: str=None):
     """
     Report progress from within a view generator. ``fraction`` (0.0-1.0),
     if given, drives a progress bar in the web UI; otherwise only the
-    status message is shown. Doubles as a cancellation :func:`checkpoint`.
-    No-op when no view-generation run is active.
+    status message is shown. ``detail`` is free-form text shown next to the
+    bar, for values that change on every update (e.g. "1.2ms / 3s"); unlike
+    ``status`` it does not defeat the rate limiting of progress messages.
+    Doubles as a cancellation :func:`checkpoint`. No-op when no
+    view-generation run is active.
     """
     run = _run_var.get()
     if run is not None:
-        run.progress(status, fraction)
+        run.progress(status, fraction, detail)
 
 @public
 def checkpoint():

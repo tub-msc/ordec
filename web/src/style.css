@@ -590,6 +590,16 @@ body.theme-dark .resviewhead button:hover {
     min-width: 4ch;
     text-align: right;
 }
+/* Free-form extra info next to the bar, e.g. "1.35ms / 3s" during a
+   transient simulation. Shrinks away before the bar does. */
+.refresh-detail {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.75;
+}
 /* Same shape as the DRC viewer's "Deselect" button, recoloured to the
    overlay's own background and border (foreground) colours. */
 .refreshable button,

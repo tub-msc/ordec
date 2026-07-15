@@ -1110,7 +1110,7 @@ export class ResultViewer {
             <div class="resview">
                 <div class="resviewhead"></div>
                 <div class="reswrapper">
-                    <div class="refreshing"><span class="refresh-spinner" aria-hidden="true"></span><span class="refresh-status">Refreshing view…</span><span class="refresh-progress"><span class="refresh-progress-fill"></span></span><span class="refresh-pct"></span><button class="refresh-cancel" title="Cancel view generation">✕</button></div>
+                    <div class="refreshing"><span class="refresh-spinner" aria-hidden="true"></span><span class="refresh-status">Refreshing view…</span><span class="refresh-progress"><span class="refresh-progress-fill"></span></span><span class="refresh-pct"></span><span class="refresh-detail"></span><button class="refresh-cancel" title="Cancel view generation">✕</button></div>
                     <div class="refreshable"><button><svg class="refresh-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8 A5 5 0 1 1 11.5 4.5"/><path d="M11.5 1.5 L11.5 4.5 L8.5 4.5"/></svg>Refresh</button><span class="refreshable-text">View is out of date.</span></div>
                     <div class="rescontent" tabindex="1"></div>
                     <div class="resexception"></div>
@@ -1128,6 +1128,7 @@ export class ResultViewer {
         this.refreshProgress = container.element.querySelector(".refresh-progress");
         this.refreshProgressFill = container.element.querySelector(".refresh-progress-fill");
         this.refreshPct = container.element.querySelector(".refresh-pct");
+        this.refreshDetail = container.element.querySelector(".refresh-detail");
         this.refreshCancel = container.element.querySelector(".refresh-cancel");
         this.refreshableText = container.element.querySelector(".refreshable-text");
         container.element.querySelector(".refreshable button").onclick =
@@ -1223,6 +1224,7 @@ export class ResultViewer {
             this.refreshStatus.textContent = 'Refreshing view…';
             this.refreshProgress.style.display = 'none';
             this.refreshPct.textContent = '';
+            this.refreshDetail.textContent = '';
             this.refreshCancel.disabled = false;
         }
         // When a status bar is shown it occupies a fixed-height strip at the top
@@ -1238,6 +1240,7 @@ export class ResultViewer {
             this.refreshProgressFill.style.width = (msg.fraction * 100) + '%';
             this.refreshPct.textContent = Math.round(msg.fraction * 100) + '%';
         }
+        this.refreshDetail.textContent = msg.detail ?? '';
     }
 
     requestsView() {
