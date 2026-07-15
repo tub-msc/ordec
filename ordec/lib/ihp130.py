@@ -364,14 +364,24 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
     # the solved geometry; defer the undefined-attribute check until then.
     s.solve(allow_undefined=True)
 
+    # Cnt.c requires 0.07 um Activ enclosure of Cont, which the two sd
+    # variants of add_sd() satisfy differently:
+    # - W >= 300: the strip spans the full Activ height, so the enclosure
+    #   must be kept free here and bounds the row count.
+    # - W < 300: the strip is 260 high, and the enclosure comes from the
+    #   300x300 activ_ext patch centered on it. The single centered via is
+    #   then enclosed by 70 on all sides regardless of the strip margin.
+    # In x the strip is exactly one via wide in both variants, so the Cont
+    # sits flush with it (margin 0, which also yields cols=1 on its own) and
+    # the Activ enclosure comes from activ/activ_ext.
+    margin_y = 70 if W >= 300 else 0
     for i in range(num_gates + 1):
-        makevias(l, l.sd[i].rect, layers.Cont, 
+        makevias(l, l.sd[i].rect, layers.Cont,
             size=Vec2I(160, 160),
             spacing=Vec2I(180, 180),
-            margin=Vec2I(50, 50),
-            cols=1,
+            margin=Vec2I(0, margin_y),
             )
-        
+
     return l
 
 
