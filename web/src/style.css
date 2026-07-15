@@ -567,9 +567,43 @@ body.theme-dark .resviewhead button:hover {
 @keyframes refresh-spin {
     to { transform: rotate(360deg); }
 }
+.refresh-status {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Determinate progress bar, shown once a view generator reports a fraction. */
+.refresh-progress {
+    flex: 0 1 140px;
+    height: 6px;
+    border: 1px solid var(--overlay-fg);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.refresh-progress-fill {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--overlay-fg);
+    transition: width 0.2s linear;
+}
+.refresh-pct {
+    min-width: 4ch;
+    text-align: right;
+}
+/* Free-form extra info next to the bar, e.g. "1.35ms / 3s" during a
+   transient simulation. Shrinks away before the bar does. */
+.refresh-detail {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.75;
+}
 /* Same shape as the DRC viewer's "Deselect" button, recoloured to the
    overlay's own background and border (foreground) colours. */
-.refreshable button {
+.refreshable button,
+.refresh-cancel {
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -580,8 +614,17 @@ body.theme-dark .resviewhead button:hover {
     background: var(--overlay-bg);
     color: var(--overlay-fg);
 }
-.refreshable button:hover {
+.refreshable button:hover,
+.refresh-cancel:hover:not(:disabled) {
     background: color-mix(in srgb, var(--overlay-fg) 12%, var(--overlay-bg));
+}
+.refresh-cancel {
+    margin-left: auto;
+    padding: 2px 6px;
+}
+.refresh-cancel:disabled {
+    opacity: 0.5;
+    cursor: default;
 }
 .refresh-icon {
     width: 13px;

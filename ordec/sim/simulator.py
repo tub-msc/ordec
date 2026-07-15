@@ -85,6 +85,7 @@ class SimulatorBase:
 
         self.directory = Directory()
 
+        progress("Netlisting")
         self.netlister = Netlister(
             self.directory, enable_savecurrents=enable_savecurrents)
         self.netlister.netlist_hier(self.top)
@@ -246,12 +247,13 @@ class SimulatorNgspiceBatch(SimulatorBase):
         for directive in self._param_save_directives():
             self.netlister.add(f".save {directive}")
 
-    def _run(self) -> SimArray:
+    def _run(self, tran_tstop=None) -> SimArray:
         commands, env = self.collect_ngspice_setup()
         return ngspice_batch(
             self.netlister.out(),
             spiceinit_commands=commands,
             env=env,
+            tran_tstop=tran_tstop,
         )
 
     def op(self, save_params=False):
@@ -290,7 +292,7 @@ class SimulatorNgspiceBatch(SimulatorBase):
         if uic:
             args.append("uic")
         self.netlister.add(".tran", *args)
-        self._store_results(self._run())
+        self._store_results(self._run(tran_tstop=R(tstop)))
 
     def ac(self, scheme: Literal["dec", "oct", "lin"], n: int,
            fstart: R, fstop: R, save_params=False):

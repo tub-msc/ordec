@@ -1110,8 +1110,8 @@ export class ResultViewer {
             <div class="resview">
                 <div class="resviewhead"></div>
                 <div class="reswrapper">
-                    <div class="refreshing"><span class="refresh-spinner" aria-hidden="true"></span><span>Refreshing view…</span></div>
-                    <div class="refreshable"><button><svg class="refresh-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8 A5 5 0 1 1 11.5 4.5"/><path d="M11.5 1.5 L11.5 4.5 L8.5 4.5"/></svg>Refresh</button><span>View is out of date.</span></div>
+                    <div class="refreshing"><span class="refresh-spinner" aria-hidden="true"></span><span class="refresh-status">Refreshing view…</span><span class="refresh-progress"><span class="refresh-progress-fill"></span></span><span class="refresh-pct"></span><span class="refresh-detail"></span><button class="refresh-cancel" title="Cancel view generation">✕</button></div>
+                    <div class="refreshable"><button><svg class="refresh-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8 A5 5 0 1 1 11.5 4.5"/><path d="M11.5 1.5 L11.5 4.5 L8.5 4.5"/></svg>Refresh</button><span class="refreshable-text">View is out of date.</span></div>
                     <div class="rescontent" tabindex="1"></div>
                     <div class="resexception"></div>
                     <div class="resview-empty">Select a view from the dropdown above</div>
@@ -1124,8 +1124,19 @@ export class ResultViewer {
         this.resizeWithContainerAutomatically = true;
         this.resOverlayRefreshing = container.element.querySelector(".refreshing");
         this.resOverlayRefreshable = container.element.querySelector(".refreshable");
+        this.refreshStatus = container.element.querySelector(".refresh-status");
+        this.refreshProgress = container.element.querySelector(".refresh-progress");
+        this.refreshProgressFill = container.element.querySelector(".refresh-progress-fill");
+        this.refreshPct = container.element.querySelector(".refresh-pct");
+        this.refreshDetail = container.element.querySelector(".refresh-detail");
+        this.refreshCancel = container.element.querySelector(".refresh-cancel");
+        this.refreshableText = container.element.querySelector(".refreshable-text");
         container.element.querySelector(".refreshable button").onclick =
             () => this.refreshOnClick();
+        this.refreshCancel.onclick = () => this.cancelOnClick();
+        // Set when the server reports a view generation as cancelled;
+        // suppresses auto-refresh until the user asks for the view again.
+        this.generationCancelled = false;
         this.showRefreshOverlay(null);
         this.resContent = container.element.querySelector(".rescontent");
         this.resWrapper = container.element.querySelector(".reswrapper");
@@ -1190,25 +1201,54 @@ export class ResultViewer {
 
     refreshOnClick() {
         this.refreshRequestedByUser = true;
+        this.generationCancelled = false;
         this.showRefreshOverlay('refreshing');
         if (this.courseMode) {
             // Running the (expensive) check: reflect it in the course marker.
             this.courseController.onReportPending();
         }
-        this.client.requestNextView();
+        this.client.requestViews();
+    }
+
+    cancelOnClick() {
+        this.refreshStatus.textContent = 'Cancelling…';
+        this.refreshCancel.disabled = true;
+        this.client.cancelView(this);
     }
 
     showRefreshOverlay(config) {
         this.resOverlayRefreshable.style.display = (config == 'refreshable')?'':'none';
         this.resOverlayRefreshing.style.display = (config == 'refreshing')?'':'none';
+        if (config == 'refreshing') {
+            // Reset progress state; updateProgress() fills it in.
+            this.refreshStatus.textContent = 'Refreshing view…';
+            this.refreshProgress.style.display = 'none';
+            this.refreshPct.textContent = '';
+            this.refreshDetail.textContent = '';
+            this.refreshCancel.disabled = false;
+        }
         // When a status bar is shown it occupies a fixed-height strip at the top
         // of the view; this class insets the content below it (see style.css).
         this.resOverlayRefreshing.parentElement.classList.toggle(
             'refreshbar-active', config == 'refreshing' || config == 'refreshable');
     }
 
+    updateProgress(msg) {
+        this.refreshStatus.textContent = msg.status;
+        if (msg.fraction != null) {
+            this.refreshProgress.style.display = '';
+            this.refreshProgressFill.style.width = (msg.fraction * 100) + '%';
+            this.refreshPct.textContent = Math.round(msg.fraction * 100) + '%';
+        }
+        this.refreshDetail.textContent = msg.detail ?? '';
+    }
+
     requestsView() {
         if(!this.viewSelected) {
+            return false;
+        }
+        if (this.generationCancelled && !this.refreshRequestedByUser) {
+            // Don't auto-re-request a view the user just cancelled.
             return false;
         }
         if (this.directView) {
@@ -1257,7 +1297,7 @@ export class ResultViewer {
         this.resContent.focus();
         this.view?.destroy?.();
         this.view = null;
-        this.client.requestNextView();
+        this.client.requestViews();
     }
 
     _onViewDeselected() {
@@ -1275,6 +1315,7 @@ export class ResultViewer {
     invalidate() {
         this.viewUpToDate = false;
         this.refreshRequestedByUser = false;
+        this.generationCancelled = false;
 
         this.updateOverlay();
     }
@@ -1282,9 +1323,13 @@ export class ResultViewer {
     updateOverlay() {
         if((!this.viewSelected) || this.viewUpToDate) {
             this.showRefreshOverlay(null);
+        } else if(this.generationCancelled) {
+            this.refreshableText.textContent = 'View generation cancelled.';
+            this.showRefreshOverlay("refreshable");
         } else if(this.viewInfo().auto_refresh && !ResultViewer.refreshAll) {
             this.showRefreshOverlay("refreshing");
         } else {
+            this.refreshableText.textContent = 'View is out of date.';
             this.showRefreshOverlay("refreshable");
         }
     }
@@ -1401,6 +1446,20 @@ export class ResultViewer {
     }
 
     updateView(msg) {
+        if (msg.cancelled) {
+            // Terminal state of a cancelled generation: the view stays out
+            // of date, but is not re-requested until the user asks for it
+            // (via the Refresh button of the overlay shown here).
+            this.viewUpToDate = false;
+            this.refreshRequestedByUser = false;
+            this.generationCancelled = true;
+            this.updateOverlay();
+            if (this.courseMode) {
+                this.courseController.onReportUnchecked();
+            }
+            return;
+        }
+
         //this.resContent.replaceChildren();
         this.viewUpToDate = true;
         this.showRefreshOverlay(null);

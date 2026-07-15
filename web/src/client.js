@@ -6,7 +6,11 @@ import { session } from './auth.js';
 export class OrdecClient {
     constructor(srctype, resultViewers, setStatus) {
         this.views = new Map();
-        this.reqPending = false;
+        // In-flight view requests: req id -> ResultViewer. Multiple requests
+        // may be in flight at once; the server's pass manager decides how
+        // many run concurrently.
+        this.inflight = new Map();
+        this.reqCounter = 0;
         this.srctype = srctype;
         this.src = ""; // set by Editor from the outside
         // Course mode: epilogue source binding the lesson's check as the
@@ -26,7 +30,7 @@ export class OrdecClient {
         this.resultViewers = resultViewers;
         // Only request views after viewlist received (views.size > 0) to avoid race with initial load
         if (this.sock && this.views.size > 0) {
-            this.requestNextView();
+            this.requestViews();
         }
     }
 
@@ -45,7 +49,7 @@ export class OrdecClient {
         this.sock.onmessage = (ev) => this.wsOnMessage(ev);
         this.sock.onclose = (ev) => this.wsOnClose(ev);
         this.sock.onerror = (ev) => this.wsOnError(ev);
-        this.reqPending = false;
+        this.inflight.clear();
     }
 
     wsOnMessage(messageEvent) {
@@ -58,22 +62,25 @@ export class OrdecClient {
                 this.views.set(view.name, view);
             });
             this.resultViewers.forEach(rv => rv.updateViewListAndException());
-            this.requestNextView();
+            this.requestViews();
         } else if (msg['msg'] == 'exception') {
             this.exception = msg['exception'];
             this.setStatus('exception');
             this.resultViewers.forEach(rv => rv.updateViewListAndException());
-            this.requestNextView();
         } else if (msg['msg'] == 'view') {
-            // Always clear reqPending and advance the queue, even if a viewer
-            // throws while rendering: otherwise one broken view (e.g. a report
-            // probe) would wedge the request queue for all viewers.
+            // Terminal message: exactly one per request. Always remove the
+            // request and advance, even if a viewer throws while rendering:
+            // otherwise one broken view (e.g. a report probe) would wedge
+            // the requests of all viewers.
+            const rv = this.inflight.get(msg['req']);
+            this.inflight.delete(msg['req']);
             try {
-                this.nextView.updateView(msg);
+                rv?.updateView(msg);
             } finally {
-                this.reqPending = false;
-                this.requestNextView();
+                this.requestViews();
             }
+        } else if (msg['msg'] == 'viewprogress') {
+            this.inflight.get(msg['req'])?.updateProgress(msg);
         } else if (msg['msg'] == 'localmodule_changed') {
             if (this.autoRefreshEnabled) {
                 console.log("ordecClient.connect() triggered by localmodule_changed message.");
@@ -85,10 +92,10 @@ export class OrdecClient {
     }
 
     wsOnClose(closeEvent) {
-        // Any in-flight request is gone once the socket closes. Reset the
-        // flag so a reconnect (or a late requestNextView call before reconnect)
-        // doesn't get stuck waiting for a response that will never arrive.
-        this.reqPending = false;
+        // All in-flight requests are gone once the socket closes. Reset so a
+        // reconnect doesn't get stuck waiting for responses that will never
+        // arrive.
+        this.inflight.clear();
         if (!this.exception) {
             //this.exception = "Websocket disconnected.";
             this.setStatus('disconnected');
@@ -97,7 +104,7 @@ export class OrdecClient {
 
     wsOnError(errorEvent) {
         console.error("WebSocket error:", errorEvent);
-        this.reqPending = false;
+        this.inflight.clear();
         if (!this.exception) {
             this.setStatus('disconnected');
         }
@@ -128,31 +135,46 @@ export class OrdecClient {
         this.sock.send(JSON.stringify(msg));
     }
 
-    requestNextView() {
-        if (this.reqPending || this.exception) {
-            return;
+    requestViews() {
+        // Dispatch a request for every viewer that wants one and has none in
+        // flight yet. Unlike the previous one-at-a-time protocol, requests
+        // are not serialized; the server queues them in its pass manager.
+        if (!this.exception && this.sock && this.sock.readyState == WebSocket.OPEN) {
+            this.resultViewers.forEach(rv => {
+                if (this.inflight.has(rv.currentReq) || !rv.requestsView()) {
+                    return;
+                }
+                const req = ++this.reqCounter;
+                rv.currentReq = req;
+                this.inflight.set(req, rv);
+                this.sock.send(JSON.stringify({
+                    msg: 'getview',
+                    view: rv.viewSelected,
+                    req: req,
+                }));
+            });
         }
+        this.updateStatus();
+    }
 
-        this.nextView = null;
-        this.resultViewers.some((rv) => {
-            if (rv.requestsView()) {
-                this.nextView = rv;
-                return true; // = "break;" in some()
-            }
-        })
-
-        if (this.nextView) {
-            //console.log('next view', nextView.viewRequested)
-            this.setStatus('busy');
+    cancelView(rv) {
+        // Idempotent; the in-flight entry is only removed by the terminal
+        // 'view' message (which a cancel always produces).
+        if (this.inflight.has(rv.currentReq)) {
             this.sock.send(JSON.stringify({
-                msg: 'getview',
-                view: this.nextView.viewSelected,
+                msg: 'cancelview',
+                req: rv.currentReq,
             }));
-            this.reqPending = true;
+        }
+    }
+
+    updateStatus() {
+        if (this.exception) {
+            this.setStatus('exception');
+        } else if (this.inflight.size > 0) {
+            this.setStatus('busy');
         } else {
-            if (!this.exception) {
-                this.setStatus('ready');
-            }
+            this.setStatus('ready');
         }
     }
 }

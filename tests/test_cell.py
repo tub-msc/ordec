@@ -104,3 +104,127 @@ def test_param_inst():
 
     with pytest.raises(ParameterError, match="has no parameter"):
         A(l=1, w=1, x=123)
+
+# -- Concurrency semantics of Future-based view caching ----------------------
+
+import threading
+import time
+from ordec.core.genrun import GenRun
+
+def test_viewgen_concurrent_waiter_gets_result():
+    calls = []
+    release = threading.Event()
+
+    class MyCell(Cell):
+        @generate
+        def slow(self):
+            calls.append(threading.get_ident())
+            release.wait(timeout=10)
+            return "done"
+
+    results = []
+    def worker():
+        results.append(MyCell().slow)
+    threads = [threading.Thread(target=worker) for _ in range(3)]
+    for t in threads:
+        t.start()
+    time.sleep(0.2)  # let one thread become owner, others waiters
+    release.set()
+    for t in threads:
+        t.join()
+    assert results == ["done"] * 3
+    assert len(calls) == 1  # generated exactly once
+
+def test_viewgen_exception_not_cached_and_seen_by_waiter():
+    calls = []
+    release = threading.Event()
+
+    class MyCell(Cell):
+        @generate
+        def failing(self):
+            calls.append(None)
+            if len(calls) == 1:
+                release.wait(timeout=10)
+                raise ValueError("generation failed")
+            return "recovered"
+
+    errors = []
+    def worker():
+        try:
+            MyCell().failing
+        except ValueError as e:
+            errors.append(e)
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for t in threads:
+        t.start()
+    time.sleep(0.2)
+    release.set()
+    for t in threads:
+        t.join()
+    # Ordinary exceptions propagate to owner and waiter alike, without the
+    # waiter re-running the generator.
+    assert len(errors) == 2
+    assert len(calls) == 1
+    assert MyCell().failing == "recovered"  # exception was not cached
+
+def test_viewgen_cancelled_owner_promotes_waiter():
+    owner_started = threading.Event()
+    owner_run = GenRun()
+    calls = []
+
+    class MyCell(Cell):
+        @generate
+        def view(self):
+            calls.append(None)
+            if len(calls) == 1:
+                owner_started.set()
+                while True:  # simulates long work; exits via checkpoint
+                    checkpoint()
+                    time.sleep(0.01)
+            return "from retry"
+
+    owner_result = []
+    def owner():
+        with owner_run.activate():
+            try:
+                MyCell().view
+            except GenCancelled:
+                owner_result.append("cancelled")
+    waiter_result = []
+    def waiter():
+        owner_started.wait(timeout=10)
+        waiter_result.append(MyCell().view)
+
+    t1 = threading.Thread(target=owner)
+    t2 = threading.Thread(target=waiter)
+    t1.start()
+    t2.start()
+    owner_started.wait(timeout=10)
+    time.sleep(0.2)  # let the waiter start waiting on the owner's Future
+    owner_run.request_cancel()
+    t1.join()
+    t2.join()
+    assert owner_result == ["cancelled"]
+    assert waiter_result == ["from retry"]  # waiter retried as owner
+    assert len(calls) == 2
+
+def test_viewgen_recursive_evaluation_raises():
+    class MyCell(Cell):
+        @generate
+        def selfref(self):
+            return MyCell().selfref
+
+    with pytest.raises(RuntimeError, match="[Rr]ecursive"):
+        MyCell().selfref
+
+def test_generate_func_caches_once():
+    calls = []
+
+    @generate_func
+    def myview():
+        calls.append(None)
+        return "value"
+
+    assert myview() == "value"
+    assert myview() == "value"
+    assert len(calls) == 1

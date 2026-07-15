@@ -85,13 +85,14 @@ import inotify_simple
 from websockets.sync.server import serve
 from websockets.http11 import Request, Response
 from websockets.datastructures import Headers
-from websockets.exceptions import ConnectionClosedOK
+from websockets.exceptions import ConnectionClosed, ConnectionClosedOK
 
 from . import importer, language
 from .version import version, doc_url
 from .core import Cell, generate, generate_func, SubgraphRoot
 from .language import compile_ord
 from .extlibrary import ExtLibrary
+from .jobrunner import ThreadedJobRunner
 
 RELOAD_PROTECTED_MODULE_PREFIXES = (
     "numpy",
@@ -318,6 +319,33 @@ def is_internal_frame(filename):
         or (filename.startswith('<') and filename != '<webeditor>')
         or 'importlib' in filename)
 
+def progress_sender(send_msg, req, view_name, min_interval=0.1):
+    """
+    Returns an on_progress callback for a view-generation job that sends
+    viewprogress messages, rate-limited to one per min_interval. Status
+    *changes* always pass so no phase transition is lost. detail is not
+    part of that check: it is expected to change on every update, and
+    doing so must not bypass the rate limit.
+    """
+    last_time = 0.0
+    last_status = None
+    def on_progress(status, fraction, detail=None):
+        nonlocal last_time, last_status
+        now = time.monotonic()
+        if status == last_status and now - last_time < min_interval:
+            return
+        last_time = now
+        last_status = status
+        send_msg({
+            'msg': 'viewprogress',
+            'req': req,
+            'view': view_name,
+            'status': status,
+            'fraction': fraction,
+            'detail': detail,
+        })
+    return on_progress
+
 def format_user_exception(exc):
     """Format exception for the web UI, keeping only user-relevant frames."""
     all_frames = traceback.extract_tb(exc.__traceback__)
@@ -331,9 +359,10 @@ def format_user_exception(exc):
     return ''.join(parts)
 
 class ConnectionHandler:
-    def __init__(self, key, sysmodules_orig):
+    def __init__(self, key, sysmodules_orig, jobrunner=None):
         self.sysmodules_orig = set(sysmodules_orig.keys())
         self.key = key
+        self.jobrunner = jobrunner or ThreadedJobRunner(4)
         self.import_lock = RWLock()
         # import_lock makes sure that there is never more than one thread in the
         # initial build_cells / build_localmodule phase and that during this
@@ -513,20 +542,75 @@ class ConnectionHandler:
             watch_thread = threading.Thread(target=background_inotify,
                 args=(watch_files, pipe_inotify_abort_r, websocket, websocket_lock), daemon=True)
             watch_thread.start()
+        def send_msg(payload):
+            with websocket_lock:
+                try:
+                    websocket.send(json.dumps(payload))
+                except ConnectionClosed:
+                    pass  # late progress/terminal after disconnect
+
+        # In-flight view-generation jobs of this connection: req id -> Job.
+        # Entries are inserted as None before submit so that an on_done
+        # firing during submit (InlineJobRunner) pops the key first and
+        # the subsequent conditional insert leaves no stale entry behind.
+        jobs = {}
+        jobs_lock = threading.Lock()
+
+        def submit_view_job(req, view_name):
+            def on_done(job, result, cancelled):
+                with jobs_lock:
+                    jobs.pop(req, None)
+                # A cancel that kills an external tool subprocess surfaces
+                # as an ordinary exception in query_view; report those as
+                # cancelled, too. A view that completed successfully
+                # despite cancellation is sent normally (it is cached).
+                if cancelled or (job.run.cancel_event.is_set()
+                        and (result is None or 'exception' in result)):
+                    result = {'msg': 'view', 'view': view_name,
+                        'cancelled': True}
+                elif result is None:
+                    # Job crashed outside query_view (already logged).
+                    result = {'msg': 'view', 'view': view_name,
+                        'exception': 'internal error during view generation'}
+                send_msg(dict(result, req=req))
+
+            with jobs_lock:
+                jobs[req] = None
+            job = self.jobrunner.submit(
+                lambda: self.query_view(view_name, conn_globals),
+                on_progress=progress_sender(send_msg, req, view_name),
+                on_done=on_done)
+            with jobs_lock:
+                if req in jobs:
+                    jobs[req] = job
+
         try:
             for msg_raw in websocket:
                 msg = json.loads(msg_raw)
-                if msg.get('msg') != 'getview':
-                    raise ValueError(f"unexpected message type: {msg.get('msg')!r}")
-                try:
-                    view_name = msg['view']
-                except KeyError:
-                    raise ValueError("getview message missing 'view' field")
-
-                msg_ret = self.query_view(view_name, conn_globals)
-                with websocket_lock:
-                    websocket.send(json.dumps(msg_ret))
+                msg_type = msg.get('msg')
+                if msg_type == 'getview':
+                    try:
+                        view_name = msg['view']
+                        req = msg['req']
+                    except KeyError as e:
+                        raise ValueError(f"getview message missing key {e}")
+                    submit_view_job(req, view_name)
+                elif msg_type == 'cancelview':
+                    with jobs_lock:
+                        job = jobs.get(msg.get('req'))
+                    if job is not None:
+                        self.jobrunner.cancel(job)
+                else:
+                    raise ValueError(f"unexpected message type: {msg_type!r}")
         finally:
+            # Cancel jobs the client no longer waits for. This matters for
+            # the local-mode reload flow: the client reconnects on
+            # localmodule_changed, and the rebuild's import_lock.write()
+            # must not wait behind a stale long-running generation.
+            with jobs_lock:
+                live_jobs = [j for j in jobs.values() if j is not None]
+            for job in live_jobs:
+                self.jobrunner.cancel(job)
             if watch_files:
                 pipe_inotify_abort_w.write("abort!")
                 pipe_inotify_abort_w.flush()
@@ -805,6 +889,7 @@ def main():
     parser.add_argument('-b', '--backend-only', action='store_true', help="Serve backend only. Requires a separate server (e.g. Vite) to serve the frontend.")
     parser.add_argument('-n', '--no-browser', action='store_true', help="Show URL, but do not launch browser.")
     parser.add_argument('-m', '--module', help="Open the specified module from the local file system (local mode). Furthermore, a specific view can be preselected as MODULE:VIEW.")
+    parser.add_argument('-j', '--jobs', default=4, type=int, help="Maximum number of concurrently generated views (default 4). With 0, views are generated inline in the connection handler (no progress reporting or cancellation).")
     parser.add_argument('--url-authority', help="Use provided URL authority part (host:port) instead values of --hostname and --port for printed / opened URL.")
     parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {version}')
 
@@ -860,11 +945,18 @@ def main():
     # to terminate the whole thing with a single Ctrl+C.
     # A future version of the websockets library might make this workaround
     # unnecessary.
+    if args.jobs > 0:
+        jobrunner = ThreadedJobRunner(args.jobs)
+    else:
+        from .jobrunner import InlineJobRunner
+        jobrunner = InlineJobRunner()
+
     startup_queue = queue.Queue(maxsize=1)
     server_queue = queue.Queue(maxsize=1)
     thread = threading.Thread(
         target=server_thread,
         args=(hostname, port, static_handler, key, startup_queue, server_queue),
+        kwargs={'jobrunner': jobrunner},
         daemon=True,
     )
     thread.start()
@@ -898,8 +990,8 @@ def main():
         if launch_html:
             launch_html.close() # Deletes the temporary file.
 
-def server_thread(hostname, port, static_handler, key, startup_queue, server_queue=None):
-    c = ConnectionHandler(key=key, sysmodules_orig=sys.modules)
+def server_thread(hostname, port, static_handler, key, startup_queue, server_queue=None, jobrunner=None):
+    c = ConnectionHandler(key=key, sysmodules_orig=sys.modules, jobrunner=jobrunner)
     startup_notified = False
     try:
         with serve(c.handle_connection, hostname, port, process_request=static_handler.process_request) as server:
