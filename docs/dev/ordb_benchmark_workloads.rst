@@ -117,7 +117,7 @@ inserted under names ``p0..p{K-1}`` (own txn each, one NPath each); P polys
 y=rand(1000))`` (own txn each); poly layer = rand(8); freeze. All M frozen
 subgraphs are retained. Draw order per poly: layer, then per vertex x, y.
 
-Params (default): M=1000, K=8, P=6, V=5. small: M=200. large: M=5000. smoke:
+Params (default): M=200, K=8, P=6, V=5. small: M=100. large: M=5000. smoke:
 M=5, K=4, P=2, V=3.
 
 layout_flatten — phases: copy, flatten, expand, freeze, scan
@@ -135,7 +135,7 @@ translated by (dx, dy) (own txn per insert), then remove the instance;
 plus 4 corner vertices, reusing the rect's nid; **freeze**; **scan** = 3 passes
 over all LPoly, LVertex, LLabel reading attributes.
 
-Params (default): C=10, S=100, I=500. small: 5/40/50. large: 10/200/2000.
+Params (default): C=5, S=40, I=50. small: 5/20/20. large: 10/200/2000.
 smoke: 2/8/4.
 
 render_scan — phases: build, scan
@@ -152,7 +152,8 @@ num; for every symbol poly iterate its vertices via the sorted index with
 coordinate arithmetic; build the instance's full path string; then read w of
 every net.
 
-Params (default): Y=8, P=4, Q=6, V=5, I=2000, N=1000, R=20.
+Params (default): Y=8, P=4, Q=6, V=5, I=200, N=100, R=5. small: I=100, N=50,
+R=3. large: I=8000, N=4000, R=20.
 
 sim_hierarchy — phases: build, annotate
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -165,7 +166,7 @@ unique (group, key) check at each commit); recurse into each group.
 item by the unique (group, 'k{e}') index query, insert
 ``SimAnnot(target=item, value=rand(2^20))`` (own txn).
 
-Params (default): D=4, F=8, E=6. large: D=5, F=6, E=8.
+Params (default): D=3, F=4, E=6. small: D=3, F=3, E=4. large: D=5, F=6, E=8.
 
 snapshot_chain — phases: build, chain, read
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -185,7 +186,9 @@ random point lookups ``nodes[live[rand(len)]]``.
 Draw order per patch op: r, then the op's own draws in the order named. Params
 (default): N=10000, K=32, p=20 (permille), compact_every=0 (set e.g.
 ``--param snapshot_chain.compact_every=8`` to exercise explicit compaction).
-large: N=50000, K=64.
+small: N=1000, K=8. large: N=50000, K=64. Chain depth K is what this workload
+exists to measure -- copy-on-write backends only reveal their cost at depth --
+so the default keeps K high rather than trimming it for runtime.
 
 micro_remove_all / micro_insert_descending / micro_replace / micro_abort
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -202,7 +205,8 @@ Single phase each. NType-bucket micros:
   ``batch`` fresh UNodes then one duplicate val → unique violation at commit →
   rollback; the state is unchanged after each round.
 
-Params (default): n=15000; abort: batch=1000, rounds=20.
+Params (default): n=3000; abort: batch=300, rounds=10. small: n=1000; abort:
+batch=100, rounds=5. large: n=50000; abort: batch=2000, rounds=20.
 
 Checksum
 --------
@@ -235,6 +239,15 @@ Measurement protocol
 - Per (workload, backend): ``warmup`` untimed runs, then ``repeats`` timed
   runs. Report every repeat's per-phase wall time in ns (statistics are
   computed by the report tool; use min for noise-resistant comparison).
+- Scale tiers: ``smoke`` is for CI, ``default`` is sized so the whole matrix
+  runs in a few minutes, and ``large`` is the tier for drawing real
+  conclusions (asymptotic differences need it; see ``--param`` for one-off
+  sizes). A second implementation only needs to match the tier it reports.
+- ``--time-limit`` (Python runner: 30 s per workload/backend, 0 disables)
+  stops *starting* further repeats once the budget is spent, so a run is only
+  ever cut between repeats, never inside one; at least one timed repeat always
+  survives. ``repeats`` in the output is how many actually ran, which is why
+  it may be below ``repeats_requested``.
 - Garbage collection: collect before each run, leave enabled during runs
   (allocator/GC behavior is part of what is measured).
 - Memory (optional, Python): one extra instrumented pass, separate from timing:
@@ -264,6 +277,7 @@ JSON result format
                      "compact_every": 0, "scale": "default", "seed": 1},
           "warmup": 1,
           "repeats": 5,
+          "repeats_requested": 5,
           "phases": {"build": {"wall_ns": [1, 2, 3, 4, 5]},
                      "chain": {"wall_ns": [1, 2, 3, 4, 5]},
                      "read":  {"wall_ns": [1, 2, 3, 4, 5]}},

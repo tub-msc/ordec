@@ -61,8 +61,8 @@ def _rect_to_poly(cursor):
     phases=('copy', 'flatten', 'expand', 'freeze', 'scan'),
     params={
         'smoke':   dict(cells=2, shapes_per_cell=8, instances=4),
-        'small':   dict(cells=5, shapes_per_cell=40, instances=50),
-        'default': dict(cells=10, shapes_per_cell=100, instances=500),
+        'small':   dict(cells=5, shapes_per_cell=20, instances=20),
+        'default': dict(cells=5, shapes_per_cell=40, instances=50),
         'large':   dict(cells=10, shapes_per_cell=200, instances=2000),
     },
     mirrors='ordec/layout/webdata.py + helpers.py flatten/expand_geom')

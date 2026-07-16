@@ -34,10 +34,10 @@ def _build_symbol(rng, pins, polys, verts):
     params={
         'smoke':   dict(symbols=2, pins=3, polys=2, verts=3, insts=5,
                         nets=4, repeats=2),
-        'small':   dict(symbols=8, pins=4, polys=6, verts=5, insts=200,
+        'small':   dict(symbols=8, pins=4, polys=6, verts=5, insts=100,
+                        nets=50, repeats=3),
+        'default': dict(symbols=8, pins=4, polys=6, verts=5, insts=200,
                         nets=100, repeats=5),
-        'default': dict(symbols=8, pins=4, polys=6, verts=5, insts=2000,
-                        nets=1000, repeats=20),
         'large':   dict(symbols=8, pins=4, polys=6, verts=5, insts=8000,
                         nets=4000, repeats=20),
     },

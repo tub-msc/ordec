@@ -58,13 +58,24 @@ Typical usage::
     # quick sanity run
     python -m benchmarks.runner --smoke --workloads all --backends all
 
-    # full run with memory measurement and checksums
+    # full run with memory measurement and checksums (a few minutes)
     python -m benchmarks.runner --workloads all --backends all \
         --repeats 5 --warmup 1 --mem --checksum --out results/py.json
+
+    # the tier to actually draw conclusions from -- slow, run it deliberately
+    python -m benchmarks.runner --workloads all --backends all --scale large \
+        --repeats 5 --warmup 1 --checksum --time-limit 0 --out results/py.json
 
     # compare (also merges results from other worlds/machines)
     python -m benchmarks.report results/*.json --baseline pyrsistent-pvector
     python -m benchmarks.report results/*.json --check-sanity
+
+The ``default`` scale is sized so the full matrix stays in the minutes range;
+``--scale large`` is where asymptotic differences between backends actually
+show up. Every workload/backend pair is capped by ``--time-limit`` (30 s by
+default, ``0`` disables): once the budget is spent the runner stops starting
+new repeats and says so, rather than silently reporting a truncated run as a
+full one.
 
 Two checks keep a comparison honest:
 

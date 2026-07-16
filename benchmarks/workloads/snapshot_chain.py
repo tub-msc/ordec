@@ -26,9 +26,13 @@ _TAGS = 64
     phases=('build', 'chain', 'read'),
     params={
         'smoke':   dict(n=50, k=4, patch_permille=100, compact_every=0),
-        'small':   dict(n=2000, k=16, patch_permille=20, compact_every=0),
+        'small':   dict(n=1000, k=8, patch_permille=20, compact_every=0),
         # Explicit compact() every C generations via
         # --param snapshot_chain.compact_every=C (0 = never).
+        # Chain depth k is the whole point of this workload: at small k a
+        # copy-on-write backend looks competitive because it never pays for a
+        # deep chain. Keep the default deep enough to show that -- it is cheap
+        # (a few hundred ms), so there is no reason to trim it.
         'default': dict(n=10000, k=32, patch_permille=20, compact_every=0),
         'large':   dict(n=50000, k=64, patch_permille=20, compact_every=0),
     },

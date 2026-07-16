@@ -20,8 +20,8 @@ from . import workload, PhaseTimer, WorkloadRun
     phases=('build', 'annotate'),
     params={
         'smoke':   dict(depth=2, fanout=2, items=3),
-        'small':   dict(depth=3, fanout=4, items=6),
-        'default': dict(depth=4, fanout=8, items=6),
+        'small':   dict(depth=3, fanout=3, items=4),
+        'default': dict(depth=3, fanout=4, items=6),
         'large':   dict(depth=5, fanout=6, items=8),
     },
     mirrors='SimHierarchy.from_schematic + simulator._store_results')

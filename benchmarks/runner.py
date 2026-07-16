@@ -61,7 +61,7 @@ def _impl_info():
     }
 
 def run_one(wl, backend_name, scale, repeats, warmup, seed, measure_mem,
-        do_checksum, param_overrides=None):
+        do_checksum, param_overrides=None, time_limit=None):
     """Run one (workload, backend) combination; returns a result record."""
     params = dict(wl.params.get(scale) or wl.params['default'])
     if param_overrides:
@@ -69,6 +69,7 @@ def run_one(wl, backend_name, scale, repeats, warmup, seed, measure_mem,
 
     phase_runs = {ph: [] for ph in wl.phases}
     final = None
+    t_start = time.perf_counter()
     with ordb.use_backend(backend_name):
         for r in range(warmup + repeats):
             gc.collect()
@@ -77,13 +78,21 @@ def run_one(wl, backend_name, scale, repeats, warmup, seed, measure_mem,
                 for ph in wl.phases:
                     phase_runs[ph].append(run.phase_ns.get(ph, 0))
             final = run
+            # Stop repeating once the budget is spent, but never report zero
+            # timed runs: a pass is only ever cut between runs, never inside
+            # one, so the timings that do get recorded stay comparable.
+            if (time_limit is not None and len(phase_runs[wl.phases[0]]) >= 1
+                    and time.perf_counter() - t_start > time_limit):
+                break
 
+        done = len(phase_runs[wl.phases[0]])
         record = {
             'workload': wl.name,
             'backend': backend_name,
             'params': {**params, 'scale': scale, 'seed': seed},
             'warmup': warmup,
-            'repeats': repeats,
+            'repeats': done,
+            'repeats_requested': repeats,
             'phases': {ph: {'wall_ns': runs} for ph, runs in phase_runs.items()},
         }
 
@@ -148,6 +157,10 @@ def main(argv=None):
         help='record the canonical checksum of the final graph state')
     parser.add_argument('--smoke', action='store_true',
         help='tiny sizes, 1 repeat, 0 warmup (shortcut)')
+    parser.add_argument('--time-limit', type=float, default=30.0,
+        metavar='SECONDS',
+        help='per (workload, backend) budget: stop repeating once exceeded, '
+            'keeping at least one timed run (0 = no limit, default: 30)')
     parser.add_argument('--param', action='append', metavar='W.KEY=VAL',
         help='override one workload parameter, e.g. snapshot_chain.k=64')
     parser.add_argument('--out', default=None,
@@ -183,13 +196,17 @@ def main(argv=None):
             t0 = time.perf_counter()
             record = run_one(wl, backend_name, args.scale, args.repeats,
                 args.warmup, args.seed, args.mem, args.checksum,
-                overrides.get(wl_name))
+                overrides.get(wl_name), args.time_limit or None)
             dt = time.perf_counter() - t0
             best = {ph: min(v['wall_ns']) / 1e6
                 for ph, v in record['phases'].items()}
             phases_str = ' '.join(f"{ph}={ms:.1f}ms" for ph, ms in best.items())
+            # Never let a truncated run masquerade as a full one.
+            cut = record['repeats'] < record['repeats_requested']
+            note = (f" [time limit: {record['repeats']}/"
+                f"{record['repeats_requested']} repeats]" if cut else '')
             print(f"[{wl_name} @ {backend_name}] {phases_str} "
-                f"(total {dt:.1f}s)", file=sys.stderr)
+                f"(total {dt:.1f}s){note}", file=sys.stderr)
             results.append(record)
 
     doc = {

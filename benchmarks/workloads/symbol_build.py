@@ -19,8 +19,8 @@ from . import workload, PhaseTimer, WorkloadRun
     phases=('build',),
     params={
         'smoke':   dict(m=5, k=4, p=2, v=3),
-        'small':   dict(m=200, k=8, p=6, v=5),
-        'default': dict(m=1000, k=8, p=6, v=5),
+        'small':   dict(m=100, k=8, p=6, v=5),
+        'default': dict(m=200, k=8, p=6, v=5),
         'large':   dict(m=5000, k=8, p=6, v=5),
     },
     mirrors='ordec.lib.base symbol generators (@generate view builds)')
