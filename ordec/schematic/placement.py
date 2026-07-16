@@ -69,8 +69,9 @@ class GroupContext:
 
     def __enter__(self):
         view_ctx = _view_ctx_var.get()
-        if view_ctx is None:
-            raise TypeError("Placement groups can only be used within a viewgen.")
+        if view_ctx is None or not view_ctx.supports_placement_groups:
+            raise TypeError(
+                "Placement groups can only be used in a schematic viewgen.")
         view_ctx.group_stack.append(self.group)
         return self
 
@@ -177,7 +178,7 @@ class PlacementGroup:
         if align is None:
             align = self.default_align
         if align not in self.aligns:
-            raise ValueError(f"align must be one of {self.aligns}.")
+            raise ValueError(f"align must be one of {self.aligns}, got {align!r}.")
         self.children = []
         self.gap = gap
         self.align = align
@@ -192,12 +193,18 @@ class PlacementGroup:
         """
         Appends a child (an instance, a port/net or a nested group) and
         returns it. Raises TypeError if the group is sealed because its
-        outline was already used (see rect()).
+        outline was already used (see rect()), and ValueError if the
+        child was already added.
         """
         if self.sealed:
-            raise TypeError(
-                "Placement group can no longer be extended: its outline "
-                "was already used.")
+            raise TypeError(f"{describe(self)} can no longer be extended: its outline was already used.")
+        for existing in self.children:
+            if child is existing or (isinstance(child, Node)
+                    and isinstance(existing, Node)
+                    and child.nid == existing.nid):
+                raise ValueError(
+                    f"{describe(child)} is already a child of "
+                    f"{describe(self)}.")
         self.children.append(child)
         return child
 
@@ -213,7 +220,7 @@ class PlacementGroup:
                 return child.subgraph_root()
             except ValueError:
                 continue
-        raise ValueError("Placement group has no children.")
+        raise ValueError(f"{describe(self)} has no children.")
 
     def child_rect(self, child) -> Rect4LinearTerm:
         """
@@ -245,7 +252,7 @@ class PlacementGroup:
         on grid regardless of size differences.
         """
         if not self.children:
-            raise ValueError("Placement group has no children.")
+            raise ValueError(f"{describe(self)} has no children.")
         main, cross = self.axis, 1 - self.axis
         rects = [self.child_rect(child) for child in self.children]
         main_sizes = [term_constant(r[main+2] - r[main], child)
@@ -309,8 +316,11 @@ class PlacementGroup:
     def __getattr__(self, name):
         # Convenience access to outline properties (south, center, lx, ...).
         # Unknown names must not reach self.outline: reading the outline
-        # seals the group, which would make a typo mutate state.
-        if name.startswith('_') or not hasattr(Rect4LinearTerm, name):
+        # seals the group, which would make a typo mutate state. Names
+        # inherited from tuple (count, index) are no outline properties
+        # and must not seal the group either.
+        if (name.startswith('_') or hasattr(tuple, name)
+                or not hasattr(Rect4LinearTerm, name)):
             raise AttributeError(name)
         return getattr(self.outline, name)
 
@@ -371,7 +381,7 @@ class PlacementGroup:
         rects, offsets = arrangement.rects, arrangement.offsets
         # The arrangement is rigid: tie each child to the first child by
         # its constant offset delta, per axis.
-        for rect, offset in zip(rects[1:], offsets[1:]):
+        for i, (rect, offset) in enumerate(zip(rects[1:], offsets[1:]), 1):
             for axis in (0, 1):
                 term = ((rect[axis] - offset[axis])
                     - (rects[0][axis] - offsets[0][axis]))
@@ -380,9 +390,10 @@ class PlacementGroup:
                     # Catch guaranteed contradictions here. The solver
                     # would only report an unspecific infeasibility.
                     raise ValueError(
-                        "Placement group arrangement contradicts already "
-                        "fixed child positions (a child added twice, or "
-                        "several children with assigned positions).")
+                        f"Arrangement of {describe(self)} contradicts the "
+                        f"directly assigned positions of "
+                        f"{describe(self.children[0])} and "
+                        f"{describe(self.children[i])}.")
                 solver.constrain(EqualsZero(term))
         if not toplevel:
             return False
@@ -440,12 +451,10 @@ class ConnectingGroup(PlacementGroup, ABC):
         super().__init__(gap=gap, align=align, anchor=anchor)
         if horizontal and (top is not None or bottom is not None):
             raise ValueError(
-                "top/bottom pin overrides only apply to vertical groups. "
-                "Use left/right.")
+                "top/bottom pin overrides only apply to vertical groups. Use left/right.")
         if not horizontal and (left is not None or right is not None):
             raise ValueError(
-                "left/right pin overrides only apply to horizontal groups. "
-                "Use top/bottom.")
+                "left/right pin overrides only apply to horizontal groups. Use top/bottom.")
         self.horizontal = horizontal
         self.pin_overrides = {D4.North: top, D4.South: bottom,
             D4.West: left, D4.East: right}
@@ -584,6 +593,8 @@ class Series(ConnectingGroup):
             ], self.subgraph_root())
 
     def side_endpoint(self, side: D4) -> Endpoint:
+        if not self.children:
+            raise ValueError(f"{describe(self)} has no children.")
         return self.endpoint(self.children[self.boundary_index(side)], side)
 
     def boundary_index(self, side: D4) -> int:
@@ -668,9 +679,10 @@ class Parallel(ConnectingGroup):
         endpoints = []
         for child in self.children:
             if isinstance(child, (Net, SchemPort)):
+                net = child.ref if isinstance(child, SchemPort) else child
                 raise ValueError(
-                    "Parallel does not support port children; wire the "
-                    "rail net to the port explicitly.")
+                    f"Parallel does not support the port child "
+                    f"{describe(net)}. Wire the rail net to the port explicitly.")
             endpoints.append(self.endpoint(child, side))
         forced = self.rail_nets.get(side)
         if forced is not None:

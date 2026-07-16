@@ -333,12 +333,25 @@ def test_group_follows_pinned_child():
     assert sch.pd.pos == Vec2R(3, 1)
 
 
-def test_group_contradiction_clear_error():
+def test_group_rejects_duplicate_child():
     sch = Schematic()
     sch.m = SchemInstance(symbol=Nmos().symbol)
     group = Col(gap=2)
     group.add(sch.m)
-    group.add(sch.m)
+
+    with pytest.raises(ValueError, match="already a child"):
+        group.add(sch.m)
+
+
+def test_group_contradiction_clear_error():
+    # Two children with directly assigned positions that cannot both
+    # satisfy the stacking arrangement.
+    sch = Schematic()
+    sch.a = SchemInstance(symbol=Nmos().symbol, pos=Vec2R(0, 0))
+    sch.b = SchemInstance(symbol=Nmos().symbol, pos=Vec2R(0, 0))
+    group = Col(gap=2)
+    group.add(sch.a)
+    group.add(sch.b)
 
     with pytest.raises(ValueError, match="contradicts"):
         group.emit(Solver(sch))

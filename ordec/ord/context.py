@@ -60,6 +60,11 @@ def add_port(name_tuple):
                 f"Port name {name!r} is already used by {net!r}.")
         # Forward-declared net: attach the symbol pin to it. The unique
         # index on SchemPort.ref rejects a second port on the same net.
+        if net.pin is not None and net.pin.nid != pin.nid:
+            name = '.'.join(str(part) for part in name_tuple)
+            raise TypeError(
+                f"Cannot create port {name!r}: net {name!r} is already "
+                "bound to a different pin.")
         net.pin = pin
     port = subgraph_root % SchemPort(ref=net)
     register_in_group(port)
@@ -126,9 +131,9 @@ def add_element(name_tuple, element, src_line=None, src_column=None):
         element = element()
     if isinstance(element, PlacementGroup):
         view_ctx = _view_ctx_var.get()
-        if view_ctx is None:
+        if view_ctx is None or not view_ctx.supports_placement_groups:
             raise TypeError(
-                "Placement groups can only be used within a viewgen.")
+                "Placement groups can only be used in a schematic viewgen.")
         if view_ctx.group_stack:
             view_ctx.group_stack[-1].add(element)
         else:

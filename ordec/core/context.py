@@ -40,6 +40,9 @@ class ViewContext:
     and __exit__ methods also automatically enter and exit a corresponding
     NodeContext.
     """
+    #: True on subclasses whose postprocess emits placement groups.
+    supports_placement_groups = False
+
     def __init__(self, root):
         self.root = root
         self.placement_groups = [] #: top-level placement groups, emitted in postprocess
@@ -97,6 +100,8 @@ class SymbolViewContext(ViewContext):
 
 
 class SchematicViewContext(ViewContext):
+    supports_placement_groups = True
+
     @classmethod
     def create_root(cls, cell, root_cls):
         # A symbol is optional: a cell may define a schematic without a
@@ -119,8 +124,19 @@ class SchematicViewContext(ViewContext):
 
     def postprocess(self):
         from .constraints import SolverError
+        from .schema import SchemPort
         from ..schematic.placement import describe
         from ..schematic.helpers import schem_place_ports
+
+        def raise_undefined(undefined):
+            locations = sorted(
+                f"{describe(self.root.cursor_at(missing_attr_value.nid))}.{missing_attr_value.attr.name}"
+                for missing_attr_value in undefined
+            )
+            raise SolverError(
+                "Undefined constrainable attribute(s) found. Please add "
+                "constraints or assign them directly: " + ", ".join(locations))
+
         # Auto-anchored top-level groups line up side by side, left to
         # right in declaration order, with routing space in between.
         origin = 0
@@ -129,19 +145,22 @@ class SchematicViewContext(ViewContext):
             if group.emit(self.solver, auto_anchor=(origin, 0)):
                 origin += group.arrangement().width + default_group_spacing
         self.solver.solve(allow_undefined=True)
+        # Positions that are still undefined here would crash
+        # resolve_instances() with a raw type error. Report them
+        # descriptively instead.
+        undefined = [missing_attr_value
+            for missing_attr_value in self.solver.undefined_attrs()
+            if not isinstance(self.root.cursor_at(missing_attr_value.nid),
+                SchemPort)]
+        if undefined:
+            raise_undefined(undefined)
         # resolve_instances() preserves nids, carrying solved positions over.
         self.root.resolve_instances()
         # Ports may legitimately still be undefined. Place them by align.
         schem_place_ports(self.root)
         undefined = self.solver.undefined_attrs()
         if undefined:
-            locations = sorted(
-                f"{describe(self.root.cursor_at(missing_attr_value.nid))}.{missing_attr_value.attr.name}"
-                for missing_attr_value in undefined
-            )
-            raise SolverError(
-                "Undefined constrainable attribute(s) found. Please add "
-                "constraints or assign them directly: " + ", ".join(locations))
+            raise_undefined(undefined)
         self.root.auto_wire()
         self.root.check(add_conn_points=True, add_terminal_taps=True)
 
