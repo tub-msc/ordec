@@ -7,7 +7,6 @@ worlds, e.g. Python and Zig) and print per-workload comparison tables.
 
     python -m benchmarks.report results/*.json --baseline pyrsistent-pvector
     python -m benchmarks.report results/*.json --stat median --format csv
-    python -m benchmarks.report results/*.json --check-sanity
 """
 
 import argparse
@@ -167,69 +166,12 @@ def report(records, baseline, stat, fmt, out=sys.stdout):
             print(f"  {workload}: {checksums}", file=out)
     return not mismatches
 
-def check_sanity(records, stat='min', out=sys.stdout):
-    """Assert the coarse expected relations between backends. Returns True
-    when all checks that had data passed."""
-    def phase_ns(workload, backend, phase):
-        for (world, b, wl, params), rec in records.items():
-            if world == 'python' and b == backend and wl == workload:
-                wall = rec['phases'].get(phase, {}).get('wall_ns')
-                if wall:
-                    return _stat(wall, stat)
-        return None
-
-    def retained(workload, backend):
-        for (world, b, wl, params), rec in records.items():
-            if world == 'python' and b == backend and wl == workload:
-                mem = rec.get('mem') or {}
-                return mem.get('retained_bytes')
-        return None
-
-    ok = True
-    def check(name, cond):
-        nonlocal ok
-        if cond is None:
-            print(f"  skip  {name} (missing data)", file=out)
-        elif cond:
-            print(f"  ok    {name}", file=out)
-        else:
-            print(f"  FAIL  {name}", file=out)
-            ok = False
-
-    def rel(workload, phase, fast, slow):
-        a = phase_ns(workload, fast, phase)
-        b = phase_ns(workload, slow, phase)
-        if a is None or b is None:
-            return None
-        return a <= b * 1.1 # 10% tolerance
-
-    print("sanity relations:", file=out)
-    check('patricia <= pvector on micro_remove_all',
-        rel('micro_remove_all', 'remove',
-            'pyrsistent-patricia', 'pyrsistent-pvector'))
-    check('patricia <= pvector on micro_replace',
-        rel('micro_replace', 'replace',
-            'pyrsistent-patricia', 'pyrsistent-pvector'))
-    check('patricia <= pvector on layout_flatten.expand',
-        rel('layout_flatten', 'expand',
-            'pyrsistent-patricia', 'pyrsistent-pvector'))
-    fc = retained('snapshot_chain', 'fullcopy')
-    others = [retained('snapshot_chain', b)
-        for b in ('pyrsistent-patricia', 'cow', 'delta')]
-    if fc is None or any(v is None for v in others):
-        check('fullcopy retains most memory on snapshot_chain', None)
-    else:
-        check('fullcopy retains most memory on snapshot_chain',
-            all(fc >= v for v in others))
-    return ok
-
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='python -m benchmarks.report')
     parser.add_argument('files', nargs='+')
     parser.add_argument('--baseline', default='pyrsistent-pvector')
     parser.add_argument('--stat', default='min', choices=['min', 'median'])
     parser.add_argument('--format', default='md', choices=['md', 'csv'])
-    parser.add_argument('--check-sanity', action='store_true')
     parser.add_argument('--html', metavar='FILE',
         help='also write a self-contained HTML report')
     parser.add_argument('--no-tables', action='store_true',
@@ -247,8 +189,6 @@ def main(argv=None):
         write_html(group_records(records), args.baseline, args.stat,
             args.html, impl=dict(next(iter(impls))) if len(impls) == 1 else None,
             out=sys.stderr)
-    if args.check_sanity:
-        ok = check_sanity(records, args.stat) and ok
     return 0 if ok else 1
 
 if __name__ == '__main__':

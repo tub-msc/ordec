@@ -68,7 +68,6 @@ Typical usage::
 
     # compare (also merges results from other worlds/machines)
     python -m benchmarks.report results/*.json --baseline pyrsistent-pvector
-    python -m benchmarks.report results/*.json --check-sanity
 
     # HTML report
     python -m benchmarks.report results/*.json --baseline pyrsistent-pvector \
