@@ -283,7 +283,7 @@ Constraint Statements ``!``
 A statement starting with ``!`` declares a linear constraint instead of
 executing a normal statement. The constraint is added to the view's own
 :class:`~ordec.core.constraints.Solver`, which is solved automatically at the
-end of the viewgen body; this is available in layout and schematic views (see
+end of the viewgen body. This is available in layout and schematic views (see
 :mod:`ordec.core.constraints`):
 
 .. code-block::

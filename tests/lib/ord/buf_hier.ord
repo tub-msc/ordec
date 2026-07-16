@@ -43,7 +43,7 @@ cell Buf:
         port vss: .align=North
 
         # The horizontal series chain connects i0.y -- i1.a through an
-        # anonymous net; the outer ports are wired explicitly.
+        # anonymous net. The outer ports are wired explicitly.
         Series(gap=4, horizontal=True) stages:
             Inv i0:
                 .a -- a

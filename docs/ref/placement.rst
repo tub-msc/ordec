@@ -51,7 +51,7 @@ electrically, modeling a current path:
      - all children between two rail nets
 
 Use Series/Parallel when the placement follows the circuit topology and
-let the connections fall out of the structure; fall back to Col/Row with
+let the connections fall out of the structure. Fall back to Col/Row with
 explicit wiring when the structure is irregular (heterogeneous pin
 selections, connections that do not follow the stack).
 
@@ -62,7 +62,7 @@ All groups:
 
 ``gap``
     Distance between adjacent children along the main axis. The default
-    (2) leaves room for ``auto_wire()`` routing; tighter gaps can exceed
+    (2) leaves room for ``auto_wire()`` routing. Tighter gaps can exceed
     the router's capacity.
 
 ``align``
@@ -81,7 +81,7 @@ All groups:
 
 ``anchor``
     Position of the group's southwest corner. The default ``'auto'``
-    anchors a top-level group at (0, 0); several auto-anchored groups in
+    anchors a top-level group at (0, 0). Several auto-anchored groups in
     one view line up side by side. A group with a member that appears in
     a user constraint or has a directly assigned position follows that
     member instead. Pass an (x, y) tuple to anchor explicitly, or None
@@ -95,8 +95,8 @@ Series and Parallel only:
     horizontal (True) through right-/left-facing pins. The placement
     axis follows from it: Series places along the path, Parallel across
     it, so a vertical Series stacks like Col while a vertical Parallel
-    places side by side like Row. The group never rotates children;
-    orient instances so that their current-carrying pins face along the
+    places side by side like Row. The group never rotates children.
+    Orient instances so that their current-carrying pins face along the
     path.
 
 ``top``, ``bottom`` (vertical), ``left``, ``right`` (horizontal)
@@ -108,14 +108,14 @@ Connectivity
 ------------
 
 Series connects the pin of each child facing the next child to the next
-child's pin facing back; port children connect through their net.
+child's pin facing back. Port children connect through their net.
 Parallel ties all pins facing one way to one rail net and all pins
-facing the other way to a second rail net; it does not accept port
+facing the other way to a second rail net. It does not accept port
 children (wire the rail net to the port explicitly).
 
 A junction or rail net is *adopted* from whichever involved pin is
 already connected, so wiring one pin explicitly (``.d -- y``) names the
-net; without any, an anonymous net is created. Pins that are already on
+net. Without any, an anonymous net is created. Pins that are already on
 two different nets are a connection conflict and raise an error.
 
 Since a port's statement position inside a group determines its place in
@@ -126,13 +126,15 @@ forward-declared with ``net`` (see the example above): the later
 Nesting
 -------
 
-Any group nests in any group geometrically; the nested group is placed
+Any group nests in any group geometrically. The nested group is placed
 as a rigid block. Series and Parallel additionally connect nested
 Series/Parallel children through their boundary: a nested Series exposes
 the outward-facing pins of its first and last child, a nested Parallel
 exposes its two rails. Series/parallel circuit structures can therefore
 be described by nesting alone, e.g. a NAND as a Series of vdd, a
-Parallel pull-up pair, the pull-down transistors and vss.
+Parallel pull-up pair, the pull-down transistors and vss. Tutorial
+section :ref:`placement_groups` shows this NAND as a complete example
+with its rendered schematic.
 
 Two restrictions apply: a Series/Parallel cannot electrically connect a
 nested Col/Row child (nest Series/Parallel instead, or wire explicitly),
@@ -149,7 +151,7 @@ Positions of schematic elements are determined in this order:
    (``! ...``) always win. A port or instance referenced in any constraint
    is not placed automatically.
 2. Members of a placement group are placed by the group. Top-level groups
-   anchor at (0, 0); several auto-anchored groups line up side by side. A
+   anchor at (0, 0). Several auto-anchored groups line up side by side. A
    group with a constrained or directly positioned member follows that
    member instead of being anchored.
 3. Remaining ports are auto-placed on the edge of the content bounding box
@@ -166,25 +168,58 @@ Positions of schematic elements are determined in this order:
 Classes
 -------
 
+Groups are configured entirely through their constructor arguments,
+described in the class docstrings and under `Attributes`_ above. Their
+methods are internal machinery (see below).
+
 .. autoclass:: PlacementGroup
-  :members:
 
 .. autoclass:: Row
   :show-inheritance:
-  :members:
 
 .. autoclass:: Col
   :show-inheritance:
-  :members:
 
 .. autoclass:: ConnectingGroup
   :show-inheritance:
-  :members:
 
 .. autoclass:: Series
   :show-inheritance:
-  :members:
 
 .. autoclass:: Parallel
   :show-inheritance:
+
+Internals
+---------
+
+While the viewgen body runs, a group only records its children in
+declaration order. The view context emits all top-level groups during
+postprocessing: :meth:`PlacementGroup.emit` resolves connectivity
+(parent before child, since ORDB cannot merge nets), computes the rigid
+relative :meth:`~PlacementGroup.arrangement` of the children and
+constrains each child's position to the first child by a constant
+offset, anchoring top-level groups. User code only calls these methods
+when using groups outside a viewgen.
+
+.. autoclass:: Endpoint
   :members:
+
+.. autoclass:: Arrangement
+
+.. automethod:: PlacementGroup.add
+
+.. automethod:: PlacementGroup.child_rect
+
+.. automethod:: PlacementGroup.arrangement
+
+.. automethod:: PlacementGroup.rect
+
+.. automethod:: PlacementGroup.resolve_connectivity
+
+.. automethod:: PlacementGroup.emit
+
+.. automethod:: ConnectingGroup.facing_pin
+
+.. automethod:: ConnectingGroup.endpoint
+
+.. automethod:: ConnectingGroup.side_endpoint

@@ -314,18 +314,20 @@ Inv().schematic
 # See {ref}`layout` for a runnable example using `anonymous`.
 # -
 
+# (placement_groups)=
+#
 # ### 4.9 Placement groups
 #
 # All schematics so far placed each element with an explicit `.pos`. **Placement
 # groups** arrange elements relative to each other instead, so a schematic can be
 # written without any coordinates. `Col` and `Row` place their children in a
-# stack or side by side; `Series` and `Parallel` additionally **connect** them
+# stack or side by side. `Series` and `Parallel` additionally **connect** them
 # electrically, modeling a current path. This way, series/parallel circuit
 # structures can be described by nesting alone.
 #
 # The Nand from section 4.5 becomes: from `vdd` to `vss`,
 # a parallel pull-up pair in series with the two pull-down transistors. `Series`
-# connects each pair of neighbors through their facing pins; `Parallel` ties its
+# connects each pair of neighbors through their facing pins. `Parallel` ties its
 # children between two rail nets. A junction net is named by wiring one pin
 # explicitly (`.d -- y`), otherwise it stays anonymous. Since the `port vss`
 # statement must sit at the bottom of the stack, the net is forward-declared

@@ -15,7 +15,7 @@ attribute values. It is used the following way:
 Only :class:`ConstrainableAttr` attributes can be constrained.
 
 In ORD viewgens, the ``!`` statement adds a constraint to the view's own
-solver, which is solved automatically at the end of the viewgen body; no
+solver, which is solved automatically at the end of the viewgen body. No
 manual Solver is needed there. This is available in layout and schematic
 views. For placing schematic elements relative to each other without
 explicit coordinates, see :mod:`ordec.schematic.placement`.

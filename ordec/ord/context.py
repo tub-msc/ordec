@@ -120,7 +120,7 @@ def add_element(name_tuple, element, src_line=None, src_column=None):
     src_loc = SourceLocInfo(
         sys._getframe(1).f_code.co_filename, src_line, src_column
     ) if src_line is not None else None
-    # Placement groups are not inserted into the subgraph; they are
+    # Placement groups are not inserted into the subgraph. They are
     # recorded on the view context or parent group and emitted later.
     if isinstance(element, type) and issubclass(element, PlacementGroup):
         element = element()

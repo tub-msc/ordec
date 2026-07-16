@@ -34,7 +34,7 @@ def test_ord_schematic_solver_and_port_autoplace():
     assert sch.pd.pos == Vec2R(2, 2)
     assert sch.pu.pos == Vec2R(2, 10)
 
-    # Content bbox is (2,2)-(6,14); ports sit two units outside the edge
+    # Content bbox is (2,2)-(6,14). Ports sit two units outside the edge
     # opposite to their arrow direction, lined up with the connected pin
     # nearest to their edge.
     assert sch.a.pos == Vec2R(0, 4)    # left edge, at pd.g (2,4)
@@ -76,7 +76,7 @@ def test_ord_col_group_auto_anchor():
 
     sch = Inv().schematic
 
-    # Col stacks pu above pd with gap 4; auto-anchored at (0, 0).
+    # Col stacks pu above pd with gap 4, auto-anchored at (0, 0).
     assert sch.pd.pos == Vec2R(0, 0)
     assert sch.pu.pos == Vec2R(0, 8)
 
@@ -124,7 +124,7 @@ def test_nested_groups_python_api():
     row.emit(solver)
     solver.solve()
 
-    # col: a above b -> b (0,0)-(4,4), a (0,6)-(4,10); col spans (0,0)-(4,10)
+    # col: a above b -> b (0,0)-(4,4), a (0,6)-(4,10). col spans (0,0)-(4,10)
     # row: c east of col with gap 3, centered on col's vertical center
     assert sch.b.pos == Vec2R(0, 0)
     assert sch.a.pos == Vec2R(0, 6)
@@ -280,7 +280,7 @@ def test_ord_nand_nested_parallel_in_series():
     sch = Nand2().schematic
 
     # One Series stack vdd/pullup/pd_a/pd_b/vss, with the Parallel pull-up
-    # nested inside; auto-anchored at (0, 0).
+    # nested inside, auto-anchored at (0, 0).
     assert sch.vdd.pos == Vec2R(6, 28)
     assert sch.pu_a.pos == Vec2R(0, 20)
     assert sch.pu_b.pos == Vec2R(8, 20)
@@ -326,8 +326,8 @@ def test_group_follows_pinned_child():
     group.add(sch.pd)
 
     solver = Solver(sch)
-    # The directly assigned pu position suppresses the automatic anchor;
-    # the group follows the pinned child.
+    # The directly assigned pu position suppresses the automatic anchor.
+    # The group follows the pinned child.
     assert group.emit(solver) is False
     solver.solve(allow_undefined=True)
     assert sch.pd.pos == Vec2R(3, 1)
@@ -491,7 +491,7 @@ def test_series_non_square_symbols_override_and_snap():
     assert sch.w.pos == Vec2R(0, 6)
     assert sch.n.pos == Vec2R(2, 0)
 
-    # The override picked o2; o1 stays unconnected.
+    # The override picked o2, so o1 stays unconnected.
     junction = net_of(sch, sch.w, 'o2')
     assert junction is not None
     assert junction.nid == net_of(sch, sch.n, 't').nid
@@ -538,7 +538,7 @@ def test_series_align_pins():
 
 
 def test_groups_snap_odd_sizes_to_grid():
-    # A Parallel with gap 3 spans 11 units; centering the 4-wide pull-down
+    # A Parallel with gap 3 spans 11 units. Centering the 4-wide pull-down
     # under it must stay on the unit grid (the router cannot reach
     # half-grid pins).
     sch = Schematic()
@@ -573,7 +573,7 @@ def test_ord_amp_two_multi_pin_symbols():
     assert sch.tail.pos == Vec2R(0, 4)
     assert sch.vss.pos == Vec2R(2, 0)
 
-    # Series junction dp.tail -- tail.d is anonymous; tail.s lands on vss.
+    # Series junction dp.tail -- tail.d is anonymous. tail.s lands on vss.
     junction = net_of(sch, sch.dp, 'tail')
     assert junction.nid == net_of(sch, sch.tail, 'd').nid
     assert junction.nid != sch.vss.nid
@@ -616,7 +616,7 @@ def test_place_ports_pin_alignment():
 
     schem_place_ports(sch)
 
-    # p1/p2 line up with their pins at y=8 and y=2 (bbox (0,0)-(4,10));
+    # p1/p2 line up with their pins at y=8 and y=2 (bbox (0,0)-(4,10)).
     # p3 has no pin to align with and stacks centered on the edge.
     assert p1.pos == Vec2R(-2, 8)
     assert p2.pos == Vec2R(-2, 2)
@@ -637,14 +637,14 @@ def test_place_ports_alignment_collision():
 
     schem_place_ports(sch)
 
-    # Both pins sit on row 2; the port declared later shifts one unit
+    # Both pins sit on row 2. The port declared later shifts one unit
     # down instead of overlapping.
     assert pa.pos == Vec2R(-2, 2)
     assert pb.pos == Vec2R(-2, 1)
 
 
 def test_group_errors_on_anonymous_instance():
-    # Nodes are not required to have an NPath; error messages must not
+    # Nodes are not required to have an NPath. Error messages must not
     # assume one (full_path_str raises on anonymous nodes).
     sym = TwoTop().symbol
     sch = Schematic(symbol=sym)

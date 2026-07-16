@@ -15,7 +15,7 @@ cell Inv:
         port a : .align=East
         port y : .align=West
         # vss sits at the bottom of the series stack, so its port statement
-        # comes last; the net is forward-declared to allow .b -- vss earlier.
+        # comes last. The net is forward-declared to allow .b -- vss earlier.
         net vss
 
         # The series group places vdd/pu/pd/vss top to bottom and connects the

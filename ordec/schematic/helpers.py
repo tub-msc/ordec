@@ -142,8 +142,8 @@ def schem_content_bbox(node: Schematic) -> Rect4R | None:
     """
     Returns the bounding box of the placed schematic content: instance
     outlines, port positions, tap points and wire vertices. Elements
-    whose position is still unresolved (Vec2LinearTerm) are ignored;
-    returns None for a schematic without placed content.
+    whose position is still unresolved (Vec2LinearTerm) are ignored.
+    Returns None for a schematic without placed content.
 
     Related: routing.adjust_outline_initial(), which assumes placed
     elements and adds space for port labels.
@@ -177,7 +177,7 @@ def schem_place_ports(node: Schematic, clearance: int = 2):
     Along the edge, each port lines up with the connected pin nearest to
     the port's edge, so that the wire towards it can run straight. Ports
     whose net has no placed instance pins are placed in declaration
-    order, one unit apart, centered on the edge; occupied positions are
+    order, one unit apart, centered on the edge. Occupied positions are
     skipped. Ports whose pos is already defined are left untouched.
     """
     pending = {East: [], West: [], North: [], South: []}
@@ -216,7 +216,7 @@ def schem_place_ports(node: Schematic, clearance: int = 2):
         pin = min(pins, key=nearest_pin_key[align])
         return math.floor(pin.y if align in (East, West) else pin.x)
 
-    # One edge per port align; ports stack along step, top to bottom on
+    # One edge per port align. Ports stack along step, top to bottom on
     # the left/right edges, left to right on the bottom/top edges.
     edges = (
         # align, vertical edge, fixed coordinate, step

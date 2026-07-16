@@ -43,7 +43,7 @@ cell Amp:
             LoadPair load:
                 .vdd -- vdd
             # The diff pair's single south pin chains to the tail current
-            # source; its two north pins are the (unconnected) series
+            # source. Its two north pins are the (unconnected) series
             # boundary, wired explicitly below.
             Series(gap=4) lower:
                 DiffPair dp:

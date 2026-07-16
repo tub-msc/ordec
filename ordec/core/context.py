@@ -131,7 +131,7 @@ class SchematicViewContext(ViewContext):
         self.solver.solve(allow_undefined=True)
         # resolve_instances() preserves nids, carrying solved positions over.
         self.root.resolve_instances()
-        # Ports may legitimately still be undefined; place them by align.
+        # Ports may legitimately still be undefined. Place them by align.
         schem_place_ports(self.root)
         undefined = self.solver.undefined_attrs()
         if undefined:
