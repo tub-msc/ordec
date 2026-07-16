@@ -12,7 +12,7 @@ implementations can run the same workloads and join the comparison.
 
 Usage:
     python -m benchmarks.runner --list
-    python -m benchmarks.runner --smoke --workloads all --backends all
+    python -m benchmarks.runner --tiny --workloads all --backends all
     python -m benchmarks.report results/*.json
 """
 

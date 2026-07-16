@@ -56,7 +56,7 @@ Typical usage::
     python -m benchmarks.runner --list
 
     # quick sanity run
-    python -m benchmarks.runner --smoke --workloads all --backends all
+    python -m benchmarks.runner --tiny --workloads all --backends all
 
     # full run with memory measurement and checksums (a few minutes)
     python -m benchmarks.runner --workloads all --backends all \
@@ -113,7 +113,7 @@ Two checks keep a comparison honest:
   differential fuzz (random op sequence applied lockstep under candidate
   and reference backends, state compared after every operation, including
   transaction-isolation and abort checks).
-- ``tests/test_benchmarks_smoke.py`` runs the whole suite at smoke scale
+- ``tests/test_benchmarks.py`` runs the whole suite at the smallest scale
   in CI.
 
 Transactions and index snapshots

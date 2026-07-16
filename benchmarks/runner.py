@@ -147,7 +147,7 @@ def main(argv=None):
     parser.add_argument('--backends', default='all',
         help='comma-separated backend names, or "all"')
     parser.add_argument('--scale', default='default',
-        choices=['smoke', 'small', 'default', 'large'])
+        choices=['tiny', 'small', 'default', 'large'])
     parser.add_argument('--repeats', type=int, default=5)
     parser.add_argument('--warmup', type=int, default=1)
     parser.add_argument('--seed', type=int, default=1)
@@ -155,7 +155,7 @@ def main(argv=None):
         help='add one instrumented pass measuring memory')
     parser.add_argument('--checksum', action='store_true',
         help='record the canonical checksum of the final graph state')
-    parser.add_argument('--smoke', action='store_true',
+    parser.add_argument('--tiny', action='store_true',
         help='tiny sizes, 1 repeat, 0 warmup (shortcut)')
     parser.add_argument('--time-limit', type=float, default=30.0,
         metavar='SECONDS',
@@ -179,8 +179,8 @@ def main(argv=None):
             print(f"  {b}")
         return 0
 
-    if args.smoke:
-        args.scale = 'smoke'
+    if args.tiny:
+        args.scale = 'tiny'
         args.repeats = 1
         args.warmup = 0
 

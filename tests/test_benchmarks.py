@@ -2,11 +2,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-CI smoke test for the ORDB benchmark suite (benchmarks/): every workload
-must run at smoke scale under every registered storage backend, all
-backends must produce identical results, and the differential fuzz must
-pass. Runs in seconds; the benchmark package itself is not shipped with
-the ordec wheel.
+CI coverage for the ORDB benchmark suite (benchmarks/). The package is not
+shipped in the ordec wheel and nothing else imports it, so without this it
+would rot unnoticed against ORDB's API.
+
+Every workload must run under every registered storage backend, the report
+tool must render, and -- the part that gates shipped code rather than the
+tooling -- all backends must agree on the canonical checksum and survive
+the differential fuzz. The smallest scale is used throughout: this is a
+correctness check, not a measurement. Runs in seconds.
 """
 
 import sys
@@ -22,9 +26,9 @@ from benchmarks.runner import run_one
 from benchmarks import equivalence
 
 @pytest.mark.parametrize('backend', ordb.available_backends())
-def test_smoke_all_workloads(backend):
+def test_all_workloads(backend):
     for wl in WORKLOADS.values():
-        record = run_one(wl, backend, 'smoke', repeats=1, warmup=0, seed=1,
+        record = run_one(wl, backend, 'tiny', repeats=1, warmup=0, seed=1,
             measure_mem=False, do_checksum=True)
         assert record['checksum']
         for ph in wl.phases:
@@ -39,7 +43,7 @@ def test_report_html(tmp_path):
     records = {}
     for wl in list(WORKLOADS.values())[:2]:
         for backend in backends:
-            rec = run_one(wl, backend, 'smoke', repeats=1, warmup=0, seed=1,
+            rec = run_one(wl, backend, 'tiny', repeats=1, warmup=0, seed=1,
                 measure_mem=True, do_checksum=False)
             params = tuple(sorted(rec['params'].items()))
             records[('python', backend, wl.name, params)] = rec | {

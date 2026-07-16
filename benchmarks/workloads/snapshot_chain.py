@@ -25,7 +25,7 @@ _TAGS = 64
 @workload('snapshot_chain',
     phases=('build', 'chain', 'read'),
     params={
-        'smoke':   dict(n=50, k=4, patch_permille=100, compact_every=0),
+        'tiny':    dict(n=50, k=4, patch_permille=100, compact_every=0),
         'small':   dict(n=1000, k=8, patch_permille=20, compact_every=0),
         # Explicit compact() every C generations via
         # --param snapshot_chain.compact_every=C (0 = never).

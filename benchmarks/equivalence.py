@@ -4,7 +4,7 @@
 """
 Cross-backend correctness gates:
 
-1. check_equivalence(): every workload at smoke scale must produce an
+1. check_equivalence(): every workload at the tiny scale must produce an
    identical canonical checksum under every backend.
 2. differential_fuzz(): a seeded random operation sequence (insert /
    update / remove / freeze / thaw / copy / aborted txn) applied
@@ -23,7 +23,7 @@ from .workloads import WORKLOADS
 
 REFERENCE_BACKEND = 'pyrsistent-patricia'
 
-def check_equivalence(backends=None, scale='smoke', seed=1, verbose=False):
+def check_equivalence(backends=None, scale='tiny', seed=1, verbose=False):
     """All backends must produce identical workload results."""
     if backends is None:
         backends = ordb.available_backends()

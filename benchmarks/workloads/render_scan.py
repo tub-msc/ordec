@@ -32,7 +32,7 @@ def _build_symbol(rng, pins, polys, verts):
 @workload('render_scan',
     phases=('build', 'scan'),
     params={
-        'smoke':   dict(symbols=2, pins=3, polys=2, verts=3, insts=5,
+        'tiny':    dict(symbols=2, pins=3, polys=2, verts=3, insts=5,
                         nets=4, repeats=2),
         'small':   dict(symbols=8, pins=4, polys=6, verts=5, insts=100,
                         nets=50, repeats=3),

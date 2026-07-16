@@ -19,7 +19,7 @@ from . import workload, PhaseTimer, WorkloadRun
 @workload('sim_hierarchy',
     phases=('build', 'annotate'),
     params={
-        'smoke':   dict(depth=2, fanout=2, items=3),
+        'tiny':    dict(depth=2, fanout=2, items=3),
         'small':   dict(depth=3, fanout=3, items=4),
         'default': dict(depth=3, fanout=4, items=6),
         'large':   dict(depth=5, fanout=6, items=8),

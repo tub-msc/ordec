@@ -117,7 +117,7 @@ inserted under names ``p0..p{K-1}`` (own txn each, one NPath each); P polys
 y=rand(1000))`` (own txn each); poly layer = rand(8); freeze. All M frozen
 subgraphs are retained. Draw order per poly: layer, then per vertex x, y.
 
-Params (default): M=200, K=8, P=6, V=5. small: M=100. large: M=5000. smoke:
+Params (default): M=200, K=8, P=6, V=5. small: M=100. large: M=5000. tiny:
 M=5, K=4, P=2, V=3.
 
 layout_flatten — phases: copy, flatten, expand, freeze, scan
@@ -136,7 +136,7 @@ plus 4 corner vertices, reusing the rect's nid; **freeze**; **scan** = 3 passes
 over all LPoly, LVertex, LLabel reading attributes.
 
 Params (default): C=5, S=40, I=50. small: 5/20/20. large: 10/200/2000.
-smoke: 2/8/4.
+tiny: 2/8/4.
 
 render_scan — phases: build, scan
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -239,7 +239,7 @@ Measurement protocol
 - Per (workload, backend): ``warmup`` untimed runs, then ``repeats`` timed
   runs. Report every repeat's per-phase wall time in ns (statistics are
   computed by the report tool; use min for noise-resistant comparison).
-- Scale tiers: ``smoke`` is for CI, ``default`` is sized so the whole matrix
+- Scale tiers: ``tiny`` is for CI, ``default`` is sized so the whole matrix
   runs in a few minutes, and ``large`` is the tier for drawing real
   conclusions (asymptotic differences need it; see ``--param`` for one-off
   sizes). A second implementation only needs to match the tier it reports.
@@ -301,4 +301,4 @@ Checks
    insert/update/remove/freeze/thaw/fork/abort sequence applied lockstep under
    candidate and reference backends, full state compared after every op,
    including transaction isolation and abort checks).
-3. ``tests/test_benchmarks_smoke.py`` runs both in CI at smoke scale.
+3. ``tests/test_benchmarks.py`` runs both in CI at the ``tiny`` scale.

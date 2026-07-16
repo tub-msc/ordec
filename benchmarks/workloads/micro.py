@@ -34,7 +34,7 @@ def _build(n):
     return sg
 
 _PARAMS = {
-    'smoke':   dict(n=100),
+    'tiny':    dict(n=100),
     'small':   dict(n=1000),
     # micro_remove_all/insert_descending are O(n^2) on pvector buckets, so the
     # everyday tier stays small; use --scale large to measure that asymptote.
@@ -89,7 +89,7 @@ def micro_replace(params, seed):
 
 @workload('micro_abort', phases=('abort',),
     params={
-        'smoke':   dict(n=100, batch=20, rounds=3),
+        'tiny':    dict(n=100, batch=20, rounds=3),
         'small':   dict(n=1000, batch=100, rounds=5),
         'default': dict(n=3000, batch=300, rounds=10),
         'large':   dict(n=50000, batch=2000, rounds=20),
