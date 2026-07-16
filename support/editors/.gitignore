@@ -1,0 +1,3 @@
+# VS Code extension build
+vscode/ord/node_modules/
+vscode/ord/*.vsix

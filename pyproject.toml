@@ -37,6 +37,7 @@ license-files = [
     "LICENSES/Apache-2.0.txt",
     "LICENSES/OFL-1.1.txt",
     "LICENSES/CC0-1.0.txt",
+    "LICENSES/MIT.txt",
 ]
 
 [project.urls]

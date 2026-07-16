@@ -1,0 +1,17 @@
+// SPDX-FileCopyrightText: NONE
+// SPDX-License-Identifier: CC0-1.0
+
+// F5 debugging: runs the extension in an Extension Development Host window.
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "Extension",
+			"type": "extensionHost",
+			"request": "launch",
+			"args": [
+				"--extensionDevelopmentPath=${workspaceFolder}"
+			]
+		}
+	]
+}

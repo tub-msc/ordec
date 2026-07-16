@@ -17,6 +17,7 @@ path = [
     ".gitignore",
     "docs/.gitignore",
     "web/.gitignore",
+    "support/editors/.gitignore",
     ".dockerignore",
     "MANIFEST.in",
     "docs/requirements.txt",
@@ -125,4 +126,14 @@ path = [
     "examples/interactive_rc_circuit/README.md",
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Editors
+# -------
+
+[[annotations]]
+path = [
+    "support/editors/vscode/ord/ordec.png",
+]
+SPDX-FileCopyrightText = "2026 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"

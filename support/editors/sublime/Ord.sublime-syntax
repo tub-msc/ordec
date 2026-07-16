@@ -1,0 +1,287 @@
+%YAML 1.2
+---
+###############################################################################
+# Ord Syntax Definition
+#
+# Extends Python.sublime-syntax from Sublime Text with Ord-specific constructs:
+# - cell definitions (cell Name: suite)
+# - viewgen definitions (viewgen name -> Type: suite)
+# - Node statements (Type target: suite, Type(args) target: suite,
+#   lib.Type target: suite, rows[i] target: suite,
+#   anonymous Type target: suite, bodyless Type t1, t2)
+# - Connection operator (--)
+# - Constrain operator (!)
+# - path/net declarations
+# - SI unit suffixes on numbers (100n, 3.14u)
+# - Parameter access (.$param)
+# - Dotted access to the current node (.name)
+#
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+###############################################################################
+
+name: Ord
+scope: source.ord
+version: 2
+extends: Packages/Python/Python.sublime-syntax
+
+file_extensions:
+  - ord
+
+variables:
+  si_suffix: '[afpnumkMGT]'
+  digits: '(?:\d+(?:_\d+)*)'
+  exponent: '(?:[eE][-+]?{{digits}})'
+  identifier_continue: '[[:alnum:]_]'
+  identifier: '[[:alpha:]_]{{identifier_continue}}*'
+  ord_direction_kinds: '(?:inout|input|output|port)\b'
+  python_keywords: '(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\b'
+
+contexts:
+
+  ##[ STATEMENTS ]##############################################################
+
+  statements:
+    - meta_prepend: true
+    - include: ord-viewgen-definitions
+    - include: ord-path-net-statements
+    - include: ord-constrain-statements
+
+  ##[ CLASS / CELL DEFINITIONS ]################################################
+
+  class-definitions:
+    - meta_prepend: true
+    # cell is a soft keyword, so only treat it as a declaration when followed
+    # by a name and colon (celldef has no superclass list)
+    - match: \bcell\b(?=\s+{{identifier}}\s*:)
+      scope: meta.class.ord keyword.declaration.class.ord
+      push:
+        - class-definition-base-list
+        - type-parameter-list
+        - class-definition-name
+
+  ##[ VIEWGEN DEFINITIONS ]#####################################################
+
+  ord-viewgen-definitions:
+    # viewgen is a soft keyword, so only treat it as a declaration when
+    # followed by a name (the return arrow may still be missing while typing)
+    - match: \bviewgen\b(?=\s+{{identifier}}\s*(?:->|:|$))
+      scope: keyword.declaration.function.ord
+      push: ord-viewgen-name
+
+  ord-viewgen-name:
+    - match: '{{identifier}}'
+      scope: entity.name.function.ord
+      set: ord-viewgen-return-arrow
+    - include: immediately-pop
+
+  ord-viewgen-return-arrow:
+    - meta_scope: meta.function.ord
+    - match: '->'
+      scope: punctuation.separator.return-type.ord
+      set: ord-viewgen-return-type
+    - include: immediately-pop
+
+  ord-viewgen-return-type:
+    - meta_scope: meta.function.ord
+    - match: '{{identifier}}'
+      scope: entity.name.type.ord
+      set: ord-viewgen-return-expr
+    - include: immediately-pop
+
+  # The return target may be a full expression, e.g. dotted names or a
+  # constructor call, and is consumed until the block-opening colon.
+  ord-viewgen-return-expr:
+    - meta_scope: meta.function.ord
+    - match: ':'
+      scope: punctuation.section.block.begin.ord
+      pop: 1
+    - match: \(
+      scope: punctuation.section.arguments.begin.ord
+      push: ord-viewgen-return-expr-args
+    - match: \.
+      scope: punctuation.accessor.dot.ord
+    - match: '{{identifier}}'
+      scope: entity.name.type.ord
+    - include: line-continuation-or-pop
+
+  ord-viewgen-return-expr-args:
+    - meta_scope: meta.function-call.arguments.ord
+    - match: \)
+      scope: punctuation.section.arguments.end.ord
+      pop: 1
+    - include: expression-in-a-group
+
+  ##[ PATH / NET STATEMENTS ]###################################################
+
+  ord-path-net-statements:
+    # path/net are soft keywords, so only treat them as declarations when a
+    # target name follows (`net = 5` stays an ordinary assignment)
+    - match: \b(path|net)\b(?=\s+{{identifier}})
+      scope: keyword.declaration.ord
+      push: ord-path-net-targets
+
+  # Targets may be dotted or subscripted like node statement targets:
+  # net ring.vx / path ctr[0]
+  ord-path-net-targets:
+    - match: ','
+      scope: punctuation.separator.ord
+    - match: \.
+      scope: punctuation.accessor.dot.ord
+      push: ord-context-target-member
+    - match: \[
+      scope: punctuation.section.brackets.begin.ord
+      push: ord-context-target-subscript
+    - match: '{{identifier}}'
+      scope: variable.other.ord
+    - match: $\n?
+      pop: 1
+    - include: line-continuation-or-pop
+
+  ##[ CONSTRAIN STATEMENT ]#####################################################
+
+  ord-constrain-statements:
+    - match: '!(?!=)'
+      scope: keyword.operator.constrain.ord
+
+  ##[ BLOCK STATEMENTS ]########################################################
+
+  # Node statement: Type target: suite  (e.g., inout vdd: ..., Nmos m1: ...,
+  # Nmos(w=4u, l=400n) m1: ..., lib.Nmos m1: ..., anonymous LayoutRect r: ...,
+  # bodyless Net vdd)
+  block-statements:
+    - meta_prepend: true
+    - include: ord-node-statements
+
+  ord-node-statements:
+    # anonymous node statements have no NPath name: anonymous LayoutRect r:
+    - match: \banonymous\b(?=\s+{{identifier}})
+      scope: storage.modifier.ord
+      push: ord-node-statement-kind
+    - match: |-
+        (?x)
+        (?!{{python_keywords}})
+        (?!(?:cell|viewgen|path|net|match|case|type|anonymous)\b)
+        (?=
+          {{identifier}}
+          (?:
+            \s* \. \s* {{identifier}}
+          | \s* \[ [^\]\n]* \]
+          )*
+          (?: \s* \( [^)\n]* \) )? \s+
+          {{identifier}}
+          (?:
+            \s* \. \s* {{identifier}}
+          | \s* \[ [^\]\n]* \]
+          )*
+          \s* (?: : | , | $ )
+        )
+      push: ord-node-statement-kind
+
+  ord-node-statement-kind:
+    - match: '{{ord_direction_kinds}}'
+      scope: storage.type.ord
+      set: ord-context-target
+    - match: '{{identifier}}'
+      scope: entity.name.type.ord
+      set: ord-node-statement-kind-rest
+    - include: immediately-pop
+
+  # Rest of the node type after its leading identifier: dotted and
+  # subscripted kinds (lib.Nmos m1:, rows[i] core:) and optional
+  # constructor arguments (Nmos(w=4u, l=400n) m1:)
+  ord-node-statement-kind-rest:
+    - meta_scope: meta.statement.node.ord
+    - match: '\s*(\.)\s*({{identifier}})'
+      captures:
+        1: punctuation.accessor.dot.ord
+        2: entity.name.type.ord
+    - match: \[
+      scope: punctuation.section.brackets.begin.ord
+      push: ord-context-target-subscript
+    - match: \(
+      scope: punctuation.section.arguments.begin.ord
+      set: [ord-context-target, ord-node-statement-kind-args]
+    - match: (?=\S)
+      set: ord-context-target
+    - include: line-continuation-or-pop
+
+  ord-node-statement-kind-args:
+    - meta_scope: meta.function-call.arguments.ord
+    - match: \)
+      scope: punctuation.section.arguments.end.ord
+      pop: 1
+    - include: expression-in-a-group
+
+  ord-context-target:
+    - meta_scope: meta.statement.node.ord
+    - match: ':'
+      scope: punctuation.section.block.begin.ord
+      pop: 1
+    # bodyless node statements may name several targets: Nmos m1, m2
+    - match: ','
+      scope: punctuation.separator.ord
+    - match: \.
+      scope: punctuation.accessor.dot.ord
+      push: ord-context-target-member
+    - match: \[
+      scope: punctuation.section.brackets.begin.ord
+      push: ord-context-target-subscript
+    - match: '{{identifier}}'
+      scope: variable.other.context-target.ord
+    - include: line-continuation-or-pop
+
+  ord-context-target-member:
+    - match: '{{identifier}}'
+      scope: variable.other.member.ord
+      pop: 1
+    - include: immediately-pop
+
+  ord-context-target-subscript:
+    - meta_scope: meta.brackets.ord
+    - match: \]
+      scope: punctuation.section.brackets.end.ord
+      pop: 1
+    - include: expression-in-a-group
+
+  ##[ NUMBERS WITH SI SUFFIXES ]################################################
+
+  numbers:
+    - meta_prepend: true
+    # Float with SI suffix: 1.5u, 3.14n, 1e-3k
+    - match: |-
+        (?x)
+        (
+          {{digits}} (?: (\.) {{digits}}? {{exponent}}? | {{exponent}} )
+        | (\.) {{digits}} {{exponent}}?
+        ) ({{si_suffix}})
+      scope: meta.number.float.decimal.ord
+      captures:
+        1: constant.numeric.value.ord
+        2: punctuation.separator.decimal.ord
+        3: punctuation.separator.decimal.ord
+        4: constant.numeric.suffix.ord
+    # Integer with SI suffix: 100n, 20u, 1M
+    - match: '({{digits}})({{si_suffix}})\b'
+      scope: meta.number.integer.decimal.ord
+      captures:
+        1: constant.numeric.value.ord
+        2: constant.numeric.suffix.ord
+
+  ##[ EXPRESSIONS ]#############################################################
+
+  expressions-common:
+    - meta_prepend: true
+    # Parameter access: .$param
+    - match: '\.\$'
+      scope: keyword.operator.accessor.ord
+      push: ord-param-name
+    # Connection operator: --
+    - match: '--'
+      scope: keyword.operator.connection.ord
+
+  ord-param-name:
+    - match: '{{identifier}}'
+      scope: variable.other.member.ord
+      pop: 1
+    - include: immediately-pop
