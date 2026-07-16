@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>name</key>
+	<string>ORD</string>
+	<key>contactEmailRot13</key>
+	<string></string>
+	<key>contactName</key>
+	<string>ORDeC contributors</string>
+	<key>description</key>
+	<string>Syntax highlighting for the ORD hardware description language</string>
+	<key>uuid</key>
+	<string>a1b2c3d4-e5f6-7890-abcd-ef1234567890</string>
+</dict>
+</plist>

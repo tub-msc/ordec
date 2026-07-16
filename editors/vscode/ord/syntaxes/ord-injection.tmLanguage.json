@@ -1,0 +1,324 @@
+{
+  "scopeName": "source.ord.injection",
+  "injectionSelector": "L:source.ord -string -comment",
+  "comment": "ORD-specific rules injected with higher priority (L:) into the ORD base grammar, which delegates to Python. This mirrors the Sublime Text approach where ORD extends Python syntax.",
+  "patterns": [
+    {
+      "include": "#cell-declaration"
+    },
+    {
+      "include": "#viewgen-declaration"
+    },
+    {
+      "include": "#context-element"
+    },
+    {
+      "include": "#path-net"
+    },
+    {
+      "include": "#number-si-float"
+    },
+    {
+      "include": "#number-si-integer"
+    },
+    {
+      "include": "#parameter-access"
+    },
+    {
+      "include": "#connect-operator"
+    },
+    {
+      "include": "#constrain-operator"
+    }
+  ],
+  "repository": {
+    "cell-declaration": {
+      "comment": "cell Name:  (cells take no superclass list)",
+      "begin": "\\s*(cell)\\s+(?=[_[:alpha:]]\\w*\\s*:)",
+      "beginCaptures": {
+        "1": {
+          "name": "storage.type.class.python"
+        }
+      },
+      "end": "(:)|$",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.class.begin.python"
+        }
+      },
+      "name": "meta.class.ord",
+      "patterns": [
+        {
+          "match": "\\b([_[:alpha:]]\\w*)\\b",
+          "name": "entity.name.type.class.python"
+        }
+      ]
+    },
+    "viewgen-declaration": {
+      "comment": "viewgen name -> ReturnExpr:  (viewgens take no parameter list and the return target may be any expression)",
+      "begin": "\\s*(viewgen)\\s+([_[:alpha:]]\\w*)\\s*(?=->|:|$)",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.declaration.function.ord"
+        },
+        "2": {
+          "name": "entity.name.function.python"
+        }
+      },
+      "end": "(:)|$",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.section.function.begin.python"
+        }
+      },
+      "name": "meta.function.ord",
+      "patterns": [
+        {
+          "match": "(->)\\s*([_[:alpha:]]\\w*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.separator.return-type.python"
+            },
+            "2": {
+              "name": "entity.name.type.class.python"
+            }
+          }
+        },
+        {
+          "include": "source.python"
+        }
+      ]
+    },
+    "context-element": {
+      "patterns": [
+        {
+          "include": "#context-element-block"
+        },
+        {
+          "include": "#context-element-inline"
+        },
+        {
+          "include": "#context-element-bare"
+        }
+      ]
+    },
+    "context-element-block": {
+      "comment": "Block node statements: Nmos m1: / Series(gap=4) core: / anonymous LayoutRect r:",
+      "begin": "^([ \\t]*)(?:(anonymous)[ \\t]+)?(?:(inout|input|output|port)|(?!(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|cell|viewgen|path|net|match|case|type|anonymous)\\b)([_[:alpha:]]\\w*))[ \\t]*(\\((?:[^()\\n]|\\([^()\\n]*\\))*\\))?(\\s+)([_[:alpha:]]\\w*)((?:(?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\]))*)(\\s*:)(?=\\s*(?:#.*)?$)",
+      "beginCaptures": {
+        "2": {
+          "name": "storage.modifier.ord"
+        },
+        "3": {
+          "name": "storage.type.ord"
+        },
+        "4": {
+          "name": "entity.name.type.class.python"
+        },
+        "5": {
+          "patterns": [
+            {
+              "include": "source.python"
+            }
+          ]
+        },
+        "7": {
+          "name": "variable.other.context-target.ord"
+        },
+        "8": {
+          "name": "meta.context-target.ord"
+        },
+        "9": {
+          "name": "punctuation.section.block.begin.ord"
+        }
+      },
+      "while": "^(?:\\1[ \\t]+|(?=\\s*$))",
+      "name": "meta.context-element.block.ord",
+      "patterns": [
+        {
+          "include": "#ord-body"
+        }
+      ]
+    },
+    "context-element-inline": {
+      "comment": "Inline node statements: Nmos m1: body",
+      "begin": "^([ \\t]*)(?:(anonymous)[ \\t]+)?(?:(inout|input|output|port)|(?!(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|cell|viewgen|path|net|match|case|type|anonymous)\\b)([_[:alpha:]]\\w*))[ \\t]*(\\((?:[^()\\n]|\\([^()\\n]*\\))*\\))?(\\s+)([_[:alpha:]]\\w*)((?:(?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\]))*)(\\s*:)(?=\\s*(?!#|$))",
+      "beginCaptures": {
+        "2": {
+          "name": "storage.modifier.ord"
+        },
+        "3": {
+          "name": "storage.type.ord"
+        },
+        "4": {
+          "name": "entity.name.type.class.python"
+        },
+        "5": {
+          "patterns": [
+            {
+              "include": "source.python"
+            }
+          ]
+        },
+        "7": {
+          "name": "variable.other.context-target.ord"
+        },
+        "8": {
+          "name": "meta.context-target.ord"
+        },
+        "9": {
+          "name": "punctuation.section.block.begin.ord"
+        }
+      },
+      "end": "$",
+      "name": "meta.context-element.inline.ord",
+      "patterns": [
+        {
+          "include": "#ord-body"
+        }
+      ]
+    },
+    "path-net": {
+      "comment": "path/net declarations: path ctr, net vdd, vss",
+      "begin": "\\b(path|net)(?=\\s+[_[:alpha:]]\\w*)",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.declaration.ord"
+        }
+      },
+      "end": "$",
+      "name": "meta.path-net.ord",
+      "patterns": [
+        {
+          "match": "[_[:alpha:]]\\w*",
+          "name": "variable.other.ord"
+        },
+        {
+          "match": ",",
+          "name": "punctuation.separator.ord"
+        }
+      ]
+    },
+    "number-si-float": {
+      "comment": "Float with SI suffix: 1.5u, 3.14n, 1e-3k",
+      "match": "(?<!\\w)(?:(?:\\.[0-9](?:_?[0-9])*|[0-9](?:_?[0-9])*\\.[0-9](?:_?[0-9])*|[0-9](?:_?[0-9])*\\.)(?:[Ee][-+]?[0-9](?:_?[0-9])*)?|[0-9](?:_?[0-9])*[Ee][-+]?[0-9](?:_?[0-9])*)([afpnumkMGT])\\b",
+      "captures": {
+        "1": {
+          "name": "constant.numeric.suffix.ord"
+        }
+      },
+      "name": "constant.numeric.float.python"
+    },
+    "number-si-integer": {
+      "comment": "Integer with SI suffix: 100n, 20u, 1M",
+      "match": "(?<![.\\w])(?:[1-9](?:_?[0-9])*|0+)([afpnumkMGT])\\b",
+      "captures": {
+        "1": {
+          "name": "constant.numeric.suffix.ord"
+        }
+      },
+      "name": "constant.numeric.dec.python"
+    },
+    "parameter-access": {
+      "comment": "Parameter access: .$param",
+      "match": "(\\.)(\\$)([_[:alpha:]]\\w*)",
+      "captures": {
+        "1": {
+          "name": "punctuation.accessor.dot.ord"
+        },
+        "2": {
+          "name": "keyword.operator.parameter.ord"
+        },
+        "3": {
+          "name": "variable.other.member.ord"
+        }
+      }
+    },
+    "connect-operator": {
+      "comment": "Connection operator: --",
+      "match": "--",
+      "name": "keyword.operator.connect.ord"
+    },
+    "constrain-operator": {
+      "comment": "Constrain operator: ! (but not !=)",
+      "match": "!(?!=)",
+      "name": "keyword.operator.constrain.ord"
+    },
+    "ord-body": {
+      "patterns": [
+        {
+          "include": "#cell-declaration"
+        },
+        {
+          "include": "#viewgen-declaration"
+        },
+        {
+          "include": "#context-element-block"
+        },
+        {
+          "include": "#context-element-inline"
+        },
+        {
+          "include": "#path-net"
+        },
+        {
+          "include": "#number-si-float"
+        },
+        {
+          "include": "#number-si-integer"
+        },
+        {
+          "include": "#parameter-access"
+        },
+        {
+          "include": "#connect-operator"
+        },
+        {
+          "include": "#constrain-operator"
+        },
+        {
+          "include": "source.python"
+        }
+      ]
+    },
+    "context-element-bare": {
+      "comment": "Bodyless node statements: Net vdd / Nmos m1, m2",
+      "match": "^([ \\t]*)(?:(anonymous)[ \\t]+)?(?:(inout|input|output|port)|(?!(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|cell|viewgen|path|net|match|case|type|anonymous)\\b)([_[:alpha:]]\\w*))[ \\t]*(\\((?:[^()\\n]|\\([^()\\n]*\\))*\\))?[ \\t]+([_[:alpha:]]\\w*(?:(?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\])|[ \\t]*,[ \\t]*[_[:alpha:]]\\w*)*)[ \\t]*(?=#|$)",
+      "captures": {
+        "2": {
+          "name": "storage.modifier.ord"
+        },
+        "3": {
+          "name": "storage.type.ord"
+        },
+        "4": {
+          "name": "entity.name.type.class.python"
+        },
+        "5": {
+          "patterns": [
+            {
+              "include": "source.python"
+            }
+          ]
+        },
+        "6": {
+          "patterns": [
+            {
+              "match": ",",
+              "name": "punctuation.separator.ord"
+            },
+            {
+              "match": "\\.",
+              "name": "punctuation.accessor.dot.ord"
+            },
+            {
+              "match": "[_[:alpha:]]\\w*",
+              "name": "variable.other.context-target.ord"
+            }
+          ]
+        }
+      },
+      "name": "meta.context-element.bare.ord"
+    }
+  }
+}

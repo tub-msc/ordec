@@ -1,0 +1,9 @@
+{
+  "scopeName": "source.ord",
+  "name": "ORD",
+  "fileTypes": ["ord"],
+  "comment": "Thin wrapper that delegates to Python's grammar. ORD-specific rules are added via the injection grammar (ord-injection.tmLanguage.json).",
+  "patterns": [
+    { "include": "source.python" }
+  ]
+}

@@ -126,3 +126,40 @@ path = [
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+# Editor-support files that cannot carry header comments:
+path = [
+    "editors/pycharm/ord.tmbundle/info.plist",
+    "editors/vscode/ord/language-configuration.json",
+    "editors/vscode/ord/syntaxes/ord.tmLanguage.json",
+    "editors/vscode/ord/ordec.ico",
+    "editors/vscode/ord/ordec.png",
+]
+SPDX-FileCopyrightText = "2026 ORDeC contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+# Editor grammars adapted from the MIT-licensed MagicPython TextMate grammar:
+path = [
+    "editors/pycharm/ord.tmbundle/Syntaxes/ord.tmLanguage.json",
+    "editors/vscode/ord/syntaxes/ord-injection.tmLanguage.json",
+]
+SPDX-FileCopyrightText = [
+    "2015-present MagicStack Inc.",
+    "2026 ORDeC contributors",
+]
+SPDX-License-Identifier = "MIT AND Apache-2.0"
+
+[[annotations]]
+# VS Code extension scaffold files derived from MIT-licensed Microsoft templates:
+path = [
+    "editors/vscode/ord/package.json",
+    "editors/vscode/ord/themes/ord-color-theme.json",
+    "editors/vscode/ord/.vscode/launch.json",
+]
+SPDX-FileCopyrightText = [
+    "Microsoft Corporation",
+    "2026 ORDeC contributors",
+]
+SPDX-License-Identifier = "MIT AND Apache-2.0"
