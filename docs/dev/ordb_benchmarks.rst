@@ -70,12 +70,42 @@ Typical usage::
     python -m benchmarks.report results/*.json --baseline pyrsistent-pvector
     python -m benchmarks.report results/*.json --check-sanity
 
+    # HTML report
+    python -m benchmarks.report results/*.json --baseline pyrsistent-pvector \
+        --html results/report.html --no-tables
+
 The ``default`` scale is sized so the full matrix stays in the minutes range;
 ``--scale large`` is where asymptotic differences between backends actually
 show up. Every workload/backend pair is capped by ``--time-limit`` (30 s by
 default, ``0`` disables): once the budget is spent the runner stops starting
 new repeats and says so, rather than silently reporting a truncated run as a
 full one.
+
+``--html`` writes one self-contained page built around a workload x backend
+matrix, which is the shape of the question the suite exists to answer. It
+needs no dependencies and contains no JavaScript, so it is a ~25 KB file that
+opens anywhere and prints to PDF from the browser.
+
+The page is: a headline (which backend won, and on how many workloads), the
+total-time matrix, the same matrix for peak and retained memory when the run
+used ``--mem``, and each multi-phase workload's phases behind a ``<details>``
+so the page opens on the summary rather than on every number at once.
+
+Cells are shaded on a diverging scale around the baseline -- blue better, red
+worse, neutral at parity -- log-spaced, because the ratios span roughly 0.02×
+to 90×. Every cell also carries its ratio and absolute value as text: colour
+is a redundant channel, so the page survives printing, greyscale and
+colour-vision deficiency. Change what everything is measured against with
+``--baseline``.
+
+``total`` (a ``total`` row in the tables, the total-time matrix in the HTML
+report) is the workload's phases summed. It is derived by the report tool,
+not stored in the JSON, and only appears for multi-phase workloads -- for a
+single-phase one the phase already is the total. It sums the phases *within
+each run* and only then applies ``--stat``: summing per-phase minima would
+take each phase from whichever run suited it best and understate every
+backend by a different margin. Untimed setup belongs to no phase, so
+``total`` is the measured work, not the wall time of the whole run.
 
 Two checks keep a comparison honest:
 

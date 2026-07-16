@@ -66,12 +66,39 @@ def _emit_table(headers, rows, fmt, out):
     for row in rows:
         print(line(row), file=out)
 
+def overall_wall_ns(rec):
+    """Per-run totals: the phases of one run summed, run by run.
+
+    Summed per run and only then reduced by _stat -- summing per-phase minima
+    instead would mix phases from different runs and understate the total.
+    Returns None when phase timings are missing. Untimed setup is not part of
+    any phase, so this is the total *measured* work, not wall time of the whole
+    run.
+    """
+    runs = [v.get('wall_ns') or [] for v in rec['phases'].values()]
+    if not runs or not all(runs):
+        return None
+    n = min(len(r) for r in runs)
+    return [sum(r[i] for r in runs) for i in range(n)]
+
+def total_wall_ns(rec):
+    """As overall_wall_ns, but None for single-phase records -- there the lone
+    phase already is the total, so a separate total row/panel is just noise."""
+    if len(rec['phases']) < 2:
+        return None
+    return overall_wall_ns(rec)
+
+def group_records(records):
+    """(workload, params) -> {(world, backend): rec}"""
+    groups = {}
+    for (world, backend, workload, params), rec in records.items():
+        groups.setdefault((workload, params), {})[(world, backend)] = rec
+    return groups
+
 def report(records, baseline, stat, fmt, out=sys.stdout):
     """One table per (workload, params): a row per phase, a column pair
     (time, speedup-vs-baseline) per world/backend, then memory rows."""
-    groups = {} # (workload, params) -> {(world, backend): rec}
-    for (world, backend, workload, params), rec in records.items():
-        groups.setdefault((workload, params), {})[(world, backend)] = rec
+    groups = group_records(records)
 
     mismatches = []
     for (workload, params), by_col in sorted(groups.items()):
@@ -94,15 +121,23 @@ def report(records, baseline, stat, fmt, out=sys.stdout):
         headers = ['phase']
         for name in col_names:
             headers += [name, 'x']
-        rows = []
+
+        # 'total' leads: the headline, with the phase breakdown under it.
+        walls = {'total': {c: total_wall_ns(by_col[c]) for c in cols}}
+        if not any(walls['total'].values()):
+            del walls['total']
         for ph in phases:
-            row = [ph]
+            walls[ph] = {c: by_col[c]['phases'].get(ph, {}).get('wall_ns')
+                for c in cols}
+
+        rows = []
+        for label, by_c in walls.items():
+            row = [label]
             base_ns = None
-            if base_col is not None:
-                base_ns = _stat(by_col[base_col]['phases'][ph]['wall_ns'],
-                    stat)
+            if base_col is not None and by_c.get(base_col):
+                base_ns = _stat(by_c[base_col], stat)
             for c in cols:
-                wall = by_col[c]['phases'].get(ph, {}).get('wall_ns')
+                wall = by_c.get(c)
                 if not wall:
                     row += ['-', '-']
                     continue
@@ -195,10 +230,23 @@ def main(argv=None):
     parser.add_argument('--stat', default='min', choices=['min', 'median'])
     parser.add_argument('--format', default='md', choices=['md', 'csv'])
     parser.add_argument('--check-sanity', action='store_true')
+    parser.add_argument('--html', metavar='FILE',
+        help='also write a self-contained HTML report')
+    parser.add_argument('--no-tables', action='store_true',
+        help='skip the tables (useful together with --html)')
     args = parser.parse_args(argv)
 
     records = load_results(args.files)
-    ok = report(records, args.baseline, args.stat, args.format)
+    ok = True
+    if not args.no_tables:
+        ok = report(records, args.baseline, args.stat, args.format)
+    if args.html:
+        from .html import write_html
+        impls = {tuple(sorted((json.load(open(f)).get('impl') or {}).items()))
+            for f in args.files}
+        write_html(group_records(records), args.baseline, args.stat,
+            args.html, impl=dict(next(iter(impls))) if len(impls) == 1 else None,
+            out=sys.stderr)
     if args.check_sanity:
         ok = check_sanity(records, args.stat) and ok
     return 0 if ok else 1
