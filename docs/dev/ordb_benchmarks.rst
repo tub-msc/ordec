@@ -116,8 +116,8 @@ Two checks keep a comparison honest:
 - ``tests/test_benchmarks.py`` runs the whole suite at the smallest scale
   in CI.
 
-Transactions and index snapshots
---------------------------------
+Transactions, index snapshots and immutability
+----------------------------------------------
 
 While a :class:`~ordec.core.ordb.SubgraphUpdater` transaction is open, the
 subgraph's own ``nodes``/``index`` keep showing the pre-transaction state;
@@ -128,6 +128,21 @@ returns an immutable snapshot of the bucket, so callers may iterate a
 query result while removing exactly those nodes (the ``expand_rects``
 pattern). Backends have to get both right
 (:mod:`ordec.core.ordb.backend`); the differential fuzz checks them.
+
+The state mappings a subgraph hands out via ``.nodes``/``.index`` must
+also reject in-place mutation through their public API: frozen subgraphs
+cache their content hash, and backends share state objects across
+freeze/thaw/fork, so a stray write would silently corrupt every subgraph
+in the sharing group. pyrsistent gets this from pmap; the dict-based
+backends use guarded dict subclasses whose public mutators raise
+``TypeError`` and whose index read paths (``[]``, ``get``, ``items``,
+``values``, ``copy``) return bucket snapshots
+(``ordec/core/ordb/backend_fullcopy.py``). Reads stay at native dict
+speed, but note for cross-version comparisons that turning fullcopy's
+node store from an exact dict into a subclass costs roughly a third on
+raw node reads (CPython specializes exact dicts only); cow's node store
+was a subclass all along. ``tests/test_ordb.py`` asserts the contract
+under every backend.
 
 Going forward
 -------------

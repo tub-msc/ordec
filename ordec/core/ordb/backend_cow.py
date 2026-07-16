@@ -24,12 +24,12 @@ from collections.abc import Mapping
 import bisect
 
 from .backend import StorageBackend, StorageTxn, BucketKind
-from .backend_fullcopy import SnapshotIndexDict
+from .backend_fullcopy import GuardedDict, SnapshotIndexDict
 
 _ABSENT = object()
 _DELETED = object()
 
-class CowNodes(dict):
+class CowNodes(GuardedDict):
     __slots__ = ('shared',)
 
 class CowIndex(SnapshotIndexDict):
@@ -175,11 +175,15 @@ class CowTxn(StorageTxn):
             nodes.shared = False
         else:
             nodes = base_nodes
+        # nodes is a GuardedDict: mutate via unbound dict.* calls, batching
+        # the updates through one C-level dict.update.
+        upds = {}
         for nid, v in self._onodes.items():
             if v is _DELETED:
-                nodes.pop(nid, None) # may be overlay-born and already absent
+                dict.pop(nodes, nid, None) # may be overlay-born, already absent
             else:
-                nodes[nid] = v
+                upds[nid] = v
+        dict.update(nodes, upds)
 
         base_index = self._base_index
         if base_index.shared:

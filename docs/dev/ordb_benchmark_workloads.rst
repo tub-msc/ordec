@@ -32,8 +32,12 @@ What a backend does:
   - ``SET``: unordered set of values.
 
   ``index[key]`` returns an immutable *snapshot* of the bucket, so callers can
-  iterate it while mutating the subgraph. An empty bucket looks the same as an
-  absent key.
+  iterate it while mutating the subgraph; the same holds for every other
+  public read path that exposes buckets. An empty bucket looks the same as an
+  absent key. The node and index mappings themselves must reject in-place
+  mutation through their public API (all mutation goes through a
+  transaction) -- snapshots may share state objects, so a stray write would
+  corrupt every subgraph in the sharing group.
 
 - **freeze** — produce an immutable snapshot; the mutable subgraph stays
   usable afterwards.

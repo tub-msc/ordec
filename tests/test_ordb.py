@@ -1186,3 +1186,104 @@ def test_assign_npath():
     with pytest.raises(UniqueViolation):
         # Ensure that we cannot assign multiple paths to a node:
         s.y = x
+
+# Storage backend immutability contract
+# -------------------------------------
+#
+# Subgraph state (.nodes/.index) is exposed read-only: all mutation goes
+# through a StorageTxn (see ordec.core.ordb.backend). Frozen subgraphs cache
+# their content hash and backends may share state objects across
+# freeze/thaw/fork, so an in-place mutation that slipped through would
+# silently corrupt sibling subgraphs. Backends may either raise on mutation
+# attempts (dict-based backends, delta views) or return a new object without
+# mutating (pyrsistent's PMap.update), so the cross-backend assertion is
+# state invariance, not "raises".
+
+class GuardNode(Node):
+    in_subgraphs = [MyHead]
+    color = Attr(int)
+    color_idx = Index(color)
+
+def _guard_subgraph():
+    s = MyHead()
+    s.node1 = GuardNode(color=123)
+    s.node2 = GuardNode(color=123)
+    s.node3 = GuardNode(color=456)
+    return s.subgraph
+
+def _guard_fingerprint(sg):
+    return (
+        tuple(sorted(sg.nodes.items())),
+        tuple(sg.all(GuardNode.color_idx.query(123), wrap_cursor=False)),
+        tuple(sg.all(GuardNode.color_idx.query(456), wrap_cursor=False)),
+    )
+
+MUTATION_VECTORS = [
+    lambda d, k: d.__setitem__(k, 'garbage'),
+    lambda d, k: d.__delitem__(k),
+    lambda d, k: d.__ior__({k: 'garbage'}),
+    lambda d, k: d.update({k: 'garbage'}),
+    lambda d, k: d.pop(k),
+    lambda d, k: d.popitem(),
+    lambda d, k: d.clear(),
+    lambda d, k: d.setdefault(object(), 'garbage'),
+]
+
+def test_state_mappings_reject_or_ignore_mutation(ordb_backend):
+    mutable = _guard_subgraph()
+    frozen = mutable.freeze()
+    thawed = frozen.thaw()
+    fp = _guard_fingerprint(frozen)
+    h = hash(frozen)
+
+    guarded = ordb_backend in ('fullcopy', 'cow')
+    for sg in (frozen, mutable, thawed):
+        for mapping in (sg.nodes, sg.index):
+            key = next(iter(mapping))
+            for vector in MUTATION_VECTORS:
+                if guarded:
+                    with pytest.raises(TypeError):
+                        vector(mapping, key)
+                else:
+                    try:
+                        vector(mapping, key)
+                    except (TypeError, AttributeError):
+                        pass
+
+    assert _guard_fingerprint(frozen) == fp
+    assert _guard_fingerprint(mutable) == fp
+    assert _guard_fingerprint(thawed) == fp
+    assert hash(frozen) == h
+    assert frozen == mutable.freeze()
+
+def test_bucket_snapshots_detached(ordb_backend):
+    mutable = _guard_subgraph()
+    frozen = mutable.freeze()
+    fp = _guard_fingerprint(frozen)
+    key = IndexKey(GuardNode.color_idx, 123)
+
+    def try_mutate(bucket):
+        for attempt in (lambda: bucket.append(999), lambda: bucket.add(999),
+                lambda: bucket.remove(next(iter(bucket)))):
+            try:
+                attempt()
+            except (AttributeError, TypeError):
+                pass
+
+    for sg in (frozen, mutable):
+        buckets = [sg.index[key]]
+        if (got := sg.index.get(key)) is not None:
+            buckets.append(got)
+        for accessor in ('items', 'values', 'copy'):
+            method = getattr(sg.index, accessor, None)
+            if method is None:
+                continue
+            result = method()
+            buckets.extend(result.values() if isinstance(result, dict)
+                else (v for _, v in result) if accessor == 'items'
+                else result)
+        for bucket in buckets:
+            try_mutate(bucket)
+
+    assert _guard_fingerprint(frozen) == fp
+    assert _guard_fingerprint(mutable) == fp

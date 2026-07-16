@@ -19,9 +19,19 @@ following contract:
 - ``index[key]`` returns an *immutable snapshot* of the bucket at access
   time. Callers may iterate it while mutating the subgraph (e.g. removing
   exactly the nodes it lists, as ordec.layout.helpers.expand_rects does).
+  The same holds for every other public read path that exposes buckets
+  (``get``, ``items``, ``values``, ``copy``): snapshots or immutable
+  bucket objects, never mutable state shared with the subgraph.
 - Buckets of BucketKind.NID iterate in ascending order, SORTED buckets in
   sort-value order (ties in insertion order), SET buckets unordered.
 - ``key in index`` must reflect whether the key has a non-empty bucket.
+- The mapping objects must reject in-place mutation through their public
+  API (raise TypeError, or return a new object without mutating, as
+  pyrsistent does). Subgraphs hand out these objects via ``.nodes`` /
+  ``.index``, frozen subgraphs cache their content hash, and backends may
+  share the objects across freeze/thaw/fork -- a caller that could mutate
+  them in place would silently corrupt every subgraph in the sharing
+  group.
 
 All mutation goes through a StorageTxn obtained from
 :meth:`StorageBackend.begin`; lifecycle transitions (freeze/thaw/fork) and
