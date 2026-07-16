@@ -4,9 +4,21 @@
 import pytest
 import re
 from ordec.core import *
+from ordec.core import ordb
 from ordec.core.ordb.base import IndexKey
 from tabulate import tabulate
 import ordec.core.ordb.base
+
+@pytest.fixture(autouse=True, params=ordb.available_backends())
+def ordb_backend(request):
+    """Run every test in this module under every storage backend.
+
+    The backends are meant to be interchangeable, so the ordb unit suite is
+    the natural place to hold them to it: anything the tests pin down about
+    nodes, cursors, indices or the updater has to hold for all of them.
+    """
+    with ordb.use_backend(request.param):
+        yield request.param
 
 # Custom schema for testing:
 class MyHead(SubgraphRoot):
@@ -15,6 +27,12 @@ class MyHead(SubgraphRoot):
 class MyNode(Node):
     in_subgraphs=[MyHead]
     label = Attr(str)
+
+def test_backend_in_effect(ordb_backend):
+    """Guard the fixture itself: if use_backend ever stopped reaching newly
+    built subgraphs, every parametrization here would silently collapse into
+    six identical runs of the default backend."""
+    assert MyHead().subgraph.backend.name == ordb_backend
 
 class test_node_tuple():
     t = MyNode(label='hello')
