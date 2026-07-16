@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+_EMPTY = None # The shared empty set, bound below once the class exists.
+
 class PatriciaSet:
     """
     Persistent (immutable, structure-sharing) set of non-negative integers,
@@ -12,6 +14,7 @@ class PatriciaSet:
     width of the largest element; both return a new set sharing structure
     with the original. The tree shape is canonical (history-independent):
     two PatriciaSets holding the same elements are structurally identical.
+    PatriciaSet() always returns the same shared empty instance.
 
     Internal tree representation: None is the empty tree, a plain int is a
     leaf, and a branch is a tuple (prefix, mask, left, right). mask is the
@@ -20,6 +23,16 @@ class PatriciaSet:
     those with it set.
     """
     __slots__ = ('_tree', '_size')
+
+    def __new__(cls, iterable=()):
+        # The empty set is a shared singleton, like pyrsistent's pmap()/pset().
+        # Instances are immutable, so callers never need distinct empty ones.
+        # An empty iterable leaves __init__ a no-op, so it is safe to let it
+        # run on the singleton. Iterators are always truthy and take the
+        # regular path, even when they turn out to be empty.
+        if cls is PatriciaSet and not iterable and _EMPTY is not None:
+            return _EMPTY
+        return super().__new__(cls)
 
     def __init__(self, iterable=()):
         self._tree = None
@@ -30,7 +43,9 @@ class PatriciaSet:
 
     @classmethod
     def _make(cls, tree, size):
-        ret = cls.__new__(cls)
+        # object.__new__, not cls.__new__: the latter hands back the shared
+        # empty singleton, whose slots must never be overwritten here.
+        ret = object.__new__(cls)
         ret._tree = tree
         ret._size = size
         return ret
@@ -132,3 +147,5 @@ class PatriciaSet:
 
     def __repr__(self):
         return f"PatriciaSet({list(self)!r})"
+
+_EMPTY = PatriciaSet()

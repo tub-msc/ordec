@@ -366,13 +366,6 @@ class ExternalRef(Attr):
         return val
             
 
-# Deprecated: bucket storage is now a property of the storage backend
-# (ordec.core.ordb.backend); the former INDEX_PATRICIA switch corresponds
-# to choosing between the 'pyrsistent-patricia' and 'pyrsistent-pvector'
-# backends (see ORDEC_ORDB_BACKEND / ordb.use_backend). The name
-# is kept only so stale imports do not break; it is no longer consulted.
-INDEX_PATRICIA = True
-
 @public
 class Index(GenericIndex):
     def __init__(self, attr: Attr, unique:bool=False, sortkey: Callable=None):

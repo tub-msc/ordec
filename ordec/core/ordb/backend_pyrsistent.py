@@ -3,8 +3,8 @@
 
 """
 Reference storage backend: pyrsistent persistent maps for nodes and index,
-with either PatriciaSet or pvector NID buckets (the two variants that were
-previously toggled by the module-level INDEX_PATRICIA switch in ordb.py).
+with either PatriciaSet or pvector NID buckets, registered as the
+'pyrsistent-patricia' and 'pyrsistent-pvector' backends.
 
 freeze/thaw/fork are O(1) reference handovers; transaction abort is free
 because operations never mutate shared structures.
@@ -16,9 +16,6 @@ from pyrsistent import pmap, pvector, pset
 
 from .backend import StorageBackend, StorageTxn, BucketKind
 from .patricia import PatriciaSet
-
-_EMPTY_PMAP = pmap()
-_EMPTY_PATRICIA = PatriciaSet()
 
 class PyrsistentTxn(StorageTxn):
     __slots__ = ('nodes', 'index', '_patricia')
@@ -39,7 +36,7 @@ class PyrsistentTxn(StorageTxn):
         if kind == BucketKind.SET:
             values = (pset() if values is None else values).add(value)
         elif self._patricia:
-            values = (_EMPTY_PATRICIA if values is None else values).add(value)
+            values = (PatriciaSet() if values is None else values).add(value)
         else:
             if values is None:
                 values = pvector()
@@ -81,7 +78,7 @@ class PyrsistentBackend(StorageBackend):
         self.name = 'pyrsistent-patricia' if patricia else 'pyrsistent-pvector'
 
     def empty_state(self):
-        return _EMPTY_PMAP, _EMPTY_PMAP, range(0, 2**32)
+        return pmap(), pmap(), range(0, 2**32)
 
     def begin(self, subgraph):
         return PyrsistentTxn(subgraph, self._patricia)
