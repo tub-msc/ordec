@@ -1,0 +1,195 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Benchmark report tool: merge result JSON files (possibly from different
+worlds, e.g. Python and Zig) and print per-workload comparison tables.
+
+    python -m benchmarks.report results/*.json --baseline pyrsistent-pvector
+    python -m benchmarks.report results/*.json --stat median --format csv
+"""
+
+import argparse
+import json
+import statistics
+import sys
+
+def load_results(paths):
+    """Merged records keyed by (world, backend, workload, params)."""
+    records = {}
+    for path in paths:
+        with open(path) as f:
+            doc = json.load(f)
+        world = doc.get('world', 'unknown')
+        for rec in doc['results']:
+            params = tuple(sorted(rec.get('params', {}).items()))
+            key = (world, rec['backend'], rec['workload'], params)
+            records[key] = rec | {'world': world, 'source': path}
+    return records
+
+def _stat(values, stat):
+    if stat == 'min':
+        return min(values)
+    return statistics.median(values)
+
+def _fmt_ns(ns):
+    if ns >= 1e9:
+        return f"{ns/1e9:.2f}s"
+    if ns >= 1e6:
+        return f"{ns/1e6:.1f}ms"
+    if ns >= 1e3:
+        return f"{ns/1e3:.1f}us"
+    return f"{ns:.0f}ns"
+
+def _fmt_bytes(b):
+    for unit in ('B', 'KiB', 'MiB', 'GiB'):
+        if b < 1024 or unit == 'GiB':
+            return f"{b:.0f}{unit}" if unit == 'B' else f"{b:.1f}{unit}"
+        b /= 1024
+
+def _emit_table(headers, rows, fmt, out):
+    if fmt == 'csv':
+        import csv
+        writer = csv.writer(out)
+        writer.writerow(headers)
+        writer.writerows(rows)
+        return
+    widths = [max(len(str(headers[i])),
+        max((len(str(r[i])) for r in rows), default=0))
+        for i in range(len(headers))]
+    def line(cells):
+        return '| ' + ' | '.join(str(c).ljust(w)
+            for c, w in zip(cells, widths)) + ' |'
+    print(line(headers), file=out)
+    print('|' + '|'.join('-' * (w + 2) for w in widths) + '|', file=out)
+    for row in rows:
+        print(line(row), file=out)
+
+def overall_wall_ns(rec):
+    """Per-run totals: the phases of one run summed, run by run.
+
+    Summed per run and only then reduced by _stat -- summing per-phase minima
+    instead would mix phases from different runs and understate the total.
+    Returns None when phase timings are missing. Untimed setup is not part of
+    any phase, so this is the total *measured* work, not wall time of the whole
+    run.
+    """
+    runs = [v.get('wall_ns') or [] for v in rec['phases'].values()]
+    if not runs or not all(runs):
+        return None
+    n = min(len(r) for r in runs)
+    return [sum(r[i] for r in runs) for i in range(n)]
+
+def total_wall_ns(rec):
+    """As overall_wall_ns, but None for single-phase records -- there the lone
+    phase already is the total, so a separate total row/panel is just noise."""
+    if len(rec['phases']) < 2:
+        return None
+    return overall_wall_ns(rec)
+
+def group_records(records):
+    """(workload, params) -> {(world, backend): rec}"""
+    groups = {}
+    for (world, backend, workload, params), rec in records.items():
+        groups.setdefault((workload, params), {})[(world, backend)] = rec
+    return groups
+
+def report(records, baseline, stat, fmt, out=sys.stdout):
+    """One table per (workload, params): a row per phase, a column pair
+    (time, speedup-vs-baseline) per world/backend, then memory rows."""
+    groups = group_records(records)
+
+    mismatches = []
+    for (workload, params), by_col in sorted(groups.items()):
+        cols = sorted(by_col, key=lambda wb: (wb[0] != 'python',
+            wb[1] != baseline, wb))
+        col_names = [f"{w}:{b}" if w != 'python' else b for w, b in cols]
+
+        checksums = {c: by_col[c].get('checksum') for c in by_col}
+        present = {v for v in checksums.values() if v}
+        if len(present) > 1:
+            mismatches.append((workload, checksums))
+
+        params_str = ' '.join(f"{k}={v}" for k, v in params
+            if k not in ('scale', 'seed'))
+        if fmt == 'md':
+            print(f"\n## {workload} ({params_str})\n", file=out)
+
+        phases = list(by_col[cols[0]]['phases'])
+        base_col = next((c for c in cols if c[1] == baseline), None)
+        headers = ['phase']
+        for name in col_names:
+            headers += [name, 'x']
+
+        # 'total' leads: the headline, with the phase breakdown under it.
+        walls = {'total': {c: total_wall_ns(by_col[c]) for c in cols}}
+        if not any(walls['total'].values()):
+            del walls['total']
+        for ph in phases:
+            walls[ph] = {c: by_col[c]['phases'].get(ph, {}).get('wall_ns')
+                for c in cols}
+
+        rows = []
+        for label, by_c in walls.items():
+            row = [label]
+            base_ns = None
+            if base_col is not None and by_c.get(base_col):
+                base_ns = _stat(by_c[base_col], stat)
+            for c in cols:
+                wall = by_c.get(c)
+                if not wall:
+                    row += ['-', '-']
+                    continue
+                ns = _stat(wall, stat)
+                row.append(_fmt_ns(ns))
+                row.append(f"{base_ns/ns:.1f}" if base_ns and ns else '-')
+            rows.append(row)
+        for mem_key, label in (('tracemalloc_peak_bytes', 'peak mem'),
+                ('retained_bytes', 'retained mem')):
+            vals = {c: (by_col[c].get('mem') or {}).get(mem_key)
+                for c in cols}
+            if not any(v is not None for v in vals.values()):
+                continue
+            row = [label]
+            base_v = vals.get(base_col)
+            for c in cols:
+                v = vals[c]
+                row.append(_fmt_bytes(v) if v is not None else '-')
+                row.append(f"{base_v/v:.1f}" if base_v and v else '-')
+            rows.append(row)
+        _emit_table(headers, rows, fmt, out)
+
+    if mismatches:
+        print("\nWARNING: checksum mismatches (results differ between "
+            "backends/worlds!):", file=out)
+        for workload, checksums in mismatches:
+            print(f"  {workload}: {checksums}", file=out)
+    return not mismatches
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog='python -m benchmarks.report')
+    parser.add_argument('files', nargs='+')
+    parser.add_argument('--baseline', default='pyrsistent-pvector')
+    parser.add_argument('--stat', default='min', choices=['min', 'median'])
+    parser.add_argument('--format', default='md', choices=['md', 'csv'])
+    parser.add_argument('--html', metavar='FILE',
+        help='also write a self-contained HTML report')
+    parser.add_argument('--no-tables', action='store_true',
+        help='skip the tables (useful together with --html)')
+    args = parser.parse_args(argv)
+
+    records = load_results(args.files)
+    ok = True
+    if not args.no_tables:
+        ok = report(records, args.baseline, args.stat, args.format)
+    if args.html:
+        from .html import write_html
+        impls = {tuple(sorted((json.load(open(f)).get('impl') or {}).items()))
+            for f in args.files}
+        write_html(group_records(records), args.baseline, args.stat,
+            args.html, impl=dict(next(iter(impls))) if len(impls) == 1 else None,
+            out=sys.stderr)
+    return 0 if ok else 1
+
+if __name__ == '__main__':
+    sys.exit(main())

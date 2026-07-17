@@ -1,15 +1,15 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from pyrsistent import pmap, pvector, pset, PMap, PVector, PSet
 from typing import Callable, Iterable, NamedTuple
 from types import NoneType
 from dataclasses import dataclass, field
 from abc import ABC, ABCMeta, abstractmethod
-import bisect
 import string
 import warnings
 from public import public
+
+from .backend import BucketKind, StorageBackend, default_backend
 
 @public
 class OrdbException(Exception):
@@ -386,19 +386,12 @@ class Index(GenericIndex):
         if key is None:
             return
         value = self.index_value(node, nid)
-        values = sgu.index.get(key, pvector())
-        if self.sortkey:
-            insert_at = bisect.bisect_left(values, self.sortkey(node),
-                key = lambda nid_here: self.sortkey(sgu.nodes[nid_here]))
+        sortkey = self.sortkey
+        if sortkey is None:
+            sgu.txn.bucket_add(key, value, BucketKind.NID)
         else:
-            insert_at = bisect.bisect_left(values, value)
-        if insert_at == len(values):
-            values = values.append(value)
-        else:
-            # TODO: This is probably inefficient with pyrsistent, but maybe we can make this case rare.
-            values = values[:insert_at].append(value) + values[insert_at:]
-
-        sgu.index = sgu.index.set(key, values)
+            sgu.txn.bucket_add_sorted(key, value, sortkey(node),
+                lambda nid_here: sortkey(sgu.nodes[nid_here]))
 
     def index_remove(self, sgu: 'SubgraphUpdater', node, nid):
         # This method must not fail on constraint violations!
@@ -406,12 +399,8 @@ class Index(GenericIndex):
         if key is None:
             return
         value = self.index_value(node, nid)
-        values = sgu.index[key]
-        values = values.remove(value)
-        if len(values) > 0:
-            sgu.index = sgu.index.set(key, values)
-        else:
-            sgu.index = sgu.index.remove(key)
+        kind = BucketKind.NID if self.sortkey is None else BucketKind.SORTED
+        sgu.txn.bucket_remove(key, value, kind)
     
     def check_constraints(self, sgu: 'SubgraphUpdater', node, nid):
         if self.unique:
@@ -422,7 +411,7 @@ class Index(GenericIndex):
             if len(vals) > 1:
                 raise UniqueViolation(self, key)
             else:
-                assert vals == pvector((self.index_value(node, nid), ))
+                assert self.index_value(node, nid) in vals
 
     def query(self, key) -> IndexQuery:
         """Returns IndexQuery object for equivalence query with key."""
@@ -465,7 +454,8 @@ class LocalRefIndex(Index):
     """
     LocalRefIndex is meant for integrity checking only. For lookups, use a separate fine-grained index.
 
-    LocalRefIndex uses pset instead of pvector as its keys cannot be ordered meaningfully.
+    LocalRefIndex buckets are BucketKind.SET (unordered), as its values
+    cannot be ordered meaningfully.
     """
     def index_key(self, node, nid, sgu: 'SubgraphUpdater' = None):
         ref = node[node._attrdesc_by_attr[self.attr].index]
@@ -481,22 +471,13 @@ class LocalRefIndex(Index):
         key = self.index_key(node, nid, sgu)
         if key is None:
             return
-        value = self.index_value(node, nid)
-        values = sgu.index.get(key, pset())
-        values = values.add(value)
-        sgu.index = sgu.index.set(key, values)
+        sgu.txn.bucket_add(key, self.index_value(node, nid), BucketKind.SET)
 
     def index_remove(self, sgu: 'SubgraphUpdater', node, nid):
         key = self.index_key(node, nid, sgu)
         if key is None:
             return
-        value = self.index_value(node, nid)
-        values = sgu.index[key]
-        values = values.remove(value)
-        if len(values) > 0:
-            sgu.index = sgu.index.set(key, values)
-        else:
-            sgu.index = sgu.index.remove(key)
+        sgu.txn.bucket_remove(key, self.index_value(node, nid), BucketKind.SET)
 
     def check_constraints(self, sgu: 'SubgraphUpdater', node, nid):
         attrdesc = node._attrdesc_by_attr[self.attr]
@@ -1000,7 +981,7 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
 
     def ctx(self):
         """Return a Context for use as a context manager: ``with node.ctx(): ...``"""
-        from .context import NodeContext
+        from ..context import NodeContext
         return NodeContext(self)
 
     def __copy__(self) -> 'Self':
@@ -1211,7 +1192,7 @@ class SubgraphRoot(NonLeafNode):
         return self.copy()
 
     def webdata(self):
-        from .schema import Report
+        from ..schema import Report
         report = Report()
         report.html(self.tables(html=True))
         return report.webdata()
@@ -1283,11 +1264,16 @@ class SubgraphUpdater(SubgraphQueryMixin):
     context is exited, the current state of SubgraphUpdater is checked for
     consistency. When no problem is found, the MutableSubgraph from which the
     SubgraphUpdater was created is updated.
+
+    Each SubgraphUpdater drives exactly one StorageTxn (same lifetime,
+    obtained from the subgraph's storage backend): the updater owns the
+    backend-independent semantics (nid allocation, index maintenance order,
+    deferred constraint checks, commit/abort), while the txn applies the
+    resulting node/bucket operations to the backend's representation.
     """
     __slots__ = (
         'target_subgraph',
-        'nodes',
-        'index',
+        'txn',
         'commit',
         'check_nids',
         'removed_nids',
@@ -1305,9 +1291,8 @@ class SubgraphUpdater(SubgraphQueryMixin):
         #    raise OrdbException("Frozen Subgraph is immutable.")
         self.nid_gen_counter = self.target_subgraph.nid_alloc.start
         self.nid_max_encountered = self.target_subgraph.nid_alloc.start-1
-        
-        self.nodes = self.target_subgraph.nodes
-        self.index = self.target_subgraph.index
+
+        self.txn = self.target_subgraph.backend.begin(self.target_subgraph)
         self.commit = True
         self.check_nids = {} # used as ordered set
         self.removed_nids = {} # used as ordered set
@@ -1318,24 +1303,43 @@ class SubgraphUpdater(SubgraphQueryMixin):
         if exc_type:
             self.commit = False
         if self.commit:
-            if 0 not in self.nodes:
-                raise ModelViolation("Missing root node (nid 0).")
+            try:
+                nodes = self.txn.nodes
+                if 0 not in nodes:
+                    raise ModelViolation("Missing root node (nid 0).")
 
-            subgraph_root_cls = self.nodes[0]._cursor_type
-            for nid in self.check_nids:
-                if nid != 0:
-                    permitted_in_subgraphs = self.nodes[nid]._cursor_type.in_subgraphs
-                    if not any([issubclass(subgraph_root_cls, cls) for cls in permitted_in_subgraphs]):
-                        raise ModelViolation(f"{self.nodes[nid]._cursor_type.__name__} is not permitted in subgraph {subgraph_root_cls.__name__}.")
-                self.nodes[nid].check_constraints(self, nid)
+                subgraph_root_cls = nodes[0]._cursor_type
+                for nid in self.check_nids:
+                    if nid != 0:
+                        permitted_in_subgraphs = nodes[nid]._cursor_type.in_subgraphs
+                        if not any([issubclass(subgraph_root_cls, cls) for cls in permitted_in_subgraphs]):
+                            raise ModelViolation(f"{nodes[nid]._cursor_type.__name__} is not permitted in subgraph {subgraph_root_cls.__name__}.")
+                    nodes[nid].check_constraints(self, nid)
 
-            for nid in self.removed_nids:
-                if nid in self.index:
-                    raise DanglingLocalRef(nid)
+                index = self.txn.index
+                for nid in self.removed_nids:
+                    if nid in index:
+                        raise DanglingLocalRef(nid)
 
-            self.target_subgraph.mutate(self.nodes, self.index, range(self.nid_max_encountered+1, self.target_subgraph.nid_alloc.stop))
+                nodes, index = self.txn.commit()
+            except:
+                self.txn.abort()
+                raise
+            self.target_subgraph.mutate(nodes, index, range(self.nid_max_encountered+1, self.target_subgraph.nid_alloc.stop))
+        else:
+            self.txn.abort()
 
         self.valid = False
+
+    @property
+    def nodes(self):
+        """Uncommitted node state of the transaction."""
+        return self.txn.nodes
+
+    @property
+    def index(self):
+        """Uncommitted index state of the transaction."""
+        return self.txn.index
 
     @property
     def mutable(self):
@@ -1371,13 +1375,13 @@ class SubgraphUpdater(SubgraphQueryMixin):
         if check_nid and nid not in self.target_subgraph.nid_alloc:
             raise OrdbException(f"selected nid {nid} is outside allocated {self.target_subgraph.nid_alloc}.")
 
-        if nid in self.nodes:
+        if nid in self.txn.nodes:
             raise OrdbException("Duplicate nid.")
 
         self.nid_max_encountered = max(self.nid_max_encountered, nid)
         self.nid_gen_counter = max(self.nid_gen_counter, self.nid_max_encountered+1)
 
-        self.nodes = self.nodes.set(nid, node) # Add node first so indexing can resolve node-local context.
+        self.txn.node_set(nid, node) # Add node first so indexing can resolve node-local context.
         node.index_add(self, nid) # Then update metadata.
         self.check_nids[nid] = True # Mark node for deferred constraint check.
         # Remove from removed_nids, in case it was removed in same SubgraphUpdater and is now re-added:
@@ -1388,13 +1392,13 @@ class SubgraphUpdater(SubgraphQueryMixin):
     def remove_nid(self, nid):
         if not self.valid:
             raise TypeError("Invalid SubgraphUpdater.")
-        
+
         if nid == 0:
             raise OrdbException("Cannot delete SubgraphRoot (nid=0).")
-        node = self.nodes[nid]
-        
+        node = self.txn.nodes[nid]
+
         node.index_remove(self, nid) # Update metadata first.
-        self.nodes = self.nodes.remove(nid) # Then remove node.
+        self.txn.node_remove(nid) # Then remove node.
         self.check_nids.pop(nid, None) # Skip constraint check for this node, if it was previously selected.
         self.removed_nids[nid] = True # Mark nid as removed.
 
@@ -1402,10 +1406,11 @@ class SubgraphUpdater(SubgraphQueryMixin):
         if not self.valid:
             raise TypeError("Invalid SubgraphUpdater.")
 
-        if nid not in self.nodes:
+        nodes = self.txn.nodes
+        if nid not in nodes:
             raise KeyError(f"nid {nid} not found in {self}")
-        self.nodes[nid].index_remove(self, nid)
-        self.nodes = self.nodes.set(nid, node)
+        nodes[nid].index_remove(self, nid)
+        self.txn.node_set(nid, node)
         node.index_add(self, nid)
 
         self.check_nids[nid] = True # Mark node for deferred constraint check.
@@ -1418,6 +1423,7 @@ class Subgraph(SubgraphQueryMixin, ABC):
         '_index',
         '_nid_alloc',
         '_root_cursor',
+        '_backend',
     )
 
     # Non-mutating methods
@@ -1549,14 +1555,21 @@ class Subgraph(SubgraphQueryMixin, ABC):
     # properties to prevent accidental mutation.
 
     @property
-    def nodes(self) -> PMap:
-        """A persistent mapping of nids to :class:`NodeTuple` instances."""
+    def nodes(self):
+        """A read-only mapping of nids to :class:`NodeTuple` instances.
+        The concrete mapping type is owned by the storage backend."""
         return self._nodes
 
     @property
-    def index(self) -> PMap:
-        """A persistent mapping of index keys to index values."""
+    def index(self):
+        """A read-only mapping of index keys to index buckets. index[key]
+        returns an immutable snapshot of the bucket at access time."""
         return self._index
+
+    @property
+    def backend(self) -> StorageBackend:
+        """The storage backend this subgraph was created with."""
+        return self._backend
 
     @property
     def nid_alloc(self) -> range:
@@ -1640,13 +1653,15 @@ class FrozenSubgraph(Subgraph):
     not checked for equivalence, as it should be equal by construction.
     """
 
-    __slots__=()
-    def __init__(self, subgraph):
-        self._nodes= subgraph.nodes
-        self._index = subgraph.index
-        self._nid_alloc = subgraph.nid_alloc
+    __slots__=('_cached_hash',)
+    def __init__(self, nodes, index, nid_alloc, backend):
+        self._nodes = nodes
+        self._index = index
+        self._nid_alloc = nid_alloc
+        self._backend = backend
+        self._cached_hash = None
         self._root_cursor = self.cursor_at(0)
-    
+
     def __copy__(self) -> 'FrozenSubgraph':
         return self # Since FrozenSubgraph is immutable, copies are never needed?!
 
@@ -1661,20 +1676,37 @@ class FrozenSubgraph(Subgraph):
         """
         Create new mutable subgraph existing immutable subgraph.
         """
-        ret = MutableSubgraph()
-        ret.mutate(self.nodes, self.index, self.nid_alloc)
+        ret = MutableSubgraph(backend=self._backend)
+        ret.mutate(*self._backend.thaw_state(self))
         return ret
 
     def mutable_copy(self):
         return self.thaw()
 
+    def compact(self) -> 'FrozenSubgraph':
+        """
+        Return a content-equal FrozenSubgraph with flattened internal
+        storage. For flat storage backends this returns self; for delta
+        chains it collapses the parent chain into a single generation.
+        """
+        nodes, index, nid_alloc = self._backend.compact_state(self)
+        if nodes is self._nodes and index is self._index:
+            return self
+        return FrozenSubgraph(nodes, index, nid_alloc, self._backend)
+
     def __eq__(self, other):
         if not isinstance(other, FrozenSubgraph):
             return False
-        return (self.nodes == other.nodes) and (self.nid_alloc == other.nid_alloc)
+        if self is other:
+            return True
+        return self._backend.content_equal(self, other)
 
     def __hash__(self):
-        return hash((self.nodes, self.nid_alloc))
+        h = self._cached_hash
+        if h is None:
+            h = self._backend.content_hash(self)
+            self._cached_hash = h
+        return h
 
     def freeze(self) -> 'FrozenSubgraph':
         raise TypeError("Subgraph is already frozen.")
@@ -1725,11 +1757,15 @@ class MutableSubgraph(Subgraph):
                 u.add_single(node=node, nid=nid)
         return s.root_cursor
 
-    def __init__(self):
-        self._nodes = pmap() # self._nodes is the one true location at which data within the Subgraph is recorded.
-        self._index = pmap() # Combined index for fast lookups.
+    def __init__(self, backend: StorageBackend = None):
+        if backend is None:
+            backend = default_backend()
+        self._backend = backend
+        # nodes is the one true location at which data within the Subgraph is
+        # recorded; index is the combined index for fast lookups; invariant of
+        # nid_alloc: all nids in the range must be available (not in nodes).
+        self._nodes, self._index, self._nid_alloc = backend.empty_state()
         self._root_cursor = None # Will be set in first call to mutate.
-        self._nid_alloc = range(0, 2**32) # Invariant: All nids in the _nid_alloc range must be available (not present in _nodes)
 
     def mutate(self, nodes, index, nid_alloc):
         self._nodes = nodes
@@ -1740,8 +1776,8 @@ class MutableSubgraph(Subgraph):
 
     def __copy__(self) -> 'MutableSubgraph': # For Python's copy module
         # Alternative: return self.freeze().thaw(), but this might have disadvantages in the future (freeze as checkpoint).
-        ret = MutableSubgraph()
-        ret.mutate(self.nodes, self.index, self.nid_alloc)
+        ret = MutableSubgraph(backend=self._backend)
+        ret.mutate(*self._backend.fork_state(self))
         return ret
 
     def copy(self) -> 'MutableSubgraph':
@@ -1751,7 +1787,7 @@ class MutableSubgraph(Subgraph):
         return self.__copy__()
 
     def freeze(self):
-        return FrozenSubgraph(self)
+        return FrozenSubgraph(*self._backend.freeze_state(self), self._backend)
 
 @public
 class PathNode(NonLeafNode):

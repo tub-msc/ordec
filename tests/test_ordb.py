@@ -4,9 +4,22 @@
 import pytest
 import re
 from ordec.core import *
-from ordec.core.ordb import IndexKey
+from ordec.core import ordb
+from ordec.core.ordb import BucketKind
+from ordec.core.ordb.base import IndexKey
 from tabulate import tabulate
-import ordec.core.ordb
+import ordec.core.ordb.base
+
+@pytest.fixture(autouse=True, params=ordb.available_backends())
+def ordb_backend(request):
+    """Run every test in this module under every storage backend.
+
+    The backends are meant to be interchangeable, so the ordb unit suite is
+    the natural place to hold them to it: anything the tests pin down about
+    nodes, cursors, indices or the updater has to hold for all of them.
+    """
+    with ordb.use_backend(request.param):
+        yield request.param
 
 # Custom schema for testing:
 class MyHead(SubgraphRoot):
@@ -16,6 +29,12 @@ class MyNode(Node):
     in_subgraphs=[MyHead]
     label = Attr(str)
 
+def test_backend_in_effect(ordb_backend):
+    """Guard the fixture itself: if use_backend ever stopped reaching newly
+    built subgraphs, every parametrization here would silently collapse into
+    six identical runs of the default backend."""
+    assert MyHead().subgraph.backend.name == ordb_backend
+
 class test_node_tuple():
     t = MyNode(label='hello')
     assert isinstance(t, MyNode.Tuple)
@@ -23,7 +42,7 @@ class test_node_tuple():
     assert t.label == 'hello'
     assert t.set(label='world') == MyNode.Tuple(label='world')
 
-    assert isinstance(MyNode.Tuple.label, ordec.core.ordb.NodeTupleAttrDescriptor)
+    assert isinstance(MyNode.Tuple.label, ordec.core.ordb.base.NodeTupleAttrDescriptor)
 
 def test_schema_attr_inheritance():
     assert [ad.name for ad in MyNode.Tuple._layout] == ['label']
@@ -812,7 +831,7 @@ def test_index_sort_nid():
         u.add_single(MyItem(order=5, ref=1), 101)
 
     index_values = s.all(MyItem.idx_ref.query(1), wrap_cursor=False)
-    assert index_values == [98, 99, 100, 101, 102] # ordered by nid
+    assert list(index_values) == [98, 99, 100, 101, 102] # ordered by nid
 
 def test_index_custom_sort():
     class MyItem(Node):
@@ -1168,3 +1187,162 @@ def test_assign_npath():
     with pytest.raises(UniqueViolation):
         # Ensure that we cannot assign multiple paths to a node:
         s.y = x
+
+# Storage backend immutability contract
+# -------------------------------------
+#
+# Subgraph state (.nodes/.index) is exposed read-only: all mutation goes
+# through a StorageTxn (see ordec.core.ordb.backend). Frozen subgraphs cache
+# their content hash and backends may share state objects across
+# freeze/thaw/fork, so an in-place mutation that slipped through would
+# silently corrupt sibling subgraphs. Backends may either raise on mutation
+# attempts (dict-based backends, delta views) or return a new object without
+# mutating (pyrsistent's PMap.update), so the cross-backend assertion is
+# state invariance, not "raises".
+
+class GuardNode(Node):
+    in_subgraphs = [MyHead]
+    color = Attr(int)
+    color_idx = Index(color)
+
+def _guard_subgraph():
+    s = MyHead()
+    s.node1 = GuardNode(color=123)
+    s.node2 = GuardNode(color=123)
+    s.node3 = GuardNode(color=456)
+    return s.subgraph
+
+def _guard_fingerprint(sg):
+    return (
+        tuple(sorted(sg.nodes.items())),
+        tuple(sg.all(GuardNode.color_idx.query(123), wrap_cursor=False)),
+        tuple(sg.all(GuardNode.color_idx.query(456), wrap_cursor=False)),
+    )
+
+MUTATION_VECTORS = [
+    lambda d, k: d.__setitem__(k, 'garbage'),
+    lambda d, k: d.__delitem__(k),
+    lambda d, k: d.__ior__({k: 'garbage'}),
+    lambda d, k: d.update({k: 'garbage'}),
+    lambda d, k: d.pop(k),
+    lambda d, k: d.popitem(),
+    lambda d, k: d.clear(),
+    lambda d, k: d.setdefault(object(), 'garbage'),
+]
+
+def test_state_mappings_reject_or_ignore_mutation(ordb_backend):
+    mutable = _guard_subgraph()
+    frozen = mutable.freeze()
+    thawed = frozen.thaw()
+    fp = _guard_fingerprint(frozen)
+    h = hash(frozen)
+
+    guarded = ordb_backend in ('fullcopy', 'cow')
+    for sg in (frozen, mutable, thawed):
+        for mapping in (sg.nodes, sg.index):
+            key = next(iter(mapping))
+            for vector in MUTATION_VECTORS:
+                if guarded:
+                    with pytest.raises(TypeError):
+                        vector(mapping, key)
+                else:
+                    try:
+                        vector(mapping, key)
+                    except (TypeError, AttributeError):
+                        pass
+
+    assert _guard_fingerprint(frozen) == fp
+    assert _guard_fingerprint(mutable) == fp
+    assert _guard_fingerprint(thawed) == fp
+    assert hash(frozen) == h
+    assert frozen == mutable.freeze()
+
+def test_bucket_snapshots_detached(ordb_backend):
+    mutable = _guard_subgraph()
+    frozen = mutable.freeze()
+    fp = _guard_fingerprint(frozen)
+    key = IndexKey(GuardNode.color_idx, 123)
+
+    def try_mutate(bucket):
+        for attempt in (lambda: bucket.append(999), lambda: bucket.add(999),
+                lambda: bucket.remove(next(iter(bucket)))):
+            try:
+                attempt()
+            except (AttributeError, TypeError):
+                pass
+
+    for sg in (frozen, mutable):
+        buckets = [sg.index[key]]
+        if (got := sg.index.get(key)) is not None:
+            buckets.append(got)
+        for accessor in ('items', 'values', 'copy'):
+            method = getattr(sg.index, accessor, None)
+            if method is None:
+                continue
+            result = method()
+            buckets.extend(result.values() if isinstance(result, dict)
+                else (v for _, v in result) if accessor == 'items'
+                else result)
+        for bucket in buckets:
+            try_mutate(bucket)
+
+    assert _guard_fingerprint(frozen) == fp
+    assert _guard_fingerprint(mutable) == fp
+
+# freeze()/copy() while an updater transaction is open must capture the
+# pre-transaction state (transaction isolation extends to snapshots), must
+# not change retroactively when the transaction commits, and must leave
+# both subgraphs usable. Regression test: the delta backend used to commit
+# into the generation that freeze had just sealed and handed to the
+# snapshot, corrupting the snapshot and leaving the mutable un-updatable.
+
+def _labels(sg):
+    return sorted(node.label for node in sg.all(MyNode))
+
+def test_freeze_during_open_updater():
+    s = MyHead().subgraph
+    with s.updater() as u:
+        u.add_single(MyNode(label='pre'), u.nid_generate())
+    with s.updater() as u:
+        u.add_single(MyNode(label='mid'), u.nid_generate())
+        snap = s.freeze()
+        assert _labels(snap) == ['pre']
+    assert _labels(snap) == ['pre'] # unchanged by the commit
+    assert _labels(s) == ['mid', 'pre']
+    with s.updater() as u: # the mutable stays usable
+        u.add_single(MyNode(label='post'), u.nid_generate())
+    assert _labels(s) == ['mid', 'post', 'pre']
+    assert _labels(snap) == ['pre']
+
+def test_copy_during_open_updater():
+    s = MyHead().subgraph
+    with s.updater() as u:
+        u.add_single(MyNode(label='pre'), u.nid_generate())
+    with s.updater() as u:
+        u.add_single(MyNode(label='mid'), u.nid_generate())
+        fork = s.copy()
+    assert _labels(fork) == ['pre']
+    assert _labels(s) == ['mid', 'pre']
+    with fork.updater() as u: # both stay usable and independent
+        u.add_single(MyNode(label='fork'), u.nid_generate())
+    with s.updater() as u:
+        u.add_single(MyNode(label='post'), u.nid_generate())
+    assert _labels(fork) == ['fork', 'pre']
+    assert _labels(s) == ['mid', 'post', 'pre']
+
+def test_bucket_remove_absent_raises():
+    """StorageTxn.bucket_remove contract: removing a value that is not in
+    the bucket (or a key without a bucket) raises KeyError/ValueError."""
+    s = _guard_subgraph()
+
+    txn = s.backend.begin(s)
+    with pytest.raises((KeyError, ValueError)):
+        txn.bucket_remove(IndexKey(GuardNode.color_idx, 123), 999999,
+            BucketKind.NID)
+    txn.abort()
+
+    txn = s.backend.begin(s)
+    with pytest.raises((KeyError, ValueError)):
+        txn.bucket_remove(IndexKey(GuardNode.color_idx, 777), 1,
+            BucketKind.NID)
+    txn.abort()
