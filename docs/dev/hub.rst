@@ -100,26 +100,64 @@ for the workshop hostname; Caddy fetches Let's Encrypt certificates by itself.
 
     # 3. Configuration
     cp hub/example.env hub/.env
-    $EDITOR hub/.env     # domain, workshop key, limits
+    $EDITOR hub/.env     # domain, workshop key, admin key, limits
 
     # 4. Start hub + TLS proxy
     cd hub/
     docker compose up -d --build
 
-Participants then browse to ``https://<domain>/``, log in with any username and
-the workshop key, and land in ORDeC.
+Participants then browse to ``https://<domain>/``, enter the workshop key (no
+username), and land in ORDeC.
 
 The pieces live in ``hub/``: ``jupyterhub_config.py`` (authenticator, spawner,
 limits, culler — all tunable through ``ORDEC_HUB_*`` variables),
-``Dockerfile`` (the user image, the regular ``ordec`` image with a hub-suitable
-start command), ``hub.Dockerfile`` (the hub itself), ``docker-compose.yml``
-(hub plus Caddy, and the internal-only user network) and ``deploy/``
-(``Caddyfile``, ``host-setup.sh``).
+``templates/login.html`` (the key-only login form), ``Dockerfile`` (the user
+image, the regular ``ordec`` image with a hub-suitable start command),
+``hub.Dockerfile`` (the hub itself), ``docker-compose.yml`` (hub plus Caddy, and
+the internal-only user network) and ``deploy/`` (``Caddyfile``,
+``host-setup.sh``).
 
-Authentication is a shared workshop key (JupyterHub's DummyAuthenticator),
-rotated per workshop. Moving to institutional or OAuth login is a config change
-— ``c.JupyterHub.authenticator_class`` — so nothing in ORDeC or the spawner
-setup may assume the shared-key model.
+Login and sessions
+------------------
+
+There are two ways in, both from the same login page (a small custom
+``Authenticator`` in ``jupyterhub_config.py``):
+
+Participants
+    Enter only the shared workshop key — no username. Each login mints a fresh
+    ``guest-<random>`` identity, and JupyterHub's own session cookie then binds
+    that browser to its guest container until logout or culling. So every
+    browser gets its own distinct, ephemeral session; a second browser with the
+    same key gets a *separate* container.
+
+Admins
+    Follow the "Admin login" link (``/hub/login?admin``) to a separate page and
+    enter an allowlisted username (``ORDEC_HUB_ADMINS``) plus the separate admin
+    key (``ORDEC_HUB_ADMIN_KEY``). Admins land directly on the JupyterHub admin
+    panel at ``/hub/admin`` (no ORDeC container is spawned for them), which lists
+    every session, shows activity, and can stop, access or delete servers. For
+    live CPU/RAM use ``docker stats`` on the host. Leaving ``ORDEC_HUB_ADMIN_KEY``
+    empty disables admin login.
+
+    The username is not a credential. ``authenticate`` never lets a caller pick
+    an existing guest identity — an empty username always mints a fresh random
+    one, and a submitted username only reaches the admin path (which requires
+    the admin key) — so knowing a participant's URL-visible ``guest-<random>``
+    name does not grant access to their session. Access is gated by the signed
+    hub session cookie and per-server OAuth, not the username.
+
+Ending a session
+    The ORDeC toolbar shows an **End session** button in hub mode. It navigates
+    to ``/hub/logout``; the hub runs with ``shutdown_on_logout`` so logging out
+    also stops the container (which, with the spawner's ``remove=True``, deletes
+    it). The backend hands the hub logout URL to the frontend via the
+    ``api/token`` response, so it is correct under any hub base URL. Stopped
+    guest accounts are deleted by the idle-culler's ``--cull-users`` so the hub
+    database does not accumulate them.
+
+Moving to institutional or OAuth login is a config change of
+``c.JupyterHub.authenticator_class`` — nothing in ORDeC or the spawner setup may
+assume the shared-key model.
 
 Security checklist
 ------------------
