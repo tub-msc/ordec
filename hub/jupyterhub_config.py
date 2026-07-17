@@ -13,8 +13,8 @@ import secrets
 import sys
 
 from jupyterhub.auth import Authenticator
-from jupyterhub.handlers.login import LoginHandler
-from jupyterhub.utils import url_path_join
+from jupyterhub.handlers.login import LoginHandler, LogoutHandler
+from jupyterhub.utils import maybe_future, url_path_join
 
 c = get_config()  # noqa
 
@@ -63,7 +63,13 @@ class ORDeCWorkshopAuthenticator(Authenticator):
         return None
 
     def get_handlers(self, app):
-        return [('/login', ORDeCLoginHandler)]
+        # Registered before JupyterHub's default handlers, so these override the
+        # built-in /login and /logout (init_handlers adds authenticator handlers
+        # first, and Tornado uses the first matching route).
+        return [
+            ('/login', ORDeCLoginHandler),
+            ('/logout', ORDeCLogoutHandler),
+        ]
 
 # Selects the admin vs. workshop view of the shared login template. The default
 # view is the key-only workshop page; the admin view (username + admin key) shows
@@ -88,6 +94,24 @@ class ORDeCLoginHandler(LoginHandler):
                 and not self.get_argument('next', default='')):
             return url_path_join(self.hub.base_url, 'admin')
         return super().get_next_url(user, default=default)
+
+# Guests are ephemeral: delete the account on logout ("End session") so it does
+# not linger in the hub database. The base handler already stopped the server
+# (shutdown_on_logout) before handle_logout() runs. Abandoned sessions (tab
+# closed, no logout) are instead cleaned up by the idle-culler's --cull-users.
+class ORDeCLogoutHandler(LogoutHandler):
+    async def handle_logout(self):
+        user = self.current_user
+        if not user or user.admin or not user.name.startswith('guest-'):
+            return
+        # Only delete once the server is fully gone; if it is still stopping,
+        # leave the account for the idle-culler rather than racing the spawner.
+        if user.running or user.spawner._stop_pending:
+            return
+        await maybe_future(self.authenticator.delete_user(user))
+        await user.delete_spawners()
+        self.users.delete(user)
+        self.log.info("Deleted ephemeral guest %s on logout", user.name)
 
 c.JupyterHub.authenticator_class = ORDeCWorkshopAuthenticator
 # We mint guest names ourselves and gate admins in authenticate(), so every

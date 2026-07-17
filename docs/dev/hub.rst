@@ -151,9 +151,14 @@ Ending a session
     to ``/hub/logout``; the hub runs with ``shutdown_on_logout`` so logging out
     also stops the container (which, with the spawner's ``remove=True``, deletes
     it). The backend hands the hub logout URL to the frontend via the
-    ``api/token`` response, so it is correct under any hub base URL. Stopped
-    guest accounts are deleted by the idle-culler's ``--cull-users`` so the hub
-    database does not accumulate them.
+    ``api/token`` response, so it is correct under any hub base URL.
+
+    Guest accounts are genuinely ephemeral. A custom logout handler deletes the
+    ``guest-<random>`` account on logout, once its server has stopped, so an
+    active "End session" leaves nothing behind. Sessions that are merely
+    abandoned (tab closed, no logout) are cleaned up by the idle-culler: after
+    ``ORDEC_HUB_IDLE_TIMEOUT`` it stops the idle server and ``--cull-users``
+    deletes the now-inactive account. Admin accounts are never auto-deleted.
 
 Moving to institutional or OAuth login is a config change of
 ``c.JupyterHub.authenticator_class`` — nothing in ORDeC or the spawner setup may
