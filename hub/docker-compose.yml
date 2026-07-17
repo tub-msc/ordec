@@ -28,8 +28,13 @@ services:
       # This makes the hub container root-equivalent on the host; the hub
       # is trusted infrastructure (standard jupyterhub-deploy-docker setup).
       - /var/run/docker.sock:/var/run/docker.sock
-      # Persist hub state (cookie secret, user db) across restarts:
-      - jupyterhub-data:/srv/jupyterhub
+      # Persist hub state (cookie secret, user db) across restarts. Mounted at a
+      # SUBDIRECTORY, not over /srv/jupyterhub itself: the image bakes
+      # jupyterhub_config.py and templates/ into /srv/jupyterhub, and a volume
+      # over the whole directory would shadow them, so rebuilt config/templates
+      # would never take effect. db_url/cookie_secret_file point here (see
+      # jupyterhub_config.py).
+      - jupyterhub-data:/srv/jupyterhub/data
     networks:
       web:
       users:

@@ -9,21 +9,101 @@ from environment variables (ORDEC_HUB_*), see hub/example.env.
 """
 
 import os
+import secrets
 import sys
+
+from jupyterhub.auth import Authenticator
+from jupyterhub.handlers.login import LoginHandler
+from jupyterhub.utils import url_path_join
 
 c = get_config()  # noqa
 
+# --- Persistent state ------------------------------------------------------
+# The jupyterhub-data volume is mounted at /srv/jupyterhub/data (see
+# docker-compose.yml), not over /srv/jupyterhub, so it does not shadow the
+# baked config and templates. Keep the DB and cookie secret on that volume so
+# they still survive restarts.
+c.JupyterHub.db_url = 'sqlite:////srv/jupyterhub/data/jupyterhub.sqlite'
+c.JupyterHub.cookie_secret_file = '/srv/jupyterhub/data/jupyterhub_cookie_secret'
+
 # --- Authentication -------------------------------------------------------
-# Shared workshop key: participants pick any username and enter the key.
-# Swapping to institutional/OAuth login is a pure config change, e.g.:
-#   c.JupyterHub.authenticator_class = 'github'
-#   c.GitHubOAuthenticator.client_id = ...
-# (requires oauthenticator in the hub image; nothing else changes).
-c.JupyterHub.authenticator_class = 'dummy'
-c.DummyAuthenticator.password = os.environ['ORDEC_HUB_WORKSHOP_KEY']
+# Two separate login pages, one authenticator:
+#   - /hub/login : participants enter only the shared workshop key (no
+#     username). Each login mints a fresh 'guest-<random>' identity; JupyterHub's
+#     own session cookie then binds that browser to its guest container until
+#     logout/cull, so every browser gets its own distinct, ephemeral session.
+#   - /hub/login?admin : admins enter an allowlisted username plus the separate
+#     admin key, which grants the JupyterHub admin panel.
+# The username is NOT a credential: authenticate() never lets a caller choose an
+# existing guest name (an empty username always mints a fresh random one, and a
+# submitted username only reaches the admin path, which requires the admin key).
+# Knowing someone's guest-<random> name therefore does not grant access to their
+# session — access is gated by the signed hub session cookie and per-server
+# OAuth, not by the (URL-visible) username.
+# Swapping to institutional/OAuth login is a pure config change of
+# c.JupyterHub.authenticator_class (requires oauthenticator in the hub image).
+class ORDeCWorkshopAuthenticator(Authenticator):
+    workshop_key = os.environ['ORDEC_HUB_WORKSHOP_KEY']
+    admin_key = os.environ.get('ORDEC_HUB_ADMIN_KEY', '')
+    admin_users_allowed = frozenset(
+        filter(None, os.environ.get('ORDEC_HUB_ADMINS', '').split(',')))
+
+    async def authenticate(self, handler, data):
+        username = data.get('username', '').strip()
+        key = data.get('password', '')
+        if username:
+            # Admin path: allowlisted name + admin key.
+            if (self.admin_key and username in self.admin_users_allowed
+                    and secrets.compare_digest(key, self.admin_key)):
+                return {'name': username, 'admin': True}
+            return None
+        # Guest path: workshop key only, unique ephemeral identity per login.
+        if secrets.compare_digest(key, self.workshop_key):
+            return {'name': 'guest-' + secrets.token_hex(6), 'admin': False}
+        return None
+
+    def get_handlers(self, app):
+        return [('/login', ORDeCLoginHandler)]
+
+# Selects the admin vs. workshop view of the shared login template. The default
+# view is the key-only workshop page; the admin view (username + admin key) shows
+# at /hub/login?admin, and also when re-rendering after a failed admin login
+# (which submits a non-empty username).
+class ORDeCLoginHandler(LoginHandler):
+    def _render(self, login_error=None, username=None, **kwargs):
+        admin_login = (self.get_argument('admin', default=None) is not None
+            or bool((username or '').strip()))
+        # The hub's default failure message ("Invalid username or password")
+        # makes no sense on the username-less workshop page; keep it for admins.
+        if login_error and not admin_login:
+            login_error = 'Invalid workshop key.'
+        return super()._render(login_error=login_error, username=username,
+            admin_login=admin_login, **kwargs)
+
+    def get_next_url(self, user=None, default=None):
+        # Admins log in to oversee, not to code: send them to the admin panel
+        # instead of spawning them an ORDeC container. An explicit ?next= (or a
+        # non-admin user) falls through to the default (their own server).
+        if (user is not None and user.admin
+                and not self.get_argument('next', default='')):
+            return url_path_join(self.hub.base_url, 'admin')
+        return super().get_next_url(user, default=default)
+
+c.JupyterHub.authenticator_class = ORDeCWorkshopAuthenticator
+# We mint guest names ourselves and gate admins in authenticate(), so every
+# name returned above is already authorized:
 c.Authenticator.allow_all = True
-c.Authenticator.admin_users = set(
-    filter(None, os.environ.get('ORDEC_HUB_ADMINS', '').split(',')))
+
+# --- Login form / logout ---------------------------------------------------
+# Custom login.html (see hub/templates/) renders the workshop-key page by
+# default and the admin page when ORDeCLoginHandler sets admin_login. It is
+# styled to match ORDeC's landing page and shows the logo served at
+# {base_url}logo from this file:
+c.JupyterHub.template_paths = ['/srv/jupyterhub/templates']
+c.JupyterHub.logo_file = '/srv/jupyterhub/ordec_logo.svg'
+# "End session" in the ORDeC UI navigates to /hub/logout; stop the container too
+# so logging out fully ends the ephemeral session (spawner has remove=True).
+c.JupyterHub.shutdown_on_logout = True
 
 # --- Spawner: one Docker container per user, Kata (KVM) runtime -----------
 c.JupyterHub.spawner_class = 'dockerspawner.DockerSpawner'
@@ -99,8 +179,9 @@ c.JupyterHub.named_server_limit_per_user = 0  # default server only
 c.JupyterHub.load_roles = [
     {
         'name': 'idle-culler',
+        # admin:users is required by --cull-users (deletes stale guests below).
         'scopes': ['list:users', 'read:users:activity',
-            'read:servers', 'delete:servers'],
+            'read:servers', 'delete:servers', 'admin:users'],
         'services': ['idle-culler'],
     },
 ]
@@ -110,6 +191,9 @@ c.JupyterHub.services = [
         'command': [
             sys.executable, '-m', 'jupyterhub_idle_culler',
             '--timeout', os.environ.get('ORDEC_HUB_IDLE_TIMEOUT', '5400'),
+            # Ephemeral guests accumulate as user records; delete the ones whose
+            # server has stopped and gone idle so the hub DB does not grow.
+            '--cull-users',
         ],
     },
 ]

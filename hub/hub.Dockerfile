@@ -11,5 +11,7 @@ RUN pip install --no-cache-dir \
     jupyterhub-idle-culler
 
 COPY jupyterhub_config.py /srv/jupyterhub/jupyterhub_config.py
+COPY templates/ /srv/jupyterhub/templates/
+COPY ordec_logo.svg /srv/jupyterhub/ordec_logo.svg
 
 CMD ["jupyterhub", "-f", "/srv/jupyterhub/jupyterhub_config.py"]
