@@ -1264,6 +1264,12 @@ class SubgraphUpdater(SubgraphQueryMixin):
     context is exited, the current state of SubgraphUpdater is checked for
     consistency. When no problem is found, the MutableSubgraph from which the
     SubgraphUpdater was created is updated.
+
+    Each SubgraphUpdater drives exactly one StorageTxn (same lifetime,
+    obtained from the subgraph's storage backend): the updater owns the
+    backend-independent semantics (nid allocation, index maintenance order,
+    deferred constraint checks, commit/abort), while the txn applies the
+    resulting node/bucket operations to the backend's representation.
     """
     __slots__ = (
         'target_subgraph',
