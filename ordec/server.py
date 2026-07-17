@@ -88,6 +88,7 @@ from websockets.datastructures import Headers
 from websockets.exceptions import ConnectionClosed, ConnectionClosedOK
 
 from . import importer, language
+from .hub import HubIntegration, HubAuthError
 from .version import version, doc_url
 from .core import Cell, generate, generate_func, SubgraphRoot
 from .language import compile_ord
@@ -359,9 +360,13 @@ def format_user_exception(exc):
     return ''.join(parts)
 
 class ConnectionHandler:
-    def __init__(self, key, sysmodules_orig, jobrunner=None):
+    def __init__(self, key, sysmodules_orig, jobrunner=None, on_activity=None):
         self.sysmodules_orig = set(sysmodules_orig.keys())
         self.key = key
+        # Called on every websocket message; feeds JupyterHub idle culling
+        # (see ordec.hub). Long-lived idle websockets thus do not count as
+        # activity, but every user interaction does.
+        self.on_activity = on_activity or (lambda: None)
         self.jobrunner = jobrunner or ThreadedJobRunner(4)
         self.import_lock = RWLock()
         # import_lock makes sure that there is never more than one thread in the
@@ -586,6 +591,7 @@ class ConnectionHandler:
 
         try:
             for msg_raw in websocket:
+                self.on_activity()
                 msg = json.loads(msg_raw)
                 msg_type = msg.get('msg')
                 if msg_type == 'getview':
@@ -659,25 +665,32 @@ def background_inotify(watch_files, pipe_inotify_abort_r, websocket, websocket_l
         pipe_inotify_abort_r.close()
 
 
-def build_response(status: http.HTTPStatus=http.HTTPStatus.OK, mime_type: str='text/plain', data: bytes=None):
+def build_response(status: http.HTTPStatus=http.HTTPStatus.OK, mime_type: str='text/plain', data: bytes=None, extra_headers=None):
     if data is None:
         data = status.name.encode("ascii")
 
-    headers = {
+    headers = Headers(**{
         "Content-Type": mime_type,
         "Content-Length": str(len(data)),
         # Security headers for defense-in-depth:
         "X-Frame-Options": "DENY",  # Prevent clickjacking
         "X-Content-Type-Options": "nosniff",  # Prevent MIME-sniffing
         "Referrer-Policy": "no-referrer",  # Prevent token leakage in Referer header
-    }
+    })
+    # extra_headers as list of tuples: allows repeated keys (Set-Cookie).
+    for k, v in (extra_headers or []):
+        headers[k] = v
 
     return Response(
         int(status),
         status.name,
-        Headers(**headers),
+        headers,
         data,
     )
+
+def redirect_response(location, extra_headers=None):
+    return build_response(http.HTTPStatus.FOUND,
+        extra_headers=[("Location", location)] + (extra_headers or []))
 
 def anonymous_tar(p: Path) -> tarfile.TarFile:
     f = io.BytesIO()
@@ -730,19 +743,50 @@ class StaticHandler:
     matter for this HTTP server.
     """
 
-    def __init__(self, tar: tarfile.TarFile=None):
+    def __init__(self, tar: tarfile.TarFile=None, base_path: str='/',
+            hub: HubIntegration=None, key: ServerKey=None):
+        """
+        Args:
+            tar: static file archive; None serves 404 for static paths.
+            base_path: URL path prefix to serve under (e.g. "/user/alice/"
+                behind JupyterHub's proxy, which forwards the full path
+                unstripped). Requests outside the prefix get 404.
+            hub: when set, all requests are gated behind JupyterHub OAuth
+                (see ordec.hub) and api/token hands the auth token to
+                hub-authenticated browsers.
+            key: the server's auth key; required for the api/token route.
+        """
         self.tar = tar
         self.tar_lock = threading.Lock()
+        if not base_path.startswith('/') or not base_path.endswith('/'):
+            raise ValueError("base_path must start and end with '/'")
+        self.base_path = base_path
+        self.hub = hub
+        self.key = key
         from .schematic.render import SchematicRenderer
         self.schematic_css = SchematicRenderer.css.encode('utf8')
-        
+
     def process_request(self, connection, request):
         try:
             url=urlparse(request.path)
-            if url.path.startswith('/'):
-                req_path = Path(url.path[1:])
-            else:
-                req_path = Path(url.path)
+            path = url.path
+            if not path.startswith('/'):
+                path = '/' + path
+
+            if self.base_path != '/':
+                if path + '/' == self.base_path:
+                    return redirect_response(self.base_path)
+                if not path.startswith(self.base_path):
+                    return build_response(http.HTTPStatus.NOT_FOUND)
+                path = '/' + path[len(self.base_path):]
+            req_path = Path(path[1:])
+
+            if self.hub:
+                self.hub.touch_activity()
+                response = self.process_request_hub(request, req_path, url)
+                if response is not None:
+                    return response
+                # None --> request is hub-authenticated, fall through.
 
             if req_path == Path('api/websocket'):
                 return None # --> for websocket connection
@@ -765,6 +809,72 @@ class StaticHandler:
         except Exception:
             traceback.print_exc()
             return build_response(http.HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def process_request_hub(self, request, req_path, url):
+        """
+        JupyterHub OAuth gate for all requests (including the websocket
+        handshake). Returns a Response to short-circuit, or None when the
+        request carries a valid session cookie and handling may proceed.
+        """
+        cookie_header = request.headers.get('Cookie', '')
+
+        if req_path == Path('oauth_callback'):
+            return self.process_request_oauth_callback(request, url)
+
+        user = self.hub.session_user_from_cookie(cookie_header)
+        if user is not None:
+            if req_path == Path('api/token'):
+                # Token handoff to the hub-authenticated frontend; replaces
+                # the #auth= URL fragment of standalone operation.
+                data = json.dumps({'auth': self.key.token()})
+                return build_response(data=data.encode('utf8'),
+                    mime_type='application/json')
+            return None
+
+        # Unauthenticated: browsers navigating to a page get the OAuth
+        # redirect; anything else (API fetch, websocket handshake) gets 401.
+        if 'text/html' in request.headers.get('Accept', ''):
+            state = self.hub.new_state(next_url=request.path)
+            return redirect_response(
+                self.hub.authorize_redirect_url(state),
+                extra_headers=[('Set-Cookie', self.hub.cookie_str(
+                    self.hub.COOKIE_STATE, state,
+                    secure=self.request_is_https(request)))])
+        return build_response(http.HTTPStatus.UNAUTHORIZED)
+
+    def process_request_oauth_callback(self, request, url):
+        query = parse_qs(url.query)
+        code = query.get('code', [None])[0]
+        state = query.get('state', [None])[0]
+        state_cookie = self.hub.get_cookie(
+            request.headers.get('Cookie', ''), self.hub.COOKIE_STATE)
+        # The state cookie proves that the callback belongs to a login this
+        # server started in this browser (OAuth CSRF protection).
+        if not code or not state or state != state_cookie:
+            return build_response(http.HTTPStatus.FORBIDDEN)
+        next_url = self.hub.pop_state(state)
+        if next_url is None:
+            return build_response(http.HTTPStatus.FORBIDDEN)
+        try:
+            username = self.hub.login_with_code(code)
+        except HubAuthError as e:
+            print(f"hub login rejected: {e}")
+            return build_response(http.HTTPStatus.FORBIDDEN)
+
+        session_id = self.hub.new_session(username)
+        secure = self.request_is_https(request)
+        return redirect_response(next_url, extra_headers=[
+            ('Set-Cookie', self.hub.cookie_str(
+                self.hub.COOKIE_SESSION, session_id, secure=secure)),
+            ('Set-Cookie', self.hub.cookie_str(
+                self.hub.COOKIE_STATE, '', secure=secure, max_age=0)),
+        ])
+
+    @staticmethod
+    def request_is_https(request):
+        # Behind the hub proxy / TLS terminator, the original scheme
+        # arrives in X-Forwarded-Proto.
+        return request.headers.get('X-Forwarded-Proto', '') == 'https'
 
     def process_request_example(self, name):
         srctype = None
@@ -891,6 +1001,7 @@ def main():
     parser.add_argument('-m', '--module', help="Open the specified module from the local file system (local mode). Furthermore, a specific view can be preselected as MODULE:VIEW.")
     parser.add_argument('-j', '--jobs', default=4, type=int, help="Maximum number of concurrently generated views (default 4). With 0, views are generated inline in the connection handler (no progress reporting or cancellation).")
     parser.add_argument('--url-authority', help="Use provided URL authority part (host:port) instead values of --hostname and --port for printed / opened URL.")
+    parser.add_argument('--base-url', default='/', help="URL path prefix to serve under (e.g. /ordec/). Behind JupyterHub, the prefix is taken from JUPYTERHUB_SERVICE_PREFIX instead.")
     parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {version}')
 
 
@@ -899,6 +1010,26 @@ def main():
     port = args.port
 
     key = ServerKey()
+
+    # JupyterHub integration is enabled automatically when this process was
+    # spawned by a hub (see ordec.hub and hub/ in the repository root).
+    hub = HubIntegration.from_env()
+    base_path = args.base_url
+    if not base_path.startswith('/'):
+        base_path = '/' + base_path
+    if not base_path.endswith('/'):
+        base_path += '/'
+    if hub:
+        if args.module:
+            print("ERROR: local mode (-m) is not supported behind JupyterHub.")
+            raise SystemExit(1)
+        base_path = hub.prefix
+        args.no_browser = True
+        bind = hub.service_url_bind()
+        if bind:
+            hostname, port = bind
+        print(f"JupyterHub integration enabled: user {hub.user!r}, "
+            f"prefix {hub.prefix!r}, listening on {hostname}:{port}.")
 
     if args.url_authority:
         user_url = f"http://{args.url_authority}"
@@ -910,13 +1041,15 @@ def main():
         user_url = f"http://{hostname}:{port}"
 
     if args.backend_only:
-        static_handler = StaticHandler()
+        static_handler = StaticHandler(base_path=base_path, hub=hub, key=key)
     elif args.static_root:
-        static_handler = StaticHandler(anonymous_tar(args.static_root))
+        static_handler = StaticHandler(anonymous_tar(args.static_root),
+            base_path=base_path, hub=hub, key=key)
     else:
         webdist_tar = importlib.resources.files(__package__) / 'webdist.tar'
         try:
-            static_handler = StaticHandler(tarfile.open(webdist_tar))
+            static_handler = StaticHandler(tarfile.open(webdist_tar),
+                base_path=base_path, hub=hub, key=key)
         except FileNotFoundError:
             print(
                 "ERROR: webdist.tar not found. -- This is likely an editable "
@@ -926,18 +1059,23 @@ def main():
             parser.print_help()
             raise SystemExit(1)
 
-    if args.module:
+    if hub:
+        # Behind the hub, browsers arrive through the hub's proxy and get
+        # the auth token via api/token after OAuth; there is no user URL to
+        # print or open here.
+        user_url = None
+    elif args.module:
         try:
             module, view = args.module.split(':', 1)
         except ValueError:
             module = args.module
             view = ''
         qs_module = key.query_string_local(module, view)
-        user_url += f"/app.html#auth={key.token()}&{qs_module}"
+        user_url += f"{base_path}app.html#auth={key.token()}&{qs_module}"
         # Enable importing modules from current working directory:
-        sys.path.append(os.getcwd()) 
+        sys.path.append(os.getcwd())
     else:
-        user_url += f"/#auth={key.token()}"
+        user_url += f"{base_path}#auth={key.token()}"
 
     # Launch server in separate daemon thread (daemon=True). The connection
     # threads automatically inherit the daemon property. All daemon threads
@@ -956,7 +1094,8 @@ def main():
     thread = threading.Thread(
         target=server_thread,
         args=(hostname, port, static_handler, key, startup_queue, server_queue),
-        kwargs={'jobrunner': jobrunner},
+        kwargs={'jobrunner': jobrunner,
+            'on_activity': hub.touch_activity if hub else None},
         daemon=True,
     )
     thread.start()
@@ -971,7 +1110,10 @@ def main():
         raise SystemExit(1)
     server = server_queue.get()
 
-    print(f"To start ORDeC, navigate to: {user_url}")
+    if hub:
+        hub.start_activity_reporter()
+    else:
+        print(f"To start ORDeC, navigate to: {user_url}")
 
     if args.no_browser:
         launch_html = None
@@ -990,8 +1132,9 @@ def main():
         if launch_html:
             launch_html.close() # Deletes the temporary file.
 
-def server_thread(hostname, port, static_handler, key, startup_queue, server_queue=None, jobrunner=None):
-    c = ConnectionHandler(key=key, sysmodules_orig=sys.modules, jobrunner=jobrunner)
+def server_thread(hostname, port, static_handler, key, startup_queue, server_queue=None, jobrunner=None, on_activity=None):
+    c = ConnectionHandler(key=key, sysmodules_orig=sys.modules,
+        jobrunner=jobrunner, on_activity=on_activity)
     startup_notified = False
     try:
         with serve(c.handle_connection, hostname, port, process_request=static_handler.process_request) as server:

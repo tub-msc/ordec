@@ -28,6 +28,9 @@ function enableFontCaching() {
 }
 
 export default defineConfig({
+    // Relative asset/import paths, so the built app also works when served
+    // under a URL path prefix (e.g. /user/<name>/ behind JupyterHub).
+    base: './',
     server: {
         proxy: {
             '^/api/.*': {

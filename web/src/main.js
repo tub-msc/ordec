@@ -19,7 +19,7 @@ import "ace-builds/src-noconflict/ext-searchbox";
 
 import { OrdMode } from "./ace-ord-mode.js";
 
-import { authenticateLocalQuery } from './auth.js';
+import { authenticateLocalQuery, initSession } from './auth.js';
 
 import { ResultViewer } from "./resultviewer.js";
 import { OrdecClient } from './client.js';
@@ -28,6 +28,10 @@ import { viewEventBus } from './event-bus.js';
 import { initCourseMode, getCourseController, suppressCloseControls } from './course.js';
 
 initTheme();
+
+// In hub-hosted deployments, this fetches the auth token from the backend
+// (api/token); must complete before the first websocket connect.
+await initSession();
 
 const sourceTypeSelect = document.querySelector("#sourcetype");
 const urlParams = new URLSearchParams(window.location.hash.substring(1));
@@ -144,11 +148,26 @@ async function getInitData() {
     var params = new URLSearchParams();
     params.append('name', paramExample);
 
-    const response = await fetch("/api/example?"+params);
+    const response = await fetch("api/example?"+params);
     if (!response.ok) {
         throw new Error(`Response status: ${response.status}`);
     }
     return await response.json();
+}
+
+function popRestoreData() {
+    // Source stashed by the session-lost overlay (client.js) right before
+    // a reload that respawns a hub-hosted instance.
+    const raw = window.sessionStorage.getItem('ordecRestore');
+    if (!raw) {
+        return null;
+    }
+    window.sessionStorage.removeItem('ordecRestore');
+    try {
+        return JSON.parse(raw);
+    } catch (e) {
+        return null;
+    }
 }
 
 const layout = new GoldenLayout(document.querySelector("#workspace"));
@@ -274,6 +293,11 @@ if(queryLocal) {
     // the data obtained from the server through getInitData().
 
     const initData = await getInitData();
+    const restoreData = popRestoreData();
+    if (restoreData) {
+        initData.src = restoreData.src;
+        initData.srctype = restoreData.srctype;
+    }
     initData.uistate.header = {popout: false};
     sourceTypeSelect.value = initData.srctype;
     layout.loadLayout(initData.uistate);
@@ -478,14 +502,15 @@ viewEventBus.on('lvs:request-open-views', (data) => {
 });
 
 document.querySelector("#examples").onclick = () => {
+    // Relative so it works under a URL path prefix (JupyterHub).
     if (window.onbeforeunload) {
-        window.open('/index.html', '_blank');
+        window.open('index.html', '_blank');
     } else {
-        window.location.href = '/index.html';
+        window.location.href = 'index.html';
     }
 };
 
-fetch('/api/version').then(response => response.json()).then(data => {
+fetch('api/version').then(response => response.json()).then(data => {
     document.querySelector('#version').innerText = data['version'];
 });
 
@@ -494,7 +519,7 @@ fetch('/api/version').then(response => response.json()).then(data => {
 // for the styles used by both standalone SVG export and the web UI, avoids
 // duplicating the CSS into every inline SVG in the DOM, and reduces data
 // transferred when multiple schematics are open.
-fetch('/api/schematic.css').then(response => response.text()).then(css => {
+fetch('api/schematic.css').then(response => response.text()).then(css => {
     const style = document.createElement('style');
     style.textContent = css;
     document.head.appendChild(style);

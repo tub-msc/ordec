@@ -628,7 +628,7 @@ export class CourseController {
 export async function initCourseMode(courseName, deps) {
     const params = new URLSearchParams();
     params.append('name', courseName);
-    const response = await fetch('/api/course?' + params);
+    const response = await fetch('api/course?' + params);
     if (!response.ok) {
         throw new Error(`Response status: ${response.status}`);
     }
