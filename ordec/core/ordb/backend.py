@@ -198,11 +198,6 @@ def default_backend() -> StorageBackend:
         _default = get_backend(os.environ.get('ORDEC_ORDB_BACKEND', BUILTIN_DEFAULT))
     return _default
 
-def set_default_backend(name: str) -> StorageBackend:
-    global _default
-    _default = get_backend(name)
-    return _default
-
 @contextmanager
 def use_backend(name: str):
     """Temporarily change the default backend for new subgraphs. Existing

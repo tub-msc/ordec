@@ -11,10 +11,6 @@ from public import public
 
 from .backend import BucketKind, StorageBackend, default_backend
 
-# Re-export for compatibility (PatriciaSet used to be defined here):
-from .patricia import PatriciaSet
-public(PatriciaSet=PatriciaSet)
-
 @public
 class OrdbException(Exception):
     """Base class for all ORDB custom exceptions."""

@@ -27,7 +27,6 @@ from .backend import (
     default_backend,
     get_backend,
     register_backend,
-    set_default_backend,
     use_backend,
 )
 from .backend_pyrsistent import PyrsistentBackend
