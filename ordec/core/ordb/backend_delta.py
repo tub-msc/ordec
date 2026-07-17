@@ -18,10 +18,7 @@ generation with identical content; auto_compact_depth makes freeze do this
 automatically past a chain-depth threshold ('delta-compactN' variants).
 
 Divergences from the Zig original: single-parent chains only (no thawMulti
-/ nid offsets), garbage collection instead of refcounting, and bucket
-removals are not validated against ancestor generations (a remove of a
-value that was never added silently poisons the bucket's removed set
-instead of raising).
+/ nid offsets) and garbage collection instead of refcounting.
 
 Transactions accumulate their changes in a private overlay generation on
 top of the mutable's unsealed generation; commit() merges the overlay into
@@ -185,13 +182,13 @@ class DeltaTxn(StorageTxn):
     """Accumulates changes in a private overlay Gen whose parent is the
     mutable's unsealed top Gen; commit() merges the overlay into the top
     generation, abort() discards it."""
-    __slots__ = ('nodes', 'index', '_top', '_overlay')
+    __slots__ = ('nodes', 'index', '_subgraph', '_overlay')
 
     def __init__(self, subgraph):
         top = subgraph.nodes.gen
         if top.sealed:
             raise TypeError("Cannot mutate a sealed generation.")
-        self._top = top
+        self._subgraph = subgraph
         overlay = Gen(parent=top, base_nid_end=subgraph.nid_alloc.start)
         self._overlay = overlay
         self.nodes = ChainNodesView(overlay)
@@ -251,11 +248,46 @@ class DeltaTxn(StorageTxn):
             if i < len(added) and added[i] == value:
                 del added[i]
                 return
-        # Not added in this transaction: tombstone the older entry.
+        # Not added in this transaction: tombstone the older entry, which
+        # must exist (contract: raise if the value is absent).
+        if value in delta[2] or not self._in_ancestors(key, value, kind):
+            if kind == BucketKind.SET:
+                raise KeyError(value)
+            raise ValueError(f"{value!r} not in bucket at {key!r}")
         delta[2].add(value)
 
+    def _in_ancestors(self, key, value, kind):
+        """Whether the chain below the overlay still holds value at key:
+        added in some generation and not removed in a newer one. A
+        generation's additions are checked before its removals: a value
+        removed from an ancestor and re-added in the same generation
+        appears in both and is present."""
+        g = self._overlay.parent
+        while g is not None:
+            delta = g.index.get(key)
+            if delta is not None:
+                added = delta[1]
+                if kind == BucketKind.SET:
+                    if value in added:
+                        return True
+                elif kind == BucketKind.SORTED:
+                    if any(nid == value for _, nid in added):
+                        return True
+                else:
+                    i = bisect.bisect_left(added, value)
+                    if i < len(added) and added[i] == value:
+                        return True
+                if value in delta[2]:
+                    return False
+            g = g.parent
+        return False
+
     def commit(self):
-        top = self._top
+        # Not the generation captured at begin: freeze()/copy() during the
+        # transaction seal that one (handing it to the snapshot) and rebind
+        # the subgraph to a fresh child, which is where the transaction must
+        # land. The subgraph's top generation is unsealed by construction.
+        top = self._subgraph.nodes.gen
         overlay = self._overlay
 
         for nid, v in overlay.nodes.items():

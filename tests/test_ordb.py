@@ -5,6 +5,7 @@ import pytest
 import re
 from ordec.core import *
 from ordec.core import ordb
+from ordec.core.ordb import BucketKind
 from ordec.core.ordb.base import IndexKey
 from tabulate import tabulate
 import ordec.core.ordb.base
@@ -1287,3 +1288,61 @@ def test_bucket_snapshots_detached(ordb_backend):
 
     assert _guard_fingerprint(frozen) == fp
     assert _guard_fingerprint(mutable) == fp
+
+# freeze()/copy() while an updater transaction is open must capture the
+# pre-transaction state (transaction isolation extends to snapshots), must
+# not change retroactively when the transaction commits, and must leave
+# both subgraphs usable. Regression test: the delta backend used to commit
+# into the generation that freeze had just sealed and handed to the
+# snapshot, corrupting the snapshot and leaving the mutable un-updatable.
+
+def _labels(sg):
+    return sorted(node.label for node in sg.all(MyNode))
+
+def test_freeze_during_open_updater():
+    s = MyHead().subgraph
+    with s.updater() as u:
+        u.add_single(MyNode(label='pre'), u.nid_generate())
+    with s.updater() as u:
+        u.add_single(MyNode(label='mid'), u.nid_generate())
+        snap = s.freeze()
+        assert _labels(snap) == ['pre']
+    assert _labels(snap) == ['pre'] # unchanged by the commit
+    assert _labels(s) == ['mid', 'pre']
+    with s.updater() as u: # the mutable stays usable
+        u.add_single(MyNode(label='post'), u.nid_generate())
+    assert _labels(s) == ['mid', 'post', 'pre']
+    assert _labels(snap) == ['pre']
+
+def test_copy_during_open_updater():
+    s = MyHead().subgraph
+    with s.updater() as u:
+        u.add_single(MyNode(label='pre'), u.nid_generate())
+    with s.updater() as u:
+        u.add_single(MyNode(label='mid'), u.nid_generate())
+        fork = s.copy()
+    assert _labels(fork) == ['pre']
+    assert _labels(s) == ['mid', 'pre']
+    with fork.updater() as u: # both stay usable and independent
+        u.add_single(MyNode(label='fork'), u.nid_generate())
+    with s.updater() as u:
+        u.add_single(MyNode(label='post'), u.nid_generate())
+    assert _labels(fork) == ['fork', 'pre']
+    assert _labels(s) == ['mid', 'post', 'pre']
+
+def test_bucket_remove_absent_raises():
+    """StorageTxn.bucket_remove contract: removing a value that is not in
+    the bucket (or a key without a bucket) raises KeyError/ValueError."""
+    s = _guard_subgraph()
+
+    txn = s.backend.begin(s)
+    with pytest.raises((KeyError, ValueError)):
+        txn.bucket_remove(IndexKey(GuardNode.color_idx, 123), 999999,
+            BucketKind.NID)
+    txn.abort()
+
+    txn = s.backend.begin(s)
+    with pytest.raises((KeyError, ValueError)):
+        txn.bucket_remove(IndexKey(GuardNode.color_idx, 777), 1,
+            BucketKind.NID)
+    txn.abort()

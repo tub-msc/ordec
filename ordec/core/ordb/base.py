@@ -1314,11 +1314,11 @@ class SubgraphUpdater(SubgraphQueryMixin):
                 for nid in self.removed_nids:
                     if nid in index:
                         raise DanglingLocalRef(nid)
+
+                nodes, index = self.txn.commit()
             except:
                 self.txn.abort()
                 raise
-
-            nodes, index = self.txn.commit()
             self.target_subgraph.mutate(nodes, index, range(self.nid_max_encountered+1, self.target_subgraph.nid_alloc.stop))
         else:
             self.txn.abort()

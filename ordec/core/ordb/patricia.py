@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025 ORDeC contributors
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
 _EMPTY = None # The shared empty set, bound below once the class exists.
