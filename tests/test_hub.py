@@ -101,6 +101,7 @@ def make_hub(fake_hub):
         client_id=CLIENT_ID,
         user='alice',
         authorize_url='http://hub.example/hub/api/oauth2/authorize',
+        logout_url='http://hub.example/hub/logout',
         activity_url=f'http://127.0.0.1:{hub_port}/hub/api/users/alice/activity',
     )
 
@@ -181,7 +182,10 @@ def test_oauth_flow_and_token_handoff(hub_server):
     status, headers, body = request(port, f'{PREFIX}api/token',
         {'Cookie': cookie})
     assert status == 200
-    assert json.loads(body) == {'auth': key.token()}
+    assert json.loads(body) == {
+        'auth': key.token(),
+        'hub_logout_url': hub.logout_url,
+    }
 
     # ...but not without the session cookie:
     status, _, _ = request(port, f'{PREFIX}api/token')
@@ -299,6 +303,7 @@ def test_from_env():
     assert hub is not None
     assert hub.prefix == '/user/alice/'
     assert hub.authorize_url == '/hub/api/oauth2/authorize'
+    assert hub.logout_url == '/hub/logout'
     assert hub.callback_url == '/user/alice/oauth_callback'
     assert hub.service_url_bind(env) == ('0.0.0.0', 8100)
 

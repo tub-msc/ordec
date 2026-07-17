@@ -825,8 +825,12 @@ class StaticHandler:
         if user is not None:
             if req_path == Path('api/token'):
                 # Token handoff to the hub-authenticated frontend; replaces
-                # the #auth= URL fragment of standalone operation.
-                data = json.dumps({'auth': self.key.token()})
+                # the #auth= URL fragment of standalone operation. Also carries
+                # the hub logout URL for the UI's "End session" control.
+                data = json.dumps({
+                    'auth': self.key.token(),
+                    'hub_logout_url': self.hub.logout_url,
+                })
                 return build_response(data=data.encode('utf8'),
                     mime_type='application/json')
             return None

@@ -25,9 +25,14 @@
       #logo {
         display: block;
       }
-      #theme-toggle {
+      .header-actions {
         position: absolute;
         right: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      #theme-toggle {
         background: none;
         border: 1px solid #aaa;
         border-radius: 3px;
@@ -35,6 +40,21 @@
         font-size: 16px;
         padding: 0px 4px;
         line-height: 1.4;
+      }
+      #hubEndSession {
+        background: none;
+        border: 1px solid #aaa;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 13px;
+        padding: 1px 8px;
+        line-height: 1.4;
+        color: #333;
+        text-decoration: none;
+      }
+      #hubEndSession:hover {
+        background-color: #eee;
+        border-color: #888;
       }
       a.new-design {
         display: flex;
@@ -130,6 +150,14 @@
         border-color: #555;
         color: #ccc;
       }
+      body.theme-dark #hubEndSession {
+        border-color: #555;
+        color: #ccc;
+      }
+      body.theme-dark #hubEndSession:hover {
+        background-color: #2a2a2a;
+        border-color: #666;
+      }
       body.theme-dark a.new-design {
         border-color: #555;
         background-color: #252525;
@@ -175,7 +203,10 @@
   <body>
     <header>
       <img id="logo" src="/ordec_logo.svg" alt="ORDeC" />
-      <button id="theme-toggle" aria-label="Toggle dark/light mode"></button>
+      <div class="header-actions">
+        <button id="theme-toggle" aria-label="Toggle dark/light mode"></button>
+        <a id="hubEndSession" title="Stop this session and log out" hidden>End session</a>
+      </div>
     </header>
 
     <a class="new-design" href="app.html#example=blank">
@@ -236,6 +267,25 @@
         window.localStorage.setItem('ordecTheme', nowDark ? 'dark' : 'light');
         updateToggleBtn(nowDark);
       });
+
+      // "End session" appears only behind JupyterHub: api/token exists there
+      // (404 standalone) and carries the hub logout URL. Relative path so it
+      // resolves under the /user/<name>/ prefix.
+      fetch('api/token')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data || !data.hub_logout_url) return;
+          const endSession = document.querySelector('#hubEndSession');
+          endSession.href = data.hub_logout_url;
+          endSession.hidden = false;
+          endSession.addEventListener('click', (e) => {
+            if (!window.confirm('End this session? Your container will be '
+                + 'stopped and unsaved work will be lost.')) {
+              e.preventDefault();
+            }
+          });
+        })
+        .catch(() => {});
 
       // Version info; documentation links get their href set to the
       // version-matched URL (see the data-docs-page comment above).

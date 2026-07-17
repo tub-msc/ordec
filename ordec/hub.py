@@ -60,8 +60,8 @@ class HubIntegration:
     COOKIE_STATE = 'ordec-hub-state'
 
     def __init__(self, *, prefix, api_url, api_token, client_id, user,
-            callback_url=None, authorize_url=None, activity_url=None,
-            server_name='', activity_interval=300):
+            callback_url=None, authorize_url=None, logout_url=None,
+            activity_url=None, server_name='', activity_interval=300):
         """
         Args:
             prefix: URL path prefix this server is proxied under
@@ -76,6 +76,8 @@ class HubIntegration:
                 (JUPYTERHUB_OAUTH_CALLBACK_URL); defaults to
                 prefix + "oauth_callback".
             authorize_url: browser-facing hub OAuth authorize endpoint.
+            logout_url: browser-facing hub logout endpoint; the ORDeC UI's
+                "End session" control navigates here.
             activity_url: hub endpoint for activity reports
                 (JUPYTERHUB_ACTIVITY_URL); None disables reporting.
             server_name: named-server name, '' for the default server.
@@ -90,6 +92,7 @@ class HubIntegration:
         self.user = user
         self.callback_url = callback_url or (prefix + 'oauth_callback')
         self.authorize_url = authorize_url
+        self.logout_url = logout_url
         self.activity_url = activity_url
         self.server_name = server_name
         self.activity_interval = activity_interval
@@ -113,11 +116,13 @@ class HubIntegration:
         api_token = environ.get('JUPYTERHUB_API_TOKEN')
         if not prefix or not api_token or environ.get('ORDEC_HUB_DISABLE'):
             return None
-        # Browser-facing authorize endpoint: hub host (often empty = same
-        # host) + hub base URL + hub API path.
-        authorize_url = environ.get('JUPYTERHUB_HOST', '') + url_path_join(
-            environ.get('JUPYTERHUB_BASE_URL', '/'),
-            'hub/api/oauth2/authorize')
+        # Browser-facing hub endpoints: hub host (often empty = same host) +
+        # hub base URL + hub path.
+        hub_host = environ.get('JUPYTERHUB_HOST', '')
+        base_url = environ.get('JUPYTERHUB_BASE_URL', '/')
+        authorize_url = hub_host + url_path_join(
+            base_url, 'hub/api/oauth2/authorize')
+        logout_url = hub_host + url_path_join(base_url, 'hub/logout')
         return cls(
             prefix=prefix,
             api_url=environ.get('JUPYTERHUB_API_URL',
@@ -127,6 +132,7 @@ class HubIntegration:
             user=environ.get('JUPYTERHUB_USER', ''),
             callback_url=environ.get('JUPYTERHUB_OAUTH_CALLBACK_URL'),
             authorize_url=authorize_url,
+            logout_url=logout_url,
             activity_url=environ.get('JUPYTERHUB_ACTIVITY_URL'),
             server_name=environ.get('JUPYTERHUB_SERVER_NAME', ''),
         )

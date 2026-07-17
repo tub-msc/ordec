@@ -19,7 +19,7 @@ import "ace-builds/src-noconflict/ext-searchbox";
 
 import { OrdMode } from "./ace-ord-mode.js";
 
-import { authenticateLocalQuery, initSession } from './auth.js';
+import { authenticateLocalQuery, initSession, session } from './auth.js';
 
 import { ResultViewer } from "./resultviewer.js";
 import { OrdecClient } from './client.js';
@@ -32,6 +32,20 @@ initTheme();
 // In hub-hosted deployments, this fetches the auth token from the backend
 // (api/token); must complete before the first websocket connect.
 await initSession();
+
+// Behind JupyterHub, surface an "End session" control that stops the container
+// and logs out (the hub is configured with shutdown_on_logout).
+if (session.hubMode && session.hubLogoutUrl) {
+    const endSession = document.querySelector("#hubEndSession");
+    endSession.href = session.hubLogoutUrl;
+    endSession.hidden = false;
+    endSession.addEventListener("click", (e) => {
+        if (!window.confirm("End this session? Your container will be stopped "
+                + "and unsaved work will be lost.")) {
+            e.preventDefault();
+        }
+    });
+}
 
 const sourceTypeSelect = document.querySelector("#sourcetype");
 const urlParams = new URLSearchParams(window.location.hash.substring(1));

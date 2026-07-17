@@ -15,6 +15,7 @@ export const session = {
     authKey: window.localStorage.getItem('ordecAuth'),
     authHmacBypass: window.localStorage.getItem('ordecHmacBypass'),
     hubMode: false,
+    hubLogoutUrl: null,
 };
 
 export async function initSession() {
@@ -31,6 +32,7 @@ export async function initSession() {
             const data = await response.json();
             session.authKey = data.auth;
             session.hubMode = true;
+            session.hubLogoutUrl = data.hub_logout_url;
         }
     } catch (e) {
         // Network error: not hub-hosted or server gone; fall back to the
