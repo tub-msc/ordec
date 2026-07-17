@@ -1,0 +1,7 @@
+{% extends "templates/page.html" %}
+
+{# Rebrand the browser-tab title across all hub pages (login, spawn-pending,
+   admin, logout, error, ...). JupyterHub is BSD-3-licensed and used unmodified
+   in the image; this overrides only the displayed title in our own template and
+   leaves JupyterHub's own license and notices untouched. #}
+{% block title %}ORDeC Hub{% endblock title %}

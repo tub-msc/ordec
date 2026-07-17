@@ -93,9 +93,9 @@ SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
-# Hub login template (HTML served to the browser, so inline SPDX is messy):
+# Hub HTML templates (served to the browser, so inline SPDX is messy):
 path = [
-    "hub/templates/login.html",
+    "hub/templates/*.html",
 ]
 SPDX-FileCopyrightText = "2026 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"
