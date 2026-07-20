@@ -270,7 +270,9 @@
 
       // "End session" appears only behind JupyterHub: api/token exists there
       // (404 standalone) and carries the hub logout URL. Relative path so it
-      // resolves under the /user/<name>/ prefix.
+      // resolves under the /user/<name>/ prefix. The same wiring exists in
+      // src/main.js for the app page (which does not run this inline script);
+      // keep both in sync.
       fetch('api/token')
         .then(r => r.ok ? r.json() : null)
         .then(data => {
@@ -289,7 +291,10 @@
 
       // Version info; documentation links get their href set to the
       // version-matched URL (see the data-docs-page comment above).
-      fetch('/api/version')
+      // Relative path: Vite only rewrites asset references for base './',
+      // not fetch() literals, and '/api/version' would 404 behind the
+      // /user/<name>/ prefix of JupyterHub.
+      fetch('api/version')
         .then(r => r.json())
         .then(data => {
           document.querySelector('#version').textContent = data['version'];
@@ -297,7 +302,7 @@
             a.href = data['docs_url'] + a.dataset.docsPage;
           });
         })
-        .catch(err => console.error('Failed to fetch /api/version:', err));
+        .catch(err => console.error('Failed to fetch api/version:', err));
     </script>
     <script type="module" src="/src/auth.js"></script>
   </body>

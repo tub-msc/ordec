@@ -34,7 +34,9 @@ initTheme();
 await initSession();
 
 // Behind JupyterHub, surface an "End session" control that stops the container
-// and logs out (the hub is configured with shutdown_on_logout).
+// and logs out (the hub is configured with shutdown_on_logout). The landing
+// page duplicates this wiring in an inline script (web/index.html, which does
+// not load this bundle); keep both in sync.
 if (session.hubMode && session.hubLogoutUrl) {
     const endSession = document.querySelector("#hubEndSession");
     endSession.href = session.hubLogoutUrl;
