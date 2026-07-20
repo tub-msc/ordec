@@ -108,7 +108,8 @@ class HubIntegration:
         """
         Build a HubIntegration from the JUPYTERHUB_* environment variables
         the hub sets for spawned servers. Returns None when not spawned by
-        a hub (or when ORDEC_HUB_DISABLE is set).
+        a hub (or when ORDEC_HUB_DISABLE is set); raises ValueError when the
+        hub environment is present but incomplete.
         """
         if environ is None:
             environ = os.environ
@@ -116,6 +117,16 @@ class HubIntegration:
         api_token = environ.get('JUPYTERHUB_API_TOKEN')
         if not prefix or not api_token or environ.get('ORDEC_HUB_DISABLE'):
             return None
+        # Without these, every login would fail much later with an opaque
+        # error at the hub's authorize endpoint or in login_with_code;
+        # a spawner that sets the two variables above always sets these too.
+        client_id = environ.get('JUPYTERHUB_CLIENT_ID')
+        user = environ.get('JUPYTERHUB_USER')
+        if not client_id or not user:
+            raise ValueError(
+                "incomplete JupyterHub environment: JUPYTERHUB_CLIENT_ID "
+                "and JUPYTERHUB_USER must be set alongside "
+                "JUPYTERHUB_SERVICE_PREFIX/JUPYTERHUB_API_TOKEN")
         # Browser-facing hub endpoints: hub host (often empty = same host) +
         # hub base URL + hub path.
         hub_host = environ.get('JUPYTERHUB_HOST', '')
@@ -128,8 +139,8 @@ class HubIntegration:
             api_url=environ.get('JUPYTERHUB_API_URL',
                 'http://127.0.0.1:8081/hub/api'),
             api_token=api_token,
-            client_id=environ.get('JUPYTERHUB_CLIENT_ID', ''),
-            user=environ.get('JUPYTERHUB_USER', ''),
+            client_id=client_id,
+            user=user,
             callback_url=environ.get('JUPYTERHUB_OAUTH_CALLBACK_URL'),
             authorize_url=authorize_url,
             logout_url=logout_url,

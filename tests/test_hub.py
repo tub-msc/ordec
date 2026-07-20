@@ -310,6 +310,14 @@ def test_from_env():
     assert HubIntegration.from_env({}) is None
     assert HubIntegration.from_env(dict(env, ORDEC_HUB_DISABLE='1')) is None
 
+    # Hub environment present but incomplete: fail at startup, not at the
+    # first login attempt.
+    for missing in ('JUPYTERHUB_CLIENT_ID', 'JUPYTERHUB_USER'):
+        broken = dict(env)
+        del broken[missing]
+        with pytest.raises(ValueError, match=missing):
+            HubIntegration.from_env(broken)
+
 
 @pytest.fixture(scope="module")
 def prefix_server():
