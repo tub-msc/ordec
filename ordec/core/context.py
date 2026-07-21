@@ -40,13 +40,13 @@ class ViewContext:
     and __exit__ methods also automatically enter and exit a corresponding
     NodeContext.
     """
-    #: True on subclasses whose postprocess emits placement groups.
-    supports_placement_groups = False
+    #: True on subclasses whose postprocess emits arrangement groups.
+    supports_arrangement_groups = False
 
     def __init__(self, root):
         self.root = root
-        self.placement_groups = [] #: top-level placement groups, emitted in postprocess
-        self.group_stack = [] #: placement groups whose body is currently executing
+        self.arrangement_groups = [] #: top-level arrangement groups, emitted in postprocess
+        self.group_stack = [] #: arrangement groups whose body is currently executing
 
     @classmethod
     def create_root(cls, cell, root_cls):
@@ -100,7 +100,7 @@ class SymbolViewContext(ViewContext):
 
 
 class SchematicViewContext(ViewContext):
-    supports_placement_groups = True
+    supports_arrangement_groups = True
 
     @classmethod
     def create_root(cls, cell, root_cls):
@@ -125,7 +125,7 @@ class SchematicViewContext(ViewContext):
     def postprocess(self):
         from .constraints import SolverError
         from .schema import SchemPort
-        from ..schematic.placement import describe
+        from .arrange import describe
         from ..schematic.helpers import schem_place_ports
 
         def raise_undefined(undefined):
@@ -141,7 +141,7 @@ class SchematicViewContext(ViewContext):
         # right in declaration order, with routing space in between.
         origin = 0
         default_group_spacing = 4
-        for group in self.placement_groups:
+        for group in self.arrangement_groups:
             if group.emit(self.solver, auto_anchor=(origin, 0)):
                 origin += group.arrangement().width + default_group_spacing
         self.solver.solve(allow_undefined=True)

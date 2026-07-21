@@ -314,11 +314,11 @@ Inv().schematic
 # See {ref}`layout` for a runnable example using `anonymous`.
 # -
 
-# (placement_groups)=
+# (arrangement_groups)=
 #
-# ### 4.9 Placement groups
+# ### 4.9 Arrangement groups
 #
-# All schematics so far placed each element with an explicit `.pos`. **Placement
+# All schematics so far placed each element with an explicit `.pos`. **Arrangement
 # groups** arrange elements relative to each other instead, so a schematic can be
 # written without any coordinates. `Col` and `Row` place their children in a
 # stack or side by side. `Series` and `Parallel` additionally **connect** them
@@ -373,7 +373,7 @@ NandPlaced().schematic
 
 # Ports that are not part of a group (`a`, `b`, `y`) are auto-placed on the
 # edge of the drawing based on their alignment, and all wires are routed
-# automatically. See {doc}`ref/placement` for the full reference, including
+# automatically. See {doc}`ref/arrange` for the full reference, including
 # the `gap`, `align`, `anchor` and `horizontal` attributes and the rules for
 # nesting groups.
 

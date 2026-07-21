@@ -1,7 +1,7 @@
-:mod:`ordec.schematic.placement` --- Placement groups
-=====================================================
+:mod:`ordec.core.arrange` --- Arrangement groups
+================================================
 
-.. automodule:: ordec.schematic.placement
+.. automodule:: ordec.core.arrange
 
 **Example (ORD):**
 
@@ -133,7 +133,7 @@ the outward-facing pins of its first and last child, a nested Parallel
 exposes its two rails. Series/parallel circuit structures can therefore
 be described by nesting alone, e.g. a NAND as a Series of vdd, a
 Parallel pull-up pair, the pull-down transistors and vss. Tutorial
-section :ref:`placement_groups` shows this NAND as a complete example
+section :ref:`arrangement_groups` shows this NAND as a complete example
 with its rendered schematic.
 
 Two restrictions apply: a Series/Parallel cannot electrically connect a
@@ -150,7 +150,7 @@ Positions of schematic elements are determined in this order:
 1. Directly assigned positions (``.pos = (x, y)``) and explicit constraints
    (``! ...``) always win. A port or instance referenced in any constraint
    is not placed automatically.
-2. Members of a placement group are placed by the group. Top-level groups
+2. Members of an arrangement group are placed by the group. Top-level groups
    anchor at (0, 0). Several auto-anchored groups line up side by side. A
    group with a constrained or directly positioned member follows that
    member instead of being anchored.
@@ -172,7 +172,7 @@ Groups are configured entirely through their constructor arguments,
 described in the class docstrings and under `Attributes`_ above. Their
 methods are internal machinery (see below).
 
-.. autoclass:: PlacementGroup
+.. autoclass:: ArrangementGroup
 
 .. autoclass:: Row
   :show-inheritance:
@@ -194,9 +194,9 @@ Internals
 
 While the viewgen body runs, a group only records its children in
 declaration order. The view context emits all top-level groups during
-postprocessing: :meth:`PlacementGroup.emit` resolves connectivity
+postprocessing: :meth:`ArrangementGroup.emit` resolves connectivity
 (parent before child, since ORDB cannot merge nets), computes the rigid
-relative :meth:`~PlacementGroup.arrangement` of the children and
+relative :meth:`~ArrangementGroup.arrangement` of the children and
 constrains each child's position to the first child by a constant
 offset, anchoring top-level groups. User code only calls these methods
 when using groups outside a viewgen.
@@ -204,19 +204,19 @@ when using groups outside a viewgen.
 .. autoclass:: Endpoint
   :members:
 
-.. autoclass:: Arrangement
+.. autoclass:: ArrangedRects
 
-.. automethod:: PlacementGroup.add
+.. automethod:: ArrangementGroup.add
 
-.. automethod:: PlacementGroup.child_rect
+.. automethod:: ArrangementGroup.child_rect
 
-.. automethod:: PlacementGroup.arrangement
+.. automethod:: ArrangementGroup.arrangement
 
-.. automethod:: PlacementGroup.rect
+.. automethod:: ArrangementGroup.rect
 
-.. automethod:: PlacementGroup.resolve_connectivity
+.. automethod:: ArrangementGroup.resolve_connectivity
 
-.. automethod:: PlacementGroup.emit
+.. automethod:: ArrangementGroup.emit
 
 .. automethod:: ConnectingGroup.facing_pin
 

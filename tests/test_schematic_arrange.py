@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Tests for the schematic placement pipeline: constraints from ORD `!`
-statements solved in SchematicViewContext.postprocess, placement groups
+Tests for the schematic arrangement pipeline: constraints from ORD `!`
+statements solved in SchematicViewContext.postprocess, arrangement groups
 (Col/Row/Series/Parallel) and align-based auto-placement of ports
 (schem_place_ports).
 """
@@ -370,7 +370,7 @@ def test_group_net_without_port_error():
 
 
 def test_group_size_error_names_child():
-    from ordec.schematic.placement import term_constant
+    from ordec.core.arrange import term_constant
     sch = Schematic()
     sch.m = SchemInstance(symbol=Nmos().symbol)
 

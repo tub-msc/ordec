@@ -10,4 +10,4 @@ from .constraints import *
 from .directory import *
 from .simarray import SimArray, SimArrayField, SimColumn
 from .genrun import *
-from ..schematic.placement import *
+from .arrange import *
