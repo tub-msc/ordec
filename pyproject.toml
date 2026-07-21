@@ -51,6 +51,7 @@ test = [
     "selenium>=4.8.3",
     "pillow>=11.1.0",
     "pyyaml>=6.0",
+    "tree-sitter>=0.25",
 ]
 extra = [
     "black>=23.1.0",

@@ -6,10 +6,18 @@ Keeps the editor highlighting grammars in editors/ aligned with the ORD
 grammar. Every .ord file in the repository is parsed with the authoritative
 Lark parser, each ORD construct line must be matched by the corresponding
 highlighting rule, and the node statement rules must not fire on other lines.
+The tree-sitter grammar is held to a stricter standard: its generated parser
+must accept every file and agree with the Lark parser on the location of all
+ORD constructs. The generated parser sources are gitignored, so these tests
+skip until `npm ci && npm run generate` has been run in
+editors/tree-sitter-ord/.
 """
 
+import ctypes
 import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -186,3 +194,82 @@ def test_sublime_syntax(parsed_ord_files):
     for negative in SOFT_KEYWORD_NEGATIVES:
         for matcher in (node_statement, anonymous, *keyword.values()):
             assert not matcher.match(negative)
+
+
+# Lark rule -> tree-sitter node type produced for the same construct
+TREE_SITTER_RULES = {
+    'node_stmt': 'context_definition',
+    'anon_node_stmt': 'context_definition',
+    'node_stmt_nobody': 'context_declaration',
+    'anon_node_stmt_nobody': 'context_declaration',
+    'celldef': 'cell_definition',
+    'viewgen': 'viewgen_definition',
+    'path_stmt': 'path_net_statement',
+    'net_stmt': 'path_net_statement',
+}
+
+
+@pytest.fixture(scope='module')
+def ord_tree_sitter_parser(tmp_path_factory):
+    """Compile the generated tree-sitter parser and load it via py-tree-sitter."""
+    tree_sitter = pytest.importorskip('tree_sitter')
+    cc = shutil.which('cc')
+    if cc is None:
+        pytest.skip('no C compiler available')
+    src = EDITORS / 'tree-sitter-ord' / 'src'
+    if not (src / 'parser.c').exists():
+        pytest.skip('parser not generated, run npm ci && npm run generate '
+                    'in editors/tree-sitter-ord')
+    library = tmp_path_factory.mktemp('tree_sitter_ord') / 'ord.so'
+    subprocess.run(
+        [cc, '-fPIC', '-shared', '-I', str(src), str(src / 'parser.c'),
+         str(src / 'scanner.c'), '-o', str(library)], check=True)
+    handle = ctypes.CDLL(str(library))
+    handle.tree_sitter_ord.restype = ctypes.c_void_p
+    # tree_sitter.Language expects the TSLanguage pointer as a PyCapsule
+    capsule_new = ctypes.pythonapi.PyCapsule_New
+    capsule_new.restype = ctypes.py_object
+    capsule_new.argtypes = (ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p)
+    capsule = capsule_new(handle.tree_sitter_ord(),
+                          b'tree_sitter.Language', None)
+    return tree_sitter.Parser(tree_sitter.Language(capsule))
+
+
+def tree_sitter_nodes(tree):
+    stack = [tree.root_node]
+    while stack:
+        node = stack.pop()
+        yield node
+        stack.extend(node.children)
+
+
+def test_tree_sitter_grammar(parsed_ord_files, ord_tree_sitter_parser):
+    """The parser accepts every .ord file and finds the same constructs."""
+    ord_node_types = set(TREE_SITTER_RULES.values())
+    for path, lines, constructs, _ in parsed_ord_files:
+        tree = ord_tree_sitter_parser.parse(path.read_bytes())
+        assert not tree.root_node.has_error, f'{path}: tree-sitter parse error'
+        found = {}
+        for node in tree_sitter_nodes(tree):
+            if node.type in ord_node_types:
+                found.setdefault(node.start_point[0] + 1, node.type)
+        for line_number, rule in constructs.items():
+            assert found.get(line_number) == TREE_SITTER_RULES[rule], \
+                (f'{path}:{line_number}: expected {TREE_SITTER_RULES[rule]}: '
+                 f'{lines[line_number - 1].strip()!r}')
+        for line_number, node_type in found.items():
+            rule = constructs.get(line_number)
+            assert rule and TREE_SITTER_RULES[rule] == node_type, \
+                (f'{path}:{line_number}: stray {node_type}: '
+                 f'{lines[line_number - 1].strip()!r}')
+
+
+def test_tree_sitter_soft_keywords(ord_tree_sitter_parser):
+    ord_node_types = set(TREE_SITTER_RULES.values())
+    for negative in SOFT_KEYWORD_NEGATIVES:
+        if negative == 'case Point(x=0):':
+            continue  # only valid inside a match block
+        tree = ord_tree_sitter_parser.parse((negative + '\n').encode())
+        assert not tree.root_node.has_error, negative
+        types = {node.type for node in tree_sitter_nodes(tree)}
+        assert not (ord_node_types & types), negative

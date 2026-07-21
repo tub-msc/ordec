@@ -22,7 +22,9 @@ viewer bridge.
   not treated as a number.
 - ORD injection rules do not fire inside strings and comments.
 - Auto-indent triggers after node statement headers such as `Nmos m1:` or
-  `Series(gap=4) core:`, and the ORD theme colors the `anonymous` modifier
-  and node statement target names.
+  `Series(gap=4) core:`.
+- No bundled color theme: ORD scopes extend standard TextMate scope
+  prefixes, so any theme colors them. The README documents optional
+  `editor.tokenColorCustomizations` rules for ORD-specific accents.
 - The extension does not include a language client. It can be reintroduced
   once `ordec-lsp` ships with ORDeC.

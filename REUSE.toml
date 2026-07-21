@@ -6,6 +6,7 @@ path = [
     "docs/Makefile",
     "docs/make.bat",
     "web/package-lock.json",
+    "editors/tree-sitter-ord/package-lock.json",
     "tests/renderview_ref/*.svg",
 ]
 SPDX-FileCopyrightText = "NONE"
@@ -17,6 +18,7 @@ path = [
     ".gitignore",
     "docs/.gitignore",
     "web/.gitignore",
+    "editors/.gitignore",
     ".dockerignore",
     "MANIFEST.in",
     "docs/requirements.txt",
@@ -135,9 +137,19 @@ path = [
     "editors/vscode/ord/syntaxes/ord.tmLanguage.json",
     "editors/vscode/ord/ordec.ico",
     "editors/vscode/ord/ordec.png",
+    "editors/tree-sitter-ord/package.json",
+    "editors/tree-sitter-ord/tree-sitter.json",
 ]
 SPDX-FileCopyrightText = "2026 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+# tree-sitter corpus test data (ORD samples with expected syntax trees):
+path = [
+    "editors/tree-sitter-ord/test/corpus/ord.txt",
+]
+SPDX-FileCopyrightText = "2026 ORDeC contributors"
+SPDX-License-Identifier = "CC0-1.0"
 
 [[annotations]]
 # Editor grammars adapted from the MIT-licensed MagicPython TextMate grammar:
@@ -155,7 +167,6 @@ SPDX-License-Identifier = "MIT AND Apache-2.0"
 # VS Code extension scaffold files derived from MIT-licensed Microsoft templates:
 path = [
     "editors/vscode/ord/package.json",
-    "editors/vscode/ord/themes/ord-color-theme.json",
     "editors/vscode/ord/.vscode/launch.json",
 ]
 SPDX-FileCopyrightText = [
@@ -163,3 +174,36 @@ SPDX-FileCopyrightText = [
     "2026 ORDeC contributors",
 ]
 SPDX-License-Identifier = "MIT AND Apache-2.0"
+
+[[annotations]]
+# Parser artifacts generated from grammar.js, which extends the MIT-licensed
+# tree-sitter-python grammar. The generated src/ artifacts are gitignored
+# but annotated so locally generated trees stay REUSE-compliant:
+path = [
+    "editors/tree-sitter-ord/src/parser.c",
+    "editors/tree-sitter-ord/src/grammar.json",
+    "editors/tree-sitter-ord/src/node-types.json",
+]
+SPDX-FileCopyrightText = [
+    "2016 Max Brunsfeld",
+    "2026 ORDeC contributors",
+]
+SPDX-License-Identifier = "MIT AND Apache-2.0"
+
+[[annotations]]
+# tree-sitter runtime headers bundled by the tree-sitter CLI (generated,
+# gitignored):
+path = [
+    "editors/tree-sitter-ord/src/tree_sitter/*.h",
+]
+SPDX-FileCopyrightText = "2018-2024 Max Brunsfeld"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+# External scanner copied from the tree-sitter-python devDependency by
+# `npm run generate` (gitignored):
+path = [
+    "editors/tree-sitter-ord/src/scanner.c",
+]
+SPDX-FileCopyrightText = "2016 Max Brunsfeld"
+SPDX-License-Identifier = "MIT"

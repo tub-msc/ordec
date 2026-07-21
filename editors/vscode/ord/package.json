@@ -57,13 +57,6 @@
         "injectTo": ["source.ord"]
       }
     ],
-    "themes": [
-      {
-        "label": "ORD Theme",
-        "uiTheme": "vs-dark",
-        "path": "./themes/ord-color-theme.json"
-      }
-    ],
     "commands": [
       {
         "command": "ord.openViewerForActiveFile",

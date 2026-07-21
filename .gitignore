@@ -17,5 +17,3 @@ tests/renderview_ref/styled/
 lvs/
 # benchmark output (machine-specific): benchmarks.runner --out, report --html
 results/
-editors/vscode/ord/node_modules/
-editors/vscode/ord/*.vsix

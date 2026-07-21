@@ -1,15 +1,9 @@
 # Licensing
 
-This extension package contains a mix of ORDeC-authored material and material
-derived from MIT-licensed upstream projects:
-
-- ORDeC-authored files are licensed under the Apache License 2.0 (full text
-  below).
-- `syntaxes/ord-injection.tmLanguage.json` reuses ORD-specific rules from the
-  JetBrains TextMate grammar in the ORDeC repository. That grammar is adapted
-  from the MIT-licensed MagicPython Python grammar.
-- Several scaffold files in this extension folder (including `package.json`)
-  originate from MIT-licensed Microsoft VS Code templates and samples.
+The tree-sitter grammar in this package is derived from the MIT-licensed
+tree-sitter-python grammar. The ORD-specific changes and the remaining
+package files are authored by the ORDeC contributors under the Apache
+License 2.0.
 
 Both license texts below apply to redistributions of this package.
 
@@ -17,8 +11,7 @@ Both license texts below apply to redistributions of this package.
 
 The MIT License (MIT)
 
-Copyright (c) Microsoft Corporation
-Copyright (c) 2015-present MagicStack Inc.
+Copyright (c) 2016 Max Brunsfeld
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -98,7 +91,7 @@ END OF TERMS AND CONDITIONS
 
 APPENDIX: How to apply the Apache License to your work.
 
-To apply the Apache License to your work, attach the following boilerplate notice, with the fields enclosed by brackets "[]" replaced with your own identifying information. (Don't include the brackets!)  The text should be enclosed in the appropriate comment syntax for the file format. We also recommend that a file or class name and description of purpose be included on the same "printed page" as the copyright notice for easier identification within third-party archives.
+To apply the Apache License to your work, attach the following boilerplate notice, with the fields enclosed by brackets "[]" replaced with your own identifying information. (Don't include the brackets!) The text should be enclosed in the appropriate comment syntax for the file format. We also recommend that a file or class name and description of purpose be included on the same "printed page" as the copyright notice for easier identification within third-party archives.
 
 Copyright [yyyy] [name of copyright owner]
 

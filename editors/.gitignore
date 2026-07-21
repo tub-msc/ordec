@@ -1,0 +1,14 @@
+# VS Code extension build
+vscode/ord/node_modules/
+vscode/ord/*.vsix
+
+# tree-sitter-ord: generated parser artifacts and build outputs. grammar.js
+# is the source of truth (extending the tree-sitter-python devDependency),
+# and src/ is fully derived — regenerate with `npm run generate` in
+# tree-sitter-ord/.
+tree-sitter-ord/node_modules/
+tree-sitter-ord/src/
+tree-sitter-ord/*.o
+tree-sitter-ord/*.so
+tree-sitter-ord/*.dll
+tree-sitter-ord/*.dylib
