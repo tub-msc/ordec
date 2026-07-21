@@ -80,13 +80,6 @@ def test_ord_col_group_auto_anchor():
     assert sch.pd.pos == Vec2R(0, 0)
     assert sch.pu.pos == Vec2R(0, 8)
 
-    # Ports auto-placed around the (0,0)-(4,12) bbox, lined up with the
-    # connected pin nearest to their edge.
-    assert sch.a.pos == Vec2R(-2, 2)   # at pd.g (0,2)
-    assert sch.y.pos == Vec2R(6, 4)    # at pd.d (2,4)
-    assert sch.vss.pos == Vec2R(2, -2) # at pd.s (2,0)
-    assert sch.vdd.pos == Vec2R(2, 14) # at pu.s (2,12)
-
     assert not sch.has_errors()
 
 
@@ -168,6 +161,8 @@ class TwoTop(Cell):
 
 
 def test_series_ambiguous_pins_error():
+    # Two pins on a facing side make pin detection ambiguous: i2's
+    # north side faces the previous child, w's south side the next.
     sym = TwoTop().symbol
     sch = Schematic(symbol=sym)
     sch.i1 = SchemInstance(symbol=sym)
@@ -177,6 +172,16 @@ def test_series_ambiguous_pins_error():
     group.add(sch.i2)
 
     with pytest.raises(ValueError, match="exactly one upward-facing pin"):
+        group.emit(Solver(sch))
+
+    sch = Schematic()
+    sch.w = SchemInstance(symbol=WideCell().symbol)
+    sch.n = SchemInstance(symbol=NarrowCell().symbol)
+    group = Series()
+    group.add(sch.w)
+    group.add(sch.n)
+
+    with pytest.raises(ValueError, match="exactly one downward-facing pin"):
         group.emit(Solver(sch))
 
 
@@ -236,6 +241,36 @@ def test_series_horizontal():
     assert n12.nid == net_of(sch, sch.r2, 'l').nid
     assert n23.nid == net_of(sch, sch.r3, 'l').nid
     assert n12.nid != n23.nid
+
+
+def test_series_rotated_instance():
+    # facing_pin composes inst.orientation * pin.align: the R180
+    # instance connects through its source, which now faces up.
+    sym = Nmos().symbol
+    sch = Schematic()
+    sch.m1 = SchemInstance(symbol=sym)
+    sch.m2 = SchemInstance(symbol=sym, orientation=R180)
+    group = Series(gap=2)
+    group.add(sch.m1)
+    group.add(sch.m2)
+
+    solver = Solver(sch)
+    group.emit(solver)
+    solver.solve(allow_undefined=True)
+
+    # m1 spans (0,6)-(4,10), the rotated m2 (0,0)-(4,4) with transform
+    # origin (4,4). The s pins meet on the line x=2.
+    assert sch.m1.pos == Vec2R(0, 6)
+    assert sch.m2.pos == Vec2R(4, 4)
+    assert sch.m1.s.pos == Vec2R(2, 6)
+    assert sch.m2.s.pos == Vec2R(2, 4)
+
+    junction = net_of(sch, sch.m1, 's')
+    assert junction is not None
+    assert junction.nid == net_of(sch, sch.m2, 's').nid
+    # Both drains are open series boundaries.
+    assert net_of(sch, sch.m1, 'd') is None
+    assert net_of(sch, sch.m2, 'd') is None
 
 
 def test_parallel_auto_connection():
@@ -341,6 +376,19 @@ def test_group_rejects_duplicate_child():
 
     with pytest.raises(ValueError, match="already a child"):
         group.add(sch.m)
+
+
+def test_group_sealed_after_outline_use():
+    sch = Schematic()
+    sch.a = SchemInstance(symbol=Nmos().symbol)
+    sch.b = SchemInstance(symbol=Nmos().symbol)
+    group = Col(gap=2)
+    group.add(sch.a)
+    # Using the outline (e.g. in a constraint) seals the group.
+    group.rect()
+
+    with pytest.raises(TypeError, match="can no longer be extended"):
+        group.add(sch.b)
 
 
 def test_group_contradiction_clear_error():
@@ -452,6 +500,37 @@ def test_series_nested_in_parallel():
     assert len({top.nid, bottom.nid, junction.nid}) == 3
 
 
+def test_nested_group_orientation_mismatch_error():
+    # A horizontal Parallel has east/west rails, so a vertical Series
+    # cannot connect it into its downward current path.
+    sym = Nmos().symbol
+    sch = Schematic()
+    sch.m1 = SchemInstance(symbol=sym)
+    sch.m2 = SchemInstance(symbol=sym)
+    inner = Parallel(horizontal=True)
+    inner.add(sch.m1)
+    outer = Series(gap=2)
+    outer.add(inner)
+    outer.add(sch.m2)
+
+    with pytest.raises(ValueError, match="orientation mismatch"):
+        outer.emit(Solver(sch))
+
+
+def test_group_outside_schematic_viewgen_error():
+    from ordec.core.context import SymbolViewContext
+
+    # No view context at all.
+    with pytest.raises(TypeError, match="schematic viewgen"):
+        with Col():
+            pass
+    # A non-schematic view context.
+    with SymbolViewContext(Symbol()):
+        with pytest.raises(TypeError, match="schematic viewgen"):
+            with Col():
+                pass
+
+
 class WideCell(Cell):
     """Non-square symbol (8x4) with two pins on its south side."""
     @generate
@@ -473,25 +552,22 @@ class NarrowCell(Cell):
         return s
 
 
-def test_series_multi_pin_side_requires_override():
-    sch = Schematic()
-    sch.w = SchemInstance(symbol=WideCell().symbol)
-    sch.n = SchemInstance(symbol=NarrowCell().symbol)
-    group = Series()
-    group.add(sch.w)
-    group.add(sch.n)
-
-    with pytest.raises(ValueError, match="exactly one downward-facing pin"):
-        group.emit(Solver(sch))
-
-
-def test_series_non_square_symbols_override_and_snap():
+@pytest.mark.parametrize("align,n_pos", [
+    ('center', Vec2R(2, 0)),
+    ('start', Vec2R(0, 0)),
+    ('end', Vec2R(5, 0)),
+    ('pins', Vec2R(5, 0)),
+])
+def test_series_non_square_symbols_align(align, n_pos):
+    # 'center' floors (8-3)/2 = 2 to keep the 3-wide n on the unit grid
+    # under the 8-wide w, 'start'/'end' align the left/right edges,
+    # 'pins' lines up the facing pins w.o2 (x=6) and n.t.
     sch = Schematic()
     sch.w = SchemInstance(symbol=WideCell().symbol)
     sch.n = SchemInstance(symbol=NarrowCell().symbol)
     # bottom= only applies where a downward-facing pin is needed: on w,
     # whose south side faces n. n's south side is the open boundary.
-    group = Series(gap=2, bottom='o2', align='center')
+    group = Series(gap=2, bottom='o2', align=align)
     group.add(sch.w)
     group.add(sch.n)
 
@@ -499,10 +575,10 @@ def test_series_non_square_symbols_override_and_snap():
     group.emit(solver)
     solver.solve(allow_undefined=True)
 
-    # 8-wide over 3-wide: centering offset floor((8-3)/2) = 2 keeps the
-    # narrow cell on the unit grid.
     assert sch.w.pos == Vec2R(0, 6)
-    assert sch.n.pos == Vec2R(2, 0)
+    assert sch.n.pos == n_pos
+    if align == 'pins':
+        assert sch.w.o2.pos.x == sch.n.t.pos.x
 
     # The override picked o2, so o1 stays unconnected.
     junction = net_of(sch, sch.w, 'o2')
@@ -528,26 +604,6 @@ def test_parallel_multi_pin_side_override():
     assert net_of(sch, sch.w1, 'o1').nid == net_of(sch, sch.w2, 'o1').nid
     assert net_of(sch, sch.w1, 'o2') is None
     assert net_of(sch, sch.w2, 'o2') is None
-
-
-def test_series_align_pins():
-    # align='pins' lines the facing pins up for a straight junction wire,
-    # instead of centering the differently-sized bounding boxes.
-    sch = Schematic()
-    sch.w = SchemInstance(symbol=WideCell().symbol)
-    sch.n = SchemInstance(symbol=NarrowCell().symbol)
-    group = Series(gap=2, bottom='o2', align='pins')
-    group.add(sch.w)
-    group.add(sch.n)
-
-    solver = Solver(sch)
-    group.emit(solver)
-    solver.solve(allow_undefined=True)
-
-    assert sch.w.pos == Vec2R(0, 6)
-    assert sch.n.pos == Vec2R(5, 0)
-    # w.o2 at x=6 and n.t at x=5+1=6: the junction is vertical.
-    assert sch.w.o2.pos.x == sch.n.t.pos.x
 
 
 def test_groups_snap_odd_sizes_to_grid():

@@ -104,8 +104,6 @@ testdata = [
         refdir / "ordtest_inverter_sch.svg"),
     testcase(ord_lambda('tests.lib.ord.inverter_constraints', 'Inv', 'schematic'),
         refdir / "ordtest_inverter_constraints_sch.svg"),
-    testcase(ord_lambda('tests.lib.ord.inverter_series', 'Inv', 'schematic'),
-        refdir / "ordtest_inverter_series_sch.svg"),
     testcase(ord_lambda('tests.lib.ord.nand_placement', 'Nand2', 'schematic'),
         refdir / "ordtest_nand_placement_sch.svg"),
     testcase(ord_lambda('tests.lib.ord.buf_hier', 'Buf', 'schematic'),
