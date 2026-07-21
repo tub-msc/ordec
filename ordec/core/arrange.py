@@ -133,7 +133,7 @@ class ArrangedRects(NamedTuple):
 
 
 @public
-class ArrangementGroup:
+class ArrangementGroup(ABC):
     """
     Base class of all arrangement groups, see module docstring. Use Row or
     Col (or Series/Parallel for electrical connection).
@@ -149,9 +149,18 @@ class ArrangementGroup:
             anchor a top-level group at (0, 0) unless a member appears
             in a user constraint or has a directly assigned position.
     """
-    axis = None #: Main axis along which children are placed: 0 = x, 1 = y.
     aligns = ('center', 'start', 'end') #: Supported align values.
     default_align = 'center' #: align used when None is passed.
+
+    @property
+    @abstractmethod
+    def vertical(self) -> bool:
+        """Whether children are placed along the y axis instead of the x axis."""
+
+    @property
+    def axis(self) -> int:
+        """Main axis along which children are placed: 0 = x, 1 = y."""
+        return 1 if self.vertical else 0
 
     def __init__(self, gap: int = 2, align: str | None = None, anchor='auto'):
         if align is None:
@@ -410,16 +419,16 @@ class ArrangementGroup:
 @public
 class Row(ArrangementGroup):
     """Places children side by side, left to right along the x axis."""
-    axis = 0
+    vertical = False
 
 
 @public
 class Col(ArrangementGroup):
     """Places children in a stack, top to bottom along the y axis."""
-    axis = 1
+    vertical = True
 
 
-class ConnectingGroup(ArrangementGroup, ABC):
+class ConnectingGroup(ArrangementGroup):
     """
     Common base of the electrically connecting groups Series and
     Parallel: pin detection by facing side and shared net handling.
@@ -458,10 +467,14 @@ class ConnectingGroup(ArrangementGroup, ABC):
             self.flow_sides = (D4.East, D4.West)
         else:
             self.flow_sides = (D4.South, D4.North)
-        flow_axis = 0 if horizontal else 1
-        self.axis = flow_axis if self.flow_along_axis else 1 - flow_axis
         #: Nets forced onto a side by an enclosing group (Parallel rails).
         self.rail_nets = {}
+
+    @property
+    def vertical(self) -> bool:
+        # Series places along the current path, Parallel across it.
+        flow_vertical = not self.horizontal
+        return flow_vertical if self.flow_along_axis else not flow_vertical
 
     @abstractmethod
     def resolve_connectivity(self):
