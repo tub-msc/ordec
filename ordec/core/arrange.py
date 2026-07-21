@@ -157,11 +157,6 @@ class ArrangementGroup(ABC):
     def vertical(self) -> bool:
         """Whether children are placed along the y axis instead of the x axis."""
 
-    @property
-    def axis(self) -> int:
-        """Main axis along which children are placed: 0 = x, 1 = y."""
-        return 1 if self.vertical else 0
-
     def __init__(self, gap: int = 2, align: str | None = None, anchor='auto'):
         if align is None:
             align = self.default_align
@@ -255,7 +250,10 @@ class ArrangementGroup(ABC):
         """
         if not self.children:
             raise ValueError(f"{describe(self)} has no children.")
-        main, cross = self.axis, 1 - self.axis
+        if self.vertical:
+            main, cross = 1, 0
+        else:
+            main, cross = 0, 1
         rects = [self.child_rect(child) for child in self.children]
         main_sizes = [term_constant(r[main+2] - r[main], child)
             for child, r in zip(self.children, rects)]
