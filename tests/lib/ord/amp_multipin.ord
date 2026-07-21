@@ -39,13 +39,13 @@ cell Amp:
         port vdd: .align=South
         net vss
 
-        Col(gap=4) core:
+        with Col(gap=4):
             LoadPair load:
                 .vdd -- vdd
             # The diff pair's single south pin chains to the tail current
             # source. Its two north pins are the (unconnected) series
             # boundary, wired explicitly below.
-            Series(gap=4) lower:
+            with Series(gap=4):
                 DiffPair dp:
                     .inp -- inp
                     .inn -- inn

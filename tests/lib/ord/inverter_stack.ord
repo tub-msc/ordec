@@ -19,7 +19,7 @@ cell Inv:
 
         # Coordinate-free schematic: the stack is auto-anchored at (0, 0),
         # ports are auto-placed based on their align.
-        Col(gap=4) stack:
+        with Col(gap=4):
             Pmos pu:
                 .s -- vdd
                 .b -- vdd
@@ -45,7 +45,7 @@ cell InvAnchored:
         port a : .align=East
         port y : .align=West
 
-        Col(gap=4) stack:
+        with Col(gap=4) as stack:
             Pmos pu:
                 .s -- vdd
                 .b -- vdd

@@ -21,7 +21,7 @@ cell Inv:
         # The series group places vdd/pu/pd/vss top to bottom and connects the
         # facing pins: pu.s -- vdd, pu.d -- pd.d, pd.s -- vss. The junction
         # net between pu.d and pd.d is named by wiring .d -- y explicitly.
-        Series(gap=4) stack:
+        with Series(gap=4):
             port vdd: .align=South
             Pmos pu:
                 .g -- a

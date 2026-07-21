@@ -24,9 +24,9 @@ cell Nand2:
         # stack through its rail nets: sources to vdd, drains to the y
         # junction (named by wiring pu_b.d -- y). The pull-down junction
         # between pd_a and pd_b remains anonymous.
-        Series(gap=4) core:
+        with Series(gap=4):
             port vdd: .align=South
-            Parallel(gap=4) pullup:
+            with Parallel(gap=4):
                 Pmos pu_a:
                     .g -- a
                     .b -- vdd

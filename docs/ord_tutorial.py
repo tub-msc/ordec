@@ -349,9 +349,9 @@ cell NandPlaced:
         port b: .align=East
         net vss
 
-        Series(gap=4) core:
+        with Series(gap=4):
             port vdd: .align=South
-            Parallel(gap=4) pullup:
+            with Parallel(gap=4):
                 Pmos pu_a:
                     .g -- a
                     .b -- vdd

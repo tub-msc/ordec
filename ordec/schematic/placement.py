@@ -10,15 +10,16 @@ placed without user intervention.
 
 Row and Col place their children geometrically. Series and Parallel
 additionally connect them electrically, so circuit structures can be
-described by nesting alone. In ORD, groups are used as node statements::
+described by nesting alone. Groups are context managers::
 
-    Col(gap=2) stack:
+    with Col(gap=2):
         Pmos pu
         Nmos pd
 
-Group blocks are naming-transparent: children declared inside the body
-are added to the view root as usual and only additionally recorded in
-the group.
+``with Col(gap=2) as stack:`` names the group, e.g. for use in
+constraints. Group blocks are naming-transparent: children declared
+inside the body are added to the view root as usual and only
+additionally recorded in the group.
 """
 
 import math
@@ -55,28 +56,6 @@ def describe(node: 'Node | PlacementGroup') -> str:
     if node.npath_nid is None:
         return f"{type(node).__name__} {label}"
     return label
-
-
-class GroupContext:
-    """
-    Context manager entered by the body of a placement group node
-    statement. Unlike NodeContext, the name resolution root is left
-    unchanged. The group is only marked as the innermost active group so
-    that elements declared in the body register as its children.
-    """
-    def __init__(self, group: 'PlacementGroup'):
-        self.group = group
-
-    def __enter__(self):
-        view_ctx = _view_ctx_var.get()
-        if view_ctx is None or not view_ctx.supports_placement_groups:
-            raise TypeError(
-                "Placement groups can only be used in a schematic viewgen.")
-        view_ctx.group_stack.append(self.group)
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        _view_ctx_var.get().group_stack.pop()
 
 
 def term_constant(term: LinearTerm, child) -> float:
@@ -185,9 +164,27 @@ class PlacementGroup:
         self.anchor = anchor
         self.sealed = False #: Set by rect() to block further add().
 
-    def ctx(self) -> GroupContext:
-        """Returns the GroupContext entered by the group's body."""
-        return GroupContext(self)
+    def __enter__(self):
+        """
+        Registers the group with the enclosing group (or the view
+        context for top-level groups) and marks it as the innermost
+        active group, so that elements declared in the body register as
+        its children. Unlike NodeContext, the name resolution root is
+        left unchanged.
+        """
+        view_ctx = _view_ctx_var.get()
+        if view_ctx is None or not view_ctx.supports_placement_groups:
+            raise TypeError(
+                "Placement groups can only be used in a schematic viewgen.")
+        if view_ctx.group_stack:
+            view_ctx.group_stack[-1].add(self)
+        else:
+            view_ctx.placement_groups.append(self)
+        view_ctx.group_stack.append(self)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        _view_ctx_var.get().group_stack.pop()
 
     def add(self, child):
         """

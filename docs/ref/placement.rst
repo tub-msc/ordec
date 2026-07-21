@@ -12,7 +12,7 @@
         port y : .align=West
         net vss  # forward declaration, port statement follows in the stack
 
-        Series(gap=4) stack:
+        with Series(gap=4):
             port vdd: .align=South
             Pmos pu:
                 .g -- a

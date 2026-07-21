@@ -16,7 +16,7 @@ cell Inv:
         port y : .align=West
         net vss
 
-        Series(gap=4) stack:
+        with Series(gap=4):
             port vdd: .align=South
             Pmos pu:
                 .g -- a
@@ -44,7 +44,7 @@ cell Buf:
 
         # The horizontal series chain connects i0.y -- i1.a through an
         # anonymous net. The outer ports are wired explicitly.
-        Series(gap=4, horizontal=True) stages:
+        with Series(gap=4, horizontal=True):
             Inv i0:
                 .a -- a
                 .vdd -- vdd

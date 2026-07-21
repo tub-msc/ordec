@@ -20,13 +20,13 @@ cell DiffPair:
         port outn: .align=West
         net vss
 
-        Series(gap=4) core:
+        with Series(gap=4):
             port vdd: .align=South
-            Parallel(gap=6) branches:
-                Series left:
+            with Parallel(gap=6):
+                with Series():
                     Res rl: .$r=10k
                     Nmos m1: .g -- inp; .b -- vss; .d -- outp; .$w=10u
-                Series right:
+                with Series():
                     Res rr: .$r=10k
                     Nmos m2: .orientation=FlippedSouth; .g -- inn; .b -- vss; .d -- outn; .$w=10u
             Nmos mtail: .g -- bias; .b -- vss; .$w=20u
@@ -36,16 +36,16 @@ cell DiffPairTb:
     viewgen schematic -> Schematic:
         net inp, inn, bias, outp, outn, vdd, vss
 
-        Row(gap=6) tb:
-            Col(gap=2, align='start') supplies:
-                Row(gap=3) srcs:
+        with Row(gap=6):
+            with Col(gap=2, align='start'):
+                with Row(gap=3):
                     Vdc vsupply: .$dc=5; .m -- vss; .p -- vdd
                     Vdc vbias: .$dc=1.1; .m -- vss; .p -- bias
                     Vdc vinn: .$dc=2.5; .m -- vss; .p -- inn
                     Vdc vinp: .$dc=2.5; .m -- vss; .p -- inp
                 Gnd gnd: .p -- vss
             DiffPair dut: .inp -- inp; .inn -- inn; .bias -- bias; .outp -- outp; .outn -- outn; .vdd -- vdd; .vss -- vss
-            Col(gap=2) ncs:
+            with Col(gap=2):
                 NoConn nc0: .a -- outn
                 NoConn nc1: .a -- outp
 

@@ -58,18 +58,11 @@ Python to supply the necessary constructs during execution.
 Node Statements
 ^^^^^^^^^^^^^^^
 
-A **node statement** is the ``A B`` construct that creates and names an element in the current context. There are four types of node statements:
+A **node statement** is the ``A B`` construct that creates and names an element in the current context. There are three types of node statements:
 
 1. **Node class statements** — the type is a Node subclass, e.g., ``LayoutRect x``
 2. **Node instance statements** — the type is a Cell class or instance, e.g., ``Nmos x``
 3. **Node keyword statements** — the type is a built-in keyword, e.g., ``input x``, ``output y``, ``port z``
-4. **Placement group statements** — the type is a :class:`~ordec.schematic.placement.PlacementGroup` subclass, e.g., ``Col(gap=4) stack``
-
-Placement group statements differ from the first three types: the group is
-recorded on the view context instead of being inserted into the subgraph, and
-its body is naming-transparent — elements declared inside are added to the
-view root as usual and only additionally registered as children of the group
-(see :mod:`ordec.schematic.placement`).
 
 A node statement may have an optional body (indented block after ``:``) for setting attributes:
 
@@ -288,7 +281,7 @@ end of the viewgen body. This is available in layout and schematic views (see
 
 .. code-block::
 
-    Col(gap=4) stack:
+    with Col(gap=4) as stack:
         Pmos pu
         Nmos pd
     ! stack.southwest == (3, 1)

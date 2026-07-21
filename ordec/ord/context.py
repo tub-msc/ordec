@@ -7,7 +7,6 @@ import sys
 # ordec imports
 from ..core import *
 from ..core.context import _ctx_var, _view_ctx_var
-from ..schematic.placement import PlacementGroup
 from ..schematic.helpers import recursive_setitem, recursive_getitem
 
 
@@ -125,20 +124,6 @@ def add_element(name_tuple, element, src_line=None, src_column=None):
     src_loc = SourceLocInfo(
         sys._getframe(1).f_code.co_filename, src_line, src_column
     ) if src_line is not None else None
-    # Placement groups are not inserted into the subgraph. They are
-    # recorded on the view context or parent group and emitted later.
-    if isinstance(element, type) and issubclass(element, PlacementGroup):
-        element = element()
-    if isinstance(element, PlacementGroup):
-        view_ctx = _view_ctx_var.get()
-        if view_ctx is None or not view_ctx.supports_placement_groups:
-            raise TypeError(
-                "Placement groups can only be used in a schematic viewgen.")
-        if view_ctx.group_stack:
-            view_ctx.group_stack[-1].add(element)
-        else:
-            view_ctx.placement_groups.append(element)
-        return element
     # Layout context: create LayoutInstance from Cell instances
     if isinstance(ctx.root, Layout):
         if isinstance(element, Cell):
