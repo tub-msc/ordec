@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from ordec.lib.generic_mos import Nmos, Pmos
+
+cell Inv:
+    viewgen symbol -> Symbol:
+        inout vdd: .align=North
+        inout vss: .align=South
+        input a: .align=West
+        output y: .align=East
+
+    viewgen schematic -> Schematic:
+        port a : .align=East
+        port y : .align=West
+        net vss
+
+        with Series(gap=4):
+            port vdd: .align=South
+            Pmos pu:
+                .g -- a
+                .b -- vdd
+                .d -- y
+            Nmos pd:
+                .g -- a
+                .b -- vss
+            port vss: .align=North
+
+cell Buf:
+    """Hierarchical example: two Inv stages in a horizontal series chain."""
+
+    viewgen symbol -> Symbol:
+        inout vdd: .align=North
+        inout vss: .align=South
+        input a: .align=West
+        output y: .align=East
+
+    viewgen schematic -> Schematic:
+        port a : .align=East
+        port y : .align=West
+        port vdd: .align=South
+        port vss: .align=North
+
+        # The horizontal series chain connects i0.y -- i1.a through an
+        # anonymous net. The outer ports are wired explicitly.
+        with Series(gap=4, horizontal=True):
+            Inv i0:
+                .a -- a
+                .vdd -- vdd
+                .vss -- vss
+            Inv i1:
+                .y -- y
+                .vdd -- vdd
+                .vss -- vss

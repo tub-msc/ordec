@@ -15,26 +15,58 @@ def root():
     return _ctx_var.get().root
 
 
+def register_in_group(ref):
+    """Records ref as child of the innermost active arrangement group."""
+    view_ctx = _view_ctx_var.get()
+    if view_ctx is not None:
+        view_ctx.register_in_group(ref)
+
+
 def add(name_tuple, ref):
     """ Add a value to the current context"""
     ctx = _ctx_var.get()
     if name_tuple is None:
         # Anonymous: add to subgraph without NPath
         nid_new = ctx.root.subgraph.add(ref)
-        return ctx.root.subgraph.cursor_at(nid_new, lookup_npath=False)
-    recursive_setitem(ctx.root, name_tuple, ref)
-    return recursive_getitem(ctx.root, name_tuple)
+        cursor = ctx.root.subgraph.cursor_at(nid_new, lookup_npath=False)
+    else:
+        recursive_setitem(ctx.root, name_tuple, ref)
+        cursor = recursive_getitem(ctx.root, name_tuple)
+    if isinstance(cursor, (SchemInstance, SchemInstanceUnresolved)):
+        register_in_group(cursor)
+    return cursor
 
 
 def add_port(name_tuple):
-    """ Add a port to the current context"""
+    """
+    Add a port to the current context. If a Net of the same name was
+    forward-declared (net statement), the port attaches to that net,
+    allowing connections before the port statement is reached.
+    """
     ctx = _ctx_var.get()
     pin = recursive_getitem(ctx.root.symbol, name_tuple)
     subgraph_root = ctx.root
     while not isinstance(subgraph_root, SubgraphRoot):
         subgraph_root = subgraph_root.parent
-    net = add(name_tuple, Net(pin=pin))
-    subgraph_root % SchemPort(ref=net)
+    try:
+        net = recursive_getitem(ctx.root, name_tuple)
+    except QueryException:
+        net = add(name_tuple, Net(pin=pin))
+    else:
+        if not isinstance(net, Net):
+            name = '.'.join(str(part) for part in name_tuple)
+            raise TypeError(
+                f"Port name {name!r} is already used by {net!r}.")
+        # Forward-declared net: attach the symbol pin to it. The unique
+        # index on SchemPort.ref rejects a second port on the same net.
+        if net.pin is not None and net.pin.nid != pin.nid:
+            name = '.'.join(str(part) for part in name_tuple)
+            raise TypeError(
+                f"Cannot create port {name!r}: net {name!r} is already "
+                "bound to a different pin.")
+        net.pin = pin
+    port = subgraph_root % SchemPort(ref=net)
+    register_in_group(port)
     return net
 
 

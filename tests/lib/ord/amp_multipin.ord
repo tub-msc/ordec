@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from ordec.lib.generic_mos import Nmos
+
+cell DiffPair:
+    """Differential pair block: two pins on the north and west sides."""
+    viewgen symbol -> Symbol:
+        input inp: .align=West
+        input inn: .align=West
+        output outp: .align=North
+        output outn: .align=North
+        inout tail: .align=South
+
+cell LoadPair:
+    """Active load block: two pins on the south side."""
+    viewgen symbol -> Symbol:
+        inout vdd: .align=North
+        output outp: .align=South
+        output outn: .align=South
+
+cell Amp:
+    viewgen symbol -> Symbol:
+        inout vdd: .align=North
+        inout vss: .align=South
+        input ibias: .align=West
+        input inp: .align=West
+        input inn: .align=West
+        output outp: .align=East
+        output outn: .align=East
+
+    viewgen schematic -> Schematic:
+        port inp : .align=East
+        port inn : .align=East
+        port ibias : .align=East
+        port outp: .align=West
+        port outn: .align=West
+        port vdd: .align=South
+        net vss
+
+        with Col(gap=4):
+            LoadPair load:
+                .vdd -- vdd
+            # The diff pair's single south pin chains to the tail current
+            # source. Its two north pins are the (unconnected) series
+            # boundary, wired explicitly below.
+            with Series(gap=4):
+                DiffPair dp:
+                    .inp -- inp
+                    .inn -- inn
+                Nmos tail:
+                    .g -- ibias
+                    .b -- vss
+                port vss: .align=North
+
+        # Two parallel junctions between load and diff pair: more than one
+        # current path, so this is beyond Series and wired explicitly.
+        load.outp -- outp
+        load.outn -- outn
+        dp.outp -- outp
+        dp.outn -- outn

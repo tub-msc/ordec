@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from ordec.lib.generic_mos import Nmos, Pmos
+
+cell Inv:
+    viewgen symbol -> Symbol:
+        inout vdd: .align=North
+        inout vss: .align=South
+        input a: .align=West
+        output y: .align=East
+
+    viewgen schematic -> Schematic:
+        port a : .align=East
+        port y : .align=West
+        # vss sits at the bottom of the series stack, so its port statement
+        # comes last. The net is forward-declared to allow .b -- vss earlier.
+        net vss
+
+        # The series group places vdd/pu/pd/vss top to bottom and connects the
+        # facing pins: pu.s -- vdd, pu.d -- pd.d, pd.s -- vss. The junction
+        # net between pu.d and pd.d is named by wiring .d -- y explicitly.
+        with Series(gap=4):
+            port vdd: .align=South
+            Pmos pu:
+                .g -- a
+                .b -- vdd
+                .d -- y
+            Nmos pd:
+                .g -- a
+                .b -- vss
+            port vss: .align=North

@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from ordec.lib.generic_mos import Nmos, Pmos
+
+cell TwoStacks:
+    """Two top-level groups: auto-anchored side by side, not overlapping."""
+
+    viewgen schematic -> Schematic:
+        net a
+        net y1
+        net y2
+        net vdd
+        net vss
+
+        with Col(gap=4):
+            Pmos pu_l:
+                .g -- a
+                .s -- vdd
+                .b -- vdd
+                .d -- y1
+            Nmos pd_l:
+                .g -- a
+                .s -- vss
+                .b -- vss
+                .d -- y1
+
+        with Col(gap=4):
+            Pmos pu_r:
+                .g -- y1
+                .s -- vdd
+                .b -- vdd
+                .d -- y2
+            Nmos pd_r:
+                .g -- y1
+                .s -- vss
+                .b -- vss
+                .d -- y2

@@ -314,6 +314,69 @@ Inv().schematic
 # See {ref}`layout` for a runnable example using `anonymous`.
 # -
 
+# (arrangement_groups)=
+#
+# ### 4.9 Arrangement groups
+#
+# All schematics so far placed each element with an explicit `.pos`. **Arrangement
+# groups** arrange elements relative to each other instead, so a schematic can be
+# written without any coordinates. `Col` and `Row` place their children in a
+# stack or side by side. `Series` and `Parallel` additionally **connect** them
+# electrically, modeling a current path. This way, series/parallel circuit
+# structures can be described by nesting alone.
+#
+# The Nand from section 4.5 becomes: from `vdd` to `vss`,
+# a parallel pull-up pair in series with the two pull-down transistors. `Series`
+# connects each pair of neighbors through their facing pins. `Parallel` ties its
+# children between two rail nets. A junction net is named by wiring one pin
+# explicitly (`.d -- y`), otherwise it stays anonymous. Since the `port vss`
+# statement must sit at the bottom of the stack, the net is forward-declared
+# with `net vss` so that earlier statements can connect to it.
+
+# +
+%%ord
+cell NandPlaced:
+    viewgen symbol -> Symbol:
+        output y: .align=East
+        input a: .align=West
+        input b: .align=West
+        inout vdd: .align=North
+        inout vss: .align=South
+
+    viewgen schematic -> Schematic:
+        port y: .align=West
+        port a: .align=East
+        port b: .align=East
+        net vss
+
+        with Series(gap=4):
+            port vdd: .align=South
+            with Parallel(gap=4):
+                Pmos pu_a:
+                    .g -- a
+                    .b -- vdd
+                Pmos pu_b:
+                    .g -- b
+                    .b -- vdd
+                    .d -- y
+            Nmos pd_a:
+                .g -- a
+                .b -- vss
+            Nmos pd_b:
+                .g -- b
+                .b -- vss
+            port vss: .align=North
+# -
+# + tags=["remove-input"]
+NandPlaced().schematic
+# -
+
+# Ports that are not part of a group (`a`, `b`, `y`) are auto-placed on the
+# edge of the drawing based on their alignment, and all wires are routed
+# automatically. See {doc}`ref/arrange` for the full reference, including
+# the `gap`, `align`, `anchor` and `horizontal` attributes and the rules for
+# nesting groups.
+
 # (layout)=
 # ## 5. Layout
 #

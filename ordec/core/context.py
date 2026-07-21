@@ -78,6 +78,20 @@ class ViewContext:
     def constrain(self, constraint):
         raise TypeError(f"Constraints not supported in {type(self.root).__name__} views.")
 
+    def enter_group(self, group):
+        """
+        Called by ArrangementGroup.__enter__. Overridden in
+        SchematicViewContext, the only context supporting groups.
+        """
+        raise TypeError("Arrangement groups can only be used in a schematic viewgen.")
+
+    def register_in_group(self, ref):
+        """
+        Records ref in the innermost active arrangement group.
+        Only SchematicViewContext has groups.
+        """
+        pass
+
     def set_root(self, value):
         raise TypeError(
             f"Cannot assign the view root via `.` in "
@@ -95,6 +109,11 @@ class SymbolViewContext(ViewContext):
 
 
 class SchematicViewContext(ViewContext):
+    def __init__(self, root):
+        super().__init__(root)
+        self.arrangement_groups = [] #: top-level arrangement groups, emitted in postprocess
+        self.group_stack = [] #: arrangement groups whose body is currently executing
+
     @classmethod
     def create_root(cls, cell, root_cls):
         # A symbol is optional: a cell may define a schematic without a
@@ -106,8 +125,72 @@ class SchematicViewContext(ViewContext):
             symbol = None
         return root_cls(cell=cell, symbol=symbol)
 
+    def __enter__(self):
+        super().__enter__()
+        from .constraints import Solver
+        self.solver = Solver(self.root)
+        return self
+
+    def constrain(self, constraint):
+        self.solver.constrain(constraint)
+
+    def enter_group(self, group):
+        """
+        Registers group with the innermost active group (or as a new
+        top-level group) and makes it the innermost active group.
+        """
+        if self.group_stack:
+            self.group_stack[-1].add(group)
+        else:
+            self.arrangement_groups.append(group)
+        self.group_stack.append(group)
+
+    def exit_group(self):
+        self.group_stack.pop()
+
+    def register_in_group(self, ref):
+        if self.group_stack:
+            self.group_stack[-1].add(ref)
+
     def postprocess(self):
+        from .constraints import SolverError
+        from .schema import SchemPort
+        from .arrange import describe
+        from ..schematic.helpers import schem_place_ports
+
+        def raise_undefined(undefined):
+            locations = sorted(
+                f"{describe(self.root.cursor_at(missing_attr_value.nid))}.{missing_attr_value.attr.name}"
+                for missing_attr_value in undefined
+            )
+            raise SolverError(
+                "Undefined constrainable attribute(s) found. Please add "
+                "constraints or assign them directly: " + ", ".join(locations))
+
+        # Auto-anchored top-level groups line up side by side, left to
+        # right in declaration order, with routing space in between.
+        origin = 0
+        default_group_spacing = 4
+        for group in self.arrangement_groups:
+            if group.emit(self.solver, auto_anchor=(origin, 0)):
+                origin += group.arrangement().width + default_group_spacing
+        self.solver.solve(allow_undefined=True)
+        # Positions that are still undefined here would crash
+        # resolve_instances() with a raw type error. Report them
+        # descriptively instead.
+        undefined = [missing_attr_value
+            for missing_attr_value in self.solver.undefined_attrs()
+            if not isinstance(self.root.cursor_at(missing_attr_value.nid),
+                SchemPort)]
+        if undefined:
+            raise_undefined(undefined)
+        # resolve_instances() preserves nids, carrying solved positions over.
         self.root.resolve_instances()
+        # Ports may legitimately still be undefined. Place them by align.
+        schem_place_ports(self.root)
+        undefined = self.solver.undefined_attrs()
+        if undefined:
+            raise_undefined(undefined)
         self.root.auto_wire()
         self.root.check(add_conn_points=True, add_terminal_taps=True)
 
