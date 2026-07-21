@@ -173,18 +173,14 @@ class ArrangementGroup:
         left unchanged.
         """
         view_ctx = _view_ctx_var.get()
-        if view_ctx is None or not view_ctx.supports_arrangement_groups:
+        if view_ctx is None:
             raise TypeError(
                 "Arrangement groups can only be used in a schematic viewgen.")
-        if view_ctx.group_stack:
-            view_ctx.group_stack[-1].add(self)
-        else:
-            view_ctx.arrangement_groups.append(self)
-        view_ctx.group_stack.append(self)
+        view_ctx.enter_group(self)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        _view_ctx_var.get().group_stack.pop()
+        _view_ctx_var.get().exit_group()
 
     def add(self, child):
         """

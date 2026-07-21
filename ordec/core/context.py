@@ -40,13 +40,8 @@ class ViewContext:
     and __exit__ methods also automatically enter and exit a corresponding
     NodeContext.
     """
-    #: True on subclasses whose postprocess emits arrangement groups.
-    supports_arrangement_groups = False
-
     def __init__(self, root):
         self.root = root
-        self.arrangement_groups = [] #: top-level arrangement groups, emitted in postprocess
-        self.group_stack = [] #: arrangement groups whose body is currently executing
 
     @classmethod
     def create_root(cls, cell, root_cls):
@@ -83,6 +78,20 @@ class ViewContext:
     def constrain(self, constraint):
         raise TypeError(f"Constraints not supported in {type(self.root).__name__} views.")
 
+    def enter_group(self, group):
+        """
+        Called by ArrangementGroup.__enter__. Overridden in
+        SchematicViewContext, the only context supporting groups.
+        """
+        raise TypeError("Arrangement groups can only be used in a schematic viewgen.")
+
+    def register_in_group(self, ref):
+        """
+        Records ref in the innermost active arrangement group.
+        Only SchematicViewContext has groups.
+        """
+        pass
+
     def set_root(self, value):
         raise TypeError(
             f"Cannot assign the view root via `.` in "
@@ -100,7 +109,10 @@ class SymbolViewContext(ViewContext):
 
 
 class SchematicViewContext(ViewContext):
-    supports_arrangement_groups = True
+    def __init__(self, root):
+        super().__init__(root)
+        self.arrangement_groups = [] #: top-level arrangement groups, emitted in postprocess
+        self.group_stack = [] #: arrangement groups whose body is currently executing
 
     @classmethod
     def create_root(cls, cell, root_cls):
@@ -121,6 +133,24 @@ class SchematicViewContext(ViewContext):
 
     def constrain(self, constraint):
         self.solver.constrain(constraint)
+
+    def enter_group(self, group):
+        """
+        Registers group with the innermost active group (or as a new
+        top-level group) and makes it the innermost active group.
+        """
+        if self.group_stack:
+            self.group_stack[-1].add(group)
+        else:
+            self.arrangement_groups.append(group)
+        self.group_stack.append(group)
+
+    def exit_group(self):
+        self.group_stack.pop()
+
+    def register_in_group(self, ref):
+        if self.group_stack:
+            self.group_stack[-1].add(ref)
 
     def postprocess(self):
         from .constraints import SolverError

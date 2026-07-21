@@ -18,8 +18,8 @@ def root():
 def register_in_group(ref):
     """Records ref as child of the innermost active arrangement group."""
     view_ctx = _view_ctx_var.get()
-    if view_ctx is not None and view_ctx.group_stack:
-        view_ctx.group_stack[-1].add(ref)
+    if view_ctx is not None:
+        view_ctx.register_in_group(ref)
 
 
 def add(name_tuple, ref):
