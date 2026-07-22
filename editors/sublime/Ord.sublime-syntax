@@ -7,6 +7,7 @@
 # - cell definitions (cell Name: suite)
 # - viewgen definitions (viewgen name -> Type: suite)
 # - Node statements (Type target: suite, Type(args) target: suite,
+#   lib.Type target: suite, rows[i] target: suite,
 #   anonymous Type target: suite, bodyless Type t1, t2)
 # - Connection operator (--)
 # - Constrain operator (!)
@@ -120,9 +121,17 @@ contexts:
       scope: keyword.declaration.ord
       push: ord-path-net-targets
 
+  # Targets may be dotted or subscripted like node statement targets:
+  # net ring.vx / path ctr[0]
   ord-path-net-targets:
     - match: ','
       scope: punctuation.separator.ord
+    - match: \.
+      scope: punctuation.accessor.dot.ord
+      push: ord-context-target-member
+    - match: \[
+      scope: punctuation.section.brackets.begin.ord
+      push: ord-context-target-subscript
     - match: '{{identifier}}'
       scope: variable.other.ord
     - match: $\n?
@@ -138,7 +147,8 @@ contexts:
   ##[ BLOCK STATEMENTS ]########################################################
 
   # Node statement: Type target: suite  (e.g., inout vdd: ..., Nmos m1: ...,
-  # Series(gap=4) core: ..., anonymous LayoutRect r: ..., bodyless Net vdd)
+  # Series(gap=4) core: ..., lib.Nmos m1: ..., anonymous LayoutRect r: ...,
+  # bodyless Net vdd)
   block-statements:
     - meta_prepend: true
     - include: ord-context-elements
@@ -154,6 +164,10 @@ contexts:
         (?!(?:cell|viewgen|path|net|match|case|type|anonymous)\b)
         (?=
           {{identifier}}
+          (?:
+            \s* \. \s* {{identifier}}
+          | \s* \[ [^\]\n]* \]
+          )*
           (?: \s* \( [^)\n]* \) )? \s+
           {{identifier}}
           (?:
@@ -173,9 +187,18 @@ contexts:
       set: ord-context-element-type-args
     - include: immediately-pop
 
-  # Optional constructor arguments on the node type: Series(gap=4) core:
+  # Rest of the node type after its leading identifier: dotted and
+  # subscripted kinds (lib.Nmos m1:, rows[i] core:) and optional
+  # constructor arguments (Series(gap=4) core:)
   ord-context-element-type-args:
     - meta_scope: meta.statement.context.ord
+    - match: '\s*(\.)\s*({{identifier}})'
+      captures:
+        1: punctuation.accessor.dot.ord
+        2: entity.name.type.ord
+    - match: \[
+      scope: punctuation.section.brackets.begin.ord
+      push: ord-context-target-subscript
     - match: \(
       scope: punctuation.section.arguments.begin.ord
       set: [ord-context-target, ord-context-element-type-args-body]

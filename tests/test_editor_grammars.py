@@ -45,6 +45,34 @@ SOFT_KEYWORD_NEGATIVES = [
     'match point:', 'case Point(x=0):', 'return x',
 ]
 
+# Node statement kinds and path/net targets using the full atom_expr /
+# context_target forms of ord.lark (dotted, subscripted and called kinds,
+# dotted and subscripted path/net targets). No repository .ord file uses
+# these forms, so they are checked as synthetic positives.
+ATOM_EXPR_POSITIVES = [
+    ('lib.Inv i0:', 'node_stmt'),
+    ('lib.Inv() i1:', 'node_stmt'),
+    ('rows[0] r0:', 'node_stmt'),
+    ('anonymous lib.Vdc(dc=1) v0:', 'anon_node_stmt'),
+    ('lib.Inv i2, i3', 'node_stmt_nobody'),
+    ('net vdd, ring.vx', 'net_stmt'),
+    ('path ctr[0], ctr[1].sub', 'path_stmt'),
+]
+
+
+def wrap_in_viewgen(line, rule):
+    """Embed a synthetic statement in a minimal cell/viewgen skeleton."""
+    body = '\n            pass' if rule in NODE_RULES else ''
+    return f'cell C:\n    viewgen v -> Schematic:\n        {line}{body}\n'
+
+
+def test_atom_expr_positives_are_valid_ord():
+    """The synthetic positives really are the ORD constructs they claim."""
+    for line, rule in ATOM_EXPR_POSITIVES:
+        tree = ord_parser.parse(wrap_in_viewgen(line, rule))
+        rules = {subtree.data for subtree in tree.iter_subtrees()}
+        assert rule in rules, (line, rule)
+
 
 def textmate_regex(pattern):
     # translate the Oniguruma POSIX classes used by the grammars to Python re
@@ -129,6 +157,8 @@ def test_vscode_injection_grammar(parsed_ord_files):
     for negative in SOFT_KEYWORD_NEGATIVES:
         for matcher in (block, inline, bare, *keyword.values()):
             assert not matcher.match('    ' + negative) and not matcher.match(negative)
+    for line, rule in ATOM_EXPR_POSITIVES:
+        assert matches(rule, line), f'atom_expr positive not matched: {line!r}'
 
 
 def test_pycharm_grammar(parsed_ord_files):
@@ -157,6 +187,8 @@ def test_pycharm_grammar(parsed_ord_files):
     for negative in SOFT_KEYWORD_NEGATIVES:
         for matcher in (context_element, anonymous, *keyword.values()):
             assert not matcher.match(negative)
+    for line, rule in ATOM_EXPR_POSITIVES:
+        assert matches(rule, line), f'atom_expr positive not matched: {line!r}'
 
 
 def test_sublime_syntax(parsed_ord_files):
@@ -194,6 +226,8 @@ def test_sublime_syntax(parsed_ord_files):
     for negative in SOFT_KEYWORD_NEGATIVES:
         for matcher in (node_statement, anonymous, *keyword.values()):
             assert not matcher.match(negative)
+    for line, rule in ATOM_EXPR_POSITIVES:
+        assert matches(rule, line), f'atom_expr positive not matched: {line!r}'
 
 
 # Lark rule -> tree-sitter node type produced for the same construct
@@ -273,3 +307,12 @@ def test_tree_sitter_soft_keywords(ord_tree_sitter_parser):
         assert not tree.root_node.has_error, negative
         types = {node.type for node in tree_sitter_nodes(tree)}
         assert not (ord_node_types & types), negative
+
+
+def test_tree_sitter_atom_expr_positives(ord_tree_sitter_parser):
+    for line, rule in ATOM_EXPR_POSITIVES:
+        source = wrap_in_viewgen(line, rule)
+        tree = ord_tree_sitter_parser.parse(source.encode())
+        assert not tree.root_node.has_error, line
+        types = {node.type for node in tree_sitter_nodes(tree)}
+        assert TREE_SITTER_RULES[rule] in types, line
