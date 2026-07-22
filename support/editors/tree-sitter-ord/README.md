@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 
 tree-sitter grammar for the ORD language.
 
-Unlike the TextMate/Sublime packages in `editors/`, this folder contains a
+Unlike the TextMate/Sublime packages in `support/editors/`, this folder contains a
 real parser. It targets tree-sitter-based editors — tree-sitter originated in
 Atom, and is used today by its successor Pulsar as well as Neovim, Emacs 29+,
 Helix and Zed. See `docs/editor_support.rst` for editor setup.
@@ -95,7 +95,7 @@ npm test
 ```
 
 For ad-hoc parsing of single files with `npx tree-sitter parse`, run
-`npx tree-sitter init-config` once and add this repository's `editors/`
+`npx tree-sitter init-config` once and add this repository's `support/editors/`
 directory to the `parser-directories` list in the created config file.
 
 The repository test suite additionally parses all `.ord` files with this

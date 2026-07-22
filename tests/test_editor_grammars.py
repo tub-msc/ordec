@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Keeps the editor highlighting grammars in editors/ aligned with the ORD
+Keeps the editor highlighting grammars in support/editors/ aligned with the ORD
 grammar. Every .ord file in the repository is parsed with the authoritative
 Lark parser, each ORD construct line must be matched by the corresponding
 highlighting rule, and the node statement rules must not fire on other lines.
@@ -10,7 +10,7 @@ The tree-sitter grammar is held to a stricter standard: its generated parser
 must accept every file and agree with the Lark parser on the location of all
 ORD constructs. The generated parser sources are gitignored, so these tests
 skip until `npm ci && npm run generate` has been run in
-editors/tree-sitter-ord/.
+support/editors/tree-sitter-ord/.
 """
 
 import ctypes
@@ -26,7 +26,7 @@ from lark import Token
 from ordec.ord.parser import parser as ord_parser
 
 REPO_ROOT = Path(__file__).parent.parent
-EDITORS = REPO_ROOT / 'editors'
+EDITORS = REPO_ROOT / 'support/editors'
 
 NODE_RULES = ('node_stmt', 'anon_node_stmt')
 NOBODY_RULES = ('node_stmt_nobody', 'anon_node_stmt_nobody')
@@ -253,7 +253,7 @@ def ord_tree_sitter_parser(tmp_path_factory):
     src = EDITORS / 'tree-sitter-ord' / 'src'
     if not (src / 'parser.c').exists():
         pytest.skip('parser not generated, run npm ci && npm run generate '
-                    'in editors/tree-sitter-ord')
+                    'in support/editors/tree-sitter-ord')
     library = tmp_path_factory.mktemp('tree_sitter_ord') / 'ord.so'
     subprocess.run(
         [cc, '-fPIC', '-shared', '-I', str(src), str(src / 'parser.c'),

@@ -1,7 +1,7 @@
 Editor support
 ==============
 
-The ``editors/`` directory of the ORDeC repository contains syntax
+The ``support/editors/`` directory of the ORDeC repository contains syntax
 highlighting packages for ``.ord`` files, so ORDeC designs can be edited in a
 regular IDE alongside the browser-based viewer.
 
@@ -17,14 +17,14 @@ ORD is syntactically close to Python, but adds its own constructs, such as:
 
 The highlighting packages extend each editor's Python support with these
 ORD-specific rules. The Sublime, JetBrains and VS Code packages are
-regex/scope based. ``editors/tree-sitter-ord/`` additionally provides a real
+regex/scope based. ``support/editors/tree-sitter-ord/`` additionally provides a real
 tree-sitter parser for tree-sitter-based editors. The final colors always
 depend on your editor's active color scheme.
 
 Sublime Text
 ------------
 
-``editors/sublime/`` provides a syntax definition that extends Sublime Text's
+``support/editors/sublime/`` provides a syntax definition that extends Sublime Text's
 built-in Python syntax at runtime. It does not redistribute Sublime's Python
 syntax files.
 
@@ -32,7 +32,7 @@ Install it either as a user syntax by copying ``Ord.sublime-syntax`` into
 ``Packages/User/``, or as its own package::
 
     mkdir -p ~/.config/sublime-text/Packages/Ord
-    cp editors/sublime/Ord.sublime-syntax ~/.config/sublime-text/Packages/Ord/
+    cp support/editors/sublime/Ord.sublime-syntax ~/.config/sublime-text/Packages/Ord/
 
 The Sublime packages directory is located at:
 
@@ -47,14 +47,14 @@ and choose ``Ord``.
 PyCharm / JetBrains IDEs
 ------------------------
 
-``editors/jetbrains/`` provides a TextMate bundle that works in PyCharm and
+``support/editors/jetbrains/`` provides a TextMate bundle that works in PyCharm and
 other JetBrains IDEs with TextMate support (IntelliJ IDEA, CLion, WebStorm,
 GoLand, ...). It provides syntax highlighting for ORD without requiring a
 custom JetBrains plugin.
 
 1. Open the IDE settings (Linux/Windows: ``Ctrl+Alt+S``, macOS: ``Cmd+,``).
 2. Go to ``Editor > TextMate Bundles``.
-3. Click ``+`` and select the ``editors/jetbrains/ord.tmbundle`` directory
+3. Click ``+`` and select the ``support/editors/jetbrains/ord.tmbundle`` directory
    (not its parent directory).
 4. Apply the changes and reopen the ``.ord`` file if needed.
 
@@ -65,23 +65,23 @@ Type`` if prompted, or check the TextMate bundle settings again.
 VS Code
 -------
 
-``editors/vscode/ord/`` provides a VS Code extension with TextMate
+``support/editors/vscode/ord/`` provides a VS Code extension with TextMate
 highlighting and a viewer bridge: VS Code commands that launch the ORDeC
 local viewer for the active ``.ord`` file and open the view under the cursor
 in the browser. Package and install it with::
 
-    cd editors/vscode/ord
+    cd support/editors/vscode/ord
     npx @vscode/vsce package
     code --install-extension *.vsix
 
 The viewer bridge requires an ``ordec`` command on the ``PATH`` (or a
-configured ``ord.viewer.command``). See ``editors/vscode/ord/README.md`` for
+configured ``ord.viewer.command``). See ``support/editors/vscode/ord/README.md`` for
 the viewer settings and alternative installation options.
 
 tree-sitter (Neovim, Emacs, Helix)
 ----------------------------------
 
-``editors/tree-sitter-ord/`` provides a tree-sitter grammar for ORD — a real
+``support/editors/tree-sitter-ord/`` provides a tree-sitter grammar for ORD — a real
 parser, in contrast to the regex-based packages above. tree-sitter powers
 highlighting in Neovim, Emacs 29+, Helix and other tree-sitter-based
 editors.
@@ -89,7 +89,7 @@ editors.
 The parser sources are generated from ``grammar.js``. Generate them once
 before installing the grammar into an editor (this requires Node.js)::
 
-    cd editors/tree-sitter-ord
+    cd support/editors/tree-sitter-ord
     npm ci
     npm run generate
 
@@ -126,14 +126,14 @@ grammar in your editor:
                        :feature 'ord
                        (with-temp-buffer
                          (insert-file-contents
-                          "/path/to/ordec/editors/tree-sitter-ord/queries/highlights-emacs.scm")
+                          "/path/to/ordec/support/editors/tree-sitter-ord/queries/highlights-emacs.scm")
                          (buffer-string))))
           (setq-local treesit-font-lock-feature-list '((ord)))
           (treesit-major-mode-setup)))
 - **Neovim** (0.9 or newer): no plugin is required — Neovim's built-in
   tree-sitter support finds parsers and queries on its runtime path.
 
-  1. In a shell (still in ``editors/tree-sitter-ord/``), compile the
+  1. In a shell (still in ``support/editors/tree-sitter-ord/``), compile the
      parser and install it and the queries into Neovim's config
      directory::
 
@@ -166,7 +166,7 @@ grammar in your editor:
       local parsers = require("nvim-treesitter.parsers").get_parser_configs()
       parsers.ord = {
         install_info = {
-          url = "/path/to/ordec/editors/tree-sitter-ord",
+          url = "/path/to/ordec/support/editors/tree-sitter-ord",
           files = { "src/parser.c", "src/scanner.c" },
         },
         filetype = "ord",
@@ -188,10 +188,10 @@ grammar in your editor:
 
       [[grammar]]
       name = "ord"
-      source = { path = "/path/to/ordec/editors/tree-sitter-ord" }
+      source = { path = "/path/to/ordec/support/editors/tree-sitter-ord" }
 
   Build the grammar and link the queries (still in
-  ``editors/tree-sitter-ord/``; Helix picks the query files it knows
+  ``support/editors/tree-sitter-ord/``; Helix picks the query files it knows
   by name and ignores the rest)::
 
       hx --grammar build
@@ -203,7 +203,7 @@ grammar in your editor:
   ``hx --grammar build``.
 
 For working on the grammar itself, see
-``editors/tree-sitter-ord/README.md``.
+``support/editors/tree-sitter-ord/README.md``.
 
 Licensing
 ---------

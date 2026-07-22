@@ -43,7 +43,7 @@ Key files in this extension folder:
 
 ### Option 1: Package As VSIX
 
-From `editors/vscode/ord/`:
+From `support/editors/vscode/ord/`:
 
 ```bash
 npx @vscode/vsce package
@@ -55,7 +55,7 @@ on your `PATH`, or configure the viewer command through the extension settings.
 
 ### Option 2: Development Mode
 
-1. Open `editors/vscode/ord/` in VS Code.
+1. Open `support/editors/vscode/ord/` in VS Code.
 2. Press `F5`.
 3. A new Extension Development Host window will open.
 4. Open a `.ord` file in that window.

@@ -27,7 +27,7 @@ jobs:
         run: pip install .[test]
       - name: generate tree-sitter parser
         run: |
-          cd editors/tree-sitter-ord
+          cd support/editors/tree-sitter-ord
           npm ci --no-audit --no-fund
           npm run generate
       - name: run tests
