@@ -464,3 +464,94 @@ viewgen layout -> Layout:
         (identifier))
       (block
         (pass_statement)))))
+
+================================================================================
+Dotted, subscripted and called node kinds, dotted path/net targets
+================================================================================
+
+cell Top:
+    viewgen schematic -> Schematic:
+        lib.Inv i0:
+            pass
+        lib.Inv() i1:
+            pass
+        rows[0] r0:
+            pass
+        anonymous lib.Vdc(dc=1) v0:
+            pass
+        lib.Inv i2, i3
+        net vdd, ring.vx
+        path ctr[0], ctr[1].sub
+
+--------------------------------------------------------------------------------
+
+(module
+  (cell_definition
+    (identifier)
+    (block
+      (viewgen_definition
+        (identifier)
+        (type
+          (identifier))
+        (block
+          (node_statement
+            (attribute
+              (identifier)
+              (identifier))
+            (context_target
+              (identifier))
+            (block
+              (pass_statement)))
+          (node_statement
+            (call
+              (attribute
+                (identifier)
+                (identifier))
+              (argument_list))
+            (context_target
+              (identifier))
+            (block
+              (pass_statement)))
+          (node_statement
+            (subscript
+              (identifier)
+              (integer))
+            (context_target
+              (identifier))
+            (block
+              (pass_statement)))
+          (node_statement
+            (call
+              (attribute
+                (identifier)
+                (identifier))
+              (argument_list
+                (keyword_argument
+                  (identifier)
+                  (integer))))
+            (context_target
+              (identifier))
+            (block
+              (pass_statement)))
+          (node_statement_nobody
+            (attribute
+              (identifier)
+              (identifier))
+            (context_target
+              (identifier))
+            (context_target
+              (identifier)))
+          (path_net_statement
+            (context_target
+              (identifier))
+            (context_target
+              (identifier)
+              (identifier)))
+          (path_net_statement
+            (context_target
+              (identifier)
+              (integer))
+            (context_target
+              (identifier)
+              (integer)
+              (identifier))))))))

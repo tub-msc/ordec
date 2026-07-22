@@ -211,6 +211,12 @@ function resolveViewerModuleName(config, context, document) {
   return segments.join(".");
 }
 
+// Reconstructs the view expression for the cursor position, e.g.
+// "Inv().schematic", as expected by ordec's -m flag. Purely lexical: scans
+// the lines above the cursor for the enclosing cell and viewgen (or
+// @generate-decorated def), using indentation to decide which candidates
+// still enclose the cursor - a nonblank line at or below a candidate's
+// indent ends that candidate's suite.
 function resolveCurrentViewName(document, position) {
   let cellName = null;
   let cellIndent = -1;
@@ -327,6 +333,8 @@ async function ensureViewer(launch) {
       viewerOutputChannel.append(text);
       stdoutBuffer += text;
 
+      // The URL is discovered from the startup line printed by the ordec
+      // server (ordec/server.py) - keep the pattern in sync with its wording.
       const match = stdoutBuffer.match(/To start ORDeC, navigate to:\s*(\S+)/);
       if (!match || resolved) {
         return;

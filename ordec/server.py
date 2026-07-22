@@ -1117,6 +1117,9 @@ def main():
     if hub:
         hub.start_activity_reporter()
     else:
+        # The VS Code extension (editors/vscode/ord/extension.js) watches
+        # stdout for this exact wording to discover the URL - keep them in
+        # sync.
         print(f"To start ORDeC, navigate to: {user_url}")
 
     if args.no_browser:
