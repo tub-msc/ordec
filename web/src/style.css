@@ -317,6 +317,10 @@ body {
     align-self: stretch;
     min-height: 28px;
 }
+/* display:flex above would otherwise override the UA's [hidden] rule */
+.toolbar-btn[hidden] {
+    display: none;
+}
 .toolbar-btn:hover {
     background-color: rgba(0, 0, 0, 0.06);
 }
