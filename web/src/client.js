@@ -38,13 +38,16 @@ export class OrdecClient {
         if (this.sock) {
             this.sock.close();
         }
-        const wsUrl = new URL('/api/websocket', location.href);
+        // Relative to the document URL so the app works under a URL path
+        // prefix (e.g. /user/<name>/ behind JupyterHub) as well as at /.
+        const wsUrl = new URL('api/websocket', document.baseURI);
         if(wsUrl.protocol=='http:') {
             wsUrl.protocol = 'ws:';
         } else {
             wsUrl.protocol = 'wss:';
         }
         this.sock = new WebSocket(wsUrl.href, []);
+        this.sockOpened = false;
         this.sock.onopen = (ev) => this.wsOnOpen(ev);
         this.sock.onmessage = (ev) => this.wsOnMessage(ev);
         this.sock.onclose = (ev) => this.wsOnClose(ev);
@@ -92,10 +95,21 @@ export class OrdecClient {
     }
 
     wsOnClose(closeEvent) {
+        // Events from a socket that connect() already replaced are stale;
+        // acting on them would clobber the state of the current socket.
+        if (closeEvent.target !== this.sock) {
+            return;
+        }
         // All in-flight requests are gone once the socket closes. Reset so a
         // reconnect doesn't get stuck waiting for responses that will never
         // arrive.
         this.inflight.clear();
+        if (session.hubMode && !this.sockOpened) {
+            // Hub-hosted and the socket never opened: the server instance
+            // was culled or stopped; reconnecting is futile. A page reload
+            // goes through the hub, which respawns the instance.
+            this.showSessionLost();
+        }
         if (!this.exception) {
             //this.exception = "Websocket disconnected.";
             this.setStatus('disconnected');
@@ -103,6 +117,9 @@ export class OrdecClient {
     }
 
     wsOnError(errorEvent) {
+        if (errorEvent.target !== this.sock) {
+            return;
+        }
         console.error("WebSocket error:", errorEvent);
         this.inflight.clear();
         if (!this.exception) {
@@ -110,7 +127,50 @@ export class OrdecClient {
         }
     }
 
+    showSessionLost() {
+        if (document.querySelector('#sessionlost')) {
+            return;
+        }
+        const overlay = document.createElement('div');
+        overlay.id = 'sessionlost';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;'
+            + 'background:rgba(0,0,0,0.6);display:flex;align-items:center;'
+            + 'justify-content:center;';
+        const box = document.createElement('div');
+        box.style.cssText = 'background:#fff;color:#333;padding:24px 32px;'
+            + 'border-radius:6px;max-width:420px;text-align:center;'
+            + 'font-family:Helvetica,sans-serif;';
+        const text = document.createElement('p');
+        text.textContent = 'Your session was stopped (e.g. after being idle '
+            + 'for a while). Restarting starts a fresh session and restores '
+            + 'your editor content.';
+        const button = document.createElement('button');
+        button.textContent = 'Restart session';
+        button.style.cssText = 'font-size:15px;padding:8px 20px;cursor:pointer;';
+        button.onclick = () => {
+            // Integrated-mode source only lives in this page; carry it
+            // across the reload. (Course mode autosaves to localStorage
+            // independently of this.)
+            try {
+                window.sessionStorage.setItem('ordecRestore', JSON.stringify({
+                    src: this.src,
+                    srctype: this.srctype,
+                }));
+            } catch (e) { /* storage full/blocked: reload without restore */ }
+            window.onbeforeunload = null;
+            window.location.reload();
+        };
+        box.appendChild(text);
+        box.appendChild(button);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+    }
+
     wsOnOpen(event) {
+        if (event.target !== this.sock) {
+            return;
+        }
+        this.sockOpened = true;
         let msg;
         this.setStatus('busy');
         if(this.localModule) {

@@ -93,6 +93,22 @@ SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
+# Hub HTML templates (served to the browser, so inline SPDX is messy):
+path = [
+    "hub/templates/*.html",
+]
+SPDX-FileCopyrightText = "2026 ORDeC contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+# Hub logo (copy of web/public/ordec_logo.svg; inline SPDX in SVG is messy):
+path = [
+    "hub/ordec_logo.svg",
+]
+SPDX-FileCopyrightText = "2025 ORDeC contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
 # Documentation files:
 path = [
     "README.md",

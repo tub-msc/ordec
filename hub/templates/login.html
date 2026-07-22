@@ -1,0 +1,163 @@
+{% extends "templates/login.html" %}
+
+{# ORDeC Hub login, styled to match ORDeC's landing page (web/index.html):
+   same Helvetica/colour palette, red accent, logo and light/dark theme.
+   Default view: participants enter only the workshop key. The admin view
+   (username + admin key) shows at /hub/login?admin. The admin_login flag is set
+   by ORDeCLoginHandler; authentication branches on username presence in
+   ORDeCWorkshopAuthenticator (see hub/jupyterhub_config.py). #}
+
+{# Hide JupyterHub's Bootstrap navbar and footer for a clean landing look. #}
+{% block nav_bar %}{% endblock nav_bar %}
+{% block footer %}{% endblock footer %}
+
+{# Apply the saved theme before first paint (shared 'ordecTheme' key, so the
+   choice carries into the ORDeC app), avoiding a light-to-dark flash.
+   JupyterHub's darkmode.js (loaded by super()) sets Bootstrap's data-bs-theme
+   from its own localStorage key or the OS preference, and Bootstrap's dark
+   theme sets color-scheme: dark, turning form controls dark even when the
+   ORDeC theme is light. Run after super() to force it to follow ordecTheme,
+   and keep jupyterhub-bs-theme in sync so darkmode.js's OS-preference
+   listener does not flip it back. #}
+{% block scripts %}
+{{ super() }}
+<script>
+  (function () {
+    const dark = window.localStorage.getItem('ordecTheme') === 'dark';
+    document.documentElement.classList.toggle('theme-dark', dark);
+    document.documentElement.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
+    window.localStorage.setItem('jupyterhub-bs-theme', dark ? 'dark' : 'light');
+  })();
+</script>
+{% endblock scripts %}
+
+{% block stylesheet %}
+{{ super() }}
+<style>
+  /* color-scheme must track the ORDeC theme, overriding Bootstrap's
+     [data-bs-theme=dark] { color-scheme: dark }, or the browser renders
+     inputs (incl. autofill) dark on the light theme. */
+  :root {
+    --ordec-bg: #fff; --ordec-fg: #333; --ordec-muted: #888;
+    --ordec-border: #aaa; --ordec-card: #f5f5f5; --ordec-hover: #eee;
+    --ordec-accent: #c00000;
+    color-scheme: light;
+  }
+  html.theme-dark {
+    --ordec-bg: #1e1e1e; --ordec-fg: #ccc; --ordec-muted: #777;
+    --ordec-border: #555; --ordec-card: #252525; --ordec-hover: #2a2a2a;
+    --ordec-accent: #e04040;
+    color-scheme: dark;
+  }
+  body {
+    font-family: "Helvetica", sans-serif;
+    background-color: var(--ordec-bg);
+    color: var(--ordec-fg);
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 40px 20px;
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+  .ordec-login-logo { display: block; margin: 20px auto 40px; }
+  #theme-toggle {
+    position: fixed; top: 16px; right: 16px;
+    background: none; border: 1px solid var(--ordec-border);
+    border-radius: 3px; cursor: pointer; font-size: 16px;
+    padding: 0px 4px; line-height: 1.4; color: var(--ordec-fg);
+  }
+  /* JupyterHub scopes its login styles under #login-main (id + class), so our
+     overrides must be scoped the same way to win specificity. Undo its
+     display:table/80vh centering for a top-aligned, index.html-like flow, and
+     drop the card chrome (orange header + bordered body) — the ORDeC logo above
+     the form is the header. */
+  #login-main { display: block; height: auto; padding: 0; max-width: none; }
+  #login-main form { width: 100%; }
+  #login-main .auth-form-header { display: none; }
+  #login-main .auth-form-body { padding: 0; border: none; }
+  form label {
+    display: block; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--ordec-muted); margin: 16px 0 4px;
+  }
+  .form-control {
+    width: 100%; box-sizing: border-box; padding: 9px 12px;
+    border: 1px solid var(--ordec-border); border-radius: 5px;
+    background-color: var(--ordec-bg); color: var(--ordec-fg); font-size: 15px;
+  }
+  .form-control:focus { outline: none; border-color: var(--ordec-accent); }
+  #login_submit {
+    margin-top: 24px; width: 100%; padding: 10px 14px;
+    border: 1px solid var(--ordec-border); border-radius: 5px;
+    background-color: var(--ordec-card); color: var(--ordec-fg);
+    cursor: pointer; font-size: 15px;
+  }
+  #login_submit:hover { background-color: var(--ordec-hover); border-color: #888; }
+  #login-main .login_error {
+    color: var(--ordec-accent); font-weight: normal; font-size: 13px;
+    margin: 16px 0 0; text-align: center;
+  }
+  .ordec-login-switch { text-align: center; margin-top: 24px; font-size: 13px; }
+  .ordec-login-switch a { color: var(--ordec-accent); text-decoration: none; }
+  .ordec-login-switch a:hover { text-decoration: underline; }
+</style>
+{% endblock stylesheet %}
+
+{% block login %}
+<button id="theme-toggle" aria-label="Toggle dark/light mode"></button>
+<img class="ordec-login-logo" src="{{ base_url }}logo" alt="ORDeC" />
+{{ super() }}
+{% endblock login %}
+
+{% block username_input %}
+{% if admin_login %}
+<label for="username_input">Admin username:</label>
+<input id="username_input" type="text" autocapitalize="off" autocorrect="off"
+    autocomplete="username" class="form-control" name="username"
+    value="{{ username }}" autofocus="autofocus" />
+{% else %}
+{# Hidden empty username keeps the guest path and avoids a KeyError in the hub's
+   login POST handler, which reads data['username'] unconditionally. #}
+<input type="hidden" name="username" value="" />
+{% endif %}
+{% endblock username_input %}
+
+{% block password_input %}
+<label for='password_input'>{{ 'Admin key:' if admin_login else 'Workshop key:' }}</label>
+<input id="password_input" type="password" class="form-control"
+    autocomplete="current-password" name="password"
+    {% if not admin_login %}autofocus="autofocus"{% endif %} />
+{% endblock password_input %}
+
+{% block login_container %}
+{{ super() }}
+{# Relative links so they work under any hub base URL. #}
+<p class="ordec-login-switch">
+{% if admin_login %}
+<a href="login">&larr; Workshop login</a>
+{% else %}
+<a href="login?admin">Admin login &rarr;</a>
+{% endif %}
+</p>
+{% endblock login_container %}
+
+{% block script %}
+{{ super() }}
+<script>
+  (function () {
+    const root = document.documentElement;
+    const btn = document.getElementById('theme-toggle');
+    function paint(isDark) {
+      btn.textContent = isDark ? '☀' : '☾';
+      btn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+    }
+    paint(root.classList.contains('theme-dark'));
+    btn.addEventListener('click', function () {
+      const nowDark = !root.classList.contains('theme-dark');
+      root.classList.toggle('theme-dark', nowDark);
+      root.setAttribute('data-bs-theme', nowDark ? 'dark' : 'light');
+      window.localStorage.setItem('ordecTheme', nowDark ? 'dark' : 'light');
+      window.localStorage.setItem('jupyterhub-bs-theme', nowDark ? 'dark' : 'light');
+      paint(nowDark);
+    });
+  })();
+</script>
+{% endblock script %}

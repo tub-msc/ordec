@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# TLS front for ORDeC Hub. Caddy obtains and renews Let's Encrypt
+# certificates automatically for the domain in ORDEC_HUB_DOMAIN (.env).
+
+{$ORDEC_HUB_DOMAIN} {
+	reverse_proxy jupyterhub:8000
+}

@@ -25,9 +25,14 @@
       #logo {
         display: block;
       }
-      #theme-toggle {
+      .header-actions {
         position: absolute;
         right: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      #theme-toggle {
         background: none;
         border: 1px solid #aaa;
         border-radius: 3px;
@@ -35,6 +40,21 @@
         font-size: 16px;
         padding: 0px 4px;
         line-height: 1.4;
+      }
+      #hubEndSession {
+        background: none;
+        border: 1px solid #aaa;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 13px;
+        padding: 1px 8px;
+        line-height: 1.4;
+        color: #333;
+        text-decoration: none;
+      }
+      #hubEndSession:hover {
+        background-color: #eee;
+        border-color: #888;
       }
       a.new-design {
         display: flex;
@@ -130,6 +150,14 @@
         border-color: #555;
         color: #ccc;
       }
+      body.theme-dark #hubEndSession {
+        border-color: #555;
+        color: #ccc;
+      }
+      body.theme-dark #hubEndSession:hover {
+        background-color: #2a2a2a;
+        border-color: #666;
+      }
       body.theme-dark a.new-design {
         border-color: #555;
         background-color: #252525;
@@ -175,31 +203,34 @@
   <body>
     <header>
       <img id="logo" src="/ordec_logo.svg" alt="ORDeC" />
-      <button id="theme-toggle" aria-label="Toggle dark/light mode"></button>
+      <div class="header-actions">
+        <button id="theme-toggle" aria-label="Toggle dark/light mode"></button>
+        <a id="hubEndSession" title="Stop this session and log out" hidden>End session</a>
+      </div>
     </header>
 
-    <a class="new-design" href="/app.html#example=blank">
+    <a class="new-design" href="app.html#example=blank">
       <span class="icon">+</span>
       Start with a new design&hellip;
     </a>
 
     <h2>Examples</h2>
     <ul class="examples">
-      <li><a href="/app.html#example=currentmirror">Current mirror <span class="desc">NMOS current mirror with DC simulation and device parameter extraction.</span></a></li>
-      <li><a href="/app.html#example=amp">Common-source amplifier <span class="desc">IHP SG13G2 amplifier with AC bode plot and transient simulation.</span></a></li>
-      <li><a href="/app.html#example=vco_pseudodiff">Pseudodifferential VCO <span class="desc">4-phase ring oscillator with <b>constraint-based layout</b> using IHP SG13G2.</span></a></li>
-      <li><a href="/app.html#example=nand2">CMOS 2-input NAND gate <span class="desc">Basic schematic including loops and multiple connection styles.</span></a></li>
-      <li><a href="/app.html#example=diffpair">Differential pair <span class="desc">Diff pair with <b>constraint-based schematic</b> (Series/Parallel groups) and DC transfer sweep.</span></a></li>
-      <li><a href="/app.html#example=voltagedivider">Voltage divider <span class="desc">Resistive divider with DC simulation and SPICE netlist export.</span></a></li>
-      <li><a href="/app.html#example=stdcells">SG13G2 standard cells<span class="desc">Imports the SG13G2 standard cells and runs a simple simulation, DRC and LVS with them.</span></a></li>
-      <li><a href="/app.html#example=voltagedivider_py">Voltage divider (Python) <span class="desc">Same voltage divider circuit, written in pure Python.</span></a></li>
-      <li><a href="/app.html#example=rc_curve">RC curve (Python) <span class="desc">RC low-pass filter with transient step response and AC frequency sweep, written in pure Python.</span></a></li>
+      <li><a href="app.html#example=currentmirror">Current mirror <span class="desc">NMOS current mirror with DC simulation and device parameter extraction.</span></a></li>
+      <li><a href="app.html#example=amp">Common-source amplifier <span class="desc">IHP SG13G2 amplifier with AC bode plot and transient simulation.</span></a></li>
+      <li><a href="app.html#example=vco_pseudodiff">Pseudodifferential VCO <span class="desc">4-phase ring oscillator with <b>constraint-based layout</b> using IHP SG13G2.</span></a></li>
+      <li><a href="app.html#example=nand2">CMOS 2-input NAND gate <span class="desc">Basic schematic including loops and multiple connection styles.</span></a></li>
+      <li><a href="app.html#example=diffpair">Differential pair <span class="desc">Diff pair with <b>constraint-based schematic</b> (Series/Parallel groups) and DC transfer sweep.</span></a></li>
+      <li><a href="app.html#example=voltagedivider">Voltage divider <span class="desc">Resistive divider with DC simulation and SPICE netlist export.</span></a></li>
+      <li><a href="app.html#example=stdcells">SG13G2 standard cells<span class="desc">Imports the SG13G2 standard cells and runs a simple simulation, DRC and LVS with them.</span></a></li>
+      <li><a href="app.html#example=voltagedivider_py">Voltage divider (Python) <span class="desc">Same voltage divider circuit, written in pure Python.</span></a></li>
+      <li><a href="app.html#example=rc_curve">RC curve (Python) <span class="desc">RC low-pass filter with transient step response and AC frequency sweep, written in pure Python.</span></a></li>
 
     </ul>
 
     <h2>Courses</h2>
     <ul class="examples">
-      <li><a href="/app.html#course=intro">Introduction to ORDeC <span class="desc">Game-like course: tune an RC filter, build a NAND2 gate and route an inverter layout.</span></a></li>
+      <li><a href="app.html#course=intro">Introduction to ORDeC <span class="desc">Game-like course: tune an RC filter, build a NAND2 gate and route an inverter layout.</span></a></li>
     </ul>
 
     <!--
@@ -238,9 +269,33 @@
         updateToggleBtn(nowDark);
       });
 
+      // "End session" appears only behind JupyterHub: api/token exists there
+      // (404 standalone) and carries the hub logout URL. Relative path so it
+      // resolves under the /user/<name>/ prefix. The same wiring exists in
+      // src/main.js for the app page (which does not run this inline script);
+      // keep both in sync.
+      fetch('api/token')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data || !data.hub_logout_url) return;
+          const endSession = document.querySelector('#hubEndSession');
+          endSession.href = data.hub_logout_url;
+          endSession.hidden = false;
+          endSession.addEventListener('click', (e) => {
+            if (!window.confirm('End this session? Your container will be '
+                + 'stopped and unsaved work will be lost.')) {
+              e.preventDefault();
+            }
+          });
+        })
+        .catch(() => {});
+
       // Version info; documentation links get their href set to the
       // version-matched URL (see the data-docs-page comment above).
-      fetch('/api/version')
+      // Relative path: Vite only rewrites asset references for base './',
+      // not fetch() literals, and '/api/version' would 404 behind the
+      // /user/<name>/ prefix of JupyterHub.
+      fetch('api/version')
         .then(r => r.json())
         .then(data => {
           document.querySelector('#version').textContent = data['version'];
@@ -248,7 +303,7 @@
             a.href = data['docs_url'] + a.dataset.docsPage;
           });
         })
-        .catch(err => console.error('Failed to fetch /api/version:', err));
+        .catch(err => console.error('Failed to fetch api/version:', err));
     </script>
     <script type="module" src="/src/auth.js"></script>
   </body>

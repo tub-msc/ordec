@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# ORDeC Hub: JupyterHub + TLS proxy. User containers are spawned by the hub
+# via the docker socket (they are not compose services) onto the internal
+# 'users' network, with the Kata (KVM) runtime.
+#
+# Configuration: copy example.env to .env and edit it.
+
+services:
+  jupyterhub:
+    build:
+      context: .
+      dockerfile: hub.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Must match the compose-created network name below (compose prefixes
+      # the project name; we pin an explicit name to avoid surprises):
+      ORDEC_HUB_USER_NETWORK: ordec-hub-users
+      # User containers reach the hub API by IP, not name: their resolver is
+      # deliberately broken (see the 'dns' setting in jupyterhub_config.py) to
+      # block a DNS covert channel, so the hub is pinned to a static address on
+      # the users network below and referenced by that IP here.
+      ORDEC_HUB_CONNECT_IP: 172.30.0.2
+    volumes:
+      # The hub spawns user containers through the host docker daemon.
+      # This makes the hub container root-equivalent on the host; the hub
+      # is trusted infrastructure (standard jupyterhub-deploy-docker setup).
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persist hub state (cookie secret, user db) across restarts. Mounted at a
+      # SUBDIRECTORY, not over /srv/jupyterhub itself: the image bakes
+      # jupyterhub_config.py and templates/ into /srv/jupyterhub, and a volume
+      # over the whole directory would shadow them, so rebuilt config/templates
+      # would never take effect. db_url/cookie_secret_file point here (see
+      # jupyterhub_config.py).
+      - jupyterhub-data:/srv/jupyterhub/data
+    networks:
+      web:
+      users:
+        # Pinned so user containers can reach the hub by IP with DNS disabled
+        # (matches ORDEC_HUB_CONNECT_IP above).
+        ipv4_address: 172.30.0.2
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    networks:
+      - web
+
+networks:
+  web:
+  users:
+    name: ordec-hub-users
+    # internal: no NAT / no route to the outside. User containers reach the
+    # hub (REST API) and are reached by its proxy. Note they can also open
+    # connections to *each other* on this bridge (blocking that would also
+    # block hub->user proxying); cross-user access is instead prevented at
+    # the application layer: every ordec server requires hub OAuth for the
+    # spawned-for user plus its own auth token (see ordec/hub.py).
+    internal: true
+    # Fixed subnet so the hub can hold a static IP (172.30.0.2 above): user
+    # containers run with DNS disabled and reach the hub API by that IP.
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  jupyterhub-data:
+  caddy-data:

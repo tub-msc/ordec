@@ -14,7 +14,31 @@ if(authParam) {
 export const session = {
     authKey: window.localStorage.getItem('ordecAuth'),
     authHmacBypass: window.localStorage.getItem('ordecHmacBypass'),
+    hubMode: false,
+    hubLogoutUrl: null,
 };
+
+export async function initSession() {
+    // JupyterHub-hosted deployments (see ordec/hub.py) deliver the backend
+    // auth token via the cookie-gated api/token endpoint instead of the URL
+    // fragment. The endpoint's token is authoritative: it always belongs to
+    // the currently running server process, whereas localStorage may hold a
+    // stale token from before an idle-culled instance was respawned.
+    // Standalone servers have no api/token route (404) and keep the
+    // fragment/localStorage flow.
+    try {
+        const response = await fetch('api/token');
+        if (response.ok) {
+            const data = await response.json();
+            session.authKey = data.auth;
+            session.hubMode = true;
+            session.hubLogoutUrl = data.hub_logout_url;
+        }
+    } catch (e) {
+        // Network error: not hub-hosted or server gone; fall back to the
+        // fragment/localStorage token.
+    }
+}
 
 export async function authenticateLocalQuery(queryLocal, queryHmac) {
     let valid;

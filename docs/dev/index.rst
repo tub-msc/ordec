@@ -7,6 +7,7 @@ Developer's Corner
 
    setup
    containers_and_ci
+   hub
    webui
    view_generation
    ipython_integration
