@@ -24,7 +24,7 @@ def report_example() -> Report:
         "# Report Example\n"
         "Rendered in Python with **bold** text and `inline code`."
     )
-    report.preformatted("alpha\nbeta\ngamma")
+    report.pre("alpha\nbeta\ngamma")
     report.tran_demo = PlotGroup()
     report.ac_demo = PlotGroup()
     report.plot2d(

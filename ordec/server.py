@@ -388,7 +388,7 @@ class ConnectionHandler:
                     # Mainly for __ord_py_source__:
                     from .core.schema import Report
                     report = Report()
-                    report.preformatted(view)
+                    report.pre(view)
                     view = report
                 viewtype, data = view.webdata()
             msg_ret['type'] = viewtype

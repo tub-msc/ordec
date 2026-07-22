@@ -1186,7 +1186,7 @@ class Report(SubgraphRoot):
     def markdown(self, markdown: str):
         self % Markdown(markdown=markdown)
 
-    def preformatted(self, text: str):
+    def pre(self, text: str):
         self % PreformattedText(text=text)
 
     def html(self, html: str):
