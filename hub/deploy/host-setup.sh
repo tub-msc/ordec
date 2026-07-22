@@ -10,6 +10,11 @@
 
 set -eu
 
+if [ "$(id -u)" != 0 ]; then
+    echo "ERROR: must run as root (installs to /opt, /etc, /usr/local)."
+    exit 1
+fi
+
 # Needs >= 3.32.0: Docker 29.5.0 enables private time namespaces by default, and
 # older kata-agents reject the resulting OCI spec with "invalid namespace type".
 # Fixed upstream by kata-containers#13082, first released in 3.32.0.
@@ -43,10 +48,13 @@ if [ ! -x /opt/kata/bin/kata-runtime ]; then
     if ! command -v zstd >/dev/null 2>&1; then
         DEBIAN_FRONTEND=noninteractive apt-get -y -qq install zstd >/dev/null
     fi
-    curl -fsSL -o /tmp/kata-static.tar.zst \
+    # /var/tmp, not /tmp: the tarball is ~1.5 GB and /tmp is a RAM-backed
+    # tmpfs on Debian 13+, where the download can fail with ENOSPC (curl
+    # error 23).
+    curl -fsSL -o /var/tmp/kata-static.tar.zst \
         "https://github.com/kata-containers/kata-containers/releases/download/${KATA_VERSION}/kata-static-${KATA_VERSION}-${arch}.tar.zst"
-    tar --zstd -xf /tmp/kata-static.tar.zst -C /
-    rm /tmp/kata-static.tar.zst
+    tar --zstd -xf /var/tmp/kata-static.tar.zst -C /
+    rm /var/tmp/kata-static.tar.zst
 fi
 # Docker >= 23 resolves the runtime string io.containerd.kata.v2 to a
 # containerd shim binary on PATH:
