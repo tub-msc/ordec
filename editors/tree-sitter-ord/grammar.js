@@ -40,15 +40,15 @@ module.exports = grammar(python, {
     // Soft keywords: `match x:`, `cell = 5`, `path a` etc. also parse as
     // expressions or node statements. GLR forks decide, with dynamic
     // precedence matching ord.lark's preference for the keyword reading.
-    [$.match_statement, $._context_kind],
-    [$.cell_definition, $._context_kind],
-    [$.viewgen_definition, $._context_kind],
-    [$.path_net_statement, $._context_kind],
-    [$.type_alias_statement, $._context_kind],
-    [$.context_definition, $.context_declaration, $.primary_expression],
-    [$.context_definition, $.context_declaration, $._context_kind],
-    [$.context_declaration, $.primary_expression],
-    [$.context_declaration, $._context_kind],
+    [$.match_statement, $._node_kind],
+    [$.cell_definition, $._node_kind],
+    [$.viewgen_definition, $._node_kind],
+    [$.path_net_statement, $._node_kind],
+    [$.type_alias_statement, $._node_kind],
+    [$.node_statement, $.node_statement_nobody, $.primary_expression],
+    [$.node_statement, $.node_statement_nobody, $._node_kind],
+    [$.node_statement_nobody, $.primary_expression],
+    [$.node_statement_nobody, $._node_kind],
   ]),
 
   rules: {
@@ -61,7 +61,7 @@ module.exports = grammar(python, {
       $.import_from_statement,
       $.path_net_statement,
       $.constrain_statement,
-      $.context_declaration,
+      $.node_statement_nobody,
       $.ord_connection_statement,
       $.assert_statement,
       $.expression_statement,
@@ -84,7 +84,7 @@ module.exports = grammar(python, {
       $.with_statement,
       $.cell_definition,
       $.viewgen_definition,
-      $.context_definition,
+      $.node_statement,
       $.function_definition,
       $.class_definition,
       $.decorated_definition,
@@ -132,22 +132,22 @@ module.exports = grammar(python, {
 
     // Node statement with body, e.g. `Nmos n1:` or `Series(gap=4) core:`.
     // The kind is an expression chain (atom_expr in ord.lark), not a keyword.
-    context_definition: $ => seq(
+    node_statement: $ => seq(
       optional('anonymous'),
-      field('kind', $._context_kind),
+      field('kind', $._node_kind),
       field('target', $.context_target),
       ':',
       field('body', $._suite),
     ),
 
     // Bodyless node statement, e.g. `Net vdd` or `Inv i1, i2`.
-    context_declaration: $ => seq(
+    node_statement_nobody: $ => seq(
       optional('anonymous'),
-      field('kind', $._context_kind),
+      field('kind', $._node_kind),
       commaSep1(field('target', $.context_target)),
     ),
 
-    _context_kind: $ => choice(
+    _node_kind: $ => choice(
       $.identifier,
       $.keyword_identifier,
       $.attribute,
@@ -173,7 +173,7 @@ module.exports = grammar(python, {
       )),
     ),
 
-    // Leading-dot access to the current context node, e.g. `.align` or the
+    // Leading-dot access to the current node, e.g. `.align` or the
     // bare `.` (dotted_atom in ord.lark). A regular expression atom.
     ord_local_attribute: $ => seq(
       '.',

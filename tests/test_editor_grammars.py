@@ -137,9 +137,9 @@ def verify(parsed_files, matches, statement_matchers):
 def test_vscode_injection_grammar(parsed_ord_files):
     grammar_file = EDITORS / 'vscode/ord/syntaxes/ord-injection.tmLanguage.json'
     repo = json.loads(grammar_file.read_text())['repository']
-    block = textmate_regex(repo['context-element-block']['begin'])
-    inline = textmate_regex(repo['context-element-inline']['begin'])
-    bare = textmate_regex(repo['context-element-bare']['match'])
+    block = textmate_regex(repo['node-statement-block']['begin'])
+    inline = textmate_regex(repo['node-statement-inline']['begin'])
+    bare = textmate_regex(repo['node-statement-bare']['match'])
     keyword = {
         'cell': textmate_regex(repo['cell-declaration']['begin']),
         'viewgen': textmate_regex(repo['viewgen-declaration']['begin']),
@@ -164,7 +164,7 @@ def test_vscode_injection_grammar(parsed_ord_files):
 def test_pycharm_grammar(parsed_ord_files):
     grammar_file = EDITORS / 'pycharm/ord.tmbundle/Syntaxes/ord.tmLanguage.json'
     repo = json.loads(grammar_file.read_text())['repository']
-    context_element = textmate_regex(repo['context-element']['begin'])
+    node_statement = textmate_regex(repo['node-statement']['begin'])
     anonymous = textmate_regex(repo['anonymous-modifier']['match'])
     keyword = {
         'cell': textmate_regex(repo['class-declaration']['patterns'][1]['begin']),
@@ -176,16 +176,16 @@ def test_pycharm_grammar(parsed_ord_files):
         line = line.lstrip()
         if rule in ANON_RULES:
             after_keyword = line.split(None, 1)[1]
-            return anonymous.match(line) and context_element.match(after_keyword)
+            return anonymous.match(line) and node_statement.match(after_keyword)
         if rule in NODE_RULES + NOBODY_RULES:
-            return context_element.match(line)
+            return node_statement.match(line)
         return keyword[KEYWORD_RULES[rule]].match(line)
 
-    # the context-element rule is not line-anchored, so no line-based false
+    # the node-statement rule is not line-anchored, so no line-based false
     # positive sweep is meaningful for it
     verify(parsed_ord_files, matches, [])
     for negative in SOFT_KEYWORD_NEGATIVES:
-        for matcher in (context_element, anonymous, *keyword.values()):
+        for matcher in (node_statement, anonymous, *keyword.values()):
             assert not matcher.match(negative)
     for line, rule in ATOM_EXPR_POSITIVES:
         assert matches(rule, line), f'atom_expr positive not matched: {line!r}'
@@ -205,8 +205,8 @@ def test_sublime_syntax(parsed_ord_files):
         return re.compile(pattern)
 
     contexts = syntax['contexts']
-    anonymous = sublime_regex(contexts['ord-context-elements'][0]['match'])
-    node_statement = sublime_regex(contexts['ord-context-elements'][1]['match'])
+    anonymous = sublime_regex(contexts['ord-node-statements'][0]['match'])
+    node_statement = sublime_regex(contexts['ord-node-statements'][1]['match'])
     keyword = {
         'cell': sublime_regex(contexts['class-definitions'][1]['match']),
         'viewgen': sublime_regex(contexts['ord-viewgen-definitions'][0]['match']),
@@ -232,10 +232,10 @@ def test_sublime_syntax(parsed_ord_files):
 
 # Lark rule -> tree-sitter node type produced for the same construct
 TREE_SITTER_RULES = {
-    'node_stmt': 'context_definition',
-    'anon_node_stmt': 'context_definition',
-    'node_stmt_nobody': 'context_declaration',
-    'anon_node_stmt_nobody': 'context_declaration',
+    'node_stmt': 'node_statement',
+    'anon_node_stmt': 'node_statement',
+    'node_stmt_nobody': 'node_statement_nobody',
+    'anon_node_stmt_nobody': 'node_statement_nobody',
     'celldef': 'cell_definition',
     'viewgen': 'viewgen_definition',
     'path_stmt': 'path_net_statement',

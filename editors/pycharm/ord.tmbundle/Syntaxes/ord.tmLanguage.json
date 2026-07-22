@@ -66,7 +66,7 @@
       "match": "!(?!=)",
       "name": "keyword.operator.constrain.ord"
     },
-    "context-element": {
+    "node-statement": {
       "comment": "Matches ORD node statements like: Nmos m1:, inout vdd:, Series(gap=4) core:, lib.Nmos m1:, port ctr[i]:, bodyless Net vdd or Nmos m1, m2",
       "begin": "(?x)\n  (?!(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|cell|viewgen|path|net|match|case|type|anonymous)\\b)\n  (?=([_[:alpha:]]\\w*)(?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\])*\\s*(?:\\((?:[^()\\n]|\\([^()\\n]*\\))*\\))?\\s+([_[:alpha:]]\\w*)(?:(?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\]))*\\s*(?::|,|$))\n",
       "end": "(:)|$",
@@ -75,7 +75,7 @@
           "name": "punctuation.section.block.begin.ord"
         }
       },
-      "name": "meta.context-element.ord",
+      "name": "meta.node-statement.ord",
       "patterns": [
         {
           "match": "\\b(inout|input|output|port)\\b",
@@ -3771,7 +3771,7 @@
           "include": "#anonymous-modifier"
         },
         {
-          "include": "#context-element"
+          "include": "#node-statement"
         },
         {
           "include": "#function-declaration"

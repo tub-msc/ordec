@@ -28,45 +28,45 @@
 ; Directional pin kinds keep their traditional keyword look even though they
 ; are ordinary names in the grammar.
 
-((context_definition
+((node_statement
   kind: (identifier) @keyword)
  (#any-of? @keyword "input" "output" "inout" "port"))
 
-((context_declaration
+((node_statement_nobody
   kind: (identifier) @keyword)
  (#any-of? @keyword "input" "output" "inout" "port"))
 
-(context_definition
+(node_statement
   kind: (identifier) @type)
 
-(context_definition
+(node_statement
   kind: (attribute
     attribute: (identifier) @type))
 
-(context_definition
+(node_statement
   kind: (call
     function: (identifier) @type))
 
-(context_definition
+(node_statement
   kind: (call
     function: (attribute
       attribute: (identifier) @type)))
 
-(context_definition
+(node_statement
   target: (context_target (identifier) @variable))
 
-(context_declaration
+(node_statement_nobody
   kind: (identifier) @type)
 
-(context_declaration
+(node_statement_nobody
   kind: (attribute
     attribute: (identifier) @type))
 
-(context_declaration
+(node_statement_nobody
   kind: (call
     function: (identifier) @type))
 
-(context_declaration
+(node_statement_nobody
   target: (context_target (identifier) @variable))
 
 (path_net_statement

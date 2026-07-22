@@ -58,11 +58,11 @@
   name: (context_target
     . (identifier) @local.definition))
 
-(context_definition
+(node_statement
   target: (context_target
     . (identifier) @local.definition))
 
-(context_declaration
+(node_statement_nobody
   target: (context_target
     . (identifier) @local.definition))
 

@@ -33,32 +33,32 @@
 
 ; Node statements
 
-(context_definition
+(node_statement
   kind: (identifier) @font-lock-type-face)
 
-(context_definition
+(node_statement
   kind: (attribute
     attribute: (identifier) @font-lock-type-face))
 
-(context_definition
+(node_statement
   kind: (call
     function: (identifier) @font-lock-type-face))
 
-(context_definition
+(node_statement
   target: (context_target (identifier) @font-lock-variable-name-face))
 
-(context_declaration
+(node_statement_nobody
   kind: (identifier) @font-lock-type-face)
 
-(context_declaration
+(node_statement_nobody
   kind: (attribute
     attribute: (identifier) @font-lock-type-face))
 
-(context_declaration
+(node_statement_nobody
   kind: (call
     function: (identifier) @font-lock-type-face))
 
-(context_declaration
+(node_statement_nobody
   target: (context_target (identifier) @font-lock-variable-name-face))
 
 (path_net_statement

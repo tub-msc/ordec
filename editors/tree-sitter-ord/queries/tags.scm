@@ -10,10 +10,10 @@
 (viewgen_definition
   name: (identifier) @name) @definition.function
 
-(context_definition
+(node_statement
   target: (context_target . (identifier) @name)) @definition.constant
 
-(context_declaration
+(node_statement_nobody
   target: (context_target . (identifier) @name)) @definition.constant
 
 (path_net_statement

@@ -26,7 +26,7 @@ net out
         (type
           (identifier))
         (block
-          (context_definition
+          (node_statement
             (identifier)
             (context_target
               (identifier))
@@ -36,7 +36,7 @@ net out
                   (ord_local_attribute
                     (identifier))
                   (identifier)))))
-          (context_definition
+          (node_statement
             (identifier)
             (context_target
               (identifier))
@@ -46,7 +46,7 @@ net out
                   (ord_local_attribute
                     (identifier))
                   (identifier)))))
-          (context_definition
+          (node_statement
             (identifier)
             (context_target
               (identifier))
@@ -93,7 +93,7 @@ cell Osc:
         (type
           (identifier))
         (block
-          (context_definition
+          (node_statement
             (call
               (identifier)
               (argument_list
@@ -113,7 +113,7 @@ cell Osc:
                   (tuple
                     (integer)
                     (integer))))))
-          (context_definition
+          (node_statement
             (identifier)
             (context_target
               (identifier))
@@ -123,7 +123,7 @@ cell Osc:
                   (ord_local_attribute
                     (identifier))
                   (identifier)))))
-          (context_declaration
+          (node_statement_nobody
             (identifier)
             (context_target
               (identifier))
@@ -131,7 +131,7 @@ cell Osc:
               (identifier))
             (context_target
               (identifier)))
-          (context_declaration
+          (node_statement_nobody
             (identifier)
             (context_target
               (identifier))))))))
@@ -158,7 +158,7 @@ cell Rc:
         (type
           (identifier))
         (block
-          (context_definition
+          (node_statement
             (identifier)
             (context_target
               (identifier))
@@ -174,7 +174,7 @@ cell Rc:
                   (tuple
                     (integer)
                     (integer))))))
-          (context_definition
+          (node_statement
             (identifier)
             (context_target
               (identifier))
@@ -220,7 +220,7 @@ viewgen symbol -> Symbol:
     (type
       (identifier))
     (block
-      (context_definition
+      (node_statement
         (identifier)
         (context_target
           (identifier)
@@ -446,7 +446,7 @@ viewgen layout -> Layout:
     (cell_definition
       (identifier)
       (block
-        (context_definition
+        (node_statement
           (identifier)
           (context_target
             (identifier))

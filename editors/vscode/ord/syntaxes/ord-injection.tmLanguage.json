@@ -10,7 +10,7 @@
       "include": "#viewgen-declaration"
     },
     {
-      "include": "#context-element"
+      "include": "#node-statement"
     },
     {
       "include": "#path-net"
@@ -89,20 +89,20 @@
         }
       ]
     },
-    "context-element": {
+    "node-statement": {
       "patterns": [
         {
-          "include": "#context-element-block"
+          "include": "#node-statement-block"
         },
         {
-          "include": "#context-element-inline"
+          "include": "#node-statement-inline"
         },
         {
-          "include": "#context-element-bare"
+          "include": "#node-statement-bare"
         }
       ]
     },
-    "context-element-block": {
+    "node-statement-block": {
       "comment": "Block node statements: Nmos m1: / Series(gap=4) core: / lib.Nmos m1: / anonymous LayoutRect r:",
       "begin": "^([ \\t]*)(?:(anonymous)[ \\t]+)?(?:(inout|input|output|port)|(?!(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|cell|viewgen|path|net|match|case|type|anonymous)\\b)([_[:alpha:]]\\w*))((?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\])*)[ \\t]*(\\((?:[^()\\n]|\\([^()\\n]*\\))*\\))?(\\s+)([_[:alpha:]]\\w*)((?:(?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\]))*)(\\s*:)(?=\\s*(?:#.*)?$)",
       "beginCaptures": {
@@ -151,14 +151,14 @@
         }
       },
       "while": "^(?:\\1[ \\t]+|(?=\\s*$))",
-      "name": "meta.context-element.block.ord",
+      "name": "meta.node-statement.block.ord",
       "patterns": [
         {
           "include": "#ord-body"
         }
       ]
     },
-    "context-element-inline": {
+    "node-statement-inline": {
       "comment": "Inline node statements: Nmos m1: body",
       "begin": "^([ \\t]*)(?:(anonymous)[ \\t]+)?(?:(inout|input|output|port)|(?!(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|cell|viewgen|path|net|match|case|type|anonymous)\\b)([_[:alpha:]]\\w*))((?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\])*)[ \\t]*(\\((?:[^()\\n]|\\([^()\\n]*\\))*\\))?(\\s+)([_[:alpha:]]\\w*)((?:(?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\]))*)(\\s*:)(?=\\s*(?!#|$))",
       "beginCaptures": {
@@ -207,7 +207,7 @@
         }
       },
       "end": "$",
-      "name": "meta.context-element.inline.ord",
+      "name": "meta.node-statement.inline.ord",
       "patterns": [
         {
           "include": "#ord-body"
@@ -303,10 +303,10 @@
           "include": "#viewgen-declaration"
         },
         {
-          "include": "#context-element-block"
+          "include": "#node-statement-block"
         },
         {
-          "include": "#context-element-inline"
+          "include": "#node-statement-inline"
         },
         {
           "include": "#path-net"
@@ -331,7 +331,7 @@
         }
       ]
     },
-    "context-element-bare": {
+    "node-statement-bare": {
       "comment": "Bodyless node statements: Net vdd / Nmos m1, m2 / lib.Net vdd",
       "match": "^([ \\t]*)(?:(anonymous)[ \\t]+)?(?:(inout|input|output|port)|(?!(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|cell|viewgen|path|net|match|case|type|anonymous)\\b)([_[:alpha:]]\\w*))((?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\])*)[ \\t]*(\\((?:[^()\\n]|\\([^()\\n]*\\))*\\))?[ \\t]+([_[:alpha:]]\\w*(?:(?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\])|[ \\t]*,[ \\t]*[_[:alpha:]]\\w*)*)[ \\t]*(?=#|$)",
       "captures": {
@@ -386,7 +386,7 @@
           ]
         }
       },
-      "name": "meta.context-element.bare.ord"
+      "name": "meta.node-statement.bare.ord"
     }
   }
 }

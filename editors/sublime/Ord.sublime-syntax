@@ -14,7 +14,7 @@
 # - path/net declarations
 # - SI unit suffixes on numbers (100n, 3.14u)
 # - Parameter access (.$param)
-# - Dotted context access (.name)
+# - Dotted access to the current node (.name)
 #
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
@@ -34,7 +34,7 @@ variables:
   exponent: '(?:[eE][-+]?{{digits}})'
   identifier_continue: '[[:alnum:]_]'
   identifier: '[[:alpha:]_]{{identifier_continue}}*'
-  ord_context_types: '(?:inout|input|output|port)\b'
+  ord_direction_kinds: '(?:inout|input|output|port)\b'
   python_keywords: '(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield)\b'
 
 contexts:
@@ -151,13 +151,13 @@ contexts:
   # bodyless Net vdd)
   block-statements:
     - meta_prepend: true
-    - include: ord-context-elements
+    - include: ord-node-statements
 
-  ord-context-elements:
+  ord-node-statements:
     # anonymous node statements have no NPath name: anonymous LayoutRect r:
     - match: \banonymous\b(?=\s+{{identifier}})
       scope: storage.modifier.ord
-      push: ord-context-element-type
+      push: ord-node-statement-kind
     - match: |-
         (?x)
         (?!{{python_keywords}})
@@ -176,22 +176,22 @@ contexts:
           )*
           \s* (?: : | , | $ )
         )
-      push: ord-context-element-type
+      push: ord-node-statement-kind
 
-  ord-context-element-type:
-    - match: '{{ord_context_types}}'
+  ord-node-statement-kind:
+    - match: '{{ord_direction_kinds}}'
       scope: storage.type.ord
       set: ord-context-target
     - match: '{{identifier}}'
       scope: entity.name.type.ord
-      set: ord-context-element-type-args
+      set: ord-node-statement-kind-rest
     - include: immediately-pop
 
   # Rest of the node type after its leading identifier: dotted and
   # subscripted kinds (lib.Nmos m1:, rows[i] core:) and optional
   # constructor arguments (Series(gap=4) core:)
-  ord-context-element-type-args:
-    - meta_scope: meta.statement.context.ord
+  ord-node-statement-kind-rest:
+    - meta_scope: meta.statement.node.ord
     - match: '\s*(\.)\s*({{identifier}})'
       captures:
         1: punctuation.accessor.dot.ord
@@ -201,12 +201,12 @@ contexts:
       push: ord-context-target-subscript
     - match: \(
       scope: punctuation.section.arguments.begin.ord
-      set: [ord-context-target, ord-context-element-type-args-body]
+      set: [ord-context-target, ord-node-statement-kind-args]
     - match: (?=\S)
       set: ord-context-target
     - include: line-continuation-or-pop
 
-  ord-context-element-type-args-body:
+  ord-node-statement-kind-args:
     - meta_scope: meta.function-call.arguments.ord
     - match: \)
       scope: punctuation.section.arguments.end.ord
@@ -214,7 +214,7 @@ contexts:
     - include: expression-in-a-group
 
   ord-context-target:
-    - meta_scope: meta.statement.context.ord
+    - meta_scope: meta.statement.node.ord
     - match: ':'
       scope: punctuation.section.block.begin.ord
       pop: 1
