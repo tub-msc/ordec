@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 
 from ..core import *
-from .helpers import schematic_place
+from .helpers import schem_place
 
 @public
 def verilog_to_yosys_json(verilog: str) -> dict[str, Any]:
@@ -197,5 +197,5 @@ def create_schematic(extlib, module_name, module_data: dict[str, Any]) -> Schema
             schematic[nc_name] = Net(auto_wire=False)
             schematic % SchemInstanceConn(ref=inst, here=schematic[nc_name], there=pin)
 
-    schematic_place(schematic)
+    schem_place(schematic)
     return schematic.freeze()

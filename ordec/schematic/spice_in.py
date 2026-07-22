@@ -27,7 +27,7 @@ from public import public
 import re
 
 from ..core import *
-from .helpers import schematic_place
+from .helpers import schem_place
 
 @public
 class SpiceImportError(Exception):
@@ -351,7 +351,7 @@ def create_schematic_from_subckt(extlib, deck, name, device_map) -> Schematic:
         path = unique_name(inst.name)
         schematic[path] = SchemInstance(child_sym.portmap(**conns))
 
-    schematic_place(schematic)
+    schem_place(schematic)
     return schematic.freeze()
 
 

@@ -44,7 +44,7 @@ def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     node.outline = Rect4R(lx=0, ly=0, ux=width, uy=height)
 
 
-def schematic_place(schem: Schematic, gap=None, port_pitch=2, port_margin=None):
+def schem_place(schem: Schematic, gap=None, port_pitch=2, port_margin=None):
     """
     Automatic placement for programmatically built schematics (e.g. netlist
     importers). All existing pos values are overwritten.
