@@ -78,14 +78,13 @@ The viewer bridge requires an ``ordec`` command on the ``PATH`` (or a
 configured ``ord.viewer.command``). See ``editors/vscode/ord/README.md`` for
 the viewer settings and alternative installation options.
 
-tree-sitter (Neovim, Emacs, Helix, Zed, Pulsar)
------------------------------------------------
+tree-sitter (Neovim, Emacs, Helix)
+----------------------------------
 
 ``editors/tree-sitter-ord/`` provides a tree-sitter grammar for ORD — a real
-parser, in contrast to the regex-based packages above. tree-sitter was
-originally developed for GitHub's Atom editor and today powers highlighting
-in Atom's community successor Pulsar as well as in Neovim, Emacs 29+, Helix,
-Zed and other tree-sitter-based editors.
+parser, in contrast to the regex-based packages above. tree-sitter powers
+highlighting in Neovim, Emacs 29+, Helix and other tree-sitter-based
+editors.
 
 The parser sources are generated from ``grammar.js``. Generate them once
 before installing the grammar into an editor (this requires Node.js)::
@@ -94,25 +93,114 @@ before installing the grammar into an editor (this requires Node.js)::
     npm ci
     npm run generate
 
-Then install the grammar in your editor:
+The ``queries/`` directory holds the editor-neutral queries:
+``highlights.scm`` (highlighting), ``folds.scm`` (folding),
+``locals.scm`` (scopes), ``tags.scm`` (symbol tags) and
+``highlights-emacs.scm`` (an Emacs-specific variant). Then install the
+grammar in your editor:
 
-- **Emacs 29+**: build the shared library and place it in
-  ``~/.emacs.d/tree-sitter/``::
+- **Emacs 29+** (built with tree-sitter support): compile the shared
+  library — the file name matters, Emacs looks the ``ord`` language up
+  as ``libtree-sitter-ord.so`` — and place it where treesit searches::
 
-      cc -fPIC -shared -I src src/parser.c src/scanner.c \
+      cc -O2 -fPIC -shared -I src src/parser.c src/scanner.c \
           -o libtree-sitter-ord.so
+      mkdir -p ~/.emacs.d/tree-sitter
+      cp libtree-sitter-ord.so ~/.emacs.d/tree-sitter/
 
-  ``queries/highlights-emacs.scm`` contains the Emacs highlight rules,
-  ready for use with ``treesit-font-lock-rules``.
-- **Neovim**: register the grammar with nvim-treesitter as a custom parser
-  (repository URL plus ``location = "editors/tree-sitter-ord"``,
-  ``requires_generate_from_grammar = true`` and
-  ``generate_requires_npm = true`` in ``install_info``) and copy the
-  ``queries/`` files into a ``queries/ord/`` runtime directory.
-- **Helix, Zed, Pulsar**: point the editor's grammar source at this
-  repository subdirectory. ``queries/highlights.scm`` is the generic
-  highlight query, and ``folds.scm``, ``locals.scm`` and ``tags.scm``
-  provide folding, scopes and symbol tags.
+  Verify with ``M-: (treesit-ready-p 'ord)``, which must return ``t``.
+  ``queries/highlights-emacs.scm`` contains the ORD font-lock rules
+  for ``treesit-font-lock-rules``. They are written to layer over
+  Python highlighting with ``:override t``; a minimal standalone mode
+  that highlights just the ORD constructs::
+
+      (add-to-list 'auto-mode-alist '("\\.ord\\'" . ord-ts-mode))
+
+      (define-derived-mode ord-ts-mode prog-mode "ORD"
+        "Minimal tree-sitter mode for ORD."
+        (when (treesit-ready-p 'ord)
+          (treesit-parser-create 'ord)
+          (setq-local treesit-font-lock-settings
+                      (treesit-font-lock-rules
+                       :language 'ord
+                       :feature 'ord
+                       (with-temp-buffer
+                         (insert-file-contents
+                          "/path/to/ordec/editors/tree-sitter-ord/queries/highlights-emacs.scm")
+                         (buffer-string))))
+          (setq-local treesit-font-lock-feature-list '((ord)))
+          (treesit-major-mode-setup)))
+- **Neovim** (0.9 or newer): no plugin is required — Neovim's built-in
+  tree-sitter support finds parsers and queries on its runtime path.
+
+  1. In a shell (still in ``editors/tree-sitter-ord/``), compile the
+     parser and install it and the queries into Neovim's config
+     directory::
+
+         cc -O2 -fPIC -shared -I src src/parser.c src/scanner.c -o ord.so
+         mkdir -p ~/.config/nvim/parser ~/.config/nvim/queries
+         cp ord.so ~/.config/nvim/parser/
+         ln -s "$PWD/queries" ~/.config/nvim/queries/ord
+
+  2. In ``~/.config/nvim/init.lua`` (create it if needed), map the
+     ``.ord`` extension and attach the highlighter::
+
+         vim.filetype.add({ extension = { ord = "ord" } })
+         vim.api.nvim_create_autocmd("FileType", {
+           pattern = "ord",
+           callback = function()
+             vim.treesitter.start()
+           end,
+         })
+
+  To verify, open a ``.ord`` file and run ``:InspectTree``: the tree
+  should contain ORD nodes such as ``node_statement``. After grammar
+  changes, rerun ``npm run generate`` and the ``cc`` line, then
+  restart Neovim.
+
+  If you already use the nvim-treesitter plugin (``master`` branch —
+  the rewritten ``main`` branch uses a different API), you can instead
+  register the checkout in the plugin's configuration and compile the
+  parser by running ``:TSInstall ord`` once inside Neovim::
+
+      local parsers = require("nvim-treesitter.parsers").get_parser_configs()
+      parsers.ord = {
+        install_info = {
+          url = "/path/to/ordec/editors/tree-sitter-ord",
+          files = { "src/parser.c", "src/scanner.c" },
+        },
+        filetype = "ord",
+      }
+
+  ``:TSInstall ord`` is an interactive command — do not put it into
+  ``init.lua``, or it re-runs on every start. The filetype mapping and
+  queries link from above are still needed, as is
+  ``highlight = { enable = true }`` in the nvim-treesitter setup.
+- **Helix**: declare the language and the local grammar source in
+  ``~/.config/helix/languages.toml``::
+
+      [[language]]
+      name = "ord"
+      scope = "source.ord"
+      file-types = ["ord"]
+      comment-token = "#"
+      indent = { tab-width = 4, unit = "    " }
+
+      [[grammar]]
+      name = "ord"
+      source = { path = "/path/to/ordec/editors/tree-sitter-ord" }
+
+  Build the grammar and link the queries (still in
+  ``editors/tree-sitter-ord/``; Helix picks the query files it knows
+  by name and ignores the rest)::
+
+      hx --grammar build
+      mkdir -p ~/.config/helix/runtime/queries
+      ln -s "$PWD/queries" ~/.config/helix/runtime/queries/ord
+
+  ``hx --health ord`` shows whether the grammar and queries were
+  found. After grammar changes, rerun ``npm run generate`` and
+  ``hx --grammar build``.
 
 For working on the grammar itself, see
 ``editors/tree-sitter-ord/README.md``.
