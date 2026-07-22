@@ -24,7 +24,7 @@
 (viewgen_definition
   return_type: (type (identifier) @type))
 
-; Node statements: `output y:`, `Nmos n1:`, `Series(gap=4) core:`, `Net vdd`.
+; Node statements: `output y:`, `Nmos n1:`, `Nmos(w=4u, l=400n) m1:`, `Net vdd`.
 ; Directional pin kinds keep their traditional keyword look even though they
 ; are ordinary names in the grammar.
 

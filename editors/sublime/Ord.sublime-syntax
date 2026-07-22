@@ -147,7 +147,7 @@ contexts:
   ##[ BLOCK STATEMENTS ]########################################################
 
   # Node statement: Type target: suite  (e.g., inout vdd: ..., Nmos m1: ...,
-  # Series(gap=4) core: ..., lib.Nmos m1: ..., anonymous LayoutRect r: ...,
+  # Nmos(w=4u, l=400n) m1: ..., lib.Nmos m1: ..., anonymous LayoutRect r: ...,
   # bodyless Net vdd)
   block-statements:
     - meta_prepend: true
@@ -189,7 +189,7 @@ contexts:
 
   # Rest of the node type after its leading identifier: dotted and
   # subscripted kinds (lib.Nmos m1:, rows[i] core:) and optional
-  # constructor arguments (Series(gap=4) core:)
+  # constructor arguments (Nmos(w=4u, l=400n) m1:)
   ord-node-statement-kind-rest:
     - meta_scope: meta.statement.node.ord
     - match: '\s*(\.)\s*({{identifier}})'

@@ -128,7 +128,7 @@ module.exports = grammar(python, {
       field('body', $._suite),
     ),
 
-    // Node statement with body, e.g. `Nmos n1:` or `Series(gap=4) core:`.
+    // Node statement with body, e.g. `Nmos n1:` or `Nmos(w=4u, l=400n) m1:`.
     // The kind is an expression chain (atom_expr in ord.lark), not a keyword.
     node_statement: $ => seq(
       optional('anonymous'),

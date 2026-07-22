@@ -18,7 +18,7 @@ ORD is Python-derived, but it is not just Python with a few colored keywords.
 It introduces grammar-level constructs such as:
 
 - `cell` and `viewgen` declarations
-- node statements like `output y:`, `Nmos n1:`, `Series(gap=4) core:`
+- node statements like `output y:`, `Nmos n1:`, `Nmos(w=4u, l=400n) m1:`
 - `anonymous` and bodyless node statements (`nmos m3, m5, m7`)
 - `path` / `net` statements
 - constrain statements like `! .pos == (0, 0)`

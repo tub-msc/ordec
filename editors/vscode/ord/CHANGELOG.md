@@ -17,12 +17,12 @@ viewer bridge.
 
 - Highlighting matches the current ORD grammar: viewgens take no parameter
   list, `anonymous` node statements, constructor arguments on node types
-  (`Series(gap=4) core:`), and bodyless node statements (`Net vdd`,
+  (`Nmos(w=4u, l=400n) m1:`), and bodyless node statements (`Net vdd`,
   `Nmos m1, m2`) are highlighted, and the removed rational literal (`1/3`) is
   not treated as a number.
 - ORD injection rules do not fire inside strings and comments.
 - Auto-indent triggers after node statement headers such as `Nmos m1:` or
-  `Series(gap=4) core:`.
+  `Nmos(w=4u, l=400n) m1:`.
 - No bundled color theme: ORD scopes extend standard TextMate scope
   prefixes, so any theme colors them. The README documents optional
   `editor.tokenColorCustomizations` rules for ORD-specific accents.

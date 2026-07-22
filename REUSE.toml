@@ -129,13 +129,15 @@ path = [
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"
 
+# Editors
+# -------
+
 [[annotations]]
-# Editor-support files that cannot carry header comments:
+# Files that cannot carry header comments:
 path = [
     "editors/jetbrains/ord.tmbundle/info.plist",
     "editors/vscode/ord/language-configuration.json",
     "editors/vscode/ord/syntaxes/ord.tmLanguage.json",
-    "editors/vscode/ord/ordec.ico",
     "editors/vscode/ord/ordec.png",
     "editors/tree-sitter-ord/package.json",
     "editors/tree-sitter-ord/tree-sitter.json",
@@ -144,7 +146,7 @@ SPDX-FileCopyrightText = "2026 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
-# tree-sitter corpus test data (ORD samples with expected syntax trees):
+# tree-sitter corpus test data:
 path = [
     "editors/tree-sitter-ord/test/corpus/ord.txt",
 ]
@@ -152,7 +154,7 @@ SPDX-FileCopyrightText = "2026 ORDeC contributors"
 SPDX-License-Identifier = "CC0-1.0"
 
 [[annotations]]
-# Editor grammars adapted from the MIT-licensed MagicPython TextMate grammar:
+# Grammars adapted from the MIT-licensed MagicPython grammar:
 path = [
     "editors/jetbrains/ord.tmbundle/Syntaxes/ord.tmLanguage.json",
     "editors/vscode/ord/syntaxes/ord-injection.tmLanguage.json",
@@ -164,7 +166,7 @@ SPDX-FileCopyrightText = [
 SPDX-License-Identifier = "MIT AND Apache-2.0"
 
 [[annotations]]
-# VS Code extension scaffold files derived from MIT-licensed Microsoft templates:
+# VS Code scaffold derived from MIT-licensed Microsoft templates:
 path = [
     "editors/vscode/ord/package.json",
     "editors/vscode/ord/.vscode/launch.json",
@@ -176,9 +178,7 @@ SPDX-FileCopyrightText = [
 SPDX-License-Identifier = "MIT AND Apache-2.0"
 
 [[annotations]]
-# Parser artifacts generated from grammar.js, which extends the MIT-licensed
-# tree-sitter-python grammar. The generated src/ artifacts are gitignored
-# but annotated so locally generated trees stay REUSE-compliant:
+# Parser artifacts generated from grammar.js (gitignored):
 path = [
     "editors/tree-sitter-ord/src/parser.c",
     "editors/tree-sitter-ord/src/grammar.json",
@@ -191,19 +191,10 @@ SPDX-FileCopyrightText = [
 SPDX-License-Identifier = "MIT AND Apache-2.0"
 
 [[annotations]]
-# tree-sitter runtime headers bundled by the tree-sitter CLI (generated,
-# gitignored):
-path = [
-    "editors/tree-sitter-ord/src/tree_sitter/*.h",
-]
-SPDX-FileCopyrightText = "2018-2024 Max Brunsfeld"
-SPDX-License-Identifier = "MIT"
-
-[[annotations]]
-# External scanner copied from the tree-sitter-python devDependency by
-# `npm run generate` (gitignored):
+# Upstream tree-sitter files copied by `npm run generate` (gitignored):
 path = [
     "editors/tree-sitter-ord/src/scanner.c",
+    "editors/tree-sitter-ord/src/tree_sitter/*.h",
 ]
-SPDX-FileCopyrightText = "2016 Max Brunsfeld"
+SPDX-FileCopyrightText = "2016-2024 Max Brunsfeld"
 SPDX-License-Identifier = "MIT"
