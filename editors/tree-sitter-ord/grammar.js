@@ -4,8 +4,6 @@
 
 /**
  * @file ORD grammar for tree-sitter, extending the tree-sitter-python grammar
- * @author Max Brunsfeld <maxbrunsfeld@gmail.com>
- * @author Dominik Schwimmbeck <dominik.schwimmbeck@tu-berlin.de>
  *
  * ORD is not an unrelated language. It extends Python with domain-specific
  * declarations and inline constructs used by ORDeC. Editors cannot layer

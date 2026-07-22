@@ -161,8 +161,8 @@ def test_vscode_injection_grammar(parsed_ord_files):
         assert matches(rule, line), f'atom_expr positive not matched: {line!r}'
 
 
-def test_pycharm_grammar(parsed_ord_files):
-    grammar_file = EDITORS / 'pycharm/ord.tmbundle/Syntaxes/ord.tmLanguage.json'
+def test_jetbrains_grammar(parsed_ord_files):
+    grammar_file = EDITORS / 'jetbrains/ord.tmbundle/Syntaxes/ord.tmLanguage.json'
     repo = json.loads(grammar_file.read_text())['repository']
     node_statement = textmate_regex(repo['node-statement']['begin'])
     anonymous = textmate_regex(repo['anonymous-modifier']['match'])

@@ -16,7 +16,7 @@ ORD is syntactically close to Python, but adds its own constructs, such as:
 - parameter access like ``.$l`` and SI-suffixed numbers like ``100n``
 
 The highlighting packages extend each editor's Python support with these
-ORD-specific rules. The Sublime, PyCharm and VS Code packages are
+ORD-specific rules. The Sublime, JetBrains and VS Code packages are
 regex/scope based. ``editors/tree-sitter-ord/`` additionally provides a real
 tree-sitter parser for tree-sitter-based editors. The final colors always
 depend on your editor's active color scheme.
@@ -47,14 +47,14 @@ and choose ``Ord``.
 PyCharm / JetBrains IDEs
 ------------------------
 
-``editors/pycharm/`` provides a TextMate bundle that works in PyCharm and
+``editors/jetbrains/`` provides a TextMate bundle that works in PyCharm and
 other JetBrains IDEs with TextMate support (IntelliJ IDEA, CLion, WebStorm,
 GoLand, ...). It provides syntax highlighting for ORD without requiring a
 custom JetBrains plugin.
 
 1. Open the IDE settings (Linux/Windows: ``Ctrl+Alt+S``, macOS: ``Cmd+,``).
 2. Go to ``Editor > TextMate Bundles``.
-3. Click ``+`` and select the ``editors/pycharm/ord.tmbundle`` directory
+3. Click ``+`` and select the ``editors/jetbrains/ord.tmbundle`` directory
    (not its parent directory).
 4. Apply the changes and reopen the ``.ord`` file if needed.
 
@@ -121,7 +121,7 @@ Licensing
 ---------
 
 The editor packages are free software. ORDeC-authored files are licensed
-under Apache-2.0. The PyCharm and VS Code grammars are adapted from the
+under Apache-2.0. The JetBrains and VS Code grammars are adapted from the
 MIT-licensed MagicPython grammar, and the tree-sitter grammar is derived
 from the MIT-licensed tree-sitter-python grammar. Files containing such
 upstream material are licensed ``MIT AND Apache-2.0``.

@@ -132,7 +132,7 @@ SPDX-License-Identifier = "Apache-2.0"
 [[annotations]]
 # Editor-support files that cannot carry header comments:
 path = [
-    "editors/pycharm/ord.tmbundle/info.plist",
+    "editors/jetbrains/ord.tmbundle/info.plist",
     "editors/vscode/ord/language-configuration.json",
     "editors/vscode/ord/syntaxes/ord.tmLanguage.json",
     "editors/vscode/ord/ordec.ico",
@@ -154,7 +154,7 @@ SPDX-License-Identifier = "CC0-1.0"
 [[annotations]]
 # Editor grammars adapted from the MIT-licensed MagicPython TextMate grammar:
 path = [
-    "editors/pycharm/ord.tmbundle/Syntaxes/ord.tmLanguage.json",
+    "editors/jetbrains/ord.tmbundle/Syntaxes/ord.tmLanguage.json",
     "editors/vscode/ord/syntaxes/ord-injection.tmLanguage.json",
 ]
 SPDX-FileCopyrightText = [
