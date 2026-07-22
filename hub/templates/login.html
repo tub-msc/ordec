@@ -12,28 +12,42 @@
 {% block footer %}{% endblock footer %}
 
 {# Apply the saved theme before first paint (shared 'ordecTheme' key, so the
-   choice carries into the ORDeC app), avoiding a light-to-dark flash. #}
+   choice carries into the ORDeC app), avoiding a light-to-dark flash.
+   JupyterHub's darkmode.js (loaded by super()) sets Bootstrap's data-bs-theme
+   from its own localStorage key or the OS preference, and Bootstrap's dark
+   theme sets color-scheme: dark, turning form controls dark even when the
+   ORDeC theme is light. Run after super() to force it to follow ordecTheme,
+   and keep jupyterhub-bs-theme in sync so darkmode.js's OS-preference
+   listener does not flip it back. #}
 {% block scripts %}
 {{ super() }}
 <script>
-  if (window.localStorage.getItem('ordecTheme') === 'dark') {
-    document.documentElement.classList.add('theme-dark');
-  }
+  (function () {
+    const dark = window.localStorage.getItem('ordecTheme') === 'dark';
+    document.documentElement.classList.toggle('theme-dark', dark);
+    document.documentElement.setAttribute('data-bs-theme', dark ? 'dark' : 'light');
+    window.localStorage.setItem('jupyterhub-bs-theme', dark ? 'dark' : 'light');
+  })();
 </script>
 {% endblock scripts %}
 
 {% block stylesheet %}
 {{ super() }}
 <style>
+  /* color-scheme must track the ORDeC theme, overriding Bootstrap's
+     [data-bs-theme=dark] { color-scheme: dark }, or the browser renders
+     inputs (incl. autofill) dark on the light theme. */
   :root {
     --ordec-bg: #fff; --ordec-fg: #333; --ordec-muted: #888;
     --ordec-border: #aaa; --ordec-card: #f5f5f5; --ordec-hover: #eee;
     --ordec-accent: #c00000;
+    color-scheme: light;
   }
   html.theme-dark {
     --ordec-bg: #1e1e1e; --ordec-fg: #ccc; --ordec-muted: #777;
     --ordec-border: #555; --ordec-card: #252525; --ordec-hover: #2a2a2a;
     --ordec-accent: #e04040;
+    color-scheme: dark;
   }
   body {
     font-family: "Helvetica", sans-serif;
@@ -139,7 +153,9 @@
     btn.addEventListener('click', function () {
       const nowDark = !root.classList.contains('theme-dark');
       root.classList.toggle('theme-dark', nowDark);
+      root.setAttribute('data-bs-theme', nowDark ? 'dark' : 'light');
       window.localStorage.setItem('ordecTheme', nowDark ? 'dark' : 'light');
+      window.localStorage.setItem('jupyterhub-bs-theme', nowDark ? 'dark' : 'light');
       paint(nowDark);
     });
   })();
