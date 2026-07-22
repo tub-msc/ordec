@@ -68,7 +68,7 @@ def schem_place(schem: Schematic, gap=None, port_pitch=2, port_margin=None):
         port_margin: Distance between ports and the instance bounding box.
             Defaults to gap (the port's tap label extends into this space).
     """
-    from .routing import adjust_outline_initial
+    from .auto_wire import adjust_outline_initial
     from .render import Renderer
 
     if gap is None:

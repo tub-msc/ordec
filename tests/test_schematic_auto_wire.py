@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Unit tests for the grid routing core (ordec.schematic.routing). Higher-level
+Unit tests for the grid routing core (ordec.schematic.auto_wire). Higher-level
 auto_wire behavior is covered through test_renderview.py.
 """
 
@@ -10,7 +10,7 @@ import numpy as np
 
 from ordec.core import *
 from ordec.core.schema import SchemInstanceSubcursor
-from ordec.schematic.routing import (
+from ordec.schematic.auto_wire import (
     RoutingPort, GridConn, place_cells_and_ports, draw_connections,
     _blocked_masks_by_node, _direction_bit,
     GRID_EMPTY, GRID_ROUTED, GRID_DIR, GRID_BLOCKED, GRID_PIN, GRID_PORT,

@@ -3,7 +3,6 @@
 
 from ordec.core import *
 from .mux2 import Mux2
-from ordec.schematic.routing import auto_wire
 import math
 
 
