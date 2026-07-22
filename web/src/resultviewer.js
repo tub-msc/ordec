@@ -1334,7 +1334,7 @@ export class ResultViewer {
         }
     }
 
-    updateViewList() {
+    updateViewList(freshViewlist = false) {
         if (this.courseMode) {
             // Fixed lesson() view, no selector; the navigator toolbar lives in
             // the header and the title stays "Course".
@@ -1391,12 +1391,23 @@ export class ResultViewer {
         if (this.viewSelected) {
             this.container.setTitle(this.viewSelected);
             this.resEmpty.style.display = 'none';
+        } else if (prevSelected && freshViewlist) {
+            // The previously selected view no longer exists in the fresh
+            // view list (e.g. its cell was renamed or removed in the
+            // sources): fully deselect so the stale render does not linger
+            // behind the "Select a view" placeholder. Only done for fresh
+            // viewlist messages: during viewer registration or a module
+            // build exception the list is stale or not yet loaded and the
+            // selection must be kept for a later restore.
+            this.restoreSelectedView = null;
+            this.container.setState({ view: null });
+            this._onViewDeselected();
         }
         this.viewListInitialized = true;
     }
 
-    updateViewListAndException() {
-        this.updateViewList();
+    updateViewListAndException(freshViewlist = false) {
+        this.updateViewList(freshViewlist);
         if (this.client.exception) {
             // In this case, the exception was generated during module evaluation:
             this.showRefreshOverlay(null);

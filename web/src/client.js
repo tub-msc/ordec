@@ -64,7 +64,10 @@ export class OrdecClient {
             msg['views'].forEach(view => {
                 this.views.set(view.name, view);
             });
-            this.resultViewers.forEach(rv => rv.updateViewListAndException());
+            // freshViewlist=true: a view selected in a viewer but absent
+            // from this authoritative list is really gone (deselect it),
+            // as opposed to the list merely being stale or not yet loaded.
+            this.resultViewers.forEach(rv => rv.updateViewListAndException(true));
             this.requestViews();
         } else if (msg['msg'] == 'exception') {
             this.exception = msg['exception'];

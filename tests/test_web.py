@@ -529,3 +529,56 @@ def test_progress_and_cancel(web):
     WebDriverWait(web.driver, 30).until(lambda d:
         rv_js("return rv.viewUpToDate;"))
     assert "slow result" in rv_js("return rv.testInfo().html;")
+
+
+@pytest.mark.web
+def test_view_removed_deselects(web):
+    """A viewer whose selected view disappears from a fresh viewlist (e.g.
+    its cell was renamed in the sources) is fully deselected: the stale
+    render must not linger behind the "Select a view" placeholder. A build
+    exception, in contrast, must keep the selection."""
+    from selenium.webdriver.support.wait import WebDriverWait
+
+    named_view_src = '''
+from ordec.core import *
+
+@generate_func
+def {name}():
+    return "{name} result"
+'''
+
+    web.resize_viewport()
+    web.navigate('app.html#example=blank')
+    web.wait_for_ready()
+
+    def rv_js(script):
+        return web.driver.execute_script(
+            "let rv = window.ordecClient.resultViewers[0];" + script)
+
+    def set_src(src):
+        web.driver.execute_script("""
+            window.ordecClient.src = arguments[0];
+            window.ordecClient.connect();
+        """, src)
+
+    set_src(named_view_src.format(name='before'))
+    web.wait_for_ready()
+    rv_js("rv._onViewSelected('before()');")
+    WebDriverWait(web.driver, 30).until(lambda d:
+        rv_js("return rv.viewUpToDate;"))
+    assert "before result" in rv_js("return rv.testInfo().html;")
+
+    # A module build exception keeps the (stale) view list and selection.
+    set_src("this is a syntax error(")
+    WebDriverWait(web.driver, 10).until(lambda d:
+        web.driver.execute_script("return window.ordecClient.exception;"))
+    assert rv_js("return rv.viewSelected;") == 'before()'
+
+    # "Rename" the view: the fresh viewlist no longer contains before().
+    set_src(named_view_src.format(name='after'))
+    web.wait_for_ready()
+    WebDriverWait(web.driver, 10).until(lambda d:
+        rv_js("return rv.viewSelected;") is None)
+    assert "before result" not in rv_js("return rv.testInfo().html;")
+    assert rv_js("return getComputedStyle(rv.resEmpty).display;") != 'none'
+    assert rv_js("return rv.restoreSelectedView;") is None
