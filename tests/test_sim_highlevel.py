@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
+import cmath
 import math
 from ordec.schematic import Netlister
 from ordec.core import R
@@ -99,14 +100,18 @@ def expected_pwl_value(t):
             return v0 + alpha * (v1 - v0)
     return points[-1][1]
 
+def float0(v):
+    """float(v), treating an unset (None) parameter as 0."""
+    return 0.0 if v is None else float(v)
+
 def expected_pulse_value(t, src):
-    initial_value = float(src.initial_value)
+    initial_value = float0(src.initial_value)
     pulsed_value = float(src.pulsed_value)
-    delay_time = float(src.delay_time)
-    rise_time = float(src.rise_time)
-    fall_time = float(src.fall_time)
-    pulse_width = float(src.pulse_width)
-    period = float(src.period)
+    delay_time = float0(src.delay_time)
+    rise_time = float0(src.rise_time)
+    fall_time = float0(src.fall_time)
+    pulse_width = float0(src.pulse_width)
+    period = float0(src.period)
 
     if t < delay_time:
         return initial_value
@@ -127,11 +132,11 @@ def expected_pulse_value(t, src):
     return initial_value
 
 def expected_sin_value(t, src):
-    offset = float(src.dc)
-    amplitude = float(src.ac)
+    offset = float0(src.dc)
+    amplitude = float(src.amplitude)
     frequency = float(src.freq)
-    delay = float(src.delay)
-    damping = float(src.damping)
+    delay = float0(src.delay)
+    damping = float0(src.damping)
 
     if t < delay:
         return offset
@@ -212,8 +217,31 @@ def test_sim_isintb_tran(sim_batch):
         assert res_i == pytest.approx(expected, abs=1e-8)
 
 
-def test_sim_sinerc_ac(sim_batch):
-    tb = lib_test.SineRC()
+def test_source_ac_spec_netlist():
+    """Sources netlist an AC stimulus only when ac_mag is set explicitly.
+
+    In an AC analysis the stimuli of all sources superpose, so sources without
+    ac_mag (including pulse sources, which used to inject an implicit AC spec)
+    must not emit an "ac" specification.
+    """
+    for tb_cls in [
+        lib_test.VpulseTb, lib_test.IpulseTb,
+        lib_test.VsinTb, lib_test.IsinTb,
+        lib_test.VpwlTb, lib_test.IpwlTb,
+    ]:
+        nl = Netlister(Directory())
+        nl.netlist_hier(tb_cls().schematic)
+        assert " ac " not in nl.out(), f"unexpected AC spec in {tb_cls.__name__}"
+
+    tb = lib_test.SineRL()
+    src = tb.schematic.vsrc.symbol.cell
+    nl = Netlister(Directory())
+    nl.netlist_hier(tb.schematic)
+    assert f" ac {src.ac_mag.compat_str()} {src.ac_phase.compat_str()} " in nl.out()
+
+
+def test_sim_acrc_ac(sim_batch):
+    tb = lib_test.AcRC()
     r = float(tb.schematic.res.symbol.cell.r)
     c = float(tb.schematic.cap.symbol.cell.c)
     h = tb.sim_ac_batch if sim_batch else tb.sim_ac_piped
@@ -223,10 +251,15 @@ def test_sim_sinerc_ac(sim_batch):
 
 def test_sim_sinerl_ac(sim_batch):
     tb = lib_test.SineRL()
+    src = tb.schematic.vsrc.symbol.cell
     r = float(tb.schematic.res.symbol.cell.r)
     l = float(tb.schematic.ind.symbol.cell.l)
+    stimulus = float(src.ac_mag) * cmath.exp(1j * math.radians(float(src.ac_phase)))
     h = tb.sim_ac_batch if sim_batch else tb.sim_ac_piped
-    expected = [1j * 2.0 * math.pi * f * l / (r + 1j * 2.0 * math.pi * f * l) for f in h.freq]
+    expected = [
+        stimulus * 1j * 2.0 * math.pi * f * l / (r + 1j * 2.0 * math.pi * f * l)
+        for f in h.freq
+    ]
     assert_simcolumn(h.out.voltage, expected, tol=0.02)
 
 

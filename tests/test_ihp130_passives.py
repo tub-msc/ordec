@@ -7,7 +7,7 @@ import pytest
 
 from ordec.core import *
 from ordec.core import ParameterError
-from ordec.lib import ihp130, Gnd, Vdc, Vsin
+from ordec.lib import ihp130, Gnd, Vdc
 from .lib.thinwrap import thin_wrapper_cell
 
 
@@ -113,7 +113,7 @@ def test_cmim_ac(cell, expected_c):
 
             s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
             s.i_vac = SchemInstance(
-                Vsin(ac=1, freq=freq).symbol.portmap(m=s.vss, p=s.vdd),
+                Vdc(ac_mag=1).symbol.portmap(m=s.vss, p=s.vdd),
                 pos=Vec2R(0, 5),
             )
             s.c = SchemInstance(

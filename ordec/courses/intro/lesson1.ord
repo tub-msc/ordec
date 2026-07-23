@@ -1,12 +1,12 @@
 from ordec.core import *
-from ordec.lib import Res, Cap, Gnd, Vsin
+from ordec.lib import Res, Cap, Gnd, Vdc
 
 cell Lowpass:
     viewgen schematic -> Schematic:
         net vss, vin, out
 
         Gnd gnd: .p -- vss; .pos=(0,0)
-        Vsin vsrc: .$ac=1; .$freq=1k; .m -- vss; .p -- vin; .pos=(0,6)
+        Vdc vsrc: .$ac_mag=1; .m -- vss; .p -- vin; .pos=(0,6)
 
         # TODO: Choose r and c for a 10 kHz corner frequency.
         Cap cap: .$c=1n; .m -- vss; .p -- out; .pos=(5,6)

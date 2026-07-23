@@ -20,7 +20,7 @@ class ResdivFlatTb(Cell):
         s.b = Net()
 
         sym_vdc = Vdc(dc=1).symbol
-        sym_vac = Vsin(ac=1, freq=1e6).symbol
+        sym_vac = Vdc(ac_mag=1).symbol
         sym_gnd = Gnd().symbol
         sym_res = Res(r=100).symbol
 
@@ -186,7 +186,7 @@ class ResdivHierTb(Cell):
             Vdc(dc=1).symbol.portmap(m=s.gnd, p=s.t_ac), pos=Vec2R(0, 0)
         )
         s.I2_ac = SchemInstance(
-            Vsin(ac=1, freq=1e6).symbol.portmap(m=s.t_ac, p=s.t), pos=Vec2R(0, 6)
+            Vdc(ac_mag=1).symbol.portmap(m=s.t_ac, p=s.t), pos=Vec2R(0, 6)
         )
         s.I3 = SchemInstance(Gnd().symbol.portmap(p=s.gnd), pos=Vec2R(0, -6))
 
@@ -243,7 +243,7 @@ class NmosSourceFollowerTb(Cell):
             Vdc(dc=vin).symbol.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
         )
         s.I3_ac = SchemInstance(
-            Vsin(ac=1, freq=1e6).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
+            Vdc(ac_mag=1).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
         )
         s.I4 = SchemInstance(
             Idc(dc="5u").symbol.portmap(m=s.vss, p=s.o), pos=Vec2R(11, 6)
@@ -303,7 +303,7 @@ class InvTb(Cell):
             Vdc(dc=0).symbol.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
         )
         s.i_in_ac = SchemInstance(
-            Vsin(ac=1, freq=1e6).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
+            Vdc(ac_mag=1).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
         )
 
         s.outline = Rect4R(lx=0, ly=0, ux=20, uy=14)
@@ -430,7 +430,8 @@ class InvIhpTb(InvTb):
         )
         return R(5)
 
-class SineRC(Cell):
+class AcRC(Cell):
+    """RC lowpass driven by the idiomatic AC stimulus: a Vdc with ac_mag."""
     @generate
     def schematic(self):
         s = Schematic(cell=self)
@@ -441,9 +442,7 @@ class SineRC(Cell):
         res = Res(r=100).symbol
         cap = Cap(c="100n").symbol
 
-        vsrc = Vsin(
-            ac=1, freq=1,
-        ).symbol
+        vsrc = Vdc(ac_mag=1).symbol
 
         s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
         s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.inp), pos=Vec2R(0, 5))
@@ -479,8 +478,10 @@ class SineRL(Cell):
         ind = Ind(l="10m").symbol
         res = Res(r=100).symbol
 
+        # Vsin with ac_mag/ac_phase covers the sine source's AC parameters in
+        # the AC analysis tests (AcRC covers the Vdc-based AC stimulus).
         vsrc = Vsin(
-            ac=1, freq=1,
+            amplitude=1, freq=1, ac_mag=1, ac_phase=45,
         ).symbol
 
         s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
@@ -637,7 +638,7 @@ class VsinTb(SourceTb):
     def add_source_instance(self, s: Schematic):
         vsrc = Vsin(
             dc=0.2,
-            ac=0.8,
+            amplitude=0.8,
             freq="20k",
         ).symbol
         s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.out), pos=Vec2R(0, 5))
@@ -647,7 +648,7 @@ class IsinTb(SourceTb):
     def add_source_instance(self, s: Schematic):
         isrc = Isin(
             dc="0.5m",
-            ac="0.5m",
+            amplitude="0.5m",
             freq="20k",
         ).symbol
         # Source oriented so positive Isin values produce positive resistor current.

@@ -213,7 +213,7 @@ def test_write_csv_with_time_axis(tmp_path):
 def test_to_numpy_ac_complex():
     """Test to_numpy() with AC simulation (complex values), raw names."""
     import numpy as np
-    tb = lib_test.SineRC()
+    tb = lib_test.AcRC()
     h = tb.sim_ac_batch
     assert h.freq_field is not None
     arr = h.to_numpy(include=[h.out], translate_names=False)
@@ -280,7 +280,7 @@ def test_translate_names_axes(tmp_path):
     assert 'out.voltage' in arr.dtype.names
 
     # AC: frequency axis
-    h_ac = lib_test.SineRC().sim_ac_batch
+    h_ac = lib_test.AcRC().sim_ac_batch
     arr = h_ac.to_numpy(include=[h_ac.out])
     assert arr.dtype.names[0] == 'frequency'
 

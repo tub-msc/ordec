@@ -23,11 +23,13 @@ class RC(Cell):
                 rise_time="1n",
                 pulse_width=1,
                 period=2,
+                ac_mag=1, # AC stimulus for sim_ac
             ).symbol
         else:
             vcc = Vsin(
-                ac=1,
-                freq="1k"
+                amplitude=1,
+                freq="1k",
+                ac_mag=1, # AC stimulus for sim_ac
             ).symbol
 
 

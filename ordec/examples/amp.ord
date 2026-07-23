@@ -32,7 +32,7 @@ cell AmpTb:
 
         Vdc vdd_src: .pos=(0,6); .$dc='1.2'; .m--vss; .p--vdd
         Vdc vbias_src: .pos=(5,6); .$dc='0.5'; .m--vss; .p--vbias
-        Vsin vin_src: .pos=(10,6); .$ac='0.05'; .$dc='0.5'; .$freq=1M; .m--vss; .p--vin
+        Vsin vin_src: .pos=(10,6); .$amplitude='0.05'; .$dc='0.5'; .$freq=1M; .$ac_mag=1; .m--vss; .p--vin
         Cap cout: .pos=(22,3); .$c=1p; .p--vout; .m--vss
 
 

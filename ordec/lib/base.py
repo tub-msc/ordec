@@ -180,12 +180,62 @@ class NoConn(SimLeafCell):
 # Voltage & current sources
 # =========================
 
-@public
-class Vdc(SimLeafCell):
-    """DC voltage source"""
-    dc = Parameter(R) #: DC voltage in volt
+class AcStimulusMixin:
+    """
+    Mixin for independent sources that can carry a small-signal stimulus for
+    AC analysis (SPICE "ac" specification), orthogonal to the DC/transient
+    behavior of the source. In an AC analysis, the stimuli of all sources are
+    superposed; typically exactly one source has ac_mag set (usually to 1).
+
+    Subclasses must declare the ac_mag and ac_phase Parameters themselves,
+    after their other Parameters: declaring them in this mixin would place
+    them first in positional parameter order (inherited parameters precede
+    newly declared ones), changing the meaning of e.g. Vdc('1').
+    """
     def ngspice_current_pins(self):
         return {"branch": "p"}
+
+    @staticmethod
+    def ngspice_wave_args(args):
+        """
+        Format positional waveform arguments (e.g. for SIN/PULSE): trailing
+        unset (None) arguments are omitted so ngspice's defaults apply,
+        interior unset arguments are emitted as 0 placeholders.
+        """
+        args = list(args)
+        while args and args[-1] is None:
+            args.pop()
+        return " ".join((R(0) if a is None else a).compat_str() for a in args)
+
+    def ngspice_dc_spec(self):
+        """
+        The "dc ..." netlist fragment as list (for Netlister.add, which
+        flattens list arguments), empty if dc is unset (ngspice then defaults
+        to 0 or to the transient value at t=0). Requires a dc Parameter on
+        the subclass.
+        """
+        if self.dc is None:
+            return []
+        return [f"dc {self.dc.compat_str()}"]
+
+    def ngspice_ac_spec(self):
+        """
+        The "ac ..." netlist fragment as list (for Netlister.add, which
+        flattens list arguments), empty if ac_mag is unset.
+        """
+        if self.ac_mag is None:
+            return []
+        spec = f"ac {self.ac_mag.compat_str()}"
+        if self.ac_phase is not None:
+            spec += f" {self.ac_phase.compat_str()}"
+        return [spec]
+
+@public
+class Vdc(AcStimulusMixin, SimLeafCell):
+    """DC voltage source"""
+    dc = Parameter(R, optional=True) #: DC voltage in volt; 0 if unset.
+    ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
+    ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
     @generate
     def symbol(self) -> Symbol:
@@ -213,18 +263,23 @@ class Vdc(SimLeafCell):
 
     def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
-        netlister.add(netlister.name_obj(inst, prefix="v"), netlister.portmap(inst, pins) , f'dc {self.dc.compat_str()}')
+        netlister.add(
+            netlister.name_obj(inst, prefix="v"),
+            netlister.portmap(inst, pins),
+            self.ngspice_dc_spec(),
+            self.ngspice_ac_spec(),
+        )
 
     @classmethod
     def discoverable_instances(cls):
         return [cls('1')]
 
 @public
-class Idc(SimLeafCell):
+class Idc(AcStimulusMixin, SimLeafCell):
     """DC current source"""
-    dc = Parameter(R) #: DC current in ampere
-    def ngspice_current_pins(self):
-        return {"branch": "p"}
+    dc = Parameter(R, optional=True) #: DC current in ampere; 0 if unset.
+    ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
+    ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
     @generate
     def symbol(self) -> Symbol:
@@ -247,18 +302,23 @@ class Idc(SimLeafCell):
 
     def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
-        netlister.add(netlister.name_obj(inst, prefix="i"), netlister.portmap(inst, pins) , f'dc {self.dc.compat_str()}')
+        netlister.add(
+            netlister.name_obj(inst, prefix="i"),
+            netlister.portmap(inst, pins),
+            self.ngspice_dc_spec(),
+            self.ngspice_ac_spec(),
+        )
 
     @classmethod
     def discoverable_instances(cls):
         return [cls('1u')]
 
 @public
-class Vpwl(SimLeafCell):
+class Vpwl(AcStimulusMixin, SimLeafCell):
     """Piecewise linear voltage source (SPICE PWL)."""
     V = Parameter(tuple) #: Tuple of (time, voltage) tuples defining the waveform.
-    def ngspice_current_pins(self):
-        return {"branch": "p"}
+    ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
+    ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
     @generate
     def symbol(self) -> Symbol:
@@ -303,21 +363,22 @@ class Vpwl(SimLeafCell):
         netlister.add(
             netlister.name_obj(inst, prefix="v"),
             netlister.portmap(inst, pins),
+            self.ngspice_ac_spec(),
             f'PWL({pwl_args})'
         )
 
 @public
-class Vpulse(SimLeafCell):
+class Vpulse(AcStimulusMixin, SimLeafCell):
     """Pulse voltage source (SPICE PULSE)."""
-    def ngspice_current_pins(self):
-        return {"branch": "p"}
-    initial_value = Parameter(R, optional=True, default=R(0)) #: Voltage before pulse.
+    initial_value = Parameter(R, optional=True) #: Voltage before pulse; 0 if unset.
     pulsed_value = Parameter(R) #: Voltage during pulse.
-    delay_time = Parameter(R, optional=True, default=R(0)) #: Delay before first pulse.
-    rise_time = Parameter(R, optional=True, default=R(0)) #: Rise time.
-    fall_time = Parameter(R, optional=True, default=R(0)) #: Fall time.
-    pulse_width = Parameter(R, optional=True, default=R(0)) #: Pulse width.
-    period = Parameter(R, optional=True, default=R(0)) #: Repetition period.
+    delay_time = Parameter(R, optional=True) #: Delay before first pulse; 0 if unset.
+    rise_time = Parameter(R, optional=True) #: Rise time; ngspice default if unset.
+    fall_time = Parameter(R, optional=True) #: Fall time; ngspice default if unset.
+    pulse_width = Parameter(R, optional=True) #: Pulse width; ngspice default if unset.
+    period = Parameter(R, optional=True) #: Repetition period; ngspice default if unset.
+    ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
+    ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
     @generate
     def symbol(self) -> Symbol:
@@ -354,34 +415,29 @@ class Vpulse(SimLeafCell):
     def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
-        dc_spec = f"dc {self.initial_value.compat_str()}"
-        ac_amp = self.pulsed_value - self.initial_value
-        ac_spec = f"ac {ac_amp.compat_str()}"
-        pulse_values = (
-            f"PULSE({self.initial_value.compat_str()} {self.pulsed_value.compat_str()} "
-            f"{self.delay_time.compat_str()} "
-            f"{self.rise_time.compat_str()} "
-            f"{self.fall_time.compat_str()} "
-            f"{self.pulse_width.compat_str()} "
-            f"{self.period.compat_str()})"
-        )
+        tran_spec = "PULSE({})".format(self.ngspice_wave_args([
+            self.initial_value, self.pulsed_value, self.delay_time,
+            self.rise_time, self.fall_time, self.pulse_width, self.period,
+        ]))
 
         netlister.add(
             netlister.name_obj(inst, prefix="v"),
             netlister.portmap(inst, pins),
-            f"{dc_spec} {ac_spec} {pulse_values}"
+            [] if self.initial_value is None else [f"dc {self.initial_value.compat_str()}"],
+            self.ngspice_ac_spec(),
+            tran_spec
         )
 
 @public
-class Vsin(SimLeafCell):
-    """Sinusoidal voltage source (SPICE SIN). Netlists with both AC and transient specifications."""
-    def ngspice_current_pins(self):
-        return {"branch": "p"}
-    dc = Parameter(R, optional=True, default=R(0)) #: DC offset.
-    ac = Parameter(R) #: Peak amplitude.
+class Vsin(AcStimulusMixin, SimLeafCell):
+    """Sinusoidal voltage source (SPICE SIN)."""
+    dc = Parameter(R, optional=True) #: DC offset; 0 if unset.
+    amplitude = Parameter(R) #: Peak amplitude of the sinusoid (transient analysis only).
     freq = Parameter(R) #: Frequency in Hz.
-    delay = Parameter(R, optional=True, default=R(0)) #: Delay before start of sinusoid.
-    damping = Parameter(R, optional=True, default=R(0)) #: Exponential damping factor.
+    delay = Parameter(R, optional=True) #: Delay before start of sinusoid; 0 if unset.
+    damping = Parameter(R, optional=True) #: Exponential damping factor; 0 if unset.
+    ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
+    ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
     @generate
     def symbol(self) -> Symbol:
@@ -413,31 +469,24 @@ class Vsin(SimLeafCell):
     def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
-        # Required parameters - will raise KeyError if not present
-        ac = self.ac
-        freq = self.freq
-
-        # Optional parameters with defaults
-        dc = self.dc
-        delay = self.delay
-        damping = self.damping
-
-        tran_spec = f'SIN({dc.compat_str()} {ac.compat_str()} {freq.compat_str()} {delay.compat_str()} {damping.compat_str()})'
-        ac_spec = f'ac {ac.compat_str()}'
-        dc_spec = f'dc {dc.compat_str()}'
+        tran_spec = "SIN({})".format(self.ngspice_wave_args([
+            self.dc, self.amplitude, self.freq, self.delay, self.damping,
+        ]))
 
         netlister.add(
             netlister.name_obj(inst, prefix="v"),
             netlister.portmap(inst, pins),
-            f'{dc_spec} {ac_spec} {tran_spec}'
+            self.ngspice_dc_spec(),
+            self.ngspice_ac_spec(),
+            tran_spec
         )
 
 @public
-class Ipwl(SimLeafCell):
+class Ipwl(AcStimulusMixin, SimLeafCell):
     """Piecewise linear current source (SPICE PWL)."""
-    def ngspice_current_pins(self):
-        return {"branch": "p"}
     I = Parameter(tuple) #: Tuple of (time, current) tuples defining the waveform.
+    ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
+    ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
     @generate
     def symbol(self) -> Symbol:
@@ -489,21 +538,22 @@ class Ipwl(SimLeafCell):
         netlister.add(
             netlister.name_obj(inst, prefix="i"),
             netlister.portmap(inst, pins),
+            self.ngspice_ac_spec(),
             f'PWL({pwl_values})'
         )
 
 @public
-class Ipulse(SimLeafCell):
+class Ipulse(AcStimulusMixin, SimLeafCell):
     """Pulse current source (SPICE PULSE)."""
-    def ngspice_current_pins(self):
-        return {"branch": "p"}
-    initial_value = Parameter(R) #: Current before pulse.
+    initial_value = Parameter(R, optional=True) #: Current before pulse; 0 if unset.
     pulsed_value = Parameter(R) #: Current during pulse.
-    delay_time = Parameter(R, optional=True, default=R(0)) #: Delay before first pulse.
-    rise_time = Parameter(R, optional=True, default=R(0)) #: Rise time.
-    fall_time = Parameter(R, optional=True, default=R(0)) #: Fall time.
-    pulse_width = Parameter(R, optional=True, default=R(0)) #: Pulse width.
-    period = Parameter(R, optional=True, default=R(0)) #: Repetition period.
+    delay_time = Parameter(R, optional=True) #: Delay before first pulse; 0 if unset.
+    rise_time = Parameter(R, optional=True) #: Rise time; ngspice default if unset.
+    fall_time = Parameter(R, optional=True) #: Fall time; ngspice default if unset.
+    pulse_width = Parameter(R, optional=True) #: Pulse width; ngspice default if unset.
+    period = Parameter(R, optional=True) #: Repetition period; ngspice default if unset.
+    ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
+    ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
     @generate
     def symbol(self) -> Symbol:
@@ -548,34 +598,29 @@ class Ipulse(SimLeafCell):
     def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
-        dc_spec = f"dc {self.initial_value.compat_str()}"
-        ac_amp = self.pulsed_value - self.initial_value
-        ac_spec = f"ac {ac_amp.compat_str()}"
-        pulse_values = (
-            f"PULSE({self.initial_value.compat_str()} {self.pulsed_value.compat_str()} "
-            f"{self.delay_time.compat_str()} "
-            f"{self.rise_time.compat_str()} "
-            f"{self.fall_time.compat_str()} "
-            f"{self.pulse_width.compat_str()} "
-            f"{self.period.compat_str()})"
-        )
+        tran_spec = "PULSE({})".format(self.ngspice_wave_args([
+            self.initial_value, self.pulsed_value, self.delay_time,
+            self.rise_time, self.fall_time, self.pulse_width, self.period,
+        ]))
 
         netlister.add(
             netlister.name_obj(inst, prefix="i"),
             netlister.portmap(inst, pins),
-            f"{dc_spec} {ac_spec} {pulse_values}"
+            [] if self.initial_value is None else [f"dc {self.initial_value.compat_str()}"],
+            self.ngspice_ac_spec(),
+            tran_spec
         )
 
 @public
-class Isin(SimLeafCell):
+class Isin(AcStimulusMixin, SimLeafCell):
     """Sinusoidal current source (SPICE SIN)."""
-    def ngspice_current_pins(self):
-        return {"branch": "p"}
-    dc = Parameter(R, optional=True, default=R(0)) #: DC offset.
-    ac = Parameter(R) #: Peak amplitude.
+    dc = Parameter(R, optional=True) #: DC offset; 0 if unset.
+    amplitude = Parameter(R) #: Peak amplitude of the sinusoid (transient analysis only).
     freq = Parameter(R) #: Frequency in Hz.
-    delay = Parameter(R, optional=True, default=R(0)) #: Delay before start of sinusoid.
-    damping = Parameter(R, optional=True, default=R(0)) #: Exponential damping factor.
+    delay = Parameter(R, optional=True) #: Delay before start of sinusoid; 0 if unset.
+    damping = Parameter(R, optional=True) #: Exponential damping factor; 0 if unset.
+    ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
+    ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
     @generate
     def symbol(self) -> Symbol:
@@ -617,22 +662,14 @@ class Isin(SimLeafCell):
     def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.m]
 
-        ac = self.ac
-        freq = self.freq
-
-        dc = self.dc
-        delay = self.delay
-        damping = self.damping
-
-        tran_spec = (
-            f"SIN({dc.compat_str()} {ac.compat_str()} "
-            f"{freq.compat_str()} {delay.compat_str()} {damping.compat_str()})"
-        )
-        ac_spec = f"ac {ac.compat_str()}"
-        dc_spec = f"dc {dc.compat_str()}"
+        tran_spec = "SIN({})".format(self.ngspice_wave_args([
+            self.dc, self.amplitude, self.freq, self.delay, self.damping,
+        ]))
 
         netlister.add(
             netlister.name_obj(inst, prefix="i"),
             netlister.portmap(inst, pins),
-            f"{dc_spec} {ac_spec} {tran_spec}"
+            self.ngspice_dc_spec(),
+            self.ngspice_ac_spec(),
+            tran_spec
         )
