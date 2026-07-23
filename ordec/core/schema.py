@@ -566,13 +566,9 @@ class SchemInstanceUnresolvedSubcursor(tuple):
     def __getitem__(self, name):
         return SchemInstanceUnresolvedSubcursor(self+(name,))
     
-    def __getattribute__(self, name):
+    def __getattr__(self, name):
         # Upgrade cursor on failed attribute access
-        try:
-            return super().__getattribute__(name)
-        except AttributeError:
-            upgraded_cursor = self._upgrade_cursor()
-            return getattr(upgraded_cursor, name)
+        return getattr(self._upgrade_cursor(), name)
 
     def _upgrade_cursor(self):
         """
