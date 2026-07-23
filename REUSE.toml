@@ -138,3 +138,10 @@ path = [
 ]
 SPDX-FileCopyrightText = "2026 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+    "support/editors/jetbrains/gradle/wrapper/gradle-wrapper.jar",
+]
+SPDX-FileCopyrightText = "Gradle Inc."
+SPDX-License-Identifier = "Apache-2.0"

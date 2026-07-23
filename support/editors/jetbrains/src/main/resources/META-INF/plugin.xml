@@ -1,0 +1,39 @@
+<!-- SPDX-FileCopyrightText: 2026 ORDeC contributors -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
+<idea-plugin>
+    <!-- Placeholder id, like the VS Code publisher: settle before the first
+         marketplace upload -->
+    <id>org.ordec.jetbrains</id>
+    <name>ORD</name>
+    <vendor>ORDeC contributors</vendor>
+    <description><![CDATA[
+        Support for the ORD hardware description language of
+        <a href="https://github.com/tub-msc/ordec">ORDeC</a>:
+        <code>.ord</code> files are parsed natively as a Python dialect.
+        Requires an IDE with Python support (PyCharm, or IntelliJ IDEA
+        with the Python plugin).
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.python</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <fileType
+            name="ORD"
+            implementationClass="org.ordec.intellij.OrdFileType"
+            fieldName="INSTANCE"
+            language="ORD"
+            extensions="ord"/>
+        <lang.parserDefinition
+            language="ORD"
+            implementationClass="org.ordec.intellij.OrdParserDefinition"/>
+        <lang.syntaxHighlighterFactory
+            language="ORD"
+            implementationClass="org.ordec.intellij.OrdSyntaxHighlighterFactory"/>
+    </extensions>
+    <extensions defaultExtensionNs="Pythonid">
+        <dialectsTokenSetContributor
+            implementation="org.ordec.intellij.OrdTokenSetContributor"/>
+    </extensions>
+</idea-plugin>
