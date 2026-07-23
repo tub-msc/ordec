@@ -200,9 +200,9 @@ SPDX-License-Identifier = "MIT"
 [[annotations]]
 # Gradle wrapper, committed for reproducible plugin builds:
 path = [
-    "support/editors/jetbrains/plugin/gradlew",
-    "support/editors/jetbrains/plugin/gradlew.bat",
-    "support/editors/jetbrains/plugin/gradle/wrapper/gradle-wrapper.jar",
+    "support/editors/jetbrains/gradlew",
+    "support/editors/jetbrains/gradlew.bat",
+    "support/editors/jetbrains/gradle/wrapper/gradle-wrapper.jar",
 ]
 SPDX-FileCopyrightText = "Gradle Inc."
 SPDX-License-Identifier = "Apache-2.0"

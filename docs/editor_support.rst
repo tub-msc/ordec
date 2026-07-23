@@ -1,8 +1,8 @@
 Editor support
 ==============
 
-The ``support/editors/`` directory of the ORDeC repository contains syntax
-highlighting packages for ``.ord`` files, so ORDeC designs can be edited in a
+The ``support/editors/`` directory of the ORDeC repository contains editor
+support packages for ``.ord`` files, so ORDeC designs can be edited in a
 regular IDE alongside the browser-based viewer.
 
 ORD is syntactically close to Python, but adds its own constructs, such as:
@@ -16,11 +16,11 @@ ORD is syntactically close to Python, but adds its own constructs, such as:
 - parameter access like ``.$l`` and SI-suffixed numbers like ``100n``
 
 The packages extend each editor's Python support with these ORD-specific
-rules. The Sublime and VS Code packages are regex/scope based. The
-JetBrains plugin parses ORD natively as a Python dialect where the IDE has
-Python support, and ``support/editors/tree-sitter-ord/`` provides a real
-parser for tree-sitter-based editors. The final colors always depend on
-your editor's active color scheme.
+rules. The Sublime and VS Code packages are regex/scope based, the
+JetBrains plugin parses ORD natively as a Python dialect, and
+``support/editors/tree-sitter-ord/`` provides a real parser for
+tree-sitter-based editors. The final colors always depend on your
+editor's active color scheme.
 
 Sublime Text
 ------------
@@ -54,13 +54,13 @@ the ORD constructs. It requires an IDE with Python support: PyCharm, or
 IntelliJ IDEA with the Python plugin. Building the plugin needs only a
 JDK (the committed Gradle wrapper provides everything else)::
 
-    cd support/editors/jetbrains/plugin
+    cd support/editors/jetbrains
     ./gradlew buildPlugin
 
 Install the archive from ``build/distributions/`` via
 ``Settings > Plugins > (gear icon) > Install Plugin from Disk``, restart,
 and open a ``.ord`` file to verify highlighting and the ORD file icon.
-See ``support/editors/jetbrains/plugin/README.md`` for details.
+See ``support/editors/jetbrains/README.md`` for details.
 
 VS Code
 -------
@@ -82,7 +82,8 @@ tree-sitter (Neovim, Emacs, Helix)
 ----------------------------------
 
 ``support/editors/tree-sitter-ord/`` provides a tree-sitter grammar for ORD — a real
-parser, in contrast to the regex-based packages above. tree-sitter powers
+parser, in contrast to the regex-based Sublime and VS Code packages.
+tree-sitter powers
 highlighting in Neovim, Emacs 29+, Helix and other tree-sitter-based
 editors.
 

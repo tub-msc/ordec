@@ -14,6 +14,6 @@ tree-sitter-ord/*.dll
 tree-sitter-ord/*.dylib
 
 # JetBrains plugin build outputs
-jetbrains/plugin/build/
-jetbrains/plugin/.gradle/
-jetbrains/plugin/.intellijPlatform/
+jetbrains/build/
+jetbrains/.gradle/
+jetbrains/.intellijPlatform/

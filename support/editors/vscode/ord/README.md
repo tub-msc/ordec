@@ -166,7 +166,7 @@ light themes.
 - The shipped highlighting remains TextMate/scope based.
 - `ord.tmLanguage.json` is a thin ORDeC wrapper around `source.python`.
 - `ord-injection.tmLanguage.json` carries ORD-specific rules adapted from the
-  JetBrains/MagicPython-derived TextMate grammar in this repository.
+  MIT-licensed MagicPython TextMate grammar.
 - The viewer bridge launches `ordec --no-browser --module ...`, reads the signed
   local-mode URL from stdout, and opens it in your browser.
 - `ORD: Open Current View in ORDeC Viewer` derives view names like
