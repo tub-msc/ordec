@@ -153,8 +153,6 @@ class SchematicViewContext(ViewContext):
             self.group_stack[-1].add(ref)
 
     def postprocess(self):
-        from ..schematic.helpers import schem_place_ports
-
         # Auto-anchored top-level groups line up side by side, left to
         # right in declaration order, with routing space in between.
         origin = 0
@@ -163,15 +161,15 @@ class SchematicViewContext(ViewContext):
             if group.emit(self.solver, auto_anchor=(origin, 0)):
                 origin += group.arrangement().width + default_group_spacing
         self.solver.solve(allow_undefined=True)
-        
-        # Previously, we checked for undefined attrs here.
 
-        self.root.resolve_instances() # preserves nids
+        self.root.place_unplaced_instances()
+        self.root.resolve_instances() # (preserves nids)
+        self.root.place_ports() # Places ports whose pos is None.
 
-        # Previously, we checked for undefined attrs here.
-        
-        # Ports may legitimately still be undefined. Place them by align.
-        schem_place_ports(self.root)
+        # No position should be None anymore: unplaced instances and ports
+        # were placed above. auto_wire() and check() rely on this.
+        assert not self.solver.undefined_attrs()
+
         self.root.auto_wire()
         self.root.check(add_conn_points=True, add_terminal_taps=True)
 

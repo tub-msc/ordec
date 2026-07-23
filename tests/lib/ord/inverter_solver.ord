@@ -34,3 +34,32 @@ cell Inv:
 
         for instance in pu, pd:
             instance.g -- a
+
+cell InvUnplaced:
+    viewgen symbol -> Symbol:
+        inout vdd: .align=North
+        inout vss: .align=South
+        input a: .align=West
+        output y: .align=East
+
+    viewgen schematic -> Schematic:
+        port vdd: .align=South
+        port vss: .align=North
+        port a : .align=East
+        port y : .align=West
+
+        Nmos pd:
+            .s -- vss
+            .b -- vss
+            .d -- y
+        Pmos pu:
+            .s -- vdd
+            .b -- vdd
+            .d -- y
+
+        # pu is neither positioned nor constrained: postprocess places it
+        # right of the placed content (place_unplaced_instances).
+        ! pd.pos == (2, 2)
+
+        for instance in pu, pd:
+            instance.g -- a

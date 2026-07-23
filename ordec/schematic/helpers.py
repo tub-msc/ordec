@@ -138,21 +138,38 @@ def schem_place(schem: Schematic, gap=None, port_pitch=2, port_margin=None):
     schem.outline = outline
 
 
+def _instance_symbol(inst) -> Symbol:
+    """
+    Returns the Symbol of a SchemInstance or SchemInstanceUnresolved. For
+    unresolved instances, it is generated from the parameters recorded so
+    far (cheap due to view caching).
+    """
+    if isinstance(inst, SchemInstanceUnresolved):
+        return inst.resolve_symbol()
+    return inst.symbol
+
+
 def schem_content_bbox(node: Schematic) -> Rect4R | None:
     """
     Returns the bounding box of the placed schematic content: instance
-    outlines, port positions, tap points and wire vertices. Elements
-    whose position is still unresolved (Vec2LinearTerm) are ignored.
-    Returns None for a schematic without placed content.
+    outlines (including unresolved instances), port positions, tap points
+    and wire vertices. Elements whose position is still unresolved
+    (Vec2LinearTerm) are ignored. Returns None for a schematic without
+    placed content.
 
     Related: routing.adjust_outline_initial(), which assumes placed
     elements and adds space for port labels.
     """
     points = []
-    for inst in node.all(SchemInstance):
+    for inst in itertools.chain(node.all(SchemInstance),
+                                node.all(SchemInstanceUnresolved)):
         if isinstance(inst.pos, Vec2LinearTerm):
             continue
-        r = inst.loc_transform() * inst.symbol.outline
+        if isinstance(inst, SchemInstanceUnresolved):
+            symbol = inst.resolve_symbol()
+        else:
+            symbol = inst.symbol
+        r = inst.loc_transform() * symbol.outline
         points += [Vec2R(r.lx, r.ly), Vec2R(r.ux, r.uy)]
     points += [port.pos for port in node.all(SchemPort)
         if not isinstance(port.pos, Vec2LinearTerm)]
@@ -249,6 +266,51 @@ def schem_place_ports(node: Schematic, clearance: int = 2):
                 cross += step
             used.add(cross)
             port.pos = Vec2R(fixed, cross) if vertical else Vec2R(cross, fixed)
+
+def place_unplaced_instances(schem: Schematic, spacing=4):
+    """
+    Places all instances whose pos is still undefined in a single row
+    (pos.y = 0), left to right in declaration order, starting spacing
+    units right of the schematic outline (or of the placed content if no
+    outline is set yet). The outline is expanded to cover the placed
+    instances.
+
+    Intended to run before resolve_instances(), so SchemInstance and
+    SchemInstanceUnresolved are both handled; symbols of unresolved
+    instances are generated from the parameters recorded so far.
+
+    Args:
+        schem: Mutable schematic.
+        spacing: Horizontal gap between adjacent placed instances (and
+            between the outline edge and the first placed instance).
+    """
+    unplaced = [inst for inst in itertools.chain(
+            schem.all(SchemInstance), schem.all(SchemInstanceUnresolved))
+        if isinstance(inst.pos, Vec2LinearTerm)]
+    if not unplaced:
+        return
+    unplaced.sort(key=lambda inst: inst.nid)
+
+    outline = schem.outline
+    if outline is None:
+        outline = schem_content_bbox(schem)
+    x = outline.ux + spacing if outline is not None else R(0)
+
+    for inst in unplaced:
+        # Place the instance geometry's left edge at x, with pos.y = 0.
+        if isinstance(inst, SchemInstanceUnresolved):
+            symbol = inst.resolve_symbol()
+        else:
+            symbol = inst.symbol
+        r = TD4R(d4=inst.orientation) * symbol.outline
+        inst.pos = Vec2R(x - r.lx, 0)
+        placed = inst.pos.transl() * r
+        outline = placed if outline is None else outline \
+            .extend(Vec2R(placed.lx, placed.ly)) \
+            .extend(Vec2R(placed.ux, placed.uy))
+        x = placed.ux + spacing
+
+    schem.outline = outline
 
 
 def schem_add_pin_tap(inst: SchemInstance, pin: Pin):
@@ -651,12 +713,7 @@ def resolve_instances(schematic: Schematic):
     """
     for ui in schematic.all(SchemInstanceUnresolved):
         with schematic.subgraph.updater() as sgu:
-            param_dict = {}
-            for param in schematic.all(SchemInstanceUnresolvedParameter.ref_idx.query(ui)):
-                param_dict[param.name] = param.value
-                sgu.remove_nid(param.nid)
-
-            symbol = ui.resolver(**param_dict)
+            symbol = ui.resolve_symbol(remove_params_sgu=sgu)
 
             new_scheminstance_tuple = SchemInstance(
                 pos=ui.pos,
