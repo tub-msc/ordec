@@ -71,6 +71,38 @@ def test_place_ports_declaration_order_and_stacking():
     assert p1.pos == Vec2R(-2, 1)
 
 
+def test_ord_unplaced_instance_autoplace():
+    # pu has neither a position nor a constraint: postprocess places it
+    # in a row right of the placed content, with the outline expanded.
+    from .lib.ord.inverter_solver import InvUnplaced
+
+    sch = InvUnplaced().schematic
+    assert sch.pd.pos == Vec2R(2, 2)
+    # pd content ends at x=6, default spacing 4, Pmos outline starts at 0.
+    assert sch.pu.pos == Vec2R(10, 0)
+    assert not sch.has_errors()
+
+
+def test_place_unplaced_instances():
+    from ordec.schematic.helpers import place_unplaced_instances
+
+    sym = Nmos().symbol  # 4x4 outline
+    sch = Schematic()
+    sch.i0 = SchemInstance(symbol=sym, pos=Vec2R(0, 0))
+    sch.i1 = SchemInstance(symbol=sym)
+    sch.i2 = SchemInstance(symbol=sym, orientation=D4.R90)
+    sch.outline = Rect4R(0, 0, 6, 4)
+
+    place_unplaced_instances(sch)
+
+    # Row right of the outline edge (x=6): i1 occupies (10,0)-(14,4).
+    assert sch.i1.pos == Vec2R(10, 0)
+    # R90 turns the outline to (-4,0)-(0,4), so pos.x compensates.
+    assert sch.i2.pos == Vec2R(22, 0)
+    # Outline expanded to cover the placed instances.
+    assert sch.outline == Rect4R(0, 0, 22, 4)
+
+
 def test_ord_col_group_auto_anchor():
     from .lib.ord.inverter_stack import Inv
 

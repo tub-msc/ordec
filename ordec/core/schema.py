@@ -351,6 +351,14 @@ class Schematic(MixinRenderable, SubgraphRoot):
         from ..schematic import auto_wire
         auto_wire(self)
 
+    def place_ports(self):
+        from ..schematic.helpers import schem_place_ports
+        schem_place_ports(self)
+
+    def place_unplaced_instances(self):
+        from ..schematic.helpers import place_unplaced_instances
+        place_unplaced_instances(self)
+
     def check(self, add_conn_points=False, add_terminal_taps=False):
         from ..schematic import schem_check
         schem_check(self, add_conn_points=add_conn_points, add_terminal_taps=add_terminal_taps)
@@ -558,26 +566,21 @@ class SchemInstanceUnresolvedSubcursor(tuple):
     def __getitem__(self, name):
         return SchemInstanceUnresolvedSubcursor(self+(name,))
     
-    def __getattribute__(self, name):
+    def __getattr__(self, name):
         # Upgrade cursor on failed attribute access
-        try:
-            return super().__getattribute__(name)
-        except AttributeError:
-            upgraded_cursor = self._upgrade_cursor()
-            return getattr(upgraded_cursor, name)
+        return getattr(self._upgrade_cursor(), name)
 
     def _upgrade_cursor(self):
-        # Convert this unresolved cursor into a resolved SchemInstanceSubcursor.
-        # Recorded parameters are passed to the resolver so that geometry
-        # matches the symbol that resolve_instances() will produce.
+        """
+        Convert this unresolved cursor into a resolved SchemInstanceSubcursor.
+        Recorded parameters are passed to the resolver so that geometry
+        matches the symbol that resolve_instances() will produce.
+        """
         ui = self.instanceunresolved
-        params = {
-            p.name: p.value
-            for p in ui.root.all(SchemInstanceUnresolvedParameter.ref_idx.query(ui))
-        }
+        cursor = SchemInstanceSubcursor((ui, ui.resolve_symbol()))
+
         # Walking the path through a SchemInstanceSubcursor transforms
         # geometry values to schematic space, as on resolved instances.
-        cursor = SchemInstanceSubcursor((ui, ui.resolver(**params)))
         for step in self.instancepath:
             if isinstance(step, int):
                 cursor = cursor[step]
@@ -641,6 +644,15 @@ class SchemInstanceUnresolved(Node, MixinSourceLoc):
 
     def __getattr__(self, name):
         return SchemInstanceUnresolvedSubcursor((self, name))
+
+    def resolve_symbol(self, remove_params_sgu: 'SubgraphUpdater'=None) -> Symbol:
+        param_dict = {}
+        for param in self.root.all(SchemInstanceUnresolvedParameter.ref_idx.query(self)):
+            param_dict[param.name] = param.value
+            if remove_params_sgu:
+                remove_params_sgu.remove_nid(param.nid)
+
+        return self.resolver(**param_dict)
 
 @public
 class SchemInstanceUnresolvedConn(Node):

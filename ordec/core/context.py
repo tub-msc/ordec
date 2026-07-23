@@ -153,44 +153,19 @@ class SchematicViewContext(ViewContext):
             self.group_stack[-1].add(ref)
 
     def postprocess(self):
-        from .constraints import SolverError
-        from .schema import SchemPort
-        from .arrange import describe
-        from ..schematic.helpers import schem_place_ports
+        from .arrange import emit_toplevel_groups
 
-        def raise_undefined(undefined):
-            locations = sorted(
-                f"{describe(self.root.cursor_at(missing_attr_value.nid))}.{missing_attr_value.attr.name}"
-                for missing_attr_value in undefined
-            )
-            raise SolverError(
-                "Undefined constrainable attribute(s) found. Please add "
-                "constraints or assign them directly: " + ", ".join(locations))
-
-        # Auto-anchored top-level groups line up side by side, left to
-        # right in declaration order, with routing space in between.
-        origin = 0
-        default_group_spacing = 4
-        for group in self.arrangement_groups:
-            if group.emit(self.solver, auto_anchor=(origin, 0)):
-                origin += group.arrangement().width + default_group_spacing
+        emit_toplevel_groups(self.arrangement_groups, self.solver)
         self.solver.solve(allow_undefined=True)
-        # Positions that are still undefined here would crash
-        # resolve_instances() with a raw type error. Report them
-        # descriptively instead.
-        undefined = [missing_attr_value
-            for missing_attr_value in self.solver.undefined_attrs()
-            if not isinstance(self.root.cursor_at(missing_attr_value.nid),
-                SchemPort)]
-        if undefined:
-            raise_undefined(undefined)
-        # resolve_instances() preserves nids, carrying solved positions over.
-        self.root.resolve_instances()
-        # Ports may legitimately still be undefined. Place them by align.
-        schem_place_ports(self.root)
-        undefined = self.solver.undefined_attrs()
-        if undefined:
-            raise_undefined(undefined)
+
+        self.root.place_unplaced_instances()
+        self.root.resolve_instances() # (preserves nids)
+        self.root.place_ports() # Places ports whose pos is None.
+
+        # No position should be None anymore: unplaced instances and ports
+        # were placed above. auto_wire() and check() rely on this.
+        assert not self.solver.undefined_attrs()
+
         self.root.auto_wire()
         self.root.check(add_conn_points=True, add_terminal_taps=True)
 
