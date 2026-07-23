@@ -15,11 +15,12 @@ ORD is syntactically close to Python, but adds its own constructs, such as:
 - the connection operator ``--`` and the constrain operator ``!``
 - parameter access like ``.$l`` and SI-suffixed numbers like ``100n``
 
-The highlighting packages extend each editor's Python support with these
-ORD-specific rules. The Sublime, JetBrains and VS Code packages are
-regex/scope based. ``support/editors/tree-sitter-ord/`` additionally provides a real
-tree-sitter parser for tree-sitter-based editors. The final colors always
-depend on your editor's active color scheme.
+The packages extend each editor's Python support with these ORD-specific
+rules. The Sublime and VS Code packages are regex/scope based. The
+JetBrains plugin parses ORD natively as a Python dialect where the IDE has
+Python support, and ``support/editors/tree-sitter-ord/`` provides a real
+parser for tree-sitter-based editors. The final colors always depend on
+your editor's active color scheme.
 
 Sublime Text
 ------------
@@ -47,20 +48,19 @@ and choose ``Ord``.
 PyCharm / JetBrains IDEs
 ------------------------
 
-``support/editors/jetbrains/`` provides a TextMate bundle that works in PyCharm and
-other JetBrains IDEs with TextMate support (IntelliJ IDEA, CLion, WebStorm,
-GoLand, ...). It provides syntax highlighting for ORD without requiring a
-custom JetBrains plugin.
+``support/editors/jetbrains/`` provides an IDE plugin that parses ORD
+natively as a Python dialect, extending the IDE's own Python parser with
+the ORD constructs. It requires an IDE with Python support: PyCharm, or
+IntelliJ IDEA with the Python plugin. Building the plugin needs only a
+JDK (the committed Gradle wrapper provides everything else)::
 
-1. Open the IDE settings (Linux/Windows: ``Ctrl+Alt+S``, macOS: ``Cmd+,``).
-2. Go to ``Editor > TextMate Bundles``.
-3. Click ``+`` and select the ``support/editors/jetbrains/ord.tmbundle`` directory
-   (not its parent directory).
-4. Apply the changes and reopen the ``.ord`` file if needed.
+    cd support/editors/jetbrains/plugin
+    ./gradlew buildPlugin
 
-Open a ``.ord`` file to verify that TextMate-based highlighting is applied.
-If the file is not recognized automatically, use ``Associate with File
-Type`` if prompted, or check the TextMate bundle settings again.
+Install the archive from ``build/distributions/`` via
+``Settings > Plugins > (gear icon) > Install Plugin from Disk``, restart,
+and open a ``.ord`` file to verify highlighting and the ORD file icon.
+See ``support/editors/jetbrains/plugin/README.md`` for details.
 
 VS Code
 -------
@@ -209,12 +209,12 @@ Licensing
 ---------
 
 The editor packages are free software. ORDeC-authored files are licensed
-under Apache-2.0. The JetBrains and VS Code grammars are adapted from the
-MIT-licensed MagicPython grammar, and the tree-sitter grammar is derived
-from the MIT-licensed tree-sitter-python grammar. Files containing such
-upstream material are licensed ``MIT AND Apache-2.0``.
+under Apache-2.0. The VS Code grammar is adapted from the MIT-licensed
+MagicPython grammar, and the tree-sitter grammar is derived from the
+MIT-licensed tree-sitter-python grammar. Files containing such upstream
+material are licensed ``MIT AND Apache-2.0``.
 
-Each installable package — ``ord.tmbundle``, the VS Code extension and
-``tree-sitter-ord`` — includes a ``LICENSE.md`` with the complete license
-texts. The Sublime syntax uses Sublime Text's built-in Python syntax at
-runtime and does not redistribute it.
+The VS Code extension and ``tree-sitter-ord`` each include a ``LICENSE.md``
+with the complete license texts. The Sublime syntax and the JetBrains
+plugin build on each editor's own Python support at runtime and
+redistribute no third-party material.

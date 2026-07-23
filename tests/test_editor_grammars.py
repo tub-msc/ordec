@@ -161,36 +161,6 @@ def test_vscode_injection_grammar(parsed_ord_files):
         assert matches(rule, line), f'atom_expr positive not matched: {line!r}'
 
 
-def test_jetbrains_grammar(parsed_ord_files):
-    grammar_file = EDITORS / 'jetbrains/ord.tmbundle/Syntaxes/ord.tmLanguage.json'
-    repo = json.loads(grammar_file.read_text())['repository']
-    node_statement = textmate_regex(repo['node-statement']['begin'])
-    anonymous = textmate_regex(repo['anonymous-modifier']['match'])
-    keyword = {
-        'cell': textmate_regex(repo['class-declaration']['patterns'][1]['begin']),
-        'viewgen': textmate_regex(repo['viewgen-declaration']['begin']),
-        'path_net': textmate_regex(repo['path-net']['begin']),
-    }
-
-    def matches(rule, line):
-        line = line.lstrip()
-        if rule in ANON_RULES:
-            after_keyword = line.split(None, 1)[1]
-            return anonymous.match(line) and node_statement.match(after_keyword)
-        if rule in NODE_RULES + NOBODY_RULES:
-            return node_statement.match(line)
-        return keyword[KEYWORD_RULES[rule]].match(line)
-
-    # the node-statement rule is not line-anchored, so no line-based false
-    # positive sweep is meaningful for it
-    verify(parsed_ord_files, matches, [])
-    for negative in SOFT_KEYWORD_NEGATIVES:
-        for matcher in (node_statement, anonymous, *keyword.values()):
-            assert not matcher.match(negative)
-    for line, rule in ATOM_EXPR_POSITIVES:
-        assert matches(rule, line), f'atom_expr positive not matched: {line!r}'
-
-
 def test_sublime_syntax(parsed_ord_files):
     yaml = pytest.importorskip('yaml')
     syntax = yaml.safe_load((EDITORS / 'sublime/Ord.sublime-syntax').read_text())
