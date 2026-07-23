@@ -702,3 +702,17 @@ class Parallel(ConnectingGroup):
         # explicitly on a child pin, or None while the rail is still open.
         return Endpoint(net=adopted_net(self.rail_endpoints(side)),
             attach=lambda net: self.rail_nets.update({side: net}))
+
+
+def emit_toplevel_groups(groups: list[ArrangementGroup], solver: Solver):
+    """
+    Emits all top-level groups of a view into solver. Auto-anchored
+    groups line up side by side, left to right in declaration order,
+    with routing space in between. Called by SchematicViewContext during
+    postprocessing; call manually when using groups outside a viewgen.
+    """
+    origin = 0
+    default_group_spacing = 4
+    for group in groups:
+        if group.emit(solver, auto_anchor=(origin, 0)):
+            origin += group.arrangement().width + default_group_spacing

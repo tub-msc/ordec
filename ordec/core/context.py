@@ -153,13 +153,9 @@ class SchematicViewContext(ViewContext):
             self.group_stack[-1].add(ref)
 
     def postprocess(self):
-        # Auto-anchored top-level groups line up side by side, left to
-        # right in declaration order, with routing space in between.
-        origin = 0
-        default_group_spacing = 4
-        for group in self.arrangement_groups:
-            if group.emit(self.solver, auto_anchor=(origin, 0)):
-                origin += group.arrangement().width + default_group_spacing
+        from .arrange import emit_toplevel_groups
+
+        emit_toplevel_groups(self.arrangement_groups, self.solver)
         self.solver.solve(allow_undefined=True)
 
         self.root.place_unplaced_instances()
