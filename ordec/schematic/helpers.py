@@ -44,16 +44,16 @@ def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     node.outline = Rect4R(lx=0, ly=0, ux=width, uy=height)
 
 
-def schem_place(schem: Schematic, gap=None, port_pitch=2, port_margin=None):
+def schem_place(schem: Schematic, gap=None, port_margin=None):
     """
     Automatic placement for programmatically built schematics (e.g. netlist
-    importers). All existing pos values are overwritten.
+    importers). All existing instance pos values are overwritten; ports are
+    expected to be unplaced (pos None).
 
     SchemInstances are arranged in a simple row-based grid targeting a roughly
-    square overall shape. SchemPorts are placed on the edges of the resulting
-    bounding box based on their align attribute; align points into the
-    schematic, so East-aligned ports go on the left edge, North-aligned ports
-    on the bottom edge, and so on.
+    square overall shape. SchemPorts are then placed on the edges of the
+    resulting bounding box via schem_place_ports (align-based edges, lined up
+    with their connected pins).
 
     No SchemWires are drawn. The schematic is checked with
     add_terminal_taps=True, so connectivity is represented by SchemTapPoints;
@@ -64,7 +64,6 @@ def schem_place(schem: Schematic, gap=None, port_pitch=2, port_margin=None):
         schem: Mutable schematic to place.
         gap: Spacing between adjacent instances. Defaults to enough room for
             two facing tap point labels of the longest net name.
-        port_pitch: Spacing between adjacent ports on the same edge.
         port_margin: Distance between ports and the instance bounding box.
             Defaults to gap (the port's tap label extends into this space).
     """
@@ -107,24 +106,7 @@ def schem_place(schem: Schematic, gap=None, port_pitch=2, port_margin=None):
         box_h = max(box_h, y + h)
         x = x + w + gap
 
-    port_by_align = {East: [], West: [], North: [], South: []}
-    for port in schem.all(SchemPort):
-        port_by_align[port.align].append(port)
-
-    # Widen the box if a port row/column needs more room than the instances.
-    box_w = max(box_w, port_pitch * max(len(port_by_align[North]),
-                                        len(port_by_align[South])))
-    box_h = max(box_h, port_pitch * max(len(port_by_align[East]),
-                                        len(port_by_align[West])))
-
-    for i, port in enumerate(port_by_align[East]):
-        port.pos = Vec2R(-port_margin, 1 + port_pitch * i)
-    for i, port in enumerate(port_by_align[West]):
-        port.pos = Vec2R(box_w + port_margin, 1 + port_pitch * i)
-    for i, port in enumerate(port_by_align[North]):
-        port.pos = Vec2R(1 + port_pitch * i, -port_margin)
-    for i, port in enumerate(port_by_align[South]):
-        port.pos = Vec2R(1 + port_pitch * i, box_h + port_margin)
+    schem_place_ports(schem, clearance=port_margin)
 
     schem.check(add_terminal_taps=True)
     outline = adjust_outline_initial(schem)
