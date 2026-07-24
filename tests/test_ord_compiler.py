@@ -3,7 +3,6 @@
 
 from ordec.ord import ord_to_py
 import ast
-from lark.exceptions import VisitError
 import pytest
 
 def compare_asts(ord_code_string):
@@ -15,10 +14,10 @@ def compare_asts(ord_code_string):
 def compare_syntax_errors(ord_code_string):
     with pytest.raises(SyntaxError):
         ast.parse(ord_code_string)
-    with pytest.raises((SyntaxError, VisitError)) as error:
+    # SyntaxErrors raised by transformer callbacks must surface as plain
+    # SyntaxError, not wrapped in lark's VisitError (ord_to_py unwraps).
+    with pytest.raises(SyntaxError):
         ord_to_py(ord_code_string)
-    if isinstance(error.value, VisitError):
-        assert isinstance(error.value.orig_exc, SyntaxError)
 
 def test_class_empty():
     ord_string = "class A():\n   pass"
@@ -1355,10 +1354,9 @@ def test_fstring_concat_two_empty_fstrings_guard():
     ord_string = "x = f'' f''"
     compare_asts(ord_string)
 
-def test_viewgen_docstring_hoisted():
+def test_viewgen_docstring():
     # A leading docstring in a viewgen body must become the generated
-    # function's docstring (hoisted out of the `with` block), not an inert
-    # statement inside it.
+    # function's docstring, not an inert statement.
     ord_string = (
         "cell Foo:\n"
         "    viewgen drc -> DrcReport:\n"
@@ -1367,3 +1365,71 @@ def test_viewgen_docstring_hoisted():
     )
     fn = ord_to_py(ord_string).body[0].body[0]
     assert ast.get_docstring(fn) == "Run DRC on the layout."
+
+def test_viewgen_in_cell_is_method_form():
+    # A viewgen that is a direct statement of a cell body compiles to a
+    # method: `self` parameter plus the method-form decorator.
+    ord_string = (
+        "cell Foo:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    fn = ord_to_py(ord_string).body[0].body[0]
+    assert isinstance(fn, ast.FunctionDef)
+    assert [a.arg for a in fn.args.args] == ["self"]
+    assert ast.unparse(fn.decorator_list[-1]) == "__ord_context__.viewgen"
+
+def test_viewgen_toplevel_is_function_form():
+    # A viewgen outside of a cell compiles to a no-argument function with
+    # the function-form decorator.
+    ord_string = (
+        "viewgen top -> Report:\n"
+        "    .markdown('x')\n"
+    )
+    fn = ord_to_py(ord_string).body[0]
+    assert isinstance(fn, ast.FunctionDef)
+    assert fn.args.args == []
+    assert ast.unparse(fn.decorator_list[-1]) == "__ord_context__.viewgen_func"
+
+def test_viewgen_nested_in_cell_body_is_method_form():
+    # Like a def in a Python class body, a viewgen nested in a compound
+    # statement of the cell suite still binds in the cell namespace, so it
+    # compiles to method form (conditional method definition).
+    ord_string = (
+        "cell Foo:\n"
+        "    if True:\n"
+        "        viewgen symbol -> Symbol:\n"
+        "            input a\n"
+    )
+    fn = ord_to_py(ord_string).body[0].body[0].body[0]
+    assert isinstance(fn, ast.FunctionDef)
+    assert [a.arg for a in fn.args.args] == ["self"]
+    assert ast.unparse(fn.decorator_list[-1]) == "__ord_context__.viewgen"
+
+def test_viewgen_in_def_inside_cell_body_is_function_form():
+    # A def inside a cell body is its own binding scope: a viewgen there is
+    # a function-form viewgen, as outside of cells.
+    ord_string = (
+        "cell Foo:\n"
+        "    def helper(self):\n"
+        "        viewgen inner -> Report:\n"
+        "            .markdown('x')\n"
+        "        return inner\n"
+    )
+    fn = ord_to_py(ord_string).body[0].body[0].body[0]
+    assert isinstance(fn, ast.FunctionDef)
+    assert fn.args.args == []
+    assert ast.unparse(fn.decorator_list[-1]) == "__ord_context__.viewgen_func"
+
+def test_viewgen_decorated_keeps_own_decorator():
+    # User decorators must be prepended, not replace the viewgen's own
+    # decorator.
+    ord_string = (
+        "cell Foo:\n"
+        "    @mydec\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    fn = ord_to_py(ord_string).body[0].body[0]
+    assert ast.unparse(fn.decorator_list[0]) == "mydec"
+    assert ast.unparse(fn.decorator_list[-1]) == "__ord_context__.viewgen"

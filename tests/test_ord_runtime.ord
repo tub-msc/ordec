@@ -349,3 +349,115 @@ def test_anonymous_as_identifier():
     """'anonymous' can still be used as a variable name."""
     anonymous = 42
     assert anonymous == 42
+
+def test_toplevel_viewgen_report():
+    # Outside of a cell, a viewgen is a plain cached function (function
+    # form, like @generate_func).
+    viewgen toplevel_report -> Report:
+        """A report viewgen outside of a cell."""
+        .markdown("toplevel hello")
+
+    view = toplevel_report()
+    assert isinstance(view, Report)
+    assert "toplevel hello" in view.webdata()[1]["elements"][0]["html"]
+    # Cached: repeated calls return the identical view.
+    assert toplevel_report() is view
+    assert toplevel_report.__doc__ == "A report viewgen outside of a cell."
+
+def test_toplevel_viewgen_symbol():
+    viewgen toplevel_symbol -> Symbol:
+        input a
+
+    sym = toplevel_symbol()
+    assert isinstance(sym.a, Pin)
+    # No cell is associated with a cell-less view.
+    assert sym.cell is None
+
+def test_viewgen_decorated_auto_refresh():
+    # `@generate(auto_refresh=False)` on top of a viewgen reconfigures it
+    # (re-decoration takes over the wrapped function; see the drc/lvs
+    # viewgens in vco_pseudodiff.ord).
+    cell SlowViewCell:
+        @generate(auto_refresh=False)
+        viewgen symbol -> Symbol:
+            input a
+
+    assert isinstance(SlowViewCell().symbol.a, Pin)
+    assert SlowViewCell.symbol.auto_refresh == False
+
+def test_viewgen_early_return():
+    # A bare `return` exits the body early. Postprocessing still runs and
+    # the view is the context root regardless.
+    cell EarlyReturnCell:
+        viewgen symbol -> Symbol:
+            input a
+            if True:
+                return
+            input b
+
+    sym = EarlyReturnCell().symbol
+    assert isinstance(sym.a, Pin)
+    assert len(list(sym.all(Pin))) == 1
+
+def test_viewgen_return_value_rejected():
+    # Returning a value from a viewgen body is a misuse (the view is
+    # always the context root) and must fail loudly, like a value-
+    # returning __init__.
+    import pytest
+
+    cell BadReturnCell:
+        viewgen symbol -> Symbol:
+            input a
+            return 42
+
+    with pytest.raises(TypeError, match="instead of None"):
+        BadReturnCell().symbol
+
+def test_conditional_viewgen_in_cell():
+    # Conditional method definition, as in a Python class body: a viewgen
+    # nested in a compound statement of the cell suite binds in the cell
+    # namespace and is an ordinary view method.
+    for flavor in ("a", "b"):
+        cell CondCell:
+            if flavor == "a":
+                viewgen symbol -> Symbol:
+                    input a
+            else:
+                viewgen symbol -> Symbol:
+                    input b
+
+        sym = CondCell().symbol
+        assert isinstance(getattr(sym, flavor), Pin)
+
+def test_toplevel_viewgen_schematic_port_rejected():
+    # A cell-less schematic has no symbol, so declaring a port must fail
+    # with a clear error instead of an opaque AttributeError.
+    import pytest
+
+    viewgen bad_sch -> Schematic:
+        port vdd
+
+    with pytest.raises(TypeError, match="no symbol"):
+        bad_sch()
+
+def test_viewgen_in_function():
+    # A viewgen in a nested scope is a function-form viewgen; a closure
+    # can parametrize it (factory pattern).
+    def make_report_view(text):
+        viewgen inner -> Report:
+            .markdown(text)
+        return inner
+
+    view = make_report_view("factory hello")()
+    assert "factory hello" in view.webdata()[1]["elements"][0]["html"]
+
+def test_toplevel_viewgen_sim_rejected():
+    # Simulation views require a cell's schematic; module-level sim
+    # viewgens must fail with a clear error.
+    import pytest
+
+    viewgen toplevel_sim -> SimHierarchy:
+        pass
+
+    with pytest.raises(TypeError, match="outside of a cell"):
+        toplevel_sim()

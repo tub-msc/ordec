@@ -12,7 +12,7 @@ Complete worked examples to study alongside this howto:
 Basic structure
 ---------------
 
-A layout view generator is a ``viewgen layout -> Layout`` block in ORD (or an equivalent ``@generate`` method in Python) that builds and returns a ``Layout`` subgraph. The first thing to set is ``ref_layers``, the technology's layer set:
+A layout view generator is a ``viewgen layout -> Layout`` block in ORD (or an equivalent ``@generate`` method in Python that builds and returns a ``Layout`` subgraph). The first thing to set is ``ref_layers``, the technology's layer set:
 
 .. code-block:: text
 

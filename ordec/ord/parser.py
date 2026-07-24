@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from lark import Lark, UnexpectedToken, UnexpectedCharacters, UnexpectedInput, Token
+from lark.exceptions import VisitError
 from pathlib import Path
 import argparse
 from lark.indenter import PythonIndenter
@@ -173,7 +174,14 @@ def ord_to_py(ord_string: str) -> ast.Module:
     # Parse the string directly
     parsed_result = parse_with_errors(parser, ord_string)
     ord_transformer = OrdTransformer(source_text=ord_string + "\n")
-    transformed_ast = ord_transformer.transform(parsed_result)
+    try:
+        transformed_ast = ord_transformer.transform(parsed_result)
+    except VisitError as e:
+        # Surface SyntaxErrors raised by transformer callbacks (e.g. an
+        # invalid assignment target) directly, like parse errors.
+        if isinstance(e.orig_exc, SyntaxError):
+            raise e.orig_exc from None
+        raise
     ast.fix_missing_locations(transformed_ast)
     return transformed_ast
 

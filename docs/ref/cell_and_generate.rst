@@ -67,7 +67,7 @@ View generators
 
   .. code-block:: python
 
-    @generate
+    @generate_func
     def schematic():
         s = Schematic()
         s.my_net = Net()
@@ -78,12 +78,21 @@ View generators
 
   .. code-block:: python
 
-    @generate(auto_refresh=False)
+    @generate_func(auto_refresh=False)
     def schematic():
         s = Schematic()
         s.my_net = Net()
         # ...
         return s
+
+.. note::
+
+  ORD's ``viewgen`` statement compiles to these decorators (method form to
+  ``@generate``, function form to ``@generate_func``), with the view root
+  managed by a view context instead of built and returned by the body.
+  ``viewgen`` is the ORD-native spelling; ``@generate``/``@generate_func``
+  remain the spelling for plain-Python view generators, in ``.py`` as well as
+  in ``.ord`` files. Neither style is deprecated.
 
 .. _progress-and-cancellation:
 

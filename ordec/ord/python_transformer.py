@@ -1336,8 +1336,9 @@ class PythonTransformer(Transformer):
     def decorated(self, nodes):
         decorators = nodes[0]
         definition = nodes[1]
-        # classdef, funcdef, async funcdef
-        definition.decorator_list = decorators
+        # classdef, funcdef, async funcdef, viewgen. Prepend, since a viewgen
+        # already carries its own decorator.
+        definition.decorator_list = decorators + definition.decorator_list
         return definition
 
     def funcdef(self, nodes):

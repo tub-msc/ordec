@@ -46,8 +46,8 @@ class ViewContext:
     @classmethod
     def create_root(cls, cell, root_cls):
         """
-        Creates the root node for a view. Called through create_view_root()
-        during the setup phase of ORD viewgen methods.
+        Creates the root node for a view. Called through create_view_context()
+        during the setup phase of ORD viewgens.
 
         Args:
             cell: The Cell instance whose view is being generated.
@@ -199,6 +199,11 @@ class LayoutViewContext(ViewContext):
 class SimulationViewContext(ViewContext):
     @classmethod
     def create_root(cls, cell, root_cls):
+        if cell is None:
+            raise TypeError(
+                "Simulation views are built from a cell's schematic; a "
+                "viewgen outside of a cell cannot generate one."
+            )
         return root_cls.from_schematic(cell.schematic)
 
 

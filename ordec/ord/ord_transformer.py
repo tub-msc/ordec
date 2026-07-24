@@ -45,6 +45,13 @@ class OrdTransformer(PythonTransformer):
         suite = nodes[1]
         base = self.ast_core("Cell")
 
+        # Finalize viewgens to method form. Like a def in a Python class
+        # body, a viewgen anywhere lexically within the cell suite binds in
+        # the cell namespace - including inside if/for/try/... - so it is a
+        # method. Nested scopes (def/class) are their own binding context.
+        for stmt in suite:
+            self._finalize_viewgens(stmt)
+
         return ast.ClassDef(
             name=cell_name,
             bases=[base],
@@ -69,88 +76,65 @@ class OrdTransformer(PythonTransformer):
             return ast.Constant(value=number)
 
     def viewgen(self, nodes):
-        """Funcdef for cell (viewgen name -> view_target_expr:\n suite)."""
+        """
+        `viewgen name -> view_target_expr:\\n suite`
+
+        Emitted in module-level (function) form: a no-argument function whose
+        body is the suite verbatim, decorated with __ord_context__.
+        viewgen_func. The ViewContext setup/teardown around the body lives in
+        wrap_viewgen() (see ordec.ord.context), so no boilerplate is emitted
+        here. celldef() rewrites viewgens lexically within a cell body into
+        method form (_finalize_viewgens).
+        """
         func_name = nodes[0]
         view_target_expr = nodes[1]
         suite = nodes[2]
 
-        ord_ctx = self.ast_name("__ord_view_ctx__")
-        ord_ctx_store = self.ast_name("__ord_view_ctx__", ctx=ast.Store())
-
-        # type(self).<func_name>.view_target
-        view_target_ref = self.ast_attribute(
-            self.ast_attribute(
-                ast.Call(
-                    func=self.ast_name("type"),
-                    args=[self.ast_name("self")],
-                    keywords=[]
-                ),
-                func_name
-            ),
-            "view_target"
-        )
-
-        viewgen_call = ast.Call(
-            func=self.ast_ord_context("create_view_context"),
-            args=[self.ast_name("self"), view_target_ref],
-            keywords=[]
-        )
-
-        # __ord_view_ctx__ = __ord_context__.create_view_context(self, type(self).<func_name>.view_target)
-        ctx_assign = ast.Assign(
-            targets=[ord_ctx_store],
-            value=viewgen_call
-        )
-
-        # return __ord_view_ctx__.root
-        # The root is created by the context (normal views) or assigned within
-        # the body via `. = ...` (e.g. DRC/LVS reports); either way the context
-        # holds the final root.
-        return_value = ast.Return(self.ast_attribute(ord_ctx, "root"))
-
-        # Hoist a leading docstring out of the body so Python recognizes it as
-        # the generated function's docstring. Left in `suite` it would land
-        # inside the `with` block as an inert expression and never reach
-        # func.__doc__.
-        docstring_stmt = None
-        if (suite
-                and isinstance(suite[0], ast.Expr)
-                and isinstance(suite[0].value, ast.Constant)
-                and isinstance(suite[0].value.value, str)):
-            docstring_stmt = suite[0]
-            suite = suite[1:]
-        # A `with` body cannot be empty (e.g. a viewgen that is only a
-        # docstring), so keep it syntactically valid.
-        if not suite:
-            suite = [ast.Pass()]
-
-        with_context = ast.With(
-            items=[
-                ast.withitem(context_expr=ord_ctx),
-            ],
-            body=suite
-        )
-        # Wrap with statement with context in a decorated function call
-        # --> See Python implementation
-        func_body = [ctx_assign, with_context, return_value]
-        if docstring_stmt is not None:
-            func_body.insert(0, docstring_stmt)
         func_def = ast.FunctionDef(
             name=func_name,
             args=ast.arguments(
                 posonlyargs=[],
-                args=[ast.arg(arg="self")],
+                args=[],
                 kwonlyargs=[],
                 kw_defaults=[],
                 kwarg=None,
                 defaults=[]
             ),
-            body=func_body,
-            decorator_list=[self.ast_core("generate")],
+            body=suite,
+            decorator_list=[self.ast_ord_context("viewgen_func")],
             returns=view_target_expr,
             type_params=[]
         )
+        # Tag for celldef()'s _finalize_viewgens().
+        func_def._ord_viewgen = True
         return func_def
+
+    def _viewgen_to_method(self, func_def):
+        """
+        Rewrites a function-form viewgen into cell-method form: adds the
+        `self` parameter and swaps the decorator for the method-form one.
+        The viewgen decorator is the last in the list (`decorated` prepends
+        user decorators).
+        """
+        func_def.args.args.insert(0, ast.arg(arg="self"))
+        func_def.decorator_list[-1] = self.ast_ord_context("viewgen")
+        del func_def._ord_viewgen
+
+    def _finalize_viewgens(self, node):
+        """
+        Rewrites node to method form if it is a viewgen, and recurses into
+        compound statements to find lexically nested ones. Nested scopes
+        (def/class) are not visited: viewgens there bind in that scope and
+        stay in function form, as outside of cells.
+        """
+        if getattr(node, "_ord_viewgen", False):
+            self._viewgen_to_method(node)
+            return
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                ast.ClassDef)):
+            return
+        for child in ast.iter_child_nodes(node):
+            self._finalize_viewgens(child)
 
     def constrain_stmt(self, nodes):
         """ ! x >= 200 """

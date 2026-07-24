@@ -70,10 +70,8 @@ cell InvTb:
             ylabel="Vout (V)",
             height=300)
 
-@generate_func
-def inv_drc() -> DrcReport:
-    return ihp130.run_drc(inv.layout, variant="minimal")
+viewgen inv_drc -> DrcReport:
+    . = ihp130.run_drc(inv.layout, variant="minimal")
 
-@generate_func
-def inv_lvs() -> LvsReport:
-    return ihp130.run_lvs(inv.layout, inv.symbol)
+viewgen inv_lvs -> LvsReport:
+    . = ihp130.run_lvs(inv.layout, inv.symbol)

@@ -22,6 +22,12 @@ class ViewGenerator:
             return partial(cls, **kwargs)
 
     def __init__(self, func, auto_refresh: bool=True):
+        # Re-decorating a ViewGenerator reconfigures it: take over the
+        # wrapped function instead of nesting ViewGenerators. This makes
+        # `@generate(auto_refresh=False)` work on top of an ORD viewgen
+        # (see e.g. the drc/lvs viewgens in vco_pseudodiff.ord).
+        if isinstance(func, ViewGenerator):
+            func = func.func
         self.func = func
         self.auto_refresh = auto_refresh
         # Use docstring of func instead of docstring of ViewGenerator subclass
@@ -247,9 +253,31 @@ class MetaCell(ABCMeta):
 
         return class_params
 
+    @staticmethod
+    def _check_view_generator(cls_name, attr_name, value):
+        """
+        Rejects function-form view generators (@generate_func) as Cell class
+        attributes. A generate_func is not a descriptor, so as a class
+        attribute it would look like a method but silently evaluate its
+        cell-independent view; fail loudly instead.
+        """
+        if isinstance(value, generate_func):
+            raise TypeError(
+                f"{cls_name}.{attr_name}: function-form view generators "
+                "cannot be attached to Cell classes. Use @generate for "
+                "view generator methods; in ORD, define the viewgen "
+                "inside the cell body."
+            )
+
     def __new__(mcs, name, bases, attrs):
+        for k, v in attrs.items():
+            mcs._check_view_generator(name, k, v)
         attrs['_class_params'] = mcs._collect_class_params(attrs, bases)
         return super(MetaCell, mcs).__new__(mcs, name, bases, attrs)
+
+    def __setattr__(cls, name, value):
+        cls._check_view_generator(cls.__name__, name, value)
+        super().__setattr__(name, value)
 
     def __init__(cls, name, bases, attrs):
         cls.instances = {}

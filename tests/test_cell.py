@@ -228,3 +228,22 @@ def test_generate_func_caches_once():
     assert myview() == "value"
     assert myview() == "value"
     assert len(calls) == 1
+
+def test_generate_func_rejected_in_cell_class():
+    # A generate_func is not a descriptor: as a Cell class attribute it
+    # would look like a view method but silently evaluate its
+    # cell-independent view. MetaCell must reject it loudly, both at
+    # class creation and on later assignment.
+    @generate_func
+    def stray():
+        return "value"
+
+    with pytest.raises(TypeError, match="function-form view generators"):
+        class MyCell(Cell):
+            stray_view = stray
+
+    class OtherCell(Cell):
+        pass
+
+    with pytest.raises(TypeError, match="function-form view generators"):
+        OtherCell.stray_view = stray

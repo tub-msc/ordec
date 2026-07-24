@@ -122,13 +122,17 @@ To demonstrate how the ORD context works and how the conversion from ORD to Pyth
     functions such as ``add`` and ``root``.
 
 The expression after ``->`` becomes the return annotation of the generated
-method. It is usually a simple name such as ``Symbol`` or ``Schematic``, but it
-can be any ORD expression that evaluates to a view target. Like standard Python
-annotations, it is evaluated at class definition time. At the start of a view
-generator, the annotation value is passed through ``context.create_view_root``
-to create ``__ord_root__``, and the root view context is opened with
-``__ord_root__.view_context(__ord_root__)``.
-Every node statement then saves the created element as a local variable and, if
+function. It is usually a simple name such as ``Symbol`` or ``Schematic``, but
+it can be any ORD expression that evaluates to a view target. Like standard
+Python annotations, it is evaluated at definition time. The generated function
+body is the viewgen suite verbatim; all setup and teardown around it lives in
+the ``context.viewgen`` decorator: it creates a ViewContext from the return
+annotation, runs the body inside it, and returns the context's root (after
+postprocessing such as constraint solving and auto-wiring). Consequently, a
+viewgen body never returns the view itself: a bare ``return`` exits the body
+early, and returning a value raises ``TypeError`` (like a value-returning
+``__init__``).
+Every node statement saves the created element as a local variable and, if
 the statement has a body, opens a nested node context with ``node.ctx()``. The
 dotted access is converted into ``context.root()``. Accesses outside the context are still possible
 through the local variable. An access like this is visible in the ``for`` loop
@@ -139,64 +143,86 @@ of the example.
     import ordec.ord.context as context
 
     class Inv(Cell):
-        @generate
+        @context.viewgen
         def symbol(self) -> Symbol:
-            __ord_root__ = context.create_view_root(self, type(self).symbol.view_target)
-            with __ord_root__.view_context(__ord_root__):
-                vdd = context.add(('vdd',), Pin(pintype=PinType.Inout))
-                with vdd.ctx():
-                    context.root().align = North
-                vss = context.add(('vss',), Pin(pintype=PinType.Inout))
-                with vss.ctx():
-                    context.root().align = South
-                a = context.add(('a',), Pin(pintype=PinType.In))
-                with a.ctx():
-                    context.root().align = West
-                y = context.add(('y',), Pin(pintype=PinType.Out))
-                with y.ctx():
-                    context.root().align = East
-            return __ord_root__
+            vdd = context.add(('vdd',), Pin(pintype=PinType.Inout))
+            with vdd.ctx():
+                context.root().align = North
+            vss = context.add(('vss',), Pin(pintype=PinType.Inout))
+            with vss.ctx():
+                context.root().align = South
+            a = context.add(('a',), Pin(pintype=PinType.In))
+            with a.ctx():
+                context.root().align = West
+            y = context.add(('y',), Pin(pintype=PinType.Out))
+            with y.ctx():
+                context.root().align = East
 
-        @generate
+        @context.viewgen
         def schematic(self) -> Schematic:
-            __ord_root__ = context.create_view_root(self, type(self).schematic.view_target)
-            with __ord_root__.view_context(__ord_root__):
-                vss = context.add_port(('vss',))
-                with vss.ctx():
-                    context.root().pos = (2,1)
-                    context.root().align = South
-                vdd = context.add_port(('vdd',))
-                with vdd.ctx():
-                    context.root().pos = (2,13)
-                    context.root().align = North
-                y = context.add_port(('y',))
-                with y.ctx():
-                    context.root().pos = (9,7)
-                    context.root().align = West
-                a = context.add_port(('a',))
-                with a.ctx():
-                    context.root().pos = (1,7)
-                    context.root().align = East
+            vss = context.add_port(('vss',))
+            with vss.ctx():
+                context.root().pos = (2,1)
+                context.root().align = South
+            vdd = context.add_port(('vdd',))
+            with vdd.ctx():
+                context.root().pos = (2,13)
+                context.root().align = North
+            y = context.add_port(('y',))
+            with y.ctx():
+                context.root().pos = (9,7)
+                context.root().align = West
+            a = context.add_port(('a',))
+            with a.ctx():
+                context.root().pos = (1,7)
+                context.root().align = East
 
-                pd = context.add_element(('pd',), Nmos)
-                with pd.ctx():
-                    context.root().s -- vss
-                    context.root().b -- vss
-                    context.root().d -- y
-                    context.root().pos = (3,2)
-                    context.root().params.l = R('400n')
+            pd = context.add_element(('pd',), Nmos)
+            with pd.ctx():
+                context.root().s -- vss
+                context.root().b -- vss
+                context.root().d -- y
+                context.root().pos = (3,2)
+                context.root().params.l = R('400n')
 
-                pu = context.add_element(('pu',), Pmos)
-                with pu.ctx():
-                    context.root().s -- vdd
-                    context.root().b -- vdd
-                    context.root().d -- y
-                    context.root().pos = (3,8)
-                    context.root().params.l = R('400n')
+            pu = context.add_element(('pu',), Pmos)
+            with pu.ctx():
+                context.root().s -- vdd
+                context.root().b -- vdd
+                context.root().d -- y
+                context.root().pos = (3,8)
+                context.root().params.l = R('400n')
 
-                for instance in pu, pd:
-                    instance.g -- a
-            return __ord_root__
+            for instance in pu, pd:
+                instance.g -- a
+
+A ``viewgen`` does not have to live in a cell. Outside of a ``cell`` body — at
+module level, or inside an ordinary function — it compiles to a **no-argument
+function** decorated with ``context.viewgen_func``, the ORD counterpart of
+``@generate_func``: calling it evaluates the view once and caches the result.
+Module-level viewgens appear in the web UI view list like ``@generate_func``
+functions. Since there is no cell, ``self`` is not available in the body,
+view targets that require a cell (such as ``SimHierarchy``) cannot be
+generated, and a cell-less ``Schematic`` cannot declare ports (ports connect
+to the cell symbol's pins):
+
+.. code-block::
+
+    viewgen inv_drc -> DrcReport:
+        . = ihp130.run_drc(inv.layout, variant="minimal")
+
+``viewgen`` and the ``@generate``/``@generate_func`` decorators are two
+first-class spellings, not old and new: ``viewgen`` is ORD-native and
+populates a context-managed root, while the decorators remain the
+plain-Python style whose body builds and returns the root itself (usable in
+``.ord`` files too — see the ``netlist`` view in ``voltagedivider.ord``).
+
+Whether a ``viewgen`` becomes a method or a function follows Python's lexical
+binding rule for ``def``: lexically within a ``cell`` suite — including nested
+in ``if``, ``for`` or other compound statements, e.g. for conditional method
+definition — it binds in the cell namespace and becomes a view method.
+Within a nested scope (a ``def`` or ``class`` inside the cell body) or outside
+of cells, it is a function-form viewgen.
 
 
 Anonymous Node Statements

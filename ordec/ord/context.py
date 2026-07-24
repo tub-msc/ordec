@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # standard imports
+import functools
 import sys
 
 # ordec imports
@@ -44,7 +45,15 @@ def add_port(name_tuple):
     allowing connections before the port statement is reached.
     """
     ctx = _ctx_var.get()
-    pin = recursive_getitem(ctx.root.symbol, name_tuple)
+    symbol = ctx.root.symbol
+    if symbol is None:
+        name = '.'.join(str(part) for part in name_tuple)
+        raise TypeError(
+            f"Cannot create port {name!r}: this schematic has no symbol to "
+            "take pins from (the cell defines no symbol viewgen, or the "
+            "viewgen is outside of a cell)."
+        )
+    pin = recursive_getitem(symbol, name_tuple)
     subgraph_root = ctx.root
     while not isinstance(subgraph_root, SubgraphRoot):
         subgraph_root = subgraph_root.parent
@@ -91,6 +100,47 @@ def create_view_context(cell, root_cls):
         ) from e
     root = view_context_cls.create_root(cell, root_cls)
     return view_context_cls(root)
+
+
+def wrap_viewgen(func):
+    """
+    Adapts an ORD viewgen body into a plain view generator function.
+
+    Unlike plain-Python @generate/@generate_func functions, which build and
+    return their view root themselves, an ORD viewgen body populates a root
+    managed by a ViewContext. The returned wrapper bridges the two
+    conventions: it creates the ViewContext from the viewgen's return
+    annotation, runs the body inside it, and returns the context's root
+    (which postprocessing or a `. = ...` assignment may have replaced).
+    """
+    @functools.wraps(func)
+    def wrapper(*args):
+        cell = args[0] if args else None
+        ctx = create_view_context(cell, func.__annotations__.get("return"))
+        with ctx:
+            ret = func(*args)
+            # Same contract as __init__: a bare `return` (early exit) is
+            # fine, returning a value is a misuse - the view is always the
+            # context's root, never the body's return value.
+            if ret is not None:
+                raise TypeError(
+                    f"viewgen {func.__qualname__} returned "
+                    f"{type(ret).__name__} instead of None; the view root "
+                    "comes from the view context. Use `. = ...` to assign "
+                    "it, or a bare `return` for an early exit."
+                )
+        return ctx.root
+    return wrapper
+
+
+def viewgen(func):
+    """View generator for `viewgen` statements in a cell body (method form)."""
+    return generate(wrap_viewgen(func))
+
+
+def viewgen_func(func):
+    """View generator for `viewgen` statements outside a cell (function form)."""
+    return generate_func(wrap_viewgen(func))
 
 
 def set_root(value):
