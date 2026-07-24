@@ -2,15 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Keeps the editor highlighting grammars in support/editors/ aligned with the ORD
-grammar. Every .ord file in the repository is parsed with the authoritative
-Lark parser, each ORD construct line must be matched by the corresponding
-highlighting rule, and the node statement rules must not fire on other lines.
-The tree-sitter grammar is held to a stricter standard: its generated parser
-must accept every file and agree with the Lark parser on the location of all
-ORD constructs. The generated parser sources are gitignored, so these tests
-skip until `npm ci && npm run generate` has been run in
-support/editors/tree-sitter-ord/.
+Oracle tests keeping the editor grammars in support/editors/ aligned with the
+ORD grammar. Every repository .ord file is parsed with the authoritative Lark
+parser, each construct line must be matched by its highlighting rule, and the
+node statement rules must not fire on any other line. The tree-sitter parser
+is held to a stricter standard: error-free parses that agree with Lark on
+every construct line.
 """
 
 import ctypes
@@ -38,17 +35,14 @@ KEYWORD_RULES = {
     'net_stmt': 'path_net',
 }
 
-# Valid ORD statements that use soft keywords as plain names and must not be
-# highlighted as declarations or node statements
+# Soft keywords as plain names, must not match declarations or node statements
 SOFT_KEYWORD_NEGATIVES = [
     'cell = 5', 'viewgen = f()', 'net = row[i]', 'path = "/tmp"',
     'match point:', 'case Point(x=0):', 'return x',
 ]
 
-# Node statement kinds and path/net targets using the full atom_expr /
-# context_target forms of ord.lark (dotted, subscripted and called kinds,
-# dotted and subscripted path/net targets). No repository .ord file uses
-# these forms, so they are checked as synthetic positives.
+# Full atom_expr kinds and context_target forms from ord.lark (dotted,
+# subscripted, called) that no repository .ord file exercises yet
 ATOM_EXPR_POSITIVES = [
     ('lib.Inv i0:', 'node_stmt'),
     ('lib.Inv() i1:', 'node_stmt'),
@@ -72,11 +66,6 @@ def test_atom_expr_positives_are_valid_ord():
         tree = ord_parser.parse(wrap_in_viewgen(line, rule))
         rules = {subtree.data for subtree in tree.iter_subtrees()}
         assert rule in rules, (line, rule)
-
-
-def textmate_regex(pattern):
-    # translate the Oniguruma POSIX classes used by the grammars to Python re
-    return re.compile(pattern.replace('[_[:alpha:]]', '[A-Za-z_]'))
 
 
 @pytest.fixture(scope='module')
@@ -135,6 +124,12 @@ def verify(parsed_files, matches, statement_matchers):
 
 
 def test_vscode_injection_grammar(parsed_ord_files):
+    """Line-level oracle for the regexes of the VS Code injection grammar."""
+
+    def textmate_regex(pattern):
+        # translate the Oniguruma POSIX classes of the grammar to Python re
+        return re.compile(pattern.replace('[_[:alpha:]]', '[A-Za-z_]'))
+
     grammar_file = EDITORS / 'vscode/ord/syntaxes/ord-injection.tmLanguage.json'
     repo = json.loads(grammar_file.read_text())['repository']
     block = textmate_regex(repo['node-statement-block']['begin'])
@@ -156,17 +151,49 @@ def test_vscode_injection_grammar(parsed_ord_files):
     verify(parsed_ord_files, matches, [block.match, inline.match, bare.match])
     for negative in SOFT_KEYWORD_NEGATIVES:
         for matcher in (block, inline, bare, *keyword.values()):
+            # both indented and column-0, the node regexes anchor on leading
+            # whitespace
             assert not matcher.match('    ' + negative) and not matcher.match(negative)
     for line, rule in ATOM_EXPR_POSITIVES:
         assert matches(rule, line), f'atom_expr positive not matched: {line!r}'
 
 
+def test_vscode_scope_vocabulary():
+    """Every scope of the injection grammar starts with a standard TextMate
+    bucket, so any color theme styles it via prefix matching, and carries a
+    language tail for per-user overrides.
+    """
+    themed_buckets = ('comment', 'constant', 'entity', 'keyword', 'meta',
+                      'punctuation', 'storage', 'string', 'support', 'variable')
+
+    def scope_names(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == 'name':
+                    yield value
+                else:
+                    yield from scope_names(value)
+        elif isinstance(node, list):
+            for item in node:
+                yield from scope_names(item)
+
+    grammar_file = EDITORS / 'vscode/ord/syntaxes/ord-injection.tmLanguage.json'
+    scopes = list(scope_names(json.loads(grammar_file.read_text())))
+    assert scopes
+    for scope in scopes:
+        assert scope.startswith(themed_buckets), scope
+        assert scope.endswith(('.ord', '.python')), scope
+
+
 def test_sublime_syntax(parsed_ord_files):
+    """Line-level oracle for the regexes of the Sublime syntax."""
     yaml = pytest.importorskip('yaml')
     syntax = yaml.safe_load((EDITORS / 'sublime/Ord.sublime-syntax').read_text())
     variables = syntax['variables']
 
     def sublime_regex(pattern):
+        # expand {{variable}} references (the loop resolves nested ones),
+        # then POSIX classes to Python re
         while '{{' in pattern:
             for name, value in variables.items():
                 pattern = pattern.replace('{{%s}}' % name, value)
@@ -248,7 +275,9 @@ def tree_sitter_nodes(tree):
 
 
 def test_tree_sitter_grammar(parsed_ord_files, ord_tree_sitter_parser):
-    """The parser accepts every .ord file and finds the same constructs."""
+    """The parser accepts every .ord file and agrees with the Lark parser on
+    construct lines in both directions (no misses, no stray ORD nodes).
+    """
     ord_node_types = set(TREE_SITTER_RULES.values())
     for path, lines, constructs, _ in parsed_ord_files:
         tree = ord_tree_sitter_parser.parse(path.read_bytes())
@@ -269,6 +298,7 @@ def test_tree_sitter_grammar(parsed_ord_files, ord_tree_sitter_parser):
 
 
 def test_tree_sitter_soft_keywords(ord_tree_sitter_parser):
+    """Soft keywords as plain names parse as Python, not as ORD nodes."""
     ord_node_types = set(TREE_SITTER_RULES.values())
     for negative in SOFT_KEYWORD_NEGATIVES:
         if negative == 'case Point(x=0):':
@@ -280,9 +310,100 @@ def test_tree_sitter_soft_keywords(ord_tree_sitter_parser):
 
 
 def test_tree_sitter_atom_expr_positives(ord_tree_sitter_parser):
+    """The synthetic kind and target forms produce their ORD nodes."""
     for line, rule in ATOM_EXPR_POSITIVES:
         source = wrap_in_viewgen(line, rule)
         tree = ord_tree_sitter_parser.parse(source.encode())
         assert not tree.root_node.has_error, line
         types = {node.type for node in tree_sitter_nodes(tree)}
         assert TREE_SITTER_RULES[rule] in types, line
+
+
+def test_highlight_orderings_stay_in_sync():
+    """highlights.scm and highlights-helix.scm must contain the same rules,
+    they differ only in pattern order (Neovim resolves overlapping captures
+    last-pattern-wins, Helix first-pattern-wins).
+    """
+
+    def query_patterns(path):
+        # a top-level pattern runs from one top-level opening bracket to
+        # just before the next, which keeps trailing captures like
+        # `(comment) @comment` attached
+        text = '\n'.join(line for line in path.read_text().split('\n')
+                         if not line.lstrip().startswith(';'))
+        patterns, depth, start, in_string, escaped = [], 0, None, False, False
+        for position, char in enumerate(text):
+            if escaped:
+                escaped = False
+            elif in_string:
+                if char == '\\':
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+            elif char == '"':
+                in_string = True
+            elif char in '([':
+                if depth == 0:
+                    if start is not None:
+                        patterns.append(' '.join(text[start:position].split()))
+                    start = position
+                depth += 1
+            elif char in ')]':
+                depth -= 1
+        patterns.append(' '.join(text[start:].split()))
+        return sorted(patterns)
+
+    queries = EDITORS / 'tree-sitter-ord/queries'
+    assert query_patterns(queries / 'highlights.scm') == \
+        query_patterns(queries / 'highlights-helix.scm')
+
+
+def test_tree_sitter_highlight_precedence(ord_tree_sitter_parser):
+    """Every sample token wins its intended capture in both orderings, with
+    the last matching pattern winning for highlights.scm (Neovim) and the
+    first for highlights-helix.scm (Helix).
+    """
+    # one sample token per highlight decision and the capture it must win
+    sample = '''\
+cell Inv:
+    viewgen schematic -> Schematic:
+        net vdd
+        input a
+        Nmos(w=4u, l=400n) m1:
+            .d -- vdd
+        ! m1.pos == (0, 0)
+'''
+    winning_captures = [
+        ('cell', 'keyword'),
+        ('viewgen', 'keyword'),
+        ('Schematic', 'type'),
+        ('net', 'keyword'),
+        ('input', 'keyword'),
+        ('Nmos', 'type'),
+        ('m1', 'variable'),
+        ('--', 'operator'),
+        ('!', 'operator'),
+    ]
+    tree_sitter = pytest.importorskip('tree_sitter')
+    root = ord_tree_sitter_parser.parse(sample.encode()).root_node
+    assert not root.has_error
+    queries = EDITORS / 'tree-sitter-ord/queries'
+    for filename, prefer_last in (('highlights.scm', True),
+                                  ('highlights-helix.scm', False)):
+        query = tree_sitter.Query(ord_tree_sitter_parser.language,
+                                  (queries / filename).read_text())
+        winners = {}
+        for index, captures in tree_sitter.QueryCursor(query).matches(root):
+            for capture, nodes in captures.items():
+                for node in nodes:
+                    span = (node.start_byte, node.end_byte)
+                    if span not in winners \
+                            or (index > winners[span][0]) == prefer_last:
+                        winners[span] = (index, capture)
+        for text, expected in winning_captures:
+            spans = [span for span in winners
+                     if sample[span[0]:span[1]] == text]
+            assert spans, (filename, text)
+            for span in spans:
+                assert winners[span][1] == expected, \
+                    (filename, text, winners[span][1])
