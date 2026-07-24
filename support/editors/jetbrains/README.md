@@ -5,8 +5,7 @@
 
 An IntelliJ Platform plugin that parses ORD natively as a Python dialect,
 extending the Python plugin's parser with the ORD constructs from
-`ordec/ord/ord.lark` — the extension mechanism Cython support and the
-SnakeCharm plugin use. Everything that is plain Python inherits the IDE's
+`ordec/ord/ord.lark`. Everything that is plain Python inherits the IDE's
 Python intelligence, and `.ord` files get the ORDeC icon.
 
 Requires an IDE with Python support — PyCharm, or IntelliJ IDEA with the
@@ -15,7 +14,7 @@ Python plugin — on platform 2024.2 or newer.
 ## Building
 
 Requires only an installed JDK (17 or newer) to launch the committed Gradle
-wrapper; the wrapper pins the Gradle version and auto-provisions the JDK
+wrapper. The wrapper pins the Gradle version and auto-provisions the JDK
 the IntelliJ Platform needs, so builds do not depend on locally installed
 tool versions. The first build downloads the pinned Gradle distribution
 (checksum-verified) and the IDE SDK.

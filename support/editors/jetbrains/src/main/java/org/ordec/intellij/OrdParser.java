@@ -12,9 +12,9 @@ import com.jetbrains.python.psi.LanguageLevel;
 import org.jetbrains.annotations.NotNull;
 
 /**
- * Python parser with the ORD statement and expression delta, wired in the
- * way SnakeCharm wires the Snakemake dialect: a ParsingContext subclass
- * hands out the extended statement and expression parsers.
+ * Python parser with the ORD statement and expression delta: a
+ * ParsingContext subclass hands out the extended statement and expression
+ * parsers.
  */
 public final class OrdParser extends PyParser {
     @Override

@@ -51,9 +51,16 @@ grammar whenever `ord.lark` changes.
   external scanner (indentation, strings, comments), copied from the
   tree-sitter-python devDependency by `npm run generate` (gitignored)
 - [queries/highlights.scm](./queries/highlights.scm):
-  generic highlight query
+  highlight query in Neovim capture order (last match wins)
+- [queries/highlights-helix.scm](./queries/highlights-helix.scm):
+  the same highlight rules in Helix capture order (first match wins),
+  keep both files' rule content in sync
 - [queries/highlights-emacs.scm](./queries/highlights-emacs.scm):
   Emacs-specific highlight query (plain patterns only)
+- [queries/textobjects.scm](./queries/textobjects.scm):
+  Helix textobject query (structural selections for ORD constructs)
+- [queries/indents.scm](./queries/indents.scm):
+  Helix indent query for ORD block statements
 - [queries/tags.scm](./queries/tags.scm):
   tags query
 - [queries/folds.scm](./queries/folds.scm):

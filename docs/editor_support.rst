@@ -182,7 +182,6 @@ and auto-indent). Then install the grammar in your editor:
 - **Helix**: declare the language and the local grammar source in
   ``~/.config/helix/languages.toml``::
 
-      # optional, restricts the hx --grammar commands to the ORD grammar
       use-grammars = { only = ["ord"] }
 
       [[language]]
@@ -219,13 +218,13 @@ For working on the grammar itself, see
 Licensing
 ---------
 
-The editor packages are free software. ORDeC-authored files are licensed
-under Apache-2.0. The VS Code grammar is adapted from the MIT-licensed
-MagicPython grammar, and the tree-sitter grammar is derived from the
-MIT-licensed tree-sitter-python grammar. Files containing such upstream
-material are licensed ``MIT AND Apache-2.0``.
-
-The VS Code extension and ``tree-sitter-ord`` each include a ``LICENSE.md``
-with the complete license texts. The Sublime syntax and the JetBrains
-plugin build on each editor's own Python support at runtime and
-redistribute no third-party material.
+ORDeC-authored files in the editor packages are licensed under
+Apache-2.0. The VS Code grammar (adapted from MagicPython) and the
+tree-sitter grammar (derived from tree-sitter-python) contain
+MIT-licensed upstream material and are licensed ``MIT AND Apache-2.0``,
+with the complete license texts in each package's ``LICENSE.md``. The
+Sublime syntax and the JetBrains plugin build on each editor's own
+Python support at runtime and contain no third-party grammar material.
+The JetBrains package does commit the Gradle wrapper for reproducible
+builds, which is Apache-2.0 material from Gradle Inc., annotated in
+``REUSE.toml``.
