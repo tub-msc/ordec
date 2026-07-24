@@ -215,7 +215,7 @@ to the cell symbol's pins):
 first-class spellings, not old and new: ``viewgen`` is ORD-native and
 populates a context-managed root, while the decorators remain the
 plain-Python style whose body builds and returns the root itself (usable in
-``.ord`` files too — see the ``netlist`` view in ``voltagedivider.ord``).
+``.ord`` files too, since ORD is a superset of Python).
 
 Whether a ``viewgen`` becomes a method or a function follows Python's lexical
 binding rule for ``def``: lexically within a ``cell`` suite — including nested

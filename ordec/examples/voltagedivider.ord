@@ -2,6 +2,7 @@ from ordec.core import *
 
 # Library imports
 from ordec.lib import Vdc, Res, Gnd
+from ordec.sim import Simulator
 
 cell VoltageDivider:
     viewgen schematic -> Schematic:
@@ -16,7 +17,6 @@ cell VoltageDivider:
     viewgen sim_op -> Simulation:
         .simulate().op()
 
-    @generate
-    def netlist(self) -> str:
+    viewgen netlist -> Report:
         """Example of how to view SPICE netlist in web UI."""
-        return Simulator(SimHierarchy.from_schematic(self.schematic)).netlister.out()
+        .pre(Simulator(SimHierarchy.from_schematic(self.schematic)).netlister.out())
