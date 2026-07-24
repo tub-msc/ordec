@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+name: editors
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'support/editors/**'
+      - 'ordec/ord/**'
+      - '.github/workflows/editors.yaml'
+  pull_request:
+    paths:
+      - 'support/editors/**'
+      - 'ordec/ord/**'
+      - '.github/workflows/editors.yaml'
+jobs:
+  grammars:
+    name: grammar tests
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/tub-msc/ordec-base:sha-96bde10
+      options: --user root
+    steps:
+      - name: check out repository
+        uses: actions/checkout@v4
+      - name: Source venv
+        run: |
+          . /home/app/venv/bin/activate
+          echo PATH=$PATH >> $GITHUB_ENV
+          echo SETUPTOOLS_SCM_PRETEND_VERSION="0" >> $GITHUB_ENV
+      - name: Mark workspace as safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: install C compiler
+        run: apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev
+      - name: pip install
+        run: pip install . pytest pytest-cov pyyaml "tree-sitter>=0.25"
+      - name: generate tree-sitter parser
+        run: |
+          cd support/editors/tree-sitter-ord
+          npm ci --no-audit --no-fund
+          npm run generate
+      - name: tree-sitter corpus tests
+        run: |
+          cd support/editors/tree-sitter-ord
+          npx tree-sitter test
+      - name: grammar oracle tests
+        run: pytest support/editors/tests -v --no-cov -o cache_dir=/tmp/pytestcache
