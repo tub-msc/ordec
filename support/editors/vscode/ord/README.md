@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 
 VS Code extension assets for `.ord` files.
 
-This integration currently provides two layers:
+This integration provides two layers:
 
 - TextMate-based highlighting and language configuration
 - a local-viewer bridge for launching ORDeC on the active `.ord` file

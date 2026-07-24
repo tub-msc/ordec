@@ -94,11 +94,13 @@ before installing the grammar into an editor (this requires Node.js)::
     npm ci
     npm run generate
 
-The ``queries/`` directory holds the editor-neutral queries:
+The ``queries/`` directory holds the editor-neutral queries
 ``highlights.scm`` (highlighting), ``folds.scm`` (folding),
-``locals.scm`` (scopes), ``tags.scm`` (symbol tags) and
-``highlights-emacs.scm`` (an Emacs-specific variant). Then install the
-grammar in your editor:
+``locals.scm`` (scopes) and ``tags.scm`` (symbol tags), plus
+editor-specific variants: ``highlights-emacs.scm`` (Emacs),
+``highlights-helix.scm`` (the highlight rules in Helix capture order),
+``textobjects.scm`` and ``indents.scm`` (Helix structural selections
+and auto-indent). Then install the grammar in your editor:
 
 - **Emacs 29+** (built with tree-sitter support): compile the shared
   library — the file name matters, Emacs looks the ``ord`` language up
@@ -112,7 +114,7 @@ grammar in your editor:
   Verify with ``M-: (treesit-ready-p 'ord)``, which must return ``t``.
   ``queries/highlights-emacs.scm`` contains the ORD font-lock rules
   for ``treesit-font-lock-rules``. They are written to layer over
-  Python highlighting with ``:override t``; a minimal standalone mode
+  Python highlighting with ``:override t``. A minimal standalone mode
   that highlights just the ORD constructs::
 
       (add-to-list 'auto-mode-alist '("\\.ord\\'" . ord-ts-mode))
@@ -180,6 +182,9 @@ grammar in your editor:
 - **Helix**: declare the language and the local grammar source in
   ``~/.config/helix/languages.toml``::
 
+      # optional, restricts the hx --grammar commands to the ORD grammar
+      use-grammars = { only = ["ord"] }
+
       [[language]]
       name = "ord"
       scope = "source.ord"
@@ -191,17 +196,22 @@ grammar in your editor:
       name = "ord"
       source = { path = "/path/to/ordec/support/editors/tree-sitter-ord" }
 
-  Build the grammar and link the queries (still in
-  ``support/editors/tree-sitter-ord/``; Helix picks the query files it knows
-  by name and ignores the rest)::
+  Build the grammar and link the queries, still in
+  ``support/editors/tree-sitter-ord/``. Helix applies the first
+  matching highlight capture, the reverse of Neovim, so it gets its own
+  ordering of the highlight rules — ``highlights-helix.scm``, linked
+  under the name Helix expects — while the other query files are shared::
 
+      mkdir -p ~/.config/helix/runtime/grammars ~/.config/helix/runtime/queries/ord
       hx --grammar build
-      mkdir -p ~/.config/helix/runtime/queries
-      ln -s "$PWD/queries" ~/.config/helix/runtime/queries/ord
+      ln -s "$PWD/queries/highlights-helix.scm" \
+          ~/.config/helix/runtime/queries/ord/highlights.scm
+      ln -s "$PWD/queries/textobjects.scm" "$PWD/queries/indents.scm" \
+          "$PWD/queries/locals.scm" ~/.config/helix/runtime/queries/ord/
 
-  ``hx --health ord`` shows whether the grammar and queries were
-  found. After grammar changes, rerun ``npm run generate`` and
-  ``hx --grammar build``.
+  Afterwards ``hx --health ord`` should report the highlight,
+  textobject and indent queries as found. After grammar changes, rerun
+  ``npm run generate`` and ``hx --grammar build``.
 
 For working on the grammar itself, see
 ``support/editors/tree-sitter-ord/README.md``.
