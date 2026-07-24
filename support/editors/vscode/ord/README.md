@@ -24,8 +24,8 @@ installed `ordec` command.
 - VS Code commands for launching and stopping an ORDeC local viewer for the active file
 - VS Code command for opening the current ORD view at the cursor in ORDeC
 - settings for launching the ORDeC local viewer process
-- suggested per-scope color customizations that layer on top of any theme
-  (see `Highlight Colors` below)
+- distinct out-of-the-box coloring of ORD constructs on stock themes, no
+  settings required (see `Highlight Colors` below)
 
 See the [Editor support](https://ordec.readthedocs.io/en/latest/editor_support.html)
 page of the ORDeC documentation for the list of highlighted ORD constructs.
@@ -119,47 +119,43 @@ Notes for editable installs:
 
 ## Highlight Colors
 
-Standard color themes already color ORD code: the ORD scopes are suffixed
-variants of common TextMate scopes (`keyword.operator.connect.ord`,
-`constant.numeric.suffix.ord`, ...), so prefix matching applies your theme's
-generic colors — the connection operator gets normal operator coloring, SI
-suffixes get normal number coloring, and so on.
+No settings are required: the grammar assigns each ORD construct a
+standard TextMate scope that color themes already style. Themes match
+scopes by prefix, so this works with any theme, not just the built-in
+ones:
 
-To make ORD-specific constructs visually distinct without switching themes,
-add per-scope rules to your `settings.json`. They layer on top of whatever
-theme is active:
+| Construct | Scope | Styled like |
+|---|---|---|
+| `cell` | `storage.type.class.python` | `class` |
+| `viewgen` | `storage.type.function.ord` | `def` |
+| `net` / `path` | `storage.type.ord` | `def` / `class` |
+| net and path names (`vdd`, `ring.vx`) | `variable.other.ord`, `variable.other.member.ord` | variables |
+| `anonymous` | `storage.modifier.ord` | `async` |
+| node kinds (`Nmos`, `lib.Nmos`) | `entity.name.type.class.python` | class names |
+| `input` / `output` / `inout` / `port` | `support.type.direction.ord` | built-in types |
+| node targets (`m1` in `Nmos m1:`) | `variable.other.context-target.ord` | variables |
+| connection operator `--` | `keyword.control.connect.ord` | `if` / `return` |
+| constrain operator `!` | `keyword.control.constrain.ord` | `if` / `return` |
+| SI suffixes (`400n`, `1.5u`) | `keyword.other.unit.suffix.ord` | CSS units (`10px`) |
+| parameter access `.$name` | `variable.other.member.parameter.ord` | variables, `$` included |
+
+Every scope keeps an `.ord`-specific tail, so individual constructs can
+still be re-colored per user via `editor.tokenColorCustomizations` in
+`settings.json`. Such rules layer on top of whatever theme is active, for
+example:
 
 ```jsonc
 "editor.tokenColorCustomizations": {
   "textMateRules": [
-    // connection operator --
-    { "scope": "keyword.operator.connect.ord",
-      "settings": { "foreground": "#C586C0", "fontStyle": "bold" } },
-    // constrain operator !
-    { "scope": "keyword.operator.constrain.ord",
+    // give the constrain operator its own warning color
+    { "scope": "keyword.control.constrain.ord",
       "settings": { "foreground": "#ff6b6b" } },
-    // parameter access .$name
-    { "scope": ["keyword.operator.parameter.ord", "punctuation.accessor.dot.ord"],
-      "settings": { "foreground": "#ff9e71" } },
-    // SI number suffixes (400n, 1.5u)
-    { "scope": "constant.numeric.suffix.ord",
-      "settings": { "foreground": "#f86aff", "fontStyle": "bold" } },
-    // node statement kinds (Nmos n1:) and the anonymous modifier
-    { "scope": "storage.type.ord",
-      "settings": { "foreground": "#4EC9B0" } },
-    { "scope": "storage.modifier.ord",
-      "settings": { "foreground": "#C586C0", "fontStyle": "italic" } },
-    // .member accesses and node statement targets
-    { "scope": "variable.other.member.ord",
-      "settings": { "foreground": "#e2c08d" } },
-    { "scope": "variable.other.context-target.ord",
-      "settings": { "foreground": "#9CDCFE" } }
+    // emphasize SI number suffixes
+    { "scope": "keyword.other.unit.suffix.ord",
+      "settings": { "fontStyle": "bold" } }
   ]
 }
 ```
-
-The values above are dark-theme suggestions. Adjust the colors to taste for
-light themes.
 
 ## Notes
 

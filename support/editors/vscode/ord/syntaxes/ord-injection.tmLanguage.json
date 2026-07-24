@@ -1,7 +1,7 @@
 {
   "scopeName": "source.ord.injection",
   "injectionSelector": "L:source.ord -string -comment",
-  "comment": "ORD-specific rules injected with higher priority (L:) into the ORD base grammar, which delegates to Python. This mirrors the Sublime Text approach where ORD extends Python syntax.",
+  "comment": "ORD-specific rules injected with higher priority (L:) into the ORD base grammar, which delegates to Python. This mirrors the Sublime Text approach where ORD extends Python syntax. Scope names must stay within the standard TextMate buckets that stock themes style, with an .ord-specific tail for per-user overrides. The construct-to-scope mapping is documented in the extension README under 'Highlight Colors'.",
   "patterns": [
     {
       "include": "#cell-declaration"
@@ -59,7 +59,7 @@
       "begin": "\\s*(viewgen)\\s+([_[:alpha:]]\\w*)\\s*(?=->|:|$)",
       "beginCaptures": {
         "1": {
-          "name": "keyword.declaration.function.ord"
+          "name": "storage.type.function.ord"
         },
         "2": {
           "name": "entity.name.function.python"
@@ -110,7 +110,7 @@
           "name": "storage.modifier.ord"
         },
         "3": {
-          "name": "storage.type.ord"
+          "name": "support.type.direction.ord"
         },
         "4": {
           "name": "entity.name.type.class.python"
@@ -166,7 +166,7 @@
           "name": "storage.modifier.ord"
         },
         "3": {
-          "name": "storage.type.ord"
+          "name": "support.type.direction.ord"
         },
         "4": {
           "name": "entity.name.type.class.python"
@@ -219,7 +219,7 @@
       "begin": "\\b(path|net)(?=\\s+[_[:alpha:]]\\w*)",
       "beginCaptures": {
         "1": {
-          "name": "keyword.declaration.ord"
+          "name": "storage.type.ord"
         }
       },
       "end": "$",
@@ -254,7 +254,7 @@
       "match": "(?<!\\w)(?:(?:\\.[0-9](?:_?[0-9])*|[0-9](?:_?[0-9])*\\.[0-9](?:_?[0-9])*|[0-9](?:_?[0-9])*\\.)(?:[Ee][-+]?[0-9](?:_?[0-9])*)?|[0-9](?:_?[0-9])*[Ee][-+]?[0-9](?:_?[0-9])*)([afpnumkMGT])\\b",
       "captures": {
         "1": {
-          "name": "constant.numeric.suffix.ord"
+          "name": "keyword.other.unit.suffix.ord"
         }
       },
       "name": "constant.numeric.float.python"
@@ -264,35 +264,35 @@
       "match": "(?<![.\\w])(?:[1-9](?:_?[0-9])*|0+)([afpnumkMGT])\\b",
       "captures": {
         "1": {
-          "name": "constant.numeric.suffix.ord"
+          "name": "keyword.other.unit.suffix.ord"
         }
       },
       "name": "constant.numeric.dec.python"
     },
     "parameter-access": {
-      "comment": "Parameter access: .$param",
-      "match": "(\\.)(\\$)([_[:alpha:]]\\w*)",
+      "comment": "Parameter access: .$param  (the $ sigil is nested inside the variable scope so themes color $name as one variable)",
+      "match": "(\\.)((\\$)[_[:alpha:]]\\w*)",
       "captures": {
         "1": {
           "name": "punctuation.accessor.dot.ord"
         },
         "2": {
-          "name": "keyword.operator.parameter.ord"
+          "name": "variable.other.member.parameter.ord"
         },
         "3": {
-          "name": "variable.other.member.ord"
+          "name": "punctuation.definition.variable.ord"
         }
       }
     },
     "connect-operator": {
-      "comment": "Connection operator: --",
+      "comment": "Connection operator: --  (keyword.control, not keyword.operator: default themes leave plain operators uncolored)",
       "match": "--",
-      "name": "keyword.operator.connect.ord"
+      "name": "keyword.control.connect.ord"
     },
     "constrain-operator": {
       "comment": "Constrain operator: ! (but not !=)",
       "match": "!(?!=)",
-      "name": "keyword.operator.constrain.ord"
+      "name": "keyword.control.constrain.ord"
     },
     "ord-body": {
       "patterns": [
@@ -339,7 +339,7 @@
           "name": "storage.modifier.ord"
         },
         "3": {
-          "name": "storage.type.ord"
+          "name": "support.type.direction.ord"
         },
         "4": {
           "name": "entity.name.type.class.python"

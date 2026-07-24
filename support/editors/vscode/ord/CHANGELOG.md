@@ -23,8 +23,11 @@ viewer bridge.
 - ORD injection rules do not fire inside strings and comments.
 - Auto-indent triggers after node statement headers such as `Nmos m1:` or
   `Nmos(w=4u, l=400n) m1:`.
-- No bundled color theme: ORD scopes extend standard TextMate scope
-  prefixes, so any theme colors them. The README documents optional
-  `editor.tokenColorCustomizations` rules for ORD-specific accents.
+- No bundled color theme and no settings needed: ORD constructs carry
+  standard TextMate scopes that stock themes style (`viewgen` like `def`,
+  the `--` and `!` operators like flow keywords, SI suffixes like CSS
+  units). All scopes keep an `.ord` tail for optional per-user
+  `editor.tokenColorCustomizations` overrides. The README documents the
+  construct-to-scope mapping.
 - The extension does not include a language client. It can be reintroduced
   once `ordec-lsp` ships with ORDeC.
