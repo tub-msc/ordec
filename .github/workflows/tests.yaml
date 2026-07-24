@@ -25,6 +25,11 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: pip install
         run: pip install .[test]
+      - name: generate tree-sitter parser
+        run: |
+          cd support/editors/tree-sitter-ord
+          npm ci --no-audit --no-fund
+          npm run generate
       - name: run tests
         run: COVERAGE_FILE=/tmp/coverage pytest -v --cov-report=html:/tmp/htmlcov -o cache_dir=/tmp/pytestcache --junit-xml=/tmp/test-results.xml
       - name: display test results

@@ -1,0 +1,24 @@
+{
+  "grammars": [
+    {
+      "name": "ord",
+      "camelcase": "Ord",
+      "scope": "source.ord",
+      "path": ".",
+      "file-types": [
+        "ord"
+      ],
+      "highlights": "queries/highlights.scm",
+      "tags": "queries/tags.scm",
+      "injection-regex": "ord"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT AND Apache-2.0",
+    "description": "ORD grammar for tree-sitter",
+    "links": {
+      "repository": "https://github.com/tub-msc/ordec"
+    }
+  }
+}

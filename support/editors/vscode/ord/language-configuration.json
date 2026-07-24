@@ -1,0 +1,28 @@
+{
+    "comments": {
+        "lineComment": "#"
+    },
+    "brackets": [
+        ["{", "}"],
+        ["[", "]"],
+        ["(", ")"]
+    ],
+    "autoClosingPairs": [
+        ["{", "}"],
+        ["[", "]"],
+        ["(", ")"],
+        ["\"", "\""],
+        ["'", "'"]
+    ],
+    "surroundingPairs": [
+        ["{", "}"],
+        ["[", "]"],
+        ["(", ")"],
+        ["\"", "\""],
+        ["'", "'"]
+    ],
+    "indentationRules": {
+        "increaseIndentPattern": "^\\s*(?:(?:cell|viewgen|class|def|for|if|elif|else|while|try|except|finally|with|match|case)\\b.*|(?:anonymous\\s+)?[A-Za-z_]\\w*(?:\\([^()]*(?:\\([^()]*\\)[^()]*)*\\))?\\s+[A-Za-z_]\\w*(?:\\s*\\.\\s*[A-Za-z_]\\w*|\\s*\\[[^\\]]*\\])*\\s*):\\s*$",
+        "decreaseIndentPattern": "^\\s*(?:elif|else|except|finally|case)\\b"
+    }
+}

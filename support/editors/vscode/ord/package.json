@@ -1,0 +1,132 @@
+{
+  "name": "ord",
+  "displayName": "ORD",
+  "description": "Language support and ORDeC integration for the ORD language",
+  "version": "0.1.0",
+  "publisher": "tub-msc",
+  "icon": "ordec.png",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tub-msc/ordec.git",
+    "directory": "support/editors/vscode/ord"
+  },
+  "main": "./extension.js",
+  "engines": {
+    "vscode": "^1.106.1"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "ord",
+    "ordec",
+    "hdl",
+    "ic design",
+    "schematic"
+  ],
+  "activationEvents": [
+    "onLanguage:ord"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "ord",
+        "aliases": [
+          "ORD",
+          "ord"
+        ],
+        "extensions": [
+          ".ord"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "ord",
+        "scopeName": "source.ord",
+        "path": "./syntaxes/ord.tmLanguage.json"
+      },
+      {
+        "scopeName": "source.ord.injection",
+        "path": "./syntaxes/ord-injection.tmLanguage.json",
+        "injectTo": ["source.ord"]
+      }
+    ],
+    "commands": [
+      {
+        "command": "ord.openViewerForActiveFile",
+        "title": "ORD: Open Active File in ORDeC Viewer"
+      },
+      {
+        "command": "ord.openViewerForCurrentView",
+        "title": "ORD: Open Current View in ORDeC Viewer"
+      },
+      {
+        "command": "ord.stopViewer",
+        "title": "ORD: Stop ORDeC Viewer"
+      },
+      {
+        "command": "ord.showViewerOutput",
+        "title": "ORD: Show ORDeC Viewer Output"
+      }
+    ],
+    "configuration": {
+      "title": "ORD",
+      "properties": {
+        "ord.viewer.command": {
+          "type": "string",
+          "default": "ordec",
+          "markdownDescription": "Command used to launch the ORDeC local viewer. Supports `${workspaceFolder}`, `${extensionPath}`, `${file}`, `${fileDirname}`, `${fileBasename}`, and `${fileBasenameNoExtension}` placeholders."
+        },
+        "ord.viewer.args": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Extra arguments passed before the extension-managed ORDeC viewer flags. Supports `${workspaceFolder}`, `${extensionPath}`, `${file}`, `${fileDirname}`, `${fileBasename}`, and `${fileBasenameNoExtension}` placeholders."
+        },
+        "ord.viewer.cwd": {
+          "type": "string",
+          "default": "${workspaceFolder}",
+          "markdownDescription": "Working directory used when launching the ORDeC viewer. This usually needs to match `ord.viewer.moduleRoot`."
+        },
+        "ord.viewer.moduleRoot": {
+          "type": "string",
+          "default": "${workspaceFolder}",
+          "markdownDescription": "Root directory used to derive the Python import path for the active `.ord` file. The active file must be inside this directory."
+        },
+        "ord.viewer.env": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          },
+          "markdownDescription": "Extra environment variables for the ORDeC viewer process."
+        },
+        "ord.viewer.hostname": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "Hostname passed to the ORDeC viewer process."
+        },
+        "ord.viewer.port": {
+          "type": "integer",
+          "default": 8100,
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Port passed to the ORDeC viewer process."
+        },
+        "ord.viewer.urlAuthority": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional `host:port` authority that ORDeC should embed into the printed/opened viewer URL."
+        }
+      }
+    }
+  }
+}

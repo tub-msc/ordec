@@ -37,6 +37,7 @@ license-files = [
     "LICENSES/Apache-2.0.txt",
     "LICENSES/OFL-1.1.txt",
     "LICENSES/CC0-1.0.txt",
+    "LICENSES/MIT.txt",
 ]
 
 [project.urls]
@@ -49,6 +50,8 @@ test = [
     "pytest-cov>=4.0.0",
     "selenium>=4.8.3",
     "pillow>=11.1.0",
+    "pyyaml>=6.0",
+    "tree-sitter>=0.25",
 ]
 extra = [
     "black>=23.1.0",

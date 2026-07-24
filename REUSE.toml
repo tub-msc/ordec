@@ -6,6 +6,7 @@ path = [
     "docs/Makefile",
     "docs/make.bat",
     "web/package-lock.json",
+    "support/editors/tree-sitter-ord/package-lock.json",
     "tests/renderview_ref/*.svg",
 ]
 SPDX-FileCopyrightText = "NONE"
@@ -17,6 +18,7 @@ path = [
     ".gitignore",
     "docs/.gitignore",
     "web/.gitignore",
+    "support/editors/.gitignore",
     ".dockerignore",
     "MANIFEST.in",
     "docs/requirements.txt",
@@ -125,4 +127,82 @@ path = [
     "examples/interactive_rc_circuit/README.md",
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Editors
+# -------
+
+[[annotations]]
+# Files that cannot carry header comments:
+path = [
+    "support/editors/vscode/ord/language-configuration.json",
+    "support/editors/vscode/ord/syntaxes/ord.tmLanguage.json",
+    "support/editors/vscode/ord/ordec.png",
+    "support/editors/tree-sitter-ord/package.json",
+    "support/editors/tree-sitter-ord/tree-sitter.json",
+]
+SPDX-FileCopyrightText = "2026 ORDeC contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+# tree-sitter corpus test data:
+path = [
+    "support/editors/tree-sitter-ord/test/corpus/ord.txt",
+]
+SPDX-FileCopyrightText = "2026 ORDeC contributors"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+# Grammar adapted from the MIT-licensed MagicPython grammar:
+path = [
+    "support/editors/vscode/ord/syntaxes/ord-injection.tmLanguage.json",
+]
+SPDX-FileCopyrightText = [
+    "2015-present MagicStack Inc.",
+    "2026 ORDeC contributors",
+]
+SPDX-License-Identifier = "MIT AND Apache-2.0"
+
+[[annotations]]
+# VS Code scaffold derived from MIT-licensed Microsoft templates:
+path = [
+    "support/editors/vscode/ord/package.json",
+    "support/editors/vscode/ord/.vscode/launch.json",
+]
+SPDX-FileCopyrightText = [
+    "Microsoft Corporation",
+    "2026 ORDeC contributors",
+]
+SPDX-License-Identifier = "MIT AND Apache-2.0"
+
+[[annotations]]
+# Parser artifacts generated from grammar.js (gitignored):
+path = [
+    "support/editors/tree-sitter-ord/src/parser.c",
+    "support/editors/tree-sitter-ord/src/grammar.json",
+    "support/editors/tree-sitter-ord/src/node-types.json",
+]
+SPDX-FileCopyrightText = [
+    "2016 Max Brunsfeld",
+    "2026 ORDeC contributors",
+]
+SPDX-License-Identifier = "MIT AND Apache-2.0"
+
+[[annotations]]
+# Upstream tree-sitter files copied by `npm run generate` (gitignored):
+path = [
+    "support/editors/tree-sitter-ord/src/scanner.c",
+    "support/editors/tree-sitter-ord/src/tree_sitter/*.h",
+]
+SPDX-FileCopyrightText = "2016-2024 Max Brunsfeld"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+# Gradle wrapper, committed for reproducible plugin builds:
+path = [
+    "support/editors/jetbrains/gradlew",
+    "support/editors/jetbrains/gradlew.bat",
+    "support/editors/jetbrains/gradle/wrapper/gradle-wrapper.jar",
+]
+SPDX-FileCopyrightText = "Gradle Inc."
 SPDX-License-Identifier = "Apache-2.0"

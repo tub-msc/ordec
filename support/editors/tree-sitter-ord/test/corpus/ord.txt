@@ -1,0 +1,557 @@
+================================================================================
+ORD declarations and SI literals
+================================================================================
+
+cell Inv:
+    viewgen layout -> Layout:
+        port vdd:
+            .align = North
+        output y:
+            .align = East
+        Nmos n1:
+            .g -- y
+            .$l = 400n
+
+path a, b
+net out
+
+--------------------------------------------------------------------------------
+
+(module
+  (cell_definition
+    (identifier)
+    (block
+      (viewgen_definition
+        (identifier)
+        (type
+          (identifier))
+        (block
+          (node_statement
+            (identifier)
+            (context_target
+              (identifier))
+            (block
+              (expression_statement
+                (assignment
+                  (ord_local_attribute
+                    (identifier))
+                  (identifier)))))
+          (node_statement
+            (identifier)
+            (context_target
+              (identifier))
+            (block
+              (expression_statement
+                (assignment
+                  (ord_local_attribute
+                    (identifier))
+                  (identifier)))))
+          (node_statement
+            (identifier)
+            (context_target
+              (identifier))
+            (block
+              (ord_connection_statement
+                (ord_local_attribute
+                  (identifier))
+                (identifier))
+              (expression_statement
+                (assignment
+                  (ord_parameter_access
+                    (identifier))
+                  (integer)))))))))
+  (path_net_statement
+    (context_target
+      (identifier))
+    (context_target
+      (identifier)))
+  (path_net_statement
+    (context_target
+      (identifier))))
+
+================================================================================
+Call kinds, anonymous and bodyless node statements
+================================================================================
+
+cell Osc:
+    viewgen layout -> Layout:
+        Nmos(w=1u, l=130n) nmos:
+            ! .pos == (0, 0)
+        anonymous LayoutRect r:
+            .layer = metal1
+        nmos m3, m5, m7
+        anonymous LayoutRect pad
+
+--------------------------------------------------------------------------------
+
+(module
+  (cell_definition
+    (identifier)
+    (block
+      (viewgen_definition
+        (identifier)
+        (type
+          (identifier))
+        (block
+          (node_statement
+            (call
+              (identifier)
+              (argument_list
+                (keyword_argument
+                  (identifier)
+                  (integer))
+                (keyword_argument
+                  (identifier)
+                  (integer))))
+            (context_target
+              (identifier))
+            (block
+              (constrain_statement
+                (comparison_operator
+                  (ord_local_attribute
+                    (identifier))
+                  (tuple
+                    (integer)
+                    (integer))))))
+          (node_statement
+            (identifier)
+            (context_target
+              (identifier))
+            (block
+              (expression_statement
+                (assignment
+                  (ord_local_attribute
+                    (identifier))
+                  (identifier)))))
+          (node_statement_nobody
+            (identifier)
+            (context_target
+              (identifier))
+            (context_target
+              (identifier))
+            (context_target
+              (identifier)))
+          (node_statement_nobody
+            (identifier)
+            (context_target
+              (identifier))))))))
+
+================================================================================
+Inline node bodies, connections and parameter access
+================================================================================
+
+cell Rc:
+    viewgen schematic -> Schematic:
+        Gnd gnd: .p -- vss; .pos = (0, 0)
+        Res res: .$r = 1k; .m -- out; .p -- vin
+        for t in transistors:
+            t.$w = 1u
+
+--------------------------------------------------------------------------------
+
+(module
+  (cell_definition
+    (identifier)
+    (block
+      (viewgen_definition
+        (identifier)
+        (type
+          (identifier))
+        (block
+          (node_statement
+            (identifier)
+            (context_target
+              (identifier))
+            (block
+              (ord_connection_statement
+                (ord_local_attribute
+                  (identifier))
+                (identifier))
+              (expression_statement
+                (assignment
+                  (ord_local_attribute
+                    (identifier))
+                  (tuple
+                    (integer)
+                    (integer))))))
+          (node_statement
+            (identifier)
+            (context_target
+              (identifier))
+            (block
+              (expression_statement
+                (assignment
+                  (ord_parameter_access
+                    (identifier))
+                  (integer)))
+              (ord_connection_statement
+                (ord_local_attribute
+                  (identifier))
+                (identifier))
+              (ord_connection_statement
+                (ord_local_attribute
+                  (identifier))
+                (identifier))))
+          (for_statement
+            (identifier)
+            (identifier)
+            (block
+              (expression_statement
+                (assignment
+                  (ord_parameter_access
+                    (identifier)
+                    (identifier))
+                  (integer))))))))))
+
+================================================================================
+Context paths, subscripts and dotted path targets
+================================================================================
+
+viewgen symbol -> Symbol:
+    output bus[0].y:
+        .align = East
+    path ring.vdd, arr[1]
+
+--------------------------------------------------------------------------------
+
+(module
+  (viewgen_definition
+    (identifier)
+    (type
+      (identifier))
+    (block
+      (node_statement
+        (identifier)
+        (context_target
+          (identifier)
+          (integer)
+          (identifier))
+        (block
+          (expression_statement
+            (assignment
+              (ord_local_attribute
+                (identifier))
+              (identifier)))))
+      (path_net_statement
+        (context_target
+          (identifier)
+          (identifier))
+        (context_target
+          (identifier)
+          (integer))))))
+
+================================================================================
+Bare dot expressions
+================================================================================
+
+viewgen symbol -> Symbol:
+    . % SymbolPoly(vertices=[(0, 2), (1, 2)])
+    . = run_lvs(self.layout, self.symbol)
+
+--------------------------------------------------------------------------------
+
+(module
+  (viewgen_definition
+    (identifier)
+    (type
+      (identifier))
+    (block
+      (expression_statement
+        (binary_operator
+          (ord_local_attribute)
+          (call
+            (identifier)
+            (argument_list
+              (keyword_argument
+                (identifier)
+                (list
+                  (tuple
+                    (integer)
+                    (integer))
+                  (tuple
+                    (integer)
+                    (integer))))))))
+      (expression_statement
+        (assignment
+          (ord_local_attribute)
+          (call
+            (identifier)
+            (argument_list
+              (attribute
+                (identifier)
+                (identifier))
+              (attribute
+                (identifier)
+                (identifier)))))))))
+
+================================================================================
+Soft keywords as plain names
+================================================================================
+
+cell = 5
+viewgen = f()
+net = row[i]
+path = "/tmp"
+anonymous = 1
+type x = int
+match point:
+    case Point(x=0):
+        pass
+
+--------------------------------------------------------------------------------
+
+(module
+  (expression_statement
+    (assignment
+      (identifier)
+      (integer)))
+  (expression_statement
+    (assignment
+      (identifier)
+      (call
+        (identifier)
+        (argument_list))))
+  (expression_statement
+    (assignment
+      (identifier)
+      (subscript
+        (identifier)
+        (identifier))))
+  (expression_statement
+    (assignment
+      (identifier)
+      (string
+        (string_start)
+        (string_content)
+        (string_end))))
+  (expression_statement
+    (assignment
+      (identifier)
+      (integer)))
+  (type_alias_statement
+    (type
+      (identifier))
+    (type
+      (identifier)))
+  (match_statement
+    (identifier)
+    (block
+      (case_clause
+        (case_pattern
+          (class_pattern
+            (dotted_name
+              (identifier))
+            (case_pattern
+              (keyword_pattern
+                (identifier)
+                (integer)))))
+        (block
+          (pass_statement))))))
+
+================================================================================
+Imports and function definitions
+================================================================================
+
+import math
+from .helpers import foo, bar as baz
+
+def helper(x, y=1):
+    return x + y
+
+--------------------------------------------------------------------------------
+
+(module
+  (import_statement
+    (dotted_name
+      (identifier)))
+  (import_from_statement
+    (relative_import
+      (import_prefix)
+      (dotted_name
+        (identifier)))
+    (dotted_name
+      (identifier))
+    (aliased_import
+      (dotted_name
+        (identifier))
+      (identifier)))
+  (function_definition
+    (identifier)
+    (parameters
+      (identifier)
+      (default_parameter
+        (identifier)
+        (integer)))
+    (block
+      (return_statement
+        (binary_operator
+          (identifier)
+          (identifier))))))
+
+================================================================================
+Class definition and mixed Python-ORD code
+================================================================================
+
+class Buffer(Cell):
+    pass
+
+cell Wrapper:
+    def build(self):
+        x = 1
+        return x
+
+--------------------------------------------------------------------------------
+
+(module
+  (class_definition
+    (identifier)
+    (argument_list
+      (identifier))
+    (block
+      (pass_statement)))
+  (cell_definition
+    (identifier)
+    (block
+      (function_definition
+        (identifier)
+        (parameters
+          (identifier))
+        (block
+          (expression_statement
+            (assignment
+              (identifier)
+              (integer)))
+          (return_statement
+            (identifier)))))))
+
+================================================================================
+Decorated cell and viewgen definitions
+================================================================================
+
+@register
+cell Top:
+    Inv inv:
+        .g -- signal_in
+
+@cached
+viewgen layout -> Layout:
+    pass
+
+--------------------------------------------------------------------------------
+
+(module
+  (decorated_definition
+    (decorator
+      (identifier))
+    (cell_definition
+      (identifier)
+      (block
+        (node_statement
+          (identifier)
+          (context_target
+            (identifier))
+          (block
+            (ord_connection_statement
+              (ord_local_attribute
+                (identifier))
+              (identifier)))))))
+  (decorated_definition
+    (decorator
+      (identifier))
+    (viewgen_definition
+      (identifier)
+      (type
+        (identifier))
+      (block
+        (pass_statement)))))
+
+================================================================================
+Dotted, subscripted and called node kinds, dotted path/net targets
+================================================================================
+
+cell Top:
+    viewgen schematic -> Schematic:
+        lib.Inv i0:
+            pass
+        lib.Inv() i1:
+            pass
+        rows[0] r0:
+            pass
+        anonymous lib.Vdc(dc=1) v0:
+            pass
+        lib.Inv i2, i3
+        net vdd, ring.vx
+        path ctr[0], ctr[1].sub
+
+--------------------------------------------------------------------------------
+
+(module
+  (cell_definition
+    (identifier)
+    (block
+      (viewgen_definition
+        (identifier)
+        (type
+          (identifier))
+        (block
+          (node_statement
+            (attribute
+              (identifier)
+              (identifier))
+            (context_target
+              (identifier))
+            (block
+              (pass_statement)))
+          (node_statement
+            (call
+              (attribute
+                (identifier)
+                (identifier))
+              (argument_list))
+            (context_target
+              (identifier))
+            (block
+              (pass_statement)))
+          (node_statement
+            (subscript
+              (identifier)
+              (integer))
+            (context_target
+              (identifier))
+            (block
+              (pass_statement)))
+          (node_statement
+            (call
+              (attribute
+                (identifier)
+                (identifier))
+              (argument_list
+                (keyword_argument
+                  (identifier)
+                  (integer))))
+            (context_target
+              (identifier))
+            (block
+              (pass_statement)))
+          (node_statement_nobody
+            (attribute
+              (identifier)
+              (identifier))
+            (context_target
+              (identifier))
+            (context_target
+              (identifier)))
+          (path_net_statement
+            (context_target
+              (identifier))
+            (context_target
+              (identifier)
+              (identifier)))
+          (path_net_statement
+            (context_target
+              (identifier)
+              (integer))
+            (context_target
+              (identifier)
+              (integer)
+              (identifier))))))))

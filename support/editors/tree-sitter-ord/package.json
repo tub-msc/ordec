@@ -1,0 +1,15 @@
+{
+  "name": "tree-sitter-ord",
+  "version": "0.1.0",
+  "description": "ORD grammar for tree-sitter",
+  "repository": "github:tub-msc/ordec",
+  "license": "MIT AND Apache-2.0",
+  "devDependencies": {
+    "tree-sitter-cli": "^0.25.10",
+    "tree-sitter-python": "^0.25.0"
+  },
+  "scripts": {
+    "generate": "mkdir -p src && sed 's/tree_sitter_python_external_scanner_/tree_sitter_ord_external_scanner_/g' node_modules/tree-sitter-python/src/scanner.c > src/scanner.c && tree-sitter generate --abi 14",
+    "test": "tree-sitter test"
+  }
+}
