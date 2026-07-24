@@ -1,17 +1,6 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-import numpy as np
-import heapq
-import sys
-from collections import defaultdict
-from typing import Iterable, NamedTuple
-from dataclasses import dataclass
-
-from ..core import *
-from ..core.schema import SchemInstanceSubcursor
-from .render import Renderer
-
 """Routing constraints and heuristics used by this module.
 
 Constraints:
@@ -34,6 +23,20 @@ Heuristics:
   are rerouted in full (no shortcut), and rearrangements that strand a branch
   of the removed route are rejected.
 """
+
+import numpy as np
+import heapq
+import sys
+import logging
+from collections import defaultdict
+from typing import Iterable, NamedTuple
+from dataclasses import dataclass
+
+from ..core import *
+from ..core.schema import SchemInstanceSubcursor
+from .render import Renderer
+
+logger = logging.getLogger(__name__)
 
 SHORTCUT_ENABLED = True       # Enable branch-to-existing-path shortcut routing.
 MAX_RIPUP_CANDIDATES = 5      # Blocking routes to try for one-route rip-up.
@@ -153,9 +156,9 @@ def place_cells_and_ports(grid: np.ndarray, cells: Iterable[SchemInstance],
             sc = SchemInstanceSubcursor((inst, pin))
             pos = sc.pos
             cx, cy = int(pos.x) + offset_x, int(pos.y) + offset_y
-            grid[cy][cx] = GRID_PIN
-            key_grid[(cx, cy)] = sc
             if 0 <= cy < height and 0 <= cx < width:
+                grid[cy][cx] = GRID_PIN
+                key_grid[(cx, cy)] = sc
                 place_direction_marker(cx, cy, sc.align.unflip())
 
     # Place ports
@@ -788,6 +791,24 @@ def sort_connections(connections: list[GridConn]
     return net_endpoint_marker_mapping, [item[2] for item in sortable_connections]
 
 
+@dataclass(eq=False)
+class RoutedEntry:
+    """A routed connection tracked for rip-up/reroute.
+
+    ``eq=False`` keeps identity comparison, so list operations on
+    ``routed_entries`` match this exact entry rather than an
+    equal-valued one.
+    """
+    start: tuple[int, int]
+    end: tuple[int, int]
+    start_dir: D4
+    end_dir: D4
+    net: Net
+    path: list[tuple[int, int]]
+    path_cells: list[tuple[int, int]]
+    blocked_move_keys: set[int]
+
+
 # Draw all connections with paths
 def draw_connections(grid: np.ndarray, connections: list[GridConn],
                      width: int, height: int
@@ -818,8 +839,6 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
     def append_path(net, path):
         port_drawing_dict[net].append(path)
         current_path_stripped = keep_corners_and_edges([path])
-        if net not in straight_lines:
-            straight_lines[net] = []
         straight_lines[net] = transform_to_pairs(
             current_path_stripped, straight_lines[net]
         )
@@ -858,21 +877,21 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
                 route_cell_usage[(x, y)] = usage - 1
 
     def pop_path(entry):
-        paths = port_drawing_dict[entry["net"]]
+        paths = port_drawing_dict[entry.net]
         for index, path in enumerate(paths):
-            if path is entry["path"] or path == entry["path"]:
+            if path is entry.path or path == entry.path:
                 paths.pop(index)
-                rebuild_straight_lines(entry["net"])
+                rebuild_straight_lines(entry.net)
                 return index
         return None
 
     def insert_path(entry, index):
-        paths = port_drawing_dict[entry["net"]]
+        paths = port_drawing_dict[entry.net]
         if index is None or index >= len(paths):
-            paths.append(entry["path"])
+            paths.append(entry.path)
         else:
-            paths.insert(index, entry["path"])
-        rebuild_straight_lines(entry["net"])
+            paths.insert(index, entry.path)
+        rebuild_straight_lines(entry.net)
 
     # Paths of a net attach where one path's first point lies on another path
     # (terminal anchor and branch junctions). Mere crossings do not connect
@@ -905,22 +924,10 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
         return blocked_keys
 
     def make_routed_entry(start, end, start_dir, end_dir, net, path, path_cells):
-        return {
-            "start": start,
-            "end": end,
-            "start_dir": start_dir,
-            "end_dir": end_dir,
-            "net": net,
-            "path": path,
-            "path_cells": path_cells,
-            "blocked_move_keys": path_blocked_move_keys(path),
-        }
-
-    def routed_entry_index(entry):
-        for index, routed_entry in enumerate(routed_entries):
-            if routed_entry is entry:
-                return index
-        return None
+        return RoutedEntry(
+            start=start, end=end, start_dir=start_dir, end_dir=end_dir,
+            net=net, path=path, path_cells=path_cells,
+            blocked_move_keys=path_blocked_move_keys(path))
 
     def blocking_ripup_candidates(blocked_move_hits):
         if not blocked_move_hits:
@@ -928,7 +935,7 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
 
         scored_entries = []
         for index, entry in enumerate(routed_entries):
-            hits = blocked_move_hits & entry["blocked_move_keys"]
+            hits = blocked_move_hits & entry.blocked_move_keys
             if hits:
                 scored_entries.append((len(hits), index, entry))
 
@@ -1013,14 +1020,15 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
         # completed, keep the new arrangement; otherwise restore the original.
         if path is None and MAX_RIPUP_CANDIDATES > 0 and routed_entries:
             for blocking_entry in blocking_ripup_candidates(blocked_move_hits):
-                blocking_index = routed_entry_index(blocking_entry)
-                if blocking_index is None:
+                try:
+                    blocking_index = routed_entries.index(blocking_entry)
+                except ValueError:
                     continue
 
-                blocking_entry = routed_entries.pop(blocking_index)
-                blocking_net = blocking_entry["net"]
+                routed_entries.pop(blocking_index)
+                blocking_net = blocking_entry.net
                 blocking_path_index = pop_path(blocking_entry)
-                remove_path_from_grid(blocking_entry["path_cells"])
+                remove_path_from_grid(blocking_entry.path_cells)
 
                 # Retry current connection with the blocking route removed
                 path, start_new, end_new = try_route_connection(
@@ -1040,12 +1048,12 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
                     # reroute would only reconnect the end pin and silently
                     # leave the terminal unwired, so reroute it in full.
                     anchors_terminal = (
-                        blocking_entry["path"][0] == blocking_entry["start"])
+                        blocking_entry.path[0] == blocking_entry.start)
                     blocking_path, _, _ = try_route_connection(
-                        blocking_entry["start"],
-                        blocking_entry["end"],
-                        blocking_entry["start_dir"],
-                        blocking_entry["end_dir"],
+                        blocking_entry.start,
+                        blocking_entry.end,
+                        blocking_entry.start_dir,
+                        blocking_entry.end_dir,
                         blocking_net,
                         allow_shortcut=not anchors_terminal,
                     )
@@ -1054,9 +1062,9 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
                         append_path(blocking_net, blocking_path)
                         if net_paths_attached(blocking_net):
                             # Both succeeded --> keep the new arrangement
-                            blocking_entry["path"] = blocking_path
-                            blocking_entry["path_cells"] = blocking_cells
-                            blocking_entry["blocked_move_keys"] = path_blocked_move_keys(blocking_path)
+                            blocking_entry.path = blocking_path
+                            blocking_entry.path_cells = blocking_cells
+                            blocking_entry.blocked_move_keys = path_blocked_move_keys(blocking_path)
                             routed_entries.append(blocking_entry)
                             break
                         # The reroute stranded a branch of the removed route:
@@ -1070,16 +1078,15 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
                         port_drawing_dict[net].pop()
                     rebuild_straight_lines(net)
                     remove_path_from_grid(path_cells)
-                    current_index = routed_entry_index(current_entry)
-                    if current_index is not None:
-                        routed_entries.pop(current_index)
+                    if current_entry in routed_entries:
+                        routed_entries.remove(current_entry)
                     path = None
 
                 # Restore the original blocking route
-                restore_cells = apply_path_to_grid(blocking_entry["path"])
+                restore_cells = apply_path_to_grid(blocking_entry.path)
                 insert_path(blocking_entry, blocking_path_index)
-                blocking_entry["path_cells"] = restore_cells
-                blocking_entry["blocked_move_keys"] = path_blocked_move_keys(blocking_entry["path"])
+                blocking_entry.path_cells = restore_cells
+                blocking_entry.blocked_move_keys = path_blocked_move_keys(blocking_entry.path)
                 if blocking_index >= len(routed_entries):
                     routed_entries.append(blocking_entry)
                 else:
@@ -1089,8 +1096,9 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
                 continue
 
         if path is None:
-            print(f"Failed to connect net '{net.full_path_label()}' from "
-                  f"{start_new} to {end_new}. Adding terminal taps ...")
+            logger.warning(
+                f"Failed to connect net '{net.full_path_label()}' from "
+                f"{start_new} to {end_new}; wire dropped.")
             continue
 
         path_cells = apply_path_to_grid(path)
