@@ -9,8 +9,7 @@ from ordec.examples.vco_pseudodiff import Vco, VcoHalfStage, VcoRing, VcoTb
 from ordec.layout import helpers
 from ordec.sim import Simulator
 
-@generate_func
-def report_analog_design():
+viewgen report_analog_design -> Report:
     # Count transistors:
     transistor_table = []
     hier = SimHierarchy.from_schematic(Vco().schematic)
@@ -34,25 +33,23 @@ def report_analog_design():
 
     netlist = Simulator(SimHierarchy.from_schematic(Vco().schematic)).netlister.out()
 
-    return Report([
-        Markdown("# Analog design report: Pseudo-differential voltage-controlled ring oscillator"),
-        Svg.from_view(Vco().symbol),
-        Markdown(
-            f"## Transistor count (schematic)\n"
-            f"There are **{transistor_count}** transistors in the example design.\n"
-            f"\n"
-            f" | Instance Name | Reference |\n"
-            f"| -- | -- |\n"
-            + f'\n'.join(transistor_table) +
-            f"\n"
-            f"## Rectangle count (layout)\n"
-            f"The layout comprises **{rect_count}** rectangles.\n"
-            f"\n"
-            f"(This is only the VcoRing part.)\n"
-            f"## Vco netlist"
-        ),
-        PreformattedText(netlist)
-    ])
+    .markdown("# Analog design report: Pseudo-differential voltage-controlled ring oscillator")
+    .svg(Vco().symbol)
+    .markdown(
+        f"## Transistor count (schematic)\n"
+        f"There are **{transistor_count}** transistors in the example design.\n"
+        f"\n"
+        f" | Instance Name | Reference |\n"
+        f"| -- | -- |\n"
+        + f'\n'.join(transistor_table) +
+        f"\n"
+        f"## Rectangle count (layout)\n"
+        f"The layout comprises **{rect_count}** rectangles.\n"
+        f"\n"
+        f"(This is only the VcoRing part.)\n"
+        f"## Vco netlist"
+    )
+    .pre(netlist)
 
 cell Top:
     """
