@@ -495,16 +495,15 @@ cell B_Moved:
             ! .pos.x == a1.pos.x
             ! .z.cy == rp1.term_p.cy + 1500
 
-        # The two moved y-arm resistors, placed where A_Default.r2 sat inside a1/a2.
-        # (a1.x.cx + 1750 == a1.r1.poly_body.ux + 1500; nested subcursors like
-        # a1.r1.poly_body cannot be used in constraints yet.)
+        # The two moved y-arm resistors, placed where A_Default.r2 sat inside a1/a2,
+        # by referencing the nested resistor geometry directly (a1.r1.poly_body).
         Rsil(l=L_RY) ry1:
             .orientation = East
-            ! .term_m.lx == a1.x.cx + 1750
+            ! .term_m.lx == a1.r1.poly_body.ux + 1500
             ! .term_m.cy == 0.5*a1.x.cy + 0.5*a1.z.cy
         Rsil(l=L_RY) ry2:
             .orientation = East
-            ! .term_m.lx == a2.x.cx + 1750
+            ! .term_m.lx == a2.r1.poly_body.ux + 1500
             ! .term_m.cy == 0.5*a2.x.cy + 0.5*a2.z.cy
 
         Rppd(l=L_RP2) rp2:

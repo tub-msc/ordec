@@ -175,6 +175,22 @@ def test_loc_transform_with_placeholder_pos():
     assert isinstance(sch.inst1.loc_transform(), TD4LinearTerm)
 
 
+def test_td4linearterm_mul_concrete_td4():
+    # Composing a symbolic transform with a concrete one (as transform_stack()
+    # does for nested layout instances whose outer position is still an
+    # unsolved solver variable) must coerce the concrete operand rather than
+    # falling back to tuple.__rmul__ ("cannot be interpreted as an integer").
+    outer = TD4I(Vec2I(10, 20), R90)
+    inner = TD4I(Vec2I(5, 6), MX)
+    concrete = outer * inner
+
+    result = (outer * TD4LinearTerm()) * inner  # value-equal symbolic outer
+    assert isinstance(result, TD4LinearTerm)
+    assert result.d4 == concrete.d4
+    assert result.transl.x.constant == float(concrete.transl.x)
+    assert result.transl.y.constant == float(concrete.transl.y)
+
+
 def test_unresolved_subcursor_uses_recorded_params():
     # Geometry reads on a SchemInstanceUnresolved must resolve the symbol
     # with the parameters recorded so far, not with defaults (MultiPinSymbol

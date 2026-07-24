@@ -347,6 +347,14 @@ class TD4(tuple):
             return NotImplemented
             #raise TypeError(f"Type {type(other).__name__} is unsupported for {type(self).__name__} multiplication.")
 
+    def __rmul__(self, other):
+        # Explicit __rmul__ shadowing tuple.__rmul__ (sequence repetition).
+        # Without this, an unsupported reflected multiply (e.g. a composition
+        # gap where the left operand returned NotImplemented) would fall back
+        # to tuple repetition and raise the misleading "cannot be interpreted
+        # as an integer". Returning NotImplemented yields a clear TypeError.
+        return NotImplemented
+
     def __add__(self, other):
         raise TypeError("TD4 cannot be added.")
 

@@ -352,6 +352,15 @@ class TD4LinearTerm(TD4):
             )
         elif isinstance(other, (Vec2I, Vec2R)):
             other = Vec2LinearTerm(coerce_term(other.x), coerce_term(other.y))
+        elif isinstance(other, (TD4I, TD4R)):
+            # Coerce a concrete TD4 operand to TD4LinearTerm (mirror of
+            # __rmul__). Needed to compose symbolic-over-concrete transform
+            # stacks, e.g. nested layout instances where an outer instance
+            # position is still an unsolved solver variable.
+            other = TD4LinearTerm(
+                transl=self.vec_cls(coerce_term(other.transl.x), coerce_term(other.transl.y)),
+                d4=other.d4,
+            )
         return super().__mul__(other)
 
 class Constraint:
