@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import math
 import pytest
 from ordec.core import *
 from ordec.core import SimHierarchy
@@ -295,3 +296,86 @@ def test_translate_names_axes(tmp_path):
     with open(outfile) as f:
         header = next(csv.reader(f))
     assert header == ['time', 'out.voltage']
+
+def test_bode_helpers():
+    """Test the pure mag_db/phase_deg helpers, including phase unwrap."""
+    from ordec.sim import mag_db, phase_deg
+
+    assert mag_db([10, 1, 0.1]) == pytest.approx([20.0, 0.0, -20.0])
+    assert mag_db([0]) == pytest.approx([-6000.0])  # clamped to floor
+
+    # Response circling through -170deg -> +170deg: raw phase jumps by
+    # +340deg; unwrap turns that into a continuous -190deg.
+    vals = [
+        complex(math.cos(math.radians(a)), math.sin(math.radians(a)))
+        for a in (0, -90, -170, 170)
+    ]
+    assert phase_deg(vals, unwrap=False) == pytest.approx([0, -90, -170, 170])
+    assert phase_deg(vals) == pytest.approx([0, -90, -170, -190])
+
+
+def test_bode_plot():
+    """Test Bode report building from AC results, via the Report method
+    (which lazily wraps ordec.sim.helpers.bode_plot)."""
+    import cmath
+    from ordec.core.schema import Report
+
+    h = lib_test.AcRC().sim_ac_batch
+    report = Report()
+    report.bode_plot(h.inp, h.out)
+    _, data = report.webdata()
+
+    mag, phase = data["elements"]
+    assert mag["ylabel"] == "Magnitude (dB)"
+    assert phase["ylabel"] == "Phase (°)"
+    for plot in (mag, phase):
+        assert plot["element_type"] == "plot2d"
+        assert plot["xscale"] == "log"
+        assert plot["x"] == [f.real for f in h.freq]
+        assert [s["name"] for s in plot["series"]] == ["inp", "out"]
+    # Both plots share one PlotGroup for x-axis synchronization.
+    assert mag["plot_group"] == phase["plot_group"] is not None
+
+    out_v = list(h.out.voltage)
+    assert mag["series"][1]["values"] == pytest.approx(
+        [20 * math.log10(abs(v)) for v in out_v])
+    assert phase["series"][1]["values"] == pytest.approx(
+        [math.degrees(cmath.phase(v)) for v in out_v])
+
+
+def test_bode_plot_ref():
+    """Test that ref= divides all signals by the reference signal."""
+    from ordec.core.schema import Report
+    from ordec.sim import bode_plot
+
+    h = lib_test.AcRC().sim_ac_batch
+    report = Report()
+    bode_plot(report, h.out, ref=h.inp)
+    _, data = report.webdata()
+
+    mag = data["elements"][0]
+    expected = [
+        20 * math.log10(abs(v / r))
+        for v, r in zip(h.out.voltage, h.inp.voltage)
+    ]
+    assert mag["series"][0]["values"] == pytest.approx(expected)
+
+
+def test_bode_plot_errors():
+    from ordec.core.schema import Report
+    from ordec.sim import bode_plot
+
+    h_ac = lib_test.AcRC().sim_ac_batch
+    report = Report()
+    with pytest.raises(ValueError, match="at least one signal"):
+        bode_plot(report)
+    with pytest.raises(TypeError, match="SimNet or SimPin"):
+        bode_plot(report, ("raw", [1.0, 2.0]))
+    # Signals from two different SimHierarchies must be rejected.
+    h_other = lib_test.SineRL().sim_ac_batch
+    with pytest.raises(ValueError, match="same SimHierarchy"):
+        bode_plot(report, h_ac.out, h_other.out)
+    # Non-AC results have no frequency axis.
+    h_tran = lib_test.VpwlTb().sim_tran_batch
+    with pytest.raises(ValueError, match="no AC results"):
+        bode_plot(report, h_tran.out)

@@ -9,13 +9,12 @@ For small simulations this provides a quick default view. For anything
 directly.
 """
 
-import cmath
-import math
 import re
 
 from public import public
 from ..core import *
 from ..core.schema import PlotGroup, Report
+from .helpers import bode_plot
 
 
 def get_voltages(sh: SimHierarchy, top_level_only=False):
@@ -91,45 +90,11 @@ def webdata_dcsweep(sh: SimHierarchy):
 
 
 def webdata_ac(sh: SimHierarchy):
-    voltages = get_voltages(sh)
-    currents = get_currents(sh)
-    x = tuple(sh.freq)
-    all_signals = {}
-    all_signals.update(voltages)
-    all_signals.update(currents)
-
+    signals = [sn for sn in sh.all(SimNet) if sn.voltage is not None]
+    signals += [sp for sp in sh.all(SimPin) if sp.current is not None]
     report = Report(fill_height=True)
-    if all_signals:
-        report.sim = PlotGroup()
-        mag_series = []
-        phase_series = []
-        for name, vals in all_signals.items():
-            mag_series.append((
-                name,
-                [20 * math.log10(max(abs(v), 1e-300)) for v in vals],
-            ))
-            phase_series.append((
-                name,
-                [cmath.phase(v) * 180 / math.pi for v in vals],
-            ))
-        report.plot2d(
-            x=x,
-            series=mag_series,
-            xlabel='Frequency (Hz)',
-            ylabel='Magnitude (dB)',
-            xscale='log',
-            height=None,
-            plot_group=report.sim,
-        )
-        report.plot2d(
-            x=x,
-            series=phase_series,
-            xlabel='Frequency (Hz)',
-            ylabel='Phase (\u00b0)',
-            xscale='log',
-            height=None,
-            plot_group=report.sim,
-        )
+    if signals:
+        bode_plot(report, *signals, height=None)
     return report.webdata()
 
 

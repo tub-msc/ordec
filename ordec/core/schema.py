@@ -1218,6 +1218,15 @@ class Report(SubgraphRoot):
         self % PassFail(label=label, passed=passed, instructions=instructions,
             hint=hint)
 
+    def bode_plot(self, *signals, **kwargs):
+        """
+        Append a Bode magnitude/phase plot pair from AC simulation results;
+        see ordec.sim.helpers.bode_plot for the full signature. Imported
+        lazily to keep the core schema independent of the sim subsystem.
+        """
+        from ..sim.helpers import bode_plot
+        bode_plot(self, *signals, **kwargs)
+
     def webdata(self):
         return "report", {
             "elements": [element.element_webdata() for element in self.elements()],

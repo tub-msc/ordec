@@ -43,40 +43,6 @@ cell AmpTb:
         .simulate().tran(R('1n'), R('1u'))
 
     viewgen report_ac -> Report:
-        import math
         sim = self.sim_ac
-        freq = [f.real for f in sim.freq]
-
-        def mag_db(cvals):
-            return [20 * math.log10(abs(v)) if abs(v) > 0 else -200 for v in cvals]
-
-        def phase_deg(cvals):
-            return [math.degrees(math.atan2(v.imag, v.real)) for v in cvals]
-
-        .grp = PlotGroup()
-
         .markdown("## Amplifier AC bode plot")
-        .plot2d(
-            x=freq,
-            series={
-                'vin': mag_db(sim.vin.voltage),
-                'vout': mag_db(sim.vout.voltage),
-            },
-            xlabel="Frequency (Hz)",
-            ylabel="Magnitude (dB)",
-            xscale="log",
-            height=200,
-            plot_group=.grp,
-        )
-        .plot2d(
-            x=freq,
-            series={
-                'vin': phase_deg(sim.vin.voltage),
-                'vout': phase_deg(sim.vout.voltage),
-            },
-            xlabel="Frequency (Hz)",
-            ylabel="Phase (deg)",
-            xscale="log",
-            height=200,
-            plot_group=.grp,
-        )
+        .bode_plot(sim.vin, sim.vout)
