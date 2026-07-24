@@ -15,8 +15,10 @@ class Directory:
     Creates and maintains a set of unique names for cells and objects within
     subgraphs.
 
-    For compatibility with case-insensitive tools, names are lowercase-only.
-    Names contain only a-z, 0-9 and underscore (_) characters.
+    For compatibility with case-insensitive tools, generated basenames are
+    lowercase and contain only a-z, 0-9 and underscore (_) characters. (A
+    caller-supplied prefix, e.g. a SPICE element letter passed to name_node,
+    keeps its case, so prefixed names may be mixed-case.)
     """
 
     def __init__(self):

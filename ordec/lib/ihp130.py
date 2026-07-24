@@ -959,7 +959,7 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> LvsReport
         symbol: The Symbol containing the reference schematic.
         use_tempdir: If True, use a temporary directory for intermediate files.
     """
-    directory = Directory()
+    directory = klayout.LvsDirectory()
     nl = Netlister(directory, lvs=True)
     nl.netlist_hier_symbol(symbol)
 

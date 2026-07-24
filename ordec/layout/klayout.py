@@ -660,36 +660,85 @@ def parse_circuit_xref(circuit_xref, layout_names: NetlistNames,
     }
 
 
-# Netlister name prefixes by item type, used to map SPICE names back to
-# ORDB nodes (e.g. "Mpd" for MOSFET instance "pd", "Rr1" for resistor
-# instance "r1", "xa1" for subcircuit instance "a1").
-SCHEM_NODE_PREFIXES = {
-    LvsItemType.Device: ('', 'M', 'R', 'C'),
-    LvsItemType.Subcircuit: ('', 'x', 'X'),
-    LvsItemType.Net: ('',),
-    LvsItemType.Pin: ('',),
-}
+class LvsDirectory(Directory):
+    """
+    Directory that additionally records, for every node named with a
+    non-empty prefix, the unprefixed lowercase alias of the node's name.
 
+    KLayout's netlist comparer works case-insensitively and strips the
+    SPICE element letter from device and subcircuit names, so the LVSDB
+    reports e.g. element "Rr1" as "R1" and subcircuit instance "xa1" as
+    "A1". The alias recorded here is exactly this reported name
+    (lowercased), which allows resolve_schem_node to map LVSDB names back
+    to ORDB nodes with a single exact lookup instead of guessing prefixes.
+    """
 
-def resolve_schem_node(directory, ref_schematic, item_type: LvsItemType,
-                        schem_item_name: str):
-    """Map a SPICE name from the LVSDB to a node of ref_schematic."""
-    spice_name = schem_item_name.lower() if schem_item_name else ''
-    if not spice_name:
-        return None
-    for prefix in SCHEM_NODE_PREFIXES[item_type]:
+    def __init__(self):
+        super().__init__()
+        self.obj_of_alias = {}
+
+    def name_node(self, node, prefix: str = "") -> str:
+        name = super().name_node(node, prefix)
+        if prefix:
+            # Strip the prefix from the final name (not the basename), so
+            # that uniquification suffixes appended by unique_name() are
+            # part of the alias, matching the actual SPICE name.
+            alias = name[len(prefix):].lower()
+            existing = self.obj_of_alias.get((node.root, alias))
+            if existing is not None and existing != node:
+                # Distinct prefixes can produce distinct names with the same
+                # alias (e.g. "Rx_0" and "Mx_0"). KLayout compares names
+                # case-insensitively with the prefix stripped, so such a
+                # netlist is ambiguous; fail here instead of misresolving.
+                raise ValueError(
+                    f"LVS alias {alias!r} of {name!r} collides with "
+                    f"{self.name_of_obj[existing]!r}; the stripped SPICE "
+                    f"names are ambiguous to the netlist comparer.")
+            self.obj_of_alias[node.root, alias] = node
+        return name
+
+    def node_of_alias(self, root, alias: str):
+        """
+        Returns the node whose prefixed name has the given unprefixed
+        lowercase alias within the subgraph of root.
+
+        Raises:
+            KeyError: If no node with this alias was named via name_node.
+        """
+        return self.obj_of_alias[root, alias]
+
+    def resolve_schem_node(self, ref_schematic, item_type: LvsItemType,
+                            schem_item_name: str):
+        """
+        Map a SPICE name from the LVSDB to a node of ref_schematic.
+
+        This is the read half of the alias contract: name_node records,
+        for every prefixed name, exactly the stripped case-folded alias
+        the LVSDB reports, so a single exact lookup suffices here.
+        """
+        spice_name = schem_item_name.lower() if schem_item_name else ''
+        if not spice_name:
+            return None
+        if item_type in (LvsItemType.Device, LvsItemType.Subcircuit):
+            try:
+                return self.node_of_alias(ref_schematic, spice_name)
+            except KeyError:
+                pass
+        # Nets and pins are netlisted without prefix; devices netlisted
+        # without prefix are also found here.
         try:
-            return directory.node_of_name(ref_schematic, prefix + spice_name)
+            return self.node_of_name(ref_schematic, spice_name)
         except KeyError:
             pass
-    # For pins/nets, directory lookup may fail. Fall back to searching
-    # all Net nodes and matching by pin.full_path_str() (case-insensitive).
-    if item_type in (LvsItemType.Pin, LvsItemType.Net):
-        for net in ref_schematic.all(Net):
-            if net.pin is not None:
-                if net.pin.full_path_str().lower() == spice_name:
-                    return net
-    return None
+        # For pins/nets, directory lookup may fail. Fall back to searching
+        # all Net nodes and matching by pin.full_path_str()
+        # (case-insensitive).
+        if item_type in (LvsItemType.Pin, LvsItemType.Net):
+            for net in ref_schematic.all(Net):
+                if net.pin is not None:
+                    if net.pin.full_path_str().lower() == spice_name:
+                        return net
+        return None
 
 
 def resolve_pair_refs(directory, layout, schematic, layout_name: str,
@@ -737,8 +786,9 @@ def insert_lvs_item(report: LvsReport, circuit, item_data: dict,
     schem_nid = None
     schem_item_name = item_data['schem_name']
     if directory is not None and ref_schematic is not None:
-        node = resolve_schem_node(directory, ref_schematic,
-                                   item_data['item_type'], schem_item_name)
+        node = directory.resolve_schem_node(ref_schematic,
+                                             item_data['item_type'],
+                                             schem_item_name)
         if node is not None:
             schem_item_name = Directory.basename_of_node(node)
             schem_nid = node.nid
@@ -767,10 +817,11 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
             the report and of the top-level LvsCircuitPair. May be None.
         schematic: The Schematic subgraph that was compared against. Becomes
             ref_schematic analogously. May be None.
-        directory: Optional Directory used during netlisting and GDS export.
-            If given, it is used to resolve subcircuit pairs to their
+        directory: Optional LvsDirectory used during netlisting and GDS
+            export. If given, it is used to resolve subcircuit pairs to their
             Layout/Schematic subgraphs and item names to ORDB nodes; without
-            it, only the raw LVSDB names are reported.
+            it, only the raw LVSDB names are reported. A plain Directory is
+            rejected, as it lacks the aliases needed for name resolution.
 
     Returns:
         LvsReport subgraph with all parsed comparison results.
@@ -888,6 +939,12 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
     ``tests/test_parse_lvsdb.py`` parses it to pin down this parser's
     behavior independently of KLayout.
     """
+    if directory is not None and not isinstance(directory, LvsDirectory):
+        # A plain Directory would make all item resolutions silently fail
+        # (schem=None); require the alias-recording subclass instead.
+        raise TypeError("parse_lvsdb requires an LvsDirectory (not a plain "
+                        "Directory) to resolve LVSDB names to ORDB nodes.")
+
     with open(filename, 'r') as f:
         text = f.read()
 

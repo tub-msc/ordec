@@ -5,12 +5,19 @@
 Tests basic DRC + LVS in IHP130.
 """
 
+from ordec.core.schema import LvsItem, LvsItemType
 from ordec.lib import ihp130
 from .lib.ihp130_inv import Inv
 
 def test_lvs_clean():
-    lvs_report = ihp130.run_lvs(Inv().layout, Inv().symbol)
+    c = Inv()
+    lvs_report = ihp130.run_lvs(c.layout, c.symbol)
     assert lvs_report.clean()
+    # MOSFET device items ("Mpd"/"Mpu" in SPICE) cross-reference the
+    # schematic's SchemInstances.
+    devices = {i.schem_name: i.schem for i in lvs_report.all(LvsItem)
+               if i.item_type == LvsItemType.Device}
+    assert devices == {'pd': c.schematic.pd, 'pu': c.schematic.pu}
 
 def test_lvs_missing_y():
     c = Inv(variant="missing_y")
