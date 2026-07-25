@@ -296,15 +296,11 @@ class ImportTracker:
                 continue
             spec = find_spec_method(fullname, path, target)
             if spec is not None:
-                # Record file path for both regular modules and .ord modules.
+                # spec.origin covers .py and .ord modules alike, since the
+                # .ord loader uses the standard FileFinder machinery.
                 origin = getattr(spec, "origin", None)
                 if isinstance(origin, str) and os.path.isfile(origin):
                     self.files.append(origin)
-                else:
-                    loader = getattr(spec, "loader", None)
-                    ord_path = getattr(loader, "ord_path", None)
-                    if isinstance(ord_path, str) and os.path.isfile(ord_path):
-                        self.files.append(ord_path)
                 return spec
         return None
 
@@ -460,6 +456,9 @@ class ConnectionHandler:
                     continue
                 #print(f"Unloading {k}...")
                 del sys.modules[k]
+        # FileFinder caches directory listings; without this, a file created
+        # since the last import may be missed due to mtime granularity.
+        importlib.invalidate_caches()
 
     def build_localmodule(self, localmodule: str):
         exc = None
