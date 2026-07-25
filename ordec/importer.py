@@ -17,19 +17,21 @@ compiles and executes it. As in Hy, get_source() returns the untransformed
 source (ORD, not the generated Python) so tracebacks and inspect map to .ord
 lines; consumers expecting Python source must use __ord_py_source__ instead.
 
-Compiled modules are cached under __pycache__ with an ordec-version-specific
-tag (e.g. demo.cpython-313.opt-ord040.pyc). The PEP-552-inspired header
-encodes everything cache validity depends on: interpreter (magic number),
-source content (hash, as in hash-based pycs), and transpiler state (newest
-mtime of the ordec.ord sources, catching transpiler edits without a version
-bump; upgrades are covered by the file-name tag). The payload carries
+Compiled modules are cached under __pycache__ (e.g. demo.cpython-313
+.opt-ord.pyc; the fixed "ord" tag keeps the file distinct from the cache of
+a shadowing demo.py). The PEP-552-inspired header encodes everything cache
+validity depends on: interpreter (magic number), source content (hash, as
+in hash-based pycs), transpiler state (newest mtime of the ordec.ord
+sources, catching transpiler edits in development installs) and the ordec
+version (kept explicit because reproducible-build installers normalize
+mtimes). Any mismatch re-transpiles and overwrites the file in place, so
+upgrades do not leave stale cache files behind. The payload carries
 (code, __ord_py_source__) so cache hits restore the generated-Python view
 without re-transpiling.
 """
 
 import sys
 import os
-import re
 import struct
 import marshal
 from importlib import metadata
@@ -48,9 +50,13 @@ _transpiler_mtime_ns = max(e.stat().st_mtime_ns
     for e in os.scandir(os.path.dirname(_ord_pkg.__file__)) if e.is_file())
 
 try:
-    _cache_tag = 'ord' + re.sub(r'[^A-Za-z0-9]', '', metadata.version('ordec'))
+    _version = metadata.version('ordec')
 except metadata.PackageNotFoundError:
-    _cache_tag = 'orddev'
+    _version = 'dev'
+# Length-delimited: the header is compared with startswith(), so "0.4" must
+# not prefix-match a file written by "0.4.1".
+_version_bytes = _version.encode()
+_version_header = struct.pack('<H', len(_version_bytes)) + _version_bytes
 
 class OrdFileLoader(FileLoader):
     def get_source(self, fullname):
@@ -60,8 +66,8 @@ class OrdFileLoader(FileLoader):
         """Return (code, py_source), served from __pycache__ when valid."""
         source = self.get_data(self.path)
         header = (MAGIC_NUMBER + source_hash(source)
-            + struct.pack('<Q', _transpiler_mtime_ns))
-        cache_path = cache_from_source(self.path, optimization=_cache_tag)
+            + struct.pack('<Q', _transpiler_mtime_ns) + _version_header)
+        cache_path = cache_from_source(self.path, optimization='ord')
         try:
             with open(cache_path, 'rb') as f:
                 data = f.read()

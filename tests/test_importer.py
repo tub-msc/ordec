@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import sys
+import struct
 import importlib
 
 import ordec.importer
@@ -35,6 +36,13 @@ def test_pycache_roundtrip(tmp_path, monkeypatch):
     src.write_text('MARKER = "b"\n')
     assert import_fresh("ord_cache_demo").MARKER == "b"
     assert len(transpiles) == 1
+    # An ordec version mismatch overwrites the cache file in place, so
+    # upgrades do not accumulate stale files.
+    monkeypatch.setattr(ordec.importer, "_version_header",
+        struct.pack('<H', 3) + b"new")
+    assert import_fresh("ord_cache_demo").MARKER == "b"
+    assert len(transpiles) == 2
+    assert len(list((tmp_path / "__pycache__").iterdir())) == 1
 
 def test_init_ord_package(tmp_path, monkeypatch):
     """A directory with __init__.ord is a regular package."""
