@@ -352,3 +352,36 @@ PythonTransformer
 -----------------
 
 .. autoclass:: ordec.ord.python_transformer.PythonTransformer
+
+Importing ``.ord`` Files and ``__pycache__``
+--------------------------------------------
+
+Importing a ``.ord`` module works exactly like importing a ``.py`` module:
+``ordec.importer`` registers ``.ord`` as an additional source suffix in
+Python's standard import machinery, so ``sys.path`` order, packages,
+``importlib.reload()`` and friends behave as usual. A ``foo.py`` shadows a
+``foo.ord`` in the same directory.
+
+Like Python itself, ORDeC caches compiled ``.ord`` modules in ``__pycache__``
+directories next to the source, so the ORD-to-Python transpilation runs only
+once per source change. Cache files are named like
+``demo.cpython-313.opt-ord.pyc`` (the ``ord`` tag keeps them distinct from
+the cache of a shadowing ``demo.py``) and start with a header encoding
+everything their validity depends on: the interpreter version, a hash of the
+``.ord`` source (content-based, not mtime-based), the modification time of
+the transpiler sources (so that editing the transpiler in a development
+install invalidates the cache), and the ordec version. On any mismatch —
+including an ordec upgrade — the module is transpiled from source again and
+the cache file overwritten in place, so stale files do not accumulate.
+Besides the compiled code, the cache stores the generated Python source, so
+``__ord_py_source__`` is available on cache hits too.
+
+The cache is meant to be fully transparent: writes are atomic, corrupt or
+unreadable cache files are silently rewritten, a read-only source tree
+disables caching, and it is always safe to delete ``__pycache__``
+directories. The one knob is ``PYTHONDONTWRITEBYTECODE=1`` (or ``python
+-B``, or setting ``sys.dont_write_bytecode = True``), which disables writing
+cache files for ``.ord`` modules just as for ``.py`` modules. As in CPython,
+existing valid cache files are still *read*; for a fully cache-free run
+(e.g. when debugging the transpiler), delete the ``__pycache__`` directories
+as well.
