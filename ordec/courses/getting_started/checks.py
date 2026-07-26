@@ -440,31 +440,32 @@ def gen_lesson6(g):
                 "the capacitor between mid and vss.")
 
         label = "Expected passband behavior"
-        try:
-            h = g['Bandstop']().sim_ac
-            freq = [f.real for f in h.freq]
-            mag = [abs(v) for v in h.vout.voltage]
+        hint = ("The trap must resonate at f = 1/(2*pi*sqrt(L*C)) = "
+            "15.9 kHz: a deep notch there, an untouched passband "
+            "everywhere else. Check the l and c values and that the "
+            "inductor and capacitor are in series (via mid), not in "
+            "parallel.")
+        # Until the circuit is fully wired, the simulation fails or carries
+        # no vout data; that is an expected state, not worth a traceback.
+        dut = g['Bandstop']()
+        if (dut.schematic.has_errors() or dut.sim_ac.freq is None
+                or dut.sim_ac.vout.voltage is None):
+            report.passfail(label, False, hint=hint,
+                instructions="No AC simulation data for vout yet: the "
+                "simulation only runs once the circuit is fully wired.")
+        else:
+            freq = [f.real for f in dut.sim_ac.freq]
+            mag = [abs(v) for v in dut.sim_ac.vout.voltage]
             i_min = min(range(len(mag)), key=lambda i: mag[i])
             f_notch = freq[i_min]
             found = (abs(f_notch - 15.9e3) <= 0.10 * 15.9e3
                 and mag[i_min] < 0.1
                 and mag[0] > 0.9 and mag[-1] > 0.9)
-            report.passfail(label, found,
-                hint="The trap must resonate at f = 1/(2*pi*sqrt(L*C)) = "
-                "15.9 kHz: a deep notch there, an untouched passband "
-                "everywhere else. Check the l and c values and that the "
-                "inductor and capacitor are in series (via mid), not in "
-                "parallel.",
+            report.passfail(label, found, hint=hint,
                 instructions=f"|V(vout)| minimum: {mag[i_min]:.4g} at "
                 f"{f_notch:.4g} Hz (target: < 0.1 at 15.9 kHz); at the "
                 f"sweep ends: {mag[0]:.3f} / {mag[-1]:.3f} (target: > 0.9 "
                 "both).")
-        except Exception:
-            report.passfail(label, False, instructions=exception_text(),
-                hint="The trap must resonate at f = 1/(2*pi*sqrt(L*C)) = "
-                "15.9 kHz: a deep notch there, an untouched passband "
-                "everywhere else. Check the l and c values and that the "
-                "inductor and capacitor are in series (via mid), not in "
-                "parallel.")
         return report
     return lesson
+

@@ -16,8 +16,7 @@ cell Bandstop:
         .simulate().ac('dec', '50', '100', '10M')
 
     viewgen bode -> Report:
-        sim = self.sim_ac
-        if sim.vout.voltage is None:
+        if self.schematic.has_errors() or self.sim_ac.vout.voltage is None:
             .markdown("The Bode plot will show up here.")
         else:
-            .bode_plot(sim.vout, ref=sim.vin)
+            .bode_plot(self.sim_ac.vout, ref=self.sim_ac.vin)
