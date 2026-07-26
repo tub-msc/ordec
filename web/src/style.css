@@ -51,7 +51,6 @@
     --color-schem-err-text:  #c00;
 
     /* Report */
-    --color-report-separator:#cfcfcf;
     --color-report-fill-bg:  #fff;
 
     /* PassFail report elements / course marker */
@@ -59,6 +58,8 @@
     --color-pass-fg:         #1a7a1a;
     --color-fail-bg:         #fbe4e4;
     --color-fail-fg:         #b41818;
+    --color-pass-pill:       #16a34a;
+    --color-fail-pill:       #dc2626;
 
     /* Markdown tables */
     --color-md-table-border: black;
@@ -145,7 +146,6 @@ body.theme-dark {
 
     --color-focus:           #5a9bff;
 
-    --color-report-separator:#333;
     --color-report-fill-bg:  #1a1a1a;
 
     --color-pass-bg:         #173317;
@@ -194,7 +194,7 @@ body {
     height: 100vh;
     width: 100vw;
     font-family: var(--font-sans);
-    font-size: var(--font-base);
+    font-size: var(--font-size-base);
     align-items: stretch;
     overflow: hidden;
     background-color: var(--color-bg);
@@ -847,13 +847,10 @@ body:not(.show-debug) .debug {
 .report-element {
     width: 100%;
     min-width: 0;
-    padding: 5px 10px;
+    padding: 4px 10px;
 }
 .report-element-plot2d {
     padding: 0;
-}
-.report-element + .report-element {
-    border-top: 1px solid var(--color-report-separator);
 }
 .report-html {
     min-width: 0;
@@ -876,6 +873,33 @@ body:not(.show-debug) .debug {
     margin-top: 0.2em;
     margin-bottom: 0.25em;
 }
+/* Compact typography: rein in the browser's default heading sizes and
+   paragraph/list/pre margins. */
+.report-markdown h1 {
+    font-size: 1.3em;
+}
+.report-markdown h2 {
+    font-size: 1.15em;
+}
+.report-markdown h3,
+.report-markdown h4,
+.report-markdown h5,
+.report-markdown h6 {
+    font-size: 1em;
+}
+.report-markdown p,
+.report-markdown ul,
+.report-markdown ol,
+.report-markdown pre {
+    margin-top: 0.4em;
+    margin-bottom: 0.4em;
+}
+.report-markdown > :first-child {
+    margin-top: 0;
+}
+.report-markdown > :last-child {
+    margin-bottom: 0;
+}
 .report-svg {
     display: block;
     width: auto;
@@ -895,27 +919,26 @@ body:not(.show-debug) .debug {
 .report-passfail {
     border-radius: 4px;
     padding: 5px 8px;
-}
-.report-passfail-pass {
-    background-color: var(--color-pass-bg);
-}
-.report-passfail-fail {
-    background-color: var(--color-fail-bg);
+    background-color: var(--color-bg-tertiary);
 }
 .report-passfail-head {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 8px;
 }
 .report-passfail-badge {
     font-weight: bold;
     font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+    padding: 2px 10px;
+    border-radius: 999px;
+    color: #fff;
 }
 .report-passfail-pass .report-passfail-badge {
-    color: var(--color-pass-fg);
+    background-color: var(--color-pass-pill);
 }
 .report-passfail-fail .report-passfail-badge {
-    color: var(--color-fail-fg);
+    background-color: var(--color-fail-pill);
 }
 .report-passfail-label {
     font-weight: bold;
@@ -925,7 +948,8 @@ body:not(.show-debug) .debug {
     white-space: pre-wrap;
 }
 .report-passfail-hintbtn {
-    margin-top: 4px;
+    margin-left: auto;
+    flex-shrink: 0;
     font: inherit;
     font-size: 90%;
     cursor: pointer;

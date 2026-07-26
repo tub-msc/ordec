@@ -162,31 +162,35 @@ const reportElementClassOf = {
 
             root.appendChild(head);
 
-            if (msgData.instructions) {
-                const instructions = document.createElement('div');
-                instructions.classList.add('report-passfail-instructions');
-                instructions.innerText = msgData.instructions;
-                root.appendChild(instructions);
-            }
+            // A passing check is collapsed to badge + label; instructions
+            // and hint only matter while the check fails.
+            if (!msgData.passed) {
+                if (msgData.instructions) {
+                    const instructions = document.createElement('div');
+                    instructions.classList.add('report-passfail-instructions');
+                    instructions.innerText = msgData.instructions;
+                    root.appendChild(instructions);
+                }
 
-            if (msgData.hint) {
-                const hintBtn = document.createElement('button');
-                hintBtn.classList.add('report-passfail-hintbtn');
-                const hint = document.createElement('div');
-                hint.classList.add('report-passfail-hint');
-                hint.innerText = msgData.hint;
-                const applyHintVisibility = () => {
-                    hint.style.display = this.hintVisible ? '' : 'none';
-                    hintBtn.innerText = this.hintVisible
-                        ? 'Hide hint' : 'Show hint';
-                };
-                hintBtn.onclick = () => {
-                    this.hintVisible = !this.hintVisible;
+                if (msgData.hint) {
+                    const hintBtn = document.createElement('button');
+                    hintBtn.classList.add('report-passfail-hintbtn');
+                    const hint = document.createElement('div');
+                    hint.classList.add('report-passfail-hint');
+                    hint.innerText = msgData.hint;
+                    const applyHintVisibility = () => {
+                        hint.style.display = this.hintVisible ? '' : 'none';
+                        hintBtn.innerText = this.hintVisible
+                            ? 'Hide hint' : 'Show hint';
+                    };
+                    hintBtn.onclick = () => {
+                        this.hintVisible = !this.hintVisible;
+                        applyHintVisibility();
+                    };
                     applyHintVisibility();
-                };
-                applyHintVisibility();
-                root.appendChild(hintBtn);
-                root.appendChild(hint);
+                    head.appendChild(hintBtn);
+                    root.appendChild(hint);
+                }
             }
 
             this.container.replaceChildren(root);
