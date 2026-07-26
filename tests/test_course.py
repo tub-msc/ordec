@@ -225,6 +225,28 @@ courses_testdata = {
                     plot_group=grp)
             """),
         ]),
+        # Lesson 10: postprocessing.
+        LessonTestdata(passfails=2, solution=[
+            InsertSolution("""
+            # EDIT HERE (postprocessing)
+            """, """
+            t = [float(x) for x in sim.time]
+            vin = list(sim.vin.voltage)
+            vout = list(sim.vout.voltage)
+
+            pulses = sum(1 for a, b in zip(vin, vin[1:]) if a < 0.5 <= b)
+            .markdown(f"**{pulses} pulses** counted on vin.")
+
+            def crossings(v, level):
+                up = [t[i] for i in range(len(v) - 1) if v[i] < level <= v[i+1]]
+                down = [t[i] for i in range(len(v) - 1) if v[i] > level >= v[i+1]]
+                return up, down
+            up10, down10 = crossings(vout, 0.1)
+            up90, down90 = crossings(vout, 0.9)
+            .markdown(f"vout rise time (10-90%): {(up90[0]-up10[0])*1e6:.0f} us, "
+                f"fall time: {(down10[0]-down90[0])*1e6:.0f} us.")
+            """),
+        ]),
     ]),
     # The under-construction courses have a single instruction-only dummy
     # lesson; without PassFail elements, it can never be marked solved.
@@ -289,9 +311,9 @@ def test_course_special_lesson_flags():
     # the first two getting_started lessons.
     data = course_data()
     assert [l['getting_started_lesson_1'] for l in data['lessons']] == \
-        [True, False, False, False, False, False, False, False, False]
+        [True, False, False, False, False, False, False, False, False, False]
     assert [l['getting_started_lesson_2'] for l in data['lessons']] == \
-        [False, True, False, False, False, False, False, False, False]
+        [False, True, False, False, False, False, False, False, False, False]
     for name in ('cmos_circuits', 'layout_tutorial'):
         for lesson in course_data(name)['lessons']:
             assert not lesson['getting_started_lesson_1']

@@ -56,6 +56,12 @@
       "title": "Transient analysis and reports",
       "description": "Add a transient analysis and build a report with linked plots.",
       "lesson_gen": "gen_lesson9"
+    },
+    {
+      "file": "lesson10.ord",
+      "title": "Postprocessing",
+      "description": "Analyze transient data in a report: count pulses, measure edge times.",
+      "lesson_gen": "gen_lesson10"
     }
   ]
 }

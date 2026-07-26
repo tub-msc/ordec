@@ -20,6 +20,7 @@ carry only instructions and no PassFail elements.
 
 import dis
 import inspect
+import re
 import traceback
 
 from ordec.core import *
@@ -904,5 +905,95 @@ def gen_lesson9(g):
             report.passfail(label, False, instructions=exception_text(),
                 hint="Declare a group with `PlotGroup grp` and pass "
                 "`plot_group=grp` to both `.plot2d(...)` calls.")
+        return report
+    return lesson
+
+
+# Lesson 10: Postprocessing
+# -------------------------
+
+def gen_lesson10(g):
+    @generate_func
+    def lesson() -> Report:
+        report = Report()
+        report.markdown(
+            "The RC chain from lesson 9 is back, with the transient "
+            "analysis in place but an empty report. Simulation data is "
+            "plain Python data, so a report can do arbitrary "
+            "postprocessing.\n\n"
+            "**Fill the report at the EDIT HERE marker: count the "
+            "pulses, then measure the rise and fall time of vout.**\n\n"
+            "1. Count the rising edges of the input and report them:\n\n"
+            "```\n"
+            "t = [float(x) for x in sim.time]\n"
+            "vin = list(sim.vin.voltage)\n"
+            "vout = list(sim.vout.voltage)\n"
+            "\n"
+            "pulses = sum(1 for a, b in zip(vin, vin[1:]) if a < 0.5 <= b)\n"
+            ".markdown(f\"**{pulses} pulses** counted on vin.\")\n"
+            "```\n\n"
+            "2. Find the 10%/90% crossings of vout and report rise and "
+            "fall time:\n\n"
+            "```\n"
+            "def crossings(v, level):\n"
+            "    up = [t[i] for i in range(len(v) - 1) if v[i] < level <= v[i+1]]\n"
+            "    down = [t[i] for i in range(len(v) - 1) if v[i] > level >= v[i+1]]\n"
+            "    return up, down\n"
+            "up10, down10 = crossings(vout, 0.1)\n"
+            "up90, down90 = crossings(vout, 0.9)\n"
+            ".markdown(f\"vout rise time (10-90%): {(up90[0]-up10[0])*1e6:.0f} us, \"\n"
+            "    f\"fall time: {(down10[0]-down90[0])*1e6:.0f} us.\")\n"
+            "```"
+        )
+
+        def md_texts():
+            if not hasattr(g['RcChain'], 'report'):
+                return []
+            return [e.markdown for e in g['RcChain']().report.elements()
+                if isinstance(e, Markdown)]
+
+        label = "Pulse count reported"
+        try:
+            found = any(re.search(r'\b2 pulses\b', txt)
+                for txt in md_texts())
+            report.passfail(label, found,
+                hint="Count the rising edges of vin through 0.5 V and "
+                "report the count in a markdown text (2 pulses in this "
+                "simulation).",
+                instructions="Looking for a markdown text stating "
+                "'2 pulses'.")
+        except Exception:
+            report.passfail(label, False, instructions=exception_text(),
+                hint="Count the rising edges of vin through 0.5 V and "
+                "report the count in a markdown text (2 pulses in this "
+                "simulation).")
+
+        label = "Rise and fall time measured"
+        try:
+            rise = fall = None
+            for txt in md_texts():
+                m = re.search(r'rise.*?([0-9.]+)\s*us', txt)
+                if m:
+                    rise = float(m.group(1))
+                m = re.search(r'fall.*?([0-9.]+)\s*us', txt)
+                if m:
+                    fall = float(m.group(1))
+            found = (rise is not None and 470 <= rise <= 700
+                and fall is not None and 470 <= fall <= 700)
+            report.passfail(label, found,
+                hint="Measure the time between the 10% and 90% crossings "
+                "of vout and report both values in microseconds, e.g. "
+                "'rise time (10-90%): 586 us'.",
+                instructions="Measured values found: rise = "
+                + (f"{rise:g} us" if rise is not None else "none")
+                + ", fall = "
+                + (f"{fall:g} us" if fall is not None else "none")
+                + " (expected: roughly 590 us each).")
+        except Exception:
+            report.passfail(label, False, instructions=exception_text(),
+                hint="Measure the time between the 10% and 90% crossings "
+                "of vout and report both values in microseconds, e.g. "
+                "'rise time (10-90%): 586 us'.")
+
         return report
     return lesson
