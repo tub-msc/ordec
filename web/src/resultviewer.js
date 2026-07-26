@@ -1364,8 +1364,16 @@ export class ResultViewer {
             }
         }
 
+        // In course mode, the lesson() report is shown by the Course panel;
+        // hide it from the view selectors of the regular result viewers.
+        const hideLesson = Boolean(getCourseController());
         const viewNames = [];
-        this.client.views.forEach(view => viewNames.push(view.name));
+        this.client.views.forEach(view => {
+            if (hideLesson && view.name === 'lesson()') {
+                return;
+            }
+            viewNames.push(view.name);
+        });
 
         const prevSelected = this.viewSelected || this.restoreSelectedView;
 
@@ -1376,14 +1384,14 @@ export class ResultViewer {
             let vs = this.viewSelector;
             vs.innerHTML = "<option disabled selected value>--- Select result from list ---</option>";
             let selectedVal = null;
-            this.client.views.forEach(view => {
+            viewNames.forEach(name => {
                 var option = document.createElement("option");
-                option.innerText = view.name;
-                option.value = view.name;
+                option.innerText = name;
+                option.value = name;
                 vs.appendChild(option);
-                if (view.name == prevSelected) {
+                if (name == prevSelected) {
                     option.selected = true;
-                    selectedVal = view.name;
+                    selectedVal = name;
                 }
             });
             this.viewSelected = selectedVal;
