@@ -109,14 +109,11 @@ def schem_place(schem: Schematic, gap=None, port_margin=None):
     schem_place_ports(schem, clearance=port_margin)
 
     schem.check(add_terminal_taps=True)
+    # adjust_outline_initial covers the tap point labels that this placement
+    # relies on for connectivity.
     outline = adjust_outline_initial(schem)
     if outline is None:
         outline = Rect4R(0, 0, 1, 1)
-    # adjust_outline_initial covers port labels but not tap point labels,
-    # which this placement relies on for connectivity.
-    for tap in schem.all(SchemTapPoint):
-        label_len = Renderer.port_text_space + 0.35 * len(tap.ref.full_path_label())
-        outline = outline.extend(tap.pos + (tap.align * Vec2R(0, 1)) * label_len)
     schem.outline = outline
 
 
