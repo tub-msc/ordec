@@ -42,7 +42,7 @@ class Renderer:
 
     pin_text_space = 0.125
     port_text_space = 0.15 + 0.5
-    pixel_per_unit = 35
+    pixel_per_unit = 25
     conn_point_radius = 0.1625
     # font_size_internal_pt must match the font-size in the css class
     # attribute. It has no effect on the rendered text size: draw_label()

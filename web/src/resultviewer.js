@@ -263,6 +263,8 @@ const viewClassOf = {
             this.coordsDisplay = new CoordinateDisplay();
             this.highlightOverlay = null;
             this.svg = null;
+            this.baseTransform = null;
+            this.resizeObserver = null;
 
             this._onLvsSelect = (data) => {
                 // Selections targeted at a specific schematic view (items of
@@ -284,6 +286,36 @@ const viewClassOf = {
         zoomed({transform}) {
             this.transform = transform;
             this.g.attr("transform", transform);
+        }
+        _sameTransform(a, b) {
+            return a && b && Math.abs(a.k - b.k) < 1e-9
+                && Math.abs(a.x - b.x) < 1e-6
+                && Math.abs(a.y - b.y) < 1e-6;
+        }
+        // Computes the base (zoomed-out) transform: fit to the panel, but
+        // never enlarged beyond the nominal rendered size; smaller-than-
+        // panel content is centered. Re-applied whenever the view is at
+        // the base, so the cap follows panel resizes; a user zoom is left
+        // untouched.
+        _updateBaseTransform() {
+            const rect = this.svgNode.getBoundingClientRect();
+            if (!rect.width || !rect.height) {
+                return;
+            }
+            const [vx, vy, vw, vh] = this.viewbox;
+            const fitScale = Math.min(rect.width / vw, rect.height / vh);
+            const k = Math.min(1, this.nominalScale / fitScale);
+            const base = d3.zoomIdentity
+                .translate((vx + vw / 2) * (1 - k), (vy + vh / 2) * (1 - k))
+                .scale(k);
+            const wasAtBase = this.baseTransform
+                ? this._sameTransform(this.transform, this.baseTransform)
+                : this._sameTransform(this.transform, d3.zoomIdentity);
+            this.zoom.scaleExtent([k, 12]);
+            this.baseTransform = base;
+            if (wasAtBase && !this._sameTransform(this.transform, base)) {
+                this.svg.call(this.zoom.transform, base);
+            }
         }
         setHighlight(data) {
             this.clearHighlight();
@@ -424,15 +456,22 @@ const viewClassOf = {
             this.g = svg.append("g")
                 .html(msgData['inner'])
 
-            let zoom = d3.zoom()
+            // The svg fills the panel; the base zoom transform caps the
+            // resting view at the nominal rendered size and centers it
+            // (see _updateBaseTransform). Zooming in from there can use
+            // the full panel.
+            this.viewbox = viewbox;
+            this.nominalScale = parseFloat(msgData.width) / vw;
+
+            this.zoom = d3.zoom()
                 .extent(zoomExtent)
                 .scaleExtent([1, 12])
                 .translateExtent(zoomExtent);
 
-            svg.call(zoom.transform, this.transform);
+            svg.call(this.zoom.transform, this.transform);
             this.g.attr("transform", this.transform);
 
-            svg.call(zoom.on("zoom", (x) => this.zoomed(x)));
+            svg.call(this.zoom.on("zoom", (x) => this.zoomed(x)));
 
             this.svgNode = svg.node();
 
@@ -471,6 +510,19 @@ const viewClassOf = {
 
             this.resContent.replaceChildren(schemRoot);
             this.coordsDisplay.clear();
+
+            // The base transform depends on the panel size, so it is set
+            // once the svg is laid out and tracked across panel resizes.
+            // Undebounced on purpose: ResizeObserver fires after layout but
+            // before paint, so a synchronous update keeps the resting view
+            // pinned at nominal size throughout a resize.
+            this._updateBaseTransform();
+            if (this.resizeObserver) {
+                this.resizeObserver.disconnect();
+            }
+            this.resizeObserver = new ResizeObserver(
+                () => this._updateBaseTransform());
+            this.resizeObserver.observe(this.svgNode);
 
             svg.selectAll('.errorMarker')
                 .on('mouseover', (event) => {
@@ -516,6 +568,10 @@ const viewClassOf = {
             viewEventBus.off('lvs:schem-select', this._onLvsSelect);
             viewEventBus.off('lvs:clear', this._onLvsClear);
             this.clearHighlight();
+            if (this.resizeObserver) {
+                this.resizeObserver.disconnect();
+                this.resizeObserver = null;
+            }
         }
     },
     report: class {
