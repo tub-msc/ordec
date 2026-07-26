@@ -777,3 +777,132 @@ def gen_lesson8(g):
                 "both).")
         return report
     return lesson
+
+
+# Lesson 9: Transient analysis and reports
+# ----------------------------------------
+
+def gen_lesson9(g):
+    @generate_func
+    def lesson() -> Report:
+        report = Report()
+        report.markdown(
+            "The `RcChain` cell chains two RC low-pass stages behind a "
+            "pulse source — but nothing is analyzed yet.\n\n"
+            "**Add a transient analysis, build a report that plots the "
+            "pulse input and the two stage outputs, and finally link the "
+            "plots so that they zoom together.**\n\n"
+            "1. Add the analysis at the EDIT HERE (analysis) marker:\n\n"
+            "```\n"
+            "viewgen sim_tran -> Simulation:\n"
+            "    .simulate().tran('1u', '2m')\n"
+            "```\n\n"
+            "2. Add a report at the EDIT HERE (report) marker: a text, a "
+            "plot of the pulse input, and a second plot with both stage "
+            "outputs:\n\n"
+            "```\n"
+            "viewgen report -> Report:\n"
+            "    sim = self.sim_tran\n"
+            "    .markdown(\"Step response of the two RC stages.\")\n"
+            "    .plot2d(x=sim.time, series={'vin': sim.vin.voltage},\n"
+            "        xlabel=\"Time (s)\", ylabel=\"Voltage (V)\", height=200)\n"
+            "    .plot2d(x=sim.time,\n"
+            "        series={'mid': sim.mid.voltage, 'vout': sim.vout.voltage},\n"
+            "        xlabel=\"Time (s)\", ylabel=\"Voltage (V)\", height=200)\n"
+            "```\n\n"
+            "Open the new `RcChain().report` view in the empty result "
+            "viewer on the right, like in lesson 2.\n\n"
+            "3. Try zooming into one of the plots: the other one does not "
+            "follow. Link them: declare a group with `PlotGroup grp` after "
+            "the markdown line and pass `plot_group=grp` to both "
+            "`.plot2d(...)` calls. Cursor and zoom of the two plots now "
+            "move in sync."
+        )
+
+        label = "Transient analysis added"
+        try:
+            found = (hasattr(g['RcChain'], 'sim_tran')
+                and g['RcChain']().sim_tran.time is not None)
+            report.passfail(label, found,
+                hint="Add `viewgen sim_tran -> Simulation:` with "
+                "`.simulate().tran('1u', '2m')` at the EDIT HERE "
+                "(analysis) marker.",
+                instructions="Looking for a sim_tran view with transient "
+                "data.")
+        except Exception:
+            report.passfail(label, False, instructions=exception_text(),
+                hint="Add `viewgen sim_tran -> Simulation:` with "
+                "`.simulate().tran('1u', '2m')` at the EDIT HERE "
+                "(analysis) marker.")
+
+        def plots():
+            if not hasattr(g['RcChain'], 'report'):
+                return None
+            return [e for e in g['RcChain']().report.elements()
+                if isinstance(e, Plot2D)]
+
+        label = "Report with a Markdown description"
+        try:
+            found = (hasattr(g['RcChain'], 'report')
+                and any(isinstance(e, Markdown)
+                    for e in g['RcChain']().report.elements()))
+            report.passfail(label, found,
+                hint="Add `viewgen report -> Report:` at the EDIT HERE "
+                "(report) marker and describe the circuit with "
+                "`.markdown(...)`.",
+                instructions="Looking for a report view containing a "
+                "markdown element.")
+        except Exception:
+            report.passfail(label, False, instructions=exception_text(),
+                hint="Add `viewgen report -> Report:` at the EDIT HERE "
+                "(report) marker and describe the circuit with "
+                "`.markdown(...)`.")
+
+        label = "First plot: the pulse input"
+        try:
+            ps = plots()
+            found = (ps is not None and len(ps) >= 1
+                and [se.name for se in ps[0].series()] == ['vin'])
+            report.passfail(label, found,
+                hint="The first `.plot2d(...)` plots x=sim.time against "
+                "the single series {'vin': sim.vin.voltage}.",
+                instructions="The report's first plot must show exactly "
+                "one series named vin.")
+        except Exception:
+            report.passfail(label, False, instructions=exception_text(),
+                hint="The first `.plot2d(...)` plots x=sim.time against "
+                "the single series {'vin': sim.vin.voltage}.")
+
+        label = "Second plot: both stage outputs"
+        try:
+            ps = plots()
+            found = (ps is not None and len(ps) >= 2
+                and sorted(se.name for se in ps[1].series())
+                    == ['mid', 'vout'])
+            report.passfail(label, found,
+                hint="The second `.plot2d(...)` plots the two series "
+                "{'mid': sim.mid.voltage, 'vout': sim.vout.voltage}.",
+                instructions="The report's second plot must show exactly "
+                "the two series mid and vout.")
+        except Exception:
+            report.passfail(label, False, instructions=exception_text(),
+                hint="The second `.plot2d(...)` plots the two series "
+                "{'mid': sim.mid.voltage, 'vout': sim.vout.voltage}.")
+
+        label = "Plots linked in a group"
+        try:
+            ps = plots()
+            found = (ps is not None and len(ps) >= 2
+                and ps[0].plot_group is not None
+                and ps[0].plot_group == ps[1].plot_group)
+            report.passfail(label, found,
+                hint="Declare a group with `PlotGroup grp` and pass "
+                "`plot_group=grp` to both `.plot2d(...)` calls.",
+                instructions="Both plots must reference the same "
+                "PlotGroup.")
+        except Exception:
+            report.passfail(label, False, instructions=exception_text(),
+                hint="Declare a group with `PlotGroup grp` and pass "
+                "`plot_group=grp` to both `.plot2d(...)` calls.")
+        return report
+    return lesson

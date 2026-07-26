@@ -50,6 +50,12 @@
       "title": "Parameters",
       "description": "Parametrize the filter's notch frequency and chain two of them.",
       "lesson_gen": "gen_lesson8"
+    },
+    {
+      "file": "lesson9.ord",
+      "title": "Transient analysis and reports",
+      "description": "Add a transient analysis and build a report with linked plots.",
+      "lesson_gen": "gen_lesson9"
     }
   ]
 }

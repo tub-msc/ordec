@@ -201,6 +201,30 @@ courses_testdata = {
                 .vss -- vss
             """),
         ]),
+        # Lesson 9: transient analysis and reports.
+        LessonTestdata(passfails=5, solution=[
+            InsertSolution("""
+            # EDIT HERE (analysis)
+            """, """
+            viewgen sim_tran -> Simulation:
+                .simulate().tran('1u', '2m')
+            """),
+            InsertSolution("""
+            # EDIT HERE (report)
+            """, """
+            viewgen report -> Report:
+                sim = self.sim_tran
+                .markdown("Step response of the two RC stages.")
+                PlotGroup grp
+                .plot2d(x=sim.time, series={'vin': sim.vin.voltage},
+                    xlabel="Time (s)", ylabel="Voltage (V)", height=200,
+                    plot_group=grp)
+                .plot2d(x=sim.time,
+                    series={'mid': sim.mid.voltage, 'vout': sim.vout.voltage},
+                    xlabel="Time (s)", ylabel="Voltage (V)", height=200,
+                    plot_group=grp)
+            """),
+        ]),
     ]),
     # The under-construction courses have a single instruction-only dummy
     # lesson; without PassFail elements, it can never be marked solved.
@@ -265,9 +289,9 @@ def test_course_special_lesson_flags():
     # the first two getting_started lessons.
     data = course_data()
     assert [l['getting_started_lesson_1'] for l in data['lessons']] == \
-        [True, False, False, False, False, False, False, False]
+        [True, False, False, False, False, False, False, False, False]
     assert [l['getting_started_lesson_2'] for l in data['lessons']] == \
-        [False, True, False, False, False, False, False, False]
+        [False, True, False, False, False, False, False, False, False]
     for name in ('cmos_circuits', 'layout_tutorial'):
         for lesson in course_data(name)['lessons']:
             assert not lesson['getting_started_lesson_1']
