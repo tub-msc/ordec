@@ -94,6 +94,24 @@ def test_markdown_docs_links():
     assert 'docs:' not in html
 
 
+def test_markdown_math():
+    report = Report()
+    report.markdown(
+        "At $f = \\frac{1}{2*\\pi*\\sqrt{L C}}$ with `.$r=1k` code, "
+        "$a<b$ and display: $$x^2 * y$$ Prices like 5 $ stay text.")
+    _, data = report.webdata()
+    html = data["elements"][0]["html"]
+    # Math spans reach the client verbatim (markdown2 must not parse the
+    # *...* as emphasis), HTML-escaped:
+    assert "$f = \\frac{1}{2*\\pi*\\sqrt{L C}}$" in html
+    assert "$$x^2 * y$$" in html
+    assert "$a&lt;b$" in html
+    # Dollar signs in code spans are not math:
+    assert "<code>.$r=1k</code>" in html
+    # An unpaired/whitespace-delimited dollar sign is not math either:
+    assert "5 $ stay" in html
+
+
 def test_report_fill_height():
     report = Report(fill_height=True)
     report.markdown("hello")

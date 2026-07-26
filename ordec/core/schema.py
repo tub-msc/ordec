@@ -1256,22 +1256,52 @@ class Markdown(ReportElement):
 
     Links using the 'docs:' pseudo-scheme, e.g. [WebUI](docs:webui.html),
     point to the ORDeC documentation matching the installed version.
+
+    TeX math delimited by $...$ (inline) or $$...$$ (display) is rendered
+    via KaTeX; dollar signs inside code spans are left alone.
     """
     markdown = Attr(str, optional=False)
 
+    # TeX math spans are protected from markdown2 (which would otherwise
+    # parse e.g. *...* inside a formula as emphasis) and re-emitted verbatim
+    # for KaTeX to render in the browser. Code spans and fenced blocks win
+    # over math by position, so dollar signs inside them (e.g. `.$r=1k`) are
+    # never treated as math. Inline math must not span lines and must not
+    # start or end with whitespace.
+    _md_math_regex = re.compile(
+        r"```.*?```"                          # fenced code block
+        r"|`[^`\n]*`"                         # inline code span
+        r"|(?P<math>\$\$.+?\$\$"              # display math
+        r"|\$[^\s$](?:[^$\n]*[^\s$])?\$)",    # inline math
+        re.DOTALL)
+
     def element_webdata(self) -> dict:
         import markdown2
+        from html import escape
         from ..version import doc_url
         base = doc_url()
         # Rewrite 'docs:' pseudo-scheme links to version-matched documentation
         # URLs. This must happen before rendering, as markdown2's safe_mode
         # replaces links with unknown URL schemes by '#'.
         md = self.markdown.replace('](docs:', f']({base}')
+        # Replace math spans with inert placeholder tokens so that markdown2
+        # leaves their contents alone; see _md_math_regex.
+        math_spans = []
+        def protect(m):
+            if m.group('math') is None:
+                return m.group(0)  # code span/block: keep, do not scan inside
+            math_spans.append(m.group('math'))
+            return f"ordecmathspan{len(math_spans) - 1}end"
+        md = self._md_math_regex.sub(protect, md)
         html = markdown2.markdown(
             md,
             extras=["fenced-code-blocks", "code-friendly", "tables"],
             safe_mode="escape",
         )
+        for i, span in enumerate(math_spans):
+            # Re-emitted with delimiters for KaTeX's in-browser auto-render;
+            # HTML-escaped, as this is substituted into finished HTML.
+            html = html.replace(f"ordecmathspan{i}end", escape(span))
         # target=_blank so that following a documentation link does not
         # navigate away from the web app.
         html = html.replace(f'href="{base}',

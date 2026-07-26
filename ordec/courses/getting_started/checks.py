@@ -377,9 +377,9 @@ def gen_lesson6(g):
             "`vout` down to `vss`, with a net `mid` between them.**\n\n"
             "Instances can be rotated (`R90`, `R180`, `R270`) and mirrored "
             "(`MX`, `MY`, `MX90`, `MY90`). At the resonance frequency "
-            "f = 1/(2*pi*sqrt(L*C)) = 15.9 kHz, the LC trap shorts `vout` "
-            "to ground and produces a deep notch in the Bode plot. Target "
-            "schematic:"
+            "$f = \\frac{1}{2\\pi\\sqrt{LC}} = 15.9\\,\\mathrm{kHz}$, the "
+            "LC trap shorts `vout` to ground and produces a deep notch in "
+            "the Bode plot. Target schematic:"
         )
         try:
             report.svg(BandstopSolution().schematic)

@@ -10,6 +10,8 @@ import { HierSelector } from './hier-selector.js';
 import { viewEventBus } from './event-bus.js';
 import { CoordinateDisplay } from './viewer-coordinates.js';
 import { getCourseController, suppressCloseControls } from './course.js';
+import renderMathInElement from 'katex/contrib/auto-render';
+import 'katex/dist/katex.min.css';
 
 let idCounter = 0;
 export function generateId() {
@@ -110,6 +112,15 @@ const reportElementClassOf = {
         const section = document.createElement('div');
         section.classList.add('report-markdown');
         section.innerHTML = msgData.html;
+        // TeX math spans; the backend keeps them out of markdown2's hands
+        // (see schema.py Markdown.element_webdata).
+        renderMathInElement(section, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+            ],
+            throwOnError: false,
+        });
         return section;
     }),
     html: simpleReportElementClass((msgData) => {

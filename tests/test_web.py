@@ -55,6 +55,8 @@ def check_report_example(res_viewer):
     assert html.find('Report Example') >= 0
     assert html.find('bold') >= 0
     assert html.find('alpha') >= 0
+    # TeX math rendered client-side by KaTeX:
+    assert html.find('class="katex"') >= 0
 
 def check_min_size(min_width, min_height):
     def func(res_viewer):
