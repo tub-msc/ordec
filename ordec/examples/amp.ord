@@ -44,5 +44,4 @@ cell AmpTb:
 
     viewgen report_ac -> Report:
         sim = self.sim_ac
-        .markdown("## Amplifier AC bode plot")
         .bode_plot(sim.vin, sim.vout)

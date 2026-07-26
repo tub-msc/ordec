@@ -16,7 +16,6 @@ cell Bandstop:
         .simulate().ac('dec', '50', '100', '10M')
 
     viewgen bode -> Report:
-        .markdown("## Bandstop frequency response")
         sim = self.sim_ac
         if sim.vout.voltage is None:
             .markdown("The Bode plot will show up here.")

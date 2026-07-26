@@ -13,7 +13,6 @@ def gen_lesson1(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "## Coming soon\n\n"
             "This course is under construction."
         )
         return report

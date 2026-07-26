@@ -39,7 +39,6 @@ def gen_lesson1(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "## Welcome to ORDeC!\n\n"
             "In this course, you learn step by step how to work with ORDeC's "
             "web UI and how to describe circuits in the ORD language."
         )
@@ -55,7 +54,6 @@ def gen_lesson2(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "## Lesson 2: Opening result viewers\n\n"
             "The editor contains the source code of a small design: a cell "
             "`HelloWorld` with two views, a `schematic` "
             "(a voltage source with a resistor) and a report called `hello`.\n\n"
@@ -84,7 +82,6 @@ def gen_lesson3(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "## Lesson 3: Instantiating a resistor\n\n"
             "The `ParallelR` cell contains a 5 V voltage source `vsrc`, but "
             "no load yet.\n\n"
             "**Instantiate a 1 kOhm resistor at position (5, 6), in "
@@ -171,7 +168,6 @@ def gen_lesson4(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "## Lesson 4: Resistor network\n\n"
             "**Connect a network of three resistors to the 5 V source: a "
             "2 kOhm and a 3 kOhm resistor in parallel, and a 1 kOhm "
             "resistor in series with the parallel pair, with a net `mid` "
@@ -275,7 +271,6 @@ def gen_lesson5(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "## Lesson 5: Wiring with for loops\n\n"
             "The three resistors from lesson 4 are back, already placed but "
             "not connected. `r1` is rotated by 180 degrees "
             "(`.orientation=R180`), so the `p` pins of *all three* resistors "
@@ -374,7 +369,6 @@ def gen_lesson6(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "## Lesson 6: LC bandstop filter\n\n"
             "The `Bandstop` cell provides an AC source `vsrc` driving the "
             "net `vin`.\n\n"
             "**Build a bandstop filter: a 1 kOhm resistor from `vin` to "

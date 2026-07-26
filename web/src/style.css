@@ -1009,6 +1009,15 @@ body:not(.show-debug) .debug {
     stroke-linecap: butt;
     stroke-linejoin: round;
 }
+/* The selected lesson doubles as the lesson title (the reports carry no
+   heading of their own), so it is shown bold; the option list stays
+   regular. */
+.course-lessonsel {
+    font-weight: bold;
+}
+.course-lessonsel option {
+    font-weight: normal;
+}
 /* Vertical divider between nav elements (like the main toolbar). Explicit
    elements rather than ::before pseudos, which don't render on the native
    <select> dropdown. */

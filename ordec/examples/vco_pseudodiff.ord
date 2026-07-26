@@ -856,7 +856,6 @@ cell VcoTb:
         sim = self.sim_tran
         .grp = PlotGroup()
 
-        .markdown("## VCO transient main waveforms")
         for i in range(2):
             .plot2d(
                 x=sim.time,
