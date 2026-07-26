@@ -75,7 +75,9 @@ packages = [
 
 [tool.setuptools.package-data]
 "ordec" = ["webdist.tar"]
-"ordec.examples" = ["*.json"]
+"ordec.ord" = ["*.lark"]
+"ordec.layout" = ["*.lark"]
+"ordec.examples" = ["*.json", "*.ord"]
 "ordec.courses.getting_started" = ["*.json", "*.ord"]
 "ordec.courses.cmos_circuits" = ["*.json", "*.ord"]
 "ordec.courses.layout_tutorial" = ["*.json", "*.ord"]
