@@ -469,3 +469,140 @@ def gen_lesson6(g):
         return report
     return lesson
 
+
+# Lesson 7: Subcells
+# ------------------
+
+def gen_lesson7(g):
+    @generate_func
+    def lesson() -> Report:
+        report = Report()
+        report.markdown(
+            "So far, each design was a single cell. Real designs are built "
+            "from subcells: a cell gets a *symbol* with pins, and other "
+            "cells instantiate it like any component.\n\n"
+            "**Turn the filter into a reusable cell: give `Bandstop` a "
+            "symbol with pins `vin`, `vout` and `vss`, bind them in its "
+            "schematic with ports and wire up the R, L and C; then "
+            "instantiate `Bandstop` in `BandstopTb` and connect it to the "
+            "source. Place the `vin` port at (2, 18).**\n\n"
+            "Symbol pins are declared by direction:\n\n"
+            "```\n"
+            "input vin: .align=West\n"
+            "output vout: .align=East\n"
+            "inout vss: .align=South\n"
+            "```\n\n"
+            "In the schematic, a `port` binds a net to the symbol pin of "
+            "the same name. Ports without a `.pos` are placed "
+            "automatically at the edge of the schematic:\n\n"
+            "```\n"
+            "port vin: .align=East; .pos=(2,18)\n"
+            "port vout: .align=West\n"
+            "```\n\n"
+            "Wire the R, L and C pins to the port nets like in lesson 5, "
+            "e.g. `r1.p -- vin`. In the testbench, the subcell is then "
+            "instantiated with its pins connected by name:\n\n"
+            "```\n"
+            "Bandstop dut: .pos=(6,8); .vin -- vin; .vout -- vout; .vss -- vss\n"
+            "```"
+        )
+
+        label = "Pins vin, vout and vss added to the symbol"
+        try:
+            sym = g['Bandstop']().symbol
+            names = {p.full_path_str() for p in sym.all(Pin)}
+            report.passfail(label, {'vin', 'vout', 'vss'} <= names,
+                hint="Declare the pins in the symbol viewgen: `input vin: "
+                ".align=West`, `output vout: .align=East`, `inout vss: "
+                ".align=South`.",
+                instructions="Symbol pins found: "
+                + (", ".join(sorted(names)) if names else "none") + ".")
+        except Exception:
+            report.passfail(label, False, instructions=exception_text(),
+                hint="Declare the pins in the symbol viewgen: `input vin: "
+                ".align=West`, `output vout: .align=East`, `inout vss: "
+                ".align=South`.")
+
+        label = "Filter schematic wired up, including the ports"
+        try:
+            s = g['Bandstop']().schematic
+            port_nets = {p.ref.full_path_str() for p in s.all(SchemPort)}
+            found = ({'vin', 'vout', 'vss'} <= port_nets
+                and not s.has_errors())
+            report.passfail(label, found,
+                hint="Declare a port for each of vin, vout and vss, then "
+                "connect the component pins: `r1.p -- vin`, `r1.m -- "
+                "vout`, `l1.p -- vout`, `c1.m -- vss`.",
+                instructions="Ports found: "
+                + (", ".join(sorted(port_nets)) if port_nets else "none")
+                + ("; schematic has error markers." if s.has_errors()
+                    else "."))
+        except Exception:
+            report.passfail(label, False, instructions=exception_text(),
+                hint="Declare a port for each of vin, vout and vss, then "
+                "connect the component pins: `r1.p -- vin`, `r1.m -- "
+                "vout`, `l1.p -- vout`, `c1.m -- vss`.")
+
+        label = "vin port placed at (2, 18)"
+        try:
+            s = g['Bandstop']().schematic
+            found = any(p.ref.full_path_str() == 'vin'
+                and (float(p.pos.x), float(p.pos.y)) == (2.0, 18.0)
+                for p in s.all(SchemPort))
+            report.passfail(label, found,
+                hint="Give the vin port an explicit position: `port vin: "
+                ".align=East; .pos=(2,18)`. The other ports may stay "
+                "auto-placed.",
+                instructions="Looking for the vin port at position "
+                "(2, 18).")
+        except Exception:
+            report.passfail(label, False, instructions=exception_text(),
+                hint="Give the vin port an explicit position: `port vin: "
+                ".align=East; .pos=(2,18)`. The other ports may stay "
+                "auto-placed.")
+
+        label = "Bandstop instantiated in the testbench"
+        try:
+            tb = g['BandstopTb']().schematic
+            found = any(isinstance(inst.symbol.cell, g['Bandstop'])
+                for inst in tb.all(SchemInstance))
+            report.passfail(label, found,
+                hint="Instantiate the filter at the EDIT HERE marker of "
+                "the testbench: `Bandstop dut: .pos=(6,8); .vin -- vin; "
+                ".vout -- vout; .vss -- vss`.",
+                instructions="Looking for a Bandstop instance in the "
+                "BandstopTb schematic.")
+        except Exception:
+            report.passfail(label, False, instructions=exception_text(),
+                hint="Instantiate the filter at the EDIT HERE marker of "
+                "the testbench: `Bandstop dut: .pos=(6,8); .vin -- vin; "
+                ".vout -- vout; .vss -- vss`.")
+
+        label = "Expected passband behavior"
+        hint = ("The filter is the same as in lesson 6: a deep notch "
+            "at 15.9 kHz, an untouched passband everywhere else. "
+            "Check the wiring inside Bandstop and in the testbench.")
+        # Until both cells are fully wired, the simulation fails or carries
+        # no vout data; that is an expected state, not worth a traceback.
+        tb = g['BandstopTb']()
+        if (g['Bandstop']().schematic.has_errors()
+                or tb.schematic.has_errors() or tb.sim_ac.freq is None
+                or tb.sim_ac.vout.voltage is None):
+            report.passfail(label, False, hint=hint,
+                instructions="No AC simulation data for vout yet: the "
+                "simulation only runs once the circuit is fully wired.")
+        else:
+            freq = [f.real for f in tb.sim_ac.freq]
+            mag = [abs(v) for v in tb.sim_ac.vout.voltage]
+            i_min = min(range(len(mag)), key=lambda i: mag[i])
+            f_notch = freq[i_min]
+            found = (abs(f_notch - 15.9e3) <= 0.10 * 15.9e3
+                and mag[i_min] < 0.1
+                and mag[0] > 0.9 and mag[-1] > 0.9)
+            report.passfail(label, found, hint=hint,
+                instructions=f"|V(vout)| minimum: {mag[i_min]:.4g} at "
+                f"{f_notch:.4g} Hz (target: < 0.1 at 15.9 kHz); at the "
+                f"sweep ends: {mag[0]:.3f} / {mag[-1]:.3f} (target: > 0.9 "
+                "both).")
+        return report
+    return lesson

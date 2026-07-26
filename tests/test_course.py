@@ -139,6 +139,33 @@ courses_testdata = {
             Cap c1: .$c=100n; .pos=(8,6); .p -- mid; .m -- vss
             """),
         ]),
+        # Lesson 7: subcells.
+        LessonTestdata(passfails=5, solution=[
+            InsertSolution("""
+            pass  # EDIT HERE (symbol)
+            """, """
+            input vin: .align=West
+            output vout: .align=East
+            inout vss: .align=South
+            """),
+            InsertSolution("""
+            # EDIT HERE (schematic)
+            """, """
+            port vin: .align=East; .pos=(2,18)
+            port vout: .align=West
+            port vss: .align=North
+
+            r1.p -- vin
+            r1.m -- vout
+            l1.p -- vout
+            c1.m -- vss
+            """),
+            InsertSolution("""
+            # EDIT HERE (testbench)
+            """, """
+            Bandstop dut: .pos=(6,8); .vin -- vin; .vout -- vout; .vss -- vss
+            """),
+        ]),
     ]),
     # The under-construction courses have a single instruction-only dummy
     # lesson; without PassFail elements, it can never be marked solved.
@@ -203,9 +230,9 @@ def test_course_special_lesson_flags():
     # the first two getting_started lessons.
     data = course_data()
     assert [l['getting_started_lesson_1'] for l in data['lessons']] == \
-        [True, False, False, False, False, False]
+        [True, False, False, False, False, False, False]
     assert [l['getting_started_lesson_2'] for l in data['lessons']] == \
-        [False, True, False, False, False, False]
+        [False, True, False, False, False, False, False]
     for name in ('cmos_circuits', 'layout_tutorial'):
         for lesson in course_data(name)['lessons']:
             assert not lesson['getting_started_lesson_1']

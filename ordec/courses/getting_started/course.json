@@ -38,6 +38,12 @@
       "title": "LC bandstop filter",
       "description": "Build an LC bandstop filter and check its notch in the Bode plot.",
       "lesson_gen": "gen_lesson6"
+    },
+    {
+      "file": "lesson7.ord",
+      "title": "Subcells",
+      "description": "Move the filter into its own cell with symbol, pins and ports.",
+      "lesson_gen": "gen_lesson7"
     }
   ]
 }
