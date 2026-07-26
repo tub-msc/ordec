@@ -1153,6 +1153,17 @@ def calculate_vertices(outline: Rect4R, cells: Iterable[SchemInstance],
     }
 
 
+def tap_outline_point(tap: SchemTapPoint) -> Vec2R:
+    """Outermost point of a tap point's glyph and net label, which extend
+    from tap.pos toward align * (0, 1) (see Renderer.draw_schem_tappoint)."""
+    node = tap.root
+    if tap.ref == node.default_supply or tap.ref == node.default_ground:
+        total = 1.0  # supply/ground glyph without label
+    else:
+        total = Renderer.port_text_space \
+            + 0.35 * len(tap.ref.full_path_label())
+    return tap.pos + (tap.align * Vec2R(0, 1)) * total
+
 def adjust_outline_initial(node: Schematic) -> Rect4R | None:
     """Compute an initial outline enclosing all ports, tap points and
     instances.
@@ -1187,13 +1198,7 @@ def adjust_outline_initial(node: Schematic) -> Rect4R | None:
         else:
             outline = Rect4R(lx=tap.pos.x, ly=tap.pos.y,
                              ux=tap.pos.x, uy=tap.pos.y)
-        # Extend outline to fit the tap glyph and net label, both extending
-        # toward align * (0, 1) (see Renderer.draw_schem_tappoint).
-        if tap.ref == node.default_supply or tap.ref == node.default_ground:
-            total = 1.0  # supply/ground glyph without label
-        else:
-            total = port_text_space + 0.35 * len(tap.ref.full_path_label())
-        outline = outline.extend(tap.pos + (tap.align * Vec2R(0, 1)) * total)
+        outline = outline.extend(tap_outline_point(tap))
     for instance in node.all(SchemInstance):
         instance_transform = instance.loc_transform()
         instance_geometry = instance_transform * instance.symbol.outline

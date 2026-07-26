@@ -7,6 +7,7 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass
 from ..core import *
+from .auto_wire import tap_outline_point
 
 def spice_params(params: dict) -> list[str]:
     """Helper function for Netlister.add(). This function is in helper.py
@@ -512,8 +513,13 @@ def _check_terminals(node: Schematic, g: ConnectivityGraph,
         net_here = _net_at_pos(node, t.pos)
         if net_here is None:
             if add_terminal_taps:
-                t.ref % SchemTapPoint(pos=t.pos, align=t.align.unflip())
+                tap = t.ref % SchemTapPoint(pos=t.pos, align=t.align.unflip())
                 g.add_biedge(t.pos, t.ref)
+                # These taps are added after auto_wire() computed the
+                # outline, so their glyph/label extent is added here.
+                if node.outline is not None:
+                    node.outline = node.outline.extend(tap.pos) \
+                        .extend(tap_outline_point(tap))
             elif not suppress_errors:
                 node.root % SchemErrorMarker(pos=t.pos, error_type=SchemErrorType.MissingTerminalConnection)
                 return
