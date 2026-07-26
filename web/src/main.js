@@ -223,6 +223,26 @@ function getEditor() {
 }
 
 document.querySelector("#newresview").onclick = () => {
+    // In course mode, never open the new view as a tab on top of the Course
+    // panel or the source editor (GoldenLayout's default placement picks the
+    // first stack, which is the Course panel's): stack it onto an existing
+    // result viewer instead, or open a new stack at the root.
+    if (getCourseController()) {
+        const config = {
+            type: 'component',
+            componentName: 'result',
+            title: 'Result View',
+        };
+        for (const item of layout.root.getAllContentItems()) {
+            if (item.isComponent && item.componentName === 'result'
+                && item.component && !item.component.courseMode) {
+                item.parent.addItem(config);
+                return;
+            }
+        }
+        layout.root.contentItems[0].addItem(config);
+        return;
+    }
     layout.addComponent('result', undefined, 'Result View');
 };
 
