@@ -548,6 +548,9 @@ document.querySelector("#examples").onclick = () => {
 
 fetch('api/version').then(response => response.json()).then(data => {
     document.querySelector('#version').innerText = data['version'];
+    // Point the Docs toolbar link at the documentation matching the
+    // installed version.
+    document.querySelector('#docs').href = data['docs_url'];
 });
 
 // Schematic CSS is served from the backend (SchematicRenderer.css in render.py)

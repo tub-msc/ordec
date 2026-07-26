@@ -63,6 +63,11 @@ export function startCourseTour(controller, onDone) {
             text: 'This button takes you back to the ORDeC overview page where you can select different examples, courses or start with a blank ORD file.',
         },
         {
+            target: () => document.querySelector('#docs'),
+            title: 'Documentation',
+            text: 'This link opens the ORDeC documentation for the installed version in a new tab.',
+        },
+        {
             target: () => document.querySelector('#status'),
             title: 'Status indicator',
             text: 'Right now the indicator should say "ready". It shows you whether the ORDeC backend is busy generating views, whether an error occured or whether the backend is disconnected.',
