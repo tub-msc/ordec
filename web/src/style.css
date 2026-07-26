@@ -340,6 +340,9 @@ body.theme-dark .toolbar-btn option {
     font-size: var(--font-size-sm);
     color: var(--color-text-muted);
 }
+#status {
+    font-size: var(--font-size-sm);
+}
 
 /* -- Toolbar toggle button --------------------------------------- */
 .toolbar-toggle-btn {
@@ -928,8 +931,8 @@ body:not(.show-debug) .debug {
 }
 .report-passfail-badge {
     font-weight: bold;
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
+    font-family: var(--font-sans);
+    font-size: var(--font-size-xs);
     padding: 2px 10px;
     border-radius: 999px;
     color: #fff;
@@ -951,7 +954,7 @@ body:not(.show-debug) .debug {
     margin-left: auto;
     flex-shrink: 0;
     font: inherit;
-    font-size: 90%;
+    font-size: var(--font-size-sm);
     cursor: pointer;
     background-color: var(--color-bg-tertiary);
     color: var(--color-text);
@@ -1381,6 +1384,12 @@ body.theme-dark .spotlight-buttons .spotlight-skip {
 }
 
 /* -- Golden Layout overrides ------------------------------------- */
+/* Tab labels use the app font instead of the GL theme's Arial. The body
+   prefix outweighs the theme stylesheets, which are appended to <head>
+   at runtime (see theme.js). */
+body .lm_header .lm_tab {
+    font-family: var(--font-sans);
+}
 /* Remove blue focused-tab highlight in both themes */
 .lm_header .lm_tab.lm_active.lm_focused {
     background-color: #e1e1e1;
