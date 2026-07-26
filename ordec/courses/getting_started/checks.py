@@ -350,6 +350,7 @@ class BandstopSolution(Cell):
         s = Schematic(cell=self)
         s.vin = Net()
         s.vout = Net()
+        s.vout % SchemTapPoint(pos=(11, 18), align=R270)
         s.vss = Net()
         s.mid = Net()
 
@@ -358,7 +359,7 @@ class BandstopSolution(Cell):
             pos=Vec2R(0, 6))
         s.r1 = SchemInstance(Res(r='1k').symbol.portmap(p=s.vin, m=s.vout),
             pos=Vec2R(8, 16), orientation=R90)
-        s.h1 = SchemInstance(Ind(l='1m').symbol.portmap(m=s.mid, p=s.vout),
+        s.l1 = SchemInstance(Ind(l='1m').symbol.portmap(m=s.mid, p=s.vout),
             pos=Vec2R(8, 11))
         s.c1 = SchemInstance(Cap(c='100n').symbol.portmap(p=s.mid, m=s.vss),
             pos=Vec2R(8, 6))

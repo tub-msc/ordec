@@ -135,7 +135,7 @@ courses_testdata = {
             """, """
             net mid
             Res r1: .$r=1k; .p -- vin; .m -- vout; .pos=(8,16); .orientation=R90
-            Ind h1: .$l=1m; .pos=(8,11); .m -- mid; .p -- vout
+            Ind l1: .$l=1m; .pos=(8,11); .m -- mid; .p -- vout
             Cap c1: .$c=100n; .pos=(8,6); .p -- mid; .m -- vss
             """),
         ]),
