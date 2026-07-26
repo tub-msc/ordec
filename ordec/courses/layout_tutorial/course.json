@@ -1,0 +1,11 @@
+{
+  "title": "Layout Tutorial",
+  "lessons": [
+    {
+      "file": "lesson1.ord",
+      "title": "Coming soon",
+      "description": "This course is under construction.",
+      "lesson_gen": "gen_lesson1"
+    }
+  ]
+}

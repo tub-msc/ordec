@@ -65,10 +65,10 @@
             "maximised": false,
             "isClosable": true,
             "reorderEnabled": true,
-            "title": "Result View",
+            "title": "Welcome().schematic",
             "componentType": "result",
             "componentState": {
-              "view": "Nand2().schematic"
+              "view": "Welcome().schematic"
             }
           }
         ],

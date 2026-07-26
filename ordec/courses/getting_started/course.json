@@ -1,0 +1,43 @@
+{
+  "title": "Getting Started",
+  "lessons": [
+    {
+      "file": "lesson1.ord",
+      "title": "Welcome to ORDeC",
+      "description": "A short welcome and a tour of the web UI.",
+      "lesson_gen": "gen_lesson1",
+      "getting_started_lesson_1": true
+    },
+    {
+      "file": "lesson2.ord",
+      "title": "Opening result viewers",
+      "description": "Get to know the web UI by opening the views of a hello-world design.",
+      "lesson_gen": "gen_lesson2",
+      "getting_started_lesson_2": true
+    },
+    {
+      "file": "lesson3.ord",
+      "title": "Instantiating a resistor",
+      "description": "Instantiate, place and connect a resistor in ORD.",
+      "lesson_gen": "gen_lesson3"
+    },
+    {
+      "file": "lesson4.ord",
+      "title": "Resistor network",
+      "description": "Build a small resistor network and watch the currents.",
+      "lesson_gen": "gen_lesson4"
+    },
+    {
+      "file": "lesson5.ord",
+      "title": "Wiring with for loops",
+      "description": "Connect several instances at once using for loops.",
+      "lesson_gen": "gen_lesson5"
+    },
+    {
+      "file": "lesson6.ord",
+      "title": "LC bandstop filter",
+      "description": "Build an LC bandstop filter and check its notch in the Bode plot.",
+      "lesson_gen": "gen_lesson6"
+    }
+  ]
+}

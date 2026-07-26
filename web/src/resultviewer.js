@@ -1431,9 +1431,12 @@ export class ResultViewer {
         } else if (this.requestsView()) {
             this.courseController.onReportPending();
         } else {
-            // The lesson() view does not auto-refresh (expensive checks, e.g.
-            // LVS/DRC): it is evaluated only when the user clicks the in-panel
-            // Refresh overlay. The marker reflects this "not checked" state.
+            // The lesson() view is not being requested. This happens when it
+            // was declared with @generate_func(auto_refresh=False) (expensive
+            // checks, e.g. LVS/DRC) and is evaluated only when the user
+            // clicks the in-panel Refresh overlay; the marker reflects this
+            // "not checked" state. Plain @generate_func lessons auto-refresh
+            // and never end up here.
             this.courseController.onReportUnchecked();
         }
     }

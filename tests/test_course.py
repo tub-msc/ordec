@@ -2,18 +2,163 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Tests for course mode: the /api/course endpoint and the intro course
-content (skeleton lessons must fail their checks, solutions must pass).
+Tests for course mode: the /api/course endpoint and the course content
+(skeleton lessons must fail their checks, solutions must pass).
+
+The tests in this file do not go through the webui: lesson sources and check
+epilogues are compiled and executed directly, mirroring what the server's
+build_cells does. The end-to-end test of the course webui (navigator, lesson
+gating, pass detection in the browser) is test_web.py::test_course.
 """
 
 import json
+import re
+import textwrap
+from dataclasses import dataclass
+
 import pytest
 
 from ordec.server import StaticHandler
 from ordec.language import compile_ord
 
+@dataclass
+class InsertSolution:
+    """
+    One edit the user is asked to make: skeleton is the '# EDIT HERE' marker
+    as it appears in the shipped lesson source (test contract: it is
+    literal-replaced), solution is the code that replaces it. Both are
+    written dedented; apply() detects the indentation of the skeleton in the
+    lesson source and reindents both accordingly.
+    """
+    skeleton: str
+    solution: str
 
-def course_data(name='intro'):
+    def __post_init__(self):
+        # Dedent here, re-indent later:
+        self.skeleton = textwrap.dedent(self.skeleton.lstrip('\n'))
+        self.solution = textwrap.dedent(self.solution.lstrip('\n'))
+
+    def apply(self, src):
+        first_line = self.skeleton.splitlines()[0]
+        m = re.search('^([ \t]*)' + re.escape(first_line) + '$', src,
+            re.MULTILINE)
+        assert m, f'skeleton not found in lesson source: {first_line!r}'
+        skeleton = textwrap.indent(self.skeleton, m.group(1))
+        assert skeleton in src
+        return src.replace(skeleton, textwrap.indent(self.solution, m.group(1)))
+
+
+@dataclass
+class LessonTestdata:
+    """
+    Declarative test expectations for one lesson.
+
+    solution lists the InsertSolution edits that turn the shipped skeleton
+    into the correct solution, which must make all checks pass.
+
+    Lessons without a solution (welcome lesson, frontend-checked lessons,
+    dummy lessons of under-construction courses) just state their expected
+    PassFail count: 0 means the report alone can never mark the lesson
+    solved.
+    """
+    passfails: int = 0
+    solution: list = ()
+    # Expected per-check results on the unmodified skeleton (default: all
+    # checks fail).
+    skeleton_passed: list = None
+    has_svg: bool = False
+
+    def __post_init__(self):
+        if self.skeleton_passed is None:
+            self.skeleton_passed = [False] * self.passfails
+
+    def solution_src(self, lesson):
+        src = lesson['src']
+        for edit in self.solution:
+            src = edit.apply(src)
+        return src
+
+
+@dataclass
+class CourseTestdata:
+    title: str
+    lessons: list
+
+
+courses_testdata = {
+    'getting_started': CourseTestdata('Getting Started', [
+        # Lesson 1 (welcome) and lesson 2 (open result viewers) are handled
+        # by the frontend; their reports are instruction-only.
+        LessonTestdata(),
+        LessonTestdata(),
+        # Lesson 3: instantiating a resistor. The instance name is the
+        # user's choice; the checks match by value/position.
+        LessonTestdata(passfails=4, solution=[
+            InsertSolution("""
+            # EDIT HERE
+            """, """
+            Res r1: .$r=1k; .m -- vss; .p -- vdd; .pos=(5,6)
+            """),
+        ]),
+        # Lesson 4: resistor network.
+        LessonTestdata(passfails=6, solution=[
+            InsertSolution("""
+            # EDIT HERE
+            """, """
+            net mid
+            Res r1: .$r=1k; .p -- vdd; .m -- mid; .pos=(5,12)
+            Res r2: .$r=2k; .p -- mid; .m -- vss; .pos=(5,6)
+            Res r3: .$r=3k; .p -- mid; .m -- vss; .pos=(10,6)
+            """),
+        ]),
+        # Lesson 5: wiring with for loops (enforced by the checks via
+        # bytecode analysis of the schematic viewgen).
+        LessonTestdata(passfails=2, solution=[
+            InsertSolution("""
+            # EDIT HERE
+            """, """
+            for r in r1, r2, r3:
+                r.p -- mid
+            for r in r2, r3:
+                r.m -- vss
+            r1.m -- vdd
+            """),
+        ]),
+        # Lesson 6: LC bandstop filter. The target-schematic sketch must
+        # render as an SVG element. On the skeleton, the all-wired check
+        # passes trivially (only the fully wired source and ground exist).
+        LessonTestdata(passfails=4,
+            skeleton_passed=[False, False, True, False],
+            has_svg=True, solution=[
+            InsertSolution("""
+            # EDIT HERE
+            """, """
+            net mid
+            Res r1: .$r=1k; .p -- vin; .m -- vout; .pos=(8,16); .orientation=R90
+            Ind h1: .$l=1m; .pos=(8,11); .m -- mid; .p -- vout
+            Cap c1: .$c=100n; .pos=(8,6); .p -- mid; .m -- vss
+            """),
+        ]),
+    ]),
+    # The under-construction courses have a single instruction-only dummy
+    # lesson; without PassFail elements, it can never be marked solved.
+    'cmos_circuits': CourseTestdata('CMOS Integrated Circuits',
+        [LessonTestdata()]),
+    'layout_tutorial': CourseTestdata('Layout Tutorial',
+        [LessonTestdata()]),
+}
+
+
+def lesson_params(with_solution=False):
+    for course_name, course in courses_testdata.items():
+        for i, testdata in enumerate(course.lessons):
+            if with_solution and not testdata.solution:
+                continue
+            yield pytest.param(course_name, i, testdata,
+                id=f'{course_name}-{i}')
+
+
+def course_data(name='getting_started'):
     resp = StaticHandler().process_request_course(name)
     return json.loads(resp.body.decode('utf8'))
 
@@ -37,26 +182,34 @@ def run_lesson(lesson, src=None):
     return ns
 
 
-def report_passfails(report):
-    elements = [e.element_webdata() for e in report.elements()]
-    return [e for e in elements if e['element_type'] == 'passfail']
-
-
-def solution_src(lesson, skeleton_part, solution_part):
-    assert skeleton_part in lesson['src']
-    return lesson['src'].replace(skeleton_part, solution_part)
-
-
-def test_course_endpoint():
-    data = course_data()
-    assert data['name'] == 'intro'
-    assert data['title']
-    assert len(data['lessons']) == 3
+@pytest.mark.parametrize('name,course', courses_testdata.items(),
+    ids=courses_testdata.keys())
+def test_course_endpoint(name, course):
+    data = course_data(name)
+    assert data['name'] == name
+    assert data['title'] == course.title
+    assert len(data['lessons']) == len(course.lessons)
     for lesson in data['lessons']:
         assert lesson['srctype'] in ('ord', 'python')
         assert lesson['src']
         assert lesson['title']
         assert 'root' in lesson['uistate']
+
+
+def test_course_special_lesson_flags():
+    # The hard flags for the two special lessons (welcome lesson: solved
+    # right away + spotlight tour; viewer lesson: passed by opening result
+    # viewers, detected in the frontend) must be passed through to exactly
+    # the first two getting_started lessons.
+    data = course_data()
+    assert [l['getting_started_lesson_1'] for l in data['lessons']] == \
+        [True, False, False, False, False, False]
+    assert [l['getting_started_lesson_2'] for l in data['lessons']] == \
+        [False, True, False, False, False, False]
+    for name in ('cmos_circuits', 'layout_tutorial'):
+        for lesson in course_data(name)['lessons']:
+            assert not lesson['getting_started_lesson_1']
+            assert not lesson['getting_started_lesson_2']
 
 
 def test_course_unknown():
@@ -67,103 +220,30 @@ def test_course_unknown():
         StaticHandler().process_request_course('../examples')
 
 
-@pytest.mark.parametrize('lesson_index', [0, 1, 2])
-def test_lesson_executes(lesson_index):
-    """All lesson sources must compile and execute (without view evaluation)."""
-    data = course_data()
-    ns = run_lesson(data['lessons'][lesson_index])
-    assert 'lesson' in ns
+@pytest.mark.parametrize('course_name,lesson_index,testdata', lesson_params())
+def test_lesson_skeleton(course_name, lesson_index, testdata):
+    """
+    Every shipped lesson must execute as-is and its report must show the
+    expected check state (usually: all checks failing, each with a hint).
+    """
+    lesson = course_data(course_name)['lessons'][lesson_index]
+    report = run_lesson(lesson)['lesson']()
+    elements = [e.element_webdata() for e in report.elements()]
+    passfails = [e for e in elements if e['element_type'] == 'passfail']
+    assert [p['passed'] for p in passfails] == testdata.skeleton_passed
+    assert all(p['hint'] for p in passfails if not p['passed'])
+    if testdata.has_svg:
+        assert any(e['element_type'] == 'svg' for e in elements)
 
 
-def test_lesson1_skeleton_fails():
-    data = course_data()
-    report = run_lesson(data['lessons'][0])['lesson']()
-    passfails = report_passfails(report)
-    assert len(passfails) == 1
-    assert not passfails[0]['passed']
-    assert passfails[0]['hint']
-
-
-def test_lesson1_solution_passes():
-    data = course_data()
-    skeleton_part = ".$c=1n"
-    solution_part = ".$c=16n"
-    src = solution_src(data['lessons'][0], skeleton_part, solution_part)
-    report = run_lesson(data['lessons'][0], src)['lesson']()
-    passfails = report_passfails(report)
-    assert len(passfails) == 1
-    assert passfails[0]['passed']
-
-
-def test_lesson2_skeleton_fails():
-    data = course_data()
-    report = run_lesson(data['lessons'][1])['lesson']()
-    passfails = report_passfails(report)
-    assert len(passfails) == 4
-    # The inverter skeleton implements the wrong function only for a=1, b=0:
-    assert [p['passed'] for p in passfails] == [True, True, False, True]
-
-
-def test_lesson2_solution_passes():
-    data = course_data()
-    skeleton_part = """\
-        # TODO: Turn this inverter into a NAND2 gate.
-        Nmos n1: .pos=(4,1); .s -- vss; .d -- y; .g -- a; .b -- vss
-        Pmos p1: .pos=(4,14); .s -- vdd; .d -- y; .g -- a; .b -- vdd
-
-        # Set width and length parameters for all transistors:
-        for t in p1, n1:
-"""
-    solution_part = """\
-        net x
-        Nmos n1: .pos=(4,1); .s -- vss; .d -- x; .g -- a; .b -- vss
-        Nmos n2: .pos=(4,7); .s -- x; .d -- y; .g -- b; .b -- vss
-        Pmos p1: .pos=(4,14); .s -- vdd; .d -- y; .g -- a; .b -- vdd
-        Pmos p2: .pos=(12,14); .s -- vdd; .d -- y; .g -- b; .b -- vdd
-
-        for t in p1, p2, n1, n2:
-"""
-    src = solution_src(data['lessons'][1], skeleton_part, solution_part)
-    report = run_lesson(data['lessons'][1], src)['lesson']()
-    passfails = report_passfails(report)
-    assert len(passfails) == 4
-    assert all(p['passed'] for p in passfails)
-
-
-def test_lesson3_skeleton_fails():
-    data = course_data()
-    report = run_lesson(data['lessons'][2])['lesson']()
-    passfails = report_passfails(report)
-    assert len(passfails) == 2
-    assert passfails[0]['label'] == 'LVS clean'
-    assert not passfails[0]['passed']
-    # The skeleton itself must be DRC clean, so that only the missing
-    # routing keeps the user from passing:
-    assert passfails[1]['label'] == 'DRC clean'
-    assert passfails[1]['passed']
-
-
-def test_lesson3_solution_passes():
-    data = course_data()
-    skeleton_part = """\
-        # TODO: Add the three missing Metal1 routes here. Example for the
-        # vdd route (from the vdd stub to the PMOS source):
-        #
-        # sr = SRouter(SG13G2().default_routing_spec)
-        # sr.move(layers.Metal1, (-630, 2760))
-        # sr.wire((150, 2760))
-"""
-    solution_part = """\
-        sr = SRouter(SG13G2().default_routing_spec)
-        sr.move(layers.Metal1, (-630, 2760))
-        sr.wire((150, 2760))
-        sr.move(layers.Metal1, (-630, 260))
-        sr.wire((150, 260))
-        sr.move(layers.Metal1, (660, 1280))
-        sr.wire((660, 2780))
-"""
-    src = solution_src(data['lessons'][2], skeleton_part, solution_part)
-    report = run_lesson(data['lessons'][2], src)['lesson']()
-    passfails = report_passfails(report)
-    assert len(passfails) == 2
+@pytest.mark.parametrize('course_name,lesson_index,testdata',
+    lesson_params(with_solution=True))
+def test_lesson_solution(course_name, lesson_index, testdata):
+    """The solution must make all checks of its lesson pass."""
+    lesson = course_data(course_name)['lessons'][lesson_index]
+    src = testdata.solution_src(lesson)
+    report = run_lesson(lesson, src)['lesson']()
+    elements = [e.element_webdata() for e in report.elements()]
+    passfails = [e for e in elements if e['element_type'] == 'passfail']
+    assert len(passfails) == testdata.passfails
     assert all(p['passed'] for p in passfails)

@@ -1,0 +1,19 @@
+from ordec.core import *
+from ordec.lib import Res, Ind, Cap, Gnd, Vdc
+
+cell Bandstop:
+    viewgen schematic -> Schematic:
+        net vin, vout, vss
+
+        Gnd gnd: .p -- vss; .pos=(0,0)
+        Vdc vsrc: .$ac_mag=1; .m -- vss; .p -- vin; .pos=(0,6)
+
+        # EDIT HERE
+
+    viewgen sim_ac -> Simulation:
+        .simulate().ac('dec', '50', '100', '10M')
+
+    viewgen bode -> Report:
+        sim = self.sim_ac
+        .markdown("## Bandstop frequency response")
+        .bode_plot(sim.vout, ref=sim.vin)
