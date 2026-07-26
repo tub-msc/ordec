@@ -1215,8 +1215,13 @@ class Report(SubgraphRoot):
             plot % Plot2DSeries(name=str(name), values=values)
 
     def passfail(self, label: str, passed: bool, instructions: str="", hint: str=None):
-        self % PassFail(label=label, passed=passed, instructions=instructions,
-            hint=hint)
+        # A passing check is stored as a bare pass: instructions and hint
+        # only matter while the check fails.
+        if passed:
+            self % PassFail(label=label, passed=True)
+        else:
+            self % PassFail(label=label, passed=False,
+                instructions=instructions, hint=hint)
 
     def bode_plot(self, *signals, **kwargs):
         """
@@ -1303,17 +1308,19 @@ class PassFail(ReportElement):
     """
     label = Attr(str, optional=False) #: short name of the check
     passed = Attr(bool, optional=False)
-    instructions = Attr(str, default="", optional=False) #: what the user should achieve / status details
-    hint = Attr(str) #: optional hint, shown only on user request
+    instructions = Attr(str, default="", optional=False) #: what the user should achieve / status details; failing checks only
+    hint = Attr(str) #: optional hint, shown only on user request; failing checks only
 
     def element_webdata(self) -> dict:
-        return {
+        webdata = {
             "element_type": "passfail",
             "label": self.label,
             "passed": self.passed,
-            "instructions": self.instructions,
-            "hint": self.hint,
         }
+        if not self.passed:
+            webdata["instructions"] = self.instructions
+            webdata["hint"] = self.hint
+        return webdata
 
 
 @public

@@ -63,23 +63,23 @@ def test_plot2d_height_none():
 
 def test_passfail_webdata():
     report = Report()
+    # A pass is a bare pass: instructions and hint are discarded.
     report.passfail("Check A", True, instructions="Do the thing.",
         hint="Try harder.")
-    report.passfail("Check B", False)
+    report.passfail("Check B", False, instructions="Do the thing.",
+        hint="Try harder.")
     _, data = report.webdata()
     assert data["elements"][0] == {
         "element_type": "passfail",
         "label": "Check A",
         "passed": True,
-        "instructions": "Do the thing.",
-        "hint": "Try harder.",
     }
     assert data["elements"][1] == {
         "element_type": "passfail",
         "label": "Check B",
         "passed": False,
-        "instructions": "",
-        "hint": None,
+        "instructions": "Do the thing.",
+        "hint": "Try harder.",
     }
 
 
