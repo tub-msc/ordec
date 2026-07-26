@@ -1,6 +1,10 @@
 @font-face {
     font-family: 'Inconsolata';
     size-adjust: 100%;
+    /* Declare the variable font's weight axis; without this, the face is
+       clamped to weight 400 and browsers render bold text with synthetic
+       emboldening, which enlarges glyphs in some renderers. */
+    font-weight: 200 900;
     src: url('/fonts/Inconsolata/Inconsolata-VariableFont_wdth,wght.ttf') format('truetype');
 }
 

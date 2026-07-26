@@ -103,7 +103,7 @@ class Editor {
         this.updateMode();
         this.editor.setOptions({
             fontFamily: "Inconsolata",
-            fontSize: "12pt"
+            fontSize: "11.5pt"
         });
 
         // The source editor is movable but not closable in every mode (see
