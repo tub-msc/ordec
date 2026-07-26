@@ -292,12 +292,14 @@ export class CourseController {
         };
         const spotlight = new Spotlight([
             {
-                target: () => this.courseViewer?.resWrapper,
+                target: () => this.courseViewer?.container.element
+                    .closest('.lm_stack'),
                 title: 'Course panel',
                 text: 'This panel contains your instructions and tracks your progress for each lesson of the course.',
             },
             {
-                target: () => document.querySelector('.ace_editor'),
+                target: () => document.querySelector('.ace_editor')
+                    ?.closest('.lm_stack'),
                 title: 'Source editor',
                 text: 'This is the source code editor. Most lessons are solved by editing it, and changes are checked as you type.',
             },
