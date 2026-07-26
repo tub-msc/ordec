@@ -1,18 +1,30 @@
+import math
 from ordec.core import *
 from ordec.lib import Res, Ind, Cap, Gnd, Vdc
 
 cell Bandstop:
+    # EDIT HERE (parameter)
+
     viewgen symbol -> Symbol:
-        pass  # EDIT HERE (symbol)
+        input vin: .align=West
+        output vout: .align=East
+        inout vss: .align=South
 
     viewgen schematic -> Schematic:
+        port vin: .align=East; .pos=(2,18)
+        port vout: .align=West; .pos=(14,18)
+        port vss: .align=North; .pos=(10,4)
+
         net mid
 
-        Res r1: .$r=1k; .pos=(8,16); .orientation=R90
-        Ind l1: .$l=1m; .m -- mid; .pos=(8,11)
-        Cap c1: .$c=100n; .p -- mid; .pos=(8,6)
+        Res r1: .$r=1k; .pos=(8,16); .orientation=R90; .p -- vin; .m -- vout
+        Ind l1:
+            .$l=10m # EDIT HERE (parameter calculation)
+            .m -- mid
+            .p -- vout
+            .pos=(8,11)
+        Cap c1: .$c=10n; .p -- mid; .pos=(8,6); .m -- vss
 
-        # EDIT HERE (schematic)
 
 cell BandstopTb:
     viewgen schematic -> Schematic:
@@ -20,9 +32,14 @@ cell BandstopTb:
 
         Gnd gnd: .p -- vss; .pos=(0,0)
         Vdc vsrc: .$ac_mag=1; .m -- vss; .p -- vin; .pos=(0,6)
-        vout % SchemTapPoint(pos=(12,11), align=East)
+        vout % SchemTapPoint(pos=(18,11), align=East)
 
         # EDIT HERE (testbench)
+        Bandstop f0:
+            .pos=(6,9)
+            .vin -- vin
+            .vout -- vout
+            .vss -- vss
 
     viewgen sim_ac -> Simulation:
         .simulate().ac('dec', '50', '100', '10M')

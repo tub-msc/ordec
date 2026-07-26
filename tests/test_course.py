@@ -163,7 +163,42 @@ courses_testdata = {
             InsertSolution("""
             # EDIT HERE (testbench)
             """, """
-            Bandstop dut: .pos=(6,8); .vin -- vin; .vout -- vout; .vss -- vss
+            Bandstop dut: .pos=(6,9); .vin -- vin; .vout -- vout; .vss -- vss
+            """),
+        ]),
+        # Lesson 8: parameters.
+        LessonTestdata(passfails=5, solution=[
+            InsertSolution("""
+            # EDIT HERE (parameter)
+            """, """
+            freq = Parameter(R, default=15.9k)
+            """),
+            InsertSolution("""
+            .$l=10m # EDIT HERE (parameter calculation)
+            """, """
+            .$l=1 / ((2 * math.pi * float(self.freq))**2 * 10e-9)
+            """),
+            InsertSolution("""
+            # EDIT HERE (testbench)
+            Bandstop f0:
+                .pos=(6,9)
+                .vin -- vin
+                .vout -- vout
+                .vss -- vss
+            """, """
+            net vmid
+            Bandstop flt1:
+                .pos=(6,9)
+                .$freq=5k
+                .vin -- vin
+                .vout -- vmid
+                .vss -- vss
+            Bandstop flt2:
+                .pos=(12,9)
+                .$freq=50k
+                .vin -- vmid
+                .vout -- vout
+                .vss -- vss
             """),
         ]),
     ]),
@@ -230,9 +265,9 @@ def test_course_special_lesson_flags():
     # the first two getting_started lessons.
     data = course_data()
     assert [l['getting_started_lesson_1'] for l in data['lessons']] == \
-        [True, False, False, False, False, False, False]
+        [True, False, False, False, False, False, False, False]
     assert [l['getting_started_lesson_2'] for l in data['lessons']] == \
-        [False, True, False, False, False, False, False]
+        [False, True, False, False, False, False, False, False]
     for name in ('cmos_circuits', 'layout_tutorial'):
         for lesson in course_data(name)['lessons']:
             assert not lesson['getting_started_lesson_1']

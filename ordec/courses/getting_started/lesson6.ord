@@ -7,7 +7,6 @@ cell Bandstop:
 
         Gnd gnd: .p -- vss; .pos=(0,0)
         Vdc vsrc: .$ac_mag=1; .m -- vss; .p -- vin; .pos=(0,6)
-
         vout % SchemTapPoint(pos=(11, 18), align=R270)
 
         # EDIT HERE

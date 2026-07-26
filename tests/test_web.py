@@ -298,7 +298,7 @@ def test_course(web):
     wait_for_course_marker(web, 'solved')
     state = course_nav_state(web)
     assert state['currentLesson'] == 0
-    assert state['lessonsLocked'] == [False, False, True, True, True, True, True]
+    assert state['lessonsLocked'] == [False, False, True, True, True, True, True, True]
     assert state['editorSrc'] == lessons[0]['src']
 
     # The close controls of the Course panel and the source editor are
@@ -350,7 +350,7 @@ def test_course(web):
     assert well_placed is True
 
     state = course_nav_state(web)
-    assert state['lessonsLocked'] == [False, False, False, True, True, True, True]
+    assert state['lessonsLocked'] == [False, False, False, True, True, True, True, True]
 
     # Switch to lesson 3 via the dropdown.
     web.driver.execute_script("""
@@ -369,14 +369,14 @@ def test_course(web):
         "window.courseController.editor.editor.setValue(arguments[0]);", sol)
     wait_for_course_marker(web, 'solved')
     state = course_nav_state(web)
-    assert state['lessonsLocked'] == [False, False, False, False, True, True, True]
+    assert state['lessonsLocked'] == [False, False, False, False, True, True, True, True]
 
     # Progress (incl. edited lesson 3 source) must survive a reload.
     web.navigate('app.html#course=getting_started')
     web.wait_for_ready()
     state = course_nav_state(web)
     assert state['currentLesson'] == 2
-    assert state['lessonsLocked'] == [False, False, False, False, True, True, True]
+    assert state['lessonsLocked'] == [False, False, False, False, True, True, True, True]
 
     # Start over (with confirmation) resets everything. This reloads the page
     # from app JS, so wait for the reload before reading state.
@@ -387,7 +387,7 @@ def test_course(web):
     wait_for_course_marker(web, 'solved')  # lesson 1 auto-passes again
     state = course_nav_state(web)
     assert state['currentLesson'] == 0
-    assert state['lessonsLocked'] == [False, False, True, True, True, True, True]
+    assert state['lessonsLocked'] == [False, False, True, True, True, True, True, True]
     assert state['editorSrc'] == lessons[0]['src']
 
 

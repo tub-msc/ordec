@@ -503,7 +503,7 @@ def gen_lesson7(g):
             "e.g. `r1.p -- vin`. In the testbench, the subcell is then "
             "instantiated with its pins connected by name:\n\n"
             "```\n"
-            "Bandstop dut: .pos=(6,8); .vin -- vin; .vout -- vout; .vss -- vss\n"
+            "Bandstop dut: .pos=(6,9); .vin -- vin; .vout -- vout; .vss -- vss\n"
             "```"
         )
 
@@ -568,14 +568,14 @@ def gen_lesson7(g):
                 for inst in tb.all(SchemInstance))
             report.passfail(label, found,
                 hint="Instantiate the filter at the EDIT HERE marker of "
-                "the testbench: `Bandstop dut: .pos=(6,8); .vin -- vin; "
+                "the testbench: `Bandstop dut: .pos=(6,9); .vin -- vin; "
                 ".vout -- vout; .vss -- vss`.",
                 instructions="Looking for a Bandstop instance in the "
                 "BandstopTb schematic.")
         except Exception:
             report.passfail(label, False, instructions=exception_text(),
                 hint="Instantiate the filter at the EDIT HERE marker of "
-                "the testbench: `Bandstop dut: .pos=(6,8); .vin -- vin; "
+                "the testbench: `Bandstop dut: .pos=(6,9); .vin -- vin; "
                 ".vout -- vout; .vss -- vss`.")
 
         label = "Expected passband behavior"
@@ -603,6 +603,177 @@ def gen_lesson7(g):
                 instructions=f"|V(vout)| minimum: {mag[i_min]:.4g} at "
                 f"{f_notch:.4g} Hz (target: < 0.1 at 15.9 kHz); at the "
                 f"sweep ends: {mag[0]:.3f} / {mag[-1]:.3f} (target: > 0.9 "
+                "both).")
+        return report
+    return lesson
+
+
+# Lesson 8: Parameters
+# --------------------
+
+def gen_lesson8(g):
+    @generate_func
+    def lesson() -> Report:
+        report = Report()
+        report.markdown(
+            "The filter always rejects the same frequency. *Parameters* "
+            "make a cell configurable per instance.\n\n"
+            "**Make the notch frequency a parameter and chain two filters "
+            "for a double notch:**\n\n"
+            "1. Declare the parameter at the EDIT HERE marker:\n\n"
+            "```\n"
+            "freq = Parameter(R, default=15.9k)\n"
+            "```\n\n"
+            "2. From $f = \\frac{1}{2\\pi\\sqrt{LC}}$ follows "
+            "$L = \\frac{1}{(2\\pi f)^2 C}$. With C = 10 nF, assign the "
+            "derived inductance directly at the EDIT HERE marker of "
+            "`l1`:\n\n"
+            "```\n"
+            ".$l=1 / ((2 * math.pi * float(self.freq))**2 * 10e-9)\n"
+            "```\n\n"
+            "3. In the testbench, replace `f0` by two chained filters: "
+            "declare a net `vmid`, instantiate one `Bandstop` with "
+            "`.$freq=5k` from `vin` to `vmid` at (6, 9), and a second one "
+            "with `.$freq=50k` from `vmid` to `vout` at (12, 9), both "
+            "with pin `vss` to `vss`.\n\n"
+            "The Bode plot updates as you type: watch the second notch "
+            "appear."
+        )
+
+        def has_freq_param():
+            return isinstance(getattr(g['Bandstop'], 'freq', None),
+                Parameter)
+
+        label = "freq parameter added to Bandstop"
+        try:
+            report.passfail(label, has_freq_param(),
+                hint="Declare the parameter at the EDIT HERE marker: "
+                "`freq = Parameter(R, default=15.9k)`.",
+                instructions="Looking for a Parameter named freq on the "
+                "Bandstop cell.")
+        except Exception:
+            report.passfail(label, False, instructions=exception_text(),
+                hint="Declare the parameter at the EDIT HERE marker: "
+                "`freq = Parameter(R, default=15.9k)`.")
+
+        label = "Inductance derived from freq"
+        try:
+            if not has_freq_param():
+                report.passfail(label, False,
+                    hint="Assign the inductance directly from the parameter: "
+                    "`.$l=1 / ((2 * math.pi * float(self.freq))**2 "
+                    "* 10e-9)`.",
+                    instructions="Requires the freq parameter (previous "
+                    "check).")
+            else:
+                l5 = float(g['Bandstop'](freq=5000)
+                    .schematic.l1.symbol.cell.l)
+                l50 = float(g['Bandstop'](freq=50000)
+                    .schematic.l1.symbol.cell.l)
+                found = (abs(l5 - 0.101321) <= 0.05 * 0.101321
+                    and abs(l50 - 1.01321e-3) <= 0.05 * 1.01321e-3)
+                report.passfail(label, found,
+                    hint="Assign the inductance directly from the parameter: "
+                    "`.$l=1 / ((2 * math.pi * float(self.freq))**2 "
+                    "* 10e-9)`.",
+                    instructions=f"l1 at freq=5k: {l5*1e3:.3f} mH (target "
+                    f"101.3 mH); at freq=50k: {l50*1e3:.4f} mH (target "
+                    "1.013 mH).")
+        except Exception:
+            report.passfail(label, False, instructions=exception_text(),
+                hint="Assign the inductance directly from the parameter: "
+                "`.$l=1 / ((2 * math.pi * float(self.freq))**2 "
+                "* 10e-9)`.")
+
+        # The instance names are the user's choice, so the checks match
+        # Bandstop instances by their properties, not by name.
+        def filters():
+            return [inst for inst in
+                g['BandstopTb']().schematic.all(SchemInstance)
+                if isinstance(inst.symbol.cell, g['Bandstop'])]
+
+        label = "Two filters with notches at 5 kHz and 50 kHz"
+        try:
+            if not has_freq_param():
+                report.passfail(label, False,
+                    hint="Instantiate two Bandstop filters with "
+                    "`.$freq=5k` and `.$freq=50k`.",
+                    instructions="Requires the freq parameter (first "
+                    "check).")
+            else:
+                freqs = sorted(float(inst.symbol.cell.freq)
+                    for inst in filters())
+                report.passfail(label, freqs == [5000.0, 50000.0],
+                    hint="Instantiate two Bandstop filters with "
+                    "`.$freq=5k` and `.$freq=50k`.",
+                    instructions="Notch frequencies found: "
+                    + (", ".join(f"{f:g} Hz" for f in freqs)
+                        if freqs else "none") + ".")
+        except Exception:
+            report.passfail(label, False, instructions=exception_text(),
+                hint="Instantiate two Bandstop filters with `.$freq=5k` "
+                "and `.$freq=50k`.")
+
+        label = "Filters chained through an intermediate net"
+        try:
+            tb = g['BandstopTb']().schematic
+            def pin_nets(inst):
+                return {c.there.full_path_str(): c.here
+                    for c in inst.conns()}
+            found = False
+            insts = filters()
+            for a in insts:
+                for b in insts:
+                    if a == b:
+                        continue
+                    pa, pb = pin_nets(a), pin_nets(b)
+                    vmid = pa.get('vout')
+                    if (pa.get('vin') == tb.vin
+                            and vmid is not None
+                            and vmid == pb.get('vin')
+                            and vmid not in (tb.vin, tb.vout, tb.vss)
+                            and pb.get('vout') == tb.vout
+                            and pa.get('vss') == tb.vss
+                            and pb.get('vss') == tb.vss):
+                        found = True
+            report.passfail(label, found,
+                hint="Chain the filters: the first connects vin to a new "
+                "net vmid, the second connects vmid to vout; vss goes to "
+                "vss on both.",
+                instructions="The two filters must connect in series "
+                "between vin and vout via an intermediate net.")
+        except Exception:
+            report.passfail(label, False, instructions=exception_text(),
+                hint="Chain the filters: the first connects vin to a new "
+                "net vmid, the second connects vmid to vout; vss goes to "
+                "vss on both.")
+
+        label = "Double-notch AC response"
+        hint = ("With both filters chained, the response has notches at "
+            "5 kHz and 50 kHz and recovers in between. Check the freq "
+            "parameters and the chaining.")
+        tb = g['BandstopTb']()
+        if (g['Bandstop']().schematic.has_errors()
+                or tb.schematic.has_errors() or tb.sim_ac.freq is None
+                or tb.sim_ac.vout.voltage is None):
+            report.passfail(label, False, hint=hint,
+                instructions="No AC simulation data for vout yet: the "
+                "simulation only runs once the circuit is fully wired.")
+        else:
+            freq = [f.real for f in tb.sim_ac.freq]
+            mag = [abs(v) for v in tb.sim_ac.vout.voltage]
+            def min_in(lo, hi):
+                return min(m for f, m in zip(freq, mag) if lo <= f <= hi)
+            n1 = min_in(4.5e3, 5.5e3)
+            n2 = min_in(45e3, 55e3)
+            mid = max(m for f, m in zip(freq, mag) if 10e3 <= f <= 25e3)
+            found = (n1 < 0.1 and n2 < 0.1 and mid > 0.4
+                and mag[0] > 0.9 and mag[-1] > 0.9)
+            report.passfail(label, found, hint=hint,
+                instructions=f"|V(vout)| around 5 kHz: {n1:.3g} and "
+                f"around 50 kHz: {n2:.3g} (target: < 0.1 both); between "
+                f"the notches: {mid:.3f} (target: > 0.4); at the sweep "
+                f"ends: {mag[0]:.3f} / {mag[-1]:.3f} (target: > 0.9 "
                 "both).")
         return report
     return lesson
