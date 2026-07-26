@@ -1104,6 +1104,76 @@ body:not(.show-debug) .debug {
     border-color: transparent transparent var(--callout-bg) transparent;
 }
 
+/* -- Spotlight intro tour ----------------------------------------- */
+/* Full-screen click blocker; the dimming is done by the cutout's huge box
+   shadow, so the highlighted rectangle itself stays undimmed. */
+.spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+}
+.spotlight-cutout {
+    position: fixed;
+    box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.55);
+    border-radius: 6px;
+    pointer-events: none;
+}
+.spotlight-caption {
+    position: fixed;
+    max-width: 320px;
+    padding: 8px 12px;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    border: 1px solid var(--color-toolbar-border);
+    border-radius: 3px;
+    font-size: var(--font-size-sm);
+    line-height: 1.4;
+}
+.spotlight-caption strong {
+    font-weight: bold;
+}
+.spotlight-caption p {
+    margin: 4px 0 8px;
+}
+.spotlight-buttons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.spotlight-counter {
+    margin-right: auto;
+    color: var(--color-text-secondary);
+}
+.spotlight-buttons .toolbar-btn {
+    border: 1px solid var(--color-toolbar-border);
+    border-radius: 3px;
+    padding: 2px 8px;
+}
+/* Next is the primary action; Back and Skip step into the background. The
+   body.theme-dark rules outweigh the theme's generic .toolbar-btn colors. */
+.spotlight-buttons .spotlight-next,
+body.theme-dark .spotlight-buttons .spotlight-next {
+    background-color: var(--color-text);
+    color: var(--color-bg);
+    border-color: var(--color-text);
+    font-weight: bold;
+}
+.spotlight-buttons .spotlight-next:hover,
+body.theme-dark .spotlight-buttons .spotlight-next:hover {
+    background-color: var(--color-text-secondary);
+}
+.spotlight-buttons .spotlight-back,
+.spotlight-buttons .spotlight-skip,
+body.theme-dark .spotlight-buttons .spotlight-back,
+body.theme-dark .spotlight-buttons .spotlight-skip {
+    color: var(--color-text-muted);
+    border-color: transparent;
+}
+.spotlight-buttons .spotlight-back:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
 /* -- Layout viewer ----------------------------------------------- */
 .layout {
     background-color: var(--color-layout-bg);
