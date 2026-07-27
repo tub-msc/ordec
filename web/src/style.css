@@ -65,8 +65,11 @@
     --color-pass-pill:       #16a34a;
     --color-fail-pill:       #dc2626;
 
-    /* Markdown tables */
-    --color-md-table-border: black;
+    /* Markdown code: shared tint for inline chips and fenced blocks
+       (translucent, so it works on any surface), plus the accent side
+       line of fenced blocks. */
+    --color-md-code-bg:      rgba(0, 0, 0, 0.045);
+    --color-md-code-accent:  #a9c0d8;
 
     /* Layout canvas */
     --color-layout-bg:       #000;
@@ -88,6 +91,9 @@
     --font-size-base:  13px;
     --font-size-md:    14px;
     --font-size-lg:    16px;
+    /* Shared by the Ace editor (read in main.js) and all preformatted/code
+       text in reports, so the two cannot drift apart. */
+    --font-size-code:  11.5pt;
 
     /* Font families */
     --font-sans:  "Helvetica", sans-serif;
@@ -157,7 +163,8 @@ body.theme-dark {
     --color-fail-bg:         #3a1717;
     --color-fail-fg:         #ff7a7a;
 
-    --color-md-table-border: #444;
+    --color-md-code-bg:      rgba(255, 255, 255, 0.07);
+    --color-md-code-accent:  #44607c;
 
     --color-symbol-stroke:   white;
 }
@@ -862,14 +869,46 @@ body:not(.show-debug) .debug {
 .report-html {
     min-width: 0;
 }
+/* Same tinted surface as markdown code blocks, but without the accent
+   line: preformatted output (tracebacks, netlists) has no special role. */
 .report-preformatted {
     margin: 0;
     font-family: var(--font-mono);
+    font-size: var(--font-size-code);
     white-space: pre;
     overflow-x: auto;
+    background: var(--color-md-code-bg);
+    padding: 6px 10px;
 }
+/* Slightly roomier line spacing for instructional prose. */
+.report-markdown {
+    line-height: 1.35;
+}
+.report-markdown pre {
+    line-height: normal;
+}
+/* Both inline code spans and code blocks match the editor font size. */
 .report-markdown code {
     font-family: var(--font-mono);
+    font-size: var(--font-size-code);
+}
+/* Superscripts (e.g. ×10<sup>-21</sup> exponents in result tables) must
+   not inflate the line box of their row. */
+.report-markdown sup {
+    line-height: 0;
+}
+/* Inline code as a subtle chip. */
+.report-markdown :not(pre) > code {
+    background: var(--color-md-code-bg);
+    padding: 0 0.25em;
+    border-radius: 3px;
+}
+/* Fenced code blocks: tinted and set off by an accent side line. */
+.report-markdown pre {
+    background: var(--color-md-code-bg);
+    border-left: 3px solid var(--color-md-code-accent);
+    padding: 6px 10px;
+    overflow-x: auto;
 }
 .report-markdown h1,
 .report-markdown h2,
@@ -897,7 +936,8 @@ body:not(.show-debug) .debug {
 .report-markdown p,
 .report-markdown ul,
 .report-markdown ol,
-.report-markdown pre {
+.report-markdown pre,
+.report-markdown table {
     margin-top: 0.4em;
     margin-bottom: 0.4em;
 }
@@ -916,15 +956,89 @@ body:not(.show-debug) .debug {
 .report-plot2d {
     width: 100%;
 }
+/* Booktabs-style tables: horizontal rules only, no vertical grid lines
+   and no header fill. */
 .report-markdown table {
-    border-collapse: collapse;
+    /* separate + zero spacing (not collapse), because only that border
+       model honors the table's own padding */
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    background: var(--color-md-code-bg);
+    padding: 2px 6px;
 }
 .report-markdown table td, .report-markdown table th {
-    border: 1px solid var(--color-md-table-border);
-    padding: 2px;
+    padding: 3px 8px 3px 2px;
 }
+/* Equal column widths as long as every column's content fits; a column
+   with oversized content takes more (minmax(max-content, 1fr) tracks).
+   Neither table layout mode can express this ("auto" distributes by
+   content, "fixed" is rigidly equal), so tables are laid out as CSS
+   grids instead. This needs two unusual moves:
+
+   1. display: contents on thead/tbody/tr removes the row boxes from
+      layout, so the th/td cells become direct grid items and auto-place
+      left to right; with a track count equal to the column count, each
+      table row lands in one grid row. The rules drawn via cell borders
+      still connect, because the grid has no gaps.
+
+   2. A grid needs its column count in grid-template-columns, but a
+      stylesheet cannot read the column count of an arbitrary table.
+      The :has() ladder below infers it: "tr > :last-child:nth-child(N)"
+      matches exactly the tables whose rows have N cells.
+
+   Tables with more than 8 columns match no ladder rung and none of the
+   grid rules, keeping the browser's automatic table layout (which
+   handles many narrow columns better anyway). Browsers too old for
+   :has()/display:contents fall back the same way. */
+.report-markdown table:has(tr > :last-child:nth-child(-n+8)) {
+    display: grid;
+}
+.report-markdown table:has(tr > :last-child:nth-child(-n+8))
+        :is(thead, tbody, tr) {
+    display: contents;
+}
+.report-markdown table:has(tr > :last-child:nth-child(2)) {
+    grid-template-columns: repeat(2, minmax(max-content, 1fr));
+}
+.report-markdown table:has(tr > :last-child:nth-child(3)) {
+    grid-template-columns: repeat(3, minmax(max-content, 1fr));
+}
+.report-markdown table:has(tr > :last-child:nth-child(4)) {
+    grid-template-columns: repeat(4, minmax(max-content, 1fr));
+}
+.report-markdown table:has(tr > :last-child:nth-child(5)) {
+    grid-template-columns: repeat(5, minmax(max-content, 1fr));
+}
+.report-markdown table:has(tr > :last-child:nth-child(6)) {
+    grid-template-columns: repeat(6, minmax(max-content, 1fr));
+}
+.report-markdown table:has(tr > :last-child:nth-child(7)) {
+    grid-template-columns: repeat(7, minmax(max-content, 1fr));
+}
+.report-markdown table:has(tr > :last-child:nth-child(8)) {
+    grid-template-columns: repeat(8, minmax(max-content, 1fr));
+}
+.report-markdown table th {
+    border-bottom: 1px solid var(--color-border-light);
+    text-align: left;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+}
+/* Right-aligned columns (markdown "---:" markers, emitted as inline
+   text-align styles by markdown2) hold numeric data: tabular figures so
+   digits line up down the column. */
+.report-markdown td[style*="text-align:right"] {
+    font-variant-numeric: tabular-nums;
+}
+.report-markdown table td {
+    border-bottom: 1px solid var(--color-border-light);
+}
+.report-markdown table tr:last-child td {
+    border-bottom: none;
+}
+/* Square box (matching the markdown code blocks) with a rounded pill badge. */
 .report-passfail {
-    border-radius: 4px;
     padding: 5px 8px;
     background-color: var(--color-bg-tertiary);
 }
@@ -1446,7 +1560,7 @@ body.theme-dark .lm_content {
     flex-direction: column;
     height: 100%;
     font-family: var(--font-mono);
-    font-size: var(--font-sm);
+    font-size: var(--font-size-sm);
 }
 .drc-header {
     padding: 4px 8px;
@@ -1460,7 +1574,7 @@ body.theme-dark .lm_content {
    buttons render light in both themes; these use theme tokens instead, and the
    disabled state stays legible (muted text) rather than relying on opacity. */
 .drc-deselect, .lvs-deselect {
-    font-size: var(--font-xs);
+    font-size: var(--font-size-xs);
     padding: 2px 8px;
     cursor: pointer;
     border: 1px solid var(--color-border);
@@ -1540,7 +1654,7 @@ body.theme-dark .lm_content {
     flex-direction: column;
     height: 100%;
     font-family: var(--font-mono);
-    font-size: var(--font-sm);
+    font-size: var(--font-size-sm);
 }
 .lvs-header {
     padding: 4px 8px;

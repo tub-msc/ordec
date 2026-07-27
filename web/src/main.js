@@ -101,9 +101,12 @@ class Editor {
         this.editor = ace.edit(container.element);
         registerAceEditor(this.editor);
         this.updateMode();
+        // Font size comes from the shared --font-size-code token, which also
+        // sizes the preformatted/code text in reports.
         this.editor.setOptions({
             fontFamily: "Inconsolata",
-            fontSize: "11.5pt"
+            fontSize: getComputedStyle(document.documentElement)
+                .getPropertyValue('--font-size-code').trim() || "11.5pt"
         });
 
         // The source editor is movable but not closable in every mode (see
