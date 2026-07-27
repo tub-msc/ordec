@@ -7,6 +7,7 @@ Welcome to ORDeC's documentation!
 
    readme
    webui
+   editor_support
    ord_tutorial
    howto_layout
    ref/index
