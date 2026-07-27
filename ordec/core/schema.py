@@ -1287,8 +1287,7 @@ class Markdown(ReportElement):
         from ..version import doc_url
         base = doc_url()
         # Rewrite 'docs:' pseudo-scheme links to version-matched documentation
-        # URLs. This must happen before rendering, as markdown2's safe_mode
-        # replaces links with unknown URL schemes by '#'.
+        # URLs before rendering, so markdown2 sees ordinary https links.
         md = self.markdown.replace('](docs:', f']({base}')
         # Replace math spans with inert placeholder tokens so that markdown2
         # leaves their contents alone; see _md_math_regex.
@@ -1299,10 +1298,13 @@ class Markdown(ReportElement):
             math_spans.append(m.group('math'))
             return f"ordecmathspan{len(math_spans) - 1}end"
         md = self._md_math_regex.sub(protect, md)
+        # No safe_mode: inline HTML (e.g. <sup> exponents in result tables)
+        # passes through. Report content comes from the user's own trusted
+        # cells, and the Html report element passes raw HTML anyway, so
+        # escaping here would add no security.
         html = markdown2.markdown(
             md,
             extras=["fenced-code-blocks", "code-friendly", "tables"],
-            safe_mode="escape",
         )
         for i, span in enumerate(math_spans):
             # Re-emitted with delimiters for KaTeX's in-browser auto-render;
