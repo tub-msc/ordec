@@ -141,20 +141,20 @@ def gen_lesson1(g):
             "Welcome to the CMOS course! All lessons use the open IHP "
             "SG13G2 130nm technology at a 1.2 V supply, from the "
             "[ihp130 cell library](docs:cell_lib/ihp130.html).\n\n"
-            "The `MosCurves` testbench is complete except for the "
-            "transistors. Each drain has its own voltage source, so "
-            "each device can be swept and measured separately.\n\n"
+            "We start with the transistor itself. The `MosCurves` "
+            "testbench is ready except for the two devices: one source "
+            "drives both gates, and each drain has a source of its own "
+            "so that the two currents can be measured separately.\n\n"
             "1. **Import Nmos and Pmos from the ihp130 library** at the "
             "first EDIT HERE marker.\n"
             "2. **Place and wire the NMOS** `mn` at the second marker: "
             "w=1u, l=130n, at position (10,12).\n"
             "3. **Place and wire the PMOS** `mp` the same way: w=1u, "
             "l=130n, at position (25,12).\n\n"
-            "Each transistor takes its gate from the gate net and its "
-            "drain from the source that measures it. Open a check's "
-            "hint if you are unsure which pin goes where.\n\n"
-            "The `report_curves` view then shows the output "
-            "characteristics of both devices."
+            "Each check below tells you what it is missing, and its hint "
+            "spells out the pin connections. Once both transistors are "
+            "in, the `report_curves` view plots their output "
+            "characteristics."
         )
 
         import_hint = ("Add the import at the EDIT HERE (import) marker: "
@@ -197,8 +197,13 @@ def gen_lesson1(g):
             ".$l=130n; .g -- gate; .d -- dp; .s -- vdd; .b -- vdd; "
             ".pos=(25,12)`.")
 
-        curve_hint = ("Check the transistor sizes: both devices need "
-            ".$w=1u and .$l=130n.")
+        curve_hints = (
+            "The NMOS must be off at VGS=0 and carry a few hundred "
+            "microamps at 1.2 V. If it stays off, check w=1u and "
+            "l=130n; if it conducts at 0 V, its source is not on vss.",
+            "The PMOS hangs on the 1.2 V supply, so it conducts at a "
+            "gate voltage of 0 V and turns off at 1.2 V. If it never "
+            "conducts, its source and bulk are not on vdd.")
         curve_labels = ("NMOS curve looks right", "PMOS curve looks right")
         if not (nmos_ok and pmos_ok):
             for label in curve_labels:
@@ -218,20 +223,20 @@ def gen_lesson1(g):
             idp = [abs(float(v)) for v in pmos_si.params['ids'].value]
             report.passfail(curve_labels[0],
                 idn[0] < 1e-9 and 100e-6 < idn[-1] < 2e-3,
-                hint=curve_hint,
+                hint=curve_hints[0],
                 instructions=f"NMOS |ID| at VGS=0: {idn[0]:.3g} A "
                 f"(expected < 1 nA), at VGS=1.2 V: {idn[-1]:.3g} A "
                 "(expected 100 uA ... 2 mA).")
             report.passfail(curve_labels[1],
                 idp[-1] < 1e-9 and 50e-6 < idp[0] < 1e-3,
-                hint=curve_hint,
+                hint=curve_hints[1],
                 instructions=f"PMOS |ID| at VSG=1.2 V: {idp[0]:.3g} A "
                 f"(expected 50 uA ... 1 mA), at VSG=0: {idp[-1]:.3g} A "
                 "(expected < 1 nA).")
         except Exception:
-            for label in curve_labels:
+            for label, hint in zip(curve_labels, curve_hints):
                 report.passfail(label, False,
-                    instructions=exception_text(), hint=curve_hint)
+                    instructions=exception_text(), hint=hint)
         return report
     return lesson
 
@@ -255,18 +260,19 @@ def gen_lesson2(g):
             "the measured current in the last check. If it overshoots, "
             "open that check's hint."
         )
-        mirror_hint = (
-            "A transistor drawn ten times wider is not the same as ten "
-            "identical transistors: narrow- and wide-width effects change "
-            "the current density, so w=10u overshoots by more than 30 %. "
-            "Trimming the width until the current happens to fit is not a "
-            "mirror either -- the ratio would drift with temperature and "
-            "process. Build n1 from ten copies of n0's unit transistor "
-            "instead, either `.$w=1u; .$m=10` (ten devices in parallel) "
-            "or `.$w=10u; .$ng=10` (one device split into ten 1u "
-            "fingers). Both land at 102.5 uA, and the remaining 2.5 % "
-            "comes from the different drain voltages of n0 and n1 "
-            "(channel-length modulation).")
+        unit_hint = (
+            "n1 has to be ten copies of n0's unit transistor: either "
+            "`.$w=1u; .$m=10` for ten devices in parallel, or "
+            "`.$w=10u; .$ng=10` for one device split into ten 1u "
+            "fingers. Scaling the width alone is not a copy, and "
+            "trimming it until the current happens to fit gives a ratio "
+            "that drifts with temperature and process.")
+        current_hint = (
+            "A wide transistor carries more current per micron than a "
+            "narrow one, so w=10u overshoots to 136 uA. Ten unit devices "
+            "land at 102.5 uA. The remaining 2.5 % is channel-length "
+            "modulation, because n0 and n1 sit at different drain "
+            "voltages.")
 
         def unit_devices():
             sch = g['CurrentMirror']().schematic
@@ -313,15 +319,15 @@ def gen_lesson2(g):
                 f"{vdiode:.3f} V (expected 0.2 V ... 0.8 V).")
 
         guarded_passfail(report, "Mirror built from ten unit transistors",
-            unit_devices, hint=mirror_hint)
+            unit_devices, hint=unit_hint)
 
         label = "Output current = 100 uA (+-10 %)"
         if sim_error is not None:
             report.passfail(label, False, instructions=sim_error,
-                hint=mirror_hint)
+                hint=current_hint)
         else:
             report.passfail(label, 90e-6 <= iout <= 110e-6,
-                hint=mirror_hint,
+                hint=current_hint,
                 instructions=f"Measured output current: {iout*1e6:.2f} uA "
                 "(target: 100 uA, tolerance: 10 %).")
         return report
@@ -349,11 +355,15 @@ def gen_lesson3(g):
             "can be read directly as the magnitude at `vout` in the "
             "`sim_ac` view."
         )
-        size_hint = (
-            "Increase the width w. A wider transistor has more gm (more "
-            "gain), but also draws more bias current, which pulls the "
-            "operating point down. Around w=10u, both simulation checks "
-            "pass.")
+        op_hint = (
+            "vout sits at 1.2 V while the transistor is too narrow to "
+            "draw current, and collapses towards 0 V once it is too "
+            "wide. Adjust w until vout settles between 0.25 V and "
+            "0.95 V.")
+        gain_hint = (
+            "The gain is gm times the 10k load, and gm grows with the "
+            "width. Around w=10u the gain passes 5 while the operating "
+            "point still holds.")
 
         def nmos_ok():
             sch = g['CsAmp']().schematic
@@ -381,7 +391,7 @@ def gen_lesson3(g):
             vout_op = float(h.vout.voltage[0])
             report.passfail(op_label,
                 0.25 < vout_op < 0.95,
-                hint=size_hint,
+                hint=op_hint,
                 instructions=f"V(vout) at the operating point: "
                 f"{vout_op:.3f} V (expected 0.25 V ... 0.95 V). In this "
                 "region the transistor is saturated and the gain is "
@@ -389,7 +399,7 @@ def gen_lesson3(g):
                 "curve.")
         except Exception:
             report.passfail(op_label, False,
-                instructions=exception_text(), hint=size_hint)
+                instructions=exception_text(), hint=op_hint)
 
         gain_label = "Voltage gain >= 5"
         try:
@@ -400,12 +410,12 @@ def gen_lesson3(g):
             mag = [abs(v) for v in hac.vout.voltage]
             gain = ac_magnitude_at(freq, mag, 1e6)
             report.passfail(gain_label, gain >= 5,
-                hint=size_hint,
+                hint=gain_hint,
                 instructions=f"Measured gain at 1 MHz: {gain:.2f} "
                 "(required: >= 5).")
         except Exception:
             report.passfail(gain_label, False,
-                instructions=exception_text(), hint=size_hint)
+                instructions=exception_text(), hint=gain_hint)
         return report
     return lesson
 
@@ -433,8 +443,7 @@ def gen_lesson4(g):
         pair_hint = (
             "Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outp; .s -- tail; "
             ".b -- vss; .pos=(4,7) and the mirrored m2 with .g -- inn; "
-            ".d -- outn; .orientation=FlippedSouth at .pos=(16,7). Both "
-            "sources share the tail net -- that is the whole trick.")
+            ".d -- outn; .orientation=FlippedSouth at .pos=(16,7).")
 
         def pair_ok():
             sch = g['DiffPair']().schematic
@@ -473,7 +482,9 @@ def gen_lesson4(g):
             mid = len(vin) // 2
             gain = max_slope(vin, diff)
             report.passfail(sim_labels[0], gain >= 4,
-                hint=pair_hint,
+                hint="Gain needs both drains on the load resistors, m1 "
+                "on outp and m2 on outn. A drain on the wrong net leaves "
+                "one output stuck at the supply.",
                 instructions=f"Maximum differential gain "
                 f"d(outp-outn)/d(inp): {gain:.2f} (required: >= 4).")
             balance = abs(vop[mid] - von[mid])
@@ -487,7 +498,10 @@ def gen_lesson4(g):
                 f"{balance*1e3:.1f} mV (expected <= 20 mV).")
             steering = diff[0] >= 0.4 and diff[-1] <= -0.4
             report.passfail(sim_labels[2], steering,
-                hint=pair_hint,
+                hint="Steering only works if both sources meet on the "
+                "tail net. With a source on vss instead, that branch "
+                "conducts on its own and the pair never hands its "
+                "current over.",
                 instructions=f"V(outp)-V(outn) at the sweep ends: "
                 f"{diff[0]:+.3f} V / {diff[-1]:+.3f} V (expected >= +0.4 V "
                 "and <= -0.4 V): a few 100 mV of input difference steer "
@@ -560,9 +574,11 @@ def gen_lesson5(g):
 
         sim_labels = ("Ring oscillates (amplitude >= 0.3 V)",
             "Frequency between 30 MHz and 400 MHz")
-        freq_hint = (ring_hint + " The frequency is set by the RC delay "
-            "of the 30k loads and 100f capacitors. With the given sizing "
-            "it lands around 120 MHz.")
+        freq_hint = (
+            "The frequency is set by the RC delay of the 30k loads and "
+            "the 100f capacitors, so a working ring lands around "
+            "120 MHz. A reading of 0 MHz means it is not oscillating at "
+            "all yet.")
         try:
             tb = g['RingOscTb']()
             h = SimHierarchy.from_schematic(tb.schematic)
@@ -574,7 +590,9 @@ def gen_lesson5(g):
             vpp, freq = measure_oscillation(t, vdiff)
             report.passfail(sim_labels[0],
                 vpp >= 0.3,
-                hint=ring_hint,
+                hint="Two flat lines mean the loop found a stable state "
+                "and stayed there. That is what an even number of "
+                "inversions does: it feeds every level back to itself.",
                 instructions=f"Differential peak-to-peak amplitude in the "
                 f"second half of the simulation: {vpp:.3f} V (required: "
                 ">= 0.3 V).")
@@ -661,18 +679,23 @@ def gen_lesson6(g):
             vout = [float(v) for v in h.y.voltage]
             report.passfail(sim_labels[0],
                 vout[0] >= 1.15,
-                hint=build_hint,
+                hint="Only the PMOS can pull y up to the supply. If y "
+                "stays low, its source and bulk are not on vdd.",
                 instructions=f"V(y) at vin = 0: {vout[0]:.3f} V. The PMOS "
                 "must pull the output all the way to VDD.")
             report.passfail(sim_labels[1],
                 vout[-1] <= 0.05,
-                hint=build_hint,
+                hint="Only the NMOS pulls y down to ground. If y never "
+                "reaches 0 V, its source and bulk are not on vss.",
                 instructions=f"V(y) at vin = 1.2 V: {vout[-1]:.3f} V. The "
                 "NMOS must pull the output all the way to ground.")
             vth = vtc_threshold(vin, vout)
             if vth is None:
-                report.passfail(sim_labels[2],
-                    False, hint=build_hint,
+                report.passfail(sim_labels[2], False,
+                    hint="The curve has to fall from the supply to "
+                    "ground for a threshold to exist. As long as only "
+                    "one of the two transistors drives y, it never "
+                    "crosses vout = vin.",
                     instructions="The VTC never crosses vout = vin -- the "
                     "inverter is probably still incomplete.")
             else:
@@ -711,14 +734,13 @@ def gen_lesson7(g):
             "The `report_ac` view shows the self-bias point and the gain "
             "over frequency."
         )
-        rf_hint = (
-            "The feedback resistor must be large compared to the "
-            "amplifier's impedance level, otherwise the output 'fights' "
-            "the input signal through rf (the gain approaches 1, like a "
-            "unity-gain buffer). Values of 100k and above work; 1M (.$r=1M) "
-            "is a good choice. Note how the operating point check passes "
-            "even with a small rf -- self-biasing works at any rf value, "
-            "only the AC gain suffers.")
+        value_hint = ("Raise the resistance of rf: `.$r=1M`. Anything "
+            "from 100k upwards is large enough.")
+        gain_hint = (
+            "A small rf ties the output straight back to the input, so "
+            "the amplifier ends up following its own output and the gain "
+            "drops towards 1. Make rf large compared to the impedance at "
+            "the input node, then the signal only sees the gates.")
 
         op_label = "Self-biased at the switching threshold"
         try:
@@ -735,8 +757,9 @@ def gen_lesson7(g):
                 f"v(y) = {vy:.3f} V (expected: equal within 20 mV, "
                 "between 0.4 V and 0.8 V).")
         except Exception:
-            report.passfail(op_label, False,
-                instructions=exception_text(), hint=rf_hint)
+            report.passfail(op_label, False, instructions=exception_text(),
+                hint="The feedback resistor connects the inverter input "
+                "and output. Without it, the input node floats.")
 
         def rf_large():
             sch = g['InvAmp']().schematic
@@ -747,7 +770,7 @@ def gen_lesson7(g):
             return found, (f"Feedback resistor value: {status} "
                 "(needed: >= 100k).")
         guarded_passfail(report, "Feedback resistor >= 100k", rf_large,
-            hint=rf_hint)
+            hint=value_hint)
 
         gain_label = "Mid-band gain >= 10"
         try:
@@ -758,14 +781,14 @@ def gen_lesson7(g):
             mag = [abs(v) for v in hac.yout.voltage]
             gain = ac_magnitude_at(freq, mag, 5e6)
             report.passfail(gain_label, gain >= 10,
-                hint=rf_hint,
+                hint=gain_hint,
                 instructions=f"Measured gain at 5 MHz: {gain:.2f} "
                 "(required: >= 10). The gain rolls off below the "
                 "highpass corner set by the coupling capacitor and "
                 "above the lowpass corner set by the load.")
         except Exception:
             report.passfail(gain_label, False,
-                instructions=exception_text(), hint=rf_hint)
+                instructions=exception_text(), hint=gain_hint)
         return report
     return lesson
 
@@ -821,13 +844,11 @@ def gen_lesson8(g):
             "operating point."
         )
         nand_hint = (
-            "You need an additional internal net between the two series "
-            "NMOS transistors: net n, then n1 with .d -- n and n2 with "
-            ".s -- n; .d -- y; .g -- b. The second PMOS p2 sits in "
-            "parallel to p1 (.s -- vdd; .d -- y) with .g -- b at "
-            ".pos=(12,13). Remember to add both new transistors to the "
-            "sizing loop, otherwise they keep the library defaults "
-            "w=1u, l=1u instead of l=130n.")
+            "Declare `net n` between the two NMOS: n1 from vss with "
+            ".d -- n, and n2 with .s -- n; .d -- y; .g -- b. The second "
+            "PMOS p2 goes next to p1 at .pos=(12,13) with .s -- vdd; "
+            ".d -- y; .g -- b. Add both new transistors to the sizing "
+            "loop, otherwise they keep the library default l=1u.")
 
         def structure():
             sch = dut().schematic
@@ -863,8 +884,15 @@ def gen_lesson8(g):
         structure_ok = guarded_passfail(report,
             "NMOS in series, PMOS in parallel", structure, hint=nand_hint)
 
+        pullup_hint = ("y must be pulled high here, which is the job of "
+            "the PMOS pair: each PMOS on its own reaches from vdd to y, "
+            "one with a on its gate and one with b.")
+        pulldown_hint = ("y must be pulled low here, which only the NMOS "
+            "stack can do: from vss through n1 to the internal net, and "
+            "from there through n2 to y, with one input per gate.")
         for a, b in ((0, 0), (0, 1), (1, 0), (1, 1)):
             expect_high = not (a and b)
+            row_hint = pullup_hint if expect_high else pulldown_hint
             label = f"a={a}, b={b} => y={int(expect_high)}"
             try:
                 tb = CheckNand2Tb(a=a * R('1.2'), b=b * R('1.2'))
@@ -875,7 +903,7 @@ def gen_lesson8(g):
                     passed = y > 0.9 * 1.2
                 else:
                     passed = y < 0.1 * 1.2
-                report.passfail(label, passed, hint=nand_hint,
+                report.passfail(label, passed, hint=row_hint,
                     instructions=f"Simulated y = {y:.3f} V, expected "
                     f"{'> 1.08' if expect_high else '< 0.12'} V.")
             except Exception:
@@ -884,9 +912,9 @@ def gen_lesson8(g):
                 else:
                     instructions = ("The operating point simulation "
                         "failed -- usually the gate is still incomplete "
-                        "(see the structure checks above).")
+                        "(see the structure check above).")
                 report.passfail(label, False,
-                    instructions=instructions, hint=nand_hint)
+                    instructions=instructions, hint=row_hint)
         return report
     return lesson
 
@@ -951,8 +979,14 @@ def gen_lesson9(g):
         for a, b in ((0, 0), (0, 1), (1, 0), (1, 1)):
             expect_high = bool(a) != bool(b)
             label = f"a={a}, b={b} => y={int(expect_high)}"
+            row_hint = ("If the output never moves, check the name of "
+                "the output pin: this cell calls it X, not Y. If the "
+                "levels are there but wrong, the two inputs are "
+                "swapped.")
             if not wired:
-                report.passfail(label, False, hint=dut_hint,
+                report.passfail(label, False,
+                    hint="Instantiate and wire the cell first, see the "
+                    "check above.",
                     instructions="The truth table is checked once the "
                     "cell is instantiated and wired.")
                 continue
@@ -962,7 +996,7 @@ def gen_lesson9(g):
                 Simulator(h).op()
                 y = float(h.y.voltage[0])
                 passed = y > 0.9 * 1.2 if expect_high else y < 0.1 * 1.2
-                report.passfail(label, passed, hint=dut_hint,
+                report.passfail(label, passed, hint=row_hint,
                     instructions=f"Simulated y = {y:.3f} V, expected "
                     f"{'> 1.08' if expect_high else '< 0.12'} V.")
             except Exception:
@@ -1021,23 +1055,22 @@ def gen_lesson10(g):
             "`report_tran` view and the measured sequence length in the "
             "checks below."
         )
+        place_hint = (
+            "Put the gate where the tie cell was: `Xnor2 fbgate: "
+            ".A -- q3; .B -- q2; .Y -- fb; .VDD -- vdd; .VSS -- vss; "
+            ".pos=(64,14)`. Its two inputs come from register outputs, "
+            "its output drives fb.")
         gate_hint = (
-            "The feedback gate takes two of the register outputs and "
-            "drives fb, the D input of the first flip flop: "
-            "`Xnor2 fbgate: .A -- q3; .B -- q2; .Y -- fb; .VDD -- vdd; "
-            ".VSS -- vss; .pos=(64,14)`. It has to be the XNOR: after "
-            "the reset all four bits are zero, and an XOR of two zeros "
-            "feeds another zero back, so the register would stay at "
-            "0000 forever. The XNOR feeds a one back instead and gets "
-            "the sequence going.")
+            "After the reset all four bits are zero. An XOR of two zeros "
+            "feeds another zero back, so the register would stay at 0000 "
+            "forever. The XNOR feeds a one back and starts the "
+            "sequence.")
         tap_hint = (
-            "Not every pair of taps gives a long sequence. With four "
-            "bits only two choices walk through all 15 states, and both "
-            "of them tap the last flip flop q3 together with one other "
-            "output. Try q3 with q2, or q3 with q0. Tapping the last "
-            "flip flop matters: without it the shift register part in "
-            "front of the tap only delays the sequence instead of "
-            "taking part in it.")
+            "Only two tap pairs walk through all 15 states, and both of "
+            "them use the last flip flop q3 together with one other "
+            "output. Try q3 with q2, or q3 with q0. Without the last "
+            "flip flop in the loop, the bits behind the tap only delay "
+            "the sequence instead of shaping it.")
 
         def feedback_gate():
             sch = g['Lfsr']().schematic
@@ -1060,7 +1093,7 @@ def gen_lesson10(g):
                 "outputs (q0 ... q3).")
 
         wired = guarded_passfail(report, "Feedback gate closes the loop",
-            feedback_gate, hint=gate_hint)
+            feedback_gate, hint=place_hint)
 
         run_labels = ("Register does not stand still",
             "Sequence runs through all 15 states")
@@ -1129,11 +1162,9 @@ def gen_lesson11(g):
             "Replace rl_p/rl_n by PMOS transistors in their slots: m3 "
             "(diode-connected: .d -- outx; .g -- outx; .s -- vdd; "
             ".b -- vdd; .pos=(4,14)) and m4 (.g -- outx; .d -- out; "
-            ".s -- vdd; .b -- vdd; .pos=(12,14)). For enough gain, use "
-            "l=300n for m1..m4 (longer channel = higher intrinsic gain "
-            "gm/gds) with w=5u. The short l=130n of the starting point "
-            "wastes gain. Keep mtail at w=3u, l=1u -- widening it costs "
-            "supply current.")
+            ".s -- vdd; .b -- vdd; .pos=(12,14)), both w=5u. m3 carries "
+            "the current of one branch and m4 copies it onto the "
+            "other.")
 
         def mirror_load():
             sch = g['Ota']().schematic
@@ -1177,13 +1208,19 @@ def gen_lesson11(g):
             vout = [float(v) for v in h.out.voltage]
             gain = max_slope(vin, vout)
             report.passfail(dc_labels[0], gain >= 12,
-                hint=ota_hint,
+                hint="Gain comes from the intrinsic gain of the devices, "
+                "which grows with channel length. Give m1 to m4 l=300n "
+                "instead of 130n: at the short length the OTA only "
+                "reaches about 8.",
                 instructions=f"Maximum slope of the transfer curve: "
                 f"{gain:.1f} ({20*math.log10(max(gain, 1e-9)):.1f} dB), "
                 "required: >= 12 (21.6 dB).")
             swing = max(vout) - min(vout)
             report.passfail(dc_labels[1], swing >= 0.8,
-                hint=ota_hint,
+                hint="The output can only approach the rails once both "
+                "resistors are gone. A resistor left in a branch drops "
+                "its share of the supply no matter what the transistors "
+                "do.",
                 instructions=f"Output range over the sweep: {swing:.3f} V "
                 "(required: >= 0.8 V).")
         except Exception:
