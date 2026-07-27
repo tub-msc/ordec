@@ -237,16 +237,19 @@ export class CourseController {
         }, 500);
     }
 
-    // -- Special first lessons of getting_started ------------------------
+    // -- Task-free and specially checked lessons -------------------------
     //
-    // Two lessons flagged in course.json get dedicated handling here instead
-    // of the usual PassFail-based checking (their reports are
+    // Three kinds of lessons flagged in course.json get dedicated handling
+    // here instead of the usual PassFail-based checking (their reports are
     // instruction-only): the welcome lesson (getting_started_lesson_1)
     // counts as solved right away, runs the spotlight intro tour (see
     // startTour) and, once the tour is done, shows a callout pointing at
     // the next-lesson button. The viewer lesson (getting_started_lesson_2)
     // is passed by opening the HelloWorld schematic and hello result
     // viewers, which the frontend checks itself (see checkLesson2Views).
+    // An epilogue lesson (generic flag: epilogue) closes a course with a
+    // what's-next report: solved right away, no callout, and no source
+    // editor in its shipped layout.
 
     lesson1Flagged() {
         return Boolean(this.course.lessons[this.state.currentLesson]
@@ -256,6 +259,11 @@ export class CourseController {
     lesson2Flagged() {
         return Boolean(this.course.lessons[this.state.currentLesson]
             .getting_started_lesson_2);
+    }
+
+    epilogueFlagged() {
+        return Boolean(this.course.lessons[this.state.currentLesson]
+            .epilogue);
     }
 
     lesson2ViewsOpen() {
@@ -307,9 +315,9 @@ export class CourseController {
     onReportResult(msg) {
         if (msg.exception) {
             this.reportStatus = 'error';
-        } else if (this.lesson1Flagged()) {
-            // The welcome lesson has no tasks; it counts as solved right
-            // away, unlocking lesson 2.
+        } else if (this.lesson1Flagged() || this.epilogueFlagged()) {
+            // Task-free lessons (welcome lesson, epilogue) count as solved
+            // right away, unlocking the following lesson if any.
             this.reportStatus = 'pass';
             if (!this.lessonPassed(this.state.currentLesson)) {
                 this.lessonState(this.state.currentLesson).passed = true;
@@ -482,6 +490,11 @@ export class CourseController {
     // when their lesson is revisited (see introDismissed/successDismissed).
 
     desiredCalloutKind() {
+        if (this.epilogueFlagged()) {
+            // The epilogue is a destination, not a task: its report speaks
+            // for itself, no callout on top.
+            return null;
+        }
         if (this.lesson1Flagged()) {
             // Welcome lesson: only the "proceed to lesson 2" callout, and
             // only once the user has clicked through the spotlight tour.

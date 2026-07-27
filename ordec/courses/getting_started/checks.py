@@ -13,9 +13,11 @@ crashes on a broken user design.
 
 Exceptions: lesson 1 is a welcome lesson without tasks (course.json flag
 getting_started_lesson_1; the frontend marks it solved right away and runs
-the spotlight tour), and lesson 2 is passed by opening result viewers, which
-the frontend detects on its own (flag getting_started_lesson_2). Both reports
-carry only instructions and no PassFail elements.
+the spotlight tour), lesson 2 is passed by opening result viewers, which
+the frontend detects on its own (flag getting_started_lesson_2), and the
+final what's-next lesson is a task-free epilogue (generic course.json flag
+epilogue: solved right away, no callout, no source editor in its layout).
+Their reports carry only instructions and no PassFail elements.
 """
 
 import dis
@@ -1040,5 +1042,52 @@ def gen_lesson10(g):
             report.passfail(label, False, instructions=exception_text(),
                 hint=hint)
 
+        return report
+    return lesson
+
+
+# Epilogue: What's next?
+# ----------------------
+
+def gen_epilogue(g):
+    @generate_func
+    def lesson() -> Report:
+        report = Report()
+        # Course links open in a new tab (inline HTML with target=_blank):
+        # a plain link would only change the URL fragment of the running
+        # app without reloading it.
+        report.markdown("""
+            **Congratulations &mdash; you have completed the Getting Started
+            course!**
+
+            You have learned how to work with the ORDeC web UI and how to
+            describe circuits in ORD: instantiating and wiring components,
+            building subcells with symbols and parameters, running DC, AC and
+            transient simulations, and evaluating the results in reports.
+
+            Here is where you can go from here:
+
+            - **Continue with the next courses:**
+              <a href="app.html#course=cmos_circuits" target="_blank"
+              rel="noopener">CMOS Integrated Circuits</a> and the
+              <a href="app.html#course=layout_tutorial" target="_blank"
+              rel="noopener">Layout Tutorial</a>.
+
+            - **Explore the examples.** The <a href="." target="_blank"
+              rel="noopener">start page</a> collects example designs that go
+              beyond this course: MOSFET circuits on real PDKs,
+              constraint-based layout and DRC/LVS.
+
+            - **Start your own design** and consult the
+              [documentation](docs:) along the way!
+
+            - **Get involved.** ORDeC is open source! You can ask questions
+              or report issues on
+              <a href="https://github.com/tub-msc/ordec" target="_blank"
+              rel="noopener">GitHub</a>.
+
+            Your course progress and edits stay in this browser; use
+            *Export* in the toolbar above to save them as a zip file.
+        """)
         return report
     return lesson

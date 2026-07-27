@@ -255,6 +255,8 @@ courses_testdata = {
             .markdown(f"Rise time: {rise_time}")
             """),
         ]),
+        # Epilogue: task-free what's-next report closing the course.
+        LessonTestdata(),
     ]),
     # The under-construction courses have a single instruction-only dummy
     # lesson; without PassFail elements, it can never be marked solved.
@@ -316,16 +318,21 @@ def test_course_special_lesson_flags():
     # The hard flags for the two special lessons (welcome lesson: solved
     # right away + spotlight tour; viewer lesson: passed by opening result
     # viewers, detected in the frontend) must be passed through to exactly
-    # the first two getting_started lessons.
+    # the first two getting_started lessons, and the generic epilogue flag
+    # (task-free closing lesson) to exactly the last one.
     data = course_data()
+    n = len(data['lessons'])
     assert [l['getting_started_lesson_1'] for l in data['lessons']] == \
-        [True, False, False, False, False, False, False, False, False, False]
+        [True] + [False] * (n - 1)
     assert [l['getting_started_lesson_2'] for l in data['lessons']] == \
-        [False, True, False, False, False, False, False, False, False, False]
+        [False, True] + [False] * (n - 2)
+    assert [l['epilogue'] for l in data['lessons']] == \
+        [False] * (n - 1) + [True]
     for name in ('cmos_circuits', 'layout_tutorial'):
         for lesson in course_data(name)['lessons']:
             assert not lesson['getting_started_lesson_1']
             assert not lesson['getting_started_lesson_2']
+            assert not lesson['epilogue']
 
 
 def test_course_unknown():

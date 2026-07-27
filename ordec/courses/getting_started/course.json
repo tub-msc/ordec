@@ -62,6 +62,13 @@
       "title": "Postprocessing",
       "description": "Analyze transient data in a report: count pulses, measure edge times.",
       "lesson_gen": "gen_lesson10"
+    },
+    {
+      "file": "epilogue.ord",
+      "title": "What's next?",
+      "description": "Course completed — where to go from here.",
+      "lesson_gen": "gen_epilogue",
+      "epilogue": true
     }
   ]
 }

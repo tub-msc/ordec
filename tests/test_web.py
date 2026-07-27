@@ -243,7 +243,7 @@ def course_nav_state(web):
             lessonsLocked: Array.from(
                 nav.querySelectorAll('.course-lessonsel option'),
                 o => o.disabled),
-            editorSrc: cc.editor.editor.getValue(),
+            editorSrc: cc.editor ? cc.editor.editor.getValue() : null,
         };
     """)
 
@@ -285,6 +285,9 @@ def test_course(web):
     from .test_course import course_data
 
     lessons = course_data()['lessons']
+    # Expected lock state when the first n lessons are unlocked:
+    def locked_after(n):
+        return [i >= n for i in range(len(lessons))]
 
     web.resize_viewport()
     reset_course_storage(web)
@@ -298,7 +301,7 @@ def test_course(web):
     wait_for_course_marker(web, 'solved')
     state = course_nav_state(web)
     assert state['currentLesson'] == 0
-    assert state['lessonsLocked'] == [False, False, True, True, True, True, True, True, True, True]
+    assert state['lessonsLocked'] == locked_after(2)
     assert state['editorSrc'] == lessons[0]['src']
 
     # The close controls of the Course panel and the source editor are
@@ -350,7 +353,7 @@ def test_course(web):
     assert well_placed is True
 
     state = course_nav_state(web)
-    assert state['lessonsLocked'] == [False, False, False, True, True, True, True, True, True, True]
+    assert state['lessonsLocked'] == locked_after(3)
 
     # Switch to lesson 3 via the dropdown.
     web.driver.execute_script("""
@@ -369,14 +372,14 @@ def test_course(web):
         "window.courseController.editor.editor.setValue(arguments[0]);", sol)
     wait_for_course_marker(web, 'solved')
     state = course_nav_state(web)
-    assert state['lessonsLocked'] == [False, False, False, False, True, True, True, True, True, True]
+    assert state['lessonsLocked'] == locked_after(4)
 
     # Progress (incl. edited lesson 3 source) must survive a reload.
     web.navigate('app.html#course=getting_started')
     web.wait_for_ready()
     state = course_nav_state(web)
     assert state['currentLesson'] == 2
-    assert state['lessonsLocked'] == [False, False, False, False, True, True, True, True, True, True]
+    assert state['lessonsLocked'] == locked_after(4)
 
     # Start over (with confirmation) resets everything. This reloads the page
     # from app JS, so wait for the reload before reading state.
@@ -387,8 +390,32 @@ def test_course(web):
     wait_for_course_marker(web, 'solved')  # lesson 1 auto-passes again
     state = course_nav_state(web)
     assert state['currentLesson'] == 0
-    assert state['lessonsLocked'] == [False, False, True, True, True, True, True, True, True, True]
+    assert state['lessonsLocked'] == locked_after(2)
     assert state['editorSrc'] == lessons[0]['src']
+
+    # The epilogue (task-free closing lesson) counts as solved right away,
+    # shows no callout, and its shipped layout has no source editor. Reached
+    # via debug mode, which unlocks all lessons.
+    web.navigate('app.html#course=getting_started&debug=true')
+    web.wait_for_ready()
+    skip_tour(web)
+    web.driver.execute_script("""
+        const sel = document.querySelector('.course-lessonsel');
+        sel.value = String(sel.options.length - 1);
+        sel.dispatchEvent(new Event('change'));
+    """)
+    web.wait_for_ready()
+    wait_for_course_marker(web, 'solved')
+    state = course_nav_state(web)
+    assert state['currentLesson'] == len(lessons) - 1
+    assert state['editorSrc'] is None
+    info = web.driver.execute_script("""
+        return {
+            editorDom: !!document.querySelector('.ace_editor'),
+            callout: !!document.querySelector('.course-callout'),
+        };
+    """)
+    assert info == {'editorDom': False, 'callout': False}
 
 
 @pytest.mark.web

@@ -935,6 +935,10 @@ class StaticHandler:
                     bool(lesson.get('getting_started_lesson_1', False)),
                 'getting_started_lesson_2':
                     bool(lesson.get('getting_started_lesson_2', False)),
+                # Generic flag for task-free epilogue lessons closing a
+                # course: the frontend marks them solved right away and
+                # shows no callout.
+                'epilogue': bool(lesson.get('epilogue', False)),
             })
         data = json.dumps({
             'name': name,
