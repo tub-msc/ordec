@@ -68,10 +68,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "MosCurves(vgs='600m').schematic",
+                "title": "InvAmp().schematic",
                 "componentType": "result",
                 "componentState": {
-                  "view": "MosCurves(vgs='600m').schematic"
+                  "view": "InvAmp().schematic"
                 }
               }
             ],
@@ -91,10 +91,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "MosCurves(vgs='600m').report_curves",
+                "title": "InvAmpTb().sim_ac",
                 "componentType": "result",
                 "componentState": {
-                  "view": "MosCurves(vgs='600m').report_curves"
+                  "view": "InvAmpTb().sim_ac"
                 }
               }
             ],

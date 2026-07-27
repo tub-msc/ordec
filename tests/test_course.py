@@ -248,10 +248,146 @@ courses_testdata = {
             """),
         ]),
     ]),
-    # The under-construction courses have a single instruction-only dummy
+    'cmos_circuits': CourseTestdata('CMOS Integrated Circuits', [
+        # Lesson 1: MOS transistor curves. Without the transistors, the
+        # checks return early after the two placement checks.
+        LessonTestdata(passfails=4, skeleton_passed=[False, False],
+            has_svg=True, solution=[
+            InsertSolution("""
+            # EDIT HERE (import)
+            """, """
+            from ordec.lib.ihp130 import Nmos, Pmos
+            """),
+            InsertSolution("""
+            # EDIT HERE (transistors)
+            """, """
+            Nmos mn: .$w=1u; .$l=130n; .g -- gate; .d -- dn; .s -- vss; .b -- vss; .pos=(22,12)
+            Pmos mp: .$w=1u; .$l=130n; .g -- gate; .d -- dp; .s -- vdd; .b -- vdd; .pos=(30,12)
+            """),
+        ]),
+        # Lesson 2: current mirror. The skeleton's 1:1 mirror biases fine
+        # but misses the 100 uA target. The solution uses 10 parallel unit
+        # devices (m=10), not a 10x-wide transistor (width effects).
+        LessonTestdata(passfails=2, skeleton_passed=[True, False],
+            solution=[
+            InsertSolution("""
+            # EDIT HERE
+            Nmos n1: .pos=(8,3); .$w=1u; .$l=1u; .d -- iout; .g -- iin; .s -- vss; .b -- vss
+            """, """
+            Nmos n1: .pos=(8,3); .$w=1u; .$l=1u; .$m=10; .d -- iout; .g -- iin; .s -- vss; .b -- vss
+            """),
+        ]),
+        # Lesson 3: common-source amplifier. w=10u satisfies both the
+        # operating point and the gain spec.
+        LessonTestdata(passfails=2, has_svg=True, solution=[
+            InsertSolution("""
+            # EDIT HERE
+            """, """
+            Nmos m0: .$w=10u; .$l=130n; .g -- vin; .d -- vout; .s -- vss; .b -- vss; .pos=(6,3)
+            """),
+        ]),
+        # Lesson 4: differential pair. On the skeleton the balance check
+        # passes trivially (both outputs sit at vdd).
+        LessonTestdata(passfails=3, skeleton_passed=[False, True, False],
+            has_svg=True, solution=[
+            InsertSolution("""
+            # EDIT HERE
+            """, """
+            Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outp; .s -- tail; .b -- vss; .pos=(4,7)
+            Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- outn; .s -- tail; .b -- vss; .pos=(14,7); .orientation=FlippedSouth
+            """),
+        ]),
+        # Lesson 5: ring oscillator bug hunt. The skeleton's swapped stage0
+        # inputs make the loop latch, so both checks fail.
+        LessonTestdata(passfails=2, solution=[
+            InsertSolution("""
+            DiffPair stage0: .inp -- n2; .inn -- p2; .outp -- outp; .outn -- outn; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(3,7) # EDIT HERE
+            """, """
+            DiffPair stage0: .inp -- p2; .inn -- n2; .outp -- outp; .outn -- outn; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(3,7)
+            """),
+        ]),
+        # Lesson 6: CMOS inverter. On the empty skeleton, the 1 GOhm probe
+        # pulls y to ground, so only the VOL check passes.
+        LessonTestdata(passfails=3, skeleton_passed=[False, True, False],
+            has_svg=True, solution=[
+            InsertSolution("""
+            # EDIT HERE
+            """, """
+            Nmos pd: .$w=1u; .$l=130n; .g -- a; .d -- y; .s -- vss; .b -- vss; .pos=(3,2)
+            Pmos pu: .$w=2u; .$l=130n; .g -- a; .d -- y; .s -- vdd; .b -- vdd; .pos=(3,8)
+            """),
+        ]),
+        # Lesson 7: NAND2. The skeleton's inverter driven by a implements
+        # the wrong function only for a=1, b=0.
+        LessonTestdata(passfails=4,
+            skeleton_passed=[True, True, False, True],
+            has_svg=True, solution=[
+            InsertSolution("""
+            # EDIT HERE
+            Nmos n1: .pos=(4,1); .s -- vss; .d -- y; .g -- a; .b -- vss
+            Pmos p1: .pos=(4,13); .s -- vdd; .d -- y; .g -- a; .b -- vdd
+
+            for t in p1, n1:
+                t.$w = 1u
+                t.$l = 130n
+            """, """
+            net x
+            Nmos n1: .pos=(4,1); .s -- vss; .d -- x; .g -- a; .b -- vss
+            Nmos n2: .pos=(4,7); .s -- x; .d -- y; .g -- b; .b -- vss
+            Pmos p1: .pos=(4,13); .s -- vdd; .d -- y; .g -- a; .b -- vdd
+            Pmos p2: .pos=(10,13); .s -- vdd; .d -- y; .g -- b; .b -- vdd
+
+            for t in p1, p2, n1, n2:
+                t.$w = 1u
+                t.$l = 130n
+            """),
+        ]),
+        # Lesson 8: self-biased inverter. Self-biasing works at any rf, so
+        # the operating point check passes even on the skeleton.
+        LessonTestdata(passfails=2, skeleton_passed=[True, False],
+            solution=[
+            InsertSolution("""
+            Res rf: .$r=100; .p -- a; .m -- y; .pos=(11,10) # EDIT HERE
+            """, """
+            Res rf: .$r=1M; .p -- a; .m -- y; .pos=(11,10)
+            """),
+        ]),
+        # Lesson 9: NOR2 standard cell. On the empty skeleton, y floats in
+        # the check testbench and the simulation fails all four cases.
+        LessonTestdata(passfails=4,
+            skeleton_passed=[False, False, False, False],
+            has_svg=True, solution=[
+            InsertSolution("""
+            # EDIT HERE
+            """, """
+            net x
+            Nmos n1: .pos=(4,1); .$w=740n; .$l=130n; .s -- vss; .d -- y; .g -- a; .b -- vss
+            Nmos n2: .pos=(10,1); .$w=740n; .$l=130n; .s -- vss; .d -- y; .g -- b; .b -- vss
+            Pmos p1: .pos=(4,13); .$w=1.12u; .$l=130n; .s -- vdd; .d -- x; .g -- a; .b -- vdd
+            Pmos p2: .pos=(4,7); .$w=1.12u; .$l=130n; .s -- x; .d -- y; .g -- b; .b -- vdd
+            """),
+        ]),
+        # Lesson 10: 5-transistor OTA capstone. The resistor-loaded
+        # starting point misses the gain and swing specs (the 30k loads
+        # cannot swing rail to rail) but meets the current budget.
+        LessonTestdata(passfails=3, skeleton_passed=[False, False, True],
+            solution=[
+            InsertSolution("""
+            # EDIT HERE
+            Res rl_p: .$r=30k; .p -- vdd; .m -- outx; .pos=(4,13)
+            Res rl_n: .$r=30k; .p -- vdd; .m -- out; .pos=(10,13)
+            Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outx; .s -- tail; .b -- vss; .pos=(4,7)
+            Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(14,7); .orientation=FlippedSouth
+            """, """
+            Pmos m3: .$w=5u; .$l=300n; .g -- outx; .d -- outx; .s -- vdd; .b -- vdd; .pos=(8,13); .orientation=FlippedSouth
+            Pmos m4: .$w=5u; .$l=300n; .g -- outx; .d -- out; .s -- vdd; .b -- vdd; .pos=(10,13)
+            Nmos m1: .$w=5u; .$l=300n; .g -- inp; .d -- outx; .s -- tail; .b -- vss; .pos=(4,7)
+            Nmos m2: .$w=5u; .$l=300n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(14,7); .orientation=FlippedSouth
+            """),
+        ]),
+    ]),
+    # The under-construction course has a single instruction-only dummy
     # lesson; without PassFail elements, it can never be marked solved.
-    'cmos_circuits': CourseTestdata('CMOS Integrated Circuits',
-        [LessonTestdata()]),
     'layout_tutorial': CourseTestdata('Layout Tutorial',
         [LessonTestdata()]),
 }
@@ -355,3 +491,34 @@ def test_lesson_solution(course_name, lesson_index, testdata):
     passfails = [e for e in elements if e['element_type'] == 'passfail']
     assert len(passfails) == testdata.passfails
     assert all(p['passed'] for p in passfails)
+
+
+def cmos_variant_states(lesson_index, replace_from, replace_to):
+    """Passfail states of a cmos_circuits solution with one edit applied."""
+    lesson = course_data('cmos_circuits')['lessons'][lesson_index]
+    src = courses_testdata['cmos_circuits'].lessons[lesson_index] \
+        .solution_src(lesson)
+    assert replace_from in src
+    report = run_lesson(lesson, src.replace(replace_from, replace_to))
+    elements = [e.element_webdata() for e in report['lesson']().elements()]
+    return [e['passed'] for e in elements
+        if e['element_type'] == 'passfail']
+
+
+def test_cmos_mirror_wide_transistor():
+    """
+    A single 10x-wide transistor must miss the mirror's 10 % tolerance
+    (width effects change the current density), which is the teaching
+    point of cmos_circuits lesson 2.
+    """
+    assert cmos_variant_states(1,
+        ".$w=1u; .$l=1u; .$m=10;", ".$w=10u; .$l=1u;") == [True, False]
+
+
+def test_cmos_inverter_symmetric_sizing():
+    """
+    Equal NMOS/PMOS widths must miss the 0.6 V threshold window
+    (cmos_circuits lesson 6 teaches the PMOS needs twice the width).
+    """
+    assert cmos_variant_states(5,
+        "Pmos pu: .$w=2u", "Pmos pu: .$w=1u") == [True, True, False]

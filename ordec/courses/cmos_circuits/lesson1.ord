@@ -1,1 +1,59 @@
-# This course is under construction. Its first lesson will appear here.
+from ordec.core import *
+from ordec.lib import Vdc, Gnd
+
+# EDIT HERE (import)
+
+cell MosCurves:
+    vgs = Parameter(R, default=600m)
+
+    viewgen schematic -> Schematic:
+        net vss, vdd, gate, dn, dp
+
+        Gnd gnd: .p -- vss; .pos=(0,0)
+        Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(18,6)
+        Vdc vg_src: .$dc=self.vgs; .m -- vss; .p -- gate; .pos=(0,6)
+
+        # These two sources fix the drain voltages and measure the currents:
+        Vdc vdn_src: .$dc=1.2; .m -- vss; .p -- dn; .pos=(6,6)
+        Vdc vdp_src: .$dc=0; .m -- vss; .p -- dp; .pos=(12,6)
+
+        # EDIT HERE (transistors)
+
+    viewgen sim_vgs -> Simulation:
+        # Gate voltage sweep; save_params records ids, gm, vth, ...
+        .simulate().dc_sweep(self.schematic.vg_src, 0, 1.2, 61, save_params=True)
+
+    viewgen sim_vds -> Simulation:
+        # NMOS drain voltage sweep at the gate voltage self.vgs.
+        .simulate().dc_sweep(self.schematic.vdn_src, 0, 1.2, 61, save_params=True)
+
+    viewgen report_curves -> Report:
+        try:
+            self.schematic.mn
+            self.schematic.mp
+            placed = True
+        except AttributeError:
+            placed = False
+        if not placed:
+            .markdown("Place the transistors `mn` and `mp` first (see the "
+                "EDIT HERE markers in the source).")
+        else:
+            sim = self.sim_vgs
+            .markdown("## Transfer characteristics: ID over VGS")
+            .plot2d(
+                {"NMOS |ID|": [abs(i) for i in sim.mn.params['ids'].value],
+                 "PMOS |ID|": [abs(i) for i in sim.mp.params['ids'].value]},
+                x=[float(v) for v in sim.gate.voltage],
+                xlabel="Gate voltage (V)",
+                ylabel="Drain current (A)",
+                height=260)
+            .markdown("## Output characteristics: NMOS ID over VDS")
+            series = {}
+            for vgs in ('0.4', '0.6', '0.8', '1.0', '1.2'):
+                sim = MosCurves(vgs=R(vgs)).sim_vds
+                series["VGS = " + vgs + " V"] = [abs(i) for i in sim.mn.params['ids'].value]
+            .plot2d(series,
+                x=[float(v) for v in sim.dn.voltage],
+                xlabel="VDS (V)",
+                ylabel="NMOS |ID| (A)",
+                height=260)

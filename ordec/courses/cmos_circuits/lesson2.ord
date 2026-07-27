@@ -1,0 +1,39 @@
+from ordec.core import *
+from ordec.lib import Vdc, Idc, Gnd
+from ordec.lib.ihp130 import Nmos
+
+cell CurrentMirror:
+    viewgen symbol -> Symbol:
+        input iin: .align=West
+        output iout: .align=East
+        inout vss: .align=South
+
+    viewgen schematic -> Schematic:
+        port iin: .align=East; .pos=(1,9)
+        port iout: .align=West; .pos=(15,9)
+        port vss: .align=East; .pos=(1,0)
+
+        # n0 (diode-connected) turns iin into a gate voltage, n1 copies the
+        # current to iout.
+        Nmos n0: .pos=(6,3); .orientation=FlippedSouth; .$w=1u; .$l=1u; .d -- iin; .g -- iin; .s -- vss; .b -- vss
+        # EDIT HERE
+        Nmos n1: .pos=(8,3); .$w=1u; .$l=1u; .d -- iout; .g -- iin; .s -- vss; .b -- vss
+
+cell CurrentMirrorTb:
+    viewgen schematic -> Schematic:
+        net vss, vdd, iin, iout
+
+        Gnd gnd: .p -- vss; .pos=(0,0)
+        Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(0,6)
+
+        # 10 uA reference current into the mirror input:
+        Idc iref: .$dc=10u; .p -- vdd; .m -- iin; .pos=(6,6)
+
+        # Holds the output at 0.6 V and measures the output current:
+        Vdc vout_src: .$dc=0.6; .p -- vdd; .m -- iout; .pos=(18,6)
+
+        CurrentMirror dut: .iin -- iin; .iout -- iout; .vss -- vss; .pos=(12,6)
+
+    viewgen sim_op -> Simulation:
+        # save_params records ids, gm, vth, ... of both transistors.
+        .simulate().op(save_params=True)

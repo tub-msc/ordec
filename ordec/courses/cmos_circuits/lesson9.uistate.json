@@ -68,10 +68,23 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "MosCurves(vgs='600m').schematic",
+                "title": "Nor2().schematic",
                 "componentType": "result",
                 "componentState": {
-                  "view": "MosCurves(vgs='600m').schematic"
+                  "view": "Nor2().schematic"
+                }
+              },
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "extlib['sg13g2_nor2_1'].layout",
+                "componentType": "result",
+                "componentState": {
+                  "view": "extlib['sg13g2_nor2_1'].layout"
                 }
               }
             ],
@@ -91,10 +104,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "MosCurves(vgs='600m').report_curves",
+                "title": "Nor2Tb().sim_op",
                 "componentType": "result",
                 "componentState": {
-                  "view": "MosCurves(vgs='600m').report_curves"
+                  "view": "Nor2Tb().sim_op"
                 }
               }
             ],
