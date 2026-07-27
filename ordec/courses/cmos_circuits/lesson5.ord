@@ -17,19 +17,19 @@ cell DiffPair:
     viewgen schematic -> Schematic:
         port inp: .align=East; .pos=(1,9)
         port inn: .align=West; .pos=(19,9)
-        port bias: .align=East; .pos=(1,3)
-        port outp: .align=East; .pos=(1,12)
-        port outn: .align=West; .pos=(19,12)
+        port bias: .align=East; .pos=(1,2)
+        port outp: .align=East; .pos=(1,13)
+        port outn: .align=West; .pos=(19,13)
         port vdd: .align=East; .pos=(1,19)
-        port vss: .align=East; .pos=(1,0)
+        port vss: .align=East; .pos=(1,-1)
 
         net tail
 
-        Res rl_p: .$r=30k; .p -- vdd; .m -- outp; .pos=(4,13)
-        Res rl_n: .$r=30k; .p -- vdd; .m -- outn; .pos=(10,13)
-        Nmos mtail: .$w=3u; .$l=1u; .g -- bias; .d -- tail; .s -- vss; .b -- vss; .pos=(8,1)
+        Res rl_p: .$r=30k; .p -- vdd; .m -- outp; .pos=(4,14)
+        Res rl_n: .$r=30k; .p -- vdd; .m -- outn; .pos=(12,14)
+        Nmos mtail: .$w=3u; .$l=1u; .g -- bias; .d -- tail; .s -- vss; .b -- vss; .pos=(8,0)
         Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outp; .s -- tail; .b -- vss; .pos=(4,7)
-        Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- outn; .s -- tail; .b -- vss; .pos=(14,7); .orientation=FlippedSouth
+        Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- outn; .s -- tail; .b -- vss; .pos=(16,7); .orientation=FlippedSouth
 
 cell RingOsc:
     viewgen symbol -> Symbol:
@@ -55,7 +55,8 @@ cell RingOsc:
         Cap cp0: .$c=100f; .$ic=1.2; .p -- outp; .m -- vss; .pos=(37,1)
         Cap cn0: .$c=100f; .$ic=0.6; .p -- outn; .m -- vss; .pos=(42,1)
 
-        DiffPair stage0: .inp -- outn; .inn -- outp; .outp -- p1; .outn -- n1; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(4,8) # EDIT HERE
+        # EDIT HERE
+        DiffPair stage0: .inp -- outn; .inn -- outp; .outp -- p1; .outn -- n1; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(4,8)
         DiffPair stage1: .inp -- p1; .inn -- n1; .outp -- p2; .outn -- n2; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(18,8)
         DiffPair stage2: .inp -- p2; .inn -- n2; .outp -- outp; .outn -- outn; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(32,8)
 

@@ -14,19 +14,20 @@ cell Ota:
     viewgen schematic -> Schematic:
         port inp: .align=East; .pos=(1,9)
         port inn: .align=West; .pos=(19,9)
-        port bias: .align=East; .pos=(1,3)
-        port out: .align=West; .pos=(19,12)
+        port bias: .align=East; .pos=(1,2)
+        port out: .align=West; .pos=(19,13)
         port vdd: .align=East; .pos=(1,19)
-        port vss: .align=East; .pos=(1,0)
+        port vss: .align=East; .pos=(1,-1)
 
         net tail, outx
 
+        Nmos mtail: .$w=3u; .$l=1u; .g -- bias; .d -- tail; .s -- vss; .b -- vss; .pos=(8,0)
+
         # EDIT HERE
-        Res rl_p: .$r=30k; .p -- vdd; .m -- outx; .pos=(4,13)
-        Res rl_n: .$r=30k; .p -- vdd; .m -- out; .pos=(10,13)
+        Res rl_p: .$r=30k; .p -- vdd; .m -- outx; .pos=(4,14)
+        Res rl_n: .$r=30k; .p -- vdd; .m -- out; .pos=(12,14)
         Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outx; .s -- tail; .b -- vss; .pos=(4,7)
-        Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(14,7); .orientation=FlippedSouth
-        Nmos mtail: .$w=3u; .$l=1u; .g -- bias; .d -- tail; .s -- vss; .b -- vss; .pos=(8,1)
+        Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orientation=FlippedSouth
 
 cell OtaTb:
     viewgen schematic -> Schematic:

@@ -296,14 +296,15 @@ courses_testdata = {
             # EDIT HERE
             """, """
             Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outp; .s -- tail; .b -- vss; .pos=(4,7)
-            Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- outn; .s -- tail; .b -- vss; .pos=(14,7); .orientation=FlippedSouth
+            Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- outn; .s -- tail; .b -- vss; .pos=(16,7); .orientation=FlippedSouth
             """),
         ]),
         # Lesson 5: ring oscillator bug hunt. The inversion-count check
         # flips as soon as the wiring is fixed, the transient confirms.
         LessonTestdata(passfails=3, solution=[
             InsertSolution("""
-            DiffPair stage0: .inp -- outn; .inn -- outp; .outp -- p1; .outn -- n1; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(4,8) # EDIT HERE
+            # EDIT HERE
+            DiffPair stage0: .inp -- outn; .inn -- outp; .outp -- p1; .outn -- n1; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(4,8)
             """, """
             DiffPair stage0: .inp -- outp; .inn -- outn; .outp -- p1; .outn -- n1; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(4,8)
             """),
@@ -333,9 +334,9 @@ courses_testdata = {
                 t.$w = 1u
                 t.$l = 130n
             """, """
-            net x
-            Nmos n1: .pos=(4,1); .s -- vss; .d -- x; .g -- a; .b -- vss
-            Nmos n2: .pos=(4,7); .s -- x; .d -- y; .g -- b; .b -- vss
+            net n
+            Nmos n2: .pos=(4,7); .s -- n; .d -- y; .g -- b; .b -- vss
+            Nmos n1: .pos=(4,1); .s -- vss; .d -- n; .g -- a; .b -- vss
             Pmos p1: .pos=(4,13); .s -- vdd; .d -- y; .g -- a; .b -- vdd
             Pmos p2: .pos=(12,13); .s -- vdd; .d -- y; .g -- b; .b -- vdd
 
@@ -350,9 +351,10 @@ courses_testdata = {
         LessonTestdata(passfails=3, skeleton_passed=[True, False, False],
             solution=[
             InsertSolution("""
-            Res rf: .$r=100; .p -- a; .m -- y; .pos=(11,10) # EDIT HERE
+            # EDIT HERE
+            Res rf: .$r=100; .p -- a; .m -- y; .pos=(11,8)
             """, """
-            Res rf: .$r=1M; .p -- a; .m -- y; .pos=(11,10)
+            Res rf: .$r=1M; .p -- a; .m -- y; .pos=(11,8)
             """),
         ]),
         # Lesson 9: NOR2 standard cell. Structure and size checks, then
@@ -378,15 +380,15 @@ courses_testdata = {
             solution=[
             InsertSolution("""
             # EDIT HERE
-            Res rl_p: .$r=30k; .p -- vdd; .m -- outx; .pos=(4,13)
-            Res rl_n: .$r=30k; .p -- vdd; .m -- out; .pos=(10,13)
+            Res rl_p: .$r=30k; .p -- vdd; .m -- outx; .pos=(4,14)
+            Res rl_n: .$r=30k; .p -- vdd; .m -- out; .pos=(12,14)
             Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outx; .s -- tail; .b -- vss; .pos=(4,7)
-            Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(14,7); .orientation=FlippedSouth
+            Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orientation=FlippedSouth
             """, """
-            Pmos m3: .$w=5u; .$l=300n; .g -- outx; .d -- outx; .s -- vdd; .b -- vdd; .pos=(8,13); .orientation=FlippedSouth
-            Pmos m4: .$w=5u; .$l=300n; .g -- outx; .d -- out; .s -- vdd; .b -- vdd; .pos=(10,13)
+            Pmos m3: .$w=5u; .$l=300n; .g -- outx; .d -- outx; .s -- vdd; .b -- vdd; .pos=(4,14)
+            Pmos m4: .$w=5u; .$l=300n; .g -- outx; .d -- out; .s -- vdd; .b -- vdd; .pos=(12,14)
             Nmos m1: .$w=5u; .$l=300n; .g -- inp; .d -- outx; .s -- tail; .b -- vss; .pos=(4,7)
-            Nmos m2: .$w=5u; .$l=300n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(14,7); .orientation=FlippedSouth
+            Nmos m2: .$w=5u; .$l=300n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orientation=FlippedSouth
             """),
         ]),
     ]),

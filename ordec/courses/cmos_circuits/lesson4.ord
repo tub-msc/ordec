@@ -15,17 +15,17 @@ cell DiffPair:
     viewgen schematic -> Schematic:
         port inp: .align=East; .pos=(1,9)
         port inn: .align=West; .pos=(19,9)
-        port bias: .align=East; .pos=(1,3)
-        port outp: .align=East; .pos=(1,12)
-        port outn: .align=West; .pos=(19,12)
+        port bias: .align=East; .pos=(1,2)
+        port outp: .align=East; .pos=(1,13)
+        port outn: .align=West; .pos=(19,13)
         port vdd: .align=East; .pos=(1,19)
-        port vss: .align=East; .pos=(1,0)
+        port vss: .align=East; .pos=(1,-1)
 
         net tail
 
-        Res rl_p: .$r=30k; .p -- vdd; .m -- outp; .pos=(4,13)
-        Res rl_n: .$r=30k; .p -- vdd; .m -- outn; .pos=(10,13)
-        Nmos mtail: .$w=3u; .$l=1u; .g -- bias; .d -- tail; .s -- vss; .b -- vss; .pos=(8,1)
+        Res rl_p: .$r=30k; .p -- vdd; .m -- outp; .pos=(4,14)
+        Res rl_n: .$r=30k; .p -- vdd; .m -- outn; .pos=(12,14)
+        Nmos mtail: .$w=3u; .$l=1u; .g -- bias; .d -- tail; .s -- vss; .b -- vss; .pos=(8,0)
 
         # EDIT HERE
 

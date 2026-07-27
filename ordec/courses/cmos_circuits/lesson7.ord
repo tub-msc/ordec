@@ -12,9 +12,9 @@ cell Nand2:
 
     viewgen schematic -> Schematic:
         port y: .align=West; .pos=(18,12)
-        port a: .align=East; .pos=(1,10)
-        port b: .align=East; .pos=(1,21)
-        port vdd: .align=East; .pos=(1,19)
+        port a: .align=East; .pos=(1,15)
+        port b: .align=East; .pos=(1,9)
+        port vdd: .align=East; .pos=(1,18)
         port vss: .align=East; .pos=(1,0)
 
         # EDIT HERE

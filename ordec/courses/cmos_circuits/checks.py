@@ -46,6 +46,23 @@ def pin_nets(inst):
     return {c.there.full_path_str(): c.here for c in inst.conns()}
 
 
+def wrong_pins(inst, target):
+    """
+    Names of the pins of inst that do not match target ({pin: net}).
+
+    Status texts name these pins but never the nets they should go to:
+    the pin-by-pin wiring belongs into the hint, which the user opens
+    deliberately.
+    """
+    conns = pin_nets(inst)
+    return [pin for pin, net in target.items() if conns.get(pin) != net]
+
+
+def best_match(insts, target):
+    """The instance of insts that comes closest to the target wiring."""
+    return min(insts, key=lambda i: len(wrong_pins(i, target)))
+
+
 def sim_instances_of(h, cell_type):
     """Top-level SimInstances of h whose cell is an instance of cell_type."""
     return [si for si in h.all(SimInstance)
@@ -132,13 +149,13 @@ def gen_lesson1(g):
             "```\n"
             "from ordec.lib.ihp130 import Nmos, Pmos\n"
             "```\n\n"
-            "**2. Place the NMOS** at the second marker:\n\n"
-            "```\n"
-            "Nmos mn: .$w=1u; .$l=130n; .g -- gate; .d -- dn; "
-            ".s -- vss; .b -- vss; .pos=(10,12)\n"
-            "```\n\n"
-            "**3. Place the PMOS** `mp` the same way, with its drain on "
-            "`dp`, source and bulk on `vdd`, at `.pos=(25,12)`.\n\n"
+            "**2. Place and wire the NMOS** `mn` at the second marker: "
+            "w=1u, l=130n, at position (10,12).\n\n"
+            "**3. Place and wire the PMOS** `mp` the same way: w=1u, "
+            "l=130n, at position (25,12).\n\n"
+            "Each transistor takes its gate from the gate net and its "
+            "drain from the source that measures it. Open a check's "
+            "hint if you are unsure which pin goes where.\n\n"
             "The `report_curves` view then shows the output "
             "characteristics of both devices."
         )
@@ -152,7 +169,7 @@ def gen_lesson1(g):
             instructions="Looking for ihp130's Nmos and Pmos in the "
             "lesson namespace.")
 
-        def device_check(cls, target_names, where_text, wiring_text):
+        def device_check(cls, target_names, where_text):
             def checker():
                 sch = g['MosCurves']().schematic
                 insts = instances_of(sch, cls)
@@ -161,16 +178,16 @@ def gen_lesson1(g):
                         f"{cls.__name__} instance {where_text}.")
                 target = {pin: getattr(sch, net)
                     for pin, net in target_names.items()}
-                found = any(pin_nets(i) == target for i in insts)
-                return found, (f"{cls.__name__} found, but it must "
-                    f"connect {wiring_text}.")
+                wrong = wrong_pins(best_match(insts, target), target)
+                return not wrong, (f"{cls.__name__} placed, but these "
+                    "pins are not connected as the testbench needs "
+                    f"them: {', '.join(wrong)}.")
             return checker
 
         nmos_ok = guarded_passfail(report, "SG13G2 NMOS placed and wired",
             device_check(ihp130.Nmos,
                 {'g': 'gate', 'd': 'dn', 's': 'vss', 'b': 'vss'},
-                "with w=1u, l=130n at position (10,12)",
-                "its gate to gate, drain to dn, source and bulk to vss"),
+                "with w=1u, l=130n at position (10,12)"),
             hint="Add `Nmos mn: .$w=1u; .$l=130n; .g -- gate; .d -- dn; "
             ".s -- vss; .b -- vss; .pos=(10,12)` at the EDIT HERE "
             "(transistors) marker.")
@@ -178,8 +195,7 @@ def gen_lesson1(g):
         pmos_ok = guarded_passfail(report, "SG13G2 PMOS placed and wired",
             device_check(ihp130.Pmos,
                 {'g': 'gate', 'd': 'dp', 's': 'vdd', 'b': 'vdd'},
-                "with w=1u, l=130n at position (25,12)",
-                "its gate to gate, drain to dp, source and bulk to vdd"),
+                "with w=1u, l=130n at position (25,12)"),
             hint="Add the PMOS the same way: `Pmos mp: .$w=1u; "
             ".$l=130n; .g -- gate; .d -- dp; .s -- vdd; .b -- vdd; "
             ".pos=(25,12)`.")
@@ -327,11 +343,9 @@ def gen_lesson3(g):
             "input modulates the drain current, and the load resistor "
             "turns it back into a voltage swing at `vout`. The gain is "
             "$|A| = g_m R_L$.\n\n"
-            "**1. Place the transistor** at the EDIT HERE marker:\n\n"
-            "```\n"
-            "Nmos m0: .$w=1u; .$l=130n; .g -- vin; .d -- vout; "
-            ".s -- vss; .b -- vss; .pos=(6,3)\n"
-            "```\n\n"
+            "**1. Place and wire the transistor** `m0` at the EDIT HERE "
+            "marker: l=130n at position (6,3), starting from "
+            "w=1u.\n\n"
             "**2. Increase its width `w` until the gain reaches 5.** A "
             "wider transistor gives more gain, but also draws more bias "
             "current, which pulls the operating point down.\n\n"
@@ -354,10 +368,10 @@ def gen_lesson3(g):
                     "start with w=1u).")
             target = {'g': sch.vin, 'd': sch.vout, 's': sch.vss,
                 'b': sch.vss}
-            found = any(pin_nets(i) == target for i in insts)
-            return found, ("The transistor must amplify from gate to "
-                "drain: gate to vin, drain to vout, source and bulk to "
-                "vss.")
+            wrong = wrong_pins(best_match(insts, target), target)
+            return not wrong, ("Transistor placed, but these pins are "
+                "not connected as the amplifier needs them: "
+                + ", ".join(wrong) + ".")
         guarded_passfail(report, "NMOS placed and wired", nmos_ok,
             hint="Add `Nmos m0: .$w=1u; .$l=130n; .g -- vin; .d -- vout; "
             ".s -- vss; .b -- vss; .pos=(6,3)` at the EDIT HERE marker, "
@@ -413,22 +427,17 @@ def gen_lesson4(g):
             "and the input difference decides how that current splits "
             "between the two branches. The load resistors and the tail "
             "current source are already in place.\n\n"
-            "**Add the two pair transistors at the EDIT HERE "
-            "marker:**\n\n"
-            "```\n"
-            "Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outp; "
-            ".s -- tail; .b -- vss; .pos=(4,7)\n"
-            "```\n\n"
-            "and `m2` for the other side, with its gate on `inn`, drain "
-            "on `outn` and source again on `tail`, at `.pos=(14,7)` "
-            "with `.orientation=FlippedSouth`.\n\n"
+            "**Add the two pair transistors at the EDIT HERE marker:** "
+            "`m1` at position (4,7) and `m2` at (16,7) with "
+            "`.orientation=FlippedSouth` so that its gate faces the "
+            "`inn` port, both w=5u and l=130n.\n\n"
             "`DiffPairTb` sweeps `inp` around the 0.7 V common mode of "
             "`inn`. Watch the outputs cross in the `report_dc` view."
         )
         pair_hint = (
             "Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outp; .s -- tail; "
             ".b -- vss; .pos=(4,7) and the mirrored m2 with .g -- inn; "
-            ".d -- outn; .orientation=FlippedSouth at .pos=(14,7). Both "
+            ".d -- outn; .orientation=FlippedSouth at .pos=(16,7). Both "
             "sources share the tail net -- that is the whole trick.")
 
         def pair_ok():
@@ -438,7 +447,7 @@ def gen_lesson4(g):
             if len(pair) < 2:
                 return False, ("Looking for the two pair transistors "
                     "(w=5u, l=130n) besides mtail: m1 at position (4,7) "
-                    "and m2 at (14,7) with orientation FlippedSouth "
+                    "and m2 at (16,7) with orientation FlippedSouth "
                     f"(found {len(pair)} of 2).")
             maps = [pin_nets(i) for i in pair]
             m1 = any(m.get('g') == sch.inp and m.get('d') == sch.outp
@@ -447,10 +456,9 @@ def gen_lesson4(g):
             m2 = any(m.get('g') == sch.inn and m.get('d') == sch.outn
                 and m.get('s') == sch.tail and m.get('b') == sch.vss
                 for m in maps)
-            status = ("inp/outp transistor: "
-                f"{'ok' if m1 else 'missing or miswired'}, inn/outn "
-                f"transistor: {'ok' if m2 else 'missing or miswired'}. "
-                "Both sources must join the tail net.")
+            status = ("Transistor on the inp side: "
+                f"{'ok' if m1 else 'missing or miswired'}, on the inn "
+                f"side: {'ok' if m2 else 'missing or miswired'}.")
             return m1 and m2, status
         guarded_passfail(report, "Pair transistors placed and wired",
             pair_ok, hint=pair_hint)
@@ -505,26 +513,24 @@ def gen_lesson5(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "Three differential pairs in a ring make an oscillator. "
-            "Each stage inverts and delays the signal, so as long as "
-            "the loop inverts overall, the signal never settles.\n\n"
-            "This ring latches instead. The `report_tran` view shows "
-            "two flat lines.\n\n"
-            "**Fix the ring wiring at the EDIT HERE marker.**\n\n"
-            "Count the inversions around the loop: each stage inverts "
-            "once, and a crossed pair of connections between two stages "
-            "inverts once more. The first check reports the count it "
-            "found."
+            "Three differential pairs wired in a ring make an "
+            "oscillator: each stage inverts, so the signal never "
+            "settles and races around the loop.\n\n"
+            "But only if the loop inverts an odd number of times. This "
+            "ring latches instead -- `report_tran` shows two flat "
+            "lines.\n\n"
+            "**Find the wiring mistake at the EDIT HERE marker and fix "
+            "it.** The first check reports the number of inversions it "
+            "found, and its hint helps if you get stuck."
         )
         ring_hint = (
-            "Count the inversions around the loop: each differential pair "
-            "stage inverts (rising inp -> falling outp), so three stages "
-            "give three inversions -- already an odd number, which is "
-            "exactly what a ring oscillator needs. The extra polarity swap "
-            "at stage0 (.inp -- n2; .inn -- p2) makes the number of "
-            "inversions even: the loop then has *positive* DC feedback and "
-            "latches like a flip-flop. Connect stage0 straight: "
-            ".inp -- p2; .inn -- n2.")
+            "Look at the inp and inn pins of the three DiffPair "
+            "instances and follow the signal once around the loop: one "
+            "stage does not take its two inputs the same way round as "
+            "the others. Each stage inverts once, and a swapped input "
+            "pair inverts once more -- with an even number of "
+            "inversions the loop feeds back positively at DC and "
+            "latches like a flip-flop.")
 
         def inversion_count():
             sch = g['RingOsc']().schematic
@@ -600,13 +606,9 @@ def gen_lesson6(g):
         report.markdown(
             "The CMOS inverter is the simplest logic gate: a PMOS pulls "
             "the output high, an NMOS pulls it low.\n\n"
-            "**1. Build the inverter** at the EDIT HERE marker:\n\n"
-            "```\n"
-            "Nmos pd: .$w=1u; .$l=130n; .g -- a; .d -- y; .s -- vss; "
-            ".b -- vss; .pos=(3,2)\n"
-            "Pmos pu: .$w=1u; .$l=130n; .g -- a; .d -- y; .s -- vdd; "
-            ".b -- vdd; .pos=(3,8)\n"
-            "```\n\n"
+            "**1. Build the inverter** at the EDIT HERE marker: the "
+            "NMOS `pd` at position (3,2) and the PMOS `pu` at (3,8), "
+            "both l=130n and starting from w=1u.\n\n"
             "**2. Size it so that the switching threshold lands at "
             "0.6 V (+-3 %)**, half the supply, for symmetric noise "
             "margins. Equal widths miss it, because the PMOS carries "
@@ -637,14 +639,18 @@ def gen_lesson6(g):
                     + ", ".join(status) + ". Place the NMOS at position "
                     "(3,2) and the PMOS at (3,8), l=130n, start with "
                     "w=1u.")
-            n_ok = any(pin_nets(i) == {'g': sch.a, 'd': sch.y,
-                    's': sch.vss, 'b': sch.vss} for i in nmos)
-            p_ok = any(pin_nets(i) == {'g': sch.a, 'd': sch.y,
-                    's': sch.vdd, 'b': sch.vdd} for i in pmos)
-            status = (f"NMOS pull-down: {'ok' if n_ok else 'miswired'}, "
-                f"PMOS pull-up: {'ok' if p_ok else 'miswired'}. Both "
-                "gates go to a, both drains to y.")
-            return n_ok and p_ok, status
+            n_target = {'g': sch.a, 'd': sch.y, 's': sch.vss,
+                'b': sch.vss}
+            p_target = {'g': sch.a, 'd': sch.y, 's': sch.vdd,
+                'b': sch.vdd}
+            n_wrong = wrong_pins(best_match(nmos, n_target), n_target)
+            p_wrong = wrong_pins(best_match(pmos, p_target), p_target)
+            status = ("NMOS pull-down: " + ("ok" if not n_wrong
+                    else "pins " + ", ".join(n_wrong) + " miswired")
+                + ", PMOS pull-up: " + ("ok" if not p_wrong
+                    else "pins " + ", ".join(p_wrong) + " miswired")
+                + ".")
+            return not (n_wrong or p_wrong), status
         guarded_passfail(report, "Inverter transistors placed and wired",
             inverter_ok, hint=build_hint)
 
@@ -732,7 +738,7 @@ def gen_lesson7(g):
             "`y = !(a & b)`.**\n\n"
             "The output may only go low when both inputs are high, so "
             "the two NMOS transistors go in series, which needs a new "
-            "net (`net x`) between them. The two PMOS transistors go in "
+            "net (`net n`) between them. The two PMOS transistors go in "
             "parallel between `vdd` and `y`. Add the new transistors to "
             "the `for` loop so that they get sized as well.\n\n"
             "Each check applies one input combination and simulates the "
@@ -740,10 +746,12 @@ def gen_lesson7(g):
         )
         nand_hint = (
             "You need an additional internal net between the two series "
-            "NMOS transistors: net x, then n1 with .d -- x and n2 with "
-            ".s -- x; .d -- y; .g -- b. The second PMOS p2 sits in "
-            "parallel to p1 (.s -- vdd; .d -- y) with .g -- b. Remember "
-            "to add the new transistors to the sizing loop.")
+            "NMOS transistors: net n, then n1 with .d -- n and n2 with "
+            ".s -- n; .d -- y; .g -- b. The second PMOS p2 sits in "
+            "parallel to p1 (.s -- vdd; .d -- y) with .g -- b at "
+            ".pos=(12,13). Remember to add both new transistors to the "
+            "sizing loop, otherwise they keep the library defaults "
+            "w=1u, l=1u instead of l=130n.")
 
         def structure():
             sch = dut().schematic
@@ -771,8 +779,8 @@ def gen_lesson7(g):
                     == {sch.a, sch.b})
             status = (f"{len(nmos)} NMOS and {len(pmos)} PMOS found "
                 "(2 of each needed, new ones at positions (4,7) and "
-                "(10,13), sized by the existing loop). Series NMOS "
-                f"stack y-x-vss: {'ok' if series else 'missing'}, "
+                "(12,13), sized by the existing loop). Series NMOS "
+                f"stack y-n-vss: {'ok' if series else 'missing'}, "
                 f"parallel PMOS pull-up: "
                 f"{'ok' if parallel else 'missing'}.")
             return series and parallel, status
@@ -1043,10 +1051,11 @@ def gen_lesson10(g):
         report = Report()
         report.markdown(
             "The capstone combines the current mirror of lesson 2 with "
-            "the differential pair of lesson 4. A PMOS mirror in place "
-            "of the resistor loads folds the signal current of one "
-            "branch onto the other, which doubles the gain, and it lets "
-            "the output swing almost from rail to rail.\n\n"
+            "the differential pair of lesson 4, which is exactly the "
+            "circuit you start from here. A PMOS mirror in place of the "
+            "resistor loads folds the signal current of one branch onto "
+            "the other, which doubles the gain, and it lets the output "
+            "swing almost from rail to rail.\n\n"
             "**Replace the resistor loads by a PMOS current mirror at "
             "the EDIT HERE marker and size the amplifier to meet all "
             "three specs:**\n\n"
@@ -1062,10 +1071,10 @@ def gen_lesson10(g):
             "the `report_dc` view."
         )
         ota_hint = (
-            "Replace rl_p/rl_n by PMOS transistors m3 (diode-connected: "
-            ".d -- outx; .g -- outx; .s -- vdd; .b -- vdd; .pos=(8,13); "
-            ".orientation=FlippedSouth) and m4 (.g -- outx; .d -- out; "
-            ".s -- vdd; .b -- vdd; .pos=(10,13)). For enough gain, use "
+            "Replace rl_p/rl_n by PMOS transistors in their slots: m3 "
+            "(diode-connected: .d -- outx; .g -- outx; .s -- vdd; "
+            ".b -- vdd; .pos=(4,14)) and m4 (.g -- outx; .d -- out; "
+            ".s -- vdd; .b -- vdd; .pos=(12,14)). For enough gain, use "
             "l=300n for m1..m4 (longer channel = higher intrinsic gain "
             "gm/gds) with w=5u. The short l=130n of the starting point "
             "wastes gain. Keep mtail at w=3u, l=1u -- widening it costs "
@@ -1090,9 +1099,9 @@ def gen_lesson10(g):
                         mirror = True
             status = (f"Resistors left: {resistors} (0 needed), PMOS "
                 f"mirror (diode + output device): "
-                f"{'ok' if mirror else 'missing'}. Suggested placement: "
-                "m3 at (8,13) with orientation FlippedSouth, m4 at "
-                "(10,13), both w=5u.")
+                f"{'ok' if mirror else 'missing'}. The two PMOS go into "
+                "the slots of the resistors, m3 at (4,14) and m4 at "
+                "(12,14), both w=5u.")
             return resistors == 0 and mirror, status
         structure_ok = guarded_passfail(report,
             "Resistor loads replaced by a PMOS mirror", mirror_load,

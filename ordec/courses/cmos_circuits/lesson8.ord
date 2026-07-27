@@ -18,7 +18,8 @@ cell InvAmp:
         Nmos pd: .$w=1u; .$l=130n; .g -- a; .d -- y; .s -- vss; .b -- vss; .pos=(5,2)
         Pmos pu: .$w=2u; .$l=130n; .g -- a; .d -- y; .s -- vdd; .b -- vdd; .pos=(5,8)
 
-        Res rf: .$r=100; .p -- a; .m -- y; .pos=(11,10) # EDIT HERE
+        # EDIT HERE
+        Res rf: .$r=100; .p -- a; .m -- y; .pos=(11,8)
 
 cell InvAmpTb:
     viewgen schematic -> Schematic:
