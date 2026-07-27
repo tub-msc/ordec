@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from enum import Enum
+import inspect
 import math
 from functools import partial
 from typing import Iterable, NamedTuple, Optional
@@ -1196,7 +1197,12 @@ class Report(SubgraphRoot):
                 yield sg.cursor_at(nid)
 
     def markdown(self, markdown: str):
-        self % Markdown(markdown=markdown)
+        """
+        Append a Markdown element. The text is cleaned up docstring-style
+        (inspect.cleandoc), so indented triple-quoted strings can be passed
+        directly without their indentation turning into markdown code blocks.
+        """
+        self % Markdown(markdown=inspect.cleandoc(markdown))
 
     def pre(self, text: str):
         self % PreformattedText(text=text)
