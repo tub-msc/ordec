@@ -870,6 +870,13 @@ body:not(.show-debug) .debug {
 }
 .report-markdown code {
     font-family: var(--font-mono);
+    background: var(--color-bg-tertiary);
+    border-radius: 3px;
+    padding: 0 3px;
+}
+.report-markdown pre code {
+    background: none;
+    padding: 0;
 }
 .report-markdown h1,
 .report-markdown h2,
