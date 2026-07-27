@@ -45,9 +45,21 @@ def get_currents(sh: SimHierarchy, top_level_only=False):
 
 def _fmt_eng(val, unit):
     """Format a float in engineering notation with a unit suffix."""
-    x = str(R(f"{val:.03e}")) + unit
+    x = str(R(f"{val:.03e}"))
+    # str(R) keeps a trailing decimal point when the fractional part is
+    # zero (e.g. "5.", "0."); drop it so values do not render as "5.V".
+    x = re.sub(r"\.(?=[a-zA-Z]|$)", "", x) + unit
     x = re.sub(r"([0-9])([a-zA-Z])", r"\1 \2", x)
-    x = x.replace("u", "\u03bc")
+    # U+00B5 MICRO SIGN, not Greek mu: Inconsolata (which renders these
+    # values in the web UI) only covers the compatibility codepoint.
+    # Must run before the <sup> rewrite below ("sup" contains a "u").
+    x = x.replace("u", "\u00b5")
+    # Exponents beyond the SI suffix range (|exp| > 18) stay in
+    # e-notation; typeset them as "U+00D7 MULTIPLICATION SIGN, 10" with a
+    # real superscript: "-16.92 e-21 A" -> "-16.92(x)10<sup>-21</sup> A"
+    # (markdown passes inline HTML through). The leading space was
+    # inserted by the digit-letter rule above and is consumed here.
+    x = re.sub(r" e(-?\d+)", "\u00d710<sup>\\1</sup>", x)
     return x
 
 
@@ -110,7 +122,7 @@ def webdata_op(sh: SimHierarchy):
             f"| {sn.full_path_str()} | {_fmt_eng(v[0], 'V')} |"
         )
     if op_voltages:
-        lines = ["| Net | Voltage |", "| --- | --- |"] + op_voltages
+        lines = ["| Net | Voltage |", "| --- | ---: |"] + op_voltages
         report.markdown("\n".join(lines))
 
     op_currents = []
@@ -124,7 +136,7 @@ def webdata_op(sh: SimHierarchy):
             f"| {inst_path}.{pin_name} | {_fmt_eng(c[0], 'A')} |"
         )
     if op_currents:
-        lines = ["| Branch | Current |", "| --- | --- |"] + op_currents
+        lines = ["| Branch | Current |", "| --- | ---: |"] + op_currents
         report.markdown("\n".join(lines))
 
     # Device parameters (gm, gds, vth, etc.)
@@ -140,7 +152,9 @@ def webdata_op(sh: SimHierarchy):
         all_params = sorted({
             n for vals in param_rows.values() for n in vals})
         header = "| Instance | " + " | ".join(all_params) + " |"
-        sep = "| --- | " + " | ".join("---" for _ in all_params) + " |"
+        # Value columns are right-aligned; the web frontend renders
+        # right-aligned cells in monospace so magnitudes line up.
+        sep = "| --- | " + " | ".join("---:" for _ in all_params) + " |"
         rows = [header, sep]
         for inst_path in sorted(param_rows):
             vals = param_rows[inst_path]

@@ -31,7 +31,8 @@ class Rational(fractions.Fraction):
     __slots__ = []
     
     sisuffix = {-18: "a", -15: "f", -12: "p", -9: "n", -6: "u", -3: "m", 0:"", 3:"k", 6:"M", 9:"G", 12:"T"}
-    sisuffix_rev = {c: n for n, c in sisuffix.items()} | {"μ":-6}
+    # Accept both Greek mu and U+00B5 MICRO SIGN for parsing.
+    sisuffix_rev = {c: n for n, c in sisuffix.items()} | {"μ": -6, "µ": -6}
 
     def __new__(cls, number=0, denominator=None):
         if isinstance(number, float) and denominator is None:

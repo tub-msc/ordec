@@ -306,6 +306,6 @@ class ParamVDiv(Cell):
 
 ParamVDiv(r=R(200)) is not ParamVDiv(r=R(100))
 
-# In the example above, the parameter "r" is used to calculate the resistance of both resistors of the ParamVDiv.schmatic. In the example below, setting the parameter to 456 leads to resistances of 228 Ω for both resistors:
+# In the example above, the parameter "r" is used to calculate the resistance of both resistors of the ParamVDiv.schmatic. In the example below, setting the parameter to 456 leads to resistances of 228 Ω for both resistors:
 
 ParamVDiv(r=R(456)).schematic
