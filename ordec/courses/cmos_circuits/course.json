@@ -39,27 +39,33 @@
     },
     {
       "file": "lesson7.ord",
-      "title": "NAND2 gate",
-      "description": "Extend the inverter into a NAND2 gate.",
+      "title": "Self-biased inverter",
+      "description": "Turn the inverter into an AC amplifier with resistive feedback.",
       "lesson_gen": "gen_lesson7"
     },
     {
       "file": "lesson8.ord",
-      "title": "Self-biased inverter",
-      "description": "Turn the inverter into an AC amplifier with resistive feedback.",
+      "title": "NAND2 gate",
+      "description": "Extend the inverter into a NAND2 gate.",
       "lesson_gen": "gen_lesson8"
     },
     {
       "file": "lesson9.ord",
-      "title": "Standard cell: NOR2",
-      "description": "Design a NOR2 gate like a standard cell and tour the real one.",
+      "title": "Standard cells",
+      "description": "Instantiate an XOR2 gate from the SG13G2 standard cell library and tour its layout.",
       "lesson_gen": "gen_lesson9"
     },
     {
       "file": "lesson10.ord",
-      "title": "5-transistor OTA",
-      "description": "Capstone: build an OTA meeting gain, current and swing specs.",
+      "title": "Pseudo-random generator",
+      "description": "Close the feedback of a shift register built from standard cells and turn it into an LFSR.",
       "lesson_gen": "gen_lesson10"
+    },
+    {
+      "file": "lesson11.ord",
+      "title": "Bonus: 5-transistor OTA",
+      "description": "Build an OTA meeting gain, current and swing specs.",
+      "lesson_gen": "gen_lesson11"
     }
   ]
 }

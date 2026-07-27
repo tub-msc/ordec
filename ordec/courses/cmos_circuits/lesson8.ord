@@ -1,40 +1,40 @@
 from ordec.core import *
-from ordec.lib import Vdc, Res, Cap, Gnd
+from ordec.lib import Vdc, Gnd
 from ordec.lib.ihp130 import Nmos, Pmos
 
-cell InvAmp:
+cell Nand2:
     viewgen symbol -> Symbol:
-        input a: .align=West
         output y: .align=East
+        input a: .align=West
+        input b: .align=West
         inout vdd: .align=North
         inout vss: .align=South
 
     viewgen schematic -> Schematic:
-        port a: .align=East; .pos=(1,7)
-        port y: .align=West; .pos=(15,7)
-        port vdd: .align=East; .pos=(1,14)
-        port vss: .align=East; .pos=(1,1)
-
-        Nmos pd: .$w=1u; .$l=130n; .g -- a; .d -- y; .s -- vss; .b -- vss; .pos=(5,2)
-        Pmos pu: .$w=2u; .$l=130n; .g -- a; .d -- y; .s -- vdd; .b -- vdd; .pos=(5,8)
+        port y: .align=West; .pos=(18,12)
+        port a: .align=East; .pos=(1,15)
+        port b: .align=East; .pos=(1,9)
+        port vdd: .align=East; .pos=(1,18)
+        port vss: .align=East; .pos=(1,0)
 
         # EDIT HERE
-        Res rf: .$r=100; .p -- a; .m -- y; .pos=(11,8)
+        Nmos n1: .pos=(4,1); .s -- vss; .d -- y; .g -- a; .b -- vss
+        Pmos p1: .pos=(4,13); .s -- vdd; .d -- y; .g -- a; .b -- vdd
 
-cell InvAmpTb:
+        for t in p1, n1:
+            t.$w = 1u
+            t.$l = 130n
+
+cell Nand2Tb:
     viewgen schematic -> Schematic:
-        net vin, ain, yout, vdd, vss
+        net a, b, y, vdd, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
         Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(0,6)
-        Vdc vin_src: .$ac_mag=1; .m -- vss; .p -- vin; .pos=(6,6)
-        Cap cc: .$c=10p; .p -- vin; .m -- ain; .pos=(12,6)
+        Vdc va_src: .$dc=1.2; .m -- vss; .p -- a; .pos=(6,6)
+        Vdc vb_src: .$dc=1.2; .m -- vss; .p -- b; .pos=(12,6)
 
-        InvAmp dut: .a -- ain; .y -- yout; .vdd -- vdd; .vss -- vss; .pos=(18,6)
-        Cap cl: .$c=100f; .p -- yout; .m -- vss; .pos=(24,5)
+        Nand2 dut: .a -- a; .b -- b; .y -- y; .vdd -- vdd; .vss -- vss; .pos=(18,6)
 
     viewgen sim_op -> Simulation:
         .simulate().op()
-
-    viewgen sim_ac -> Simulation:
-        .simulate().ac('dec', 10, '1k', '10G')

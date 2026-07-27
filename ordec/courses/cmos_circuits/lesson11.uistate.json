@@ -68,10 +68,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "Nand2().schematic",
+                "title": "Ota().schematic",
                 "componentType": "result",
                 "componentState": {
-                  "view": "Nand2().schematic"
+                  "view": "Ota().schematic"
                 }
               }
             ],
@@ -91,10 +91,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "Nand2Tb().sim_op",
+                "title": "OtaTb().report_dc",
                 "componentType": "result",
                 "componentState": {
-                  "view": "Nand2Tb().sim_op"
+                  "view": "OtaTb().report_dc"
                 }
               }
             ],

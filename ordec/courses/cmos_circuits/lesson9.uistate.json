@@ -68,10 +68,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "Nor2().schematic",
+                "title": "Xor2Tb(a='0.',b='0.').schematic",
                 "componentType": "result",
                 "componentState": {
-                  "view": "Nor2().schematic"
+                  "view": "Xor2Tb(a='0.',b='0.').schematic"
                 }
               },
               {
@@ -81,10 +81,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "extlib['sg13g2_nor2_1'].layout",
+                "title": "extlib['sg13g2_xor2_1'].layout",
                 "componentType": "result",
                 "componentState": {
-                  "view": "extlib['sg13g2_nor2_1'].layout"
+                  "view": "extlib['sg13g2_xor2_1'].layout"
                 }
               }
             ],
@@ -104,10 +104,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "Nor2Tb().sim_op",
+                "title": "Xor2Tb(a='0.',b='0.').sim_op",
                 "componentType": "result",
                 "componentState": {
-                  "view": "Nor2Tb().sim_op"
+                  "view": "Xor2Tb(a='0.',b='0.').sim_op"
                 }
               }
             ],

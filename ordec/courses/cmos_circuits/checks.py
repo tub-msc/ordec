@@ -144,14 +144,11 @@ def gen_lesson1(g):
             "The `MosCurves` testbench is complete except for the "
             "transistors. Each drain has its own voltage source, so "
             "each device can be swept and measured separately.\n\n"
-            "**1. Import the devices** at the first EDIT HERE "
-            "marker:\n\n"
-            "```\n"
-            "from ordec.lib.ihp130 import Nmos, Pmos\n"
-            "```\n\n"
-            "**2. Place and wire the NMOS** `mn` at the second marker: "
-            "w=1u, l=130n, at position (10,12).\n\n"
-            "**3. Place and wire the PMOS** `mp` the same way: w=1u, "
+            "1. **Import Nmos and Pmos from the ihp130 library** at the "
+            "first EDIT HERE marker.\n"
+            "2. **Place and wire the NMOS** `mn` at the second marker: "
+            "w=1u, l=130n, at position (10,12).\n"
+            "3. **Place and wire the PMOS** `mp` the same way: w=1u, "
             "l=130n, at position (25,12).\n\n"
             "Each transistor takes its gate from the gate net and its "
             "drain from the source that measures it. Open a check's "
@@ -343,10 +340,9 @@ def gen_lesson3(g):
             "input modulates the drain current, and the load resistor "
             "turns it back into a voltage swing at `vout`. The gain is "
             "$|A| = g_m R_L$.\n\n"
-            "**1. Place and wire the transistor** `m0` at the EDIT HERE "
-            "marker: l=130n at position (6,3), starting from "
-            "w=1u.\n\n"
-            "**2. Increase its width `w` until the gain reaches 5.** A "
+            "1. **Place and wire the transistor** `m0` at the EDIT HERE "
+            "marker: l=130n at position (6,3), starting from w=1u.\n"
+            "2. **Increase its width `w` until the gain reaches 5.** A "
             "wider transistor gives more gain, but also draws more bias "
             "current, which pulls the operating point down.\n\n"
             "`CsAmpTb` adds an AC signal of magnitude 1, so the gain "
@@ -606,10 +602,10 @@ def gen_lesson6(g):
         report.markdown(
             "The CMOS inverter is the simplest logic gate: a PMOS pulls "
             "the output high, an NMOS pulls it low.\n\n"
-            "**1. Build the inverter** at the EDIT HERE marker: the "
+            "1. **Build the inverter** at the EDIT HERE marker: the "
             "NMOS `pd` at position (3,2) and the PMOS `pu` at (3,8), "
-            "both l=130n and starting from w=1u.\n\n"
-            "**2. Size it so that the switching threshold lands at "
+            "both l=130n and starting from w=1u.\n"
+            "2. **Size it so that the switching threshold lands at "
             "0.6 V (+-3 %)**, half the supply, for symmetric noise "
             "margins. Equal widths miss it, because the PMOS carries "
             "only about half the NMOS current.\n\n"
@@ -694,10 +690,90 @@ def gen_lesson6(g):
     return lesson
 
 
-# Lesson 7: NAND2 gate
-# --------------------
+# Lesson 7: Self-biased inverter
+# ------------------------------
 
 def gen_lesson7(g):
+    @generate_func
+    def lesson() -> Report:
+        report = Report()
+        report.markdown(
+            "At its switching threshold, an inverter is an analog "
+            "amplifier: both transistors are saturated and their $g_m$ "
+            "adds up. A feedback resistor from output to input forces "
+            "v(a) = v(y) and keeps the inverter biased exactly there, "
+            "while a capacitor couples the AC signal in.\n\n"
+            "The feedback resistor `rf` is only 100 Ohm today. It "
+            "biases the inverter fine, but it also ties the output to "
+            "the input, so nothing gets amplified.\n\n"
+            "**Increase `rf` at the EDIT HERE marker until the gain "
+            "reaches 10.**\n\n"
+            "The `report_ac` view shows the self-bias point and the gain "
+            "over frequency."
+        )
+        rf_hint = (
+            "The feedback resistor must be large compared to the "
+            "amplifier's impedance level, otherwise the output 'fights' "
+            "the input signal through rf (the gain approaches 1, like a "
+            "unity-gain buffer). Values of 100k and above work; 1M (.$r=1M) "
+            "is a good choice. Note how the operating point check passes "
+            "even with a small rf -- self-biasing works at any rf value, "
+            "only the AC gain suffers.")
+
+        op_label = "Self-biased at the switching threshold"
+        try:
+            tb = g['InvAmpTb']()
+            h = SimHierarchy.from_schematic(tb.schematic)
+            Simulator(h).op()
+            va = float(h.ain.voltage[0])
+            vy = float(h.yout.voltage[0])
+            report.passfail(op_label,
+                abs(va - vy) <= 0.02 and 0.4 <= vy <= 0.8,
+                hint="The feedback resistor connects the inverter input "
+                "and output. Without it, the input node floats.",
+                instructions=f"Operating point: v(a) = {va:.3f} V, "
+                f"v(y) = {vy:.3f} V (expected: equal within 20 mV, "
+                "between 0.4 V and 0.8 V).")
+        except Exception:
+            report.passfail(op_label, False,
+                instructions=exception_text(), hint=rf_hint)
+
+        def rf_large():
+            sch = g['InvAmp']().schematic
+            values = [float(i.symbol.cell.r)
+                for i in instances_of(sch, Res)]
+            found = any(r >= 100e3 for r in values)
+            status = ", ".join(f"{r:g} Ohm" for r in values) or "none"
+            return found, (f"Feedback resistor value: {status} "
+                "(needed: >= 100k).")
+        guarded_passfail(report, "Feedback resistor >= 100k", rf_large,
+            hint=rf_hint)
+
+        gain_label = "Mid-band gain >= 10"
+        try:
+            tb = g['InvAmpTb']()
+            hac = SimHierarchy.from_schematic(tb.schematic)
+            Simulator(hac).ac('dec', 10, 1e3, 1e10)
+            freq = [float(f) for f in hac.freq]
+            mag = [abs(v) for v in hac.yout.voltage]
+            gain = ac_magnitude_at(freq, mag, 5e6)
+            report.passfail(gain_label, gain >= 10,
+                hint=rf_hint,
+                instructions=f"Measured gain at 5 MHz: {gain:.2f} "
+                "(required: >= 10). The gain rolls off below the "
+                "highpass corner set by the coupling capacitor and "
+                "above the lowpass corner set by the load.")
+        except Exception:
+            report.passfail(gain_label, False,
+                instructions=exception_text(), hint=rf_hint)
+        return report
+    return lesson
+
+
+# Lesson 8: NAND2 gate
+# --------------------
+
+def gen_lesson8(g):
     dut = g['Nand2']
 
     class CheckNand2Tb(Cell):
@@ -815,237 +891,216 @@ def gen_lesson7(g):
     return lesson
 
 
-# Lesson 8: Self-biased inverter
-# ------------------------------
-
-def gen_lesson8(g):
-    @generate_func
-    def lesson() -> Report:
-        report = Report()
-        report.markdown(
-            "At its switching threshold, an inverter is an analog "
-            "amplifier: both transistors are saturated and their $g_m$ "
-            "adds up. A feedback resistor from output to input forces "
-            "v(a) = v(y) and keeps the inverter biased exactly there, "
-            "while a capacitor couples the AC signal in.\n\n"
-            "The feedback resistor `rf` is only 100 Ohm today. It "
-            "biases the inverter fine, but it also ties the output to "
-            "the input, so nothing gets amplified.\n\n"
-            "**Increase `rf` at the EDIT HERE marker until the gain "
-            "reaches 10.**\n\n"
-            "The `sim_ac` view shows the gain over frequency."
-        )
-        rf_hint = (
-            "The feedback resistor must be large compared to the "
-            "amplifier's impedance level, otherwise the output 'fights' "
-            "the input signal through rf (the gain approaches 1, like a "
-            "unity-gain buffer). Values of 100k and above work; 1M (.$r=1M) "
-            "is a good choice. Note how the operating point check passes "
-            "even with a small rf -- self-biasing works at any rf value, "
-            "only the AC gain suffers.")
-
-        op_label = "Self-biased at the switching threshold"
-        try:
-            tb = g['InvAmpTb']()
-            h = SimHierarchy.from_schematic(tb.schematic)
-            Simulator(h).op()
-            va = float(h.ain.voltage[0])
-            vy = float(h.yout.voltage[0])
-            report.passfail(op_label,
-                abs(va - vy) <= 0.02 and 0.4 <= vy <= 0.8,
-                hint="The feedback resistor connects the inverter input "
-                "and output. Without it, the input node floats.",
-                instructions=f"Operating point: v(a) = {va:.3f} V, "
-                f"v(y) = {vy:.3f} V (expected: equal within 20 mV, "
-                "between 0.4 V and 0.8 V).")
-        except Exception:
-            report.passfail(op_label, False,
-                instructions=exception_text(), hint=rf_hint)
-
-        def rf_large():
-            sch = g['InvAmp']().schematic
-            values = [float(i.symbol.cell.r)
-                for i in instances_of(sch, Res)]
-            found = any(r >= 100e3 for r in values)
-            status = ", ".join(f"{r:g} Ohm" for r in values) or "none"
-            return found, (f"Feedback resistor value: {status} "
-                "(needed: >= 100k).")
-        guarded_passfail(report, "Feedback resistor >= 100k", rf_large,
-            hint=rf_hint)
-
-        gain_label = "Mid-band gain >= 10"
-        try:
-            tb = g['InvAmpTb']()
-            hac = SimHierarchy.from_schematic(tb.schematic)
-            Simulator(hac).ac('dec', 10, 1e3, 1e10)
-            freq = [float(f) for f in hac.freq]
-            mag = [abs(v) for v in hac.yout.voltage]
-            gain = ac_magnitude_at(freq, mag, 5e6)
-            report.passfail(gain_label, gain >= 10,
-                hint=rf_hint,
-                instructions=f"Measured gain at 5 MHz: {gain:.2f} "
-                "(required: >= 10). The gain rolls off below the "
-                "highpass corner set by the coupling capacitor and "
-                "above the lowpass corner set by the load.")
-        except Exception:
-            report.passfail(gain_label, False,
-                instructions=exception_text(), hint=rf_hint)
-        return report
-    return lesson
-
-
-# Lesson 9: Standard cell: NOR2
+# Lesson 9: Standard cell: XOR2
 # -----------------------------
 
 def gen_lesson9(g):
-    dut = g['Nor2']
-
-    class CheckNor2Tb(Cell):
-        """Operating-point testbench applying static input levels."""
-        a = Parameter(R)
-        b = Parameter(R)
-
-        @generate
-        def schematic(self):
-            s = Schematic(cell=self)
-            s.vdd = Net()
-            s.vss = Net()
-            s.a = Net()
-            s.b = Net()
-            s.y = Net()
-            s.gnd = SchemInstance(
-                Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, 0))
-            s.vdd_src = SchemInstance(
-                Vdc(dc=R('1.2')).symbol.portmap(m=s.vss, p=s.vdd),
-                pos=Vec2R(0, 6))
-            s.va_src = SchemInstance(
-                Vdc(dc=self.a).symbol.portmap(m=s.vss, p=s.a), pos=Vec2R(6, 6))
-            s.vb_src = SchemInstance(
-                Vdc(dc=self.b).symbol.portmap(m=s.vss, p=s.b), pos=Vec2R(12, 6))
-            s.dut = SchemInstance(dut().symbol.portmap(
-                vdd=s.vdd, vss=s.vss, a=s.a, b=s.b, y=s.y), pos=Vec2R(18, 6))
-            s.auto_wire()
-            s.check(add_conn_points=True, add_terminal_taps=True)
-            return s
-
     @generate_func
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "Digital chips are built from *standard cells*: "
-            "pre-designed, pre-verified gates on a common height grid "
-            "that place-and-route tools tile into rows. Here you "
-            "rebuild the schematic of the SG13G2 library's NOR2 "
-            "cell.\n\n"
-            "**Build `Nor2` at the EDIT HERE marker so that "
-            "`y = !(a | b)`.**\n\n"
-            "It is the mirror image of the NAND2: the NMOS transistors "
-            "go in parallel, the PMOS transistors are stacked in series "
-            "through an internal net. Use the sizes of the real cell, "
-            "NMOS `.$w=740n` and PMOS `.$w=1.12u`, both with "
-            "`.$l=130n`.\n\n"
+            "Digital chips are not drawn transistor by transistor. They "
+            "are assembled from *standard cells*: pre-designed, "
+            "pre-verified gates, all on a common height grid so that "
+            "place-and-route tools can tile them into rows. This lesson "
+            "uses one straight from the PDK.\n\n"
+            "**Instantiate the XOR2 cell as `dut` at position (18,12) "
+            "and connect it to the testbench.**\n\n"
+            "The cell is already loaded from the library and bound to "
+            "the name `Xor2`, so it is instantiated like any other cell. "
+            "Its pins are named by the library, not by you, and they are "
+            "upper case. Open the `Xor2` symbol to look them up -- and "
+            "note that this cell calls its output `X`, while most other "
+            "SG13G2 cells call it `Y`.\n\n"
             "### Layout tour\n\n"
             "The second result tab shows the layout of the real "
-            "`sg13g2_nor2_1` cell, loaded from the PDK via "
-            "[ExtLibrary](docs:ref/extlibrary.html). Things to spot: "
-            "the `vdd` and `vss` rails at top and bottom, shared with "
-            "the neighboring rows, the N-well under the two PMOS "
-            "transistors, the two vertical polysilicon gate stripes "
-            "that each drive one NMOS and one PMOS, and the stacked "
-            "PMOS pair sharing one diffusion region. Layout design is "
-            "the topic of the layout course -- see also the "
-            "[layout how-to](docs:howto_layout.html)."
+            "`sg13g2_xor2_1` cell, loaded from the PDK via "
+            "[ExtLibrary](docs:ref/extlibrary.html). Things to spot: the "
+            "`vdd` and `vss` rails at top and bottom, shared with the "
+            "neighboring rows, the N-well covering the upper half where "
+            "the PMOS transistors sit, and the vertical polysilicon gate "
+            "stripes. An XOR needs far more transistors than the gates "
+            "of the previous lessons, which is why the cell is so much "
+            "wider. Layout design is the topic of the layout course -- "
+            "see also the [layout how-to](docs:howto_layout.html)."
         )
-        nor_hint = (
-            "Mirror image of the NAND2: net x between the stacked PMOS "
-            "transistors (p1 with .s -- vdd; .d -- x; .g -- a, p2 with "
-            ".s -- x; .d -- y; .g -- b), and both NMOS transistors in "
-            "parallel from y to vss (gates a and b). Sizes: NMOS .$w=740n, "
-            "PMOS .$w=1.12u, all .$l=130n.")
+        dut_hint = (
+            "Add `Xor2 dut: .A -- a; .B -- b; .X -- y; .VDD -- vdd; "
+            ".VSS -- vss; .pos=(18,12)` at the EDIT HERE marker. The "
+            "supply pins of a standard cell must be connected too -- "
+            "in a real chip the rails do that automatically when the "
+            "cells are tiled into a row.")
 
-        def structure():
-            sch = dut().schematic
-            nmos = instances_of(sch, ihp130.Nmos)
-            pmos = instances_of(sch, ihp130.Pmos)
-            supply_nets = (sch.y, sch.vss, sch.vdd, sch.a, sch.b)
-            stacked = False
-            for top in pmos:
-                for bottom in pmos:
-                    if top.nid == bottom.nid:
-                        continue
-                    pt, pb = pin_nets(top), pin_nets(bottom)
-                    x = pt.get('d')
-                    if (pt.get('s') == sch.vdd and x is not None
-                            and x not in supply_nets
-                            and pb.get('s') == x
-                            and pb.get('d') == sch.y
-                            and {pt.get('g'), pb.get('g')}
-                                == {sch.a, sch.b}):
-                        stacked = True
-            parallel = (len(nmos) >= 2
-                and all(pin_nets(t).get('s') == sch.vss
-                    and pin_nets(t).get('d') == sch.y for t in nmos)
-                and {pin_nets(t).get('g') for t in nmos}
-                    == {sch.a, sch.b})
-            status = (f"{len(nmos)} NMOS and {len(pmos)} PMOS found "
-                "(2 of each needed, positions: NMOS at (4,1) and "
-                "(10,1), PMOS at (4,13) and (4,7)). Stacked PMOS "
-                f"vdd-x-y: {'ok' if stacked else 'missing'}, parallel "
-                f"NMOS pull-down: {'ok' if parallel else 'missing'}.")
-            return stacked and parallel, status
-        structure_ok = guarded_passfail(report,
-            "PMOS stacked, NMOS in parallel", structure, hint=nor_hint)
+        def dut_wired():
+            sch = g['Xor2Tb']().schematic
+            insts = [i for i in sch.all(SchemInstance)
+                if i.symbol.cell == g['Xor2']]
+            if not insts:
+                return False, ("Looking for an instance of the "
+                    "sg13g2_xor2_1 cell at position (18,12).")
+            target = {'A': sch.a, 'B': sch.b, 'X': sch.y,
+                'VDD': sch.vdd, 'VSS': sch.vss}
+            wrong = wrong_pins(best_match(insts, target), target)
+            return not wrong, ("Cell instantiated, but these pins are "
+                "not connected as the testbench needs them: "
+                + ", ".join(wrong) + ".")
 
-        def sizes():
-            sch = dut().schematic
-            def close(value, target):
-                return abs(value - target) <= 0.01 * target
-            n_ok = [close(float(i.symbol.cell.w), 740e-9)
-                and close(float(i.symbol.cell.l), 130e-9)
-                for i in instances_of(sch, ihp130.Nmos)]
-            p_ok = [close(float(i.symbol.cell.w), 1.12e-6)
-                and close(float(i.symbol.cell.l), 130e-9)
-                for i in instances_of(sch, ihp130.Pmos)]
-            found = (len(n_ok) >= 2 and all(n_ok)
-                and len(p_ok) >= 2 and all(p_ok))
-            return found, ("Checking for the original sg13g2_nor2_1 "
-                "sizes: NMOS w=740n, PMOS w=1.12u, all l=130n.")
-        guarded_passfail(report, "Original transistor sizes used", sizes,
-            hint="Size the transistors like the real standard cell: "
-            "NMOS .$w=740n, PMOS .$w=1.12u, all .$l=130n.")
+        wired = guarded_passfail(report, "XOR2 cell instantiated and wired",
+            dut_wired, hint=dut_hint)
 
         for a, b in ((0, 0), (0, 1), (1, 0), (1, 1)):
-            expect_high = not (a or b)
+            expect_high = bool(a) != bool(b)
             label = f"a={a}, b={b} => y={int(expect_high)}"
+            if not wired:
+                report.passfail(label, False, hint=dut_hint,
+                    instructions="The truth table is checked once the "
+                    "cell is instantiated and wired.")
+                continue
             try:
-                tb = CheckNor2Tb(a=a * R('1.2'), b=b * R('1.2'))
+                tb = g['Xor2Tb'](a=a * R('1.2'), b=b * R('1.2'))
                 h = SimHierarchy.from_schematic(tb.schematic)
                 Simulator(h).op()
                 y = float(h.y.voltage[0])
-                if expect_high:
-                    passed = y > 0.9 * 1.2
-                else:
-                    passed = y < 0.1 * 1.2
-                report.passfail(label, passed, hint=nor_hint,
+                passed = y > 0.9 * 1.2 if expect_high else y < 0.1 * 1.2
+                report.passfail(label, passed, hint=dut_hint,
                     instructions=f"Simulated y = {y:.3f} V, expected "
                     f"{'> 1.08' if expect_high else '< 0.12'} V.")
             except Exception:
-                if structure_ok:
-                    instructions = exception_text()
-                else:
-                    instructions = ("The operating point simulation "
-                        "failed -- usually the gate is still incomplete "
-                        "(see the structure checks above).")
                 report.passfail(label, False,
-                    instructions=instructions, hint=nor_hint)
+                    instructions=exception_text(), hint=dut_hint)
         return report
     return lesson
 
 
-# Lesson 10: 5-transistor OTA
-# ---------------------------
+
+# Lesson 10: LFSR from standard cells
+# -----------------------------------
+
+TCLK = 2e-9  #: clock period of the LFSR testbench in lesson 10
+
+
+def lfsr_states(sim, bits=4, cycles=24):
+    """
+    Digitizes the register state of the lesson-10 LFSR once per clock
+    cycle, sampled shortly before each rising clock edge where the
+    flip-flop outputs have settled. Returns the list of states, each a
+    tuple of bits.
+    """
+    t = [float(x) for x in sim.time]
+    q = [[float(v) for v in getattr(sim, f'q{i}').voltage]
+        for i in range(bits)]
+    states = []
+    for k in range(2, cycles):
+        target = k * TCLK - 0.1 * TCLK
+        idx = min(range(len(t)), key=lambda j: abs(t[j] - target))
+        states.append(tuple(1 if q[i][idx] > 0.6 else 0 for i in range(bits)))
+    return states
+
 
 def gen_lesson10(g):
+    @generate_func
+    def lesson() -> Report:
+        report = Report()
+        report.markdown(
+            "Time to build something out of standard cells. Four flip "
+            "flops are already chained into a shift register, clocked "
+            "and reset by the two sources on the left. The input of the "
+            "first flip flop is tied to a constant zero, so after the "
+            "reset the register just sits there.\n\n"
+            "Feed the last flip flops back into the first one through a "
+            "gate and the register turns into a *linear feedback shift "
+            "register*: it walks through a long, scrambled sequence of "
+            "states that looks random but repeats exactly. Real chips "
+            "use them to generate test patterns and to scramble data.\n\n"
+            "**Replace the tie cell at the EDIT HERE marker by a "
+            "feedback gate at the same position (64,14), so that the "
+            "four bits run through all 15 states before repeating.**\n\n"
+            "Two things to work out: which gate, `Xor2` or `Xnor2`, and "
+            "which two flip flop outputs to tap. Remember that the reset "
+            "leaves every flip flop at zero. Watch the bits in the "
+            "`report_tran` view and the measured sequence length in the "
+            "checks below."
+        )
+        gate_hint = (
+            "The feedback gate takes two of the register outputs and "
+            "drives fb, the D input of the first flip flop: "
+            "`Xnor2 fbgate: .A -- q3; .B -- q2; .Y -- fb; .VDD -- vdd; "
+            ".VSS -- vss; .pos=(64,14)`. It has to be the XNOR: after "
+            "the reset all four bits are zero, and an XOR of two zeros "
+            "feeds another zero back, so the register would stay at "
+            "0000 forever. The XNOR feeds a one back instead and gets "
+            "the sequence going.")
+        tap_hint = (
+            "Not every pair of taps gives a long sequence. With four "
+            "bits only two choices walk through all 15 states, and both "
+            "of them tap the last flip flop q3 together with one other "
+            "output. Try q3 with q2, or q3 with q0. Tapping the last "
+            "flip flop matters: without it the shift register part in "
+            "front of the tap only delays the sequence instead of "
+            "taking part in it.")
+
+        def feedback_gate():
+            sch = g['Lfsr']().schematic
+            gates = [i for i in sch.all(SchemInstance)
+                if i.symbol.cell in (g['Xor2'], g['Xnor2'])]
+            if not gates:
+                return False, ("Looking for an Xor2 or Xnor2 instance "
+                    "that drives fb, the D input of the first flip "
+                    "flop.")
+            outs = {'X', 'Y'}
+            qnets = {getattr(sch, f'q{i}') for i in range(4)}
+            for inst in gates:
+                conns = pin_nets(inst)
+                drives = any(conns.get(p) == sch.fb for p in outs)
+                taps = [conns.get('A'), conns.get('B')]
+                if drives and all(t in qnets for t in taps):
+                    return True, "Feedback gate in place."
+            return False, ("A gate is placed, but its output must drive "
+                "fb and both its inputs must come from flip flop "
+                "outputs (q0 ... q3).")
+
+        wired = guarded_passfail(report, "Feedback gate closes the loop",
+            feedback_gate, hint=gate_hint)
+
+        run_labels = ("Register does not stand still",
+            "Sequence runs through all 15 states")
+        if not wired:
+            for label, hint in zip(run_labels, (gate_hint, tap_hint)):
+                report.passfail(label, False, hint=hint,
+                    instructions="The sequence is measured once the "
+                    "feedback gate is in place.")
+            return report
+        try:
+            states = lfsr_states(g['Lfsr']().sim_tran)
+            distinct = len(set(states))
+            first = states[0]
+            period = next((i for i, s in enumerate(states[1:], 1)
+                if s == first), None)
+            shown = " ".join("".join(str(b) for b in s)
+                for s in states[:8])
+            report.passfail(run_labels[0], distinct > 1, hint=gate_hint,
+                instructions=f"States seen after the reset: {shown} ... "
+                f"({distinct} different ones).")
+            report.passfail(run_labels[1],
+                distinct == 15 and period == 15, hint=tap_hint,
+                instructions=f"The register visits {distinct} different "
+                "states and repeats after "
+                + (f"{period} clock cycles" if period else
+                    "more than the simulated time")
+                + " (15 of each is what a maximal-length LFSR does).")
+        except Exception:
+            instructions = exception_text()
+            for label, hint in zip(run_labels, (gate_hint, tap_hint)):
+                report.passfail(label, False, instructions=instructions,
+                    hint=hint)
+        return report
+    return lesson
+
+
+# Lesson 11: 5-transistor OTA (bonus)
+# ----------------------------------
+
+def gen_lesson11(g):
     @generate_func
     def lesson() -> Report:
         report = Report()

@@ -320,7 +320,19 @@ courses_testdata = {
             Pmos pu: .$w=2u; .$l=130n; .g -- a; .d -- y; .s -- vdd; .b -- vdd; .pos=(3,8)
             """),
         ]),
-        # Lesson 7: NAND2. A structure check, then the truth table. The
+        # Lesson 7: self-biased inverter. Self-biasing works at any rf, so
+        # the operating point check passes even on the skeleton. The rf
+        # value check flips before the AC simulation confirms the gain.
+        LessonTestdata(passfails=3, skeleton_passed=[True, False, False],
+            solution=[
+            InsertSolution("""
+            # EDIT HERE
+            Res rf: .$r=100; .p -- a; .m -- y; .pos=(11,8)
+            """, """
+            Res rf: .$r=1M; .p -- a; .m -- y; .pos=(11,8)
+            """),
+        ]),
+        # Lesson 8: NAND2. A structure check, then the truth table. The
         # skeleton's inverter driven by a implements the wrong function
         # only for a=1, b=0.
         LessonTestdata(passfails=5,
@@ -345,33 +357,29 @@ courses_testdata = {
                 t.$l = 130n
             """),
         ]),
-        # Lesson 8: self-biased inverter. Self-biasing works at any rf, so
-        # the operating point check passes even on the skeleton. The rf
-        # value check flips before the AC simulation confirms the gain.
-        LessonTestdata(passfails=3, skeleton_passed=[True, False, False],
-            solution=[
-            InsertSolution("""
-            # EDIT HERE
-            Res rf: .$r=100; .p -- a; .m -- y; .pos=(11,8)
-            """, """
-            Res rf: .$r=1M; .p -- a; .m -- y; .pos=(11,8)
-            """),
-        ]),
-        # Lesson 9: NOR2 standard cell. Structure and size checks, then
-        # the truth table. On the empty skeleton, y floats in the check
-        # testbench, so the truth-table checks fail with a friendly note.
-        LessonTestdata(passfails=6, solution=[
+        # Lesson 9: standard cells. The student instantiates the shipped
+        # XOR2 cell and wires it up; without it the truth-table checks
+        # report that they wait for the instance.
+        LessonTestdata(passfails=5, solution=[
             InsertSolution("""
             # EDIT HERE
             """, """
-            net x
-            Nmos n1: .pos=(4,1); .$w=740n; .$l=130n; .s -- vss; .d -- y; .g -- a; .b -- vss
-            Nmos n2: .pos=(12,1); .$w=740n; .$l=130n; .s -- vss; .d -- y; .g -- b; .b -- vss
-            Pmos p1: .pos=(4,13); .$w=1.12u; .$l=130n; .s -- vdd; .d -- x; .g -- a; .b -- vdd
-            Pmos p2: .pos=(4,7); .$w=1.12u; .$l=130n; .s -- x; .d -- y; .g -- b; .b -- vdd
+            Xor2 dut: .A -- a; .B -- b; .X -- y; .VDD -- vdd; .VSS -- vss; .pos=(18,12)
             """),
         ]),
-        # Lesson 10: 5-transistor OTA capstone. The mirror-structure check
+        # Lesson 10: LFSR. The skeleton ties the feedback to zero, so the
+        # register never leaves the all-zero state. Only an XNOR (an XOR
+        # would keep feeding zeros back) with taps including the last
+        # flip-flop gives the maximal-length 15-state sequence.
+        LessonTestdata(passfails=3, solution=[
+            InsertSolution("""
+            # EDIT HERE
+            Tielo tie: .L_LO -- fb; .VDD -- vdd; .VSS -- vss; .pos=(64,14)
+            """, """
+            Xnor2 fbgate: .A -- q3; .B -- q2; .Y -- fb; .VDD -- vdd; .VSS -- vss; .pos=(64,14)
+            """),
+        ]),
+        # Lesson 11: 5-transistor OTA bonus. The mirror-structure check
         # comes first. The resistor-loaded starting point misses the gain
         # and swing specs (the 30k loads cannot swing rail to rail) but
         # meets the current budget.

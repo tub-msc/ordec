@@ -68,10 +68,23 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "Ota().schematic",
+                "title": "Lfsr().schematic",
                 "componentType": "result",
                 "componentState": {
-                  "view": "Ota().schematic"
+                  "view": "Lfsr().schematic"
+                }
+              },
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "Lfsr().report_tran",
+                "componentType": "result",
+                "componentState": {
+                  "view": "Lfsr().report_tran"
                 }
               }
             ],
@@ -91,10 +104,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "OtaTb().report_dc",
+                "title": "Lfsr().sim_tran",
                 "componentType": "result",
                 "componentState": {
-                  "view": "OtaTb().report_dc"
+                  "view": "Lfsr().sim_tran"
                 }
               }
             ],
