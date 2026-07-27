@@ -63,6 +63,14 @@ def best_match(insts, target):
     return min(insts, key=lambda i: len(wrong_pins(i, target)))
 
 
+def misplaced(inst, x, y):
+    """Where inst sits when that is not (x, y), else None."""
+    ax, ay = float(inst.pos.x), float(inst.pos.y)
+    if (ax, ay) == (float(x), float(y)):
+        return None
+    return f"at ({ax:g},{ay:g}) instead of ({x},{y})"
+
+
 def sim_instances_of(h, cell_type):
     """Top-level SimInstances of h whose cell is an instance of cell_type."""
     return [si for si in h.all(SimInstance)
@@ -166,7 +174,7 @@ def gen_lesson1(g):
             instructions="Looking for ihp130's Nmos and Pmos in the "
             "lesson namespace.")
 
-        def device_check(cls, target_names, where_text):
+        def device_check(cls, target_names, pos, where_text):
             def checker():
                 sch = g['MosCurves']().schematic
                 insts = instances_of(sch, cls)
@@ -175,16 +183,23 @@ def gen_lesson1(g):
                         f"{cls.__name__} instance {where_text}.")
                 target = {pin: getattr(sch, net)
                     for pin, net in target_names.items()}
-                wrong = wrong_pins(best_match(insts, target), target)
-                return not wrong, (f"{cls.__name__} placed, but these "
-                    "pins are not connected as the testbench needs "
-                    f"them: {', '.join(wrong)}.")
+                inst = best_match(insts, target)
+                wrong = wrong_pins(inst, target)
+                if wrong:
+                    return False, (f"{cls.__name__} placed, but these "
+                        "pins are not connected as the testbench needs "
+                        f"them: {', '.join(wrong)}.")
+                where = misplaced(inst, *pos)
+                if where:
+                    return False, (f"{cls.__name__} is wired correctly, "
+                        f"but it sits {where}.")
+                return True, f"{cls.__name__} placed and wired."
             return checker
 
         nmos_ok = guarded_passfail(report, "SG13G2 NMOS placed and wired",
             device_check(ihp130.Nmos,
                 {'g': 'gate', 'd': 'dn', 's': 'vss', 'b': 'vss'},
-                "with w=1u, l=130n at position (10,12)"),
+                (10, 12), "with w=1u, l=130n at position (10,12)"),
             hint="Add `Nmos mn: .$w=1u; .$l=130n; .g -- gate; .d -- dn; "
             ".s -- vss; .b -- vss; .pos=(10,12)` at the EDIT HERE "
             "(transistors) marker.")
@@ -192,7 +207,7 @@ def gen_lesson1(g):
         pmos_ok = guarded_passfail(report, "SG13G2 PMOS placed and wired",
             device_check(ihp130.Pmos,
                 {'g': 'gate', 'd': 'dp', 's': 'vdd', 'b': 'vdd'},
-                "with w=1u, l=130n at position (25,12)"),
+                (25, 12), "with w=1u, l=130n at position (25,12)"),
             hint="Add the PMOS the same way: `Pmos mp: .$w=1u; "
             ".$l=130n; .g -- gate; .d -- dp; .s -- vdd; .b -- vdd; "
             ".pos=(25,12)`.")
@@ -374,10 +389,17 @@ def gen_lesson3(g):
                     "start with w=1u).")
             target = {'g': sch.vin, 'd': sch.vout, 's': sch.vss,
                 'b': sch.vss}
-            wrong = wrong_pins(best_match(insts, target), target)
-            return not wrong, ("Transistor placed, but these pins are "
-                "not connected as the amplifier needs them: "
-                + ", ".join(wrong) + ".")
+            inst = best_match(insts, target)
+            wrong = wrong_pins(inst, target)
+            if wrong:
+                return False, ("Transistor placed, but these pins are "
+                    "not connected as the amplifier needs them: "
+                    + ", ".join(wrong) + ".")
+            where = misplaced(inst, 6, 3)
+            if where:
+                return False, ("The transistor is wired correctly, but "
+                    f"it sits {where}.")
+            return True, "Transistor placed and wired."
         guarded_passfail(report, "NMOS placed and wired", nmos_ok,
             hint="Add `Nmos m0: .$w=1u; .$l=130n; .g -- vin; .d -- vout; "
             ".s -- vss; .b -- vss; .pos=(6,3)` at the EDIT HERE marker, "
@@ -454,17 +476,29 @@ def gen_lesson4(g):
                     "(w=5u, l=130n) besides mtail: m1 at position (4,7) "
                     "and m2 at (16,7) with orientation FlippedSouth "
                     f"(found {len(pair)} of 2).")
-            maps = [pin_nets(i) for i in pair]
-            m1 = any(m.get('g') == sch.inp and m.get('d') == sch.outp
-                and m.get('s') == sch.tail and m.get('b') == sch.vss
-                for m in maps)
-            m2 = any(m.get('g') == sch.inn and m.get('d') == sch.outn
-                and m.get('s') == sch.tail and m.get('b') == sch.vss
-                for m in maps)
-            status = ("Transistor on the inp side: "
-                f"{'ok' if m1 else 'missing or miswired'}, on the inn "
-                f"side: {'ok' if m2 else 'missing or miswired'}.")
-            return m1 and m2, status
+            sides = (
+                ("inp", {'g': sch.inp, 'd': sch.outp, 's': sch.tail,
+                    'b': sch.vss}, (4, 7), None),
+                ("inn", {'g': sch.inn, 'd': sch.outn, 's': sch.tail,
+                    'b': sch.vss}, (16, 7), FlippedSouth),
+            )
+            problems = []
+            for side, target, pos, orientation in sides:
+                inst = best_match(pair, target)
+                if wrong_pins(inst, target):
+                    problems.append(f"the {side} side is missing or "
+                        "miswired")
+                    continue
+                where = misplaced(inst, *pos)
+                if where:
+                    problems.append(f"the {side} transistor sits {where}")
+                if orientation is not None and inst.orientation != orientation:
+                    problems.append(f"the {side} transistor is not "
+                        "mirrored with .orientation=FlippedSouth")
+            if problems:
+                msg = "; ".join(problems)
+                return False, msg[0].upper() + msg[1:] + "."
+            return True, "Both pair transistors in place."
         guarded_passfail(report, "Pair transistors placed and wired",
             pair_ok, hint=pair_hint)
 
@@ -657,14 +691,25 @@ def gen_lesson6(g):
                 'b': sch.vss}
             p_target = {'g': sch.a, 'd': sch.y, 's': sch.vdd,
                 'b': sch.vdd}
-            n_wrong = wrong_pins(best_match(nmos, n_target), n_target)
-            p_wrong = wrong_pins(best_match(pmos, p_target), p_target)
+            n_inst, p_inst = (best_match(nmos, n_target),
+                best_match(pmos, p_target))
+            n_wrong = wrong_pins(n_inst, n_target)
+            p_wrong = wrong_pins(p_inst, p_target)
             status = ("NMOS pull-down: " + ("ok" if not n_wrong
                     else "pins " + ", ".join(n_wrong) + " miswired")
                 + ", PMOS pull-up: " + ("ok" if not p_wrong
                     else "pins " + ", ".join(p_wrong) + " miswired")
                 + ".")
-            return not (n_wrong or p_wrong), status
+            if n_wrong or p_wrong:
+                return False, status
+            where = [f"the NMOS sits {w}" for w in
+                    [misplaced(n_inst, 3, 2)] if w]
+            where += [f"the PMOS sits {w}" for w in
+                    [misplaced(p_inst, 3, 8)] if w]
+            if where:
+                return False, ("Both transistors are wired correctly, "
+                    "but " + " and ".join(where) + ".")
+            return True, "Both transistors placed and wired."
         guarded_passfail(report, "Inverter transistors placed and wired",
             inverter_ok, hint=build_hint)
 
@@ -874,13 +919,22 @@ def gen_lesson8(g):
                     and pin_nets(t).get('d') == sch.y for t in pmos)
                 and {pin_nets(t).get('g') for t in pmos}
                     == {sch.a, sch.b})
+            if series and parallel:
+                want = {(4, 1), (4, 7), (4, 13), (12, 13)}
+                have = {(float(i.pos.x), float(i.pos.y))
+                    for i in nmos + pmos}
+                if have != want:
+                    return False, ("The gate is wired correctly, but "
+                        "the transistors should sit at (4,1), (4,7), "
+                        "(4,13) and (12,13).")
+                return True, "Series NMOS stack and parallel PMOS in place."
             status = (f"{len(nmos)} NMOS and {len(pmos)} PMOS found "
                 "(2 of each needed, new ones at positions (4,7) and "
                 "(12,13), sized by the existing loop). Series NMOS "
                 f"stack y-n-vss: {'ok' if series else 'missing'}, "
                 f"parallel PMOS pull-up: "
                 f"{'ok' if parallel else 'missing'}.")
-            return series and parallel, status
+            return False, status
         structure_ok = guarded_passfail(report,
             "NMOS in series, PMOS in parallel", structure, hint=nand_hint)
 
@@ -968,10 +1022,17 @@ def gen_lesson9(g):
                     "sg13g2_xor2_1 cell at position (18,12).")
             target = {'A': sch.a, 'B': sch.b, 'X': sch.y,
                 'VDD': sch.vdd, 'VSS': sch.vss}
-            wrong = wrong_pins(best_match(insts, target), target)
-            return not wrong, ("Cell instantiated, but these pins are "
-                "not connected as the testbench needs them: "
-                + ", ".join(wrong) + ".")
+            inst = best_match(insts, target)
+            wrong = wrong_pins(inst, target)
+            if wrong:
+                return False, ("Cell instantiated, but these pins are "
+                    "not connected as the testbench needs them: "
+                    + ", ".join(wrong) + ".")
+            where = misplaced(inst, 18, 12)
+            if where:
+                return False, ("The cell is wired correctly, but it "
+                    f"sits {where}.")
+            return True, "Cell instantiated and wired."
 
         wired = guarded_passfail(report, "XOR2 cell instantiated and wired",
             dut_wired, hint=dut_hint)
@@ -1087,6 +1148,10 @@ def gen_lesson10(g):
                 drives = any(conns.get(p) == sch.fb for p in outs)
                 taps = [conns.get('A'), conns.get('B')]
                 if drives and all(t in qnets for t in taps):
+                    where = misplaced(inst, 64, 14)
+                    if where:
+                        return False, ("The feedback gate is wired "
+                            f"correctly, but it sits {where}.")
                     return True, "Feedback gate in place."
             return False, ("A gate is placed, but its output must drive "
                 "fb and both its inputs must come from flip flop "
@@ -1171,6 +1236,7 @@ def gen_lesson11(g):
             resistors = len(instances_of(sch, Res))
             pmos = instances_of(sch, ihp130.Pmos)
             mirror = False
+            misplacements = []
             for diode in pmos:
                 for outdev in pmos:
                     if diode.nid == outdev.nid:
@@ -1183,6 +1249,13 @@ def gen_lesson11(g):
                             and po.get('d') == sch.out
                             and po.get('s') == sch.vdd):
                         mirror = True
+                        misplacements = [t for t in
+                            (misplaced(diode, 4, 14), misplaced(outdev, 12, 14))
+                            if t]
+            if mirror and resistors == 0 and misplacements:
+                return False, ("The mirror is wired correctly, but a "
+                    "transistor sits " + " and ".join(misplacements)
+                    + ".")
             status = (f"Resistors left: {resistors} (0 needed), PMOS "
                 f"mirror (diode + output device): "
                 f"{'ok' if mirror else 'missing'}. The two PMOS go into "

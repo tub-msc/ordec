@@ -73,19 +73,6 @@
                 "componentState": {
                   "view": "Lfsr().schematic"
                 }
-              },
-              {
-                "type": "component",
-                "size": "1fr",
-                "id": "",
-                "maximised": false,
-                "isClosable": true,
-                "reorderEnabled": true,
-                "title": "Lfsr().report_tran",
-                "componentType": "result",
-                "componentState": {
-                  "view": "Lfsr().report_tran"
-                }
               }
             ],
             "size": "50%",
@@ -104,10 +91,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "Lfsr().sim_tran",
+                "title": "Lfsr().report_tran",
                 "componentType": "result",
                 "componentState": {
-                  "view": "Lfsr().sim_tran"
+                  "view": "Lfsr().report_tran"
                 }
               }
             ],
