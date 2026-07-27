@@ -23,7 +23,6 @@ cell DiffPair:
 
         net tail
 
-        # Loads and tail current sink (~35 uA at vbias = 0.5 V) are given:
         Res rl_p: .$r=30k; .p -- vdd; .m -- outp; .pos=(4,13)
         Res rl_n: .$r=30k; .p -- vdd; .m -- outn; .pos=(10,13)
         Nmos mtail: .$w=3u; .$l=1u; .g -- bias; .d -- tail; .s -- vss; .b -- vss; .pos=(8,1)
@@ -36,21 +35,20 @@ cell DiffPairTb:
 
         Gnd gnd: .p -- vss; .pos=(0,0)
         Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(0,6)
-        Vdc vbias_src: .$dc=0.5; .m -- vss; .p -- bias; .pos=(6,6)
-        Vdc vinp_src: .$dc=0.7; .m -- vss; .p -- inp; .pos=(12,6)
-        Vdc vinn_src: .$dc=0.7; .m -- vss; .p -- inn; .pos=(18,6)
+        Vdc vinp_src: .$dc=0.7; .m -- vss; .p -- inp; .pos=(6,6)
+        Vdc vinn_src: .$dc=0.7; .m -- vss; .p -- inn; .pos=(12,6)
+        Vdc vbias_src: .$dc=0.5; .m -- vss; .p -- bias; .pos=(18,6)
 
-        DiffPair dut: .inp -- inp; .inn -- inn; .bias -- bias; .outp -- outp; .outn -- outn; .vdd -- vdd; .vss -- vss; .pos=(24,6)
-        NoConn nc0: .a -- outp; .pos=(30,6)
-        NoConn nc1: .a -- outn; .pos=(30,12)
+        DiffPair dut: .inp -- inp; .inn -- inn; .bias -- bias; .outp -- outp; .outn -- outn; .vdd -- vdd; .vss -- vss; .pos=(24,12)
+        NoConn nc0: .a -- outp; .pos=(32,10)
+        NoConn nc1: .a -- outn; .pos=(32,16)
 
     viewgen sim_dc -> Simulation:
-        # Sweep vinp while vinn stays at the 0.7 V common mode.
         .simulate().dc_sweep(self.schematic.vinp_src, 0.4, 1.0, 121)
 
     viewgen report_dc -> Report:
         sim = self.sim_dc
-        .markdown("## Differential pair transfer curve")
+        .markdown("Differential pair transfer curve:")
         .plot2d(
             x=list(sim.inp.voltage),
             series={"outp": list(sim.outp.voltage), "outn": list(sim.outn.voltage)},

@@ -40,28 +40,24 @@ cell RingOsc:
         inout vss: .align=South
 
     viewgen schematic -> Schematic:
-        port bias: .align=East; .pos=(1,10)
-        port outp: .align=West; .pos=(22,12)
-        port outn: .align=West; .pos=(22,8)
-        port vdd: .align=East; .pos=(1,16)
-        port vss: .align=East; .pos=(1,0)
+        port bias: .align=East; .pos=(0,15)
+        port outp: .align=West; .pos=(40,10)
+        port outn: .align=West; .pos=(40,11)
+        port vdd: .align=East; .pos=(0,18)
+        port vss: .align=East; .pos=(0,0)
 
-        # Internal stage outputs (stage0 drives outp/outn directly):
         net p1, n1, p2, n2
 
-        # 100 fF loads set the stage delay; their initial conditions (ic)
-        # give the uic transient an asymmetric starting point.
-        Cap cp2: .$c=100f; .$ic=0.9; .p -- p2; .m -- vss; .pos=(3,1)
-        Cap cn2: .$c=100f; .$ic=0.9; .p -- n2; .m -- vss; .pos=(9,1)
-        Cap cp0: .$c=100f; .$ic=1.2; .p -- outp; .m -- vss; .pos=(15,1)
-        Cap cn0: .$c=100f; .$ic=0.6; .p -- outn; .m -- vss; .pos=(21,1)
-        Cap cp1: .$c=100f; .$ic=0.9; .p -- p1; .m -- vss; .pos=(27,1)
-        Cap cn1: .$c=100f; .$ic=0.9; .p -- n1; .m -- vss; .pos=(33,1)
+        Cap cp1: .$c=100f; .$ic=0.9; .p -- p1; .m -- vss; .pos=(9,1)
+        Cap cn1: .$c=100f; .$ic=0.9; .p -- n1; .m -- vss; .pos=(14,1)
+        Cap cp2: .$c=100f; .$ic=0.9; .p -- p2; .m -- vss; .pos=(23,1)
+        Cap cn2: .$c=100f; .$ic=0.9; .p -- n2; .m -- vss; .pos=(28,1)
+        Cap cp0: .$c=100f; .$ic=1.2; .p -- outp; .m -- vss; .pos=(37,1)
+        Cap cn0: .$c=100f; .$ic=0.6; .p -- outn; .m -- vss; .pos=(42,1)
 
-        # The ring: stage0 -> stage1 -> stage2 -> stage0.
-        DiffPair stage0: .inp -- n2; .inn -- p2; .outp -- outp; .outn -- outn; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(3,7) # EDIT HERE
-        DiffPair stage1: .inp -- outp; .inn -- outn; .outp -- p1; .outn -- n1; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(9,7)
-        DiffPair stage2: .inp -- p1; .inn -- n1; .outp -- p2; .outn -- n2; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(15,7)
+        DiffPair stage0: .inp -- outn; .inn -- outp; .outp -- p1; .outn -- n1; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(4,8) # EDIT HERE
+        DiffPair stage1: .inp -- p1; .inn -- n1; .outp -- p2; .outn -- n2; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(18,8)
+        DiffPair stage2: .inp -- p2; .inn -- n2; .outp -- outp; .outn -- outn; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(32,8)
 
 cell RingOscTb:
     viewgen schematic -> Schematic:
@@ -76,13 +72,11 @@ cell RingOscTb:
         NoConn nc1: .a -- outn; .pos=(18,12)
 
     viewgen sim_tran -> Simulation:
-        # uic starts from the capacitor ic values instead of the DC operating
-        # point -- an oscillator's DC solution is the useless equilibrium.
         .simulate().tran('50p', '200n', uic=True)
 
     viewgen report_tran -> Report:
         sim = self.sim_tran
-        .markdown("## Ring oscillator output")
+        .markdown("Ring oscillator output:")
         .plot2d(
             x=list(sim.time),
             series={"outp": list(sim.outp.voltage), "outn": list(sim.outn.voltage)},

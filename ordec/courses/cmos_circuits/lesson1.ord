@@ -11,21 +11,20 @@ cell MosCurves:
 
         Gnd gnd: .p -- vss; .pos=(0,0)
         Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(18,6)
-        Vdc vg_src: .$dc=self.vgs; .m -- vss; .p -- gate; .pos=(0,6)
-
-        # These two sources fix the drain voltages and measure the currents:
-        Vdc vdn_src: .$dc=1.2; .m -- vss; .p -- dn; .pos=(6,6)
-        Vdc vdp_src: .$dc=0; .m -- vss; .p -- dp; .pos=(12,6)
+        Vdc vg_src: .$dc=self.vgs; .m -- vss; .p -- gate; .pos=(7,6)
+        Vdc vdn_src: .$dc=1.2; .m -- vss; .p -- dn; .pos=(0,6)
+        Vdc vdp_src: .$dc=0; .m -- vss; .p -- dp; .pos=(25,6)
 
         # EDIT HERE (transistors)
 
     viewgen sim_vgs -> Simulation:
-        # Gate voltage sweep; save_params records ids, gm, vth, ...
         .simulate().dc_sweep(self.schematic.vg_src, 0, 1.2, 61, save_params=True)
 
     viewgen sim_vds -> Simulation:
-        # NMOS drain voltage sweep at the gate voltage self.vgs.
         .simulate().dc_sweep(self.schematic.vdn_src, 0, 1.2, 61, save_params=True)
+
+    viewgen sim_vsd -> Simulation:
+        .simulate().dc_sweep(self.schematic.vdp_src, 0, 1.2, 61, save_params=True)
 
     viewgen report_curves -> Report:
         try:
@@ -38,22 +37,25 @@ cell MosCurves:
             .markdown("Place the transistors `mn` and `mp` first (see the "
                 "EDIT HERE markers in the source).")
         else:
-            sim = self.sim_vgs
-            .markdown("## Transfer characteristics: ID over VGS")
-            .plot2d(
-                {"NMOS |ID|": [abs(i) for i in sim.mn.params['ids'].value],
-                 "PMOS |ID|": [abs(i) for i in sim.mp.params['ids'].value]},
-                x=[float(v) for v in sim.gate.voltage],
-                xlabel="Gate voltage (V)",
-                ylabel="Drain current (A)",
-                height=260)
-            .markdown("## Output characteristics: NMOS ID over VDS")
-            series = {}
-            for vgs in ('0.4', '0.6', '0.8', '1.0', '1.2'):
-                sim = MosCurves(vgs=R(vgs)).sim_vds
-                series["VGS = " + vgs + " V"] = [abs(i) for i in sim.mn.params['ids'].value]
-            .plot2d(series,
-                x=[float(v) for v in sim.dn.voltage],
+            .markdown("ID over VDS for several gate-source voltages.")
+            vds_n = [float(v) for v in MosCurves(vgs=R('1.2')).sim_vds.dn.voltage]
+            vds_p = [float(v) - 1.2 for v in MosCurves(vgs=R('0')).sim_vsd.dp.voltage]
+            nmos_series = {}
+            pmos_series = {}
+            for vgs in ('0.6', '0.8', '1.0', '1.2'):
+                sim_n = MosCurves(vgs=R(vgs)).sim_vds
+                sim_p = MosCurves(vgs=R('1.2') - R(vgs)).sim_vsd
+                nmos_series["VGS = " + vgs + " V"] = [
+                    float(i) for i in sim_n.mn.params['ids'].value]
+                pmos_series["VSG = " + vgs + " V"] = [
+                    -float(i) for i in sim_p.mp.params['ids'].value]
+            .plot2d(nmos_series,
+                x=vds_n,
                 xlabel="VDS (V)",
-                ylabel="NMOS |ID| (A)",
-                height=260)
+                ylabel="NMOS ID (A)",
+                height=280)
+            .plot2d(pmos_series,
+                x=vds_p,
+                xlabel="VDS (V)",
+                ylabel="PMOS ID (A)",
+                height=280)

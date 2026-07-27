@@ -11,7 +11,7 @@ cell Nand2:
         inout vss: .align=South
 
     viewgen schematic -> Schematic:
-        port y: .align=West; .pos=(17,13)
+        port y: .align=West; .pos=(18,12)
         port a: .align=East; .pos=(1,10)
         port b: .align=East; .pos=(1,21)
         port vdd: .align=East; .pos=(1,19)
@@ -31,8 +31,6 @@ cell Nand2Tb:
 
         Gnd gnd: .p -- vss; .pos=(0,0)
         Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(0,6)
-
-        # Static input levels; the lesson check tests all four combinations:
         Vdc va_src: .$dc=1.2; .m -- vss; .p -- a; .pos=(6,6)
         Vdc vb_src: .$dc=1.2; .m -- vss; .p -- b; .pos=(12,6)
 

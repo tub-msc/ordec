@@ -11,11 +11,10 @@ cell CsAmp:
 
     viewgen schematic -> Schematic:
         port vin: .align=East; .pos=(1,5)
-        port vout: .align=West; .pos=(13,9)
-        port vdd: .align=East; .pos=(1,13)
-        port vss: .align=East; .pos=(1,1)
+        port vout: .align=West; .pos=(13,8)
+        port vdd: .align=East; .pos=(1,14)
+        port vss: .align=East; .pos=(1,2)
 
-        # The load resistor converts drain current changes into vout:
         Res rl: .$r=10k; .p -- vdd; .m -- vout; .pos=(6,9)
 
         # EDIT HERE
@@ -26,17 +25,13 @@ cell CsAmpTb:
 
         Gnd gnd: .p -- vss; .pos=(0,0)
         Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(0,6)
-
-        # 0.45 V bias plus AC magnitude 1: |V(vout)| directly reads as gain.
         Vdc vin_src: .$dc=0.45; .$ac_mag=1; .m -- vss; .p -- vin; .pos=(6,6)
 
         CsAmp dut: .vin -- vin; .vout -- vout; .vdd -- vdd; .vss -- vss; .pos=(12,6)
         NoConn nc: .a -- vout; .pos=(18,6)
 
     viewgen sim_dc -> Simulation:
-        # Voltage transfer curve: sweep the input DC voltage.
         .simulate().dc_sweep(self.schematic.vin_src, 0, 1.2, 61)
 
     viewgen sim_ac -> Simulation:
-        # Small-signal frequency response around the operating point.
         .simulate().ac('dec', 10, '1k', '1G')

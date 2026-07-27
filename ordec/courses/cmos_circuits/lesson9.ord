@@ -4,8 +4,6 @@ from ordec.extlibrary import ExtLibrary
 from ordec.lib import ihp130
 from ordec.lib.ihp130 import Nmos, Pmos
 
-# The real SG13G2 standard cell library: symbols, schematics and layouts.
-# The second result tab shows the layout of sg13g2_nor2_1.
 stdcell_root = ihp130.pdk().root / "libs.ref/sg13g2_stdcell"
 extlib = ExtLibrary()
 extlib.read_lef(stdcell_root / "lef/sg13g2_stdcell.lef")
@@ -39,8 +37,6 @@ cell Nor2Tb:
         Vdc vb_src: .$dc=0; .m -- vss; .p -- b; .pos=(12,6)
 
         Nor2 dut: .a -- a; .b -- b; .y -- y; .vdd -- vdd; .vss -- vss; .pos=(18,6)
-
-        # 1 GOhm probe keeps y defined while the NOR2 is incomplete:
         Res rprobe: .$r=1G; .p -- y; .m -- vss; .pos=(24,5)
 
     viewgen sim_op -> Simulation:

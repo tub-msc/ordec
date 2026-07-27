@@ -21,7 +21,6 @@ cell Ota:
 
         net tail, outx
 
-        # Starting point: lesson 4's pair with resistor loads, one output.
         # EDIT HERE
         Res rl_p: .$r=30k; .p -- vdd; .m -- outx; .pos=(4,13)
         Res rl_n: .$r=30k; .p -- vdd; .m -- out; .pos=(10,13)
@@ -35,17 +34,14 @@ cell OtaTb:
 
         Gnd gnd: .p -- vss; .pos=(0,0)
         Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(0,6)
-        Vdc vbias_src: .$dc=0.5; .m -- vss; .p -- bias; .pos=(6,6)
-        Vdc vinp_src: .$dc=0.7; .m -- vss; .p -- inp; .pos=(12,6)
-        Vdc vinn_src: .$dc=0.7; .m -- vss; .p -- inn; .pos=(18,6)
+        Vdc vinp_src: .$dc=0.7; .m -- vss; .p -- inp; .pos=(6,6)
+        Vdc vinn_src: .$dc=0.7; .m -- vss; .p -- inn; .pos=(12,6)
+        Vdc vbias_src: .$dc=0.5; .m -- vss; .p -- bias; .pos=(18,6)
 
-        Ota dut: .inp -- inp; .inn -- inn; .bias -- bias; .out -- out; .vdd -- vdd; .vss -- vss; .pos=(24,6)
-
-        # Load capacitance:
-        Cap cl: .$c=1p; .p -- out; .m -- vss; .pos=(30,5)
+        Ota dut: .inp -- inp; .inn -- inn; .bias -- bias; .out -- out; .vdd -- vdd; .vss -- vss; .pos=(24,12)
+        Cap cl: .$c=1p; .p -- out; .m -- vss; .pos=(32,8)
 
     viewgen sim_dc -> Simulation:
-        # DC transfer curve; the slope at the crossing is the DC gain.
         .simulate().dc_sweep(self.schematic.vinp_src, 0.55, 0.85, 121)
 
     viewgen sim_op -> Simulation:
@@ -53,7 +49,7 @@ cell OtaTb:
 
     viewgen report_dc -> Report:
         sim = self.sim_dc
-        .markdown("## OTA transfer curve")
+        .markdown("OTA transfer curve:")
         .plot2d(
             x=list(sim.inp.voltage),
             series={"out": list(sim.out.voltage)},

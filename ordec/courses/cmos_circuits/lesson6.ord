@@ -35,10 +35,7 @@ cell InvTb:
         Vdc vin_src: .$dc=0; .m -- vss; .p -- a; .pos=(6,6)
 
         Inv dut: .a -- a; .y -- y; .vdd -- vdd; .vss -- vss; .pos=(12,7)
-
-        # 1 GOhm probe keeps y defined while the inverter is incomplete:
         Res rprobe: .$r=1G; .p -- y; .m -- vss; .pos=(18,5)
 
     viewgen sim_dc -> Simulation:
-        # Voltage transfer curve (VTC): sweep the input from 0 V to 1.2 V.
         .simulate().dc_sweep(self.schematic.vin_src, 0, 1.2, 121)
