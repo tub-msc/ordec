@@ -9,18 +9,19 @@ cell RcChain:
         Vpulse vsrc:
             .$initial_value=0
             .$pulsed_value=1
-            .$rise_time=1u
-            .$fall_time=1u
+            .$rise_time=5u
+            .$fall_time=5u
             .$pulse_width=500u
+            .$delay_time=250u
             .$period=1m
             .m -- vss
             .p -- vin
             .pos=(0,6)
 
         Res r1: .$r=1k; .p -- vin; .m -- mid; .pos=(8,12); .orientation=R90
-        Cap c1: .$c=100n; .p -- mid; .m -- vss; .pos=(7,6)
-        Res r2: .$r=1k; .p -- mid; .m -- vout; .pos=(14,12); .orientation=R90
-        Cap c2: .$c=100n; .p -- vout; .m -- vss; .pos=(13,6)
+        Cap c1: .$c=10n; .p -- mid; .m -- vss; .pos=(7,6)
+        Res r2: .$r=5k; .p -- mid; .m -- vout; .pos=(14,12); .orientation=R90
+        Cap c2: .$c=10n; .p -- vout; .m -- vss; .pos=(13,6)
 
         vout % SchemTapPoint(pos=(17, 14), align=East)
 

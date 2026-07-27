@@ -850,7 +850,7 @@ cell VcoTb:
 
     viewgen sim_tran -> Simulation:
         """Run sync transient simulation."""
-        .simulate().tran(R('10p'), R('30n'))
+        .simulate().tran(10p, 30n)
 
     viewgen report_tran -> Report:
         sim = self.sim_tran

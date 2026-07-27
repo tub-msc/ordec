@@ -68,10 +68,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "ParallelR().schematic",
+                "title": "Example().schematic",
                 "componentType": "result",
                 "componentState": {
-                  "view": "ParallelR().schematic"
+                  "view": "Example().schematic"
                 }
               }
             ],
@@ -91,10 +91,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "ParallelR().sim_op",
+                "title": "Example().sim_op",
                 "componentType": "result",
                 "componentState": {
-                  "view": "ParallelR().sim_op"
+                  "view": "Example().sim_op"
                 }
               }
             ],

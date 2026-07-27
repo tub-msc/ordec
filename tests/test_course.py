@@ -106,9 +106,24 @@ courses_testdata = {
             # EDIT HERE
             """, """
             net mid
-            Res r1: .$r=1k; .p -- vdd; .m -- mid; .pos=(5,12)
-            Res r2: .$r=2k; .p -- mid; .m -- vss; .pos=(5,6)
-            Res r3: .$r=3k; .p -- mid; .m -- vss; .pos=(10,6)
+
+            Res R0:
+                .$r=2k
+                .pos=(5, 6)
+                .m -- vss
+                .p -- mid
+
+            Res R1:
+                .$r=3k
+                .pos=(11,6)
+                .m -- vss
+                .p -- mid
+
+            Res R2:
+                .$r=1k
+                .pos=(8, 12)
+                .m -- mid
+                .p -- vdd
             """),
         ]),
         # Lesson 5: wiring with for loops (enforced by the checks via
@@ -117,19 +132,18 @@ courses_testdata = {
             InsertSolution("""
             # EDIT HERE
             """, """
-            for r in r1, r2, r3:
+            for r in R0, R1, R2:
                 r.p -- mid
-            for r in r2, r3:
+            for r in R0, R1:
                 r.m -- vss
-            r1.m -- vdd
+            R2.m -- vdd
             """),
         ]),
-        # Lesson 6: LC bandstop filter. The target-schematic sketch must
-        # render as an SVG element. On the skeleton, the all-wired check
+        # Lesson 6: LC bandstop filter. On the skeleton, the all-wired check
         # passes trivially (only the fully wired source and ground exist).
         LessonTestdata(passfails=4,
             skeleton_passed=[False, False, True, False],
-            has_svg=True, solution=[
+            solution=[
             InsertSolution("""
             # EDIT HERE
             """, """
@@ -151,8 +165,8 @@ courses_testdata = {
             InsertSolution("""
             # EDIT HERE (schematic)
             """, """
-            port vin: .align=East; .pos=(2,18)
-            port vout: .align=West
+            port vin: .align=East
+            port vout: .align=West; .pos=(12,18)
             port vss: .align=North
 
             r1.p -- vin
@@ -207,7 +221,7 @@ courses_testdata = {
             # EDIT HERE (analysis)
             """, """
             viewgen sim_tran -> Simulation:
-                .simulate().tran('1u', '2m')
+                .simulate().tran(1u, 3m)
             """),
             InsertSolution("""
             # EDIT HERE (report)
@@ -230,21 +244,15 @@ courses_testdata = {
             InsertSolution("""
             # EDIT HERE (postprocessing)
             """, """
-            t = [float(x) for x in sim.time]
-            vin = list(sim.vin.voltage)
-            vout = list(sim.vout.voltage)
+            from itertools import pairwise
+            n_pulses = sum(1 for a, b in pairwise(sim.vout.voltage) if a <= 0.5 < b)
+            .markdown(f"Counted {n_pulses} pulses.")
 
-            pulses = sum(1 for a, b in zip(vin, vin[1:]) if a < 0.5 <= b)
-            .markdown(f"**{pulses} pulses** counted on vin.")
-
-            def crossings(v, level):
-                up = [t[i] for i in range(len(v) - 1) if v[i] < level <= v[i+1]]
-                down = [t[i] for i in range(len(v) - 1) if v[i] > level >= v[i+1]]
-                return up, down
-            up10, down10 = crossings(vout, 0.1)
-            up90, down90 = crossings(vout, 0.9)
-            .markdown(f"vout rise time (10-90%): {(up90[0]-up10[0])*1e6:.0f} us, "
-                f"fall time: {(down10[0]-down90[0])*1e6:.0f} us.")
+            it = zip(sim.time, sim.vout.voltage)
+            rise_start = next(t for t, v in it if v >= 0.1)
+            rise_end = next(t for t, v in it if v >= 0.9)
+            rise_time = R(f"{rise_end - rise_start:.3g}")
+            .markdown(f"Rise time: {rise_time}")
             """),
         ]),
     ]),

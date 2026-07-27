@@ -6,11 +6,11 @@ cell RNetworkLoops:
         net vdd, vss, mid
 
         Gnd gnd: .p -- vss; .pos=(0,0)
-        Vdc vsrc: .$dc=5; .m -- vss; .p -- vdd; .pos=(0,6)
+        Vdc vsrc: .$dc=5; .m -- vss; .p -- vdd; .pos=(0,9)
 
-        Res r1: .$r=1k; .pos=(9,16); .orientation=R180
-        Res r2: .$r=2k; .pos=(5,6)
-        Res r3: .$r=3k; .pos=(10,6)
+        Res R0: .$r=2k; .pos=(5,6)
+        Res R1: .$r=3k; .pos=(11,6)
+        Res R2: .$r=1k; .pos=(12,16); .orientation=R180
 
         # EDIT HERE
 

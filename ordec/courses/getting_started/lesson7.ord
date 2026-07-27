@@ -25,7 +25,7 @@ cell BandstopTb:
         # EDIT HERE (testbench)
 
     viewgen sim_ac -> Simulation:
-        .simulate().ac('dec', '50', '100', '10M')
+        .simulate().ac('dec', 500, 100, 10M)
 
     viewgen bode -> Report:
         if (self.schematic.has_errors()

@@ -37,10 +37,10 @@ cell AmpTb:
 
 
     viewgen sim_ac -> Simulation:
-        .simulate().ac('dec', '10', '1M', '1G')
+        .simulate().ac('dec', 10, 1M, 1G)
 
     viewgen sim_tran -> Simulation:
-        .simulate().tran(R('1n'), R('1u'))
+        .simulate().tran(1n, 1u)
 
     viewgen report_ac -> Report:
         sim = self.sim_ac
