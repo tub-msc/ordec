@@ -399,8 +399,7 @@ def gen_lesson3(g):
             "wider transistor gives more gain, but also draws more bias "
             "current, which pulls the operating point down.\n\n"
             "`CsAmpTb` adds an AC signal of magnitude 1, so the gain "
-            "can be read directly as the magnitude at `vout` in the "
-            "`sim_ac` view."
+            "can be read directly in the `report_ac` view."
         )
         op_hint = (
             "`vout` sits at 1.2 V while the transistor is too narrow to "
@@ -1009,11 +1008,11 @@ def gen_lesson9(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "Digital chips are not drawn transistor by transistor. They "
-            "are assembled from **standard cells**: pre-designed, "
-            "pre-verified gates, all on a common height grid so that "
-            "place-and-route tools can tile them into rows. This lesson "
-            "uses one straight from the PDK.\n\n"
+            "Digital chips are usually not drawn transistor by "
+            "transistor. They are assembled from **standard cells**: "
+            "pre-designed, pre-verified gates, all on a common height "
+            "grid so that place-and-route tools can tile them into rows. "
+            "This lesson uses one straight from the PDK.\n\n"
             "**Instantiate the XOR2 cell as `dut` at position `(18,12)` "
             "and connect it to the testbench.**\n\n"
             "The cell is already loaded from the library and bound to "
@@ -1031,8 +1030,7 @@ def gen_lesson9(g):
             "the PMOS transistors sit, and the vertical polysilicon gate "
             "stripes. An XOR needs far more transistors than the gates "
             "of the previous lessons, which is why the cell is so much "
-            "wider. Layout design is the topic of the layout course -- "
-            "see also the [layout how-to](docs:howto_layout.html)."
+            "wider. Layout design is the topic of the layout course!"
         )
         dut_hint = (
             "Each pin goes to the testbench net of the same name, and "
@@ -1247,19 +1245,19 @@ def gen_lesson11(g):
             "the `report_dc` view."
         )
         ota_hint = (
-            "Replace `rl_p` and `rl_n` by PMOS transistors in their "
-            "slots, both w=5u. `m3` at (4,14) is diode-connected: `g` "
-            "and `d` both to `outx`. `m4` at (12,14): `g` to `outx`, "
-            "`d` to `out`. Both take `s` and `b` to `vdd`. `m3` carries "
-            "the current of one branch and `m4` copies it onto the "
-            "other.")
+            "Replace `rl_p` and `rl_n` by two PMOS, both w=5u. `m3` at "
+            "(8,14) is diode-connected: `g` and `d` both to `outx`, "
+            "mirrored with FlippedSouth so that it faces `m4`. `m4` at "
+            "(12,14): `g` to `outx`, `d` to `out`. Both take `s` and "
+            "`b` to `vdd`. `m3` carries the current of one branch and "
+            "`m4` copies it onto the other.")
 
         def mirror_load():
             sch = g['Ota']().schematic
             resistors = len(instances_of(sch, Res))
             pmos = instances_of(sch, ihp130.Pmos)
             mirror = False
-            misplacements = []
+            problems = []
             for diode in pmos:
                 for outdev in pmos:
                     if diode.nid == outdev.nid:
@@ -1272,13 +1270,16 @@ def gen_lesson11(g):
                             and po.get('d') == sch.out
                             and po.get('s') == sch.vdd):
                         mirror = True
-                        misplacements = [t for t in
-                            (misplaced(diode, 4, 14), misplaced(outdev, 12, 14))
-                            if t]
-            if mirror and resistors == 0 and misplacements:
-                return False, ("The mirror is wired correctly, but a "
-                    "transistor sits " + " and ".join(misplacements)
-                    + ".")
+                        problems = [f"the diode transistor sits {t}"
+                            for t in [misplaced(diode, 8, 14)] if t]
+                        problems += [f"the output transistor sits {t}"
+                            for t in [misplaced(outdev, 12, 14)] if t]
+                        if diode.orientation != FlippedSouth:
+                            problems.append("the diode transistor is not "
+                                "mirrored with .orientation=FlippedSouth")
+            if mirror and resistors == 0 and problems:
+                return False, ("The mirror is wired correctly, but "
+                    + ", ".join(problems) + ".")
             status = (f"Resistors left: {resistors} (0 needed), PMOS "
                 f"mirror (diode + output device): "
                 f"{'ok' if mirror else 'missing'}.")

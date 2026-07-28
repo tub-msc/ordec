@@ -91,23 +91,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "CsAmpTb().sim_dc",
+                "title": "CsAmpTb().report_ac",
                 "componentType": "result",
                 "componentState": {
-                  "view": "CsAmpTb().sim_dc"
-                }
-              },
-              {
-                "type": "component",
-                "size": "1fr",
-                "id": "",
-                "maximised": false,
-                "isClosable": true,
-                "reorderEnabled": true,
-                "title": "CsAmpTb().sim_ac",
-                "componentType": "result",
-                "componentState": {
-                  "view": "CsAmpTb().sim_ac"
+                  "view": "CsAmpTb().report_ac"
                 }
               }
             ],

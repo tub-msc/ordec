@@ -393,7 +393,7 @@ courses_testdata = {
             Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outx; .s -- tail; .b -- vss; .pos=(4,7)
             Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orientation=FlippedSouth
             """, """
-            Pmos m3: .$w=5u; .$l=300n; .g -- outx; .d -- outx; .s -- vdd; .b -- vdd; .pos=(4,14)
+            Pmos m3: .$w=5u; .$l=300n; .g -- outx; .d -- outx; .s -- vdd; .b -- vdd; .pos=(8,14); .orientation=FlippedSouth
             Pmos m4: .$w=5u; .$l=300n; .g -- outx; .d -- out; .s -- vdd; .b -- vdd; .pos=(12,14)
             Nmos m1: .$w=5u; .$l=300n; .g -- inp; .d -- outx; .s -- tail; .b -- vss; .pos=(4,7)
             Nmos m2: .$w=5u; .$l=300n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orientation=FlippedSouth
