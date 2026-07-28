@@ -35,7 +35,8 @@ cell Inv:
             ! .activ.cx == mp.activ.cx
             ! .activ.ly - 600 == mp.poly[0].uy
 
-        # The wiring from lesson 7:
+        # The wiring from lesson 7, with one deliberate flaw (see the
+        # lesson text):
         LayoutRect polybar:
             .layer = layers.GatPoly
             ! .south == mn.poly[0].north

@@ -19,9 +19,11 @@ epilogue (generic flag epilogue: solved right away, no callout, no source
 editor in its layout). Their reports carry only instructions and no PassFail
 elements.
 
-Lessons 8, 9 and 11 run KLayout DRC/LVS inside their checks; their lesson()
-generators are declared with auto_refresh=False, so the course UI shows a
-Refresh overlay instead of re-checking on every edit.
+Lessons 8, 9 and 11 run KLayout DRC/LVS inside their checks, so re-checking
+after an edit takes a few seconds there. (The DRC/LVS result panels of those
+lessons are a different matter: their viewgens are declared with
+auto_refresh=False in the lesson sources and update only via their Refresh
+overlay.)
 """
 
 import traceback
@@ -553,7 +555,8 @@ def gen_lesson6(g):
                 ! .pos == (0, 0)
             ```
 
-            If the transistor does not show up in the layout viewer, click into the layout viewer and press `f` to reset the zoom.
+            If the transistor does not show up in the layout viewer,
+            click into the viewer and press `f` to reset the zoom.
 
             Instances expose their inner geometry as anchors, transformed
             into your coordinates: `mn.activ` (the diffusion area),
@@ -857,8 +860,8 @@ def gen_lesson8(g):
             **2. Run DRC.** The *design rule check* verifies the geometry
             against the fab's rulebook: minimum widths, spacings and
             enclosures. Because it runs KLayout in the background and takes
-            a few seconds, both the DRC panel on the right and this lesson
-            check only update when you press their *Refresh* overlay.
+            a few seconds, the DRC panel on the right only updates when you
+            press its *Refresh* overlay.
 
             This layout contains a rule violation that is easy to miss by
             eye. Run the DRC, open the violation category in the report,
@@ -1299,8 +1302,8 @@ def gen_lesson11(g):
             m1_vss.create_pin(self.symbol.vss)
             ```
 
-            **3. Signoff:** press *Refresh* on the DRC and LVS panels (and
-            on this lesson check). Both must come back clean; then the
+            **3. Signoff:** press *Refresh* on the DRC and LVS panels.
+            Both must come back clean; then the
             differential pair is ready, and so are you: this was the last
             design of the course.
         """)

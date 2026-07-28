@@ -965,10 +965,10 @@ def gen_lesson8(g):
         nand_hint = (
             "Lower NMOS: `s` to `vss`, `d` to the new net. Upper NMOS "
             "at (4,7): `s` to that net, `d` to `y`, with one input per "
-            "gate. The "
-            "second PMOS goes next to the first at (12,13) with `s` to "
-            "`vdd`, `d` to `y`, `g` to `b`. Transistors left out of the "
-            "sizing loop keep the library default l=1u.")
+            "gate. The second PMOS goes next to the first at (12,13) "
+            "with `s` to `vdd`, `d` to `y`, `g` to `b`. Transistors "
+            "left out of the sizing loop keep the library default "
+            "l=1u.")
 
         def structure():
             sch = dut().schematic
@@ -1048,8 +1048,8 @@ def gen_lesson8(g):
     return lesson
 
 
-# Lesson 9: Standard cell: XOR2
-# -----------------------------
+# Lesson 9: Standard cells
+# ------------------------
 
 def gen_lesson9(g):
     @generate_func
@@ -1074,7 +1074,7 @@ def gen_lesson9(g):
 
             ### Layout tour
 
-            The second result tab shows the layout of the real
+            The second result panel shows the layout of the real
             `sg13g2_xor2_1` cell, loaded from the PDK via
             [ExtLibrary](docs:ref/extlibrary.html). Things to spot: the
             `vdd` and `vss` rails at top and bottom, shared with the
@@ -1141,7 +1141,6 @@ def gen_lesson9(g):
     return lesson
 
 
-
 # Lesson 10: LFSR from standard cells
 # -----------------------------------
 
@@ -1204,10 +1203,9 @@ def gen_lesson10(g):
         tap_hint = (
             "Only two tap pairs walk through all 15 states, and both of "
             "them use the last flip flop `q3` together with one other "
-            "output. Try `q3` with `q2`, or `q3` with `q0`. Without the "
-            "last "
-            "flip flop in the loop, the bits behind the tap only delay "
-            "the sequence instead of shaping it.")
+            "output. Try `q3` with `q2`, or `q3` with `q0`. Without "
+            "the last flip flop in the loop, the bits behind the tap "
+            "only delay the sequence instead of shaping it.")
 
         def feedback_gate():
             sch = g['Lfsr']().schematic
@@ -1270,7 +1268,7 @@ def gen_lesson10(g):
 
 
 # Lesson 11: 5-transistor OTA (bonus)
-# ----------------------------------
+# -----------------------------------
 
 def gen_lesson11(g):
     @generate_func

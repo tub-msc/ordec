@@ -3,38 +3,6 @@
     "type": "row",
     "content": [
       {
-        "type": "column",
-        "content": [
-          {
-            "type": "stack",
-            "content": [
-              {
-                "type": "component",
-                "size": "1fr",
-                "id": "",
-                "maximised": false,
-                "isClosable": true,
-                "reorderEnabled": true,
-                "title": "Course",
-                "componentType": "result",
-                "componentState": {
-                  "view": "lesson()",
-                  "course": true
-                }
-              }
-            ],
-            "size": "1fr",
-            "id": "",
-            "maximised": false,
-            "isClosable": true,
-            "activeItemIndex": 0
-          }
-        ],
-        "size": "50%",
-        "id": "",
-        "isClosable": true
-      },
-      {
         "type": "stack",
         "content": [
           {
@@ -44,14 +12,15 @@
             "maximised": false,
             "isClosable": true,
             "reorderEnabled": true,
-            "title": "DiffPair().layout",
+            "title": "Course",
             "componentType": "result",
             "componentState": {
-              "view": "DiffPair().layout"
+              "view": "lesson()",
+              "course": true
             }
           }
         ],
-        "size": "50%",
+        "size": "1fr",
         "id": "",
         "maximised": false,
         "isClosable": true,

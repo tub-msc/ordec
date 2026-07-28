@@ -23,7 +23,7 @@ cell DiffPair:
         port vss: .pos=(10,7)
 
         Nmos(w=1u, l=130n, m=2) m1: .pos=(3,6); .g -- inp; .d -- outn; .s -- tail; .b -- vss
-        Nmos(w=1u, l=130n, m=2) m2: .pos=(17,6); .g -- inn; .d -- outp; .s -- tail; .b -- vss; .orientation=MY
+        Nmos(w=1u, l=130n, m=2) m2: .pos=(17,6); .g -- inn; .d -- outp; .s -- tail; .b -- vss; .orientation=FlippedSouth
 
     viewgen layout -> Layout:
         .ref_layers = SG13G2().layers

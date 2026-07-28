@@ -26,7 +26,7 @@ import re
 import traceback
 
 from ordec.core import *
-from ordec.lib import Res, Ind, Cap, Gnd, Vdc
+from ordec.lib import Res, Ind, Cap
 
 
 def exception_text() -> str:
@@ -237,7 +237,6 @@ def gen_lesson4(g):
 
         label = "Each resistor placed at its specified position"
         try:
-            s = g['RNetwork']().schematic
             status = []
             all_ok = True
             for r_val, x, y in ((1000, 8, 12), (2000, 5, 6), (3000, 11, 6)):
@@ -410,7 +409,7 @@ def gen_lesson6(g):
             *Hint: the status bar of the schematic viewer shows X and Y
             coordinates of your mouse pointer when hovering.*
         """)
-        
+
         # The instance names are the user's choice, so the checks match
         # instances by their cell type, not by name.
         def instances(cls):
@@ -516,8 +515,8 @@ def gen_lesson7(g):
             **Turn the filter into a reusable cell: add the pins `vin`, `vout`
             and `vss` to the `symbol` of `Bandstop`. Add the corresponding ports
             to the `Bandstop` schematic (`vout` must be placed at (12, 18)).
-            Wire up R, L and C to the ports. In `BandstopTb`, Instantiate
-            `Bandstop` and connect it to the `vin`, `vout` and `vss`.**
+            Wire up R, L and C to the ports. In `BandstopTb`, instantiate
+            `Bandstop` and connect it to the `vin`, `vout` and `vss` nets.**
 
             Symbol pins are declared by direction:
 
@@ -536,8 +535,8 @@ def gen_lesson7(g):
             port vout: .pos=(12,18)
             ```
 
-            Wire the R, L and C pins to the port nets like in lesson 5,
-            e.g. `r1.p -- vin`. In the testbench, the subcell is then
+            Wire the R, L and C pins to the port nets, e.g.
+            `r1.p -- vin`. In the testbench, the subcell is then
             instantiated with its pins connected by name:
 
             ```
@@ -655,7 +654,7 @@ def gen_lesson8(g):
 
             **Parametrize the `Bandstop` cell and chain two of them in series.
             The first filter should have a notch frequency of 5 kHz, the second
-            of 50 kHz, resulting in a double-notch in the frequency plot**
+            of 50 kHz, resulting in a double-notch in the Bode plot.**
 
             1. Declare the parameter directly below `cell Bandstop:` as follows:
 
