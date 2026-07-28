@@ -182,25 +182,27 @@ def gen_lesson1(g):
     @generate_func
     def lesson() -> Report:
         report = Report()
-        report.markdown(
-            "Welcome to the **CMOS course**! All lessons use the open IHP "
-            "SG13G2 130nm technology at a **1.2 V** supply, from the "
-            "[ihp130 cell library](docs:cell_lib/ihp130.html).\n\n"
-            "We start with the transistor itself. The `MosCurves` "
-            "testbench is ready except for the two devices: one source "
-            "drives both gates, and each drain has a source of its own "
-            "so that the two currents can be measured separately.\n\n"
-            "1. **Import Nmos and Pmos from the ihp130 library** at the "
-            "first EDIT HERE marker.\n"
-            "2. **Place and wire the NMOS** `mn` at the second marker: "
-            "`w=1u`, `l=130n`, at position `(10,12)`.\n"
-            "3. **Place and wire the PMOS** `mp` the same way: `w=1u`, "
-            "`l=130n`, at position `(25,12)`.\n\n"
-            "Each check below tells you what it is missing, and its hint "
-            "spells out the pin connections. Once both transistors are "
-            "in, the `report_curves` view plots their output "
-            "characteristics."
-        )
+        report.markdown("""
+            Welcome to the **CMOS course**! All lessons use the open IHP
+            SG13G2 130nm technology at a **1.2 V** supply, from the [ihp130
+            cell library](docs:cell_lib/ihp130.html).
+
+            We start with the transistor itself. The `MosCurves` testbench
+            is ready except for the two devices: one source drives both
+            gates, and each drain has a source of its own so that the two
+            currents can be measured separately.
+
+            1. **Import Nmos and Pmos from the ihp130 library** at the first
+               EDIT HERE marker.
+            2. **Place and wire the NMOS** `mn` at the second marker:
+               `w=1u`, `l=130n`, at position `(10,12)`.
+            3. **Place and wire the PMOS** `mp` the same way: `w=1u`,
+               `l=130n`, at position `(25,12)`.
+
+            Each check below tells you what it is missing, and its hint
+            spells out the pin connections. Once both transistors are in,
+            the `report_curves` view plots their output characteristics.
+        """)
 
         import_hint = ("The library module is called `ordec.lib.ihp130`, "
             "and both cells are imported from there by name.")
@@ -295,27 +297,30 @@ def gen_lesson2(g):
     @generate_func
     def lesson() -> Report:
         report = Report()
-        report.markdown(
-            "A **current mirror** copies a current. The diode-connected "
-            "`n0` turns the **10 uA** reference into a gate voltage, and "
-            "`n1` shares that gate voltage. Both transistors are "
-            "identical today, so the copy is 1:1.\n\n"
-            "**Edit `n1` at the EDIT HERE marker so that the output "
-            "current becomes 100 uA (within 10 %). Leave `n0` "
-            "unchanged.**\n\n"
-            "The transistors have four parameters:\n\n"
-            "| Parameter | Meaning |\n"
-            "|---|---|\n"
-            "| `w` | total width of the device |\n"
-            "| `l` | channel length |\n"
-            "| `m` | number of identical devices in parallel |\n"
-            "| `ng` | number of gate fingers the width is split into |\n\n"
-            "Start by making `n1` ten times wider (`.$w=10u`) and read "
-            "the measured current in the last check: it overshoots. Try "
-            "to work out why, and experiment with the parameters above "
-            "to see which of them actually scale the current. The hints "
-            "are there if you get stuck."
-        )
+        report.markdown("""
+            A **current mirror** copies a current. The diode-connected `n0`
+            turns the **10 uA** reference into a gate voltage, and `n1`
+            shares that gate voltage. Both transistors are identical today,
+            so the copy is 1:1.
+
+            **Edit `n1` at the EDIT HERE marker so that the output current
+            becomes 100 uA (within 10 %). Leave `n0` unchanged.**
+
+            The transistors have four parameters:
+
+            | Parameter | Meaning |
+            |---|---|
+            | `w` | total width of the device |
+            | `l` | channel length |
+            | `m` | number of identical devices in parallel |
+            | `ng` | number of gate fingers the width is split into |
+
+            Start by making `n1` ten times wider (`.$w=10u`) and read the
+            measured current in the last check: it overshoots. Try to work
+            out why, and experiment with the parameters above to see which
+            of them actually scale the current. The hints are there if you
+            get stuck.
+        """)
         unit_hint = (
             "`n1` has to be ten copies of `n0`'s unit transistor, either "
             "as ten devices in parallel or as one device split into ten "
@@ -397,19 +402,20 @@ def gen_lesson3(g):
     @generate_func
     def lesson() -> Report:
         report = Report()
-        report.markdown(
-            "One transistor and one resistor make an **amplifier**: the "
-            "input modulates the drain current, and the load resistor "
-            "turns it back into a voltage swing at `vout`. The gain is "
-            "$|A| = g_m R_L$.\n\n"
-            "1. **Place and wire the transistor** `m0` at the EDIT HERE "
-            "marker: `l=130n` at position `(6,3)`, starting from `w=1u`.\n"
-            "2. **Increase its width `w` until the gain reaches 5.** A "
-            "wider transistor gives more gain, but also draws more bias "
-            "current, which pulls the operating point down.\n\n"
-            "`CsAmpTb` adds an AC signal of magnitude 1, so the gain "
-            "can be read directly in the `report_ac` view."
-        )
+        report.markdown("""
+            One transistor and one resistor make an **amplifier**: the input
+            modulates the drain current, and the load resistor turns it back
+            into a voltage swing at `vout`. The gain is $|A| = g_m R_L$.
+
+            1. **Place and wire the transistor** `m0` at the EDIT HERE
+               marker: `l=130n` at position `(6,3)`, starting from `w=1u`.
+            2. **Increase its width `w` until the gain reaches 5.** A wider
+               transistor gives more gain, but also draws more bias current,
+               which pulls the operating point down.
+
+            `CsAmpTb` adds an AC signal of magnitude 1, so the gain can be
+            read directly in the `report_ac` view.
+        """)
         op_hint = (
             "`vout` sits at 1.2 V while the transistor is too narrow to "
             "draw current, and collapses towards 0 V once it is too "
@@ -490,19 +496,21 @@ def gen_lesson4(g):
     @generate_func
     def lesson() -> Report:
         report = Report()
-        report.markdown(
-            "A **differential pair** amplifies the difference of two "
-            "inputs. Both transistors share one tail current source, "
-            "and the input difference decides how that current splits "
-            "between the two branches. The load resistors and the tail "
-            "current source are already in place.\n\n"
-            "**Add the two pair transistors at the EDIT HERE marker:** "
-            "`m1` at position `(4,7)` and `m2` at `(16,7)` with "
-            "`.orientation=FlippedSouth` so that its gate faces the "
-            "`inn` port, both `w=5u` and `l=130n`.\n\n"
-            "`DiffPairTb` sweeps `inp` around the **0.7 V** common mode of "
-            "`inn`. Watch the outputs cross in the `report_dc` view."
-        )
+        report.markdown("""
+            A **differential pair** amplifies the difference of two inputs.
+            Both transistors share one tail current source, and the input
+            difference decides how that current splits between the two
+            branches. The load resistors and the tail current source are
+            already in place.
+
+            **Add the two pair transistors at the EDIT HERE marker:** `m1`
+            at position `(4,7)` and `m2` at `(16,7)` with
+            `.orientation=FlippedSouth` so that its gate faces the `inn`
+            port, both `w=5u` and `l=130n`.
+
+            `DiffPairTb` sweeps `inp` around the **0.7 V** common mode of
+            `inn`. Watch the outputs cross in the `report_dc` view.
+        """)
         pair_hint = (
             "`m1`: `g` to `inp`, `d` to `outp`. `m2`: `g` to `inn`, `d` "
             "to `outn`. Both share `s` on `tail` and `b` on `vss` -- the "
@@ -594,17 +602,18 @@ def gen_lesson5(g):
     @generate_func
     def lesson() -> Report:
         report = Report()
-        report.markdown(
-            "Three differential pairs wired in a ring make an "
-            "**oscillator**: each stage inverts, so the signal never "
-            "settles and races around the loop.\n\n"
-            "But only if the loop inverts an odd number of times. This "
-            "ring latches instead -- `report_tran` shows two flat "
-            "lines.\n\n"
-            "**Find the wiring mistake at the EDIT HERE marker and fix "
-            "it.** The first check reports the number of inversions it "
-            "found, and its hint helps if you get stuck."
-        )
+        report.markdown("""
+            Three differential pairs wired in a ring make an **oscillator**:
+            each stage inverts, so the signal never settles and races around
+            the loop.
+
+            But only if the loop inverts an odd number of times. This ring
+            latches instead -- `report_tran` shows two flat lines.
+
+            **Find the wiring mistake at the EDIT HERE marker and fix it.**
+            The first check reports the number of inversions it found, and
+            its hint helps if you get stuck.
+        """)
         ring_hint = (
             "Look at the `inp` and `inn` pins of the three `DiffPair` "
             "instances and follow the signal once around the loop: one "
@@ -687,19 +696,21 @@ def gen_lesson6(g):
     @generate_func
     def lesson() -> Report:
         report = Report()
-        report.markdown(
-            "The **CMOS inverter** is the simplest logic gate: a PMOS pulls "
-            "the output high, an NMOS pulls it low.\n\n"
-            "1. **Build the inverter** at the EDIT HERE marker: the "
-            "NMOS `pd` at position `(3,2)` and the PMOS `pu` at `(3,8)`, "
-            "both `l=130n` and starting from `w=1u`.\n"
-            "2. **Size it so that the switching threshold lands at "
-            "0.6 V (+-3 %)**, half the supply, for symmetric noise "
-            "margins. Equal widths miss it, because the PMOS carries "
-            "only about half the NMOS current.\n\n"
-            "The `sim_dc` view shows the transfer curve. The threshold "
-            "is where it crosses vout = vin."
-        )
+        report.markdown("""
+            The **CMOS inverter** is the simplest logic gate: a PMOS pulls
+            the output high, an NMOS pulls it low.
+
+            1. **Build the inverter** at the EDIT HERE marker: the NMOS `pd`
+               at position `(3,2)` and the PMOS `pu` at `(3,8)`, both
+               `l=130n` and starting from `w=1u`.
+            2. **Size it so that the switching threshold lands at 0.6 V (+-3
+               %)**, half the supply, for symmetric noise margins. Equal
+               widths miss it, because the PMOS carries only about half the
+               NMOS current.
+
+            The `sim_dc` view shows the transfer curve. The threshold is
+            where it crosses vout = vin.
+        """)
         build_hint = (
             "Both transistors take `g` to `a` and `d` to `y`. The NMOS "
             "pulls down with `s` and `b` to `vss`, the PMOS pulls up "
@@ -799,21 +810,23 @@ def gen_lesson7(g):
     @generate_func
     def lesson() -> Report:
         report = Report()
-        report.markdown(
-            "At its switching threshold, an inverter is an **analog "
-            "amplifier**: both transistors are saturated and their $g_m$ "
-            "adds up. A feedback resistor from output to input forces "
-            "v(a) = v(y) and keeps the inverter biased exactly there, "
-            "while a capacitor couples the AC signal in.\n\n"
-            "**Add the feedback resistor `rf` at the EDIT HERE marker, "
-            "at position `(11,8)` between the inverter input and output, "
-            "and size it so that the gain reaches 10.**\n\n"
-            "Too small a resistance biases the inverter fine but ties "
-            "the output straight back to the input, so nothing gets "
-            "amplified.\n\n"
-            "The `report_ac` view shows the self-bias point and the gain "
-            "over frequency."
-        )
+        report.markdown("""
+            At its switching threshold, an inverter is an **analog
+            amplifier**: both transistors are saturated and their $g_m$ adds
+            up. A feedback resistor from output to input forces v(a) = v(y)
+            and keeps the inverter biased exactly there, while a capacitor
+            couples the AC signal in.
+
+            **Add the feedback resistor `rf` at the EDIT HERE marker, at
+            position `(11,8)` between the inverter input and output, and
+            size it so that the gain reaches 10.**
+
+            Too small a resistance biases the inverter fine but ties the
+            output straight back to the input, so nothing gets amplified.
+
+            The `report_ac` view shows the self-bias point and the gain over
+            frequency.
+        """)
         place_hint = ("`p` to `a` and `m` to `y`, so that the resistor "
             "bridges the inverter from its output back to its input. A "
             "resistor is symmetric, so the two pins may also go the "
@@ -932,19 +945,21 @@ def gen_lesson8(g):
     @generate_func
     def lesson() -> Report:
         report = Report()
-        report.markdown(
-            "**`Nand2`** already has the right symbol, but its schematic is "
-            "still the inverter from lesson 6, driven by `a` alone.\n\n"
-            "**Extend it at the EDIT HERE marker so that "
-            "`y = !(a & b)`.**\n\n"
-            "The output may only go low when both inputs are high, so "
-            "the two NMOS transistors go in series, which needs a new "
-            "net (`net n`) between them. The two PMOS transistors go in "
-            "parallel between `vdd` and `y`. Add the new transistors to "
-            "the `for` loop so that they get sized as well.\n\n"
-            "Each check applies one input combination and simulates the "
-            "operating point."
-        )
+        report.markdown("""
+            **`Nand2`** already has the right symbol, but its schematic is
+            still the inverter from lesson 6, driven by `a` alone.
+
+            **Extend it at the EDIT HERE marker so that `y = !(a & b)`.**
+
+            The output may only go low when both inputs are high, so the two
+            NMOS transistors go in series, which needs a new net (`net n`)
+            between them. The two PMOS transistors go in parallel between
+            `vdd` and `y`. Add the new transistors to the `for` loop so that
+            they get sized as well.
+
+            Each check applies one input combination and simulates the
+            operating point.
+        """)
         nand_hint = (
             "Lower NMOS: `s` to `vss`, `d` to the new net. Upper NMOS "
             "at (4,7): `s` to that net, `d` to `y`, with one input per "
@@ -1038,31 +1053,35 @@ def gen_lesson9(g):
     @generate_func
     def lesson() -> Report:
         report = Report()
-        report.markdown(
-            "Digital chips are usually not drawn transistor by "
-            "transistor. They are assembled from **standard cells**: "
-            "pre-designed, pre-verified gates, all on a common height "
-            "grid so that place-and-route tools can tile them into rows. "
-            "This lesson uses one straight from the PDK.\n\n"
-            "**Instantiate the XOR2 cell as `dut` at position `(18,12)` "
-            "and connect it to the testbench.**\n\n"
-            "The cell is already loaded from the library and bound to "
-            "the name `Xor2`, so it is instantiated like any other cell. "
-            "Its pins are named by the library, not by you, and they are "
-            "upper case. Open the `Xor2` symbol to look them up -- and "
-            "note that this cell calls its output `X`, while most other "
-            "SG13G2 cells call it `Y`.\n\n"
-            "### Layout tour\n\n"
-            "The second result tab shows the layout of the real "
-            "`sg13g2_xor2_1` cell, loaded from the PDK via "
-            "[ExtLibrary](docs:ref/extlibrary.html). Things to spot: the "
-            "`vdd` and `vss` rails at top and bottom, shared with the "
-            "neighboring rows, the N-well covering the upper half where "
-            "the PMOS transistors sit, and the vertical polysilicon gate "
-            "stripes. An XOR needs far more transistors than the gates "
-            "of the previous lessons, which is why the cell is so much "
-            "wider. Layout design is the topic of the layout course!"
-        )
+        report.markdown("""
+            Digital chips are usually not drawn transistor by transistor.
+            They are assembled from **standard cells**: pre-designed,
+            pre-verified gates, all on a common height grid so that
+            place-and-route tools can tile them into rows. This lesson uses
+            one straight from the PDK.
+
+            **Instantiate the XOR2 cell as `dut` at position `(18,12)` and
+            connect it to the testbench.**
+
+            The cell is already loaded from the library and bound to the
+            name `Xor2`, so it is instantiated like any other cell. Its pins
+            are named by the library, not by you, and they are upper case.
+            Open the `Xor2` symbol to look them up -- and note that this
+            cell calls its output `X`, while most other SG13G2 cells call it
+            `Y`.
+
+            ### Layout tour
+
+            The second result tab shows the layout of the real
+            `sg13g2_xor2_1` cell, loaded from the PDK via
+            [ExtLibrary](docs:ref/extlibrary.html). Things to spot: the
+            `vdd` and `vss` rails at top and bottom, shared with the
+            neighboring rows, the N-well covering the upper half where the
+            PMOS transistors sit, and the vertical polysilicon gate stripes.
+            An XOR needs far more transistors than the gates of the previous
+            lessons, which is why the cell is so much wider. Layout design
+            is the topic of the layout course!
+        """)
         dut_hint = (
             "Each pin goes to the testbench net of the same name, and "
             "`VDD` and `VSS` must be connected too -- in a real chip the "
@@ -1149,27 +1168,28 @@ def gen_lesson10(g):
     @generate_func
     def lesson() -> Report:
         report = Report()
-        report.markdown(
-            "Time to build something out of standard cells. Four flip "
-            "flops are already chained into a shift register, clocked "
-            "and reset by the two sources on the left. The input of the "
-            "first flip flop is tied to a constant zero, so after the "
-            "reset the register just sits there.\n\n"
-            "Feed the outputs of the last flip flops back into the "
-            "first one through a gate and the register turns into a "
-            "**linear feedback shift "
-            "register**: it walks through a long, scrambled sequence of "
-            "states that looks random but repeats exactly. Real chips "
-            "use them to generate test patterns and to scramble data.\n\n"
-            "**Replace the tie cell at the EDIT HERE marker by a "
-            "feedback gate at the same position `(64,14)`, so that the "
-            "four bits run through all 15 states before repeating.**\n\n"
-            "Two things to work out: which gate, `Xor2` or `Xnor2`, and "
-            "which two flip flop outputs to tap. Remember that the reset "
-            "leaves every flip flop at zero. Watch the bits in the "
-            "`report_tran` view and the measured sequence length in the "
-            "checks below."
-        )
+        report.markdown("""
+            Time to build something out of standard cells. Four flip flops
+            are already chained into a shift register, clocked and reset by
+            the two sources on the left. The input of the first flip flop is
+            tied to a constant zero, so after the reset the register just
+            sits there.
+
+            Feed the outputs of the last flip flops back into the first one
+            through a gate and the register turns into a **linear feedback
+            shift register**: it walks through a long, scrambled sequence of
+            states that looks random but repeats exactly. Real chips use
+            them to generate test patterns and to scramble data.
+
+            **Replace the tie cell at the EDIT HERE marker by a feedback
+            gate at the same position `(64,14)`, so that the four bits run
+            through all 15 states before repeating.**
+
+            Two things to work out: which gate, `Xor2` or `Xnor2`, and which
+            two flip flop outputs to tap. Remember that the reset leaves
+            every flip flop at zero. Watch the bits in the `report_tran`
+            view and the measured sequence length in the checks below.
+        """)
         place_hint = (
             "`A` and `B` come from flip flop outputs, the output pin "
             "drives `fb` (the D input of the first flip flop), and "
@@ -1254,29 +1274,32 @@ def gen_lesson11(g):
     @generate_func
     def lesson() -> Report:
         report = Report()
-        report.markdown(
-            "The capstone is a **5-transistor OTA**: it combines the "
-            "current mirror of lesson 2 with the differential pair of "
-            "lesson 4, which is exactly the circuit you start from "
-            "here. A PMOS mirror in place of the "
-            "resistor loads folds the signal current of one branch onto "
-            "the other, which doubles the gain, and it lets the output "
-            "swing almost from rail to rail.\n\n"
-            "**Replace the resistor loads by a PMOS current mirror at "
-            "the EDIT HERE marker and size the amplifier to meet all "
-            "four specs:**\n\n"
-            "| Spec | Requirement |\n"
-            "|---|---|\n"
-            "| DC gain | >= 12 (21.6 dB) |\n"
-            "| Bandwidth | >= 2.5 MHz |\n"
-            "| Supply current | <= 50 uA |\n"
-            "| Output swing | >= 0.8 V |\n\n"
-            "The specs pull against each other, which is what makes "
-            "this a design task. The hints of the failing checks point "
-            "at the topology and at the sizing knobs.\n\n"
-            "The gain is the steepest slope of the DC transfer curve in "
-            "the `report_dc` view."
-        )
+        report.markdown("""
+            The capstone is a **5-transistor OTA**: it combines the current
+            mirror of lesson 2 with the differential pair of lesson 4, which
+            is exactly the circuit you start from here. A PMOS mirror in
+            place of the resistor loads folds the signal current of one
+            branch onto the other, which doubles the gain, and it lets the
+            output swing almost from rail to rail.
+
+            **Replace the resistor loads by a PMOS current mirror at the
+            EDIT HERE marker and size the amplifier to meet all four
+            specs:**
+
+            | Spec | Requirement |
+            |---|---|
+            | DC gain | >= 12 (21.6 dB) |
+            | Bandwidth | >= 2.5 MHz |
+            | Supply current | <= 50 uA |
+            | Output swing | >= 0.8 V |
+
+            The specs pull against each other, which is what makes this a
+            design task. The hints of the failing checks point at the
+            topology and at the sizing knobs.
+
+            The gain is the steepest slope of the DC transfer curve in the
+            `report_dc` view.
+        """)
         ota_hint = (
             "Replace `rl_p` and `rl_n` by two PMOS, both w=5u. `m3` at "
             "(8,14) is diode-connected: `g` and `d` both to `outx`, "
