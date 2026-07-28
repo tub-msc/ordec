@@ -1199,6 +1199,7 @@ export class ResultViewer {
                 <div class="reswrapper">
                     <div class="refreshing"><span class="refresh-spinner" aria-hidden="true"></span><span class="refresh-status">Refreshing view…</span><span class="refresh-progress"><span class="refresh-progress-fill"></span></span><span class="refresh-pct"></span><span class="refresh-detail"></span><button class="refresh-cancel" title="Cancel view generation">✕</button></div>
                     <div class="refreshable"><button><svg class="refresh-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8 A5 5 0 1 1 11.5 4.5"/><path d="M11.5 1.5 L11.5 4.5 L8.5 4.5"/></svg>Refresh</button><span class="refreshable-text">View is out of date.</span></div>
+                    <div class="builderror"><span class="builderror-text"></span><button class="builderror-toggle">Show details</button></div>
                     <div class="rescontent" tabindex="1"></div>
                     <div class="resexception"></div>
                     <div class="resview-empty">Select a view from the dropdown above</div>
@@ -1218,6 +1219,15 @@ export class ResultViewer {
         this.refreshDetail = container.element.querySelector(".refresh-detail");
         this.refreshCancel = container.element.querySelector(".refresh-cancel");
         this.refreshableText = container.element.querySelector(".refreshable-text");
+        this.resOverlayError = container.element.querySelector(".builderror");
+        this.buildErrorText = container.element.querySelector(".builderror-text");
+        this.buildErrorToggle = container.element.querySelector(".builderror-toggle");
+        this.buildErrorToggle.onclick =
+            () => this.setBuildErrorExpanded(!this.buildErrorExpanded);
+        // Course viewer error state (see showBuildError): the full traceback
+        // and whether it is expanded over the lesson report.
+        this.buildError = null;
+        this.buildErrorExpanded = false;
         container.element.querySelector(".refreshable button").onclick =
             () => this.refreshOnClick();
         this.refreshCancel.onclick = () => this.cancelOnClick();
@@ -1306,6 +1316,7 @@ export class ResultViewer {
     showRefreshOverlay(config) {
         this.resOverlayRefreshable.style.display = (config == 'refreshable')?'':'none';
         this.resOverlayRefreshing.style.display = (config == 'refreshing')?'':'none';
+        this.resOverlayError.style.display = (config == 'error')?'':'none';
         if (config == 'refreshing') {
             // Reset progress state; updateProgress() fills it in.
             this.refreshStatus.textContent = 'Refreshing view…';
@@ -1317,7 +1328,12 @@ export class ResultViewer {
         // When a status bar is shown it occupies a fixed-height strip at the top
         // of the view; this class insets the content below it (see style.css).
         this.resOverlayRefreshing.parentElement.classList.toggle(
-            'refreshbar-active', config == 'refreshing' || config == 'refreshable');
+            'refreshbar-active',
+            config == 'refreshing' || config == 'refreshable' || config == 'error');
+        // Recolours the strip's top edge (the view head border) to the error
+        // colour, like refreshbar-active does for the refresh colour.
+        this.resOverlayRefreshing.parentElement.classList.toggle(
+            'errorbar-active', config == 'error');
     }
 
     updateProgress(msg) {
@@ -1505,9 +1521,14 @@ export class ResultViewer {
         this.updateViewList(freshViewlist);
         if (this.client.exception) {
             // In this case, the exception was generated during module evaluation:
-            this.showRefreshOverlay(null);
-            this.showException(this.client.exception);
+            if (this.courseMode) {
+                this.showBuildError(this.client.exception);
+            } else {
+                this.showRefreshOverlay(null);
+                this.showException(this.client.exception);
+            }
         } else {
+            this.clearBuildError();
             this.showException(null);
             this.invalidate();
             this.updateOverlay();
@@ -1554,6 +1575,43 @@ export class ResultViewer {
         }
     }
 
+    // Course viewer only: non-destructive error display. A build or check
+    // error must not wipe the lesson() report the student is following (the
+    // common case is a transient syntax error while typing), so the last good
+    // report stays visible and the error appears as a strip; the full
+    // traceback expands over the report on demand.
+    showBuildError(text) {
+        this.buildError = text;
+        // Summary for the strip: the traceback's exception line, e.g.
+        // "SyntaxError: invalid syntax (<webeditor>, line 12)". Usually the
+        // last line, but exceptions with multi-line messages (e.g. ORD syntax
+        // errors) have the message's remaining lines after it, so search for
+        // the last line that looks like an exception line.
+        const lines = text.trim().split('\n');
+        const summary = lines.findLast(
+            l => /^[A-Za-z_][\w.]*(Error|Exception)\b/.test(l));
+        this.buildErrorText.textContent = summary || lines[lines.length - 1];
+        this.showRefreshOverlay('error');
+        // Keep the details open across consecutive failed builds. With no
+        // previously rendered report there is nothing to preserve, so open
+        // them right away.
+        this.setBuildErrorExpanded(this.buildErrorExpanded || !this.view);
+    }
+
+    setBuildErrorExpanded(expanded) {
+        this.buildErrorExpanded = expanded;
+        this.buildErrorToggle.textContent =
+            expanded ? 'Hide details' : 'Show details';
+        this.showException(expanded ? this.buildError : null);
+    }
+
+    clearBuildError() {
+        if (this.buildError !== null) {
+            this.buildError = null;
+            this.setBuildErrorExpanded(false);
+        }
+    }
+
     updateView(msg) {
         if (msg.cancelled) {
             // Terminal state of a cancelled generation: the view stays out
@@ -1576,8 +1634,16 @@ export class ResultViewer {
         try {
             if(msg.exception) {
                 // In this case, the exception was generated during view generation:
-                this.showException(msg.exception);
+                if (this.courseMode) {
+                    // Shows the error strip; updateOverlay() must not run
+                    // here, it would hide the strip again (view up to date).
+                    this.showBuildError(msg.exception);
+                } else {
+                    this.showException(msg.exception);
+                    this.updateOverlay();
+                }
             } else {
+                this.clearBuildError();
                 this.showException(null);
                 const viewClass = viewClassOf[msg.type];
                 if(!viewClass) {
@@ -1592,9 +1658,8 @@ export class ResultViewer {
                     this.view.glContainer = this.container;
                     this.view.update(msg.data);
                 }
+                this.updateOverlay();
             }
-
-            this.updateOverlay();
         } finally {
             if (this.courseMode) {
                 // Feed the result (pass/fail elements) back to the course

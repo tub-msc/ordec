@@ -374,6 +374,50 @@ def test_course(web):
     state = course_nav_state(web)
     assert state['lessonsLocked'] == locked_after(4)
 
+    # A syntax error while editing must not wipe the lesson report: the
+    # Course panel keeps the last good report and shows the error strip; the
+    # traceback appears only behind the details toggle (see resultviewer.js
+    # showBuildError).
+    def course_error_state(web):
+        return web.driver.execute_script("""
+            const rv = window.courseController.courseViewer;
+            const shown = (el) => getComputedStyle(el).display !== 'none';
+            return {
+                strip: shown(rv.resOverlayError),
+                stripText: rv.buildErrorText.innerText,
+                content: shown(rv.resContent),
+                exception: shown(rv.resException),
+                exceptionText: rv.resException.innerText,
+            };
+        """)
+
+    web.driver.execute_script(
+        "window.courseController.editor.editor.setValue(arguments[0]);",
+        sol + "\ndef broken(:\n")
+    wait_for_course_marker(web, 'check error')
+    state = course_error_state(web)
+    assert state['strip'] and 'SyntaxError' in state['stripText']
+    assert state['content'] and not state['exception']
+
+    # Expanding the details shows the full traceback in place of the report;
+    # collapsing restores the report.
+    web.driver.execute_script(
+        "window.courseController.courseViewer.buildErrorToggle.click();")
+    state = course_error_state(web)
+    assert state['exception'] and not state['content']
+    assert 'SyntaxError' in state['exceptionText']
+    web.driver.execute_script(
+        "window.courseController.courseViewer.buildErrorToggle.click();")
+    state = course_error_state(web)
+    assert state['content'] and not state['exception']
+
+    # Fixing the source clears the strip and re-checks the lesson.
+    web.driver.execute_script(
+        "window.courseController.editor.editor.setValue(arguments[0]);", sol)
+    wait_for_course_marker(web, 'solved')
+    state = course_error_state(web)
+    assert not state['strip'] and state['content'] and not state['exception']
+
     # Progress (incl. edited lesson 3 source) must survive a reload.
     web.navigate('app.html#course=getting_started')
     web.wait_for_ready()

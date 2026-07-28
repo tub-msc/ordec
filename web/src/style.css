@@ -544,7 +544,7 @@ body.theme-dark .resviewhead button:hover {
    styled like the course callouts (soft tinted background + matching
    foreground/border). --overlay-bg/--overlay-fg are set per variant; the
    spinner, icon and button all inherit the foreground colour. */
-.refreshing, .refreshable {
+.refreshing, .refreshable, .builderror {
     position: absolute;
     top: 0;
     left: 0;
@@ -568,10 +568,19 @@ body.theme-dark .resviewhead button:hover {
     --overlay-bg: var(--color-refreshable-bg);
     --overlay-fg: var(--color-refreshable-fg);
 }
+/* Course viewer build/check error strip (see resultviewer.js showBuildError):
+   shown instead of the traceback replacing the lesson report. */
+.builderror {
+    --overlay-bg: var(--color-fail-bg);
+    --overlay-fg: var(--color-fail-fg);
+}
 /* Like the course callout, the bar has no top border of its own: its top edge
    is the view selector's bottom border, recoloured to the overlay colour. */
 .resview:has(.reswrapper.refreshbar-active) .resviewhead {
     border-bottom-color: var(--color-refreshable-fg);
+}
+.resview:has(.reswrapper.errorbar-active) .resviewhead {
+    border-bottom-color: var(--color-fail-fg);
 }
 /* Theme-aware CSS spinner (replaces the old loading.gif). */
 .refresh-spinner {
@@ -618,10 +627,19 @@ body.theme-dark .resviewhead button:hover {
     white-space: nowrap;
     opacity: 0.75;
 }
+.builderror-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.builderror-toggle {
+    margin-left: auto;
+    flex-shrink: 0;
+}
 /* Same shape as the DRC viewer's "Deselect" button, recoloured to the
    overlay's own background and border (foreground) colours. */
 .refreshable button,
-.refresh-cancel {
+.refresh-cancel,
+.builderror-toggle {
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -633,6 +651,7 @@ body.theme-dark .resviewhead button:hover {
     color: var(--overlay-fg);
 }
 .refreshable button:hover,
+.builderror-toggle:hover,
 .refresh-cancel:hover:not(:disabled) {
     background: color-mix(in srgb, var(--overlay-fg) 12%, var(--overlay-bg));
 }

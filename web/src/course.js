@@ -736,7 +736,7 @@ export class CourseController {
         }[this.reportStatus];
         marker.title = (this.reportStatus === 'error')
             ? 'The lesson source or its checks raised an exception. See the '
-                + 'report view for details.'
+                + 'error bar in the Course panel for details.'
             : 'Lesson check status. See the report view for details.';
     }
 }
