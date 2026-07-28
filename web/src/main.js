@@ -403,6 +403,36 @@ autoRefreshToggle.onclick = () => {
 window.ordecClient = client;
 window.viewEventBus = viewEventBus;
 
+// Opens itemConfig beside sourceStack by replacing sourceStack in its parent
+// (a column or the ground) with a new row [sourceStack, itemConfig]. When the
+// parent is a row, the caller inserts into it directly instead.
+function wrapStackInRow(sourceStack, itemConfig) {
+    const stackParent = sourceStack.parent;
+    const stackIndex = stackParent.contentItems.indexOf(sourceStack);
+    const rowConfig = {
+        type: 'row',
+        content: [itemConfig]
+    };
+    if (stackParent.isColumn) {
+        // Insert the wrapper row before removing sourceStack: removing first
+        // can leave the column with a single child, which GoldenLayout
+        // condenses away (the column is replaced by that child and
+        // destroyed), losing the subsequent addItem and the removed stack.
+        stackParent.addItem(rowConfig, stackIndex);
+        const newRow = stackParent.contentItems[stackIndex];
+        stackParent.removeChild(sourceStack, true);
+        newRow.addChild(sourceStack, 0);
+    } else {
+        // Ground item: sourceStack is the layout root. A ground holds only a
+        // single child, so here the root must be removed first (addItem on a
+        // non-empty ground delegates into the existing root instead).
+        stackParent.removeChild(sourceStack, true);
+        stackParent.addItem(rowConfig, stackIndex);
+        const newRow = stackParent.contentItems[stackIndex];
+        newRow.addChild(sourceStack, 0);
+    }
+}
+
 function openOrActivateView(data) {
     const view = data.view;
 
@@ -439,17 +469,7 @@ function openOrActivateView(data) {
         const index = stackParent.contentItems.indexOf(sourceStack) + 1;
         stackParent.addItem(componentConfig, index);
     } else {
-        const stackIndex = stackParent.contentItems.indexOf(sourceStack);
-        stackParent.removeChild(sourceStack, true);
-
-        const rowConfig = {
-            type: 'row',
-            content: [componentConfig]
-        };
-        stackParent.addItem(rowConfig, stackIndex);
-
-        const newRow = stackParent.contentItems[stackIndex];
-        newRow.addChild(sourceStack, 0);
+        wrapStackInRow(sourceStack, componentConfig);
     }
 }
 
@@ -526,17 +546,7 @@ viewEventBus.on('lvs:request-open-views', (data) => {
         const index = stackParent.contentItems.indexOf(sourceStack) + 1;
         stackParent.addItem(itemToAdd, index);
     } else {
-        const stackIndex = stackParent.contentItems.indexOf(sourceStack);
-        stackParent.removeChild(sourceStack, true);
-
-        const rowConfig = {
-            type: 'row',
-            content: [itemToAdd]
-        };
-        stackParent.addItem(rowConfig, stackIndex);
-
-        const newRow = stackParent.contentItems[stackIndex];
-        newRow.addChild(sourceStack, 0);
+        wrapStackInRow(sourceStack, itemToAdd);
     }
 });
 
