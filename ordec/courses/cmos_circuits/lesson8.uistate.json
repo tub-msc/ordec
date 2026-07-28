@@ -68,10 +68,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "MosCurves(vgs='600m').schematic",
+                "title": "Nand2().schematic",
                 "componentType": "result",
                 "componentState": {
-                  "view": "MosCurves(vgs='600m').schematic"
+                  "view": "Nand2().schematic"
                 }
               }
             ],
@@ -91,10 +91,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "MosCurves(vgs='600m').report_curves",
+                "title": "Nand2Tb().sim_op",
                 "componentType": "result",
                 "componentState": {
-                  "view": "MosCurves(vgs='600m').report_curves"
+                  "view": "Nand2Tb().sim_op"
                 }
               }
             ],

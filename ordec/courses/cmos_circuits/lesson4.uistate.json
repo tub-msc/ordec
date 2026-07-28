@@ -68,10 +68,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "MosCurves(vgs='600m').schematic",
+                "title": "DiffPair().schematic",
                 "componentType": "result",
                 "componentState": {
-                  "view": "MosCurves(vgs='600m').schematic"
+                  "view": "DiffPair().schematic"
                 }
               }
             ],
@@ -91,10 +91,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "MosCurves(vgs='600m').report_curves",
+                "title": "DiffPairTb().report_dc",
                 "componentType": "result",
                 "componentState": {
-                  "view": "MosCurves(vgs='600m').report_curves"
+                  "view": "DiffPairTb().report_dc"
                 }
               }
             ],

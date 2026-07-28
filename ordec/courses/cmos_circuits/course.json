@@ -3,9 +3,69 @@
   "lessons": [
     {
       "file": "lesson1.ord",
-      "title": "Coming soon",
-      "description": "This course is under construction.",
+      "title": "MOS transistor curves",
+      "description": "Place the SG13G2 NMOS and PMOS transistors and study their ID over VGS curves.",
       "lesson_gen": "gen_lesson1"
+    },
+    {
+      "file": "lesson2.ord",
+      "title": "Current mirror",
+      "description": "Build a current mirror with 10x current amplification.",
+      "lesson_gen": "gen_lesson2"
+    },
+    {
+      "file": "lesson3.ord",
+      "title": "Common-source amplifier",
+      "description": "Size a single-transistor amplifier for a voltage gain of 5.",
+      "lesson_gen": "gen_lesson3"
+    },
+    {
+      "file": "lesson4.ord",
+      "title": "Differential pair",
+      "description": "Build a resistively loaded differential pair.",
+      "lesson_gen": "gen_lesson4"
+    },
+    {
+      "file": "lesson5.ord",
+      "title": "Differential ring oscillator",
+      "description": "Wire three differential pairs into a ring oscillator.",
+      "lesson_gen": "gen_lesson5"
+    },
+    {
+      "file": "lesson6.ord",
+      "title": "CMOS inverter",
+      "description": "Build an inverter and center its switching threshold.",
+      "lesson_gen": "gen_lesson6"
+    },
+    {
+      "file": "lesson7.ord",
+      "title": "Self-biased inverter",
+      "description": "Turn the inverter into an AC amplifier with resistive feedback.",
+      "lesson_gen": "gen_lesson7"
+    },
+    {
+      "file": "lesson8.ord",
+      "title": "NAND2 gate",
+      "description": "Extend the inverter into a NAND2 gate.",
+      "lesson_gen": "gen_lesson8"
+    },
+    {
+      "file": "lesson9.ord",
+      "title": "Standard cells",
+      "description": "Instantiate an XOR2 gate from the SG13G2 standard cell library and tour its layout.",
+      "lesson_gen": "gen_lesson9"
+    },
+    {
+      "file": "lesson10.ord",
+      "title": "Pseudo-random generator",
+      "description": "Close the feedback of a shift register built from standard cells and turn it into an LFSR.",
+      "lesson_gen": "gen_lesson10"
+    },
+    {
+      "file": "lesson11.ord",
+      "title": "Bonus: 5-transistor OTA",
+      "description": "Build an OTA meeting gain, current and swing specs.",
+      "lesson_gen": "gen_lesson11"
     }
   ]
 }

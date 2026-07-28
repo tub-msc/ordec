@@ -888,7 +888,9 @@ body:not(.show-debug) .debug {
     line-height: normal;
 }
 /* Both inline code spans and code blocks match the editor font size. */
-.report-markdown code {
+.report-markdown code,
+.report-passfail-instructions code,
+.report-passfail-hint code {
     font-family: var(--font-mono);
     font-size: var(--font-size-code);
 }
@@ -898,7 +900,9 @@ body:not(.show-debug) .debug {
     line-height: 0;
 }
 /* Inline code as a subtle chip. */
-.report-markdown :not(pre) > code {
+.report-markdown :not(pre) > code,
+.report-passfail-instructions :not(pre) > code,
+.report-passfail-hint :not(pre) > code {
     background: var(--color-md-code-bg);
     padding: 0 0.25em;
     border-radius: 3px;
@@ -1082,6 +1086,10 @@ body:not(.show-debug) .debug {
 .report-passfail-hint {
     margin-top: 3px;
     font-style: italic;
+}
+/* The hint text is italic, the identifiers inside it should not be. */
+.report-passfail-hint code {
+    font-style: normal;
 }
 
 /* -- Course mode --------------------------------------------------- */

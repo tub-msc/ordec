@@ -107,6 +107,22 @@ function simpleReportElementClass(renderNode) {
     };
 }
 
+// Appends plain text to el, turning `...` spans into inline code elements.
+// PassFail instructions and hints are plain text rather than markdown, but
+// backticks around pin, net and instance names make them far easier to read.
+// Built from text nodes, so the text is never interpreted as HTML.
+function appendTextWithCode(el, text) {
+    text.split('`').forEach((part, i) => {
+        if (i % 2) {
+            const code = document.createElement('code');
+            code.innerText = part;
+            el.appendChild(code);
+        } else if (part) {
+            el.appendChild(document.createTextNode(part));
+        }
+    });
+}
+
 const reportElementClassOf = {
     markdown: simpleReportElementClass((msgData) => {
         const section = document.createElement('div');
@@ -179,7 +195,7 @@ const reportElementClassOf = {
                 if (msgData.instructions) {
                     const instructions = document.createElement('div');
                     instructions.classList.add('report-passfail-instructions');
-                    instructions.innerText = msgData.instructions;
+                    appendTextWithCode(instructions, msgData.instructions);
                     root.appendChild(instructions);
                 }
 
@@ -188,7 +204,7 @@ const reportElementClassOf = {
                     hintBtn.classList.add('report-passfail-hintbtn');
                     const hint = document.createElement('div');
                     hint.classList.add('report-passfail-hint');
-                    hint.innerText = msgData.hint;
+                    appendTextWithCode(hint, msgData.hint);
                     const applyHintVisibility = () => {
                         hint.style.display = this.hintVisible ? '' : 'none';
                         hintBtn.innerText = this.hintVisible

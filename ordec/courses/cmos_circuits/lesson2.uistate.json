@@ -68,10 +68,23 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "MosCurves(vgs='600m').schematic",
+                "title": "CurrentMirror().schematic",
                 "componentType": "result",
                 "componentState": {
-                  "view": "MosCurves(vgs='600m').schematic"
+                  "view": "CurrentMirror().schematic"
+                }
+              },
+              {
+                "type": "component",
+                "size": "1fr",
+                "id": "",
+                "maximised": false,
+                "isClosable": true,
+                "reorderEnabled": true,
+                "title": "CurrentMirrorTb().schematic",
+                "componentType": "result",
+                "componentState": {
+                  "view": "CurrentMirrorTb().schematic"
                 }
               }
             ],
@@ -91,10 +104,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "MosCurves(vgs='600m').report_curves",
+                "title": "CurrentMirrorTb().sim_op",
                 "componentType": "result",
                 "componentState": {
-                  "view": "MosCurves(vgs='600m').report_curves"
+                  "view": "CurrentMirrorTb().sim_op"
                 }
               }
             ],
