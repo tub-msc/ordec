@@ -320,9 +320,10 @@ courses_testdata = {
             Pmos pu: .$w=2u; .$l=130n; .g -- a; .d -- y; .s -- vdd; .b -- vdd; .pos=(3,8)
             """),
         ]),
-        # Lesson 7: self-biased inverter. Self-biasing works at any rf, so
-        # the operating point check passes even on the skeleton. The rf
-        # value check flips before the AC simulation confirms the gain.
+        # Lesson 7: self-biased inverter. The student places the feedback
+        # resistor, so the skeleton fails everything: without it the input
+        # node floats and the sim checks report a blocked state. Any rf
+        # from 100k upwards then satisfies the gain check.
         LessonTestdata(passfails=3, solution=[
             InsertSolution("""
             # EDIT HERE
@@ -380,7 +381,8 @@ courses_testdata = {
         # Lesson 11: 5-transistor OTA bonus. The mirror-structure check
         # comes first. The resistor-loaded starting point misses the gain
         # and swing specs (the 30k loads cannot swing rail to rail) but
-        # meets the current budget.
+        # meets the current budget and, with its low gain, trivially the
+        # bandwidth spec.
         LessonTestdata(passfails=5,
             skeleton_passed=[False, False, False, True, True],
             solution=[

@@ -202,7 +202,7 @@ def gen_lesson1(g):
             "characteristics."
         )
 
-        import_hint = ("The library module is called ordec.lib.ihp130, "
+        import_hint = ("The library module is called `ordec.lib.ihp130`, "
             "and both cells are imported from there by name.")
         imported = (g.get('Nmos') is ihp130.Nmos
             and g.get('Pmos') is ihp130.Pmos)
@@ -946,8 +946,9 @@ def gen_lesson8(g):
             "operating point."
         )
         nand_hint = (
-            "Lower NMOS: `s` to `vss`, `d` to the new net. Upper NMOS: "
-            "`s` to that net, `d` to `y`, with one input per gate. The "
+            "Lower NMOS: `s` to `vss`, `d` to the new net. Upper NMOS "
+            "at (4,7): `s` to that net, `d` to `y`, with one input per "
+            "gate. The "
             "second PMOS goes next to the first at (12,13) with `s` to "
             "`vdd`, `d` to `y`, `g` to `b`. Transistors left out of the "
             "sizing loop keep the library default l=1u.")
@@ -1154,8 +1155,9 @@ def gen_lesson10(g):
             "and reset by the two sources on the left. The input of the "
             "first flip flop is tied to a constant zero, so after the "
             "reset the register just sits there.\n\n"
-            "Feed the last flip flops back into the first one through a "
-            "gate and the register turns into a **linear feedback shift "
+            "Feed the outputs of the last flip flops back into the "
+            "first one through a gate and the register turns into a "
+            "**linear feedback shift "
             "register**: it walks through a long, scrambled sequence of "
             "states that looks random but repeats exactly. Real chips "
             "use them to generate test patterns and to scramble data.\n\n"
@@ -1262,7 +1264,7 @@ def gen_lesson11(g):
             "swing almost from rail to rail.\n\n"
             "**Replace the resistor loads by a PMOS current mirror at "
             "the EDIT HERE marker and size the amplifier to meet all "
-            "three specs:**\n\n"
+            "four specs:**\n\n"
             "| Spec | Requirement |\n"
             "|---|---|\n"
             "| DC gain | >= 12 (21.6 dB) |\n"
