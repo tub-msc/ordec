@@ -7,11 +7,11 @@ from ordec.lib.generic_mos import Nmos
 cell DiffPair:
     """Differential pair block: two pins on the north and west sides."""
     viewgen symbol -> Symbol:
-        input inp: .align=West
-        input inn: .align=West
+        input inp
+        input inn
         output outp: .align=North
         output outn: .align=North
-        inout tail: .align=South
+        inout tail
 
 cell LoadPair:
     """Active load block: two pins on the south side."""
@@ -23,20 +23,20 @@ cell LoadPair:
 cell Amp:
     viewgen symbol -> Symbol:
         inout vdd: .align=North
-        inout vss: .align=South
-        input ibias: .align=West
-        input inp: .align=West
-        input inn: .align=West
-        output outp: .align=East
-        output outn: .align=East
+        inout vss
+        input ibias
+        input inp
+        input inn
+        output outp
+        output outn
 
     viewgen schematic -> Schematic:
-        port inp : .align=East
-        port inn : .align=East
-        port ibias : .align=East
-        port outp: .align=West
-        port outn: .align=West
-        port vdd: .align=South
+        port inp
+        port inn
+        port ibias
+        port outp
+        port outn
+        port vdd
         net vss
 
         with Col(gap=4):
@@ -52,7 +52,7 @@ cell Amp:
                 Nmos tail:
                     .g -- ibias
                     .b -- vss
-                port vss: .align=North
+                port vss
 
         # Two parallel junctions between load and diff pair: more than one
         # current path, so this is beyond Series and wired explicitly.

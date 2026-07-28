@@ -4,20 +4,20 @@ from ordec.lib.ihp130 import Nmos
 
 cell DiffPair:
     viewgen symbol -> Symbol:
-        input inp: .align=West
-        input inn: .align=West
-        input bias: .align=West
-        output outp: .align=East
-        output outn: .align=East
+        input inp
+        input inn
+        input bias
+        output outp
+        output outn
         inout vdd: .align=North
-        inout vss: .align=South
+        inout vss
 
     viewgen schematic -> Schematic:
-        port inp: .align=East; .pos=(1,9)
+        port inp: .pos=(1,9)
         port inn: .align=West; .pos=(19,9)
-        port bias: .align=East; .pos=(1,2)
+        port bias: .pos=(1,2)
         port outp: .align=East; .pos=(1,13)
-        port outn: .align=West; .pos=(19,13)
+        port outn: .pos=(19,13)
         port vdd: .align=East; .pos=(1,19)
         port vss: .align=East; .pos=(1,-1)
 

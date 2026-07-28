@@ -13,17 +13,17 @@ cell Nto1:
         path d_in
         path s_in
         inout vdd: .align=North
-        inout vss: .align=South
-        output y: .align=East
+        inout vss
+        output y
 
         # Data inputs
         for i in range(self.N):
-            input d_in[i]: .align=West
+            input d_in[i]
 
         # Select inputs
         signal_count = int(math.log(self.N, 2))
         for i in range(signal_count):
-            input s_in[i]: .align=West
+            input s_in[i]
 
 
     viewgen schematic -> Schematic:
@@ -34,13 +34,13 @@ cell Nto1:
         # ------------------------------------------------------------
         # Port layout
         # ------------------------------------------------------------
-        port vdd: .align=South; .pos=(-x_spacing, y_spacing * self.N)
-        port vss: .align=North; .pos=(-x_spacing, -y_spacing)
+        port vdd: .pos=(-x_spacing, y_spacing * self.N)
+        port vss: .pos=(-x_spacing, -y_spacing)
         vdd.auto_wire = False
         vss.auto_wire = False
 
         # Output port
-        port y: .align=West; .pos=(signal_count * x_spacing,
+        port y: .pos=(signal_count * x_spacing,
                                                y_spacing * ((self.N - 1) // 2))
 
         path d_in, s_in, mux, nets
@@ -49,7 +49,7 @@ cell Nto1:
         for i in range(0, self.N, 2):
             px = -x_spacing
             py = (i * y_spacing) + 2
-            port d_in[i]: .align=East; .pos=(px, py)
+            port d_in[i]: .pos=(px, py)
             port d_in[i + 1]: .align=East; .pos=(px, py+1)
 
         # Place select ports horizontally along the bottom

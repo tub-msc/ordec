@@ -6,22 +6,22 @@ from .nand import Nand
 
 cell SR_flip_flop:
     viewgen symbol -> Symbol:
-        input S: .pos = (1, 16); .align = West
-        input R: .pos = (1, 6); .align = West
+        input S: .pos = (1, 16)
+        input R: .pos = (1, 6)
         input CLK: .pos = (8, 12); .align = North
         input vdd: .pos = (2, 22); .align = North
         input vss: .pos = (2, 0); .align = South
-        output Q: .pos = (33, 16); .align = East
-        output Q_not: .pos = (33, 6); .align = East
+        output Q: .pos = (33, 16)
+        output Q_not: .pos = (33, 6)
 
     viewgen schematic -> Schematic:
-        port S: .pos = (1, 16); .align = East
-        port R: .pos = (1, 6); .align = East
-        port CLK: .pos = (8, 23); .align = South
-        port vdd: .pos = (2, 23); .align = South
-        port vss: .pos = (2, 0); .align = North
-        port Q: .pos = (33, 16); .align = West
-        port Q_not: .pos = (33, 6); .align = West
+        port S: .pos = (1, 16)
+        port R: .pos = (1, 6)
+        port CLK: .pos = (8, 23)
+        port vdd: .pos = (2, 23)
+        port vss: .pos = (2, 0)
+        port Q: .pos = (33, 16)
+        port Q_not: .pos = (33, 6)
 
         net n1_out
         net n2_out

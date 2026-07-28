@@ -7,18 +7,18 @@ from .mux2 import Mux2
 
 cell D_latch:
     viewgen symbol -> Symbol:
-        input D: .align = West
-        input LE: .align = West
+        input D
+        input LE
         input vdd: .align = North
         input vss: .align = South
-        output Q: .align = East
+        output Q
 
     viewgen schematic -> Schematic:
-        port D: .pos = (1, 13); .align = East
-        port LE: .pos = (1, 14); .align = East
+        port D: .pos = (1, 13)
+        port LE: .pos = (1, 14)
         port vdd: .pos = (1, 18); .align = East
         port vss: .pos = (1, 7); .align = East
-        port Q: .pos = (24, 12); .align = West
+        port Q: .pos = (24, 12)
 
         net mux_out
 

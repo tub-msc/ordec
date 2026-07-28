@@ -6,20 +6,20 @@ from ordec.lib.generic_mos import Nmos, Pmos, Inv
 
 cell Mux2:
     viewgen symbol -> Symbol:
-        output y: .align=East
-        input a: .align=West
-        input b: .align=West
+        output y
+        input a
+        input b
         inout vdd: .align=North
-        inout vss: .align=South
-        input s: .align=West
+        inout vss
+        input s
 
     viewgen schematic -> Schematic:
-        port y: .align=West; .pos=(21, 18)
-        port a: .align=East; .pos=(1, 11)
-        port b: .align=East; .pos=(1, 10)
-        port vdd: .align=South; .pos=(6, 31)
-        port vss: .align=North; .pos=(6, 3)
-        port s: .align=East; .pos=(-6, 13)
+        port y: .pos=(21, 18)
+        port a: .pos=(1, 11)
+        port b: .pos=(1, 10)
+        port vdd: .pos=(6, 31)
+        port vss: .pos=(6, 3)
+        port s: .pos=(-6, 13)
 
         net p1_p2
         net n1_n2

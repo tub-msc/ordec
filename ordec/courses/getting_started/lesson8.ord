@@ -6,14 +6,14 @@ cell Bandstop:
     # EDIT HERE (parameter)
 
     viewgen symbol -> Symbol:
-        input vin: .align=West
-        output vout: .align=East
-        inout vss: .align=South
+        input vin
+        output vout
+        inout vss
 
     viewgen schematic -> Schematic:
-        port vin: .align=East; .pos=(2,18)
-        port vout: .align=West; .pos=(14,18)
-        port vss: .align=North; .pos=(10,4)
+        port vin: .pos=(2,18)
+        port vout: .pos=(14,18)
+        port vss: .pos=(10,4)
 
         net mid
 

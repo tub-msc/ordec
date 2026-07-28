@@ -58,31 +58,31 @@ cell Top:
     """
     viewgen symbol -> Symbol:
         inout vdd: .align=North
-        inout vss: .align=South
+        inout vss
 
-        input rst_n: .align=West
-        input vbias: .align=West
-        input en: .align=West
-        input down: .align=West
+        input rst_n
+        input vbias
+        input en
+        input down
 
         path ctr
         for i in range(8):
-            output ctr[i]: .align=East
+            output ctr[i]
 
     viewgen schematic -> Schematic:
         net clk
         net nc0, nc1, nc2
 
-        port vdd: .align=South; .pos=(0,20)
-        port rst_n: .align=East; .pos=(0,7)
-        port vbias: .align=East; .pos=(0,8)
-        port en: .align=East; .pos=(0,15)
-        port down: .align=East; .pos=(0,14)
-        port vss: .align=North; .pos=(0,0)
+        port vdd: .pos=(0,20)
+        port rst_n: .pos=(0,7)
+        port vbias: .pos=(0,8)
+        port en: .pos=(0,15)
+        port down: .pos=(0,14)
+        port vss: .pos=(0,0)
 
         path ctr
         for i in range(8):
-            port ctr[i]: .align=West; .pos=(21,12+i)
+            port ctr[i]: .pos=(21,12+i)
 
         Vco analog_part:
             .pos=(5,5)

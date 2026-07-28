@@ -4,18 +4,18 @@ from ordec.lib.ihp130 import Nmos, Pmos
 
 cell Ota:
     viewgen symbol -> Symbol:
-        input inp: .align=West
-        input inn: .align=West
-        input bias: .align=West
-        output out: .align=East
+        input inp
+        input inn
+        input bias
+        output out
         inout vdd: .align=North
-        inout vss: .align=South
+        inout vss
 
     viewgen schematic -> Schematic:
-        port inp: .align=East; .pos=(1,9)
+        port inp: .pos=(1,9)
         port inn: .align=West; .pos=(19,9)
-        port bias: .align=East; .pos=(1,2)
-        port out: .align=West; .pos=(19,13)
+        port bias: .pos=(1,2)
+        port out: .pos=(19,13)
         port vdd: .align=East; .pos=(1,19)
         port vss: .align=East; .pos=(1,-1)
 

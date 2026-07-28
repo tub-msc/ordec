@@ -6,14 +6,14 @@ from ordec.lib.ihp130 import SG13G2, Nmos, Pmos, Ntap, Ptap
 # input a driving both gates, the output y at the connected drains.
 cell Inv:
     viewgen symbol -> Symbol:
-        input a: .align=West
-        output y: .align=East
+        input a
+        output y
         inout vdd: .align=North
-        inout vss: .align=South
+        inout vss
 
     viewgen schematic -> Schematic:
-        port a: .align=East; .pos=(1,7)
-        port y: .align=West; .pos=(9,7)
+        port a: .pos=(1,7)
+        port y: .pos=(9,7)
         port vdd: .align=East; .pos=(2,13)
         port vss: .align=East; .pos=(2,1)
 

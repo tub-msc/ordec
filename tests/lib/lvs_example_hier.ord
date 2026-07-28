@@ -42,16 +42,16 @@ cell A_Default:
     viewgen symbol -> Symbol:
         inout x: .align=North
         inout y: .align=East
-        inout z: .align=South
+        inout z
         inout sub: .align=West
 
     viewgen schematic -> Schematic:
         net c  # star center
 
-        port x: .pos=(5,18); .align=South
-        port y: .pos=(14,10); .align=West
-        port z: .pos=(5,2); .align=North
-        port sub: .pos=(1,8); .align=East
+        port x: .pos=(5,18)
+        port y: .pos=(14,10)
+        port z: .pos=(5,2)
+        port sub: .pos=(1,8)
 
         Rsil r1: .$l=L_RX; .pos=(3,12); .m -- c; .p -- x; .bn -- sub
         Rsil r2: .$l=L_RY; .pos=(8,12); .orientation=East; .m -- c; .p -- y; .bn -- sub
@@ -104,16 +104,16 @@ cell B_Hier:
 
     viewgen symbol -> Symbol:
         inout x: .align=North
-        inout z: .align=South
+        inout z
         inout sub: .align=West
 
     viewgen schematic -> Schematic:
         net i1, i2  # z-chain: a1.x -- rp1 -- a2.z
         net y1, y2  # y-loop: a1.y -- rp2 -- a2.y
 
-        port z: .pos=(6,2); .align=North
-        port x: .pos=(6,24); .align=South
-        port sub: .pos=(1,13); .align=East
+        port z: .pos=(6,2)
+        port x: .pos=(6,24)
+        port sub: .pos=(1,13)
 
         A_Default a1: .pos=(4,4); .x -- i1; .y -- y1; .z -- z; .sub -- sub
         Rppd rp1: .$l=L_RP1; .pos=(8,11); .orientation=FlippedSouth; .m -- i1; .p -- i2; .bn -- sub
@@ -167,13 +167,13 @@ cell C_Hier:
 
     viewgen symbol -> Symbol:
         inout x: .align=North
-        inout z: .align=South
+        inout z
         inout sub: .align=West
 
     viewgen schematic -> Schematic:
         port z: .pos=(1,3); .align=East
         port x: .pos=(1,10); .align=East
-        port sub: .pos=(1,6); .align=East
+        port sub: .pos=(1,6)
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
@@ -242,13 +242,13 @@ cell C_FlatLayout:
 
     viewgen symbol -> Symbol:
         inout x: .align=North
-        inout z: .align=South
+        inout z
         inout sub: .align=West
 
     viewgen schematic -> Schematic:
         port z: .pos=(1,3); .align=East
         port x: .pos=(1,10); .align=East
-        port sub: .pos=(1,6); .align=East
+        port sub: .pos=(1,6)
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
@@ -349,13 +349,13 @@ cell C_FlatSchematic:
 
     viewgen symbol -> Symbol:
         inout x: .align=North
-        inout z: .align=South
+        inout z
         inout sub: .align=West
 
     viewgen schematic -> Schematic:
         port z: .pos=(1,3); .align=East
         port x: .pos=(1,36); .align=East
-        port sub: .pos=(1,20); .align=East
+        port sub: .pos=(1,20)
 
         path c1, c2, i1, i2, y1, y2
         path a1r1, a1r2, a1r3, a2r1, a2r2, a2r3, rp1, rp2
@@ -441,7 +441,7 @@ cell A_Moved:
     viewgen symbol -> Symbol:
         inout x: .align=North
         inout c: .align=East
-        inout z: .align=South
+        inout z
         inout sub: .align=West
 
     viewgen layout -> Layout:
@@ -479,7 +479,7 @@ cell B_Moved:
 
     viewgen symbol -> Symbol:
         inout x: .align=North
-        inout z: .align=South
+        inout z
         inout sub: .align=West
 
     viewgen layout -> Layout:
@@ -550,13 +550,13 @@ cell C_Moved:
 
     viewgen symbol -> Symbol:
         inout x: .align=North
-        inout z: .align=South
+        inout z
         inout sub: .align=West
 
     viewgen schematic -> Schematic:
         port z: .pos=(1,3); .align=East
         port x: .pos=(1,10); .align=East
-        port sub: .pos=(1,6); .align=East
+        port sub: .pos=(1,6)
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub

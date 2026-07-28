@@ -6,16 +6,16 @@ from ordec.lib import Gnd, Vdc
 
 cell Nand2:
     viewgen symbol -> Symbol:
-        output y: .align=East
-        input a: .align=West
-        input b: .align=West
+        output y
+        input a
+        input b
         inout vdd: .align=North
-        inout vss: .align=South
+        inout vss
     viewgen schematic -> Schematic:
         net x # Between n1 and n2
-        port y: .align=West; .pos=(17,13)
-        port a: .align=East; .pos=(1,10)
-        port b: .align=East; .pos=(1,21)
+        port y: .pos=(17,13)
+        port a: .pos=(1,10)
+        port b: .pos=(1,21)
         port vdd: .align=East; .pos=(1,19)
         port vss: .align=East; .pos=(1,0)
 

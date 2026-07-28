@@ -7,17 +7,17 @@ from ordec.lib.generic_mos import Nmos, Pmos
 cell Inv:
     viewgen symbol -> Symbol:
         inout vdd: .align=North
-        inout vss: .align=South
-        input a: .align=West
-        output y: .align=East
+        inout vss
+        input a
+        output y
 
     viewgen schematic -> Schematic:
-        port a : .align=East
-        port y : .align=West
+        port a
+        port y
         net vss
 
         with Series(gap=4):
-            port vdd: .align=South
+            port vdd
             Pmos pu:
                 .g -- a
                 .b -- vdd
@@ -25,22 +25,22 @@ cell Inv:
             Nmos pd:
                 .g -- a
                 .b -- vss
-            port vss: .align=North
+            port vss
 
 cell Buf:
     """Hierarchical example: two Inv stages in a horizontal series chain."""
 
     viewgen symbol -> Symbol:
         inout vdd: .align=North
-        inout vss: .align=South
-        input a: .align=West
-        output y: .align=East
+        inout vss
+        input a
+        output y
 
     viewgen schematic -> Schematic:
-        port a : .align=East
-        port y : .align=West
-        port vdd: .align=South
-        port vss: .align=North
+        port a
+        port y
+        port vdd
+        port vss
 
         # The horizontal series chain connects i0.y -- i1.a through an
         # anonymous net. The outer ports are wired explicitly.

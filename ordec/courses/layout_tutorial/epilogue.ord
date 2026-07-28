@@ -5,18 +5,18 @@ from ordec.layout import SRouter
 # The completed differential pair from lessons 10 and 11.
 cell DiffPair:
     viewgen symbol -> Symbol:
-        input inp: .align=West
-        input inn: .align=West
-        output outp: .align=East
-        output outn: .align=East
-        inout tail: .align=South
-        inout vss: .align=South
+        input inp
+        input inn
+        output outp
+        output outn
+        inout tail
+        inout vss
 
     viewgen schematic -> Schematic:
         .outline = (0, 0, 22, 18)
-        port inp: .align=East; .pos=(1,8)
-        port inn: .align=East; .pos=(13,8)
-        port outp: .align=West; .pos=(21,16)
+        port inp: .pos=(1,8)
+        port inn: .pos=(13,8)
+        port outp: .pos=(21,16)
         port outn: .align=East; .pos=(1,16)
         port tail: .align=East; .pos=(9,1)
         port vss: .align=West; .pos=(21,8)

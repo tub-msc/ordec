@@ -7,15 +7,15 @@ from ordec.lib.generic_mos import Nmos,Pmos
 cell Inv:
     viewgen symbol -> Symbol:
         inout vdd: .align=North
-        inout vss: .align=South
-        input a: .align=West
-        output y: .align=East
+        inout vss
+        input a
+        output y
 
     viewgen schematic -> Schematic:
         port vdd: .pos=(2,13); .align=North
         port vss: .pos=(2,1); .align=South
-        port y : .pos=(9,7); .align=West
-        port a : .pos=(1,7); .align=East
+        port y: .pos=(9,7)
+        port a: .pos=(1,7)
 
         Nmos pd:
             .s -- vss

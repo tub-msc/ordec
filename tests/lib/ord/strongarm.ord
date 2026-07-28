@@ -8,20 +8,20 @@ cell Strongarm:
     viewgen symbol -> Symbol:
         input vdd: .pos = (1, 30); .align = North
         input vss: .pos = (1, 1); .align = South
-        input CLK: .pos = (1, 3); .align = West
-        input in1: .pos = (10, 10); .align = West
-        input in2: .pos = (10, 7); .align = West
-        output out1: .pos = (29, 19); .align = East
-        output out2: .pos = (25, 19); .align = East
+        input CLK: .pos = (1, 3)
+        input in1: .pos = (10, 10)
+        input in2: .pos = (10, 7)
+        output out1: .pos = (29, 19)
+        output out2: .pos = (25, 19)
 
     viewgen schematic -> Schematic:
         port vdd: .pos = (1, 30); .align = East
         port vss: .pos = (1, 1); .align = East
-        port CLK: .pos = (1, 3); .align = East
-        port in1: .pos = (10, 10); .align = East
-        port in2: .pos = (10, 7); .align = East
-        port out1: .pos = (29, 19); .align = West
-        port out2: .pos = (25, 19); .align = West
+        port CLK: .pos = (1, 3)
+        port in1: .pos = (10, 10)
+        port in2: .pos = (10, 7)
+        port out1: .pos = (29, 19)
+        port out2: .pos = (25, 19)
 
         net p
         net q

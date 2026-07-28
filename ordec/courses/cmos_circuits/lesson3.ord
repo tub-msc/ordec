@@ -4,14 +4,14 @@ from ordec.lib.ihp130 import Nmos
 
 cell CsAmp:
     viewgen symbol -> Symbol:
-        input vin: .align=West
-        output vout: .align=East
+        input vin
+        output vout
         inout vdd: .align=North
-        inout vss: .align=South
+        inout vss
 
     viewgen schematic -> Schematic:
-        port vin: .align=East; .pos=(1,5)
-        port vout: .align=West; .pos=(13,8)
+        port vin: .pos=(1,5)
+        port vout: .pos=(13,8)
         port vdd: .align=East; .pos=(1,14)
         port vss: .align=East; .pos=(1,2)
 

@@ -4,13 +4,13 @@ from ordec.lib.ihp130 import Nmos
 
 cell CurrentMirror:
     viewgen symbol -> Symbol:
-        input iin: .align=West
-        output iout: .align=East
-        inout vss: .align=South
+        input iin
+        output iout
+        inout vss
 
     viewgen schematic -> Schematic:
-        port iin: .align=East; .pos=(0,8)
-        port iout: .align=West; .pos=(14,8)
+        port iin: .pos=(0,8)
+        port iout: .pos=(14,8)
         port vss: .align=East; .pos=(0,2)
 
         Nmos n0: .pos=(6,3); .orientation=FlippedSouth; .$w=1u; .$l=1u; .d -- iin; .g -- iin; .s -- vss; .b -- vss

@@ -522,9 +522,9 @@ def gen_lesson7(g):
             Symbol pins are declared by direction:
 
             ```
-            input vin: .align=West
-            output vout: .align=East
-            inout vss: .align=South
+            input vin
+            output vout
+            inout vss
             ```
 
             In the schematic, a `port` binds a net to the symbol pin of
@@ -532,8 +532,8 @@ def gen_lesson7(g):
             automatically at the edge of the schematic:
 
             ```
-            port vin: .align=East
-            port vout: .align=West; .pos=(12,18)
+            port vin
+            port vout: .pos=(12,18)
             ```
 
             Wire the R, L and C pins to the port nets like in lesson 5,
@@ -550,16 +550,14 @@ def gen_lesson7(g):
             sym = g['Bandstop']().symbol
             names = {p.full_path_str() for p in sym.all(Pin)}
             report.passfail(label, {'vin', 'vout', 'vss'} <= names,
-                hint="Declare the pins in the symbol viewgen: `input vin: "
-                ".align=West`, `output vout: .align=East`, `inout vss: "
-                ".align=South`.",
+                hint="Declare the pins in the symbol viewgen: `input vin`, "
+                "`output vout`, `inout vss`.",
                 instructions="Symbol pins found: "
                 + (", ".join(sorted(names)) if names else "none") + ".")
         except Exception:
             report.passfail(label, False, instructions=exception_text(),
-                hint="Declare the pins in the symbol viewgen: `input vin: "
-                ".align=West`, `output vout: .align=East`, `inout vss: "
-                ".align=South`.")
+                hint="Declare the pins in the symbol viewgen: `input vin`, "
+                "`output vout`, `inout vss`.")
 
         label = "Filter schematic wired up, including the ports"
         try:
@@ -589,15 +587,13 @@ def gen_lesson7(g):
                 for p in s.all(SchemPort))
             report.passfail(label, found,
                 hint="Give the vout port an explicit position: `port vout: "
-                ".align=West; .pos=(12,18)`. The other ports may stay "
-                "auto-placed.",
+                ".pos=(12,18)`. The other ports may stay auto-placed.",
                 instructions="Looking for the vout port at position "
                 "(12, 18).")
         except Exception:
             report.passfail(label, False, instructions=exception_text(),
                 hint="Give the vout port an explicit position: `port vout: "
-                ".align=West; .pos=(12,18)`. The other ports may stay "
-                "auto-placed.")
+                ".pos=(12,18)`. The other ports may stay auto-placed.")
 
         label = "Bandstop instantiated in the testbench"
         try:

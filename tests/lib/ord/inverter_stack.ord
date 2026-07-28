@@ -7,15 +7,15 @@ from ordec.lib.generic_mos import Nmos, Pmos
 cell Inv:
     viewgen symbol -> Symbol:
         inout vdd: .align=North
-        inout vss: .align=South
-        input a: .align=West
-        output y: .align=East
+        inout vss
+        input a
+        output y
 
     viewgen schematic -> Schematic:
-        port vdd: .align=South
-        port vss: .align=North
-        port a : .align=East
-        port y : .align=West
+        port vdd
+        port vss
+        port a
+        port y
 
         # Coordinate-free schematic: the stack is auto-anchored at (0, 0),
         # ports are auto-placed based on their align.
@@ -35,15 +35,15 @@ cell Inv:
 cell InvAnchored:
     viewgen symbol -> Symbol:
         inout vdd: .align=North
-        inout vss: .align=South
-        input a: .align=West
-        output y: .align=East
+        inout vss
+        input a
+        output y
 
     viewgen schematic -> Schematic:
-        port vdd: .align=South
-        port vss: .align=North
-        port a : .align=East
-        port y : .align=West
+        port vdd
+        port vss
+        port a
+        port y
 
         with Col(gap=4) as stack:
             Pmos pu:

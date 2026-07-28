@@ -7,20 +7,20 @@ from .inverter import Inv
 
 cell D_flip_flop:
     viewgen symbol -> Symbol:
-        input D: .pos = (1, 14); .align = West
-        input CLK: .pos = (1, 9); .align = West
+        input D: .pos = (1, 14)
+        input CLK: .pos = (1, 9)
         input vdd: .pos = (1, 20); .align = North
         input vss: .pos = (1, 1); .align = South
-        output Q: .pos = (23, 14); .align = East
-        output Q_not: .pos = (23, 15); .align = East
+        output Q: .pos = (23, 14)
+        output Q_not: .pos = (23, 15)
 
     viewgen schematic -> Schematic:
-        port D: .pos = (1, 14); .align = East
-        port CLK: .pos = (1, 9); .align = East
+        port D: .pos = (1, 14)
+        port CLK: .pos = (1, 9)
         port vdd: .pos = (1, 20); .align = East
         port vss: .pos = (1, 1); .align = East
-        port Q: .pos = (23, 14); .align = West
-        port Q_not: .pos = (23, 15); .align = West
+        port Q: .pos = (23, 14)
+        port Q_not: .pos = (23, 15)
 
         net latch_q
         net q_not_1

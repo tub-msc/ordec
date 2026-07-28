@@ -12,20 +12,20 @@ cell MultibitReg_Arrays:
         path d
         path q
         for i in range(self.bits):
-            input d[i]: .align=West
-            output q[i]: .align=East
-        input clk: .align=West
+            input d[i]
+            output q[i]
+        input clk
 
     viewgen schematic -> Schematic:
         port vss: .pos=(1,0); .align=East
         port vdd: .pos=(1,1); .align=East
-        port clk: .pos=(1,2); .align=East
+        port clk: .pos=(1,2)
         path d
         path q
         path I
         for i in range(self.bits):
-            port d[i]: .pos=(4, 5 + 8 * i); .align=East
-            port q[i]: .pos=(14, 5 + 8 * i); .align=West
+            port d[i]: .pos=(4, 5 + 8 * i)
+            port q[i]: .pos=(14, 5 + 8 * i)
             DFF I[i]:
                 .vss -- vss
                 .vdd -- vdd

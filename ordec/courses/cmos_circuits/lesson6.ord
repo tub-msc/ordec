@@ -5,9 +5,9 @@ from ordec.lib.ihp130 import Nmos, Pmos
 cell Inv:
     viewgen symbol -> Symbol:
         inout vdd: .pos=(2, 4); .align=North
-        inout vss: .pos=(2, 0); .align=South
-        input a: .pos=(0, 2); .align=West
-        output y: .pos=(4, 2); .align=East
+        inout vss: .pos=(2, 0)
+        input a: .pos=(0, 2)
+        output y: .pos=(4, 2)
 
         . % SymbolPoly(vertices=[(0, 2), (1, 2)])
         . % SymbolPoly(vertices=[(3.25, 2), (4, 2)])
@@ -21,8 +21,8 @@ cell Inv:
 
         port vdd: .pos=(2, 13); .align=East
         port vss: .pos=(2, 1); .align=East
-        port a: .pos=(1, 7); .align=East
-        port y: .pos=(9, 7); .align=West
+        port a: .pos=(1, 7)
+        port y: .pos=(9, 7)
 
         # EDIT HERE
 

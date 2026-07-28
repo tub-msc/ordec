@@ -6,14 +6,14 @@ from .inverter import Inv
 
 cell Ringosc:
     viewgen symbol -> Symbol:
-        output y: .pos = (24, 4); .align = East
-        input vdd: .pos = (1, 8); .align = West
-        input vss: .pos = (1, 1); .align = West
+        output y: .pos = (24, 4)
+        input vdd: .pos = (1, 8)
+        input vss: .pos = (1, 1)
 
     viewgen schematic -> Schematic:
-        port y: .pos = (24, 4); .align = West
-        port vdd: .pos = (1, 8); .align = East
-        port vss: .pos = (1, 1); .align = East
+        port y: .pos = (24, 4)
+        port vdd: .pos = (1, 8)
+        port vss: .pos = (1, 1)
 
         net y0
         net y1

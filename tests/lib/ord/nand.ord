@@ -6,16 +6,16 @@ from ordec.lib.generic_mos import Nmos,Pmos
 
 cell Nand:
     viewgen symbol -> Symbol:
-        output y: .align=East
-        input a: .align=West
-        input b: .align=West
+        output y
+        input a
+        input b
         inout vdd: .align=North
-        inout vss: .align=South
+        inout vss
 
     viewgen schematic -> Schematic:
-        port y: .align=West; .pos=(25,6)
-        port a: .align=East; .pos=(1,4)
-        port b: .align=East; .pos=(1,17)
+        port y: .pos=(25,6)
+        port a: .pos=(1,4)
+        port b: .pos=(1,17)
         port vdd: .align=East; .pos=(1,23)
         port vss: .align=East; .pos=(1,1)
 

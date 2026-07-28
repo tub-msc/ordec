@@ -158,16 +158,16 @@ courses_testdata = {
             InsertSolution("""
             pass  # EDIT HERE (symbol)
             """, """
-            input vin: .align=West
-            output vout: .align=East
-            inout vss: .align=South
+            input vin
+            output vout
+            inout vss
             """),
             InsertSolution("""
             # EDIT HERE (schematic)
             """, """
-            port vin: .align=East
-            port vout: .align=West; .pos=(12,18)
-            port vss: .align=North
+            port vin
+            port vout: .pos=(12,18)
+            port vss
 
             r1.p -- vin
             r1.m -- vout
