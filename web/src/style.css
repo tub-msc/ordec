@@ -868,7 +868,9 @@ body:not(.show-debug) .debug {
     white-space: pre;
     overflow-x: auto;
 }
-.report-markdown code {
+.report-markdown code,
+.report-passfail-instructions code,
+.report-passfail-hint code {
     font-family: var(--font-mono);
     background: var(--color-bg-tertiary);
     border-radius: 3px;
@@ -975,6 +977,10 @@ body:not(.show-debug) .debug {
 .report-passfail-hint {
     margin-top: 3px;
     font-style: italic;
+}
+/* The hint text is italic, the identifiers inside it should not be. */
+.report-passfail-hint code {
+    font-style: normal;
 }
 
 /* -- Course mode --------------------------------------------------- */
