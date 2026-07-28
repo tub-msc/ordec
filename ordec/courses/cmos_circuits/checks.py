@@ -17,6 +17,12 @@ half-finished source state. Simulation-based checks then verify the
 finished circuit. Each lesson emits a fixed number of PassFail elements in
 every state, so the red/green pattern stays stable while the user works.
 
+A half-finished design is an expected state, not an error: every lesson
+captures the result of its structure check and passes it to
+sim_failure_text(), so that a simulation failing on an incomplete circuit
+explains itself instead of showing a Python traceback. Tracebacks are
+reserved for failures that persist once the structure is correct.
+
 All lessons use the IHP SG13G2 130nm technology (sg13_lv devices) with a
 nominal supply of 1.2 V.
 """
@@ -138,6 +144,28 @@ def guarded_passfail(report, label, checker, hint):
     return passed
 
 
+def blocked_passfails(report, labels, hints, reason):
+    """
+    Emits one failing PassFail per label for a group of checks that could
+    not be evaluated, all sharing the same reason. Keeps the number of
+    PassFail elements of a lesson the same in every state.
+    """
+    for label, hint in zip(labels, hints):
+        report.passfail(label, False, instructions=reason, hint=hint)
+
+
+def sim_failure_text(structure_ok, what):
+    """
+    Explains why a group of simulation-based checks could not be measured.
+    An unexpected error is worth its traceback, a design that is not fully
+    wired up is not: that state is expected while the user is still typing.
+    """
+    if structure_ok:
+        return exception_text()
+    return (f"The simulation failed -- usually {what} is still incomplete "
+        "(see the structure check above).")
+
+
 # Lesson 1: MOS transistor curves
 # -------------------------------
 
@@ -221,12 +249,9 @@ def gen_lesson1(g):
             "conducts, its source and bulk are not on vdd.")
         curve_labels = ("NMOS curve looks right", "PMOS curve looks right")
         if not (nmos_ok and pmos_ok):
-            for label in curve_labels:
-                report.passfail(label, False,
-                    hint="Complete the placement and wiring checks above "
-                    "first.",
-                    instructions="The sweep runs once both transistors "
-                    "are placed and wired.")
+            blocked_passfails(report, curve_labels, curve_hints,
+                "The sweep runs once both transistors are placed and "
+                "wired.")
             return report
         try:
             sch = g['MosCurves']().schematic
@@ -249,9 +274,8 @@ def gen_lesson1(g):
                 f"(expected 50 uA ... 1 mA), at VSG=0: {idp[-1]:.3g} A "
                 "(expected < 1 nA).")
         except Exception:
-            for label, hint in zip(curve_labels, curve_hints):
-                report.passfail(label, False,
-                    instructions=exception_text(), hint=hint)
+            blocked_passfails(report, curve_labels, curve_hints,
+                exception_text())
         return report
     return lesson
 
@@ -338,8 +362,11 @@ def gen_lesson2(g):
 
         label = "Output current = 100 uA (+-10 %)"
         if sim_error is not None:
-            report.passfail(label, False, instructions=sim_error,
-                hint=current_hint)
+            # The first check already carries the simulation failure, so
+            # this one points at it instead of repeating the traceback.
+            report.passfail(label, False, hint=current_hint,
+                instructions="The output current is measured once the "
+                "mirror simulates (see the first check).")
         else:
             report.passfail(label, 90e-6 <= iout <= 110e-6,
                 hint=current_hint,
@@ -400,7 +427,8 @@ def gen_lesson3(g):
                 return False, ("The transistor is wired correctly, but "
                     f"it sits {where}.")
             return True, "Transistor placed and wired."
-        guarded_passfail(report, "NMOS placed and wired", nmos_ok,
+        device_ok = guarded_passfail(report, "NMOS placed and wired",
+            nmos_ok,
             hint="Add `Nmos m0: .$w=1u; .$l=130n; .g -- vin; .d -- vout; "
             ".s -- vss; .b -- vss; .pos=(6,3)` at the EDIT HERE marker, "
             "then increase w.")
@@ -420,8 +448,8 @@ def gen_lesson3(g):
                 "highest -- visible as the steep part of the transfer "
                 "curve.")
         except Exception:
-            report.passfail(op_label, False,
-                instructions=exception_text(), hint=op_hint)
+            report.passfail(op_label, False, hint=op_hint,
+                instructions=sim_failure_text(device_ok, "the amplifier"))
 
         gain_label = "Voltage gain >= 5"
         try:
@@ -436,8 +464,8 @@ def gen_lesson3(g):
                 instructions=f"Measured gain at 1 MHz: {gain:.2f} "
                 "(required: >= 5).")
         except Exception:
-            report.passfail(gain_label, False,
-                instructions=exception_text(), hint=gain_hint)
+            report.passfail(gain_label, False, hint=gain_hint,
+                instructions=sim_failure_text(device_ok, "the amplifier"))
         return report
     return lesson
 
@@ -499,12 +527,22 @@ def gen_lesson4(g):
                 msg = "; ".join(problems)
                 return False, msg[0].upper() + msg[1:] + "."
             return True, "Both pair transistors in place."
-        guarded_passfail(report, "Pair transistors placed and wired",
-            pair_ok, hint=pair_hint)
+        structure_ok = guarded_passfail(report,
+            "Pair transistors placed and wired", pair_ok, hint=pair_hint)
 
         sim_labels = ("Differential gain >= 4",
             "Outputs balanced at Vinp = 0.7 V",
             "Tail current fully steered")
+        gain_hint = ("Gain needs both drains on the load resistors, m1 "
+            "on outp and m2 on outn. A drain on the wrong net leaves "
+            "one output stuck at the supply.")
+        balance_hint = ("With identical transistors and identical loads on "
+            "both sides, the tail current splits exactly in half when "
+            "both inputs are equal -- the outputs must then be equal too.")
+        steering_hint = ("Steering only works if both sources meet on the "
+            "tail net. With a source on vss instead, that branch conducts "
+            "on its own and the pair never hands its current over.")
+        sim_hints = (gain_hint, balance_hint, steering_hint)
         try:
             tb = g['DiffPairTb']()
             h = SimHierarchy.from_schematic(tb.schematic)
@@ -515,36 +553,23 @@ def gen_lesson4(g):
             diff = [p - n for p, n in zip(vop, von)]
             mid = len(vin) // 2
             gain = max_slope(vin, diff)
-            report.passfail(sim_labels[0], gain >= 4,
-                hint="Gain needs both drains on the load resistors, m1 "
-                "on outp and m2 on outn. A drain on the wrong net leaves "
-                "one output stuck at the supply.",
+            report.passfail(sim_labels[0], gain >= 4, hint=gain_hint,
                 instructions=f"Maximum differential gain "
                 f"d(outp-outn)/d(inp): {gain:.2f} (required: >= 4).")
             balance = abs(vop[mid] - von[mid])
-            report.passfail(sim_labels[1],
-                balance <= 0.02,
-                hint="With identical transistors and identical loads on "
-                "both sides, the tail current splits exactly in half when "
-                "both inputs are equal -- the outputs must then be equal "
-                "too.",
+            report.passfail(sim_labels[1], balance <= 0.02,
+                hint=balance_hint,
                 instructions=f"|V(outp) - V(outn)| at Vinp = 0.7 V: "
                 f"{balance*1e3:.1f} mV (expected <= 20 mV).")
             steering = diff[0] >= 0.4 and diff[-1] <= -0.4
-            report.passfail(sim_labels[2], steering,
-                hint="Steering only works if both sources meet on the "
-                "tail net. With a source on vss instead, that branch "
-                "conducts on its own and the pair never hands its "
-                "current over.",
+            report.passfail(sim_labels[2], steering, hint=steering_hint,
                 instructions=f"V(outp)-V(outn) at the sweep ends: "
                 f"{diff[0]:+.3f} V / {diff[-1]:+.3f} V (expected >= +0.4 V "
                 "and <= -0.4 V): a few 100 mV of input difference steer "
                 "the entire tail current into one branch.")
         except Exception:
-            instructions = exception_text()
-            for label in sim_labels:
-                report.passfail(label, False, instructions=instructions,
-                    hint=pair_hint)
+            blocked_passfails(report, sim_labels, sim_hints,
+                sim_failure_text(structure_ok, "the pair"))
         return report
     return lesson
 
@@ -603,16 +628,22 @@ def gen_lesson5(g):
             return inversions % 2 == 1, (f"Inversions around the loop: "
                 f"{inversions} (an odd number is needed so the loop "
                 "inverts at DC).")
-        guarded_passfail(report, "Odd number of inversions in the ring",
-            ring_inverts, hint=ring_hint)
+        structure_ok = guarded_passfail(report,
+            "Odd number of inversions in the ring", ring_inverts,
+            hint=ring_hint)
 
         sim_labels = ("Ring oscillates (amplitude >= 0.3 V)",
             "Frequency between 30 MHz and 400 MHz")
+        latch_hint = (
+            "Two flat lines mean the loop found a stable state and stayed "
+            "there. That is what an even number of inversions does: it "
+            "feeds every level back to itself.")
         freq_hint = (
             "The frequency is set by the RC delay of the 30k loads and "
             "the 100f capacitors, so a working ring lands around "
             "120 MHz. A reading of 0 MHz means it is not oscillating at "
             "all yet.")
+        sim_hints = (latch_hint, freq_hint)
         try:
             tb = g['RingOscTb']()
             h = SimHierarchy.from_schematic(tb.schematic)
@@ -622,11 +653,7 @@ def gen_lesson5(g):
             von = [float(v) for v in h.outn.voltage]
             vdiff = [p - n for p, n in zip(vop, von)]
             vpp, freq = measure_oscillation(t, vdiff)
-            report.passfail(sim_labels[0],
-                vpp >= 0.3,
-                hint="Two flat lines mean the loop found a stable state "
-                "and stayed there. That is what an even number of "
-                "inversions does: it feeds every level back to itself.",
+            report.passfail(sim_labels[0], vpp >= 0.3, hint=latch_hint,
                 instructions=f"Differential peak-to-peak amplitude in the "
                 f"second half of the simulation: {vpp:.3f} V (required: "
                 ">= 0.3 V).")
@@ -636,10 +663,8 @@ def gen_lesson5(g):
                 instructions=f"Measured oscillation frequency: "
                 f"{freq/1e6:.1f} MHz.")
         except Exception:
-            instructions = exception_text()
-            for label, hint in zip(sim_labels, (ring_hint, freq_hint)):
-                report.passfail(label, False, instructions=instructions,
-                    hint=hint)
+            blocked_passfails(report, sim_labels, sim_hints,
+                sim_failure_text(structure_ok, "the ring"))
         return report
     return lesson
 
@@ -710,28 +735,28 @@ def gen_lesson6(g):
                 return False, ("Both transistors are wired correctly, "
                     "but " + " and ".join(where) + ".")
             return True, "Both transistors placed and wired."
-        guarded_passfail(report, "Inverter transistors placed and wired",
-            inverter_ok, hint=build_hint)
+        structure_ok = guarded_passfail(report,
+            "Inverter transistors placed and wired", inverter_ok,
+            hint=build_hint)
 
         sim_labels = ("Output high level (VOH >= 1.15 V)",
             "Output low level (VOL <= 0.05 V)",
             "Switching threshold at 0.6 V (+-3 %)")
+        voh_hint = ("Only the PMOS can pull y up to the supply. If y "
+            "stays low, its source and bulk are not on vdd.")
+        vol_hint = ("Only the NMOS pulls y down to ground. If y never "
+            "reaches 0 V, its source and bulk are not on vss.")
+        sim_hints = (voh_hint, vol_hint, size_hint)
         try:
             tb = g['InvTb']()
             h = SimHierarchy.from_schematic(tb.schematic)
             Simulator(h).dc_sweep(tb.schematic.vin_src, 0, 1.2, 121)
             vin = [float(v) for v in h.a.voltage]
             vout = [float(v) for v in h.y.voltage]
-            report.passfail(sim_labels[0],
-                vout[0] >= 1.15,
-                hint="Only the PMOS can pull y up to the supply. If y "
-                "stays low, its source and bulk are not on vdd.",
+            report.passfail(sim_labels[0], vout[0] >= 1.15, hint=voh_hint,
                 instructions=f"V(y) at vin = 0: {vout[0]:.3f} V. The PMOS "
                 "must pull the output all the way to VDD.")
-            report.passfail(sim_labels[1],
-                vout[-1] <= 0.05,
-                hint="Only the NMOS pulls y down to ground. If y never "
-                "reaches 0 V, its source and bulk are not on vss.",
+            report.passfail(sim_labels[1], vout[-1] <= 0.05, hint=vol_hint,
                 instructions=f"V(y) at vin = 1.2 V: {vout[-1]:.3f} V. The "
                 "NMOS must pull the output all the way to ground.")
             vth = vtc_threshold(vin, vout)
@@ -750,10 +775,8 @@ def gen_lesson6(g):
                     instructions=f"Measured switching threshold: "
                     f"{vth:.3f} V (target: 0.59 V ... 0.635 V).")
         except Exception:
-            instructions = exception_text()
-            for label in sim_labels:
-                report.passfail(label, False, instructions=instructions,
-                    hint=build_hint)
+            blocked_passfails(report, sim_labels, sim_hints,
+                sim_failure_text(structure_ok, "the inverter"))
         return report
     return lesson
 
@@ -900,7 +923,9 @@ def gen_lesson8(g):
             nmos = instances_of(sch, ihp130.Nmos)
             pmos = instances_of(sch, ihp130.Pmos)
             supply_nets = (sch.y, sch.vss, sch.vdd, sch.a, sch.b)
-            series = False
+            # Kept so that the position check can name the two NMOS by
+            # their role in the stack rather than by instance name.
+            series_pair = None
             for top in nmos:
                 for bottom in nmos:
                     if top.nid == bottom.nid:
@@ -913,20 +938,25 @@ def gen_lesson8(g):
                             and pb.get('s') == sch.vss
                             and {pt.get('g'), pb.get('g')}
                                 == {sch.a, sch.b}):
-                        series = True
+                        series_pair = (top, bottom)
+            series = series_pair is not None
             parallel = (len(pmos) >= 2
                 and all(pin_nets(t).get('s') == sch.vdd
                     and pin_nets(t).get('d') == sch.y for t in pmos)
                 and {pin_nets(t).get('g') for t in pmos}
                     == {sch.a, sch.b})
             if series and parallel:
-                want = {(4, 1), (4, 7), (4, 13), (12, 13)}
-                have = {(float(i.pos.x), float(i.pos.y))
-                    for i in nmos + pmos}
-                if have != want:
+                top, bottom = series_pair
+                by_gate = {pin_nets(t).get('g'): t for t in pmos}
+                where = [f"the {role} sits {w}" for role, w in (
+                    ("lower NMOS", misplaced(bottom, 4, 1)),
+                    ("upper NMOS", misplaced(top, 4, 7)),
+                    ("PMOS on a", misplaced(by_gate[sch.a], 4, 13)),
+                    ("PMOS on b", misplaced(by_gate[sch.b], 12, 13)),
+                ) if w]
+                if where:
                     return False, ("The gate is wired correctly, but "
-                        "the transistors should sit at (4,1), (4,7), "
-                        "(4,13) and (12,13).")
+                        + ", ".join(where) + ".")
                 return True, "Series NMOS stack and parallel PMOS in place."
             status = (f"{len(nmos)} NMOS and {len(pmos)} PMOS found "
                 "(2 of each needed, new ones at positions (4,7) and "
@@ -961,14 +991,8 @@ def gen_lesson8(g):
                     instructions=f"Simulated y = {y:.3f} V, expected "
                     f"{'> 1.08' if expect_high else '< 0.12'} V.")
             except Exception:
-                if structure_ok:
-                    instructions = exception_text()
-                else:
-                    instructions = ("The operating point simulation "
-                        "failed -- usually the gate is still incomplete "
-                        "(see the structure check above).")
-                report.passfail(label, False,
-                    instructions=instructions, hint=row_hint)
+                report.passfail(label, False, hint=row_hint,
+                    instructions=sim_failure_text(structure_ok, "the gate"))
         return report
     return lesson
 
@@ -1037,17 +1061,14 @@ def gen_lesson9(g):
         wired = guarded_passfail(report, "XOR2 cell instantiated and wired",
             dut_wired, hint=dut_hint)
 
+        row_hint = ("If the output never moves, check the name of the "
+            "output pin: this cell calls it X, not Y. If the levels are "
+            "there but wrong, the two inputs are swapped.")
         for a, b in ((0, 0), (0, 1), (1, 0), (1, 1)):
             expect_high = bool(a) != bool(b)
             label = f"a={a}, b={b} => y={int(expect_high)}"
-            row_hint = ("If the output never moves, check the name of "
-                "the output pin: this cell calls it X, not Y. If the "
-                "levels are there but wrong, the two inputs are "
-                "swapped.")
             if not wired:
-                report.passfail(label, False,
-                    hint="Instantiate and wire the cell first, see the "
-                    "check above.",
+                report.passfail(label, False, hint=row_hint,
                     instructions="The truth table is checked once the "
                     "cell is instantiated and wired.")
                 continue
@@ -1061,8 +1082,8 @@ def gen_lesson9(g):
                     instructions=f"Simulated y = {y:.3f} V, expected "
                     f"{'> 1.08' if expect_high else '< 0.12'} V.")
             except Exception:
-                report.passfail(label, False,
-                    instructions=exception_text(), hint=dut_hint)
+                report.passfail(label, False, hint=row_hint,
+                    instructions=exception_text())
         return report
     return lesson
 
@@ -1162,11 +1183,11 @@ def gen_lesson10(g):
 
         run_labels = ("Register does not stand still",
             "Sequence runs through all 15 states")
+        run_hints = (gate_hint, tap_hint)
         if not wired:
-            for label, hint in zip(run_labels, (gate_hint, tap_hint)):
-                report.passfail(label, False, hint=hint,
-                    instructions="The sequence is measured once the "
-                    "feedback gate is in place.")
+            blocked_passfails(report, run_labels, run_hints,
+                "The sequence is measured once the feedback gate is in "
+                "place.")
             return report
         try:
             states = lfsr_states(g['Lfsr']().sim_tran)
@@ -1187,10 +1208,8 @@ def gen_lesson10(g):
                     "more than the simulated time")
                 + " (15 of each is what a maximal-length LFSR does).")
         except Exception:
-            instructions = exception_text()
-            for label, hint in zip(run_labels, (gate_hint, tap_hint)):
-                report.passfail(label, False, instructions=instructions,
-                    hint=hint)
+            blocked_passfails(report, run_labels, run_hints,
+                exception_text())
         return report
     return lesson
 
@@ -1266,13 +1285,15 @@ def gen_lesson11(g):
             "Resistor loads replaced by a PMOS mirror", mirror_load,
             hint=ota_hint)
 
-        def sim_failure_text():
-            if structure_ok:
-                return exception_text()
-            return ("The simulation failed -- usually the load "
-                "replacement is still incomplete (see the check above).")
-
         dc_labels = ("DC gain >= 12", "Output swing >= 0.8 V")
+        gain_hint = ("Gain comes from the intrinsic gain of the devices, "
+            "which grows with channel length. Give m1 to m4 l=300n "
+            "instead of 130n: at the short length the OTA only reaches "
+            "about 8.")
+        swing_hint = ("The output can only approach the rails once both "
+            "resistors are gone. A resistor left in a branch drops its "
+            "share of the supply no matter what the transistors do.")
+        dc_hints = (gain_hint, swing_hint)
         try:
             tb = g['OtaTb']()
             h = SimHierarchy.from_schematic(tb.schematic)
@@ -1280,27 +1301,17 @@ def gen_lesson11(g):
             vin = [float(v) for v in h.inp.voltage]
             vout = [float(v) for v in h.out.voltage]
             gain = max_slope(vin, vout)
-            report.passfail(dc_labels[0], gain >= 12,
-                hint="Gain comes from the intrinsic gain of the devices, "
-                "which grows with channel length. Give m1 to m4 l=300n "
-                "instead of 130n: at the short length the OTA only "
-                "reaches about 8.",
+            report.passfail(dc_labels[0], gain >= 12, hint=gain_hint,
                 instructions=f"Maximum slope of the transfer curve: "
                 f"{gain:.1f} ({20*math.log10(max(gain, 1e-9)):.1f} dB), "
                 "required: >= 12 (21.6 dB).")
             swing = max(vout) - min(vout)
-            report.passfail(dc_labels[1], swing >= 0.8,
-                hint="The output can only approach the rails once both "
-                "resistors are gone. A resistor left in a branch drops "
-                "its share of the supply no matter what the transistors "
-                "do.",
+            report.passfail(dc_labels[1], swing >= 0.8, hint=swing_hint,
                 instructions=f"Output range over the sweep: {swing:.3f} V "
                 "(required: >= 0.8 V).")
         except Exception:
-            instructions = sim_failure_text()
-            for label in dc_labels:
-                report.passfail(label, False, instructions=instructions,
-                    hint=ota_hint)
+            blocked_passfails(report, dc_labels, dc_hints,
+                sim_failure_text(structure_ok, "the load replacement"))
 
         isup_label = "Supply current <= 50 uA"
         isup_hint = ("The supply current is essentially the tail current "
@@ -1316,7 +1327,8 @@ def gen_lesson11(g):
                 instructions=f"Current drawn from the 1.2 V supply at the "
                 f"balance point: {isup*1e6:.1f} uA (allowed: <= 50 uA).")
         except Exception:
-            report.passfail(isup_label, False,
-                instructions=sim_failure_text(), hint=isup_hint)
+            report.passfail(isup_label, False, hint=isup_hint,
+                instructions=sim_failure_text(structure_ok,
+                    "the load replacement"))
         return report
     return lesson

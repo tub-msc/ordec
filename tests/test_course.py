@@ -551,6 +551,43 @@ def test_cmos_mirror_fingers():
         == [True, True, True]
 
 
+# Devices the user has started but not finished wiring, per cmos_circuits
+# lesson index. Each replaces the lesson's '# EDIT HERE' marker.
+cmos_half_wired = [
+    (2, """
+    Nmos m0: .$w=1u; .$l=130n; .g -- vin; .d -- vout; .pos=(6,3)
+    """),
+    (3, """
+    Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outp; .pos=(4,7)
+    """),
+    (5, """
+    Nmos pd: .$w=1u; .$l=130n; .g -- a; .d -- y; .pos=(3,2)
+    """),
+]
+
+
+@pytest.mark.parametrize('lesson_index,device', cmos_half_wired,
+    ids=[f'lesson{i+1}' for i, _ in cmos_half_wired])
+def test_cmos_half_wired_no_traceback(lesson_index, device):
+    """
+    A device with pins still missing is an expected state while the user
+    types, so the checks must explain it instead of confronting the user
+    with a Python traceback.
+    """
+    lesson = course_data('cmos_circuits')['lessons'][lesson_index]
+    src = InsertSolution("""
+    # EDIT HERE
+    """, device).apply(lesson['src'])
+    report = run_lesson(lesson, src)['lesson']()
+    elements = [e.element_webdata() for e in report.elements()]
+    failed = [e for e in elements
+        if e['element_type'] == 'passfail' and not e['passed']]
+    assert failed
+    for check in failed:
+        assert 'Traceback' not in check['instructions'], check['label']
+        assert check['hint']
+
+
 def test_cmos_inverter_symmetric_sizing():
     """
     Equal NMOS/PMOS widths must pass all structural checks and levels but
