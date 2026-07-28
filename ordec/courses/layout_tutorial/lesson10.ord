@@ -15,16 +15,15 @@ cell DiffPair:
         inout vss: .align=South
 
     viewgen schematic -> Schematic:
-        .outline = (0, 0, 22, 18)
         port inp: .align=East; .pos=(1,8)
-        port inn: .align=East; .pos=(13,8)
-        port outp: .align=West; .pos=(21,16)
-        port outn: .align=East; .pos=(1,16)
-        port tail: .align=East; .pos=(9,1)
-        port vss: .align=West; .pos=(21,8)
+        port inn: .align=West; .pos=(19,8)
+        port outp: .align=West; .pos=(19,13)
+        port outn: .align=East; .pos=(1,13)
+        port tail: .align=North; .pos=(10,1)
+        port vss: .align=North; .pos=(10,7)
 
         Nmos(w=1u, l=130n, m=2) m1: .pos=(3,6); .g -- inp; .d -- outn; .s -- tail; .b -- vss
-        Nmos(w=1u, l=130n, m=2) m2: .pos=(15,6); .g -- inn; .d -- outp; .s -- tail; .b -- vss
+        Nmos(w=1u, l=130n, m=2) m2: .pos=(17,6); .g -- inn; .d -- outp; .s -- tail; .b -- vss; .orientation=MY
 
     viewgen layout -> Layout:
         .ref_layers = SG13G2().layers
