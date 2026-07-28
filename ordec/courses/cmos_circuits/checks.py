@@ -174,7 +174,7 @@ def gen_lesson1(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "Welcome to the CMOS course! All lessons use the open IHP "
+            "Welcome to the **CMOS course**! All lessons use the open IHP "
             "SG13G2 130nm technology at a **1.2 V** supply, from the "
             "[ihp130 cell library](docs:cell_lib/ihp130.html).\n\n"
             "We start with the transistor itself. The `MosCurves` "
@@ -193,8 +193,8 @@ def gen_lesson1(g):
             "characteristics."
         )
 
-        import_hint = ("Add the import at the EDIT HERE (import) marker: "
-            "`from ordec.lib.ihp130 import Nmos, Pmos`.")
+        import_hint = ("The library module is called ordec.lib.ihp130, "
+            "and both cells are imported from there by name.")
         imported = (g.get('Nmos') is ihp130.Nmos
             and g.get('Pmos') is ihp130.Pmos)
         report.passfail("Nmos and Pmos imported", imported,
@@ -228,25 +228,24 @@ def gen_lesson1(g):
             device_check(ihp130.Nmos,
                 {'g': 'gate', 'd': 'dn', 's': 'vss', 'b': 'vss'},
                 (10, 12), "with w=1u, l=130n at position (10,12)"),
-            hint="Add `Nmos mn: .$w=1u; .$l=130n; .g -- gate; .d -- dn; "
-            ".s -- vss; .b -- vss; .pos=(10,12)` at the EDIT HERE "
-            "(transistors) marker.")
+            hint="`g` to `gate`, `d` to `dn`, `s` to `vss`, `b` to `vss`. "
+            "An NMOS sits on ground, which is why both source and bulk "
+            "go there.")
 
         pmos_ok = guarded_passfail(report, "SG13G2 PMOS placed and wired",
             device_check(ihp130.Pmos,
                 {'g': 'gate', 'd': 'dp', 's': 'vdd', 'b': 'vdd'},
                 (25, 12), "with w=1u, l=130n at position (25,12)"),
-            hint="Add the PMOS the same way: `Pmos mp: .$w=1u; "
-            ".$l=130n; .g -- gate; .d -- dp; .s -- vdd; .b -- vdd; "
-            ".pos=(25,12)`.")
+            hint="`g` to `gate`, `d` to `dp`, `s` to `vdd`, `b` to `vdd`. "
+            "The PMOS hangs on the supply instead of on ground.")
 
         curve_hints = (
             "The NMOS must be off at VGS=0 and carry a few hundred "
             "microamps at 1.2 V. If it stays off, check w=1u and "
-            "l=130n; if it conducts at 0 V, its source is not on vss.",
+            "l=130n. If it conducts at 0 V, its source is not on `vss`.",
             "The PMOS hangs on the 1.2 V supply, so it conducts at a "
             "gate voltage of 0 V and turns off at 1.2 V. If it never "
-            "conducts, its source and bulk are not on vdd.")
+            "conducts, its source and bulk are not on `vdd`.")
         curve_labels = ("NMOS curve looks right", "PMOS curve looks right")
         if not (nmos_ok and pmos_ok):
             blocked_passfails(report, curve_labels, curve_hints,
@@ -288,29 +287,37 @@ def gen_lesson2(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "A current mirror copies a current. The diode-connected "
+            "A **current mirror** copies a current. The diode-connected "
             "`n0` turns the **10 uA** reference into a gate voltage, and "
             "`n1` shares that gate voltage. Both transistors are "
             "identical today, so the copy is 1:1.\n\n"
             "**Edit `n1` at the EDIT HERE marker so that the output "
             "current becomes 100 uA (within 10 %). Leave `n0` "
             "unchanged.**\n\n"
+            "The transistors have four parameters:\n\n"
+            "| Parameter | Meaning |\n"
+            "|---|---|\n"
+            "| `w` | total width of the device |\n"
+            "| `l` | channel length |\n"
+            "| `m` | number of identical devices in parallel |\n"
+            "| `ng` | number of gate fingers the width is split into |\n\n"
             "Start by making `n1` ten times wider (`.$w=10u`) and read "
-            "the measured current in the last check. If it overshoots, "
-            "open that check's hint."
+            "the measured current in the last check: it overshoots. Try "
+            "to work out why, and experiment with the parameters above "
+            "to see which of them actually scale the current. The hints "
+            "are there if you get stuck."
         )
         unit_hint = (
-            "n1 has to be ten copies of n0's unit transistor: either "
-            "`.$w=1u; .$m=10` for ten devices in parallel, or "
-            "`.$w=10u; .$ng=10` for one device split into ten 1u "
-            "fingers. Scaling the width alone is not a copy, and "
-            "trimming it until the current happens to fit gives a ratio "
-            "that drifts with temperature and process.")
+            "`n1` has to be ten copies of `n0`'s unit transistor, either "
+            "as ten devices in parallel or as one device split into ten "
+            "fingers of `n0`'s width. Scaling the width alone is not a "
+            "copy, and trimming it until the current happens to fit "
+            "gives a ratio that drifts with temperature and process.")
         current_hint = (
             "A wide transistor carries more current per micron than a "
             "narrow one, so w=10u overshoots to 136 uA. Ten unit devices "
             "land at 102.5 uA. The remaining 2.5 % is channel-length "
-            "modulation, because n0 and n1 sit at different drain "
+            "modulation, because `n0` and `n1` sit at different drain "
             "voltages.")
 
         def unit_devices():
@@ -331,9 +338,7 @@ def gen_lesson2(g):
                 and math.isclose(finger_w, unit_w, rel_tol=1e-9)
                 and math.isclose(float(oc.l), float(rc.l), rel_tol=1e-9))
             return found, (f"n1 has {copies:g} times the total width of "
-                f"n0, drawn as {finger_w*1e6:g} um wide fingers (n0's "
-                f"unit transistor is {unit_w*1e6:g} um wide). Ten unit "
-                "transistors of the same width and length are needed.")
+                f"n0, drawn as {finger_w*1e6:g} um wide fingers.")
 
         sim_error = None
         iout = vdiode = None
@@ -346,7 +351,7 @@ def gen_lesson2(g):
             sim_error = exception_text()
 
         label = "Mirror input intact"
-        diode_hint = ("Keep n0 diode-connected (gate tied to drain) with "
+        diode_hint = ("Keep `n0` diode-connected (gate tied to drain) with "
             "w=1u, l=1u, so that the 10 uA reference sets a proper gate "
             "voltage on the shared gate net.")
         if sim_error is not None:
@@ -384,7 +389,7 @@ def gen_lesson3(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "One transistor and one resistor make an amplifier: the "
+            "One transistor and one resistor make an **amplifier**: the "
             "input modulates the drain current, and the load resistor "
             "turns it back into a voltage swing at `vout`. The gain is "
             "$|A| = g_m R_L$.\n\n"
@@ -398,9 +403,9 @@ def gen_lesson3(g):
             "`sim_ac` view."
         )
         op_hint = (
-            "vout sits at 1.2 V while the transistor is too narrow to "
+            "`vout` sits at 1.2 V while the transistor is too narrow to "
             "draw current, and collapses towards 0 V once it is too "
-            "wide. Adjust w until vout settles between 0.25 V and "
+            "wide. Adjust w until `vout` settles between 0.25 V and "
             "0.95 V.")
         gain_hint = (
             "The gain is gm times the 10k load, and gm grows with the "
@@ -429,9 +434,9 @@ def gen_lesson3(g):
             return True, "Transistor placed and wired."
         device_ok = guarded_passfail(report, "NMOS placed and wired",
             nmos_ok,
-            hint="Add `Nmos m0: .$w=1u; .$l=130n; .g -- vin; .d -- vout; "
-            ".s -- vss; .b -- vss; .pos=(6,3)` at the EDIT HERE marker, "
-            "then increase w.")
+            hint="`g` to `vin`, `d` to `vout`, `s` to `vss`, `b` to "
+            "`vss`: the input drives the gate and the drain carries the "
+            "output.")
 
         op_label = "Operating point in the amplifying region"
         try:
@@ -478,7 +483,7 @@ def gen_lesson4(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "A differential pair amplifies the difference of two "
+            "A **differential pair** amplifies the difference of two "
             "inputs. Both transistors share one tail current source, "
             "and the input difference decides how that current splits "
             "between the two branches. The load resistors and the tail "
@@ -491,9 +496,9 @@ def gen_lesson4(g):
             "`inn`. Watch the outputs cross in the `report_dc` view."
         )
         pair_hint = (
-            "Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outp; .s -- tail; "
-            ".b -- vss; .pos=(4,7) and the mirrored m2 with .g -- inn; "
-            ".d -- outn; .orientation=FlippedSouth at .pos=(16,7).")
+            "`m1`: `g` to `inp`, `d` to `outp`. `m2`: `g` to `inn`, `d` "
+            "to `outn`. Both share `s` on `tail` and `b` on `vss` -- the "
+            "common tail is what makes it a pair.")
 
         def pair_ok():
             sch = g['DiffPair']().schematic
@@ -533,14 +538,14 @@ def gen_lesson4(g):
         sim_labels = ("Differential gain >= 4",
             "Outputs balanced at Vinp = 0.7 V",
             "Tail current fully steered")
-        gain_hint = ("Gain needs both drains on the load resistors, m1 "
-            "on outp and m2 on outn. A drain on the wrong net leaves "
+        gain_hint = ("Gain needs both drains on the load resistors, `m1` "
+            "on `outp` and `m2` on `outn`. A drain on the wrong net leaves "
             "one output stuck at the supply.")
         balance_hint = ("With identical transistors and identical loads on "
             "both sides, the tail current splits exactly in half when "
             "both inputs are equal -- the outputs must then be equal too.")
         steering_hint = ("Steering only works if both sources meet on the "
-            "tail net. With a source on vss instead, that branch conducts "
+            "`tail` net. With a source on `vss` instead, that branch conducts "
             "on its own and the pair never hands its current over.")
         sim_hints = (gain_hint, balance_hint, steering_hint)
         try:
@@ -583,7 +588,7 @@ def gen_lesson5(g):
         report = Report()
         report.markdown(
             "Three differential pairs wired in a ring make an "
-            "oscillator: each stage inverts, so the signal never "
+            "**oscillator**: each stage inverts, so the signal never "
             "settles and races around the loop.\n\n"
             "But only if the loop inverts an odd number of times. This "
             "ring latches instead -- `report_tran` shows two flat "
@@ -593,7 +598,7 @@ def gen_lesson5(g):
             "found, and its hint helps if you get stuck."
         )
         ring_hint = (
-            "Look at the inp and inn pins of the three DiffPair "
+            "Look at the `inp` and `inn` pins of the three `DiffPair` "
             "instances and follow the signal once around the loop: one "
             "stage does not take its two inputs the same way round as "
             "the others. Each stage inverts once, and a swapped input "
@@ -677,7 +682,7 @@ def gen_lesson6(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "The CMOS inverter is the simplest logic gate: a PMOS pulls "
+            "The **CMOS inverter** is the simplest logic gate: a PMOS pulls "
             "the output high, an NMOS pulls it low.\n\n"
             "1. **Build the inverter** at the EDIT HERE marker: the "
             "NMOS `pd` at position `(3,2)` and the PMOS `pu` at `(3,8)`, "
@@ -690,9 +695,9 @@ def gen_lesson6(g):
             "is where it crosses vout = vin."
         )
         build_hint = (
-            "Nmos pd: .$w=1u; .$l=130n; .g -- a; .d -- y; .s -- vss; "
-            ".b -- vss; .pos=(3,2) and Pmos pu: .$w=1u; .$l=130n; "
-            ".g -- a; .d -- y; .s -- vdd; .b -- vdd; .pos=(3,8).")
+            "Both transistors take `g` to `a` and `d` to `y`. The NMOS "
+            "pulls down with `s` and `b` to `vss`, the PMOS pulls up "
+            "with `s` and `b` to `vdd`.")
         size_hint = (
             "Holes are less mobile than electrons: at equal width, the "
             "SG13G2 PMOS conducts roughly half the current of the NMOS, "
@@ -742,10 +747,10 @@ def gen_lesson6(g):
         sim_labels = ("Output high level (VOH >= 1.15 V)",
             "Output low level (VOL <= 0.05 V)",
             "Switching threshold at 0.6 V (+-3 %)")
-        voh_hint = ("Only the PMOS can pull y up to the supply. If y "
-            "stays low, its source and bulk are not on vdd.")
-        vol_hint = ("Only the NMOS pulls y down to ground. If y never "
-            "reaches 0 V, its source and bulk are not on vss.")
+        voh_hint = ("Only the PMOS can pull `y` up to the supply. If `y` "
+            "stays low, its source and bulk are not on `vdd`.")
+        vol_hint = ("Only the NMOS pulls `y` down to ground. If `y` never "
+            "reaches 0 V, its source and bulk are not on `vss`.")
         sim_hints = (voh_hint, vol_hint, size_hint)
         try:
             tb = g['InvTb']()
@@ -789,8 +794,8 @@ def gen_lesson7(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "At its switching threshold, an inverter is an analog "
-            "amplifier: both transistors are saturated and their $g_m$ "
+            "At its switching threshold, an inverter is an **analog "
+            "amplifier**: both transistors are saturated and their $g_m$ "
             "adds up. A feedback resistor from output to input forces "
             "v(a) = v(y) and keeps the inverter biased exactly there, "
             "while a capacitor couples the AC signal in.\n\n"
@@ -802,12 +807,12 @@ def gen_lesson7(g):
             "The `report_ac` view shows the self-bias point and the gain "
             "over frequency."
         )
-        value_hint = ("Raise the resistance of rf: `.$r=1M`. Anything "
-            "from 100k upwards is large enough.")
+        value_hint = ("Raise the resistance of `rf` to 1M. Anything from "
+            "100k upwards is large enough.")
         gain_hint = (
-            "A small rf ties the output straight back to the input, so "
+            "A small `rf` ties the output straight back to the input, so "
             "the amplifier ends up following its own output and the gain "
-            "drops towards 1. Make rf large compared to the impedance at "
+            "drops towards 1. Make `rf` large compared to the impedance at "
             "the input node, then the signal only sees the gates.")
 
         op_label = "Self-biased at the switching threshold"
@@ -899,7 +904,7 @@ def gen_lesson8(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "`Nand2` already has the right symbol, but its schematic is "
+            "**`Nand2`** already has the right symbol, but its schematic is "
             "still the inverter from lesson 6, driven by `a` alone.\n\n"
             "**Extend it at the EDIT HERE marker so that "
             "`y = !(a & b)`.**\n\n"
@@ -912,11 +917,11 @@ def gen_lesson8(g):
             "operating point."
         )
         nand_hint = (
-            "Declare `net n` between the two NMOS: n1 from vss with "
-            ".d -- n, and n2 with .s -- n; .d -- y; .g -- b. The second "
-            "PMOS p2 goes next to p1 at .pos=(12,13) with .s -- vdd; "
-            ".d -- y; .g -- b. Add both new transistors to the sizing "
-            "loop, otherwise they keep the library default l=1u.")
+            "Lower NMOS: `s` to `vss`, `d` to the new net. Upper NMOS: "
+            "`s` to that net, `d` to `y`, with one input per gate. The "
+            "second PMOS goes next to the first at (12,13) with `s` to "
+            "`vdd`, `d` to `y`, `g` to `b`. Transistors left out of the "
+            "sizing loop keep the library default l=1u.")
 
         def structure():
             sch = dut().schematic
@@ -959,21 +964,20 @@ def gen_lesson8(g):
                         + ", ".join(where) + ".")
                 return True, "Series NMOS stack and parallel PMOS in place."
             status = (f"{len(nmos)} NMOS and {len(pmos)} PMOS found "
-                "(2 of each needed, new ones at positions (4,7) and "
-                "(12,13), sized by the existing loop). Series NMOS "
-                f"stack y-n-vss: {'ok' if series else 'missing'}, "
-                f"parallel PMOS pull-up: "
-                f"{'ok' if parallel else 'missing'}.")
+                "(2 of each needed). Series NMOS stack y-n-vss: "
+                f"{'ok' if series else 'missing'}, parallel PMOS "
+                f"pull-up: {'ok' if parallel else 'missing'}.")
             return False, status
         structure_ok = guarded_passfail(report,
             "NMOS in series, PMOS in parallel", structure, hint=nand_hint)
 
-        pullup_hint = ("y must be pulled high here, which is the job of "
-            "the PMOS pair: each PMOS on its own reaches from vdd to y, "
-            "one with a on its gate and one with b.")
-        pulldown_hint = ("y must be pulled low here, which only the NMOS "
-            "stack can do: from vss through n1 to the internal net, and "
-            "from there through n2 to y, with one input per gate.")
+        pullup_hint = ("`y` must be pulled high here, which is the job of "
+            "the PMOS pair: each PMOS on its own reaches from `vdd` to `y`, "
+            "one with `a` on its gate and one with `b`.")
+        pulldown_hint = ("`y` must be pulled low here, which only the NMOS "
+            "stack can do: from `vss` through the lower device to the "
+            "internal net, and from there through the upper one to `y`, "
+            "with one input per gate.")
         for a, b in ((0, 0), (0, 1), (1, 0), (1, 1)):
             expect_high = not (a and b)
             row_hint = pullup_hint if expect_high else pulldown_hint
@@ -1006,7 +1010,7 @@ def gen_lesson9(g):
         report = Report()
         report.markdown(
             "Digital chips are not drawn transistor by transistor. They "
-            "are assembled from *standard cells*: pre-designed, "
+            "are assembled from **standard cells**: pre-designed, "
             "pre-verified gates, all on a common height grid so that "
             "place-and-route tools can tile them into rows. This lesson "
             "uses one straight from the PDK.\n\n"
@@ -1031,11 +1035,10 @@ def gen_lesson9(g):
             "see also the [layout how-to](docs:howto_layout.html)."
         )
         dut_hint = (
-            "Add `Xor2 dut: .A -- a; .B -- b; .X -- y; .VDD -- vdd; "
-            ".VSS -- vss; .pos=(18,12)` at the EDIT HERE marker. The "
-            "supply pins of a standard cell must be connected too -- "
-            "in a real chip the rails do that automatically when the "
-            "cells are tiled into a row.")
+            "Each pin goes to the testbench net of the same name, and "
+            "`VDD` and `VSS` must be connected too -- in a real chip the "
+            "rails do that automatically when the cells are tiled into a "
+            "row.")
 
         def dut_wired():
             sch = g['Xor2Tb']().schematic
@@ -1062,7 +1065,7 @@ def gen_lesson9(g):
             dut_wired, hint=dut_hint)
 
         row_hint = ("If the output never moves, check the name of the "
-            "output pin: this cell calls it X, not Y. If the levels are "
+            "output pin: this cell calls it `X`, not `Y`. If the levels are "
             "there but wrong, the two inputs are swapped.")
         for a, b in ((0, 0), (0, 1), (1, 0), (1, 1)):
             expect_high = bool(a) != bool(b)
@@ -1124,8 +1127,8 @@ def gen_lesson10(g):
             "first flip flop is tied to a constant zero, so after the "
             "reset the register just sits there.\n\n"
             "Feed the last flip flops back into the first one through a "
-            "gate and the register turns into a *linear feedback shift "
-            "register*: it walks through a long, scrambled sequence of "
+            "gate and the register turns into a **linear feedback shift "
+            "register**: it walks through a long, scrambled sequence of "
             "states that looks random but repeats exactly. Real chips "
             "use them to generate test patterns and to scramble data.\n\n"
             "**Replace the tie cell at the EDIT HERE marker by a "
@@ -1138,10 +1141,9 @@ def gen_lesson10(g):
             "checks below."
         )
         place_hint = (
-            "Put the gate where the tie cell was: `Xnor2 fbgate: "
-            ".A -- q3; .B -- q2; .Y -- fb; .VDD -- vdd; .VSS -- vss; "
-            ".pos=(64,14)`. Its two inputs come from register outputs, "
-            "its output drives fb.")
+            "`A` and `B` come from flip flop outputs, the output pin "
+            "drives `fb` (the D input of the first flip flop), and "
+            "`VDD` and `VSS` go to the supply nets.")
         gate_hint = (
             "After the reset all four bits are zero. An XOR of two zeros "
             "feeds another zero back, so the register would stay at 0000 "
@@ -1149,8 +1151,9 @@ def gen_lesson10(g):
             "sequence.")
         tap_hint = (
             "Only two tap pairs walk through all 15 states, and both of "
-            "them use the last flip flop q3 together with one other "
-            "output. Try q3 with q2, or q3 with q0. Without the last "
+            "them use the last flip flop `q3` together with one other "
+            "output. Try `q3` with `q2`, or `q3` with `q0`. Without the "
+            "last "
             "flip flop in the loop, the bits behind the tap only delay "
             "the sequence instead of shaping it.")
 
@@ -1222,9 +1225,10 @@ def gen_lesson11(g):
     def lesson() -> Report:
         report = Report()
         report.markdown(
-            "The capstone combines the current mirror of lesson 2 with "
-            "the differential pair of lesson 4, which is exactly the "
-            "circuit you start from here. A PMOS mirror in place of the "
+            "The capstone is a **5-transistor OTA**: it combines the "
+            "current mirror of lesson 2 with the differential pair of "
+            "lesson 4, which is exactly the circuit you start from "
+            "here. A PMOS mirror in place of the "
             "resistor loads folds the signal current of one branch onto "
             "the other, which doubles the gain, and it lets the output "
             "swing almost from rail to rail.\n\n"
@@ -1243,11 +1247,11 @@ def gen_lesson11(g):
             "the `report_dc` view."
         )
         ota_hint = (
-            "Replace rl_p/rl_n by PMOS transistors in their slots: m3 "
-            "(diode-connected: .d -- outx; .g -- outx; .s -- vdd; "
-            ".b -- vdd; .pos=(4,14)) and m4 (.g -- outx; .d -- out; "
-            ".s -- vdd; .b -- vdd; .pos=(12,14)), both w=5u. m3 carries "
-            "the current of one branch and m4 copies it onto the "
+            "Replace `rl_p` and `rl_n` by PMOS transistors in their "
+            "slots, both w=5u. `m3` at (4,14) is diode-connected: `g` "
+            "and `d` both to `outx`. `m4` at (12,14): `g` to `outx`, "
+            "`d` to `out`. Both take `s` and `b` to `vdd`. `m3` carries "
+            "the current of one branch and `m4` copies it onto the "
             "other.")
 
         def mirror_load():
@@ -1277,9 +1281,7 @@ def gen_lesson11(g):
                     + ".")
             status = (f"Resistors left: {resistors} (0 needed), PMOS "
                 f"mirror (diode + output device): "
-                f"{'ok' if mirror else 'missing'}. The two PMOS go into "
-                "the slots of the resistors, m3 at (4,14) and m4 at "
-                "(12,14), both w=5u.")
+                f"{'ok' if mirror else 'missing'}.")
             return resistors == 0 and mirror, status
         structure_ok = guarded_passfail(report,
             "Resistor loads replaced by a PMOS mirror", mirror_load,
@@ -1287,7 +1289,7 @@ def gen_lesson11(g):
 
         dc_labels = ("DC gain >= 12", "Output swing >= 0.8 V")
         gain_hint = ("Gain comes from the intrinsic gain of the devices, "
-            "which grows with channel length. Give m1 to m4 l=300n "
+            "which grows with channel length. Give `m1` to `m4` l=300n "
             "instead of 130n: at the short length the OTA only reaches "
             "about 8.")
         swing_hint = ("The output can only approach the rails once both "
@@ -1315,7 +1317,7 @@ def gen_lesson11(g):
 
         isup_label = "Supply current <= 50 uA"
         isup_hint = ("The supply current is essentially the tail current "
-            "set by mtail and the bias voltage. If you widened mtail "
+            "set by `mtail` and the bias voltage. If you widened `mtail` "
             "or shortened its channel, the current went up.")
         try:
             tb = g['OtaTb']()
