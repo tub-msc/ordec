@@ -6,6 +6,7 @@
       "title": "Welcome to ORDeC",
       "description": "A short welcome and a tour of the web UI.",
       "lesson_gen": "gen_lesson1",
+      "welcome": true,
       "getting_started_lesson_1": true
     },
     {

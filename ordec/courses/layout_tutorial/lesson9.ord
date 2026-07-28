@@ -1,0 +1,96 @@
+from ordec.core import *
+from ordec.lib.ihp130 import SG13G2, Nmos, Pmos, Ntap, Ptap, run_drc, run_lvs
+from ordec.layout import SRouter
+
+cell Inv:
+    viewgen symbol -> Symbol:
+        input a: .align=West
+        output y: .align=East
+        inout vdd: .align=North
+        inout vss: .align=South
+
+    viewgen schematic -> Schematic:
+        port a: .align=East; .pos=(1,7)
+        port y: .align=West; .pos=(9,7)
+        port vdd: .align=East; .pos=(2,13)
+        port vss: .align=East; .pos=(2,1)
+
+        Nmos(w=1u, l=130n) mn: .pos=(3,2); .s -- vss; .b -- vss; .g -- a; .d -- y
+        Pmos(w=1u, l=130n) mp: .pos=(3,8); .s -- vdd; .b -- vdd; .g -- a; .d -- y
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        # The device column from lesson 6:
+        Nmos(w=1u, l=130n) mn:
+            ! .pos == (0, 0)
+        Pmos(w=1u, l=130n) mp:
+            ! .pos.x == mn.pos.x
+            ! .pos.y == mn.pos.y + 2500
+        Ptap(l=0.7u, w=0.7u) ptap:
+            ! .activ.cx == mn.activ.cx
+            ! .activ.uy + 600 == mn.poly[0].ly
+        Ntap(l=0.7u, w=0.7u) ntap:
+            ! .activ.cx == mp.activ.cx
+            ! .activ.ly - 600 == mp.poly[0].uy
+
+        # The wiring from lesson 7:
+        LayoutRect polybar:
+            .layer = layers.GatPoly
+            ! .south == mn.poly[0].north
+            ! .north == mp.poly[0].south
+            ! .width == mn.poly[0].width
+
+        sr = SRouter(SG13G2().default_routing_spec)
+        sr.move(layers.Metal1, mn.sd[1].center)
+        sr.wire_y(mp.sd[1].cy)
+        # EDIT HERE (y pin)
+
+        LayoutRect m1_vss:
+            .layer = layers.Metal1
+            ! .height == 160
+            ! .cy == ptap.m1.cy
+            ! .lx == mn.activ.lx - 400
+            ! .ux == mn.activ.ux + 400
+            # EDIT HERE (vss pin)
+        LayoutRect m1_vdd:
+            .layer = layers.Metal1
+            ! .height == 160
+            ! .cy == ntap.m1.cy
+            ! .lx == mp.activ.lx - 400
+            ! .ux == mp.activ.ux + 400
+            # EDIT HERE (vdd pin)
+        sr.move(layers.Metal1, mn.sd[0].center)
+        sr.wire_y(m1_vss.cy)
+        sr.move(layers.Metal1, mp.sd[0].center)
+        sr.wire_y(m1_vdd.cy)
+
+        LayoutRect nwell:
+            .layer = layers.NWell
+            ! .contains(mp.nwell.rect)
+            ! .contains(ntap.nwell.rect)
+
+        # The input contact from lesson 8:
+        LayoutRect polyext:
+            .layer = layers.GatPoly
+            ! .size == (500, 500)
+            ! .east == polybar.west
+        LayoutRect polycont:
+            .layer = layers.Cont
+            ! .size == (160, 160)
+            ! .center == polyext.center
+        LayoutRect m1_a:
+            .layer = layers.Metal1
+            ! .y_extent == polycont.y_extent
+            ! .ux == polycont.ux + 200
+            ! .width == 1500
+            # EDIT HERE (a pin)
+
+    @generate(auto_refresh=False)
+    viewgen drc -> DrcReport:
+        . = run_drc(self.layout, variant="minimal")
+
+    @generate(auto_refresh=False)
+    viewgen lvs -> LvsReport:
+        . = run_lvs(self.layout, self.symbol)

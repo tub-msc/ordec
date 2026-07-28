@@ -3,9 +3,77 @@
   "lessons": [
     {
       "file": "lesson1.ord",
-      "title": "Coming soon",
-      "description": "This course is under construction.",
-      "lesson_gen": "gen_lesson1"
+      "title": "Welcome to the layout editor",
+      "description": "A first look at IC layout and the layout viewer.",
+      "lesson_gen": "gen_lesson1",
+      "welcome": true
+    },
+    {
+      "file": "lesson2.ord",
+      "title": "Drawing rectangles",
+      "description": "Draw rectangles on layers using absolute coordinates.",
+      "lesson_gen": "gen_lesson2"
+    },
+    {
+      "file": "lesson3.ord",
+      "title": "Geometric constraints",
+      "description": "Position shapes with constraints instead of coordinates.",
+      "lesson_gen": "gen_lesson3"
+    },
+    {
+      "file": "lesson4.ord",
+      "title": "Inequalities, centering and spacing",
+      "description": "Minimum clearances, centering and even spacing with constraints.",
+      "lesson_gen": "gen_lesson4"
+    },
+    {
+      "file": "lesson5.ord",
+      "title": "Routing with SRouter",
+      "description": "Draw wires and change layers with the stack router.",
+      "lesson_gen": "gen_lesson5"
+    },
+    {
+      "file": "lesson6.ord",
+      "title": "An inverter: placing the devices",
+      "description": "Instantiate transistors and taps and stack them into a column.",
+      "lesson_gen": "gen_lesson6"
+    },
+    {
+      "file": "lesson7.ord",
+      "title": "Wiring the inverter",
+      "description": "Connect gates, output and supplies with poly and metal.",
+      "lesson_gen": "gen_lesson7"
+    },
+    {
+      "file": "lesson8.ord",
+      "title": "The input contact and DRC",
+      "description": "Contact the gate, then find and fix a design rule violation.",
+      "lesson_gen": "gen_lesson8"
+    },
+    {
+      "file": "lesson9.ord",
+      "title": "Pins and LVS",
+      "description": "Label the ports and verify the layout against the schematic.",
+      "lesson_gen": "gen_lesson9"
+    },
+    {
+      "file": "lesson10.ord",
+      "title": "A differential pair: the matched row",
+      "description": "Interdigitate four unit transistors with shared diffusion.",
+      "lesson_gen": "gen_lesson10"
+    },
+    {
+      "file": "lesson11.ord",
+      "title": "Finishing the differential pair",
+      "description": "Route, add supply and pins, and pass DRC and LVS.",
+      "lesson_gen": "gen_lesson11"
+    },
+    {
+      "file": "epilogue.ord",
+      "title": "What's next?",
+      "description": "Course completed — where to go from here.",
+      "lesson_gen": "gen_epilogue",
+      "epilogue": true
     }
   ]
 }

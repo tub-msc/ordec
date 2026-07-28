@@ -467,6 +467,29 @@ def test_course_intro_callout(web):
 
 
 @pytest.mark.web
+def test_course_welcome_no_tour(web):
+    """The generic welcome flag without the getting_started tour: lesson 1
+    of the layout tutorial auto-passes and shows the proceed callout right
+    away (no spotlight to click through first)."""
+    web.resize_viewport()
+    web.driver.get(web.url)
+    web.driver.execute_script(
+        "window.localStorage.removeItem('ordecCourse:layout_tutorial');")
+
+    web.navigate('app.html#course=layout_tutorial')
+    web.wait_for_ready()
+    wait_for_course_marker(web, 'solved')
+    info = web.driver.execute_script("""
+        return {
+            success: !!document.querySelector('.course-callout-success'),
+            spotlight: !!document.querySelector('.spotlight-skip'),
+        };
+    """)
+    assert info['success'] is True
+    assert info['spotlight'] is False
+
+
+@pytest.mark.web
 def test_course_spotlight(web):
     """The spotlight intro tour appears on every visit of the welcome
     lesson, can be stepped through in both directions, and Skip dismisses

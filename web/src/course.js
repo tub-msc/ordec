@@ -239,21 +239,26 @@ export class CourseController {
 
     // -- Task-free and specially checked lessons -------------------------
     //
-    // Three kinds of lessons flagged in course.json get dedicated handling
-    // here instead of the usual PassFail-based checking (their reports are
-    // instruction-only): the welcome lesson (getting_started_lesson_1)
-    // counts as solved right away, runs the spotlight intro tour (see
-    // startTour) and, once the tour is done, shows a callout pointing at
-    // the next-lesson button. The viewer lesson (getting_started_lesson_2)
+    // Lessons flagged in course.json get dedicated handling here instead of
+    // the usual PassFail-based checking (their reports are instruction-only).
+    // Generic flags: a welcome lesson (welcome) counts as solved right away
+    // and shows a callout pointing at the next-lesson button; an epilogue
+    // lesson (epilogue) closes a course with a what's-next report: solved
+    // right away, no callout, and no source editor in its shipped layout.
+    // getting_started-specific flags: getting_started_lesson_1 runs the
+    // spotlight intro tour on its (welcome) lesson and defers the callout
+    // until the tour is done; the viewer lesson (getting_started_lesson_2)
     // is passed by opening the HelloWorld schematic and hello result
     // viewers, which the frontend checks itself (see checkLesson2Views).
-    // An epilogue lesson (generic flag: epilogue) closes a course with a
-    // what's-next report: solved right away, no callout, and no source
-    // editor in its shipped layout.
 
     lesson1Flagged() {
         return Boolean(this.course.lessons[this.state.currentLesson]
             .getting_started_lesson_1);
+    }
+
+    welcomeFlagged() {
+        return Boolean(this.course.lessons[this.state.currentLesson]
+            .welcome);
     }
 
     lesson2Flagged() {
@@ -315,7 +320,7 @@ export class CourseController {
     onReportResult(msg) {
         if (msg.exception) {
             this.reportStatus = 'error';
-        } else if (this.lesson1Flagged() || this.epilogueFlagged()) {
+        } else if (this.welcomeFlagged() || this.epilogueFlagged()) {
             // Task-free lessons (welcome lesson, epilogue) count as solved
             // right away, unlocking the following lesson if any.
             this.reportStatus = 'pass';
@@ -495,10 +500,13 @@ export class CourseController {
             // for itself, no callout on top.
             return null;
         }
-        if (this.lesson1Flagged()) {
-            // Welcome lesson: only the "proceed to lesson 2" callout, and
-            // only once the user has clicked through the spotlight tour.
-            if (this.reportStatus === 'pass' && this.tourDone
+        if (this.welcomeFlagged()) {
+            // Welcome lesson: only the "proceed to lesson 2" callout; when
+            // the spotlight tour runs on this lesson
+            // (getting_started_lesson_1), only once the user has clicked
+            // through it.
+            if (this.reportStatus === 'pass'
+                && (!this.lesson1Flagged() || this.tourDone)
                 && !this.successDismissed) {
                 return 'success';
             }
@@ -543,7 +551,7 @@ export class CourseController {
         const showArrow = (kind !== 'success') || !isLast;
 
         let text;
-        if (kind === 'success' && this.lesson1Flagged()) {
+        if (kind === 'success' && this.welcomeFlagged()) {
             text = `<strong>Press here to proceed to lesson 2!</strong>`;
         } else if (kind === 'success' && isLast) {
             text = `<strong>Lesson completed!</strong>

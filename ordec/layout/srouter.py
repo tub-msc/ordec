@@ -30,7 +30,6 @@ class SRouter:
         self.path = None
         self.path_order = 0
         self.stack = []
-        self.place_throughrect = False
 
     def _rsl(self) -> RoutingSpecLayer:
         """Look up the RoutingSpecLayer for the current layer."""
@@ -40,10 +39,8 @@ class SRouter:
         self.stack.append((self.cur_pos, self.cur_layer))
 
     def pop(self):
-        #self._end_path()
         self.path = None
         self.path_order = 0
-        self.place_throughrect = False
         self.cur_pos, self.cur_layer = self.stack.pop()
 
     def _check_initialized(self):
@@ -59,7 +56,6 @@ class SRouter:
         """Set position and layer without drawing (like SVG 'M')."""
         self.path = None
         self.path_order = 0
-        self.place_throughrect = False
         self.cur_pos = pos
         self.cur_layer = layer
 
@@ -92,23 +88,29 @@ class SRouter:
         self.wire((self.cur_pos[0], y))
 
     def _end_path(self):
-        if self.path is None:
-            if self.place_throughrect:
-                rsl = self._rsl()
-                if None in (rsl.route_via_width, rsl.route_via_height):
-                    raise SRouterException("Cannot draw via-like rect on layer wher"
-                        " route_via_width or route_via_height is None.")
-                r = self.layout % LayoutRect(layer=self.cur_layer)
-                self.solver.constrain(r.center == self.cur_pos)
-                self.solver.constrain(r.size ==
-                    (rsl.route_via_width, rsl.route_via_height))
-        else:
-            self.path = None
-            self.path_order = 0
-        self.place_throughrect = True
+        """End the current path (if any) and emit the via-stack element of
+        the current layer at the current position: the cut on via layers, a
+        route_via-sized landing pad on metal layers. Pads on the metals are
+        required because a wire alone (route_wire_width) does not satisfy
+        the via enclosure rules (e.g. V1.c/V1.c1 for SG13G2)."""
+        rsl = self._rsl()
+        if None in (rsl.route_via_width, rsl.route_via_height):
+            raise SRouterException("Cannot draw via-like rect on layer where"
+                " route_via_width or route_via_height is None.")
+        r = self.layout % LayoutRect(layer=self.cur_layer)
+        self.solver.constrain(r.center == self.cur_pos)
+        self.solver.constrain(r.size ==
+            (rsl.route_via_width, rsl.route_via_height))
+        self.path = None
+        self.path_order = 0
 
     def layer(self, layer: Layer):
+        """Change to another routing layer, emitting a complete via stack at
+        the current position: cuts plus landing pads on every metal layer
+        traversed, including the start and destination layers."""
         self._check_initialized()
+        if self.cur_layer == layer:
+            return
         while self.cur_layer != layer:
             self._end_path()
             rsl = self._rsl()
@@ -121,4 +123,5 @@ class SRouter:
                 RoutingSpecLayer.route_id_index.query(route_id_next))
             self.cur_layer = next_rsl.layer
 
-        self.cur_layer = layer
+        # Landing pad on the destination layer:
+        self._end_path()

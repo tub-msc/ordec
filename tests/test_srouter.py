@@ -30,9 +30,13 @@ def test_basic():
     expected % LayoutPath(layer=layers.Metal3, width=200, endtype=PathEndType.Custom,
         ext_bgn=150, ext_end=150,
         vertices=[Vec2I(1000, 1000), Vec2I(0, 1000)])
+    # layer() emits a complete via stack: cuts plus landing pads on every
+    # metal, including the start (Metal1) and destination (Metal3) layers.
+    expected % LayoutRect(layer=layers.Metal1, rect=Rect4I(760, 850, 1240, 1150))
     expected % LayoutRect(layer=layers.Via1, rect=Rect4I(905, 905, 1095, 1095))
-    expected % LayoutRect(layer=layers.Via2, rect=Rect4I(905, 905, 1095, 1095))
     expected % LayoutRect(layer=layers.Metal2, rect=Rect4I(760, 850, 1240, 1150))
+    expected % LayoutRect(layer=layers.Via2, rect=Rect4I(905, 905, 1095, 1095))
+    expected % LayoutRect(layer=layers.Metal3, rect=Rect4I(760, 850, 1240, 1150))
     assert compare(layout_basic(), expected) is None
 
 @generate_func
@@ -85,5 +89,7 @@ def test_push_pop_layerchange():
     expected % LayoutPath(layer=layers.Metal2, width=200, endtype=PathEndType.Custom,
         ext_bgn=150, ext_end=150,
         vertices=[Vec2I(1000, 0), Vec2I(1000, -1000)])
+    expected % LayoutRect(layer=layers.Metal1, rect=Rect4I(760, -150, 1240, 150))
     expected % LayoutRect(layer=layers.Via1, rect=Rect4I(905, -95, 1095, 95))
+    expected % LayoutRect(layer=layers.Metal2, rect=Rect4I(760, -150, 1240, 150))
     assert compare(layout_push_pop_layerchange(), expected) is None

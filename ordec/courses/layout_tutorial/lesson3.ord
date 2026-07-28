@@ -1,0 +1,17 @@
+from ordec.core import *
+from ordec.lib.ihp130 import SG13G2
+
+cell Example:
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        LayoutRect pad_w: .layer=layers.Metal1; .rect=(0, 2000, 800, 2800)
+        LayoutRect pad_e: .layer=layers.Metal1; .rect=(4000, 2000, 4800, 2800)
+
+        # EDIT HERE (bridge)
+
+        LayoutRect pad_w2: .layer=layers.Metal1; .rect=(0, 0, 800, 800)
+        LayoutRect pad_e2: .layer=layers.Metal1; .rect=(4000, 0, 4800, 800)
+
+        # EDIT HERE (center)

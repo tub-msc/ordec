@@ -258,12 +258,268 @@ courses_testdata = {
         # Epilogue: task-free what's-next report closing the course.
         LessonTestdata(),
     ]),
-    # The under-construction courses have a single instruction-only dummy
+    # The under-construction course has a single instruction-only dummy
     # lesson; without PassFail elements, it can never be marked solved.
     'cmos_circuits': CourseTestdata('CMOS Integrated Circuits',
         [LessonTestdata()]),
-    'layout_tutorial': CourseTestdata('Layout Tutorial',
-        [LessonTestdata()]),
+    'layout_tutorial': CourseTestdata('Layout Tutorial', [
+        # Lesson 1 is a task-free welcome lesson (generic 'welcome' flag).
+        LessonTestdata(),
+        # Lesson 2: rectangles with absolute coordinates.
+        LessonTestdata(passfails=3, solution=[
+            InsertSolution("""
+            # EDIT HERE
+            """, """
+            LayoutRect m2: .layer=layers.Metal2; .rect=(0, 900, 3000, 1400)
+            LayoutRect act: .layer=layers.Activ; .rect=(500, 2000, 1500, 2600)
+            LayoutRect gp: .layer=layers.GatPoly; .rect=(2000, 2000, 2200, 2900)
+            """),
+        ]),
+        # Lesson 3: equality constraints and anchors (bridge, centered pad).
+        LessonTestdata(passfails=4, solution=[
+            InsertSolution("""
+            # EDIT HERE (bridge)
+            """, """
+            LayoutRect bridge:
+                .layer = layers.Metal1
+                ! .west == pad_w.east
+                ! .east == pad_e.west
+                ! .height == 400
+            """),
+            InsertSolution("""
+            # EDIT HERE (center)
+            """, """
+            LayoutRect pad_c:
+                .layer = layers.Metal1
+                ! .size == (800, 800)
+                ! .ly == pad_w2.ly
+                ! .lx - pad_w2.ux == pad_e2.lx - .ux
+            """),
+        ]),
+        # Lesson 4: inequalities, even spacing, weighted centering.
+        LessonTestdata(passfails=4, solution=[
+            InsertSolution("""
+            # EDIT HERE (pads)
+            """, """
+            LayoutRect p1: .layer=layers.Metal2; ! .size==(800,400); ! .ly==base.uy+300
+            LayoutRect p2: .layer=layers.Metal2; ! .size==(800,400); ! .ly==base.uy+300
+            LayoutRect p3: .layer=layers.Metal2; ! .size==(800,400); ! .ly==base.uy+300
+
+            ! p1.lx >= base.lx + 400
+            ! p2.lx - p1.ux == p3.lx - p2.ux
+            ! p3.ux <= base.ux - 400
+            ! p2.cx == 0.5*base.lx + 0.5*base.ux
+            """),
+        ]),
+        # Lesson 5: SRouter obstacle crossing.
+        LessonTestdata(passfails=3, solution=[
+            InsertSolution("""
+            # EDIT HERE (route)
+            """, """
+            sr = SRouter(SG13G2().default_routing_spec)
+            sr.move(layers.Metal1, pad_w.center)
+            sr.wire_x(obstacle.lx - 500)
+            sr.layer(layers.Metal2)
+            sr.wire_x(obstacle.ux + 500)
+            sr.layer(layers.Metal1)
+            sr.wire_x(pad_e.cx)
+            """),
+        ]),
+        # Lesson 6: inverter device column.
+        LessonTestdata(passfails=4, solution=[
+            InsertSolution("""
+            # EDIT HERE (devices)
+            """, """
+            Nmos(w=1u, l=130n) mn:
+                ! .pos == (0, 0)
+            Pmos(w=1u, l=130n) mp:
+                ! .pos.x == mn.pos.x
+                ! .pos.y == mn.pos.y + 2500
+            Ptap(l=0.7u, w=0.7u) ptap:
+                ! .activ.cx == mn.activ.cx
+                ! .activ.uy + 600 == mn.poly[0].ly
+            Ntap(l=0.7u, w=0.7u) ntap:
+                ! .activ.cx == mp.activ.cx
+                ! .activ.ly - 600 == mp.poly[0].uy
+            """),
+        ]),
+        # Lesson 7: inverter wiring (gate bar, output, rails, nwell).
+        LessonTestdata(passfails=5, solution=[
+            InsertSolution("""
+            # EDIT HERE (gate)
+            """, """
+            LayoutRect polybar:
+                .layer = layers.GatPoly
+                ! .south == mn.poly[0].north
+                ! .north == mp.poly[0].south
+                ! .width == mn.poly[0].width
+            """),
+            InsertSolution("""
+            # EDIT HERE (output)
+            """, """
+            sr = SRouter(SG13G2().default_routing_spec)
+            sr.move(layers.Metal1, mn.sd[1].center)
+            sr.wire_y(mp.sd[1].cy)
+            """),
+            InsertSolution("""
+            # EDIT HERE (power)
+            """, """
+            LayoutRect m1_vss:
+                .layer = layers.Metal1
+                ! .height == 160
+                ! .cy == ptap.m1.cy
+                ! .lx == mn.activ.lx - 400
+                ! .ux == mn.activ.ux + 400
+            LayoutRect m1_vdd:
+                .layer = layers.Metal1
+                ! .height == 160
+                ! .cy == ntap.m1.cy
+                ! .lx == mp.activ.lx - 400
+                ! .ux == mp.activ.ux + 400
+            sr.move(layers.Metal1, mn.sd[0].center)
+            sr.wire_y(m1_vss.cy)
+            sr.move(layers.Metal1, mp.sd[0].center)
+            sr.wire_y(m1_vdd.cy)
+            LayoutRect nwell:
+                .layer = layers.NWell
+                ! .contains(mp.nwell.rect)
+                ! .contains(ntap.nwell.rect)
+            """),
+        ]),
+        # Lesson 8: input contact and DRC (skeleton runs KLayout on the
+        # planted rail-width violation).
+        LessonTestdata(passfails=5, solution=[
+            InsertSolution("""
+            # EDIT HERE (input)
+            """, """
+            LayoutRect polyext:
+                .layer = layers.GatPoly
+                ! .size == (500, 500)
+                ! .east == polybar.west
+            LayoutRect polycont:
+                .layer = layers.Cont
+                ! .size == (160, 160)
+                ! .center == polyext.center
+            LayoutRect m1_a:
+                .layer = layers.Metal1
+                ! .y_extent == polycont.y_extent
+                ! .ux == polycont.ux + 200
+                ! .width == 1500
+            """),
+            InsertSolution("""
+            ! .height == 100  # EDIT HERE (rail height)
+            """, """
+            ! .height == 160
+            """),
+        ]),
+        # Lesson 9: pins and LVS.
+        LessonTestdata(passfails=3, solution=[
+            InsertSolution("""
+            # EDIT HERE (a pin)
+            """, """
+            .create_pin(self.symbol.a)
+            """),
+            InsertSolution("""
+            # EDIT HERE (y pin)
+            """, """
+            sr.path.create_pin(self.symbol.y)
+            """),
+            InsertSolution("""
+            # EDIT HERE (vdd pin)
+            """, """
+            .create_pin(self.symbol.vdd)
+            """),
+            InsertSolution("""
+            # EDIT HERE (vss pin)
+            """, """
+            .create_pin(self.symbol.vss)
+            """),
+        ]),
+        # Lesson 10: matched diff pair row and inn gate comb.
+        LessonTestdata(passfails=4, solution=[
+            InsertSolution("""
+            # EDIT HERE (row)
+            """, """
+            unit m1a:
+                ! .pos == (0, 0)
+            unit m2a:
+                ! .sd[0].center == m1a.sd[1].center
+                ! .pos.y == m1a.pos.y
+            unit m2b:
+                ! .sd[0].center == m2a.sd[1].center
+                ! .pos.y == m1a.pos.y
+            unit m1b:
+                ! .sd[0].center == m2b.sd[1].center
+                ! .pos.y == m1a.pos.y
+            """),
+            InsertSolution("""
+            # EDIT HERE (gates)
+            """, """
+            LayoutRect inn_bar:
+                .layer = layers.GatPoly
+                ! .lx == m2a.poly[0].lx
+                ! .ux == m2b.poly[0].ux
+                ! .ly == m2a.poly[0].uy + 250
+                ! .height == 130
+            LayoutRect inn_drop_a:
+                .layer = layers.GatPoly
+                ! .x_extent == m2a.poly[0].x_extent
+                ! .uy == inn_bar.uy
+                ! .ly == m2a.poly[0].uy - 100
+            LayoutRect inn_drop_b:
+                .layer = layers.GatPoly
+                ! .x_extent == m2b.poly[0].x_extent
+                ! .uy == inn_bar.uy
+                ! .ly == m2b.poly[0].uy - 100
+            LayoutRect inn_ext:
+                .layer = layers.GatPoly
+                ! .size == (500, 500)
+                ! .south == inn_bar.north
+            LayoutRect inn_cont:
+                .layer = layers.Cont
+                ! .size == (160, 160)
+                ! .center == inn_ext.center
+            LayoutRect m1_inn:
+                .layer = layers.Metal1
+                ! .center == inn_cont.center
+                ! .size == (500, 200)
+            """),
+        ]),
+        # Lesson 11: routing, pins, DRC and LVS signoff (solution runs
+        # KLayout twice).
+        LessonTestdata(passfails=5, solution=[
+            InsertSolution("""
+            # EDIT HERE (route)
+            """, """
+            sr = SRouter(SG13G2().default_routing_spec)
+            sr.move(layers.Metal1, m1a.sd[1].center)
+            sr.wire_y(m1a.pos.y - 600)
+            sr.wire_x(m2b.sd[1].cx)
+            sr.wire_y(m2b.sd[1].cy)
+            sr.path.create_pin(self.symbol.tail)
+            sr.move(layers.Metal1, m1a.sd[0].center)
+            sr.wire_y(m1a.pos.y + 2400)
+            sr.layer(layers.Metal2)
+            sr.wire_x(m1b.sd[1].cx)
+            sr.path.create_pin(self.symbol.outn)
+            sr.layer(layers.Metal1)
+            sr.wire_y(m1b.sd[1].cy)
+            """),
+            InsertSolution("""
+            # EDIT HERE (pins)
+            """, """
+            LayoutRect m1_outp:
+                .layer = layers.Metal1
+                ! .rect == m2a.sd[1].rect
+                .create_pin(self.symbol.outp)
+            m1_inp.create_pin(self.symbol.inp)
+            m1_inn.create_pin(self.symbol.inn)
+            m1_vss.create_pin(self.symbol.vss)
+            """),
+        ]),
+        # Epilogue: task-free what's-next report closing the course.
+        LessonTestdata(),
+    ]),
 }
 
 
@@ -315,24 +571,34 @@ def test_course_endpoint(name, course):
 
 
 def test_course_special_lesson_flags():
-    # The hard flags for the two special lessons (welcome lesson: solved
-    # right away + spotlight tour; viewer lesson: passed by opening result
-    # viewers, detected in the frontend) must be passed through to exactly
-    # the first two getting_started lessons, and the generic epilogue flag
-    # (task-free closing lesson) to exactly the last one.
+    # The generic flags (welcome: task-free opening lesson, solved right
+    # away; epilogue: task-free closing lesson) must be passed through to
+    # exactly the first/last lessons of getting_started and layout_tutorial.
+    # The getting_started-specific flags (lesson 1: spotlight tour; lesson
+    # 2: passed by opening result viewers, detected in the frontend) must
+    # appear on exactly the first two getting_started lessons.
+    for name in ('getting_started', 'layout_tutorial'):
+        data = course_data(name)
+        n = len(data['lessons'])
+        assert [l['welcome'] for l in data['lessons']] == \
+            [True] + [False] * (n - 1)
+        assert [l['epilogue'] for l in data['lessons']] == \
+            [False] * (n - 1) + [True]
+
     data = course_data()
     n = len(data['lessons'])
     assert [l['getting_started_lesson_1'] for l in data['lessons']] == \
         [True] + [False] * (n - 1)
     assert [l['getting_started_lesson_2'] for l in data['lessons']] == \
         [False, True] + [False] * (n - 2)
-    assert [l['epilogue'] for l in data['lessons']] == \
-        [False] * (n - 1) + [True]
+
     for name in ('cmos_circuits', 'layout_tutorial'):
         for lesson in course_data(name)['lessons']:
             assert not lesson['getting_started_lesson_1']
             assert not lesson['getting_started_lesson_2']
-            assert not lesson['epilogue']
+    for lesson in course_data('cmos_circuits')['lessons']:
+        assert not lesson['welcome']
+        assert not lesson['epilogue']
 
 
 def test_course_unknown():

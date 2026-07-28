@@ -65,10 +65,10 @@
             "maximised": false,
             "isClosable": true,
             "reorderEnabled": true,
-            "title": "Example().layout",
+            "title": "Inv().layout",
             "componentType": "result",
             "componentState": {
-              "view": "Example().layout"
+              "view": "Inv().layout"
             }
           }
         ],

@@ -1,0 +1,144 @@
+from ordec.core import *
+from ordec.lib.ihp130 import SG13G2, Nmos, Ptap, run_drc, run_lvs
+from ordec.layout import SRouter
+
+# The completed differential pair from lessons 10 and 11.
+cell DiffPair:
+    viewgen symbol -> Symbol:
+        input inp: .align=West
+        input inn: .align=West
+        output outp: .align=East
+        output outn: .align=East
+        inout tail: .align=South
+        inout vss: .align=South
+
+    viewgen schematic -> Schematic:
+        .outline = (0, 0, 22, 18)
+        port inp: .align=East; .pos=(1,8)
+        port inn: .align=East; .pos=(13,8)
+        port outp: .align=West; .pos=(21,16)
+        port outn: .align=East; .pos=(1,16)
+        port tail: .align=East; .pos=(9,1)
+        port vss: .align=West; .pos=(21,8)
+
+        unit = Nmos(w=1u, l=130n)
+        unit m1a: .pos=(3,3); .g -- inp; .d -- outn; .s -- tail; .b -- vss
+        unit m1b: .pos=(3,10); .g -- inp; .d -- outn; .s -- tail; .b -- vss
+        unit m2a: .pos=(15,3); .g -- inn; .d -- outp; .s -- tail; .b -- vss
+        unit m2b: .pos=(15,10); .g -- inn; .d -- outp; .s -- tail; .b -- vss
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+        unit = Nmos(w=1u, l=130n)
+
+        unit m1a:
+            ! .pos == (0, 0)
+        unit m2a:
+            ! .sd[0].center == m1a.sd[1].center
+            ! .pos.y == m1a.pos.y
+        unit m2b:
+            ! .sd[0].center == m2a.sd[1].center
+            ! .pos.y == m1a.pos.y
+        unit m1b:
+            ! .sd[0].center == m2b.sd[1].center
+            ! .pos.y == m1a.pos.y
+
+        LayoutRect inn_bar:
+            .layer = layers.GatPoly
+            ! .lx == m2a.poly[0].lx
+            ! .ux == m2b.poly[0].ux
+            ! .ly == m2a.poly[0].uy + 250
+            ! .height == 130
+        LayoutRect inn_drop_a:
+            .layer = layers.GatPoly
+            ! .x_extent == m2a.poly[0].x_extent
+            ! .uy == inn_bar.uy
+            ! .ly == m2a.poly[0].uy - 100
+        LayoutRect inn_drop_b:
+            .layer = layers.GatPoly
+            ! .x_extent == m2b.poly[0].x_extent
+            ! .uy == inn_bar.uy
+            ! .ly == m2b.poly[0].uy - 100
+        LayoutRect inn_ext:
+            .layer = layers.GatPoly
+            ! .size == (500, 500)
+            ! .south == inn_bar.north
+        LayoutRect inn_cont:
+            .layer = layers.Cont
+            ! .size == (160, 160)
+            ! .center == inn_ext.center
+        LayoutRect m1_inn:
+            .layer = layers.Metal1
+            ! .center == inn_cont.center
+            ! .size == (500, 200)
+            .create_pin(self.symbol.inn)
+
+        LayoutRect inp_bar:
+            .layer = layers.GatPoly
+            ! .lx == m1a.poly[0].lx
+            ! .ux == m1b.poly[0].ux
+            ! .uy == m2a.poly[0].ly - 250
+            ! .height == 130
+        LayoutRect inp_drop_a:
+            .layer = layers.GatPoly
+            ! .x_extent == m1a.poly[0].x_extent
+            ! .ly == inp_bar.ly
+            ! .uy == m1a.poly[0].ly + 100
+        LayoutRect inp_drop_b:
+            .layer = layers.GatPoly
+            ! .x_extent == m1b.poly[0].x_extent
+            ! .ly == inp_bar.ly
+            ! .uy == m1b.poly[0].ly + 100
+        LayoutRect inp_ext:
+            .layer = layers.GatPoly
+            ! .size == (500, 500)
+            ! .ux == inp_drop_a.lx
+            ! .cy == inp_bar.cy
+        LayoutRect inp_cont:
+            .layer = layers.Cont
+            ! .size == (160, 160)
+            ! .center == inp_ext.center
+        LayoutRect m1_inp:
+            .layer = layers.Metal1
+            ! .center == inp_cont.center
+            ! .size == (500, 200)
+            .create_pin(self.symbol.inp)
+
+        Ptap(l=0.7u, w=0.7u) ptap:
+            ! .activ.cx == 0.5*m1a.activ.lx + 0.5*m1b.activ.ux
+            ! .activ.uy == m1a.pos.y - 1200
+        LayoutRect m1_vss:
+            .layer = layers.Metal1
+            ! .height == 160
+            ! .cy == ptap.m1.cy
+            ! .lx == m1a.activ.lx - 400
+            ! .ux == m1b.activ.ux + 400
+            .create_pin(self.symbol.vss)
+
+        sr = SRouter(SG13G2().default_routing_spec)
+        sr.move(layers.Metal1, m1a.sd[1].center)
+        sr.wire_y(m1a.pos.y - 600)
+        sr.wire_x(m2b.sd[1].cx)
+        sr.wire_y(m2b.sd[1].cy)
+        sr.path.create_pin(self.symbol.tail)
+        sr.move(layers.Metal1, m1a.sd[0].center)
+        sr.wire_y(m1a.pos.y + 2400)
+        sr.layer(layers.Metal2)
+        sr.wire_x(m1b.sd[1].cx)
+        sr.path.create_pin(self.symbol.outn)
+        sr.layer(layers.Metal1)
+        sr.wire_y(m1b.sd[1].cy)
+
+        LayoutRect m1_outp:
+            .layer = layers.Metal1
+            ! .rect == m2a.sd[1].rect
+            .create_pin(self.symbol.outp)
+
+    @generate(auto_refresh=False)
+    viewgen drc -> DrcReport:
+        . = run_drc(self.layout, variant="minimal")
+
+    @generate(auto_refresh=False)
+    viewgen lvs -> LvsReport:
+        . = run_lvs(self.layout, self.symbol)
