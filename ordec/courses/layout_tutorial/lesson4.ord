@@ -6,6 +6,12 @@ cell Example:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
 
-        LayoutRect base: .layer=layers.Metal1; .rect=(0, 0, 6000, 800)
+        LayoutRect wall_a: .layer=layers.Metal1; .rect=(0, 0, 800, 2800)
+        LayoutRect wall_b: .layer=layers.Metal1; .rect=(1200, 800, 1800, 1600)
 
-        # EDIT HERE (pads)
+        # EDIT HERE (clearance)
+
+        LayoutRect dev_a: .layer=layers.Activ; .rect=(4000, 0, 4800, 800)
+        LayoutRect dev_b: .layer=layers.Activ; .rect=(5600, 1600, 6400, 2400)
+
+        # EDIT HERE (well)

@@ -22,8 +22,8 @@
     },
     {
       "file": "lesson4.ord",
-      "title": "Inequalities, centering and spacing",
-      "description": "Minimum clearances, centering and even spacing with constraints.",
+      "title": "Inequalities and enclosures",
+      "description": "Constraints as design rules: minimum clearances and shrink-wrapped enclosures.",
       "lesson_gen": "gen_lesson4"
     },
     {

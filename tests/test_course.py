@@ -292,19 +292,26 @@ courses_testdata = {
                 ! .lx - pad_w2.ux == pad_e2.lx - .ux
             """),
         ]),
-        # Lesson 4: inequalities, even spacing, weighted centering.
+        # Lesson 4: inequality clearances (binding bound) and shrink-wrap
+        # enclosure via contains.
         LessonTestdata(passfails=4, solution=[
             InsertSolution("""
-            # EDIT HERE (pads)
+            # EDIT HERE (clearance)
             """, """
-            LayoutRect p1: .layer=layers.Metal2; ! .size==(800,400); ! .ly==base.uy+300
-            LayoutRect p2: .layer=layers.Metal2; ! .size==(800,400); ! .ly==base.uy+300
-            LayoutRect p3: .layer=layers.Metal2; ! .size==(800,400); ! .ly==base.uy+300
-
-            ! p1.lx >= base.lx + 400
-            ! p2.lx - p1.ux == p3.lx - p2.ux
-            ! p3.ux <= base.ux - 400
-            ! p2.cx == 0.5*base.lx + 0.5*base.ux
+            LayoutRect pad:
+                .layer = layers.Metal1
+                ! .size == (1200, 1200)
+                ! .ly == 1200
+                ! .lx >= wall_a.ux + 400
+                ! .lx >= wall_b.ux + 400
+            """),
+            InsertSolution("""
+            # EDIT HERE (well)
+            """, """
+            LayoutRect well:
+                .layer = layers.NWell
+                ! .contains(dev_a.rect)
+                ! .contains(dev_b.rect)
             """),
         ]),
         # Lesson 5: SRouter obstacle crossing.

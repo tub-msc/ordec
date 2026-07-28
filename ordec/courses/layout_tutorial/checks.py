@@ -288,8 +288,8 @@ def gen_lesson3(g):
     return lesson
 
 
-# Lesson 4: Inequalities, centering and spacing
-# ---------------------------------------------
+# Lesson 4: Inequalities and enclosures
+# -------------------------------------
 
 def gen_lesson4(g):
     @generate_func
@@ -297,104 +297,120 @@ def gen_lesson4(g):
         report = Report()
         report.markdown("""
             Constraints are not limited to `==`. Inequalities with `>=` and
-            `<=` express minimum clearances, and the solver *pulls them
+            `<=` express *minimum clearances*, and the solver *pulls them
             tight*: it places shapes as close to the bound as allowed, so an
             inequality often both limits and positions a shape at once.
+            This mirrors how chips are actually designed: a fab's design
+            rulebook (you will meet it later in this course as *DRC*) is
+            largely a list of minimum widths, spacings and enclosures, and
+            inequalities are how such rules read as constraints.
 
-            **Place three Metal2 pads of size 800 × 400 in a row above
-            `base`** at the `EDIT HERE (pads)` marker, all with
-            `! .ly == base.uy + 300`:
+            **Task 1: keep your distance.** Suppose the rulebook demands
+            400 nm between Metal1 shapes. At the `EDIT HERE (clearance)`
+            marker, add a pad with a clearance to `wall_a`:
 
             ```
-            LayoutRect p1: .layer=layers.Metal2; ! .size==(800,400); ! .ly==base.uy+300
-            LayoutRect p2: .layer=layers.Metal2; ! .size==(800,400); ! .ly==base.uy+300
-            LayoutRect p3: .layer=layers.Metal2; ! .size==(800,400); ! .ly==base.uy+300
+            LayoutRect pad:
+                .layer = layers.Metal1
+                ! .size == (1200, 1200)
+                ! .ly == 1200
+                ! .lx >= wall_a.ux + 400
             ```
 
-            Then position the row with four constraints, each showing one
-            technique:
+            The solver pulls the bound tight: the pad sits exactly 400 nm
+            right of `wall_a` — and crashes into `wall_b`, because an
+            inequality only limits what it names. Add the second rule:
 
-            1. **Minimum clearance** to the left edge (pulled tight by the
-               solver):
-               `! p1.lx >= base.lx + 400`
-            2. **Even spacing:** the two gaps must be equal:
-               `! p2.lx - p1.ux == p3.lx - p2.ux`
-            3. **Minimum clearance** to the right edge:
-               `! p3.ux <= base.ux - 400`
-            4. **Centering with a weighted anchor:** the middle pad sits at
-               the center of `base`:
-               `! p2.cx == 0.5*base.lx + 0.5*base.ux`
+            ```
+                ! .lx >= wall_b.ux + 400
+            ```
 
-            Together these determine the row completely: the outer pads sit
-            exactly at their clearance bounds, and the middle pad is
-            centered with equal gaps to both sides.
+            Now both clearances hold, and the solver settles the pad
+            against the *binding* one. That is the point of inequalities:
+            you state all the limits, and the solver finds which of them
+            matters.
 
-            *Tip: `a.contains(b)` constrains rectangle `b` to lie inside
-            `a` (four inequalities at once), and `&` combines constraints
-            into one statement.*
+            **Task 2: enclose the devices.** Doped regions must enclose
+            the devices built inside them — an *enclosure* rule. The two
+            Activ rectangles on the right stand in for such devices. At
+            the `EDIT HERE (well)` marker, wrap them in a well:
+
+            ```
+            LayoutRect well:
+                .layer = layers.NWell
+                ! .contains(dev_a.rect)
+                ! .contains(dev_b.rect)
+            ```
+
+            `contains` is four inequalities at once (one per edge).
+            Nothing else positions `well`, yet it is fully determined: the
+            solver pulls all four edges tight and the well shrink-wraps
+            around both devices. You will use exactly this constraint
+            later to draw the n-well of an inverter.
         """)
 
         def pads():
-            found = rects_on(g['Example']().layout, layers.Metal2)
-            return sorted((r for r in found
-                    if r.rect.ux - r.rect.lx == 800
-                    and r.rect.uy - r.rect.ly == 400
-                    and r.rect.ly == 1100),
-                key=lambda r: r.rect.lx)
+            # The user's 1200x1200 pad; the walls have other dimensions.
+            return [r for r in rects_on(g['Example']().layout, layers.Metal1)
+                if r.rect.ux - r.rect.lx == 1200
+                and r.rect.uy - r.rect.ly == 1200
+                and r.rect.ly == 1200]
 
-        hint = ("Add the three pad blocks and the four `!` constraints "
-            "from the instructions at the EDIT HERE (pads) marker.")
+        hint_pad = ("Add the `pad` block from task 1 at the "
+            "EDIT HERE (clearance) marker.")
         try:
-            report.passfail("Three pads of size 800 x 400 drawn",
-                len(pads()) == 3, hint=hint,
-                instructions="Looking for three 800x400 Metal2 rectangles "
-                    f"with ly == 1100. Found: {fmt_rects(pads())}.")
+            report.passfail("Pad drawn next to the walls", bool(pads()),
+                hint=hint_pad,
+                instructions="Looking for a 1200x1200 Metal1 rectangle "
+                    "with ly == 1200.")
         except Exception:
-            report.passfail("Three pads of size 800 x 400 drawn", False,
-                instructions=exception_text(), hint=hint)
+            report.passfail("Pad drawn next to the walls", False,
+                instructions=exception_text(), hint=hint_pad)
 
-        hint_clear = ("Constrain the outer pads with `! p1.lx >= base.lx + "
-            "400` and `! p3.ux <= base.ux - 400`. The solver pulls both "
-            "bounds tight.")
+        hint_clear = ("With only the wall_a clearance, the pad lands on "
+            "wall_b. Add `! .lx >= wall_b.ux + 400`; the solver then "
+            "settles the pad against the binding bound.")
         try:
-            p = pads()
-            report.passfail("Pads pulled against the clearance bounds",
-                len(p) == 3 and p[0].rect.lx == 400 and p[-1].rect.ux == 5600,
+            report.passfail("Pad clears both walls",
+                any(r.rect.lx == 2200 for r in pads()),
                 hint=hint_clear,
-                instructions="The left pad must start at x = 400 and the "
-                    "right pad must end at x = 5600 (400 nm clearance to "
-                    "base's edges).")
+                instructions="The pad must sit 400 nm right of wall_b, "
+                    f"starting at x = 2200. Found: {fmt_rects(pads())}.")
         except Exception:
-            report.passfail("Pads pulled against the clearance bounds",
-                False, instructions=exception_text(), hint=hint_clear)
+            report.passfail("Pad clears both walls", False,
+                instructions=exception_text(), hint=hint_clear)
 
-        hint_gaps = ("Add the equal-gap constraint "
-            "`! p2.lx - p1.ux == p3.lx - p2.ux`.")
-        try:
-            p = pads()
-            gaps = [p[i+1].rect.lx - p[i].rect.ux for i in range(len(p)-1)] \
-                if len(p) == 3 else []
-            report.passfail("Pads evenly spaced",
-                len(gaps) == 2 and gaps[0] == gaps[1] and gaps[0] > 0,
-                hint=hint_gaps,
-                instructions=f"The two gaps between the pads must be equal. "
-                    f"Gaps found: {gaps}.")
-        except Exception:
-            report.passfail("Pads evenly spaced", False,
-                instructions=exception_text(), hint=hint_gaps)
+        def wells():
+            return rects_on(g['Example']().layout, layers.NWell)
 
-        hint_center = ("Center the middle pad on base with "
-            "`! p2.cx == 0.5*base.lx + 0.5*base.ux`.")
+        hint_well = ("Add the `well` block from task 2 at the "
+            "EDIT HERE (well) marker.")
         try:
-            p = pads()
-            report.passfail("Middle pad centered on base",
-                len(p) == 3 and p[1].rect.lx + p[1].rect.ux == 6000,
-                hint=hint_center,
-                instructions="The middle pad's center must sit at "
-                    "x = 3000, the center of base.")
+            report.passfail("Well encloses both devices",
+                any(r.rect.lx <= 4000 and r.rect.ly <= 0
+                    and r.rect.ux >= 6400 and r.rect.uy >= 2400
+                    for r in wells()),
+                hint=hint_well,
+                instructions="Looking for an NWell rectangle containing "
+                    "both dev_a and dev_b.")
         except Exception:
-            report.passfail("Middle pad centered on base", False,
-                instructions=exception_text(), hint=hint_center)
+            report.passfail("Well encloses both devices", False,
+                instructions=exception_text(), hint=hint_well)
+
+        hint_wrap = ("Constrain the well only with the two `contains` "
+            "constraints; the solver shrink-wraps it onto the devices.")
+        try:
+            report.passfail("Well shrink-wrapped by the solver",
+                any((r.rect.lx, r.rect.ly, r.rect.ux, r.rect.uy)
+                    == (4000, 0, 6400, 2400) for r in wells()),
+                hint=hint_wrap,
+                instructions="All four edges must be pulled tight: the "
+                    "well must be exactly the bounding box of the two "
+                    f"devices, (4000, 0, 6400, 2400). Found: "
+                    f"{fmt_rects(wells())}.")
+        except Exception:
+            report.passfail("Well shrink-wrapped by the solver", False,
+                instructions=exception_text(), hint=hint_wrap)
         return report
     return lesson
 
