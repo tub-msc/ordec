@@ -18,6 +18,8 @@ try:
 except ImportError:
     By = None
 
+from .test_course import courses_testdata
+
 
 @dataclass
 class WebResViewer:
@@ -53,6 +55,8 @@ def check_report_example(res_viewer):
     assert html.find('Report Example') >= 0
     assert html.find('bold') >= 0
     assert html.find('alpha') >= 0
+    # TeX math rendered client-side by KaTeX:
+    assert html.find('class="katex"') >= 0
 
 def check_min_size(min_width, min_height):
     def func(res_viewer):
@@ -129,7 +133,7 @@ def test_index(web):
 
     # Check that we link to each expected example and course.
     expected = {f'example={testcase}' for testcase in testcases_integrated.keys()}
-    expected.add('course=intro')
+    expected.update({f'course={name}' for name in courses_testdata.keys()})
     assert app_html_link_queries == expected
 
 # Visual browser-based testing was painful (fonts, different browser versions,
@@ -239,36 +243,7 @@ def course_nav_state(web):
             lessonsLocked: Array.from(
                 nav.querySelectorAll('.course-lessonsel option'),
                 o => o.disabled),
-            nextDisabled: nav.querySelector('.course-next').disabled,
-            editorSrc: cc.editor.editor.getValue(),
-        };
-    """)
-
-def course_panel_lock_state(web):
-    """Draggability and close-control visibility of the locked panels (the
-    Course panel and the source editor)."""
-    return web.driver.execute_script("""
-        const items = window.courseController.layout.root.getAllContentItems();
-        const find = (pred) => {
-            let r = null;
-            items.forEach(e => { if (e.isComponent && pred(e)) r = e; });
-            return r;
-        };
-        const course = find(e => e.componentName === 'result'
-            && e.component && e.component.courseMode);
-        const editor = find(e => e.componentName === 'editor');
-        // Closable (so GoldenLayout keeps it draggable) + reorderEnabled.
-        const draggable = (e) => Boolean(e && e.reorderEnabled && e.isClosable);
-        const allHidden = (sel) => {
-            const els = Array.from(document.querySelectorAll(sel));
-            return els.length > 0
-                && els.every(el => getComputedStyle(el).display === 'none');
-        };
-        return {
-            courseDraggable: draggable(course),
-            editorDraggable: draggable(editor),
-            tabClosesHidden: allHidden('.panel-locked-tab .lm_close_tab'),
-            headerClosesHidden: allHidden('.panel-locked-header .lm_close'),
+            editorSrc: cc.editor ? cc.editor.editor.getValue() : null,
         };
     """)
 
@@ -284,83 +259,171 @@ def wait_for_course_marker(web, text, timeout=30):
     raise AssertionError(f"course marker did not become {text!r} "
         f"(last state: {marker!r})")
 
+def reset_course_storage(web):
+    """Clears course progress from earlier runs."""
+    web.driver.get(web.url)
+    web.driver.execute_script(
+        "window.localStorage.removeItem('ordecCourse:getting_started');")
+
+def skip_tour(web, timeout=5):
+    """Waits for the spotlight tour (it replays on every visit of the welcome
+    lesson) and dismisses it."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if web.driver.execute_script("""
+            const skip = document.querySelector('.spotlight-skip');
+            if (skip) skip.click();
+            return !!skip;
+        """):
+            return
+        time.sleep(0.1)
+    raise AssertionError('spotlight tour did not appear')
+
 @pytest.mark.web
 def test_course(web):
     """Course mode: navigator, lesson gating, pass detection, start over."""
-    from .test_course import course_data, solution_src
+    from .test_course import course_data
 
     lessons = course_data()['lessons']
+    # Expected lock state when the first n lessons are unlocked:
+    def locked_after(n):
+        return [i >= n for i in range(len(lessons))]
 
     web.resize_viewport()
+    reset_course_storage(web)
 
-    # Make sure we start without progress from earlier runs:
-    web.driver.get(web.url)
-    web.driver.execute_script(
-        "window.localStorage.removeItem('ordecCourse:intro');")
-
-    web.navigate('app.html#course=intro')
+    web.navigate('app.html#course=getting_started')
     web.wait_for_ready()
+    skip_tour(web)
 
-    # Lesson 1 skeleton: not passed, lessons 2+3 locked.
+    # Lesson 1 (welcome) counts as solved right away, unlocking lesson 2;
+    # lessons 2-5 stay locked.
+    wait_for_course_marker(web, 'solved')
     state = course_nav_state(web)
     assert state['currentLesson'] == 0
-    assert state['marker'] == 'unsolved'
-    assert state['lessonsLocked'] == [False, True, True]
-    assert state['nextDisabled'] is True
+    assert state['lessonsLocked'] == locked_after(2)
     assert state['editorSrc'] == lessons[0]['src']
 
-    # The Course panel and the source editor must be movable but not closable.
-    # GoldenLayout couples the two, so they stay closable (draggable) and their
-    # close controls are hidden instead (see course.js suppressCloseControls).
-    lock = course_panel_lock_state(web)
-    assert lock['courseDraggable'] is True       # Course panel draggable
-    assert lock['editorDraggable'] is True       # editor draggable
-    assert lock['tabClosesHidden'] is True        # but tab closes hidden
-    assert lock['headerClosesHidden'] is True     # and header closes hidden
+    # The close controls of the Course panel and the source editor are
+    # hidden (see course.js suppressCloseControls).
+    assert web.driver.execute_script("""
+        const allHidden = (sel) => {
+            const els = Array.from(document.querySelectorAll(sel));
+            return els.length > 0
+                && els.every(el => getComputedStyle(el).display === 'none');
+        };
+        return allHidden('.panel-locked-tab .lm_close_tab')
+            && allHidden('.panel-locked-header .lm_close');
+    """) is True
 
-    # Enter the lesson 1 solution into the editor; auto-refresh rebuilds and
-    # re-checks, the pass must unlock lesson 2.
-    sol = solution_src(lessons[0], ".$c=1n", ".$c=16n")
+    # Switch to lesson 2 via the next arrow.
     web.driver.execute_script(
-        "window.courseController.editor.editor.setValue(arguments[0]);", sol)
+        "document.querySelector('.course-next').click();")
+    web.wait_for_ready()
+    state = course_nav_state(web)
+    assert state['currentLesson'] == 1
+    assert state['marker'] == 'unsolved'
+
+    # Lesson 2 is passed by opening the two HelloWorld result viewers
+    # (frontend-only detection, see course.js checkLesson1Views). Open two
+    # viewers via the toolbar button and select the views like a user would.
+    web.driver.execute_script("""
+        document.querySelector('#newresview').click();
+        document.querySelector('#newresview').click();
+        // Register the new viewers with the client right away instead of
+        // relying on GoldenLayout's stateChanged event timing:
+        const all = window.courseController.deps.getResultViewers();
+        window.ordecClient.registerResultViewers(all);
+        const rvs = all.filter(rv => !rv.courseMode && !rv.viewSelected);
+        rvs[0]._onViewSelected('HelloWorld().schematic');
+        rvs[1]._onViewSelected('HelloWorld().hello');
+    """)
     wait_for_course_marker(web, 'solved')
 
-    state = course_nav_state(web)
-    assert state['lessonsLocked'] == [False, False, True]
-    assert state['nextDisabled'] is False
-
-    # Passing replaces the intro callout with the green success callout, whose
-    # arrow points at the next button (lesson 1 is not the last lesson).
-    success = web.driver.execute_script("""
-        return {
-            success: !!document.querySelector('.course-callout-success'),
-            intro: !!document.querySelector('.course-callout-intro'),
-            hasArrow: !!document.querySelector(
-                '.course-callout-success .course-callout-arrow'),
-        };
+    # The new result views must never be created as tabs on top of the
+    # Course panel or the source editor (see main.js #newresview handler).
+    well_placed = web.driver.execute_script("""
+        const items = window.courseController.layout.root.getAllContentItems();
+        return !items.some(e => e.isComponent && e.componentName === 'result'
+            && e.component && !e.component.courseMode
+            && e.parent.contentItems.some(sib => sib.isComponent
+                && (sib.componentName === 'editor'
+                    || (sib.component && sib.component.courseMode))));
     """)
-    assert success['success'] is True
-    assert success['intro'] is False
-    assert success['hasArrow'] is True
+    assert well_placed is True
 
-    # Switch to lesson 2 via the dropdown.
+    state = course_nav_state(web)
+    assert state['lessonsLocked'] == locked_after(3)
+
+    # Switch to lesson 3 via the dropdown.
     web.driver.execute_script("""
         const sel = document.querySelector('.course-lessonsel');
-        sel.value = '1';
+        sel.value = '2';
         sel.dispatchEvent(new Event('change'));
     """)
     web.wait_for_ready()
     state = course_nav_state(web)
-    assert state['currentLesson'] == 1
-    assert state['marker'] == 'unsolved'
-    assert state['editorSrc'] == lessons[1]['src']
+    assert state['currentLesson'] == 2
 
-    # Progress (incl. edited lesson 1 source) must survive a reload.
-    web.navigate('app.html#course=intro')
+    # Solve lesson 3 by editing the source; auto-refresh rebuilds and
+    # re-checks, the pass must unlock lesson 4.
+    sol = courses_testdata['getting_started'].lessons[2].solution_src(lessons[2])
+    web.driver.execute_script(
+        "window.courseController.editor.editor.setValue(arguments[0]);", sol)
+    wait_for_course_marker(web, 'solved')
+    state = course_nav_state(web)
+    assert state['lessonsLocked'] == locked_after(4)
+
+    # A syntax error while editing must not wipe the lesson report: the
+    # Course panel keeps the last good report and shows the error strip; the
+    # traceback appears only behind the details toggle (see resultviewer.js
+    # showBuildError).
+    def course_error_state(web):
+        return web.driver.execute_script("""
+            const rv = window.courseController.courseViewer;
+            const shown = (el) => getComputedStyle(el).display !== 'none';
+            return {
+                strip: shown(rv.resOverlayError),
+                stripText: rv.buildErrorText.innerText,
+                content: shown(rv.resContent),
+                exception: shown(rv.resException),
+                exceptionText: rv.resException.innerText,
+            };
+        """)
+
+    web.driver.execute_script(
+        "window.courseController.editor.editor.setValue(arguments[0]);",
+        sol + "\ndef broken(:\n")
+    wait_for_course_marker(web, 'check error')
+    state = course_error_state(web)
+    assert state['strip'] and 'SyntaxError' in state['stripText']
+    assert state['content'] and not state['exception']
+
+    # Expanding the details shows the full traceback in place of the report;
+    # collapsing restores the report.
+    web.driver.execute_script(
+        "window.courseController.courseViewer.buildErrorToggle.click();")
+    state = course_error_state(web)
+    assert state['exception'] and not state['content']
+    assert 'SyntaxError' in state['exceptionText']
+    web.driver.execute_script(
+        "window.courseController.courseViewer.buildErrorToggle.click();")
+    state = course_error_state(web)
+    assert state['content'] and not state['exception']
+
+    # Fixing the source clears the strip and re-checks the lesson.
+    web.driver.execute_script(
+        "window.courseController.editor.editor.setValue(arguments[0]);", sol)
+    wait_for_course_marker(web, 'solved')
+    state = course_error_state(web)
+    assert not state['strip'] and state['content'] and not state['exception']
+
+    # Progress (incl. edited lesson 3 source) must survive a reload.
+    web.navigate('app.html#course=getting_started')
     web.wait_for_ready()
     state = course_nav_state(web)
-    assert state['currentLesson'] == 1
-    assert state['lessonsLocked'] == [False, False, True]
+    assert state['currentLesson'] == 2
+    assert state['lessonsLocked'] == locked_after(4)
 
     # Start over (with confirmation) resets everything. This reloads the page
     # from app JS, so wait for the reload before reading state.
@@ -368,37 +431,67 @@ def test_course(web):
         window.confirm = () => true;
         document.querySelector('.course-startover').click();
     """)
+    wait_for_course_marker(web, 'solved')  # lesson 1 auto-passes again
     state = course_nav_state(web)
     assert state['currentLesson'] == 0
-    assert state['lessonsLocked'] == [False, True, True]
+    assert state['lessonsLocked'] == locked_after(2)
     assert state['editorSrc'] == lessons[0]['src']
+
+    # The epilogue (task-free closing lesson) counts as solved right away,
+    # shows no callout, and its shipped layout has no source editor. Reached
+    # via debug mode, which unlocks all lessons.
+    web.navigate('app.html#course=getting_started&debug=true')
+    web.wait_for_ready()
+    skip_tour(web)
+    web.driver.execute_script("""
+        const sel = document.querySelector('.course-lessonsel');
+        sel.value = String(sel.options.length - 1);
+        sel.dispatchEvent(new Event('change'));
+    """)
+    web.wait_for_ready()
+    wait_for_course_marker(web, 'solved')
+    state = course_nav_state(web)
+    assert state['currentLesson'] == len(lessons) - 1
+    assert state['editorSrc'] is None
+    info = web.driver.execute_script("""
+        return {
+            editorDom: !!document.querySelector('.ace_editor'),
+            callout: !!document.querySelector('.course-callout'),
+        };
+    """)
+    assert info == {'editorDom': False, 'callout': False}
 
 
 @pytest.mark.web
 def test_course_intro_callout(web):
-    """The intro callout appears above the lesson report on first open, points
-    its arrow at the status marker, and stays dismissed once closed."""
+    """Lesson 1 shows the success callout once the tour is done; the intro
+    callout appears on lesson 2 and stays dismissed for the visit once
+    closed."""
     web.resize_viewport()
-    web.driver.get(web.url)
-    web.driver.execute_script(
-        "window.localStorage.removeItem('ordecCourse:intro');")
+    reset_course_storage(web)
 
-    web.navigate('app.html#course=intro')
+    web.navigate('app.html#course=getting_started')
     web.wait_for_ready()
+    skip_tour(web)
 
+    # Lesson 1 once the tour is dismissed: the success callout, no intro
+    # callout.
+    wait_for_course_marker(web, 'solved')
     info = web.driver.execute_script("""
-        const callout = document.querySelector('.course-callout');
-        const arrow = callout && callout.querySelector('.course-callout-arrow');
         return {
-            present: !!callout,
-            arrowAligned: !!(arrow && arrow.style.left),
-            hasClose: !!(callout
-                && callout.querySelector('.course-callout-close')),
+            success: !!document.querySelector('.course-callout-success'),
+            intro: !!document.querySelector('.course-callout-intro'),
         };
     """)
-    assert info['present'] is True
-    assert info['arrowAligned'] is True
-    assert info['hasClose'] is True
+    assert info['success'] is True
+    assert info['intro'] is False
+
+    # Switch to lesson 2: the intro callout explains the course mechanics.
+    web.driver.execute_script(
+        "document.querySelector('.course-next').click();")
+    web.wait_for_ready()
+    assert web.driver.execute_script(
+        "return !!document.querySelector('.course-callout-intro');") is True
 
     # Closing the callout hides it for the current visit only (in-memory, not
     # persisted to localStorage).
@@ -408,12 +501,121 @@ def test_course_intro_callout(web):
     """)
     assert removed is True
 
-    # The dismissal is not persisted, so re-opening the course shows it again.
-    web.navigate('app.html#course=intro')
+    # The dismissal is not persisted, so re-opening the course (which resumes
+    # at lesson 2) shows it again.
+    web.navigate('app.html#course=getting_started')
     web.wait_for_ready()
     present_again = web.driver.execute_script(
-        "return !!document.querySelector('.course-callout');")
+        "return !!document.querySelector('.course-callout-intro');")
     assert present_again is True
+
+
+@pytest.mark.web
+def test_course_welcome_no_tour(web):
+    """The generic welcome flag without the getting_started tour: lesson 1
+    of the layout tutorial auto-passes and shows the proceed callout right
+    away (no spotlight to click through first)."""
+    web.resize_viewport()
+    web.driver.get(web.url)
+    web.driver.execute_script(
+        "window.localStorage.removeItem('ordecCourse:layout_tutorial');")
+
+    web.navigate('app.html#course=layout_tutorial')
+    web.wait_for_ready()
+    wait_for_course_marker(web, 'solved')
+    info = web.driver.execute_script("""
+        return {
+            success: !!document.querySelector('.course-callout-success'),
+            spotlight: !!document.querySelector('.spotlight-skip'),
+        };
+    """)
+    assert info['success'] is True
+    assert info['spotlight'] is False
+
+
+@pytest.mark.web
+def test_course_spotlight(web):
+    """The spotlight intro tour appears on every visit of the welcome
+    lesson, can be stepped through in both directions, and Skip dismisses
+    it for the current visit."""
+    web.resize_viewport()
+    reset_course_storage(web)
+
+    web.navigate('app.html#course=getting_started')
+    web.wait_for_ready()
+
+    counter = web.driver.execute_script(
+        "return document.querySelector('.spotlight-counter')?.innerText;")
+    assert counter and counter.startswith('1/')
+    total = int(counter.split('/')[1])
+
+    # While the tour runs, the 'proceed to lesson 2' callout stays hidden.
+    wait_for_course_marker(web, 'solved')
+    assert web.driver.execute_script(
+        "return !!document.querySelector('.course-callout');") is False
+
+    # Back is disabled on the first step; after Next it leads back to it.
+    nav = web.driver.execute_script("""
+        const counter = () =>
+            document.querySelector('.spotlight-counter').innerText;
+        const back = document.querySelector('.spotlight-back');
+        const res = {backDisabledAtStart: back.disabled};
+        document.querySelector('.spotlight-next').click();
+        res.counterAfterNext = counter();
+        back.click();
+        res.counterAfterBack = counter();
+        return res;
+    """)
+    assert nav['backDisabledAtStart'] is True
+    assert nav['counterAfterNext'] == f'2/{total}'
+    assert nav['counterAfterBack'] == f'1/{total}'
+
+    # Step through with Next; every step must be visited (a missing target
+    # would silently skip its step), and the caption must not cover the
+    # highlighted area (unless the target spans the full width, where
+    # spotlight.js accepts the overlap). After the last step (whose button
+    # reads "Done") the tour is gone.
+    seen = []
+    for _ in range(total):
+        seen.append(web.driver.execute_script("""
+            const counter =
+                document.querySelector('.spotlight-counter').innerText;
+            const cap = document.querySelector('.spotlight-caption')
+                .getBoundingClientRect();
+            const cut = document.querySelector('.spotlight-cutout')
+                .getBoundingClientRect();
+            const overlap = !(cap.right <= cut.left || cap.left >= cut.right
+                || cap.bottom <= cut.top || cap.top >= cut.bottom);
+            const fullWidth = cut.width > 0.9 * window.innerWidth;
+            document.querySelector('.spotlight-next').click();
+            return [counter, overlap && !fullWidth];
+        """))
+    assert [s[0] for s in seen] == [f'{i}/{total}' for i in range(1, total + 1)]
+    assert [s[0] for s in seen if s[1]] == []
+    assert web.driver.execute_script(
+        "return !document.querySelector('.spotlight');") is True
+
+    # Finishing the tour reveals the callout pointing at the next button.
+    assert web.driver.execute_script(
+        "return !!document.querySelector('.course-callout-success');") is True
+
+    # Completion is not persisted: the tour replays on every visit of the
+    # welcome lesson - after a reload (skip_tour waits for it and skips) ...
+    web.navigate('app.html#course=getting_started')
+    web.wait_for_ready()
+    skip_tour(web)
+
+    # ... and when navigating away and back. Skip only dismisses it for the
+    # current visit.
+    web.driver.execute_script(
+        "document.querySelector('.course-next').click();")
+    web.wait_for_ready()
+    assert web.driver.execute_script(
+        "return !!document.querySelector('.spotlight');") is False
+    web.driver.execute_script(
+        "document.querySelector('.course-prev').click();")
+    web.wait_for_ready()
+    skip_tour(web)
 
 
 def myhistogram(img, thresh=50):

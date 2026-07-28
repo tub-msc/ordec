@@ -8,6 +8,7 @@
 // CourseController below for the navigator UI and persistence.
 
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
+import { startCourseTour } from './tour.js';
 
 let courseController = null;
 
@@ -73,6 +74,9 @@ export class CourseController {
         // is revisited.
         this.introDismissed = false;
         this.successDismissed = false;
+        // Whether the spotlight tour of the current welcome-lesson visit has
+        // been finished (in-memory: the tour replays on every visit).
+        this.tourDone = false;
 
         this.state = this.loadState();
     }
@@ -191,6 +195,14 @@ export class CourseController {
             this.deps.registerChangeHandler(this.editor, this.client);
         }
         this.renderNavigators();
+
+        // Spotlight intro tour, replayed on every visit of the welcome
+        // lesson. Deferred so GoldenLayout finishes mounting the panels
+        // first.
+        if (this.course.lessons[i].getting_started_lesson_1) {
+            this.tourDone = false;
+            window.setTimeout(() => this.startTour(), 0);
+        }
     }
 
     saveCurrentLesson() {
@@ -221,7 +233,76 @@ export class CourseController {
             this.lessonState(this.state.currentLesson).uistate =
                 this.deps.saveUistate();
             this.saveState();
+            this.checkLesson2Views();
         }, 500);
+    }
+
+    // -- Task-free and specially checked lessons -------------------------
+    //
+    // Lessons flagged in course.json get dedicated handling here instead of
+    // the usual PassFail-based checking (their reports are instruction-only).
+    // Generic flags: a welcome lesson (welcome) counts as solved right away
+    // and shows a callout pointing at the next-lesson button; an epilogue
+    // lesson (epilogue) closes a course with a what's-next report: solved
+    // right away, no callout, and no source editor in its shipped layout.
+    // getting_started-specific flags: getting_started_lesson_1 runs the
+    // spotlight intro tour on its (welcome) lesson and defers the callout
+    // until the tour is done; the viewer lesson (getting_started_lesson_2)
+    // is passed by opening the HelloWorld schematic and hello result
+    // viewers, which the frontend checks itself (see checkLesson2Views).
+
+    lesson1Flagged() {
+        return Boolean(this.course.lessons[this.state.currentLesson]
+            .getting_started_lesson_1);
+    }
+
+    welcomeFlagged() {
+        return Boolean(this.course.lessons[this.state.currentLesson]
+            .welcome);
+    }
+
+    lesson2Flagged() {
+        return Boolean(this.course.lessons[this.state.currentLesson]
+            .getting_started_lesson_2);
+    }
+
+    epilogueFlagged() {
+        return Boolean(this.course.lessons[this.state.currentLesson]
+            .epilogue);
+    }
+
+    lesson2ViewsOpen() {
+        const open = this.deps.getResultViewers()
+            .filter(rv => !rv.courseMode)
+            .map(rv => rv.viewSelected);
+        return open.includes('HelloWorld().schematic')
+            && open.includes('HelloWorld().hello');
+    }
+
+    // Re-derives pass/fail from the open viewers after layout changes. Only
+    // acts once the lesson report has been evaluated (status pass/fail), so
+    // busy/error states from the build are not overwritten.
+    checkLesson2Views() {
+        if (!this.lesson2Flagged()
+            || (this.reportStatus !== 'pass' && this.reportStatus !== 'fail')) {
+            return;
+        }
+        this.reportStatus = this.lesson2ViewsOpen() ? 'pass' : 'fail';
+        if (this.reportStatus === 'pass'
+            && !this.lessonPassed(this.state.currentLesson)) {
+            this.lessonState(this.state.currentLesson).passed = true;
+            this.saveState();
+        }
+        this.renderNavigators();
+    }
+
+    startTour() {
+        startCourseTour(this, () => {
+            this.tourDone = true;
+            // On the welcome lesson, finishing the tour reveals the callout
+            // pointing at the next-lesson button (see desiredCalloutKind).
+            this.renderNavigators();
+        });
     }
 
     // -- Report evaluation ---------------------------------------------
@@ -239,6 +320,23 @@ export class CourseController {
     onReportResult(msg) {
         if (msg.exception) {
             this.reportStatus = 'error';
+        } else if (this.welcomeFlagged() || this.epilogueFlagged()) {
+            // Task-free lessons (welcome lesson, epilogue) count as solved
+            // right away, unlocking the following lesson if any.
+            this.reportStatus = 'pass';
+            if (!this.lessonPassed(this.state.currentLesson)) {
+                this.lessonState(this.state.currentLesson).passed = true;
+                this.saveState();
+            }
+        } else if (this.lesson2Flagged()) {
+            // The viewer lesson is passed by opening result viewers; its
+            // report carries no PassFail elements (see checkLesson2Views).
+            this.reportStatus = this.lesson2ViewsOpen() ? 'pass' : 'fail';
+            if (this.reportStatus === 'pass'
+                && !this.lessonPassed(this.state.currentLesson)) {
+                this.lessonState(this.state.currentLesson).passed = true;
+                this.saveState();
+            }
         } else if (msg.type === 'report') {
             const passfails = (msg.data.elements || [])
                 .filter(e => e.element_type === 'passfail');
@@ -397,12 +495,30 @@ export class CourseController {
     // when their lesson is revisited (see introDismissed/successDismissed).
 
     desiredCalloutKind() {
+        if (this.epilogueFlagged()) {
+            // The epilogue is a destination, not a task: its report speaks
+            // for itself, no callout on top.
+            return null;
+        }
+        if (this.welcomeFlagged()) {
+            // Welcome lesson: only the "proceed to lesson 2" callout; when
+            // the spotlight tour runs on this lesson
+            // (getting_started_lesson_1), only once the user has clicked
+            // through it.
+            if (this.reportStatus === 'pass'
+                && (!this.lesson1Flagged() || this.tourDone)
+                && !this.successDismissed) {
+                return 'success';
+            }
+            return null;
+        }
         if (this.reportStatus === 'pass') {
             return this.successDismissed ? null : 'success';
         }
-        // The intro hint explains the course mechanics, so it is only shown on
-        // the first lesson, until dismissed.
-        if (this.state.currentLesson === 0 && !this.introDismissed) {
+        // The intro hint explains the course mechanics, so it is only shown
+        // on lesson 2 (index 1, the first lesson with tasks), until
+        // dismissed.
+        if (this.state.currentLesson === 1 && !this.introDismissed) {
             return 'intro';
         }
         return null;
@@ -435,7 +551,9 @@ export class CourseController {
         const showArrow = (kind !== 'success') || !isLast;
 
         let text;
-        if (kind === 'success' && isLast) {
+        if (kind === 'success' && this.welcomeFlagged()) {
+            text = `<strong>Press here to proceed to lesson 2!</strong>`;
+        } else if (kind === 'success' && isLast) {
             text = `<strong>Lesson completed!</strong>
                 <p>Well done &mdash; all checks pass. This was the last lesson
                 of the course.</p>`;
@@ -445,10 +563,10 @@ export class CourseController {
                 continue with the next lesson.</p>`;
         } else {
             text = `<strong>How this lesson works</strong>
-                <p>Edit the source code in the editor below until every check
-                passes. The status indicator above shows <em>unsolved</em> for
-                now &mdash; once you have completed all tasks of this lesson, it
-                will turn into <em>solved</em>.</p>`;
+                <p>Work through the instructions in the report below. The
+                status indicator above shows <em>unsolved</em> for now &mdash;
+                once you have completed all tasks of this lesson, it will turn
+                into <em>solved</em>.</p>`;
         }
 
         const callout = document.createElement('div');
@@ -594,6 +712,7 @@ export class CourseController {
             const option = document.createElement('option');
             const unlocked = this.lessonUnlocked(i);
             option.value = i;
+            // Lesson numbering starts at 0 (the welcome lesson):
             option.innerText = (i + 1) + ': ' + lesson.title;
             option.title = lesson.description || '';
             option.disabled = !unlocked;
@@ -617,7 +736,7 @@ export class CourseController {
         }[this.reportStatus];
         marker.title = (this.reportStatus === 'error')
             ? 'The lesson source or its checks raised an exception. See the '
-                + 'report view for details.'
+                + 'error bar in the Course panel for details.'
             : 'Lesson check status. See the report view for details.';
     }
 }

@@ -178,7 +178,8 @@ c.DockerSpawner.start_timeout = 300
 c.DockerSpawner.http_timeout = 120
 
 # Where the hub redirects the browser after spawn. '/' is the ORDeC example
-# chooser; a course can be preselected with e.g. '/app.html#course=intro'.
+# chooser; a course can be preselected with e.g.
+# '/app.html#course=getting_started'.
 c.Spawner.default_url = os.environ.get('ORDEC_HUB_DEFAULT_URL', '/')
 
 # Don't leak the hub container's environment into user containers:

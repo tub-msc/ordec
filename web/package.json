@@ -19,6 +19,7 @@
     "earcut": "^3.0.2",
     "fflate": "^0.8.2",
     "gl-matrix": "^3.4.4",
-    "golden-layout": "^2.6.0"
+    "golden-layout": "^2.6.0",
+    "katex": "^0.18.1"
   }
 }

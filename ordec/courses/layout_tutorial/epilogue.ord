@@ -1,0 +1,3 @@
+# The epilogue has no tasks and no source code to edit; its content lives
+# entirely in the report (see gen_epilogue in checks.py). The source editor
+# is not part of this lesson's layout (epilogue.uistate.json).

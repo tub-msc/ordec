@@ -44,9 +44,8 @@ SPDX-License-Identifier = "CC0-1.0"
 [[annotations]]
 # ordec.courses lesson content:
 path = [
-    "ordec/courses/intro/*.ord",
-    "ordec/courses/intro/*.py",
-    "ordec/courses/intro/*.json",
+    "ordec/courses/*/*.ord",
+    "ordec/courses/*/*.json",
 ]
 SPDX-FileCopyrightText = "2026 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"

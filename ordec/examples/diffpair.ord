@@ -4,24 +4,24 @@ from ordec.lib import Res, Vdc, Gnd, NoConn
 
 cell DiffPair:
     viewgen symbol -> Symbol:
-        input inp: .align=West
-        input inn: .align=West
-        input bias: .align=West
-        output outp: .align=East
-        output outn: .align=East
+        input inp
+        input inn
+        input bias
+        output outp
+        output outn
         inout vdd: .align=North
-        inout vss: .align=South
+        inout vss
 
     viewgen schematic -> Schematic:
-        port inp: .align=East
-        port bias: .align=East
+        port inp
+        port bias
         port outp: .align=East
         port inn: .align=West
-        port outn: .align=West
+        port outn
         net vss
 
         with Series(gap=4):
-            port vdd: .align=South
+            port vdd
             with Parallel(gap=6):
                 with Series():
                     Res rl: .$r=10k
@@ -30,7 +30,7 @@ cell DiffPair:
                     Res rr: .$r=10k
                     Nmos m2: .orientation=FlippedSouth; .g -- inn; .b -- vss; .d -- outn; .$w=10u
             Nmos mtail: .g -- bias; .b -- vss; .$w=20u
-            port vss: .align=North
+            port vss
 
 cell DiffPairTb:
     viewgen schematic -> Schematic:

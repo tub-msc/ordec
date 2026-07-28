@@ -1,0 +1,14 @@
+from ordec.core import *
+from ordec.lib import Res, Gnd, Vdc
+
+cell RNetwork:
+    viewgen schematic -> Schematic:
+        net vdd, vss
+
+        Gnd gnd: .p -- vss; .pos=(0,0)
+        Vdc vsrc: .$dc=5; .m -- vss; .p -- vdd; .pos=(0,9)
+
+        # EDIT HERE
+
+    viewgen sim_op -> Simulation:
+        .simulate().op()

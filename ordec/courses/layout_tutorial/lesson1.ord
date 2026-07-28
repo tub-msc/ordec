@@ -1,0 +1,17 @@
+from ordec.core import *
+from ordec.lib.ihp130 import SG13G2, Nmos
+
+cell Example:
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        # Some shapes on different layers:
+        LayoutRect r1: .layer=layers.Metal1; .rect=(0, 0, 3000, 400)
+        LayoutRect r2: .layer=layers.Metal2; .rect=(600, -800, 1000, 1200)
+        LayoutRect r3: .layer=layers.Metal2; .rect=(2000, -800, 2400, 1200)
+        LayoutLabel note: .layer=layers.TEXT; .pos=(0, 1600); .text="hello layout"
+
+        # Transistor parametric cell instance (more on this in lesson 6):
+        Nmos(w=1u, l=130n) mn:
+            ! .pos == (3800, -200)

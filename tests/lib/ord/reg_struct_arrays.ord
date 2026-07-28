@@ -13,6 +13,6 @@ cell MultibitReg_StructOfArrays:
         path bit.d
         path bit.q
         for i in range(self.bits):
-            input bit.d[i]: .align=West
-            output bit.q[i]: .align=East
-        input clk: .align=West
+            input bit.d[i]
+            output bit.q[i]
+        input clk

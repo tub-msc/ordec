@@ -1,0 +1,35 @@
+from ordec.core import *
+from ordec.lib.ihp130 import SG13G2, Nmos
+
+# A differential pair: two transistor branches amplifying the difference
+# between inp and inn. Each branch is one schematic device with multiplier
+# m=2, laid out as two parallel unit transistors interdigitated in the row
+# m1a m2a m2b m1b (A B B A). Symbol and schematic are complete.
+cell DiffPair:
+    viewgen symbol -> Symbol:
+        input inp
+        input inn
+        output outp
+        output outn
+        inout tail
+        inout vss
+
+    viewgen schematic -> Schematic:
+        port inp: .pos=(1,8)
+        port inn: .align=West; .pos=(19,8)
+        port outp: .pos=(19,13)
+        port outn: .align=East; .pos=(1,13)
+        port tail: .pos=(10,1)
+        port vss: .pos=(10,7)
+
+        Nmos(w=1u, l=130n, m=2) m1: .pos=(3,6); .g -- inp; .d -- outn; .s -- tail; .b -- vss
+        Nmos(w=1u, l=130n, m=2) m2: .pos=(17,6); .g -- inn; .d -- outp; .s -- tail; .b -- vss; .orientation=FlippedSouth
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+        unit = Nmos(w=1u, l=130n)
+
+        # EDIT HERE (row)
+
+        # EDIT HERE (gates)

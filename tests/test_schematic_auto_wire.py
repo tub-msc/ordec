@@ -110,7 +110,7 @@ def test_place_and_draw_connections():
         RoutingPort(10, 8, s.y, West),
         RoutingPort(1, 8, s.a, East),
     ]
-    connections = [
+    pin_conns = [
         (ports[0], s.pd.S),
         (ports[0], s.pd.E),
         (ports[1], s.pu.N),
@@ -119,6 +119,13 @@ def test_place_and_draw_connections():
         (ports[3], s.pu.W),
         (ports[2], s.pd.N),
         (ports[2], s.pu.S),
+    ]
+    # Connections carry the pin side as a RoutingPort (as auto_wire builds
+    # them); pin_conns keeps the subcursors for the grid assertions below.
+    connections = [
+        (port, RoutingPort(int(pin_sc.pos.x), int(pin_sc.pos.y), port.net,
+                           pin_sc.align.unflip()))
+        for port, pin_sc in pin_conns
     ]
 
     key_grid = place_cells_and_ports(grid, cells, ports, width, height,
@@ -130,7 +137,7 @@ def test_place_and_draw_connections():
         x, y = gridpos(port.x, port.y)
         assert grid[y][x] == GRID_PORT
         assert key_grid[(x, y)] == port.net
-    for _, pin_sc in connections:
+    for _, pin_sc in pin_conns:
         x, y = gridpos(pin_sc.pos.x, pin_sc.pos.y)
         assert grid[y][x] == GRID_PIN
         assert key_grid[(x, y)] == pin_sc
@@ -151,7 +158,7 @@ def test_place_and_draw_connections():
     # Each path ends at its connection's pin; the first path of each net
     # starts at the net's routing terminal (later paths may branch off).
     ends_by_net = dict()
-    for port, pin_sc in connections:
+    for port, pin_sc in pin_conns:
         ends_by_net.setdefault(port.net, set()).add(
             gridpos(pin_sc.pos.x, pin_sc.pos.y))
     for port in ports:
@@ -349,3 +356,34 @@ def test_ripup_rejected_when_reroute_rides_own_net():
     vertices, net_y, net_a = route_ripup_overlap_maze()
     assert not vertices[net_a]
     assert_anchor_hosts_branch(vertices[net_y], ends={(5, 1), (7, 7)})
+
+
+def test_tap_point_routing_and_outline():
+    """SchemTapPoints are routing terminals like ports and pins: auto_wire
+    attaches wires to them (from the side opposite the glyph/label), and the
+    initial outline covers the tap position plus its label."""
+    sym = Symbol()
+    sym.E = Pin(align=East)
+    sym.place_pins(hpadding=2, vpadding=2)
+    symf = sym.freeze()
+
+    s = Schematic()
+    s.n = Net()
+    s.i = SchemInstance(symf.portmap(E=s.n), pos=Vec2R(0, 0))
+    # Tap east of the instance, glyph/label extending further east (R270).
+    s.n % SchemTapPoint(pos=Vec2R(10, 2), align=R270)
+
+    s.auto_wire()
+    s.check(add_conn_points=True, add_terminal_taps=True)
+    assert not s.has_errors()
+
+    # The instance pin is wired to the tap at (10, 2).
+    pin_pos = s.i.loc_transform() * symf.E.pos
+    vertices = {v for w in s.all(SchemWire.ref_idx.query(s.n))
+                for v in w.vertices()}
+    assert Vec2R(10, 2) in vertices
+    assert pin_pos in vertices
+
+    # The outline covers the tap and the space for its label.
+    assert s.outline.ux > 10
+    assert s.outline.uy >= 2

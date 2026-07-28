@@ -7,13 +7,13 @@ from ordec.lib.generic_mos import Nmos, Pmos
 cell Inv:
     viewgen symbol -> Symbol:
         inout vdd: .align=North
-        inout vss: .align=South
-        input a: .align=West
-        output y: .align=East
+        inout vss
+        input a
+        output y
 
     viewgen schematic -> Schematic:
-        port a : .align=East
-        port y : .align=West
+        port a
+        port y
         # vss sits at the bottom of the series stack, so its port statement
         # comes last. The net is forward-declared to allow .b -- vss earlier.
         net vss
@@ -22,7 +22,7 @@ cell Inv:
         # facing pins: pu.s -- vdd, pu.d -- pd.d, pd.s -- vss. The junction
         # net between pu.d and pd.d is named by wiring .d -- y explicitly.
         with Series(gap=4):
-            port vdd: .align=South
+            port vdd
             Pmos pu:
                 .g -- a
                 .b -- vdd
@@ -30,4 +30,4 @@ cell Inv:
             Nmos pd:
                 .g -- a
                 .b -- vss
-            port vss: .align=North
+            port vss

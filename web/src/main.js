@@ -101,9 +101,12 @@ class Editor {
         this.editor = ace.edit(container.element);
         registerAceEditor(this.editor);
         this.updateMode();
+        // Font size comes from the shared --font-size-code token, which also
+        // sizes the preformatted/code text in reports.
         this.editor.setOptions({
             fontFamily: "Inconsolata",
-            fontSize: "12pt"
+            fontSize: getComputedStyle(document.documentElement)
+                .getPropertyValue('--font-size-code').trim() || "11.5pt"
         });
 
         // The source editor is movable but not closable in every mode (see
@@ -223,6 +226,26 @@ function getEditor() {
 }
 
 document.querySelector("#newresview").onclick = () => {
+    // In course mode, never open the new view as a tab on top of the Course
+    // panel or the source editor (GoldenLayout's default placement picks the
+    // first stack, which is the Course panel's): stack it onto an existing
+    // result viewer instead, or open a new stack at the root.
+    if (getCourseController()) {
+        const config = {
+            type: 'component',
+            componentName: 'result',
+            title: 'Result View',
+        };
+        for (const item of layout.root.getAllContentItems()) {
+            if (item.isComponent && item.componentName === 'result'
+                && item.component && !item.component.courseMode) {
+                item.parent.addItem(config);
+                return;
+            }
+        }
+        layout.root.contentItems[0].addItem(config);
+        return;
+    }
     layout.addComponent('result', undefined, 'Result View');
 };
 
@@ -380,6 +403,36 @@ autoRefreshToggle.onclick = () => {
 window.ordecClient = client;
 window.viewEventBus = viewEventBus;
 
+// Opens itemConfig beside sourceStack by replacing sourceStack in its parent
+// (a column or the ground) with a new row [sourceStack, itemConfig]. When the
+// parent is a row, the caller inserts into it directly instead.
+function wrapStackInRow(sourceStack, itemConfig) {
+    const stackParent = sourceStack.parent;
+    const stackIndex = stackParent.contentItems.indexOf(sourceStack);
+    const rowConfig = {
+        type: 'row',
+        content: [itemConfig]
+    };
+    if (stackParent.isColumn) {
+        // Insert the wrapper row before removing sourceStack: removing first
+        // can leave the column with a single child, which GoldenLayout
+        // condenses away (the column is replaced by that child and
+        // destroyed), losing the subsequent addItem and the removed stack.
+        stackParent.addItem(rowConfig, stackIndex);
+        const newRow = stackParent.contentItems[stackIndex];
+        stackParent.removeChild(sourceStack, true);
+        newRow.addChild(sourceStack, 0);
+    } else {
+        // Ground item: sourceStack is the layout root. A ground holds only a
+        // single child, so here the root must be removed first (addItem on a
+        // non-empty ground delegates into the existing root instead).
+        stackParent.removeChild(sourceStack, true);
+        stackParent.addItem(rowConfig, stackIndex);
+        const newRow = stackParent.contentItems[stackIndex];
+        newRow.addChild(sourceStack, 0);
+    }
+}
+
 function openOrActivateView(data) {
     const view = data.view;
 
@@ -416,17 +469,7 @@ function openOrActivateView(data) {
         const index = stackParent.contentItems.indexOf(sourceStack) + 1;
         stackParent.addItem(componentConfig, index);
     } else {
-        const stackIndex = stackParent.contentItems.indexOf(sourceStack);
-        stackParent.removeChild(sourceStack, true);
-
-        const rowConfig = {
-            type: 'row',
-            content: [componentConfig]
-        };
-        stackParent.addItem(rowConfig, stackIndex);
-
-        const newRow = stackParent.contentItems[stackIndex];
-        newRow.addChild(sourceStack, 0);
+        wrapStackInRow(sourceStack, componentConfig);
     }
 }
 
@@ -503,17 +546,7 @@ viewEventBus.on('lvs:request-open-views', (data) => {
         const index = stackParent.contentItems.indexOf(sourceStack) + 1;
         stackParent.addItem(itemToAdd, index);
     } else {
-        const stackIndex = stackParent.contentItems.indexOf(sourceStack);
-        stackParent.removeChild(sourceStack, true);
-
-        const rowConfig = {
-            type: 'row',
-            content: [itemToAdd]
-        };
-        stackParent.addItem(rowConfig, stackIndex);
-
-        const newRow = stackParent.contentItems[stackIndex];
-        newRow.addChild(sourceStack, 0);
+        wrapStackInRow(sourceStack, itemToAdd);
     }
 });
 
@@ -528,6 +561,9 @@ document.querySelector("#examples").onclick = () => {
 
 fetch('api/version').then(response => response.json()).then(data => {
     document.querySelector('#version').innerText = data['version'];
+    // Point the Docs toolbar link at the documentation matching the
+    // installed version.
+    document.querySelector('#docs').href = data['docs_url'];
 });
 
 // Schematic CSS is served from the backend (SchematicRenderer.css in render.py)

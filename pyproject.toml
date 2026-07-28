@@ -66,15 +66,21 @@ packages = [
     "ordec.lib",
     "ordec.examples",
     "ordec.courses",
-    "ordec.courses.intro",
+    "ordec.courses.getting_started",
+    "ordec.courses.cmos_circuits",
+    "ordec.courses.layout_tutorial",
     "ordec.schematic",
     "ordec.sim",
 ]
 
 [tool.setuptools.package-data]
 "ordec" = ["webdist.tar"]
-"ordec.examples" = ["*.json"]
-"ordec.courses.intro" = ["*.json", "*.ord"]
+"ordec.ord" = ["*.lark"]
+"ordec.layout" = ["*.lark"]
+"ordec.examples" = ["*.json", "*.ord"]
+"ordec.courses.getting_started" = ["*.json", "*.ord"]
+"ordec.courses.cmos_circuits" = ["*.json", "*.ord"]
+"ordec.courses.layout_tutorial" = ["*.json", "*.ord"]
 
 [tool.setuptools_scm]
 version_scheme = "release-branch-semver"

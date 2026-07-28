@@ -1,0 +1,75 @@
+{
+  "title": "Getting Started",
+  "lessons": [
+    {
+      "file": "lesson1.ord",
+      "title": "Welcome to ORDeC",
+      "description": "A short welcome and a tour of the web UI.",
+      "lesson_gen": "gen_lesson1",
+      "welcome": true,
+      "getting_started_lesson_1": true
+    },
+    {
+      "file": "lesson2.ord",
+      "title": "Opening result viewers",
+      "description": "Get to know the web UI by opening the views of a hello-world design.",
+      "lesson_gen": "gen_lesson2",
+      "getting_started_lesson_2": true
+    },
+    {
+      "file": "lesson3.ord",
+      "title": "Instantiating a resistor",
+      "description": "Instantiate, place and connect a resistor in ORD.",
+      "lesson_gen": "gen_lesson3"
+    },
+    {
+      "file": "lesson4.ord",
+      "title": "Resistor network",
+      "description": "Build a small resistor network and watch the currents.",
+      "lesson_gen": "gen_lesson4"
+    },
+    {
+      "file": "lesson5.ord",
+      "title": "Wiring with for loops",
+      "description": "Connect several instances at once using for loops.",
+      "lesson_gen": "gen_lesson5"
+    },
+    {
+      "file": "lesson6.ord",
+      "title": "LC bandstop filter",
+      "description": "Build an LC bandstop filter and check its notch in the Bode plot.",
+      "lesson_gen": "gen_lesson6"
+    },
+    {
+      "file": "lesson7.ord",
+      "title": "Subcells",
+      "description": "Move the filter into its own cell with symbol, pins and ports.",
+      "lesson_gen": "gen_lesson7"
+    },
+    {
+      "file": "lesson8.ord",
+      "title": "Parameters",
+      "description": "Parametrize the filter's notch frequency and chain two of them.",
+      "lesson_gen": "gen_lesson8"
+    },
+    {
+      "file": "lesson9.ord",
+      "title": "Transient analysis and reports",
+      "description": "Add a transient analysis and build a report with linked plots.",
+      "lesson_gen": "gen_lesson9"
+    },
+    {
+      "file": "lesson10.ord",
+      "title": "Postprocessing",
+      "description": "Analyze transient data in a report: count pulses, measure edge times.",
+      "lesson_gen": "gen_lesson10"
+    },
+    {
+      "file": "epilogue.ord",
+      "title": "What's next?",
+      "description": "Course completed — where to go from here.",
+      "lesson_gen": "gen_epilogue",
+      "epilogue": true
+    }
+  ]
+}

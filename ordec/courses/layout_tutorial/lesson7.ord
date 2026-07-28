@@ -1,0 +1,42 @@
+from ordec.core import *
+from ordec.lib.ihp130 import SG13G2, Nmos, Pmos, Ntap, Ptap
+from ordec.layout import SRouter
+
+cell Inv:
+    viewgen symbol -> Symbol:
+        input a
+        output y
+        inout vdd: .align=North
+        inout vss
+
+    viewgen schematic -> Schematic:
+        port a: .pos=(1,7)
+        port y: .pos=(9,7)
+        port vdd: .align=East; .pos=(2,13)
+        port vss: .align=East; .pos=(2,1)
+
+        Nmos(w=1u, l=130n) mn: .pos=(3,2); .s -- vss; .b -- vss; .g -- a; .d -- y
+        Pmos(w=1u, l=130n) mp: .pos=(3,8); .s -- vdd; .b -- vdd; .g -- a; .d -- y
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        # The device column from lesson 6:
+        Nmos(w=1u, l=130n) mn:
+            ! .pos == (0, 0)
+        Pmos(w=1u, l=130n) mp:
+            ! .pos.x == mn.pos.x
+            ! .pos.y == mn.pos.y + 2500
+        Ptap(l=0.7u, w=0.7u) ptap:
+            ! .activ.cx == mn.activ.cx
+            ! .activ.uy + 600 == mn.poly[0].ly
+        Ntap(l=0.7u, w=0.7u) ntap:
+            ! .activ.cx == mp.activ.cx
+            ! .activ.ly - 600 == mp.poly[0].uy
+
+        # EDIT HERE (gate)
+
+        # EDIT HERE (output)
+
+        # EDIT HERE (power)

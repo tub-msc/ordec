@@ -64,6 +64,12 @@ A **node statement** is the ``A B`` construct that creates and names an element 
 2. **Node instance statements** — the type is a Cell class or instance, e.g., ``Nmos x``
 3. **Node keyword statements** — the type is a built-in keyword, e.g., ``input x``, ``output y``, ``port z``
 
+Node keyword statements come with direction-based align defaults: ``input``
+pins face ``West``, ``output`` pins ``East``, and ``inout`` pins ``South``. A
+``port`` defaults to the flipped align of its symbol pin, so e.g. a
+West-facing input pin yields an East-facing port. An ``.align=`` assignment
+in the statement body overrides these defaults.
+
 A node statement may have an optional body (indented block after ``:``) for setting attributes:
 
 .. code-block::
@@ -145,16 +151,16 @@ of the example.
     class Inv(Cell):
         @context.viewgen
         def symbol(self) -> Symbol:
-            vdd = context.add(('vdd',), Pin(pintype=PinType.Inout))
+            vdd = context.add(('vdd',), Pin(pintype=PinType.Inout, align=D4.South))
             with vdd.ctx():
                 context.root().align = North
-            vss = context.add(('vss',), Pin(pintype=PinType.Inout))
+            vss = context.add(('vss',), Pin(pintype=PinType.Inout, align=D4.South))
             with vss.ctx():
                 context.root().align = South
-            a = context.add(('a',), Pin(pintype=PinType.In))
+            a = context.add(('a',), Pin(pintype=PinType.In, align=D4.West))
             with a.ctx():
                 context.root().align = West
-            y = context.add(('y',), Pin(pintype=PinType.Out))
+            y = context.add(('y',), Pin(pintype=PinType.Out, align=D4.East))
             with y.ctx():
                 context.root().align = East
 

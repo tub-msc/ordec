@@ -925,6 +925,22 @@ class StaticHandler:
                 'src': lesson_path.read_text(),
                 'uistate': json.loads(uistate_path.read_text()),
                 'check_src': lesson_check_src(name, lesson),
+                # Hard flags for the two special lessons at the start of the
+                # getting_started course: lesson 1 is a welcome lesson
+                # without tasks (the frontend marks it solved right away and
+                # runs the spotlight intro tour), lesson 2 is passed by
+                # opening result viewers (detected in the frontend) instead
+                # of by PassFail checks.
+                'getting_started_lesson_1':
+                    bool(lesson.get('getting_started_lesson_1', False)),
+                'getting_started_lesson_2':
+                    bool(lesson.get('getting_started_lesson_2', False)),
+                # Generic flags for task-free lessons: a welcome lesson
+                # opening a course (marked solved right away, success callout
+                # points at the next-lesson button) and an epilogue lesson
+                # closing one (solved right away, no callout).
+                'welcome': bool(lesson.get('welcome', False)),
+                'epilogue': bool(lesson.get('epilogue', False)),
             })
         data = json.dumps({
             'name': name,

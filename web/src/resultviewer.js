@@ -10,6 +10,8 @@ import { HierSelector } from './hier-selector.js';
 import { viewEventBus } from './event-bus.js';
 import { CoordinateDisplay } from './viewer-coordinates.js';
 import { getCourseController, suppressCloseControls } from './course.js';
+import renderMathInElement from 'katex/contrib/auto-render';
+import 'katex/dist/katex.min.css';
 
 let idCounter = 0;
 export function generateId() {
@@ -105,11 +107,36 @@ function simpleReportElementClass(renderNode) {
     };
 }
 
+// Appends plain text to el, turning `...` spans into inline code elements.
+// PassFail instructions and hints are plain text rather than markdown, but
+// backticks around pin, net and instance names make them far easier to read.
+// Built from text nodes, so the text is never interpreted as HTML.
+function appendTextWithCode(el, text) {
+    text.split('`').forEach((part, i) => {
+        if (i % 2) {
+            const code = document.createElement('code');
+            code.innerText = part;
+            el.appendChild(code);
+        } else if (part) {
+            el.appendChild(document.createTextNode(part));
+        }
+    });
+}
+
 const reportElementClassOf = {
     markdown: simpleReportElementClass((msgData) => {
         const section = document.createElement('div');
         section.classList.add('report-markdown');
         section.innerHTML = msgData.html;
+        // TeX math spans; the backend keeps them out of markdown2's hands
+        // (see schema.py Markdown.element_webdata).
+        renderMathInElement(section, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+            ],
+            throwOnError: false,
+        });
         return section;
     }),
     html: simpleReportElementClass((msgData) => {
@@ -162,31 +189,35 @@ const reportElementClassOf = {
 
             root.appendChild(head);
 
-            if (msgData.instructions) {
-                const instructions = document.createElement('div');
-                instructions.classList.add('report-passfail-instructions');
-                instructions.innerText = msgData.instructions;
-                root.appendChild(instructions);
-            }
+            // A passing check is collapsed to badge + label; instructions
+            // and hint only matter while the check fails.
+            if (!msgData.passed) {
+                if (msgData.instructions) {
+                    const instructions = document.createElement('div');
+                    instructions.classList.add('report-passfail-instructions');
+                    appendTextWithCode(instructions, msgData.instructions);
+                    root.appendChild(instructions);
+                }
 
-            if (msgData.hint) {
-                const hintBtn = document.createElement('button');
-                hintBtn.classList.add('report-passfail-hintbtn');
-                const hint = document.createElement('div');
-                hint.classList.add('report-passfail-hint');
-                hint.innerText = msgData.hint;
-                const applyHintVisibility = () => {
-                    hint.style.display = this.hintVisible ? '' : 'none';
-                    hintBtn.innerText = this.hintVisible
-                        ? 'Hide hint' : 'Show hint';
-                };
-                hintBtn.onclick = () => {
-                    this.hintVisible = !this.hintVisible;
+                if (msgData.hint) {
+                    const hintBtn = document.createElement('button');
+                    hintBtn.classList.add('report-passfail-hintbtn');
+                    const hint = document.createElement('div');
+                    hint.classList.add('report-passfail-hint');
+                    appendTextWithCode(hint, msgData.hint);
+                    const applyHintVisibility = () => {
+                        hint.style.display = this.hintVisible ? '' : 'none';
+                        hintBtn.innerText = this.hintVisible
+                            ? 'Hide hint' : 'Show hint';
+                    };
+                    hintBtn.onclick = () => {
+                        this.hintVisible = !this.hintVisible;
+                        applyHintVisibility();
+                    };
                     applyHintVisibility();
-                };
-                applyHintVisibility();
-                root.appendChild(hintBtn);
-                root.appendChild(hint);
+                    head.appendChild(hintBtn);
+                    root.appendChild(hint);
+                }
             }
 
             this.container.replaceChildren(root);
@@ -259,6 +290,8 @@ const viewClassOf = {
             this.coordsDisplay = new CoordinateDisplay();
             this.highlightOverlay = null;
             this.svg = null;
+            this.baseTransform = null;
+            this.resizeObserver = null;
 
             this._onLvsSelect = (data) => {
                 // Selections targeted at a specific schematic view (items of
@@ -280,6 +313,36 @@ const viewClassOf = {
         zoomed({transform}) {
             this.transform = transform;
             this.g.attr("transform", transform);
+        }
+        _sameTransform(a, b) {
+            return a && b && Math.abs(a.k - b.k) < 1e-9
+                && Math.abs(a.x - b.x) < 1e-6
+                && Math.abs(a.y - b.y) < 1e-6;
+        }
+        // Computes the base (zoomed-out) transform: fit to the panel, but
+        // never enlarged beyond the nominal rendered size; smaller-than-
+        // panel content is centered. Re-applied whenever the view is at
+        // the base, so the cap follows panel resizes; a user zoom is left
+        // untouched.
+        _updateBaseTransform() {
+            const rect = this.svgNode.getBoundingClientRect();
+            if (!rect.width || !rect.height) {
+                return;
+            }
+            const [vx, vy, vw, vh] = this.viewbox;
+            const fitScale = Math.min(rect.width / vw, rect.height / vh);
+            const k = Math.min(1, this.nominalScale / fitScale);
+            const base = d3.zoomIdentity
+                .translate((vx + vw / 2) * (1 - k), (vy + vh / 2) * (1 - k))
+                .scale(k);
+            const wasAtBase = this.baseTransform
+                ? this._sameTransform(this.transform, this.baseTransform)
+                : this._sameTransform(this.transform, d3.zoomIdentity);
+            this.zoom.scaleExtent([k, 12]);
+            this.baseTransform = base;
+            if (wasAtBase && !this._sameTransform(this.transform, base)) {
+                this.svg.call(this.zoom.transform, base);
+            }
         }
         setHighlight(data) {
             this.clearHighlight();
@@ -420,15 +483,22 @@ const viewClassOf = {
             this.g = svg.append("g")
                 .html(msgData['inner'])
 
-            let zoom = d3.zoom()
+            // The svg fills the panel; the base zoom transform caps the
+            // resting view at the nominal rendered size and centers it
+            // (see _updateBaseTransform). Zooming in from there can use
+            // the full panel.
+            this.viewbox = viewbox;
+            this.nominalScale = parseFloat(msgData.width) / vw;
+
+            this.zoom = d3.zoom()
                 .extent(zoomExtent)
                 .scaleExtent([1, 12])
                 .translateExtent(zoomExtent);
 
-            svg.call(zoom.transform, this.transform);
+            svg.call(this.zoom.transform, this.transform);
             this.g.attr("transform", this.transform);
 
-            svg.call(zoom.on("zoom", (x) => this.zoomed(x)));
+            svg.call(this.zoom.on("zoom", (x) => this.zoomed(x)));
 
             this.svgNode = svg.node();
 
@@ -467,6 +537,19 @@ const viewClassOf = {
 
             this.resContent.replaceChildren(schemRoot);
             this.coordsDisplay.clear();
+
+            // The base transform depends on the panel size, so it is set
+            // once the svg is laid out and tracked across panel resizes.
+            // Undebounced on purpose: ResizeObserver fires after layout but
+            // before paint, so a synchronous update keeps the resting view
+            // pinned at nominal size throughout a resize.
+            this._updateBaseTransform();
+            if (this.resizeObserver) {
+                this.resizeObserver.disconnect();
+            }
+            this.resizeObserver = new ResizeObserver(
+                () => this._updateBaseTransform());
+            this.resizeObserver.observe(this.svgNode);
 
             svg.selectAll('.errorMarker')
                 .on('mouseover', (event) => {
@@ -512,6 +595,10 @@ const viewClassOf = {
             viewEventBus.off('lvs:schem-select', this._onLvsSelect);
             viewEventBus.off('lvs:clear', this._onLvsClear);
             this.clearHighlight();
+            if (this.resizeObserver) {
+                this.resizeObserver.disconnect();
+                this.resizeObserver = null;
+            }
         }
     },
     report: class {
@@ -1112,6 +1199,7 @@ export class ResultViewer {
                 <div class="reswrapper">
                     <div class="refreshing"><span class="refresh-spinner" aria-hidden="true"></span><span class="refresh-status">Refreshing view…</span><span class="refresh-progress"><span class="refresh-progress-fill"></span></span><span class="refresh-pct"></span><span class="refresh-detail"></span><button class="refresh-cancel" title="Cancel view generation">✕</button></div>
                     <div class="refreshable"><button><svg class="refresh-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8 A5 5 0 1 1 11.5 4.5"/><path d="M11.5 1.5 L11.5 4.5 L8.5 4.5"/></svg>Refresh</button><span class="refreshable-text">View is out of date.</span></div>
+                    <div class="builderror"><span class="builderror-text"></span><button class="builderror-toggle">Show details</button></div>
                     <div class="rescontent" tabindex="1"></div>
                     <div class="resexception"></div>
                     <div class="resview-empty">Select a view from the dropdown above</div>
@@ -1131,6 +1219,15 @@ export class ResultViewer {
         this.refreshDetail = container.element.querySelector(".refresh-detail");
         this.refreshCancel = container.element.querySelector(".refresh-cancel");
         this.refreshableText = container.element.querySelector(".refreshable-text");
+        this.resOverlayError = container.element.querySelector(".builderror");
+        this.buildErrorText = container.element.querySelector(".builderror-text");
+        this.buildErrorToggle = container.element.querySelector(".builderror-toggle");
+        this.buildErrorToggle.onclick =
+            () => this.setBuildErrorExpanded(!this.buildErrorExpanded);
+        // Course viewer error state (see showBuildError): the full traceback
+        // and whether it is expanded over the lesson report.
+        this.buildError = null;
+        this.buildErrorExpanded = false;
         container.element.querySelector(".refreshable button").onclick =
             () => this.refreshOnClick();
         this.refreshCancel.onclick = () => this.cancelOnClick();
@@ -1219,6 +1316,7 @@ export class ResultViewer {
     showRefreshOverlay(config) {
         this.resOverlayRefreshable.style.display = (config == 'refreshable')?'':'none';
         this.resOverlayRefreshing.style.display = (config == 'refreshing')?'':'none';
+        this.resOverlayError.style.display = (config == 'error')?'':'none';
         if (config == 'refreshing') {
             // Reset progress state; updateProgress() fills it in.
             this.refreshStatus.textContent = 'Refreshing view…';
@@ -1230,7 +1328,12 @@ export class ResultViewer {
         // When a status bar is shown it occupies a fixed-height strip at the top
         // of the view; this class insets the content below it (see style.css).
         this.resOverlayRefreshing.parentElement.classList.toggle(
-            'refreshbar-active', config == 'refreshing' || config == 'refreshable');
+            'refreshbar-active',
+            config == 'refreshing' || config == 'refreshable' || config == 'error');
+        // Recolours the strip's top edge (the view head border) to the error
+        // colour, like refreshbar-active does for the refresh colour.
+        this.resOverlayRefreshing.parentElement.classList.toggle(
+            'errorbar-active', config == 'error');
     }
 
     updateProgress(msg) {
@@ -1364,8 +1467,16 @@ export class ResultViewer {
             }
         }
 
+        // In course mode, the lesson() report is shown by the Course panel;
+        // hide it from the view selectors of the regular result viewers.
+        const hideLesson = Boolean(getCourseController());
         const viewNames = [];
-        this.client.views.forEach(view => viewNames.push(view.name));
+        this.client.views.forEach(view => {
+            if (hideLesson && view.name === 'lesson()') {
+                return;
+            }
+            viewNames.push(view.name);
+        });
 
         const prevSelected = this.viewSelected || this.restoreSelectedView;
 
@@ -1376,14 +1487,14 @@ export class ResultViewer {
             let vs = this.viewSelector;
             vs.innerHTML = "<option disabled selected value>--- Select result from list ---</option>";
             let selectedVal = null;
-            this.client.views.forEach(view => {
+            viewNames.forEach(name => {
                 var option = document.createElement("option");
-                option.innerText = view.name;
-                option.value = view.name;
+                option.innerText = name;
+                option.value = name;
                 vs.appendChild(option);
-                if (view.name == prevSelected) {
+                if (name == prevSelected) {
                     option.selected = true;
-                    selectedVal = view.name;
+                    selectedVal = name;
                 }
             });
             this.viewSelected = selectedVal;
@@ -1410,9 +1521,14 @@ export class ResultViewer {
         this.updateViewList(freshViewlist);
         if (this.client.exception) {
             // In this case, the exception was generated during module evaluation:
-            this.showRefreshOverlay(null);
-            this.showException(this.client.exception);
+            if (this.courseMode) {
+                this.showBuildError(this.client.exception);
+            } else {
+                this.showRefreshOverlay(null);
+                this.showException(this.client.exception);
+            }
         } else {
+            this.clearBuildError();
             this.showException(null);
             this.invalidate();
             this.updateOverlay();
@@ -1431,9 +1547,12 @@ export class ResultViewer {
         } else if (this.requestsView()) {
             this.courseController.onReportPending();
         } else {
-            // The lesson() view does not auto-refresh (expensive checks, e.g.
-            // LVS/DRC): it is evaluated only when the user clicks the in-panel
-            // Refresh overlay. The marker reflects this "not checked" state.
+            // The lesson() view is not being requested. This happens when it
+            // was declared with @generate_func(auto_refresh=False) (expensive
+            // checks, e.g. LVS/DRC) and is evaluated only when the user
+            // clicks the in-panel Refresh overlay; the marker reflects this
+            // "not checked" state. Plain @generate_func lessons auto-refresh
+            // and never end up here.
             this.courseController.onReportUnchecked();
         }
     }
@@ -1453,6 +1572,43 @@ export class ResultViewer {
             pre.innerText = text;
             pre.classList.add('exception');
             this.resException.replaceChildren(pre);
+        }
+    }
+
+    // Course viewer only: non-destructive error display. A build or check
+    // error must not wipe the lesson() report the student is following (the
+    // common case is a transient syntax error while typing), so the last good
+    // report stays visible and the error appears as a strip; the full
+    // traceback expands over the report on demand.
+    showBuildError(text) {
+        this.buildError = text;
+        // Summary for the strip: the traceback's exception line, e.g.
+        // "SyntaxError: invalid syntax (<webeditor>, line 12)". Usually the
+        // last line, but exceptions with multi-line messages (e.g. ORD syntax
+        // errors) have the message's remaining lines after it, so search for
+        // the last line that looks like an exception line.
+        const lines = text.trim().split('\n');
+        const summary = lines.findLast(
+            l => /^[A-Za-z_][\w.]*(Error|Exception)\b/.test(l));
+        this.buildErrorText.textContent = summary || lines[lines.length - 1];
+        this.showRefreshOverlay('error');
+        // Keep the details open across consecutive failed builds. With no
+        // previously rendered report there is nothing to preserve, so open
+        // them right away.
+        this.setBuildErrorExpanded(this.buildErrorExpanded || !this.view);
+    }
+
+    setBuildErrorExpanded(expanded) {
+        this.buildErrorExpanded = expanded;
+        this.buildErrorToggle.textContent =
+            expanded ? 'Hide details' : 'Show details';
+        this.showException(expanded ? this.buildError : null);
+    }
+
+    clearBuildError() {
+        if (this.buildError !== null) {
+            this.buildError = null;
+            this.setBuildErrorExpanded(false);
         }
     }
 
@@ -1478,8 +1634,16 @@ export class ResultViewer {
         try {
             if(msg.exception) {
                 // In this case, the exception was generated during view generation:
-                this.showException(msg.exception);
+                if (this.courseMode) {
+                    // Shows the error strip; updateOverlay() must not run
+                    // here, it would hide the strip again (view up to date).
+                    this.showBuildError(msg.exception);
+                } else {
+                    this.showException(msg.exception);
+                    this.updateOverlay();
+                }
             } else {
+                this.clearBuildError();
                 this.showException(null);
                 const viewClass = viewClassOf[msg.type];
                 if(!viewClass) {
@@ -1494,9 +1658,8 @@ export class ResultViewer {
                     this.view.glContainer = this.container;
                     this.view.update(msg.data);
                 }
+                this.updateOverlay();
             }
-
-            this.updateOverlay();
         } finally {
             if (this.courseMode) {
                 // Feed the result (pass/fail elements) back to the course

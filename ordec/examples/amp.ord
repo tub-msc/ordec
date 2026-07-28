@@ -4,18 +4,18 @@ from ordec.lib.ihp130 import Nmos, Pmos
 
 cell Amp:
     viewgen symbol -> Symbol:
-        input vin: .align=West
-        input vbias: .align=West
-        output vout: .align=East
-        inout vss: .align=South
+        input vin
+        input vbias
+        output vout
+        inout vss
         inout vdd: .align=North
     viewgen schematic -> Schematic:
         net m0g
-        port vdd: .align=South; .pos=(15,18)
-        port vss: .align=North; .pos=(15,1)
-        port vin: .align=East; .pos=(0,5)
-        port vbias: .align=East; .pos=(0,14)
-        port vout: .align=West; .pos=(20, 8)
+        port vdd: .pos=(15,18)
+        port vss: .pos=(15,1)
+        port vin: .pos=(0,5)
+        port vbias: .pos=(0,14)
+        port vout: .pos=(20, 8)
 
         Res r0: .pos=(5, 3); .$r=100k; .orientation=R90; .p -- vin; .m -- m0g
         Res r1: .pos=(6, 6); .$r=400k; .m -- m0g; .p -- vout
@@ -37,12 +37,11 @@ cell AmpTb:
 
 
     viewgen sim_ac -> Simulation:
-        .simulate().ac('dec', '10', '1M', '1G')
+        .simulate().ac('dec', 10, 1M, 1G)
 
     viewgen sim_tran -> Simulation:
-        .simulate().tran(R('1n'), R('1u'))
+        .simulate().tran(1n, 1u)
 
     viewgen report_ac -> Report:
         sim = self.sim_ac
-        .markdown("## Amplifier AC bode plot")
         .bode_plot(sim.vin, sim.vout)

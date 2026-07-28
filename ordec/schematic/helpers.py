@@ -7,6 +7,7 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass
 from ..core import *
+from .auto_wire import tap_outline_point
 
 def spice_params(params: dict) -> list[str]:
     """Helper function for Netlister.add(). This function is in helper.py
@@ -109,14 +110,11 @@ def schem_place(schem: Schematic, gap=None, port_margin=None):
     schem_place_ports(schem, clearance=port_margin)
 
     schem.check(add_terminal_taps=True)
+    # adjust_outline_initial covers the tap point labels that this placement
+    # relies on for connectivity.
     outline = adjust_outline_initial(schem)
     if outline is None:
         outline = Rect4R(0, 0, 1, 1)
-    # adjust_outline_initial covers port labels but not tap point labels,
-    # which this placement relies on for connectivity.
-    for tap in schem.all(SchemTapPoint):
-        label_len = Renderer.port_text_space + 0.35 * len(tap.ref.full_path_label())
-        outline = outline.extend(tap.pos + (tap.align * Vec2R(0, 1)) * label_len)
     schem.outline = outline
 
 
@@ -515,8 +513,13 @@ def _check_terminals(node: Schematic, g: ConnectivityGraph,
         net_here = _net_at_pos(node, t.pos)
         if net_here is None:
             if add_terminal_taps:
-                t.ref % SchemTapPoint(pos=t.pos, align=t.align.unflip())
+                tap = t.ref % SchemTapPoint(pos=t.pos, align=t.align.unflip())
                 g.add_biedge(t.pos, t.ref)
+                # These taps are added after auto_wire() computed the
+                # outline, so their glyph/label extent is added here.
+                if node.outline is not None:
+                    node.outline = node.outline.extend(tap.pos) \
+                        .extend(tap_outline_point(tap))
             elif not suppress_errors:
                 node.root % SchemErrorMarker(pos=t.pos, error_type=SchemErrorType.MissingTerminalConnection)
                 return

@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2025 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
-const siSuffix = ['', 'm', 'μ', 'n'];
+// 'µ' MICRO SIGN, not Greek mu: Inconsolata only covers the
+// compatibility codepoint.
+const siSuffix = ['', 'm', 'µ', 'n'];
 
 export function siFormat(numUnit, unit) {
 

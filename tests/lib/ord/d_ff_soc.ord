@@ -9,16 +9,16 @@ cell D_flip_flop:
     viewgen symbol -> Symbol:
         input vdd: .align = North
         input vss: .align = South
-        input CLK: .align = West
-        input D: .align = West
-        output Q: .align = East
+        input CLK
+        input D
+        output Q
 
     viewgen schematic -> Schematic:
         port vdd: .pos = (1, 23); .align = East
         port vss: .pos = (1, 1); .align = East
-        port CLK: .pos = (1, 18); .align = East
-        port D: .pos = (1, 6); .align = East
-        port Q: .pos = (38, 16); .align = West
+        port CLK: .pos = (1, 18)
+        port D: .pos = (1, 6)
+        port Q: .pos = (38, 16)
 
         net s_val
         net clk_not

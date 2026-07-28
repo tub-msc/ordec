@@ -1,0 +1,58 @@
+from ordec.core import *
+from ordec.lib import Vdc, Vpulse, Gnd
+from ordec.extlibrary import ExtLibrary
+from ordec.lib import ihp130
+
+stdcell_root = ihp130.pdk().root / "libs.ref/sg13g2_stdcell"
+extlib = ExtLibrary()
+extlib.read_lef(stdcell_root / "lef/sg13g2_stdcell.lef")
+extlib.read_gds(stdcell_root / "gds/sg13g2_stdcell.gds", ihp130.SG13G2().layers)
+extlib.read_spice(stdcell_root / "spice/sg13g2_stdcell.spice", device_map=ihp130.device_map)
+
+Dff = extlib['sg13g2_dfrbpq_1']
+Xor2 = extlib['sg13g2_xor2_1']
+Xnor2 = extlib['sg13g2_xnor2_1']
+Tielo = extlib['sg13g2_tielo']
+
+cell Lfsr:
+    viewgen schematic -> Schematic:
+        net vdd, vss, clk, rstb, fb
+        net q0, q1, q2, q3
+
+        Gnd gnd: .p -- vss; .pos=(0,0)
+        Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(0,6)
+        Vpulse clk_src: .$pulsed_value=1.2; .$rise_time=50p; .$fall_time=50p; .$pulse_width=1n; .$period=2n; .m -- vss; .p -- clk; .pos=(6,6)
+        Vpulse rst_src: .$pulsed_value=1.2; .$delay_time=3n; .$rise_time=50p; .$fall_time=50p; .$pulse_width=1m; .$period=2m; .m -- vss; .p -- rstb; .pos=(12,6)
+
+        Dff ff0: .CLK -- clk; .RESET_B -- rstb; .D -- fb; .Q -- q0; .VDD -- vdd; .VSS -- vss; .pos=(20,14)
+        Dff ff1: .CLK -- clk; .RESET_B -- rstb; .D -- q0; .Q -- q1; .VDD -- vdd; .VSS -- vss; .pos=(31,14)
+        Dff ff2: .CLK -- clk; .RESET_B -- rstb; .D -- q1; .Q -- q2; .VDD -- vdd; .VSS -- vss; .pos=(42,14)
+        Dff ff3: .CLK -- clk; .RESET_B -- rstb; .D -- q2; .Q -- q3; .VDD -- vdd; .VSS -- vss; .pos=(53,14)
+
+        # EDIT HERE
+        Tielo tie: .L_LO -- fb; .VDD -- vdd; .VSS -- vss; .pos=(64,14)
+
+    viewgen sim_tran -> Simulation:
+        .simulate().tran(20p, 48n)
+
+    viewgen report_tran -> Report:
+        sim = self.sim_tran
+        .markdown("The four register bits over time. After the reset "
+            "pulse releases, a working LFSR walks through 15 different "
+            "states before it repeats.")
+        PlotGroup grp
+        .plot2d(
+            x=list(sim.time),
+            series={"clk": list(sim.clk.voltage)},
+            xlabel="Time (s)",
+            ylabel="Voltage (V)",
+            height=120,
+            plot_group=grp)
+        .plot2d(
+            x=list(sim.time),
+            series={"q0": list(sim.q0.voltage), "q1": list(sim.q1.voltage),
+                "q2": list(sim.q2.voltage), "q3": list(sim.q3.voltage)},
+            xlabel="Time (s)",
+            ylabel="Voltage (V)",
+            height=260,
+            plot_group=grp)

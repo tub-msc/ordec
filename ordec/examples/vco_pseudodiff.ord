@@ -21,18 +21,18 @@ cell VcoHalfStage:
     viewgen symbol -> Symbol:
         # vdd_st and vss_st are the current-starved supplies coming in
         inout vdd_st: .align=North
-        inout vss_st: .align=South
+        inout vss_st
         inout vdd: .align=North
-        inout vss: .align=South
+        inout vss
 
         inout nwell: .align=North
-        inout psub: .align=South
+        inout psub
 
-        input rst_n: .align=West
-        input inp: .align=West
+        input rst_n
+        input inp
         input fb: .align=East
-        output out: .align=East
-        output out_n: .align=East
+        output out
+        output out_n
 
     viewgen schematic -> Schematic:
         net b
@@ -43,11 +43,11 @@ cell VcoHalfStage:
         port vss_st: .align=East; .pos=(1,6)
         port vss: .align=East; .pos=(1,2)
         port psub: .align=East; .pos=(1,4)
-        port inp: .align=East; .pos=(1,21)
-        port rst_n: .align=East; .pos=(1,9)
+        port inp: .pos=(1,21)
+        port rst_n: .pos=(1,9)
         port fb: .align=East; .pos=(15,15)
-        port out: .align=West; .pos=(24,18)
-        port out_n: .align=West; .pos=(30,18)
+        port out: .pos=(24,18)
+        port out_n: .pos=(30,18)
 
         Pmos m1: .s -- vdd_st; .b -- nwell; .g -- inp; .d -- out; .pos=(3, 19)
         Nmos m2: .s -- b; .b -- psub; .g -- inp; .d -- out; .pos=(3, 13)
@@ -257,17 +257,17 @@ cell VcoHalfStage:
 cell VcoRing:
     viewgen symbol -> Symbol:
         inout vdd_st: .align=North
-        inout vss_st: .align=South
+        inout vss_st
         inout vdd: .align=North
-        inout vss: .align=South
+        inout vss
         inout nwell: .align=North
-        inout psub: .align=South
-        input rst_n: .align=West
+        inout psub
+        input rst_n
 
         path out_p, out_n
         for i in range(2):
-            output out_p[i]: .align=East
-            output out_n[i]: .align=East
+            output out_p[i]
+            output out_n[i]
 
 
     viewgen schematic -> Schematic:
@@ -277,7 +277,7 @@ cell VcoRing:
         port vss_st: .pos=(1,1); .align=East
         port vss: .pos=(1,-3); .align=East
         port psub: .pos=(1,-1); .align=East
-        port rst_n: .pos=(1,10); .align=East
+        port rst_n: .pos=(1,10)
 
         path out_p, out_n
 
@@ -297,8 +297,8 @@ cell VcoRing:
 
         for i in range(2):
             xoffset = 10 * i
-            port out_p[i]: .pos=(12 + xoffset, 17); .align=West
-            port out_n[i]: .pos=(12 + xoffset,  7); .align=West
+            port out_p[i]: .pos=(12 + xoffset, 17)
+            port out_n[i]: .pos=(12 + xoffset,  7)
 
             VcoHalfStage stage_p[i]:
                 .out    -- int_p[i]
@@ -518,21 +518,21 @@ cell Vco:
     length = Parameter(R, default=500n)
     viewgen symbol -> Symbol:
         inout vdd: .align=North
-        inout vss: .align=South
+        inout vss
 
-        input rst_n: .align=West
-        input vbias: .align=West
+        input rst_n
+        input vbias
 
         path out_p, out_n
         for i in range(2):
-            output out_p[i]: .align=East
-            output out_n[i]: .align=East
+            output out_p[i]
+            output out_n[i]
 
     viewgen schematic -> Schematic:
         port vdd: .pos=(4,21); .align=East
         port vss: .pos=(4,0); .align=East
-        port rst_n: .pos=(13,9); .align=East
-        port vbias: .pos=(4,6); .align=East
+        port rst_n: .pos=(13,9)
+        port vbias: .pos=(4,6)
 
         net vss_st
         net vdd_st
@@ -540,8 +540,8 @@ cell Vco:
 
         path out_p, out_n
         for i in range(2):
-            port out_p[i]: .pos=(22, 9 + 2 * i); .align=West
-            port out_n[i]: .pos=(22,10 + 2 * i); .align=West
+            port out_p[i]: .pos=(22, 9 + 2 * i)
+            port out_n[i]: .pos=(22,10 + 2 * i)
 
         VcoRing ring:
             # Wells biased to the supplies at the top, where the taps live:
@@ -649,10 +649,11 @@ cell Vco:
             ! .activ.east == m1.activ.west - (1000, 0)
 
         
-        # Explicit Metal1 landing pads over the current-source drains: SRouter's
-        # move()-then-layer() does not draw a Metal1 via throughrect at the start
-        # point, so the M1->M3 via stack lacks Metal1 enclosure (V1.c1) on the
-        # bare MOS S/D. A 400x400 pad gives ample enclosure.
+        # Explicit Metal1 landing pads over the current-source drains: at the
+        # start of the M1->M3 via stack, SRouter only draws its route_pad-sized
+        # pad (210x210 here), which covers the all-sides enclosure but not the
+        # V1.c1 endcap on the bare MOS S/D. A 400x400 pad gives ample
+        # enclosure.
         for sd in (.m1.sd[1], .m2.sd[0]):
             anonymous LayoutRect r:
                 .layer=layers.Metal1
@@ -721,8 +722,8 @@ cell Vco:
         sr.wire_x(vdd.cx)
         sr.wire_y(vdd.uy - 200)
         sr.layer(layers.Metal1)
-        # Metal1 landing pad for the Metal3->Metal1 drop (final-layer via lacks an
-        # M1 throughrect -> V1.c1).
+        # Metal1 landing pad for the Metal3->Metal1 drop: SRouter's route_pad
+        # at the end of the stack is too small for the V1.c1 endcap on its own.
         anonymous LayoutRect cleanvdd_tie_pad:
             .layer=layers.Metal1
             ! .size == (400, 400)
@@ -730,8 +731,10 @@ cell Vco:
             ! .cy == vdd.uy - 200
 
         sr.move(layers.Metal2, ring_i.clean_vss.center)
-        # Step west on Metal2 first:
-        sr.wire_x(ring_i.clean_vss.lx - 300)
+        # Step west on Metal2 first. Keep clear of clean_vss by more than the
+        # Metal2 spacing: the via pad is slightly wider than the wire, so it
+        # leaves a notch towards clean_vss (M2.b).
+        sr.wire_x(ring_i.clean_vss.lx - 350)
         sr.layer(layers.Metal3)
         sr.wire_x(vss.cx)
         sr.wire_y(vss.uy - 200)
@@ -850,13 +853,12 @@ cell VcoTb:
 
     viewgen sim_tran -> Simulation:
         """Run sync transient simulation."""
-        .simulate().tran(R('10p'), R('30n'))
+        .simulate().tran(10p, 30n)
 
     viewgen report_tran -> Report:
         sim = self.sim_tran
         .grp = PlotGroup()
 
-        .markdown("## VCO transient main waveforms")
         for i in range(2):
             .plot2d(
                 x=sim.time,

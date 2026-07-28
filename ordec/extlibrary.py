@@ -107,6 +107,16 @@ class ExtLibraryCell(Cell):
     extlib = Parameter(ExtLibrary)
     name = Parameter(str)
 
+    def params_list(self, use_repr=False) -> list[str]:
+        # Symbols of external cells are labelled with the library cell name
+        # alone. The default would draw the ExtLibrary parameter as a Python
+        # repr including its memory address, which smears across the whole
+        # schematic (same problem as in unescaped_name below). repr() keeps
+        # the full parameter list so that view names stay unique.
+        if use_repr:
+            return super().params_list(use_repr=True)
+        return [self.name]
+
     def unescaped_name(self):
         # Name exports (netlists, GDS, LVS) after the external cell alone; the
         # default would stringify all parameters and embed the ExtLibrary's

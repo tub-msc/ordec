@@ -74,7 +74,10 @@ def add_port(name_tuple):
                 f"Cannot create port {name!r}: net {name!r} is already "
                 "bound to a different pin.")
         net.pin = pin
-    port = subgraph_root % SchemPort(ref=net)
+    # Default align: flipped pin align, so e.g. a West-facing input pin
+    # yields an East-facing port (same rule as the netlist importers).
+    # A body `.align=` assignment overrides via the Net.align property.
+    port = subgraph_root % SchemPort(ref=net, align=pin.align * R180)
     register_in_group(port)
     return net
 

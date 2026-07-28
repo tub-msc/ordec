@@ -1,6 +1,10 @@
 @font-face {
     font-family: 'Inconsolata';
     size-adjust: 100%;
+    /* Declare the variable font's weight axis; without this, the face is
+       clamped to weight 400 and browsers render bold text with synthetic
+       emboldening, which enlarges glyphs in some renderers. */
+    font-weight: 200 900;
     src: url('/fonts/Inconsolata/Inconsolata-VariableFont_wdth,wght.ttf') format('truetype');
 }
 
@@ -51,7 +55,6 @@
     --color-schem-err-text:  #c00;
 
     /* Report */
-    --color-report-separator:#cfcfcf;
     --color-report-fill-bg:  #fff;
 
     /* PassFail report elements / course marker */
@@ -59,9 +62,14 @@
     --color-pass-fg:         #1a7a1a;
     --color-fail-bg:         #fbe4e4;
     --color-fail-fg:         #b41818;
+    --color-pass-pill:       #16a34a;
+    --color-fail-pill:       #dc2626;
 
-    /* Markdown tables */
-    --color-md-table-border: black;
+    /* Markdown code: shared tint for inline chips and fenced blocks
+       (translucent, so it works on any surface), plus the accent side
+       line of fenced blocks. */
+    --color-md-code-bg:      rgba(0, 0, 0, 0.045);
+    --color-md-code-accent:  #a9c0d8;
 
     /* Layout canvas */
     --color-layout-bg:       #000;
@@ -83,6 +91,9 @@
     --font-size-base:  13px;
     --font-size-md:    14px;
     --font-size-lg:    16px;
+    /* Shared by the Ace editor (read in main.js) and all preformatted/code
+       text in reports, so the two cannot drift apart. */
+    --font-size-code:  11.5pt;
 
     /* Font families */
     --font-sans:  "Helvetica", sans-serif;
@@ -145,7 +156,6 @@ body.theme-dark {
 
     --color-focus:           #5a9bff;
 
-    --color-report-separator:#333;
     --color-report-fill-bg:  #1a1a1a;
 
     --color-pass-bg:         #173317;
@@ -153,7 +163,8 @@ body.theme-dark {
     --color-fail-bg:         #3a1717;
     --color-fail-fg:         #ff7a7a;
 
-    --color-md-table-border: #444;
+    --color-md-code-bg:      rgba(255, 255, 255, 0.07);
+    --color-md-code-accent:  #44607c;
 
     --color-symbol-stroke:   white;
 }
@@ -194,7 +205,7 @@ body {
     height: 100vh;
     width: 100vw;
     font-family: var(--font-sans);
-    font-size: var(--font-base);
+    font-size: var(--font-size-base);
     align-items: stretch;
     overflow: hidden;
     background-color: var(--color-bg);
@@ -339,6 +350,9 @@ body.theme-dark .toolbar-btn option {
 .toolbar-muted {
     font-size: var(--font-size-sm);
     color: var(--color-text-muted);
+}
+#status {
+    font-size: var(--font-size-sm);
 }
 
 /* -- Toolbar toggle button --------------------------------------- */
@@ -530,7 +544,7 @@ body.theme-dark .resviewhead button:hover {
    styled like the course callouts (soft tinted background + matching
    foreground/border). --overlay-bg/--overlay-fg are set per variant; the
    spinner, icon and button all inherit the foreground colour. */
-.refreshing, .refreshable {
+.refreshing, .refreshable, .builderror {
     position: absolute;
     top: 0;
     left: 0;
@@ -554,10 +568,19 @@ body.theme-dark .resviewhead button:hover {
     --overlay-bg: var(--color-refreshable-bg);
     --overlay-fg: var(--color-refreshable-fg);
 }
+/* Course viewer build/check error strip (see resultviewer.js showBuildError):
+   shown instead of the traceback replacing the lesson report. */
+.builderror {
+    --overlay-bg: var(--color-fail-bg);
+    --overlay-fg: var(--color-fail-fg);
+}
 /* Like the course callout, the bar has no top border of its own: its top edge
    is the view selector's bottom border, recoloured to the overlay colour. */
 .resview:has(.reswrapper.refreshbar-active) .resviewhead {
     border-bottom-color: var(--color-refreshable-fg);
+}
+.resview:has(.reswrapper.errorbar-active) .resviewhead {
+    border-bottom-color: var(--color-fail-fg);
 }
 /* Theme-aware CSS spinner (replaces the old loading.gif). */
 .refresh-spinner {
@@ -604,10 +627,19 @@ body.theme-dark .resviewhead button:hover {
     white-space: nowrap;
     opacity: 0.75;
 }
+.builderror-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.builderror-toggle {
+    margin-left: auto;
+    flex-shrink: 0;
+}
 /* Same shape as the DRC viewer's "Deselect" button, recoloured to the
    overlay's own background and border (foreground) colours. */
 .refreshable button,
-.refresh-cancel {
+.refresh-cancel,
+.builderror-toggle {
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -619,6 +651,7 @@ body.theme-dark .resviewhead button:hover {
     color: var(--overlay-fg);
 }
 .refreshable button:hover,
+.builderror-toggle:hover,
 .refresh-cancel:hover:not(:disabled) {
     background: color-mix(in srgb, var(--overlay-fg) 12%, var(--overlay-bg));
 }
@@ -847,25 +880,58 @@ body:not(.show-debug) .debug {
 .report-element {
     width: 100%;
     min-width: 0;
-    padding: 5px 10px;
+    padding: 4px 10px;
 }
 .report-element-plot2d {
     padding: 0;
 }
-.report-element + .report-element {
-    border-top: 1px solid var(--color-report-separator);
-}
 .report-html {
     min-width: 0;
 }
+/* Same tinted surface as markdown code blocks, but without the accent
+   line: preformatted output (tracebacks, netlists) has no special role. */
 .report-preformatted {
     margin: 0;
     font-family: var(--font-mono);
+    font-size: var(--font-size-code);
     white-space: pre;
     overflow-x: auto;
+    background: var(--color-md-code-bg);
+    padding: 6px 10px;
 }
-.report-markdown code {
+/* Slightly roomier line spacing for instructional prose. */
+.report-markdown {
+    line-height: 1.35;
+}
+.report-markdown pre {
+    line-height: normal;
+}
+/* Both inline code spans and code blocks match the editor font size. */
+.report-markdown code,
+.report-passfail-instructions code,
+.report-passfail-hint code {
     font-family: var(--font-mono);
+    font-size: var(--font-size-code);
+}
+/* Superscripts (e.g. ×10<sup>-21</sup> exponents in result tables) must
+   not inflate the line box of their row. */
+.report-markdown sup {
+    line-height: 0;
+}
+/* Inline code as a subtle chip. */
+.report-markdown :not(pre) > code,
+.report-passfail-instructions :not(pre) > code,
+.report-passfail-hint :not(pre) > code {
+    background: var(--color-md-code-bg);
+    padding: 0 0.25em;
+    border-radius: 3px;
+}
+/* Fenced code blocks: tinted and set off by an accent side line. */
+.report-markdown pre {
+    background: var(--color-md-code-bg);
+    border-left: 3px solid var(--color-md-code-accent);
+    padding: 6px 10px;
+    overflow-x: auto;
 }
 .report-markdown h1,
 .report-markdown h2,
@@ -876,6 +942,34 @@ body:not(.show-debug) .debug {
     margin-top: 0.2em;
     margin-bottom: 0.25em;
 }
+/* Compact typography: rein in the browser's default heading sizes and
+   paragraph/list/pre margins. */
+.report-markdown h1 {
+    font-size: 1.3em;
+}
+.report-markdown h2 {
+    font-size: 1.15em;
+}
+.report-markdown h3,
+.report-markdown h4,
+.report-markdown h5,
+.report-markdown h6 {
+    font-size: 1em;
+}
+.report-markdown p,
+.report-markdown ul,
+.report-markdown ol,
+.report-markdown pre,
+.report-markdown table {
+    margin-top: 0.4em;
+    margin-bottom: 0.4em;
+}
+.report-markdown > :first-child {
+    margin-top: 0;
+}
+.report-markdown > :last-child {
+    margin-bottom: 0;
+}
 .report-svg {
     display: block;
     width: auto;
@@ -885,37 +979,110 @@ body:not(.show-debug) .debug {
 .report-plot2d {
     width: 100%;
 }
+/* Booktabs-style tables: horizontal rules only, no vertical grid lines
+   and no header fill. */
 .report-markdown table {
-    border-collapse: collapse;
+    /* separate + zero spacing (not collapse), because only that border
+       model honors the table's own padding */
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    background: var(--color-md-code-bg);
+    padding: 2px 6px;
 }
 .report-markdown table td, .report-markdown table th {
-    border: 1px solid var(--color-md-table-border);
-    padding: 2px;
+    padding: 3px 8px 3px 2px;
 }
+/* Equal column widths as long as every column's content fits; a column
+   with oversized content takes more (minmax(max-content, 1fr) tracks).
+   Neither table layout mode can express this ("auto" distributes by
+   content, "fixed" is rigidly equal), so tables are laid out as CSS
+   grids instead. This needs two unusual moves:
+
+   1. display: contents on thead/tbody/tr removes the row boxes from
+      layout, so the th/td cells become direct grid items and auto-place
+      left to right; with a track count equal to the column count, each
+      table row lands in one grid row. The rules drawn via cell borders
+      still connect, because the grid has no gaps.
+
+   2. A grid needs its column count in grid-template-columns, but a
+      stylesheet cannot read the column count of an arbitrary table.
+      The :has() ladder below infers it: "tr > :last-child:nth-child(N)"
+      matches exactly the tables whose rows have N cells.
+
+   Tables with more than 8 columns match no ladder rung and none of the
+   grid rules, keeping the browser's automatic table layout (which
+   handles many narrow columns better anyway). Browsers too old for
+   :has()/display:contents fall back the same way. */
+.report-markdown table:has(tr > :last-child:nth-child(-n+8)) {
+    display: grid;
+}
+.report-markdown table:has(tr > :last-child:nth-child(-n+8))
+        :is(thead, tbody, tr) {
+    display: contents;
+}
+.report-markdown table:has(tr > :last-child:nth-child(2)) {
+    grid-template-columns: repeat(2, minmax(max-content, 1fr));
+}
+.report-markdown table:has(tr > :last-child:nth-child(3)) {
+    grid-template-columns: repeat(3, minmax(max-content, 1fr));
+}
+.report-markdown table:has(tr > :last-child:nth-child(4)) {
+    grid-template-columns: repeat(4, minmax(max-content, 1fr));
+}
+.report-markdown table:has(tr > :last-child:nth-child(5)) {
+    grid-template-columns: repeat(5, minmax(max-content, 1fr));
+}
+.report-markdown table:has(tr > :last-child:nth-child(6)) {
+    grid-template-columns: repeat(6, minmax(max-content, 1fr));
+}
+.report-markdown table:has(tr > :last-child:nth-child(7)) {
+    grid-template-columns: repeat(7, minmax(max-content, 1fr));
+}
+.report-markdown table:has(tr > :last-child:nth-child(8)) {
+    grid-template-columns: repeat(8, minmax(max-content, 1fr));
+}
+.report-markdown table th {
+    border-bottom: 1px solid var(--color-border-light);
+    text-align: left;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+}
+/* Right-aligned columns (markdown "---:" markers, emitted as inline
+   text-align styles by markdown2) hold numeric data: tabular figures so
+   digits line up down the column. */
+.report-markdown td[style*="text-align:right"] {
+    font-variant-numeric: tabular-nums;
+}
+.report-markdown table td {
+    border-bottom: 1px solid var(--color-border-light);
+}
+.report-markdown table tr:last-child td {
+    border-bottom: none;
+}
+/* Square box (matching the markdown code blocks) with a rounded pill badge. */
 .report-passfail {
-    border-radius: 4px;
     padding: 5px 8px;
-}
-.report-passfail-pass {
-    background-color: var(--color-pass-bg);
-}
-.report-passfail-fail {
-    background-color: var(--color-fail-bg);
+    background-color: var(--color-bg-tertiary);
 }
 .report-passfail-head {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 8px;
 }
 .report-passfail-badge {
     font-weight: bold;
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
+    font-size: var(--font-size-xs);
+    padding: 2px 10px;
+    border-radius: 999px;
+    color: #fff;
 }
 .report-passfail-pass .report-passfail-badge {
-    color: var(--color-pass-fg);
+    background-color: var(--color-pass-pill);
 }
 .report-passfail-fail .report-passfail-badge {
-    color: var(--color-fail-fg);
+    background-color: var(--color-fail-pill);
 }
 .report-passfail-label {
     font-weight: bold;
@@ -925,9 +1092,10 @@ body:not(.show-debug) .debug {
     white-space: pre-wrap;
 }
 .report-passfail-hintbtn {
-    margin-top: 4px;
+    margin-left: auto;
+    flex-shrink: 0;
     font: inherit;
-    font-size: 90%;
+    font-size: var(--font-size-sm);
     cursor: pointer;
     background-color: var(--color-bg-tertiary);
     color: var(--color-text);
@@ -937,6 +1105,10 @@ body:not(.show-debug) .debug {
 .report-passfail-hint {
     margin-top: 3px;
     font-style: italic;
+}
+/* The hint text is italic, the identifiers inside it should not be. */
+.report-passfail-hint code {
+    font-style: normal;
 }
 
 /* -- Course mode --------------------------------------------------- */
@@ -981,6 +1153,15 @@ body:not(.show-debug) .debug {
     stroke-width: 1.75;
     stroke-linecap: butt;
     stroke-linejoin: round;
+}
+/* The selected lesson doubles as the lesson title (the reports carry no
+   heading of their own), so it is shown bold; the option list stays
+   regular. */
+.course-lessonsel {
+    font-weight: bold;
+}
+.course-lessonsel option {
+    font-weight: normal;
 }
 /* Vertical divider between nav elements (like the main toolbar). Explicit
    elements rather than ::before pseudos, which don't render on the native
@@ -1102,6 +1283,76 @@ body:not(.show-debug) .debug {
     left: -9px;
     border-width: 0 9px 9px 9px;
     border-color: transparent transparent var(--callout-bg) transparent;
+}
+
+/* -- Spotlight intro tour ----------------------------------------- */
+/* Full-screen click blocker; the dimming is done by the cutout's huge box
+   shadow, so the highlighted rectangle itself stays undimmed. */
+.spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+}
+.spotlight-cutout {
+    position: fixed;
+    box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.55);
+    border-radius: 6px;
+    pointer-events: none;
+}
+.spotlight-caption {
+    position: fixed;
+    max-width: 320px;
+    padding: 8px 12px;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    border: 1px solid var(--color-toolbar-border);
+    border-radius: 3px;
+    font-size: var(--font-size-sm);
+    line-height: 1.4;
+}
+.spotlight-caption strong {
+    font-weight: bold;
+}
+.spotlight-caption p {
+    margin: 4px 0 8px;
+}
+.spotlight-buttons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.spotlight-counter {
+    margin-right: auto;
+    color: var(--color-text-secondary);
+}
+.spotlight-buttons .toolbar-btn {
+    border: 1px solid var(--color-toolbar-border);
+    border-radius: 3px;
+    padding: 2px 8px;
+}
+/* Next is the primary action; Back and Skip step into the background. The
+   body.theme-dark rules outweigh the theme's generic .toolbar-btn colors. */
+.spotlight-buttons .spotlight-next,
+body.theme-dark .spotlight-buttons .spotlight-next {
+    background-color: var(--color-text);
+    color: var(--color-bg);
+    border-color: var(--color-text);
+    font-weight: bold;
+}
+.spotlight-buttons .spotlight-next:hover,
+body.theme-dark .spotlight-buttons .spotlight-next:hover {
+    background-color: var(--color-text-secondary);
+}
+.spotlight-buttons .spotlight-back,
+.spotlight-buttons .spotlight-skip,
+body.theme-dark .spotlight-buttons .spotlight-back,
+body.theme-dark .spotlight-buttons .spotlight-skip {
+    color: var(--color-text-muted);
+    border-color: transparent;
+}
+.spotlight-buttons .spotlight-back:disabled {
+    opacity: 0.4;
+    cursor: default;
 }
 
 /* -- Layout viewer ----------------------------------------------- */
@@ -1287,6 +1538,12 @@ body:not(.show-debug) .debug {
 }
 
 /* -- Golden Layout overrides ------------------------------------- */
+/* Tab labels use the app font instead of the GL theme's Arial. The body
+   prefix outweighs the theme stylesheets, which are appended to <head>
+   at runtime (see theme.js). */
+body .lm_header .lm_tab {
+    font-family: var(--font-sans);
+}
 /* Remove blue focused-tab highlight in both themes */
 .lm_header .lm_tab.lm_active.lm_focused {
     background-color: #e1e1e1;
@@ -1330,7 +1587,7 @@ body.theme-dark .lm_content {
     flex-direction: column;
     height: 100%;
     font-family: var(--font-mono);
-    font-size: var(--font-sm);
+    font-size: var(--font-size-sm);
 }
 .drc-header {
     padding: 4px 8px;
@@ -1344,7 +1601,7 @@ body.theme-dark .lm_content {
    buttons render light in both themes; these use theme tokens instead, and the
    disabled state stays legible (muted text) rather than relying on opacity. */
 .drc-deselect, .lvs-deselect {
-    font-size: var(--font-xs);
+    font-size: var(--font-size-xs);
     padding: 2px 8px;
     cursor: pointer;
     border: 1px solid var(--color-border);
@@ -1424,7 +1681,7 @@ body.theme-dark .lm_content {
     flex-direction: column;
     height: 100%;
     font-family: var(--font-mono);
-    font-size: var(--font-sm);
+    font-size: var(--font-size-sm);
 }
 .lvs-header {
     padding: 4px 8px;

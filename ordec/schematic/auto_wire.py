@@ -82,8 +82,9 @@ class RoutingPort:
     net: Net
     direction: D4       # unflipped rotation: North/East/South/West
 
-# A connection to route: from a net's routing terminal to an instance pin.
-Connection = tuple[RoutingPort, SchemInstanceSubcursor]
+# A connection to route: from a net's routing terminal to another terminal
+# of the same net (instance pin or tap point).
+Connection = tuple[RoutingPort, RoutingPort]
 
 class GridConn(NamedTuple):
     """A Connection translated onto the routing grid."""
@@ -98,14 +99,13 @@ class GridConn(NamedTuple):
                         ) -> "GridConn":
         """Build a GridConn from a schematic-space Connection, applying the
         schematic-to-grid offset."""
-        port, pin_sc = conn
-        end_pos = pin_sc.pos
+        start, end = conn
         return cls(
-            net=port.net,
-            start=(port.x + offset_x, port.y + offset_y),
-            start_dir=port.direction,
-            end=(int(end_pos.x) + offset_x, int(end_pos.y) + offset_y),
-            end_dir=pin_sc.align.unflip())
+            net=start.net,
+            start=(start.x + offset_x, start.y + offset_y),
+            start_dir=start.direction,
+            end=(end.x + offset_x, end.y + offset_y),
+            end_dir=end.direction)
 
 
 # Directions (terminal facing and move directions) are the unflipped D4
@@ -1153,8 +1153,20 @@ def calculate_vertices(outline: Rect4R, cells: Iterable[SchemInstance],
     }
 
 
+def tap_outline_point(tap: SchemTapPoint) -> Vec2R:
+    """Outermost point of a tap point's glyph and net label, which extend
+    from tap.pos toward align * (0, 1) (see Renderer.draw_schem_tappoint)."""
+    node = tap.root
+    if tap.ref == node.default_supply or tap.ref == node.default_ground:
+        total = 1.0  # supply/ground glyph without label
+    else:
+        total = Renderer.port_text_space \
+            + 0.35 * len(tap.ref.full_path_label())
+    return tap.pos + (tap.align * Vec2R(0, 1)) * total
+
 def adjust_outline_initial(node: Schematic) -> Rect4R | None:
-    """Compute an initial outline enclosing all ports and instances.
+    """Compute an initial outline enclosing all ports, tap points and
+    instances.
 
     Args:
         node: Schematic containing the elements.
@@ -1180,6 +1192,13 @@ def adjust_outline_initial(node: Schematic) -> Rect4R | None:
         total = port_text_space + text_width
         direction = port.align * Vec2R(0, -1)
         outline = outline.extend(port.pos + direction * total)
+    for tap in node.all(SchemTapPoint):
+        if outline:
+            outline = outline.extend(tap.pos)
+        else:
+            outline = Rect4R(lx=tap.pos.x, ly=tap.pos.y,
+                             ux=tap.pos.x, uy=tap.pos.y)
+        outline = outline.extend(tap_outline_point(tap))
     for instance in node.all(SchemInstance):
         instance_transform = instance.loc_transform()
         instance_geometry = instance_transform * instance.symbol.outline
@@ -1218,12 +1237,31 @@ def auto_wire(node: Schematic) -> None:
 
     cells = list(node.all(SchemInstance))
 
+    connections: list[Connection] = list()
+
     ports: dict[Net, RoutingPort] = dict()
     for port in node.all(SchemPort):
         net = port.ref
         ports[net] = RoutingPort(
             x=int(port.pos.x), y=int(port.pos.y),
             net=net, direction=port.align.unflip())
+
+    # Tap points participate in routing like ports and pins: the first
+    # terminal seen for a net becomes its routing terminal, every further
+    # tap is routed to that terminal like a pin. Wires attach opposite the
+    # tap's glyph and label, which extend toward align * (0, 1).
+    extra_terminals: list[RoutingPort] = list()
+    for tap in node.all(SchemTapPoint):
+        net = tap.ref
+        tap_port = RoutingPort(
+            x=int(tap.pos.x), y=int(tap.pos.y),
+            net=net, direction=(tap.align * R180).unflip())
+        if net in ports:
+            if net.auto_wire:
+                connections.append((ports[net], tap_port))
+                extra_terminals.append(tap_port)
+        else:
+            ports[net] = tap_port
 
     # Early return when ports exist but none need auto-wiring
     if ports and not any(net.auto_wire for net in ports):
@@ -1234,29 +1272,30 @@ def auto_wire(node: Schematic) -> None:
     # Determine connections
     #======================
 
-    connections: list[Connection] = list()
     for instance in node.all(SchemInstance):
         for conn in instance.conns():
             net = conn.here
             pin_sc = SchemInstanceSubcursor((instance, conn.there))
+            pos = pin_sc.pos
+            pin_port = RoutingPort(
+                x=int(pos.x), y=int(pos.y), net=net,
+                direction=pin_sc.align.unflip())
             if net in ports:
-                # External port or previously seen inter-instance net
+                # External port/tap or previously seen inter-instance net
                 if net.auto_wire:
-                    connections.append((ports[net], pin_sc))
+                    connections.append((ports[net], pin_port))
             else:
                 # Inter-instance net: the first pin encountered becomes the
                 # net's routing terminal
-                pos = pin_sc.pos
-                ports[net] = RoutingPort(
-                    x=int(pos.x), y=int(pos.y), net=net,
-                    direction=pin_sc.align.unflip())
+                ports[net] = pin_port
 
     #=====================================================
     # Calculate the vertices and add them to the schematic
     #=====================================================
 
     if len(connections) > 0:
-        vertices_dict = calculate_vertices(outline, cells, ports.values(),
+        vertices_dict = calculate_vertices(outline, cells,
+                                           list(ports.values()) + extra_terminals,
                                            connections)
         for net, paths in vertices_dict.items():
             # Example: node.vss % SchemWire(vertices=[Vec2R(x=6, y=1), Vec2R(x=6, y=2)])

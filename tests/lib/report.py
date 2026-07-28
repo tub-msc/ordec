@@ -22,7 +22,8 @@ def report_example() -> Report:
     report = Report()
     report.markdown(
         "# Report Example\n"
-        "Rendered in Python with **bold** text and `inline code`."
+        "Rendered in Python with **bold** text, `inline code` and TeX "
+        "math $e^{i\\pi} = -1$."
     )
     report.pre("alpha\nbeta\ngamma")
     report.tran_demo = PlotGroup()

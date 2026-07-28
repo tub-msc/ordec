@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from enum import Enum
+import inspect
 import math
 from functools import partial
 from typing import Iterable, NamedTuple, Optional
@@ -1196,7 +1197,12 @@ class Report(SubgraphRoot):
                 yield sg.cursor_at(nid)
 
     def markdown(self, markdown: str):
-        self % Markdown(markdown=markdown)
+        """
+        Append a Markdown element. The text is cleaned up docstring-style
+        (inspect.cleandoc), so indented triple-quoted strings can be passed
+        directly without their indentation turning into markdown code blocks.
+        """
+        self % Markdown(markdown=inspect.cleandoc(markdown))
 
     def pre(self, text: str):
         self % PreformattedText(text=text)
@@ -1215,8 +1221,13 @@ class Report(SubgraphRoot):
             plot % Plot2DSeries(name=str(name), values=values)
 
     def passfail(self, label: str, passed: bool, instructions: str="", hint: str=None):
-        self % PassFail(label=label, passed=passed, instructions=instructions,
-            hint=hint)
+        # A passing check is stored as a bare pass: instructions and hint
+        # only matter while the check fails.
+        if passed:
+            self % PassFail(label=label, passed=True)
+        else:
+            self % PassFail(label=label, passed=False,
+                instructions=instructions, hint=hint)
 
     def bode_plot(self, *signals, **kwargs):
         """
@@ -1251,22 +1262,54 @@ class Markdown(ReportElement):
 
     Links using the 'docs:' pseudo-scheme, e.g. [WebUI](docs:webui.html),
     point to the ORDeC documentation matching the installed version.
+
+    TeX math delimited by $...$ (inline) or $$...$$ (display) is rendered
+    via KaTeX; dollar signs inside code spans are left alone.
     """
     markdown = Attr(str, optional=False)
 
+    # TeX math spans are protected from markdown2 (which would otherwise
+    # parse e.g. *...* inside a formula as emphasis) and re-emitted verbatim
+    # for KaTeX to render in the browser. Code spans and fenced blocks win
+    # over math by position, so dollar signs inside them (e.g. `.$r=1k`) are
+    # never treated as math. Inline math must not span lines and must not
+    # start or end with whitespace.
+    _md_math_regex = re.compile(
+        r"```.*?```"                          # fenced code block
+        r"|`[^`\n]*`"                         # inline code span
+        r"|(?P<math>\$\$.+?\$\$"              # display math
+        r"|\$[^\s$](?:[^$\n]*[^\s$])?\$)",    # inline math
+        re.DOTALL)
+
     def element_webdata(self) -> dict:
         import markdown2
+        from html import escape
         from ..version import doc_url
         base = doc_url()
         # Rewrite 'docs:' pseudo-scheme links to version-matched documentation
-        # URLs. This must happen before rendering, as markdown2's safe_mode
-        # replaces links with unknown URL schemes by '#'.
+        # URLs before rendering, so markdown2 sees ordinary https links.
         md = self.markdown.replace('](docs:', f']({base}')
+        # Replace math spans with inert placeholder tokens so that markdown2
+        # leaves their contents alone; see _md_math_regex.
+        math_spans = []
+        def protect(m):
+            if m.group('math') is None:
+                return m.group(0)  # code span/block: keep, do not scan inside
+            math_spans.append(m.group('math'))
+            return f"ordecmathspan{len(math_spans) - 1}end"
+        md = self._md_math_regex.sub(protect, md)
+        # No safe_mode: inline HTML (e.g. <sup> exponents in result tables)
+        # passes through. Report content comes from the user's own trusted
+        # cells, and the Html report element passes raw HTML anyway, so
+        # escaping here would add no security.
         html = markdown2.markdown(
             md,
             extras=["fenced-code-blocks", "code-friendly", "tables"],
-            safe_mode="escape",
         )
+        for i, span in enumerate(math_spans):
+            # Re-emitted with delimiters for KaTeX's in-browser auto-render;
+            # HTML-escaped, as this is substituted into finished HTML.
+            html = html.replace(f"ordecmathspan{i}end", escape(span))
         # target=_blank so that following a documentation link does not
         # navigate away from the web app.
         html = html.replace(f'href="{base}',
@@ -1303,17 +1346,19 @@ class PassFail(ReportElement):
     """
     label = Attr(str, optional=False) #: short name of the check
     passed = Attr(bool, optional=False)
-    instructions = Attr(str, default="", optional=False) #: what the user should achieve / status details
-    hint = Attr(str) #: optional hint, shown only on user request
+    instructions = Attr(str, default="", optional=False) #: what the user should achieve / status details; failing checks only
+    hint = Attr(str) #: optional hint, shown only on user request; failing checks only
 
     def element_webdata(self) -> dict:
-        return {
+        webdata = {
             "element_type": "passfail",
             "label": self.label,
             "passed": self.passed,
-            "instructions": self.instructions,
-            "hint": self.hint,
         }
+        if not self.passed:
+            webdata["instructions"] = self.instructions
+            webdata["hint"] = self.hint
+        return webdata
 
 
 @public
@@ -1487,6 +1532,14 @@ class RoutingSpecLayer(Node):
 
     route_via_width = Attr(int)
     route_via_height = Attr(int)
+
+    #: Size of a landing pad that a wire of this layer runs into: it only has
+    #: to cover the via enclosure required on all sides, as the wire supplies
+    #: the larger endcap enclosure. Unset falls back to route_via_width and
+    #: route_via_height, which is what a pad standing on its own requires.
+    route_pad_width = Attr(int)
+    route_pad_height = Attr(int)
+
     route_wire_width = Attr(int)
     route_wire_ext = Attr(int)
 
