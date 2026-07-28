@@ -107,6 +107,15 @@ def ac_magnitude_at(freq, mag, freq_target):
     return mag[i]
 
 
+def bandwidth_3db(freq, mag):
+    """
+    -3 dB bandwidth of a lowpass response, referenced to the lowest swept
+    frequency. Returns the end of the sweep if the response never drops.
+    """
+    ref = mag[0] / math.sqrt(2)
+    return next((f for f, m in zip(freq, mag) if m < ref), freq[-1])
+
+
 def measure_oscillation(t, vdiff, settle_fraction=0.5):
     """
     Measures an oscillation on the differential signal vdiff(t), ignoring the
@@ -630,11 +639,9 @@ def gen_lesson5(g):
                     "ring: every stage input must connect to an output "
                     "pair of the previous stage.")
             return inversions % 2 == 1, (f"Inversions around the loop: "
-                f"{inversions} (an odd number is needed so the loop "
-                "inverts at DC).")
-        structure_ok = guarded_passfail(report,
-            "Odd number of inversions in the ring", ring_inverts,
-            hint=ring_hint)
+                f"{inversions}.")
+        structure_ok = guarded_passfail(report, "Ring feedback polarity",
+            ring_inverts, hint=ring_hint)
 
         sim_labels = ("Ring oscillates (amplitude >= 0.3 V)",
             "Frequency between 30 MHz and 400 MHz")
@@ -798,23 +805,56 @@ def gen_lesson7(g):
             "adds up. A feedback resistor from output to input forces "
             "v(a) = v(y) and keeps the inverter biased exactly there, "
             "while a capacitor couples the AC signal in.\n\n"
-            "The feedback resistor `rf` is only **100 Ohm** today. It "
-            "biases the inverter fine, but it also ties the output to "
-            "the input, so nothing gets amplified.\n\n"
-            "**Increase `rf` at the EDIT HERE marker until the gain "
-            "reaches 10.**\n\n"
+            "**Add the feedback resistor `rf` at the EDIT HERE marker, "
+            "at position `(11,8)` between the inverter input and output, "
+            "and size it so that the gain reaches 10.**\n\n"
+            "Too small a resistance biases the inverter fine but ties "
+            "the output straight back to the input, so nothing gets "
+            "amplified.\n\n"
             "The `report_ac` view shows the self-bias point and the gain "
             "over frequency."
         )
-        value_hint = ("Raise the resistance of `rf` to 1M. Anything from "
-            "100k upwards is large enough.")
+        place_hint = ("`p` to `a` and `m` to `y`, so that the resistor "
+            "bridges the inverter from its output back to its input. A "
+            "resistor is symmetric, so the two pins may also go the "
+            "other way round.")
+        op_hint = ("The feedback resistor connects the inverter input "
+            "and output. Without it, the input node floats.")
         gain_hint = (
             "A small `rf` ties the output straight back to the input, so "
             "the amplifier ends up following its own output and the gain "
             "drops towards 1. Make `rf` large compared to the impedance at "
             "the input node, then the signal only sees the gates.")
 
-        op_label = "Self-biased at the switching threshold"
+        def rf_placed():
+            sch = g['InvAmp']().schematic
+            resistors = instances_of(sch, Res)
+            if not resistors:
+                return False, ("Looking for a Res instance between the "
+                    "inverter input and output, at position (11,8).")
+            # A resistor is symmetric, so either pin may face the input.
+            for inst in resistors:
+                if {c.here for c in inst.conns()} == {sch.a, sch.y}:
+                    where = misplaced(inst, 11, 8)
+                    if where:
+                        return False, ("The resistor is wired correctly, "
+                            f"but it sits {where}.")
+                    return True, "Feedback resistor placed and wired."
+            return False, ("A resistor is placed, but it does not bridge "
+                "the inverter input and output.")
+        structure_ok = guarded_passfail(report,
+            "Feedback resistor placed and wired", rf_placed,
+            hint=place_hint)
+
+        sim_labels = ("Self-biased at the switching threshold",
+            "Mid-band gain >= 10")
+        if not structure_ok:
+            blocked_passfails(report, sim_labels, (op_hint, gain_hint),
+                "The amplifier is simulated once the feedback resistor "
+                "bridges input and output.")
+            return report
+
+        op_label = sim_labels[0]
         try:
             tb = g['InvAmpTb']()
             h = SimHierarchy.from_schematic(tb.schematic)
@@ -823,28 +863,16 @@ def gen_lesson7(g):
             vy = float(h.yout.voltage[0])
             report.passfail(op_label,
                 abs(va - vy) <= 0.02 and 0.4 <= vy <= 0.8,
-                hint="The feedback resistor connects the inverter input "
-                "and output. Without it, the input node floats.",
+                hint=op_hint,
                 instructions=f"Operating point: v(a) = {va:.3f} V, "
                 f"v(y) = {vy:.3f} V (expected: equal within 20 mV, "
                 "between 0.4 V and 0.8 V).")
         except Exception:
-            report.passfail(op_label, False, instructions=exception_text(),
-                hint="The feedback resistor connects the inverter input "
-                "and output. Without it, the input node floats.")
+            report.passfail(op_label, False, hint=op_hint,
+                instructions=sim_failure_text(structure_ok,
+                    "the feedback path"))
 
-        def rf_large():
-            sch = g['InvAmp']().schematic
-            values = [float(i.symbol.cell.r)
-                for i in instances_of(sch, Res)]
-            found = any(r >= 100e3 for r in values)
-            status = ", ".join(f"{r:g} Ohm" for r in values) or "none"
-            return found, (f"Feedback resistor value: {status} "
-                "(needed: >= 100k).")
-        guarded_passfail(report, "Feedback resistor >= 100k", rf_large,
-            hint=value_hint)
-
-        gain_label = "Mid-band gain >= 10"
+        gain_label = sim_labels[1]
         try:
             tb = g['InvAmpTb']()
             hac = SimHierarchy.from_schematic(tb.schematic)
@@ -860,7 +888,9 @@ def gen_lesson7(g):
                 "above the lowpass corner set by the load.")
         except Exception:
             report.passfail(gain_label, False,
-                instructions=exception_text(), hint=gain_hint)
+                hint=gain_hint,
+                instructions=sim_failure_text(structure_ok,
+                    "the feedback path"))
         return report
     return lesson
 
@@ -1236,6 +1266,7 @@ def gen_lesson11(g):
             "| Spec | Requirement |\n"
             "|---|---|\n"
             "| DC gain | >= 12 (21.6 dB) |\n"
+            "| Bandwidth | >= 2.5 MHz |\n"
             "| Supply current | <= 50 uA |\n"
             "| Output swing | >= 0.8 V |\n\n"
             "The specs pull against each other, which is what makes "
@@ -1290,9 +1321,10 @@ def gen_lesson11(g):
 
         dc_labels = ("DC gain >= 12", "Output swing >= 0.8 V")
         gain_hint = ("Gain comes from the intrinsic gain of the devices, "
-            "which grows with channel length. Give `m1` to `m4` l=300n "
-            "instead of 130n: at the short length the OTA only reaches "
-            "about 8.")
+            "which grows with channel length, and the PMOS mirror "
+            "dominates it. At 130n the OTA only reaches about 8, but a "
+            "very long channel costs bandwidth -- l=300n on `m1` to `m4` "
+            "meets both specs.")
         swing_hint = ("The output can only approach the rails once both "
             "resistors are gone. A resistor left in a branch drops its "
             "share of the supply no matter what the transistors do.")
@@ -1306,7 +1338,7 @@ def gen_lesson11(g):
             gain = max_slope(vin, vout)
             report.passfail(dc_labels[0], gain >= 12, hint=gain_hint,
                 instructions=f"Maximum slope of the transfer curve: "
-                f"{gain:.1f} ({20*math.log10(max(gain, 1e-9)):.1f} dB), "
+                f"{gain:.2f} ({20*math.log10(max(gain, 1e-9)):.1f} dB), "
                 "required: >= 12 (21.6 dB).")
             swing = max(vout) - min(vout)
             report.passfail(dc_labels[1], swing >= 0.8, hint=swing_hint,
@@ -1331,6 +1363,26 @@ def gen_lesson11(g):
                 f"balance point: {isup*1e6:.1f} uA (allowed: <= 50 uA).")
         except Exception:
             report.passfail(isup_label, False, hint=isup_hint,
+                instructions=sim_failure_text(structure_ok,
+                    "the load replacement"))
+
+        bw_label = "Bandwidth >= 2.5 MHz"
+        bw_hint = ("Bandwidth pulls against gain: a longer channel raises "
+            "the intrinsic gain but also adds capacitance, which moves "
+            "the output pole down. Stretching the devices until the gain "
+            "is comfortable therefore costs the bandwidth spec.")
+        try:
+            tb = g['OtaTb']()
+            hac = SimHierarchy.from_schematic(tb.schematic)
+            Simulator(hac).ac('dec', 20, 1e2, 1e10)
+            freq = [float(f) for f in hac.freq]
+            mag = [abs(v) for v in hac.out.voltage]
+            bw = bandwidth_3db(freq, mag)
+            report.passfail(bw_label, bw >= 2.5e6, hint=bw_hint,
+                instructions=f"-3 dB bandwidth: {bw/1e6:.2f} MHz "
+                "(required: >= 2.5 MHz).")
+        except Exception:
+            report.passfail(bw_label, False, hint=bw_hint,
                 instructions=sim_failure_text(structure_ok,
                     "the load replacement"))
         return report

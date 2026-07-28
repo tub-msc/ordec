@@ -323,11 +323,9 @@ courses_testdata = {
         # Lesson 7: self-biased inverter. Self-biasing works at any rf, so
         # the operating point check passes even on the skeleton. The rf
         # value check flips before the AC simulation confirms the gain.
-        LessonTestdata(passfails=3, skeleton_passed=[True, False, False],
-            solution=[
+        LessonTestdata(passfails=3, solution=[
             InsertSolution("""
             # EDIT HERE
-            Res rf: .$r=100; .p -- a; .m -- y; .pos=(11,8)
             """, """
             Res rf: .$r=1M; .p -- a; .m -- y; .pos=(11,8)
             """),
@@ -383,8 +381,8 @@ courses_testdata = {
         # comes first. The resistor-loaded starting point misses the gain
         # and swing specs (the 30k loads cannot swing rail to rail) but
         # meets the current budget.
-        LessonTestdata(passfails=4,
-            skeleton_passed=[False, False, False, True],
+        LessonTestdata(passfails=5,
+            skeleton_passed=[False, False, False, True, True],
             solution=[
             InsertSolution("""
             # EDIT HERE

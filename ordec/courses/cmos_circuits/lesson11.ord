@@ -35,7 +35,7 @@ cell OtaTb:
 
         Gnd gnd: .p -- vss; .pos=(0,0)
         Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(0,6)
-        Vdc vinp_src: .$dc=0.7; .m -- vss; .p -- inp; .pos=(6,6)
+        Vdc vinp_src: .$dc=0.7; .$ac_mag=1; .m -- vss; .p -- inp; .pos=(6,6)
         Vdc vinn_src: .$dc=0.7; .m -- vss; .p -- inn; .pos=(12,6)
         Vdc vbias_src: .$dc=0.5; .m -- vss; .p -- bias; .pos=(18,6)
 
@@ -47,6 +47,9 @@ cell OtaTb:
 
     viewgen sim_op -> Simulation:
         .simulate().op(save_params=True)
+
+    viewgen sim_ac -> Simulation:
+        .simulate().ac('dec', 20, '100', '10G')
 
     viewgen report_dc -> Report:
         sim = self.sim_dc
