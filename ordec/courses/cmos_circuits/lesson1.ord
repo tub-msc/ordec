@@ -7,13 +7,13 @@ cell MosCurves:
     vgs = Parameter(R, default=600m)
 
     viewgen schematic -> Schematic:
-        net vss, vdd, gate, dn, dp
+        net vss, vdd, gate, drain_n, drain_p
 
         Gnd gnd: .p -- vss; .pos=(0,0)
         Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(18,6)
         Vdc vg_src: .$dc=self.vgs; .m -- vss; .p -- gate; .pos=(7,6)
-        Vdc vdn_src: .$dc=1.2; .m -- vss; .p -- dn; .pos=(0,6)
-        Vdc vdp_src: .$dc=0; .m -- vss; .p -- dp; .pos=(25,6)
+        Vdc vdn_src: .$dc=1.2; .m -- vss; .p -- drain_n; .pos=(0,6)
+        Vdc vdp_src: .$dc=0; .m -- vss; .p -- drain_p; .pos=(25,6)
 
         # EDIT HERE (transistors)
 
@@ -38,8 +38,8 @@ cell MosCurves:
                 "EDIT HERE markers in the source).")
         else:
             .markdown("ID over VDS for several gate-source voltages.")
-            vds_n = [float(v) for v in MosCurves(vgs=R('1.2')).sim_vds.dn.voltage]
-            vds_p = [float(v) - 1.2 for v in MosCurves(vgs=R('0')).sim_vsd.dp.voltage]
+            vds_n = [float(v) for v in MosCurves(vgs=R('1.2')).sim_vds.drain_n.voltage]
+            vds_p = [float(v) - 1.2 for v in MosCurves(vgs=R('0')).sim_vsd.drain_p.voltage]
             nmos_series = {}
             pmos_series = {}
             for vgs in ('0.6', '0.8', '1.0', '1.2'):

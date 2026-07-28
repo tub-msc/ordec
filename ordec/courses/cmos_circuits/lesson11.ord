@@ -49,7 +49,7 @@ cell OtaTb:
         .simulate().op(save_params=True)
 
     viewgen sim_ac -> Simulation:
-        .simulate().ac('dec', 20, '100', '10G')
+        .simulate().ac('dec', 20, 100, 10G)
 
     viewgen report_dc -> Report:
         sim = self.sim_dc

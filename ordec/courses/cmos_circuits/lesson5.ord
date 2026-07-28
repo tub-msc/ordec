@@ -73,7 +73,7 @@ cell RingOscTb:
         NoConn nc1: .a -- outn; .pos=(18,12)
 
     viewgen sim_tran -> Simulation:
-        .simulate().tran('50p', '200n', uic=True)
+        .simulate().tran(50p, 200n, uic=True)
 
     viewgen report_tran -> Report:
         sim = self.sim_tran

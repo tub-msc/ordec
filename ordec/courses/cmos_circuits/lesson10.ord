@@ -33,7 +33,7 @@ cell Lfsr:
         Tielo tie: .L_LO -- fb; .VDD -- vdd; .VSS -- vss; .pos=(64,14)
 
     viewgen sim_tran -> Simulation:
-        .simulate().tran('20p', '48n')
+        .simulate().tran(20p, 48n)
 
     viewgen report_tran -> Report:
         sim = self.sim_tran

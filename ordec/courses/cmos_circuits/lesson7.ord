@@ -36,7 +36,7 @@ cell InvAmpTb:
         .simulate().op()
 
     viewgen sim_ac -> Simulation:
-        .simulate().ac('dec', 10, '1k', '10G')
+        .simulate().ac('dec', 10, 1k, 10G)
 
     viewgen report_ac -> Report:
         op = self.sim_op

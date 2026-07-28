@@ -34,7 +34,7 @@ cell CsAmpTb:
         .simulate().dc_sweep(self.schematic.vin_src, 0, 1.2, 61)
 
     viewgen sim_ac -> Simulation:
-        .simulate().ac('dec', 10, '1k', '1G')
+        .simulate().ac('dec', 10, 1k, 1G)
 
     viewgen report_ac -> Report:
         placed = any(isinstance(i.symbol.cell, Nmos)

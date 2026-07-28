@@ -529,8 +529,8 @@ courses_testdata = {
             InsertSolution("""
             # EDIT HERE (transistors)
             """, """
-            Nmos mn: .$w=1u; .$l=130n; .g -- gate; .d -- dn; .s -- vss; .b -- vss; .pos=(10,12)
-            Pmos mp: .$w=1u; .$l=130n; .g -- gate; .d -- dp; .s -- vdd; .b -- vdd; .pos=(25,12)
+            Nmos mn: .$w=1u; .$l=130n; .g -- gate; .d -- drain_n; .s -- vss; .b -- vss; .pos=(10,12)
+            Pmos mp: .$w=1u; .$l=130n; .g -- gate; .d -- drain_p; .s -- vdd; .b -- vdd; .pos=(25,12)
             """),
         ]),
         # Lesson 2: current mirror. The skeleton's 1:1 mirror biases fine
