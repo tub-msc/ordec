@@ -649,10 +649,11 @@ cell Vco:
             ! .activ.east == m1.activ.west - (1000, 0)
 
         
-        # Explicit Metal1 landing pads over the current-source drains: SRouter's
-        # move()-then-layer() does not draw a Metal1 via throughrect at the start
-        # point, so the M1->M3 via stack lacks Metal1 enclosure (V1.c1) on the
-        # bare MOS S/D. A 400x400 pad gives ample enclosure.
+        # Explicit Metal1 landing pads over the current-source drains: at the
+        # start of the M1->M3 via stack, SRouter only draws its route_pad-sized
+        # pad (210x210 here), which covers the all-sides enclosure but not the
+        # V1.c1 endcap on the bare MOS S/D. A 400x400 pad gives ample
+        # enclosure.
         for sd in (.m1.sd[1], .m2.sd[0]):
             anonymous LayoutRect r:
                 .layer=layers.Metal1
@@ -721,8 +722,8 @@ cell Vco:
         sr.wire_x(vdd.cx)
         sr.wire_y(vdd.uy - 200)
         sr.layer(layers.Metal1)
-        # Metal1 landing pad for the Metal3->Metal1 drop (final-layer via lacks an
-        # M1 throughrect -> V1.c1).
+        # Metal1 landing pad for the Metal3->Metal1 drop: SRouter's route_pad
+        # at the end of the stack is too small for the V1.c1 endcap on its own.
         anonymous LayoutRect cleanvdd_tie_pad:
             .layer=layers.Metal1
             ! .size == (400, 400)
@@ -730,8 +731,10 @@ cell Vco:
             ! .cy == vdd.uy - 200
 
         sr.move(layers.Metal2, ring_i.clean_vss.center)
-        # Step west on Metal2 first:
-        sr.wire_x(ring_i.clean_vss.lx - 300)
+        # Step west on Metal2 first. Keep clear of clean_vss by more than the
+        # Metal2 spacing: the via pad is slightly wider than the wire, so it
+        # leaves a notch towards clean_vss (M2.b).
+        sr.wire_x(ring_i.clean_vss.lx - 350)
         sr.layer(layers.Metal3)
         sr.wire_x(vss.cx)
         sr.wire_y(vss.uy - 200)

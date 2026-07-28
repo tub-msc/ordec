@@ -1532,6 +1532,14 @@ class RoutingSpecLayer(Node):
 
     route_via_width = Attr(int)
     route_via_height = Attr(int)
+
+    #: Size of a landing pad that a wire of this layer runs into: it only has
+    #: to cover the via enclosure required on all sides, as the wire supplies
+    #: the larger endcap enclosure. Unset falls back to route_via_width and
+    #: route_via_height, which is what a pad standing on its own requires.
+    route_pad_width = Attr(int)
+    route_pad_height = Attr(int)
+
     route_wire_width = Attr(int)
     route_wire_ext = Attr(int)
 

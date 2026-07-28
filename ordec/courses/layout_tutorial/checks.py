@@ -447,7 +447,7 @@ def gen_lesson5(g):
             ```
 
             Zoom into the two layer changes: `sr.layer()` generated the
-            `Via1` cuts and the larger landing pads on both metals
+            `Via1` cuts and the landing pads enclosing them on both metals
             automatically, with dimensions from the routing spec. The 500 nm
             setback keeps the landing pads clear of the obstacle.
 

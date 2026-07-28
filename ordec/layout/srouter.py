@@ -87,32 +87,53 @@ class SRouter:
         """Draw a vertical wire (like SVG 'V')."""
         self.wire((self.cur_pos[0], y))
 
-    def _end_path(self):
+    def _end_path(self, stack_end: bool = False):
         """End the current path (if any) and emit the via-stack element of
         the current layer at the current position: the cut on via layers, a
-        route_via-sized landing pad on metal layers. Pads on the metals are
-        required because a wire alone (route_wire_width) does not satisfy
-        the via enclosure rules (e.g. V1.c/V1.c1 for SG13G2)."""
+        landing pad on metal layers. Pads on the metals are required because
+        a wire alone (route_wire_width) does not satisfy the via enclosure
+        rules (e.g. V1.c/V1.c1 for SG13G2).
+
+        stack_end marks the two ends of a via stack, where the route runs
+        into the pad on this layer: through a wire, or through the geometry
+        the route was moved onto. That metal supplies the endcap enclosure,
+        so the pad only has to cover the enclosure required on all sides and
+        stays at the smaller route_pad size, barely widening the wire. The
+        metals in the middle of a stack stand on their own and need the
+        larger route_via size.
+        """
         rsl = self._rsl()
         if None in (rsl.route_via_width, rsl.route_via_height):
             raise SRouterException("Cannot draw via-like rect on layer where"
                 " route_via_width or route_via_height is None.")
+        if stack_end and None not in (rsl.route_pad_width, rsl.route_pad_height):
+            size = (rsl.route_pad_width, rsl.route_pad_height)
+        else:
+            size = (rsl.route_via_width, rsl.route_via_height)
         r = self.layout % LayoutRect(layer=self.cur_layer)
         self.solver.constrain(r.center == self.cur_pos)
-        self.solver.constrain(r.size ==
-            (rsl.route_via_width, rsl.route_via_height))
+        self.solver.constrain(r.size == size)
         self.path = None
         self.path_order = 0
 
     def layer(self, layer: Layer):
         """Change to another routing layer, emitting a complete via stack at
         the current position: cuts plus landing pads on every metal layer
-        traversed, including the start and destination layers."""
+        traversed, including the start and destination layers.
+
+        The pads at both ends of the stack are wire-sized (route_pad): the
+        route runs into them, on the start layer through the wire or the
+        geometry it came from, on the destination layer through the wire it
+        is expected to continue with. Only the metals in between stand on
+        their own and get a full route_via pad.
+        """
         self._check_initialized()
         if self.cur_layer == layer:
             return
+        start = True
         while self.cur_layer != layer:
-            self._end_path()
+            self._end_path(stack_end=start)
+            start = False
             rsl = self._rsl()
             if rsl.route_id < self.routing_spec.one(
                 RoutingSpecLayer.layer_index.query(layer)).route_id:
@@ -124,4 +145,4 @@ class SRouter:
             self.cur_layer = next_rsl.layer
 
         # Landing pad on the destination layer:
-        self._end_path()
+        self._end_path(stack_end=True)

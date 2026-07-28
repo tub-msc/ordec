@@ -95,7 +95,7 @@ Routing with SRouter
 
 * ``move(layer, pos)`` sets the current layer and position without drawing and starts a new path. Positions may be constraint expressions (e.g. shape anchors), so routes stay attached when the placement solution changes.
 * ``wire(pos)``, ``wire_x(x)``, ``wire_y(y)`` draw a wire segment to the new position.
-* ``layer(layer)`` switches to another metal: the router walks the routing-spec layer stack between the two metals and places via-sized rects on every layer touched — the via cuts plus landing pads on all metals, including the start and destination layers (a wire alone would not satisfy the via enclosure rules) — so a simple ``layer()`` call produces a complete via stack at the current position.
+* ``layer(layer)`` switches to another metal: the router walks the routing-spec layer stack between the two metals and places a rect on every layer touched — the via cuts plus landing pads on all metals, including the start and destination layers (a wire alone would not satisfy the via enclosure rules) — so a simple ``layer()`` call produces a complete via stack at the current position. The pads at the two ends of the stack are ``route_pad``-sized, barely wider than the wires running into them, which supply the endcap enclosure; the metals in between stand on their own and get the larger ``route_via`` pad.
 * ``push()`` / ``pop()`` save/restore the current position and layer, convenient for branching a route (e.g. a T-junction: route the spine, ``push()`` at the branch point, finish the spine, ``pop()``, route the branch).
 
 In ORD layout viewgens, ``SRouter()`` picks up the current layout and solver from the view context automatically; in plain Python, pass them explicitly (``SRouter(spec, layout=l, solver=s)``).

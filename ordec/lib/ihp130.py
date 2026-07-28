@@ -249,7 +249,13 @@ class SG13G2(Cell):
         rs = RoutingSpec(ref_layers=layers)
 
         route_id = 0
-        def addmetal(layer, route_width=200, route_ext=100+50, route_via=(480,300)):
+
+        # route_pad is the 190nm via cut plus the 10nm enclosure that V1.c
+        # demands on all sides (V2.c to V4.c ask for only 5nm). The endcap
+        # enclosure (V1.c1 etc., 50nm) comes from the wire running into the
+        # pad, so a pad this size widens a 200nm wire by just 5nm per side.
+        def addmetal(layer, route_width=200, route_ext=100+50, route_via=(480,300),
+            route_pad=(210,210)):
             nonlocal route_id
             rs % RoutingSpecLayer(
                 layer=layer,
@@ -258,6 +264,8 @@ class SG13G2(Cell):
                 route_wire_ext=route_ext,
                 route_via_width=route_via[0],
                 route_via_height=route_via[1],
+                route_pad_width=route_pad[0],
+                route_pad_height=route_pad[1],
             )
             route_id += 1
 
