@@ -22,9 +22,9 @@ cell CurrentMirrorTb:
         net vss, vdd, iin, iout
 
         Gnd gnd: .p -- vss; .pos=(0,0)
-        Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(0,6)
-        Idc iref: .$dc=10u; .p -- vdd; .m -- iin; .pos=(6,6)
-        Vdc vout_src: .$dc=0.6; .p -- vdd; .m -- iout; .pos=(18,6)
+        Vdc vdd_src: .$dc=1.2; .n -- vss; .p -- vdd; .pos=(0,6)
+        Idc iref: .$dc=10u; .p -- vdd; .n -- iin; .pos=(6,6)
+        Vdc vout_src: .$dc=0.6; .p -- vdd; .n -- iout; .pos=(18,6)
 
         CurrentMirror dut: .iin -- iin; .iout -- iout; .vss -- vss; .pos=(12,6)
 

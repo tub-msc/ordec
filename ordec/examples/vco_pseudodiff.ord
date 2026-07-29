@@ -834,19 +834,19 @@ cell VcoTb:
             .pos = (0, 0)
 
         Vdc vdd_src:
-            .m -- vss
+            .n -- vss
             .p -- vdd
             .pos = (0, 10)
             .$dc = 1.2
 
         Vpwl vbias_src:
-            .m -- vss
+            .n -- vss
             .p -- vbias
             .pos = (5, 10)
             .$V = ((0, 1.2), (1n, 1.2), (30n, 0))
 
         Vpwl rst_n_src:
-            .m -- vss
+            .n -- vss
             .p -- rst_n
             .pos = (10, 10)
             .$V = ((0, 0), (1n, 0), (1.1n, 1.2))

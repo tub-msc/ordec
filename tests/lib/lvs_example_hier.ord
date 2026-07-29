@@ -53,9 +53,9 @@ cell A_Default:
         port z: .pos=(5,2)
         port sub: .pos=(1,8)
 
-        Rsil r1: .$l=L_RX; .pos=(3,12); .m -- c; .p -- x; .bn -- sub
-        Rsil r2: .$l=L_RY; .pos=(8,12); .orientation=East; .m -- c; .p -- y; .bn -- sub
-        Rsil r3: .$l=L_RZ; .pos=(3,9); .orientation=FlippedNorth; .m -- c; .p -- z; .bn -- sub
+        Rsil r1: .$l=L_RX; .pos=(3,12); .n -- c; .p -- x; .bn -- sub
+        Rsil r2: .$l=L_RY; .pos=(8,12); .orientation=East; .n -- c; .p -- y; .bn -- sub
+        Rsil r3: .$l=L_RZ; .pos=(3,9); .orientation=FlippedNorth; .n -- c; .p -- z; .bn -- sub
 
     viewgen layout -> Layout:
         .ref_layers = SG13G2().layers
@@ -67,19 +67,19 @@ cell A_Default:
             ! .pos == (0, 3000)
         Rsil(l=L_RZ) r3:
             .orientation = FlippedNorth  # term_p faces south
-            ! .term_m.cx == r1.term_m.cx
-            ! r1.term_m.cy == .term_m.cy + 2500
+            ! .term_n.cx == r1.term_n.cx
+            ! r1.term_n.cy == .term_n.cy + 2500
         Rsil(l=L_RY) r2:
-            .orientation = East  # term_m west (star side), term_p east
-            ! .term_m.lx == r1.poly_body.ux + 1500
-            ! .term_m.cy == 0.5*r1.term_m.cy + 0.5*r3.term_m.cy
+            .orientation = East  # term_n west (star side), term_p east
+            ! .term_n.lx == r1.poly_body.ux + 1500
+            ! .term_n.cy == 0.5*r1.term_n.cy + 0.5*r3.term_n.cy
 
-        # Star net c: vertical Metal1 spine r1.m -- r3.m, T-branch to r2.m.
+        # Star net c: vertical Metal1 spine r1.n -- r3.n, T-branch to r2.n.
         sr = SRouter(SG13G2().default_routing_spec)
-        sr.move(layers.Metal1, r1.term_m.center)
-        sr.wire_y(r3.term_m.cy)
-        sr.move(layers.Metal1, r2.term_m.center)
-        sr.wire_x(r1.term_m.cx)
+        sr.move(layers.Metal1, r1.term_n.center)
+        sr.wire_y(r3.term_n.cy)
+        sr.move(layers.Metal1, r2.term_n.center)
+        sr.wire_x(r1.term_n.cx)
 
         LayoutRect x:
             .layer=layers.Metal1
@@ -116,9 +116,9 @@ cell B_Hier:
         port sub: .pos=(1,13)
 
         A_Default a1: .pos=(4,4); .x -- i1; .y -- y1; .z -- z; .sub -- sub
-        Rppd rp1: .$l=L_RP1; .pos=(8,11); .orientation=FlippedSouth; .m -- i1; .p -- i2; .bn -- sub
+        Rppd rp1: .$l=L_RP1; .pos=(8,11); .orientation=FlippedSouth; .n -- i1; .p -- i2; .bn -- sub
         A_Default a2: .pos=(4,18); .x -- x; .y -- y2; .z -- i2; .sub -- sub
-        Rppd rp2: .$l=L_RP2; .pos=(15,11); .orientation=FlippedSouth; .m -- y1; .p -- y2; .bn -- sub
+        Rppd rp2: .$l=L_RP2; .pos=(15,11); .orientation=FlippedSouth; .n -- y1; .p -- y2; .bn -- sub
 
     viewgen layout -> Layout:
         .ref_layers = SG13G2().layers
@@ -129,25 +129,25 @@ cell B_Hier:
         A_Default() a1:
             ! .pos == (0, 0)
         Rppd(l=L_RP1) rp1:
-            ! .term_m.cx == a1.x.cx
-            ! .term_m.cy == a1.x.cy + 1500
+            ! .term_n.cx == a1.x.cx
+            ! .term_n.cy == a1.x.cy + 1500
         A_Default() a2:
             ! .pos.x == a1.pos.x
             ! .z.cy == rp1.term_p.cy + 1500
         Rppd(l=L_RP2) rp2:
-            ! .term_m.cx == a1.y.ux + 1500
-            ! 0.5*.term_m.cy + 0.5*.term_p.cy == 0.5*a1.y.cy + 0.5*a2.y.cy
+            ! .term_n.cx == a1.y.ux + 1500
+            ! 0.5*.term_n.cy + 0.5*.term_p.cy == 0.5*a1.y.cy + 0.5*a2.y.cy
 
         sr = SRouter(SG13G2().default_routing_spec)
-        # z-chain on the column: a1.x -- rp1.m, rp1.p -- a2.z
+        # z-chain on the column: a1.x -- rp1.n, rp1.p -- a2.z
         sr.move(layers.Metal1, a1.x.center)
-        sr.wire_y(rp1.term_m.cy)
+        sr.wire_y(rp1.term_n.cy)
         sr.move(layers.Metal1, rp1.term_p.center)
         sr.wire_y(a2.z.cy)
-        # y-loop in the east channel: a1.y -- rp2.m, a2.y -- rp2.p
+        # y-loop in the east channel: a1.y -- rp2.n, a2.y -- rp2.p
         sr.move(layers.Metal1, a1.y.center)
-        sr.wire_x(rp2.term_m.cx)
-        sr.wire_y(rp2.term_m.cy)
+        sr.wire_x(rp2.term_n.cx)
+        sr.wire_y(rp2.term_n.cy)
         sr.move(layers.Metal1, a2.y.center)
         sr.wire_x(rp2.term_p.cx)
         sr.wire_y(rp2.term_p.cy)
@@ -177,7 +177,7 @@ cell C_Hier:
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
-        Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .m -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout -> Layout:
         .ref_layers = SG13G2().layers
@@ -192,8 +192,8 @@ cell C_Hier:
             ! .pos.y == b1.pos.y
             ! .pos.x == b1.pos.x + 9000
         Rsil(l=L_RS) rs:
-            ! .term_m.cx == b2.z.cx + 9000
-            ! .term_m.cy == b1.z.cy
+            ! .term_n.cx == b2.z.cx + 9000
+            ! .term_n.cy == b1.z.cy
 
         # Substrate tap, wired to a Metal1 pin (bulk of the poly resistors).
         Ptap(l='0.7u', w='0.7u') tap:
@@ -201,9 +201,9 @@ cell C_Hier:
             ! .m1.cy == b1.z.cy
 
         sr = SRouter(SG13G2().default_routing_spec)
-        # Net z: south rail through b1.z and b2.z onto rs.term_m.
+        # Net z: south rail through b1.z and b2.z onto rs.term_n.
         sr.move(layers.Metal1, b1.z.center)
-        sr.wire_x(rs.term_m.cx)
+        sr.wire_x(rs.term_n.cx)
         # Net x: north rail through b1.x and b2.x, then down the east channel
         # and back onto rs.term_p.
         sr.move(layers.Metal1, b1.x.center)
@@ -252,7 +252,7 @@ cell C_FlatLayout:
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
-        Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .m -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout -> Layout:
         .ref_layers = SG13G2().layers
@@ -268,51 +268,51 @@ cell C_FlatLayout:
                         ! .pos == (9000*k, 3000)
                 Rsil(l=L_RZ) r3[i]:
                     .orientation = FlippedNorth
-                    ! .term_m.cx == r1[i].term_m.cx
-                    ! r1[i].term_m.cy == .term_m.cy + 2500
+                    ! .term_n.cx == r1[i].term_n.cx
+                    ! r1[i].term_n.cy == .term_n.cy + 2500
                 Rsil(l=L_RY) r2[i]:
                     .orientation = East
-                    ! .term_m.lx == r1[i].poly_body.ux + 1500
-                    ! .term_m.cy == 0.5*r1[i].term_m.cy + 0.5*r3[i].term_m.cy
+                    ! .term_n.lx == r1[i].poly_body.ux + 1500
+                    ! .term_n.cy == 0.5*r1[i].term_n.cy + 0.5*r3[i].term_n.cy
                 # Star net of cluster i (cf. cell A_Default).
-                sr.move(layers.Metal1, r1[i].term_m.center)
-                sr.wire_y(r3[i].term_m.cy)
-                sr.move(layers.Metal1, r2[i].term_m.center)
-                sr.wire_x(r1[i].term_m.cx)
+                sr.move(layers.Metal1, r1[i].term_n.center)
+                sr.wire_y(r3[i].term_n.cy)
+                sr.move(layers.Metal1, r2[i].term_n.center)
+                sr.wire_x(r1[i].term_n.cx)
 
             Rppd(l=L_RP1) rp1[k]:
-                ! .term_m.cx == r1[2*k].term_p.cx
-                ! .term_m.cy == r1[2*k].term_p.cy + 1500
+                ! .term_n.cx == r1[2*k].term_p.cx
+                ! .term_n.cy == r1[2*k].term_p.cy + 1500
             # The upper star (j=1) hangs off the z-chain (cf. cell B_Hier).
             ! r1[2*k+1].pos.x == r1[2*k].pos.x
             ! r3[2*k+1].term_p.cy == rp1[k].term_p.cy + 1500
             Rppd(l=L_RP2) rp2[k]:
-                ! .term_m.cx == r2[2*k].term_p.ux + 1500
-                ! 0.5*.term_m.cy + 0.5*.term_p.cy == 0.5*r2[2*k].term_p.cy + 0.5*r2[2*k+1].term_p.cy
+                ! .term_n.cx == r2[2*k].term_p.ux + 1500
+                ! 0.5*.term_n.cy + 0.5*.term_p.cy == 0.5*r2[2*k].term_p.cy + 0.5*r2[2*k+1].term_p.cy
 
             # z-chain (cf. cell B_Hier)
             sr.move(layers.Metal1, r1[2*k].term_p.center)
-            sr.wire_y(rp1[k].term_m.cy)
+            sr.wire_y(rp1[k].term_n.cy)
             sr.move(layers.Metal1, rp1[k].term_p.center)
             sr.wire_y(r3[2*k+1].term_p.cy)
             # y-loop (cf. cell B_Hier)
             sr.move(layers.Metal1, r2[2*k].term_p.center)
-            sr.wire_x(rp2[k].term_m.cx)
-            sr.wire_y(rp2[k].term_m.cy)
+            sr.wire_x(rp2[k].term_n.cx)
+            sr.wire_y(rp2[k].term_n.cy)
             sr.move(layers.Metal1, r2[2*k+1].term_p.center)
             sr.wire_x(rp2[k].term_p.cx)
             sr.wire_y(rp2[k].term_p.cy)
 
         Rsil(l=L_RS) rs:
-            ! .term_m.cx == r3[2].term_p.cx + 9000
-            ! .term_m.cy == r3[0].term_p.cy
+            ! .term_n.cx == r3[2].term_p.cx + 9000
+            ! .term_n.cy == r3[0].term_p.cy
         Ptap(l='0.7u', w='0.7u') tap:
             ! .m1.cx == r3[0].term_p.cx - 2500
             ! .m1.cy == r3[0].term_p.cy
 
         # Rails (cf. cell C_Hier)
         sr.move(layers.Metal1, r3[0].term_p.center)
-        sr.wire_x(rs.term_m.cx)
+        sr.wire_x(rs.term_n.cx)
         sr.move(layers.Metal1, r1[1].term_p.center)
         sr.wire_x(rs.term_p.cx + 2500)
         sr.wire_y(rs.term_p.cy)
@@ -370,19 +370,19 @@ cell C_FlatSchematic:
             net y2[k]
 
             # lower star (was b<k+1>.a1)
-            Rsil a1r1[k]: .$l=L_RX; .pos=(3+xo,12); .m -- c1[k]; .p -- i1[k]; .bn -- sub
-            Rsil a1r2[k]: .$l=L_RY; .pos=(8+xo,12); .orientation=East; .m -- c1[k]; .p -- y1[k]; .bn -- sub
-            Rsil a1r3[k]: .$l=L_RZ; .pos=(3+xo,9); .orientation=FlippedNorth; .m -- c1[k]; .p -- z; .bn -- sub
+            Rsil a1r1[k]: .$l=L_RX; .pos=(3+xo,12); .n -- c1[k]; .p -- i1[k]; .bn -- sub
+            Rsil a1r2[k]: .$l=L_RY; .pos=(8+xo,12); .orientation=East; .n -- c1[k]; .p -- y1[k]; .bn -- sub
+            Rsil a1r3[k]: .$l=L_RZ; .pos=(3+xo,9); .orientation=FlippedNorth; .n -- c1[k]; .p -- z; .bn -- sub
             # z-chain resistor (was b<k+1>.rp1)
-            Rppd rp1[k]: .$l=L_RP1; .pos=(3+xo,18); .m -- i1[k]; .p -- i2[k]; .bn -- sub
+            Rppd rp1[k]: .$l=L_RP1; .pos=(3+xo,18); .n -- i1[k]; .p -- i2[k]; .bn -- sub
             # upper star (was b<k+1>.a2)
-            Rsil a2r3[k]: .$l=L_RZ; .pos=(3+xo,27); .orientation=FlippedNorth; .m -- c2[k]; .p -- i2[k]; .bn -- sub
-            Rsil a2r1[k]: .$l=L_RX; .pos=(3+xo,30); .m -- c2[k]; .p -- x; .bn -- sub
-            Rsil a2r2[k]: .$l=L_RY; .pos=(8+xo,30); .orientation=East; .m -- c2[k]; .p -- y2[k]; .bn -- sub
+            Rsil a2r3[k]: .$l=L_RZ; .pos=(3+xo,27); .orientation=FlippedNorth; .n -- c2[k]; .p -- i2[k]; .bn -- sub
+            Rsil a2r1[k]: .$l=L_RX; .pos=(3+xo,30); .n -- c2[k]; .p -- x; .bn -- sub
+            Rsil a2r2[k]: .$l=L_RY; .pos=(8+xo,30); .orientation=East; .n -- c2[k]; .p -- y2[k]; .bn -- sub
             # y-loop resistor (was b<k+1>.rp2)
-            Rppd rp2[k]: .$l=L_RP2; .pos=(17+xo,17); .orientation=FlippedSouth; .m -- y1[k]; .p -- y2[k]; .bn -- sub
+            Rppd rp2[k]: .$l=L_RP2; .pos=(17+xo,17); .orientation=FlippedSouth; .n -- y1[k]; .p -- y2[k]; .bn -- sub
 
-        Rsil rs: .$l=L_RS; .pos=(42,12); .orientation=FlippedSouth; .m -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .pos=(42,12); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout -> Layout:
         .ref_layers = SG13G2().layers
@@ -395,15 +395,15 @@ cell C_FlatSchematic:
             ! .pos.y == b1.pos.y
             ! .pos.x == b1.pos.x + 9000
         Rsil(l=L_RS) rs:
-            ! .term_m.cx == b2.z.cx + 9000
-            ! .term_m.cy == b1.z.cy
+            ! .term_n.cx == b2.z.cx + 9000
+            ! .term_n.cy == b1.z.cy
         Ptap(l='0.7u', w='0.7u') tap:
             ! .m1.cx == b1.z.cx - 2500
             ! .m1.cy == b1.z.cy
 
         sr = SRouter(SG13G2().default_routing_spec)
         sr.move(layers.Metal1, b1.z.center)
-        sr.wire_x(rs.term_m.cx)
+        sr.wire_x(rs.term_n.cx)
         sr.move(layers.Metal1, b1.x.center)
         sr.wire_x(rs.term_p.cx + 2500)
         sr.wire_y(rs.term_p.cy)
@@ -452,13 +452,13 @@ cell A_Moved:
             ! .pos == (0, 3000)
         Rsil(l=L_RZ) r3:
             .orientation = FlippedNorth
-            ! .term_m.cx == r1.term_m.cx
-            ! r1.term_m.cy == .term_m.cy + 2500
+            ! .term_n.cx == r1.term_n.cx
+            ! r1.term_n.cy == .term_n.cy + 2500
 
         # Star spine; exposed as terminal c (the moved resistor connects here).
         sr = SRouter(SG13G2().default_routing_spec)
-        sr.move(layers.Metal1, r1.term_m.center)
-        sr.wire_y(r3.term_m.cy)
+        sr.move(layers.Metal1, r1.term_n.center)
+        sr.wire_y(r3.term_n.cy)
         sr.path.create_pin(self.symbol.c)
 
         LayoutRect x:
@@ -489,8 +489,8 @@ cell B_Moved:
         A_Moved() a1:
             ! .pos == (0, 0)
         Rppd(l=L_RP1) rp1:
-            ! .term_m.cx == a1.x.cx
-            ! .term_m.cy == a1.x.cy + 1500
+            ! .term_n.cx == a1.x.cx
+            ! .term_n.cy == a1.x.cy + 1500
         A_Moved() a2:
             ! .pos.x == a1.pos.x
             ! .z.cy == rp1.term_p.cy + 1500
@@ -499,32 +499,32 @@ cell B_Moved:
         # by referencing the nested resistor geometry directly (a1.r1.poly_body).
         Rsil(l=L_RY) ry1:
             .orientation = East
-            ! .term_m.lx == a1.r1.poly_body.ux + 1500
-            ! .term_m.cy == 0.5*a1.x.cy + 0.5*a1.z.cy
+            ! .term_n.lx == a1.r1.poly_body.ux + 1500
+            ! .term_n.cy == 0.5*a1.x.cy + 0.5*a1.z.cy
         Rsil(l=L_RY) ry2:
             .orientation = East
-            ! .term_m.lx == a2.r1.poly_body.ux + 1500
-            ! .term_m.cy == 0.5*a2.x.cy + 0.5*a2.z.cy
+            ! .term_n.lx == a2.r1.poly_body.ux + 1500
+            ! .term_n.cy == 0.5*a2.x.cy + 0.5*a2.z.cy
 
         Rppd(l=L_RP2) rp2:
-            ! .term_m.cx == ry1.term_p.ux + 1500
-            ! 0.5*.term_m.cy + 0.5*.term_p.cy == 0.5*ry1.term_p.cy + 0.5*ry2.term_p.cy
+            ! .term_n.cx == ry1.term_p.ux + 1500
+            ! 0.5*.term_n.cy + 0.5*.term_p.cy == 0.5*ry1.term_p.cy + 0.5*ry2.term_p.cy
 
         sr = SRouter(SG13G2().default_routing_spec)
         # z-chain (as in B_Hier)
         sr.move(layers.Metal1, a1.x.center)
-        sr.wire_y(rp1.term_m.cy)
+        sr.wire_y(rp1.term_n.cy)
         sr.move(layers.Metal1, rp1.term_p.center)
         sr.wire_y(a2.z.cy)
         # branches from the moved resistors onto the star spines (c pins)
-        sr.move(layers.Metal1, ry1.term_m.center)
+        sr.move(layers.Metal1, ry1.term_n.center)
         sr.wire_x(a1.x.cx)
-        sr.move(layers.Metal1, ry2.term_m.center)
+        sr.move(layers.Metal1, ry2.term_n.center)
         sr.wire_x(a2.x.cx)
         # y-loop (as in B_Hier)
         sr.move(layers.Metal1, ry1.term_p.center)
-        sr.wire_x(rp2.term_m.cx)
-        sr.wire_y(rp2.term_m.cy)
+        sr.wire_x(rp2.term_n.cx)
+        sr.wire_y(rp2.term_n.cy)
         sr.move(layers.Metal1, ry2.term_p.center)
         sr.wire_x(rp2.term_p.cx)
         sr.wire_y(rp2.term_p.cy)
@@ -560,7 +560,7 @@ cell C_Moved:
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
-        Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .m -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout -> Layout:
         .ref_layers = SG13G2().layers
@@ -572,15 +572,15 @@ cell C_Moved:
             ! .pos.y == b1.pos.y
             ! .pos.x == b1.pos.x + 9000
         Rsil(l=L_RS) rs:
-            ! .term_m.cx == b2.z.cx + 9000
-            ! .term_m.cy == b1.z.cy
+            ! .term_n.cx == b2.z.cx + 9000
+            ! .term_n.cy == b1.z.cy
         Ptap(l='0.7u', w='0.7u') tap:
             ! .m1.cx == b1.z.cx - 2500
             ! .m1.cy == b1.z.cy
 
         sr = SRouter(SG13G2().default_routing_spec)
         sr.move(layers.Metal1, b1.z.center)
-        sr.wire_x(rs.term_m.cx)
+        sr.wire_x(rs.term_n.cx)
         sr.move(layers.Metal1, b1.x.center)
         sr.wire_x(rs.term_p.cx + 2500)
         sr.wire_y(rs.term_p.cy)

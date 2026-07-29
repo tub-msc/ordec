@@ -65,8 +65,8 @@ Positions and dimensions are usually not given as absolute numbers but as linear
 
     Rsil(l='1u') r3:
         .orientation = FlippedNorth
-        ! .term_m.cx == r1.term_m.cx          # align centers horizontally
-        ! r1.term_m.cy == .term_m.cy + 2500   # 2.5 µm vertical spacing
+        ! .term_n.cx == r1.term_n.cx          # align centers horizontally
+        ! r1.term_n.cy == .term_n.cy + 2500   # 2.5 µm vertical spacing
 
 Constraint expressions are linear: you can add/subtract terms, multiply by constants, and mix in rational weights (``! .cy == 0.5*a.cy + 0.5*b.cy`` centers between two anchors). Useful operands:
 
@@ -88,10 +88,10 @@ Routing with SRouter
 .. code-block:: text
 
     sr = SRouter(SG13G2().default_routing_spec)
-    sr.move(layers.Metal1, r1.term_m.center)  # set start point and layer ('M')
-    sr.wire_y(r3.term_m.cy)                   # vertical wire ('V')
-    sr.move(layers.Metal1, r2.term_m.center)  # start a second, separate wire
-    sr.wire_x(r1.term_m.cx)                   # horizontal wire onto the spine ('H')
+    sr.move(layers.Metal1, r1.term_n.center)  # set start point and layer ('M')
+    sr.wire_y(r3.term_n.cy)                   # vertical wire ('V')
+    sr.move(layers.Metal1, r2.term_n.center)  # start a second, separate wire
+    sr.wire_x(r1.term_n.cx)                   # horizontal wire onto the spine ('H')
 
 * ``move(layer, pos)`` sets the current layer and position without drawing and starts a new path. Positions may be constraint expressions (e.g. shape anchors), so routes stay attached when the placement solution changes.
 * ``wire(pos)``, ``wire_x(x)``, ``wire_y(y)`` draw a wire segment to the new position.
@@ -114,7 +114,7 @@ Layout pins associate a shape with a symbol pin; they become labeled pin shapes 
         .create_pin(self.symbol.x)
 
     # Form 2: pin on a routed path (the LayoutPath created by the last wire)
-    sr.wire_y(r3.term_m.cy)
+    sr.wire_y(r3.term_n.cy)
     sr.path.create_pin(self.symbol.c)
 
 In Python syntax, the equivalent is attaching a ``LayoutPin`` node with the ``%`` operator: ``l.m1_vss % LayoutPin(pin=self.symbol.vss)``.

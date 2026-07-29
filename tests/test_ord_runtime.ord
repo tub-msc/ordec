@@ -122,9 +122,9 @@ def test_mixed_unresolved_resolved_instances():
         net vss, mid
 
         # Cell instance -> SchemInstance directly
-        Vdc('1') v1: .p -- mid; .m -- vss; .pos = (0, 6)
+        Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
         # Cell class -> SchemInstanceUnresolved (params set via body)
-        Res r1: .$r = '1k'; .p -- mid; .m -- vss; .pos = (5, 6)
+        Res r1: .$r = '1k'; .p -- mid; .n -- vss; .pos = (5, 6)
         # Another Cell instance -> SchemInstance directly
         Gnd() gnd: .p -- vss; .pos = (0, 0)
 
@@ -163,9 +163,9 @@ def test_wire_op():
         net vss, mid
 
         # pin -- net (normal order)
-        Vdc('1') v1: .p -- mid; .m -- vss; .pos = (0, 6)
+        Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
         # net -- pin (reversed order)
-        Res r1: .$r = '1k'; mid -- .p; vss -- .m; .pos = (5, 6)
+        Res r1: .$r = '1k'; mid -- .p; vss -- .n; .pos = (5, 6)
         # Also reversed for a Cell instance
         Gnd() gnd: vss -- .p; .pos = (0, 0)
 

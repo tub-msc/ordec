@@ -90,7 +90,7 @@ def gen_lesson3(g):
 
             **Your task is to add a 1 kΩ resistor at position (5, 6), and
             connect it in parallel to the voltage source: pin `p` to `vdd`,
-            pin `m` to `vss`.**
+            pin `n` to `vss`.**
 
             To instantiate a resistor `R0` and set its resistance parameter, type:
 
@@ -104,7 +104,7 @@ def gen_lesson3(g):
             To connect symbol pins with nets, use the `--` operator, for example:
 
             ```
-            R0.m -- vss
+            R0.n -- vss
             ```
 
             To avoid having to repeat the instance name, you can use the
@@ -113,7 +113,7 @@ def gen_lesson3(g):
             ```
             Res R0:
                 .$r = 1k
-                .m -- vss
+                .n -- vss
             ```
 
             By adding the `:` at the end of the line, we open a block within
@@ -123,7 +123,7 @@ def gen_lesson3(g):
             The following more compact syntax is also available:
 
             ```
-            Res R0: .$r=1k; .m--vss
+            Res R0: .$r=1k; .n--vss
             ```
 
             Lastly, set the desired **position** of the instance:
@@ -185,13 +185,13 @@ def gen_lesson3(g):
                 for inst in resistors())
             report.passfail(label, found,
                 hint="In parallel means the resistor connects to the same "
-                "two nets as the source: `.m -- vss; .p -- vdd`.",
+                "two nets as the source: `.n -- vss; .p -- vdd`.",
                 instructions="The resistor must connect to the same nets "
                 "as vsrc.")
         except Exception:
             report.passfail(label, False, instructions=exception_text(),
                 hint="In parallel means the resistor connects to the same "
-                "two nets as the source: `.m -- vss; .p -- vdd`.")
+                "two nets as the source: `.n -- vss; .p -- vdd`.")
         return report
     return lesson
 
@@ -209,11 +209,11 @@ def gen_lesson4(g):
             resistor in series with the parallel pair, with a net `mid`
             between them:**
 
-            - the 1 kΩ resistor at (8, 12) (pin `p` to `vdd`, pin `m` to `mid`),
+            - the 1 kΩ resistor at (8, 12) (pin `p` to `vdd`, pin `n` to `mid`),
             - the 2 kΩ resistor at (5, 6) (pin `p` to
-            `mid`, pin `m` to `vss`) and
+            `mid`, pin `n` to `vss`) and
             - the 3 kΩ resistor at (11, 6) (pin `p` to
-            `mid`, pin `m` to `vss`).
+            `mid`, pin `n` to `vss`).
         """)
 
         # The instance names are the user's choice, so the checks match Res
@@ -566,8 +566,8 @@ def gen_lesson7(g):
                 and not s.has_errors())
             report.passfail(label, found,
                 hint="Declare a port for each of vin, vout and vss, then "
-                "connect the component pins: `r1.p -- vin`, `r1.m -- "
-                "vout`, `l1.p -- vout`, `c1.m -- vss`.",
+                "connect the component pins: `r1.p -- vin`, `r1.n -- "
+                "vout`, `l1.p -- vout`, `c1.n -- vss`.",
                 instructions="Ports found: "
                 + (", ".join(sorted(port_nets)) if port_nets else "none")
                 + ("; schematic has error markers." if s.has_errors()
@@ -575,8 +575,8 @@ def gen_lesson7(g):
         except Exception:
             report.passfail(label, False, instructions=exception_text(),
                 hint="Declare a port for each of vin, vout and vss, then "
-                "connect the component pins: `r1.p -- vin`, `r1.m -- "
-                "vout`, `l1.p -- vout`, `c1.m -- vss`.")
+                "connect the component pins: `r1.p -- vin`, `r1.n -- "
+                "vout`, `l1.p -- vout`, `c1.n -- vss`.")
 
         label = "vout port placed at (12, 18)"
         try:

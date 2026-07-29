@@ -28,10 +28,10 @@ def build_schematic():
     s.b = Net()
     s.r1_0 = Net()
     s.r1 = PathNode()
-    s.r1[0] = SchemInstance(sym.portmap(p=s.a, m=s.b), pos=Vec2R(0, 0))
+    s.r1[0] = SchemInstance(sym.portmap(p=s.a, n=s.b), pos=Vec2R(0, 0))
     s.q = PathNode()
-    s.q[0] = SchemInstance(sym.portmap(p=s.a, m=s.r1_0), pos=Vec2R(5, 0))
-    s.q_0 = SchemInstance(sym.portmap(p=s.b, m=s.r1_0), pos=Vec2R(10, 0))
+    s.q[0] = SchemInstance(sym.portmap(p=s.a, n=s.r1_0), pos=Vec2R(5, 0))
+    s.q_0 = SchemInstance(sym.portmap(p=s.b, n=s.r1_0), pos=Vec2R(10, 0))
     return s.freeze()
 
 

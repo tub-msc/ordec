@@ -221,8 +221,8 @@ class NetNamingTest(Cell):
         s.d = Net(pin=self.symbol.d)
         s.d % SchemPort(pos=Vec2R(2, 2), align=East, ref=s.d)
         
-        s.i0 = SchemInstance(Res('1k').symbol.portmap(m=a, p=s.b), pos=Vec2R(4, 2))
-        s.i2 = SchemInstance(Res('1k').symbol.portmap(m=c, p=s.d), pos=Vec2R(9, 2))
+        s.i0 = SchemInstance(Res('1k').symbol.portmap(n=a, p=s.b), pos=Vec2R(4, 2))
+        s.i2 = SchemInstance(Res('1k').symbol.portmap(n=c, p=s.d), pos=Vec2R(9, 2))
         s.check(add_conn_points=True, add_terminal_taps=True)
         return s
 

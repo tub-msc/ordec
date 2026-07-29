@@ -19,13 +19,13 @@ cell Xor2Tb:
         net a, b, y, vdd, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
-        Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(0,6)
-        Vdc va_src: .$dc=self.a; .m -- vss; .p -- a; .pos=(6,6)
-        Vdc vb_src: .$dc=self.b; .m -- vss; .p -- b; .pos=(12,6)
+        Vdc vdd_src: .$dc=1.2; .n -- vss; .p -- vdd; .pos=(0,6)
+        Vdc va_src: .$dc=self.a; .n -- vss; .p -- a; .pos=(6,6)
+        Vdc vb_src: .$dc=self.b; .n -- vss; .p -- b; .pos=(12,6)
 
         # EDIT HERE
 
-        Res rprobe: .$r=1G; .p -- y; .m -- vss; .pos=(28,9)
+        Res rprobe: .$r=1G; .p -- y; .n -- vss; .pos=(28,9)
 
     viewgen sim_op -> Simulation:
         .simulate().op()

@@ -15,7 +15,7 @@ cell CsAmp:
         port vdd: .align=East; .pos=(1,14)
         port vss: .align=East; .pos=(1,2)
 
-        Res rl: .$r=10k; .p -- vdd; .m -- vout; .pos=(6,9)
+        Res rl: .$r=10k; .p -- vdd; .n -- vout; .pos=(6,9)
 
         # EDIT HERE
 
@@ -24,11 +24,11 @@ cell CsAmpTb:
         net vin, vout, vdd, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
-        Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(0,6)
-        Vdc vin_src: .$dc=0.45; .$ac_mag=1; .m -- vss; .p -- vin; .pos=(6,6)
+        Vdc vdd_src: .$dc=1.2; .n -- vss; .p -- vdd; .pos=(0,6)
+        Vdc vin_src: .$dc=0.45; .$ac_mag=1; .n -- vss; .p -- vin; .pos=(6,6)
 
         CsAmp dut: .vin -- vin; .vout -- vout; .vdd -- vdd; .vss -- vss; .pos=(12,6)
-        Cap cload: .$c=1p; .p -- vout; .m -- vss; .pos=(18,6)
+        Cap cload: .$c=1p; .p -- vout; .n -- vss; .pos=(18,6)
 
     viewgen sim_dc -> Simulation:
         .simulate().dc_sweep(self.schematic.vin_src, 0, 1.2, 61)

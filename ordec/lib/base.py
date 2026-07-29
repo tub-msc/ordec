@@ -21,7 +21,7 @@ class Res(SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         use_box_symbol = False
@@ -53,7 +53,7 @@ class Res(SimLeafCell):
         return s
 
     def ngspice_netlist(self, netlister, inst):
-        pins = [inst.symbol.p, inst.symbol.m]
+        pins = [inst.symbol.p, inst.symbol.n]
         netlister.add(netlister.name_obj(inst, prefix="r"), netlister.portmap(inst, pins), f'r={self.r.compat_str()}')
 
     @classmethod
@@ -72,7 +72,7 @@ class Cap(SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         #Kondensator
@@ -89,7 +89,7 @@ class Cap(SimLeafCell):
         return s
 
     def ngspice_netlist(self, netlister, inst):
-        pins = [inst.symbol.p, inst.symbol.m]
+        pins = [inst.symbol.p, inst.symbol.n]
         netlist_str = f'c={self.c.compat_str()}'
         if self.ic is not None:
             netlist_str += f' ic={self.ic.compat_str()}'
@@ -110,7 +110,7 @@ class Ind(SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         r=0.35
@@ -125,7 +125,7 @@ class Ind(SimLeafCell):
         return s
 
     def ngspice_netlist(self, netlister, inst):
-        pins = [inst.symbol.p, inst.symbol.m]
+        pins = [inst.symbol.p, inst.symbol.n]
         netlister.add(netlister.name_obj(inst, prefix="l"), netlister.portmap(inst, pins), f'l={self.l.compat_str()}')
 
     @classmethod
@@ -241,7 +241,7 @@ class Vdc(AcStimulusMixin, SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         #Kreis
@@ -262,7 +262,7 @@ class Vdc(AcStimulusMixin, SimLeafCell):
         return s
 
     def ngspice_netlist(self, netlister, inst):
-        pins = [inst.symbol.p, inst.symbol.m]
+        pins = [inst.symbol.p, inst.symbol.n]
         netlister.add(
             netlister.name_obj(inst, prefix="v"),
             netlister.portmap(inst, pins),
@@ -285,7 +285,7 @@ class Idc(AcStimulusMixin, SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
     
         s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)])
@@ -301,7 +301,7 @@ class Idc(AcStimulusMixin, SimLeafCell):
         return s
 
     def ngspice_netlist(self, netlister, inst):
-        pins = [inst.symbol.p, inst.symbol.m]
+        pins = [inst.symbol.p, inst.symbol.n]
         netlister.add(
             netlister.name_obj(inst, prefix="i"),
             netlister.portmap(inst, pins),
@@ -325,7 +325,7 @@ class Vpwl(AcStimulusMixin, SimLeafCell):
         """ Defines the schematic symbol for the PWL source. """
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
@@ -351,7 +351,7 @@ class Vpwl(AcStimulusMixin, SimLeafCell):
         return s
 
     def ngspice_netlist(self, netlister, inst):
-        pins = [inst.symbol.p, inst.symbol.m]
+        pins = [inst.symbol.p, inst.symbol.n]
 
         V_list = self.V
         # Coerce values to Rational
@@ -384,13 +384,13 @@ class Vpulse(AcStimulusMixin, SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
 
         s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)])  # To positive pin 'p'
-        s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)])  # To negative pin 'm'
+        s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)])  # To negative pin 'n'
 
         # Pulse symbol
         s % SymbolPoly(vertices=[
@@ -413,7 +413,7 @@ class Vpulse(AcStimulusMixin, SimLeafCell):
         return s
 
     def ngspice_netlist(self, netlister, inst):
-        pins = [inst.symbol.p, inst.symbol.m]
+        pins = [inst.symbol.p, inst.symbol.n]
 
         tran_spec = "PULSE({})".format(self.ngspice_wave_args([
             self.initial_value, self.pulsed_value, self.delay_time,
@@ -443,13 +443,13 @@ class Vsin(AcStimulusMixin, SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
 
         s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)]) # To positive pin 'p'
-        s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)]) # To negative pin 'm'
+        s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)]) # To negative pin 'n'
 
         sine_wave_points = [
             Vec2R(1.2 + 0.1 * t, 2.0 + 0.6 * math.sin(math.pi * t / 4))
@@ -467,7 +467,7 @@ class Vsin(AcStimulusMixin, SimLeafCell):
         return s
 
     def ngspice_netlist(self, netlister, inst):
-        pins = [inst.symbol.p, inst.symbol.m]
+        pins = [inst.symbol.p, inst.symbol.n]
 
         tran_spec = "SIN({})".format(self.ngspice_wave_args([
             self.dc, self.amplitude, self.freq, self.delay, self.damping,
@@ -494,11 +494,11 @@ class Ipwl(AcStimulusMixin, SimLeafCell):
         s = Symbol(cell=self)
 
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
 
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
         s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)]) # To positive pin 'p'
-        s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)]) # To negative pin 'm'
+        s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)]) # To negative pin 'n'
 
         s % SymbolPoly(vertices=[
             Vec2R(1.4, 1.7),
@@ -526,7 +526,7 @@ class Ipwl(AcStimulusMixin, SimLeafCell):
         return s
 
     def ngspice_netlist(self, netlister, inst):
-        pins = [inst.symbol.p, inst.symbol.m]
+        pins = [inst.symbol.p, inst.symbol.n]
 
         I_list = self.I
         # Coerce values to Rational
@@ -559,7 +559,7 @@ class Ipulse(AcStimulusMixin, SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         # Draw the symbol
@@ -568,7 +568,7 @@ class Ipulse(AcStimulusMixin, SimLeafCell):
 
         # Lines
         s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)]) # To positive pin 'p'
-        s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)]) # To negative pin 'm'
+        s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)]) # To negative pin 'n'
 
         # Pulse symbol
         s % SymbolPoly(vertices=[
@@ -580,7 +580,7 @@ class Ipulse(AcStimulusMixin, SimLeafCell):
             Vec2R(2.5, 2.3)
         ])
 
-        # Arrow pointing UP (from m towards p)
+        # Arrow pointing UP (from n towards p)
         arrow_tip_y = 3.0
         arrow_base_y = 2.5
         arrow_barb_y = 2.7
@@ -596,7 +596,7 @@ class Ipulse(AcStimulusMixin, SimLeafCell):
         return s
 
     def ngspice_netlist(self, netlister, inst):
-        pins = [inst.symbol.p, inst.symbol.m]
+        pins = [inst.symbol.p, inst.symbol.n]
 
         tran_spec = "PULSE({})".format(self.ngspice_wave_args([
             self.initial_value, self.pulsed_value, self.delay_time,
@@ -626,7 +626,7 @@ class Isin(AcStimulusMixin, SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         # Circle
@@ -634,7 +634,7 @@ class Isin(AcStimulusMixin, SimLeafCell):
 
         # Lines
         s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)]) # To positive pin 'p'
-        s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)]) # To negative pin 'm'
+        s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)]) # To negative pin 'n'
 
         # Sinusoidal symbol
         sine_wave_points = [
@@ -660,7 +660,7 @@ class Isin(AcStimulusMixin, SimLeafCell):
         return s
 
     def ngspice_netlist(self, netlister, inst):
-        pins = [inst.symbol.p, inst.symbol.m]
+        pins = [inst.symbol.p, inst.symbol.n]
 
         tran_spec = "SIN({})".format(self.ngspice_wave_args([
             self.dc, self.amplitude, self.freq, self.delay, self.damping,

@@ -9,7 +9,7 @@ cell Bandstop:
         net mid
 
         Res r1: .$r=1k; .pos=(8,16); .orientation=R90
-        Ind l1: .$l=1m; .m -- mid; .pos=(8,11)
+        Ind l1: .$l=1m; .n -- mid; .pos=(8,11)
         Cap c1: .$c=100n; .p -- mid; .pos=(8,6)
 
         # EDIT HERE (schematic)
@@ -19,7 +19,7 @@ cell BandstopTb:
         net vin, vout, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
-        Vdc vsrc: .$ac_mag=1; .m -- vss; .p -- vin; .pos=(0,6)
+        Vdc vsrc: .$ac_mag=1; .n -- vss; .p -- vin; .pos=(0,6)
         vout % SchemTapPoint(pos=(12,11), align=East)
 
         # EDIT HERE (testbench)

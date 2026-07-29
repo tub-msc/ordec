@@ -69,10 +69,10 @@ def test_resistor_op(cell, expected_r):
 
             s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
             s.i_vdc = SchemInstance(
-                Vdc(dc=1).symbol.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 5)
+                Vdc(dc=1).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 5)
             )
             s.r = SchemInstance(
-                res_cell.symbol.portmap(p=s.vdd, m=s.vss, bn=s.vss),
+                res_cell.symbol.portmap(p=s.vdd, n=s.vss, bn=s.vss),
                 pos=Vec2R(12, 5),
             )
 
@@ -113,11 +113,11 @@ def test_cmim_ac(cell, expected_c):
 
             s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
             s.i_vac = SchemInstance(
-                Vdc(ac_mag=1).symbol.portmap(m=s.vss, p=s.vdd),
+                Vdc(ac_mag=1).symbol.portmap(n=s.vss, p=s.vdd),
                 pos=Vec2R(0, 5),
             )
             s.c = SchemInstance(
-                cap_cell.symbol.portmap(p=s.vdd, m=s.vss),
+                cap_cell.symbol.portmap(p=s.vdd, n=s.vss),
                 pos=Vec2R(12, 5),
             )
 

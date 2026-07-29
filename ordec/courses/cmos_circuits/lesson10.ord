@@ -20,9 +20,9 @@ cell Lfsr:
         net q0, q1, q2, q3
 
         Gnd gnd: .p -- vss; .pos=(0,0)
-        Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(0,6)
-        Vpulse clk_src: .$pulsed_value=1.2; .$rise_time=50p; .$fall_time=50p; .$pulse_width=1n; .$period=2n; .m -- vss; .p -- clk; .pos=(6,6)
-        Vpulse rst_src: .$pulsed_value=1.2; .$delay_time=3n; .$rise_time=50p; .$fall_time=50p; .$pulse_width=1m; .$period=2m; .m -- vss; .p -- rstb; .pos=(12,6)
+        Vdc vdd_src: .$dc=1.2; .n -- vss; .p -- vdd; .pos=(0,6)
+        Vpulse clk_src: .$pulsed_value=1.2; .$rise_time=50p; .$fall_time=50p; .$pulse_width=1n; .$period=2n; .n -- vss; .p -- clk; .pos=(6,6)
+        Vpulse rst_src: .$pulsed_value=1.2; .$delay_time=3n; .$rise_time=50p; .$fall_time=50p; .$pulse_width=1m; .$period=2m; .n -- vss; .p -- rstb; .pos=(12,6)
 
         Dff ff0: .CLK -- clk; .RESET_B -- rstb; .D -- fb; .Q -- q0; .VDD -- vdd; .VSS -- vss; .pos=(20,14)
         Dff ff1: .CLK -- clk; .RESET_B -- rstb; .D -- q0; .Q -- q1; .VDD -- vdd; .VSS -- vss; .pos=(31,14)

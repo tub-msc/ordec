@@ -25,11 +25,11 @@ class ResdivFlatTb(Cell):
         sym_res = Res(r=100).symbol
 
         s.I0 = SchemInstance(sym_gnd.portmap(p=s.vss), pos=Vec2R(5, 0))
-        s.I1 = SchemInstance(sym_vdc.portmap(m=s.vss, p=s.vdd_ac), pos=Vec2R(0, 6))
-        s.I1_ac = SchemInstance(sym_vac.portmap(m=s.vdd_ac, p=s.vdd), pos=Vec2R(0, 12))
-        s.I2 = SchemInstance(sym_res.portmap(m=s.vss, p=s.a), pos=Vec2R(5, 6))
-        s.I3 = SchemInstance(sym_res.portmap(m=s.a, p=s.b), pos=Vec2R(5, 11))
-        s.I4 = SchemInstance(sym_res.portmap(m=s.b, p=s.vdd), pos=Vec2R(5, 16))
+        s.I1 = SchemInstance(sym_vdc.portmap(n=s.vss, p=s.vdd_ac), pos=Vec2R(0, 6))
+        s.I1_ac = SchemInstance(sym_vac.portmap(n=s.vdd_ac, p=s.vdd), pos=Vec2R(0, 12))
+        s.I2 = SchemInstance(sym_res.portmap(n=s.vss, p=s.a), pos=Vec2R(5, 6))
+        s.I3 = SchemInstance(sym_res.portmap(n=s.a, p=s.b), pos=Vec2R(5, 11))
+        s.I4 = SchemInstance(sym_res.portmap(n=s.b, p=s.vdd), pos=Vec2R(5, 16))
 
         s.vss % SchemWire(vertices=[Vec2R(7, 4), Vec2R(7, 5), Vec2R(7, 6)])
         s.vss % SchemWire(vertices=[Vec2R(2, 6), Vec2R(2, 5), Vec2R(7, 5)])
@@ -88,9 +88,9 @@ class ResdivHier2(Cell):
 
         sym_res = Res(r=self.r).symbol
 
-        s.I0 = SchemInstance(sym_res.portmap(m=s.b, p=s.m), pos=Vec2R(0, 1))
-        s.I1 = SchemInstance(sym_res.portmap(m=s.m, p=s.t), pos=Vec2R(0, 7))
-        s.I2 = SchemInstance(sym_res.portmap(m=s.r, p=s.m), pos=Vec2R(9, 4),
+        s.I0 = SchemInstance(sym_res.portmap(n=s.b, p=s.m), pos=Vec2R(0, 1))
+        s.I1 = SchemInstance(sym_res.portmap(n=s.m, p=s.t), pos=Vec2R(0, 7))
+        s.I2 = SchemInstance(sym_res.portmap(n=s.r, p=s.m), pos=Vec2R(9, 4),
             orientation=R90)
 
         s.outline = Rect4R(lx=0, ly=0, ux=10, uy=12)
@@ -183,10 +183,10 @@ class ResdivHierTb(Cell):
 
         s.I1 = SchemInstance(NoConn().symbol.portmap(a=s.r), pos=Vec2R(10, 0))
         s.I2 = SchemInstance(
-            Vdc(dc=1).symbol.portmap(m=s.gnd, p=s.t_ac), pos=Vec2R(0, 0)
+            Vdc(dc=1).symbol.portmap(n=s.gnd, p=s.t_ac), pos=Vec2R(0, 0)
         )
         s.I2_ac = SchemInstance(
-            Vdc(ac_mag=1).symbol.portmap(m=s.t_ac, p=s.t), pos=Vec2R(0, 6)
+            Vdc(ac_mag=1).symbol.portmap(n=s.t_ac, p=s.t), pos=Vec2R(0, 6)
         )
         s.I3 = SchemInstance(Gnd().symbol.portmap(p=s.gnd), pos=Vec2R(0, -6))
 
@@ -237,16 +237,16 @@ class NmosSourceFollowerTb(Cell):
 
         s.I1 = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(11, 0))
         s.I2 = SchemInstance(
-            Vdc(dc=5).symbol.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 6)
+            Vdc(dc=5).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 6)
         )
         s.I3 = SchemInstance(
-            Vdc(dc=vin).symbol.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
+            Vdc(dc=vin).symbol.portmap(n=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
         )
         s.I3_ac = SchemInstance(
-            Vdc(ac_mag=1).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
+            Vdc(ac_mag=1).symbol.portmap(n=s.i_ac, p=s.i), pos=Vec2R(5, 12)
         )
         s.I4 = SchemInstance(
-            Idc(dc="5u").symbol.portmap(m=s.vss, p=s.o), pos=Vec2R(11, 6)
+            Idc(dc="5u").symbol.portmap(n=s.vss, p=s.o), pos=Vec2R(11, 6)
         )
 
         s.outline = Rect4R(lx=0, ly=0, ux=16, uy=22)
@@ -297,13 +297,13 @@ class InvTb(Cell):
         s.i_nc = SchemInstance(NoConn().symbol.portmap(a=s.o), pos=Vec2R(16, 9))
         s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(11, 0))
         s.i_vdd = SchemInstance(
-            Vdc(dc=vdd).symbol.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 6)
+            Vdc(dc=vdd).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 6)
         )
         s.i_in = SchemInstance(
-            Vdc(dc=0).symbol.portmap(m=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
+            Vdc(dc=0).symbol.portmap(n=s.vss, p=s.i_ac), pos=Vec2R(5, 6)
         )
         s.i_in_ac = SchemInstance(
-            Vdc(ac_mag=1).symbol.portmap(m=s.i_ac, p=s.i), pos=Vec2R(5, 12)
+            Vdc(ac_mag=1).symbol.portmap(n=s.i_ac, p=s.i), pos=Vec2R(5, 12)
         )
 
         s.outline = Rect4R(lx=0, ly=0, ux=20, uy=14)
@@ -445,9 +445,9 @@ class AcRC(Cell):
         vsrc = Vdc(ac_mag=1).symbol
 
         s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
-        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.inp), pos=Vec2R(0, 5))
-        s.res = SchemInstance(res.portmap(m=s.out, p=s.inp), pos=Vec2R(10, 8), orientation=West)
-        s.cap = SchemInstance(cap.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
+        s.vsrc = SchemInstance(vsrc.portmap(n=s.vss, p=s.inp), pos=Vec2R(0, 5))
+        s.res = SchemInstance(res.portmap(n=s.out, p=s.inp), pos=Vec2R(10, 8), orientation=West)
+        s.cap = SchemInstance(cap.portmap(n=s.vss, p=s.out), pos=Vec2R(12, 5))
 
         s.auto_wire()
         s.check(add_conn_points=True, add_terminal_taps=True)
@@ -485,9 +485,9 @@ class SineRL(Cell):
         ).symbol
 
         s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
-        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.inp), pos=Vec2R(0, 5))
-        s.res = SchemInstance(res.portmap(m=s.out, p=s.inp), pos=Vec2R(10, 8), orientation=West)
-        s.ind = SchemInstance(ind.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
+        s.vsrc = SchemInstance(vsrc.portmap(n=s.vss, p=s.inp), pos=Vec2R(0, 5))
+        s.res = SchemInstance(res.portmap(n=s.out, p=s.inp), pos=Vec2R(10, 8), orientation=West)
+        s.ind = SchemInstance(ind.portmap(n=s.vss, p=s.out), pos=Vec2R(12, 5))
 
         s.auto_wire()
         s.check(add_conn_points=True, add_terminal_taps=True)
@@ -528,9 +528,9 @@ class PulsedRC(Cell):
         ).symbol
 
         s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
-        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.inp), pos=Vec2R(0, 5))
-        s.res = SchemInstance(res.portmap(m=s.out, p=s.inp), pos=Vec2R(10, 8), orientation = West)
-        s.cap = SchemInstance(cap.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
+        s.vsrc = SchemInstance(vsrc.portmap(n=s.vss, p=s.inp), pos=Vec2R(0, 5))
+        s.res = SchemInstance(res.portmap(n=s.out, p=s.inp), pos=Vec2R(10, 8), orientation = West)
+        s.cap = SchemInstance(cap.portmap(n=s.vss, p=s.out), pos=Vec2R(12, 5))
 
         s.auto_wire()
         s.check(add_conn_points=True, add_terminal_taps=True)
@@ -572,7 +572,7 @@ class SourceTb(Cell):
 
         s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
         self.add_source_instance(s)
-        s.res = SchemInstance(res.portmap(m=s.vss, p=s.out), pos=Vec2R(12, 5))
+        s.res = SchemInstance(res.portmap(n=s.vss, p=s.out), pos=Vec2R(12, 5))
 
         s.auto_wire()
         s.check(add_conn_points=True, add_terminal_taps=True)
@@ -595,14 +595,14 @@ class SourceTb(Cell):
 class VpwlTb(SourceTb):
     def add_source_instance(self, s: Schematic):
         vsrc = Vpwl(V=self.demo_pwl_points).symbol
-        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.out), pos=Vec2R(0, 5))
+        s.vsrc = SchemInstance(vsrc.portmap(n=s.vss, p=s.out), pos=Vec2R(0, 5))
 
 
 class IpwlTb(SourceTb):
     def add_source_instance(self, s: Schematic):
         isrc = Ipwl(I=self.demo_pwl_points).symbol
         # Source oriented so positive Ipwl values produce positive resistor current.
-        s.isrc = SchemInstance(isrc.portmap(p=s.vss, m=s.out), pos=Vec2R(0, 5))
+        s.isrc = SchemInstance(isrc.portmap(p=s.vss, n=s.out), pos=Vec2R(0, 5))
 
 
 class VpulseTb(SourceTb):
@@ -616,7 +616,7 @@ class VpulseTb(SourceTb):
             pulse_width="15u",
             period="50u",
         ).symbol
-        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.out), pos=Vec2R(0, 5))
+        s.vsrc = SchemInstance(vsrc.portmap(n=s.vss, p=s.out), pos=Vec2R(0, 5))
 
 
 class IpulseTb(SourceTb):
@@ -631,7 +631,7 @@ class IpulseTb(SourceTb):
             period="50u",
         ).symbol
         # Source oriented so positive Ipulse values produce positive resistor current.
-        s.isrc = SchemInstance(isrc.portmap(p=s.vss, m=s.out), pos=Vec2R(0, 5))
+        s.isrc = SchemInstance(isrc.portmap(p=s.vss, n=s.out), pos=Vec2R(0, 5))
 
 
 class VsinTb(SourceTb):
@@ -641,7 +641,7 @@ class VsinTb(SourceTb):
             amplitude=0.8,
             freq="20k",
         ).symbol
-        s.vsrc = SchemInstance(vsrc.portmap(m=s.vss, p=s.out), pos=Vec2R(0, 5))
+        s.vsrc = SchemInstance(vsrc.portmap(n=s.vss, p=s.out), pos=Vec2R(0, 5))
 
 
 class IsinTb(SourceTb):
@@ -652,4 +652,4 @@ class IsinTb(SourceTb):
             freq="20k",
         ).symbol
         # Source oriented so positive Isin values produce positive resistor current.
-        s.isrc = SchemInstance(isrc.portmap(p=s.vss, m=s.out), pos=Vec2R(0, 5))
+        s.isrc = SchemInstance(isrc.portmap(p=s.vss, n=s.out), pos=Vec2R(0, 5))

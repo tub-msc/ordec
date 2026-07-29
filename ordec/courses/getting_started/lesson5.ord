@@ -6,7 +6,7 @@ cell RNetworkLoops:
         net vdd, vss, mid
 
         Gnd gnd: .p -- vss; .pos=(0,0)
-        Vdc vsrc: .$dc=5; .m -- vss; .p -- vdd; .pos=(0,9)
+        Vdc vsrc: .$dc=5; .n -- vss; .p -- vdd; .pos=(0,9)
 
         Res R0: .$r=2k; .pos=(5,6)
         Res R1: .$r=3k; .pos=(11,6)

@@ -24,8 +24,8 @@ cell Ota:
         Nmos mtail: .$w=3u; .$l=1u; .g -- bias; .d -- tail; .s -- vss; .b -- vss; .pos=(8,0)
 
         # EDIT HERE
-        Res rl_p: .$r=30k; .p -- vdd; .m -- outx; .pos=(4,14)
-        Res rl_n: .$r=30k; .p -- vdd; .m -- out; .pos=(12,14)
+        Res rl_p: .$r=30k; .p -- vdd; .n -- outx; .pos=(4,14)
+        Res rl_n: .$r=30k; .p -- vdd; .n -- out; .pos=(12,14)
         Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outx; .s -- tail; .b -- vss; .pos=(4,7)
         Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orientation=FlippedSouth
 
@@ -34,13 +34,13 @@ cell OtaTb:
         net inp, inn, bias, out, vdd, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
-        Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(0,6)
-        Vdc vinp_src: .$dc=0.7; .$ac_mag=1; .m -- vss; .p -- inp; .pos=(6,6)
-        Vdc vinn_src: .$dc=0.7; .m -- vss; .p -- inn; .pos=(12,6)
-        Vdc vbias_src: .$dc=0.5; .m -- vss; .p -- bias; .pos=(18,6)
+        Vdc vdd_src: .$dc=1.2; .n -- vss; .p -- vdd; .pos=(0,6)
+        Vdc vinp_src: .$dc=0.7; .$ac_mag=1; .n -- vss; .p -- inp; .pos=(6,6)
+        Vdc vinn_src: .$dc=0.7; .n -- vss; .p -- inn; .pos=(12,6)
+        Vdc vbias_src: .$dc=0.5; .n -- vss; .p -- bias; .pos=(18,6)
 
         Ota dut: .inp -- inp; .inn -- inn; .bias -- bias; .out -- out; .vdd -- vdd; .vss -- vss; .pos=(24,12)
-        Cap cl: .$c=1p; .p -- out; .m -- vss; .pos=(32,8)
+        Cap cl: .$c=1p; .p -- out; .n -- vss; .pos=(32,8)
 
     viewgen sim_dc -> Simulation:
         .simulate().dc_sweep(self.schematic.vinp_src, 0.55, 0.85, 121)

@@ -59,9 +59,9 @@ cell Nand2Tb:
             
         Gnd gnd: .pos=(0,0); .p -- vss
         
-        Vdc src_vdd: .pos=(0,6); .m -- vss; .p -- vdd; .$dc=5
-        Vdc src_a: .pos=(10,6); .m -- vss; .p -- a; .$dc=5
-        Vdc src_b: .pos=(5,6); .m -- vss; .p -- b; .$dc=0
+        Vdc src_vdd: .pos=(0,6); .n -- vss; .p -- vdd; .$dc=5
+        Vdc src_a: .pos=(10,6); .n -- vss; .p -- a; .$dc=5
+        Vdc src_b: .pos=(5,6); .n -- vss; .p -- b; .$dc=0
 
     viewgen sim_op -> Simulation:
         .simulate().op()

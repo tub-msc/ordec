@@ -48,13 +48,13 @@ cell InvTb:
         Vdc i_vdd:
             .pos = (0, 6)
             .$dc = 1.2
-            .m -- vss
+            .n -- vss
             .p -- vdd
 
         Vdc i_in:
             .pos = (5, 6)
             .$dc = 0
-            .m -- vss
+            .n -- vss
             .p -- i
 
     viewgen sim_dc -> SimHierarchy:

@@ -14,10 +14,10 @@ class VoltageDivider(Cell):
         res = Res(r=100).symbol
 
         s.I0 = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(5, 0))
-        s.I1 = SchemInstance(Vdc(dc=1).symbol.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 6))
-        s.I2 = SchemInstance(res.portmap(m=s.vss, p=s.a), pos=Vec2R(5, 6))
-        s.I3 = SchemInstance(res.portmap(m=s.a, p=s.b), pos=Vec2R(5, 11))
-        s.I4 = SchemInstance(res.portmap(m=s.b, p=s.vdd), pos=Vec2R(5, 16))
+        s.I1 = SchemInstance(Vdc(dc=1).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 6))
+        s.I2 = SchemInstance(res.portmap(n=s.vss, p=s.a), pos=Vec2R(5, 6))
+        s.I3 = SchemInstance(res.portmap(n=s.a, p=s.b), pos=Vec2R(5, 11))
+        s.I4 = SchemInstance(res.portmap(n=s.b, p=s.vdd), pos=Vec2R(5, 16))
         
         s.vss % SchemWire([Vec2R(7, 4), Vec2R(7, 5), Vec2R(7, 6)])
         s.vss % SchemWire([Vec2R(2, 6), Vec2R(2, 5), Vec2R(7, 5)])

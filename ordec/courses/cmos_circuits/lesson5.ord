@@ -25,8 +25,8 @@ cell DiffPair:
 
         net tail
 
-        Res rl_p: .$r=30k; .p -- vdd; .m -- outp; .pos=(4,14)
-        Res rl_n: .$r=30k; .p -- vdd; .m -- outn; .pos=(12,14)
+        Res rl_p: .$r=30k; .p -- vdd; .n -- outp; .pos=(4,14)
+        Res rl_n: .$r=30k; .p -- vdd; .n -- outn; .pos=(12,14)
         Nmos mtail: .$w=3u; .$l=1u; .g -- bias; .d -- tail; .s -- vss; .b -- vss; .pos=(8,0)
         Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outp; .s -- tail; .b -- vss; .pos=(4,7)
         Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- outn; .s -- tail; .b -- vss; .pos=(16,7); .orientation=FlippedSouth
@@ -48,12 +48,12 @@ cell RingOsc:
 
         net p1, n1, p2, n2
 
-        Cap cp1: .$c=100f; .$ic=0.9; .p -- p1; .m -- vss; .pos=(9,1)
-        Cap cn1: .$c=100f; .$ic=0.9; .p -- n1; .m -- vss; .pos=(14,1)
-        Cap cp2: .$c=100f; .$ic=0.9; .p -- p2; .m -- vss; .pos=(23,1)
-        Cap cn2: .$c=100f; .$ic=0.9; .p -- n2; .m -- vss; .pos=(28,1)
-        Cap cp0: .$c=100f; .$ic=1.2; .p -- outp; .m -- vss; .pos=(37,1)
-        Cap cn0: .$c=100f; .$ic=0.6; .p -- outn; .m -- vss; .pos=(42,1)
+        Cap cp1: .$c=100f; .$ic=0.9; .p -- p1; .n -- vss; .pos=(9,1)
+        Cap cn1: .$c=100f; .$ic=0.9; .p -- n1; .n -- vss; .pos=(14,1)
+        Cap cp2: .$c=100f; .$ic=0.9; .p -- p2; .n -- vss; .pos=(23,1)
+        Cap cn2: .$c=100f; .$ic=0.9; .p -- n2; .n -- vss; .pos=(28,1)
+        Cap cp0: .$c=100f; .$ic=1.2; .p -- outp; .n -- vss; .pos=(37,1)
+        Cap cn0: .$c=100f; .$ic=0.6; .p -- outn; .n -- vss; .pos=(42,1)
 
         # EDIT HERE
         DiffPair stage0: .inp -- outn; .inn -- outp; .outp -- p1; .outn -- n1; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(4,8)
@@ -65,8 +65,8 @@ cell RingOscTb:
         net bias, outp, outn, vdd, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
-        Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(0,6)
-        Vdc vbias_src: .$dc=0.5; .m -- vss; .p -- bias; .pos=(6,6)
+        Vdc vdd_src: .$dc=1.2; .n -- vss; .p -- vdd; .pos=(0,6)
+        Vdc vbias_src: .$dc=0.5; .n -- vss; .p -- bias; .pos=(6,6)
 
         RingOsc dut: .bias -- bias; .outp -- outp; .outn -- outn; .vdd -- vdd; .vss -- vss; .pos=(12,6)
         NoConn nc0: .a -- outp; .pos=(18,6)

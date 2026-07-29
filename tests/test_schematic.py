@@ -50,9 +50,9 @@ def test_schematic_net_partitioned_unlabeled_main():
     s = Schematic()
     s.n = Net()
     s.n2 = Net()
-    s.r1 = SchemInstance(res.portmap(p=s.n, m=s.n2), pos=Vec2R(0, 2))
-    s.r2 = SchemInstance(res.portmap(p=s.n, m=s.n2), pos=Vec2R(6, 2))
-    s.r3 = SchemInstance(res.portmap(p=s.n, m=s.n), pos=Vec2R(12, 2))
+    s.r1 = SchemInstance(res.portmap(p=s.n, n=s.n2), pos=Vec2R(0, 2))
+    s.r2 = SchemInstance(res.portmap(p=s.n, n=s.n2), pos=Vec2R(6, 2))
+    s.r3 = SchemInstance(res.portmap(p=s.n, n=s.n), pos=Vec2R(12, 2))
     s.n % SchemPort(pos=Vec2R(0, 8), align=East)
     s.n % SchemWire(vertices=[Vec2R(0, 8), Vec2R(2, 8), Vec2R(2, 6)])
     s.n % SchemWire(vertices=[Vec2R(8, 6), Vec2R(8, 8), Vec2R(11, 8),

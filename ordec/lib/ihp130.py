@@ -592,13 +592,13 @@ def _layoutgen_resistor(
     if add_res:
         l.res = LayoutRect(layer=layers.RES, rect=body_rect)
 
-    make_terminal("m", 0, 0, -1)
+    make_terminal("n", 0, 0, -1)
     make_terminal("p", 0, length, 1)
 
     total_x_lo = body_x_lo
     total_x_hi = body_x_hi
-    total_y_lo = min(body_y_lo, l.poly_head_m.ly, l.poly_head_p.ly)
-    total_y_hi = max(body_y_hi, l.poly_head_m.uy, l.poly_head_p.uy)
+    total_y_lo = min(body_y_lo, l.poly_head_n.ly, l.poly_head_p.ly)
+    total_y_hi = max(body_y_hi, l.poly_head_n.uy, l.poly_head_p.uy)
 
     if add_psd or add_nsd:
         sd_enc = _tech_nm("Rhi_c" if add_nsd else "Rppd_b")
@@ -635,7 +635,7 @@ def _layoutgen_resistor(
             rect=(total_x_lo - ext_enc, total_y_lo - ext_enc, total_x_hi + ext_enc, total_y_hi + ext_enc),
         )
 
-    l.term_m.create_pin(cell.symbol.m)
+    l.term_n.create_pin(cell.symbol.n)
     l.term_p.create_pin(cell.symbol.p)
 
     return l
@@ -662,7 +662,7 @@ def _layoutgen_cmim(cell: Cell) -> Layout:
     tv1_enc = _tech_nm("TV1_d")
 
     l.mim = LayoutRect(layer=layers.MIM, rect=(0, 0, width, length))
-    l.term_m = LayoutRect(
+    l.term_n = LayoutRect(
         layer=layers.Metal5,
         rect=(-mim_c, -mim_c, width + mim_c, length + mim_c),
     )
@@ -692,7 +692,7 @@ def _layoutgen_cmim(cell: Cell) -> Layout:
         ),
     )
 
-    l.term_m.create_pin(cell.symbol.m)
+    l.term_n.create_pin(cell.symbol.n)
     l.term_p.create_pin(cell.symbol.p)
 
     return l
@@ -702,7 +702,7 @@ class Res(SimLeafCell):
     """
     Shared base class for SG13G2 resistors.
 
-    Besides the resistor terminals ``p`` and ``m``, the symbol has a third
+    Besides the resistor terminals ``p`` and ``n``, the symbol has a third
     pin ``bn`` connecting the device's bulk/substrate node. ``bn`` is part
     of the LVS comparison and requires care in hierarchical designs; see
     :ref:`ihp130_substrate_lvs`.
@@ -720,7 +720,7 @@ class Res(SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
         s.bn = Pin(pos=Vec2R(4, 2), pintype=PinType.In, align=East)
 
@@ -757,10 +757,10 @@ class Res(SimLeafCell):
         if (not netlister.lvs) or (self.b != 0):
             params["ps"] = self.ps
         if netlister.lvs:
-            pins = [inst.symbol.p, inst.symbol.m, inst.symbol.bn]
+            pins = [inst.symbol.p, inst.symbol.n, inst.symbol.bn]
             prefix = "R"
         else:
-            pins = [inst.symbol.p, inst.symbol.m, inst.symbol.bn]
+            pins = [inst.symbol.p, inst.symbol.n, inst.symbol.bn]
             prefix = "x"
         netlister.add(
             netlister.name_obj(inst, prefix=prefix),
@@ -845,7 +845,7 @@ class Cmim(SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.m = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
         s % SymbolPoly(vertices=[Vec2R(1.25, 1.8), Vec2R(2.75, 1.8)])
@@ -860,7 +860,7 @@ class Cmim(SimLeafCell):
         netlister.require_netlist_setup(netlister_setup)
         netlister.require_ngspice_setup(ngspice_setup)
 
-        pins = [inst.symbol.p, inst.symbol.m]
+        pins = [inst.symbol.p, inst.symbol.n]
         params = {
             "w": self.w,
             "l": self.l,

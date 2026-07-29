@@ -34,9 +34,9 @@ class RC(Cell):
 
 
         s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
-        s.vcc = SchemInstance(vcc.portmap(m=s.vss, p=s.vdd), pos=Vec2R(0, 5))
-        s.res = SchemInstance(res.portmap(m=s.a, p=s.vdd), pos=Vec2R(10, 8), orientation = West)
-        s.cap = SchemInstance(cap.portmap(m=s.vss, p=s.a), pos=Vec2R(12, 5))
+        s.vcc = SchemInstance(vcc.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 5))
+        s.res = SchemInstance(res.portmap(n=s.a, p=s.vdd), pos=Vec2R(10, 8), orientation = West)
+        s.cap = SchemInstance(cap.portmap(n=s.vss, p=s.a), pos=Vec2R(12, 5))
 
         s.auto_wire()
         s.check(add_conn_points=True, add_terminal_taps=True)

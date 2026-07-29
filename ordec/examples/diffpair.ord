@@ -39,10 +39,10 @@ cell DiffPairTb:
         with Row(gap=6):
             with Col(gap=2, align='start'):
                 with Row(gap=3):
-                    Vdc vsupply: .$dc=5; .m -- vss; .p -- vdd
-                    Vdc vbias: .$dc=1.1; .m -- vss; .p -- bias
-                    Vdc vinn: .$dc=2.5; .m -- vss; .p -- inn
-                    Vdc vinp: .$dc=2.5; .m -- vss; .p -- inp
+                    Vdc vsupply: .$dc=5; .n -- vss; .p -- vdd
+                    Vdc vbias: .$dc=1.1; .n -- vss; .p -- bias
+                    Vdc vinn: .$dc=2.5; .n -- vss; .p -- inn
+                    Vdc vinp: .$dc=2.5; .n -- vss; .p -- inp
                 Gnd gnd: .p -- vss
             DiffPair dut: .inp -- inp; .inn -- inn; .bias -- bias; .outp -- outp; .outn -- outn; .vdd -- vdd; .vss -- vss
             with Col(gap=2):

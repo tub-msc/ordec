@@ -6,7 +6,7 @@ cell Example:
         net vdd, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
-        Vdc vsrc: .$dc=5; .m -- vss; .p -- vdd; .pos=(0,6)
+        Vdc vsrc: .$dc=5; .n -- vss; .p -- vdd; .pos=(0,6)
 
         # EDIT HERE
 

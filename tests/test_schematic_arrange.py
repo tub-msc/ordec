@@ -311,7 +311,7 @@ def test_parallel_auto_connection():
         def symbol(self):
             s = Symbol(cell=self, outline=Rect4R(0, 0, 2, 4))
             s.p = Pin(pos=Vec2R(1, 4), align=North, pintype=PinType.Inout)
-            s.m = Pin(pos=Vec2R(1, 0), align=South, pintype=PinType.Inout)
+            s.n = Pin(pos=Vec2R(1, 0), align=South, pintype=PinType.Inout)
             return s
 
     sym = RSym().symbol
@@ -335,9 +335,9 @@ def test_parallel_auto_connection():
     # Top rail reuses the explicitly wired net, bottom rail is anonymous.
     assert net_of(sch, sch.r1, 'p').nid == sch.out.nid
     assert net_of(sch, sch.r2, 'p').nid == sch.out.nid
-    bottom = net_of(sch, sch.r1, 'm')
+    bottom = net_of(sch, sch.r1, 'n')
     assert bottom is not None
-    assert bottom.nid == net_of(sch, sch.r2, 'm').nid
+    assert bottom.nid == net_of(sch, sch.r2, 'n').nid
     assert bottom.nid != sch.out.nid
 
 

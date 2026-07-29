@@ -254,8 +254,8 @@ class VoltageDivider(Cell):
         s.b = Net()
         s.c = Net()
         
-        s.R0 = SchemInstance(Res(r=R(100)).symbol.portmap(m=s.a, p=s.b), pos=Vec2R(0, 0))
-        s.R1 = SchemInstance(Res(r=R(100)).symbol.portmap(m=s.b, p=s.c), pos=Vec2R(0, 5))
+        s.R0 = SchemInstance(Res(r=R(100)).symbol.portmap(n=s.a, p=s.b), pos=Vec2R(0, 0))
+        s.R1 = SchemInstance(Res(r=R(100)).symbol.portmap(n=s.b, p=s.c), pos=Vec2R(0, 5))
         
         return s
 
@@ -294,8 +294,8 @@ class ParamVDiv(Cell):
         s.b = Net()
         s.c = Net()
         
-        s.R0 = SchemInstance(Res(r=self.r / 2).symbol.portmap(m=s.a, p=s.b), pos=Vec2R(0, 0))
-        s.R1 = SchemInstance(Res(r=self.r / 2).symbol.portmap(m=s.b, p=s.c), pos=Vec2R(0, 5))
+        s.R0 = SchemInstance(Res(r=self.r / 2).symbol.portmap(n=s.a, p=s.b), pos=Vec2R(0, 0))
+        s.R1 = SchemInstance(Res(r=self.r / 2).symbol.portmap(n=s.b, p=s.c), pos=Vec2R(0, 5))
         
         return s
 

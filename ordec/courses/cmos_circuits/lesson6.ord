@@ -31,11 +31,11 @@ cell InvTb:
         net a, y, vdd, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
-        Vdc vdd_src: .$dc=1.2; .m -- vss; .p -- vdd; .pos=(0,6)
-        Vdc vin_src: .$dc=0; .m -- vss; .p -- a; .pos=(6,6)
+        Vdc vdd_src: .$dc=1.2; .n -- vss; .p -- vdd; .pos=(0,6)
+        Vdc vin_src: .$dc=0; .n -- vss; .p -- a; .pos=(6,6)
 
         Inv dut: .a -- a; .y -- y; .vdd -- vdd; .vss -- vss; .pos=(12,7)
-        Res rprobe: .$r=1G; .p -- y; .m -- vss; .pos=(18,5)
+        Res rprobe: .$r=1G; .p -- y; .n -- vss; .pos=(18,5)
 
     viewgen sim_dc -> Simulation:
         .simulate().dc_sweep(self.schematic.vin_src, 0, 1.2, 121)

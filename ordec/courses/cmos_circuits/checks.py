@@ -829,7 +829,7 @@ def gen_lesson7(g):
             The `report_ac` view shows the self-bias point and the gain over
             frequency.
         """)
-        place_hint = ("`p` to `a` and `m` to `y`, so that the resistor "
+        place_hint = ("`p` to `a` and `n` to `y`, so that the resistor "
             "bridges the inverter from its output back to its input. A "
             "resistor is symmetric, so the two pins may also go the "
             "other way round.")
@@ -932,12 +932,12 @@ def gen_lesson8(g):
             s.gnd = SchemInstance(
                 Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, 0))
             s.vdd_src = SchemInstance(
-                Vdc(dc=R('1.2')).symbol.portmap(m=s.vss, p=s.vdd),
+                Vdc(dc=R('1.2')).symbol.portmap(n=s.vss, p=s.vdd),
                 pos=Vec2R(0, 6))
             s.va_src = SchemInstance(
-                Vdc(dc=self.a).symbol.portmap(m=s.vss, p=s.a), pos=Vec2R(6, 6))
+                Vdc(dc=self.a).symbol.portmap(n=s.vss, p=s.a), pos=Vec2R(6, 6))
             s.vb_src = SchemInstance(
-                Vdc(dc=self.b).symbol.portmap(m=s.vss, p=s.b), pos=Vec2R(12, 6))
+                Vdc(dc=self.b).symbol.portmap(n=s.vss, p=s.b), pos=Vec2R(12, 6))
             s.dut = SchemInstance(dut().symbol.portmap(
                 vdd=s.vdd, vss=s.vss, a=s.a, b=s.b, y=s.y), pos=Vec2R(18, 6))
             s.auto_wire()
