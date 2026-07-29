@@ -334,7 +334,7 @@ def test_bode_plot():
         assert plot["x"] == [f.real for f in h.freq]
         assert [s["name"] for s in plot["series"]] == ["inp", "out"]
     # Both plots share one PlotGroup for x-axis synchronization.
-    assert mag["plot_group"] == phase["plot_group"] is not None
+    assert mag["group"] == phase["group"] is not None
 
     out_v = list(h.out.voltage)
     assert mag["series"][1]["values"] == pytest.approx(

@@ -1435,7 +1435,7 @@ class Plot2D(ReportElement):
     xscale = Attr(ScaleType, default=ScaleType.Linear, optional=False, factory=ScaleType)
     yscale = Attr(ScaleType, default=ScaleType.Linear, optional=False, factory=ScaleType)
     height = Attr(float, factory=lambda v: float(v) if v is not None else None) #: plot height in pixels
-    plot_group = LocalRef(PlotGroup)
+    group = LocalRef(PlotGroup)
 
     def series(self):
         return self.subgraph.all(Plot2DSeries.ref_idx.query(self))
@@ -1453,7 +1453,7 @@ class Plot2D(ReportElement):
             "xscale": self.xscale.value,
             "yscale": self.yscale.value,
             "height": f"{self.height:g}px" if self.height is not None else None,
-            "plot_group": self.plot_group.nid if self.plot_group is not None else None,
+            "group": self.group.nid if self.group is not None else None,
         }
 
 def coerce_plot_values(values):

@@ -869,7 +869,7 @@ cell VcoTb:
                 xlabel="Time (s)",
                 ylabel="Voltage (V)",
                 height=180,
-                plot_group=.grp,
+                group=.grp,
             )
         .plot2d(
             x=sim.time,
@@ -880,7 +880,7 @@ cell VcoTb:
             xlabel="Time (s)",
             ylabel="Voltage (V)",
             height=120,
-            plot_group=.grp,
+            group=.grp,
         )
         vdd_src_pin = sim.one(SimPin.instance_eref_idx.query(
             (sim.vdd_src, sim.vdd_src.eref.symbol.p)))
@@ -890,5 +890,5 @@ cell VcoTb:
             xlabel="Time (s)",
             ylabel="Current (A)",
             height=120,
-            plot_group=.grp,
+            group=.grp,
         )

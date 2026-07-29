@@ -232,11 +232,11 @@ courses_testdata = {
                 PlotGroup grp
                 .plot2d(x=sim.time, series={'vin': sim.vin.voltage},
                     xlabel="Time (s)", ylabel="Voltage (V)", height=200,
-                    plot_group=grp)
+                    group=grp)
                 .plot2d(x=sim.time,
                     series={'mid': sim.mid.voltage, 'vout': sim.vout.voltage},
                     xlabel="Time (s)", ylabel="Voltage (V)", height=200,
-                    plot_group=grp)
+                    group=grp)
             """),
         ]),
         # Lesson 10: postprocessing.

@@ -47,7 +47,7 @@ cell Lfsr:
             xlabel="Time (s)",
             ylabel="Voltage (V)",
             height=120,
-            plot_group=grp)
+            group=grp)
         .plot2d(
             x=list(sim.time),
             series={"q0": list(sim.q0.voltage), "q1": list(sim.q1.voltage),
@@ -55,4 +55,4 @@ cell Lfsr:
             xlabel="Time (s)",
             ylabel="Voltage (V)",
             height=260,
-            plot_group=grp)
+            group=grp)

@@ -94,7 +94,7 @@ def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
         ylabel="Magnitude (dB)",
         xscale='log',
         height=height,
-        plot_group=grp,
+        group=grp,
     )
     report.plot2d(
         x=freq,
@@ -103,5 +103,5 @@ def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
         ylabel="Phase (°)",
         xscale='log',
         height=height,
-        plot_group=grp,
+        group=grp,
     )

@@ -77,7 +77,7 @@ def _plot_signals(sh: SimHierarchy, x, xlabel):
             xlabel=xlabel,
             ylabel='Voltage (V)',
             height=None,
-            plot_group=report.sim,
+            group=report.sim,
         )
     if currents:
         report.plot2d(
@@ -86,7 +86,7 @@ def _plot_signals(sh: SimHierarchy, x, xlabel):
             xlabel=xlabel,
             ylabel='Current (A)',
             height=None,
-            plot_group=report.sim,
+            group=report.sim,
         )
     return report.webdata()
 

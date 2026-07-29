@@ -862,7 +862,7 @@ def gen_lesson9(g):
 
             3. Try zooming into one of the plots: the other one does not
             follow. Link them: declare a group with `PlotGroup grp` after
-            the markdown line and pass `plot_group=grp` to both
+            the markdown line and pass `group=grp` to both
             `.plot2d(...)` calls. Cursor and zoom of the two plots now
             move in sync.
         """)
@@ -941,17 +941,17 @@ def gen_lesson9(g):
         try:
             ps = plots()
             found = (ps is not None and len(ps) >= 2
-                and ps[0].plot_group is not None
-                and ps[0].plot_group == ps[1].plot_group)
+                and ps[0].group is not None
+                and ps[0].group == ps[1].group)
             report.passfail(label, found,
                 hint="Declare a group with `PlotGroup grp` and pass "
-                "`plot_group=grp` to both `.plot2d(...)` calls.",
+                "`group=grp` to both `.plot2d(...)` calls.",
                 instructions="Both plots must reference the same "
                 "PlotGroup.")
         except Exception:
             report.passfail(label, False, instructions=exception_text(),
                 hint="Declare a group with `PlotGroup grp` and pass "
-                "`plot_group=grp` to both `.plot2d(...)` calls.")
+                "`group=grp` to both `.plot2d(...)` calls.")
         return report
     return lesson
 

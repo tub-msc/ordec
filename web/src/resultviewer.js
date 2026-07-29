@@ -261,7 +261,7 @@ const reportElementClassOf = {
             if (this.reportContext) {
                 this.reportContext.plotGroups.register(
                     this.plot,
-                    msgData.plot_group
+                    msgData.group
                 );
             }
         }

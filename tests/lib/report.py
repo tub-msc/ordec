@@ -37,7 +37,7 @@ def report_example() -> Report:
         xlabel="Time (s)",
         ylabel="Voltage (V)",
         height=220,
-        plot_group=report.tran_demo,
+        group=report.tran_demo,
     )
     report.plot2d(
         x=time,
@@ -45,7 +45,7 @@ def report_example() -> Report:
         xlabel="Time (s)",
         ylabel="Voltage (V)",
         height=100,
-        plot_group=report.tran_demo,
+        group=report.tran_demo,
     )
     report.plot2d(
         x=ac_freq,
@@ -54,7 +54,7 @@ def report_example() -> Report:
         ylabel="Magnitude (dB)",
         xscale="log",
         height=220,
-        plot_group=report.ac_demo,
+        group=report.ac_demo,
     )
     report.plot2d(
         x=ac_freq,
@@ -63,7 +63,7 @@ def report_example() -> Report:
         ylabel="Phase (deg)",
         xscale="log",
         height=120,
-        plot_group=report.ac_demo,
+        group=report.ac_demo,
     )
     report.svg(resdiv.symbol)
     report.svg(resdiv.schematic)

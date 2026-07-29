@@ -30,7 +30,7 @@ def test_plot2d_webdata():
         xlabel="Time (s)",
         ylabel="Voltage (V)",
         height=180,
-        plot_group=report.tran,
+        group=report.tran,
     )
     _, data = report.webdata()
     plot_data = data["elements"][0]
@@ -38,7 +38,7 @@ def test_plot2d_webdata():
     assert plot_data["x"] == [1.0, 2.0, 3.0]
     assert plot_data["series"] == [{"name": "v(out)", "values": [0.1, 0.2, 0.3]}]
     assert plot_data["height"] == "180px"
-    assert plot_data["plot_group"] == report.tran.nid
+    assert plot_data["group"] == report.tran.nid
 
 
 def test_plot2d_rejects_unsorted_x():
