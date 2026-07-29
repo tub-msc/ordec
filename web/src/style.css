@@ -1587,7 +1587,7 @@ body.theme-dark .lm_content {
     flex-direction: column;
     height: 100%;
     font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-code);
 }
 .drc-header {
     padding: 4px 8px;
@@ -1681,7 +1681,7 @@ body.theme-dark .lm_content {
     flex-direction: column;
     height: 100%;
     font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-code);
 }
 .lvs-header {
     padding: 4px 8px;
