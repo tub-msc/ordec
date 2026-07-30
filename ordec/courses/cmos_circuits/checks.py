@@ -17,6 +17,12 @@ half-finished source state. Simulation-based checks then verify the
 finished circuit. Each lesson emits a fixed number of PassFail elements in
 every state, so the red/green pattern stays stable while the user works.
 
+Wherever a lesson defines the needed analysis as a sim_* view, the check
+reads that view instead of running its own Simulator: the view cache then
+shares one simulator run between the check and the user's open result
+views. Only analyses the lessons do not define (lesson 3's operating
+point, lesson 8's per-input testbench) simulate on their own.
+
 A half-finished design is an expected state, not an error: every lesson
 captures the result of its structure check and passes it to
 sim_failure_text(), so that a simulation failing on an incomplete circuit
@@ -266,9 +272,7 @@ def gen_lesson1(g):
                 "wired.")
             return report
         try:
-            sch = g['MosCurves']().schematic
-            h = SimHierarchy.from_schematic(sch)
-            Simulator(h).dc_sweep(sch.vg_src, 0, 1.2, 61, save_params=True)
+            h = g['MosCurves']().sim_vgs
             nmos_si = sim_instances_of(h, ihp130.Nmos)[0]
             pmos_si = sim_instances_of(h, ihp130.Pmos)[0]
             idn = [abs(float(v)) for v in nmos_si.params['ids'].value]
@@ -359,8 +363,7 @@ def gen_lesson2(g):
         sim_error = None
         iout = vdiode = None
         try:
-            h = SimHierarchy.from_schematic(g['CurrentMirrorTb']().schematic)
-            Simulator(h).op()
+            h = g['CurrentMirrorTb']().sim_op
             iout = abs(float(h.vout_src.p.current[0]))
             vdiode = float(h.iin.voltage[0])
         except Exception:
@@ -456,8 +459,9 @@ def gen_lesson3(g):
 
         op_label = "Operating point in the amplifying region"
         try:
-            tb = g['CsAmpTb']()
-            h = SimHierarchy.from_schematic(tb.schematic)
+            # The lesson defines no op view, so this check simulates on
+            # its own.
+            h = SimHierarchy.from_schematic(g['CsAmpTb']().schematic)
             Simulator(h).op()
             vout_op = float(h.vout.voltage[0])
             report.passfail(op_label,
@@ -474,9 +478,7 @@ def gen_lesson3(g):
 
         gain_label = "Voltage gain ≥ 5"
         try:
-            tb = g['CsAmpTb']()
-            hac = SimHierarchy.from_schematic(tb.schematic)
-            Simulator(hac).ac('dec', 10, 1e3, 1e9)
+            hac = g['CsAmpTb']().sim_ac
             freq = [float(f) for f in hac.freq]
             mag = [abs(v) for v in hac.vout.voltage]
             gain = ac_magnitude_at(freq, mag, 1e6)
@@ -567,9 +569,7 @@ def gen_lesson4(g):
             "on its own and the pair never hands its current over.")
         sim_hints = (gain_hint, balance_hint, steering_hint)
         try:
-            tb = g['DiffPairTb']()
-            h = SimHierarchy.from_schematic(tb.schematic)
-            Simulator(h).dc_sweep(tb.schematic.vinp_src, 0.4, 1.0, 121)
+            h = g['DiffPairTb']().sim_dc
             vin = [float(v) for v in h.inp.voltage]
             vop = [float(v) for v in h.outp.voltage]
             von = [float(v) for v in h.outn.voltage]
@@ -667,9 +667,7 @@ def gen_lesson5(g):
             "all yet.")
         sim_hints = (latch_hint, freq_hint)
         try:
-            tb = g['RingOscTb']()
-            h = SimHierarchy.from_schematic(tb.schematic)
-            Simulator(h).tran(R('50p'), R('200n'), uic=True)
+            h = g['RingOscTb']().sim_tran
             t = [float(x) for x in h.time]
             vop = [float(v) for v in h.outp.voltage]
             von = [float(v) for v in h.outn.voltage]
@@ -772,9 +770,7 @@ def gen_lesson6(g):
             "reaches 0 V, its source and bulk are not on `vss`.")
         sim_hints = (voh_hint, vol_hint, size_hint)
         try:
-            tb = g['InvTb']()
-            h = SimHierarchy.from_schematic(tb.schematic)
-            Simulator(h).dc_sweep(tb.schematic.vin_src, 0, 1.2, 121)
+            h = g['InvTb']().sim_dc
             vin = [float(v) for v in h.a.voltage]
             vout = [float(v) for v in h.y.voltage]
             report.passfail(sim_labels[0], vout[0] >= 1.15, hint=voh_hint,
@@ -871,9 +867,7 @@ def gen_lesson7(g):
 
         op_label = sim_labels[0]
         try:
-            tb = g['InvAmpTb']()
-            h = SimHierarchy.from_schematic(tb.schematic)
-            Simulator(h).op()
+            h = g['InvAmpTb']().sim_op
             va = float(h.ain.voltage[0])
             vy = float(h.yout.voltage[0])
             report.passfail(op_label,
@@ -889,9 +883,7 @@ def gen_lesson7(g):
 
         gain_label = sim_labels[1]
         try:
-            tb = g['InvAmpTb']()
-            hac = SimHierarchy.from_schematic(tb.schematic)
-            Simulator(hac).ac('dec', 10, 1e3, 1e10)
+            hac = g['InvAmpTb']().sim_ac
             freq = [float(f) for f in hac.freq]
             mag = [abs(v) for v in hac.yout.voltage]
             gain = ac_magnitude_at(freq, mag, 5e6)
@@ -1126,9 +1118,7 @@ def gen_lesson9(g):
                     "cell is instantiated and wired.")
                 continue
             try:
-                tb = g['Xor2Tb'](a=a * R('1.2'), b=b * R('1.2'))
-                h = SimHierarchy.from_schematic(tb.schematic)
-                Simulator(h).op()
+                h = g['Xor2Tb'](a=a * R('1.2'), b=b * R('1.2')).sim_op
                 y = float(h.y.voltage[0])
                 passed = y > 0.9 * 1.2 if expect_high else y < 0.1 * 1.2
                 report.passfail(label, passed, hint=row_hint,
@@ -1355,9 +1345,7 @@ def gen_lesson11(g):
             "share of the supply no matter what the transistors do.")
         dc_hints = (gain_hint, swing_hint)
         try:
-            tb = g['OtaTb']()
-            h = SimHierarchy.from_schematic(tb.schematic)
-            Simulator(h).dc_sweep(tb.schematic.vinp_src, 0.55, 0.85, 241)
+            h = g['OtaTb']().sim_dc
             vin = [float(v) for v in h.inp.voltage]
             vout = [float(v) for v in h.out.voltage]
             gain = max_slope(vin, vout)
@@ -1378,9 +1366,7 @@ def gen_lesson11(g):
             "set by `mtail` and the bias voltage. If you widened `mtail` "
             "or shortened its channel, the current went up.")
         try:
-            tb = g['OtaTb']()
-            hop = SimHierarchy.from_schematic(tb.schematic)
-            Simulator(hop).op()
+            hop = g['OtaTb']().sim_op
             isup = abs(float(hop.vdd_src.p.current[0]))
             report.passfail(isup_label, isup <= 50e-6,
                 hint=isup_hint,
@@ -1397,9 +1383,7 @@ def gen_lesson11(g):
             "the output pole down. Stretching the devices until the gain "
             "is comfortable therefore costs the bandwidth spec.")
         try:
-            tb = g['OtaTb']()
-            hac = SimHierarchy.from_schematic(tb.schematic)
-            Simulator(hac).ac('dec', 20, 1e2, 1e10)
+            hac = g['OtaTb']().sim_ac
             freq = [float(f) for f in hac.freq]
             mag = [abs(v) for v in hac.out.voltage]
             bw = bandwidth_3db(freq, mag)
