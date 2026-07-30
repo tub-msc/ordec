@@ -149,40 +149,39 @@ class Rational(fractions.Fraction):
         else:
             return super().__format__(spec)
 
-    def __mul__(self, other):
-        result = super().__mul__(other)
+def _rationalize(cls, result):
+    """
+    Convert an arithmetic result back to Rational where possible. Finite
+    floats are absorbed via the decimal round-trip conversion of the
+    constructor; complex and non-finite results pass through unchanged.
+    """
+    if isinstance(result, tuple): # divmod
+        return tuple(_rationalize(cls, r) for r in result)
+    if isinstance(result, (int, fractions.Fraction)):
+        return cls(result)
+    if isinstance(result, float) and math.isfinite(result):
+        return cls(result)
+    return result
+
+def _wrap_operator(name):
+    frac_op = getattr(fractions.Fraction, name)
+    def op(self, *args):
+        result = frac_op(self, *args)
         if result is NotImplemented:
             return NotImplemented
-        return type(self)(result)
+        return _rationalize(type(self), result)
+    op.__name__ = name
+    op.__qualname__ = f"Rational.{name}"
+    return op
 
-    def __add__(self, other):
-        result = super().__add__(other)
-        if result is NotImplemented:
-            return NotImplemented
-        return type(self)(result)
-
-    def __radd__(self, other):
-        return self.__add__(other)
-
-    def __rmul__(self, other):
-        return self.__mul__(other)
-
-    def __rsub__(self, other):
-        return (-self).__add__(other)
-
-    def __neg__(self):
-        return type(self)(super().__neg__())
-
-    def __sub__(self, other):
-        return type(self)(super().__sub__(other))
-
-    def __truediv__(self, other):
-        return type(self)(super().__truediv__(other))
-
-    def __floordiv__(self, other):
-        return type(self)(super().__floordiv__(other))
-
-    def __mod__(self, other):
-        return type(self)(super().__mod__(other))
+# Fraction's arithmetic returns Fraction (or int/float); wrap all operators,
+# including the reflected variants, so results stay Rational.
+for _name in (
+    "__add__", "__radd__", "__sub__", "__rsub__",
+    "__mul__", "__rmul__", "__truediv__", "__rtruediv__",
+    "__floordiv__", "__rfloordiv__", "__mod__", "__rmod__",
+    "__divmod__", "__rdivmod__", "__pow__", "__rpow__",
+    "__neg__", "__pos__", "__abs__"):
+    setattr(Rational, _name, _wrap_operator(_name))
 
 public(R = Rational) # alias

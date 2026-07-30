@@ -55,6 +55,22 @@ def test_rational_op_types():
     assert type(R(1) / R(1)) == R
     assert type(R(1) // R(1)) == R
     assert type(R(1) % R(1)) == R
+    assert type(R(1) ** 2) == R
+    assert type(-R(1)) == R
+    assert type(+R(1)) == R
+    assert type(abs(R(-1))) == R
+    # Reflected operators: int op Rational must stay Rational, not Fraction.
+    assert type(2 + R(1)) == R
+    assert type(2 - R(1)) == R
+    assert type(2 * R(1)) == R
+    assert type(2 / R(1)) == R
+    assert type(2 // R(1)) == R
+    assert type(2 % R(1)) == R
+    assert type(2 ** R(1)) == R
+    assert divmod(7, R(3)) == (R(2), R(1))
+    assert all(type(x) == R for x in divmod(7, R(3)))
+    # Non-rational results pass through instead of raising.
+    assert 1j * R(3) == 3j
 
 
 def test_float_to_rational():
