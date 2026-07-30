@@ -425,8 +425,12 @@ class Mos(SimLeafCell):
             }))
 
 @public
-class Nmos(Mos, generic_mos.Nmos):
+class Nmos(Mos):
     model_name = "sg13_lv_nmos"
+
+    # Reuse the generic MOS symbol viewgen (not the class: inheriting from
+    # generic_mos.Nmos would also drag in its defaulted l/w parameters).
+    symbol = generic_mos.Nmos.symbol
 
     @generate
     def layout(self) -> Layout:
@@ -435,8 +439,10 @@ class Nmos(Mos, generic_mos.Nmos):
         return layoutgen_mos(self, self.l, self.w, self.ng, nwell=False)
 
 @public
-class Pmos(Mos, generic_mos.Pmos):
+class Pmos(Mos):
     model_name = "sg13_lv_pmos"
+
+    symbol = generic_mos.Pmos.symbol
 
     @generate
     def layout(self) -> Layout:

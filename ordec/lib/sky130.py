@@ -54,6 +54,11 @@ class Mos(SimLeafCell):
         diff_ext = params['diff_ext']
         nf = params['nf']
 
+        # w is mandatory but only validated after this rewrite; skip the
+        # auto-calculation so check() can report the missing parameter.
+        if w is None:
+            return params
+
         # Number of drain/source diffusion regions:
         # nf=1: S-G-D (1 drain, 1 source)
         # nf=2: S-G-D-G-S (1 drain, 2 sources)
@@ -110,12 +115,18 @@ class Mos(SimLeafCell):
             }))
 
 @public
-class Nmos(Mos, generic_mos.Nmos):
+class Nmos(Mos):
     model_name = "sky130_fd_pr__nfet_01v8"
 
+    # Reuse the generic MOS symbol viewgen (not the class: inheriting from
+    # generic_mos.Nmos would also drag in its defaulted l/w parameters).
+    symbol = generic_mos.Nmos.symbol
+
 @public
-class Pmos(Mos, generic_mos.Pmos):
+class Pmos(Mos):
     model_name = "sky130_fd_pr__pfet_01v8"
+
+    symbol = generic_mos.Pmos.symbol
 
 @public
 class Inv(Cell):
