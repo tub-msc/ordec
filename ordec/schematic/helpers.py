@@ -545,9 +545,10 @@ def _check_terminals(node: Schematic, g: ConnectivityGraph,
                 node.root % SchemErrorMarker(pos=pin_pos, error_type=SchemErrorType.UnconnectedPin, align=pin_align)
             if len(pins_stray) > 0:
                 node.root % SchemErrorMarker(pos=inst.pos, error_type=SchemErrorType.StrayPinsInPortmap)
-        if pins_expected == pins_found:
-            for conn in node.all(SchemInstanceConn.ref_idx.query(inst)):
-                add_terminal(PinOfInstance(conn))
+        for conn in node.all(SchemInstanceConn.ref_idx.query(inst)):
+            if conn.there.nid in pins_stray:
+                continue
+            add_terminal(PinOfInstance(conn))
 
     return terminal_positions
 
