@@ -65,6 +65,9 @@ def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
         height: per-plot height in pixels, or None to fill the available
             height.
         unwrap: unwrap phase jumps exceeding 180° (see phase_deg).
+
+    Returns:
+        The (magnitude, phase) pair of Plot2D cursors.
     """
     if not signals:
         raise ValueError("bode_plot() requires at least one signal")
@@ -87,7 +90,7 @@ def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
         ]
 
     grp = report % PlotGroup()
-    report.plot2d(
+    mag = report.plot2d(
         freq,
         *[(name, mag_db(vals)) for name, vals in named],
         xlabel="Frequency (Hz)",
@@ -96,7 +99,7 @@ def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
         height=height,
         group=grp,
     )
-    report.plot2d(
+    phase = report.plot2d(
         freq,
         *[(name, phase_deg(vals, unwrap)) for name, vals in named],
         xlabel="Frequency (Hz)",
@@ -105,3 +108,4 @@ def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
         height=height,
         group=grp,
     )
+    return mag, phase

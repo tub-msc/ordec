@@ -32,27 +32,29 @@ class Report(SubgraphRoot):
             if issubclass(node._cursor_type, ReportElement):
                 yield sg.cursor_at(nid)
 
+    # All element helpers return the inserted element's cursor.
+
     def markdown(self, markdown: str):
         """
         Append a Markdown element. The text is cleaned up docstring-style
         (inspect.cleandoc), so indented triple-quoted strings can be passed
         directly without their indentation turning into markdown code blocks.
         """
-        self % Markdown(markdown=inspect.cleandoc(markdown))
+        return self % Markdown(markdown=inspect.cleandoc(markdown))
 
     def pre(self, text: str):
-        self % PreformattedText(text=text)
+        return self % PreformattedText(text=text)
 
     def html(self, html: str):
-        self % Html(html=html)
+        return self % Html(html=html)
 
     def svg(self, view):
-        self % Svg.from_view(view)
+        return self % Svg.from_view(view)
 
     def plot2d(self, x, *ys, **kwargs):
         """
         Append a Plot2D element plotting each series in ys against the
-        common x-axis values x.
+        common x-axis values x. Returns the Plot2D cursor.
 
         Each series is either a (name, values) pair or a SimNet, SimPin
         or SimParam node; for nodes, the hierarchical path becomes the
@@ -73,14 +75,15 @@ class Report(SubgraphRoot):
         plot = self % Plot2D(x=x, **kwargs)
         for node in series:
             plot % node
+        return plot
 
     def passfail(self, label: str, passed: bool, instructions: str="", hint: str=None):
         # A passing check is stored as a bare pass: instructions and hint
         # only matter while the check fails.
         if passed:
-            self % PassFail(label=label, passed=True)
+            return self % PassFail(label=label, passed=True)
         else:
-            self % PassFail(label=label, passed=False,
+            return self % PassFail(label=label, passed=False,
                 instructions=instructions, hint=hint)
 
     def bode_plot(self, *signals, **kwargs):
@@ -88,9 +91,10 @@ class Report(SubgraphRoot):
         Append a Bode magnitude/phase plot pair from AC simulation results;
         see ordec.sim.helpers.bode_plot for the full signature. Imported
         lazily to keep the core schema independent of the sim subsystem.
+        Returns the (magnitude, phase) pair of Plot2D cursors.
         """
         from ...sim.helpers import bode_plot
-        bode_plot(self, *signals, **kwargs)
+        return bode_plot(self, *signals, **kwargs)
 
     def webdata_static(self):
         return "report", {

@@ -10,8 +10,10 @@ from ordec.core.wire import ExportTable
 
 def test_report_is_ordb_subgraph_root():
     report = Report()
-    report.markdown("hello")
+    md = report.markdown("hello")
 
+    # Element helpers return the inserted element's cursor.
+    assert isinstance(md, Markdown)
     assert isinstance(report, SubgraphRoot)
     assert [element.markdown for element in report.elements()] == ["hello"]
     assert [element.markdown for element in report.all(Markdown)] == ["hello"]
@@ -24,9 +26,11 @@ def test_report_is_ordb_subgraph_root():
 
 
 def test_plot2d_webdata():
+    from ordec.core.schema import Plot2D
+
     report = Report()
     report.tran = PlotGroup()
-    report.plot2d(
+    plot = report.plot2d(
         [1.0, 2.0, 3.0],
         ("v(out)", [0.1, 0.2, 0.3]),
         xlabel="Time (s)",
@@ -34,6 +38,7 @@ def test_plot2d_webdata():
         height=180,
         group=report.tran,
     )
+    assert isinstance(plot, Plot2D)
     _, data = report.webdata(ExportTable())
     plot_data = data["elements"][0]
     assert plot_data["element_type"] == "plot2d"
@@ -81,10 +86,12 @@ def test_plot2d_height_none():
 def test_passfail_webdata():
     report = Report()
     # A pass is a bare pass: instructions and hint are discarded.
-    report.passfail("Check A", True, instructions="Do the thing.",
+    pf = report.passfail("Check A", True, instructions="Do the thing.",
         hint="Try harder.")
-    report.passfail("Check B", False, instructions="Do the thing.",
+    assert pf.passed is True
+    pf = report.passfail("Check B", False, instructions="Do the thing.",
         hint="Try harder.")
+    assert pf.passed is False
     _, data = report.webdata(ExportTable())
     assert data["elements"][0] == {
         "element_type": "passfail",

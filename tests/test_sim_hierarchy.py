@@ -322,7 +322,9 @@ def test_bode_plot():
 
     h = lib_test.AcRC().sim_ac_batch
     report = Report()
-    report.bode_plot(h.inp, h.out)
+    mag_plot, phase_plot = report.bode_plot(h.inp, h.out)
+    assert [s.name for s in mag_plot.series()] == ["inp", "out"]
+    assert mag_plot.group == phase_plot.group
     from ordec.core.wire import ExportTable
     _, data = report.webdata(ExportTable())
 
