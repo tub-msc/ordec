@@ -46,6 +46,10 @@
         "extensions": [
           ".ord"
         ],
+        "icon": {
+          "light": "./icons/ord.svg",
+          "dark": "./icons/ord.svg"
+        },
         "configuration": "./language-configuration.json"
       }
     ],
