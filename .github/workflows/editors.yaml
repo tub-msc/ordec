@@ -8,11 +8,17 @@ on:
     paths:
       - 'support/editors/**'
       - 'ordec/ord/**'
+      # repository .ord files are the corpus of the grammar oracle tests
+      - 'ordec/**.ord'
+      - 'tests/**.ord'
       - '.github/workflows/editors.yaml'
   pull_request:
     paths:
       - 'support/editors/**'
       - 'ordec/ord/**'
+      # repository .ord files are the corpus of the grammar oracle tests
+      - 'ordec/**.ord'
+      - 'tests/**.ord'
       - '.github/workflows/editors.yaml'
 jobs:
   grammars:

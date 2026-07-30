@@ -244,9 +244,11 @@ tree-sitter parser, with no false positives on other lines. After
 changing ``ord.lark``, update the grammars until these tests pass
 again. They are not part of the default ``pytest`` run: run them with
 ``pytest support/editors/tests/`` (this additionally needs the
-``pyyaml`` and ``tree-sitter`` Python packages), or let the
-``editors`` CI workflow run them on changes under
-``support/editors/`` and ``ordec/ord/``.
+``pyyaml`` and ``tree-sitter`` Python packages; the tree-sitter tests
+skip unless a C compiler is available and the parser sources have been
+generated as described below), or let the ``editors`` CI workflow run
+them on changes under ``support/editors/``, ``ordec/ord/`` and the
+repository ``.ord`` files.
 
 In ``support/editors/tree-sitter-ord/``, the ``src/`` directory is
 generated from ``grammar.js``: ``npm run generate`` copies the
