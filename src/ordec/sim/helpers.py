@@ -88,8 +88,8 @@ def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
 
     grp = report % PlotGroup()
     report.plot2d(
-        x=freq,
-        series=[(name, mag_db(vals)) for name, vals in named],
+        freq,
+        *[(name, mag_db(vals)) for name, vals in named],
         xlabel="Frequency (Hz)",
         ylabel="Magnitude (dB)",
         xscale='log',
@@ -97,8 +97,8 @@ def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
         group=grp,
     )
     report.plot2d(
-        x=freq,
-        series=[(name, phase_deg(vals, unwrap)) for name, vals in named],
+        freq,
+        *[(name, phase_deg(vals, unwrap)) for name, vals in named],
         xlabel="Frequency (Hz)",
         ylabel="Phase (°)",
         xscale='log',

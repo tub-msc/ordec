@@ -41,17 +41,14 @@ cell Lfsr:
             "pulse releases, a working LFSR walks through 15 different "
             "states before it repeats.")
         PlotGroup grp
-        .plot2d(
-            x=list(sim.time),
-            series={"clk": list(sim.clk.voltage)},
+        .plot2d(sim.time,
+            sim.clk,
             xlabel="Time (s)",
             ylabel="Voltage (V)",
             height=120,
             group=grp)
-        .plot2d(
-            x=list(sim.time),
-            series={"q0": list(sim.q0.voltage), "q1": list(sim.q1.voltage),
-                "q2": list(sim.q2.voltage), "q3": list(sim.q3.voltage)},
+        .plot2d(sim.time,
+            sim.q0, sim.q1, sim.q2, sim.q3,
             xlabel="Time (s)",
             ylabel="Voltage (V)",
             height=260,

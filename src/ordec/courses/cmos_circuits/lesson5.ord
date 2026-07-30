@@ -78,9 +78,8 @@ cell RingOscTb:
     viewgen report_tran(self) -> Report:
         sim = self.sim_tran
         .markdown("Ring oscillator output:")
-        .plot2d(
-            x=list(sim.time),
-            series={"outp": list(sim.outp.voltage), "outn": list(sim.outn.voltage)},
+        .plot2d(sim.time,
+            sim.outp, sim.outn,
             xlabel="Time (s)",
             ylabel="Voltage (V)",
             height=300)

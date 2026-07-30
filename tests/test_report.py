@@ -27,8 +27,8 @@ def test_plot2d_webdata():
     report = Report()
     report.tran = PlotGroup()
     report.plot2d(
-        x=[1.0, 2.0, 3.0],
-        series={"v(out)": [0.1, 0.2, 0.3]},
+        [1.0, 2.0, 3.0],
+        ("v(out)", [0.1, 0.2, 0.3]),
         xlabel="Time (s)",
         ylabel="Voltage (V)",
         height=180,
@@ -47,16 +47,31 @@ def test_plot2d_rejects_unsorted_x():
     report = Report()
     with pytest.raises(ValueError):
         report.plot2d(
-            x=[1.0, 0.5, 2.0],
-            series={"v(out)": [0.1, 0.2, 0.3]},
+            [1.0, 0.5, 2.0],
+            ("v(out)", [0.1, 0.2, 0.3]),
         )
+
+
+def test_plot2d_bad_series():
+    report = Report()
+    # A bare values iterable has no name and is rejected; a rejected
+    # series must not leave a partial Plot2D in the report.
+    with pytest.raises(TypeError, match="pair or a"):
+        report.plot2d([1.0, 2.0], [0.1, 0.2, 0.3])
+    with pytest.raises(TypeError, match="real numbers"):
+        report.plot2d([1.0, 2.0], ("v(out)", [1 + 2j, 3 + 4j]))
+    # A scalar instead of a sequence keeps its original error message.
+    with pytest.raises(TypeError, match="not iterable"):
+        report.plot2d([1.0, 2.0], ("v(out)", 5.0))
+    _, data = report.webdata(ExportTable())
+    assert data["elements"] == []
 
 
 def test_plot2d_height_none():
     report = Report()
     report.plot2d(
-        x=[1.0, 2.0, 3.0],
-        series={"v(out)": [0.1, 0.2, 0.3]},
+        [1.0, 2.0, 3.0],
+        ("v(out)", [0.1, 0.2, 0.3]),
         height=None,
     )
     _, data = report.webdata(ExportTable())

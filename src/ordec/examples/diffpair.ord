@@ -55,9 +55,8 @@ cell DiffPairTb:
     viewgen report_dc(self) -> Report:
         sim = self.sim_dc
         .markdown("# Differential pair transfer curve\n")
-        .plot2d(
-            x=list(sim.inp.voltage),
-            series={"outp": list(sim.outp.voltage), "outn": list(sim.outn.voltage)},
+        .plot2d(sim.inp.voltage,
+            sim.outp, sim.outn,
             xlabel="Vinp (V)",
             ylabel="Vout (V)",
             height=300)

@@ -851,10 +851,9 @@ def gen_lesson9(g):
             viewgen report(self) -> Report:
                 sim = self.sim_tran
                 .markdown("Step response of the two RC stages.")
-                .plot2d(x=sim.time, series={'vin': sim.vin.voltage},
+                .plot2d(sim.time, sim.vin,
                     xlabel="Time (s)", ylabel="Voltage (V)", height=200)
-                .plot2d(x=sim.time,
-                    series={'mid': sim.mid.voltage, 'vout': sim.vout.voltage},
+                .plot2d(sim.time, sim.mid, sim.vout,
                     xlabel="Time (s)", ylabel="Voltage (V)", height=200)
             ```
 
@@ -913,14 +912,14 @@ def gen_lesson9(g):
             found = (ps is not None and len(ps) >= 1
                 and [se.name for se in ps[0].series()] == ['vin'])
             report.passfail(label, found,
-                hint="The first `.plot2d(...)` plots x=sim.time against "
-                "the single series {'vin': sim.vin.voltage}.",
+                hint="The first `.plot2d(...)` plots sim.time against "
+                "the single series sim.vin.",
                 instructions="The report's first plot must show exactly "
                 "one series named vin.")
         except Exception:
             report.passfail(label, False, instructions=exception_text(),
-                hint="The first `.plot2d(...)` plots x=sim.time against "
-                "the single series {'vin': sim.vin.voltage}.")
+                hint="The first `.plot2d(...)` plots sim.time against "
+                "the single series sim.vin.")
 
         label = "Second plot: both stage outputs"
         try:
@@ -930,13 +929,13 @@ def gen_lesson9(g):
                     == ['mid', 'vout'])
             report.passfail(label, found,
                 hint="The second `.plot2d(...)` plots the two series "
-                "{'mid': sim.mid.voltage, 'vout': sim.vout.voltage}.",
+                "sim.mid and sim.vout.",
                 instructions="The report's second plot must show exactly "
                 "the two series mid and vout.")
         except Exception:
             report.passfail(label, False, instructions=exception_text(),
                 hint="The second `.plot2d(...)` plots the two series "
-                "{'mid': sim.mid.voltage, 'vout': sim.vout.voltage}.")
+                "sim.mid and sim.vout.")
 
         label = "Plots linked in a group"
         try:

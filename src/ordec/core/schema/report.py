@@ -8,6 +8,7 @@ from public import public
 
 from ..ordb import *
 from ..context import ReportViewBuilder
+from .simhier import SimNet, SimPin, SimParam
 
 WIRE_DOMAIN = 8 << 16
 
@@ -48,12 +49,30 @@ class Report(SubgraphRoot):
     def svg(self, view):
         self % Svg.from_view(view)
 
-    def plot2d(self, series, **kwargs):
-        plot = self % Plot2D(**kwargs)
-        if isinstance(series, dict):
-            series = series.items()
-        for name, values in series:
-            plot % Plot2DSeries(name=str(name), values=values)
+    def plot2d(self, x, *ys, **kwargs):
+        """
+        Append a Plot2D element plotting each series in ys against the
+        common x-axis values x.
+
+        Each series is either a (name, values) pair or a SimNet, SimPin
+        or SimParam node; for nodes, the hierarchical path becomes the
+        series name and the recorded column (voltage, current or value)
+        provides the values.
+
+        When ylabel is not given, it defaults to "Voltage (V)" if all
+        series are SimNets, or "Current (A)" if all are SimPins.
+        """
+        # Resolve all series before touching the subgraph, so that a bad
+        # series argument does not leave a partial Plot2D in the report.
+        series = [plot2d_series(y) for y in ys]
+        if 'ylabel' not in kwargs and ys:
+            if all(isinstance(y, SimNet) for y in ys):
+                kwargs['ylabel'] = "Voltage (V)"
+            elif all(isinstance(y, SimPin) for y in ys):
+                kwargs['ylabel'] = "Current (A)"
+        plot = self % Plot2D(x=x, **kwargs)
+        for node in series:
+            plot % node
 
     def passfail(self, label: str, passed: bool, instructions: str="", hint: str=None):
         # A passing check is stored as a bare pass: instructions and hint
@@ -298,8 +317,53 @@ class Plot2D(ReportElement):
             "group": self.group.nid if self.group is not None else None,
         }
 
+def plot2d_series(y):
+    """
+    Resolve one Report.plot2d series argument to an uninserted
+    Plot2DSeries node.
+
+    Accepts a (name, values) pair or a SimNet / SimPin / SimParam node.
+    Node names follow the field translation in
+    SimHierarchy._build_field_translation_map.
+    """
+    if isinstance(y, SimNet):
+        name, values = y.full_path_str(), y.voltage
+    elif isinstance(y, SimPin):
+        name = Node.format_path_list(
+            y.instance.full_path_list() + y.eref.full_path_list())
+        values = y.current
+    elif isinstance(y, SimParam):
+        name, values = f"{y.instance.full_path_str()}.{y.name}", y.value
+    elif isinstance(y, (tuple, list)) and len(y) == 2 and isinstance(y[0], str):
+        name, values = y
+    else:
+        raise TypeError(
+            f"plot2d series must be a (name, values) pair or a "
+            f"SimNet/SimPin/SimParam node, got {type(y).__name__}")
+    if values is None:
+        raise ValueError(f"no simulation data recorded for {name}")
+    # Constructing the node coerces the values (via the values attr
+    # factory) exactly once and raises on bad values before
+    # Report.plot2d mutates the subgraph.
+    return Plot2DSeries(name=name, values=values)
+
 def coerce_plot_values(values):
-    return tuple(float(v) for v in values)
+    try:
+        return tuple(float(v) for v in values)
+    except TypeError:
+        # float() raises TypeError for complex values; those get a hint
+        # towards the proper AC workflows. Any other TypeError (e.g. a
+        # scalar instead of a sequence) keeps its original message.
+        try:
+            has_complex = any(isinstance(v, complex) for v in values)
+        except TypeError:
+            has_complex = False
+        if has_complex:
+            raise TypeError(
+                "Plot2D series values must be real numbers; convert complex "
+                "AC data via abs()/cmath.phase() or use Report.bode_plot()"
+            ) from None
+        raise
 
 @public
 class Plot2DSeries(Node):

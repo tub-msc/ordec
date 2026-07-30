@@ -363,6 +363,24 @@ def test_bode_plot_ref():
     assert mag["series"][0]["values"] == pytest.approx(expected)
 
 
+def test_plot2d_simnet_series():
+    """Report.plot2d with bare SimNet nodes: names derived from the node
+    paths, values from the voltage column, ylabel inferred."""
+    from ordec.core.schema import Report
+
+    h = lib_test.VpwlTb().sim_tran_batch
+    report = Report()
+    report.plot2d(h.time, h.out, xlabel="Time (s)")
+    from ordec.core.wire import ExportTable
+    _, data = report.webdata(ExportTable())
+    plot = data["elements"][0]
+    assert plot["element_type"] == "plot2d"
+    assert plot["x"] == pytest.approx(list(h.time))
+    assert [s["name"] for s in plot["series"]] == ["out"]
+    assert plot["series"][0]["values"] == pytest.approx(list(h.out.voltage))
+    assert plot["ylabel"] == "Voltage (V)"
+
+
 def test_bode_plot_errors():
     from ordec.core.schema import Report
     from ordec.sim import bode_plot

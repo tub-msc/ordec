@@ -17,32 +17,6 @@ from ..core.schema import PlotGroup, Report
 from .helpers import bode_plot
 
 
-def get_voltages(sh: SimHierarchy, top_level_only=False):
-    """Extract voltage data from SimNet nodes."""
-    voltages = {}
-    for sn in sh.all(SimNet):
-        if top_level_only and sn.parent_inst is not None:
-            continue
-        v = sn.voltage
-        if v is not None:
-            voltages[sn.full_path_str()] = v
-    return voltages
-
-
-def get_currents(sh: SimHierarchy, top_level_only=False):
-    """Extract current data from SimPin nodes."""
-    currents = {}
-    for sp in sh.all(SimPin):
-        if top_level_only and sp.instance.parent_inst is not None:
-            continue
-        c = sp.current
-        if c is not None:
-            inst_path = sp.instance.full_path_str()
-            pin_name = sp.eref.full_path_str()
-            currents[f"{inst_path}.{pin_name}"] = c
-    return currents
-
-
 def _fmt_eng(val, unit):
     """Format a float in engineering notation with a unit suffix."""
     x = str(R(f"{val:.03e}"))
@@ -65,29 +39,17 @@ def _fmt_eng(val, unit):
 
 def _plot_signals(sh: SimHierarchy, x, xlabel):
     """Build a Report plotting net voltages and pin currents over a shared x-axis."""
-    voltages = get_voltages(sh)
-    currents = get_currents(sh)
+    # plot2d derives series names from the nodes and infers the
+    # Voltage (V) / Current (A) ylabels from the node types.
+    nets = [sn for sn in sh.all(SimNet) if sn.voltage is not None]
+    pins = [sp for sp in sh.all(SimPin) if sp.current is not None]
     report = Report(fill_height=True)
-    if voltages or currents:
+    if nets or pins:
         report.sim = PlotGroup()
-    if voltages:
-        report.plot2d(
-            x=x,
-            series=[(k, tuple(v)) for k, v in voltages.items()],
-            xlabel=xlabel,
-            ylabel='Voltage (V)',
-            height=None,
-            group=report.sim,
-        )
-    if currents:
-        report.plot2d(
-            x=x,
-            series=[(k, tuple(v)) for k, v in currents.items()],
-            xlabel=xlabel,
-            ylabel='Current (A)',
-            height=None,
-            group=report.sim,
-        )
+    if nets:
+        report.plot2d(x, *nets, xlabel=xlabel, height=None, group=report.sim)
+    if pins:
+        report.plot2d(x, *pins, xlabel=xlabel, height=None, group=report.sim)
     return report.webdata_static()
 
 
