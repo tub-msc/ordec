@@ -4,12 +4,16 @@
 """
 Pytest fixture for web UI testing with Selenium.
 
-The web fixture rebuilds web/dist automatically (via build_web_dist) when it is
-missing or older than the frontend sources, so a manual 'npm run build' is no
-longer required before running web tests.
+Frontend assets are resolved like in server.py (see frontend_tar): a regular
+install serves the packaged webdist.tar, an editable install serves web/dist
+from the checkout, rebuilding it automatically (via build_web_dist) when it is
+missing or older than the frontend sources, so a manual 'npm run build' is not
+required before running web tests.
 """
 
 import os
+import importlib.resources
+import tarfile
 import threading
 import queue
 import shutil
@@ -83,6 +87,20 @@ def build_web_dist():
     subprocess.check_call(['npm', '--prefix', str(web_path), 'run', 'build'])
 
 
+def frontend_tar():
+    """
+    Return a tarfile with the frontend assets, mirroring server.py's
+    resolution: a regular install serves the packaged webdist.tar (no npm
+    needed); an editable install has no webdist.tar and serves web/dist from
+    the checkout, rebuilding it via npm when it is stale.
+    """
+    webdist_tar = importlib.resources.files('ordec') / 'webdist.tar'
+    if webdist_tar.is_file():
+        return tarfile.open(webdist_tar)
+    build_web_dist()
+    return server.anonymous_tar(web_path / 'dist')
+
+
 @dataclass
 class WebInfo:
     url: str
@@ -142,8 +160,6 @@ def web():
     if not _selenium_available:
         pytest.skip("Selenium not installed")
 
-    build_web_dist()
-
     webdriver_options = webdriver.ChromeOptions()
     webdriver_options.add_argument("--no-sandbox")
     webdriver_options.add_argument("--headless=new")
@@ -151,9 +167,7 @@ def web():
 
     key = server.ServerKey()
     port = 8102
-    web_dist_path = web_path / 'dist'
-    tar = server.anonymous_tar(web_dist_path)
-    static_handler = server.StaticHandler(tar)
+    static_handler = server.StaticHandler(frontend_tar())
     startup_queue = queue.Queue(maxsize=1)
 
     t = threading.Thread(target=server.server_thread,

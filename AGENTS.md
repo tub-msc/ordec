@@ -101,8 +101,10 @@ pytest -m web           # Web interface tests
 # Use this when changes don't affect web interface or ngspice integration
 pytest -m "not web"
 
-# Web tests rebuild web/dist automatically when it is missing or older than
-# the frontend sources (web/src/), so no manual build step is needed. This
+# Web tests serve the frontend like server.py does: in a regular install,
+# the packaged webdist.tar is used (no npm needed); in an editable install,
+# web/dist is rebuilt automatically when it is missing or older than the
+# frontend sources (web/src/), so no manual build step is needed. The rebuild
 # requires npm on PATH; if a rebuild is needed and npm is missing, the web
 # tests fail rather than silently skip.
 pytest -m web
