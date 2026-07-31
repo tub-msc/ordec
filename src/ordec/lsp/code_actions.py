@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # ordec imports
-from ..analysis.model import AnalysisPosition
+from .analysis.model import AnalysisPosition
 
 
 def code_actions(session, uri: str, diagnostics):

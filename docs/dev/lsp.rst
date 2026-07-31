@@ -100,7 +100,7 @@ server uses a method dispatch table: each supported LSP method is handled by a
 small ``handle_*`` method, while shared helpers convert between LSP's zero-based
 positions and the analysis layer's one-based positions.
 
-Most language intelligence lives in ``ordec.analysis``:
+Most language intelligence lives in ``ordec.lsp.analysis``:
 
 * ``model.py`` defines shared positions, ranges, diagnostics, symbols, import
   records, and ``DocumentAnalysis``.

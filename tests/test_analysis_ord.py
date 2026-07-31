@@ -3,8 +3,8 @@
 
 from pathlib import Path
 
-from ordec.analysis import AnalysisPosition, AnalysisSession, analyze_ord
-from ordec.analysis.python_index import PythonModuleIndex
+from ordec.lsp.analysis import AnalysisPosition, AnalysisSession, analyze_ord
+from ordec.lsp.analysis.python_index import PythonModuleIndex
 
 
 def position_at(source, needle, occurrence=1):

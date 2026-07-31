@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from lark.exceptions import LarkError
 
 # ordec imports
-from ..ord.parser import ord_to_py
+from ...ord.parser import ord_to_py
 from .model import AnalysisPosition
 from .model import AnalysisRange
 

@@ -8,7 +8,7 @@ import sys
 from urllib.parse import unquote, urlparse
 
 # ordec imports
-from ..analysis import AnalysisPosition, AnalysisSession
+from .analysis import AnalysisPosition, AnalysisSession
 from .code_actions import code_actions
 
 

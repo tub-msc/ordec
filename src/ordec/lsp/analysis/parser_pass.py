@@ -18,8 +18,8 @@ from .model import (
     leading_identifier,
     trailing_identifier,
 )
-from ..ord.parser import format_error
-from ..ord.parser import parser
+from ...ord.parser import format_error
+from ...ord.parser import parser
 
 
 def tree_range(node):

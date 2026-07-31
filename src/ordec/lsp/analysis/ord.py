@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-# Compatibility facade for callers that import from ordec.analysis.ord.
+# Compatibility facade for callers that import from ordec.lsp.analysis.ord.
 from .model import AnalysisDiagnostic
 from .model import AnalysisImport
 from .model import AnalysisPosition
