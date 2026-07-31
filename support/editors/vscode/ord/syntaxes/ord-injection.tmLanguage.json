@@ -30,6 +30,12 @@
       "include": "#parameter-access"
     },
     {
+      "include": "#relative-import"
+    },
+    {
+      "include": "#local-attribute"
+    },
+    {
       "include": "#connect-operator"
     },
     {
@@ -38,8 +44,8 @@
   ],
   "repository": {
     "cell-declaration": {
-      "comment": "cell Name:  (cells take no superclass list)",
-      "begin": "\\s*(cell)\\s+(?=[_[:alpha:]]\\w*\\s*:)",
+      "comment": "cell Name:  (cells take no superclass list). The lookbehind keeps identifiers merely ending in 'cell' from matching.",
+      "begin": "(?<![\\w.$])(cell)\\b\\s+(?=[_[:alpha:]]\\w*\\s*:)",
       "beginCaptures": {
         "1": {
           "name": "storage.type.class.python"
@@ -61,7 +67,7 @@
     },
     "viewgen-declaration": {
       "comment": "viewgen name -> ReturnExpr:  (viewgens take no parameter list and the return target may be any expression)",
-      "begin": "\\s*(viewgen)\\s+([_[:alpha:]]\\w*)\\s*(?=->|:|$)",
+      "begin": "(?<![\\w.$])(viewgen)\\b\\s+([_[:alpha:]]\\w*)\\s*(?=->|:|$)",
       "beginCaptures": {
         "1": {
           "name": "storage.type.function.ord"
@@ -79,12 +85,19 @@
       "name": "meta.function.ord",
       "patterns": [
         {
-          "match": "(->)\\s*([_[:alpha:]]\\w*)",
+          "match": "(->)\\s*((?:[_[:alpha:]]\\w*\\s*\\.\\s*)*)([_[:alpha:]]\\w*)",
           "captures": {
             "1": {
               "name": "punctuation.separator.return-type.python"
             },
             "2": {
+              "patterns": [
+                {
+                  "include": "source.python"
+                }
+              ]
+            },
+            "3": {
               "name": "entity.name.type.class.python"
             }
           }
@@ -108,14 +121,14 @@
       ]
     },
     "node-statement-block": {
-      "comment": "Block node statements: Nmos m1: / Nmos(w=4u, l=400n) m1: / lib.Nmos m1: / anonymous LayoutRect r:",
-      "begin": "^([ \\t]*)(?:(anonymous)[ \\t]+)?(?:(inout|input|output|port)|(?!(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|cell|viewgen|path|net|match|case|type|anonymous)\\b)([_[:alpha:]]\\w*))((?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\])*)[ \\t]*(\\((?:[^()\\n]|\\([^()\\n]*\\))*\\))?(\\s+)([_[:alpha:]]\\w*)((?:(?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\]))*)(\\s*:)(?=\\s*(?:#.*)?$)",
+      "comment": "Block node statements: Nmos m1: / Nmos(w=4u, l=400n) m1: / lib.Nmos m1: / anonymous LayoutRect r:. \\G anchors the statement start inside node-statement bodies, where the while rule has already consumed the line's indent and ^ can never match.",
+      "begin": "(?:^|\\G)([ \\t]*)(?:(anonymous)[ \\t]+)?(?:(inout|input|output|port)|(?!(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|cell|viewgen|path|net|match|case|type|anonymous|True|False|None)\\b)([_[:alpha:]]\\w*))((?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[(?:[^\\[\\]\\n]|\\[[^\\[\\]\\n]*\\])*\\])*)[ \\t]*(\\((?:[^()\\n]|\\((?:[^()\\n]|\\([^()\\n]*\\))*\\))*\\))?(\\s+)([_[:alpha:]]\\w*)((?:(?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[(?:[^\\[\\]\\n]|\\[[^\\[\\]\\n]*\\])*\\]))*)(\\s*:)(?=\\s*(?:#.*)?$)",
       "beginCaptures": {
         "2": {
           "name": "storage.modifier.ord"
         },
         "3": {
-          "name": "support.type.direction.ord"
+          "name": "storage.type.ord"
         },
         "4": {
           "name": "entity.name.type.class.python"
@@ -139,9 +152,10 @@
           ]
         },
         "6": {
+          "name": "meta.function-call.arguments.python",
           "patterns": [
             {
-              "include": "source.python"
+              "include": "source.python#function-arguments"
             }
           ]
         },
@@ -149,7 +163,19 @@
           "name": "variable.other.context-target.ord"
         },
         "9": {
-          "name": "meta.context-target.ord"
+          "patterns": [
+            {
+              "match": "\\.",
+              "name": "punctuation.accessor.dot.ord"
+            },
+            {
+              "match": "[_[:alpha:]]\\w*",
+              "name": "variable.other.member.ord"
+            },
+            {
+              "include": "source.python"
+            }
+          ]
         },
         "10": {
           "name": "punctuation.section.block.begin.ord"
@@ -165,13 +191,13 @@
     },
     "node-statement-inline": {
       "comment": "Inline node statements: Nmos m1: body",
-      "begin": "^([ \\t]*)(?:(anonymous)[ \\t]+)?(?:(inout|input|output|port)|(?!(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|cell|viewgen|path|net|match|case|type|anonymous)\\b)([_[:alpha:]]\\w*))((?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\])*)[ \\t]*(\\((?:[^()\\n]|\\([^()\\n]*\\))*\\))?(\\s+)([_[:alpha:]]\\w*)((?:(?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\]))*)(\\s*:)(?=\\s*(?!#|$))",
+      "begin": "(?:^|\\G)([ \\t]*)(?:(anonymous)[ \\t]+)?(?:(inout|input|output|port)|(?!(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|cell|viewgen|path|net|match|case|type|anonymous|True|False|None)\\b)([_[:alpha:]]\\w*))((?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[(?:[^\\[\\]\\n]|\\[[^\\[\\]\\n]*\\])*\\])*)[ \\t]*(\\((?:[^()\\n]|\\((?:[^()\\n]|\\([^()\\n]*\\))*\\))*\\))?(\\s+)([_[:alpha:]]\\w*)((?:(?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[(?:[^\\[\\]\\n]|\\[[^\\[\\]\\n]*\\])*\\]))*)(\\s*:)(?=\\s*(?!#|$))",
       "beginCaptures": {
         "2": {
           "name": "storage.modifier.ord"
         },
         "3": {
-          "name": "support.type.direction.ord"
+          "name": "storage.type.ord"
         },
         "4": {
           "name": "entity.name.type.class.python"
@@ -195,9 +221,10 @@
           ]
         },
         "6": {
+          "name": "meta.function-call.arguments.python",
           "patterns": [
             {
-              "include": "source.python"
+              "include": "source.python#function-arguments"
             }
           ]
         },
@@ -205,7 +232,19 @@
           "name": "variable.other.context-target.ord"
         },
         "9": {
-          "name": "meta.context-target.ord"
+          "patterns": [
+            {
+              "match": "\\.",
+              "name": "punctuation.accessor.dot.ord"
+            },
+            {
+              "match": "[_[:alpha:]]\\w*",
+              "name": "variable.other.member.ord"
+            },
+            {
+              "include": "source.python"
+            }
+          ]
         },
         "10": {
           "name": "punctuation.section.block.begin.ord"
@@ -220,14 +259,14 @@
       ]
     },
     "path-net": {
-      "comment": "path/net declarations: path ctr, net vdd, vss — targets may be dotted or subscripted: net ring.vx, path ctr[0]",
-      "begin": "\\b(path|net)(?=\\s+[_[:alpha:]]\\w*)",
+      "comment": "path/net declarations with plain, dotted or subscripted targets (net vdd, net ring.vx, path ctr[0]). Anchored to statement start (line, ';', an inline-suite ':' or \\G inside node-statement bodies) so ordinary Python like 'for net in nets:' never matches. The end stops before structural characters so no Python rule is left open.",
+      "begin": "(?:^|\\G|(?<=[;:]))[ \\t]*(path|net)\\b(?=[ \\t]+(?!(?:in|is|not|and|or|if|else|for|as|from|import|await)\\b)[_[:alpha:]])",
       "beginCaptures": {
         "1": {
           "name": "storage.type.ord"
         }
       },
-      "end": "$",
+      "end": "(?=[;:)\\]}=#]|$)",
       "name": "meta.path-net.ord",
       "patterns": [
         {
@@ -266,7 +305,7 @@
     },
     "number-si-integer": {
       "comment": "Integer with SI suffix: 100n, 20u, 1M",
-      "match": "(?<![.\\w])(?:[1-9](?:_?[0-9])*|0+)([afpnumkMGT])\\b",
+      "match": "(?<![.\\w])(?:[1-9](?:_?[0-9])*|0(?:_?0)*)([afpnumkMGT])\\b",
       "captures": {
         "1": {
           "name": "keyword.other.unit.suffix.ord"
@@ -288,6 +327,45 @@
           "name": "punctuation.definition.variable.ord"
         }
       }
+    },
+    "relative-import": {
+      "comment": "Consumes the dots of relative imports before #local-attribute can mistake them for local attribute access",
+      "match": "(?:^|\\G)\\s*(from)\\s+(\\.+)[\\w.]*",
+      "captures": {
+        "1": {
+          "name": "keyword.control.import.python"
+        },
+        "2": {
+          "name": "punctuation.separator.period.python"
+        }
+      }
+    },
+    "local-attribute": {
+      "comment": "Leading-dot access to the current node: .pos, .align, .d and method calls like .plot2d(...) (dotted_atom in ord.lark). The lookbehind keeps ordinary attribute access like m1.pos untouched.",
+      "patterns": [
+        {
+          "match": "(?<![\\w)\\]}'\"])(\\.)([_[:alpha:]]\\w*)(?=[ \\t]*\\()",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.dot.ord"
+            },
+            "2": {
+              "name": "entity.name.function.python"
+            }
+          }
+        },
+        {
+          "match": "(?<![\\w)\\]}'\"])(\\.)([_[:alpha:]]\\w*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.dot.ord"
+            },
+            "2": {
+              "name": "variable.other.member.ord"
+            }
+          }
+        }
+      ]
     },
     "connect-operator": {
       "comment": "Connection operator: --  (keyword.control, not keyword.operator: default themes leave plain operators uncolored)",
@@ -326,6 +404,12 @@
           "include": "#parameter-access"
         },
         {
+          "include": "#relative-import"
+        },
+        {
+          "include": "#local-attribute"
+        },
+        {
           "include": "#connect-operator"
         },
         {
@@ -338,13 +422,13 @@
     },
     "node-statement-bare": {
       "comment": "Bodyless node statements: Net vdd / Nmos m1, m2 / lib.Net vdd",
-      "match": "^([ \\t]*)(?:(anonymous)[ \\t]+)?(?:(inout|input|output|port)|(?!(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|cell|viewgen|path|net|match|case|type|anonymous)\\b)([_[:alpha:]]\\w*))((?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\])*)[ \\t]*(\\((?:[^()\\n]|\\([^()\\n]*\\))*\\))?[ \\t]+([_[:alpha:]]\\w*(?:(?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[[^\\]\\n]*\\])|[ \\t]*,[ \\t]*[_[:alpha:]]\\w*)*)[ \\t]*(?=#|$)",
+      "match": "(?:^|\\G)([ \\t]*)(?:(anonymous)[ \\t]+)?(?:(inout|input|output|port)|(?!(?:and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|cell|viewgen|path|net|match|case|type|anonymous|True|False|None)\\b)([_[:alpha:]]\\w*))((?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[(?:[^\\[\\]\\n]|\\[[^\\[\\]\\n]*\\])*\\])*)[ \\t]*(\\((?:[^()\\n]|\\((?:[^()\\n]|\\([^()\\n]*\\))*\\))*\\))?[ \\t]+([_[:alpha:]]\\w*(?:(?:\\s*\\.\\s*[_[:alpha:]]\\w*|\\s*\\[(?:[^\\[\\]\\n]|\\[[^\\[\\]\\n]*\\])*\\])|[ \\t]*,[ \\t]*[_[:alpha:]]\\w*)*)[ \\t]*(?=[;#]|$)",
       "captures": {
         "2": {
           "name": "storage.modifier.ord"
         },
         "3": {
-          "name": "support.type.direction.ord"
+          "name": "storage.type.ord"
         },
         "4": {
           "name": "entity.name.type.class.python"
@@ -368,9 +452,10 @@
           ]
         },
         "6": {
+          "name": "meta.function-call.arguments.python",
           "patterns": [
             {
-              "include": "source.python"
+              "include": "source.python#function-arguments"
             }
           ]
         },
