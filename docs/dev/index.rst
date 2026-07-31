@@ -11,7 +11,6 @@ Developer's Corner
    webui
    view_generation
    ipython_integration
-   lsp
    ngspice_pipe_mode
    ordb_benchmarks
    ordb_benchmark_workloads
