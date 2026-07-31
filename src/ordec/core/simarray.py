@@ -4,8 +4,10 @@
 import struct
 from numbers import Integral
 from typing import NamedTuple
+from public import public
 
 
+@public
 class SimArrayField(NamedTuple):
     fid: str #: Field ID, unique within a SimArray.
     dtype: str  # 'f8' (float64) or 'c16' (complex128)
@@ -19,6 +21,7 @@ class SimArrayField(NamedTuple):
             raise ValueError(f"Unknown field dtype: {self.dtype!r}")
 
 
+@public
 class SimColumn:
     """Lazy strided column view into SimArray packed binary data.
 
@@ -83,6 +86,7 @@ class SimColumn:
         return '[' + ', '.join(fmt(self._unpack(i)) for i in range(self._length)) + ']'
 
 
+@public
 class SimArray(tuple):
     """Immutable, hashable structured array for simulation data.
 
