@@ -11,6 +11,7 @@ on:
       # repository .ord files are the corpus of the grammar oracle tests
       - 'ordec/**.ord'
       - 'tests/**.ord'
+      - 'examples/**.ord'
       - '.github/workflows/editors.yaml'
   pull_request:
     paths:
@@ -19,6 +20,7 @@ on:
       # repository .ord files are the corpus of the grammar oracle tests
       - 'ordec/**.ord'
       - 'tests/**.ord'
+      - 'examples/**.ord'
       - '.github/workflows/editors.yaml'
 jobs:
   grammars:

@@ -35,10 +35,14 @@ KEYWORD_RULES = {
     'net_stmt': 'path_net',
 }
 
-# Soft keywords as plain names, must not match declarations or node statements
+# Soft keywords as plain names that must not match declarations or node
+# statements
 SOFT_KEYWORD_NEGATIVES = [
     'cell = 5', 'viewgen = f()', 'net = row[i]', 'path = "/tmp"',
     'match point:', 'case Point(x=0):', 'return x',
+    'for net in nets: pass', 'for i, net in enumerate(x): pass',
+    'if path is None: pass', 'with path as p: pass',
+    'x = [net for net in nets]',
 ]
 
 # Full atom_expr kinds and context_target forms from ord.lark (dotted,
@@ -78,7 +82,8 @@ def parsed_ord_files():
     """
     interesting = NODE_RULES + NOBODY_RULES + tuple(KEYWORD_RULES)
     files = sorted(set((REPO_ROOT / 'ordec').rglob('*.ord'))
-                   | set((REPO_ROOT / 'tests').rglob('*.ord')))
+                   | set((REPO_ROOT / 'tests').rglob('*.ord'))
+                   | set((REPO_ROOT / 'examples').rglob('*.ord')))
     assert files, 'no .ord files found in the repository'
     parsed = []
     for path in files:
@@ -127,8 +132,12 @@ def test_vscode_injection_grammar(parsed_ord_files):
     """Line-level oracle for the regexes of the VS Code injection grammar."""
 
     def textmate_regex(pattern):
-        # translate the Oniguruma POSIX classes of the grammar to Python re
-        return re.compile(pattern.replace('[_[:alpha:]]', '[A-Za-z_]'))
+        # translate the Oniguruma POSIX classes of the grammar to Python re,
+        # and map \G to line start: in the real engine it anchors the scan
+        # position after a block's consumed indent, which this line-level
+        # oracle models as the start of the line
+        return re.compile(pattern.replace('[_[:alpha:]]', '[A-Za-z_]')
+                          .replace('\\G', '^'))
 
     grammar_file = EDITORS / 'vscode/ord/syntaxes/ord-injection.tmLanguage.json'
     repo = json.loads(grammar_file.read_text())['repository']
@@ -148,12 +157,21 @@ def test_vscode_injection_grammar(parsed_ord_files):
             return bare.match(line)
         return keyword[KEYWORD_RULES[rule]].match(line.lstrip())
 
-    verify(parsed_ord_files, matches, [block.match, inline.match, bare.match])
+    verify(parsed_ord_files, matches,
+           [block.match, inline.match, bare.match,
+            lambda line: keyword['path_net'].match(line)])
     for negative in SOFT_KEYWORD_NEGATIVES:
         for matcher in (block, inline, bare, *keyword.values()):
-            # both indented and column-0, the node regexes anchor on leading
-            # whitespace
+            # both indented and column-0 (the node regexes anchor on
+            # leading whitespace)
             assert not matcher.match('    ' + negative) and not matcher.match(negative)
+    # path/net must not fire mid-line either: the engine tries the begin
+    # regex at every position, and a rule that swallows a Python 'in' or
+    # ':' leaves an unterminated Python rule open for the rest of the file
+    for line in ('for net in nets: pass', 'lst = [net for net in nets]',
+                 'if path is None: pass', 'while net not in seen: pass',
+                 'd = {net: 1}', 'v = net if c else d'):
+        assert not keyword['path_net'].search(line), line
     for line, rule in ATOM_EXPR_POSITIVES:
         assert matches(rule, line), f'atom_expr positive not matched: {line!r}'
 
@@ -219,12 +237,63 @@ def test_sublime_syntax(parsed_ord_files):
         return keyword[KEYWORD_RULES[rule]].match(line)
 
     verify(parsed_ord_files, matches,
-           [lambda line: node_statement.match(line.lstrip())])
+           [lambda line: node_statement.match(line.lstrip()),
+            lambda line: keyword['path_net'].match(line.lstrip())])
     for negative in SOFT_KEYWORD_NEGATIVES:
         for matcher in (node_statement, anonymous, *keyword.values()):
             assert not matcher.match(negative)
+    # path/net must not fire mid-line either: the base syntax scans plain
+    # assignment right hand sides and assert/return expressions in the
+    # statements context, where an unanchored rule would highlight
+    # `assert net in nets` as a net statement
+    for line in ('assert net in nets', 'x = net in nets',
+                 'return net if ready else backup', 'x = path or default',
+                 'x = net is None', 'v = net if c else d'):
+        assert not keyword['path_net'].search(line), line
     for line, rule in ATOM_EXPR_POSITIVES:
         assert matches(rule, line), f'atom_expr positive not matched: {line!r}'
+
+
+# Contexts of Sublime's Python.sublime-syntax that Ord.sublime-syntax extends
+# or borrows. The base file is not available in CI, so this allowlist stands
+# in for it and must be updated deliberately when borrowing more contexts.
+SUBLIME_BASE_CONTEXTS = {
+    'statements', 'class-definitions', 'numbers', 'expressions-common',
+    'qualified-name-accessor', 'qualified-name-element', 'comments',
+    'immediately-pop', 'line-continuation-or-pop', 'expression-in-a-group',
+    'class-definition-base-list', 'type-parameter-list',
+    'class-definition-name', 'arguments',
+}
+
+
+def test_sublime_context_graph():
+    """Every context the Sublime syntax extends or references must exist,
+    either in this file or in the base Python syntax. Extending a context
+    the base does not define is silently ignored by Sublime and leaves the
+    prepended rules unreachable.
+    """
+    yaml = pytest.importorskip('yaml')
+    syntax = yaml.safe_load((EDITORS / 'sublime/Ord.sublime-syntax').read_text())
+    contexts = syntax['contexts']
+    for name, rules in contexts.items():
+        extends_base = any(rule.get('meta_prepend') or rule.get('meta_append')
+                           for rule in rules if isinstance(rule, dict))
+        if extends_base:
+            assert name in SUBLIME_BASE_CONTEXTS, \
+                f'{name} extends a context missing from Python.sublime-syntax'
+        for rule in rules:
+            if not isinstance(rule, dict):
+                continue
+            targets = []
+            for key in ('include', 'push', 'set'):
+                value = rule.get(key)
+                if isinstance(value, str):
+                    targets.append(value)
+                elif isinstance(value, list):
+                    targets.extend(v for v in value if isinstance(v, str))
+            for target in targets:
+                assert target in contexts or target in SUBLIME_BASE_CONTEXTS, \
+                    f'{name} references unknown context {target}'
 
 
 # Lark rule -> tree-sitter node type produced for the same construct
@@ -319,18 +388,79 @@ def test_tree_sitter_atom_expr_positives(ord_tree_sitter_parser):
         assert TREE_SITTER_RULES[rule] in types, line
 
 
-def test_highlight_orderings_stay_in_sync():
-    """highlights.scm and highlights-helix.scm must contain the same rules,
-    they differ only in pattern order (Neovim resolves overlapping captures
-    last-pattern-wins, Helix first-pattern-wins).
+def test_tree_sitter_highlight_precedence(ord_tree_sitter_parser):
+    """Every sample token wins its intended capture under last-match-wins
+    capture resolution, which Neovim, Helix 25.07+ and the tree-sitter CLI
+    share. The Helix variant differs only in capture names (Helix styles
+    captures by theme scope lookup).
+    """
+    # one sample token per highlight decision and the capture it must win.
+    # 'member' stands for the per-file property capture name.
+    sample = '''\
+cell Inv:
+    viewgen schematic -> Schematic:
+        net vdd
+        input a
+        Nmos(w=4u, l=400n) m1:
+            .d -- vdd
+        rows[0] r0:
+            pass
+        ! m1.pos == (0, 0)
+'''
+    winning_captures = [
+        ('cell', 'keyword'),
+        ('viewgen', 'keyword'),
+        ('Schematic', 'type'),
+        ('net', 'keyword'),
+        ('input', 'keyword'),
+        ('Nmos', 'type'),
+        ('m1', 'variable'),
+        ('--', 'operator'),
+        ('rows', 'type'),
+        ('d', 'member'),
+        ('.', 'punctuation.special'),
+        ('pos', 'member'),
+        ('!', 'operator'),
+    ]
+    tree_sitter = pytest.importorskip('tree_sitter')
+    root = ord_tree_sitter_parser.parse(sample.encode()).root_node
+    assert not root.has_error
+    queries = EDITORS / 'tree-sitter-ord/queries'
+    for filename, member in (('highlights.scm', 'property'),
+                             ('highlights-helix.scm', 'variable.other.member')):
+        query = tree_sitter.Query(ord_tree_sitter_parser.language,
+                                  (queries / filename).read_text())
+        winners = {}
+        for index, captures in tree_sitter.QueryCursor(query).matches(root):
+            for capture, nodes in captures.items():
+                for node in nodes:
+                    span = (node.start_byte, node.end_byte)
+                    if span not in winners or index > winners[span][0]:
+                        winners[span] = (index, capture)
+        for text, expected in winning_captures:
+            expected = member if expected == 'member' else expected
+            spans = [span for span in winners
+                     if sample[span[0]:span[1]] == text]
+            assert spans, (filename, text)
+            for span in spans:
+                assert winners[span][1] == expected, \
+                    (filename, text, winners[span][1])
+
+
+def test_helix_highlights_stay_in_sync():
+    """highlights-helix.scm must contain the same rules as highlights.scm in
+    the same order, differing only in capture names (Helix styles captures
+    by theme scope lookup, so @property, @number and @escape would render
+    unstyled there).
     """
 
     def query_patterns(path):
         # a top-level pattern runs from one top-level opening bracket to
-        # just before the next, which keeps trailing captures like
-        # `(comment) @comment` attached
+        # just before the next, keeping trailing captures like
+        # `(comment) @comment` attached. Capture names are normalized away.
         text = '\n'.join(line for line in path.read_text().split('\n')
                          if not line.lstrip().startswith(';'))
+        text = re.sub(r'@[\w.-]+', '@', text)
         patterns, depth, start, in_string, escaped = [], 0, None, False, False
         for position, char in enumerate(text):
             if escaped:
@@ -351,59 +481,8 @@ def test_highlight_orderings_stay_in_sync():
             elif char in ')]':
                 depth -= 1
         patterns.append(' '.join(text[start:].split()))
-        return sorted(patterns)
+        return patterns
 
     queries = EDITORS / 'tree-sitter-ord/queries'
     assert query_patterns(queries / 'highlights.scm') == \
         query_patterns(queries / 'highlights-helix.scm')
-
-
-def test_tree_sitter_highlight_precedence(ord_tree_sitter_parser):
-    """Every sample token wins its intended capture in both orderings, with
-    the last matching pattern winning for highlights.scm (Neovim) and the
-    first for highlights-helix.scm (Helix).
-    """
-    # one sample token per highlight decision and the capture it must win
-    sample = '''\
-cell Inv:
-    viewgen schematic -> Schematic:
-        net vdd
-        input a
-        Nmos(w=4u, l=400n) m1:
-            .d -- vdd
-        ! m1.pos == (0, 0)
-'''
-    winning_captures = [
-        ('cell', 'keyword'),
-        ('viewgen', 'keyword'),
-        ('Schematic', 'type'),
-        ('net', 'keyword'),
-        ('input', 'keyword'),
-        ('Nmos', 'type'),
-        ('m1', 'variable'),
-        ('--', 'operator'),
-        ('!', 'operator'),
-    ]
-    tree_sitter = pytest.importorskip('tree_sitter')
-    root = ord_tree_sitter_parser.parse(sample.encode()).root_node
-    assert not root.has_error
-    queries = EDITORS / 'tree-sitter-ord/queries'
-    for filename, prefer_last in (('highlights.scm', True),
-                                  ('highlights-helix.scm', False)):
-        query = tree_sitter.Query(ord_tree_sitter_parser.language,
-                                  (queries / filename).read_text())
-        winners = {}
-        for index, captures in tree_sitter.QueryCursor(query).matches(root):
-            for capture, nodes in captures.items():
-                for node in nodes:
-                    span = (node.start_byte, node.end_byte)
-                    if span not in winners \
-                            or (index > winners[span][0]) == prefer_last:
-                        winners[span] = (index, capture)
-        for text, expected in winning_captures:
-            spans = [span for span in winners
-                     if sample[span[0]:span[1]] == text]
-            assert spans, (filename, text)
-            for span in spans:
-                assert winners[span][1] == expected, \
-                    (filename, text, winners[span][1])
