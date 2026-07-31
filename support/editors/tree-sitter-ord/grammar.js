@@ -9,8 +9,8 @@
  * declarations and inline constructs used by ORDeC. Editors cannot layer
  * those onto the stock Python parser at runtime (constructs such as
  * `Nmos n1:` or `! .pos == (0, 0)` would become ERROR nodes), so this file
- * extends the tree-sitter-python grammar at the source level instead — the
- * same mechanism tree-sitter-typescript uses to extend JavaScript. Python
+ * extends the tree-sitter-python grammar at the source level instead.
+ * tree-sitter-typescript extends JavaScript with the same mechanism. Python
  * comes from the tree-sitter-python npm devDependency
  * (https://github.com/tree-sitter/tree-sitter-python), and only the
  * ORD delta is defined here. `npm run generate` copies the external scanner
@@ -173,7 +173,7 @@ module.exports = grammar(python, {
     ),
 
     // Leading-dot access to the current node, e.g. `.align` or the
-    // bare `.` (dotted_atom in ord.lark). A regular expression atom.
+    // bare `.` (dotted_atom in ord.lark)
     ord_local_attribute: $ => seq(
       '.',
       optional(field('attribute', $.identifier)),

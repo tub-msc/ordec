@@ -5,7 +5,7 @@
 
 ; Helix textobject queries for ORD, using the Helix capture dialect
 ; (.inside/.around suffixes). Python constructs come from the inherited
-; Python queries, only the ORD constructs are added here.
+; Python queries. Only the ORD constructs are added here.
 
 (cell_definition
   body: (block)? @class.inside) @class.around

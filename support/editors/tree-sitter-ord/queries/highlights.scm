@@ -9,10 +9,8 @@
 ; This keeps Python-like highlighting as the base and adds ORD-specific nodes.
 ;
 ; Pattern order follows the upstream tree-sitter convention where the last
-; matching capture wins (Neovim and the tree-sitter highlight tooling):
-; generic captures come first, ORD-specific captures come last. Helix
-; applies the first match instead and uses the reversed
-; highlights-helix.scm — keep the rule content of both files in sync.
+; matching capture wins (Neovim, Helix 25.07+ and the tree-sitter highlight
+; tooling): generic captures come first, ORD-specific captures come last.
 
 ; Python-like identifier conventions (generic captures, refined below)
 
@@ -23,6 +21,12 @@
 
 ((identifier) @constant
  (#match? @constant "^[A-Z][A-Z_]*$"))
+
+; Attribute access comes before the call captures so method calls win over
+; the generic property capture
+
+(attribute
+  attribute: (identifier) @property)
 
 ; Functions, calls, decorators
 
@@ -44,9 +48,6 @@
  (#match?
    @function.builtin
    "^(abs|all|any|ascii|bin|bool|breakpoint|bytearray|bytes|callable|chr|classmethod|compile|complex|delattr|dict|dir|divmod|enumerate|eval|exec|filter|float|format|frozenset|getattr|globals|hasattr|hash|help|hex|id|input|int|isinstance|issubclass|iter|len|list|locals|map|max|memoryview|min|next|object|oct|open|ord|pow|print|property|range|repr|reversed|round|set|setattr|slice|sorted|staticmethod|str|sum|super|tuple|type|vars|zip|__import__)$"))
-
-(attribute
-  attribute: (identifier) @property)
 
 (type
   (identifier) @type)
@@ -173,6 +174,9 @@
 (viewgen_definition
   return_type: (type (identifier) @type))
 
+(viewgen_definition
+  return_type: (type (attribute attribute: (identifier) @type)))
+
 ; Node statements: `output y:`, `Nmos n1:`, `Nmos(w=4u, l=400n) m1:`, `Net vdd`.
 
 (node_statement
@@ -192,6 +196,13 @@
       attribute: (identifier) @type)))
 
 (node_statement
+  kind: (subscript value: (identifier) @type))
+
+(node_statement
+  kind: (subscript value: (attribute
+    attribute: (identifier) @type)))
+
+(node_statement
   target: (context_target (identifier) @variable))
 
 (node_statement_nobody
@@ -209,6 +220,13 @@
   kind: (call
     function: (attribute
       attribute: (identifier) @type)))
+
+(node_statement_nobody
+  kind: (subscript value: (identifier) @type))
+
+(node_statement_nobody
+  kind: (subscript value: (attribute
+    attribute: (identifier) @type)))
 
 (node_statement_nobody
   target: (context_target (identifier) @variable))
@@ -230,8 +248,12 @@
 
 ; ORD member / parameter access, connections and constraints
 
+; Two patterns: the attribute field is optional and the bare `.`
+; (dotted_atom without a name) must still capture its dot.
 (ord_local_attribute
-  "." @punctuation.special
+  "." @punctuation.special)
+
+(ord_local_attribute
   attribute: (identifier) @property)
 
 (ord_parameter_access

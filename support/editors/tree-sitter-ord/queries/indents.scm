@@ -4,7 +4,7 @@
 ; inherits: python
 
 ; Helix indent queries for ORD, using the Helix capture dialect. Python
-; constructs come from the inherited Python queries, only the ORD
+; constructs come from the inherited Python queries. Only the ORD
 ; block-introducing statements are added here. Their bodies are ordinary
 ; (block) nodes, so the inherited block handling applies to them too.
 

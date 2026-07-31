@@ -558,3 +558,48 @@ cell Top:
               (identifier)
               (integer)
               (identifier))))))))
+
+================================================================================
+Dotted viewgen return types and direction pin kinds
+================================================================================
+
+cell Amp:
+    viewgen layout -> lib.Layout:
+        input inp:
+            .align = West
+        inout io
+        Nmos n1: pass
+
+--------------------------------------------------------------------------------
+
+(module
+  (cell_definition
+    (identifier)
+    (block
+      (viewgen_definition
+        (identifier)
+        (type
+          (attribute
+            (identifier)
+            (identifier)))
+        (block
+          (node_statement
+            (identifier)
+            (context_target
+              (identifier))
+            (block
+              (expression_statement
+                (assignment
+                  (ord_local_attribute
+                    (identifier))
+                  (identifier)))))
+          (node_statement_nobody
+            (identifier)
+            (context_target
+              (identifier)))
+          (node_statement
+            (identifier)
+            (context_target
+              (identifier))
+            (block
+              (pass_statement))))))))
