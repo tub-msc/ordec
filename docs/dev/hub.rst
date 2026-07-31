@@ -92,24 +92,24 @@ for the workshop hostname; Caddy fetches Let's Encrypt certificates by itself.
 .. code-block:: sh
 
     # 1. Host: Docker + Kata Containers + smoke test (review this first!)
-    sudo hub/deploy/host-setup.sh
+    sudo support/hub/deploy/host-setup.sh
 
     # 2. Images (from the repository root)
     docker build -t ordec .
-    docker build -t ordec-hub-user -f hub/Dockerfile hub/
+    docker build -t ordec-hub-user -f support/hub/Dockerfile support/hub/
 
     # 3. Configuration
-    cp hub/example.env hub/.env
-    $EDITOR hub/.env     # domain, workshop key, admin key, limits
+    cp support/hub/example.env support/hub/.env
+    $EDITOR support/hub/.env     # domain, workshop key, admin key, limits
 
     # 4. Start hub + TLS proxy
-    cd hub/
+    cd support/hub/
     docker compose up -d --build
 
 Participants then browse to ``https://<domain>/``, enter the workshop key (no
 username), and land in ORDeC.
 
-The pieces live in ``hub/``: ``jupyterhub_config.py`` (authenticator, spawner,
+The pieces live in ``support/hub/``: ``jupyterhub_config.py`` (authenticator, spawner,
 limits, culler — all tunable through ``ORDEC_HUB_*`` variables),
 ``templates/login.html`` (the key-only login form), ``Dockerfile`` (the user
 image, the regular ``ordec`` image with a hub-suitable start command),

@@ -5,7 +5,7 @@
 JupyterHub configuration for ORDeC Hub workshop deployments.
 
 See docs/dev/hub.rst for the architecture and deployment steps. Tunables come
-from environment variables (ORDEC_HUB_*), see hub/example.env.
+from environment variables (ORDEC_HUB_*), see support/hub/example.env.
 """
 
 import os
@@ -119,8 +119,8 @@ c.JupyterHub.authenticator_class = ORDeCWorkshopAuthenticator
 c.Authenticator.allow_all = True
 
 # --- Login form / logout ---------------------------------------------------
-# Custom login.html (see hub/templates/) renders the workshop-key page by
-# default and the admin page when ORDeCLoginHandler sets admin_login. It is
+# Custom login.html (see support/hub/templates/) renders the workshop-key page
+# by default and the admin page when ORDeCLoginHandler sets admin_login. It is
 # styled to match ORDeC's landing page and shows the logo served at
 # {base_url}logo from this file:
 c.JupyterHub.template_paths = ['/srv/jupyterhub/templates']

@@ -9,7 +9,7 @@
 #
 # Build (from the repository root):
 #   docker build -t ordec .
-#   docker build -t ordec-hub-user -f hub/Dockerfile hub/
+#   docker build -t ordec-hub-user -f support/hub/Dockerfile support/hub/
 
 ARG ORDEC_IMAGE=ordec
 FROM ${ORDEC_IMAGE}

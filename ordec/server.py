@@ -1031,7 +1031,7 @@ def main():
     key = ServerKey()
 
     # JupyterHub integration is enabled automatically when this process was
-    # spawned by a hub (see ordec.hub and hub/ in the repository root).
+    # spawned by a hub (see ordec.hub and support/hub/ in the repository).
     hub = HubIntegration.from_env()
     base_path = args.base_url
     if not base_path.startswith('/'):

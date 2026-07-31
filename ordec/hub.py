@@ -4,8 +4,8 @@
 """
 JupyterHub single-user integration for the ORDeC web server.
 
-When ordec is spawned by JupyterHub (e.g. via DockerSpawner, see hub/ in the
-repository root), the hub routes ``/user/<name>/...`` to this server without
+When ordec is spawned by JupyterHub (e.g. via DockerSpawner, see support/hub/
+in the repository), the hub routes ``/user/<name>/...`` to this server without
 authenticating the requests itself. This module provides the pieces the
 server needs to run behind the hub:
 
@@ -17,7 +17,7 @@ server needs to run behind the hub:
   the ORDeC auth token from ``api/token`` (in classic standalone operation,
   the token travels in the URL fragment of the printed URL instead).
 - **Activity reporting**: last-activity timestamps are POSTed to the hub so
-  the idle culler (see hub/jupyterhub_config.py) can stop idle servers
+  the idle culler (see support/hub/jupyterhub_config.py) can stop idle servers
   without misjudging long-lived websockets.
 
 Everything here uses only the standard library; the ``jupyterhub`` package
