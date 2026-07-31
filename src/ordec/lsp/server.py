@@ -1,10 +1,35 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+"""Stdio LSP server for ORD, written against the protocol directly.
+
+We are not using pygls for now, because it would replace only a small part
+of this file (message framing, the serve loop, document sync; a few hundred
+lines). Most of this file translates analysis results into LSP response
+shapes, and that code would have to be written with pygls too. More
+importantly, serve() handles one request at a time and drains the input
+queue in between, which lets it cancel queued requests and collapse
+didChange bursts without threads or async. That way, the AnalysisSession
+stays single-threaded by construction. pygls would force a choice between
+sync handlers (losing that) and asyncio handlers (making the session deal
+with concurrency).
+
+We are not using lsprotocol (the typed LSP classes, without pygls) for now,
+because it would add two runtime dependencies (attrs, cattrs) where we
+currently need none, and its main benefit, catching wrong response shapes
+via types, needs a type checker, which this project does not run. Worth
+revisiting if we start type-checking this package or the number of
+supported LSP features grows a lot. Until then, plain dicts and tests cover
+the same ground.
+"""
+
 # standard imports
+from collections import deque
 from pathlib import Path
 import json
+import queue
 import sys
+import threading
 from urllib.parse import unquote, urlparse
 
 # ordec imports
@@ -724,26 +749,106 @@ def write_message(output_stream, message):
     output_stream.flush()
 
 
-def main():
-    """Run the ORDeC language server over stdin/stdout."""
-    server = OrdLanguageServer()
-    input_stream = sys.stdin.buffer
-    output_stream = sys.stdout.buffer
+def read_messages(input_stream, message_queue):
+    """Feed framed input messages to the queue until EOF or a read error."""
+    while True:
+        try:
+            message = read_message(input_stream)
+        except Exception:
+            message = None
+        message_queue.put(message)
+        if message is None:
+            return
+
+
+def notification_method(message, method):
+    """Return whether a decoded message is the named notification."""
+    return isinstance(message, dict) and message.get("method") == method
+
+
+def did_change_uri(message):
+    """Return the raw target URI of a didChange notification, or None."""
+    if not notification_method(message, "textDocument/didChange"):
+        return None
+    params = message.get("params")
+    if not isinstance(params, dict):
+        return None
+    text_document = params.get("textDocument")
+    if not isinstance(text_document, dict):
+        return None
+    return text_document.get("uri")
+
+
+def serve(server, message_queue, output_stream):
+    """Dispatch queued messages until EOF, then return.
+
+    Messages are dispatched strictly in arrival order by this single
+    consumer. Draining the queue backlog before dispatching enables two
+    shortcuts that preserve observable ordering: $/cancelRequest marks
+    still-queued requests as canceled before they are computed, and a
+    consecutive run of didChange notifications for one document collapses
+    to its newest version, which is safe because the server only supports
+    full-document synchronization.
+    """
+    pending = deque()
+    canceled_ids = set()
 
     while True:
-        message = read_message(input_stream)
+        if not pending:
+            pending.append(message_queue.get())
+        while True:
+            try:
+                pending.append(message_queue.get_nowait())
+            except queue.Empty:
+                break
+
+        # Cancellations apply to queued requests independent of their
+        # position, so collect them from the whole backlog first.
+        remaining = deque()
+        for message in pending:
+            if notification_method(message, "$/cancelRequest"):
+                params = message.get("params")
+                if isinstance(params, dict) and "id" in params:
+                    canceled_ids.add(params["id"])
+            else:
+                remaining.append(message)
+        pending = remaining
+        if not pending:
+            continue
+
+        message = pending.popleft()
         if message is None:
-            break
+            return
+        if not isinstance(message, dict):
+            continue
+
+        uri = did_change_uri(message)
+        if uri is not None:
+            while pending and did_change_uri(pending[0]) == uri:
+                message = pending.popleft()
+
+        message_id = message.get("id")
+        if message_id is not None and message_id in canceled_ids:
+            canceled_ids.discard(message_id)
+            write_message(output_stream, {
+                "jsonrpc": "2.0",
+                "id": message_id,
+                "error": {
+                    "code": -32800,
+                    "message": "Request canceled",
+                },
+            })
+            continue
 
         try:
             responses = server.handle_message(message)
         except SystemExit as exc:
             raise exc
         except Exception as exc:  # pragma: no cover - safety net for stdio server
-            if message.get("id") is not None:
+            if message_id is not None:
                 responses = [{
                     "jsonrpc": "2.0",
-                    "id": message["id"],
+                    "id": message_id,
                     "error": {
                         "code": -32603,
                         "message": str(exc),
@@ -752,5 +857,27 @@ def main():
             else:
                 responses = []
 
+        if message_id is not None:
+            canceled_ids.discard(message_id)
+
         for response in responses:
             write_message(output_stream, response)
+
+
+def main():
+    """Run the ORDeC language server over stdin/stdout.
+
+    A daemon reader thread frames stdin onto a message queue, so cancels
+    and newer edits become visible to serve() while earlier messages are
+    still being handled. The daemon flag lets handle_exit terminate the
+    process even though the reader blocks on stdin.
+    """
+    server = OrdLanguageServer()
+    message_queue = queue.SimpleQueue()
+    reader = threading.Thread(
+        target=read_messages,
+        args=(sys.stdin.buffer, message_queue),
+        daemon=True,
+    )
+    reader.start()
+    serve(server, message_queue, sys.stdout.buffer)

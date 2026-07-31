@@ -100,6 +100,15 @@ server uses a method dispatch table: each supported LSP method is handled by a
 small ``handle_*`` method, while shared helpers convert between LSP's zero-based
 positions and the analysis layer's one-based positions.
 
+A daemon reader thread frames stdin onto a queue, and a single consumer
+dispatches messages in arrival order, so handlers stay synchronous and the
+analysis session is only ever touched by one thread. Draining the queue
+backlog before dispatching lets ``$/cancelRequest`` cancel still-queued
+requests (error ``-32800``) before they are computed and collapses
+consecutive ``didChange`` bursts for one document to the newest version,
+which full-document synchronization makes safe. A request that is already
+being handled is never interrupted.
+
 Most language intelligence lives in ``ordec.lsp.analysis``:
 
 * ``model.py`` defines shared positions, ranges, diagnostics, symbols, import

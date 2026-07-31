@@ -1,7 +1,11 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.lsp.server import OrdLanguageServer
+import io
+import json
+import queue
+
+from ordec.lsp.server import OrdLanguageServer, serve
 
 
 def source_offset(source, needle, occurrence=1):
@@ -573,3 +577,83 @@ def test_lsp_shutdown_and_unknown_method(tmp_path):
         notify(server, "exit")
     except SystemExit as exc:
         assert exc.code == 0
+
+
+def run_serve(messages):
+    """Run serve() over prefilled messages and return the decoded output."""
+    message_queue = queue.SimpleQueue()
+    for message in messages:
+        message_queue.put(message)
+    message_queue.put(None)
+
+    output_stream = io.BytesIO()
+    serve(OrdLanguageServer(), message_queue, output_stream)
+
+    decoded = []
+    data = output_stream.getvalue()
+    while data:
+        header, separator, rest = data.partition(b"\r\n\r\n")
+        assert separator
+        length = int(header.split(b":")[1])
+        decoded.append(json.loads(rest[:length]))
+        data = rest[length:]
+    return decoded
+
+
+def test_lsp_serve_cancels_queued_requests():
+    output = run_serve([
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "textDocument/documentSymbol",
+            "params": {"textDocument": {"uri": "file:///tmp/missing.ord"}},
+        },
+        {"jsonrpc": "2.0", "method": "$/cancelRequest", "params": {"id": 1}},
+        {"jsonrpc": "2.0", "id": 2, "method": "shutdown"},
+    ])
+
+    responses = {message.get("id"): message for message in output}
+    assert responses[1]["error"]["code"] == -32800
+    assert "result" not in responses[1]
+    assert responses[2]["result"] is None
+
+
+def test_lsp_serve_coalesces_did_change_bursts():
+    uri = "file:///tmp/burst.ord"
+
+    def did_change(version, text):
+        return {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "textDocument": {"uri": uri, "version": version},
+                "contentChanges": [{"text": text}],
+            },
+        }
+
+    output = run_serve([
+        {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": "ord",
+                    "version": 1,
+                    "text": "",
+                },
+            },
+        },
+        did_change(2, "cell (\n"),
+        did_change(3, ""),
+    ])
+
+    published = [
+        message for message in output
+        if message.get("method") == "textDocument/publishDiagnostics"
+    ]
+    # One publish for didOpen, then one for the newest change only. The
+    # newest version is clean, so a stale analysis of the broken
+    # intermediate version would show up as leftover diagnostics here.
+    assert len(published) == 2
+    assert published[1]["params"]["diagnostics"] == []
