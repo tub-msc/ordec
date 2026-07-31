@@ -8,10 +8,10 @@ import com.jetbrains.python.PythonLanguage;
 
 /**
  * ORD as a Python dialect: everything that is plain Python is inherited
- * from the Python plugin, only the ORD delta (mirroring ordec/ord/ord.lark)
- * is added. PythonLanguage is final, so the dialect registers through the
- * base-language mechanism, which is what the Python plugin's dialect
- * machinery keys on (Language.isKindOf).
+ * from the Python plugin, and only the ORD delta (mirroring
+ * ordec/ord/ord.lark) is added. PythonLanguage is final, so the dialect
+ * registers through the base-language mechanism, which is what the Python
+ * plugin's dialect machinery keys on (Language.isKindOf).
  */
 public final class OrdLanguage extends Language {
     public static final OrdLanguage INSTANCE = new OrdLanguage();

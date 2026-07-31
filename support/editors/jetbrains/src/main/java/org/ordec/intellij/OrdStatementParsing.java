@@ -14,12 +14,12 @@ import java.util.Set;
  * Statement-level ORD delta, mirroring ord.lark: celldef, viewgen,
  * path_stmt/net_stmt, constrain_stmt and the node statements. All ORD
  * introducers are soft keywords, so every branch parses speculatively and
- * rolls back to plain Python on mismatch — the parser-level equivalent of
- * the GLR conflicts in the tree-sitter grammar.
+ * rolls back to plain Python on mismatch. This is the parser-level
+ * equivalent of the GLR conflicts in the tree-sitter grammar.
  */
 public class OrdStatementParsing extends StatementParsing {
-    // soft keywords that must not open a node statement, same set as the
-    // negative lookahead in the TextMate grammars
+    // soft keywords that must not open a node statement (same set as the
+    // negative lookahead in the TextMate grammars)
     private static final Set<String> SOFT_KEYWORDS =
         Set.of("cell", "viewgen", "path", "net", "match", "case", "type", "anonymous");
 
@@ -68,10 +68,9 @@ public class OrdStatementParsing extends StatementParsing {
         return parseNodeStatement(anonymous);
     }
 
-    // decorated: decorators (celldef | viewgen | ...) — Python's decorated
-    // statement parsing only accepts def/class after decorators, so
-    // decorated cell and viewgen definitions are handled here and any
-    // other decorated statement rolls back to Python
+    // Python's decorated-statement parsing only accepts def/class after
+    // decorators, so decorated cell and viewgen definitions are handled
+    // here. Any other decorated statement rolls back to Python.
     private boolean parseDecoratedOrdDefinition() {
         SyntaxTreeBuilder.Marker marker = myBuilder.mark();
         while (myBuilder.getTokenType() == PyTokenTypes.AT) {
@@ -144,6 +143,11 @@ public class OrdStatementParsing extends StatementParsing {
             return false;
         }
         do {
+            // tolerate a trailing comma instead of swallowing whatever
+            // token follows it into a context target
+            if (myBuilder.getTokenType() != PyTokenTypes.IDENTIFIER) {
+                break;
+            }
             parseContextTarget();
         } while (matchToken(PyTokenTypes.COMMA));
         endOfLine();
@@ -201,7 +205,7 @@ public class OrdStatementParsing extends StatementParsing {
             } else if (myBuilder.getTokenType() == PyTokenTypes.LBRACKET) {
                 myBuilder.advanceLexer();
                 // subscriptlist in ord.lark allows slices and comma lists,
-                // consume expressions and their separators tolerantly
+                // so consume expressions and separators tolerantly
                 while (myBuilder.getTokenType() != PyTokenTypes.RBRACKET
                         && !atEndOfStatement()) {
                     if (myBuilder.getTokenType() == PyTokenTypes.COLON
@@ -223,10 +227,9 @@ public class OrdStatementParsing extends StatementParsing {
         marker.done(OrdElementTypes.CONTEXT_TARGET);
     }
 
-    // suite in ord.lark allows ORD simple statements in one-line suites,
-    // but the inherited inline suite parsing bypasses parseStatement, so
-    // one-line suites are parsed here through the ORD-aware statement
-    // parsing and block suites delegate to Python
+    // suite in ord.lark allows ORD statements in one-line suites, but the
+    // inherited inline suite parsing bypasses parseStatement. One-line
+    // suites are therefore parsed here and block suites delegate to Python.
     private void parseOrdSuite() {
         if (myBuilder.getTokenType() == PyTokenTypes.STATEMENT_BREAK) {
             parseSuite();
@@ -244,8 +247,8 @@ public class OrdStatementParsing extends StatementParsing {
     }
 
     // statement parsing consumes the line-ending break itself, so the
-    // one-line suite is over once the consumed span crossed a line end —
-    // only semicolon-separated statements stay on the same line
+    // one-line suite is over once the consumed span crossed a line end.
+    // Only semicolon-separated statements stay on the same line.
     private boolean lineEndedSince(int start) {
         CharSequence text = myBuilder.getOriginalText();
         int end = Math.min(myBuilder.getCurrentOffset(), text.length());
@@ -260,10 +263,18 @@ public class OrdStatementParsing extends StatementParsing {
     private boolean atEndOfStatement() {
         IElementType token = myBuilder.getTokenType();
         return token == null || token == PyTokenTypes.STATEMENT_BREAK
-            || token == PyTokenTypes.DEDENT;
+            || token == PyTokenTypes.DEDENT
+            || token == PyTokenTypes.SEMICOLON;
     }
 
+    // simple_stmt in ord.lark chains small statements with ';'. Like
+    // Python's checkEndOfStatement, consume a separating semicolon and
+    // then the line break if the statement ended the line. The next small
+    // statement stays for the next parseStatement call.
     private void endOfLine() {
+        if (myBuilder.getTokenType() == PyTokenTypes.SEMICOLON) {
+            myBuilder.advanceLexer();
+        }
         if (myBuilder.getTokenType() == PyTokenTypes.STATEMENT_BREAK) {
             myBuilder.advanceLexer();
         }

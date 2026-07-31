@@ -25,12 +25,11 @@ import com.jetbrains.python.lexer.PythonIndentingLexer;
 public final class OrdLexer extends LookAheadLexer {
     private static final String SI_SUFFIXES = "afpnumkMGT";
 
-    // parsing configuration
     public OrdLexer() {
         this(new PythonIndentingLexer());
     }
 
-    // the same merges over any base, e.g. the highlighting lexer
+    // applies the same merges over any base lexer, e.g. the highlighting lexer
     public OrdLexer(Lexer baseLexer) {
         super(baseLexer);
     }
@@ -45,8 +44,8 @@ public final class OrdLexer extends LookAheadLexer {
                 addToken(baseLexer.getTokenEnd(), PyTokenTypes.FLOAT_LITERAL);
                 baseLexer.advance();
             } else {
-                // keep just the number, the already-advanced base lexer is
-                // picked up by the next lookAhead round
+                // the next lookAhead round continues at the already-advanced
+                // base position
                 addToken(numberEnd, type);
             }
             return;

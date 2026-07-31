@@ -30,7 +30,7 @@ public final class OrdElementTypes {
         new IElementType("ORD_CONSTRAIN_STATEMENT", OrdLanguage.INSTANCE);
     public static final IElementType CONTEXT_TARGET =
         new IElementType("ORD_CONTEXT_TARGET", OrdLanguage.INSTANCE);
-    // leading-dot access to the current node, dotted_atom in ord.lark
+    // leading-dot access to the current node (dotted_atom in ord.lark)
     public static final IElementType LOCAL_ATTRIBUTE =
         new IElementType("ORD_LOCAL_ATTRIBUTE", OrdLanguage.INSTANCE);
 

@@ -31,6 +31,18 @@
         <lang.syntaxHighlighterFactory
             language="ORD"
             implementationClass="org.ordec.intellij.OrdSyntaxHighlighterFactory"/>
+        <!-- registered for Python, not ORD: PyBaseElementImpl.getLanguage()
+             hardcodes Python, so the ORD PSI reports Python and annotators
+             registered for ORD are never called for it -->
+        <annotator
+            language="Python"
+            implementationClass="org.ordec.intellij.OrdAnnotator"/>
+        <!-- also registered for Python: the flagged elements inside .ord
+             files are Python PSI and suppressor lookup keys on the element
+             language -->
+        <lang.inspectionSuppressor
+            language="Python"
+            implementationClass="org.ordec.intellij.OrdInspectionSuppressor"/>
     </extensions>
     <extensions defaultExtensionNs="Pythonid">
         <dialectsTokenSetContributor

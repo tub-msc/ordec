@@ -33,12 +33,12 @@ dependencies {
     }
     testImplementation("junit:junit:4.13.2")
     // the platform test framework references opentest4j but does not carry
-    // it, a documented IntelliJ Platform Gradle Plugin gotcha
+    // it (a documented IntelliJ Platform Gradle Plugin gotcha)
     testImplementation("org.opentest4j:opentest4j:1.3.0")
 }
 
 intellijPlatform {
-    // no settings UI in this plugin, skip the headless-IDE indexing phase
+    // no settings UI in this plugin, so skip the headless-IDE indexing phase
     buildSearchableOptions = false
 
     pluginConfiguration {
