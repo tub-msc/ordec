@@ -16,13 +16,16 @@ import java.util.Set;
  * Python scope analysis cannot see names bound by node and net statements
  * (unresolved references) and connection statements like a.d -- b.g are
  * expression statements by design (statement seems to have no effect).
+ * The trailing-semicolon inspection also misreads an ORD inline suite when
+ * its second statement contains a parenthesized line continuation.
  * This cannot move to an ORD language server later, since LSP servers only
  * add diagnostics and cannot switch off the IDE's own Python inspections.
  */
 public final class OrdInspectionSuppressor implements InspectionSuppressor {
     private static final Set<String> SUPPRESSED_TOOLS = Set.of(
         "PyUnresolvedReferences",
-        "PyStatementEffect");
+        "PyStatementEffect",
+        "PyTrailingSemicolon");
 
     @Override
     public boolean isSuppressedFor(@NotNull PsiElement element, @NotNull String toolId) {

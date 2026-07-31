@@ -16,6 +16,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 import com.jetbrains.python.PythonDialectsTokenSetProvider;
 import com.jetbrains.python.PythonLanguage;
 import com.jetbrains.python.inspections.PyStatementEffectInspection;
+import com.jetbrains.python.inspections.PyTrailingSemicolonInspection;
 import com.jetbrains.python.inspections.unresolvedReference.PyUnresolvedReferencesInspection;
 import com.jetbrains.python.psi.PyAugAssignmentStatement;
 import com.jetbrains.python.psi.PyExpression;
@@ -289,12 +290,21 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
      */
     public void testPythonInspectionsSuppressedInOrdFiles() {
         myFixture.enableInspections(
-            new PyUnresolvedReferencesInspection(), new PyStatementEffectInspection());
+            new PyUnresolvedReferencesInspection(),
+            new PyStatementEffectInspection(),
+            new PyTrailingSemicolonInspection());
         myFixture.configureByText("case.ord",
-            "cell C:\n    viewgen v -> Schematic:\n        Nmos m1\n        m1.d -- m1.g\n");
+            "cell C:\n"
+            + "    viewgen v -> Schematic:\n"
+            + "        port y: .align=West; .pos=(signal_count * x_spacing,\n"
+            + "            y_spacing * ((self.N - 1) // 2))\n"
+            + "        Nmos m1\n"
+            + "        m1.d -- m1.g\n");
         assertEmpty(myFixture.doHighlighting(HighlightSeverity.WEAK_WARNING));
-        // plain Python files must keep both inspections
+        // plain Python files must keep these inspections
         myFixture.configureByText("case.py", "undefined_reference\n");
+        assertNotEmpty(myFixture.doHighlighting(HighlightSeverity.WEAK_WARNING));
+        myFixture.configureByText("case.py", "x = 1;\n");
         assertNotEmpty(myFixture.doHighlighting(HighlightSeverity.WEAK_WARNING));
     }
 
