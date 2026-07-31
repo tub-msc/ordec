@@ -62,7 +62,6 @@ ordec = "ordec.__main__:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"ordec" = ["webdist.tar"]
 "ordec.ord" = ["*.lark"]
 "ordec.layout" = ["*.lark"]
 "ordec.examples" = ["*.json", "*.ord"]
