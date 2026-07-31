@@ -10,7 +10,10 @@ from typing import Optional
 from urllib.parse import unquote
 from urllib.parse import urlparse
 
+from lark.exceptions import LarkError
+
 # ordec imports
+from ..ord.parser import ord_to_py
 from .model import AnalysisPosition
 from .model import AnalysisRange
 
@@ -50,6 +53,7 @@ class PythonModuleIndex:
             workspace_path = workspace_root.joinpath(*module_name.split("."))
             for candidate in (
                 workspace_path.with_suffix(".py"),
+                workspace_path.with_suffix(".ord"),
                 workspace_path / "__init__.py",
             ):
                 if candidate.exists():
@@ -58,6 +62,15 @@ class PythonModuleIndex:
         spec = self.find_spec(module_name)
 
         if spec is None or spec.origin in (None, "built-in", "frozen"):
+            # Installed .ord modules are invisible to importlib unless ordec's
+            # import hook is active; resolve them via the parent package.
+            if "." in module_name:
+                parent_name, leaf_name = module_name.rsplit(".", 1)
+                parent_path = self.resolve_module_path(parent_name)
+                if parent_path is not None and parent_path.name == "__init__.py":
+                    candidate = parent_path.parent / (leaf_name + ".ord")
+                    if candidate.exists():
+                        return candidate.resolve()
             return None
 
         path = Path(spec.origin)
@@ -79,6 +92,7 @@ class PythonModuleIndex:
                 import_path = doc_path.parent.joinpath(*module_name.split("."))
                 for candidate in (
                     import_path.with_suffix(".py"),
+                    import_path.with_suffix(".ord"),
                     import_path / "__init__.py",
                 ):
                     if not candidate.exists():
@@ -174,8 +188,11 @@ class PythonModuleIndex:
 
         try:
             source_data = module_path.read_text(encoding="utf-8")
-            syntax_tree = ast.parse(source_data, filename=str(module_path))
-        except (OSError, SyntaxError, UnicodeDecodeError):
+            if module_path.suffix == ".ord":
+                syntax_tree = ord_to_py(source_data)
+            else:
+                syntax_tree = ast.parse(source_data, filename=str(module_path))
+        except (OSError, SyntaxError, UnicodeDecodeError, LarkError):
             self.python_modules[module_name] = None
             return None
 
@@ -229,7 +246,9 @@ class PythonModuleIndex:
                 "range": node_range(node),
                 "selection_range": name_range(node, name),
             }
-            if kind == "class":
+            if kind == "class" and module_path.suffix != ".ord":
+                # Cells from .ord modules resolve members through the ORD
+                # analysis of their uri, not the Python class machinery.
                 exports[name]["python_module"] = module_name
                 exports[name]["python_class"] = name
 
@@ -611,7 +630,17 @@ class PythonModuleIndex:
 
         class_info = module_info["classes"].get(class_name)
         if class_info is None:
-            return None
+            # The class may only be re-exported here (e.g. a package
+            # __init__.py); follow the export to its defining module.
+            resolved = self.definition(module_name, export_name=class_name)
+            if resolved is None or "python_module" not in resolved:
+                return None
+            return self.class_member_definition(
+                resolved["python_module"],
+                resolved["python_class"],
+                member_name,
+                seen=seen,
+            )
 
         match = class_info["members"].get(member_name)
         if match is not None:
@@ -676,7 +705,16 @@ class PythonModuleIndex:
 
         class_info = module_info["classes"].get(class_name)
         if class_info is None:
-            return dict()
+            # The class may only be re-exported here (e.g. a package
+            # __init__.py); follow the export to its defining module.
+            resolved = self.definition(module_name, export_name=class_name)
+            if resolved is None or "python_module" not in resolved:
+                return dict()
+            return self.class_members(
+                resolved["python_module"],
+                resolved["python_class"],
+                seen=seen,
+            )
 
         members = dict()
         for source_name in class_info["member_sources"]:
