@@ -33,7 +33,7 @@ from typing import Iterable, NamedTuple
 from dataclasses import dataclass
 
 from ..core import *
-from ..core.schema import SchemInstanceSubcursor
+from ..core.schema.schematic import SchemInstanceSubcursor
 from .render import Renderer
 
 logger = logging.getLogger(__name__)

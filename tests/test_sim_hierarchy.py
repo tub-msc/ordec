@@ -6,7 +6,7 @@ import pytest
 from ordec.core import *
 from ordec.core import SimHierarchy
 from ordec.lib import Gnd, Res
-from ordec.core.schema import SimHierarchySubcursor
+from ordec.core.schema.simhier import SimHierarchySubcursor
 from .lib import sim as lib_test
 
 def my_simhier():
