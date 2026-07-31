@@ -5,8 +5,8 @@
 W4 sim_hierarchy -- recursive build with unique-index checks, then
 interleaved query+insert back-annotation.
 
-Mirrors SimHierarchy.from_schematic (ordec/core/schema.py:834-863) followed
-by simulator result storage (ordec/sim/simulator.py:143-239): a hierarchy
+Mirrors SimHierarchy.from_schematic (src/ordec/core/schema.py:834-863) followed
+by simulator result storage (src/ordec/sim/simulator.py:143-239): a hierarchy
 of groups is built recursively (each item insert validates a unique
 CombinedIndex), then every item is looked up by that index and annotated
 with a new node in a small separate transaction.

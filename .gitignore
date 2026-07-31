@@ -9,7 +9,7 @@ __pycache__
 *.swp
 dist/
 build/
-ordec/webdist.tar
+src/ordec/webdist.tar
 sky130A
 sky130B
 ihp-sg13g2

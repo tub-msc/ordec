@@ -40,7 +40,7 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
     public void testRepositoryOrdFilesParse() throws IOException {
         Path repoRoot = findRepoRoot();
         List<Path> ordFiles = new ArrayList<>();
-        for (String dir : new String[]{"ordec", "tests", "examples"}) {
+        for (String dir : new String[]{"src/ordec", "tests", "examples"}) {
             try (Stream<Path> walk = Files.walk(repoRoot.resolve(dir))) {
                 walk.filter(p -> p.toString().endsWith(".ord")).sorted().forEach(ordFiles::add);
             }
@@ -323,7 +323,7 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
     private static Path findRepoRoot() {
         Path dir = Paths.get("").toAbsolutePath();
         while (dir != null) {
-            if (Files.exists(dir.resolve("ordec/ord/ord.lark"))) {
+            if (Files.exists(dir.resolve("src/ordec/ord/ord.lark"))) {
                 return dir;
             }
             dir = dir.getParent();

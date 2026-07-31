@@ -58,21 +58,8 @@ extra = [
 [project.scripts]
 ordec = "ordec.__main__:main"
 
-[tool.setuptools]
-packages = [
-    "ordec",
-    "ordec.ord",
-    "ordec.core",
-    "ordec.layout",
-    "ordec.lib",
-    "ordec.examples",
-    "ordec.courses",
-    "ordec.courses.getting_started",
-    "ordec.courses.cmos_circuits",
-    "ordec.courses.layout_tutorial",
-    "ordec.schematic",
-    "ordec.sim",
-]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.setuptools.package-data]
 "ordec" = ["webdist.tar"]
@@ -85,3 +72,11 @@ packages = [
 
 [tool.setuptools_scm]
 version_scheme = "release-branch-semver"
+
+# Map installed-package paths back to the source tree, so coverage collected
+# against a non-editable install (as in CI) reports on src/ordec/.
+[tool.coverage.paths]
+source = [
+    "src/ordec",
+    "*/site-packages/ordec",
+]

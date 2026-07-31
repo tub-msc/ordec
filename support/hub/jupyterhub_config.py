@@ -152,7 +152,7 @@ c.DockerSpawner.extra_host_config = {
 }
 
 # The ordec image serves on port 8100 and detects the hub through the
-# JUPYTERHUB_* environment (see ordec/hub.py). Do not add jupyterhub to the
+# JUPYTERHUB_* environment (see src/ordec/hub.py). Do not add jupyterhub to the
 # user image; the integration is stdlib-only.
 c.DockerSpawner.port = 8100
 
@@ -198,7 +198,7 @@ c.JupyterHub.concurrent_spawn_limit = int(
 c.JupyterHub.named_server_limit_per_user = 0  # default server only
 
 # --- Idle culling: ephemeral sessions, default ~90 min ---------------------
-# ordec reports websocket activity to the hub (see ordec/hub.py), so open
+# ordec reports websocket activity to the hub (see src/ordec/hub.py), so open
 # but idle browser tabs do not keep instances alive, and running
 # interactions do not get culled.
 c.JupyterHub.load_roles = [

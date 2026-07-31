@@ -55,7 +55,7 @@
 
   <!-- JobRunner -->
   <rect class="box" x="20" y="212" width="560" height="74" rx="3"/>
-  <text class="t title" x="34" y="232">JobRunner — ordec/jobrunner.py</text>
+  <text class="t title" x="34" y="232">JobRunner — src/ordec/jobrunner.py</text>
   <text class="t sub" x="34" y="248">queue + semaphore (-j N): at most N jobs run at once</text>
   <text class="t sub" x="34" y="264">one fresh daemon thread per Job; cancel escalates:</text>
   <text class="t sub" x="34" y="278">flag + kill subprocess → async exception → give up</text>

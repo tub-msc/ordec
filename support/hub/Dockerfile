@@ -4,7 +4,7 @@
 # User image for ORDeC Hub: the regular ordec image (ordec + ngspice +
 # KLayout + PDKs, see /Dockerfile in the repository root) with a
 # hub-suitable start command. ordec detects the hub automatically through
-# the JUPYTERHUB_* environment DockerSpawner sets (see ordec/hub.py) and
+# the JUPYTERHUB_* environment DockerSpawner sets (see src/ordec/hub.py) and
 # then serves under /user/<name>/, gated by hub OAuth.
 #
 # Build (from the repository root):

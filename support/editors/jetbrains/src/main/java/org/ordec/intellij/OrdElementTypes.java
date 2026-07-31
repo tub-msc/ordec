@@ -7,7 +7,7 @@ import com.intellij.psi.tree.IElementType;
 
 /**
  * Element and token types for the ORD constructs, named after the rules in
- * ordec/ord/ord.lark (node_stmt and friends).
+ * src/ordec/ord/ord.lark (node_stmt and friends).
  */
 public final class OrdElementTypes {
     // token produced by OrdLexer for the constrain operator '!'

@@ -4,7 +4,7 @@
 """
 W2 layout_flatten -- copy / bulk insert / replace-migration / scan.
 
-Mirrors the layout webdata pipeline (ordec/layout/webdata.py:21-76 with
+Mirrors the layout webdata pipeline (src/ordec/layout/webdata.py:21-76 with
 helpers.py flatten and expand_geom): a frozen hierarchical layout is
 mutable-copied, every instance is inlined by re-inserting its cell's
 transformed shapes, every LRect is then .replace()d by an LPoly with four
@@ -65,7 +65,7 @@ def _rect_to_poly(cursor):
         'default': dict(cells=5, shapes_per_cell=40, instances=50),
         'large':   dict(cells=10, shapes_per_cell=200, instances=2000),
     },
-    mirrors='ordec/layout/webdata.py + helpers.py flatten/expand_geom')
+    mirrors='src/ordec/layout/webdata.py + helpers.py flatten/expand_geom')
 def layout_flatten(params, seed):
     rng = Lcg(seed)
     t = PhaseTimer()

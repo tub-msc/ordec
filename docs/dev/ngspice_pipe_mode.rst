@@ -27,7 +27,7 @@ Behavior with libedit::
     world
     ngspice-44.2 done
 
-These differences are addressed in ordec/sim/ngspice.py.
+These differences are addressed in src/ordec/sim/ngspice.py.
 
 TODO: Add automated testing for this in container, such as::
 

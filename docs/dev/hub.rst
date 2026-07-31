@@ -48,7 +48,7 @@ dedicated machine rather than a cluster.
 What ORDeC does differently behind the hub
 ------------------------------------------
 
-``ordec/hub.py`` holds the integration; it uses only the standard library, so
+``src/ordec/hub.py`` holds the integration; it uses only the standard library, so
 the user image does not depend on JupyterHub. It activates automatically when
 the ``JUPYTERHUB_SERVICE_PREFIX`` and ``JUPYTERHUB_API_TOKEN`` environment
 variables are present.

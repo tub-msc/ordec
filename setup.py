@@ -13,7 +13,7 @@ class NpmBuild(build):
     def run(self):
         subprocess.check_call(['npm', '--prefix', 'web/', 'ci'])
         subprocess.check_call(['npm', '--prefix', 'web/', 'run', 'build'])
-        subprocess.check_call(['tar', 'cvf', 'ordec/webdist.tar', '-C', 'web/dist', '.'])
+        subprocess.check_call(['tar', 'cvf', 'src/ordec/webdist.tar', '-C', 'web/dist', '.'])
         build.run(self)
 
 setup(

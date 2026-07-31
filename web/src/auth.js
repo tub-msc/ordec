@@ -19,7 +19,7 @@ export const session = {
 };
 
 export async function initSession() {
-    // JupyterHub-hosted deployments (see ordec/hub.py) deliver the backend
+    // JupyterHub-hosted deployments (see src/ordec/hub.py) deliver the backend
     // auth token via the cookie-gated api/token endpoint instead of the URL
     // fragment. The endpoint's token is authoritative: it always belongs to
     // the currently running server process, whereas localStorage may hold a

@@ -64,7 +64,7 @@ networks:
     # connections to *each other* on this bridge (blocking that would also
     # block hub->user proxying); cross-user access is instead prevented at
     # the application layer: every ordec server requires hub OAuth for the
-    # spawned-for user plus its own auth token (see ordec/hub.py).
+    # spawned-for user plus its own auth token (see src/ordec/hub.py).
     internal: true
     # Fixed subnet so the hub can hold a static IP (172.30.0.2 above): user
     # containers run with DNS disabled and reach the hub API by that IP.

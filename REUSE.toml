@@ -29,16 +29,16 @@ SPDX-License-Identifier = "CC0-1.0"
 [[annotations]]
 # ordec.examples code:
 path = [
-    "ordec/examples/amp.ord",
-    "ordec/examples/blank.ord",
-    "ordec/examples/currentmirror.ord",
-    "ordec/examples/diffpair.ord",
-    "ordec/examples/nand2.ord",
-    "ordec/examples/rc_curve.py",
-    "ordec/examples/voltagedivider.ord",
-    "ordec/examples/voltagedivider_py.py",
-    "ordec/examples/stdcells.ord",
-    "ordec/examples/*.uistate.json",
+    "src/ordec/examples/amp.ord",
+    "src/ordec/examples/blank.ord",
+    "src/ordec/examples/currentmirror.ord",
+    "src/ordec/examples/diffpair.ord",
+    "src/ordec/examples/nand2.ord",
+    "src/ordec/examples/rc_curve.py",
+    "src/ordec/examples/voltagedivider.ord",
+    "src/ordec/examples/voltagedivider_py.py",
+    "src/ordec/examples/stdcells.ord",
+    "src/ordec/examples/*.uistate.json",
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "CC0-1.0"
@@ -46,8 +46,8 @@ SPDX-License-Identifier = "CC0-1.0"
 [[annotations]]
 # ordec.courses lesson content:
 path = [
-    "ordec/courses/*/*.ord",
-    "ordec/courses/*/*.json",
+    "src/ordec/courses/*/*.ord",
+    "src/ordec/courses/*/*.json",
 ]
 SPDX-FileCopyrightText = "2026 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"

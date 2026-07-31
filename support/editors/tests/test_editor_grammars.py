@@ -81,7 +81,7 @@ def parsed_ord_files():
         line numbers inside multi-line strings) tuples.
     """
     interesting = NODE_RULES + NOBODY_RULES + tuple(KEYWORD_RULES)
-    files = sorted(set((REPO_ROOT / 'ordec').rglob('*.ord'))
+    files = sorted(set((REPO_ROOT / 'src/ordec').rglob('*.ord'))
                    | set((REPO_ROOT / 'tests').rglob('*.ord'))
                    | set((REPO_ROOT / 'examples').rglob('*.ord')))
     assert files, 'no .ord files found in the repository'

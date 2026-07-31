@@ -4,7 +4,7 @@
 """
 W3 render_scan -- read-only scans on a frozen graph.
 
-Mirrors ordec/schematic/render.py:293-367 (the webdata rendering hotspot):
+Mirrors src/ordec/schematic/render.py:293-367 (the webdata rendering hotspot):
 repeated full-type scans over a frozen schematic-like subgraph, per-instance
 index queries, ExternalRef resolution into symbol subgraphs with coordinate
 arithmetic per symbol shape, and NPath path reconstruction. Zero mutation.
@@ -41,7 +41,7 @@ def _build_symbol(rng, pins, polys, verts):
         'large':   dict(symbols=8, pins=4, polys=6, verts=5, insts=8000,
                         nets=4000, repeats=20),
     },
-    mirrors='ordec/schematic/render.py render_schematic (webdata hotspot)')
+    mirrors='src/ordec/schematic/render.py render_schematic (webdata hotspot)')
 def render_scan(params, seed):
     rng = Lcg(seed)
     t = PhaseTimer()

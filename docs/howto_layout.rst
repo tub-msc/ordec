@@ -5,7 +5,7 @@ This howto collects the practical knowledge needed to write layout view generato
 
 Complete worked examples to study alongside this howto:
 
-* ``ordec/examples/vco_pseudodiff.ord`` — a larger design in ORD syntax,
+* ``src/ordec/examples/vco_pseudodiff.ord`` — a larger design in ORD syntax,
 * ``tests/lib/lvs_example_hier.ord`` — small hierarchical resistor layouts in ORD syntax (DRC- and LVS-clean),
 * ``tests/lib/lvs_example.py`` — an inverter layout in plain Python syntax.
 
@@ -83,7 +83,7 @@ Geometry of instances is accessed through the instance cursor with coordinates a
 Routing with SRouter
 --------------------
 
-``SRouter`` (``ordec/layout/srouter.py``) draws wires as ``LayoutPath`` nodes, with widths, extensions and via sizes taken from a technology-provided :class:`~ordec.core.schema.RoutingSpec` (e.g. ``SG13G2().default_routing_spec``). It works like an SVG-style turtle:
+``SRouter`` (``src/ordec/layout/srouter.py``) draws wires as ``LayoutPath`` nodes, with widths, extensions and via sizes taken from a technology-provided :class:`~ordec.core.schema.RoutingSpec` (e.g. ``SG13G2().default_routing_spec``). It works like an SVG-style turtle:
 
 .. code-block:: text
 

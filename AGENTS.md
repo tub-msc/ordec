@@ -200,29 +200,29 @@ def example():
 
 ### Core Data Model (ORDB)
 
-The foundation is ORDB (ordec/core/ordb.py), a custom graph database using immutable persistent data structures (pyrsistent). Key concepts:
+The foundation is ORDB (src/ordec/core/ordb.py), a custom graph database using immutable persistent data structures (pyrsistent). Key concepts:
 
 - **Nodes**: Typed graph nodes with attributes (similar to database records)
 - **Subgraphs**: Collections of related nodes with indexes for queries
 - **SubgraphRoot**: Entry point to a subgraph (nid=0)
-- **Inserters**: ABC class hierarchy (`Inserter` in `ordec/core/ordb.py`) for adding nodes to subgraphs during construction. `FuncInserter` wraps a plain function as an inserter; `NodeTuple` is registered as a virtual subclass so node tuples themselves can be used as inserters.
+- **Inserters**: ABC class hierarchy (`Inserter` in `src/ordec/core/ordb.py`) for adding nodes to subgraphs during construction. `FuncInserter` wraps a plain function as an inserter; `NodeTuple` is registered as a virtual subclass so node tuples themselves can be used as inserters.
 - **Indexes**: Query interfaces (unique indexes enforce constraints)
 
 All IC design data is represented as ORDB subgraphs: Symbols, Schematics, Layouts, SimHierarchy, etc.
 
 ### Cell and View Generators
 
-**Cell** (ordec/core/cell.py): Base class for parametrizable design components
+**Cell** (src/ordec/core/cell.py): Base class for parametrizable design components
 - Cells can have Parameters (type-checked, immutable)
 - View generators (@generate decorator) create different representations (schematic, symbol, layout, simulation)
 - Views are cached and hashable
 - Cell instances are immutable and hashable
 
-**View discovery** (ordec/server.py:discover_views): Server automatically finds all @generate decorated methods and @generate_func decorated functions to populate the web UI view list.
+**View discovery** (src/ordec/server.py:discover_views): Server automatically finds all @generate decorated methods and @generate_func decorated functions to populate the web UI view list.
 
 ### Language Layer
 
-**ORD HDL** (ordec/language.py, ordec/ord/):
+**ORD HDL** (src/ordec/language.py, src/ordec/ord/):
 - ORD: Current syntax with improved features (keyword `viewgen` for view generators), intended as superset of Python
 - `.ord` sources compile to Python AST, then execute to build ORDB structures
 
@@ -230,7 +230,7 @@ All IC design data is represented as ORDB subgraphs: Symbols, Schematics, Layout
 
 ### Schema Layer
 
-**Schema** (ordec/core/schema.py): ORDB node type definitions for IC design
+**Schema** (src/ordec/core/schema.py): ORDB node type definitions for IC design
 - **Symbol**: Cell symbol with Pins, geometric shapes for visual representation
 - **Schematic**: Circuit netlist with Nets, SchemInstances, SchemInstanceConns
 - **Layout**: Physical layout with LayoutInstances, shapes on layers, routing
@@ -240,17 +240,17 @@ Each schema type is a Node subclass with Attr declarations and indexes.
 
 ### Simulation Integration
 
-**Netlister** (ordec/schematic/netlister.py): Converts Schematic → SPICE netlist
+**Netlister** (src/ordec/schematic/netlister.py): Converts Schematic → SPICE netlist
 - Recursive subcircuit netlisting
 - Directory tracks node naming
 - Setup functions for PDK-specific initialization
 
-**SimArray** (ordec/core/simarray.py): Immutable, hashable structured array for simulation data
+**SimArray** (src/ordec/core/simarray.py): Immutable, hashable structured array for simulation data
 - Tuple subclass holding `(fields, data)` where fields describe columns and data is packed binary
 - Supports `column(name)` to extract a field as a `SimColumn` — a lazy strided view into the packed binary data (supports indexing, slicing, iteration, `len()`); values are unpacked on demand, not materialized as a tuple
 - No numpy dependency for core operations; `to_numpy()` available for convenience
 
-**Ngspice** (ordec/sim/):
+**Ngspice** (src/ordec/sim/):
 - `ngspice.py`: Contains the `Ngspice` class (interactive piped-mode wrapper),
   `ngspice_batch()` (batch-mode helper), `parse_raw()` (reads binary rawfiles into a
   `SimArray`, handles real and complex/AC rawfiles), and `name_print_to_raw()`
@@ -260,7 +260,7 @@ Each schema type is a Node subclass with Attr declarations and indexes.
   defines `parse_signal_name()` which parses rawfile names like `v(a)`, `i(vgnd)`,
   `@m.xdut.mm2[is]` into `(node_name, subname)`.
 
-**SimHierarchy** (defined entirely in `ordec/core/schema.py`):
+**SimHierarchy** (defined entirely in `src/ordec/core/schema.py`):
 - Flattened simulation hierarchy with SimInstance, SimNet, SimPin, and SimParam nodes.
 - SimHierarchy stores the full simulation result as a single `SimArray` (`sim_data` attr)
   plus `time_field`/`freq_field` identifying the independent variable column.
@@ -274,15 +274,15 @@ Each schema type is a Node subclass with Attr declarations and indexes.
 
 ### Layout
 
-**Layout subsystem** (ordec/layout/):
+**Layout subsystem** (src/ordec/layout/):
 - GDS import/export (gds_in.py, gds_out.py)
 - KLayout integration (klayout.py)
 - Via generation (makevias.py)
-- Constraint-based layout helpers (ordec/core/constraints.py)
+- Constraint-based layout helpers (src/ordec/core/constraints.py)
 
 ### Web Interface
 
-**Server** (ordec/server.py):
+**Server** (src/ordec/server.py):
 - WebSocket-based client-server architecture
 - Token-based authentication (HMAC-SHA256 for local mode)
 - Two modes:
@@ -310,21 +310,21 @@ Each schema type is a Node subclass with Attr declarations and indexes.
 
 ### Library System
 
-**PDK Libraries** (ordec/lib/):
+**PDK Libraries** (src/ordec/lib/):
 - base.py: Common primitives (resistors, capacitors, voltage sources)
 - sky130.py: Skywater 130nm PDK integration
 - ihp130.py: IHP SG13G2 PDK integration
 - generic_mos.py: Generic MOSFET models
 
-**Examples** (ordec/examples/): .ord and .py example designs with .uistate.json UI state
+**Examples** (src/ordec/examples/): .ord and .py example designs with .uistate.json UI state
 
 **PDK configuration**: Environment variables (ORDEC_PDK_SKY130A, ORDEC_PDK_IHP_SG13G2, etc.)
 
 ### External Tool Integration
 
-**Importer** (ordec/importer.py): Custom import hook for .ord files to work as Python modules
+**Importer** (src/ordec/importer.py): Custom import hook for .ord files to work as Python modules
 
-**ExtLibrary** (ordec/extlibrary.py): External library/GDS cell integration
+**ExtLibrary** (src/ordec/extlibrary.py): External library/GDS cell integration
 
 ### Key Design Principles
 

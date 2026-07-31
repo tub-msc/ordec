@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Tests for the JupyterHub integration (ordec/hub.py + the hub gate in
+Tests for the JupyterHub integration (src/ordec/hub.py + the hub gate in
 server.py): base-path serving, the OAuth login flow against a fake hub,
 api/token handoff, websocket cookie gating and activity reporting.
 No browser and no real JupyterHub required.

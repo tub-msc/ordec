@@ -17,7 +17,7 @@
  * from the same tree-sitter-python version (renaming its exported symbols)
  * and then generates the parser.
  *
- * The authoritative ORD grammar is ordec/ord/ord.lark in the ORDeC
+ * The authoritative ORD grammar is src/ordec/ord/ord.lark in the ORDeC
  * repository. support/editors/tests/test_editor_grammars.py cross-checks this parser
  * against it on all repository .ord files.
  */

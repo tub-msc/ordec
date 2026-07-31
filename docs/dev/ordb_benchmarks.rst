@@ -122,7 +122,7 @@ Transactions, index snapshots and immutability
 While a :class:`~ordec.core.ordb.SubgraphUpdater` transaction is open, the
 subgraph's own ``nodes``/``index`` keep showing the pre-transaction state;
 only the updater's views expose uncommitted changes. Real code (e.g.
-``resolve_instances`` in ``ordec/schematic/helpers.py``) queries the
+``resolve_instances`` in ``src/ordec/schematic/helpers.py``) queries the
 subgraph mid-transaction and depends on this. Additionally, ``index[key]``
 returns an immutable snapshot of the bucket, so callers may iterate a
 query result while removing exactly those nodes (the ``expand_rects``
@@ -137,7 +137,7 @@ in the sharing group. pyrsistent gets this from pmap; the dict-based
 backends use guarded dict subclasses whose public mutators raise
 ``TypeError`` and whose index read paths (``[]``, ``get``, ``items``,
 ``values``, ``copy``) return bucket snapshots
-(``ordec/core/ordb/backend_fullcopy.py``). Reads stay at native dict
+(``src/ordec/core/ordb/backend_fullcopy.py``). Reads stay at native dict
 speed, but note for cross-version comparisons that turning fullcopy's
 node store from an exact dict into a subclass costs roughly a third on
 raw node reads (CPython specializes exact dicts only); cow's node store

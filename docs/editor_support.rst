@@ -204,7 +204,7 @@ subclasses the Python plugin's parser, and the tree-sitter grammar
 inherits from tree-sitter-python. Only the ORD delta is maintained
 here.
 
-ORD's grammar is defined in ``ordec/ord/ord.lark``, and the editor
+ORD's grammar is defined in ``src/ordec/ord/ord.lark``, and the editor
 packages must follow it. The tests in
 ``support/editors/tests/test_editor_grammars.py`` compare them against
 this definition: each ``.ord`` file in the repository is parsed with
@@ -216,7 +216,7 @@ again. They are not part of the default ``pytest`` run: run them with
 ``pytest support/editors/tests/``, which additionally needs the
 ``pyyaml`` and ``tree-sitter`` Python packages, or let the ``editors``
 CI workflow run them on changes under ``support/editors/``,
-``ordec/ord/`` and the repository ``.ord`` files. The tree-sitter tests
+``src/ordec/ord/`` and the repository ``.ord`` files. The tree-sitter tests
 skip unless a C compiler is available and the parser sources have been
 generated as described below.
 

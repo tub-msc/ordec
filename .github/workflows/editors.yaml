@@ -7,18 +7,18 @@ on:
   push:
     paths:
       - 'support/editors/**'
-      - 'ordec/ord/**'
+      - 'src/ordec/ord/**'
       # repository .ord files are the corpus of the grammar oracle tests
-      - 'ordec/**.ord'
+      - 'src/ordec/**.ord'
       - 'tests/**.ord'
       - 'examples/**.ord'
       - '.github/workflows/editors.yaml'
   pull_request:
     paths:
       - 'support/editors/**'
-      - 'ordec/ord/**'
+      - 'src/ordec/ord/**'
       # repository .ord files are the corpus of the grammar oracle tests
-      - 'ordec/**.ord'
+      - 'src/ordec/**.ord'
       - 'tests/**.ord'
       - 'examples/**.ord'
       - '.github/workflows/editors.yaml'
