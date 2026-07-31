@@ -1,0 +1,62 @@
+{
+  "name": "ord",
+  "displayName": "ORD",
+  "description": "Language support for the ORD language",
+  "version": "0.1.0",
+  "publisher": "tub-msc",
+  "icon": "ordec.png",
+  "license": "Apache-2.0 AND MIT",
+  "spdx": [
+    "SPDX-FileCopyrightText: 2026 ORDeC contributors",
+    "SPDX-License-Identifier: Apache-2.0"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tub-msc/ordec.git",
+    "directory": "support/editors/vscode/ord"
+  },
+  "engines": {
+    "vscode": "^1.106.1"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "ord",
+    "ordec",
+    "hdl",
+    "ic design",
+    "schematic"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "ord",
+        "aliases": [
+          "ORD",
+          "ord"
+        ],
+        "extensions": [
+          ".ord"
+        ],
+        "icon": {
+          "light": "./icons/ord.svg",
+          "dark": "./icons/ord.svg"
+        },
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "ord",
+        "scopeName": "source.ord",
+        "path": "./syntaxes/ord.tmLanguage.json"
+      },
+      {
+        "scopeName": "source.ord.injection",
+        "path": "./syntaxes/ord-injection.tmLanguage.json",
+        "injectTo": ["source.ord"]
+      }
+    ]
+  }
+}

@@ -6,6 +6,7 @@ path = [
     "docs/Makefile",
     "docs/make.bat",
     "web/package-lock.json",
+    "support/editors/tree-sitter-ord/package-lock.json",
     "tests/renderview_ref/*.svg",
 ]
 SPDX-FileCopyrightText = "NONE"
@@ -17,6 +18,7 @@ path = [
     ".gitignore",
     "docs/.gitignore",
     "web/.gitignore",
+    "support/editors/.gitignore",
     ".dockerignore",
     "MANIFEST.in",
     "docs/requirements.txt",
@@ -124,4 +126,21 @@ path = [
     "examples/interactive_rc_circuit/README.md",
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Editors
+# -------
+
+[[annotations]]
+path = [
+    "support/editors/vscode/ord/ordec.png",
+]
+SPDX-FileCopyrightText = "2026 ORDeC contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = [
+    "support/editors/jetbrains/gradle/wrapper/gradle-wrapper.jar",
+]
+SPDX-FileCopyrightText = "Gradle Inc."
 SPDX-License-Identifier = "Apache-2.0"

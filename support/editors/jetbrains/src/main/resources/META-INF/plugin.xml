@@ -1,0 +1,65 @@
+<!-- SPDX-FileCopyrightText: 2026 ORDeC contributors -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
+<idea-plugin>
+    <!-- Placeholder id, like the VS Code publisher: settle before the first
+         marketplace upload -->
+    <id>org.ordec.jetbrains</id>
+    <name>ORD</name>
+    <vendor>ORDeC contributors</vendor>
+    <url>https://github.com/tub-msc/ordec</url>
+    <description><![CDATA[
+        <p>
+            Work with ORD designs directly in PyCharm or another JetBrains
+            IDE with Python support. The plugin recognizes <code>.ord</code>
+            files, highlights ORD syntax, and keeps the familiar Python
+            editing experience available.
+        </p>
+        <p>
+            ORD is the hardware description language included with ORDeC,
+            the Open Rapid Design Composer. ORDeC helps you create custom
+            integrated circuit designs using Python and a concise language
+            for cells, views, circuit elements, nets, and design constraints.
+        </p>
+        <p>
+            Visit the
+            <a href="https://ordec.readthedocs.io">ORDeC documentation</a>
+            to get started, or find the project on
+            <a href="https://github.com/tub-msc/ordec">GitHub</a>.
+        </p>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.python</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <fileType
+            name="ORD"
+            implementationClass="org.ordec.intellij.OrdFileType"
+            fieldName="INSTANCE"
+            language="ORD"
+            extensions="ord"/>
+        <lang.parserDefinition
+            language="ORD"
+            implementationClass="org.ordec.intellij.OrdParserDefinition"/>
+        <lang.syntaxHighlighterFactory
+            language="ORD"
+            implementationClass="org.ordec.intellij.OrdSyntaxHighlighterFactory"/>
+        <!-- registered for Python, not ORD: PyBaseElementImpl.getLanguage()
+             hardcodes Python, so the ORD PSI reports Python and annotators
+             registered for ORD are never called for it -->
+        <annotator
+            language="Python"
+            implementationClass="org.ordec.intellij.OrdAnnotator"/>
+        <!-- also registered for Python: the flagged elements inside .ord
+             files are Python PSI and suppressor lookup keys on the element
+             language -->
+        <lang.inspectionSuppressor
+            language="Python"
+            implementationClass="org.ordec.intellij.OrdInspectionSuppressor"/>
+    </extensions>
+    <extensions defaultExtensionNs="Pythonid">
+        <dialectsTokenSetContributor
+            implementation="org.ordec.intellij.OrdTokenSetContributor"/>
+    </extensions>
+</idea-plugin>
