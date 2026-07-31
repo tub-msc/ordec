@@ -7,12 +7,26 @@
     <id>org.ordec.jetbrains</id>
     <name>ORD</name>
     <vendor>ORDeC contributors</vendor>
+    <url>https://github.com/tub-msc/ordec</url>
     <description><![CDATA[
-        Support for the ORD hardware description language of
-        <a href="https://github.com/tub-msc/ordec">ORDeC</a>:
-        <code>.ord</code> files are parsed natively as a Python dialect.
-        Requires an IDE with Python support (PyCharm, or IntelliJ IDEA
-        with the Python plugin).
+        <p>
+            Work with ORD designs directly in PyCharm or another JetBrains
+            IDE with Python support. The plugin recognizes <code>.ord</code>
+            files, highlights ORD syntax, and keeps the familiar Python
+            editing experience available.
+        </p>
+        <p>
+            ORD is the hardware description language included with ORDeC,
+            the Open Rapid Design Composer. ORDeC helps you create custom
+            integrated circuit designs using Python and a concise language
+            for cells, views, circuit elements, nets, and design constraints.
+        </p>
+        <p>
+            Visit the
+            <a href="https://ordec.readthedocs.io">ORDeC documentation</a>
+            to get started, or find the project on
+            <a href="https://github.com/tub-msc/ordec">GitHub</a>.
+        </p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
