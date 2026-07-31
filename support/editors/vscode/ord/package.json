@@ -18,6 +18,13 @@
   "engines": {
     "vscode": "^1.106.1"
   },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:ord"
+  ],
+  "scripts": {
+    "check": "node --check extension.js && node --test extension.test.js"
+  },
   "categories": [
     "Programming Languages"
   ],
@@ -28,6 +35,9 @@
     "ic design",
     "schematic"
   ],
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
   "contributes": {
     "languages": [
       {
@@ -57,6 +67,31 @@
         "path": "./syntaxes/ord-injection.tmLanguage.json",
         "injectTo": ["source.ord"]
       }
-    ]
+    ],
+    "configuration": {
+      "title": "ORD",
+      "properties": {
+        "ord.languageServer.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start ORD-LSP for ORD files."
+        },
+        "ord.languageServer.command": {
+          "type": "string",
+          "default": "ordec-lsp",
+          "scope": "machine-overridable",
+          "description": "ORD-LSP executable name or absolute path."
+        },
+        "ord.languageServer.arguments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "machine-overridable",
+          "description": "Arguments passed to the ORD-LSP executable."
+        }
+      }
+    }
   }
 }

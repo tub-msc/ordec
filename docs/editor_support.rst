@@ -21,6 +21,23 @@ JetBrains plugin parses ORD natively as a Python dialect, and
 ``support/editors/tree-sitter-ord/`` provides a real parser for
 tree-sitter-based editors.
 
+ORD language server
+-------------------
+
+ORDeC installs ``ordec-lsp``, a stdio language server providing diagnostics,
+completion, navigation, rename, symbols, and other semantic editor features.
+Install ORDeC in the environment used by the editor and verify the command
+before configuring an editor::
+
+    pip install -e .
+    ordec-lsp
+
+The editor sections below each contain the matching launch configuration.
+The VS Code extension contains its own language client and launches the same
+command automatically. If a graphical editor does not inherit the shell
+``PATH``, replace ``ordec-lsp`` with the absolute path to the executable in
+its environment.
+
 Sublime Text
 ------------
 
@@ -43,6 +60,27 @@ Restart Sublime Text and open a ``.ord`` file. If syntax selection does not
 happen automatically, click the syntax selector in the bottom-right corner
 and choose ``Ord``.
 
+For semantic language support, install the ``LSP`` package from Package
+Control and merge this client entry into
+``Packages/User/LSP.sublime-settings``, keeping any other servers in an
+existing ``clients`` object. Open the project directory as a Sublime folder
+so the server receives the correct workspace root::
+
+    {
+      "clients": {
+        "ordec-lsp": {
+          "command": ["ordec-lsp"],
+          "enabled": true,
+          "languageId": "ord",
+          "scopes": ["source.ord"],
+          "syntaxes": [
+            "Packages/Ord/Ord.sublime-syntax",
+            "Packages/User/Ord.sublime-syntax"
+          ]
+        }
+      }
+    }
+
 PyCharm / JetBrains IDEs
 ------------------------
 
@@ -62,8 +100,10 @@ pinned Gradle distribution (checksum-verified) and the IDE SDK::
 Install the archive from ``build/distributions/`` via
 ``Settings > Plugins > (gear icon) > Install Plugin from Disk``, restart,
 and open a ``.ord`` file to verify highlighting and the ORD file icon.
-Everything that is plain Python gets the IDE's usual Python
-intelligence.
+Everything that is plain Python gets the usual IDE Python
+intelligence. The plugin does not currently launch ORD-LSP: retaining the
+2024.2 Community build target excludes the built-in JetBrains LSP module, so
+that integration needs a separate compatibility decision.
 
 VS Code
 -------
@@ -72,8 +112,13 @@ VS Code
 highlighting for ``.ord`` files. Package and install it with::
 
     cd support/editors/vscode/ord
+    npm ci
     npx @vscode/vsce package
     code --install-extension *.vsix
+
+The extension starts ``ordec-lsp`` automatically when an ORD file opens. Set
+``ord.languageServer.command`` to an absolute path if the executable is not on
+the VS Code ``PATH``, or disable it with ``ord.languageServer.enabled``.
 
 Highlighting needs no configuration and no bundled color theme: the ORD
 constructs carry standard TextMate scopes that stock themes already
@@ -128,6 +173,17 @@ your editor:
            end,
          })
 
+  For semantic language support, also start ORD-LSP from ``init.lua``.
+  This uses the Neovim 0.11+ ``vim.lsp.config`` API, with the ``.ord``
+  filetype mapping from step 2 already in place::
+
+      vim.lsp.config("ordec", {
+        cmd = { "ordec-lsp" },
+        filetypes = { "ord" },
+        root_markers = { "pyproject.toml", ".git" },
+      })
+      vim.lsp.enable("ordec")
+
   To verify, open a ``.ord`` file and run ``:InspectTree``: the tree
   should contain ORD nodes such as ``node_statement``. After grammar
   changes, rerun ``npm run generate`` and the ``cc`` line, then
@@ -160,8 +216,13 @@ your editor:
       name = "ord"
       scope = "source.ord"
       file-types = ["ord"]
+      roots = ["pyproject.toml", ".git"]
       comment-token = "#"
       indent = { tab-width = 4, unit = "    " }
+      language-servers = ["ordec-lsp"]
+
+      [language-server.ordec-lsp]
+      command = "ordec-lsp"
 
       [[grammar]]
       name = "ord"

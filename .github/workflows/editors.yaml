@@ -43,6 +43,11 @@ jobs:
         run: apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev
       - name: pip install
         run: pip install . pytest pytest-cov pyyaml "tree-sitter>=0.25"
+      - name: check VS Code extension
+        run: |
+          cd support/editors/vscode/ord
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run check
       - name: generate tree-sitter parser
         run: |
           cd support/editors/tree-sitter-ord
