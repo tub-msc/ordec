@@ -1178,9 +1178,11 @@ class AnalysisSession(
         ranges = []
 
         # Fold each multi-line symbol (cell, viewgen, function, class, context, path, net).
+        # The parse tree range end spills past the last statement, so folds
+        # stop at the symbol's last content-bearing line instead.
         for symbol in analysis.symbols:
             start_line = symbol.range.start.line
-            end_line = symbol.range.end.line
+            end_line = symbol.content_end_line or symbol.range.end.line
             if end_line > start_line:
                 ranges.append({
                     "start_line": start_line,

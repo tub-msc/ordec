@@ -842,7 +842,13 @@ def test_lsp_workspace_folding_selection_and_semantic_tokens(tmp_path):
             "textDocument": text_document(uri),
         },
     )
-    assert folding_ranges
+    # Folds end at the last content line of each block: trailing blank
+    # lines and the next construct's header stay visible.
+    assert folding_ranges == [
+        {"startLine": 2, "endLine": 4},
+        {"startLine": 3, "endLine": 4},
+        {"startLine": 6, "endLine": 8},
+    ]
 
     selection_ranges = request(
         server,

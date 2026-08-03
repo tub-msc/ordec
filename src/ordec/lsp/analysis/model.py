@@ -81,11 +81,19 @@ class AnalysisDiagnostic(NamedTuple):
 
 
 class AnalysisSymbol(NamedTuple):
-    """Named symbol discovered in an ORD document."""
+    """Named symbol discovered in an ORD document.
+
+    ``range`` follows the parse tree, whose block ends spill past the last
+    statement up to the next construct. That looseness keeps cursor
+    containment working on trailing blank lines, so line-precise consumers
+    such as folding use ``content_end_line``, the last line holding an
+    actual token of the symbol.
+    """
     name: str
     kind: str
     range: AnalysisRange
     selection_range: AnalysisRange
+    content_end_line: Optional[int] = None
 
     def to_dict(self):
         """Convert the symbol to a dictionary for protocol responses."""
@@ -94,6 +102,7 @@ class AnalysisSymbol(NamedTuple):
             "kind": self.kind,
             "range": self.range.to_dict(),
             "selection_range": self.selection_range.to_dict(),
+            "content_end_line": self.content_end_line,
         }
 
 

@@ -36,6 +36,29 @@ def tree_range(node):
     )
 
 
+def content_end_line(node):
+    """Return the last line holding a content-bearing token of a node.
+
+    Parse tree meta end positions include trailing newline and dedent
+    bookkeeping that reaches the next statement, so folding and other
+    line-precise consumers need the last token that carries actual text.
+    """
+    if isinstance(node, Token):
+        return node.end_line
+
+    best = None
+    for token in node.scan_values(lambda value: isinstance(value, Token)):
+        if not str(token).strip():
+            continue
+
+        end_line = getattr(token, "end_line", None)
+        if end_line is None:
+            continue
+        if best is None or end_line > best:
+            best = end_line
+    return best
+
+
 def tree_text(node):
     """Reconstruct compact text for a parse-tree node."""
     if isinstance(node, Token):
@@ -651,6 +674,7 @@ class _OrdAnalysisBuilder:
                     kind=kind,
                     range=tree_range(node),
                     selection_range=tree_range(name_node),
+                    content_end_line=content_end_line(node),
                 ))
                 self.add_binding(
                     scope_id,
@@ -735,6 +759,7 @@ class _OrdAnalysisBuilder:
                     kind="context",
                     range=tree_range(node),
                     selection_range=tree_range(target_node),
+                    content_end_line=content_end_line(node),
                 ))
                 name_node = self.simple_name_node(target_node)
                 if name_node is not None:
@@ -798,6 +823,7 @@ class _OrdAnalysisBuilder:
                         kind="context",
                         range=tree_range(node),
                         selection_range=tree_range(target_node),
+                        content_end_line=content_end_line(node),
                     ))
 
                     name_node = self.simple_name_node(target_node)
@@ -852,6 +878,7 @@ class _OrdAnalysisBuilder:
                     kind=node.data[:-5],
                     range=tree_range(node),
                     selection_range=tree_range(selection_node),
+                    content_end_line=content_end_line(node),
                 ))
             return
 
