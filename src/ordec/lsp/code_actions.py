@@ -97,15 +97,22 @@ def missing_symbol_port_action(session, uri: str, diagnostic):
 
 
 def symbol_body_indent(session, uri: str, analysis, symbol_view):
-    """Return the indentation to use for a new symbol-view body line."""
-    lines = session.document_lines(uri)
+    """Return the indentation to use for a new symbol-view body line.
+
+    Symbol ranges may come from a stale last-good analysis of a longer
+    document, so every line index is bounds-checked against the current
+    document.
+    """
+    lines = session.document_lines(uri) or []
 
     for symbol in analysis.symbols:
         if symbol.kind != "context":
             continue
         if not line_in_range(symbol_view.range, symbol.selection_range.start.line):
             continue
-        return leading_indent(lines[symbol.selection_range.start.line - 1])
+        line_index = symbol.selection_range.start.line - 1
+        if 0 <= line_index < len(lines):
+            return leading_indent(lines[line_index])
 
     start_line_index = symbol_view.range.start.line
     end_line_index = min(symbol_view.range.end.line, len(lines))
@@ -113,5 +120,7 @@ def symbol_body_indent(session, uri: str, analysis, symbol_view):
         if line.strip():
             return leading_indent(line)
 
-    header = lines[symbol_view.range.start.line - 1]
-    return leading_indent(header) + "    "
+    header_index = symbol_view.range.start.line - 1
+    if not 0 <= header_index < len(lines):
+        return "    "
+    return leading_indent(lines[header_index]) + "    "

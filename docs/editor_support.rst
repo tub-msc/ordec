@@ -452,6 +452,9 @@ are inferred only where the ORD analysis can derive useful local
 information, and completion and diagnostics may be conservative for complex
 Python control flow or dynamic imports. Rename is deliberately restricted
 to identifiers and does not rename ORD member accesses such as
-``x.member`` or parameter accesses such as ``x.$param``. Workspace-wide
+``x.member`` or parameter accesses such as ``x.$param``. It also refuses
+symbols whose definition lives in Python source, because rewriting the ORD
+references without the Python definition would break the import (renaming
+a local import alias remains possible). Workspace-wide
 features depend on the editor passing the correct workspace root and on
 file watching notifications for changed files.

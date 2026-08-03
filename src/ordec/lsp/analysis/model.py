@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # standard imports
+import os.path
 import re
 from pathlib import Path
 from typing import List, NamedTuple, Optional
@@ -13,10 +14,15 @@ IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 LEADING_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 TRAILING_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*$")
 FILE_URI_DRIVE_RE = re.compile(r"^/[A-Za-z]:")
+LINE_BREAK_RE = re.compile(r"\r\n|\r|\n")
 
 
 def file_uri_to_path(uri: str):
-    """Return the resolved filesystem path for a file URI, or None.
+    """Return the absolute, normalized filesystem path for a file URI, or None.
+
+    Symlinks are deliberately not resolved: session keys and response URIs
+    must keep the spelling the client opened, or published diagnostics end
+    up under URIs the editor does not associate with its buffers.
 
     Windows clients send drive-letter URIs such as ``file:///C:/x.ord``,
     whose URL path keeps a leading slash before the drive letter, so that
@@ -29,7 +35,21 @@ def file_uri_to_path(uri: str):
     path = unquote(parsed_uri.path)
     if FILE_URI_DRIVE_RE.match(path):
         path = path[1:]
-    return Path(path).resolve()
+    return Path(os.path.abspath(path))
+
+
+def split_source_lines(text: str):
+    """Split source text on LSP line breaks only.
+
+    ``str.splitlines()`` also breaks on form feed, NEL, and U+2028/U+2029,
+    which neither LSP clients nor the ORD parser count as line breaks, so
+    line indexes would drift on documents containing them. Like
+    ``splitlines()``, a trailing line break produces no trailing empty entry.
+    """
+    lines = LINE_BREAK_RE.split(text)
+    if lines and lines[-1] == "":
+        lines.pop()
+    return lines
 
 
 def is_identifier(value: str):

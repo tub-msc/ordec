@@ -27,12 +27,13 @@ the same ground.
 from collections import deque
 from pathlib import Path
 import json
+import os.path
 import queue
 import sys
 import threading
 
 # ordec imports
-from .analysis import AnalysisPosition, AnalysisRange, AnalysisSession, file_uri_to_path
+from .analysis import AnalysisPosition, AnalysisRange, AnalysisSession, file_uri_to_path, split_source_lines
 from .code_actions import code_actions
 
 
@@ -201,7 +202,7 @@ class OrdLanguageServer:
                 return str(root_path)
 
         if params.get("rootPath"):
-            return str(Path(params["rootPath"]).resolve())
+            return os.path.abspath(params["rootPath"])
 
         return None
 
@@ -845,7 +846,7 @@ class OrdLanguageServer:
             if path is None:
                 return None
             try:
-                lines = path.read_text(encoding="utf-8").splitlines()
+                lines = split_source_lines(path.read_text(encoding="utf-8"))
             except (OSError, UnicodeDecodeError):
                 return None
 

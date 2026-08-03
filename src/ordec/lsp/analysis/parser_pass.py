@@ -6,6 +6,7 @@ from typing import Optional
 
 from lark import Token, Tree
 from lark.exceptions import UnexpectedCharacters, UnexpectedInput, UnexpectedToken
+from lark.indenter import DedentError
 
 # ordec imports
 from .model import (
@@ -1330,6 +1331,20 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
                 format_error(source_data, exc.line, exc.column),
             ),
             code="unexpected-input",
+        )
+        return DocumentAnalysis(uri=uri, version=version, diagnostics=[diagnostic], symbols=[])
+    except DedentError as exc:
+        # lark's indenter reports inconsistent dedents outside the
+        # UnexpectedInput hierarchy and without position attributes, so
+        # the diagnostic anchors at the document start.
+        diagnostic = AnalysisDiagnostic(
+            range=AnalysisRange(
+                start=AnalysisPosition(1, 1),
+                end=AnalysisPosition(1, 1),
+            ),
+            severity="error",
+            message="Syntax Error: {}".format(exc),
+            code="inconsistent-dedent",
         )
         return DocumentAnalysis(uri=uri, version=version, diagnostics=[diagnostic], symbols=[])
 

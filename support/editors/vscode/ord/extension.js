@@ -12,7 +12,9 @@ async function activate() {
     return;
   }
 
-  const command = config.get("command", "ordec-lsp").trim();
+  // config.get only falls back on undefined, so an explicit null or
+  // non-string setting value must not crash activation.
+  const command = String(config.get("command", "ordec-lsp") ?? "").trim();
   const args = config.get("arguments", []);
   if (!command) {
     void vscode.window.showWarningMessage(
@@ -31,7 +33,9 @@ async function activate() {
       { scheme: "untitled", language: "ord" },
     ],
     synchronize: {
-      fileEvents: vscode.workspace.createFileSystemWatcher("**/*.ord"),
+      // .py is watched because ORD imports Python modules, whose edits
+      // must invalidate the server's Python module index.
+      fileEvents: vscode.workspace.createFileSystemWatcher("**/*.{ord,py}"),
     },
   };
 

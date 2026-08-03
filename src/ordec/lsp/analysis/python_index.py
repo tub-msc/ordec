@@ -15,6 +15,7 @@ from ...ord.parser import ord_to_py
 from .model import AnalysisPosition
 from .model import AnalysisRange
 from .model import file_uri_to_path
+from .model import split_source_lines
 
 
 def expression_text(node, limit: int = 32):
@@ -242,7 +243,7 @@ class PythonModuleIndex:
             self.python_modules[module_name] = None
             return None
 
-        source_lines = source_data.splitlines()
+        source_lines = split_source_lines(source_data)
         exports = dict()
         reexports = []
         star_modules = []

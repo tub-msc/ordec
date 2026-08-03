@@ -9,6 +9,7 @@ from .model import (
     AnalysisSymbol,
     DocumentAnalysis,
     file_uri_to_path,
+    split_source_lines,
 )
 from .parser_pass import analyze_ord
 from .session import AnalysisSession

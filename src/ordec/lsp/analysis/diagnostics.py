@@ -67,8 +67,11 @@ class DiagnosticsMixin:
             export_name = import_entry.export_name
             module_name = import_entry.module
 
-            if export_name not in (None, "*") and module_name and set(module_name) == {"."}:
-                if self.resolve_module_uri(uri, module_name + export_name) is not None:
+            # An imported name may be an ORD submodule rather than an export
+            # of the module itself, e.g. `from .pkg import sub` for pkg/sub.ord.
+            if export_name not in (None, "*") and module_name:
+                separator = "" if module_name.endswith(".") else "."
+                if self.resolve_module_uri(uri, module_name + separator + export_name) is not None:
                     continue
 
             module_uri = self.resolve_module_uri(uri, module_name)

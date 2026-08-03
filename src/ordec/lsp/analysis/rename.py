@@ -16,7 +16,15 @@ class RenameMixin:
         if name_info is None:
             return None
 
-        if self.definition(uri, position) is None:
+        definition = self.definition(uri, position)
+        if definition is None:
+            return None
+
+        if (
+            definition["kind"] != "module"
+            and name_info["name"] == definition["name"]
+            and self.file_uri_suffix(definition["uri"]) == ".py"
+        ):
             return None
 
         return {
@@ -62,6 +70,12 @@ class RenameMixin:
             return {
                 uri: changes,
             }
+
+        # A workspace-wide rename would rewrite the imported name everywhere
+        # but cannot touch its Python definition, breaking the import.
+        # Aliased usages take the local branch above and stay valid.
+        if self.file_uri_suffix(definition["uri"]) == ".py":
+            return None
 
         changes = dict()
         for reference in references:

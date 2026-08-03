@@ -17,6 +17,7 @@ from .model import (
     file_uri_to_path,
     position_before_or_equal,
     range_contains,
+    split_source_lines,
 )
 from .parser_pass import analyze_ord
 from .python_index import PythonModuleIndex
@@ -68,7 +69,7 @@ class AnalysisSession(
     ):
         """Initialize an analysis session for the optional workspace root."""
         if workspace_root:
-            self.workspace_root = str(Path(workspace_root).resolve())
+            self.workspace_root = os.path.abspath(workspace_root)
         else:
             self.workspace_root = None
         self.max_closed_documents = max_closed_documents
@@ -114,7 +115,7 @@ class AnalysisSession(
 
         if self.workspace_root:
             try:
-                return str(path.relative_to(Path(self.workspace_root).resolve()))
+                return str(path.relative_to(Path(self.workspace_root)))
             except ValueError:
                 pass
 
@@ -133,7 +134,7 @@ class AnalysisSession(
 
         lines = doc.get("lines")
         if lines is None:
-            lines = doc["text"].splitlines()
+            lines = split_source_lines(doc["text"])
             doc["lines"] = lines
         return lines
 
@@ -209,7 +210,7 @@ class AnalysisSession(
             return False
 
         try:
-            path.relative_to(Path(self.workspace_root).resolve())
+            path.relative_to(Path(self.workspace_root))
         except ValueError:
             return False
         return True
@@ -287,7 +288,7 @@ class AnalysisSession(
             path = self.file_uri_path(uri)
             try:
                 self.open_path(str(path))
-            except (OSError, TypeError):
+            except (OSError, TypeError, UnicodeDecodeError):
                 return False
         if uri in self.documents:
             self.record_document_access(uri)
@@ -300,9 +301,10 @@ class AnalysisSession(
 
     def invalidate_path(self, path: str):
         """Invalidate cached state for a filesystem path."""
-        path = Path(path).resolve()
+        path = Path(os.path.abspath(path))
         if path.suffix == ".py":
-            self.invalidate_python_module_path(path)
+            # The Python index tracks symlink-resolved module paths.
+            self.invalidate_python_module_path(path.resolve())
             return None
 
         if path.suffix != ".ord":
@@ -338,7 +340,7 @@ class AnalysisSession(
         if doc_path is None:
             return None
 
-        workspace_root = Path(self.workspace_root).resolve() if self.workspace_root else doc_path.parent
+        workspace_root = Path(self.workspace_root) if self.workspace_root else doc_path.parent
 
         if module_name.startswith("."):
             dot_count = 0
@@ -357,11 +359,11 @@ class AnalysisSession(
 
         module_file_path = import_path.with_suffix(".ord")
         if module_file_path.exists():
-            return module_file_path.resolve().as_uri()
+            return module_file_path.as_uri()
 
         package_init_path = import_path / "__init__.ord"
         if package_init_path.exists():
-            return package_init_path.resolve().as_uri()
+            return package_init_path.as_uri()
 
         return None
 
@@ -456,7 +458,7 @@ class AnalysisSession(
 
     def open_path(self, path: str, version: Optional[int] = None):
         """Open a filesystem ORD file as a closed session document."""
-        path = Path(path).resolve()
+        path = Path(os.path.abspath(path))
         uri = path.as_uri()
         if uri in self.documents and self.documents[uri].get("is_open"):
             return uri
@@ -467,7 +469,7 @@ class AnalysisSession(
 
     def update_path(self, path: str, version: Optional[int] = None):
         """Refresh a filesystem ORD file in the session."""
-        path = Path(path).resolve()
+        path = Path(os.path.abspath(path))
         uri = path.as_uri()
         if uri in self.documents and self.documents[uri].get("is_open"):
             self.documents[uri]["analysis"] = None
@@ -504,18 +506,18 @@ class AnalysisSession(
     def workspace_uris(self):
         """Return ORD file URIs known to the current workspace."""
         if self.workspace_root:
-            root_path = Path(self.workspace_root).resolve()
+            root_path = Path(self.workspace_root)
             if root_path.exists():
                 uris = []
                 for path in self.workspace_ord_paths(root_path):
                     if not path.is_file():
                         continue
 
-                    uri = path.resolve().as_uri()
+                    uri = path.as_uri()
                     if uri not in self.documents:
                         try:
                             self.open_path(str(path))
-                        except OSError:
+                        except (OSError, UnicodeDecodeError):
                             continue
                     uris.append(uri)
                 return uris

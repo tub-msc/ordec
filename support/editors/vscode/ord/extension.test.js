@@ -72,7 +72,7 @@ test("launches ORD-LSP for ORD documents", async () => {
   ]);
   assert.equal(
     createdClient.clientOptions.synchronize.fileEvents.pattern,
-    "**/*.ord"
+    "**/*.{ord,py}"
   );
 
   await extension.deactivate();

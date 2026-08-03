@@ -5,6 +5,7 @@ from pathlib import Path
 
 from ordec.lsp.analysis import AnalysisPosition, AnalysisSession, analyze_ord, file_uri_to_path
 from ordec.lsp.analysis.python_index import PythonModuleIndex
+from ordec.lsp.code_actions import missing_symbol_port_action
 
 
 def position_at(source, needle, occurrence=1):
@@ -80,6 +81,10 @@ def test_analyze_ord_collects_public_structure_and_syntax_errors():
     broken = analyze_ord("cell Inv:\n    viewgen layout(")
     assert broken.symbols == []
     assert broken.diagnostics[0].code == "unexpected-token"
+
+    dedented = analyze_ord("cell Inv:\n        path a\n    path b\n")
+    assert dedented.symbols == []
+    assert dedented.diagnostics[0].code == "inconsistent-dedent"
 
 
 def test_analysis_session_tracks_document_versions_and_last_good_analysis():
@@ -657,6 +662,108 @@ def test_document_lines_cache_follows_document_updates():
     session.update_document(uri, "net a\nnet b\nnet c\n")
     assert session.document_lines(uri) == ["net a", "net b", "net c"]
     assert session.document_lines("file:///tmp/untracked.ord") is None
+
+    session.update_document(uri, "net a\u2028b\nnet c\n")
+    assert session.document_lines(uri) == ["net a\u2028b", "net c"]
+
+
+def test_workspace_scan_skips_undecodable_files(tmp_path):
+    (tmp_path / "good.ord").write_text(
+        "cell Inv:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    (tmp_path / "bad.ord").write_bytes(b"cell Caf\xe9:\n")
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+
+    assert session.workspace_uris() == [(tmp_path / "good.ord").as_uri()]
+    assert session.ensure_document((tmp_path / "bad.ord").as_uri()) is False
+
+
+def test_rename_refuses_python_defined_symbols(tmp_path):
+    (tmp_path / "extlib.py").write_text(
+        "class Stage:\n"
+        "    pass\n"
+    )
+    source = (
+        "from extlib import Stage\n"
+        "\n"
+        "def helper(x=Stage):\n"
+        "    return x\n"
+    )
+    path = tmp_path / "top.ord"
+    path.write_text(source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = session.open_path(str(path))
+    position = position_at(source, "Stage", occurrence=2)
+
+    assert session.definition(uri, position)["uri"].endswith("extlib.py")
+    assert session.prepare_rename(uri, position) is None
+    assert session.rename(uri, position, "Driver") is None
+
+
+def test_session_uris_preserve_symlinked_workspace_spelling(tmp_path):
+    real_root = tmp_path / "real"
+    real_root.mkdir()
+    (real_root / "top.ord").write_text(
+        "cell Inv:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    linked_root = tmp_path / "linked"
+    linked_root.symlink_to(real_root)
+
+    session = AnalysisSession(workspace_root=str(linked_root))
+    uri = (linked_root / "top.ord").as_uri()
+
+    assert session.canonical_uri(uri) == uri
+    assert session.workspace_uris() == [uri]
+
+
+def test_import_member_resolves_ord_submodules(tmp_path):
+    package_path = tmp_path / "pkg"
+    package_path.mkdir()
+    (package_path / "__init__.ord").write_text("")
+    (package_path / "sub.ord").write_text(
+        "cell Inner:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    top_path = tmp_path / "top.ord"
+    top_path.write_text("from .pkg import sub\n")
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = session.open_path(str(top_path))
+
+    assert session.diagnostics(uri) == []
+
+
+def test_missing_port_action_survives_stale_analysis():
+    session = AnalysisSession(workspace_root="/tmp/workspace")
+    uri = "file:///tmp/stale.ord"
+    session.open_document(
+        uri,
+        "cell Inv:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+        "        input b\n",
+        version=1,
+    )
+    session.analyze(uri)
+    session.update_document(uri, "cell Inv:\n    viewgen symbol(\n", version=2)
+    session.analyze(uri)
+
+    diagnostic = {
+        "range": {
+            "start": {"line": 0, "character": 0},
+            "end": {"line": 0, "character": 0},
+        },
+        "data": {"portName": "c"},
+    }
+    action = missing_symbol_port_action(session, uri, diagnostic)
+    assert "input c" in action["edit"]["changes"][uri][0]["newText"]
 
 
 def test_analysis_session_checked_in_ord_files_have_no_lsp_diagnostics():
