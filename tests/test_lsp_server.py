@@ -148,18 +148,24 @@ def test_lsp_initialize_exposes_core_capabilities(tmp_path):
     for capability in (
         "documentSymbolProvider",
         "definitionProvider",
+        "typeDefinitionProvider",
         "hoverProvider",
         "referencesProvider",
         "renameProvider",
         "completionProvider",
+        "signatureHelpProvider",
         "codeActionProvider",
         "foldingRangeProvider",
         "selectionRangeProvider",
         "semanticTokensProvider",
+        "inlayHintProvider",
+        "callHierarchyProvider",
     ):
         assert capability in capabilities
 
     assert capabilities["completionProvider"]["triggerCharacters"] == [".", "$"]
+    assert capabilities["signatureHelpProvider"]["triggerCharacters"] == ["(", ","]
+    assert capabilities["textDocumentSync"]["change"] == 2
     assert capabilities["positionEncoding"] == "utf-16"
 
 
@@ -460,7 +466,7 @@ def test_lsp_completion_and_code_actions(tmp_path):
     assert actions[0]["edit"]["changes"][broken_uri][0]["newText"] == "    input y\n"
 
 
-def test_lsp_rejects_incremental_did_change(tmp_path):
+def test_lsp_applies_incremental_did_change(tmp_path):
     server = initialize_server(tmp_path)
     uri = (tmp_path / "incremental.ord").resolve().as_uri()
     source = "cell Inv:\n    viewgen symbol -> Symbol:\n        input a\n"
@@ -474,24 +480,321 @@ def test_lsp_rejects_incremental_did_change(tmp_path):
                 "uri": uri,
                 "version": 2,
             },
-            "contentChanges": [{
-                "range": {
-                    "start": {
-                        "line": 0,
-                        "character": 0,
+            "contentChanges": [
+                {
+                    "range": {
+                        "start": {
+                            "line": 0,
+                            "character": 5,
+                        },
+                        "end": {
+                            "line": 0,
+                            "character": 8,
+                        },
                     },
-                    "end": {
-                        "line": 0,
-                        "character": 0,
-                    },
+                    "text": "Buf",
                 },
-                "text": "broken",
-            }],
+                {
+                    "range": {
+                        "start": {
+                            "line": 3,
+                            "character": 0,
+                        },
+                        "end": {
+                            "line": 3,
+                            "character": 0,
+                        },
+                    },
+                    "text": "        input b\n",
+                },
+            ],
         },
     )
 
-    assert responses[0]["method"] == "window/showMessage"
-    assert server.session.documents[uri]["text"] == source
+    assert responses[0]["method"] == "textDocument/publishDiagnostics"
+    assert responses[0]["params"]["diagnostics"] == []
+    assert server.session.documents[uri]["text"] == (
+        "cell Buf:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+        "        input b\n"
+    )
+
+
+def test_lsp_hover_markdown_and_completion_documentation(tmp_path):
+    (tmp_path / "helpers.py").write_text(
+        'def scale(value, factor=2):\n'
+        '    """Scale a value by a factor."""\n'
+        '    return value * factor\n'
+    )
+    source = (
+        "from helpers import scale\n"
+        "\n"
+        "def wrap():\n"
+        "    return scale\n"
+    )
+    user_path = tmp_path / "user.ord"
+    user_path.write_text(source)
+
+    server = initialize_server(
+        tmp_path,
+        capabilities={
+            "textDocument": {
+                "hover": {
+                    "contentFormat": ["markdown", "plaintext"],
+                },
+            },
+        },
+    )
+    uri = user_path.resolve().as_uri()
+    assert open_document(server, uri, source) == []
+
+    hover = request(
+        server,
+        "textDocument/hover",
+        {
+            "textDocument": text_document(uri),
+            "position": source_offset(source, "scale", 2),
+        },
+    )
+    assert hover["contents"]["kind"] == "markdown"
+    assert "def scale(value, factor=2)" in hover["contents"]["value"]
+    assert "Scale a value by a factor." in hover["contents"]["value"]
+
+    completions = request(
+        server,
+        "textDocument/completion",
+        {
+            "textDocument": text_document(uri),
+            "position": source_offset_after(source, "    return scale"),
+        },
+    )
+    scale_items = [item for item in completions if item["label"] == "scale"]
+    assert scale_items[0]["documentation"]["value"] == "Scale a value by a factor."
+    assert all("sortText" in item for item in completions)
+
+
+def test_lsp_document_symbols_hierarchical_and_flat(tmp_path):
+    source = (
+        "cell Inv:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+        "        output y\n"
+    )
+    uri = (tmp_path / "inv.ord").resolve().as_uri()
+
+    flat_server = initialize_server(tmp_path)
+    assert open_document(flat_server, uri, source) == []
+    flat_symbols = request(
+        flat_server,
+        "textDocument/documentSymbol",
+        {
+            "textDocument": text_document(uri),
+        },
+    )
+    assert flat_symbols[0]["location"]["uri"] == uri
+
+    server = initialize_server(
+        tmp_path,
+        capabilities={
+            "textDocument": {
+                "documentSymbol": {
+                    "hierarchicalDocumentSymbolSupport": True,
+                },
+            },
+        },
+    )
+    assert open_document(server, uri, source) == []
+    symbols = request(
+        server,
+        "textDocument/documentSymbol",
+        {
+            "textDocument": text_document(uri),
+        },
+    )
+
+    assert [symbol["name"] for symbol in symbols] == ["Inv"]
+    viewgens = symbols[0]["children"]
+    assert [symbol["name"] for symbol in viewgens] == ["symbol"]
+    assert [symbol["name"] for symbol in viewgens[0]["children"]] == [
+        "input a",
+        "output y",
+    ]
+
+
+def test_lsp_signature_help(tmp_path):
+    source = (
+        "from ordec.core import *\n"
+        "from ordec.lib.generic_mos import Nmos\n"
+        "\n"
+        "cell Inv:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        net vss\n"
+        "        Nmos(w=4u, l=400n) pd:\n"
+        "            .s -- vss\n"
+        "        x = helper(4u)\n"
+        "\n"
+        "def helper(gain, offset=1):\n"
+        "    return gain\n"
+    )
+    uri = (tmp_path / "inv.ord").resolve().as_uri()
+    server = initialize_server(tmp_path)
+    assert open_document(server, uri, source) == []
+
+    signature_help = request(
+        server,
+        "textDocument/signatureHelp",
+        {
+            "textDocument": text_document(uri),
+            "position": source_offset_after(source, "Nmos(w="),
+        },
+    )
+    signature = signature_help["signatures"][0]
+    assert signature["label"] == "Nmos(l=R('1u'), w=R('1u'))"
+    assert [parameter["label"] for parameter in signature["parameters"]] == [
+        "l=R('1u')",
+        "w=R('1u')",
+    ]
+    assert signature_help["activeParameter"] == 1
+
+    signature_help = request(
+        server,
+        "textDocument/signatureHelp",
+        {
+            "textDocument": text_document(uri),
+            "position": source_offset_after(source, "helper(4"),
+        },
+    )
+    signature = signature_help["signatures"][0]
+    assert signature["label"] == "helper(gain, offset)"
+    assert signature_help["activeParameter"] == 0
+
+    outside_call = request(
+        server,
+        "textDocument/signatureHelp",
+        {
+            "textDocument": text_document(uri),
+            "position": source_offset(source, "net vss"),
+        },
+        message_id=2,
+    )
+    assert outside_call is None
+
+
+def hierarchy_workspace(tmp_path):
+    """Create a two-cell workspace used by navigation feature tests."""
+    device_source = (
+        "cell Device:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    (tmp_path / "device.ord").write_text(device_source)
+    top_source = (
+        "from .device import Device\n"
+        "\n"
+        "cell Top:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        net vdd\n"
+        "        Device inst:\n"
+        "            .a -- vdd\n"
+        "\n"
+        "def helper():\n"
+        "    d = Device()\n"
+        "    return d\n"
+    )
+    (tmp_path / "top.ord").write_text(top_source)
+    return device_source, top_source
+
+
+def test_lsp_type_definition_and_inlay_hints(tmp_path):
+    device_source, top_source = hierarchy_workspace(tmp_path)
+    server = initialize_server(tmp_path)
+    top_uri = (tmp_path / "top.ord").resolve().as_uri()
+    device_uri = (tmp_path / "device.ord").resolve().as_uri()
+    assert open_document(server, top_uri, top_source) == []
+
+    type_definition = request(
+        server,
+        "textDocument/typeDefinition",
+        {
+            "textDocument": text_document(top_uri),
+            "position": source_offset(top_source, "inst"),
+        },
+    )
+    assert type_definition["uri"] == device_uri
+    assert type_definition["range"]["start"] == source_offset(device_source, "Device")
+
+    hints = request(
+        server,
+        "textDocument/inlayHint",
+        {
+            "textDocument": text_document(top_uri),
+            "range": {
+                "start": {
+                    "line": 0,
+                    "character": 0,
+                },
+                "end": {
+                    "line": 20,
+                    "character": 0,
+                },
+            },
+        },
+    )
+    assert len(hints) == 1
+    assert hints[0]["label"] == ": Device"
+    assert hints[0]["position"] == source_offset_after(top_source, "    d")
+
+
+def test_lsp_call_hierarchy(tmp_path):
+    device_source, top_source = hierarchy_workspace(tmp_path)
+    server = initialize_server(tmp_path)
+    top_uri = (tmp_path / "top.ord").resolve().as_uri()
+    device_uri = (tmp_path / "device.ord").resolve().as_uri()
+    assert open_document(server, top_uri, top_source) == []
+
+    items = request(
+        server,
+        "textDocument/prepareCallHierarchy",
+        {
+            "textDocument": text_document(top_uri),
+            "position": source_offset(top_source, "Device", 2),
+        },
+    )
+    assert len(items) == 1
+    assert items[0]["name"] == "Device"
+    assert items[0]["uri"] == device_uri
+
+    incoming = request(
+        server,
+        "callHierarchy/incomingCalls",
+        {
+            "item": items[0],
+        },
+    )
+    callers = [call["from"]["name"] for call in incoming]
+    assert "Top" in callers
+    assert "helper" in callers
+    top_call = next(call for call in incoming if call["from"]["name"] == "Top")
+    assert top_call["fromRanges"][0]["start"] == source_offset(top_source, "Device", 2)
+
+    top_items = request(
+        server,
+        "textDocument/prepareCallHierarchy",
+        {
+            "textDocument": text_document(top_uri),
+            "position": source_offset(top_source, "Top"),
+        },
+    )
+    outgoing = request(
+        server,
+        "callHierarchy/outgoingCalls",
+        {
+            "item": top_items[0],
+        },
+    )
+    assert [call["to"]["name"] for call in outgoing] == ["Device"]
+    assert outgoing[0]["fromRanges"][0]["start"] == source_offset(top_source, "Device", 2)
 
 
 def test_lsp_workspace_folding_selection_and_semantic_tokens(tmp_path):
@@ -657,3 +960,49 @@ def test_lsp_serve_coalesces_did_change_bursts():
     # intermediate version would show up as leftover diagnostics here.
     assert len(published) == 2
     assert published[1]["params"]["diagnostics"] == []
+
+
+def test_lsp_serve_keeps_incremental_did_change_bursts():
+    uri = "file:///tmp/burst.ord"
+
+    def did_change(version, changes):
+        return {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "textDocument": {"uri": uri, "version": version},
+                "contentChanges": changes,
+            },
+        }
+
+    start_of_document = {
+        "start": {"line": 0, "character": 0},
+        "end": {"line": 0, "character": 0},
+    }
+    output = run_serve([
+        {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": "ord",
+                    "version": 1,
+                    "text": "cell (\n",
+                },
+            },
+        },
+        did_change(2, [{"text": ""}]),
+        did_change(3, [{"range": start_of_document, "text": "cell (\n"}]),
+    ])
+
+    published = [
+        message for message in output
+        if message.get("method") == "textDocument/publishDiagnostics"
+    ]
+    # The incremental change builds on the full replacement before it, so
+    # neither may be skipped: broken open, clean replacement, broken edit.
+    assert len(published) == 3
+    assert published[0]["params"]["diagnostics"] != []
+    assert published[1]["params"]["diagnostics"] == []
+    assert published[2]["params"]["diagnostics"] != []

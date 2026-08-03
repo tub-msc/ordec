@@ -89,6 +89,7 @@ class _OrdAnalysisBuilder:
         self.viewgen_returns = []
         self.node_contexts = []
         self.constraints = []
+        self.type_hints = []
 
     def simple_name_node(self, node):
         """Return the simple name node represented by a parse-tree node."""
@@ -447,6 +448,20 @@ class _OrdAnalysisBuilder:
             context_type_names=context_type_names,
         )
 
+    def add_type_hint(self, target_node, type_names):
+        """Record an inferred-type hint for a simple assignment target."""
+        type_names = self.normalize_type_names(type_names)
+        if not type_names:
+            return
+
+        if self.simple_name_node(target_node) is None:
+            return
+
+        self.type_hints.append({
+            "range": tree_range(target_node),
+            "type_names": type_names,
+        })
+
     def add_reference(self, scope_id, name_node):
         """Register a name reference occurrence."""
         name = tree_text(name_node)
@@ -704,6 +719,16 @@ class _OrdAnalysisBuilder:
                     "target_range": tree_range(target_node),
                     "range": tree_range(node),
                 })
+                if kind_name_node is not None:
+                    # Record the node kind as a reference occurrence so that
+                    # references, rename, and call hierarchy see cell
+                    # instantiation sites.
+                    self.occurrences.append({
+                        "name": kind_name,
+                        "range": tree_range(kind_name_node),
+                        "scope_id": scope_id,
+                        "binding_id": kind_binding_id,
+                    })
 
                 self.symbols.append(AnalysisSymbol(
                     name="{} {}".format(kind_name, tree_text(target_node)),
@@ -745,6 +770,14 @@ class _OrdAnalysisBuilder:
                 kind_binding_id = None
                 if kind_name_node is not None:
                     kind_binding_id = self.resolve_binding(scope_id, tree_text(kind_name_node))
+                    # Same as node_stmt: expose the node kind as a reference
+                    # occurrence for references, rename, and call hierarchy.
+                    self.occurrences.append({
+                        "name": kind_name,
+                        "range": tree_range(kind_name_node),
+                        "scope_id": scope_id,
+                        "binding_id": kind_binding_id,
+                    })
 
                 for target_node in node.children[1:]:
                     if not isinstance(target_node, Tree):
@@ -948,6 +981,7 @@ class _OrdAnalysisBuilder:
                         type_names=value_type_names,
                         context_type_names=context_type_names,
                     ):
+                        self.add_type_hint(target_node, value_type_names)
                         continue
 
                     self.visit(target_node, scope_id, context_type_names=context_type_names)
@@ -1023,6 +1057,7 @@ class _OrdAnalysisBuilder:
                 context_type_names=context_type_names,
             )
             self.add_binding(scope_id, name_node, "variable", type_names=type_names)
+            self.add_type_hint(name_node, type_names)
             self.visit(value_node, scope_id, context_type_names=context_type_names)
             return
 
@@ -1196,6 +1231,7 @@ class _OrdAnalysisBuilder:
             viewgen_returns=self.viewgen_returns,
             node_contexts=self.node_contexts,
             constraints=self.constraints,
+            type_hints=self.type_hints,
         )
 
 

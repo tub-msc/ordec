@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 # ordec imports
 from .completions import CompletionsMixin
 from .diagnostics import DiagnosticsMixin
+from .hierarchy import CallHierarchyMixin
 from .model import (
     AnalysisPosition,
     AnalysisRange,
@@ -20,6 +21,7 @@ from .model import (
 from .parser_pass import analyze_ord
 from .python_index import PythonModuleIndex
 from .rename import RenameMixin
+from .signatures import SignatureHelpMixin
 from .typeflow import TypeFlowMixin
 
 
@@ -28,6 +30,8 @@ class AnalysisSession(
     CompletionsMixin,
     DiagnosticsMixin,
     RenameMixin,
+    SignatureHelpMixin,
+    CallHierarchyMixin,
 ):
     """Stateful ORD analysis facade for open documents and workspace files.
 
@@ -38,11 +42,12 @@ class AnalysisSession(
       ``close_document()``, ``invalidate_uri()``
     - diagnostics and symbols: ``analyze()``, ``diagnostics()``,
       ``workspace_symbols()``
-    - navigation: ``definition()``, ``hover()``, ``references()``,
-      ``document_highlights()``
-    - editing and assists: ``completions()``, ``prepare_rename()``,
-      ``rename()``, ``folding_ranges()``, ``selection_ranges()``,
-      ``semantic_tokens()``
+    - navigation: ``definition()``, ``type_definition()``, ``hover()``,
+      ``references()``, ``document_highlights()``,
+      ``call_hierarchy_item()``, ``incoming_calls()``, ``outgoing_calls()``
+    - editing and assists: ``completions()``, ``signature_help()``,
+      ``inlay_hints()``, ``prepare_rename()``, ``rename()``,
+      ``folding_ranges()``, ``selection_ranges()``, ``semantic_tokens()``
 
     The mixins keep feature-specific implementation code separated, but those
     methods remain part of this facade rather than independent public entry
@@ -951,8 +956,55 @@ class AnalysisSession(
 
         return {
             "contents": contents,
+            "markdown": self.hover_markdown(uri, definition),
             "range": hover_range,
         }
+
+    def hover_markdown(self, uri: str, definition):
+        """Return markdown hover contents for a resolved definition."""
+        parts = [
+            "```ord\n{}\n```".format(self.definition_header(uri, definition)),
+        ]
+        if definition["uri"] != uri:
+            parts.append("*{}*".format(self.display_uri(definition["uri"])))
+
+        docstring = definition.get("docstring")
+        if docstring:
+            parts.append(docstring)
+
+        return "\n\n".join(parts)
+
+    def definition_header(self, uri: str, definition):
+        """Return the signature-style header line for a definition."""
+        kind = definition["kind"]
+        name = definition["name"]
+
+        if kind == "class":
+            signature = self.callable_signature(uri, definition)
+            parameters = signature["parameters"] if signature is not None else []
+            # Classes that declare cell parameters, and everything defined in
+            # ORD source, read as cells to ORD users.
+            keyword = "class"
+            if parameters or self.is_ord_uri(definition["uri"]):
+                keyword = "cell"
+            if parameters:
+                return "{} {}({})".format(
+                    keyword,
+                    name,
+                    ", ".join(parameter["label"] for parameter in parameters),
+                )
+            return "{} {}".format(keyword, name)
+
+        if kind == "function":
+            signature = self.callable_signature(uri, definition)
+            if signature is not None:
+                return "def {}".format(signature["label"])
+            return "function {}".format(name)
+
+        if kind == "parameter" and definition.get("default"):
+            return "parameter {} = {}".format(name, definition["default"])
+
+        return "{} {}".format(kind, name)
 
     def ord_cell_member_definition(self, cell_uri: str, cell_name: str, member_name: str):
         """Resolve a member declared by an ORD cell."""
@@ -1024,10 +1076,16 @@ class AnalysisSession(
         members = dict()
 
         def add_binding_member(binding):
+            kind = binding["kind"]
+            # ORD cell parameters are `name = Parameter(...)` assignments in
+            # the cell body; the inferred value type identifies them.
+            if "Parameter" in (binding.get("type_names") or []):
+                kind = "parameter"
+
             members.setdefault(binding["name"], {
                 "uri": cell_uri,
                 "name": binding["name"],
-                "kind": binding["kind"],
+                "kind": kind,
                 "range": binding["range"],
                 "selection_range": binding["selection_range"],
             })
@@ -1441,6 +1499,67 @@ class AnalysisSession(
             highlights.append(highlight)
 
         return highlights
+
+    def type_definition(self, uri: str, position: AnalysisPosition):
+        """Resolve the defining type for the symbol at a document position."""
+        uri = self.canonical_uri(uri)
+        if not self.ensure_document(uri):
+            return None
+
+        analysis = self.analyze(uri)
+        type_names = []
+        origin_range = None
+
+        local = self.local_definition(uri, position)
+        if local is not None and local.get("binding_id") is not None:
+            binding = analysis.binding_map.get(local["binding_id"])
+            if binding is not None:
+                type_names = list(binding.get("type_names", []))
+                origin_range = local.get("origin_range")
+
+        for type_name in self.normalize_type_names(type_names):
+            resolved = self.resolve_completion_type(uri, type_name)
+            if resolved is not None and resolved.get("kind") == "class":
+                return self.definition_with_origin(resolved, origin_range)
+
+        # On a type name itself, the type definition is the definition.
+        definition = self.definition(uri, position)
+        if definition is not None and definition.get("kind") == "class":
+            return definition
+
+        return None
+
+    def inlay_hints(self, uri: str, value_range: Optional[AnalysisRange] = None):
+        """Return inferred-type inlay hints, optionally limited to a range."""
+        uri = self.canonical_uri(uri)
+        if not self.ensure_document(uri):
+            return []
+
+        analysis = self.analyze(uri)
+        hints = []
+        for record in analysis.type_hints:
+            position = record["range"].end
+            if value_range is not None:
+                if not position_before_or_equal(value_range.start, position):
+                    continue
+                if not position_before_or_equal(position, value_range.end):
+                    continue
+
+            # Only show hints whose type name resolves to a real cell or
+            # class, so heuristic guesses do not turn into noise.
+            for type_name in record["type_names"]:
+                resolved = self.resolve_completion_type(uri, type_name)
+                if resolved is None or resolved.get("kind") != "class":
+                    continue
+
+                hints.append({
+                    "position": position,
+                    "label": type_name,
+                    "kind": "type",
+                })
+                break
+
+        return hints
 
     def definition(self, uri: str, position: AnalysisPosition):
         """Resolve the best definition for a document position."""

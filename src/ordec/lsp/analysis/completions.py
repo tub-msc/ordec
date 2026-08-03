@@ -136,11 +136,19 @@ class CompletionsMixin:
                     continue
                 if context["mode"] == "parameter" and member["kind"] != "parameter":
                     continue
-                items.setdefault(name, {
+
+                detail = "{} of {}".format(member["kind"], type_name)
+                if member.get("default"):
+                    detail = "{}, default {}".format(detail, member["default"])
+
+                item = {
                     "label": name,
                     "kind": member["kind"],
-                    "detail": "{} of {}".format(member["kind"], type_name),
-                })
+                    "detail": detail,
+                }
+                if member.get("docstring"):
+                    item["documentation"] = member["docstring"]
+                items.setdefault(name, item)
 
         return items
 
@@ -210,11 +218,14 @@ class CompletionsMixin:
                 if import_entry.local_name != import_entry.export_name:
                     detail = "{} as {}".format(detail, import_entry.local_name)
 
-                items.setdefault(import_entry.local_name, {
+                item = {
                     "label": import_entry.local_name,
                     "kind": import_kind,
                     "detail": detail,
-                })
+                }
+                if match is not None and match.get("docstring"):
+                    item["documentation"] = match["docstring"]
+                items.setdefault(import_entry.local_name, item)
 
             else:
                 detail = "import {}".format(import_entry.module)

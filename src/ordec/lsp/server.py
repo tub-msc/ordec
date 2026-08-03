@@ -33,7 +33,7 @@ import threading
 from urllib.parse import unquote, urlparse
 
 # ordec imports
-from .analysis import AnalysisPosition, AnalysisSession
+from .analysis import AnalysisPosition, AnalysisRange, AnalysisSession
 from .code_actions import code_actions
 
 
@@ -59,12 +59,14 @@ DIAGNOSTIC_SEVERITY_MAP = {
     "hint": 4,
 }
 SYMBOL_KIND_MAP = {
+    "module": 2,
     "class": 5,
     "function": 12,
     "context": 13,
     "path": 13,
     "net": 13,
 }
+INLAY_HINT_KIND_TYPE = 1
 COMPLETION_KIND_MAP = {
     "class": 7,
     "function": 3,
@@ -95,6 +97,8 @@ class OrdLanguageServer:
         self.shutdown_requested = False
         self.position_encoding = "utf-16"
         self.definition_link_support = False
+        self.hover_markdown_support = False
+        self.hierarchical_symbol_support = False
         self.session = AnalysisSession()
         self.handlers = {
             "initialize": self.handle_initialize,
@@ -110,13 +114,19 @@ class OrdLanguageServer:
             "textDocument/documentSymbol": self.handle_document_symbol,
             "textDocument/documentHighlight": self.handle_document_highlight,
             "textDocument/definition": self.handle_definition,
+            "textDocument/typeDefinition": self.handle_type_definition,
             "textDocument/hover": self.handle_hover,
             "textDocument/references": self.handle_references,
             "textDocument/completion": self.handle_completion,
+            "textDocument/signatureHelp": self.handle_signature_help,
             "textDocument/codeAction": self.handle_code_action,
             "textDocument/foldingRange": self.handle_folding_range,
             "textDocument/selectionRange": self.handle_selection_range,
             "textDocument/semanticTokens/full": self.handle_semantic_tokens_full,
+            "textDocument/inlayHint": self.handle_inlay_hint,
+            "textDocument/prepareCallHierarchy": self.handle_prepare_call_hierarchy,
+            "callHierarchy/incomingCalls": self.handle_incoming_calls,
+            "callHierarchy/outgoingCalls": self.handle_outgoing_calls,
             "workspace/symbol": self.handle_workspace_symbol,
             "textDocument/prepareRename": self.handle_prepare_rename,
             "textDocument/rename": self.handle_rename,
@@ -202,6 +212,14 @@ class OrdLanguageServer:
         text_document_capabilities = capabilities.get("textDocument", {})
         definition_capabilities = text_document_capabilities.get("definition", {})
         self.definition_link_support = bool(definition_capabilities.get("linkSupport"))
+        hover_capabilities = text_document_capabilities.get("hover", {})
+        self.hover_markdown_support = "markdown" in (
+            hover_capabilities.get("contentFormat") or []
+        )
+        symbol_capabilities = text_document_capabilities.get("documentSymbol", {})
+        self.hierarchical_symbol_support = bool(
+            symbol_capabilities.get("hierarchicalDocumentSymbolSupport")
+        )
         self.session = AnalysisSession(workspace_root=self.initialize_root_path(params))
         return self.result_response(message, {
             "serverInfo": {
@@ -211,7 +229,7 @@ class OrdLanguageServer:
                 "positionEncoding": self.position_encoding,
                 "textDocumentSync": {
                     "openClose": True,
-                    "change": 1,
+                    "change": 2,
                     "save": {
                         "includeText": True,
                     },
@@ -220,6 +238,7 @@ class OrdLanguageServer:
                 "documentHighlightProvider": True,
                 "workspaceSymbolProvider": True,
                 "definitionProvider": True,
+                "typeDefinitionProvider": True,
                 "hoverProvider": True,
                 "referencesProvider": True,
                 "renameProvider": {
@@ -228,6 +247,9 @@ class OrdLanguageServer:
                 "completionProvider": {
                     "resolveProvider": False,
                     "triggerCharacters": [".", "$"],
+                },
+                "signatureHelpProvider": {
+                    "triggerCharacters": ["(", ","],
                 },
                 "codeActionProvider": True,
                 "foldingRangeProvider": True,
@@ -239,6 +261,8 @@ class OrdLanguageServer:
                     },
                     "full": True,
                 },
+                "inlayHintProvider": True,
+                "callHierarchyProvider": True,
             },
         })
 
@@ -267,18 +291,52 @@ class OrdLanguageServer:
         content_changes = params.get("contentChanges", [])
         if not content_changes:
             return []
-        if any("range" in change for change in content_changes):
-            return [self.show_message(
-                "error",
-                "ORDeC LSP only supports full document synchronization.",
-            )]
+
+        doc = self.session.documents.get(uri)
+        text = doc["text"] if doc is not None else None
+        for change in content_changes:
+            if "range" not in change:
+                text = change["text"]
+            elif text is None:
+                return [self.show_message(
+                    "error",
+                    "ORDeC LSP received an incremental change for an unknown document.",
+                )]
+            else:
+                text = self.apply_incremental_change(text, change)
 
         self.session.update_document(
             uri,
-            content_changes[-1]["text"],
+            text,
             version=text_document.get("version"),
         )
         return [self.publish_diagnostics(uri)]
+
+    def apply_incremental_change(self, text: str, change):
+        """Apply one range-based LSP content change to document text."""
+        start_offset = self.change_offset(text, change["range"]["start"])
+        end_offset = self.change_offset(text, change["range"]["end"])
+        if end_offset < start_offset:
+            end_offset = start_offset
+        return text[:start_offset] + change["text"] + text[end_offset:]
+
+    def change_offset(self, text: str, position):
+        """Convert a zero-based LSP position to a character offset in text."""
+        line_index = max(0, position["line"])
+        lines = text.split("\n")
+        if line_index >= len(lines):
+            return len(text)
+
+        line = lines[line_index]
+        character = max(0, position["character"])
+        if self.position_encoding == "utf-16":
+            character = self.utf16_offset_to_codepoint_offset(line, character)
+        character = min(character, len(line))
+
+        offset = 0
+        for prior_line in lines[:line_index]:
+            offset += len(prior_line) + 1
+        return offset + character
 
     def handle_did_close(self, message):
         uri = self.message_text_document_uri(message)
@@ -361,16 +419,52 @@ class OrdLanguageServer:
     def handle_document_symbol(self, message):
         uri = self.message_text_document_uri(message)
         analysis = self.session.analyze(uri)
+        if self.hierarchical_symbol_support:
+            return self.result_response(
+                message,
+                self.nested_document_symbols(uri, analysis.symbols),
+            )
+
         result = []
         for symbol in analysis.symbols:
             result.append({
                 "name": symbol.name,
                 "kind": self.symbol_kind(symbol.kind),
-                "range": self.lsp_range(uri, symbol.range),
-                "selectionRange": self.lsp_range(uri, symbol.selection_range),
+                "location": {
+                    "uri": uri,
+                    "range": self.lsp_range(uri, symbol.range),
+                },
             })
 
         return self.result_response(message, result)
+
+    def nested_document_symbols(self, uri: str, symbols):
+        """Nest source-ordered document symbols by range containment."""
+        root = []
+        stack = []
+        for symbol in symbols:
+            entry = {
+                "name": symbol.name,
+                "kind": self.symbol_kind(symbol.kind),
+                "range": self.lsp_range(uri, symbol.range),
+                "selectionRange": self.lsp_range(uri, symbol.selection_range),
+                "children": [],
+            }
+
+            while stack and not self.range_encloses(stack[-1][0], symbol.range):
+                stack.pop()
+
+            if stack:
+                stack[-1][1]["children"].append(entry)
+            else:
+                root.append(entry)
+            stack.append((symbol.range, entry))
+
+        return root
+
+    def range_encloses(self, outer, inner):
+        """Return whether one analysis range fully contains another."""
+        return outer.start <= inner.start and inner.end <= outer.end
 
     def handle_document_highlight(self, message):
         params = message.get("params", {})
@@ -394,6 +488,122 @@ class OrdLanguageServer:
             result = self.lsp_definition_result(uri, definition)
         return self.result_response(message, result)
 
+    def handle_type_definition(self, message):
+        params = message.get("params", {})
+        uri = self.text_document_uri(params)
+        position = self.analysis_position(uri, params["position"])
+        definition = self.session.type_definition(uri, position)
+        result = None
+        if definition is not None:
+            result = {
+                "uri": definition["uri"],
+                "range": self.lsp_range(definition["uri"], definition["selection_range"]),
+            }
+        return self.result_response(message, result)
+
+    def handle_signature_help(self, message):
+        params = message.get("params", {})
+        uri = self.text_document_uri(params)
+        position = self.analysis_position(uri, params["position"])
+        signature = self.session.signature_help(uri, position)
+        result = None
+        if signature is not None:
+            signature_info = {
+                "label": signature["label"],
+                "parameters": [
+                    {
+                        "label": parameter["label"],
+                    }
+                    for parameter in signature["parameters"]
+                ],
+            }
+            if signature.get("documentation"):
+                signature_info["documentation"] = {
+                    "kind": "plaintext",
+                    "value": signature["documentation"],
+                }
+            result = {
+                "signatures": [signature_info],
+                "activeSignature": 0,
+            }
+            if signature.get("active_parameter") is not None:
+                result["activeParameter"] = signature["active_parameter"]
+        return self.result_response(message, result)
+
+    def handle_inlay_hint(self, message):
+        params = message.get("params", {})
+        uri = self.text_document_uri(params)
+        requested_range = params.get("range")
+        value_range = None
+        if requested_range is not None:
+            value_range = AnalysisRange(
+                start=self.analysis_position(uri, requested_range["start"]),
+                end=self.analysis_position(uri, requested_range["end"]),
+            )
+
+        result = []
+        for hint in self.session.inlay_hints(uri, value_range):
+            result.append({
+                "position": self.lsp_position(uri, hint["position"]),
+                "label": ": {}".format(hint["label"]),
+                "kind": INLAY_HINT_KIND_TYPE,
+            })
+        return self.result_response(message, result)
+
+    def lsp_hierarchy_item(self, item):
+        """Convert an analysis call hierarchy item to LSP shape."""
+        return {
+            "name": item["name"],
+            "kind": self.symbol_kind(item["kind"]),
+            "uri": item["uri"],
+            "range": self.lsp_range(item["uri"], item["range"]),
+            "selectionRange": self.lsp_range(item["uri"], item["selection_range"]),
+        }
+
+    def hierarchy_request_location(self, message):
+        """Return the canonical URI and position identified by an item param."""
+        item = message.get("params", {})["item"]
+        uri = self.canonical_uri(item["uri"])
+        position = self.analysis_position(uri, item["selectionRange"]["start"])
+        return uri, position
+
+    def handle_prepare_call_hierarchy(self, message):
+        params = message.get("params", {})
+        uri = self.text_document_uri(params)
+        position = self.analysis_position(uri, params["position"])
+        item = self.session.call_hierarchy_item(uri, position)
+        result = None
+        if item is not None:
+            result = [self.lsp_hierarchy_item(item)]
+        return self.result_response(message, result)
+
+    def handle_incoming_calls(self, message):
+        uri, position = self.hierarchy_request_location(message)
+        result = []
+        for call in self.session.incoming_calls(uri, position):
+            item = call["item"]
+            result.append({
+                "from": self.lsp_hierarchy_item(item),
+                "fromRanges": [
+                    self.lsp_range(item["uri"], from_range)
+                    for from_range in call["from_ranges"]
+                ],
+            })
+        return self.result_response(message, result)
+
+    def handle_outgoing_calls(self, message):
+        uri, position = self.hierarchy_request_location(message)
+        result = []
+        for call in self.session.outgoing_calls(uri, position):
+            result.append({
+                "to": self.lsp_hierarchy_item(call["item"]),
+                "fromRanges": [
+                    self.lsp_range(uri, from_range)
+                    for from_range in call["from_ranges"]
+                ],
+            })
+        return self.result_response(message, result)
+
     def handle_hover(self, message):
         params = message.get("params", {})
         uri = self.text_document_uri(params)
@@ -401,11 +611,18 @@ class OrdLanguageServer:
         hover = self.session.hover(uri, position)
         result = None
         if hover is not None:
-            result = {
-                "contents": {
+            if self.hover_markdown_support:
+                contents = {
+                    "kind": "markdown",
+                    "value": hover["markdown"],
+                }
+            else:
+                contents = {
                     "kind": "plaintext",
                     "value": hover["contents"],
-                },
+                }
+            result = {
+                "contents": contents,
                 "range": self.lsp_range(uri, hover["range"]),
             }
         return self.result_response(message, result)
@@ -429,12 +646,19 @@ class OrdLanguageServer:
         position = self.analysis_position(uri, params["position"])
         completions = self.session.completions(uri, position)
         result = []
-        for completion in completions:
-            result.append({
+        for index, completion in enumerate(completions):
+            item = {
                 "label": completion["label"],
                 "kind": self.completion_kind(completion["kind"]),
                 "detail": completion["detail"],
-            })
+                "sortText": "{:04d}".format(index),
+            }
+            if completion.get("documentation"):
+                item["documentation"] = {
+                    "kind": "plaintext",
+                    "value": completion["documentation"],
+                }
+            result.append(item)
         return self.result_response(message, result)
 
     def handle_code_action(self, message):
@@ -779,6 +1003,20 @@ def did_change_uri(message):
     return text_document.get("uri")
 
 
+def did_change_replaces_document(message):
+    """Return whether a didChange notification only replaces the full text."""
+    params = message.get("params")
+    if not isinstance(params, dict):
+        return False
+    content_changes = params.get("contentChanges")
+    if not isinstance(content_changes, list) or not content_changes:
+        return False
+    return all(
+        isinstance(change, dict) and "range" not in change
+        for change in content_changes
+    )
+
+
 def serve(server, message_queue, output_stream):
     """Dispatch queued messages until EOF, then return.
 
@@ -787,8 +1025,9 @@ def serve(server, message_queue, output_stream):
     shortcuts that preserve observable ordering: $/cancelRequest marks
     still-queued requests as canceled before they are computed, and a
     consecutive run of didChange notifications for one document collapses
-    to its newest version, which is safe because the server only supports
-    full-document synchronization.
+    onto a newer full-document replacement, which supersedes whatever came
+    before it. Incremental changes are never skipped because each one
+    builds on the document state left by its predecessor.
     """
     pending = deque()
     canceled_ids = set()
@@ -824,7 +1063,11 @@ def serve(server, message_queue, output_stream):
 
         uri = did_change_uri(message)
         if uri is not None:
-            while pending and did_change_uri(pending[0]) == uri:
+            while (
+                pending
+                and did_change_uri(pending[0]) == uri
+                and did_change_replaces_document(pending[0])
+            ):
                 message = pending.popleft()
 
         message_id = message.get("id")

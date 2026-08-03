@@ -279,13 +279,20 @@ The editor must then be able to find that command:
   installs (PEP 668), ``pipx`` is the supported route. A single global
   server analyzes every project against that one ORDeC version.
 
-The server provides document and workspace symbols, go-to-definition,
-hover, references, document highlights, rename, local and member/parameter
-completions, folding and selection ranges, semantic tokens, parser
+The server provides document and workspace symbols (nested by cell and
+view generator when the editor supports hierarchical symbols),
+go-to-definition and go-to-type-definition, hover (markdown with cell
+parameter signatures and docstrings when the editor supports it),
+references, document highlights, rename, local and member/parameter
+completions with documentation, signature help for cell instantiations and
+function calls, inferred-type inlay hints, call hierarchy over the cell
+instantiation graph, folding and selection ranges, semantic tokens, parser
 diagnostics for ORD syntax errors, semantic diagnostics (unresolved imports
 and node types, invalid view generator return types, invalid constraint
 contexts, unknown members or parameters, schematic ports missing from the
-symbol view), and quick fixes for selected diagnostics.
+symbol view), and quick fixes for selected diagnostics. Document
+synchronization is incremental, with full-document replacement as the
+fallback.
 
 The editor subsections below contain the matching launch configurations.
 For an editor with generic LSP support that is not covered, configure:
@@ -381,9 +388,10 @@ dispatches messages in arrival order, so handlers stay synchronous and the
 analysis session is only ever touched by one thread. Draining the queue
 backlog before dispatching lets ``$/cancelRequest`` cancel still-queued
 requests (error ``-32800``) before they are computed and collapses
-consecutive ``didChange`` bursts for one document to the newest version,
-which full-document synchronization makes safe. A request that is already
-being handled is never interrupted.
+consecutive ``didChange`` bursts for one document onto a newer
+full-document replacement. Incremental changes are never skipped, since
+each one builds on the document state left by its predecessor. A request
+that is already being handled is never interrupted.
 
 Most language intelligence lives in ``ordec.lsp.analysis``:
 
@@ -391,16 +399,19 @@ Most language intelligence lives in ``ordec.lsp.analysis``:
   records, and ``DocumentAnalysis``.
 * ``parser_pass.py`` parses ORD source and uses an ``_OrdAnalysisBuilder`` to
   walk the parse tree and collect scopes, bindings, occurrences, imports, ORD
-  node contexts, view generator return records, and constraint records.
+  node contexts, view generator return records, constraint records, and
+  inferred-type records for assignment targets.
 * ``session.py`` is the public analysis facade. It owns open document snapshots,
   last-good analysis caching, file invalidation, ORD import resolution,
   workspace dependency indexing, and navigation/reference features.
 * ``python_index.py`` owns shallow Python module indexing. It resolves Python
   imports, parses Python source with ``ast``, caches module information, and
-  exposes exported symbols and class members without importing or executing
-  workspace modules.
-* ``completions.py``, ``diagnostics.py``, ``rename.py``, and ``typeflow.py`` add
-  feature-specific methods to ``AnalysisSession`` through mixin classes.
+  exposes exported symbols, class members, docstrings, function signatures,
+  and cell parameter defaults without importing or executing workspace
+  modules.
+* ``completions.py``, ``diagnostics.py``, ``rename.py``, ``signatures.py``,
+  ``hierarchy.py``, and ``typeflow.py`` add feature-specific methods to
+  ``AnalysisSession`` through mixin classes.
 
 ``AnalysisSession`` intentionally remains the API boundary used by the LSP
 server and tests. The smaller analysis modules keep implementation details

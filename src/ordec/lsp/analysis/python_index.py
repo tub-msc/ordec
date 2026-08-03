@@ -18,6 +18,55 @@ from .model import AnalysisPosition
 from .model import AnalysisRange
 
 
+def expression_text(node, limit: int = 32):
+    """Return compact source text for an expression node, or None."""
+    try:
+        text = ast.unparse(node)
+    except ValueError:
+        return None
+
+    if len(text) > limit:
+        return text[:limit - 1] + "…"
+    return text
+
+
+def function_signature_params(function_node, skip_receiver: bool = False):
+    """Return display strings for a function's parameters in source order."""
+    args = function_node.args
+    positional = list(args.posonlyargs) + list(args.args)
+    defaults = dict()
+    for arg, default in zip(positional[len(positional) - len(args.defaults):], args.defaults):
+        defaults[arg.arg] = default
+
+    if skip_receiver and positional and positional[0].arg in ("self", "cls"):
+        positional = positional[1:]
+
+    def param_label(arg, default):
+        if default is None:
+            return arg.arg
+        default_text = expression_text(default)
+        if default_text is None:
+            return arg.arg
+        return "{}={}".format(arg.arg, default_text)
+
+    params = []
+    for arg in positional:
+        params.append(param_label(arg, defaults.get(arg.arg)))
+
+    if args.vararg is not None:
+        params.append("*" + args.vararg.arg)
+    elif args.kwonlyargs:
+        params.append("*")
+
+    for arg, default in zip(args.kwonlyargs, args.kw_defaults):
+        params.append(param_label(arg, default))
+
+    if args.kwarg is not None:
+        params.append("**" + args.kwarg.arg)
+
+    return params
+
+
 class PythonModuleIndex:
     """Shallow Python source index used by ORD analysis.
 
@@ -246,6 +295,14 @@ class PythonModuleIndex:
                 "range": node_range(node),
                 "selection_range": name_range(node, name),
             }
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                docstring = ast.get_docstring(node)
+                if docstring:
+                    exports[name]["docstring"] = docstring
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                exports[name]["signature"] = {
+                    "params": function_signature_params(node),
+                }
             if kind == "class" and module_path.suffix != ".ord":
                 # Cells from .ord modules resolve members through the ORD
                 # analysis of their uri, not the Python class machinery.
@@ -281,17 +338,19 @@ class PythonModuleIndex:
                 return "{}.{}".format(value_name, node.attr)
             return None
 
-        def add_class_member(class_info, name, kind, node):
+        def add_class_member(class_info, name, kind, node, default=None):
             if name.startswith("_"):
                 return
 
-            class_info["members"].setdefault(name, {
+            member = class_info["members"].setdefault(name, {
                 "uri": module_path.as_uri(),
                 "name": name,
                 "kind": kind,
                 "range": node_range(node),
                 "selection_range": node_range(node),
             })
+            if default is not None and "default" not in member:
+                member["default"] = default
 
         def resolve_imported_module(node):
             import_name = "." * node.level
@@ -349,15 +408,26 @@ class PythonModuleIndex:
                 for class_node in node.body:
                     if isinstance(class_node, ast.Assign):
                         member_kind = "variable"
+                        member_default = None
                         if isinstance(class_node.value, ast.Call):
                             func_name = node_name(class_node.value.func)
                             if func_name == "Parameter":
                                 member_kind = "parameter"
+                                for keyword in class_node.value.keywords:
+                                    if keyword.arg == "default":
+                                        member_default = expression_text(keyword.value)
+                                        break
 
                         for target in class_node.targets:
                             if not isinstance(target, ast.Name):
                                 continue
-                            add_class_member(class_info, target.id, member_kind, target)
+                            add_class_member(
+                                class_info,
+                                target.id,
+                                member_kind,
+                                target,
+                                default=member_default,
+                            )
                             value_name = node_name(class_node.value)
                             if (
                                 target.id in ("symbol", "schematic", "layout")
@@ -381,12 +451,18 @@ class PythonModuleIndex:
                         continue
 
                     if not class_node.name.startswith("_"):
-                        class_info["members"].setdefault(class_node.name, {
+                        method_member = class_info["members"].setdefault(class_node.name, {
                             "uri": module_path.as_uri(),
                             "name": class_node.name,
                             "kind": "function",
                             "range": node_range(class_node),
                             "selection_range": name_range(class_node, class_node.name),
+                        })
+                        method_docstring = ast.get_docstring(class_node)
+                        if method_docstring:
+                            method_member.setdefault("docstring", method_docstring)
+                        method_member.setdefault("signature", {
+                            "params": function_signature_params(class_node, skip_receiver=True),
                         })
 
                     container_names = set()
