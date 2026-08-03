@@ -5,11 +5,49 @@
 import re
 
 # ordec imports
-from .model import AnalysisPosition, is_identifier, leading_identifier
+from .model import (
+    AnalysisPosition,
+    AnalysisRange,
+    is_identifier,
+    leading_identifier,
+)
 
 
 class CompletionsMixin:
     """Completion helpers built on document analysis and lightweight type flow."""
+    def completion_replace_range(self, uri: str, position: AnalysisPosition):
+        """Return the identifier prefix range that completion items replace.
+
+        Clients with differing word-boundary rules (JetBrains treats ``$``
+        and ``.`` differently from VS Code) insert bare labels
+        inconsistently, so completion items carry an explicit text edit
+        covering the typed identifier prefix up to the cursor.
+        """
+        uri = self.canonical_uri(uri)
+        if not self.ensure_document(uri):
+            return AnalysisRange(start=position, end=position)
+
+        lines = self.documents[uri]["text"].splitlines()
+        if position.line < 1 or position.line > len(lines):
+            return AnalysisRange(start=position, end=position)
+
+        line = lines[position.line - 1]
+        cursor = max(0, min(position.character - 1, len(line)))
+        prefix_start = cursor
+        while (
+            prefix_start > 0
+            and (
+                line[prefix_start - 1].isalnum()
+                or line[prefix_start - 1] == "_"
+            )
+        ):
+            prefix_start -= 1
+
+        return AnalysisRange(
+            start=AnalysisPosition(position.line, prefix_start + 1),
+            end=AnalysisPosition(position.line, cursor + 1),
+        )
+
     def completion_context(self, uri: str, position: AnalysisPosition):
         """Detect member/parameter completion context at the cursor, or None."""
         lines = self.documents[uri]["text"].splitlines()

@@ -440,6 +440,13 @@ def test_lsp_completion_and_code_actions(tmp_path):
         item["label"]
         for item in completions
     }
+    # No identifier prefix is typed after the dot, so the replacement edit
+    # collapses to the cursor position.
+    cursor = source_offset_after(edited, "            .")
+    assert completions[0]["textEdit"]["range"] == {
+        "start": cursor,
+        "end": cursor,
+    }
 
     broken_symbol = (
         "cell Inv:\n"
@@ -572,6 +579,15 @@ def test_lsp_hover_markdown_and_completion_documentation(tmp_path):
     scale_items = [item for item in completions if item["label"] == "scale"]
     assert scale_items[0]["documentation"]["value"] == "Scale a value by a factor."
     assert all("sortText" in item for item in completions)
+
+    # Items replace the typed identifier prefix through an explicit edit.
+    assert scale_items[0]["textEdit"] == {
+        "range": {
+            "start": source_offset(source, "scale", 2),
+            "end": source_offset_after(source, "    return scale"),
+        },
+        "newText": "scale",
+    }
 
 
 def test_lsp_document_symbols_hierarchical_and_flat(tmp_path):

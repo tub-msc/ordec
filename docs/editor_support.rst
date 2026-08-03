@@ -270,8 +270,8 @@ The editor must then be able to find that command:
 - **Project virtualenv**: the command lands in ``.venv/bin/`` (Windows:
   ``.venv\Scripts\``), which editors launched from the desktop do not have
   on ``PATH``. Configure the editor with the absolute path to the
-  ``ordec-lsp`` executable. Each project then gets the
-  server matching its ORDeC version.
+  executable, for example ``/path/to/project/.venv/bin/ordec-lsp``. Each
+  project then gets the server matching its ORDeC version.
 - **Global install**: ``pipx install --editable /path/to/ordec`` (or
   ``pip install --user``) places ``ordec-lsp`` in ``~/.local/bin``, which
   desktop sessions usually have on ``PATH``, so editors find the bare
@@ -330,15 +330,35 @@ Sublime folder so the server receives the correct workspace root::
             "Packages/User/Ord.sublime-syntax"
           ]
         }
-      }
+      },
+      // Off by default in the LSP package: show the server's
+      // inferred-type hints and semantic tokens.
+      "show_inlay_hints": true,
+      "semantic_highlighting": true
     }
+
+For troubleshooting, the ``LSP: Toggle Log Panel`` command shows the
+exchanged JSON-RPC messages.
 
 PyCharm / JetBrains IDEs
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-The plugin does not currently launch ORD-LSP: retaining the 2024.2
+The ORD plugin itself does not launch ORD-LSP: retaining the 2024.2
 Community build target excludes the built-in JetBrains LSP module, so that
 integration needs a separate compatibility decision.
+
+The LSP4IJ plugin (by Red Hat, available from the JetBrains marketplace)
+provides the connection instead and works alongside the ORD plugin's
+native highlighting. After installing it, add a user-defined server under
+``Settings | Languages & Frameworks | Language Servers``:
+
+* Server: name ``ordec-lsp``, command ``ordec-lsp`` (use the absolute path
+  of a project virtualenv executable, as described above)
+* Mappings: file name pattern ``*.ord`` with language id ``ord``
+
+The server starts when the first ``.ord`` file opens. For troubleshooting,
+the LSP consoles in the Language Servers tool window show the exchanged
+JSON-RPC messages.
 
 VS Code
 ~~~~~~~
@@ -346,6 +366,9 @@ VS Code
 The extension starts ``ordec-lsp`` automatically when an ORD file opens. Set
 ``ord.languageServer.command`` to an absolute path if the executable is not on
 the VS Code ``PATH``, or disable it with ``ord.languageServer.enabled``.
+Extra command arguments go into ``ord.languageServer.arguments``. For
+troubleshooting, ``"ordec-lsp.trace.server": "verbose"`` logs the exchanged
+JSON-RPC messages to the ORD Language Server output channel.
 
 Neovim
 ~~~~~~
@@ -378,10 +401,10 @@ Internals
 ~~~~~~~~~
 
 The installed ``ordec-lsp`` command starts ``ordec.lsp.server``. The
-stdio server uses a
-method dispatch table: each supported LSP method is handled by a small
-``handle_*`` method, while shared helpers convert between LSP's zero-based
-positions and the analysis layer's one-based positions.
+stdio server uses a method dispatch table: each supported LSP method is
+handled by a small ``handle_*`` method, while shared helpers convert
+between LSP's zero-based positions and the analysis layer's one-based
+positions.
 
 A daemon reader thread frames stdin onto a queue, and a single consumer
 dispatches messages in arrival order, so handlers stay synchronous and the

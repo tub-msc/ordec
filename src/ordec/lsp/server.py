@@ -645,6 +645,10 @@ class OrdLanguageServer:
         uri = self.text_document_uri(params)
         position = self.analysis_position(uri, params["position"])
         completions = self.session.completions(uri, position)
+        replace_range = self.lsp_range(
+            uri,
+            self.session.completion_replace_range(uri, position),
+        )
         result = []
         for index, completion in enumerate(completions):
             item = {
@@ -652,6 +656,10 @@ class OrdLanguageServer:
                 "kind": self.completion_kind(completion["kind"]),
                 "detail": completion["detail"],
                 "sortText": "{:04d}".format(index),
+                "textEdit": {
+                    "range": replace_range,
+                    "newText": completion["label"],
+                },
             }
             if completion.get("documentation"):
                 item["documentation"] = {
