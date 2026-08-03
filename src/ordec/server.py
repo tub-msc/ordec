@@ -91,6 +91,7 @@ from . import importer, language
 from .hub import HubIntegration, HubAuthError
 from .version import version, doc_url
 from .core import Cell, generate, generate_func, SubgraphRoot
+from .core.wire import wire_hash
 from .language import compile_ord
 from .extlibrary import ExtLibrary
 from .jobrunner import ThreadedJobRunner
@@ -389,11 +390,17 @@ class ConnectionHandler:
                 viewtype, data = view.webdata()
             msg_ret['type'] = viewtype
             msg_ret['data'] = data
+            if isinstance(view, SubgraphRoot):
+                # Best-effort: user-defined Node classes may lack a wire_id;
+                # a hashing failure must not break view delivery.
+                try:
+                    msg_ret['sg_hash'] = wire_hash(view).hex()
+                except Exception:
+                    pass
         except Exception as e:
             msg_ret['exception'] = format_user_exception(e)
 
         return msg_ret
-
 
     def build_cells(self, source_type: str, source_data: str,
             check_src: str=None) -> (dict, dict):

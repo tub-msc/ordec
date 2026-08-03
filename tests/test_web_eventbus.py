@@ -581,6 +581,59 @@ def test_lvs_circuit_links_open_views(web):
 
 
 @pytest.mark.web
+def test_lvs_layout_link_dedup(web):
+    """A circuit-row layout link must focus an already-open panel showing the
+    same subgraph under a different view name instead of opening a duplicate
+    (hash-based fetch-before-open dedup)."""
+    load_lvs_report_view(web)
+
+    # Open the same Layout under its plain view name first.
+    web.driver.execute_script(
+        "window.viewEventBus.emit('layout:request-open', {view: 'layout()'});")
+    web.wait_for_ready()
+    time.sleep(0.5)
+
+    views_before = web.driver.execute_script(
+        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+    assert 'layout()' in views_before
+    hashes = web.driver.execute_script(
+        "return window.ordecClient.resultViewers.map(rv => rv.viewHash);")
+    assert any(hashes), f"Expected wire hashes on open panels, got {hashes}"
+
+    # The link addresses the same subgraph as an lvs_report()-derived name.
+    web.driver.execute_script(
+        'document.querySelector(\'.lvs-circuit-link[data-kind="layout"]\').click();')
+    time.sleep(0.5)
+    web.wait_for_ready()
+
+    views_after = web.driver.execute_script(
+        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+    assert views_after == views_before, \
+        f"Layout link must not open a duplicate panel: {views_after}"
+
+    # Selecting an item must land its highlight in the hash-matched layout
+    # panel (highlight events target by name or wire hash) and must not open
+    # a duplicate ref_layout panel either. The item's schematic view is not
+    # open yet, so a new panel for it is expected.
+    web.driver.execute_script("""
+        document.querySelector(
+            '.lvs-item-link[title="Highlight in layout and schematic"]')
+            .closest('.lvs-item-row').click();
+    """)
+    time.sleep(0.5)
+    web.wait_for_ready()
+
+    views = web.driver.execute_script(
+        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+    assert not any(v and v.endswith('.ref_layout') for v in views), \
+        f"Item select must not open a duplicate layout panel: {views}"
+    state = get_layout_state(web)
+    assert state is not None, "Layout viewer not found"
+    assert state['highlightNumVertices'] > 0, \
+        "Item highlight should land in the hash-matched layout panel"
+
+
+@pytest.mark.web
 def test_lvs_subcircuit_item_select(web):
     """Selecting an LvsItem of a subcircuit pair opens the pair's own
     layout/schematic views and highlights the item there."""

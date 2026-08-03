@@ -3,6 +3,7 @@
 
 from ..core.directory import Directory
 from ..core.schema import LvsReport, LvsCircuitPair, LvsItem
+from ..core.wire import wire_hash
 
 
 def circuit_layout_name(circuit: LvsCircuitPair):
@@ -57,6 +58,13 @@ def webdata(report: LvsReport):
             # offers opening the layout/schematic of a circuit pair if so.
             'has_layout_ref': circuit.ref_layout is not None,
             'has_schem_ref': circuit.ref_schematic is not None,
+            # Wire hashes of the referenced subgraphs: highlight events use
+            # them to target viewers that show the same subgraph under a
+            # different view name (see hash-based dedup in web/src/main.js).
+            'layout_hash': wire_hash(circuit.ref_layout).hex()
+                if circuit.ref_layout is not None else None,
+            'schem_hash': wire_hash(circuit.ref_schematic).hex()
+                if circuit.ref_schematic is not None else None,
             # Top-level circuit pair (refs the same layout/schematic as the
             # report itself). Item selections of subcircuit pairs must target
             # the pair's own views instead of the report-level ones.
@@ -88,4 +96,10 @@ def webdata(report: LvsReport):
         'circuits': circuits,
         'items': items,
         'unit': float(report.ref_layout.ref_layers.unit) if report.ref_layout else 1.0,
+        # Report-level wire hashes, used for top-pair item selections (their
+        # views are addressed relative to the report, not a circuit pair).
+        'layout_hash': wire_hash(report.ref_layout).hex()
+            if report.ref_layout is not None else None,
+        'schem_hash': wire_hash(report.ref_schematic).hex()
+            if report.ref_schematic is not None else None,
     }

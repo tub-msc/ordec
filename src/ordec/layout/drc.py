@@ -5,6 +5,7 @@ from ..core.schema import (
     DrcReport, DrcItem, DrcCategory, DrcCell, DrcBox, DrcEdge, DrcEdgePair,
     DrcPoly, DrcPath, DrcText,
 )
+from ..core.wire import wire_hash
 
 
 def webdata(report: DrcReport):
@@ -16,6 +17,11 @@ def webdata(report: DrcReport):
             'has_layout_ref': cell.ref_layout is not None,
             'is_top': cell.ref_layout is not None
                 and cell.ref_layout == report.ref_layout,
+            # Wire hash of the cell's layout: highlight events use it to
+            # target viewers that show the same subgraph under a different
+            # view name (see hash-based dedup in web/src/main.js).
+            'layout_hash': wire_hash(cell.ref_layout).hex()
+                if cell.ref_layout is not None else None,
         })
 
     items_dict = {}
@@ -82,4 +88,8 @@ def webdata(report: DrcReport):
         'cells': cells,
         'items': list(items_dict.values()),
         'unit': float(report.ref_layout.ref_layers.unit),
+        # Report-level wire hash, used for top-cell item selections (their
+        # view is addressed relative to the report, not a DrcCell).
+        'layout_hash': wire_hash(report.ref_layout).hex()
+            if report.ref_layout is not None else None,
     }
