@@ -11,6 +11,8 @@ from ..context import SimulationViewContext
 from ..simarray import SimArray
 from .schematic import Symbol, Schematic, Pin, Net, SchemPort, SchemInstance
 
+WIRE_DOMAIN = 5 << 16
+
 @public
 class SimType(Enum):
     OP = 'op'
@@ -93,9 +95,10 @@ class SimHierarchySubcursor(tuple):
 @public
 class SimHierarchy(SubgraphRoot):
     view_context = SimulationViewContext
+    wire_id = WIRE_DOMAIN | 1
 
     schematic = SubgraphRef(Schematic)
-    cell = Attr(Cell)
+    cell = LiveRef(Cell)
     sim_type = Attr(SimType)
     sim_data = Attr(SimArray) #: Packed simulation result data shared by all SimNet/SimInstance nodes.
     time_field = Attr(str) #: Column name in sim_data for the time axis (transient), or None.
@@ -329,6 +332,7 @@ class SimHierarchy(SubgraphRoot):
 @public
 class SimNet(Node):
     in_subgraphs = [SimHierarchy]
+    wire_id = WIRE_DOMAIN | 2
 
     parent_inst = LocalRef('SimInstance', optional=True,
         refcheck_custom=lambda val: issubclass(val, SimInstance))
@@ -359,6 +363,7 @@ class SimNet(Node):
 @public
 class SimPin(Node):
     in_subgraphs = [SimHierarchy]
+    wire_id = WIRE_DOMAIN | 3
 
     instance = LocalRef('SimInstance', optional=False,
         refcheck_custom=lambda val: issubclass(val, SimInstance))
@@ -381,6 +386,7 @@ class SimPin(Node):
 @public
 class SimParam(Node):
     in_subgraphs = [SimHierarchy]
+    wire_id = WIRE_DOMAIN | 4
 
     instance = LocalRef('SimInstance', optional=False,
         refcheck_custom=lambda val: issubclass(val, SimInstance))
@@ -419,6 +425,7 @@ class SimInstanceParamCursor(tuple):
 @public
 class SimInstance(Node):
     in_subgraphs = [SimHierarchy]
+    wire_id = WIRE_DOMAIN | 5
 
     parent_inst = LocalRef('SimInstance', optional=True,
         refcheck_custom=lambda val: issubclass(val, SimInstance))

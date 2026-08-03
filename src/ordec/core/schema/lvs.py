@@ -11,6 +11,8 @@ from .base import coerce_tuple
 from .schematic import Schematic, Net, SchemInstance
 from .layout import Layout
 
+WIRE_DOMAIN = 7 << 16
+
 @public
 class LvsStatus(Enum):
     """Status of an LVS comparison item or circuit pair, following KLayout's
@@ -49,6 +51,7 @@ class LvsItemType(Enum):
 class LvsReport(SubgraphRoot):
     """LVS report containing layout vs. schematic comparison results."""
     view_context = AssignableViewContext
+    wire_id = WIRE_DOMAIN | 1
 
     ref_layout = SubgraphRef(Layout, optional=True)
     ref_schematic = SubgraphRef(Schematic, optional=True)
@@ -67,6 +70,7 @@ class LvsReport(SubgraphRoot):
 class LvsCircuitPair(Node):
     """Comparison record for a layout cell vs schematic cell pair."""
     in_subgraphs = [LvsReport]
+    wire_id = WIRE_DOMAIN | 2
 
     #: Direct ref to the Layout being compared. Only set for top-level circuit
     #: (where LVSDB cell name matches top_cell); None for subcircuits.
@@ -85,6 +89,7 @@ class LvsCircuitPair(Node):
 class LvsItem(Node):
     """Individual LVS comparison item (net, device, pin, or subcircuit)."""
     in_subgraphs = [LvsReport]
+    wire_id = WIRE_DOMAIN | 3
 
     circuit = LocalRef(LvsCircuitPair, optional=False)
     circuit_idx = Index(circuit)

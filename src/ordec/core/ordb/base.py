@@ -360,7 +360,52 @@ class ExternalRef(Attr):
         if not isinstance(val, int):
             raise TypeError('Only None, int or Node can be assigned to ExternalRef.')
         return val
-            
+
+
+@public
+class FarRef:
+    """
+    Placeholder for a live object residing on a foreign endpoint. FarRefs are
+    created when decoding a :class:`LiveRef` attribute whose export reference
+    was minted by a different process (see ordec.core.wire); they cannot be
+    resolved locally. Equality and hash use (endpoint_id, obj_id) only; name
+    is human-readable metadata chosen by the exporting endpoint.
+    """
+    __slots__ = ('endpoint_id', 'obj_id', 'name')
+
+    def __init__(self, endpoint_id: bytes, obj_id: int, name: str=''):
+        self.endpoint_id = endpoint_id
+        self.obj_id = obj_id
+        self.name = name
+
+    def __eq__(self, other):
+        if not isinstance(other, FarRef):
+            return NotImplemented
+        return (self.endpoint_id, self.obj_id) == (other.endpoint_id, other.obj_id)
+
+    def __hash__(self):
+        return hash((FarRef, self.endpoint_id, self.obj_id))
+
+    def __repr__(self):
+        return f"FarRef({self.endpoint_id.hex()}, {self.obj_id}, name={self.name!r})"
+
+@public
+class LiveRef(Attr):
+    """
+    Defines a node attribute holding a live Python object (e.g. a Cell) that
+    stays resident on its endpoint. In-process, the object is stored in the
+    node tuple directly, like a plain Attr value. On the wire
+    (ordec.core.wire), the value is replaced by an export reference; decoding
+    a reference minted by a foreign endpoint yields an opaque :class:`FarRef`,
+    which is therefore also an accepted value.
+
+    Args:
+        type: The type that locally assigned values must be an instance of.
+    """
+    def __init__(self, type: type, **kwargs):
+        super().__init__(type=type,
+            typecheck_custom=lambda val: isinstance(val, (type, FarRef)),
+            **kwargs)
 
 @public
 class Index(GenericIndex):
@@ -659,6 +704,13 @@ class NodeTuple(tuple):
 # Register NodeTuple as virtual subclass of Inserter. Combining tuple and ABC seems like it could cause problems.
 Inserter.register(NodeTuple)
 
+#: Maps declared wire_ids to their Node classes (see ordec.core.wire). Node
+#: classes opt into wire serialization by declaring wire_id = WIRE_DOMAIN | n
+#: in their class body, with WIRE_DOMAIN a per-module constant.
+wire_registry = {}
+
+WIRE_DOMAIN = 1 << 16 # ordb-internal node types (NPath)
+
 class NodeMeta(type):
     @staticmethod
     def _collect_raw_attrs(d, bases):
@@ -752,6 +804,24 @@ class NodeMeta(type):
             cls.Tuple.__module__ = cls.__module__
             cls.Mutable.__module__ = cls.__module__
             cls.Frozen.__module__ = cls.__module__
+
+            # Register a wire_id declared in this class's own body (inherited
+            # wire_ids are deliberately not registered: subclasses must declare
+            # their own to be wire-serializable). Re-registration under the
+            # same (module, qualname) is allowed, as module reloads (server
+            # purge_modules, pytest) re-execute class definitions.
+            wid = attrs.get('wire_id')
+            if wid is not None:
+                if not isinstance(wid, int) or wid <= 0:
+                    raise TypeError(f"{name}: wire_id must be a positive int.")
+                other = wire_registry.get(wid)
+                if other is not None and (other.__module__, other.__qualname__) \
+                        != (cls.__module__, cls.__qualname__):
+                    raise TypeError(
+                        f"wire_id {wid:#x} of {name} is already used by "
+                        f"{other.__module__}.{other.__qualname__}."
+                    )
+                wire_registry[wid] = cls
 
         return super().__init__(name, bases, attrs)
 
@@ -1115,6 +1185,8 @@ class SubgraphRoot(NonLeafNode):
     Each subgraph has a single SubgraphRoot node. The subclass of SubgraphRoot
     defines what kind of design data the subgraph represents.
     """
+    # No wire_id here: SubgraphRoot is never serialized as an exact class;
+    # every wire-serializable root subclass declares its own.
 
     def __new__(cls, **kwargs):
         # __new__ calls super().__new__ via SubgraphRoot.Tuple(), but wraps the result in a Subgraph object.
@@ -1653,13 +1725,14 @@ class FrozenSubgraph(Subgraph):
     not checked for equivalence, as it should be equal by construction.
     """
 
-    __slots__=('_cached_hash',)
+    __slots__=('_cached_hash', '_cached_wire_hash')
     def __init__(self, nodes, index, nid_alloc, backend):
         self._nodes = nodes
         self._index = index
         self._nid_alloc = nid_alloc
         self._backend = backend
         self._cached_hash = None
+        self._cached_wire_hash = None # memoized by ordec.core.wire.wire_hash
         self._root_cursor = self.cursor_at(0)
 
     def __copy__(self) -> 'FrozenSubgraph':
@@ -1832,3 +1905,4 @@ class NPath(Node):
     idx_path_of = Index(ref, unique=True)
 
     in_subgraphs = [SubgraphRoot]
+    wire_id = WIRE_DOMAIN | 1

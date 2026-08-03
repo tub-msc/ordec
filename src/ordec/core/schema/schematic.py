@@ -16,6 +16,8 @@ from .base import (
     coerce_tuple, SourceLocInfo, MixinPolygonalChain, GenericPolyR, PolyVec2R,
 )
 
+WIRE_DOMAIN = 3 << 16
+
 # Enums
 # -----
 
@@ -72,9 +74,10 @@ class MixinRenderable:
 class Symbol(MixinRenderable, SubgraphRoot):
     """A symbol of an individual cell."""
     view_context = SymbolViewContext
+    wire_id = WIRE_DOMAIN | 1
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
     caption = Attr(str)
-    cell = Attr(Cell)
+    cell = LiveRef(Cell)
 
     def portmap(self, **kwargs):
         def inserter_func(main, sgu, primary_nid):
@@ -92,6 +95,7 @@ class Symbol(MixinRenderable, SubgraphRoot):
 class Pin(Node):
     """Pins are single wire connections exposed through a symbol."""
     in_subgraphs = [Symbol]
+    wire_id = WIRE_DOMAIN | 2
 
     pintype = Attr(PinType, default=PinType.Inout)
     pos     = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
@@ -101,11 +105,13 @@ class Pin(Node):
 class SymbolPoly(GenericPolyR, MixinPolygonalChain):
     """A drawn polygonal chain in Symbol. For visual purposes only."""
     in_subgraphs = [Symbol]
+    wire_id = WIRE_DOMAIN | 3
 
 @public
 class SymbolArc(Node):
     """A drawn circle or circular segment in Symbol. For visual purposes only."""
     in_subgraphs = [Symbol]
+    wire_id = WIRE_DOMAIN | 4
 
     pos         = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2)) #: Center point
     radius      = Attr(R) #: Radius of the arc.
@@ -151,9 +157,10 @@ class SymbolArc(Node):
 class Schematic(MixinRenderable, SubgraphRoot):
     """A schematic of an individual cell."""
     view_context = SchematicViewContext
+    wire_id = WIRE_DOMAIN | 5
     symbol = SubgraphRef(Symbol)
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
-    cell = Attr(Cell)
+    cell = LiveRef(Cell)
     default_supply = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
     default_ground = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
 
@@ -203,6 +210,7 @@ class NegatedWireOperand:
 @public
 class Net(Node):
     in_subgraphs = [Schematic]
+    wire_id = WIRE_DOMAIN | 6
     pin = ExternalRef(Pin, of_subgraph=lambda c: c.root.symbol)
     auto_wire = Attr(bool, default=True) #: Controls whether the Net is auto-wired
 
@@ -237,6 +245,7 @@ class SchemPort(Node):
     Port of a Schematic, corresponding to a Pin of the schematic's Symbol.
     """
     in_subgraphs = [Schematic]
+    wire_id = WIRE_DOMAIN | 7
 
     ref = LocalRef(Net, optional=False)
     ref_idx = Index(ref, unique=True)
@@ -249,6 +258,7 @@ class SchemPort(Node):
 class SchemWire(GenericPolyR, MixinPolygonalChain):
     """A drawn schematic wire representing an electrical connection."""
     in_subgraphs = [Schematic]
+    wire_id = WIRE_DOMAIN | 8
 
     ref = LocalRef(Net, optional=False)
     ref_idx = Index(ref)
@@ -323,6 +333,7 @@ class SchemInstance(Node, MixinSourceLoc):
     An instance of a Symbol in a Schematic (foundation for schematic hierarchy).
     """
     in_subgraphs = [Schematic]
+    wire_id = WIRE_DOMAIN | 9
 
     pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
         factory=coerce_tuple(Vec2R, 2))
@@ -359,6 +370,7 @@ class SchemInstance(Node, MixinSourceLoc):
 class SchemInstanceConn(Node):
     """Maps one Pin of a SchemInstance to a Net of its Schematic."""
     in_subgraphs = [Schematic]
+    wire_id = WIRE_DOMAIN | 10
 
     ref = LocalRef(SchemInstance, optional=False)
     ref_idx = Index(ref)
@@ -439,12 +451,13 @@ class SchemInstanceUnresolved(Node, MixinSourceLoc):
             self._inst % SchemInstanceUnresolvedParameter(name=name, value=value)
 
     in_subgraphs = [Schematic]
+    wire_id = WIRE_DOMAIN | 11
 
     pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
         factory=coerce_tuple(Vec2R, 2))
     orientation = Attr(D4, default=D4.R0)
 
-    resolver = Attr(object) # closure?
+    resolver = LiveRef(object)
 
     @property
     def params(self):
@@ -472,6 +485,7 @@ class SchemInstanceUnresolved(Node, MixinSourceLoc):
 class SchemInstanceUnresolvedConn(Node):
     """Unresolved SchemInstanceConn."""
     in_subgraphs = [Schematic]
+    wire_id = WIRE_DOMAIN | 12
 
     ref = LocalRef(SchemInstanceUnresolved, optional=False)
     ref_idx = Index(ref)
@@ -483,6 +497,7 @@ class SchemInstanceUnresolvedConn(Node):
 @public
 class SchemInstanceUnresolvedParameter(Node):
     in_subgraphs = [Schematic]
+    wire_id = WIRE_DOMAIN | 13
 
     ref = LocalRef(SchemInstanceUnresolved, optional=False)
     ref_idx = Index(ref)
@@ -497,6 +512,7 @@ class SchemTapPoint(Node):
     using the net's name.
     """
     in_subgraphs = [Schematic]
+    wire_id = WIRE_DOMAIN | 14
 
     ref = LocalRef(Net, optional=False)
     ref_idx = Index(ref)
@@ -512,6 +528,7 @@ class SchemTapPoint(Node):
 class SchemConnPoint(Node):
     """A schematic point to indicate a connection at a 3- or 4-way junction of wires."""
     in_subgraphs = [Schematic]
+    wire_id = WIRE_DOMAIN | 15
     ref = LocalRef(Net, optional=False)
     ref_idx = Index(ref)
 
@@ -522,6 +539,7 @@ class SchemConnPoint(Node):
 class SchemErrorMarker(Node):
     """An error marker indicating a schematic check failure."""
     in_subgraphs = [Schematic]
+    wire_id = WIRE_DOMAIN | 16
     ref = LocalRef(Schematic)
     pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     align = Attr(D4, default=D4.R0)

@@ -9,10 +9,13 @@ from ..context import AssignableViewContext
 from .base import coerce_tuple, PathEndType, GenericPolyI, PolyVec2I
 from .layout import Layout
 
+WIRE_DOMAIN = 6 << 16
+
 @public
 class DrcReport(SubgraphRoot):
     """DRC report containing design rule check results."""
     view_context = AssignableViewContext
+    wire_id = WIRE_DOMAIN | 1
 
     ref_layout = SubgraphRef(Layout)
     top_cell_name = Attr(str)
@@ -38,6 +41,7 @@ class DrcReport(SubgraphRoot):
 class DrcCategory(Node):
     """Category of DRC violations (e.g., 'Minimum spacing', 'Minimum width')."""
     in_subgraphs = [DrcReport]
+    wire_id = WIRE_DOMAIN | 2
 
     name = Attr(str)
     description = Attr(str, default='')
@@ -58,6 +62,7 @@ class DrcCell(Node):
     (e.g. KLayout variant cells like 'sub$VAR1').
     """
     in_subgraphs = [DrcReport]
+    wire_id = WIRE_DOMAIN | 3
 
     name = Attr(str)
     ref_layout = SubgraphRef(Layout, optional=True)
@@ -67,6 +72,7 @@ class DrcCell(Node):
 class DrcItem(Node):
     """Individual DRC violation item within a category."""
     in_subgraphs = [DrcReport]
+    wire_id = WIRE_DOMAIN | 4
 
     category = LocalRef(DrcCategory, optional=False)
     category_idx = Index(category)
@@ -79,6 +85,7 @@ class DrcItem(Node):
 class DrcBox(Node):
     """Box geometry in a DRC item."""
     in_subgraphs = [DrcReport]
+    wire_id = WIRE_DOMAIN | 5
 
     item = LocalRef(DrcItem, optional=False)
     item_idx = Index(item, sortkey=lambda node: node.order)
@@ -92,6 +99,7 @@ class DrcBox(Node):
 class DrcEdge(Node):
     """Edge geometry in a DRC item."""
     in_subgraphs = [DrcReport]
+    wire_id = WIRE_DOMAIN | 6
 
     item = LocalRef(DrcItem, optional=False)
     item_idx = Index(item, sortkey=lambda node: node.order)
@@ -106,6 +114,7 @@ class DrcEdge(Node):
 class DrcEdgePair(Node):
     """Edge pair geometry in a DRC item (e.g., for spacing violations)."""
     in_subgraphs = [DrcReport]
+    wire_id = WIRE_DOMAIN | 7
 
     item = LocalRef(DrcItem, optional=False)
     item_idx = Index(item, sortkey=lambda node: node.order)
@@ -128,6 +137,7 @@ class DrcPolyBase(GenericPolyI):
 class DrcPoly(DrcPolyBase):
     """Polygon geometry in a DRC item."""
     in_subgraphs = [DrcReport]
+    wire_id = WIRE_DOMAIN | 8
     vertex_cls = PolyVec2I
 
     item = LocalRef(DrcItem, optional=False)
@@ -148,6 +158,7 @@ class DrcPathBase(GenericPolyI):
 class DrcPath(DrcPathBase):
     """Path geometry in a DRC item."""
     in_subgraphs = [DrcReport]
+    wire_id = WIRE_DOMAIN | 9
     vertex_cls = PolyVec2I
 
     item = LocalRef(DrcItem, optional=False)
@@ -160,6 +171,7 @@ class DrcPath(DrcPathBase):
 class DrcText(Node):
     """Text geometry in a DRC item."""
     in_subgraphs = [DrcReport]
+    wire_id = WIRE_DOMAIN | 10
 
     item = LocalRef(DrcItem, optional=False)
     item_idx = Index(item, sortkey=lambda node: node.order)
@@ -174,6 +186,7 @@ class DrcText(Node):
 class DrcValue(Node):
     """Arbitrary string value in a DRC item."""
     in_subgraphs = [DrcReport]
+    wire_id = WIRE_DOMAIN | 11
 
     item = LocalRef(DrcItem, optional=False)
     item_idx = Index(item, sortkey=lambda node: node.order)

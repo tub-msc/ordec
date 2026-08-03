@@ -15,6 +15,8 @@ from .base import (
 )
 from .schematic import Symbol, Pin
 
+WIRE_DOMAIN = 4 << 16
+
 class MixinLayoutPinnable:
     """Mixin for layout shapes that can have LayoutPin associations."""
     __slots__ = ()
@@ -35,12 +37,14 @@ class MixinLayoutPinnable:
 
 @public
 class LayerStack(SubgraphRoot):
-    cell = Attr(Cell)
+    wire_id = WIRE_DOMAIN | 1
+    cell = LiveRef(Cell)
     unit = Attr(R)
 
 @public
 class Layer(NonLeafNode):
     in_subgraphs = [LayerStack]
+    wire_id = WIRE_DOMAIN | 2
     gdslayer_text = Attr(GdsLayer)
     gdslayer_shapes = Attr(GdsLayer)
 
@@ -78,12 +82,14 @@ class Layer(NonLeafNode):
 @public
 class RoutingSpec(SubgraphRoot):
     """Routing specification for SRouter, decoupled from LayerStack."""
+    wire_id = WIRE_DOMAIN | 3
     ref_layers = SubgraphRef(LayerStack, optional=False)
 
 @public
 class RoutingSpecLayer(Node):
     """Per-layer routing parameters for SRouter."""
     in_subgraphs = [RoutingSpec]
+    wire_id = WIRE_DOMAIN | 4
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 
@@ -118,8 +124,9 @@ class Layout(SubgraphRoot):
     hierarchical instances of other Layout subgraphs.
     """
     view_context = LayoutViewContext
+    wire_id = WIRE_DOMAIN | 5
 
-    cell = Attr(Cell)
+    cell = LiveRef(Cell)
     symbol = SubgraphRef(Symbol) #: All LayoutPins in this subgraph reference this symbol.
     ref_layers = SubgraphRef(LayerStack) #: All .layer attributes of nodes in this subgraph reference this LayerStack.
 
@@ -136,6 +143,7 @@ class LayoutLabel(Node):
     prefer :class:`LayoutPin` to raw LayoutLabels.
     """
     in_subgraphs = [Layout]
+    wire_id = WIRE_DOMAIN | 6
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
     pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
@@ -153,6 +161,7 @@ class LayoutPoly(GenericPolyI, MixinClosedPolygon, MixinLayoutPinnable):
     are flipped automatically to CCW orientation.
     """
     in_subgraphs = [Layout]
+    wire_id = WIRE_DOMAIN | 7
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
 
@@ -178,12 +187,14 @@ class LayoutPathBase(GenericPolyI):
 class LayoutPath(LayoutPathBase, MixinPolygonalChain, MixinLayoutPinnable):
     """Layout path (polygonal chain with width)."""
     in_subgraphs = [Layout]
+    wire_id = WIRE_DOMAIN | 8
 
 
 @public
 class LayoutRect(Node, MixinLayoutPinnable):
     """Layout rectangle."""
     in_subgraphs = [Layout]
+    wire_id = WIRE_DOMAIN | 9
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
     rect = ConstrainableAttr(Rect4I, factory=coerce_tuple(Rect4I, 4),
@@ -340,6 +351,7 @@ class LayoutInstanceSubcursor(tuple):
 class LayoutInstance(Node):
     """Hierarchical layout instance, equivalent to GDS SRef."""
     in_subgraphs = [Layout]
+    wire_id = WIRE_DOMAIN | 10
 
     pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
         placeholder=Vec2LinearTerm)
@@ -363,6 +375,7 @@ class LayoutInstanceArray(LayoutInstance):
     """Hierarchical layout instance array, equivalent to GDS ARef."""
 
     in_subgraphs = [Layout]
+    wire_id = WIRE_DOMAIN | 11
 
     #: Number of columns or None (=1 column). If None, LayoutInstanceSubcursor
     #:  indices are collaposed to row-only.
@@ -392,6 +405,7 @@ class LayoutPin(Node):
     The associated shape can be a LayoutPoly, LayoutRect, or LayoutPath.
     """
     in_subgraphs = [Layout]
+    wire_id = WIRE_DOMAIN | 12
 
     ref = LocalRef(LayoutPoly|LayoutPath,
         refcheck_custom=lambda val: issubclass(val, (LayoutPoly, LayoutRect, LayoutPath)),
