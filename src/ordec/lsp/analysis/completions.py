@@ -27,7 +27,7 @@ class CompletionsMixin:
         if not self.ensure_document(uri):
             return AnalysisRange(start=position, end=position)
 
-        lines = self.documents[uri]["text"].splitlines()
+        lines = self.document_lines(uri)
         if position.line < 1 or position.line > len(lines):
             return AnalysisRange(start=position, end=position)
 
@@ -50,8 +50,8 @@ class CompletionsMixin:
 
     def completion_context(self, uri: str, position: AnalysisPosition):
         """Detect member/parameter completion context at the cursor, or None."""
-        lines = self.documents[uri]["text"].splitlines()
-        if position.line < 1 or position.line > len(lines):
+        lines = self.document_lines(uri)
+        if lines is None or position.line < 1 or position.line > len(lines):
             return None
 
         line = lines[position.line - 1]

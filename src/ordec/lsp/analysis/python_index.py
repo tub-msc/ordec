@@ -7,8 +7,6 @@ import importlib
 import importlib.util
 from pathlib import Path
 from typing import Optional
-from urllib.parse import unquote
-from urllib.parse import urlparse
 
 from lark.exceptions import LarkError
 
@@ -16,6 +14,7 @@ from lark.exceptions import LarkError
 from ...ord.parser import ord_to_py
 from .model import AnalysisPosition
 from .model import AnalysisRange
+from .model import file_uri_to_path
 
 
 def expression_text(node, limit: int = 32):
@@ -134,9 +133,8 @@ class PythonModuleIndex:
             return module_name
 
         if not module_name.startswith("."):
-            parsed_uri = urlparse(uri)
-            if parsed_uri.scheme == "file" and self.workspace_root:
-                doc_path = Path(unquote(parsed_uri.path)).resolve()
+            doc_path = file_uri_to_path(uri)
+            if doc_path is not None and self.workspace_root:
                 workspace_root = Path(self.workspace_root).resolve()
                 import_path = doc_path.parent.joinpath(*module_name.split("."))
                 for candidate in (
@@ -162,11 +160,10 @@ class PythonModuleIndex:
 
             return module_name
 
-        parsed_uri = urlparse(uri)
-        if parsed_uri.scheme != "file" or not self.workspace_root:
+        doc_path = file_uri_to_path(uri)
+        if doc_path is None or not self.workspace_root:
             return None
 
-        doc_path = Path(unquote(parsed_uri.path)).resolve()
         workspace_root = Path(self.workspace_root).resolve()
         try:
             relative_path = doc_path.relative_to(workspace_root)

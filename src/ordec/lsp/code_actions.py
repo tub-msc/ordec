@@ -98,8 +98,7 @@ def missing_symbol_port_action(session, uri: str, diagnostic):
 
 def symbol_body_indent(session, uri: str, analysis, symbol_view):
     """Return the indentation to use for a new symbol-view body line."""
-    text = session.documents[uri]["text"]
-    lines = text.splitlines()
+    lines = session.document_lines(uri)
 
     for symbol in analysis.symbols:
         if symbol.kind != "context":

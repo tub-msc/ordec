@@ -30,10 +30,9 @@ import json
 import queue
 import sys
 import threading
-from urllib.parse import unquote, urlparse
 
 # ordec imports
-from .analysis import AnalysisPosition, AnalysisRange, AnalysisSession
+from .analysis import AnalysisPosition, AnalysisRange, AnalysisSession, file_uri_to_path
 from .code_actions import code_actions
 
 
@@ -197,9 +196,9 @@ class OrdLanguageServer:
     def initialize_root_path(self, params):
         """Return the resolved workspace root path from initialize params."""
         if params.get("rootUri"):
-            parsed_uri = urlparse(params["rootUri"])
-            if parsed_uri.scheme == "file":
-                return str(Path(unquote(parsed_uri.path)).resolve())
+            root_path = file_uri_to_path(params["rootUri"])
+            if root_path is not None:
+                return str(root_path)
 
         if params.get("rootPath"):
             return str(Path(params["rootPath"]).resolve())
@@ -840,19 +839,15 @@ class OrdLanguageServer:
 
     def document_line(self, uri: str, one_based_line: int):
         """Return a document line for position encoding conversion."""
-        uri = self.canonical_uri(uri)
-        doc = self.session.documents.get(uri)
-        if doc is not None:
-            lines = doc["text"].splitlines()
-        else:
-            parsed_uri = urlparse(uri)
-            if parsed_uri.scheme != "file":
+        lines = self.session.document_lines(uri)
+        if lines is None:
+            path = file_uri_to_path(uri)
+            if path is None:
                 return None
             try:
-                text = Path(unquote(parsed_uri.path)).read_text(encoding="utf-8")
+                lines = path.read_text(encoding="utf-8").splitlines()
             except (OSError, UnicodeDecodeError):
                 return None
-            lines = text.splitlines()
 
         if one_based_line < 1 or one_based_line > len(lines):
             return None

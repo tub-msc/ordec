@@ -5,8 +5,6 @@
 import os
 from pathlib import Path
 from typing import Optional
-from urllib.parse import unquote
-from urllib.parse import urlparse
 
 # ordec imports
 from .completions import CompletionsMixin
@@ -16,6 +14,7 @@ from .model import (
     AnalysisPosition,
     AnalysisRange,
     DocumentAnalysis,
+    file_uri_to_path,
     position_before_or_equal,
     range_contains,
 )
@@ -75,26 +74,29 @@ class AnalysisSession(
         self.max_closed_documents = max_closed_documents
         self.documents = dict()
         self.document_access_counter = 0
+        self.canonical_uri_cache = dict()
         self.python_index = PythonModuleIndex(workspace_root=self.workspace_root)
         self.python_modules = self.python_index.python_modules
         self.workspace_index = None
         self.workspace_dirty_uris = set()
 
     def canonical_uri(self, uri: str):
-        """Return the canonical session key for a URI."""
-        path = self.file_uri_path(uri)
-        if path is None:
-            return uri
+        """Return the canonical session key for a URI.
 
-        return path.as_uri()
+        Position conversion and reference resolution canonicalize the same
+        URIs over and over (per token in semantic tokens responses), so the
+        deterministic mapping is memoized.
+        """
+        canonical = self.canonical_uri_cache.get(uri)
+        if canonical is None:
+            path = self.file_uri_path(uri)
+            canonical = uri if path is None else path.as_uri()
+            self.canonical_uri_cache[uri] = canonical
+        return canonical
 
     def file_uri_path(self, uri: str):
         """Return the resolved path for a file URI, or None."""
-        parsed_uri = urlparse(uri)
-        if parsed_uri.scheme != "file":
-            return None
-
-        return Path(unquote(parsed_uri.path)).resolve()
+        return file_uri_to_path(uri)
 
     def file_uri_suffix(self, uri: str):
         """Return a file URI suffix, or None for non-file URIs."""
@@ -117,6 +119,23 @@ class AnalysisSession(
                 pass
 
         return str(path)
+
+    def document_lines(self, uri: str):
+        """Return the cached line list for a tracked document, or None.
+
+        Position encoding conversion runs per token in semantic tokens
+        responses, so the split is cached on the document record, which
+        store_document() replaces wholesale on every text change.
+        """
+        doc = self.documents.get(self.canonical_uri(uri))
+        if doc is None:
+            return None
+
+        lines = doc.get("lines")
+        if lines is None:
+            lines = doc["text"].splitlines()
+            doc["lines"] = lines
+        return lines
 
     def record_document_access(self, uri: str):
         """Record recent use for closed-document eviction."""
@@ -306,23 +325,19 @@ class AnalysisSession(
     def invalidate_uri(self, uri: str):
         """Invalidate cached state for a file URI."""
         uri = self.canonical_uri(uri)
-        parsed_uri = urlparse(uri)
-        if parsed_uri.scheme != "file":
+        path = self.file_uri_path(uri)
+        if path is None:
             return None
 
-        return self.invalidate_path(unquote(parsed_uri.path))
+        return self.invalidate_path(str(path))
 
     def resolve_module_uri(self, uri: str, module_name: str):
         """Resolve an ORD import name relative to a document URI."""
         uri = self.canonical_uri(uri)
-        if not uri.startswith("file:"):
+        doc_path = self.file_uri_path(uri)
+        if doc_path is None:
             return None
 
-        parsed_uri = urlparse(uri)
-        if parsed_uri.scheme != "file":
-            return None
-
-        doc_path = Path(unquote(parsed_uri.path)).resolve()
         workspace_root = Path(self.workspace_root).resolve() if self.workspace_root else doc_path.parent
 
         if module_name.startswith("."):
@@ -548,8 +563,7 @@ class AnalysisSession(
             if not self.is_ord_uri(uri):
                 continue
 
-            parsed_uri = urlparse(uri)
-            path = Path(unquote(parsed_uri.path))
+            path = self.file_uri_path(uri)
             if not path.exists() and uri not in self.documents:
                 self.remove_workspace_import_row(uri)
                 continue
@@ -609,10 +623,6 @@ class AnalysisSession(
         if not self.ensure_document(uri) or not uri.startswith("file:"):
             return []
 
-        parsed_uri = urlparse(uri)
-        if parsed_uri.scheme != "file":
-            return []
-
         imports = []
         seen = set()
 
@@ -640,8 +650,7 @@ class AnalysisSession(
                 continue
 
             if current_uri not in self.documents and current_uri.startswith("file:"):
-                current_path = Path(unquote(urlparse(current_uri).path))
-                self.open_path(str(current_path))
+                self.open_path(str(self.file_uri_path(current_uri)))
 
             if current_uri not in self.documents:
                 continue
@@ -868,7 +877,7 @@ class AnalysisSession(
         if not self.ensure_document(uri):
             return None
 
-        lines = self.documents[uri]["text"].splitlines()
+        lines = self.document_lines(uri)
         if position.line < 1 or position.line > len(lines):
             return None
 

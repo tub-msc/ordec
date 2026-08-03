@@ -3,13 +3,33 @@
 
 # standard imports
 import re
+from pathlib import Path
 from typing import List, NamedTuple, Optional
+from urllib.parse import unquote, urlparse
 
 
 _MISSING = object()
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 LEADING_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 TRAILING_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*$")
+FILE_URI_DRIVE_RE = re.compile(r"^/[A-Za-z]:")
+
+
+def file_uri_to_path(uri: str):
+    """Return the resolved filesystem path for a file URI, or None.
+
+    Windows clients send drive-letter URIs such as ``file:///C:/x.ord``,
+    whose URL path keeps a leading slash before the drive letter, so that
+    slash is stripped before building the path.
+    """
+    parsed_uri = urlparse(uri)
+    if parsed_uri.scheme != "file":
+        return None
+
+    path = unquote(parsed_uri.path)
+    if FILE_URI_DRIVE_RE.match(path):
+        path = path[1:]
+    return Path(path).resolve()
 
 
 def is_identifier(value: str):

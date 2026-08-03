@@ -3,7 +3,7 @@
 
 from pathlib import Path
 
-from ordec.lsp.analysis import AnalysisPosition, AnalysisSession, analyze_ord
+from ordec.lsp.analysis import AnalysisPosition, AnalysisSession, analyze_ord, file_uri_to_path
 from ordec.lsp.analysis.python_index import PythonModuleIndex
 
 
@@ -633,6 +633,30 @@ def test_analysis_session_simulation_alias_resolves_like_schema_type():
 
     assert session.diagnostics(uri) == []
     assert session.definition(uri, position_at(source, "Simulation"))["name"] == "SimHierarchy"
+
+
+def test_file_uri_to_path_strips_windows_drive_prefix():
+    for uri in ("file:///C:/designs/inv.ord", "file:///c%3A/designs/inv.ord"):
+        path = file_uri_to_path(uri)
+        assert not str(path).startswith(("/C:", "/c:"))
+        assert str(path).endswith(":/designs/inv.ord")
+
+    assert str(file_uri_to_path("file:///tmp/inv.ord")) == "/tmp/inv.ord"
+    assert file_uri_to_path("untitled:Untitled-1") is None
+
+
+def test_document_lines_cache_follows_document_updates():
+    session = AnalysisSession()
+    uri = "file:///tmp/lines.ord"
+    session.open_document(uri, "net a\nnet b\n")
+
+    lines = session.document_lines(uri)
+    assert lines == ["net a", "net b"]
+    assert session.document_lines(uri) is lines
+
+    session.update_document(uri, "net a\nnet b\nnet c\n")
+    assert session.document_lines(uri) == ["net a", "net b", "net c"]
+    assert session.document_lines("file:///tmp/untracked.ord") is None
 
 
 def test_analysis_session_checked_in_ord_files_have_no_lsp_diagnostics():

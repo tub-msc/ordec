@@ -8,6 +8,7 @@ from .model import (
     AnalysisRange,
     AnalysisSymbol,
     DocumentAnalysis,
+    file_uri_to_path,
 )
 from .parser_pass import analyze_ord
 from .session import AnalysisSession
