@@ -707,3 +707,39 @@ def test_lvs_subcircuit_item_select(web):
         "Item should be highlighted in the report-level layout view"
     assert states[sub_views[0]]['highlightNumVertices'] == 0, \
         "Top-level selection must not leave a highlight in the subcircuit's view"
+
+
+@pytest.mark.web
+def test_lvs_stale_report_links_inert(web):
+    """Links and item rows of an outdated report view must not open views
+    or emit selections: stale nids/positions/hashes may not match the
+    regenerated views."""
+    load_lvs_report_view(web)
+
+    views_before = web.driver.execute_script(
+        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+
+    # Mark the report view outdated, as after a source change.
+    web.driver.execute_script("""
+        const rv = window.ordecClient.resultViewers.find(
+            rv => rv.viewSelected === 'lvs_report()');
+        rv.invalidate();
+    """)
+
+    web.driver.execute_script(
+        'document.querySelector(\'.lvs-circuit-link[data-kind="layout"]\').click();')
+    web.driver.execute_script("""
+        const link = document.querySelector(
+            '.lvs-item-link[title="Highlight in layout and schematic"]');
+        link.closest('.lvs-item-row').click();
+    """)
+    time.sleep(0.5)
+    web.wait_for_ready()
+
+    views = web.driver.execute_script(
+        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+    assert views == views_before, \
+        f"Stale report clicks must not open views: {views}"
+    assert not web.driver.execute_script(
+        "return document.querySelectorAll('.lvs-item-row.selected').length;"), \
+        "Stale report clicks must not select items"

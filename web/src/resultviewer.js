@@ -804,6 +804,11 @@ const viewClassOf = {
 
             this.el.querySelectorAll('.drc-item').forEach(itemEl => {
                 itemEl.addEventListener('click', () => {
+                    // An outdated report must not drive navigation or
+                    // highlights: its nids, positions and hashes may not
+                    // match the regenerated views (the overlay already
+                    // shows the refresh state).
+                    if (this.resultViewer && !this.resultViewer.viewUpToDate) return;
                     const nid = parseInt(itemEl.dataset.nid, 10);
                     const item = itemMap.get(nid);
                     if (!item) return;
@@ -1097,6 +1102,8 @@ const viewClassOf = {
             this.el.querySelectorAll('.lvs-circuit-link').forEach(linkEl => {
                 linkEl.addEventListener('click', (e) => {
                     e.stopPropagation();  // don't toggle circuit expansion
+                    // See the drc-item guard: outdated reports are inert.
+                    if (this.resultViewer && !this.resultViewer.viewUpToDate) return;
                     if (!this.viewName) return;
                     const nid = parseInt(linkEl.dataset.nid, 10);
                     const kind = linkEl.dataset.kind;
@@ -1135,6 +1142,8 @@ const viewClassOf = {
             this.el.querySelectorAll('.lvs-item-row').forEach(itemEl => {
                 itemEl.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    // See the drc-item guard: outdated reports are inert.
+                    if (this.resultViewer && !this.resultViewer.viewUpToDate) return;
                     this.el.querySelectorAll('.lvs-item-row.selected').forEach(el => {
                         el.classList.remove('selected');
                     });
@@ -1679,11 +1688,13 @@ export class ResultViewer {
                     this.resContent.replaceChildren(pre);
                 } else if(this.view instanceof viewClass) {
                     this.view.viewHash = this.viewHash;
+                    this.view.resultViewer = this;
                     this.view.update(msg.data);
                 } else {
                     this.view = new viewClass(this.resContent);
                     this.view.viewName = this.viewSelected;
                     this.view.viewHash = this.viewHash;
+                    this.view.resultViewer = this;
                     this.view.glContainer = this.container;
                     this.view.update(msg.data);
                 }
