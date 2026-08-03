@@ -743,3 +743,6 @@ def test_lvs_stale_report_links_inert(web):
     assert not web.driver.execute_script(
         "return document.querySelectorAll('.lvs-item-row.selected').length;"), \
         "Stale report clicks must not select items"
+    assert web.driver.execute_script(
+        "return !!document.querySelector('.refreshbar-flash');"), \
+        "Clicking a stale report must flash the refresh bar"

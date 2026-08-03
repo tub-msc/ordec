@@ -806,9 +806,11 @@ const viewClassOf = {
                 itemEl.addEventListener('click', () => {
                     // An outdated report must not drive navigation or
                     // highlights: its nids, positions and hashes may not
-                    // match the regenerated views (the overlay already
-                    // shows the refresh state).
-                    if (this.resultViewer && !this.resultViewer.viewUpToDate) return;
+                    // match the regenerated views.
+                    if (this.resultViewer && !this.resultViewer.viewUpToDate) {
+                        this.resultViewer.flashRefreshBar();
+                        return;
+                    }
                     const nid = parseInt(itemEl.dataset.nid, 10);
                     const item = itemMap.get(nid);
                     if (!item) return;
@@ -1103,7 +1105,10 @@ const viewClassOf = {
                 linkEl.addEventListener('click', (e) => {
                     e.stopPropagation();  // don't toggle circuit expansion
                     // See the drc-item guard: outdated reports are inert.
-                    if (this.resultViewer && !this.resultViewer.viewUpToDate) return;
+                    if (this.resultViewer && !this.resultViewer.viewUpToDate) {
+                        this.resultViewer.flashRefreshBar();
+                        return;
+                    }
                     if (!this.viewName) return;
                     const nid = parseInt(linkEl.dataset.nid, 10);
                     const kind = linkEl.dataset.kind;
@@ -1143,7 +1148,10 @@ const viewClassOf = {
                 itemEl.addEventListener('click', (e) => {
                     e.stopPropagation();
                     // See the drc-item guard: outdated reports are inert.
-                    if (this.resultViewer && !this.resultViewer.viewUpToDate) return;
+                    if (this.resultViewer && !this.resultViewer.viewUpToDate) {
+                        this.resultViewer.flashRefreshBar();
+                        return;
+                    }
                     this.el.querySelectorAll('.lvs-item-row.selected').forEach(el => {
                         el.classList.remove('selected');
                     });
@@ -1346,6 +1354,18 @@ export class ResultViewer {
         this.refreshStatus.textContent = 'Cancelling…';
         this.refreshCancel.disabled = true;
         this.client.cancelView(this);
+    }
+
+    flashRefreshBar() {
+        // Draws attention to the refresh state when the user interacts with
+        // an out-of-date view (see the stale guards in the report viewers):
+        // the click does nothing, and the flashing bar says why.
+        const bar = [this.resOverlayRefreshing, this.resOverlayRefreshable,
+            this.resOverlayError].find(el => el.style.display !== 'none');
+        if (!bar) return;
+        bar.classList.remove('refreshbar-flash');
+        void bar.offsetWidth; // reflow, so a running animation restarts
+        bar.classList.add('refreshbar-flash');
     }
 
     showRefreshOverlay(config) {

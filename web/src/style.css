@@ -574,6 +574,19 @@ body.theme-dark .resviewhead button:hover {
     --overlay-bg: var(--color-fail-bg);
     --overlay-fg: var(--color-fail-fg);
 }
+/* Attention flash when a link in an out-of-date view is clicked (see
+   ResultViewer.flashRefreshBar, which puts the class on the strip): the
+   strip's button blinks red twice (a single-pulse animation run twice);
+   everything else stays put. */
+.refreshbar-flash button {
+    animation: refreshbar-flash-btn 0.2s linear 2;
+}
+@keyframes refreshbar-flash-btn {
+    50% {
+        background-color: var(--color-fail-fg);
+        color: var(--color-fail-bg);
+    }
+}
 /* Like the course callout, the bar has no top border of its own: its top edge
    is the view selector's bottom border, recoloured to the overlay colour. */
 .resview:has(.reswrapper.refreshbar-active) .resviewhead {
