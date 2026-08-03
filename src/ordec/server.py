@@ -91,7 +91,6 @@ from . import importer, language
 from .hub import HubIntegration, HubAuthError
 from .version import version, doc_url
 from .core import Cell, generate, generate_func, SubgraphRoot
-from .core.wire import wire_hash
 from .language import compile_ord
 from .extlibrary import ExtLibrary
 from .jobrunner import ThreadedJobRunner
@@ -394,7 +393,7 @@ class ConnectionHandler:
                 # Best-effort: user-defined Node classes may lack a wire_id;
                 # a hashing failure must not break view delivery.
                 try:
-                    msg_ret['sg_hash'] = wire_hash(view).hex()
+                    msg_ret['sg_hash'] = view.subgraph.wire_hash().hex()
                 except Exception:
                     pass
         except Exception as e:

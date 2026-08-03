@@ -6,10 +6,7 @@ from ordec.core import *
 from ordec.core import ordb
 from ordec.core.ordb.base import FarRef, LiveRef, wire_registry
 from ordec.core.schema.base import SourceLocInfo
-from ordec.core.wire import (
-    WireError, export_table, subgraph_from_wire, subgraph_to_wire, wire_deps,
-    wire_hash,
-)
+from ordec.core.wire import WireError, export_table, wire_decode
 
 @pytest.fixture(autouse=True, params=ordb.available_backends())
 def ordb_backend(request):
@@ -66,17 +63,18 @@ def build_head(sub=None, loc_line=1):
 
 def test_determinism():
     a, b = build_head(), build_head()
-    assert subgraph_to_wire(a) == subgraph_to_wire(b)
-    assert wire_hash(a) == wire_hash(b)
+    assert a.subgraph.wire_encode() == b.subgraph.wire_encode()
+    assert a.subgraph.wire_hash() == b.subgraph.wire_hash()
 
 def test_cross_backend_hash():
-    h = wire_hash(build_head())
+    h = build_head().subgraph.wire_hash()
     with ordb.use_backend(ordb.available_backends()[0]):
-        assert wire_hash(build_head()) == h
+        assert build_head().subgraph.wire_hash() == h
 
 def test_hash_sensitivity():
     # SourceLocInfo data (src_loc) participates in the hash:
-    assert wire_hash(build_head(loc_line=2)) != wire_hash(build_head())
+    assert build_head(loc_line=2).subgraph.wire_hash() != \
+        build_head().subgraph.wire_hash()
 
 def test_nid_alloc_sensitivity():
     # nid_alloc.start participates: adding and removing a node leaves the
@@ -91,13 +89,14 @@ def test_nid_alloc_sensitivity():
     temp.remove()
     scarred = scarred.freeze()
     assert dict(scarred.subgraph.nodes) == dict(plain.subgraph.nodes)
-    assert wire_hash(scarred) != wire_hash(plain)
+    assert scarred.subgraph.wire_hash() != plain.subgraph.wire_hash()
 
 def test_roundtrip():
     orig = build_head()
-    back = subgraph_from_wire(subgraph_to_wire(orig), wire_deps(orig))
+    back = wire_decode(orig.subgraph.wire_encode(),
+        orig.subgraph.wire_deps())
     assert back.subgraph == orig.subgraph
-    assert wire_hash(back) == wire_hash(orig)
+    assert back.subgraph.wire_hash() == orig.subgraph.wire_hash()
     # NPath navigation and value types survive:
     assert back.first.pos == Vec2R(1, 2)
     assert back.first.tup == ('a', 1, R(1, 3), Vec2R(5, 6))
@@ -107,26 +106,26 @@ def test_roundtrip():
 
 def test_merkle():
     sub = build_sub()
-    h1 = wire_hash(build_head(sub=sub))
-    assert wire_hash(build_head(sub=sub)) == h1
+    h1 = build_head(sub=sub).subgraph.wire_hash()
+    assert build_head(sub=sub).subgraph.wire_hash() == h1
     # Changed dependency content propagates into the parent hash:
-    assert wire_hash(build_head(sub=build_sub(label='other'))) != h1
+    assert build_head(sub=build_sub(label='other')).subgraph.wire_hash() != h1
 
 def test_roundtrip_real_schematic():
     from ordec.examples.voltagedivider_py import VoltageDivider
     cell = VoltageDivider()
     sch = cell.schematic
-    deps = wire_deps(sch)
-    back = subgraph_from_wire(subgraph_to_wire(sch), deps)
+    deps = sch.subgraph.wire_deps()
+    back = wire_decode(sch.subgraph.wire_encode(), deps)
     assert back.subgraph == sch.subgraph
-    assert wire_hash(back) == wire_hash(sch)
+    assert back.subgraph.wire_hash() == sch.subgraph.wire_hash()
     assert back.cell is cell
     assert back.I1.pos == sch.I1.pos
 
 def test_farref():
     foreign = FarRef(b'\xaa' * 16, 42, name='foreign')
     orig = WHead(obj=foreign).freeze()
-    back = subgraph_from_wire(subgraph_to_wire(orig))
+    back = wire_decode(orig.subgraph.wire_encode())
     assert back.obj == foreign
     assert isinstance(back.obj, FarRef)
     # eq/hash ignore the name metadata:
@@ -136,20 +135,20 @@ def test_farref():
 
 def test_own_endpoint_unknown_objid():
     bogus = FarRef(export_table.endpoint_id, 2**62, name='bogus')
-    data = subgraph_to_wire(WHead(obj=bogus).freeze())
+    data = WHead(obj=bogus).freeze().subgraph.wire_encode()
     with pytest.raises(WireError, match="obj_id"):
-        subgraph_from_wire(data)
+        wire_decode(data)
 
 def test_missing_dep():
     orig = build_head()
     with pytest.raises(WireError, match="dependency"):
-        subgraph_from_wire(subgraph_to_wire(orig), deps={})
+        wire_decode(orig.subgraph.wire_encode(), deps={})
 
 def test_missing_wire_id():
     h = WHead(obj=live_obj)
     h % WNoWire(label='x')
     with pytest.raises(WireError, match="WNoWire"):
-        subgraph_to_wire(h.freeze())
+        h.freeze().subgraph.wire_encode()
 
 def test_wire_id_uniqueness():
     class WFresh(Node):
@@ -162,4 +161,4 @@ def test_wire_id_uniqueness():
 def test_unsupported_value():
     orig = WHead(obj=live_obj, blob=frozenset({1})).freeze()
     with pytest.raises(TypeError, match="WHead.blob"):
-        subgraph_to_wire(orig)
+        orig.subgraph.wire_encode()

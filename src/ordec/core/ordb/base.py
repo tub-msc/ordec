@@ -1732,11 +1732,45 @@ class FrozenSubgraph(Subgraph):
         self._nid_alloc = nid_alloc
         self._backend = backend
         self._cached_hash = None
-        self._cached_wire_hash = None # memoized by ordec.core.wire.wire_hash
+        self._cached_wire_hash = None # memoized by wire_hash()
         self._root_cursor = self.cursor_at(0)
 
     def __copy__(self) -> 'FrozenSubgraph':
         return self # Since FrozenSubgraph is immutable, copies are never needed?!
+
+    # Wire-layer API: canonical CBOR serialization and session-scoped
+    # hashing. The implementation lives in ordec.core.wire, which depends on
+    # this module; the deferred imports below keep that dependency one-way
+    # at import time.
+
+    def wire_encode(self) -> bytes:
+        """
+        Canonical CBOR wire bytes of this subgraph. Nested SubgraphRefs are
+        represented by their wire_hash; use wire_deps() to collect the
+        referenced subgraphs for transmission.
+        """
+        from ..wire import encode_subgraph
+        return encode_subgraph(self)
+
+    def wire_hash(self) -> bytes:
+        """
+        Session-scoped SHA-256 wire hash (32 bytes) of this subgraph,
+        memoized. Covers transitive SubgraphRef dependencies (Merkle-style).
+        """
+        h = self._cached_wire_hash
+        if h is None:
+            from ..wire import compute_wire_hash
+            h = self._cached_wire_hash = compute_wire_hash(self)
+        return h
+
+    def wire_deps(self) -> dict:
+        """
+        Transitive SubgraphRef dependencies of this subgraph, keyed by their
+        wire_hash. Suitable as the deps argument of
+        ordec.core.wire.wire_decode.
+        """
+        from ..wire import collect_wire_deps
+        return collect_wire_deps(self)
 
     def copy(self):
         return self # No need to copy frozen subgraph

@@ -4,6 +4,10 @@
 """
 Session-scoped wire serialization for ORDB subgraphs.
 
+The user-facing API is on FrozenSubgraph (ordb/base.py): wire_encode(),
+wire_hash() and wire_deps(); this module provides their backends plus the
+decoder, wire_decode().
+
 Subgraphs are encoded to canonical CBOR and identified by the SHA-256 hash of
 their encoding (wire_hash). Nested SubgraphRefs are encoded as the wire_hash
 of the referenced subgraph (Merkle-style), so a subgraph's hash covers its
@@ -184,7 +188,7 @@ def encode_row_value(val, attr):
     if isinstance(attr, ExternalRef):
         return cbor2.CBORTag(TAG_EXTERNALREF, val)
     if isinstance(attr, SubgraphRef):
-        return cbor2.CBORTag(TAG_SUBGRAPHREF, wire_hash(val))
+        return cbor2.CBORTag(TAG_SUBGRAPHREF, val.wire_hash())
     if isinstance(attr, LiveRef):
         # Must precede plain-value dispatch: the stored value is an arbitrary
         # live object (or an already-opaque FarRef relayed onward).
@@ -194,14 +198,13 @@ def encode_row_value(val, attr):
         return cbor2.CBORTag(TAG_LIVEREF, list(export_table.export(val)))
     return encode_plain(val)
 
-@public
-def subgraph_to_wire(x) -> bytes:
+def encode_subgraph(sg: FrozenSubgraph) -> bytes:
     """
-    Encode a subgraph to canonical CBOR wire bytes. Nested SubgraphRefs are
-    represented by their wire_hash; use wire_deps() to collect the referenced
-    subgraphs for transmission.
+    Encode a frozen subgraph to canonical CBOR wire bytes. Nested
+    SubgraphRefs are represented by their wire_hash; collect the referenced
+    subgraphs for transmission via FrozenSubgraph.wire_deps(). Backend of
+    FrozenSubgraph.wire_encode().
     """
-    sg = as_frozen(x)
     rows_by_wid = {}
     for nid in sorted(sg.nodes):
         node = sg.nodes[nid]
@@ -219,24 +222,17 @@ def subgraph_to_wire(x) -> bytes:
         rows_by_wid.setdefault(wid, []).append(row)
     return cbor2.dumps([rows_by_wid, sg.nid_alloc.start], canonical=True)
 
-@public
-def wire_hash(x) -> bytes:
+def compute_wire_hash(sg: FrozenSubgraph) -> bytes:
     """
-    SHA-256 wire hash (32 bytes) of a subgraph, memoized on FrozenSubgraph.
-    Mutable input is hashed via a temporary freeze without memoization.
+    Domain-prefixed SHA-256 (32 bytes) over encode_subgraph(sg). Backend of
+    FrozenSubgraph.wire_hash(), which memoizes it; always call that instead.
     """
-    sg = as_frozen(x)
-    h = sg._cached_wire_hash
-    if h is None:
-        h = hashlib.sha256(HASH_DOMAIN + subgraph_to_wire(sg)).digest()
-        sg._cached_wire_hash = h
-    return h
+    return hashlib.sha256(HASH_DOMAIN + encode_subgraph(sg)).digest()
 
-@public
-def wire_deps(x) -> dict[bytes, FrozenSubgraph]:
+def collect_wire_deps(sg: FrozenSubgraph) -> dict[bytes, FrozenSubgraph]:
     """
-    Collect the transitive SubgraphRef dependencies of a subgraph, keyed by
-    their wire_hash. Suitable as the deps argument of subgraph_from_wire.
+    Collect the transitive SubgraphRef dependencies of a frozen subgraph,
+    keyed by their wire_hash. Backend of FrozenSubgraph.wire_deps().
     """
     deps = {}
     def collect(sg):
@@ -248,11 +244,11 @@ def wire_deps(x) -> dict[bytes, FrozenSubgraph]:
                 child = node[ad.index]
                 if child is None:
                     continue
-                h = wire_hash(child)
+                h = child.wire_hash()
                 if h not in deps:
                     deps[h] = child
                     collect(child)
-    collect(as_frozen(x))
+    collect(sg)
     return deps
 
 # Decoding
@@ -322,15 +318,16 @@ def resolve_row_value(val, deps):
     return fix_plain(val)
 
 @public
-def subgraph_from_wire(data: bytes, deps=None) -> Node:
+def wire_decode(data: bytes, deps=None) -> Node:
     """
     Decode wire bytes into a new FrozenSubgraph, returned as its root cursor.
 
     Args:
-        data: Bytes produced by subgraph_to_wire.
+        data: Bytes produced by FrozenSubgraph.wire_encode().
         deps: Mapping of wire_hash to already-materialized subgraph for every
-            SubgraphRef occurring in data (see wire_deps). All dependencies
-            must be present; laziness exists only on the wire.
+            SubgraphRef occurring in data (see FrozenSubgraph.wire_deps()).
+            All dependencies must be present; laziness exists only on the
+            wire.
     """
     if deps is None:
         deps = {}
