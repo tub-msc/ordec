@@ -1,13 +1,12 @@
 <!-- SPDX-FileCopyrightText: 2026 ORDeC contributors -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-<idea-plugin>
+<idea-plugin url="https://github.com/tub-msc/ordec">
     <!-- Placeholder id, like the VS Code publisher: settle before the first
          marketplace upload -->
     <id>org.ordec.jetbrains</id>
     <name>ORD</name>
     <vendor>ORDeC contributors</vendor>
-    <url>https://github.com/tub-msc/ordec</url>
     <description><![CDATA[
         <p>
             Work with ORD designs directly in PyCharm or another JetBrains

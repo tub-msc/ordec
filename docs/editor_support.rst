@@ -325,10 +325,7 @@ Sublime folder so the server receives the correct workspace root::
           "enabled": true,
           "languageId": "ord",
           "scopes": ["source.ord"],
-          "syntaxes": [
-            "Packages/Ord/Ord.sublime-syntax",
-            "Packages/User/Ord.sublime-syntax"
-          ]
+          "syntaxes": ["Packages/User/Ord.sublime-syntax"]
         }
       },
       // Off by default in the LSP package: show the server's
@@ -383,6 +380,12 @@ the ``.ord`` filetype mapping already exists. Start ORD-LSP from
       root_markers = { "pyproject.toml", ".git" },
     })
     vim.lsp.enable("ordec")
+    vim.lsp.inlay_hint.enable(true)
+
+Semantic tokens are used automatically. Folding follows tree-sitter as
+configured in the syntax highlighting section. To fold via the language
+server instead, set ``foldmethod=expr`` with
+``foldexpr=v:lua.vim.lsp.foldexpr()``.
 
 Helix
 ~~~~~
@@ -397,8 +400,8 @@ highlighting section of ``~/.config/helix/languages.toml``::
     [language-server.ordec-lsp]
     command = "ordec-lsp"
 
-Internals
-~~~~~~~~~
+Implementation details
+~~~~~~~~~~~~~~~~~~~~~~
 
 The installed ``ordec-lsp`` command starts ``ordec.lsp.server``. The
 stdio server uses a method dispatch table: each supported LSP method is

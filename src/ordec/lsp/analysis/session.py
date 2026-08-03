@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # standard imports
+import os
 from pathlib import Path
 from typing import Optional
 from urllib.parse import unquote
@@ -23,6 +24,14 @@ from .python_index import PythonModuleIndex
 from .rename import RenameMixin
 from .signatures import SignatureHelpMixin
 from .typeflow import TypeFlowMixin
+
+# Dependency directories that never hold workspace design sources. Hidden
+# directories (leading dot) are pruned by name, so .git and .venv need no
+# entries here.
+WORKSPACE_SCAN_EXCLUDED_DIRS = frozenset({
+    "node_modules",
+    "__pycache__",
+})
 
 
 class AnalysisSession(
@@ -459,13 +468,31 @@ class AnalysisSession(
         uri = self.update_path(path, version=version)
         return self.analyze(uri)
 
+    def workspace_ord_paths(self, root_path: Path):
+        """Yield workspace ORD files, pruning hidden and dependency directories.
+
+        A blind recursive glob crawls .git, virtualenvs, and node_modules,
+        which dominates cold workspace scans on real projects. Design
+        sources do not live in hidden or dependency directories, so those
+        subtrees are skipped entirely.
+        """
+        for dirpath, dirnames, filenames in os.walk(root_path):
+            dirnames[:] = sorted(
+                name for name in dirnames
+                if not name.startswith(".")
+                and name not in WORKSPACE_SCAN_EXCLUDED_DIRS
+            )
+            for filename in sorted(filenames):
+                if filename.endswith(".ord"):
+                    yield Path(dirpath) / filename
+
     def workspace_uris(self):
         """Return ORD file URIs known to the current workspace."""
         if self.workspace_root:
             root_path = Path(self.workspace_root).resolve()
             if root_path.exists():
                 uris = []
-                for path in sorted(root_path.rglob("*.ord")):
+                for path in self.workspace_ord_paths(root_path):
                     if not path.is_file():
                         continue
 

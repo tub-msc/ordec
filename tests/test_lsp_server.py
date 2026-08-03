@@ -697,8 +697,7 @@ def test_lsp_signature_help(tmp_path):
     assert outside_call is None
 
 
-def hierarchy_workspace(tmp_path):
-    """Create a two-cell workspace used by navigation feature tests."""
+def test_lsp_type_definition_and_inlay_hints(tmp_path):
     device_source = (
         "cell Device:\n"
         "    viewgen symbol -> Symbol:\n"
@@ -719,11 +718,6 @@ def hierarchy_workspace(tmp_path):
         "    return d\n"
     )
     (tmp_path / "top.ord").write_text(top_source)
-    return device_source, top_source
-
-
-def test_lsp_type_definition_and_inlay_hints(tmp_path):
-    device_source, top_source = hierarchy_workspace(tmp_path)
     server = initialize_server(tmp_path)
     top_uri = (tmp_path / "top.ord").resolve().as_uri()
     device_uri = (tmp_path / "device.ord").resolve().as_uri()
@@ -763,7 +757,25 @@ def test_lsp_type_definition_and_inlay_hints(tmp_path):
 
 
 def test_lsp_call_hierarchy(tmp_path):
-    device_source, top_source = hierarchy_workspace(tmp_path)
+    (tmp_path / "device.ord").write_text(
+        "cell Device:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    top_source = (
+        "from .device import Device\n"
+        "\n"
+        "cell Top:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        net vdd\n"
+        "        Device inst:\n"
+        "            .a -- vdd\n"
+        "\n"
+        "def helper():\n"
+        "    d = Device()\n"
+        "    return d\n"
+    )
+    (tmp_path / "top.ord").write_text(top_source)
     server = initialize_server(tmp_path)
     top_uri = (tmp_path / "top.ord").resolve().as_uri()
     device_uri = (tmp_path / "device.ord").resolve().as_uri()
@@ -884,6 +896,31 @@ def test_lsp_workspace_folding_selection_and_semantic_tokens(tmp_path):
     )
     workspace_symbols = request(server, "workspace/symbol", {"query": "mux"})
     assert [symbol["name"] for symbol in workspace_symbols] == ["Mux4"]
+
+
+def test_lsp_workspace_scan_skips_hidden_and_dependency_dirs(tmp_path):
+    def cell_source(name):
+        return (
+            "cell {}:\n"
+            "    viewgen symbol -> Symbol:\n"
+            "        input a\n"
+        ).format(name)
+
+    (tmp_path / "device.ord").write_text(cell_source("Device"))
+    nested = tmp_path / "designs"
+    nested.mkdir()
+    (nested / "buf.ord").write_text(cell_source("Buf"))
+
+    hidden = tmp_path / ".git"
+    hidden.mkdir()
+    (hidden / "junk.ord").write_text(cell_source("HiddenJunk"))
+    dependency = tmp_path / "node_modules" / "pkg"
+    dependency.mkdir(parents=True)
+    (dependency / "junk.ord").write_text(cell_source("DependencyJunk"))
+
+    server = initialize_server(tmp_path)
+    symbols = request(server, "workspace/symbol", {"query": ""})
+    assert sorted(symbol["name"] for symbol in symbols) == ["Buf", "Device"]
 
 
 def test_lsp_shutdown_and_unknown_method(tmp_path):
