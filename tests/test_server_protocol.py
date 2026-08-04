@@ -177,7 +177,7 @@ def test_cancel_infinite_loop(proto_server):
     finally:
         c2.close()
 
-def test_view_sg_hash(proto_server):
+def test_view_wire_hash(proto_server):
     """Subgraph views carry a stable wire hash on the terminal message."""
     url, key = proto_server
     c = Client(url, key)
@@ -186,9 +186,9 @@ def test_view_sg_hash(proto_server):
         _, terminal1 = c.recv_until_terminal(50)
         c.getview('sym()', req=51)
         _, terminal2 = c.recv_until_terminal(51)
-        assert len(terminal1['sg_hash']) == 64
-        int(terminal1['sg_hash'], 16)
-        assert terminal1['sg_hash'] == terminal2['sg_hash']
+        assert len(terminal1['wire_hash']) == 64
+        int(terminal1['wire_hash'], 16)
+        assert terminal1['wire_hash'] == terminal2['wire_hash']
     finally:
         c.close()
 

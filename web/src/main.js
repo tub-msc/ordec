@@ -215,24 +215,24 @@ function findResultViewerByView(viewName) {
     return null;
 }
 
-function findResultViewerByHash(hash) {
+function findResultViewerByWireHash(wireHash) {
     for (const item of layout.root.getAllContentItems()) {
         if (!item.isComponent || item.componentName !== 'result') continue;
-        if (item.component.viewHash === hash) {
+        if (item.component.wireHash === wireHash) {
             return item;
         }
     }
     return null;
 }
 
-function resolveExistingViewer(viewName, hash) {
+function resolveExistingViewer(viewName, wireHash) {
     // Name match first; otherwise match by subgraph wire hash: the same
     // subgraph is often reachable under several names (e.g. X().layout vs
     // X().lvs.ref_layout), and opening it twice should be avoided. The hash
-    // comes with the requesting view's data (e.g. layout_hash in report
+    // comes with the requesting view's data (e.g. layout_wire_hash in report
     // webdata), so the lookup is purely local.
     return findResultViewerByView(viewName)
-        || (hash ? findResultViewerByHash(hash) : null);
+        || (wireHash ? findResultViewerByWireHash(wireHash) : null);
 }
 
 function getEditor() {
@@ -457,7 +457,7 @@ function openOrActivateView(data) {
     const view = data.view;
 
     if (view) {
-        const existing = resolveExistingViewer(view, data.hash);
+        const existing = resolveExistingViewer(view, data.wireHash);
         if (existing) {
             existing.focus();
             return;
@@ -511,12 +511,12 @@ viewEventBus.on('editor:goto-source', (data) => {
 });
 
 viewEventBus.on('lvs:request-open-views', (data) => {
-    const { layoutView, schemView, layoutHash, schemHash, sourceContainer } = data;
+    const { layoutView, schemView, layoutWireHash, schemWireHash, sourceContainer } = data;
 
     const layoutExisting = layoutView
-        ? resolveExistingViewer(layoutView, layoutHash) : null;
+        ? resolveExistingViewer(layoutView, layoutWireHash) : null;
     const schemExisting = schemView
-        ? resolveExistingViewer(schemView, schemHash) : null;
+        ? resolveExistingViewer(schemView, schemWireHash) : null;
 
     const columnContent = [];
 

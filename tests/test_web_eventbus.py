@@ -597,7 +597,7 @@ def test_lvs_layout_link_dedup(web):
         "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
     assert 'layout()' in views_before
     hashes = web.driver.execute_script(
-        "return window.ordecClient.resultViewers.map(rv => rv.viewHash);")
+        "return window.ordecClient.resultViewers.map(rv => rv.wireHash);")
     assert any(hashes), f"Expected wire hashes on open panels, got {hashes}"
 
     # The link addresses the same subgraph as an lvs_report()-derived name.

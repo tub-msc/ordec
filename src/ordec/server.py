@@ -394,7 +394,7 @@ class ConnectionHandler:
                 # Best-effort: user-defined Node classes may lack a wire_id;
                 # a hashing failure must not break view delivery.
                 try:
-                    msg_ret['sg_hash'] = view.subgraph.wire_hash(ept).hex()
+                    msg_ret['wire_hash'] = view.subgraph.wire_hash(ept).hex()
                 except Exception:
                     pass
         except Exception as e:

@@ -211,7 +211,7 @@ export class LayoutGL {
             // wire hash for a viewer showing the same subgraph under a
             // different view name.
             if (data && data.layoutView && data.layoutView !== this.viewName
-                    && !(data.layoutHash && data.layoutHash === this.viewHash)) {
+                    && !(data.layoutWireHash && data.layoutWireHash === this.wireHash)) {
                 return;
             }
             this.setHighlight(data.shapes);
@@ -225,7 +225,7 @@ export class LayoutGL {
             // subcircuit pairs) apply to viewers showing that view, matched
             // by name or by wire hash.
             if (data && data.layoutView && data.layoutView !== this.viewName
-                    && !(data.layoutHash && data.layoutHash === this.viewHash)) {
+                    && !(data.layoutWireHash && data.layoutWireHash === this.wireHash)) {
                 return;
             }
             this.highlightPos(data.pos);
@@ -312,7 +312,7 @@ export class LayoutGL {
             const pendingDrc = this._pendingDrc;
             this._pendingDrc = null;
             if (!pendingDrc.layoutView || pendingDrc.layoutView === this.viewName
-                    || (pendingDrc.layoutHash && pendingDrc.layoutHash === this.viewHash)) {
+                    || (pendingDrc.layoutWireHash && pendingDrc.layoutWireHash === this.wireHash)) {
                 // Zoom to the highlight instead of the full view below.
                 this._pendingHighlight = pendingDrc.shapes;
                 this.setHighlight(pendingDrc.shapes, false); // Don't zoom yet
@@ -323,7 +323,7 @@ export class LayoutGL {
             const pendingLvs = this._pendingLvs;
             this._pendingLvs = null;
             if (!pendingLvs.layoutView || pendingLvs.layoutView === this.viewName
-                    || (pendingLvs.layoutHash && pendingLvs.layoutHash === this.viewHash)) {
+                    || (pendingLvs.layoutWireHash && pendingLvs.layoutWireHash === this.wireHash)) {
                 this.highlightPos(pendingLvs.pos, false);
             }
         }

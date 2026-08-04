@@ -211,7 +211,7 @@ export class OrdecClient {
                 rv.currentReq = req;
                 // Displayed content is stale from here until the terminal
                 // view message arrives; do not hash-match against it.
-                rv.viewHash = null;
+                rv.wireHash = null;
                 this.inflight.set(req, rv);
                 this.sock.send(JSON.stringify({
                     msg: 'getview',

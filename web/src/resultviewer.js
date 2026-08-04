@@ -299,7 +299,7 @@ const viewClassOf = {
                 // view: matched by name, or by wire hash for a viewer that
                 // shows the same subgraph under a different view name.
                 if (data && data.schemView && data.schemView !== this.viewName
-                        && !(data.schemHash && data.schemHash === this.viewHash)) {
+                        && !(data.schemWireHash && data.schemWireHash === this.wireHash)) {
                     return;
                 }
                 this.setHighlight(data);
@@ -590,7 +590,7 @@ const viewClassOf = {
                 // viewName is only assigned after construction, so targeted
                 // pending selections are filtered here instead.
                 if (!pending.schemView || pending.schemView === this.viewName
-                        || (pending.schemHash && pending.schemHash === this.viewHash)) {
+                        || (pending.schemWireHash && pending.schemWireHash === this.wireHash)) {
                     this.setHighlight(pending);
                 }
             }
@@ -682,7 +682,7 @@ const viewClassOf = {
     // DRC Report viewer.
     //
     // Event bus protocol:
-    //   drc:select {shapes, layoutView, layoutHash} - sent when an item is
+    //   drc:select {shapes, layoutView, layoutWireHash} - sent when an item is
     //     selected
     //   drc:clear - sent on deselect or destroy
     //
@@ -696,7 +696,7 @@ const viewClassOf = {
     // items of subcells target
     // "<viewName>.subgraph.cursor_at(<cell_nid>).ref_layout", addressing
     // the DrcCell node by nid. Every payload carries its layoutView plus
-    // the cell's subgraph wire hash (layoutHash), so only viewers showing
+    // the cell's subgraph wire hash (layoutWireHash), so only viewers showing
     // that view highlight - matched by name, or by hash for a viewer
     // showing the same subgraph under a different view name: shape
     // coordinates are only meaningful in the item's own cell, and an
@@ -833,11 +833,11 @@ const viewClassOf = {
                             ? `${this.viewName}.ref_layout`
                             : `${this.viewName}.subgraph.cursor_at(${item.cell_nid}).ref_layout`)
                         : null;
-                    const layoutHash = (isTop ? data.layout_hash : cell.layout_hash) || null;
+                    const layoutWireHash = (isTop ? data.layout_wire_hash : cell.layout_wire_hash) || null;
                     // Clear the previous selection everywhere: its highlight
                     // may sit in a viewer the new selection does not target.
                     viewEventBus.emit('drc:clear');
-                    const payload = { shapes: item.shapes, layoutView, layoutHash };
+                    const payload = { shapes: item.shapes, layoutView, layoutWireHash };
                     viewEventBus.setPending('drc:select', payload);
                     viewEventBus.emit('drc:select', payload);
                     if (layoutView) {
@@ -845,7 +845,7 @@ const viewClassOf = {
                         // or wire hash), opens it otherwise.
                         viewEventBus.emit('layout:request-open', {
                             view: layoutView,
-                            hash: layoutHash,
+                            wireHash: layoutWireHash,
                             sourceContainer: this.glContainer,
                         });
                     }
@@ -863,10 +863,10 @@ const viewClassOf = {
     // LVS Report viewer.
     //
     // Event bus protocol:
-    //   lvs:layout-select {pos, layoutView, layoutHash} - sent when item with layout_pos selected
-    //   lvs:schem-select {schem_nid, item_type, schemView, schemHash} - sent when item with schem_nid selected
+    //   lvs:layout-select {pos, layoutView, layoutWireHash} - sent when item with layout_pos selected
+    //   lvs:schem-select {schem_nid, item_type, schemView, schemWireHash} - sent when item with schem_nid selected
     //   lvs:clear - sent on deselect or destroy
-    //   lvs:request-open-views {layoutView, schemView, layoutHash, schemHash} - requests new viewer panels
+    //   lvs:request-open-views {layoutView, schemView, layoutWireHash, schemWireHash} - requests new viewer panels
     //
     // Pending mechanism: setPending('lvs:select', payload) stores selection for
     // viewers opened later. Layout/schematic viewers call getPending on init.
@@ -878,7 +878,7 @@ const viewClassOf = {
     // "<viewName>.subgraph.cursor_at(<nid>).ref_layout|ref_schematic",
     // addressing the LvsCircuitPair node by nid. Every select payload
     // carries its target views plus their subgraph wire hashes
-    // (layoutHash/schemHash), so only the viewers showing those views
+    // (layoutWireHash/schemWireHash), so only the viewers showing those views
     // highlight - matched by name, or by hash for a viewer showing the
     // same subgraph under a different view name: nids/positions are only
     // meaningful in the pair's own subgraphs, and an untargeted broadcast
@@ -1117,8 +1117,8 @@ const viewClassOf = {
                     const event = kind === 'layout' ? 'layout:request-open' : 'schematic:request-open';
                     viewEventBus.emit(event, {
                         view: `${this.viewName}.subgraph.cursor_at(${nid}).${ref}`,
-                        hash: (circuit && (kind === 'layout'
-                            ? circuit.layout_hash : circuit.schem_hash)) || null,
+                        wireHash: (circuit && (kind === 'layout'
+                            ? circuit.layout_wire_hash : circuit.schem_wire_hash)) || null,
                         sourceContainer: this.glContainer,
                     });
                 });
@@ -1174,8 +1174,8 @@ const viewClassOf = {
                             : null;
                         const layoutView = viewBase ? `${viewBase}.ref_layout` : null;
                         const schemView = viewBase ? `${viewBase}.ref_schematic` : null;
-                        const layoutHash = (isTop ? data.layout_hash : circuit.layout_hash) || null;
-                        const schemHash = (isTop ? data.schem_hash : circuit.schem_hash) || null;
+                        const layoutWireHash = (isTop ? data.layout_wire_hash : circuit.layout_wire_hash) || null;
+                        const schemWireHash = (isTop ? data.schem_wire_hash : circuit.schem_wire_hash) || null;
 
                         const payload = {
                             pos: item.layout_pos,
@@ -1184,8 +1184,8 @@ const viewClassOf = {
                             schem_name: item.schem_name || '',
                             layoutView,
                             schemView,
-                            layoutHash,
-                            schemHash,
+                            layoutWireHash,
+                            schemWireHash,
                         };
                         const hasLayoutPos = item.layout_pos !== null && item.layout_pos !== undefined;
                         const hasSchemNid = item.schem_nid !== undefined && item.schem_nid !== null;
@@ -1209,8 +1209,8 @@ const viewClassOf = {
                             viewEventBus.emit('lvs:request-open-views', {
                                 layoutView: hasLayoutPos ? layoutView : null,
                                 schemView: hasSchemNid ? schemView : null,
-                                layoutHash: hasLayoutPos ? layoutHash : null,
-                                schemHash: hasSchemNid ? schemHash : null,
+                                layoutWireHash: hasLayoutPos ? layoutWireHash : null,
+                                schemWireHash: hasSchemNid ? schemWireHash : null,
                                 sourceContainer: this.glContainer,
                             });
                         }
@@ -1281,10 +1281,11 @@ export class ResultViewer {
         this.resViewHead = container.element.querySelector(".resviewhead");
         this.viewUpToDate = false;
         this.viewSelected = null;
-        // Wire hash (sg_hash) of the currently displayed subgraph view, for
-        // hash-based open dedup (see main.js). Runtime state only: it must
-        // never be written into componentState/uistate.
-        this.viewHash = null;
+        // Wire hash of the currently displayed subgraph view (wire_hash
+        // field of the view message), for hash-based open dedup (see
+        // main.js). Runtime state only: it must never be written into
+        // componentState/uistate.
+        this.wireHash = null;
         this.refreshRequestedByUser = false;
         this.directView = state && state.directView;
         // Course mode: the special "Course" panel (see course.js). It shows a
@@ -1684,7 +1685,7 @@ export class ResultViewer {
 
         //this.resContent.replaceChildren();
         this.viewUpToDate = true;
-        this.viewHash = msg.exception ? null : (msg.sg_hash || null);
+        this.wireHash = msg.exception ? null : (msg.wire_hash || null);
         this.showRefreshOverlay(null);
 
         try {
@@ -1707,13 +1708,13 @@ export class ResultViewer {
                     pre.innerText = 'no handler found for type ' + msg.type;
                     this.resContent.replaceChildren(pre);
                 } else if(this.view instanceof viewClass) {
-                    this.view.viewHash = this.viewHash;
+                    this.view.wireHash = this.wireHash;
                     this.view.resultViewer = this;
                     this.view.update(msg.data);
                 } else {
                     this.view = new viewClass(this.resContent);
                     this.view.viewName = this.viewSelected;
-                    this.view.viewHash = this.viewHash;
+                    this.view.wireHash = this.wireHash;
                     this.view.resultViewer = this;
                     this.view.glContainer = this.container;
                     this.view.update(msg.data);
