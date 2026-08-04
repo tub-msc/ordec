@@ -27,7 +27,7 @@ between two endpoints while retransmitting only subgraphs the receiver does
 not already hold in its store; laziness exists on the wire only, in-memory
 SubgraphRefs always hold fully materialized subgraphs.
 
-Wire format (format version is the digit in HASH_DOMAIN):
+Wire format (format version is the digit in HASH_DOMAIN)::
 
     wire_bytes(sg) = canonical CBOR of [ {wire_id: [[nid, v0, ..., vN], ...]},
                                          nid_alloc.start ]
