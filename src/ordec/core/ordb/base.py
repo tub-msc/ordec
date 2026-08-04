@@ -1763,25 +1763,26 @@ class FrozenSubgraph(Subgraph):
         Canonical CBOR wire bytes of this subgraph, with LiveRefs exported
         via the given ExportTable. Nested SubgraphRefs are represented by
         their wire_hash; use wire_deps() to collect the referenced subgraphs
-        for transmission.
+        for transmission. The wire hash is a digest of these bytes and is
+        memoized as a side effect.
         """
-        from ..wire import encode_subgraph
-        return encode_subgraph(self, ept)
+        from ..wire import encode_subgraph, hash_wire_bytes
+        data = encode_subgraph(self, ept)
+        self._cached_wire_hash = (ept, hash_wire_bytes(data))
+        return data
 
     def wire_hash(self, ept) -> bytes:
         """
         Endpoint-scoped SHA-256 wire hash (32 bytes) of this subgraph under
         the given ExportTable, memoized per table (single entry; the normal
-        case is one table per process). Covers transitive SubgraphRef
+        case is one table per connection). Covers transitive SubgraphRef
         dependencies (Merkle-style).
         """
         cached = self._cached_wire_hash
         if cached is not None and cached[0] is ept:
             return cached[1]
-        from ..wire import compute_wire_hash
-        h = compute_wire_hash(self, ept)
-        self._cached_wire_hash = (ept, h)
-        return h
+        self.wire_encode(ept) # memoizes the hash, bytes are discarded
+        return self._cached_wire_hash[1]
 
     def wire_deps(self, ept) -> dict:
         """

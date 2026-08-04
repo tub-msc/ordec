@@ -228,13 +228,21 @@ def encode_subgraph(sg: FrozenSubgraph, ept: ExportTable) -> bytes:
         rows_by_wid.setdefault(wid, []).append(row)
     return cbor2.dumps([rows_by_wid, sg.nid_alloc.start], canonical=True)
 
+def hash_wire_bytes(data: bytes) -> bytes:
+    """
+    Domain-prefixed SHA-256 (32 bytes) over wire bytes. The wire hash is
+    purely a digest of the encoding, which is what allows
+    FrozenSubgraph.wire_encode() to memoize the hash as a side effect.
+    """
+    return hashlib.sha256(HASH_DOMAIN + data).digest()
+
 def compute_wire_hash(sg: FrozenSubgraph, ept: ExportTable) -> bytes:
     """
-    Domain-prefixed SHA-256 (32 bytes) over encode_subgraph(sg, ept).
-    Backend of FrozenSubgraph.wire_hash(), which memoizes it; always call
-    that instead.
+    Recompute the wire hash from scratch, bypassing the memo that
+    FrozenSubgraph.wire_hash()/wire_encode() maintain. Normal callers use
+    wire_hash(); this exists for memo-independent verification (tests).
     """
-    return hashlib.sha256(HASH_DOMAIN + encode_subgraph(sg, ept)).digest()
+    return hash_wire_bytes(encode_subgraph(sg, ept))
 
 def collect_wire_deps(sg: FrozenSubgraph,
         ept: ExportTable) -> dict[bytes, FrozenSubgraph]:
@@ -417,8 +425,10 @@ class WireSender:
 
     def root_block(self) -> tuple[bytes, bytes]:
         """The unconditionally transmitted first block: (hash, wire bytes)."""
-        return (self.sg.wire_hash(self.ept),
-            self.sg.wire_encode(self.ept))
+        # Encode first: wire_encode memoizes the wire hash as a side
+        # effect, so the wire_hash call below is free.
+        data = self.sg.wire_encode(self.ept)
+        return (self.sg.wire_hash(self.ept), data)
 
     def serve(self, want) -> list[tuple[bytes, bytes]]:
         """Blocks for a want list of hashes; all must have been announced."""
