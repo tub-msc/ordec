@@ -12,11 +12,14 @@ Subgraphs are encoded to canonical CBOR and identified by the SHA-256 hash of
 their encoding (wire_hash). Nested SubgraphRefs are encoded as the wire_hash
 of the referenced subgraph (Merkle-style), so a subgraph's hash covers its
 transitive dependencies. LiveRef attributes (live objects such as Cells) are
-encoded as (endpoint_id, obj_id, name) export references minted by the
-process-global export_table; refs minted by a foreign endpoint decode to
-opaque FarRef placeholders. Because export references participate in the
-hashed bytes, wire hashes are session-scoped identity: they do not converge
-across processes, by design. Wire data must never be stored in durable
+encoded as (endpoint_id, obj_id, name) export references minted by a
+caller-supplied ExportTable; refs minted by a foreign endpoint decode to
+opaque FarRef placeholders. There is deliberately no ambient/global table:
+every encode, hash and decode operation takes the table as an explicit
+parameter, and the table's owner decides its scope and lifetime (e.g. one
+table per server). Because export references participate in the hashed
+bytes, wire hashes are endpoint-scoped identity: they do not converge
+across endpoints, by design. Wire data must never be stored in durable
 artifacts (.ord files, uistate).
 
 Wire format (format version is the digit in HASH_DOMAIN):
@@ -90,13 +93,15 @@ class WireError(OrdbException):
     """Raised on wire encoding/decoding protocol violations."""
     pass
 
+@public
 class ExportTable:
     """
-    Process-global table of live objects that have crossed the wire inside
-    LiveRef attributes. Export references are minted lazily at serialization
-    time and memoized per object identity, so hashing is deterministic within
-    the process. Exported objects are pinned (strong refs) for the process
-    lifetime so that returning references always resolve.
+    Table of live objects that have crossed the wire inside LiveRef
+    attributes; one per endpoint, created and owned by the API user (no
+    global instance exists). Export references are minted lazily at
+    serialization time and memoized per object identity, so hashing is
+    deterministic per table. Exported objects are pinned (strong refs) for
+    the table's lifetime so that returning references always resolve.
     """
     def __init__(self):
         self.endpoint_id = os.urandom(16)
@@ -125,10 +130,6 @@ class ExportTable:
                     f"Unknown obj_id {obj_id} for own endpoint"
                     " (protocol violation)."
                 ) from None
-
-#: The process-wide ExportTable singleton.
-export_table = ExportTable()
-public(export_table=export_table)
 
 def as_frozen(x) -> FrozenSubgraph:
     if isinstance(x, Node):
@@ -180,7 +181,7 @@ def encode_plain(val):
         return [encode_plain(v) for v in val]
     raise TypeError(f"Type {t.__name__} is not wire-serializable.")
 
-def encode_row_value(val, attr):
+def encode_row_value(val, attr, ept: ExportTable):
     if val is None:
         return None
     if isinstance(attr, LocalRef):
@@ -188,17 +189,17 @@ def encode_row_value(val, attr):
     if isinstance(attr, ExternalRef):
         return cbor2.CBORTag(TAG_EXTERNALREF, val)
     if isinstance(attr, SubgraphRef):
-        return cbor2.CBORTag(TAG_SUBGRAPHREF, val.wire_hash())
+        return cbor2.CBORTag(TAG_SUBGRAPHREF, val.wire_hash(ept))
     if isinstance(attr, LiveRef):
         # Must precede plain-value dispatch: the stored value is an arbitrary
         # live object (or an already-opaque FarRef relayed onward).
         if isinstance(val, FarRef):
             return cbor2.CBORTag(TAG_LIVEREF,
                 [val.endpoint_id, val.obj_id, val.name])
-        return cbor2.CBORTag(TAG_LIVEREF, list(export_table.export(val)))
+        return cbor2.CBORTag(TAG_LIVEREF, list(ept.export(val)))
     return encode_plain(val)
 
-def encode_subgraph(sg: FrozenSubgraph) -> bytes:
+def encode_subgraph(sg: FrozenSubgraph, ept: ExportTable) -> bytes:
     """
     Encode a frozen subgraph to canonical CBOR wire bytes. Nested
     SubgraphRefs are represented by their wire_hash; collect the referenced
@@ -216,20 +217,22 @@ def encode_subgraph(sg: FrozenSubgraph) -> bytes:
         row = [nid]
         for ad in node._layout:
             try:
-                row.append(encode_row_value(node[ad.index], ad.attr))
+                row.append(encode_row_value(node[ad.index], ad.attr, ept))
             except TypeError as e:
                 raise TypeError(f"{cls.__name__}.{ad.name}: {e}") from None
         rows_by_wid.setdefault(wid, []).append(row)
     return cbor2.dumps([rows_by_wid, sg.nid_alloc.start], canonical=True)
 
-def compute_wire_hash(sg: FrozenSubgraph) -> bytes:
+def compute_wire_hash(sg: FrozenSubgraph, ept: ExportTable) -> bytes:
     """
-    Domain-prefixed SHA-256 (32 bytes) over encode_subgraph(sg). Backend of
-    FrozenSubgraph.wire_hash(), which memoizes it; always call that instead.
+    Domain-prefixed SHA-256 (32 bytes) over encode_subgraph(sg, ept).
+    Backend of FrozenSubgraph.wire_hash(), which memoizes it; always call
+    that instead.
     """
-    return hashlib.sha256(HASH_DOMAIN + encode_subgraph(sg)).digest()
+    return hashlib.sha256(HASH_DOMAIN + encode_subgraph(sg, ept)).digest()
 
-def collect_wire_deps(sg: FrozenSubgraph) -> dict[bytes, FrozenSubgraph]:
+def collect_wire_deps(sg: FrozenSubgraph,
+        ept: ExportTable) -> dict[bytes, FrozenSubgraph]:
     """
     Collect the transitive SubgraphRef dependencies of a frozen subgraph,
     keyed by their wire_hash. Backend of FrozenSubgraph.wire_deps().
@@ -244,7 +247,7 @@ def collect_wire_deps(sg: FrozenSubgraph) -> dict[bytes, FrozenSubgraph]:
                 child = node[ad.index]
                 if child is None:
                     continue
-                h = child.wire_hash()
+                h = child.wire_hash(ept)
                 if h not in deps:
                     deps[h] = child
                     collect(child)
@@ -299,7 +302,7 @@ def fix_plain(val):
         return tuple(fix_plain(v) for v in val)
     return val
 
-def resolve_row_value(val, deps):
+def resolve_row_value(val, deps, ept):
     if isinstance(val, RefMarker):
         if val.tag in (TAG_LOCALREF, TAG_EXTERNALREF):
             return val.value # stored nid
@@ -312,18 +315,20 @@ def resolve_row_value(val, deps):
                 ) from None
         endpoint_id, obj_id, name = val.value
         endpoint_id = bytes(endpoint_id)
-        if endpoint_id == export_table.endpoint_id:
-            return export_table.resolve(obj_id)
+        if endpoint_id == ept.endpoint_id:
+            return ept.resolve(obj_id)
         return FarRef(endpoint_id, obj_id, name)
     return fix_plain(val)
 
 @public
-def wire_decode(data: bytes, deps=None) -> Node:
+def wire_decode(data: bytes, ept: ExportTable, deps=None) -> Node:
     """
     Decode wire bytes into a new FrozenSubgraph, returned as its root cursor.
 
     Args:
         data: Bytes produced by FrozenSubgraph.wire_encode().
+        ept: The decoding endpoint's ExportTable; refs minted by it resolve
+            to the identical live objects, foreign refs decode to FarRefs.
         deps: Mapping of wire_hash to already-materialized subgraph for every
             SubgraphRef occurring in data (see FrozenSubgraph.wire_deps()).
             All dependencies must be present; laziness exists only on the
@@ -357,10 +362,11 @@ def wire_decode(data: bytes, deps=None) -> Node:
         for nid, cls, values in items:
             kwargs = {}
             for ad, val in zip(cls.Tuple._layout, values):
-                kwargs[ad.name] = resolve_row_value(val, deps)
+                kwargs[ad.name] = resolve_row_value(val, deps, ept)
             u.add_single(cls.Tuple(**kwargs), nid=nid)
     # The updater clamps nid_alloc.start to max_nid+1; restore the encoded
     # start (they differ when top nids were deleted before serialization).
     if sg.nid_alloc.start != nid_start:
         sg.mutate(sg.nodes, sg.index, range(nid_start, sg.nid_alloc.stop))
     return sg.freeze().root_cursor
+

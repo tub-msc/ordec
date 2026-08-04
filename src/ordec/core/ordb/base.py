@@ -1263,11 +1263,26 @@ class SubgraphRoot(NonLeafNode):
     def __copy__(self) -> 'Self':
         return self.copy()
 
-    def webdata(self):
+    def webdata(self, ept):
+        """
+        Web representation as (viewtype, data), rendered for the endpoint
+        owning the given ExportTable. The default implementation delegates to
+        webdata_static(); views whose webdata depends on the endpoint (e.g.
+        wire hashes in LVS/DRC reports) override this method instead.
+        """
+        return self.webdata_static()
+
+    def webdata_static(self):
+        """
+        Endpoint-independent web representation, same (viewtype, data) shape
+        as webdata(). Exists only for views whose output cannot depend on an
+        ExportTable, so it may be called without a connection (e.g. by
+        Svg.from_view at report construction time).
+        """
         from ..schema import Report
         report = Report()
         report.html(self.tables(html=True))
-        return report.webdata()
+        return report.webdata_static()
 
 class SubgraphQueryMixin:
     __slots__ = ()
@@ -1732,7 +1747,7 @@ class FrozenSubgraph(Subgraph):
         self._nid_alloc = nid_alloc
         self._backend = backend
         self._cached_hash = None
-        self._cached_wire_hash = None # memoized by wire_hash()
+        self._cached_wire_hash = None # (ept, hash) memoized by wire_hash()
         self._root_cursor = self.cursor_at(0)
 
     def __copy__(self) -> 'FrozenSubgraph':
@@ -1743,34 +1758,39 @@ class FrozenSubgraph(Subgraph):
     # this module; the deferred imports below keep that dependency one-way
     # at import time.
 
-    def wire_encode(self) -> bytes:
+    def wire_encode(self, ept) -> bytes:
         """
-        Canonical CBOR wire bytes of this subgraph. Nested SubgraphRefs are
-        represented by their wire_hash; use wire_deps() to collect the
-        referenced subgraphs for transmission.
+        Canonical CBOR wire bytes of this subgraph, with LiveRefs exported
+        via the given ExportTable. Nested SubgraphRefs are represented by
+        their wire_hash; use wire_deps() to collect the referenced subgraphs
+        for transmission.
         """
         from ..wire import encode_subgraph
-        return encode_subgraph(self)
+        return encode_subgraph(self, ept)
 
-    def wire_hash(self) -> bytes:
+    def wire_hash(self, ept) -> bytes:
         """
-        Session-scoped SHA-256 wire hash (32 bytes) of this subgraph,
-        memoized. Covers transitive SubgraphRef dependencies (Merkle-style).
+        Endpoint-scoped SHA-256 wire hash (32 bytes) of this subgraph under
+        the given ExportTable, memoized per table (single entry; the normal
+        case is one table per process). Covers transitive SubgraphRef
+        dependencies (Merkle-style).
         """
-        h = self._cached_wire_hash
-        if h is None:
-            from ..wire import compute_wire_hash
-            h = self._cached_wire_hash = compute_wire_hash(self)
+        cached = self._cached_wire_hash
+        if cached is not None and cached[0] is ept:
+            return cached[1]
+        from ..wire import compute_wire_hash
+        h = compute_wire_hash(self, ept)
+        self._cached_wire_hash = (ept, h)
         return h
 
-    def wire_deps(self) -> dict:
+    def wire_deps(self, ept) -> dict:
         """
         Transitive SubgraphRef dependencies of this subgraph, keyed by their
-        wire_hash. Suitable as the deps argument of
-        ordec.core.wire.wire_decode.
+        wire_hash under the given ExportTable. Suitable as the deps argument
+        of ordec.core.wire.wire_decode.
         """
         from ..wire import collect_wire_deps
-        return collect_wire_deps(self)
+        return collect_wire_deps(self, ept)
 
     def copy(self):
         return self # No need to copy frozen subgraph

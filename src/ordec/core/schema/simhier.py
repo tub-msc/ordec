@@ -185,7 +185,7 @@ class SimHierarchy(SubgraphRoot):
         add_sch(schematic, None)
         return simhier
 
-    def webdata(self):
+    def webdata_static(self):
         from ...sim.webdata import webdata
         return webdata(self)
 

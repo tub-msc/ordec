@@ -4,6 +4,7 @@
 from ordec.core import *
 from ordec.lib import Res
 from ordec.lib.ihp130 import SG13G2
+from ordec.core.wire import ExportTable
 
 def test_symbol_dot():
     root=Symbol()
@@ -245,12 +246,12 @@ def test_empty_schematic():
 
     sch = EmptySchematic().schematic
     assert sch.symbol is None
-    sch.webdata()
+    sch.webdata(ExportTable())
 
 def test_report_viewgen_uses_schema_runtime():
     view = ReportTestCell().report
     assert isinstance(view, Report)
-    assert "hello" in view.webdata()[1]["elements"][0]["html"]
+    assert "hello" in view.webdata(ExportTable())[1]["elements"][0]["html"]
 
 def test_minimal_layout():
     c = LayoutTestCell()
@@ -359,7 +360,7 @@ def test_toplevel_viewgen_report():
 
     view = toplevel_report()
     assert isinstance(view, Report)
-    assert "toplevel hello" in view.webdata()[1]["elements"][0]["html"]
+    assert "toplevel hello" in view.webdata(ExportTable())[1]["elements"][0]["html"]
     # Cached: repeated calls return the identical view.
     assert toplevel_report() is view
     assert toplevel_report.__doc__ == "A report viewgen outside of a cell."
@@ -449,7 +450,7 @@ def test_viewgen_in_function():
         return inner
 
     view = make_report_view("factory hello")()
-    assert "factory hello" in view.webdata()[1]["elements"][0]["html"]
+    assert "factory hello" in view.webdata(ExportTable())[1]["elements"][0]["html"]
 
 def test_toplevel_viewgen_sim_rejected():
     # Simulation views require a cell's schematic; module-level sim

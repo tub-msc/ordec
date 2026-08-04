@@ -323,7 +323,8 @@ def test_bode_plot():
     h = lib_test.AcRC().sim_ac_batch
     report = Report()
     report.bode_plot(h.inp, h.out)
-    _, data = report.webdata()
+    from ordec.core.wire import ExportTable
+    _, data = report.webdata(ExportTable())
 
     mag, phase = data["elements"]
     assert mag["ylabel"] == "Magnitude (dB)"
@@ -351,7 +352,8 @@ def test_bode_plot_ref():
     h = lib_test.AcRC().sim_ac_batch
     report = Report()
     bode_plot(report, h.out, ref=h.inp)
-    _, data = report.webdata()
+    from ordec.core.wire import ExportTable
+    _, data = report.webdata(ExportTable())
 
     mag = data["elements"][0]
     expected = [

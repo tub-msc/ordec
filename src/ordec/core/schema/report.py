@@ -73,7 +73,7 @@ class Report(SubgraphRoot):
         from ...sim.helpers import bode_plot
         bode_plot(self, *signals, **kwargs)
 
-    def webdata(self):
+    def webdata_static(self):
         return "report", {
             "elements": [element.element_webdata() for element in self.elements()],
             "fill_height": self.fill_height,
@@ -214,8 +214,8 @@ class Svg(ReportElement):
 
     @classmethod
     def from_view(cls, view) -> "Svg":
-        """Creates an SVG report element from an object exposing webdata()."""
-        view_type, data = view.webdata()
+        """Creates an SVG report element from an object exposing webdata_static()."""
+        view_type, data = view.webdata_static()
         if view_type != "svg":
             raise ValueError(f"Expected svg webdata, got {view_type!r}")
         vb = data["viewbox"]

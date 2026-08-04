@@ -28,7 +28,15 @@ def item_schem_name(item: LvsItem):
     return item.schem_name
 
 
-def webdata(report: LvsReport):
+def webdata(report: LvsReport, ept):
+    def sg_hash(cursor):
+        # Wire hashes exist only relative to an endpoint's export table;
+        # this is why LvsReport overrides webdata() and has no
+        # endpoint-independent webdata_static().
+        if cursor is None:
+            return None
+        return cursor.subgraph.wire_hash(ept).hex()
+
     # KLayout emits circuit pairs in bottom-up topological order (every callee
     # precedes its callers); report.all() preserves that insertion order.
     # Reversing yields top-down order (top cell first, leaves last), which is
@@ -60,10 +68,8 @@ def webdata(report: LvsReport):
             # Wire hashes of the referenced subgraphs: highlight events use
             # them to target viewers that show the same subgraph under a
             # different view name (see hash-based dedup in web/src/main.js).
-            'layout_hash': circuit.ref_layout.subgraph.wire_hash().hex()
-                if circuit.ref_layout is not None else None,
-            'schem_hash': circuit.ref_schematic.subgraph.wire_hash().hex()
-                if circuit.ref_schematic is not None else None,
+            'layout_hash': sg_hash(circuit.ref_layout),
+            'schem_hash': sg_hash(circuit.ref_schematic),
             # Top-level circuit pair (refs the same layout/schematic as the
             # report itself). Item selections of subcircuit pairs must target
             # the pair's own views instead of the report-level ones.
@@ -97,8 +103,6 @@ def webdata(report: LvsReport):
         'unit': float(report.ref_layout.ref_layers.unit) if report.ref_layout else 1.0,
         # Report-level wire hashes, used for top-pair item selections (their
         # views are addressed relative to the report, not a circuit pair).
-        'layout_hash': report.ref_layout.subgraph.wire_hash().hex()
-            if report.ref_layout is not None else None,
-        'schem_hash': report.ref_schematic.subgraph.wire_hash().hex()
-            if report.ref_schematic is not None else None,
+        'layout_hash': sg_hash(report.ref_layout),
+        'schem_hash': sg_hash(report.ref_schematic),
     }

@@ -66,7 +66,7 @@ class MixinRenderable:
     def _repr_svg_(self):
         return self.render().svg().decode('ascii'), {'isolated': False}
 
-    def webdata(self):
+    def webdata_static(self):
         return self.render().webdata()
 
 

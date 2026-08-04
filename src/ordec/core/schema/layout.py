@@ -130,11 +130,9 @@ class Layout(SubgraphRoot):
     symbol = SubgraphRef(Symbol) #: All LayoutPins in this subgraph reference this symbol.
     ref_layers = SubgraphRef(LayerStack) #: All .layer attributes of nodes in this subgraph reference this LayerStack.
 
-    def webdata(self):
+    def webdata_static(self):
         from ...layout.webdata import webdata
         return webdata(self)
-        #from ..render import render
-        #return render(self).webdata()
 
 @public
 class LayoutLabel(Node):

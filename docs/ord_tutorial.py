@@ -423,7 +423,7 @@ cell LayoutDemo:
                 ! .ly == in_bar.uy + 120
 # -
 # + tags=["remove-input"]
-_, layout_data = LayoutDemo().layout.webdata()
+_, layout_data = LayoutDemo().layout.webdata_static()
 lx, ly, ux, uy = layout_data["extent"]
 
 svg = ET.Element(
