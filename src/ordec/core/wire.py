@@ -22,6 +22,11 @@ bytes, wire hashes are endpoint-scoped identity: they do not converge
 across endpoints, by design. Wire data must never be stored in durable
 artifacts (.ord files, uistate).
 
+The want/have exchange (WireSender/WireReceiver) transfers a subgraph DAG
+between two endpoints while retransmitting only subgraphs the receiver does
+not already hold in its store; laziness exists on the wire only, in-memory
+SubgraphRefs always hold fully materialized subgraphs.
+
 Wire format (format version is the digit in HASH_DOMAIN):
 
     wire_bytes(sg) = canonical CBOR of [ {wire_id: [[nid, v0, ..., vN], ...]},
@@ -370,3 +375,151 @@ def wire_decode(data: bytes, ept: ExportTable, deps=None) -> Node:
         sg.mutate(sg.nodes, sg.index, range(nid_start, sg.nid_alloc.stop))
     return sg.freeze().root_cursor
 
+# Want/have exchange
+# ------------------
+#
+# Transfers one root subgraph per exchange while retransmitting only the
+# parts of its Merkle DAG that the receiver does not already hold. Message
+# shapes are plain Python values (a block is a (hash, bytes) pair, a want is
+# a list of hashes); framing them is the transport's job. The exchange is
+# lock-step: the sender pushes the root block unconditionally, the receiver
+# answers each delivery with the list of hashes to send next, and an empty
+# answer means the exchange is complete (sound because the sender holds the
+# full DAG and always serves a want list completely).
+
+def collect_child_hashes(data: bytes) -> list[bytes]:
+    """
+    Direct SubgraphRef child hashes occurring in wire bytes, deduplicated,
+    in encounter order. Pass-through CBOR scan; no values are reconstructed.
+    """
+    hashes = {}
+    def hook(tag, shareable):
+        if tag.tag == TAG_SUBGRAPHREF:
+            hashes[bytes(tag.value)] = None
+        return tag
+    try:
+        cbor2.loads(data, tag_hook=hook)
+    except cbor2.CBORDecodeError as e:
+        raise WireError(f"CBOR decode failed: {e}") from e
+    return list(hashes)
+
+@public
+class WireSender:
+    """
+    Sender side of the want/have exchange for one root subgraph. The sender
+    holds the fully materialized DAG in memory, so it can serve any hash it
+    announced (the root and its transitive closure).
+    """
+    def __init__(self, sg, ept: ExportTable):
+        self.ept = ept
+        self.sg = as_frozen(sg)
+        self._table = None # lazy wire_hash -> FrozenSubgraph, full closure
+
+    def root_block(self) -> tuple[bytes, bytes]:
+        """The unconditionally transmitted first block: (hash, wire bytes)."""
+        return (self.sg.wire_hash(self.ept),
+            self.sg.wire_encode(self.ept))
+
+    def serve(self, want) -> list[tuple[bytes, bytes]]:
+        """Blocks for a want list of hashes; all must have been announced."""
+        if self._table is None:
+            self._table = {self.sg.wire_hash(self.ept): self.sg}
+            self._table.update(self.sg.wire_deps(self.ept))
+        blocks = []
+        for h in want:
+            h = bytes(h)
+            try:
+                sg = self._table[h]
+            except KeyError:
+                raise WireError(f"Subgraph {h.hex()} was never announced"
+                    " (protocol violation).") from None
+            blocks.append((h, sg.wire_encode(self.ept)))
+        return blocks
+
+@public
+class WireReceiver:
+    """
+    Receiver side of the want/have exchange; one instance per transferred
+    root. Feed the sender's root block into receive(), serve each returned
+    want list, and repeat until receive() returns an empty list; the
+    materialized root is then available as .result.
+
+    The store is a plain dict of wire_hash -> FrozenSubgraph, created and
+    owned by the caller (no weak references; the owner's explicit lifetime
+    bounds how long received subgraphs stay available without
+    retransmission). Materialized subgraphs are added to it.
+    """
+    def __init__(self, ept: ExportTable, store: dict=None):
+        self.ept = ept
+        self.store = store if store is not None else {}
+        self._root_hash = None
+        self._outstanding = set() # wanted hashes not yet received
+        self._pending = {} # wire_hash -> (data, child hashes), undecoded
+        self._resolved = {} # wire_hash -> FrozenSubgraph
+        self._result = None
+
+    def receive(self, blocks) -> list[bytes]:
+        """
+        Ingest (hash, data) blocks; the first block of the exchange is the
+        root. Returns the hashes to request next; an empty list means the
+        exchange is complete.
+        """
+        if self._result is not None:
+            raise WireError("Exchange is already complete.")
+        new_children = []
+        for h, data in blocks:
+            h = bytes(h)
+            if self._root_hash is None:
+                self._root_hash = h
+            elif h in self._outstanding:
+                self._outstanding.discard(h)
+            else:
+                raise WireError(f"Received block {h.hex()} that was never"
+                    " wanted (protocol violation).")
+            if hashlib.sha256(HASH_DOMAIN + data).digest() != h:
+                raise WireError(
+                    f"Block does not match its announced hash {h.hex()}.")
+            if h in self.store:
+                self._resolved[h] = self.store[h]
+                continue
+            children = collect_child_hashes(data)
+            self._pending[h] = (data, children)
+            new_children.extend(children)
+        want = []
+        for c in dict.fromkeys(new_children):
+            if (c in self._resolved or c in self._pending
+                    or c in self._outstanding):
+                continue
+            if c in self.store:
+                self._resolved[c] = self.store[c]
+                continue
+            want.append(c)
+        self._outstanding.update(want)
+        if not want and not self._outstanding:
+            self._result = self._materialize(self._root_hash).root_cursor
+        return want
+
+    def _materialize(self, h) -> FrozenSubgraph:
+        # Bottom-up (post-order) over the pending blocks; acyclic by Merkle
+        # construction. Recursion depth is the DAG depth, which is shallow
+        # for design data.
+        sg = self._resolved.get(h)
+        if sg is None:
+            data, children = self._pending.pop(h)
+            deps = {c: self._materialize(c) for c in children}
+            sg = wire_decode(data, self.ept, deps).subgraph
+            # The bytes were verified against h on receipt and re-encoding
+            # is deterministic (FarRefs relay verbatim, own-endpoint refs
+            # re-export to their memoized ids), so pre-seed the hash memo
+            # instead of re-encoding the whole subgraph.
+            sg._cached_wire_hash = (self.ept, h)
+            self._resolved[h] = sg
+            self.store[h] = sg
+        return sg
+
+    @property
+    def result(self) -> Node:
+        """Root cursor of the transferred subgraph, once complete."""
+        if self._result is None:
+            raise WireError("Exchange is not complete.")
+        return self._result

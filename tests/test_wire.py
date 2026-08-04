@@ -6,7 +6,10 @@ from ordec.core import *
 from ordec.core import ordb
 from ordec.core.ordb.base import FarRef, LiveRef, wire_registry
 from ordec.core.schema.base import SourceLocInfo
-from ordec.core.wire import WireError, ExportTable, wire_decode
+from ordec.core.wire import (
+    WireError, ExportTable, wire_decode, WireSender, WireReceiver,
+    compute_wire_hash,
+)
 
 @pytest.fixture(autouse=True, params=ordb.available_backends())
 def ordb_backend(request):
@@ -50,6 +53,12 @@ class WItem(Node):
 class WNoWire(Node):
     in_subgraphs = [WHead]
     label = Attr(str)
+
+class WPair(SubgraphRoot):
+    wire_id = WIRE_DOMAIN | 4
+    label = Attr(str)
+    a = SubgraphRef(WSub)
+    b = SubgraphRef(SubgraphRoot) # WSub or a nested WPair
 
 # One shared live object so repeated builds export the same reference:
 live_obj = object()
@@ -178,3 +187,122 @@ def test_unsupported_value(ept):
     with pytest.raises(TypeError, match="WHead.blob"):
         orig.subgraph.wire_encode(ept)
 
+# Want/have exchange
+# ------------------
+
+def exchange(root, ept_s, ept_r, store=None):
+    """Lock-step pump; returns (result, per-round want lists)."""
+    s = WireSender(root, ept_s)
+    r = WireReceiver(ept_r, store)
+    wants = [r.receive([s.root_block()])]
+    while wants[-1]:
+        wants.append(r.receive(s.serve(wants[-1])))
+    return r.result, wants
+
+def test_exchange_empty_store(ept):
+    orig = build_head()
+    store = {}
+    back, wants = exchange(orig, ept, ept, store)
+    assert back.subgraph == orig.subgraph
+    assert back.obj is live_obj
+    assert back.second.ref == back.first
+    # Exactly one round: only the child is missing.
+    sub_hash = orig.sub.subgraph.wire_hash(ept)
+    assert wants == [[sub_hash], []]
+    assert set(store) == {orig.subgraph.wire_hash(ept), sub_hash}
+    # The pre-seeded hash memo matches an actual recomputation
+    # (encode/decode asymmetry guard):
+    assert back.subgraph.wire_hash(ept) == orig.subgraph.wire_hash(ept)
+    assert compute_wire_hash(back.subgraph, ept) == \
+        back.subgraph.wire_hash(ept)
+
+def test_exchange_store_hit(ept):
+    store = {}
+    orig = build_head()
+    back1, _ = exchange(orig, ept, ept, store)
+    # Everything is in the store now; the root block alone completes the
+    # exchange and yields the identical stored object.
+    back2, wants = exchange(orig, ept, ept, store)
+    assert wants == [[]]
+    assert back2.subgraph is back1.subgraph
+
+def test_exchange_partial_store(ept):
+    sub1, sub2 = build_sub('one'), build_sub('two')
+    pair = WPair(a=sub1, b=sub2).freeze()
+    store = {}
+    exchange(sub1, ept, ept, store)
+    # Only the missing child is requested:
+    back, wants = exchange(pair, ept, ept, store)
+    assert wants[0] == [sub2.subgraph.wire_hash(ept)]
+    assert back.a.subgraph is store[sub1.subgraph.wire_hash(ept)]
+
+def test_exchange_depth_rounds(ept):
+    mid = WPair(a=build_sub('m'), b=build_sub('leaf')).freeze()
+    top = WPair(a=build_sub('t'), b=mid).freeze()
+    # Round trips scale with the depth of the missing part of the DAG:
+    back, wants = exchange(top, ept, ept)
+    assert len(wants) == 3 # top's children; mid's children; done
+    assert back.b.b.label == 'leaf'
+
+def test_exchange_diamond(ept):
+    sub = build_sub()
+    inner = WPair(a=sub, b=build_sub('x')).freeze()
+    outer = WPair(a=sub, b=inner).freeze()
+    # The shared child is wanted once and materializes as one object:
+    back, wants = exchange(outer, ept, ept)
+    sub_hash = sub.subgraph.wire_hash(ept)
+    assert [h for w in wants for h in w].count(sub_hash) == 1
+    assert back.a.subgraph is back.b.a.subgraph
+
+def test_exchange_two_endpoints(ept):
+    ept2 = ExportTable()
+    orig = build_head()
+    back, _ = exchange(orig, ept, ept2)
+    # The live object decodes to an opaque FarRef of the sender's endpoint:
+    assert isinstance(back.obj, FarRef)
+    assert back.obj.endpoint_id == ept.endpoint_id
+    # FarRefs relay verbatim, so re-encoding under the receiver's table
+    # reproduces the sender's bytes and hash:
+    assert compute_wire_hash(back.subgraph, ept2) == \
+        orig.subgraph.wire_hash(ept)
+
+def test_exchange_real_schematic(ept):
+    from ordec.examples.voltagedivider_py import VoltageDivider
+    cell = VoltageDivider()
+    sch = cell.schematic
+    back, wants = exchange(sch, ept, ept)
+    assert back.subgraph == sch.subgraph
+    assert back.cell is cell
+    assert len(wants) >= 2 # symbol children were actually transferred
+
+def test_exchange_corrupt_block(ept):
+    s = WireSender(build_head(), ept)
+    r = WireReceiver(ept)
+    h, data = s.root_block()
+    with pytest.raises(WireError, match="announced hash"):
+        r.receive([(h, data + b'\x00')])
+
+def test_exchange_unrequested_block(ept):
+    s = WireSender(build_head(), ept)
+    r = WireReceiver(ept)
+    r.receive([s.root_block()])
+    stray = build_sub('stray').subgraph
+    with pytest.raises(WireError, match="never wanted"):
+        r.receive([(stray.wire_hash(ept), stray.wire_encode(ept))])
+
+def test_exchange_serve_unknown(ept):
+    s = WireSender(build_head(), ept)
+    with pytest.raises(WireError, match="never announced"):
+        s.serve([b'\x00' * 32])
+
+def test_exchange_state_misuse(ept):
+    s = WireSender(build_head(), ept)
+    r = WireReceiver(ept)
+    assert r.receive([s.root_block()]) # incomplete: child missing
+    with pytest.raises(WireError, match="not complete"):
+        r.result
+    sub = build_sub()
+    r2 = WireReceiver(ept)
+    assert r2.receive([WireSender(sub, ept).root_block()]) == []
+    with pytest.raises(WireError, match="already complete"):
+        r2.receive([])
