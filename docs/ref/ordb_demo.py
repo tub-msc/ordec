@@ -20,7 +20,7 @@
 #
 # # ORDB Demo
 #
-# This Jupyter notebook demonstrates the five main principles of ORDB, which is ORDeC's data model layer. In addition, it briefly introduces ORDeC's Cell-and-@viewgen_noctx pattern.
+# This Jupyter notebook demonstrates the five main principles of ORDB, which is ORDeC's data model layer. In addition, it briefly introduces ORDeC's Cell and view generator pattern.
 #
 # ## Principle 1: schema-based
 #
@@ -237,7 +237,7 @@ sum([segment.flight.duration for segment in myticket.all(TicketSegment)])
 another_ticket = Ticket(price=1999.0, planet=earth)
 # -
 
-# ## Cell and @viewgen_noctx
+# ## Cell and view generators
 #
 # ORDeC organizes IC design data in Cell subclasses. These Cell subclasses represent hardware units for which different ORDB subgraphs can be generated, e.g. a symbol, a schematic, a layout, and/or simulation results.
 

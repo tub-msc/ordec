@@ -216,16 +216,16 @@ All IC design data is represented as ORDB subgraphs: Symbols, Schematics, Layout
 
 **Cell** (src/ordec/core/cell.py): Base class for parametrizable design components
 - Cells can have Parameters (type-checked, immutable)
-- View generators (@generate decorator) create different representations (schematic, symbol, layout, simulation)
+- View generators (@viewgen/@viewgen_noctx decorators) create different representations (schematic, symbol, layout, simulation)
 - Views are cached and hashable
 - Cell instances are immutable and hashable
 
-**View discovery** (src/ordec/server.py:discover_views): Server automatically finds all @generate decorated methods and @generate_func decorated functions to populate the web UI view list.
+**View discovery** (src/ordec/server.py:discover_views): Server automatically finds all view generators (@viewgen/@viewgen_noctx, as Cell methods or module-level functions) to populate the web UI view list.
 
 ### Language Layer
 
 **ORD HDL** (src/ordec/language.py, src/ordec/ord/):
-- ORD: Current syntax with improved features (keyword `viewgen` for view generators), intended as superset of Python
+- ORD: Current syntax with improved features (keyword `viewgen` for view generators, e.g. `viewgen schematic(self) -> Schematic:`), intended as superset of Python
 - `.ord` sources compile to Python AST, then execute to build ORDB structures
 
 **Parser flow**: `.ord file` → `ord_to_py()` → Python AST → `exec()` → ORDB subgraphs
@@ -340,7 +340,7 @@ Each schema type is a Node subclass with Attr declarations and indexes.
 ### Adding a new Cell type
 1. Subclass Cell in appropriate lib file
 2. Define Parameters as class attributes
-3. Add @generate decorated methods for symbol, schematic, etc.
+3. Add @viewgen or @viewgen_noctx decorated methods for symbol, schematic, etc.
 4. Return appropriate SubgraphRoot (Symbol, Schematic, Layout)
 5. Optionally set .cell attribute on returned subgraph
 

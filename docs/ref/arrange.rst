@@ -7,7 +7,7 @@
 
 .. code-block::
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port a : .align=East
         port y : .align=West
         net vss  # forward declaration, port statement follows in the stack
