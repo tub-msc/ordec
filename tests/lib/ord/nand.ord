@@ -5,14 +5,14 @@ from ordec.core import *
 from ordec.lib.generic_mos import Nmos,Pmos
 
 cell Nand:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         output y
         input a
         input b
         inout vdd: .align=North
         inout vss
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port y: .pos=(25,6)
         port a: .pos=(1,4)
         port b: .pos=(1,17)

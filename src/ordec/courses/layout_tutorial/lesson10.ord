@@ -6,7 +6,7 @@ from ordec.lib.ihp130 import SG13G2, Nmos
 # m=2, laid out as two parallel unit transistors interdigitated in the row
 # m1a m2a m2b m1b (A B B A). Symbol and schematic are complete.
 cell DiffPair:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input inp
         input inn
         output outp
@@ -14,7 +14,7 @@ cell DiffPair:
         inout tail
         inout vss
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port inp: .pos=(1,8)
         port inn: .align=West; .pos=(19,8)
         port outp: .pos=(19,13)
@@ -25,7 +25,7 @@ cell DiffPair:
         Nmos(w=1u, l=130n, m=2) m1: .pos=(3,6); .g -- inp; .d -- outn; .s -- tail; .b -- vss
         Nmos(w=1u, l=130n, m=2) m2: .pos=(17,6); .g -- inn; .d -- outp; .s -- tail; .b -- vss; .orientation=FlippedSouth
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
         unit = Nmos(w=1u, l=130n)

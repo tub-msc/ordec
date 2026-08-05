@@ -120,7 +120,7 @@ def test_mixed_unresolved_resolved_instances():
 
     root = Schematic()
 
-    viewgen sch -> Schematic:
+    viewgen sch() -> Schematic:
         . = root
         net vss, mid
 
@@ -165,7 +165,7 @@ def test_wire_op():
 
     root = Schematic()
 
-    viewgen sch -> Schematic:
+    viewgen sch() -> Schematic:
         . = root
         net vss, mid
 
@@ -196,7 +196,7 @@ def test_viewgen_return_target_alias():
     ViewgenAlias = Symbol
 
     cell AliasViewgenReturnCell:
-        viewgen symbol -> ViewgenAlias:
+        viewgen symbol(self) -> ViewgenAlias:
             input alias_pin
 
     view = AliasViewgenReturnCell().symbol
@@ -210,7 +210,7 @@ def test_viewgen_return_target_expression_runtime():
         return Symbol
 
     cell DynamicViewgenReturnCell:
-        viewgen symbol -> choose_view_root():
+        viewgen symbol(self) -> choose_view_root():
             input dynamic_pin
 
     # choose_view_root() should be called at time of class (cell) creation,
@@ -224,14 +224,14 @@ def test_viewgen_return_target_expression_runtime():
 
 def test_viewgen_return_target_conditional_expression():
     cell ConditionalViewgenReturnCell:
-        viewgen symbol -> Symbol if True else Schematic:
+        viewgen symbol(self) -> Symbol if True else Schematic:
             input conditional_pin
 
     view = ConditionalViewgenReturnCell().symbol
     assert isinstance(view.conditional_pin, Pin)
 
 cell LayoutTestCell:
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
         LayoutRect r:
@@ -242,14 +242,14 @@ cell LayoutTestCell:
         ! .r.ly == 0
 
 cell ReportTestCell:
-    viewgen report -> Report:
+    viewgen report(self) -> Report:
         .markdown("hello")
 
 def test_empty_schematic():
     # A cell with an empty schematic and no symbol viewgen must build and
     # render without raising.
     cell EmptySchematic:
-        viewgen schematic -> Schematic:
+        viewgen schematic(self) -> Schematic:
             pass
 
     sch = EmptySchematic().schematic
@@ -362,7 +362,7 @@ def test_anonymous_as_identifier():
 def test_toplevel_viewgen_report():
     # Outside of a cell, a viewgen is a plain cached function (function
     # form, like a module-level @viewgen).
-    viewgen toplevel_report -> Report:
+    viewgen toplevel_report() -> Report:
         """A report viewgen outside of a cell."""
         .markdown("toplevel hello")
 
@@ -374,7 +374,7 @@ def test_toplevel_viewgen_report():
     assert toplevel_report.__doc__ == "A report viewgen outside of a cell."
 
 def test_toplevel_viewgen_symbol():
-    viewgen toplevel_symbol -> Symbol:
+    viewgen toplevel_symbol() -> Symbol:
         input a
 
     sym = toplevel_symbol()
@@ -388,7 +388,7 @@ def test_viewgen_decorated_auto_refresh():
     # viewgens in vco_pseudodiff.ord).
     cell SlowViewCell:
         @viewgen(auto_refresh=False)
-        viewgen symbol -> Symbol:
+        viewgen symbol(self) -> Symbol:
             input a
 
     assert isinstance(SlowViewCell().symbol.a, Pin)
@@ -398,7 +398,7 @@ def test_viewgen_early_return():
     # A bare `return` exits the body early. Postprocessing still runs and
     # the view is the context root regardless.
     cell EarlyReturnCell:
-        viewgen symbol -> Symbol:
+        viewgen symbol(self) -> Symbol:
             input a
             if True:
                 return
@@ -415,7 +415,7 @@ def test_viewgen_return_value_rejected():
     import pytest
 
     cell BadReturnCell:
-        viewgen symbol -> Symbol:
+        viewgen symbol(self) -> Symbol:
             input a
             return 42
 
@@ -429,10 +429,10 @@ def test_conditional_viewgen_in_cell():
     for flavor in ("a", "b"):
         cell CondCell:
             if flavor == "a":
-                viewgen symbol -> Symbol:
+                viewgen symbol(self) -> Symbol:
                     input a
             else:
-                viewgen symbol -> Symbol:
+                viewgen symbol(self) -> Symbol:
                     input b
 
         sym = CondCell().symbol
@@ -443,7 +443,7 @@ def test_toplevel_viewgen_schematic_port_rejected():
     # with a clear error instead of an opaque AttributeError.
     import pytest
 
-    viewgen bad_sch -> Schematic:
+    viewgen bad_sch() -> Schematic:
         port vdd
 
     with pytest.raises(TypeError, match="no symbol"):
@@ -453,7 +453,7 @@ def test_viewgen_in_function():
     # A viewgen in a nested scope is a function-form viewgen; a closure
     # can parametrize it (factory pattern).
     def make_report_view(text):
-        viewgen inner -> Report:
+        viewgen inner() -> Report:
             .markdown(text)
         return inner
 
@@ -465,7 +465,7 @@ def test_toplevel_viewgen_sim_rejected():
     # viewgens must fail with a clear error.
     import pytest
 
-    viewgen toplevel_sim -> SimHierarchy:
+    viewgen toplevel_sim() -> SimHierarchy:
         pass
 
     with pytest.raises(TypeError, match="outside of a cell"):
@@ -475,7 +475,7 @@ def test_viewgen_double_root_assignment():
     # `. =` can establish the view root only once.
     import pytest
 
-    viewgen bad -> Schematic:
+    viewgen bad() -> Schematic:
         . = Schematic()
         . = Schematic()
 
@@ -487,7 +487,7 @@ def test_viewgen_root_assignment_after_node_op():
     # `. =` must fail instead of silently replacing it.
     import pytest
 
-    viewgen bad -> Symbol:
+    viewgen bad() -> Symbol:
         input a
         . = Symbol()
 
@@ -499,11 +499,11 @@ def test_nested_viewgen_isolation():
     # leak its node operations into the outer viewgen's context — even
     # when it runs before the outer body's first node op, while the outer
     # context is not yet established.
-    viewgen inner -> Symbol:
+    viewgen inner() -> Symbol:
         input b
 
     cell OuterCell:
-        viewgen symbol -> Symbol:
+        viewgen symbol(self) -> Symbol:
             inner_sym = inner()
             assert isinstance(inner_sym.b, Pin)
             input a
@@ -521,7 +521,7 @@ def test_noctx_on_viewgen_flips_protocol():
     import pytest
 
     @viewgen_noctx
-    viewgen bad -> Symbol:
+    viewgen bad() -> Symbol:
         input a
 
     with pytest.raises(TypeError, match="use @viewgen"):

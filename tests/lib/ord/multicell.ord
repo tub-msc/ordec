@@ -4,15 +4,15 @@
 from ordec.core import *
 
 cell Cell1:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         pass
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         pass
 
 cell Cell2:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         pass
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         pass

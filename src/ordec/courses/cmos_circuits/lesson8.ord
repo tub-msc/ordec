@@ -3,14 +3,14 @@ from ordec.lib import Vdc, Gnd
 from ordec.lib.ihp130 import Nmos, Pmos
 
 cell Nand2:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         output y
         input a
         input b
         inout vdd: .align=North
         inout vss
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port y: .pos=(18,12)
         port a: .pos=(1,15)
         port b: .pos=(1,9)
@@ -26,7 +26,7 @@ cell Nand2:
             t.$l = 130n
 
 cell Nand2Tb:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net a, b, y, vdd, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
@@ -36,5 +36,5 @@ cell Nand2Tb:
 
         Nand2 dut: .a -- a; .b -- b; .y -- y; .vdd -- vdd; .vss -- vss; .pos=(18,6)
 
-    viewgen sim_op -> Simulation:
+    viewgen sim_op(self) -> Simulation:
         .simulate().op()

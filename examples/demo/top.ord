@@ -9,7 +9,7 @@ from ordec.examples.vco_pseudodiff import Vco, VcoHalfStage, VcoRing, VcoTb
 from ordec.layout import helpers
 from ordec.sim import Simulator
 
-viewgen report_analog_design -> Report:
+viewgen report_analog_design() -> Report:
     # Count transistors:
     transistor_table = []
     hier = SimHierarchy.from_schematic(Vco().schematic)
@@ -56,7 +56,7 @@ cell Top:
     This is an example mixed-signal design to demonstrate ORDeC. It consists of
     a custom-built Vco and a synthesized digital counter.
     """
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout vdd: .align=North
         inout vss
 
@@ -69,7 +69,7 @@ cell Top:
         for i in range(8):
             output ctr[i]
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net clk
         net nc0, nc1, nc2
 

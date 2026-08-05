@@ -5,13 +5,13 @@ from ordec.lib.generic_mos import Nmos, Pmos
 from ordec.lib import Gnd, Vdc
 
 cell Nand2:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         output y
         input a
         input b
         inout vdd: .align=North
         inout vss
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net x # Between n1 and n2
         port y: .pos=(17,13)
         port a: .pos=(1,10)
@@ -42,7 +42,7 @@ cell Nand2:
             t.$l = 500n
 
 cell Nand2Tb:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vdd
         net vss
         net a
@@ -63,5 +63,5 @@ cell Nand2Tb:
         Vdc src_a: .pos=(10,6); .n -- vss; .p -- a; .$dc=5
         Vdc src_b: .pos=(5,6); .n -- vss; .p -- b; .$dc=0
 
-    viewgen sim_op -> Simulation:
+    viewgen sim_op(self) -> Simulation:
         .simulate().op()

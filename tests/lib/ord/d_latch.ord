@@ -6,7 +6,7 @@ from .inverter import Inv
 from .sr_flip_flop import SR_flip_flop
 
 cell D_latch:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input D: .pos = (1, 7)
         input CLK: .pos = (1, 9)
         input vdd: .pos = (1, 20); .align = North
@@ -14,7 +14,7 @@ cell D_latch:
         output Q: .pos = (18, 7)
         output Q_not: .pos = (18, 8)
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port D: .pos = (1, 7)
         port CLK: .pos = (1, 9)
         port vdd: .pos = (1, 20); .align = East

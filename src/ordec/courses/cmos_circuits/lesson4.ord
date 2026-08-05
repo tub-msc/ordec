@@ -3,7 +3,7 @@ from ordec.lib import Vdc, Res, Gnd, NoConn
 from ordec.lib.ihp130 import Nmos
 
 cell DiffPair:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input inp
         input inn
         input bias
@@ -12,7 +12,7 @@ cell DiffPair:
         inout vdd: .align=North
         inout vss
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port inp: .pos=(1,9)
         port inn: .align=West; .pos=(19,9)
         port bias: .pos=(1,2)
@@ -30,7 +30,7 @@ cell DiffPair:
         # EDIT HERE
 
 cell DiffPairTb:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net inp, inn, bias, outp, outn, vdd, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
@@ -43,10 +43,10 @@ cell DiffPairTb:
         NoConn nc0: .a -- outp; .pos=(32,10)
         NoConn nc1: .a -- outn; .pos=(32,16)
 
-    viewgen sim_dc -> Simulation:
+    viewgen sim_dc(self) -> Simulation:
         .simulate().dc_sweep(self.schematic.vinp_src, 0.4, 1.0, 121)
 
-    viewgen report_dc -> Report:
+    viewgen report_dc(self) -> Report:
         sim = self.sim_dc
         .markdown("Differential pair transfer curve:")
         .plot2d(

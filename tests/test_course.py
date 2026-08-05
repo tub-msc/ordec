@@ -220,13 +220,13 @@ courses_testdata = {
             InsertSolution("""
             # EDIT HERE (analysis)
             """, """
-            viewgen sim_tran -> Simulation:
+            viewgen sim_tran(self) -> Simulation:
                 .simulate().tran(1u, 3m)
             """),
             InsertSolution("""
             # EDIT HERE (report)
             """, """
-            viewgen report -> Report:
+            viewgen report(self) -> Report:
                 sim = self.sim_tran
                 .markdown("Step response of the two RC stages.")
                 PlotGroup grp

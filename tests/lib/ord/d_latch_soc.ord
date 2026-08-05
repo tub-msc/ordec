@@ -6,14 +6,14 @@ from .inverter import Inv
 from .mux2 import Mux2
 
 cell D_latch:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input D
         input LE
         input vdd: .align = North
         input vss: .align = South
         output Q
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port D: .pos = (1, 13)
         port LE: .pos = (1, 14)
         port vdd: .pos = (1, 18); .align = East

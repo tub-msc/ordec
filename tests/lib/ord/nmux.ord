@@ -9,7 +9,7 @@ import math
 cell Nto1:
     N = Parameter(int)
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         path d_in
         path s_in
         inout vdd: .align=North
@@ -26,7 +26,7 @@ cell Nto1:
             input s_in[i]
 
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         signal_count = int(math.log(self.N, 2))
         x_spacing = 12
         y_spacing = 5

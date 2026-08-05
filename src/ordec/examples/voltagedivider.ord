@@ -5,7 +5,7 @@ from ordec.lib import Vdc, Res, Gnd
 from ordec.sim import Simulator
 
 cell VoltageDivider:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vss, vdd, a, b
 
         Vdc vdc: .$dc = 1; .n -- vss; .p -- vdd; .pos = (0,6)
@@ -14,9 +14,9 @@ cell VoltageDivider:
         Res res_3: .$r = 100; .n -- b; .p -- vdd; .pos = (5,18)
         Gnd gnd: .p -- vss; .pos = (0,0)
 
-    viewgen sim_op -> Simulation:
+    viewgen sim_op(self) -> Simulation:
         .simulate().op()
 
-    viewgen netlist -> Report:
+    viewgen netlist(self) -> Report:
         """Example of how to view SPICE netlist in web UI."""
         .pre(Simulator(SimHierarchy.from_schematic(self.schematic)).netlister.out())

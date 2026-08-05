@@ -18,7 +18,7 @@ cell VcoHalfStage:
     width = Parameter(R, default=300n)
     length = Parameter(R, default=130n)
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         # vdd_st and vss_st are the current-starved supplies coming in
         inout vdd_st: .align=North
         inout vss_st
@@ -34,7 +34,7 @@ cell VcoHalfStage:
         output out
         output out_n
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net b
 
         port vdd_st: .align=East; .pos=(1,24)
@@ -67,7 +67,7 @@ cell VcoHalfStage:
             mos.$l = self.length
 
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
         pmos = self.schematic.m1.symbol.cell
@@ -255,7 +255,7 @@ cell VcoHalfStage:
                 ! .contains(m.nwell.rect)
 
 cell VcoRing:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout vdd_st: .align=North
         inout vss_st
         inout vdd: .align=North
@@ -270,7 +270,7 @@ cell VcoRing:
             output out_n[i]
 
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port vdd_st: .pos=(1,21); .align=East
         port vdd: .pos=(1,25); .align=East
         port nwell: .pos=(1,23); .align=East
@@ -329,7 +329,7 @@ cell VcoRing:
                 .pos = (5 + xoffset, 3)
 
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
         path stage_n, stage_p, out_n, out_p
@@ -516,7 +516,7 @@ cell VcoRing:
 cell Vco:
     width = Parameter(R, default=1000n)
     length = Parameter(R, default=500n)
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout vdd: .align=North
         inout vss
 
@@ -528,7 +528,7 @@ cell Vco:
             output out_p[i]
             output out_n[i]
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port vdd: .pos=(4,21); .align=East
         port vss: .pos=(4,0); .align=East
         port rst_n: .pos=(13,9)
@@ -592,7 +592,7 @@ cell Vco:
             mos.$l = self.length
             mos.$w = self.width
     
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         layers = SG13G2().layers
         .ref_layers = layers
         VcoRing() ring_i:
@@ -792,15 +792,15 @@ cell Vco:
             ! .ux == nwell_right.lx + 800
 
     @viewgen(auto_refresh=False)
-    viewgen drc -> DrcReport:
+    viewgen drc(self) -> DrcReport:
         . = run_drc(self.layout)
 
     @viewgen(auto_refresh=False)
-    viewgen lvs -> LvsReport:
+    viewgen lvs(self) -> LvsReport:
         . = run_lvs(self.layout, self.symbol)
 
 cell VcoTb:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vdd, vss, vbias, rst_n
 
         path out_p, out_n, nc
@@ -851,11 +851,11 @@ cell VcoTb:
             .pos = (10, 10)
             .$V = ((0, 0), (1n, 0), (1.1n, 1.2))
 
-    viewgen sim_tran -> Simulation:
+    viewgen sim_tran(self) -> Simulation:
         """Run sync transient simulation."""
         .simulate().tran(10p, 30n)
 
-    viewgen report_tran -> Report:
+    viewgen report_tran(self) -> Report:
         sim = self.sim_tran
         .grp = PlotGroup()
 

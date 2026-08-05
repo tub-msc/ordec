@@ -5,12 +5,12 @@ from ordec.lib import Res, Ind, Cap, Gnd, Vdc
 cell Bandstop:
     # EDIT HERE (parameter)
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input vin
         output vout
         inout vss
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port vin: .pos=(2,18)
         port vout: .pos=(14,18)
         port vss: .pos=(10,4)
@@ -27,7 +27,7 @@ cell Bandstop:
 
 
 cell BandstopTb:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vin, vout, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
@@ -41,10 +41,10 @@ cell BandstopTb:
             .vout -- vout
             .vss -- vss
 
-    viewgen sim_ac -> Simulation:
+    viewgen sim_ac(self) -> Simulation:
         .simulate().ac('dec', 50, 100, 10M)
 
-    viewgen bode -> Report:
+    viewgen bode(self) -> Report:
         if (self.schematic.has_errors()
                 or Bandstop().schematic.has_errors()
                 or self.sim_ac.vout.voltage is None):

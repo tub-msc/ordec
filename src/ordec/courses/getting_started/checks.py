@@ -838,7 +838,7 @@ def gen_lesson9(g):
             1. Add the analysis at the EDIT HERE (analysis) marker:
 
             ```
-            viewgen sim_tran -> Simulation:
+            viewgen sim_tran(self) -> Simulation:
                 .simulate().tran(1u, 3m)
             ```
 
@@ -847,7 +847,7 @@ def gen_lesson9(g):
             outputs:
 
             ```
-            viewgen report -> Report:
+            viewgen report(self) -> Report:
                 sim = self.sim_tran
                 .markdown("Step response of the two RC stages.")
                 .plot2d(x=sim.time, series={'vin': sim.vin.voltage},
@@ -872,14 +872,14 @@ def gen_lesson9(g):
             found = (hasattr(g['RcChain'], 'sim_tran')
                 and g['RcChain']().sim_tran.time is not None)
             report.passfail(label, found,
-                hint="Add `viewgen sim_tran -> Simulation:` with "
+                hint="Add `viewgen sim_tran(self) -> Simulation:` with "
                 "`.simulate().tran(1u, 3m)` at the EDIT HERE "
                 "(analysis) marker.",
                 instructions="Looking for a sim_tran view with transient "
                 "data.")
         except Exception:
             report.passfail(label, False, instructions=exception_text(),
-                hint="Add `viewgen sim_tran -> Simulation:` with "
+                hint="Add `viewgen sim_tran(self) -> Simulation:` with "
                 "`.simulate().tran(1u, 3m)` at the EDIT HERE "
                 "(analysis) marker.")
 
@@ -895,14 +895,14 @@ def gen_lesson9(g):
                 and any(isinstance(e, Markdown)
                     for e in g['RcChain']().report.elements()))
             report.passfail(label, found,
-                hint="Add `viewgen report -> Report:` at the EDIT HERE "
+                hint="Add `viewgen report(self) -> Report:` at the EDIT HERE "
                 "(report) marker and describe the circuit with "
                 "`.markdown(...)`.",
                 instructions="Looking for a report view containing a "
                 "markdown element.")
         except Exception:
             report.passfail(label, False, instructions=exception_text(),
-                hint="Add `viewgen report -> Report:` at the EDIT HERE "
+                hint="Add `viewgen report(self) -> Report:` at the EDIT HERE "
                 "(report) marker and describe the circuit with "
                 "`.markdown(...)`.")
 

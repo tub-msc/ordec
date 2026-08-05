@@ -7,7 +7,7 @@ from ordec.lib.generic_mos import Nmos, Pmos
 cell TwoStacks:
     """Two top-level groups: auto-anchored side by side, not overlapping."""
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net a
         net y1
         net y2
