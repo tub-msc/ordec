@@ -526,3 +526,18 @@ def test_noctx_on_viewgen_flips_protocol():
 
     with pytest.raises(TypeError, match="use @viewgen"):
         bad()
+
+def test_viewgen_shape_rejected_at_exec():
+    # Extra parameters beyond the receiver fail at decoration time, i.e.
+    # when the compiled module executes.
+    import pytest
+    from ordec.language import compile_ord
+
+    for src in (
+        "cell Foo:\n    viewgen symbol(a, b):\n        pass\n",
+        "cell Foo:\n    viewgen symbol(a=1):\n        pass\n",
+    ):
+        g = {}
+        code = compile_ord(src, g)
+        with pytest.raises(TypeError, match="Cell Parameters"):
+            exec(code, g)

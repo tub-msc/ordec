@@ -45,13 +45,6 @@ class OrdTransformer(PythonTransformer):
         suite = nodes[1]
         base = self.ast_core("Cell")
 
-        # Finalize viewgens to method form. Like a def in a Python class
-        # body, a viewgen anywhere lexically within the cell suite binds in
-        # the cell namespace - including inside if/for/try/... - so it is a
-        # method. Nested scopes (def/class) are their own binding context.
-        for stmt in suite:
-            self._finalize_viewgens(stmt)
-
         return ast.ClassDef(
             name=cell_name,
             bases=[base],
@@ -77,64 +70,61 @@ class OrdTransformer(PythonTransformer):
 
     def viewgen(self, nodes):
         """
-        `viewgen name -> view_target_expr:\\n suite`
+        `viewgen name(params) [-> view_target_expr]:\\n suite`
 
-        Emitted in module-level (function) form: a no-argument function whose
-        body is the suite verbatim, decorated with __ord_context__.
-        viewgen_func. The ViewBuilder setup/teardown around the body lives in
-        wrap_viewgen() (see ordec.ord.context), so no boilerplate is emitted
-        here. celldef() rewrites viewgens lexically within a cell body into
-        method form (_finalize_viewgens).
+        Translated context-free: a function with the user's parameters
+        verbatim, decorated with __ordec_core__.viewgen. Binding follows
+        Python scoping - a viewgen in a cell body is a method, elsewhere a
+        function - so no placement analysis happens here; arity mismatches
+        are caught at runtime (MetaCell at class creation, or the call
+        preflight).
         """
-        func_name = nodes[0]
-        view_target_expr = nodes[1]
-        suite = nodes[2]
-
-        func_def = ast.FunctionDef(
-            name=func_name,
-            args=ast.arguments(
+        name = str(nodes[0])
+        index = 1
+        if index < len(nodes) and isinstance(nodes[index], ast.arguments):
+            args = nodes[index]
+            index += 1
+        else:
+            args = ast.arguments(
                 posonlyargs=[],
                 args=[],
+                vararg=None,
                 kwonlyargs=[],
                 kw_defaults=[],
                 kwarg=None,
                 defaults=[]
-            ),
+            )
+        rest = nodes[index:]
+        if len(rest) == 2:
+            returns, suite = rest
+        else:
+            returns = None
+            suite = rest[0]
+
+        return ast.FunctionDef(
+            name=name,
+            args=args,
             body=suite,
-            decorator_list=[self.ast_ord_context("viewgen_func")],
-            returns=view_target_expr,
+            decorator_list=[self.ast_core("viewgen")],
+            returns=returns,
             type_params=[]
         )
-        # Tag for celldef()'s _finalize_viewgens().
-        func_def._ord_viewgen = True
-        return func_def
 
-    def _viewgen_to_method(self, func_def):
+    @v_args(meta=True)
+    def viewgen_oldform(self, meta, nodes):
         """
-        Rewrites a function-form viewgen into cell-method form: adds the
-        `self` parameter and swaps the decorator for the method-form one.
-        The viewgen decorator is the last in the list (`decorated` prepends
-        user decorators).
+        Old parenless spelling `viewgen name -> target:`. Rejected with a
+        fix-it; the diagnostic is context-free (placement is unknown here),
+        so both spellings are shown.
         """
-        func_def.args.args.insert(0, ast.arg(arg="self"))
-        func_def.decorator_list[-1] = self.ast_ord_context("viewgen")
-        del func_def._ord_viewgen
-
-    def _finalize_viewgens(self, node):
-        """
-        Rewrites node to method form if it is a viewgen, and recurses into
-        compound statements to find lexically nested ones. Nested scopes
-        (def/class) are not visited: viewgens there bind in that scope and
-        stay in function form, as outside of cells.
-        """
-        if getattr(node, "_ord_viewgen", False):
-            self._viewgen_to_method(node)
-            return
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
-                ast.ClassDef)):
-            return
-        for child in ast.iter_child_nodes(node):
-            self._finalize_viewgens(child)
+        name = nodes[0]
+        e = SyntaxError(
+            f"line {meta.line}: viewgen {name} declares no parameter list. "
+            f"Write `viewgen {name}(self) -> T:` inside a cell, or "
+            f"`viewgen {name}() -> T:` at module level."
+        )
+        e.lineno = meta.line
+        raise e
 
     def constrain_stmt(self, nodes):
         """ ! x >= 200 """

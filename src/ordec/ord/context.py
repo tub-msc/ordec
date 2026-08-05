@@ -91,13 +91,6 @@ def view_builder():
     return require_viewgen_context().require_builder()
 
 
-# Stage-1 compatibility: the old ORD transformer emits
-# __ord_context__.viewgen (method form) and __ord_context__.viewgen_func
-# (function form); the core viewgen decorator dispatches by usage and covers
-# both. Removed with the transformer rework.
-viewgen_func = viewgen
-
-
 def set_root(value):
     """Assign the root of the current view (the `. = ...` statement)."""
     require_viewgen_context().adopt(value)
