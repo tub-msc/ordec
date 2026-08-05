@@ -6,7 +6,7 @@ from ordec.lib.generic_mos import Or2, Nmos
 from ordec.lib import Res
 
 class RotateTest(Cell):
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self)
         c = Or2().symbol
@@ -36,7 +36,7 @@ class RotateTest(Cell):
 
 
 class PortAlignTest(Cell):
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self)
 
@@ -48,7 +48,7 @@ class PortAlignTest(Cell):
 
         return s
 
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self, symbol=self.symbol)
 
@@ -67,7 +67,7 @@ class PortAlignTest(Cell):
 
 
 class TapAlignTest(Cell):
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self)
 
@@ -86,7 +86,7 @@ class TapAlignTest(Cell):
 
 
 class DFF(Cell):
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self)
 
@@ -103,7 +103,7 @@ class DFF(Cell):
 class MultibitReg_Arrays(Cell):
     bits = Parameter(int)
 
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self)
 
@@ -119,7 +119,7 @@ class MultibitReg_Arrays(Cell):
 
         return s
 
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self, symbol=self.symbol)
 
@@ -163,7 +163,7 @@ class MultibitReg_Arrays(Cell):
 class MultibitReg_ArrayOfStructs(Cell):
     bits = Parameter(int)
 
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self)
 
@@ -193,7 +193,7 @@ class NetNamingTest(Cell):
     (d) Unnamed net with named pin — renders as "??<nid>"
     """
 
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -203,7 +203,7 @@ class NetNamingTest(Cell):
         s.place_pins(vpadding=2, hpadding=2)
         return s
 
-    @generate
+    @viewgen_noctx
     def schematic(self) -> Schematic:
         s = Schematic(cell=self, symbol=self.symbol, outline=(0,0,13,7))
 
@@ -230,7 +230,7 @@ class NetNamingTest(Cell):
 class MultibitReg_StructOfArrays(Cell):
     bits = Parameter(int)
 
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self)
 
@@ -288,7 +288,7 @@ class TestNmosInv(Cell):
         ]
         return [cls(v, cp, tt) for v, cp, tt in variants]
 
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self)
 
@@ -300,7 +300,7 @@ class TestNmosInv(Cell):
 
         return s
 
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self, symbol=self.symbol)
 

@@ -11,7 +11,7 @@ from ..geoprim import *
 from ..ordb import *
 from ..cell import Cell
 from ..constraints import *
-from ..context import SymbolViewContext, SchematicViewContext
+from ..context import SymbolViewBuilder, SchematicViewBuilder
 from .base import (
     coerce_tuple, SourceLocInfo, MixinPolygonalChain, GenericPolyR, PolyVec2R,
 )
@@ -73,7 +73,7 @@ class MixinRenderable:
 @public
 class Symbol(MixinRenderable, SubgraphRoot):
     """A symbol of an individual cell."""
-    view_context = SymbolViewContext
+    view_builder = SymbolViewBuilder
     wire_id = WIRE_DOMAIN | 1
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
     caption = Attr(str)
@@ -156,7 +156,7 @@ class SymbolArc(Node):
 @public
 class Schematic(MixinRenderable, SubgraphRoot):
     """A schematic of an individual cell."""
-    view_context = SchematicViewContext
+    view_builder = SchematicViewBuilder
     wire_id = WIRE_DOMAIN | 5
     symbol = SubgraphRef(Symbol)
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))

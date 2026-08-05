@@ -8,7 +8,7 @@ from ..geoprim import *
 from ..ordb import *
 from ..cell import Cell
 from ..constraints import *
-from ..context import LayoutViewContext
+from ..context import LayoutViewBuilder
 from .base import (
     coerce_tuple, AttrProxy, _rect_proxy, GdsLayer, RGBColor, PathEndType,
     MixinPolygonalChain, MixinClosedPolygon, GenericPolyI, PolyVec2I,
@@ -123,7 +123,7 @@ class Layout(SubgraphRoot):
     Subgraph containing integrated circuit layout elements, possibly including
     hierarchical instances of other Layout subgraphs.
     """
-    view_context = LayoutViewContext
+    view_builder = LayoutViewBuilder
     wire_id = WIRE_DOMAIN | 5
 
     cell = LiveRef(Cell)

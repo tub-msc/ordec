@@ -5,7 +5,7 @@
 Lesson checks for the 'getting_started' course.
 
 Each gen_lesson* function takes the lesson namespace (globals) and returns the
-lesson() view generator for that lesson: a @generate_func building a Report
+lesson() view generator for that lesson: a @viewgen_noctx building a Report
 whose PassFail elements decide whether the lesson is passed (the course UI
 considers a lesson passed when all its PassFail elements pass). Exceptions
 during checking are converted into failing PassFail elements, so the view never
@@ -38,7 +38,7 @@ def exception_text() -> str:
 # --------------------------
 
 def gen_lesson1(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -53,7 +53,7 @@ def gen_lesson1(g):
 # --------------------------------
 
 def gen_lesson2(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -81,7 +81,7 @@ def gen_lesson2(g):
 # ----------------------------------
 
 def gen_lesson3(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -200,7 +200,7 @@ def gen_lesson3(g):
 # --------------------------
 
 def gen_lesson4(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -304,7 +304,7 @@ def gen_lesson4(g):
 # -------------------------------
 
 def gen_lesson5(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -378,7 +378,7 @@ def gen_lesson5(g):
 # ----------------------------
 
 def gen_lesson6(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown(r"""
@@ -504,7 +504,7 @@ def gen_lesson6(g):
 # ------------------
 
 def gen_lesson7(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -645,7 +645,7 @@ def gen_lesson7(g):
 # --------------------
 
 def gen_lesson8(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown(r"""
@@ -824,7 +824,7 @@ def gen_lesson8(g):
 # ----------------------------------------
 
 def gen_lesson9(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -960,7 +960,7 @@ def gen_lesson9(g):
 # -------------------------
 
 def gen_lesson10(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -1045,7 +1045,7 @@ def gen_lesson10(g):
 # ----------------------
 
 def gen_epilogue(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         # Course links open in a new tab (inline HTML with target=_blank):

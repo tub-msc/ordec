@@ -110,7 +110,7 @@ def build_unwired_mirror():
 
 
 def wire_schematic(frozen_root):
-    """The tail of SchematicViewContext.postprocess: auto_wire + check."""
+    """The tail of SchematicViewBuilder.postprocess: auto_wire + check."""
     root = frozen_root.thaw()
     root.auto_wire()
     root.check(add_conn_points=True, add_terminal_taps=True)

@@ -7,7 +7,7 @@ from public import public
 
 from ..ordb import *
 from ..cell import Cell
-from ..context import SimulationViewContext
+from ..context import SimulationViewBuilder
 from ..simarray import SimArray
 from .schematic import Symbol, Schematic, Pin, Net, SchemPort, SchemInstance
 
@@ -94,7 +94,7 @@ class SimHierarchySubcursor(tuple):
 
 @public
 class SimHierarchy(SubgraphRoot):
-    view_context = SimulationViewContext
+    view_builder = SimulationViewBuilder
     wire_id = WIRE_DOMAIN | 1
 
     schematic = SubgraphRef(Schematic)

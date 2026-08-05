@@ -14,9 +14,9 @@ from .version import version
 
 class ViewgenDocumenter(Documenter):
     """
-    Documents @generate methods as Python properties.
+    Documents view generator methods as Python properties.
 
-    For @generate methods that are annotated to return a Symbol, the Symbol is
+    For view generator methods that are annotated to return a Symbol, the Symbol is
     generated and inserted into the documentation. This requires that there
     is at least one discoverable instance of the Cell.
     """
@@ -67,7 +67,8 @@ class ViewgenDocumenter(Documenter):
         sourcename = self.get_sourcename()
 
         insts = self.parent.discoverable_instances()
-        if issubclass(self._return_annotation(), Symbol) and len(insts) > 0:
+        rettype = self._return_annotation()
+        if isinstance(rettype, type) and issubclass(rettype, Symbol) and len(insts) > 0:
             subgraph = getattr(self.parent.discoverable_instances()[0], self.objpath[-1])
 
             self.add_line('   .. raw:: html', sourcename)

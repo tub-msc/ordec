@@ -7,7 +7,7 @@ from ordec.lib import ihp130
 class Inv(Cell):
     variant = Parameter(str, default='clean')
 
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self)
 
@@ -24,7 +24,7 @@ class Inv(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self, symbol=self.symbol, outline=(0,0,10,14))
 
@@ -48,7 +48,7 @@ class Inv(Cell):
 
         return s
 
-    @generate
+    @viewgen_noctx
     def layout(self):
         layers = ihp130.SG13G2().layers
         l = Layout(ref_layers=layers, cell=self, symbol=self.symbol)

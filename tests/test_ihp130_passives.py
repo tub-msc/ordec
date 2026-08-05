@@ -61,7 +61,7 @@ def test_resistor_op(cell, expected_r):
     res_cell = cell
 
     class Tb(Cell):
-        @generate
+        @viewgen_noctx
         def schematic(self):
             s = Schematic(cell=self)
             s.vdd = Net()
@@ -105,7 +105,7 @@ def test_cmim_ac(cell, expected_c):
     freq = 1e6
 
     class Tb(Cell):
-        @generate
+        @viewgen_noctx
         def schematic(self):
             s = Schematic(cell=self)
             s.vdd = Net()

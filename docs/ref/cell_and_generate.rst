@@ -38,7 +38,7 @@ Parametrizable cells
 View generators
 ----------------------
 
-.. autodecorator:: generate
+.. autodecorator:: viewgen
 
   Example:
 
@@ -61,7 +61,7 @@ View generators
         def schematic(self):
             # ...
 
-.. autodecorator:: generate_func
+.. autodecorator:: viewgen_noctx
 
   Example:
 

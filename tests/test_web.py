@@ -678,7 +678,7 @@ SLOW_VIEW_SRC = '''
 from ordec.core import *
 import time
 
-@generate_func
+@viewgen_noctx
 def slow():
     for i in range(100):
         progress(f"step {i}", i/100)
@@ -744,7 +744,7 @@ def test_view_removed_deselects(web):
     named_view_src = '''
 from ordec.core import *
 
-@generate_func
+@viewgen_noctx
 def {name}():
     return "{name} result"
 '''

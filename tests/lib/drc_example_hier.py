@@ -11,7 +11,7 @@ class Sub(Cell):
     KLayout deep-mode DRC reports this violation once, attached to this
     cell, no matter how often the cell is instantiated.
     """
-    @generate
+    @viewgen_noctx
     def layout(self) -> Layout:
         layers = SG13G2().layers
         # cell=self makes write_gds/Directory name this cell 'sub', which is
@@ -31,7 +31,7 @@ class Top(Cell):
     cross-hierarchy spacing violation between the top-level rect and sub1,
     attached to the top cell.
     """
-    @generate
+    @viewgen_noctx
     def layout(self) -> Layout:
         layers = SG13G2().layers
         l = Layout(ref_layers=layers, cell=self)
@@ -43,7 +43,7 @@ class Top(Cell):
         l % LayoutRect(layer=layers.Metal1, rect=Rect4I(-1100, 0, -100, 1000))
         return l
 
-    @generate
+    @viewgen_noctx
     def drc_report(self) -> DrcReport:
         """Run IHP130 DRC (minimal rule set) on the hierarchical layout."""
         return run_drc(self.layout, variant='minimal')

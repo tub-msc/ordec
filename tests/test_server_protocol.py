@@ -20,29 +20,29 @@ TEST_SRC = '''
 from ordec.core import *
 import time
 
-@generate_func
+@viewgen_noctx
 def quick():
     return "quick result"
 
-@generate_func
+@viewgen_noctx
 def slow():
     for i in range(100):
         progress(f"step {i}", i/100)
         time.sleep(0.05)
     return "slow result"
 
-@generate_func
+@viewgen_noctx
 def infinite_loop():
     while True:
         pass
 
-@generate_func
+@viewgen_noctx
 def with_progress():
     for i in range(4):
         progress(f"phase {i}", i/4)
     return "progressed"
 
-@generate_func
+@viewgen_noctx
 def sym():
     from ordec.lib import Res
     return Res(r=100).symbol

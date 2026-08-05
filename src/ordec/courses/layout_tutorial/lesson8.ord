@@ -71,6 +71,6 @@ cell Inv:
 
         # EDIT HERE (input)
 
-    @generate(auto_refresh=False)
+    @viewgen(auto_refresh=False)
     viewgen drc -> DrcReport:
         . = run_drc(self.layout, variant="minimal")

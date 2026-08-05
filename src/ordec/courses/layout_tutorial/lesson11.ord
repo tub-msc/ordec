@@ -117,10 +117,10 @@ cell DiffPair:
 
         # EDIT HERE (pins)
 
-    @generate(auto_refresh=False)
+    @viewgen(auto_refresh=False)
     viewgen drc -> DrcReport:
         . = run_drc(self.layout, variant="minimal")
 
-    @generate(auto_refresh=False)
+    @viewgen(auto_refresh=False)
     viewgen lvs -> LvsReport:
         . = run_lvs(self.layout, self.symbol)

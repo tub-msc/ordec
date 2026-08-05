@@ -2,30 +2,30 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # standard imports
-import functools
 import sys
 
 # ordec imports
 from ..core import *
-from ..core.context import _ctx_var, _view_ctx_var
+from ..core.context import (_viewgen_ctx_var, ViewGenContext, current_node_context,
+    require_viewgen_context)
 from ..schematic.helpers import recursive_setitem, recursive_getitem
 
 
 def root():
     """Return the root of the current context"""
-    return _ctx_var.get().root
+    return current_node_context().root
 
 
 def register_in_group(ref):
     """Records ref as child of the innermost active arrangement group."""
-    view_ctx = _view_ctx_var.get()
-    if view_ctx is not None:
-        view_ctx.register_in_group(ref)
+    vgctx = _viewgen_ctx_var.get()
+    if isinstance(vgctx, ViewGenContext) and vgctx.builder is not None:
+        vgctx.builder.register_in_group(ref)
 
 
 def add(name_tuple, ref):
     """ Add a value to the current context"""
-    ctx = _ctx_var.get()
+    ctx = current_node_context()
     if name_tuple is None:
         # Anonymous: add to subgraph without NPath
         nid_new = ctx.root.subgraph.add(ref)
@@ -44,7 +44,7 @@ def add_port(name_tuple):
     forward-declared (net statement), the port attaches to that net,
     allowing connections before the port statement is reached.
     """
-    ctx = _ctx_var.get()
+    ctx = current_node_context()
     symbol = ctx.root.symbol
     if symbol is None:
         name = '.'.join(str(part) for part in name_tuple)
@@ -82,78 +82,30 @@ def add_port(name_tuple):
     return net
 
 
-def view_context():
-    return _view_ctx_var.get()
-
-
-def create_view_context(cell, root_cls):
+def view_builder():
     """
-    Create the ViewContext for an ORD viewgen method.
-
-    The context's ViewContext subclass is taken from the view's return type
-    (root_cls.view_context). The initial root is created via create_root(),
-    which may return None for views whose root is assigned within the viewgen
-    body (see set_root()).
+    Return the running viewgen's ViewBuilder, materializing it from the
+    return annotation if no node operation has established it yet (e.g. for
+    bodies that construct an SRouter before the first node op).
     """
-    try:
-        view_context_cls = root_cls.view_context
-    except AttributeError as e:
-        raise TypeError(
-            f"{root_cls!r} cannot be used as an ORD viewgen return type."
-        ) from e
-    root = view_context_cls.create_root(cell, root_cls)
-    return view_context_cls(root)
+    return require_viewgen_context().require_builder()
 
 
-def wrap_viewgen(func):
-    """
-    Adapts an ORD viewgen body into a plain view generator function.
-
-    Unlike plain-Python @generate/@generate_func functions, which build and
-    return their view root themselves, an ORD viewgen body populates a root
-    managed by a ViewContext. The returned wrapper bridges the two
-    conventions: it creates the ViewContext from the viewgen's return
-    annotation, runs the body inside it, and returns the context's root
-    (which postprocessing or a `. = ...` assignment may have replaced).
-    """
-    @functools.wraps(func)
-    def wrapper(*args):
-        cell = args[0] if args else None
-        ctx = create_view_context(cell, func.__annotations__.get("return"))
-        with ctx:
-            ret = func(*args)
-            # Same contract as __init__: a bare `return` (early exit) is
-            # fine, returning a value is a misuse - the view is always the
-            # context's root, never the body's return value.
-            if ret is not None:
-                raise TypeError(
-                    f"viewgen {func.__qualname__} returned "
-                    f"{type(ret).__name__} instead of None; the view root "
-                    "comes from the view context. Use `. = ...` to assign "
-                    "it, or a bare `return` for an early exit."
-                )
-        return ctx.root
-    return wrapper
-
-
-def viewgen(func):
-    """View generator for `viewgen` statements in a cell body (method form)."""
-    return generate(wrap_viewgen(func))
-
-
-def viewgen_func(func):
-    """View generator for `viewgen` statements outside a cell (function form)."""
-    return generate_func(wrap_viewgen(func))
+# Stage-1 compatibility: the old ORD transformer emits
+# __ord_context__.viewgen (method form) and __ord_context__.viewgen_func
+# (function form); the core viewgen decorator dispatches by usage and covers
+# both. Removed with the transformer rework.
+viewgen_func = viewgen
 
 
 def set_root(value):
-    """Assign the root of the current view context (the `. = ...` statement)."""
-    _view_ctx_var.get().set_root(value)
+    """Assign the root of the current view (the `. = ...` statement)."""
+    require_viewgen_context().adopt(value)
     return value
 
 
 def constrain(constraint):
-    return _view_ctx_var.get().constrain(constraint)
+    return require_viewgen_context().require_builder().constrain(constraint)
 
 
 def add_element(name_tuple, element, src_line=None, src_column=None):
@@ -172,7 +124,7 @@ def add_element(name_tuple, element, src_line=None, src_column=None):
         src_line: line of the defining ORD statement.
         src_column: column of the defining ORD statement.
     """
-    ctx = _ctx_var.get()
+    ctx = current_node_context()
     # Source location for click-to-source.
     src_loc = SourceLocInfo(
         sys._getframe(1).f_code.co_filename, src_line, src_column

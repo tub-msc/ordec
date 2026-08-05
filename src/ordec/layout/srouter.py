@@ -13,11 +13,11 @@ class SRouter:
         """Create a stack router.
 
         If layout or solver are not provided, they are obtained from the
-        current LayoutViewContext.
+        current LayoutViewBuilder.
         """
         if layout is None or solver is None:
-            from ordec.ord.context import view_context
-            vc = view_context()
+            from ordec.ord.context import view_builder
+            vc = view_builder()
             if layout is None:
                 layout = vc.root
             if solver is None:

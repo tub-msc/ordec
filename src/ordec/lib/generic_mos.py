@@ -46,7 +46,7 @@ class Mos(SimLeafCell):
 
 @public
 class Nmos(Mos):
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -69,7 +69,7 @@ class Nmos(Mos):
 
 @public
 class Pmos(Mos):
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -92,7 +92,7 @@ class Pmos(Mos):
 
 @public
 class Inv(Cell):
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -109,7 +109,7 @@ class Inv(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
 
-    @generate
+    @viewgen_noctx
     def schematic(self) -> Schematic:
         s = Schematic(cell=self, symbol=self.symbol)
 
@@ -145,7 +145,7 @@ class Inv(Cell):
 
 @public
 class Ringosc(Cell):
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -156,7 +156,7 @@ class Ringosc(Cell):
         s.place_pins(vpadding=2, hpadding=2)
         return s
 
-    @generate
+    @viewgen_noctx
     def schematic(self) -> Schematic:
         s = Schematic(cell=self, symbol=self.symbol)
 
@@ -194,7 +194,7 @@ class Ringosc(Cell):
 
 @public
 class And2(Cell):
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -215,7 +215,7 @@ class And2(Cell):
 
 @public
 class Or2(Cell):
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 

@@ -3,10 +3,10 @@
 
 import math
 from ordec.core.schema import PlotGroup, Report
-from ordec.core import R, generate_func
+from ordec.core import R, viewgen_noctx
 from .sim import ResdivHier2
 
-@generate_func
+@viewgen_noctx
 def report_example() -> Report:
     resdiv = ResdivHier2(r=R(100))
     freq = 1e6

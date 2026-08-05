@@ -6,7 +6,7 @@ from ordec.core.constraints import LinearTerm, Vec2LinearTerm, Rect4LinearTerm, 
 
 
 class SimpleSymbol(Cell):
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 6))
         s.inp = Pin(pos=Vec2R(0, 3), pintype=PinType.In, align=West)
@@ -17,7 +17,7 @@ class SimpleSymbol(Cell):
 class MultiPinSymbol(Cell):
     bits = Parameter(int)
 
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 2 + self.bits))
         s.d = PathNode()

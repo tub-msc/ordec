@@ -5,7 +5,7 @@ from ordec.core import *
 from ordec.lib.ihp130 import SG13G2, run_drc
 
 
-@generate_func
+@viewgen_noctx
 def layout() -> Layout:
     """Layout with intentional DRC violations for testing."""
     pdk = SG13G2()
@@ -52,7 +52,7 @@ def layout() -> Layout:
     return layout
 
 
-@generate_func
+@viewgen_noctx
 def drc_report() -> DrcReport:
     """Run IHP130 DRC on a layout with violations."""
     return run_drc(layout(), variant='minimal')

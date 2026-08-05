@@ -12,7 +12,7 @@ from ordec.core.schema import (
 from ordec.layout.klayout import parse_rdb
 
 
-@generate_func
+@viewgen_noctx
 def drc_test_layers():
     """Create a minimal LayerStack for testing."""
     layers = LayerStack()
@@ -26,13 +26,13 @@ def drc_test_layers():
     return layers
 
 
-@generate_func
+@viewgen_noctx
 def drc_test_layout():
     """Create a minimal Layout with LayerStack for testing."""
     return Layout(ref_layers=drc_test_layers())
 
 
-@generate_func
+@viewgen_noctx
 def drc_test_sublayout():
     """Create a second Layout acting as a subcell of drc_test_layout."""
     return Layout(ref_layers=drc_test_layers())

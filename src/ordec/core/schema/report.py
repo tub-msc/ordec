@@ -7,7 +7,7 @@ import re
 from public import public
 
 from ..ordb import *
-from ..context import ReportViewContext
+from ..context import ReportViewBuilder
 
 WIRE_DOMAIN = 8 << 16
 
@@ -19,7 +19,7 @@ class Report(SubgraphRoot):
     Report elements are stored as ORDB nodes. The helper methods preserve the
     append-style API for building reports programmatically.
     """
-    view_context = ReportViewContext
+    view_builder = ReportViewBuilder
     wire_id = WIRE_DOMAIN | 1
 
     fill_height = Attr(bool, default=False, optional=False)

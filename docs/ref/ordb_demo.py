@@ -20,7 +20,7 @@
 #
 # # ORDB Demo
 #
-# This Jupyter notebook demonstrates the five main principles of ORDB, which is ORDeC's data model layer. In addition, it briefly introduces ORDeC's Cell-and-@generate pattern.
+# This Jupyter notebook demonstrates the five main principles of ORDB, which is ORDeC's data model layer. In addition, it briefly introduces ORDeC's Cell-and-@viewgen_noctx pattern.
 #
 # ## Principle 1: schema-based
 #
@@ -237,7 +237,7 @@ sum([segment.flight.duration for segment in myticket.all(TicketSegment)])
 another_ticket = Ticket(price=1999.0, planet=earth)
 # -
 
-# ## Cell and @generate
+# ## Cell and @viewgen_noctx
 #
 # ORDeC organizes IC design data in Cell subclasses. These Cell subclasses represent hardware units for which different ORDB subgraphs can be generated, e.g. a symbol, a schematic, a layout, and/or simulation results.
 
@@ -246,7 +246,7 @@ from ordec.core import *
 from ordec.lib import Res, Gnd, Vdc
 
 class VoltageDivider(Cell):
-    @generate
+    @viewgen_noctx
     def schematic(self):
         print("INFO: Generating the schematic!")
         s = Schematic(cell=self, outline=Rect4R(0, 0, 4, 9))
@@ -266,7 +266,7 @@ class VoltageDivider(Cell):
 
 VoltageDivider() is VoltageDivider()
 
-# Methods using the @generate decorator as special "view generators". They have no parameters beside "self" and are accessed like attributes/properties, without "()". Their code is only executed on the first access. 
+# Methods using the @viewgen_noctx decorator as special "view generators". They have no parameters beside "self" and are accessed like attributes/properties, without "()". Their code is only executed on the first access. 
 
 print(repr(VoltageDivider().schematic))
 
@@ -286,7 +286,7 @@ from ordec.lib import Res, Gnd, Vdc
 
 class ParamVDiv(Cell):
     r = Parameter(R)
-    @generate
+    @viewgen_noctx
     def schematic(self):
         print("INFO: Generating the schematic!")
         s = Schematic(cell=self, outline=Rect4R(0, 0, 4, 9))

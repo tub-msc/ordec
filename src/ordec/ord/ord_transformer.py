@@ -81,7 +81,7 @@ class OrdTransformer(PythonTransformer):
 
         Emitted in module-level (function) form: a no-argument function whose
         body is the suite verbatim, decorated with __ord_context__.
-        viewgen_func. The ViewContext setup/teardown around the body lives in
+        viewgen_func. The ViewBuilder setup/teardown around the body lives in
         wrap_viewgen() (see ordec.ord.context), so no boilerplate is emitted
         here. celldef() rewrites viewgens lexically within a cell body into
         method form (_finalize_viewgens).

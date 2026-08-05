@@ -114,12 +114,14 @@ def test_scheminstance_creation():
 
 def test_mixed_unresolved_resolved_instances():
     """A schematic with both SchemInstance (from Cell instance) and
-    SchemInstanceUnresolved (from Cell class), wired together. ViewContext
-    automatically resolves all instances on exit."""
+    SchemInstanceUnresolved (from Cell class), wired together. All instances
+    are resolved automatically when the viewgen completes."""
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
-    with root.view_context(root):
+
+    viewgen sch -> Schematic:
+        . = root
         net vss, mid
 
         # Cell instance -> SchemInstance directly
@@ -129,7 +131,7 @@ def test_mixed_unresolved_resolved_instances():
         # Another Cell instance -> SchemInstance directly
         Gnd() gnd: .p -- vss; .pos = (0, 0)
 
-        # Before view_context exit: v1 and gnd are already SchemInstance,
+        # Before view_builder exit: v1 and gnd are already SchemInstance,
         # r1 is still SchemInstanceUnresolved
         assert isinstance(v1, SchemInstance)
         assert isinstance(gnd, SchemInstance)
@@ -143,7 +145,9 @@ def test_mixed_unresolved_resolved_instances():
         r1_conns = list(root.all(SchemInstanceUnresolvedConn.ref_idx.query(r1)))
         assert len(r1_conns) == 2
 
-    # After view_context exit: all instances are SchemInstance
+    sch()
+
+    # After viewgen completion: all instances are SchemInstance
     all_instances = list(root.all(SchemInstance))
     assert len(all_instances) == 3
     assert not list(root.all(SchemInstanceUnresolved))
@@ -160,7 +164,9 @@ def test_wire_op():
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
-    with root.view_context(root):
+
+    viewgen sch -> Schematic:
+        . = root
         net vss, mid
 
         # pin -- net (normal order)
@@ -180,7 +186,9 @@ def test_wire_op():
         gnd_conns = list(root.all(SchemInstanceConn.ref_idx.query(gnd)))
         assert len(gnd_conns) == 1
 
-    # After view_context exit: all connections resolved to SchemInstanceConn
+    sch()
+
+    # After viewgen completion: all connections resolved to SchemInstanceConn
     all_conns = list(root.all(SchemInstanceConn))
     assert len(all_conns) == 5
 
@@ -353,7 +361,7 @@ def test_anonymous_as_identifier():
 
 def test_toplevel_viewgen_report():
     # Outside of a cell, a viewgen is a plain cached function (function
-    # form, like @generate_func).
+    # form, like a module-level @viewgen).
     viewgen toplevel_report -> Report:
         """A report viewgen outside of a cell."""
         .markdown("toplevel hello")
@@ -375,11 +383,11 @@ def test_toplevel_viewgen_symbol():
     assert sym.cell is None
 
 def test_viewgen_decorated_auto_refresh():
-    # `@generate(auto_refresh=False)` on top of a viewgen reconfigures it
+    # `@viewgen(auto_refresh=False)` on top of a viewgen reconfigures it
     # (re-decoration takes over the wrapped function; see the drc/lvs
     # viewgens in vco_pseudodiff.ord).
     cell SlowViewCell:
-        @generate(auto_refresh=False)
+        @viewgen(auto_refresh=False)
         viewgen symbol -> Symbol:
             input a
 
@@ -462,3 +470,59 @@ def test_toplevel_viewgen_sim_rejected():
 
     with pytest.raises(TypeError, match="outside of a cell"):
         toplevel_sim()
+
+def test_viewgen_double_root_assignment():
+    # `. =` can establish the view root only once.
+    import pytest
+
+    viewgen bad -> Schematic:
+        . = Schematic()
+        . = Schematic()
+
+    with pytest.raises(TypeError, match="already established"):
+        bad()
+
+def test_viewgen_root_assignment_after_node_op():
+    # A node operation materializes the root from the annotation; a later
+    # `. =` must fail instead of silently replacing it.
+    import pytest
+
+    viewgen bad -> Symbol:
+        input a
+        . = Symbol()
+
+    with pytest.raises(TypeError, match="already established"):
+        bad()
+
+def test_nested_viewgen_isolation():
+    # A viewgen evaluated while another viewgen body is running must not
+    # leak its node operations into the outer viewgen's context — even
+    # when it runs before the outer body's first node op, while the outer
+    # context is not yet established.
+    viewgen inner -> Symbol:
+        input b
+
+    cell OuterCell:
+        viewgen symbol -> Symbol:
+            inner_sym = inner()
+            assert isinstance(inner_sym.b, Pin)
+            input a
+
+    sym = OuterCell().symbol
+    assert isinstance(sym.a, Pin)
+    assert len(list(sym.all(Pin))) == 1
+    assert len(list(inner().all(Pin))) == 1
+
+def test_noctx_on_viewgen_flips_protocol():
+    # Re-decoration takes over the wrapped function, and the outer
+    # decorator picks the protocol: @viewgen_noctx stacked on a
+    # context-style body installs no context, so the body's first node op
+    # fails loudly instead of leaking into an outer context.
+    import pytest
+
+    @viewgen_noctx
+    viewgen bad -> Symbol:
+        input a
+
+    with pytest.raises(TypeError, match="use @viewgen"):
+        bad()

@@ -3,7 +3,7 @@ from ordec.sim import Simulator
 from ordec.lib import Res, Gnd, Vdc
 
 class VoltageDivider(Cell):
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self, outline=Rect4R(lx=0, ly=0, ux=9, uy=21))
         s.vdd = Net()
@@ -27,7 +27,7 @@ class VoltageDivider(Cell):
         s.check(add_conn_points=True)
         return s
 
-    @generate(auto_refresh=False)
+    @viewgen_noctx(auto_refresh=False)
     def sim_op(self):
         s = SimHierarchy.from_schematic(self.schematic)
         Simulator(s).op()

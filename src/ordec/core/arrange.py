@@ -32,7 +32,7 @@ from public import public
 
 from .constraints import (EqualsZero, LinearTerm, Rect4LinearTerm,
     Solver, Variable, coerce_term)
-from .context import _view_ctx_var
+from .context import _viewgen_ctx_var, ViewGenContext
 from .geoprim import D4
 from .ordb import Node, QueryException, SubgraphRoot
 
@@ -176,15 +176,15 @@ class ArrangementGroup(ABC):
         its children. Unlike NodeContext, the name resolution root is
         left unchanged.
         """
-        view_ctx = _view_ctx_var.get()
-        if view_ctx is None:
+        vgctx = _viewgen_ctx_var.get()
+        if not isinstance(vgctx, ViewGenContext):
             raise TypeError(
                 "Arrangement groups can only be used in a schematic viewgen.")
-        view_ctx.enter_group(self)
+        vgctx.require_builder().enter_group(self)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        _view_ctx_var.get().exit_group()
+        _viewgen_ctx_var.get().builder.exit_group()
 
     def add(self, child):
         """
@@ -708,7 +708,7 @@ def emit_toplevel_groups(groups: list[ArrangementGroup], solver: Solver):
     """
     Emits all top-level groups of a view into solver. Auto-anchored
     groups line up side by side, left to right in declaration order,
-    with routing space in between. Called by SchematicViewContext during
+    with routing space in between. Called by SchematicViewBuilder during
     postprocessing; call manually when using groups outside a viewgen.
     """
     origin = 0

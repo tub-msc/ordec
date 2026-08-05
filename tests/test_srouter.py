@@ -8,7 +8,7 @@ from ordec.core import *
 layers = ihp130.SG13G2().layers
 rs = ihp130.SG13G2().default_routing_spec
 
-@generate_func
+@viewgen_noctx
 def layout_basic():
     l = Layout(ref_layers=layers)
     s = Solver(l)
@@ -42,7 +42,7 @@ def test_basic():
     expected % LayoutRect(layer=layers.Metal3, rect=Rect4I(895, 895, 1105, 1105))
     assert compare(layout_basic(), expected) is None
 
-@generate_func
+@viewgen_noctx
 def layout_push_pop():
     """T-shaped route: go right, push, go up, pop, go down."""
     l = Layout(ref_layers=layers)
@@ -58,7 +58,7 @@ def layout_push_pop():
     s.solve()
     return l
 
-@generate_func
+@viewgen_noctx
 def layout_push_pop_layerchange():
     """T-shaped route: go right, push, go up, pop, change layer, go down."""
     l = Layout(ref_layers=layers)

@@ -6,7 +6,7 @@ from public import public
 
 from ..geoprim import *
 from ..ordb import *
-from ..context import AssignableViewContext
+from ..context import ViewBuilder
 from .base import coerce_tuple
 from .schematic import Schematic, Net, SchemInstance
 from .layout import Layout
@@ -50,7 +50,7 @@ class LvsItemType(Enum):
 @public
 class LvsReport(SubgraphRoot):
     """LVS report containing layout vs. schematic comparison results."""
-    view_context = AssignableViewContext
+    view_builder = ViewBuilder
     wire_id = WIRE_DOMAIN | 1
 
     ref_layout = SubgraphRef(Layout, optional=True)

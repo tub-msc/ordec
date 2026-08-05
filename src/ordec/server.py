@@ -90,7 +90,8 @@ from websockets.exceptions import ConnectionClosed, ConnectionClosedOK
 from . import importer, language
 from .hub import HubIntegration, HubAuthError
 from .version import version, doc_url
-from .core import Cell, generate, generate_func, SubgraphRoot
+from .core import Cell, SubgraphRoot
+from .core.cell import ViewGenerator
 from .core.wire import ExportTable
 from .language import compile_ord
 from .extlibrary import ExtLibrary
@@ -137,13 +138,13 @@ def discover_views(conn_globals, recursive=True, modules_visited=None):
             for subview in discover_views(v.__dict__, recursive=recursive, modules_visited=modules_visited):
                 subview['name'] = f"{k}.{subview['name']}"
                 views.append(subview)
-        elif isinstance(v, generate_func):
+        elif isinstance(v, ViewGenerator):
             views.append({'name': f"{k}()"} | v.info_dict())
         elif isinstance(v, type) and issubclass(v, Cell) and v!=Cell:
             generate_members = []
             for member_name in dir(v):
                 member = getattr(v, member_name)
-                if isinstance(member, generate):
+                if isinstance(member, ViewGenerator):
                     generate_members.append((member_name, member))
                     
             for instance in v.discoverable_instances():
@@ -152,7 +153,7 @@ def discover_views(conn_globals, recursive=True, modules_visited=None):
         elif isinstance(v, Cell):
             for member_name in dir(type(v)):
                 member = getattr(type(v), member_name)
-                if isinstance(member, generate):
+                if isinstance(member, ViewGenerator):
                     views.append({'name': f"{k}.{member_name}"} | member.info_dict())
         elif isinstance(v, SubgraphRoot):
             views.append({'name': k, 'auto_refresh': True})
@@ -178,7 +179,7 @@ def discover_views(conn_globals, recursive=True, modules_visited=None):
                     if cell_name not in fmap:
                         continue
                     member = getattr(type(cell), view_name, None)
-                    if isinstance(member, generate):
+                    if isinstance(member, ViewGenerator):
                         views.append({'name': f"{cell_expr}.{view_name}"} | member.info_dict())
 
     if "__ord_py_source__" in conn_globals:
