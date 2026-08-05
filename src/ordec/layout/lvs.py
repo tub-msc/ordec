@@ -28,7 +28,15 @@ def item_schem_name(item: LvsItem):
     return item.schem_name
 
 
-def webdata(report: LvsReport):
+def webdata(report: LvsReport, ept):
+    def wire_hash_hex(cursor):
+        # Wire hashes exist only relative to an endpoint's export table;
+        # this is why LvsReport overrides webdata() and has no
+        # endpoint-independent webdata_static().
+        if cursor is None:
+            return None
+        return cursor.subgraph.wire_hash(ept).hex()
+
     # KLayout emits circuit pairs in bottom-up topological order (every callee
     # precedes its callers); report.all() preserves that insertion order.
     # Reversing yields top-down order (top cell first, leaves last), which is
@@ -57,6 +65,11 @@ def webdata(report: LvsReport):
             # offers opening the layout/schematic of a circuit pair if so.
             'has_layout_ref': circuit.ref_layout is not None,
             'has_schem_ref': circuit.ref_schematic is not None,
+            # Wire hashes of the referenced subgraphs: highlight events use
+            # them to target viewers that show the same subgraph under a
+            # different view name (see hash-based dedup in web/src/main.js).
+            'layout_wire_hash': wire_hash_hex(circuit.ref_layout),
+            'schem_wire_hash': wire_hash_hex(circuit.ref_schematic),
             # Top-level circuit pair (refs the same layout/schematic as the
             # report itself). Item selections of subcircuit pairs must target
             # the pair's own views instead of the report-level ones.
@@ -88,4 +101,8 @@ def webdata(report: LvsReport):
         'circuits': circuits,
         'items': items,
         'unit': float(report.ref_layout.ref_layers.unit) if report.ref_layout else 1.0,
+        # Report-level wire hashes, used for top-pair item selections (their
+        # views are addressed relative to the report, not a circuit pair).
+        'layout_wire_hash': wire_hash_hex(report.ref_layout),
+        'schem_wire_hash': wire_hash_hex(report.ref_schematic),
     }

@@ -14,4 +14,5 @@ Developer's Corner
    ngspice_pipe_mode
    ordb_benchmarks
    ordb_benchmark_workloads
+   ordb_wire
    design_decisions

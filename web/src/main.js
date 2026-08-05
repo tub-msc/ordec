@@ -215,6 +215,26 @@ function findResultViewerByView(viewName) {
     return null;
 }
 
+function findResultViewerByWireHash(wireHash) {
+    for (const item of layout.root.getAllContentItems()) {
+        if (!item.isComponent || item.componentName !== 'result') continue;
+        if (item.component.wireHash === wireHash) {
+            return item;
+        }
+    }
+    return null;
+}
+
+function resolveExistingViewer(viewName, wireHash) {
+    // Name match first; otherwise match by subgraph wire hash: the same
+    // subgraph is often reachable under several names (e.g. X().layout vs
+    // X().lvs.ref_layout), and opening it twice should be avoided. The hash
+    // comes with the requesting view's data (e.g. layout_wire_hash in report
+    // webdata), so the lookup is purely local.
+    return findResultViewerByView(viewName)
+        || (wireHash ? findResultViewerByWireHash(wireHash) : null);
+}
+
 function getEditor() {
     let ret;
     layout.root.getAllContentItems().forEach(e => {
@@ -437,7 +457,7 @@ function openOrActivateView(data) {
     const view = data.view;
 
     if (view) {
-        const existing = findResultViewerByView(view);
+        const existing = resolveExistingViewer(view, data.wireHash);
         if (existing) {
             existing.focus();
             return;
@@ -491,14 +511,18 @@ viewEventBus.on('editor:goto-source', (data) => {
 });
 
 viewEventBus.on('lvs:request-open-views', (data) => {
-    const { layoutView, schemView, sourceContainer } = data;
+    const { layoutView, schemView, layoutWireHash, schemWireHash, sourceContainer } = data;
+
+    const layoutExisting = layoutView
+        ? resolveExistingViewer(layoutView, layoutWireHash) : null;
+    const schemExisting = schemView
+        ? resolveExistingViewer(schemView, schemWireHash) : null;
 
     const columnContent = [];
 
     if (layoutView) {
-        const existing = findResultViewerByView(layoutView);
-        if (existing) {
-            existing.focus();
+        if (layoutExisting) {
+            layoutExisting.focus();
         } else {
             columnContent.push({
                 type: 'component',
@@ -510,9 +534,8 @@ viewEventBus.on('lvs:request-open-views', (data) => {
     }
 
     if (schemView) {
-        const existing = findResultViewerByView(schemView);
-        if (existing) {
-            existing.focus();
+        if (schemExisting) {
+            schemExisting.focus();
         } else {
             columnContent.push({
                 type: 'component',

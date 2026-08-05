@@ -7,7 +7,15 @@ from ..core.schema import (
 )
 
 
-def webdata(report: DrcReport):
+def webdata(report: DrcReport, ept):
+    def wire_hash_hex(cursor):
+        # Wire hashes exist only relative to an endpoint's export table;
+        # this is why DrcReport overrides webdata() and has no
+        # endpoint-independent webdata_static().
+        if cursor is None:
+            return None
+        return cursor.subgraph.wire_hash(ept).hex()
+
     cells = []
     for cell in report.all(DrcCell):
         cells.append({
@@ -16,6 +24,10 @@ def webdata(report: DrcReport):
             'has_layout_ref': cell.ref_layout is not None,
             'is_top': cell.ref_layout is not None
                 and cell.ref_layout == report.ref_layout,
+            # Wire hash of the cell's layout: highlight events use it to
+            # target viewers that show the same subgraph under a different
+            # view name (see hash-based dedup in web/src/main.js).
+            'layout_wire_hash': wire_hash_hex(cell.ref_layout),
         })
 
     items_dict = {}
@@ -82,4 +94,7 @@ def webdata(report: DrcReport):
         'cells': cells,
         'items': list(items_dict.values()),
         'unit': float(report.ref_layout.ref_layers.unit),
+        # Report-level wire hash, used for top-cell item selections (their
+        # view is addressed relative to the report, not a DrcCell).
+        'layout_wire_hash': wire_hash_hex(report.ref_layout),
     }

@@ -207,8 +207,11 @@ export class LayoutGL {
 
         this._onDrcSelect = (data) => {
             // DRC selections target the view of the violation's cell; they
-            // only apply to the viewer showing exactly that view.
-            if (data && data.layoutView && data.layoutView !== this.viewName) {
+            // apply to viewers showing that view: matched by name, or by
+            // wire hash for a viewer showing the same subgraph under a
+            // different view name.
+            if (data && data.layoutView && data.layoutView !== this.viewName
+                    && !(data.layoutWireHash && data.layoutWireHash === this.wireHash)) {
                 return;
             }
             this.setHighlight(data.shapes);
@@ -219,8 +222,10 @@ export class LayoutGL {
 
         this._onLvsSelect = (data) => {
             // Selections targeted at a specific layout view (items of LVS
-            // subcircuit pairs) only apply to that view.
-            if (data && data.layoutView && data.layoutView !== this.viewName) {
+            // subcircuit pairs) apply to viewers showing that view, matched
+            // by name or by wire hash.
+            if (data && data.layoutView && data.layoutView !== this.viewName
+                    && !(data.layoutWireHash && data.layoutWireHash === this.wireHash)) {
                 return;
             }
             this.highlightPos(data.pos);
@@ -306,7 +311,8 @@ export class LayoutGL {
         if (this._pendingDrc) {
             const pendingDrc = this._pendingDrc;
             this._pendingDrc = null;
-            if (!pendingDrc.layoutView || pendingDrc.layoutView === this.viewName) {
+            if (!pendingDrc.layoutView || pendingDrc.layoutView === this.viewName
+                    || (pendingDrc.layoutWireHash && pendingDrc.layoutWireHash === this.wireHash)) {
                 // Zoom to the highlight instead of the full view below.
                 this._pendingHighlight = pendingDrc.shapes;
                 this.setHighlight(pendingDrc.shapes, false); // Don't zoom yet
@@ -316,7 +322,8 @@ export class LayoutGL {
         if (this._pendingLvs) {
             const pendingLvs = this._pendingLvs;
             this._pendingLvs = null;
-            if (!pendingLvs.layoutView || pendingLvs.layoutView === this.viewName) {
+            if (!pendingLvs.layoutView || pendingLvs.layoutView === this.viewName
+                    || (pendingLvs.layoutWireHash && pendingLvs.layoutWireHash === this.wireHash)) {
                 this.highlightPos(pendingLvs.pos, false);
             }
         }

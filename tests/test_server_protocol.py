@@ -41,6 +41,11 @@ def with_progress():
     for i in range(4):
         progress(f"phase {i}", i/4)
     return "progressed"
+
+@generate_func
+def sym():
+    from ordec.lib import Res
+    return Res(r=100).symbol
 '''
 
 @pytest.fixture(scope="module")
@@ -171,6 +176,21 @@ def test_cancel_infinite_loop(proto_server):
         assert 'type' in terminal
     finally:
         c2.close()
+
+def test_view_wire_hash(proto_server):
+    """Subgraph views carry a stable wire hash on the terminal message."""
+    url, key = proto_server
+    c = Client(url, key)
+    try:
+        c.getview('sym()', req=50)
+        _, terminal1 = c.recv_until_terminal(50)
+        c.getview('sym()', req=51)
+        _, terminal2 = c.recv_until_terminal(51)
+        assert len(terminal1['wire_hash']) == 64
+        int(terminal1['wire_hash'], 16)
+        assert terminal1['wire_hash'] == terminal2['wire_hash']
+    finally:
+        c.close()
 
 def test_cancel_unknown_req_ignored(proto_server):
     url, key = proto_server

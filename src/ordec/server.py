@@ -91,6 +91,7 @@ from . import importer, language
 from .hub import HubIntegration, HubAuthError
 from .version import version, doc_url
 from .core import Cell, generate, generate_func, SubgraphRoot
+from .core.wire import ExportTable
 from .language import compile_ord
 from .extlibrary import ExtLibrary
 from .jobrunner import ThreadedJobRunner
@@ -371,7 +372,7 @@ class ConnectionHandler:
         # In RWLock's logic, query_view is the resource reader and the initial
         # build_cells / build_localmodule phase is the resource writer. 
 
-    def query_view(self, view_name, conn_globals):
+    def query_view(self, view_name, conn_globals, ept):
         msg_ret = {
             'msg':'view',
             'view':view_name,
@@ -386,14 +387,20 @@ class ConnectionHandler:
                     report = Report()
                     report.pre(view)
                     view = report
-                viewtype, data = view.webdata()
+                viewtype, data = view.webdata(ept)
             msg_ret['type'] = viewtype
             msg_ret['data'] = data
+            if isinstance(view, SubgraphRoot):
+                # Best-effort: user-defined Node classes may lack a wire_id;
+                # a hashing failure must not break view delivery.
+                try:
+                    msg_ret['wire_hash'] = view.subgraph.wire_hash(ept).hex()
+                except Exception:
+                    pass
         except Exception as e:
             msg_ret['exception'] = format_user_exception(e)
 
         return msg_ret
-
 
     def build_cells(self, source_type: str, source_data: str,
             check_src: str=None) -> (dict, dict):
@@ -553,6 +560,12 @@ class ConnectionHandler:
                 except ConnectionClosed:
                     pass  # late progress/terminal after disconnect
 
+        # Per-connection export table: wire hashes are only ever compared
+        # client-locally, so their scope is the websocket connection, and
+        # the objects the table pins are released when the connection ends
+        # (see ordec.core.wire).
+        ept = ExportTable()
+
         # In-flight view-generation jobs of this connection: req id -> Job.
         # Entries are inserted as None before submit so that an on_done
         # firing during submit (InlineJobRunner) pops the key first and
@@ -581,7 +594,7 @@ class ConnectionHandler:
             with jobs_lock:
                 jobs[req] = None
             job = self.jobrunner.submit(
-                lambda: self.query_view(view_name, conn_globals),
+                lambda: self.query_view(view_name, conn_globals, ept),
                 on_progress=progress_sender(send_msg, req, view_name),
                 on_done=on_done)
             with jobs_lock:

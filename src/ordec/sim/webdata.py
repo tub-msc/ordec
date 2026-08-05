@@ -88,7 +88,7 @@ def _plot_signals(sh: SimHierarchy, x, xlabel):
             height=None,
             group=report.sim,
         )
-    return report.webdata()
+    return report.webdata_static()
 
 
 def webdata_tran(sh: SimHierarchy):
@@ -97,7 +97,7 @@ def webdata_tran(sh: SimHierarchy):
 
 def webdata_dcsweep(sh: SimHierarchy):
     if sh.sim_data is None or sh.sweep_field is None:
-        return Report(fill_height=True).webdata()
+        return Report(fill_height=True).webdata_static()
     return _plot_signals(sh, tuple(sh.sim_data.column(sh.sweep_field)), sh.sweep_field)
 
 
@@ -107,7 +107,7 @@ def webdata_ac(sh: SimHierarchy):
     report = Report(fill_height=True)
     if signals:
         bode_plot(report, *signals, height=None)
-    return report.webdata()
+    return report.webdata_static()
 
 
 def webdata_op(sh: SimHierarchy):
@@ -171,13 +171,13 @@ def webdata_op(sh: SimHierarchy):
             rows.append(f"| {inst_path} | {cells_str} |")
         report.markdown("\n".join(rows))
 
-    return report.webdata()
+    return report.webdata_static()
 
 
 def webdata_nosim(sh: SimHierarchy):
     report = Report()
     report.markdown("No simulation was run.")
-    return report.webdata()
+    return report.webdata_static()
 
 
 @public

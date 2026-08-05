@@ -9,6 +9,8 @@ from public import public
 from ..ordb import *
 from ..context import ReportViewContext
 
+WIRE_DOMAIN = 8 << 16
+
 @public
 class Report(SubgraphRoot):
     """
@@ -18,6 +20,7 @@ class Report(SubgraphRoot):
     append-style API for building reports programmatically.
     """
     view_context = ReportViewContext
+    wire_id = WIRE_DOMAIN | 1
 
     fill_height = Attr(bool, default=False, optional=False)
 
@@ -70,7 +73,7 @@ class Report(SubgraphRoot):
         from ...sim.helpers import bode_plot
         bode_plot(self, *signals, **kwargs)
 
-    def webdata(self):
+    def webdata_static(self):
         return "report", {
             "elements": [element.element_webdata() for element in self.elements()],
             "fill_height": self.fill_height,
@@ -98,6 +101,7 @@ class Markdown(ReportElement):
     TeX math delimited by $...$ (inline) or $$...$$ (display) is rendered
     via KaTeX; dollar signs inside code spans are left alone.
     """
+    wire_id = WIRE_DOMAIN | 2
     markdown = Attr(str, optional=False)
 
     # TeX math spans are protected from markdown2 (which would otherwise
@@ -155,6 +159,7 @@ class Markdown(ReportElement):
 @public
 class PreformattedText(ReportElement):
     """Preformatted text rendered using a monospace font."""
+    wire_id = WIRE_DOMAIN | 3
     text = Attr(str, optional=False)
 
     def element_webdata(self) -> dict:
@@ -164,6 +169,7 @@ class PreformattedText(ReportElement):
 @public
 class Html(ReportElement):
     """Raw HTML content rendered directly in the web interface."""
+    wire_id = WIRE_DOMAIN | 4
     html = Attr(str, optional=False)
 
     def element_webdata(self) -> dict:
@@ -176,6 +182,7 @@ class PassFail(ReportElement):
     Single pass/fail check result, e.g. for course lessons. A lesson is
     considered passed when all PassFail elements of its report pass.
     """
+    wire_id = WIRE_DOMAIN | 5
     label = Attr(str, optional=False) #: short name of the check
     passed = Attr(bool, optional=False)
     instructions = Attr(str, default="", optional=False) #: what the user should achieve / status details; failing checks only
@@ -196,6 +203,7 @@ class PassFail(ReportElement):
 @public
 class Svg(ReportElement):
     """Static SVG element rendered without zoom."""
+    wire_id = WIRE_DOMAIN | 6
     inner = Attr(str, optional=False) #: SVG markup inside the <svg> element
     viewbox_min_x = Attr(float, optional=False) #: viewBox left edge
     viewbox_min_y = Attr(float, optional=False) #: viewBox top edge
@@ -206,8 +214,8 @@ class Svg(ReportElement):
 
     @classmethod
     def from_view(cls, view) -> "Svg":
-        """Creates an SVG report element from an object exposing webdata()."""
-        view_type, data = view.webdata()
+        """Creates an SVG report element from an object exposing webdata_static()."""
+        view_type, data = view.webdata_static()
         if view_type != "svg":
             raise ValueError(f"Expected svg webdata, got {view_type!r}")
         vb = data["viewbox"]
@@ -257,10 +265,12 @@ def coerce_plot_x(x):
 class PlotGroup(Node):
     """Groups Plot2D elements that share a synchronized x-axis."""
     in_subgraphs = [Report]
+    wire_id = WIRE_DOMAIN | 7
 
 @public
 class Plot2D(ReportElement):
     """2D plot element rendered with the frontend simulation plot component."""
+    wire_id = WIRE_DOMAIN | 8
     x = Attr(tuple, optional=False, factory=coerce_plot_x)
     xlabel = Attr(str, default="", optional=False)
     ylabel = Attr(str, default="", optional=False)
@@ -295,6 +305,7 @@ def coerce_plot_values(values):
 class Plot2DSeries(Node):
     """A single data series belonging to a Plot2D element."""
     in_subgraphs = [Report]
+    wire_id = WIRE_DOMAIN | 9
     ref = LocalRef(Plot2D, optional=False)
     ref_idx = Index(ref)
     name = Attr(str, optional=False)

@@ -129,6 +129,8 @@ class MixinClosedPolygon:
         d.append("Z")
         return ' '.join(d)
 
+WIRE_DOMAIN = 2 << 16
+
 class GenericPoly(Node):
     # Concrete subclasses declare their own in_subgraphs.
     in_subgraphs = []
@@ -188,6 +190,7 @@ class GenericPolyI(GenericPoly):
 class PolyVec2R(Node):
     """One vertex of a Vec2R polygonal chain or polygon."""
     in_subgraphs = [] # Consuming schema modules append their subgraph roots.
+    wire_id = WIRE_DOMAIN | 1
     ref    = LocalRef(GenericPolyR, optional=False)
     order   = Attr(int, optional=False) #: Order of the point in the polygonal chain
     pos     = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
@@ -199,6 +202,7 @@ class PolyVec2R(Node):
 class PolyVec2I(Node):
     """One vertex of a Vec2I polygonal chain or polygon."""
     in_subgraphs = [] # Consuming schema modules append their subgraph roots.
+    wire_id = WIRE_DOMAIN | 2
     ref    = LocalRef(GenericPolyI, optional=False)
     order   = Attr(int, optional=False) #: Order of the point in the polygonal chain
     pos     = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
