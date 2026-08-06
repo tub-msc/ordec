@@ -190,11 +190,25 @@ class Parameter:
             type should be immutable and hashable.
         optional: Indicate whether None is a valid parameter value.
         default: Default value of the parameter.
+        factory: Function applied to the value at instantiation, before type
+            checking, in place of the built-in coercion. Use it to
+            canonicalize values so that equal parameters always compare and
+            hash equal, e.g. PWL waveform tuples to (R, R) pairs (see
+            lib.base.PwlMixin.pwl_waveform).
+        value_repr: Function returning the repr form of a value for
+            :meth:`Cell.__repr__`, in place of the built-in formatting.
+            The returned expression must coerce back to the value at
+            instantiation, so a parameter with a factory whose canonical
+            values do not repr evaluably on their own pairs it with a
+            value_repr (see lib.base.PwlMixin.pwl_waveform_repr).
     """
-    def __init__(self, t: type, optional: bool = False, default=None):
+    def __init__(self, t: type, optional: bool = False, default=None,
+            factory=None, value_repr=None):
         self.type = t
         self.optional = optional
         self.default = default
+        self.factory = factory
+        self.custom_value_repr = value_repr
         self.name = None
         # Prevent the docstring of Parameter to be shown for every individual
         # Parameter instance in a Cell subclass.
@@ -212,7 +226,22 @@ class Parameter:
     def __delete__(self, obj):
         raise TypeError("Parameter cannot be deleted.")
 
+    def value_repr(self, value) -> str:
+        """
+        Repr form of a parameter value for :meth:`Cell.__repr__`. By default,
+        R('1k') is abbreviated to '1k', which is fine due to the coercion
+        str -> R in :meth:`coerce_type`.
+        """
+        if self.custom_value_repr is not None:
+            return self.custom_value_repr(value)
+        if isinstance(value, R):
+            return repr(str(value))
+        return repr(value)
+
     def coerce_type(self, value):
+        if self.factory is not None:
+            # None is passed through so check() can handle optional/mandatory.
+            return None if value is None else self.factory(value)
         coerce_between_types = (R, float, int)
         if self.type in coerce_between_types and isinstance(value, coerce_between_types):
             return self.type(value)
@@ -412,8 +441,8 @@ class Cell(metaclass=MetaCell):
     def params_list(self, use_repr=False) -> list[str]:
         param_items = [(k, getattr(self, k)) for k in self._class_params if getattr(self, k) is not None]
         if use_repr:
-            # Abbreviate x=R('1k') to x='1k', which is fine due to the coercion str -> R in Parameter.coerce_type
-            return [f"{k}={str(v)!r}" if isinstance(v, R) else f"{k}={v!r}" for k, v in param_items]
+            return [f"{k}={self._class_params[k].value_repr(v)}"
+                for k, v in param_items]
         else:
             return [f"{k}={v}" for k, v in param_items]
 
@@ -451,6 +480,14 @@ class Cell(metaclass=MetaCell):
         (e.g. mandatory parameters), no instances are discoverable. In this
         case, a Cell subclass could override this method and return a list
         of one or multiple of its instances created from valid parameters.
+
+        The web UI uses each instance's repr as the view name and resolves
+        a selected view by evaluating that name in the user's namespace
+        (see server.py). The repr must therefore be a valid expression
+        referencing nothing but the Cell class itself, and evaluating it
+        must yield the instance again. This holds automatically as long as
+        parameter values coerce back from their repr form (see
+        :meth:`Parameter.value_repr` and the factory argument).
         """
         if cls.__abstractmethods__:
             return []
