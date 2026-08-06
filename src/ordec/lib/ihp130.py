@@ -594,7 +594,11 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
 
     vias_rect = makevias(l, l.activ.rect, layers.Cont,
         size=Vec2I(160, 160),
-        spacing=Vec2I(180, 180),
+        # Cnt.b1 requires 200 nm spacing once a contact array exceeds 4 rows
+        # AND 4 columns, which a square tap does from 1.8 um up. Cnt.b (180)
+        # is enough for smaller arrays, but this is a 2-D array whose size the
+        # caller chooses, so it is laid out to the stricter rule throughout.
+        spacing=Vec2I(200, 200),
         margin=Vec2I(70, 70),
         )
     # Shrink M1 to via stack, with 50 nm extension north and south:

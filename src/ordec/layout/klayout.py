@@ -177,8 +177,14 @@ def insert_drc_value(report: DrcReport, item, order: int, value_str: str, conv):
     elif kind == 'polygon':
         rings = payload
         if len(rings) > 1:
-            raise NotImplementedError(
-                f"DRC polygon with holes is not supported: {value_str!r}")
+            # The DRC schema stores a single ring, and representing holes
+            # properly would need a schema change. Approximating by the outer
+            # ring loses the holes but keeps the violation -- and keeps every
+            # other violation in the same report, which raising here destroyed.
+            # Contact-array rules such as Cnt.b1 report exactly this shape.
+            warnings.warn(
+                f"DRC polygon with {len(rings) - 1} hole(s) approximated by "
+                f"its outer ring")
         poly = report % DrcPoly(item=item, order=order, tag=tag)
         for i, p in enumerate(rings[0]):
             report % PolyVec2I(ref=poly, order=i, pos=pt(p))
@@ -295,7 +301,18 @@ def parse_rdb(filename, report: DrcReport, directory: Directory = None):
                 value_str = value_elem.text
                 if value_str is None:
                     continue
-                insert_drc_value(report, item, order, value_str, conv)
+                try:
+                    insert_drc_value(report, item, order, value_str, conv)
+                except (NotImplementedError, ValueError) as e:
+                    # One unrepresentable shape must not discard the whole
+                    # report. The item itself is already recorded with its
+                    # rule and cell, so the violation is still counted and
+                    # named -- only its geometry is missing.
+                    warnings.warn(
+                        f"{cat_text} in {cell_name}: dropping unsupported "
+                        f"DRC shape ({e.__class__.__name__}: "
+                        f"{str(e).split(':')[0]})")
+                    continue
                 order += 1
 
 
