@@ -313,10 +313,44 @@ class Idc(AcStimulusMixin, SimLeafCell):
     def discoverable_instances(cls):
         return [cls('1u')]
 
+class PwlMixin(Cell):
+    """
+    Mixin for piecewise linear (SPICE PWL) sources, providing the pwl
+    Parameter. Unlike the plain AcStimulusMixin, this mixin subclasses
+    Cell, because _class_params only collects Parameters from Cell-family
+    bases. The inherited pwl thereby comes first in positional parameter
+    order, which is intended: the waveform is the principal parameter of
+    a PWL source.
+    """
+    @staticmethod
+    def pwl_waveform(points) -> tuple:
+        """
+        Canonicalize a PWL waveform to a tuple of (R, R) pairs, so that
+        equal waveforms always yield the same Cell instance regardless of
+        how their values were spelled.
+        """
+        return tuple((R(t), R(v)) for t, v in points)
+
+    @staticmethod
+    def pwl_waveform_repr(points) -> str:
+        """
+        Repr form of a canonical PWL waveform, abbreviating the R values
+        to their compat strings, which pwl_waveform coerces back at
+        instantiation.
+        """
+        inner = ", ".join(f"({str(t)!r}, {str(v)!r})" for t, v in points)
+        return f"({inner},)" if len(points) == 1 else f"({inner})"
+
+    pwl = Parameter(tuple, factory=pwl_waveform, value_repr=pwl_waveform_repr) #: Tuple of (time, value) tuples defining the waveform.
+
+    def ngspice_pwl_spec(self) -> str:
+        """The PWL(...) netlist fragment from the canonical waveform."""
+        args = " ".join(x.compat_str() for point in self.pwl for x in point)
+        return f"PWL({args})"
+
 @public
-class Vpwl(AcStimulusMixin, SimLeafCell):
+class Vpwl(AcStimulusMixin, PwlMixin, SimLeafCell):
     """Piecewise linear voltage source (SPICE PWL)."""
-    V = Parameter(tuple) #: Tuple of (time, voltage) tuples defining the waveform.
     ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
     ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
@@ -353,18 +387,11 @@ class Vpwl(AcStimulusMixin, SimLeafCell):
     def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.n]
 
-        V_list = self.V
-        # Coerce values to Rational
-        V_rational = [(R(t), R(v)) for t, v in V_list]
-
-        # Flatten pairs
-        pwl_args = " ".join([f"{v.compat_str()}" for t, v_val in V_rational for v in (t, v_val)])
-
         netlister.add(
             netlister.name_obj(inst, prefix="v"),
             netlister.portmap(inst, pins),
             self.ngspice_ac_spec(),
-            f'PWL({pwl_args})'
+            self.ngspice_pwl_spec()
         )
 
 @public
@@ -482,9 +509,8 @@ class Vsin(AcStimulusMixin, SimLeafCell):
         )
 
 @public
-class Ipwl(AcStimulusMixin, SimLeafCell):
+class Ipwl(AcStimulusMixin, PwlMixin, SimLeafCell):
     """Piecewise linear current source (SPICE PWL)."""
-    I = Parameter(tuple) #: Tuple of (time, current) tuples defining the waveform.
     ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
     ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
@@ -528,18 +554,11 @@ class Ipwl(AcStimulusMixin, SimLeafCell):
     def ngspice_netlist(self, netlister, inst):
         pins = [inst.symbol.p, inst.symbol.n]
 
-        I_list = self.I
-        # Coerce values to Rational
-        I_rational = [(R(t), R(v)) for t, v in I_list]
-
-        # Flatten pairs
-        pwl_values = " ".join([f"{val.compat_str()}" for t, v_val in I_rational for val in (t, v_val)])
-
         netlister.add(
             netlister.name_obj(inst, prefix="i"),
             netlister.portmap(inst, pins),
             self.ngspice_ac_spec(),
-            f'PWL({pwl_values})'
+            self.ngspice_pwl_spec()
         )
 
 @public

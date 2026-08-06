@@ -843,13 +843,13 @@ cell VcoTb:
             .n -- vss
             .p -- vbias
             .pos = (5, 10)
-            .$V = ((0, 1.2), (1n, 1.2), (30n, 0))
+            .$pwl = ((0, 1.2), (1n, 1.2), (30n, 0))
 
         Vpwl rst_n_src:
             .n -- vss
             .p -- rst_n
             .pos = (10, 10)
-            .$V = ((0, 0), (1n, 0), (1.1n, 1.2))
+            .$pwl = ((0, 0), (1n, 0), (1.1n, 1.2))
 
     viewgen sim_tran -> Simulation:
         """Run sync transient simulation."""

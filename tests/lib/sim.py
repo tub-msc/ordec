@@ -594,13 +594,13 @@ class SourceTb(Cell):
 
 class VpwlTb(SourceTb):
     def add_source_instance(self, s: Schematic):
-        vsrc = Vpwl(V=self.demo_pwl_points).symbol
+        vsrc = Vpwl(pwl=self.demo_pwl_points).symbol
         s.vsrc = SchemInstance(vsrc.portmap(n=s.vss, p=s.out), pos=Vec2R(0, 5))
 
 
 class IpwlTb(SourceTb):
     def add_source_instance(self, s: Schematic):
-        isrc = Ipwl(I=self.demo_pwl_points).symbol
+        isrc = Ipwl(pwl=self.demo_pwl_points).symbol
         # Source oriented so positive Ipwl values produce positive resistor current.
         s.isrc = SchemInstance(isrc.portmap(p=s.vss, n=s.out), pos=Vec2R(0, 5))
 
