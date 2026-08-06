@@ -247,3 +247,25 @@ def test_generate_func_rejected_in_cell_class():
 
     with pytest.raises(TypeError, match="function-form view generators"):
         OtherCell.stray_view = stray
+
+def test_discoverable_instances_repr_roundtrip():
+    # The web UI uses the repr of a discoverable instance as view name and
+    # resolves a selected view by evaluating it in the user's namespace
+    # (see server.py). For every discoverable instance of the shipped
+    # libraries, the repr must therefore eval to the very same instance
+    # with only the cell class name in scope.
+    from ordec.lib import base, generic_mos, ihp130, sky130
+
+    def all_subclasses(cls):
+        for sub in cls.__subclasses__():
+            yield sub
+            yield from all_subclasses(sub)
+
+    checked = 0
+    for cls in set(all_subclasses(Cell)):
+        if cls.__abstractmethods__:
+            continue
+        for inst in cls.discoverable_instances():
+            assert eval(repr(inst), {cls.__name__: cls}) is inst
+            checked += 1
+    assert checked > 10  # the lib imports above must have been discovered

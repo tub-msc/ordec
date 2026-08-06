@@ -10,13 +10,41 @@
  *   "mylib.VoltageDivider().sch" --> ["mylib", ".VoltageDivider", "()", ".sch"]
  *   "mylib['CellName'].layout"   --> ["mylib", "['CellName']", ".layout"]
  *   "__ord_py_source__"          --> ["__ord_py_source__"]
+ *
+ * A bracket group is one segment including any nested brackets, so
+ * parametrized instance names like "Ipwl(I=((0, 0), ('1u', '1m'))).symbol"
+ * keep their whole parameter list in a single "(...)" segment.
  */
 function splitViewName(name) {
-    // Split before ".", "(" and "[".
-    // Each segment is either a bracket group or a dot-prefixed/plain run
-    // of characters up to the next delimiter.
-    const segments = name.match(/^[^.(\[]+|\([^)]*\)|\[[^\]]*\]|\.[^.(\[]*/g);
-    return segments || [name];
+    const segments = [];
+    let i = 0;
+    while (i < name.length) {
+        let j;
+        if (name[i] === '(' || name[i] === '[') {
+            // Bracket group: consume up to the matching close bracket
+            // (or the end of the name, if unbalanced).
+            const open = name[i];
+            const close = open === '(' ? ')' : ']';
+            let depth = 0;
+            for (j = i; j < name.length; j++) {
+                if (name[j] === open) {
+                    depth++;
+                } else if (name[j] === close && --depth === 0) {
+                    j++;
+                    break;
+                }
+            }
+        } else {
+            // Dot-prefixed or plain run up to the next delimiter.
+            j = i + 1;
+            while (j < name.length && !'.(['.includes(name[j])) {
+                j++;
+            }
+        }
+        segments.push(name.slice(i, j));
+        i = j;
+    }
+    return segments.length ? segments : [name];
 }
 
 /**

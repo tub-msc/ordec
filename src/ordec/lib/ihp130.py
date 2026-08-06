@@ -438,6 +438,10 @@ class Nmos(Mos):
             raise ParameterError("m != 1 not supported for layout.")
         return layoutgen_mos(self, self.l, self.w, self.ng, nwell=False)
 
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("1u"), l=R("130n"))]
+
 @public
 class Pmos(Mos):
     model_name = "sg13_lv_pmos"
@@ -449,6 +453,10 @@ class Pmos(Mos):
         if self.m != 1:
             raise ParameterError("m != 1 not supported for layout.")
         return layoutgen_mos(self, self.l, self.w, self.ng, nwell=True)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("1u"), l=R("130n"))]
 
 def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     layers = SG13G2().layers
@@ -502,6 +510,10 @@ class Ntap(Cell):
     def layout(self) -> Layout:
         return layoutgen_tap(self, self.l, self.w, nwell=True)
 
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(l=R("0.7u"), w=R("0.7u"))]
+
 @public
 class Ptap(Cell):
     l = Parameter(R)  #: Length
@@ -510,6 +522,10 @@ class Ptap(Cell):
     @generate
     def layout(self) -> Layout:
         return layoutgen_tap(self, self.l, self.w, nwell=False)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(l=R("0.7u"), w=R("0.7u"))]
 
 
 def _layoutgen_resistor(

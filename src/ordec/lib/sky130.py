@@ -122,11 +122,19 @@ class Nmos(Mos):
     # generic_mos.Nmos would also drag in its defaulted l/w parameters).
     symbol = generic_mos.Nmos.symbol
 
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("1u"), l=R("150n"))]
+
 @public
 class Pmos(Mos):
     model_name = "sky130_fd_pr__pfet_01v8"
 
     symbol = generic_mos.Pmos.symbol
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("1u"), l=R("150n"))]
 
 @public
 class Inv(Cell):

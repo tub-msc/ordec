@@ -394,6 +394,10 @@ class Vpwl(AcStimulusMixin, PwlMixin, SimLeafCell):
             self.ngspice_pwl_spec()
         )
 
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(pwl=((0, 0), ("1u", 1)))]
+
 @public
 class Vpulse(AcStimulusMixin, SimLeafCell):
     """Pulse voltage source (SPICE PULSE)."""
@@ -455,6 +459,10 @@ class Vpulse(AcStimulusMixin, SimLeafCell):
             tran_spec
         )
 
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(pulsed_value=1)]
+
 @public
 class Vsin(AcStimulusMixin, SimLeafCell):
     """Sinusoidal voltage source (SPICE SIN)."""
@@ -508,6 +516,10 @@ class Vsin(AcStimulusMixin, SimLeafCell):
             tran_spec
         )
 
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(amplitude=1, freq="1k")]
+
 @public
 class Ipwl(AcStimulusMixin, PwlMixin, SimLeafCell):
     """Piecewise linear current source (SPICE PWL)."""
@@ -560,6 +572,10 @@ class Ipwl(AcStimulusMixin, PwlMixin, SimLeafCell):
             self.ngspice_ac_spec(),
             self.ngspice_pwl_spec()
         )
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(pwl=((0, 0), ("1u", "1m")))]
 
 @public
 class Ipulse(AcStimulusMixin, SimLeafCell):
@@ -630,6 +646,10 @@ class Ipulse(AcStimulusMixin, SimLeafCell):
             tran_spec
         )
 
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(pulsed_value="1m")]
+
 @public
 class Isin(AcStimulusMixin, SimLeafCell):
     """Sinusoidal current source (SPICE SIN)."""
@@ -692,3 +712,7 @@ class Isin(AcStimulusMixin, SimLeafCell):
             self.ngspice_ac_spec(),
             tran_spec
         )
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(amplitude="1m", freq="1k")]
