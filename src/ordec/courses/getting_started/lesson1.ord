@@ -8,3 +8,10 @@ cell Welcome:
         Gnd gnd: .p -- vss; .pos=(0,0)
         Vdc vsrc: .$dc=5; .n -- vss; .p -- vdd; .pos=(0,6)
         Res r1: .$r=1k; .n -- vss; .p -- vdd; .pos=(5,6)
+
+    viewgen about -> Report:
+        .markdown("""
+            Welcome aboard! This panel shows the `about` view of the
+            `Welcome` cell. A cell can have several views, such as the
+            schematic next to this panel or this report.
+        """)

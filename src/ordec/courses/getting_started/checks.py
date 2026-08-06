@@ -62,8 +62,9 @@ def gen_lesson2(g):
             separate result viewers:**
 
             1. Click *New Result View* in the toolbar at the top.
-            2. In the new panel, pick `HelloWorld().schematic` from the
-               view list.
+            2. In the new panel, pick the cell `HelloWorld()` in the
+               first dropdown, then the view `.schematic` in the second
+               dropdown that appears.
             3. Repeat both steps for `HelloWorld().hello`.
             4. Explore how you can rearrange the result viewers using
                drag and drop!

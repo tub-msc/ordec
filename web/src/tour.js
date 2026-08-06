@@ -16,6 +16,12 @@ export function startCourseTour(controller, onDone) {
         const rv = controller.deps.getResultViewers().find(v => !v.courseMode);
         return rv ? rv.container.element.closest('.lm_stack') : null;
     };
+    // The n-th dropdown of that viewer's hierarchical view selector.
+    const resViewerSelect = (n) => {
+        const rv = controller.deps.getResultViewers().find(v => !v.courseMode);
+        return rv?.container.element
+            .querySelectorAll('.resviewhead .viewsel')[n] || null;
+    };
     const spotlight = new Spotlight([
         {
             target: () => controller.courseViewer?.container.element
@@ -33,6 +39,16 @@ export function startCourseTour(controller, onDone) {
             target: resViewerStack,
             title: 'Result viewer',
             text: 'This panel shows one view of the design. In this case it is the schematic of the welcome circuit. Result viewers can be dragged around and arranged in different configurations, including on top of each other as tabs.',
+        },
+        {
+            target: () => resViewerSelect(0),
+            title: 'View selector',
+            text: 'The dropdowns at the top of a result viewer choose which view it shows. The first dropdown selects a cell of the design, here the "Welcome()" cell.',
+        },
+        {
+            target: () => resViewerSelect(1),
+            title: 'View selector (continued)',
+            text: 'The second dropdown then selects one of the views of that cell, here its schematic. A cell can have several views: schematics, reports, and later also symbols and layouts.',
         },
         {
             target: () => resViewerStack()?.querySelector('.lm_controls .lm_maximise'),
