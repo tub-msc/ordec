@@ -12,7 +12,7 @@ maintainers = [
 ]
 description = "ORDeC"
 readme = "README.md"
-requires-python = ">=3.6"
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
 ]
