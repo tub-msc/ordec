@@ -314,6 +314,55 @@ def test_parse_polygon():
     assert len(vertices) == 4
 
 
+def test_parse_polygon_with_holes_keeps_the_outer_ring_and_the_report():
+    """A polygon with holes (rings separated by '/') is reduced to its outer
+    ring with a warning and the other items of the report survive."""
+    layout = drc_test_layout()
+    rdb_content = dedent('''\
+        <?xml version="1.0" encoding="utf-8"?>
+        <report-database>
+          <top-cell>top</top-cell>
+          <categories>
+            <category>
+              <name>Cnt.b1</name>
+              <description></description>
+            </category>
+            <category>
+              <name>M1.a</name>
+              <description></description>
+            </category>
+          </categories>
+          <cells></cells>
+          <items>
+            <item>
+              <category>'Cnt.b1'</category>
+              <cell>top</cell>
+              <values>
+                <value>polygon: (0,0;1,0;1,1;0,1/0.4,0.4;0.6,0.4;0.6,0.6;0.4,0.6)</value>
+              </values>
+            </item>
+            <item>
+              <category>'M1.a'</category>
+              <cell>top</cell>
+              <values>
+                <value>box: (2,2;2.1,2.1)</value>
+              </values>
+            </item>
+          </items>
+        </report-database>
+        ''')
+    report = DrcReport(ref_layout=layout, top_cell_name='top')
+    with pytest.warns(UserWarning, match="1 hole"):
+        parse_rdb_str(rdb_content, report)
+    assert report.summary() == {'Cnt.b1': 1, 'M1.a': 1}
+    items = list(report.all(DrcItem))
+    polys = [p for it in items for p in report.all(DrcPoly.item_idx.query(it))]
+    assert len(polys) == 1
+    vertices = polys[0].vertices()
+    assert len(vertices) == 4
+    assert max(v.x for v in vertices) == 1000
+
+
 # Hierarchical RDB parsing
 # ------------------------
 

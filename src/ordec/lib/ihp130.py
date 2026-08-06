@@ -592,10 +592,19 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     # solved geometry; defer the undefined-attribute check until then.
     s.solve(allow_undefined=True)
 
+    # Contact array replicating the PDK tap PCells (DrawContArray).
+    cont_size = _tech_nm("Cnt_a")
+    cont_margin = _tech_nm("Cnt_c")
+    spacing = _tech_nm("Cnt_b")
+    cols = (L - 2*cont_margin + spacing) // (cont_size + spacing)
+    rows = (W - 2*cont_margin + spacing) // (cont_size + spacing)
+    if min(cols, rows) >= tech_params()["Cnt_b1_nr"]:
+        spacing = _tech_nm("Cnt_b1")
+
     vias_rect = makevias(l, l.activ.rect, layers.Cont,
-        size=Vec2I(160, 160),
-        spacing=Vec2I(180, 180),
-        margin=Vec2I(70, 70),
+        size=Vec2I(cont_size, cont_size),
+        spacing=Vec2I(spacing, spacing),
+        margin=Vec2I(cont_margin, cont_margin),
         )
     # Shrink M1 to via stack, with 50 nm extension north and south:
     l.m1.rect = (vias_rect.lx, vias_rect.ly - 50, vias_rect.ux, vias_rect.uy + 50)

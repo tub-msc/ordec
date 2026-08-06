@@ -177,8 +177,12 @@ def insert_drc_value(report: DrcReport, item, order: int, value_str: str, conv):
     elif kind == 'polygon':
         rings = payload
         if len(rings) > 1:
-            raise NotImplementedError(
-                f"DRC polygon with holes is not supported: {value_str!r}")
+            # The DRC schema supports no holes, so drop them and keep the
+            # outer ring. Contact-array rules such as ihp130's Cnt.b1 report
+            # this shape.
+            warnings.warn(
+                f"DRC polygon with {len(rings) - 1} hole(s) approximated by "
+                f"its outer ring")
         poly = report % DrcPoly(item=item, order=order, tag=tag)
         for i, p in enumerate(rings[0]):
             report % PolyVec2I(ref=poly, order=i, pos=pt(p))
