@@ -246,6 +246,9 @@ function getEditor() {
 }
 
 document.querySelector("#newresview").onclick = () => {
+    // The new viewer pops open the first dropdown of its view selector
+    // (see updateViewList), riding on this click's user activation.
+    ResultViewer.autoOpenPending = true;
     // In course mode, never open the new view as a tab on top of the Course
     // panel or the source editor (GoldenLayout's default placement picks the
     // first stack, which is the Course panel's): stack it onto an existing

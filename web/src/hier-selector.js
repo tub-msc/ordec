@@ -276,11 +276,46 @@ export class HierSelector {
                 this.onSelect(this._selectedView);
             } else {
                 this.onDeselect();
+                this._guideToNextSelect();
             }
         } else {
             // Leaf: fire selection
             this._selectedView = child.viewName;
             this.onSelect(child.viewName);
+        }
+    }
+
+    // Pop open the deepest still-unselected dropdown to guide the user
+    // onward. showPicker() requires transient user activation, which
+    // Chromium grants inside the change event of the previous dropdown
+    // but Firefox does not (the option click happens in the native popup
+    // widget, not on the page); there the dropdown is only focused, so
+    // Enter/Alt+Down opens it. The attempt is deferred a frame so it
+    // cannot race with the closing popup of the previous dropdown.
+    _guideToNextSelect() {
+        this._openSelect(this.selects[this.selects.length - 1]);
+    }
+
+    // Pop open the first dropdown, e.g. right after the result viewer was
+    // created via the toolbar button, whose click provides the user
+    // activation that showPicker() needs (in every browser, here).
+    openFirst() {
+        this._openSelect(this.selects[0]);
+    }
+
+    _openSelect(select) {
+        if (!select || select.value) {
+            return;
+        }
+        select.focus();
+        if (select.showPicker) {
+            requestAnimationFrame(() => {
+                try {
+                    select.showPicker();
+                } catch (e) {
+                    // no transient user activation: focus alone must do
+                }
+            });
         }
     }
 }

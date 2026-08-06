@@ -1229,6 +1229,11 @@ const viewClassOf = {
 export class ResultViewer {
     static refreshAll = false;
     static useHierSelector = true;
+    // One-shot flag set by the "New Result View" toolbar button (main.js):
+    // the next freshly registered viewer pops open the first dropdown of
+    // its view selector, riding on the button click's user activation.
+    // Never set during layout restore, where auto-opening would be wrong.
+    static autoOpenPending = false;
 
     constructor(container, state) {
         this.container = container;
@@ -1539,6 +1544,15 @@ export class ResultViewer {
         if (this._useHier) {
             this.hierSelector.update(viewNames, prevSelected);
             this.viewSelected = this.hierSelector.selectedView;
+            // Consume the one-shot auto-open on the first list update of a
+            // freshly created, still-unselected viewer (viewListInitialized
+            // discriminates it from older viewers left unselected, which
+            // are also updated by the same stateChanged event).
+            if (ResultViewer.autoOpenPending && !this.viewListInitialized
+                    && !this.viewSelected) {
+                ResultViewer.autoOpenPending = false;
+                this.hierSelector.openFirst();
+            }
         } else {
             let vs = this.viewSelector;
             vs.innerHTML = "<option disabled selected value>--- Select result from list ---</option>";
