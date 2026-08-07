@@ -87,13 +87,14 @@ Schematics
    :members:
    :undoc-members:
 
-.. note::
+Unresolved instances during construction
+----------------------------------------
 
-   During view construction, an instance created from a Cell class
-   (``MyCell x:`` in ORD) may not have its ``symbol``/``ref`` resolved yet.
-   The deferred state (cell, parameters, unresolved pin connections) is managed
-   by the view context, not by schema nodes; it is resolved at the latest
-   when the view context exits.
+During view construction, an instance created from a Cell class
+(``MyCell x:`` in ORD) may not have its ``symbol`` (:class:`SchemInstance`)
+or ``ref`` (:class:`LayoutInstance`) resolved yet. The deferred state (cell,
+parameters, unresolved pin connections) is managed by the view context, not
+by schema nodes; it is resolved at the latest when the view context exits.
 
 Simulation hierarchy
 --------------------

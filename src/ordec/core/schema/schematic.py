@@ -13,10 +13,11 @@ from ..cell import Cell
 from ..constraints import *
 from ..context import (
     SymbolViewContext, SchematicViewContext, InstanceParams,
-    unresolved_instance_ctx,
+    InstanceResolutionError, unresolved_instance_ctx,
 )
 from .base import (
-    coerce_tuple, SourceLocInfo, MixinPolygonalChain, GenericPolyR, PolyVec2R,
+    coerce_tuple, SourceLocInfo, MixinSourceLoc, MixinPolygonalChain,
+    GenericPolyR, PolyVec2R,
 )
 
 # wire_ids 11-13 were freed by the removal of the SchemInstanceUnresolved* node types.
@@ -317,16 +318,6 @@ class SchemInstanceSubcursor(tuple):
             return inner_ret
 
 
-class MixinSourceLoc:
-    """
-    Provides src_loc attribute for Nodes that support back link to source.
-    This enables click-to-source for ORD code in the web UI. Currently, src_loc
-    is None for nodes not built from ORD code.
-    """
-    __slots__=()
-    src_loc = Attr(SourceLocInfo)
-
-
 @public
 class SchemInstance(Node, MixinSourceLoc):
     """
@@ -363,7 +354,7 @@ class SchemInstance(Node, MixinSourceLoc):
 
     def subcursor(self):
         if self.symbol is None:
-            raise TypeError(
+            raise InstanceResolutionError(
                 f"Instance {self.full_path_label()} has no symbol: it is "
                 "not an unresolved instance of the active viewgen."
             )
@@ -391,7 +382,8 @@ class SchemInstanceConn(Node):
     ref = LocalRef(SchemInstance, optional=False)
     ref_idx = Index(ref)
 
-    here = LocalRef(Net, optional=False)
+    here = LocalRef(Net, optional=False,
+        factory=lambda v: v.ref if isinstance(v, SchemPort) else v)
     there = ExternalRef(Pin, of_subgraph=lambda c: c.ref.symbol, optional=False) # ExternalRef to Pin in SchemInstance.symbol
 
     ref_pin_idx = CombinedIndex([ref, there], unique=True)
@@ -448,8 +440,8 @@ class SchemInstanceUnresolvedSubcursor(tuple):
         return NegatedWireOperand(self)
 
     def __wire_op__(self, here):
-        if isinstance(here, SchemPort):
-            here = here.ref
+        # A SchemPort operand is coerced to its Net by the factory of
+        # SchemInstanceConn.here when the connection is created.
         inst = self._inst
         ctx = unresolved_instance_ctx(inst)
         if ctx is None:

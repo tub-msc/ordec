@@ -238,6 +238,58 @@ def test_instance_param_on_resolved_cell():
         with pytest.raises(TypeError):
             r1.$r = '2k'
 
+def test_bad_deferred_conn_path():
+    import pytest
+    from ordec.lib import Vdc, Gnd
+
+    root = Schematic()
+    with pytest.raises(QueryException, match="'zzz' not found"):
+        with root.view_context(root):
+            net vss, mid
+            Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
+            # zzz is not a pin of Res; resolution at context exit fails.
+            Res r1: .$r = '1k'; .p -- mid; .zzz -- vss; .pos = (5, 6)
+            Gnd() gnd: .p -- vss; .pos = (0, 0)
+
+def test_bad_deferred_conn_path_on_access():
+    import pytest
+    from ordec.lib import Vdc, Gnd
+
+    root = Schematic()
+    # Context exit retries the resolution and must fail with the same
+    # clean error as the first attempt: an aborted resolution leaves the
+    # instance untouched, so no conns from the first attempt survive to
+    # collide on retry.
+    with pytest.raises(QueryException, match="'zzz' not found"):
+        with root.view_context(root):
+            net vss, mid
+            Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
+            Res r1: .$r = '1k'; .p -- mid; .zzz -- vss; .pos = (5, 6)
+            Gnd() gnd: .p -- vss; .pos = (0, 0)
+
+            # Forced resolution fails on the bad path...
+            with pytest.raises(QueryException, match="'zzz' not found"):
+                r1.outline.uy
+            # ...and leaves the instance untouched:
+            assert r1.symbol is None
+            assert len(list(root.all(SchemInstanceConn.ref_idx.query(r1)))) == 0
+
+def test_duplicate_deferred_conn():
+    import pytest
+    from ordec.schematic import SchematicError
+    from ordec.lib import Vdc, Gnd
+
+    root = Schematic()
+    with pytest.raises(SchematicError, match="connected more than once"):
+        with root.view_context(root):
+            net vss, mid
+            Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
+            # r1.p is deferred-wired twice; resolution rejects this before
+            # touching the instance. (On a resolved instance, the second
+            # wire op raises a UniqueViolation directly.)
+            Res r1: .$r = '1k'; .p -- mid; .p -- vss; .n -- vss; .pos = (5, 6)
+            Gnd() gnd: .p -- vss; .pos = (0, 0)
+
 def test_instance_param_missing():
     import pytest
     from ordec.lib import Vdc, Gnd

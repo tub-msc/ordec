@@ -637,7 +637,9 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
     for inst in node.all(SchemInstance):
         if inst.symbol is None:
             raise SchematicError(
-                f"Instance {inst.full_path_label()} has no symbol.")
+                f"Instance {inst.full_path_label()} has no symbol: it was "
+                "created without one and never registered as an unresolved "
+                "instance.")
     suppress = False
     _check_overlapping_instances(node)
     suppress = suppress or node.has_errors()

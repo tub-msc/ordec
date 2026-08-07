@@ -9,6 +9,15 @@ _ctx_var = ContextVar("ctx", default=None)
 _view_ctx_var = ContextVar("view_ctx", default=None)
 
 
+class InstanceResolutionError(Exception):
+    """
+    Raised when an instance that should be resolved lacks its symbol or
+    layout reference. Errors that occur while resolving (bad parameters,
+    defective deferred wiring) raise their own exception types instead,
+    annotated with the instance and its source location.
+    """
+
+
 class NodeContext:
     """
     Class which represents the context where a specific
@@ -101,6 +110,9 @@ class ViewContext:
         )
 
     def register_unresolved(self, inst, cell_cls):
+        # Should be unreachable: for view types without unresolved-instance
+        # support, inserting the instance node fails on its in_subgraphs
+        # check before add_element() reaches register_unresolved().
         raise TypeError(
             "Deferred cell instantiation is only supported in schematic "
             "and layout viewgens."
@@ -133,17 +145,20 @@ class MixinUnresolvedInstances:
         super().__init__(root)
         self.unresolved_instances = {} #: nid -> UnresolvedInstance
 
+    def _entry(self, inst):
+        # The nid alone is ambiguous: a nested viewgen builds a different
+        # subgraph whose nids can collide with ours.
+        if inst.subgraph is not self.root.subgraph:
+            return None
+        return self.unresolved_instances.get(inst.nid)
+
     def unresolved_instance(self, inst):
         """
         Returns the still-unresolved UnresolvedInstance entry for inst, or
         None.
         """
-        entry = self.unresolved_instances.get(inst.nid)
-        # The nid alone is ambiguous: a nested viewgen builds a different
-        # subgraph whose nids can collide with ours.
-        if entry is None or entry.inst.subgraph is not inst.subgraph:
-            return None
-        if entry.resolved:
+        entry = self._entry(inst)
+        if entry is None or entry.resolved:
             return None
         return entry
 
@@ -151,9 +166,7 @@ class MixinUnresolvedInstances:
         self.unresolved_instances[inst.nid] = UnresolvedInstance(inst, cell_cls)
 
     def set_unresolved_param(self, inst, name, value):
-        entry = self.unresolved_instances.get(inst.nid)
-        if entry is not None and entry.inst.subgraph is not inst.subgraph:
-            entry = None
+        entry = self._entry(inst)
         if entry is None:
             raise TypeError(
                 f"Cannot set parameter {name!r} of {inst.full_path_label()}: "
@@ -252,8 +265,12 @@ class SchematicViewContext(MixinUnresolvedInstances, ViewContext):
     def _apply_resolution(self, inst, entry):
         from .schema import Pin, SchemInstanceConn
         from ..schematic.helpers import recursive_getitem, SchematicError
+        # Resolve all pin paths before mutating anything: a failure must
+        # leave the instance untouched, so that a retried resolution does
+        # not re-insert conns from the aborted attempt.
         symbol = entry.cell_cls(**entry.params).symbol
-        inst.symbol = symbol
+        pins = []
+        seen_nids = set()
         for here, path in entry.conns:
             pin = recursive_getitem(symbol, path)
             if not isinstance(pin, Pin):
@@ -261,6 +278,15 @@ class SchematicViewContext(MixinUnresolvedInstances, ViewContext):
                     f"Deferred connection path {path!r} on "
                     f"{inst.full_path_label()} did not resolve to a Pin."
                 )
+            if pin.nid in seen_nids:
+                raise SchematicError(
+                    f"Pin {pin.full_path_label()} of "
+                    f"{inst.full_path_label()} is connected more than once."
+                )
+            seen_nids.add(pin.nid)
+            pins.append((here, pin))
+        inst.symbol = symbol
+        for here, pin in pins:
             inst % SchemInstanceConn(here=here, there=pin)
 
     @classmethod
@@ -303,12 +329,11 @@ class SchematicViewContext(MixinUnresolvedInstances, ViewContext):
 
     def _check_instances_resolved(self):
         from .schema import SchemInstance
-        from ..schematic.helpers import SchematicError
         for inst in self.root.all(SchemInstance):
             if inst.symbol is None:
-                raise SchematicError(
+                raise InstanceResolutionError(
                     f"Instance {inst.full_path_label()} has no symbol: it "
-                    "was created without one and never registered as a "
+                    "was created without one and never registered as an "
                     "unresolved instance."
                 )
 
@@ -363,7 +388,7 @@ class LayoutViewContext(MixinUnresolvedInstances, ViewContext):
         for inst_type in (LayoutInstance, LayoutInstanceArray):
             for inst in self.root.all(inst_type):
                 if inst.ref is None:
-                    raise TypeError(
+                    raise InstanceResolutionError(
                         f"Instance {inst.full_path_label()} has no layout "
                         "reference: it was created without one and never "
                         "registered as an unresolved instance."

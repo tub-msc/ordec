@@ -8,12 +8,16 @@ from ..geoprim import *
 from ..ordb import *
 from ..cell import Cell
 from ..constraints import *
-from ..context import LayoutViewContext, InstanceParams, unresolved_instance_ctx
+from ..context import (
+    LayoutViewContext, InstanceParams, InstanceResolutionError,
+    unresolved_instance_ctx,
+)
 from .base import (
     coerce_tuple, AttrProxy, _rect_proxy, GdsLayer, RGBColor, PathEndType,
     MixinPolygonalChain, MixinClosedPolygon, GenericPolyI, PolyVec2I,
+    MixinSourceLoc,
 )
-from .schematic import Symbol, Pin, MixinSourceLoc
+from .schematic import Symbol, Pin
 
 WIRE_DOMAIN = 4 << 16
 
@@ -367,10 +371,10 @@ class LayoutInstance(Node, MixinSourceLoc):
         if self.ref is None:
             ctx = unresolved_instance_ctx(self)
             if ctx is None:
-                raise TypeError(
+                raise InstanceResolutionError(
                     f"Instance {self.full_path_label()} has no layout "
-                    "reference: it is not an unresolved instance of the active "
-                    "viewgen."
+                    "reference: it is not an unresolved instance of the "
+                    "active viewgen."
                 )
             # Nothing on a layout instance is deferrable: resolve now.
             ctx.resolve_instance(self)
