@@ -482,20 +482,6 @@ class ConnectingGroup(ArrangementGroup):
         ordering contract).
         """
 
-    def child_symbol(self, inst) -> 'Symbol':
-        """
-        Returns the Symbol of an instance child. For unresolved
-        instances, it is generated from the recorded parameters.
-        """
-        from .schema import SchemInstance, SchemInstanceUnresolvedParameter
-        if isinstance(inst, SchemInstance):
-            return inst.symbol
-        params = {
-            p.name: p.value
-            for p in inst.root.all(SchemInstanceUnresolvedParameter.ref_idx.query(inst))
-        }
-        return inst.resolver(**params)
-
     def facing_pin(self, inst, side: D4) -> str:
         """
         Returns the name of the single pin of an instance child that
@@ -506,7 +492,7 @@ class ConnectingGroup(ArrangementGroup):
         override = self.pin_overrides[side]
         if override is not None:
             return override
-        candidates = [pin for pin in self.child_symbol(inst).all(Pin)
+        candidates = [pin for pin in inst.symbol.all(Pin)
             if (inst.orientation * pin.align).unflip() == side]
         if len(candidates) != 1:
             raise ValueError(
@@ -527,17 +513,11 @@ class ConnectingGroup(ArrangementGroup):
 
     def pin_net(self, inst, pin_name: str) -> 'Net | None':
         """Returns the net a pin of an instance child is connected to, or None."""
-        from .schema import (SchemInstance, SchemInstanceConn,
-            SchemInstanceUnresolvedConn)
-        if isinstance(inst, SchemInstance):
-            pin = getattr(inst.symbol, pin_name)
-            query = SchemInstanceConn.ref_pin_idx.query((inst, pin))
-            conn = next(iter(inst.root.all(query)), None)
-            return conn.here if conn is not None else None
-        for conn in inst.root.all(SchemInstanceUnresolvedConn.ref_idx.query(inst)):
-            if conn.there == (pin_name,):
-                return conn.here
-        return None
+        from .schema import SchemInstanceConn
+        pin = getattr(inst.symbol, pin_name)
+        query = SchemInstanceConn.ref_pin_idx.query((inst, pin))
+        conn = next(iter(inst.root.all(query)), None)
+        return conn.here if conn is not None else None
 
     def endpoint(self, child, side: D4) -> Endpoint:
         """Returns the Endpoint of a direct child on the given side."""

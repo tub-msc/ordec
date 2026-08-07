@@ -33,7 +33,7 @@ def add(name_tuple, ref):
     else:
         recursive_setitem(ctx.root, name_tuple, ref)
         cursor = recursive_getitem(ctx.root, name_tuple)
-    if isinstance(cursor, (SchemInstance, SchemInstanceUnresolved)):
+    if isinstance(cursor, SchemInstance):
         register_in_group(cursor)
     return cursor
 
@@ -184,12 +184,22 @@ def add_element(name_tuple, element, src_line=None, src_column=None):
             return add(name_tuple, ref)
 
     if isinstance(element, type) and issubclass(element, Cell):
-        # Cell class: deferred resolution with parameters
-        ref = SchemInstanceUnresolved(
-            resolver=lambda **params: element(**params).symbol,
-            src_loc=src_loc,
-        )
-        return add(name_tuple, ref)
+        # Cell class: unresolved instance whose parameters are set in the body
+        # (.$name = value) and resolved lazily by the view context.
+        view_ctx = _view_ctx_var.get()
+        if view_ctx is None:
+            raise TypeError(
+                f"Cannot instantiate Cell class {element.__name__} without "
+                "a viewgen context; pass parameters at instantiation "
+                "instead."
+            )
+        if isinstance(ctx.root, Layout):
+            ref = LayoutInstance()
+        else:
+            ref = SchemInstance(src_loc=src_loc)
+        cursor = add(name_tuple, ref)
+        view_ctx.register_unresolved(cursor, element)
+        return cursor
 
     if isinstance(element, Cell):
         # Cell instance: symbol already determined, create SchemInstance directly

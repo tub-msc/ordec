@@ -93,18 +93,22 @@ def test_multi_name_bodyless_node_stmt():
 
 def test_scheminstance_creation():
     root = Schematic()
-    with root.ctx():
+    with root.view_context(root):
         # Bodyless...
-        # ...using a Cell subclass:
+        # ...using a Cell subclass (unresolved: symbol resolved on context exit):
         Res a
-        assert isinstance(a, SchemInstanceUnresolved)
-        # ...or using a Cell subclass instance (creates SchemInstance directly):
+        assert isinstance(a, SchemInstance)
+        assert a.symbol is None
+        a.$r = '1k'
+        # ...or using a Cell subclass instance (symbol set immediately):
         Res('1k') b
         assert isinstance(b, SchemInstance)
+        assert b.symbol is not None
 
         # With body...
         # ...using a Cell subclass:
         Res c:
+            .$r = '1k'
             .pos=(1,2)
         # ...or using a Cell subclass instance:
         Res('1k') d:
@@ -112,48 +116,49 @@ def test_scheminstance_creation():
 
         assert c.pos == d.pos == Vec2R(1,2)
 
+    # Context exit resolved all unresolved instances:
+    assert a.symbol == c.symbol == Res(r='1k').symbol
+
 def test_mixed_unresolved_resolved_instances():
-    """A schematic with both SchemInstance (from Cell instance) and
-    SchemInstanceUnresolved (from Cell class), wired together. ViewContext
-    automatically resolves all instances on exit."""
+    """A schematic with instances from a Cell instance (symbol set
+    immediately) and from a Cell class (unresolved symbol, params set via
+    body), wired together. ViewContext resolves all unresolved instances on
+    exit."""
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
     with root.view_context(root):
         net vss, mid
 
-        # Cell instance -> SchemInstance directly
+        # Cell instance -> symbol set immediately
         Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
-        # Cell class -> SchemInstanceUnresolved (params set via body)
+        # Cell class -> unresolved instance (params set via body)
         Res r1: .$r = '1k'; .p -- mid; .n -- vss; .pos = (5, 6)
-        # Another Cell instance -> SchemInstance directly
+        # Another Cell instance
         Gnd() gnd: .p -- vss; .pos = (0, 0)
 
-        # Before view_context exit: v1 and gnd are already SchemInstance,
-        # r1 is still SchemInstanceUnresolved
-        assert isinstance(v1, SchemInstance)
-        assert isinstance(gnd, SchemInstance)
-        assert isinstance(r1, SchemInstanceUnresolved)
+        # Before view_context exit: v1 and gnd are resolved, r1 is unresolved
+        assert v1.symbol is not None
+        assert gnd.symbol is not None
+        assert r1.symbol is None
 
         # v1 already has SchemInstanceConn (direct wiring)
         v1_conns = list(root.all(SchemInstanceConn.ref_idx.query(v1)))
         assert len(v1_conns) == 2
 
-        # r1 still has SchemInstanceUnresolvedConn (deferred wiring)
-        r1_conns = list(root.all(SchemInstanceUnresolvedConn.ref_idx.query(r1)))
-        assert len(r1_conns) == 2
+        # r1's wiring is deferred in the view context, not in the graph
+        r1_conns = list(root.all(SchemInstanceConn.ref_idx.query(r1)))
+        assert len(r1_conns) == 0
 
-    # After view_context exit: all instances are SchemInstance
+    # After view_context exit: all instances are resolved
     all_instances = list(root.all(SchemInstance))
     assert len(all_instances) == 3
-    assert not list(root.all(SchemInstanceUnresolved))
+    assert all(inst.symbol is not None for inst in all_instances)
+    assert r1.symbol == Res(r='1k').symbol
 
     # All connections are now SchemInstanceConn
     all_conns = list(root.all(SchemInstanceConn))
     assert len(all_conns) == 5  # v1: 2, r1: 2, gnd: 1
-
-    # No unresolved connections remain
-    assert not list(root.all(SchemInstanceUnresolvedConn))
 
 def test_wire_op():
     # The -- pseudo-operator is commutative: net -- pin and pin -- net should produce the same result.
@@ -174,15 +179,101 @@ def test_wire_op():
         v1_conns = list(root.all(SchemInstanceConn.ref_idx.query(v1)))
         assert len(v1_conns) == 2
 
-        r1_conns = list(root.all(SchemInstanceUnresolvedConn.ref_idx.query(r1)))
-        assert len(r1_conns) == 2
+        # r1's connections are deferred until resolution
+        r1_conns = list(root.all(SchemInstanceConn.ref_idx.query(r1)))
+        assert len(r1_conns) == 0
 
         gnd_conns = list(root.all(SchemInstanceConn.ref_idx.query(gnd)))
         assert len(gnd_conns) == 1
 
-    # After view_context exit: all connections resolved to SchemInstanceConn
+    # After view_context exit: all connections are SchemInstanceConn
     all_conns = list(root.all(SchemInstanceConn))
     assert len(all_conns) == 5
+
+def test_instance_param_last_wins():
+    from ordec.lib import Vdc, Gnd
+
+    root = Schematic()
+    with root.view_context(root):
+        net vss, mid
+        Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
+        Res r1: .$r = '1k'; .p -- mid; .n -- vss; .pos = (5, 6)
+        Gnd() gnd: .p -- vss; .pos = (0, 0)
+
+        # While the parameters are open, assignments overwrite (last wins):
+        r1.$r = '2k'
+
+    assert r1.symbol == Res(r='2k').symbol
+
+def test_instance_param_set_after_resolution():
+    import pytest
+    from ordec.lib import Vdc, Gnd
+
+    root = Schematic()
+    with root.view_context(root):
+        net vss, mid
+        Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
+        Res r1: .$r = '1k'; .p -- mid; .n -- vss; .pos = (5, 6)
+        Gnd() gnd: .p -- vss; .pos = (0, 0)
+
+        # A geometry read forces resolution; parameters can no longer be set:
+        outline_uy = r1.outline.uy
+        with pytest.raises(TypeError):
+            r1.$r = '2k'
+
+    assert r1.symbol == Res(r='1k').symbol
+
+def test_instance_param_on_resolved_cell():
+    import pytest
+    from ordec.lib import Vdc, Gnd
+
+    root = Schematic()
+    with root.view_context(root):
+        net vss, mid
+        # Cell instance form: parameters are fixed at instantiation.
+        Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
+        Res('1k') r1: .p -- mid; .n -- vss; .pos = (5, 6)
+        Gnd() gnd: .p -- vss; .pos = (0, 0)
+
+        with pytest.raises(TypeError):
+            r1.$r = '2k'
+
+def test_instance_param_missing():
+    import pytest
+    from ordec.lib import Vdc, Gnd
+
+    root = Schematic()
+    with pytest.raises(ParameterError, match="'r' is missing") as exc_info:
+        with root.view_context(root):
+            net vss, mid
+            Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
+            # r1's mandatory parameter r is never set; resolution at
+            # context exit fails.
+            Res r1: .p -- mid; .n -- vss; .pos = (5, 6)
+            Gnd() gnd: .p -- vss; .pos = (0, 0)
+    note, = exc_info.value.__notes__
+    assert "instance r1" in note
+    assert "test_ord_runtime" in note  # src_loc of the `Res r1` statement
+
+def test_instance_param_missing_on_access():
+    import pytest
+    from ordec.lib import Vdc, Gnd
+
+    root = Schematic()
+    with root.view_context(root):
+        net vss, mid
+        Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
+        Res r1: .p -- mid; .n -- vss; .pos = (5, 6)
+        Gnd() gnd: .p -- vss; .pos = (0, 0)
+
+        # Forced resolution fails while r is missing...
+        with pytest.raises(ParameterError, match="'r' is missing"):
+            r1.outline.uy
+        # ...but the failed attempt leaves the instance unresolved: the
+        # parameter can still be supplied.
+        r1.$r = '1k'
+
+    assert r1.symbol == Res(r='1k').symbol
 
 def test_viewgen_return_target_alias():
     ViewgenAlias = Symbol
@@ -272,6 +363,84 @@ def test_layout_instance_shorthand():
         assert isinstance(b, LayoutInstance)
         assert b.ref == tc.layout
         assert b.orientation == D4.MX
+
+cell ParamLayoutCell:
+    w = Parameter(int)
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+        LayoutRect r:
+            .layer = layers.Metal1
+        ! .r.width == self.w
+        ! .r.height == 100
+        ! .r.lx == 0
+        ! .r.ly == 0
+
+def test_layout_instance_unresolved():
+    root = Layout()
+    with root.view_context(root):
+        .ref_layers = SG13G2().layers
+        # Cell subclass -> unresolved instance, parametrized via .$ like in
+        # schematics; resolved on context exit.
+        ParamLayoutCell a:
+            .$w = 120
+            ! .pos == (0, 0)
+        assert isinstance(a, LayoutInstance)
+        assert a.ref is None
+
+    assert a.ref == ParamLayoutCell(w=120).layout
+    assert a.r.width == 120
+
+def test_layout_instance_resolved_on_access():
+    import pytest
+
+    root = Layout()
+    with root.view_context(root):
+        .ref_layers = SG13G2().layers
+        ParamLayoutCell a:
+            .$w = 120
+            ! .pos == (0, 0)
+
+        # Any access through the instance requires the resolved layout:
+        # it resolves the instance.
+        a.r
+        assert a.ref is not None
+        with pytest.raises(TypeError):
+            a.$w = 240
+
+    assert a.ref == ParamLayoutCell(w=120).layout
+
+def test_layout_instance_param_missing():
+    import pytest
+
+    root = Layout()
+    with pytest.raises(ParameterError, match="'w' is missing") as exc_info:
+        with root.view_context(root):
+            .ref_layers = SG13G2().layers
+            # a's mandatory parameter w is never set; resolution at
+            # context exit fails.
+            ParamLayoutCell a:
+                ! .pos == (0, 0)
+    note, = exc_info.value.__notes__
+    assert "instance a" in note
+
+def test_layout_instance_param_missing_on_access():
+    import pytest
+
+    root = Layout()
+    with root.view_context(root):
+        .ref_layers = SG13G2().layers
+        ParamLayoutCell a:
+            ! .pos == (0, 0)
+
+        # Forced resolution fails while w is missing...
+        with pytest.raises(ParameterError, match="'w' is missing"):
+            a.r
+        # ...but the failed attempt leaves the instance unresolved: the
+        # parameter can still be supplied.
+        a.$w = 120
+
+    assert a.ref == ParamLayoutCell(w=120).layout
 
 def test_node_as_context_manager():
     root = Symbol()

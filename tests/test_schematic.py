@@ -9,6 +9,7 @@ this module instead.
 
 import pytest
 from ordec.core import *
+from ordec.core.context import SchematicViewContext
 from .lib import schematics as lib_test
 from ordec.lib.base import Res
 from ordec.lib.generic_mos import Nmos
@@ -161,7 +162,7 @@ def test_schematic_double_instance():
     errors = list(s.all(SchemErrorMarker))
     assert any(e.error_type == SchemErrorType.OverlappingInstances for e in errors)
 
-def test_scheminstance_unresolved():
+def test_scheminstance_unresolved_resolution():
     s_ref = MutableSubgraph.load({
         0: Schematic.Tuple(symbol=None, outline=None, cell=None, default_supply=None, default_ground=None),
         1: Net.Tuple(pin=None),
@@ -181,39 +182,49 @@ def test_scheminstance_unresolved():
     })
 
     s = Schematic()
+    ctx = SchematicViewContext(s)
 
     s.g = Net()
     s.s = Net()
     s.d = Net()
     s.b = Net()
 
-    s.myinst = SchemInstanceUnresolved(pos=(1, 2), resolver=lambda **params: Nmos(**params).symbol)
-    s.myinst % SchemInstanceUnresolvedConn(here=s.g, there=('g',))
-    s.myinst % SchemInstanceUnresolvedConn(here=s.s, there=('s',))
-    s.myinst % SchemInstanceUnresolvedConn(here=s.d, there=('d',))
-    s.myinst % SchemInstanceUnresolvedConn(here=s.b, there=('b',))
-    s.myinst % SchemInstanceUnresolvedParameter(name='l', value='2u')
-    s.myinst % SchemInstanceUnresolvedParameter(name='w', value='5u')
+    s.myinst = SchemInstance(pos=(1, 2))
+    ctx.register_unresolved(s.myinst, Nmos)
+    ctx.record_unresolved_conn(s.myinst, s.g, ('g',))
+    ctx.record_unresolved_conn(s.myinst, s.s, ('s',))
+    ctx.record_unresolved_conn(s.myinst, s.d, ('d',))
+    ctx.record_unresolved_conn(s.myinst, s.b, ('b',))
+    ctx.set_unresolved_param(s.myinst, 'l', '1u')
+    ctx.set_unresolved_param(s.myinst, 'w', '5u')
+    # Parameters are open until resolution; the last assignment wins:
+    ctx.set_unresolved_param(s.myinst, 'l', '2u')
 
-    s.resolve_instances()
+    assert s.myinst.symbol is None
+    ctx.resolve_all_instances()
+    assert s.myinst.symbol is not None
 
     assert s.matches(s_ref)
 
 def test_scheminstance_unresolved_hierarchical_path():
     s = Schematic()
+    ctx = SchematicViewContext(s)
 
     s.mynet = Net()
 
-    resolver = lambda **params: lib_test.MultibitReg_StructOfArrays(**params).symbol
+    s.myinst = SchemInstance(pos=(0, 0))
+    ctx.register_unresolved(s.myinst, lib_test.MultibitReg_StructOfArrays)
+    ctx.set_unresolved_param(s.myinst, 'bits', 4)
+    ctx.record_unresolved_conn(s.myinst, s.mynet, ('data', 'd', 3))
 
-    s.myinst = SchemInstanceUnresolved(resolver=resolver, pos=(0, 0))
-
-    s.myinst % SchemInstanceUnresolvedParameter(name='bits', value=4)
-    conn_u = s.myinst % SchemInstanceUnresolvedConn(here=s.mynet, there=('data', 'd', 3))
-
-    s.resolve_instances()
+    ctx.resolve_all_instances()
 
     conn = list(s.myinst.conns())[0]
-    assert conn.nid == conn_u.nid
     assert conn.here == s.mynet
     assert conn.there == lib_test.MultibitReg_StructOfArrays(bits=4).symbol.data.d[3]
+
+def test_scheminstance_params_without_view_context():
+    s = Schematic()
+    s.myinst = SchemInstance(pos=(0, 0), symbol=Nmos().symbol)
+    with pytest.raises(TypeError, match="viewgen body"):
+        s.myinst.params.l = '2u'

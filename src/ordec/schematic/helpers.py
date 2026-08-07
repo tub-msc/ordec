@@ -118,38 +118,21 @@ def schem_place(schem: Schematic, gap=None, port_margin=None):
     schem.outline = outline
 
 
-def _instance_symbol(inst) -> Symbol:
-    """
-    Returns the Symbol of a SchemInstance or SchemInstanceUnresolved. For
-    unresolved instances, it is generated from the parameters recorded so
-    far (cheap due to view caching).
-    """
-    if isinstance(inst, SchemInstanceUnresolved):
-        return inst.resolve_symbol()
-    return inst.symbol
-
-
 def schem_content_bbox(node: Schematic) -> Rect4R | None:
     """
     Returns the bounding box of the placed schematic content: instance
-    outlines (including unresolved instances), port positions, tap points
-    and wire vertices. Elements whose position is still unresolved
-    (Vec2LinearTerm) are ignored. Returns None for a schematic without
-    placed content.
+    outlines, port positions, tap points and wire vertices. Elements whose
+    position is still unresolved (Vec2LinearTerm) are ignored. Returns None
+    for a schematic without placed content.
 
     Related: routing.adjust_outline_initial(), which assumes placed
     elements and adds space for port labels.
     """
     points = []
-    for inst in itertools.chain(node.all(SchemInstance),
-                                node.all(SchemInstanceUnresolved)):
+    for inst in node.all(SchemInstance):
         if isinstance(inst.pos, Vec2LinearTerm):
             continue
-        if isinstance(inst, SchemInstanceUnresolved):
-            symbol = inst.resolve_symbol()
-        else:
-            symbol = inst.symbol
-        r = inst.loc_transform() * symbol.outline
+        r = inst.loc_transform() * inst.symbol.outline
         points += [Vec2R(r.lx, r.ly), Vec2R(r.ux, r.uy)]
     points += [port.pos for port in node.all(SchemPort)
         if not isinstance(port.pos, Vec2LinearTerm)]
@@ -177,11 +160,11 @@ def schem_place_ports(node: Schematic, clearance: int = 2):
     order, one unit apart, centered on the edge. Occupied positions are
     skipped. Ports whose pos is already defined are left untouched.
     """
-    pending = {East: [], West: [], North: [], South: []}
+    unresolved = {East: [], West: [], North: [], South: []}
     for port in node.all(SchemPort):
         if isinstance(port.pos, Vec2LinearTerm):
-            pending[port.align.unflip()].append(port)
-    if not any(pending.values()):
+            unresolved[port.align.unflip()].append(port)
+    if not any(unresolved.values()):
         return
 
     bbox = schem_content_bbox(node)
@@ -225,7 +208,7 @@ def schem_place_ports(node: Schematic, clearance: int = 2):
     for align, vertical, fixed, step in edges:
         aligned = []
         rest = []
-        for port in pending[align]:
+        for port in unresolved[align]:
             cross = aligned_cross(port, align)
             if cross is None:
                 rest.append(port)
@@ -255,17 +238,12 @@ def place_unplaced_instances(schem: Schematic, spacing=4):
     outline is set yet). The outline is expanded to cover the placed
     instances.
 
-    Intended to run before resolve_instances(), so SchemInstance and
-    SchemInstanceUnresolved are both handled; symbols of unresolved
-    instances are generated from the parameters recorded so far.
-
     Args:
         schem: Mutable schematic.
         spacing: Horizontal gap between adjacent placed instances (and
             between the outline edge and the first placed instance).
     """
-    unplaced = [inst for inst in itertools.chain(
-            schem.all(SchemInstance), schem.all(SchemInstanceUnresolved))
+    unplaced = [inst for inst in schem.all(SchemInstance)
         if isinstance(inst.pos, Vec2LinearTerm)]
     if not unplaced:
         return
@@ -278,11 +256,7 @@ def place_unplaced_instances(schem: Schematic, spacing=4):
 
     for inst in unplaced:
         # Place the instance geometry's left edge at x, with pos.y = 0.
-        if isinstance(inst, SchemInstanceUnresolved):
-            symbol = inst.resolve_symbol()
-        else:
-            symbol = inst.symbol
-        r = TD4R(d4=inst.orientation) * symbol.outline
+        r = TD4R(d4=inst.orientation) * inst.symbol.outline
         inst.pos = Vec2R(x - r.lx, 0)
         placed = inst.pos.transl() * r
         outline = placed if outline is None else outline \
@@ -657,6 +631,13 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
     Returns:
         True if the schematic has errors after checking.
     """
+    # Unresolved instances cannot be checked; a symbol may be missing here
+    # if a schematic is built without a view context (which resolves all
+    # unresolved instances in postprocess).
+    for inst in node.all(SchemInstance):
+        if inst.symbol is None:
+            raise SchematicError(
+                f"Instance {inst.full_path_label()} has no symbol.")
     suppress = False
     _check_overlapping_instances(node)
     suppress = suppress or node.has_errors()
@@ -686,38 +667,4 @@ def recursive_setitem(obj, tup, value):
     else:
         return recursive_setitem(obj[tup[0]], tup[1:], value)
 
-def resolve_instances(schematic: Schematic):
-    """
-    Resolves all SchemInstanceUnresolved objects, replacing them by
-    SchemInstance objects. Corresponding SchemInstanceUnresolvedParameter
-    objects are used in the process and removed afterwards.
-    Corresponding SchemInstanceUnresolvedConn objects are replaced by
-    SchemInstanceConn objects.
-    
-    The node ids (nids) of SchemInstanceUnresolved and
-    SchemInstanceUnresolvedConn objects are preserved.
-    """
-    for ui in schematic.all(SchemInstanceUnresolved):
-        with schematic.subgraph.updater() as sgu:
-            symbol = ui.resolve_symbol(remove_params_sgu=sgu)
-
-            new_scheminstance_tuple = SchemInstance(
-                pos=ui.pos,
-                orientation=ui.orientation,
-                symbol=symbol,
-                src_loc=ui.src_loc,
-                )
-
-            sgu.remove_nid(ui.nid)
-
-            for uc in schematic.all(SchemInstanceUnresolvedConn.ref_idx.query(ui)):
-                pin = recursive_getitem(symbol, uc.there)
-                if not isinstance(pin, Pin):
-                    raise SchematicError("Unresolved attribute {uc.there!r} did not resolve to Pin.")
-                new_conn_tuple = SchemInstanceConn(ref=uc.ref, here=uc.here, there=pin)
-
-                sgu.remove_nid(uc.nid)
-                sgu.add_single(new_conn_tuple, uc.nid, check_nid=False)
-
-            sgu.add_single(new_scheminstance_tuple, ui.nid, check_nid=False)
 

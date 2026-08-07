@@ -122,9 +122,8 @@ class StorageTxn(ABC):
     ISOLATION: the target subgraph's own state (subgraph.nodes /
     subgraph.index) must remain at the pre-transaction snapshot for as long
     as the transaction is open -- only txn.nodes/txn.index expose
-    uncommitted changes. Real ORDeC code depends on this: e.g.
-    ordec.schematic.helpers.resolve_instances queries the subgraph while
-    its updater is open and must see pre-transaction state.
+    uncommitted changes. Code querying a subgraph while an updater is open
+    relies on seeing pre-transaction state.
     """
     __slots__ = ()
 

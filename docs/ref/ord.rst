@@ -286,8 +286,10 @@ so ``inst.d -- vss`` and ``vss -- inst.d`` are equivalent.
 
 Internally, the negation step returns a ``NegatedWireOperand`` and the
 subtraction step detects this sentinel and calls ``__wire_op__`` to create the
-actual connection node (``SchemInstanceConn`` or
-``SchemInstanceUnresolvedConn``).
+actual connection. For resolved instances, this inserts a
+``SchemInstanceConn`` node directly; for unresolved instances (created from a
+Cell class, symbol not yet resolved), the connection is recorded in the view
+context and inserted when the instance is resolved.
 
 .. code-block::
 

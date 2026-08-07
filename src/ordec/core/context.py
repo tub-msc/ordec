@@ -66,10 +66,12 @@ class ViewContext:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is None:
-            self.postprocess()
-        _view_ctx_var.reset(self._token)
-        self._node_ctx.__exit__(exc_type, exc_val, exc_tb)
+        try:
+            if exc_type is None:
+                self.postprocess()
+        finally:
+            _view_ctx_var.reset(self._token)
+            self._node_ctx.__exit__(exc_type, exc_val, exc_tb)
 
     def postprocess(self):
         """Override in subclasses to perform finalization on context exit."""
@@ -98,6 +100,124 @@ class ViewContext:
             f"{type(self.root).__name__} views."
         )
 
+    def register_unresolved(self, inst, cell_cls):
+        raise TypeError(
+            "Deferred cell instantiation is only supported in schematic "
+            "and layout viewgens."
+        )
+
+
+class UnresolvedInstance:
+    """
+    Deferred state of an instance created from a Cell class (``MyCell x:``).
+    The instance node exists in the subgraph, but its symbol/layout reference
+    is unset until the parameters are complete. Parameters set via ``.$name``
+    accumulate here (last assignment wins). Once any access requires the
+    resolved sub-view, the instance is resolved; setting parameters
+    afterwards raises.
+    """
+    def __init__(self, inst, cell_cls):
+        self.inst = inst
+        self.cell_cls = cell_cls
+        self.params = {}
+        self.conns = [] #: (here Net, path tuple) pairs; schematic contexts only
+        self.resolved = False
+
+
+class MixinUnresolvedInstances:
+    """
+    Manages UnresolvedInstance state for view contexts that support deferred
+    cell instantiation (schematic and layout).
+    """
+    def __init__(self, root):
+        super().__init__(root)
+        self.unresolved_instances = {} #: nid -> UnresolvedInstance
+
+    def unresolved_instance(self, inst):
+        """
+        Returns the still-unresolved UnresolvedInstance entry for inst, or
+        None.
+        """
+        entry = self.unresolved_instances.get(inst.nid)
+        # The nid alone is ambiguous: a nested viewgen builds a different
+        # subgraph whose nids can collide with ours.
+        if entry is None or entry.inst.subgraph is not inst.subgraph:
+            return None
+        if entry.resolved:
+            return None
+        return entry
+
+    def register_unresolved(self, inst, cell_cls):
+        self.unresolved_instances[inst.nid] = UnresolvedInstance(inst, cell_cls)
+
+    def set_unresolved_param(self, inst, name, value):
+        entry = self.unresolved_instances.get(inst.nid)
+        if entry is not None and entry.inst.subgraph is not inst.subgraph:
+            entry = None
+        if entry is None:
+            raise TypeError(
+                f"Cannot set parameter {name!r} of {inst.full_path_label()}: "
+                "the instance was created from a fully parametrized cell; "
+                "pass parameters at instantiation instead."
+            )
+        if entry.resolved:
+            raise TypeError(
+                f"Cannot set parameter {name!r} of {inst.full_path_label()}: "
+                "the instance was already resolved by an earlier access."
+            )
+        entry.params[name] = value
+
+    def resolve_instance(self, inst):
+        """
+        Resolves inst from its recorded parameters. No-op if the instance
+        was already resolved.
+        """
+        entry = self.unresolved_instance(inst)
+        if entry is None:
+            return
+        self._apply_resolution(inst, entry)
+        entry.resolved = True
+
+    def resolve_all_instances(self):
+        for entry in list(self.unresolved_instances.values()):
+            if not entry.resolved:
+                self.resolve_instance(entry.inst)
+
+
+def unresolved_instance_ctx(inst):
+    """
+    Returns the active view context if it manages inst as a still-unresolved
+    instance, else None.
+    """
+    ctx = _view_ctx_var.get()
+    if not isinstance(ctx, MixinUnresolvedInstances):
+        return None
+    if ctx.unresolved_instance(inst) is None:
+        return None
+    return ctx
+
+
+class InstanceParams:
+    """
+    Write-only accessor for deferred instance parameters (``.$name = value``
+    in ORD), returned by the ``params`` property of SchemInstance and
+    LayoutInstance. Assignments are recorded in the active view context
+    until the instance is resolved.
+    """
+    def __init__(self, inst):
+        self._inst = inst
+
+    def __setattr__(self, name, value):
+        if name.startswith("_"):
+            return super().__setattr__(name, value)
+        ctx = _view_ctx_var.get()
+        if not isinstance(ctx, MixinUnresolvedInstances):
+            raise TypeError(
+                "Instance parameters can only be set inside a schematic or "
+                "layout viewgen body."
+            )
+        ctx.set_unresolved_param(self._inst, name, value)
+
 
 class SymbolViewContext(ViewContext):
     @classmethod
@@ -108,11 +228,40 @@ class SymbolViewContext(ViewContext):
         self.root.place_pins(vpadding=2, hpadding=2)
 
 
-class SchematicViewContext(ViewContext):
+class SchematicViewContext(MixinUnresolvedInstances, ViewContext):
     def __init__(self, root):
         super().__init__(root)
         self.arrangement_groups = [] #: top-level arrangement groups, emitted in postprocess
         self.group_stack = [] #: arrangement groups whose body is currently executing
+
+    def record_unresolved_conn(self, inst, here, path):
+        """
+        Records a connection of an unresolved instance's future pin (identified
+        by path) to Net here. Flushed as SchemInstanceConn on resolution.
+        """
+        self.unresolved_instance(inst).conns.append((here, path))
+
+    def _apply_resolution(self, inst, entry):
+        from .schema import Pin, SchemInstanceConn
+        from ..schematic.helpers import recursive_getitem, SchematicError
+        try:
+            symbol = entry.cell_cls(**entry.params).symbol
+        except Exception as e:
+            loc = inst.src_loc
+            e.add_note(
+                f"While resolving instance {inst.full_path_label()}"
+                + (f" ({loc.filename}:{loc.line}:{loc.column})" if loc else "")
+            )
+            raise
+        inst.symbol = symbol
+        for here, path in entry.conns:
+            pin = recursive_getitem(symbol, path)
+            if not isinstance(pin, Pin):
+                raise SchematicError(
+                    f"Deferred connection path {path!r} on "
+                    f"{inst.full_path_label()} did not resolve to a Pin."
+                )
+            inst % SchemInstanceConn(here=here, there=pin)
 
     @classmethod
     def create_root(cls, cell, root_cls):
@@ -152,14 +301,30 @@ class SchematicViewContext(ViewContext):
         if self.group_stack:
             self.group_stack[-1].add(ref)
 
+    def _check_instances_resolved(self):
+        from .schema import SchemInstance
+        from ..schematic.helpers import SchematicError
+        for inst in self.root.all(SchemInstance):
+            if inst.symbol is None:
+                raise SchematicError(
+                    f"Instance {inst.full_path_label()} has no symbol: it "
+                    "was created without one and never registered as a "
+                    "unresolved instance."
+                )
+
     def postprocess(self):
         from .arrange import emit_toplevel_groups
+
+        # Resolve unresolved instances first: all parameters are final once the
+        # body has run, and the rest of the pipeline (arrangement groups,
+        # placement, wiring, checks) only deals with resolved instances.
+        self.resolve_all_instances()
+        self._check_instances_resolved()
 
         emit_toplevel_groups(self.arrangement_groups, self.solver)
         self.solver.solve(allow_undefined=True)
 
         self.root.place_unplaced_instances()
-        self.root.resolve_instances() # (preserves nids)
         self.root.place_ports() # Places ports whose pos is None.
 
         # No position should be None anymore: unplaced instances and ports
@@ -170,7 +335,17 @@ class SchematicViewContext(ViewContext):
         self.root.check(add_conn_points=True, add_terminal_taps=True)
 
 
-class LayoutViewContext(ViewContext):
+class LayoutViewContext(MixinUnresolvedInstances, ViewContext):
+    def _apply_resolution(self, inst, entry):
+        try:
+            layout = entry.cell_cls(**entry.params).layout
+        except Exception as e:
+            # TODO: Include the source location once LayoutInstance has a
+            # src_loc attribute (a node tuple layout change).
+            e.add_note(f"While resolving instance {inst.full_path_label()}")
+            raise
+        inst.ref = layout
+
     @classmethod
     def create_root(cls, cell, root_cls):
         # A symbol is optional: a cell may define a layout without a
@@ -190,6 +365,16 @@ class LayoutViewContext(ViewContext):
         return self
 
     def postprocess(self):
+        from .schema import LayoutInstance, LayoutInstanceArray
+        self.resolve_all_instances()
+        for inst_type in (LayoutInstance, LayoutInstanceArray):
+            for inst in self.root.all(inst_type):
+                if inst.ref is None:
+                    raise TypeError(
+                        f"Instance {inst.full_path_label()} has no layout "
+                        "reference: it was created without one and never "
+                        "registered as an unresolved instance."
+                    )
         self.solver.solve()
 
     def constrain(self, constraint):
@@ -233,11 +418,14 @@ class AssignableViewContext(ViewContext):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is None:
-            if self.root is None:
-                raise TypeError("viewgen body must assign the view root via `.`.")
-            self.postprocess()
-        _view_ctx_var.reset(self._token)
+        try:
+            if exc_type is None:
+                if self.root is None:
+                    raise TypeError(
+                        "viewgen body must assign the view root via `.`.")
+                self.postprocess()
+        finally:
+            _view_ctx_var.reset(self._token)
 
     def set_root(self, value):
         if self.root is not None:

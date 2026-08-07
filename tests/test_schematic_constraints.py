@@ -1,8 +1,10 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import pytest
 from ordec.core import *
 from ordec.core.constraints import LinearTerm, Vec2LinearTerm, Rect4LinearTerm, TD4LinearTerm
+from ordec.core.context import SchematicViewContext
 
 
 class SimpleSymbol(Cell):
@@ -192,15 +194,18 @@ def test_td4linearterm_mul_concrete_td4():
 
 
 def test_unresolved_subcursor_uses_recorded_params():
-    # Geometry reads on a SchemInstanceUnresolved must resolve the symbol
-    # with the parameters recorded so far, not with defaults (MultiPinSymbol
-    # has no default for bits, so this raises if params are dropped).
+    # Geometry reads on an unresolved instance must resolve the symbol with the
+    # parameters recorded so far, not with defaults (MultiPinSymbol has no
+    # default for bits, so this raises if params are dropped). The read also
+    # resolves the instance: setting parameters afterwards must raise.
     sch = Schematic()
-    sch.inst1 = SchemInstanceUnresolved(
-        resolver=lambda **p: MultiPinSymbol(**p).symbol,
-        pos=Vec2R(1, 1),
-    )
-    sch.inst1 % SchemInstanceUnresolvedParameter(name='bits', value=2)
+    with SchematicViewContext(sch) as ctx:
+        sch.inst1 = SchemInstance(pos=Vec2R(1, 1))
+        ctx.register_unresolved(sch.inst1, MultiPinSymbol)
+        sch.inst1.params.bits = 2
 
-    assert sch.inst1['q'][1].pos == Vec2R(5, 3)
-    assert sch.inst1.outline.uy == R(5)
+        assert sch.inst1['q'][1].pos == Vec2R(5, 3)
+        assert sch.inst1.outline.uy == R(5)
+
+        with pytest.raises(TypeError, match="already resolved"):
+            sch.inst1.params.bits = 3

@@ -8,7 +8,7 @@ from ..geoprim import *
 from ..ordb import *
 from ..cell import Cell
 from ..constraints import *
-from ..context import LayoutViewContext
+from ..context import LayoutViewContext, InstanceParams, unresolved_instance_ctx
 from .base import (
     coerce_tuple, AttrProxy, _rect_proxy, GdsLayer, RGBColor, PathEndType,
     MixinPolygonalChain, MixinClosedPolygon, GenericPolyI, PolyVec2I,
@@ -354,9 +354,26 @@ class LayoutInstance(Node):
     pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
         placeholder=Vec2LinearTerm)
     orientation = Attr(D4, default=D4.R0)
-    ref = SubgraphRef(Layout, optional=False) #: Can be a Layout or a frame (which is also a Layout)...
+    #: Can be a Layout or a frame (which is also a Layout). None only while
+    #: the instance is unresolved in its view context; resolved at the latest
+    #: in postprocess.
+    ref = SubgraphRef(Layout)
+
+    @property
+    def params(self):
+        return InstanceParams(self)
 
     def subcursor(self):
+        if self.ref is None:
+            ctx = unresolved_instance_ctx(self)
+            if ctx is None:
+                raise TypeError(
+                    f"Instance {self.full_path_label()} has no layout "
+                    "reference: it is not an unresolved instance of the active "
+                    "viewgen."
+                )
+            # Nothing on a layout instance is deferrable: resolve now.
+            ctx.resolve_instance(self)
         return LayoutInstanceSubcursor((self, self.ref))
 
     def __getitem__(self, name):
