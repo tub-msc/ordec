@@ -180,7 +180,7 @@ def add_element(name_tuple, element, src_line=None, src_column=None):
     # Layout context: create LayoutInstance from Cell instances
     if isinstance(ctx.root, Layout):
         if isinstance(element, Cell):
-            ref = LayoutInstance(ref=element.layout)
+            ref = LayoutInstance(ref=element.layout, src_loc=src_loc)
             return add(name_tuple, ref)
 
     if isinstance(element, type) and issubclass(element, Cell):
@@ -194,7 +194,7 @@ def add_element(name_tuple, element, src_line=None, src_column=None):
                 "instead."
             )
         if isinstance(ctx.root, Layout):
-            ref = LayoutInstance()
+            ref = LayoutInstance(src_loc=src_loc)
         else:
             ref = SchemInstance(src_loc=src_loc)
         cursor = add(name_tuple, ref)

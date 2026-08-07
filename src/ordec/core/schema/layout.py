@@ -13,7 +13,7 @@ from .base import (
     coerce_tuple, AttrProxy, _rect_proxy, GdsLayer, RGBColor, PathEndType,
     MixinPolygonalChain, MixinClosedPolygon, GenericPolyI, PolyVec2I,
 )
-from .schematic import Symbol, Pin
+from .schematic import Symbol, Pin, MixinSourceLoc
 
 WIRE_DOMAIN = 4 << 16
 
@@ -346,7 +346,7 @@ class LayoutInstanceSubcursor(tuple):
             return inner_ret
 
 @public
-class LayoutInstance(Node):
+class LayoutInstance(Node, MixinSourceLoc):
     """Hierarchical layout instance, equivalent to GDS SRef."""
     in_subgraphs = [Layout]
     wire_id = WIRE_DOMAIN | 10

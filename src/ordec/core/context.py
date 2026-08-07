@@ -175,7 +175,15 @@ class MixinUnresolvedInstances:
         entry = self.unresolved_instance(inst)
         if entry is None:
             return
-        self._apply_resolution(inst, entry)
+        try:
+            self._apply_resolution(inst, entry)
+        except Exception as e:
+            loc = inst.src_loc
+            e.add_note(
+                f"While resolving instance {inst.full_path_label()}"
+                + (f" ({loc.filename}:{loc.line}:{loc.column})" if loc else "")
+            )
+            raise
         entry.resolved = True
 
     def resolve_all_instances(self):
@@ -244,15 +252,7 @@ class SchematicViewContext(MixinUnresolvedInstances, ViewContext):
     def _apply_resolution(self, inst, entry):
         from .schema import Pin, SchemInstanceConn
         from ..schematic.helpers import recursive_getitem, SchematicError
-        try:
-            symbol = entry.cell_cls(**entry.params).symbol
-        except Exception as e:
-            loc = inst.src_loc
-            e.add_note(
-                f"While resolving instance {inst.full_path_label()}"
-                + (f" ({loc.filename}:{loc.line}:{loc.column})" if loc else "")
-            )
-            raise
+        symbol = entry.cell_cls(**entry.params).symbol
         inst.symbol = symbol
         for here, path in entry.conns:
             pin = recursive_getitem(symbol, path)
@@ -337,14 +337,7 @@ class SchematicViewContext(MixinUnresolvedInstances, ViewContext):
 
 class LayoutViewContext(MixinUnresolvedInstances, ViewContext):
     def _apply_resolution(self, inst, entry):
-        try:
-            layout = entry.cell_cls(**entry.params).layout
-        except Exception as e:
-            # TODO: Include the source location once LayoutInstance has a
-            # src_loc attribute (a node tuple layout change).
-            e.add_note(f"While resolving instance {inst.full_path_label()}")
-            raise
-        inst.ref = layout
+        inst.ref = entry.cell_cls(**entry.params).layout
 
     @classmethod
     def create_root(cls, cell, root_cls):

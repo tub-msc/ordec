@@ -423,6 +423,7 @@ def test_layout_instance_param_missing():
                 ! .pos == (0, 0)
     note, = exc_info.value.__notes__
     assert "instance a" in note
+    assert "test_ord_runtime" in note  # src_loc of the `ParamLayoutCell a` statement
 
 def test_layout_instance_param_missing_on_access():
     import pytest
