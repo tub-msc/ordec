@@ -28,7 +28,6 @@ cell DiffPair:
     viewgen layout -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
-        unit = Nmos(w=1u, l=130n)
 
         # EDIT HERE (row)
 

@@ -443,17 +443,18 @@ courses_testdata = {
             InsertSolution("""
             # EDIT HERE (row)
             """, """
-            unit m1a:
-                ! .pos == (0, 0)
-            unit m2a:
-                ! .sd[0].center == m1a.sd[1].center
-                ! .pos.y == m1a.pos.y
-            unit m2b:
-                ! .sd[0].center == m2a.sd[1].center
-                ! .pos.y == m1a.pos.y
-            unit m1b:
-                ! .sd[0].center == m2b.sd[1].center
-                ! .pos.y == m1a.pos.y
+            Nmos m1a, m2a, m2b, m1b
+            for m in m1a, m2a, m2b, m1b:
+                m.$w = 1u
+                m.$l = 130n
+
+            ! m1a.pos == (0, 0)
+            ! m2a.sd[0].center == m1a.sd[1].center
+            ! m2a.pos.y == m1a.pos.y
+            ! m2b.sd[0].center == m2a.sd[1].center
+            ! m2b.pos.y == m1a.pos.y
+            ! m1b.sd[0].center == m2b.sd[1].center
+            ! m1b.pos.y == m1a.pos.y
             """),
             InsertSolution("""
             # EDIT HERE (gates)

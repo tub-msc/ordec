@@ -1098,23 +1098,31 @@ def gen_lesson10(g):
             neighborhood.
 
             **1. Build the matched row** at the `EDIT HERE (row)` marker.
-            The unit cell is prepared as `unit`. Instead of positioning
-            each device by hand, chain them: constraining a device's first
-            source/drain strip onto its neighbor's last one makes the two
-            share one diffusion strip, perfectly aligned by construction:
+            Declare all four unit devices in one statement and set their
+            parameters in one loop - a single source of truth, so the
+            branches cannot drift apart. A device's inner geometry
+            (`.sd`, `.poly`) only takes shape once its parameters are
+            known, so the parameter loop must come first; the placement
+            constraints then follow as standalone statements naming each
+            device, instead of living in the instance blocks as in
+            lesson 6. Rather than positioning each device by hand, chain
+            them: constraining a device's first source/drain strip onto
+            its neighbor's last one makes the two share one diffusion
+            strip, perfectly aligned by construction:
 
             ```
-            unit m1a:
-                ! .pos == (0, 0)
-            unit m2a:
-                ! .sd[0].center == m1a.sd[1].center
-                ! .pos.y == m1a.pos.y
-            unit m2b:
-                ! .sd[0].center == m2a.sd[1].center
-                ! .pos.y == m1a.pos.y
-            unit m1b:
-                ! .sd[0].center == m2b.sd[1].center
-                ! .pos.y == m1a.pos.y
+            Nmos m1a, m2a, m2b, m1b
+            for m in m1a, m2a, m2b, m1b:
+                m.$w = 1u
+                m.$l = 130n
+
+            ! m1a.pos == (0, 0)
+            ! m2a.sd[0].center == m1a.sd[1].center
+            ! m2a.pos.y == m1a.pos.y
+            ! m2b.sd[0].center == m2a.sd[1].center
+            ! m2b.pos.y == m1a.pos.y
+            ! m1b.sd[0].center == m2b.sd[1].center
+            ! m1b.pos.y == m1a.pos.y
             ```
 
             The five strips of the row now alternate between the nets
@@ -1164,8 +1172,8 @@ def gen_lesson10(g):
             downward; it is prepared for you in the next lesson.*
         """)
 
-        hint_row = ("Add the four `unit` blocks from step 1 at the "
-            "EDIT HERE (row) marker.")
+        hint_row = ("Add the unit-device declarations and chaining "
+            "constraints from step 1 at the EDIT HERE (row) marker.")
         try:
             row = diffpair_row(g['DiffPair']().layout)
             found = all(i.ref.cell.w == R('1u') and i.ref.cell.l == R('130n')
