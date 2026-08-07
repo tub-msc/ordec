@@ -348,7 +348,7 @@ cell VcoRing:
             .create_pin(self.symbol.vss_st)
 
         for i in range(2):
-            VcoHalfStage() stage_p[i]:
+            VcoHalfStage stage_p[i]:
                 .orientation=MX
                 if i == 0:
                     .orientation *= MY
@@ -356,7 +356,7 @@ cell VcoRing:
                 ! vdd_st_bar.contains(.vddbar.rect)
                 ! nwell.contains(.nwell.rect)
 
-            VcoHalfStage() stage_n[i]:
+            VcoHalfStage stage_n[i]:
                 if i == 0:
                     .orientation *= MY
                 ! vdd_st_bar.contains(.vddbar.rect)
@@ -595,7 +595,7 @@ cell Vco:
     viewgen layout -> Layout:
         layers = SG13G2().layers
         .ref_layers = layers
-        VcoRing() ring_i:
+        VcoRing ring_i:
             ! .pos == (0,0)
             
         
@@ -642,10 +642,14 @@ cell Vco:
             ! .size == (160, 160)
             ! .center == m3.poly[0].south - (0, 200)
         
-        Ntap(l="0.7u", w="0.7u") ntap_i:
+        Ntap ntap_i:
+            .$l = "0.7u"
+            .$w = "0.7u"
             ! .activ.south == m2.sd[1].north + (0, 1000)
         
-        Ptap(l="0.7u", w="0.7u") ptap_i:
+        Ptap ptap_i:
+            .$l = "0.7u"
+            .$w = "0.7u"
             ! .activ.east == m1.activ.west - (1000, 0)
 
         

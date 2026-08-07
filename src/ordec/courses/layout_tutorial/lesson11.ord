@@ -103,7 +103,9 @@ cell DiffPair:
             ! .size == (500, 200)
 
         # Substrate tap and vss rail below the row:
-        Ptap(l=0.7u, w=0.7u) ptap:
+        Ptap ptap:
+            .$l = 0.7u
+            .$w = 0.7u
             ! .activ.cx == 0.5*m1a.activ.lx + 0.5*m1b.activ.ux
             ! .activ.uy == m1a.pos.y - 1200
         LayoutRect m1_vss:

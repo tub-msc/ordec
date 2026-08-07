@@ -23,15 +23,23 @@ cell Inv:
         layers = .ref_layers
 
         # The device column from lesson 6:
-        Nmos(w=1u, l=130n) mn:
+        Nmos mn:
+            .$w = 1u
+            .$l = 130n
             ! .pos == (0, 0)
-        Pmos(w=1u, l=130n) mp:
+        Pmos mp:
+            .$w = 1u
+            .$l = 130n
             ! .pos.x == mn.pos.x
             ! .pos.y == mn.pos.y + 2500
-        Ptap(l=0.7u, w=0.7u) ptap:
+        Ptap ptap:
+            .$l = 0.7u
+            .$w = 0.7u
             ! .activ.cx == mn.activ.cx
             ! .activ.uy + 600 == mn.poly[0].ly
-        Ntap(l=0.7u, w=0.7u) ntap:
+        Ntap ntap:
+            .$l = 0.7u
+            .$w = 0.7u
             ! .activ.cx == mp.activ.cx
             ! .activ.ly - 600 == mp.poly[0].uy
 

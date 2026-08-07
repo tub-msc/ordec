@@ -546,12 +546,14 @@ def gen_lesson6(g):
 
             Transistors are not drawn by hand: the PDK cells generate their
             layouts, and you place them as *instances*. Writing a cell name
-            inside a layout view instantiates its layout, and constraints
-            position it. Place the NMOS at the `EDIT HERE (devices)`
-            marker:
+            inside a layout view instantiates its layout, `.$name = value`
+            sets the cell's parameters, and constraints position it. Place
+            the NMOS at the `EDIT HERE (devices)` marker:
 
             ```
-            Nmos(w=1u, l=130n) mn:
+            Nmos mn:
+                .$w = 1u
+                .$l = 130n
                 ! .pos == (0, 0)
             ```
 
@@ -566,13 +568,19 @@ def gen_lesson6(g):
             centered on its transistor:
 
             ```
-            Pmos(w=1u, l=130n) mp:
+            Pmos mp:
+                .$w = 1u
+                .$l = 130n
                 ! .pos.x == mn.pos.x
                 ! .pos.y == mn.pos.y + 2500
-            Ptap(l=0.7u, w=0.7u) ptap:
+            Ptap ptap:
+                .$l = 0.7u
+                .$w = 0.7u
                 ! .activ.cx == mn.activ.cx
                 ! .activ.uy + 600 == mn.poly[0].ly
-            Ntap(l=0.7u, w=0.7u) ntap:
+            Ntap ntap:
+                .$l = 0.7u
+                .$w = 0.7u
                 ! .activ.cx == mp.activ.cx
                 ! .activ.ly - 600 == mp.poly[0].uy
             ```
@@ -587,8 +595,8 @@ def gen_lesson6(g):
             rotation angles.*
         """)
 
-        hint_mn = ("Add `Nmos(w=1u, l=130n) mn:` with `! .pos == (0, 0)` "
-            "at the EDIT HERE (devices) marker.")
+        hint_mn = ("Add `Nmos mn:` with `.$w = 1u`, `.$l = 130n` and "
+            "`! .pos == (0, 0)` at the EDIT HERE (devices) marker.")
         try:
             insts = instances_of(g['Inv']().layout, ihp130.Nmos)
             found = (len(insts) == 1

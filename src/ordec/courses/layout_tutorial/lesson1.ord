@@ -13,5 +13,7 @@ cell Example:
         LayoutLabel note: .layer=layers.TEXT; .pos=(0, 1600); .text="hello layout"
 
         # Transistor parametric cell instance (more on this in lesson 6):
-        Nmos(w=1u, l=130n) mn:
+        Nmos mn:
+            .$w = 1u
+            .$l = 130n
             ! .pos == (3800, -200)
