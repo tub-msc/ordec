@@ -555,9 +555,6 @@ def gen_lesson6(g):
                 ! .pos == (0, 0)
             ```
 
-            If the transistor does not show up in the layout viewer,
-            click into the viewer and press `f` to reset the zoom.
-
             Instances expose their inner geometry as anchors, transformed
             into your coordinates: `mn.activ` (the diffusion area),
             `mn.poly[0]` (the gate finger), `mn.sd[0]` and `mn.sd[1]` (the

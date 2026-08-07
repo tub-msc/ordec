@@ -245,6 +245,14 @@ export class LayoutGL {
 
 
     zoomToBox(lx, ly, ux, uy, animate, padFraction = 0.05) {
+        if(lx == ux && ly == uy) {
+            // A single point has no size to fit and would produce an
+            // infinite scale below; expand it to an arbitrary finite box.
+            lx -= 1000;
+            ux += 1000;
+            ly -= 1000;
+            uy += 1000;
+        }
         const pad = Math.max(ux-lx, uy-ly) * padFraction;
         lx -= pad;
         ux += pad;
@@ -273,7 +281,9 @@ export class LayoutGL {
     }
 
     zoomFull(animate) {
-        console.log("zoom full", this.data.extent);
+        if(!this.data.extent) {
+            return; // empty layout, nothing to fit
+        }
         const [lx, ly, ux, uy] = this.data.extent;
         this.zoomToBox(lx, ly, ux, uy, animate);
     }
@@ -333,10 +343,15 @@ export class LayoutGL {
                 // Zoom to pending highlight instead of full view
                 this.setHighlight(this._pendingHighlight, true);
                 this._pendingHighlight = null;
-            } else {
+                this.initialZoomDone = true;
+            } else if (this.data.extent) {
+                // An empty layout has no extent to fit; leave initialZoomDone
+                // unset so the first update that delivers actual content
+                // triggers the fit (there is no viewport worth preserving on
+                // an empty layout).
                 this.zoomFull(false);
+                this.initialZoomDone = true;
             }
-            this.initialZoomDone = true;
         }
 
         this.loadShapes();

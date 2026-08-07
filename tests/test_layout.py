@@ -312,6 +312,21 @@ def test_flatten():
         assert label.pos == tran * label_orig.pos
         assert label.text == label_orig.text
 
+def test_webdata_extent():
+    from ordec.layout.webdata import webdata
+
+    layers = SG13G2().layers
+
+    # An empty layout must report a null extent so the web viewer defers its
+    # initial fit-to-content until an update delivers actual geometry.
+    _, data = webdata(Layout(ref_layers=layers).freeze())
+    assert data['extent'] is None
+
+    layout = Layout(ref_layers=layers)
+    layout % LayoutRect(layer=layers.Metal1, rect=(0, 0, 100, 200))
+    _, data = webdata(layout.freeze())
+    assert data['extent'] == (0, 0, 100, 200)
+
 def test_expand_paths_lshapes():
     """
     Tests expand_paths with PathEndType.Square and PathEndType.Flush

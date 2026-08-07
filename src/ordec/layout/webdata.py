@@ -75,13 +75,17 @@ def webdata(layout: Layout.Frozen):
             'text': label.text,
         })
 
-    if extent is None:
-        extent = Rect4I(0, 0, 0, 0)
-
     weblayers_list.sort(key=lambda l: l['nid'])
+
+    if extent is None:
+        # extent is null for an empty layout. In this case, the viewer defers
+        # initial fit-to-content until an update delivers non-null extent.
+        extent_out = None
+    else:
+        extent_out = (extent.lx, extent.ly, extent.ux, extent.uy)
 
     return 'layout_gl', {
         'layers': weblayers_list,
-        'extent': [extent.lx, extent.ly, extent.ux, extent.uy],
+        'extent': extent_out,
         'unit': float(layout.ref_layers.unit),
     }
