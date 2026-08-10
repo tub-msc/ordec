@@ -9,7 +9,7 @@ from typing import List, NamedTuple, Optional
 from urllib.parse import unquote, urlparse
 
 
-_MISSING = object()
+MISSING = object()
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 LEADING_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 TRAILING_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*$")
@@ -73,17 +73,42 @@ def trailing_identifier(value: str):
     return match.group(0)
 
 
+def normalize_type_names(type_names):
+    """Return unique non-empty type names while preserving order."""
+    if not type_names:
+        return []
+
+    seen = set()
+    result = []
+    for type_name in type_names:
+        if not type_name or type_name in seen:
+            continue
+        seen.add(type_name)
+        result.append(type_name)
+    return result
+
+
+def context_type_names_for_kind(kind_name: str):
+    """Map an ORD context keyword to candidate type names."""
+    if kind_name in ("input", "output", "inout"):
+        return ["Pin"]
+    if kind_name in ("port", "net"):
+        return ["Net"]
+    if kind_name == "path":
+        return ["PathNode"]
+
+    # Dotted kinds such as `lib.Inv` instantiate the trailing class.
+    identifier = trailing_identifier(kind_name)
+    if identifier is None:
+        return []
+    return [identifier]
+
+
 class AnalysisPosition(NamedTuple):
     """One-based source position used by the ORD analysis layer."""
     line: int
     character: int
 
-    def to_dict(self):
-        """Convert the position to a plain dictionary."""
-        return {
-            "line": self.line,
-            "character": self.character,
-        }
 
 
 class AnalysisRange(NamedTuple):
@@ -91,12 +116,6 @@ class AnalysisRange(NamedTuple):
     start: AnalysisPosition
     end: AnalysisPosition
 
-    def to_dict(self):
-        """Convert the range to a plain dictionary."""
-        return {
-            "start": self.start.to_dict(),
-            "end": self.end.to_dict(),
-        }
 
 
 class AnalysisDiagnostic(NamedTuple):
@@ -107,17 +126,6 @@ class AnalysisDiagnostic(NamedTuple):
     code: Optional[str] = None
     data: Optional[dict] = None
 
-    def to_dict(self):
-        """Convert the diagnostic to a plain dictionary."""
-        result = {
-            "range": self.range.to_dict(),
-            "severity": self.severity,
-            "message": self.message,
-            "code": self.code,
-        }
-        if self.data is not None:
-            result["data"] = self.data
-        return result
 
 
 class AnalysisSymbol(NamedTuple):
@@ -135,15 +143,6 @@ class AnalysisSymbol(NamedTuple):
     selection_range: AnalysisRange
     content_end_line: Optional[int] = None
 
-    def to_dict(self):
-        """Convert the symbol to a dictionary for protocol responses."""
-        return {
-            "name": self.name,
-            "kind": self.kind,
-            "range": self.range.to_dict(),
-            "selection_range": self.selection_range.to_dict(),
-            "content_end_line": self.content_end_line,
-        }
 
 
 class AnalysisImport(NamedTuple):
@@ -154,17 +153,8 @@ class AnalysisImport(NamedTuple):
     local_name: str
     range: AnalysisRange
     selection_range: AnalysisRange
+    is_alias: bool = False
 
-    def to_dict(self):
-        """Convert the import entry to a dictionary."""
-        return {
-            "kind": self.kind,
-            "module": self.module,
-            "export_name": self.export_name,
-            "local_name": self.local_name,
-            "range": self.range.to_dict(),
-            "selection_range": self.selection_range.to_dict(),
-        }
 
 
 class DocumentAnalysis:
@@ -190,6 +180,7 @@ class DocumentAnalysis:
         node_contexts=None,
         constraints=None,
         type_hints=None,
+        view_context_ranges=None,
     ):
         """Initialize a document analysis result.
 
@@ -209,6 +200,8 @@ class DocumentAnalysis:
             node_contexts: ORD node context records.
             constraints: Constraint syntax records.
             type_hints: Inferred-type records for assignment targets.
+            view_context_ranges: Ranges of ``with`` blocks that open an
+                ORDB view context outside a viewgen.
         """
         self.uri = uri
         self.version = version
@@ -228,6 +221,9 @@ class DocumentAnalysis:
         self.node_contexts = self.copy_records(node_contexts if node_contexts is not None else [])
         self.constraints = self.copy_records(constraints if constraints is not None else [])
         self.type_hints = self.copy_records(type_hints if type_hints is not None else [])
+        self.view_context_ranges = list(
+            view_context_ranges if view_context_ranges is not None else []
+        )
 
     def copy_scopes(self, scopes):
         """Return copied scope records so analysis snapshots do not alias."""
@@ -254,17 +250,6 @@ class DocumentAnalysis:
             result.append(copied)
         return result
 
-    def to_dict(self):
-        """Convert the public analysis fields to a dictionary."""
-        return {
-            "uri": self.uri,
-            "version": self.version,
-            "diagnostics": [diagnostic.to_dict() for diagnostic in self.diagnostics],
-            "symbols": [symbol.to_dict() for symbol in self.symbols],
-            "imports": list(self.imports),
-            "exports": list(self.exports),
-        }
-
     def has_errors(self):
         """Return whether this analysis contains an error diagnostic."""
         return any(
@@ -272,11 +257,11 @@ class DocumentAnalysis:
             for diagnostic in self.diagnostics
         )
 
-    def with_diagnostics(self, diagnostics, uri: Optional[str] = None, version=_MISSING):
+    def with_diagnostics(self, diagnostics, uri: Optional[str] = None, version=MISSING):
         """Return a copy with replaced diagnostics and optional uri/version."""
         return DocumentAnalysis(
             uri=self.uri if uri is None else uri,
-            version=self.version if version is _MISSING else version,
+            version=self.version if version is MISSING else version,
             diagnostics=diagnostics,
             symbols=self.symbols,
             imports=self.imports,
@@ -290,6 +275,7 @@ class DocumentAnalysis:
             node_contexts=self.node_contexts,
             constraints=self.constraints,
             type_hints=self.type_hints,
+            view_context_ranges=self.view_context_ranges,
         )
 
 

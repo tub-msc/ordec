@@ -25,7 +25,6 @@ the same ground.
 
 # standard imports
 from collections import deque
-from pathlib import Path
 import json
 import os.path
 import queue
@@ -688,8 +687,6 @@ class OrdLanguageServer:
             }
             if folding_range["kind"] == "imports":
                 entry["kind"] = "imports"
-            elif folding_range["kind"] == "comment":
-                entry["kind"] = "comment"
             result.append(entry)
         return self.result_response(message, result)
 
@@ -1116,8 +1113,7 @@ def main():
 
     A daemon reader thread frames stdin onto a message queue, so cancels
     and newer edits become visible to serve() while earlier messages are
-    still being handled. The daemon flag lets handle_exit terminate the
-    process even though the reader blocks on stdin.
+    still being handled.
     """
     server = OrdLanguageServer()
     message_queue = queue.SimpleQueue()
@@ -1127,4 +1123,10 @@ def main():
         daemon=True,
     )
     reader.start()
-    serve(server, message_queue, sys.stdout.buffer)
+    try:
+        serve(server, message_queue, sys.stdout.buffer)
+    except SystemExit as exc:
+        # The reader thread usually blocks on stdin holding the buffer
+        # lock, which makes interpreter finalization abort with a fatal
+        # error on the exit notification, so skip finalization entirely.
+        os._exit(exc.code if isinstance(exc.code, int) else 0)

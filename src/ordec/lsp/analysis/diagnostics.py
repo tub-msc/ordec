@@ -66,16 +66,7 @@ class DiagnosticsMixin:
 
             export_name = import_entry.export_name
             module_name = import_entry.module
-
-            # An imported name may be an ORD submodule rather than an export
-            # of the module itself, e.g. `from .pkg import sub` for pkg/sub.ord.
-            if export_name not in (None, "*") and module_name:
-                separator = "" if module_name.endswith(".") else "."
-                if self.resolve_module_uri(uri, module_name + separator + export_name) is not None:
-                    continue
-
-            module_uri = self.resolve_module_uri(uri, module_name)
-            if module_uri is None:
+            if export_name == "*":
                 if not module_exists(module_name):
                     add_diagnostic(
                         import_entry.selection_range,
@@ -83,31 +74,31 @@ class DiagnosticsMixin:
                         "Cannot resolve import module `{}`.".format(module_name),
                         "unresolved-import",
                     )
-                    continue
-
-                if export_name not in (None, "*"):
-                    python_module_name = self.resolve_python_import_name(uri, module_name)
-                    match = self.python_definition(python_module_name, export_name=export_name)
-                    module_info = self.python_module_info(python_module_name)
-                    if module_info is not None and match is None:
-                        add_diagnostic(
-                            import_entry.selection_range,
-                            "error",
-                            "Cannot resolve `{}` from `{}`.".format(export_name, module_name),
-                            "unresolved-import-member",
-                        )
                 continue
 
-            if export_name in (None, "*"):
+            if self.resolve_from_import(uri, module_name, export_name) is not None:
                 continue
 
-            if self.find_export(module_uri, export_name) is None:
+            module_uri = self.resolve_module_uri(uri, module_name)
+            if module_uri is None and not module_exists(module_name):
                 add_diagnostic(
                     import_entry.selection_range,
                     "error",
-                    "Cannot resolve `{}` from `{}`.".format(export_name, module_name),
-                    "unresolved-import-member",
+                    "Cannot resolve import module `{}`.".format(module_name),
+                    "unresolved-import",
                 )
+                continue
+
+            python_module_name = self.resolve_python_import_name(uri, module_name)
+            if module_uri is None and self.python_module_info(python_module_name) is None:
+                continue
+
+            add_diagnostic(
+                import_entry.selection_range,
+                "error",
+                "Cannot resolve `{}` from `{}`.".format(export_name, module_name),
+                "unresolved-import-member",
+            )
 
         built_in_contexts = {
             "input",
@@ -179,16 +170,18 @@ class DiagnosticsMixin:
                 containing_viewgen = viewgen
                 break
 
-            if containing_viewgen is None:
-                add_diagnostic(
-                    constraint["range"],
-                    "error",
-                    "Constraints are only supported inside schematic or layout view generators.",
-                    "invalid-constraint-context",
-                )
+            if containing_viewgen is None and any(
+                range_contains(context_range, constraint["range"].start)
+                for context_range in analysis.view_context_ranges
+            ):
+                # `with x.view_context(...):` blocks build views outside a
+                # viewgen, so constraints are valid there.
                 continue
 
-            if containing_viewgen["return_type"] not in ("Schematic", "Layout"):
+            if (
+                containing_viewgen is None
+                or containing_viewgen["return_type"] not in ("Schematic", "Layout")
+            ):
                 add_diagnostic(
                     constraint["range"],
                     "error",

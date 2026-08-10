@@ -423,7 +423,7 @@ Most language intelligence lives in ``ordec.lsp.analysis``:
 
 * ``model.py`` defines shared positions, ranges, diagnostics, symbols, import
   records, and ``DocumentAnalysis``.
-* ``parser_pass.py`` parses ORD source and uses an ``_OrdAnalysisBuilder`` to
+* ``parser_pass.py`` parses ORD source and uses an ``OrdAnalysisBuilder`` to
   walk the parse tree and collect scopes, bindings, occurrences, imports, ORD
   node contexts, view generator return records, constraint records, and
   inferred-type records for assignment targets.
@@ -451,9 +451,10 @@ The server is not a full Python type checker, so Python expression types
 are inferred only where the ORD analysis can derive useful local
 information, and completion and diagnostics may be conservative for complex
 Python control flow or dynamic imports. Rename is deliberately restricted
-to identifiers and does not rename ORD member accesses such as
-``x.member`` or parameter accesses such as ``x.$param``. It also refuses
-symbols whose definition lives in Python source, because rewriting the ORD
+to identifiers. A rename started at an ORD cell-member declaration updates
+matching ``x.member`` accesses, but cannot be started at a member access or
+at a parameter access such as ``x.$param``. It also refuses symbols whose
+definition lives in Python source, because rewriting the ORD
 references without the Python definition would break the import (renaming
 a local import alias remains possible). Workspace-wide
 features depend on the editor passing the correct workspace root and on

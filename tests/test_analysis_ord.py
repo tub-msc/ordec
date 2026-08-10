@@ -3,7 +3,14 @@
 
 from pathlib import Path
 
-from ordec.lsp.analysis import AnalysisPosition, AnalysisSession, analyze_ord, file_uri_to_path
+import pytest
+
+from ordec.lsp.analysis import (
+    AnalysisPosition,
+    AnalysisSession,
+    analyze_ord,
+    file_uri_to_path,
+)
 from ordec.lsp.analysis.python_index import PythonModuleIndex
 from ordec.lsp.code_actions import missing_symbol_port_action
 
@@ -732,12 +739,16 @@ def test_import_member_resolves_ord_submodules(tmp_path):
         "        input a\n"
     )
     top_path = tmp_path / "top.ord"
-    top_path.write_text("from .pkg import sub\n")
+    source = "from .pkg import sub\n"
+    top_path.write_text(source)
 
     session = AnalysisSession(workspace_root=str(tmp_path))
     uri = session.open_path(str(top_path))
 
     assert session.diagnostics(uri) == []
+    assert session.definition(uri, position_at(source, "sub"))["uri"] == (
+        package_path / "sub.ord"
+    ).as_uri()
 
 
 def test_missing_port_action_survives_stale_analysis():
@@ -766,12 +777,327 @@ def test_missing_port_action_survives_stale_analysis():
     assert "input c" in action["edit"]["changes"][uri][0]["newText"]
 
 
+def test_workspace_rename_updates_cell_members_and_refuses_stale_ranges(tmp_path):
+    mux_source = (
+        "cell Mux2:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    mux_path = tmp_path / "mux2.ord"
+    mux_path.write_text(mux_source)
+    top_source = (
+        "from .mux2 import Mux2\n"
+        "\n"
+        "cell Top:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        net n1\n"
+        "        Mux2 inst:\n"
+        "            .a -- n1\n"
+    )
+    top_path = tmp_path / "top.ord"
+    top_path.write_text(top_source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    mux_uri = session.open_path(str(mux_path))
+    top_uri = session.open_path(str(top_path))
+    pin_position = position_at(mux_source, "a")
+
+    changes = session.rename(mux_uri, pin_position, "b")
+    assert set(changes) == {mux_uri, top_uri}
+    assert [change["range"] for change in changes[top_uri]] == [
+        session.name_at_position(top_uri, position_at(top_source, "a --"))["range"],
+    ]
+
+    broken_top = top_source.replace("        net n1\n", "        net n1(\n")
+    session.open_document(top_uri, broken_top, version=2)
+    with pytest.raises(ValueError, match="without syntax errors"):
+        session.rename(mux_uri, pin_position, "b")
+
+
+def test_rename_refuses_stale_sources_and_unaliased_dotted_imports(tmp_path):
+    session = AnalysisSession()
+    uri = "file:///tmp/stale_rename.ord"
+    source = (
+        "def helper():\n"
+        "    value = 1\n"
+        "    return value\n"
+    )
+    session.open_document(uri, source, version=1)
+    session.analyze(uri)
+    broken = source + "def broken(\n"
+    session.update_document(uri, broken, version=2)
+
+    assert session.prepare_rename(uri, position_at(broken, "value")) is None
+    with pytest.raises(ValueError, match="without syntax errors"):
+        session.rename(uri, position_at(broken, "value"), "count")
+
+    package_path = tmp_path / "pkg"
+    package_path.mkdir()
+    (package_path / "__init__.py").write_text("")
+    (package_path / "sub.py").write_text("VALUE = 1\n")
+    import_source = (
+        "import pkg.sub\n"
+        "import pkg.sub as module_alias\n"
+        "\n"
+        "def helper():\n"
+        "    return pkg, module_alias\n"
+    )
+    import_path = tmp_path / "imports.ord"
+    import_path.write_text(import_source)
+    import_session = AnalysisSession(workspace_root=str(tmp_path))
+    import_uri = import_session.open_path(str(import_path))
+
+    assert import_session.prepare_rename(
+        import_uri,
+        position_at(import_source, "pkg", occurrence=3),
+    ) is None
+    alias_position = position_at(import_source, "module_alias", occurrence=2)
+    assert import_session.prepare_rename(import_uri, alias_position) is not None
+    alias_changes = import_session.rename(import_uri, alias_position, "module")
+    assert len(alias_changes[import_uri]) == 2
+
+
+def test_node_kind_subtrees_and_comprehensions_track_bindings():
+    source = (
+        "def helper(width, lib, items):\n"
+        "    values = [item for item in items if item]\n"
+        "    Res(r=width) r1:\n"
+        "        pass\n"
+        "    lib.Inv i1:\n"
+        "        pass\n"
+        "    return values\n"
+    )
+    session = AnalysisSession()
+    uri = "file:///tmp/node_kinds.ord"
+    session.open_document(uri, source)
+    analysis = session.analyze(uri)
+
+    assert session.definition(uri, position_at(source, "width", occurrence=2))["name"] == "width"
+    assert session.definition(uri, position_at(source, "lib", occurrence=2))["name"] == "lib"
+    item_definition = session.definition(uri, position_at(source, "item for"))
+    assert item_definition["selection_range"].start == position_at(source, "item in")
+    i1_binding = next(binding for binding in analysis.bindings if binding["name"] == "i1")
+    assert i1_binding["type_names"] == ["Inv"]
+    assert any(member["name"] == "Inv" for member in analysis.member_occurrences)
+
+
+def test_relative_from_imports_resolve_exports_and_submodules(tmp_path):
+    package_path = tmp_path / "pkg"
+    package_path.mkdir()
+    init_source = (
+        "cell Root:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    (package_path / "__init__.ord").write_text(init_source)
+    device_source = (
+        "cell Device:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    device_path = package_path / "device.ord"
+    device_path.write_text(device_source)
+    source = (
+        "from . import device\n"
+        "from . import Root\n"
+        "\n"
+        "def helper():\n"
+        "    return device, Root\n"
+    )
+    top_path = package_path / "top.ord"
+    top_path.write_text(source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = session.open_path(str(top_path))
+
+    assert session.diagnostics(uri) == []
+    device_definition = session.definition(
+        uri,
+        position_at(source, "device", occurrence=2),
+    )
+    assert device_definition["uri"] == device_path.as_uri()
+    assert session.definition(uri, position_at(source, "Root", occurrence=2))["uri"] == (
+        package_path / "__init__.ord"
+    ).as_uri()
+    assert set(session.resolve_import_uris(uri)) == {
+        (package_path / "__init__.ord").as_uri(),
+        device_path.as_uri(),
+    }
+
+
+def test_unreadable_imports_and_excess_relative_dots_do_not_crash(tmp_path):
+    bad_path = tmp_path / "bad.ord"
+    bad_path.write_bytes(b"cell Caf\xe9:\n")
+    source = "from .bad import Missing\n"
+    top_path = tmp_path / "top.ord"
+    top_path.write_text(source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = session.open_path(str(top_path))
+
+    assert diagnostic_codes(session, uri) == ["unresolved-import-member"]
+    assert set(session.analyze_related(uri)) == {uri}
+    assert session.update_path(str(bad_path)) == bad_path.as_uri()
+    assert session.resolve_module_uri(uri, "." * 100) is None
+
+
+def test_decorated_exports_and_forward_module_constants_resolve(tmp_path):
+    library_source = (
+        "@decorator\n"
+        "cell Decorated:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    (tmp_path / "library.ord").write_text(library_source)
+    source = (
+        "from .library import Decorated\n"
+        "\n"
+        "cell Top:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        net d[WIDTH]\n"
+        "        Decorated inst:\n"
+        "            .a -- d[0]\n"
+        "\n"
+        "WIDTH = 4\n"
+    )
+    path = tmp_path / "top.ord"
+    path.write_text(source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = session.open_path(str(path))
+
+    assert session.diagnostics(uri) == []
+
+
+def test_indexed_member_navigation_and_nested_completion_contexts():
+    source = (
+        "from ordec.core import *\n"
+        "\n"
+        "cell Stage:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        output q\n"
+        "\n"
+        "cell Top:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        net out\n"
+        "        path I\n"
+        "        Stage I[0]:\n"
+        "            .q -- out\n"
+        "        I[0].q -- out\n"
+    )
+    session = AnalysisSession()
+    uri = "file:///tmp/indexed_member.ord"
+    session.open_document(uri, source, version=1)
+
+    definition = session.definition(uri, position_at(source, "q -- out", occurrence=2))
+    assert definition["name"] == "q"
+
+    completion_source = (
+        "from ordec.lib.generic_mos import Nmos\n"
+        "\n"
+        "def helper():\n"
+        "    pd = Nmos()\n"
+        "    return pd.d\n"
+    )
+    completion_uri = "file:///tmp/nested_completion.ord"
+    session.open_document(completion_uri, completion_source, version=1)
+    edited = completion_source.replace("pd.d\n", "pd.d.\n")
+    session.update_document(completion_uri, edited, version=2)
+
+    assert session.completions(
+        completion_uri,
+        position_after(edited, "pd.d."),
+    ) == []
+
+
+def test_lambda_parenthesized_with_and_except_star_bindings():
+    source = (
+        "def helper(factory):\n"
+        "    callback = lambda first, *, second=1, **kwargs: first + second + kwargs[\"x\"]\n"
+        "    with (factory()) as handle:\n"
+        "        local = handle\n"
+        "    with (factory() as first_handle, factory()) as group:\n"
+        "        pair = first_handle, group\n"
+        "    try:\n"
+        "        pass\n"
+        "    except* ValueError as grouped:\n"
+        "        error = grouped\n"
+        "    return callback, handle, first_handle, group, grouped\n"
+    )
+    session = AnalysisSession()
+    uri = "file:///tmp/scope_variants.ord"
+    session.open_document(uri, source)
+
+    for name in ("first", "second", "kwargs"):
+        definition = session.definition(uri, position_at(source, name, occurrence=2))
+        assert definition["name"] == name
+        assert definition["kind"] == "parameter"
+    for name in ("handle", "first_handle", "group", "grouped"):
+        assert session.definition(uri, position_at(source, name, occurrence=2))["name"] == name
+
+
+def test_python_index_parse_errors_reexports_and_ord_invalidation(tmp_path, monkeypatch):
+    (tmp_path / "broken.py").write_text("VALUE = 1\n")
+    index = PythonModuleIndex(workspace_root=str(tmp_path))
+
+    def invalid_tree(*args, **kwargs):
+        raise ValueError("source contains null bytes")
+
+    with monkeypatch.context() as context:
+        context.setattr("ast.parse", invalid_tree)
+        assert index.module_info("broken") is None
+
+    first_path = tmp_path / "first.py"
+    first_path.write_text("class Choice:\n    pass\n")
+    second_path = tmp_path / "second.py"
+    second_path.write_text("class Choice:\n    pass\n")
+    (tmp_path / "bridge.py").write_text(
+        "from first import Choice as Selected\n"
+        "from second import Choice as Selected\n"
+    )
+    index = PythonModuleIndex(workspace_root=str(tmp_path))
+    assert index.definition("bridge", export_name="Selected")["uri"] == second_path.as_uri()
+
+    ord_path = tmp_path / "celllib.ord"
+    ord_path.write_text("cell Old:\n    pass\n")
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    assert "Old" in session.python_module_info("celllib")["exports"]
+    ord_path.write_text("cell New:\n    pass\n")
+    session.invalidate_path(str(ord_path))
+    assert set(session.python_module_info("celllib")["exports"]) == {"New"}
+
+
+def test_new_workspace_file_rebuilds_import_dependents(tmp_path):
+    top_path = tmp_path / "top.ord"
+    top_path.write_text("from .new_cell import NewCell\n")
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    top_uri = session.open_path(str(top_path))
+    assert session.workspace_import_index()["imports"][top_uri] == set()
+
+    new_path = tmp_path / "new_cell.ord"
+    new_path.write_text("cell NewCell:\n    pass\n")
+    new_uri = session.invalidate_path(str(new_path))
+
+    assert session.workspace_dependents(new_uri) == {top_uri}
+
+
 def test_analysis_session_checked_in_ord_files_have_no_lsp_diagnostics():
     root_path = Path(__file__).resolve().parents[1]
     session = AnalysisSession(workspace_root=str(root_path))
 
+    # Runtime-error tests deliberately contain invalid constructs inside
+    # pytest.raises blocks, which the analyzer rightly diagnoses.
+    expected_codes = {
+        "tests/test_ord_runtime.ord": {"unknown-member"},
+    }
+
     for path in sorted(root_path.rglob("*.ord")):
+        relative_path = str(path.relative_to(root_path))
         if any(part.startswith(".") for part in path.relative_to(root_path).parts):
             continue
         uri = session.open_path(str(path))
-        assert session.diagnostics(uri) == [], str(path.relative_to(root_path))
+        diagnostics = [
+            diagnostic for diagnostic in session.diagnostics(uri)
+            if diagnostic.code not in expected_codes.get(relative_path, set())
+        ]
+        assert diagnostics == [], relative_path

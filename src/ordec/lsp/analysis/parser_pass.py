@@ -16,7 +16,8 @@ from .model import (
     AnalysisRange,
     AnalysisSymbol,
     DocumentAnalysis,
-    leading_identifier,
+    context_type_names_for_kind,
+    normalize_type_names,
     trailing_identifier,
 )
 from ...ord.parser import format_error
@@ -83,7 +84,7 @@ def tree_text(node):
     return "".join(parts)
 
 
-class _OrdAnalysisBuilder:
+class OrdAnalysisBuilder:
     """Build a DocumentAnalysis from a parsed ORD syntax tree."""
     def __init__(self, syntax_tree, uri: str, version: Optional[int]):
         """Initialize builder state for one parsed document."""
@@ -114,6 +115,7 @@ class _OrdAnalysisBuilder:
         self.node_contexts = []
         self.constraints = []
         self.type_hints = []
+        self.view_context_ranges = []
 
     def simple_name_node(self, node):
         """Return the simple name node represented by a parse-tree node."""
@@ -132,6 +134,23 @@ class _OrdAnalysisBuilder:
 
         return child
 
+    def opens_view_context(self, expression_node):
+        """Return whether a with-item expression opens an ORDB view context.
+
+        ``with root.view_context(root):`` and ``with node.ctx():`` execute
+        their bodies inside a view building context, so constraints and node
+        statements are valid there even outside a viewgen.
+        """
+        if not isinstance(expression_node, Tree):
+            return False
+
+        for subtree in expression_node.iter_subtrees():
+            if subtree.data != "getattr" or len(subtree.children) != 2:
+                continue
+            if tree_text(subtree.children[1]) in ("view_context", "ctx"):
+                return True
+        return False
+
     def context_kind_name_node(self, node):
         """Return the name node for a plain or parameterized context kind."""
         name_node = self.simple_name_node(node)
@@ -142,6 +161,28 @@ class _OrdAnalysisBuilder:
             return None
 
         return self.simple_name_node(node.children[0])
+
+    def visit_kind_expression(self, kind_node, scope_id):
+        """Visit node-kind subtrees not covered by the kind occurrence.
+
+        Call arguments in ``Res(r=width) r1:`` and dotted kinds such as
+        ``lib.Inv i1:`` contain references that navigation and rename
+        must see. The plain kind name itself is skipped because the node
+        statement records its occurrence manually.
+        """
+        if self.simple_name_node(kind_node) is not None:
+            return
+
+        if isinstance(kind_node, Tree) and kind_node.data == "funccall" and kind_node.children:
+            callee_node = kind_node.children[0]
+            if self.simple_name_node(callee_node) is None:
+                self.visit(callee_node, scope_id)
+            for child in kind_node.children[1:]:
+                if isinstance(child, Tree):
+                    self.visit(child, scope_id)
+            return
+
+        self.visit(kind_node, scope_id)
 
     def add_scope(self, node, parent_id, name_node=None):
         """Create and register a child lexical scope."""
@@ -156,34 +197,6 @@ class _OrdAnalysisBuilder:
         }
         self.scope_bindings[scope_id] = dict()
         return scope_id
-
-    def normalize_type_names(self, type_names):
-        """Return unique non-empty type names in source order."""
-        if not type_names:
-            return []
-
-        seen = set()
-        result = []
-        for type_name in type_names:
-            if not type_name or type_name in seen:
-                continue
-            seen.add(type_name)
-            result.append(type_name)
-        return result
-
-    def context_type_names_for_kind(self, kind_name):
-        """Return candidate type names implied by an ORD context kind."""
-        if kind_name in ("input", "output", "inout"):
-            return ["Pin"]
-        if kind_name in ("port", "net"):
-            return ["Net"]
-        if kind_name == "path":
-            return ["PathNode"]
-
-        identifier = leading_identifier(kind_name)
-        if identifier is None:
-            return []
-        return [identifier]
 
     def type_names_from_annotation(self, node):
         """Extract candidate type names from an annotation node."""
@@ -234,7 +247,7 @@ class _OrdAnalysisBuilder:
         """Register a named binding and its defining occurrence."""
         name = tree_text(name_node)
         binding_id = None if fresh else self.scope_bindings[scope_id].get(name)
-        type_names = self.normalize_type_names(type_names)
+        type_names = normalize_type_names(type_names)
 
         if binding_id is None:
             binding_id = len(self.bindings) + 1
@@ -251,8 +264,8 @@ class _OrdAnalysisBuilder:
             self.scopes[scope_id]["bindings"].append(binding_id)
             self.scope_bindings[scope_id][name] = binding_id
         elif type_names:
-            existing_type_names = self.normalize_type_names(self.bindings[binding_id - 1].get("type_names"))
-            self.bindings[binding_id - 1]["type_names"] = self.normalize_type_names(existing_type_names + type_names)
+            existing_type_names = normalize_type_names(self.bindings[binding_id - 1].get("type_names"))
+            self.bindings[binding_id - 1]["type_names"] = normalize_type_names(existing_type_names + type_names)
 
         self.occurrences.append({
             "name": name,
@@ -266,12 +279,12 @@ class _OrdAnalysisBuilder:
     def add_synthetic_binding(self, scope_id, name, kind, value_range, type_names=None):
         """Register an implicit binding without adding an occurrence."""
         binding_id = self.scope_bindings[scope_id].get(name)
-        type_names = self.normalize_type_names(type_names)
+        type_names = normalize_type_names(type_names)
 
         if binding_id is not None:
             if type_names:
-                existing_type_names = self.normalize_type_names(self.bindings[binding_id - 1].get("type_names"))
-                self.bindings[binding_id - 1]["type_names"] = self.normalize_type_names(existing_type_names + type_names)
+                existing_type_names = normalize_type_names(self.bindings[binding_id - 1].get("type_names"))
+                self.bindings[binding_id - 1]["type_names"] = normalize_type_names(existing_type_names + type_names)
             return binding_id
 
         binding_id = len(self.bindings) + 1
@@ -293,7 +306,7 @@ class _OrdAnalysisBuilder:
         """Return candidate type names attached to a binding."""
         if binding_id is None:
             return []
-        return self.normalize_type_names(self.bindings[binding_id - 1].get("type_names"))
+        return normalize_type_names(self.bindings[binding_id - 1].get("type_names"))
 
     def bind_target(
         self,
@@ -433,7 +446,7 @@ class _OrdAnalysisBuilder:
                 if not isinstance(child, Tree):
                     continue
                 type_names.extend(self.expression_type_names(child, scope_id, context_type_names=context_type_names))
-            return self.normalize_type_names(type_names)
+            return normalize_type_names(type_names)
 
         if node.data == "funccall" and node.children:
             name_node = self.simple_name_node(node.children[0])
@@ -450,7 +463,7 @@ class _OrdAnalysisBuilder:
             return []
 
         if node.data == "dotted_atom":
-            return self.normalize_type_names(context_type_names)
+            return normalize_type_names(context_type_names)
 
         return []
 
@@ -474,7 +487,7 @@ class _OrdAnalysisBuilder:
 
     def add_type_hint(self, target_node, type_names):
         """Record an inferred-type hint for a simple assignment target."""
-        type_names = self.normalize_type_names(type_names)
+        type_names = normalize_type_names(type_names)
         if not type_names:
             return
 
@@ -595,6 +608,89 @@ class _OrdAnalysisBuilder:
         for child in pattern_node.children:
             self.bind_pattern(scope_id, child)
 
+    def bind_lambda_parameters(self, node, outer_scope_id, lambda_scope_id):
+        """Bind lambda parameters while visiting defaults in the outer scope."""
+        if not isinstance(node, Tree):
+            return
+
+        if node.data == "lambda_paramvalue":
+            name_node = None
+            for child in node.children:
+                if not isinstance(child, Tree):
+                    continue
+                if name_node is None and child.data == "name":
+                    name_node = child
+                    self.add_binding(lambda_scope_id, child, "parameter")
+                    continue
+                self.visit(child, outer_scope_id)
+            return
+
+        if node.data not in (
+            "lambda_params",
+            "lambda_starparams",
+            "lambda_kwparams",
+        ):
+            self.visit(node, outer_scope_id)
+            return
+
+        for child in node.children:
+            if not isinstance(child, Tree):
+                continue
+            if child.data == "name":
+                self.add_binding(lambda_scope_id, child, "parameter")
+                continue
+            self.bind_lambda_parameters(child, outer_scope_id, lambda_scope_id)
+
+    def visit_with_item(self, node, scope_id, statement_node, context_type_names=None):
+        """Visit one with-item and bind its optional target."""
+        children = [child for child in node.children if isinstance(child, Tree)]
+        if not children:
+            return
+
+        expression_node = children[0]
+        if self.opens_view_context(expression_node):
+            context_range = tree_range(statement_node)
+            if context_range not in self.view_context_ranges:
+                self.view_context_ranges.append(context_range)
+        self.visit(expression_node, scope_id, context_type_names=context_type_names)
+        for target_node in children[1:]:
+            if self.bind_target(
+                scope_id,
+                target_node,
+                context_type_names=context_type_names,
+            ):
+                continue
+            self.visit(target_node, scope_id, context_type_names=context_type_names)
+
+    def visit_with_items(self, node, scope_id, statement_node, context_type_names=None):
+        """Visit a parenthesized or plain collection of with-items."""
+        container_names = {
+            "with_items",
+            "with_paren_mixed_items",
+            "with_paren_single_as_item",
+            "with_paren_single_item",
+        }
+        for child in node.children:
+            if not isinstance(child, Tree):
+                continue
+            if child.data == "with_item":
+                self.visit_with_item(
+                    child,
+                    scope_id,
+                    statement_node,
+                    context_type_names=context_type_names,
+                )
+                continue
+            if child.data in container_names:
+                self.visit_with_items(
+                    child,
+                    scope_id,
+                    statement_node,
+                    context_type_names=context_type_names,
+                )
+                continue
+            self.visit(child, scope_id, context_type_names=context_type_names)
+
     def visit_comprehension(self, node, scope_id, context_type_names=None):
         """Visit a comprehension using an isolated comprehension scope."""
         comprehension_node = None
@@ -617,35 +713,33 @@ class _OrdAnalysisBuilder:
             if not isinstance(child, Tree):
                 continue
 
-            if child.data != "comp_fors":
+            # `comp_for` trees sit directly under `comprehension` in the
+            # grammar, one per `for` clause.
+            if child.data != "comp_for":
                 post_for_nodes.append(child)
                 continue
 
-            for comp_for in child.children:
-                if not isinstance(comp_for, Tree) or comp_for.data != "comp_for":
-                    continue
+            tree_children = [
+                comp_child for comp_child in child.children
+                if isinstance(comp_child, Tree)
+            ]
+            if len(tree_children) < 2:
+                for comp_child in tree_children:
+                    self.visit(comp_child, comp_scope_id, context_type_names=context_type_names)
+                continue
 
-                tree_children = [
-                    comp_child for comp_child in comp_for.children
-                    if isinstance(comp_child, Tree)
-                ]
-                if len(tree_children) < 2:
-                    for comp_child in tree_children:
-                        self.visit(comp_child, comp_scope_id, context_type_names=context_type_names)
-                    continue
+            target_node = tree_children[0]
+            iterable_node = tree_children[1]
+            self.visit(iterable_node, comp_scope_id, context_type_names=context_type_names)
+            if not self.bind_target(
+                comp_scope_id,
+                target_node,
+                context_type_names=context_type_names,
+            ):
+                self.visit(target_node, comp_scope_id, context_type_names=context_type_names)
 
-                target_node = tree_children[0]
-                iterable_node = tree_children[1]
-                self.visit(iterable_node, comp_scope_id, context_type_names=context_type_names)
-                if not self.bind_target(
-                    comp_scope_id,
-                    target_node,
-                    context_type_names=context_type_names,
-                ):
-                    self.visit(target_node, comp_scope_id, context_type_names=context_type_names)
-
-                for extra_node in tree_children[2:]:
-                    self.visit(extra_node, comp_scope_id, context_type_names=context_type_names)
+            for extra_node in tree_children[2:]:
+                self.visit(extra_node, comp_scope_id, context_type_names=context_type_names)
 
         for post_for_node in post_for_nodes:
             self.visit(post_for_node, comp_scope_id, context_type_names=context_type_names)
@@ -730,7 +824,7 @@ class _OrdAnalysisBuilder:
                 kind_name = tree_text(
                     kind_name_node if kind_name_node is not None else kind_node
                 )
-                context_type_names = self.context_type_names_for_kind(kind_name)
+                context_type_names = context_type_names_for_kind(kind_name)
                 kind_binding_id = None
                 if kind_name_node is not None:
                     kind_binding_id = self.resolve_binding(scope_id, tree_text(kind_name_node))
@@ -762,6 +856,7 @@ class _OrdAnalysisBuilder:
                     selection_range=tree_range(target_node),
                     content_end_line=content_end_line(node),
                 ))
+                self.visit_kind_expression(kind_node, scope_id)
                 name_node = self.simple_name_node(target_node)
                 if name_node is not None:
                     self.add_binding(
@@ -792,7 +887,7 @@ class _OrdAnalysisBuilder:
                 kind_name = tree_text(
                     kind_name_node if kind_name_node is not None else kind_node
                 )
-                context_type_names = self.context_type_names_for_kind(kind_name)
+                context_type_names = context_type_names_for_kind(kind_name)
                 kind_binding_id = None
                 if kind_name_node is not None:
                     kind_binding_id = self.resolve_binding(scope_id, tree_text(kind_name_node))
@@ -804,6 +899,7 @@ class _OrdAnalysisBuilder:
                         "scope_id": scope_id,
                         "binding_id": kind_binding_id,
                     })
+                self.visit_kind_expression(kind_node, scope_id)
 
                 for target_node in node.children[1:]:
                     if not isinstance(target_node, Tree):
@@ -856,6 +952,16 @@ class _OrdAnalysisBuilder:
                 if selection_node is None:
                     selection_node = child
                 names.append(tree_text(child))
+                # Each declared name is its own node context, so cell
+                # member collection sees multi-name declarations too.
+                self.node_contexts.append({
+                    "kind_name": node.data[:-5],
+                    "kind_range": tree_range(node),
+                    "kind_binding_id": None,
+                    "target_name": tree_text(child),
+                    "target_range": tree_range(child),
+                    "range": tree_range(node),
+                })
 
                 name_node = self.simple_name_node(child)
                 if name_node is not None:
@@ -922,6 +1028,7 @@ class _OrdAnalysisBuilder:
                         local_name=local_name,
                         range=tree_range(import_node),
                         selection_range=tree_range(selection_node),
+                        is_alias=len(value_nodes) == 2,
                     ))
             return
 
@@ -975,6 +1082,7 @@ class _OrdAnalysisBuilder:
                             local_name=local_name,
                             range=tree_range(import_node),
                             selection_range=tree_range(selection_node),
+                            is_alias=len(value_nodes) == 2,
                         ))
 
             if names:
@@ -988,6 +1096,7 @@ class _OrdAnalysisBuilder:
                     local_name="*",
                     range=tree_range(node),
                     selection_range=tree_range(selection_node if selection_node is not None else node),
+                    is_alias=False,
                 ))
             return
 
@@ -1030,7 +1139,7 @@ class _OrdAnalysisBuilder:
                         scope_id,
                         context_type_names=context_type_names,
                     ))
-                type_names = self.normalize_type_names(type_names)
+                type_names = normalize_type_names(type_names)
 
                 if not self.bind_target(
                     scope_id,
@@ -1076,6 +1185,17 @@ class _OrdAnalysisBuilder:
             self.visit_comprehension(node, scope_id, context_type_names=context_type_names)
             return
 
+        if node.data in ("lambdef", "lambdef_nocond"):
+            lambda_scope_id = self.add_scope(node, scope_id)
+            for child in node.children:
+                if not isinstance(child, Tree):
+                    continue
+                if child.data == "lambda_params":
+                    self.bind_lambda_parameters(child, scope_id, lambda_scope_id)
+                    continue
+                self.visit(child, lambda_scope_id, context_type_names=context_type_names)
+            return
+
         if node.data == "assign_expr" and len(node.children) >= 2:
             name_node = node.children[0]
             value_node = node.children[1]
@@ -1107,37 +1227,61 @@ class _OrdAnalysisBuilder:
             return
 
         if node.data == "with_stmt":
+            container_names = {
+                "with_items",
+                "with_paren_mixed_items",
+                "with_paren_single_as_item",
+                "with_paren_single_item",
+            }
             for child in node.children:
                 if not isinstance(child, Tree):
                     continue
-
-                if child.data != "with_items":
-                    self.visit(child, scope_id, context_type_names=context_type_names)
+                if child.data in container_names:
+                    self.visit_with_items(
+                        child,
+                        scope_id,
+                        node,
+                        context_type_names=context_type_names,
+                    )
                     continue
-
-                for item_node in child.children:
-                    if not isinstance(item_node, Tree) or item_node.data != "with_item":
-                        continue
-
-                    item_children = [
-                        item_child for item_child in item_node.children
-                        if isinstance(item_child, Tree)
-                    ]
-                    if not item_children:
-                        continue
-
-                    self.visit(item_children[0], scope_id, context_type_names=context_type_names)
-                    for target_node in item_children[1:]:
-                        if self.bind_target(
-                            scope_id,
-                            target_node,
-                            context_type_names=context_type_names,
-                        ):
-                            continue
-                        self.visit(target_node, scope_id, context_type_names=context_type_names)
+                self.visit(child, scope_id, context_type_names=context_type_names)
             return
 
-        if node.data == "except_clause":
+        if node.data in (
+            "with_parenthesized_expr_as",
+            "with_parenthesized_items_as",
+        ):
+            children = [child for child in node.children if isinstance(child, Tree)]
+            if len(children) < 2:
+                for child in children:
+                    self.visit(child, scope_id, context_type_names=context_type_names)
+                return
+
+            expression_node = children[0]
+            if node.data == "with_parenthesized_expr_as":
+                if self.opens_view_context(expression_node):
+                    self.view_context_ranges.append(tree_range(node))
+                self.visit(expression_node, scope_id, context_type_names=context_type_names)
+            else:
+                self.visit_with_items(
+                    expression_node,
+                    scope_id,
+                    node,
+                    context_type_names=context_type_names,
+                )
+
+            target_node = children[1]
+            if not self.bind_target(
+                scope_id,
+                target_node,
+                context_type_names=context_type_names,
+            ):
+                self.visit(target_node, scope_id, context_type_names=context_type_names)
+            for child in children[2:]:
+                self.visit(child, scope_id, context_type_names=context_type_names)
+            return
+
+        if node.data in ("except_clause", "except_star_clause"):
             tree_children = [child for child in node.children if isinstance(child, Tree)]
             if tree_children and tree_children[0].data != "suite":
                 self.visit(tree_children[0], scope_id, context_type_names=context_type_names)
@@ -1175,13 +1319,22 @@ class _OrdAnalysisBuilder:
                 scope_id,
                 context_type_names=context_type_names,
             )
+            if not type_names and isinstance(base_node, Tree) and base_node.data == "getitem":
+                # ORD node arrays are homogeneous, so `I[i].q` keeps the
+                # root binding's type. Attribute chains change type and
+                # stay unknown without deeper inference.
+                type_names = self.expression_root_type_names(
+                    base_node,
+                    scope_id,
+                    context_type_names=context_type_names,
+                )
 
             self.member_occurrences.append({
                 "name": tree_text(name_node),
                 "range": tree_range(name_node),
                 "scope_id": scope_id,
                 "binding_id": binding_id,
-                "type_names": self.normalize_type_names(type_names),
+                "type_names": normalize_type_names(type_names),
                 "mode": "member",
             })
             self.visit(base_node, scope_id, context_type_names=context_type_names)
@@ -1190,7 +1343,7 @@ class _OrdAnalysisBuilder:
         if node.data == "getparam":
             name_node = node.children[-1]
             binding_id = None
-            type_names = self.normalize_type_names(context_type_names)
+            type_names = normalize_type_names(context_type_names)
             if len(node.children) == 2:
                 base_node = node.children[0]
                 base_name_node = self.simple_name_node(base_node)
@@ -1208,7 +1361,7 @@ class _OrdAnalysisBuilder:
                 "range": tree_range(name_node),
                 "scope_id": scope_id,
                 "binding_id": binding_id,
-                "type_names": self.normalize_type_names(type_names),
+                "type_names": normalize_type_names(type_names),
                 "mode": "parameter",
             })
             return
@@ -1220,7 +1373,7 @@ class _OrdAnalysisBuilder:
                 "range": tree_range(name_node),
                 "scope_id": scope_id,
                 "binding_id": None,
-                "type_names": self.normalize_type_names(context_type_names),
+                "type_names": normalize_type_names(context_type_names),
                 "mode": "member",
             })
             return
@@ -1236,7 +1389,10 @@ class _OrdAnalysisBuilder:
                 self.visit(
                     child,
                     scope_id,
-                    top_level=node.data == "file_input",
+                    # A decorated definition sits under a `decorated`
+                    # wrapper, but stays a top-level export.
+                    top_level=node.data == "file_input"
+                    or (top_level and node.data == "decorated"),
                     context_type_names=context_type_names,
                 )
 
@@ -1260,6 +1416,7 @@ class _OrdAnalysisBuilder:
             node_contexts=self.node_contexts,
             constraints=self.constraints,
             type_hints=self.type_hints,
+            view_context_ranges=self.view_context_ranges,
         )
 
 
@@ -1348,4 +1505,4 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
         )
         return DocumentAnalysis(uri=uri, version=version, diagnostics=[diagnostic], symbols=[])
 
-    return _OrdAnalysisBuilder(syntax_tree, uri, version).build()
+    return OrdAnalysisBuilder(syntax_tree, uri, version).build()

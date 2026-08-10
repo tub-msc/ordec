@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # ordec imports
-from .model import AnalysisPosition, leading_identifier, range_contains
+from .model import AnalysisPosition, range_contains
+from .model import context_type_names_for_kind as kind_type_names
 
 
 CORE_TYPE_ALIASES = {
@@ -29,17 +30,7 @@ class TypeFlowMixin:
 
     def context_type_names_for_kind(self, kind_name: str):
         """Map an ORD context keyword to candidate type names."""
-        if kind_name in ("input", "output", "inout"):
-            return ["Pin"]
-        if kind_name in ("port", "net"):
-            return ["Net"]
-        if kind_name == "path":
-            return ["PathNode"]
-
-        identifier = leading_identifier(kind_name)
-        if identifier is None:
-            return []
-        return [identifier]
+        return kind_type_names(kind_name)
 
     def context_type_names_at_position(self, uri: str, position: AnalysisPosition):
         """Return type names implied by the innermost ORD context at ``position``."""
@@ -72,9 +63,16 @@ class TypeFlowMixin:
 
         return None
 
-    def schematic_instance_members(self):
-        """Return members common to schematic cell instances."""
-        return self.python_class_members("ordec.core.schema", "SchemInstance")
+    def cell_instance_members(self):
+        """Return members common to schematic and layout cell instances.
+
+        A cell instantiation may live in a schematic or a layout view and
+        the static analysis cannot always tell which, so the union keeps
+        member checks and completions valid for both.
+        """
+        members = dict(self.python_class_members("ordec.core.schema", "SchemInstance"))
+        members.update(self.python_class_members("ordec.core.schema", "LayoutInstance"))
+        return members
 
     def type_members(self, type_definition):
         """Return a name→metadata mapping for members of a resolved type."""
@@ -85,7 +83,7 @@ class TypeFlowMixin:
             )
             if self.resolve_core_type(type_definition["python_class"]) is None:
                 members = dict(members)
-                members.update(self.schematic_instance_members())
+                members.update(self.cell_instance_members())
             return members
 
         if type_definition.get("kind") == "class" and "uri" in type_definition:
@@ -94,7 +92,7 @@ class TypeFlowMixin:
                 type_definition["name"],
             )
             members = dict(members)
-            members.update(self.schematic_instance_members())
+            members.update(self.cell_instance_members())
             return members
 
         return dict()

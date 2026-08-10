@@ -133,6 +133,11 @@ class CompletionsMixin:
 
         identifier = leading_identifier(base_name)
         if identifier is not None:
+            # A member result type is unknown without deeper inference.
+            # Reusing the root type for `pd.d.` offers `pd` members in the
+            # wrong context, while subscripts such as `I[0].` stay valid.
+            if "." in base_name[len(identifier):]:
+                return []
             base_name = identifier
 
         for binding in self.visible_bindings(uri, position):
@@ -201,14 +206,16 @@ class CompletionsMixin:
         context = self.completion_context(uri, position)
         if context is not None:
             items.update(self.member_completion_items(uri, position, context))
-            if items:
-                return [
-                    items[label]
-                    for label in sorted(
-                        items,
-                        key=lambda item_label: self.completion_sort_key(items[item_label], context.get("prefix")),
-                    )
-                ]
+            return [
+                items[label]
+                for label in sorted(
+                    items,
+                    key=lambda item_label: self.completion_sort_key(
+                        items[item_label],
+                        context.get("prefix"),
+                    ),
+                )
+            ]
 
         for binding in self.visible_bindings(uri, position):
             if not is_identifier(binding["name"]):
@@ -230,27 +237,17 @@ class CompletionsMixin:
                 "detail": symbol.kind,
             })
 
-        for import_entry in analysis.import_entries:
-            if import_entry.kind == "from":
-                import_uri = None
-                if import_entry.module and set(import_entry.module) == {"."}:
-                    import_uri = self.resolve_module_uri(uri, import_entry.module + import_entry.export_name)
-                else:
-                    import_uri = self.resolve_module_uri(uri, import_entry.module)
+        for import_entry in reversed(analysis.import_entries):
+            if import_entry.local_name == "*":
+                continue
 
-                import_kind = "module"
-                if import_uri is not None:
-                    match = self.find_export(import_uri, import_entry.export_name)
-                    if match is not None:
-                        import_kind = match["kind"]
-                else:
-                    python_module_name = self.resolve_python_import_name(uri, import_entry.module)
-                    match = self.python_definition(
-                        python_module_name,
-                        export_name=import_entry.export_name,
-                    )
-                    if match is not None:
-                        import_kind = match["kind"]
+            if import_entry.kind == "from":
+                match = self.resolve_from_import(
+                    uri,
+                    import_entry.module,
+                    import_entry.export_name,
+                )
+                import_kind = "module" if match is None else match["kind"]
 
                 detail = "from {} import {}".format(import_entry.module, import_entry.export_name)
                 if import_entry.local_name != import_entry.export_name:

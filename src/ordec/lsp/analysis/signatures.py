@@ -54,7 +54,7 @@ class SignatureHelpMixin:
     def call_context(self, uri: str, position: AnalysisPosition):
         """Locate the innermost call surrounding a position, or None.
 
-        The backwards scan tracks bracket nesting only; string literals that
+        The backwards scan tracks bracket nesting only. String literals that
         contain unbalanced brackets can mislead it, which matches the
         lightweight nature of the rest of the analysis.
         """

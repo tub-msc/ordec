@@ -4,6 +4,8 @@
 import io
 import json
 import queue
+import subprocess
+import sys
 
 from ordec.lsp.server import OrdLanguageServer, serve
 
@@ -939,6 +941,30 @@ def test_lsp_shutdown_and_unknown_method(tmp_path):
         notify(server, "exit")
     except SystemExit as exc:
         assert exc.code == 0
+
+
+def test_lsp_subprocess_exit_does_not_abort():
+    messages = [
+        {"jsonrpc": "2.0", "id": 1, "method": "shutdown"},
+        {"jsonrpc": "2.0", "method": "exit"},
+    ]
+    framed = b""
+    for message in messages:
+        body = json.dumps(message).encode("utf-8")
+        framed += b"Content-Length: %d\r\n\r\n" % len(body) + body
+
+    result = subprocess.run(
+        [sys.executable, "-c", "from ordec.lsp import main; main()"],
+        input=framed,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=10,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert b"fatal python error" not in result.stderr.lower()
+    assert b"Content-Length:" in result.stdout
 
 
 def run_serve(messages):

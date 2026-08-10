@@ -74,7 +74,7 @@ class PythonModuleIndex:
     extracts the exported classes, functions, variables, and class members
     needed by LSP definition, diagnostics, and completion features. Resolving
     installed modules uses ``importlib`` and may execute parent package
-    initialization code; failures are treated as unresolved modules.
+    initialization code. Failures are treated as unresolved modules.
     """
     def __init__(self, workspace_root: Optional[str] = None):
         """Initialize the Python source index."""
@@ -112,7 +112,7 @@ class PythonModuleIndex:
 
         if spec is None or spec.origin in (None, "built-in", "frozen"):
             # Installed .ord modules are invisible to importlib unless ordec's
-            # import hook is active; resolve them via the parent package.
+            # import hook is active. Resolve them via the parent package.
             if "." in module_name:
                 parent_name, leaf_name = module_name.rsplit(".", 1)
                 parent_path = self.resolve_module_path(parent_name)
@@ -239,7 +239,7 @@ class PythonModuleIndex:
                 syntax_tree = ord_to_py(source_data)
             else:
                 syntax_tree = ast.parse(source_data, filename=str(module_path))
-        except (OSError, SyntaxError, UnicodeDecodeError, LarkError):
+        except (OSError, SyntaxError, UnicodeDecodeError, ValueError, LarkError):
             self.python_modules[module_name] = None
             return None
 
@@ -614,7 +614,8 @@ class PythonModuleIndex:
         if match is not None:
             return match
 
-        for reexport in module_info["reexports"]:
+        # Later imports replace earlier bindings with the same local name.
+        for reexport in reversed(module_info["reexports"]):
             if reexport["local_name"] != export_name:
                 continue
 
@@ -705,7 +706,7 @@ class PythonModuleIndex:
         class_info = module_info["classes"].get(class_name)
         if class_info is None:
             # The class may only be re-exported here (e.g. a package
-            # __init__.py); follow the export to its defining module.
+            # __init__.py). Follow the export to its defining module.
             resolved = self.definition(module_name, export_name=class_name)
             if resolved is None or "python_module" not in resolved:
                 return None
@@ -780,7 +781,7 @@ class PythonModuleIndex:
         class_info = module_info["classes"].get(class_name)
         if class_info is None:
             # The class may only be re-exported here (e.g. a package
-            # __init__.py); follow the export to its defining module.
+            # __init__.py). Follow the export to its defining module.
             resolved = self.definition(module_name, export_name=class_name)
             if resolved is None or "python_module" not in resolved:
                 return dict()
