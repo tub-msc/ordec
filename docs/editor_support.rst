@@ -258,41 +258,56 @@ completion, navigation, rename, symbols, and other semantic editor features.
 It does not execute ORD code: source files are parsed and analyzed
 statically, so opening a project in an editor cannot run its designs.
 
-The server ships with the ``ordec`` Python package, so installing ORDeC into
-a Python environment is the entire installation. Verify the command before
-configuring an editor::
+The server ships with the ``ordec`` Python package. Install it in the Python
+environment that should run the server:
 
-    pip install -e .
-    ordec-lsp
+.. code-block:: bash
 
-The editor must then be able to find that command:
+    python -m pip install -e .
 
-- **Project virtualenv**: the command lands in ``.venv/bin/`` (Windows:
-  ``.venv\Scripts\``), which editors launched from the desktop do not have
-  on ``PATH``. Configure the editor with the absolute path to the
-  executable, for example ``/path/to/project/.venv/bin/ordec-lsp``. Each
-  project then gets the server matching its ORDeC version.
-- **Global install**: ``pipx install --editable /path/to/ordec`` (or
-  ``pip install --user``) places ``ordec-lsp`` in ``~/.local/bin``, which
-  desktop sessions usually have on ``PATH``, so editors find the bare
-  command without configuration. On distributions that block global pip
-  installs (PEP 668), ``pipx`` is the supported route. A single global
-  server analyzes every project against that one ORDeC version.
+Every editor configuration below needs a command that starts the server. The
+examples use **ordec-lsp**. Keep that name if the editor can find the executable
+on its **PATH**. Otherwise replace it with the **full path**, such as
+``/path/to/project/.venv/bin/ordec-lsp`` on Linux or macOS, or
+``C:\path\to\project\.venv\Scripts\ordec-lsp.exe`` on Windows. An editor
+started from the desktop may use a different ``PATH`` than a terminal.
 
-The server provides document and workspace symbols (nested by cell and
-view generator when the editor supports hierarchical symbols),
-go-to-definition and go-to-type-definition, hover (markdown with cell
-parameter signatures and docstrings when the editor supports it),
-references, document highlights, rename, local and member/parameter
-completions with documentation, signature help for cell instantiations and
-function calls, inferred-type inlay hints, call hierarchy over the cell
-instantiation graph, folding and selection ranges, semantic tokens, parser
-diagnostics for ORD syntax errors, semantic diagnostics (unresolved imports
-and node types, invalid view generator return types, invalid constraint
-contexts, unknown members or parameters, schematic ports missing from the
-symbol view), and quick fixes for selected diagnostics. Document
-synchronization is incremental, with full-document replacement as the
-fallback.
+Supported features
+~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 76
+
+   * - Feature
+     - Support
+   * - Diagnostics
+     - ORD syntax errors and semantic issues involving imports, node types,
+       view generator return types, constraint contexts, members, parameters,
+       and schematic ports missing from the symbol view.
+   * - Completion
+     - Local names, members, and parameters with documentation.
+   * - Navigation
+     - Definitions, type definitions, references, and document highlights.
+   * - Symbols
+     - Document and workspace symbols, nested by cell and view generator when
+       the editor supports hierarchical symbols.
+   * - Hover and signatures
+     - Markdown hover information with cell parameter signatures and
+       docstrings, plus signature help for cell instantiations and function
+       calls.
+   * - Rename
+     - Document and workspace rename across the ORD import graph.
+   * - Type information
+     - Inferred-type inlay hints and semantic tokens.
+   * - Code structure
+     - Folding ranges, selection ranges, and a call hierarchy over the cell
+       instantiation graph.
+   * - Code actions
+     - Quick fixes for selected diagnostics.
+   * - Document updates
+     - Incremental synchronization with full-document replacement as a
+       fallback.
 
 The editor subsections below contain the matching launch configurations.
 For an editor with generic LSP support that is not covered, configure:
@@ -349,8 +364,7 @@ provides the connection instead and works alongside the ORD plugin's
 native highlighting. After installing it, add a user-defined server under
 ``Settings | Languages & Frameworks | Language Servers``:
 
-* Server: name ``ordec-lsp``, command ``ordec-lsp`` (use the absolute path
-  of a project virtualenv executable, as described above)
+* Server: name ``ordec-lsp``, command ``ordec-lsp``
 * Mappings: file name pattern ``*.ord`` with language id ``ord``
 
 The server starts when the first ``.ord`` file opens. For troubleshooting,
@@ -360,12 +374,20 @@ JSON-RPC messages.
 VS Code
 ~~~~~~~
 
-The extension starts ``ordec-lsp`` automatically when an ORD file opens. Set
-``ord.languageServer.command`` to an absolute path if the executable is not on
-the VS Code ``PATH``, or disable it with ``ord.languageServer.enabled``.
-Extra command arguments go into ``ord.languageServer.arguments``. For
-troubleshooting, ``"ordec-lsp.trace.server": "verbose"`` logs the exchanged
-JSON-RPC messages to the ORD Language Server output channel.
+The extension starts the server when an ORD file opens. It uses ``ordec-lsp``
+by default. To use a full path, open ``settings.json`` with
+``Preferences: Open User Settings (JSON)`` and add:
+
+.. code-block:: text
+
+    {
+      "ord.languageServer.command": "/absolute/path/to/.venv/bin/ordec-lsp"
+    }
+
+No arguments are required. Disable the server with
+``ord.languageServer.enabled``. For troubleshooting, set
+``"ordec-lsp.trace.server": "verbose"`` and open the ORD Language Server output
+channel.
 
 Neovim
 ~~~~~~
