@@ -163,6 +163,15 @@ class MixinUnresolvedInstances:
         return entry
 
     def register_unresolved(self, inst, cell_cls):
+        # Mirror the ownership check of _entry(): nids are only unique per
+        # subgraph, and a foreign entry (e.g. a Cell class instantiated
+        # under a nested `with other.ctx():`) would silently never resolve.
+        if inst.subgraph is not self.root.subgraph:
+            raise TypeError(
+                f"Cannot create unresolved instance {inst.full_path_label()}: "
+                "it does not belong to the view of the active view context; "
+                "instantiate the cell with its parameters instead."
+            )
         self.unresolved_instances[inst.nid] = UnresolvedInstance(inst, cell_cls)
 
     def set_unresolved_param(self, inst, name, value):
