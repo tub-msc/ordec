@@ -469,12 +469,12 @@ def run_pnr(cell, target, layout=None):
         domains = sorted({net_name for net_name, net in nets.items()
             if any(p == pname for _i, p in net.terminals)})
         if len(domains) > 1:
-            raise ValueError(f"nets {domains} all drive {pname} pins: rail "
-                "abutment would short them together; the engine supports only "
-                "one supply domain")
+            raise ValueError(f"nets {domains} all drive {pname} pins. Rail "
+                "abutment would short them together, and the engine supports "
+                "only one supply domain")
         if domains and domains[0] != expected:
             raise ValueError(f"the net on the {pname} pins is named "
-                f"{domains[0]!r}; the engine requires it to be {expected!r}")
+                f"{domains[0]!r}, but the engine requires {expected!r}")
 
     signal_nets = {net_name: net for net_name, net in nets.items()
         if len(net.terminals) >= 2 and net_name not in cfg.supply_net_names}

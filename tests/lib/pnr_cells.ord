@@ -1,0 +1,341 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Synthetic cells for the place-and-route tests (tests/test_digital_pnr.py,
+tests/test_ihp130_pnr.py).
+
+Each has a circuit shape the others do not, so a clean result is evidence the
+engine generalises rather than being tuned to one netlist:
+
+* InvChain: n inverters in series, a long linear dataflow with one net per
+  stage.
+* DffArray: n flip-flops on a shared clk and rst, so wide cells and nets that
+  touch every instance.
+* Crossbar: n mux2 cells selecting between two buses that span every cell, so
+  two max-fan-out nets stressing channel congestion, plus a second cell type.
+* RippleAdder: an n-bit carry chain from xor2, and2 and or2, a mix of macros
+  with different pin geometry. xor2's output pin is off-track, so this also
+  exercises off-track pin access.
+* TiedReset: n flip-flops with RESET_B tied to vdd, exercising the routing of a
+  signal pin tied to a supply rail.
+* PairChain: a chain of composite InvPair sub-cells, exercising the flatten
+  path with its net uniquification and port rewiring.
+
+These are structural stress tests, since LVS checks connectivity rather than
+logical function, so a chain's logic value is irrelevant. They caught a real
+bug: a supply whose boustrophedon rows share a single rail got no strap, which
+left its port floating.
+"""
+
+from ordec.core import *
+from ordec.lib.ihp130_pnr import place_and_route
+from ordec.lib.ihp130_stdcells import extlib
+
+Inv  = extlib["sg13g2_inv_1"]
+Dff  = extlib["sg13g2_dfrbp_1"]
+Mux  = extlib["sg13g2_mux2_1"]
+Xor  = extlib["sg13g2_xor2_1"]
+And  = extlib["sg13g2_and2_1"]
+Or   = extlib["sg13g2_or2_1"]
+
+cell InvChain:
+    """n inverters in series: a -> inv0 -> inv1 -> ... -> y."""
+    n = Parameter(int, default=8)
+
+    viewgen symbol -> Symbol:
+        input a:   .align=West
+        output y:  .align=East
+        inout vdd: .align=North
+        inout vss: .align=South
+
+    viewgen schematic -> Schematic:
+        port a:   .align=East; .pos=(0, 10)
+        port y:   .align=West; .pos=(20 + 8 * self.n, 10)
+        port vdd: .align=East; .pos=(0, 18)
+        port vss: .align=East; .pos=(0, 2)
+
+        path inv, nd
+        for i in range(self.n - 1):
+            net nd[i]
+        for i in range(self.n):
+            src = a if i == 0 else nd[i - 1]
+            dst = y if i == self.n - 1 else nd[i]
+            Inv inv[i]:
+                .pos = (10 + 8 * i, 10)
+                .A -- src; .Y -- dst
+                .VDD -- vdd; .VSS -- vss
+
+    viewgen layout -> Layout:
+        place_and_route(self)
+
+cell DffArray:
+    """n flip-flops sharing clk and rst (high fan-out), with per-bit d[i]/q[i]."""
+    n = Parameter(int, default=4)
+
+    viewgen symbol -> Symbol:
+        input clk: .align=West
+        input rst: .align=West
+        inout vdd: .align=North
+        inout vss: .align=South
+        path d, q
+        for i in range(self.n):
+            input d[i]:  .align=West
+            output q[i]: .align=East
+
+    viewgen schematic -> Schematic:
+        port clk: .align=East; .pos=(0, 48)
+        port rst: .align=East; .pos=(0, 44)
+        port vdd: .align=East; .pos=(0, 52)
+        port vss: .align=East; .pos=(0, 2)
+        path d, q
+        for i in range(self.n):
+            port d[i]: .align=East; .pos=(0, 8 + 8 * i)
+            port q[i]: .align=West; .pos=(60, 8 + 8 * i)
+
+        path ff, qn
+        for i in range(self.n):
+            net qn[i]
+            Dff ff[i]:
+                .pos = (20, 8 + 8 * i)
+                .D -- d[i]; .CLK -- clk; .RESET_B -- rst
+                .Q -- q[i]; .Q_N -- qn[i]
+                .VDD -- vdd; .VSS -- vss
+
+    viewgen layout -> Layout:
+        place_and_route(self)
+
+cell Crossbar:
+    """n mux2 cells: y[i] = sel[i] ? busB : busA, with busA/busB shared by all."""
+    n = Parameter(int, default=4)
+
+    viewgen symbol -> Symbol:
+        input busA: .align=West
+        input busB: .align=West
+        inout vdd:  .align=North
+        inout vss:  .align=South
+        path sel, y
+        for i in range(self.n):
+            input sel[i]: .align=West
+            output y[i]:  .align=East
+
+    viewgen schematic -> Schematic:
+        port vdd:  .align=East; .pos=(0, 0)
+        port vss:  .align=East; .pos=(0, 4)
+        port busA: .align=East; .pos=(0, 8)
+        port busB: .align=East; .pos=(0, 12)
+        path sel, y, m
+        for i in range(self.n):
+            port sel[i]: .align=East; .pos=(0, 20 + 6 * i)
+            port y[i]:   .align=West; .pos=(40, 10 * i)
+        for i in range(self.n):
+            Mux m[i]:
+                .pos = (20, 10 * i)
+                .A0 -- busA; .A1 -- busB; .S -- sel[i]; .X -- y[i]
+                .VDD -- vdd; .VSS -- vss
+
+    viewgen layout -> Layout:
+        place_and_route(self)
+
+cell RippleAdder:
+    """n-bit ripple-carry adder with sum[i] = a[i]^b[i]^carry[i] and
+    carry[i+1] = (a[i]&b[i]) | (carry[i] & (a[i]^b[i])), with carry[0]=cin."""
+    n = Parameter(int, default=4)
+
+    viewgen symbol -> Symbol:
+        input cin:   .align=West
+        output cout: .align=East
+        inout vdd:   .align=North
+        inout vss:   .align=South
+        path a, b, sum
+        for i in range(self.n):
+            input a[i]:    .align=West
+            input b[i]:    .align=West
+            output sum[i]: .align=East
+
+    viewgen schematic -> Schematic:
+        path a, b, sum
+        for i in range(self.n):
+            port a[i]:   .align=East; .pos=(0, 16 * i)
+            port b[i]:   .align=East; .pos=(0, 16 * i + 4)
+            port sum[i]: .align=West; .pos=(46, 16 * i)
+        port cin:  .align=East; .pos=(0, 16 * self.n)
+        port cout: .align=West; .pos=(46, 16 * self.n)
+        port vdd:  .align=East; .pos=(0, 16 * self.n + 4)
+        port vss:  .align=East; .pos=(0, 16 * self.n + 8)
+
+        # carry[i] is the carry into bit i: carry[0]=cin, carry[n]=cout.
+        path cy
+        carry = [cin]
+        for i in range(self.n - 1):
+            net cy[i]
+            carry.append(cy[i])
+        carry.append(cout)
+
+        path t, g, p, txor, sxor, gand, pand, cor
+        for i in range(self.n):
+            net t[i]
+            net g[i]
+            net p[i]
+            Xor txor[i]:
+                .pos = (10, 16 * i)
+                .A -- a[i]; .B -- b[i]; .X -- t[i]
+                .VDD -- vdd; .VSS -- vss
+            Xor sxor[i]:
+                .pos = (22, 16 * i)
+                .A -- t[i]; .B -- carry[i]; .X -- sum[i]
+                .VDD -- vdd; .VSS -- vss
+            And gand[i]:
+                .pos = (34, 16 * i)
+                .A -- a[i]; .B -- b[i]; .X -- g[i]
+                .VDD -- vdd; .VSS -- vss
+            And pand[i]:
+                .pos = (10, 16 * i + 8)
+                .A -- carry[i]; .B -- t[i]; .X -- p[i]
+                .VDD -- vdd; .VSS -- vss
+            Or cor[i]:
+                .pos = (22, 16 * i + 8)
+                .A -- g[i]; .B -- p[i]; .X -- carry[i + 1]
+                .VDD -- vdd; .VSS -- vss
+
+    viewgen layout -> Layout:
+        place_and_route(self)
+
+cell TiedReset:
+    """n flip-flops sharing clk, RESET_B held high on each (no reset port)."""
+    n = Parameter(int, default=4)
+
+    viewgen symbol -> Symbol:
+        input clk: .align=West
+        inout vdd: .align=North
+        inout vss: .align=South
+        path d, q
+        for i in range(self.n):
+            input d[i]:  .align=West
+            output q[i]: .align=East
+
+    viewgen schematic -> Schematic:
+        port clk: .align=East; .pos=(0, 0)
+        port vdd: .align=East; .pos=(0, 4)
+        port vss: .align=East; .pos=(0, 8)
+        path d, q
+        for i in range(self.n):
+            port d[i]: .align=East; .pos=(0, 14 + 10 * i)
+            port q[i]: .align=West; .pos=(40, 10 * i)
+        path ff, qn
+        for i in range(self.n):
+            net qn[i]
+            Dff ff[i]:
+                .pos = (20, 10 * i)
+                .D -- d[i]; .CLK -- clk; .RESET_B -- vdd
+                .Q -- q[i]; .Q_N -- qn[i]
+                .VDD -- vdd; .VSS -- vss
+
+    viewgen layout -> Layout:
+        place_and_route(self)
+
+cell InvPair:
+    """Two inverters in series (a composite, non-foundry sub-cell)."""
+    viewgen symbol -> Symbol:
+        input a:   .align=West
+        output y:  .align=East
+        inout vdd: .align=North
+        inout vss: .align=South
+
+    viewgen schematic -> Schematic:
+        port a:   .align=East; .pos=(0, 10)
+        port y:   .align=West; .pos=(30, 10)
+        port vdd: .align=East; .pos=(0, 18)
+        port vss: .align=East; .pos=(0, 2)
+        net mid
+        Inv i0:
+            .pos = (10, 10)
+            .A -- a; .Y -- mid; .VDD -- vdd; .VSS -- vss
+        Inv i1:
+            .pos = (20, 10)
+            .A -- mid; .Y -- y; .VDD -- vdd; .VSS -- vss
+
+cell PairChain:
+    """n InvPairs in series, one level of hierarchy above the leaves."""
+    n = Parameter(int, default=3)
+
+    viewgen symbol -> Symbol:
+        input a:   .align=West
+        output y:  .align=East
+        inout vdd: .align=North
+        inout vss: .align=South
+
+    viewgen schematic -> Schematic:
+        port a:   .align=East; .pos=(0, 10)
+        port y:   .align=West; .pos=(20 + 10 * self.n, 10)
+        port vdd: .align=East; .pos=(0, 18)
+        port vss: .align=East; .pos=(0, 2)
+        path pr, nd
+        for i in range(self.n - 1):
+            net nd[i]
+        for i in range(self.n):
+            src = a if i == 0 else nd[i - 1]
+            dst = y if i == self.n - 1 else nd[i]
+            InvPair pr[i]:
+                .pos = (10 + 10 * i, 10)
+                .a -- src; .y -- dst
+                .vdd -- vdd; .vss -- vss
+
+    viewgen layout -> Layout:
+        place_and_route(self)
+
+
+cell SplitSupply:
+    """Two inverters on separate vdd nets.
+
+    Rail abutment shorts every VDD rail in a block, so the engine rejects this
+    rather than emitting a layout that silently merges the two supplies.
+    """
+    viewgen symbol -> Symbol:
+        input a:     .align=West
+        output y:    .align=East
+        inout vdd:   .align=North
+        inout vdd2:  .align=North
+        inout vss:   .align=South
+
+    viewgen schematic -> Schematic:
+        port a:    .align=East; .pos=(0, 10)
+        port y:    .align=West; .pos=(30, 10)
+        port vdd:  .align=East; .pos=(0, 18)
+        port vdd2: .align=East; .pos=(0, 22)
+        port vss:  .align=East; .pos=(0, 2)
+        net mid
+        Inv i0:
+            .pos = (10, 10)
+            .A -- a; .Y -- mid; .VDD -- vdd; .VSS -- vss
+        Inv i1:
+            .pos = (20, 10)
+            .A -- mid; .Y -- y; .VDD -- vdd2; .VSS -- vss
+
+    viewgen layout -> Layout:
+        place_and_route(self)
+
+
+cell MisnamedSupply:
+    """One inverter whose supply net is called vcc rather than vdd.
+
+    Supply handling is keyed off the profile's net names, so the engine
+    requires them rather than guessing.
+    """
+    viewgen symbol -> Symbol:
+        input a:   .align=West
+        output y:  .align=East
+        inout vcc: .align=North
+        inout vss: .align=South
+
+    viewgen schematic -> Schematic:
+        port a:   .align=East; .pos=(0, 10)
+        port y:   .align=West; .pos=(20, 10)
+        port vcc: .align=East; .pos=(0, 18)
+        port vss: .align=East; .pos=(0, 2)
+        Inv i0:
+            .pos = (10, 10)
+            .A -- a; .Y -- y; .VDD -- vcc; .VSS -- vss
+
+    viewgen layout -> Layout:
+        place_and_route(self)

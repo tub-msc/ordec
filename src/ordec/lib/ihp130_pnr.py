@@ -69,9 +69,9 @@ def lef_pin_rects(macro_name: str) -> dict:
         # cell with its own geometry up there (e.g. sg13g2_sdfbbp_1's Metal2/Via1
         # pin and obstruction shapes) would be silently shorted or violated.
         raise ValueError(
-            f"{macro_name}: LEF pin/obstruction geometry on {sorted(upper)}; "
-            "the P&R engine requires Metal1-only leaf cells (it routes on the "
-            "metals above them)")
+            f"{macro_name}: LEF pin/obstruction geometry on {sorted(upper)}. "
+            "The P&R engine requires Metal1-only leaf cells, since it routes "
+            "on the metals above them")
     return rects
 
 
