@@ -25,20 +25,19 @@ cell DiffPair:
     viewgen layout -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
-        unit = Nmos(w=1u, l=130n)
 
         # The matched row from lesson 10:
-        unit m1a:
-            ! .pos == (0, 0)
-        unit m2a:
-            ! .sd[0].center == m1a.sd[1].center
-            ! .pos.y == m1a.pos.y
-        unit m2b:
-            ! .sd[0].center == m2a.sd[1].center
-            ! .pos.y == m1a.pos.y
-        unit m1b:
-            ! .sd[0].center == m2b.sd[1].center
-            ! .pos.y == m1a.pos.y
+        Nmos m1a, m2a, m2b, m1b
+        for m in m1a, m2a, m2b, m1b:
+            m.$w = 1u
+            m.$l = 130n
+        ! m1a.pos == (0, 0)
+        ! m2a.sd[0].center == m1a.sd[1].center
+        ! m2a.pos.y == m1a.pos.y
+        ! m2b.sd[0].center == m2a.sd[1].center
+        ! m2b.pos.y == m1a.pos.y
+        ! m1b.sd[0].center == m2b.sd[1].center
+        ! m1b.pos.y == m1a.pos.y
 
         # The inn gate comb and contact from lesson 10:
         LayoutRect inn_bar:
@@ -103,7 +102,9 @@ cell DiffPair:
             ! .size == (500, 200)
 
         # Substrate tap and vss rail below the row:
-        Ptap(l=0.7u, w=0.7u) ptap:
+        Ptap ptap:
+            .$l = 0.7u
+            .$w = 0.7u
             ! .activ.cx == 0.5*m1a.activ.lx + 0.5*m1b.activ.ux
             ! .activ.uy == m1a.pos.y - 1200
         LayoutRect m1_vss:

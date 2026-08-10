@@ -87,24 +87,14 @@ Schematics
    :members:
    :undoc-members:
 
-Unresolved schematic instances
-------------------------------
+Unresolved instances during construction
+----------------------------------------
 
-During schematic construction, instances may reference a Symbol that is not
-determined yet. These nodes hold the pending placement, connections and
-parameters until the referenced Symbol is resolved into a :class:`SchemInstance`.
-
-.. autoclass:: SchemInstanceUnresolved
-   :members:
-   :undoc-members:
-
-.. autoclass:: SchemInstanceUnresolvedConn
-   :members:
-   :undoc-members:
-
-.. autoclass:: SchemInstanceUnresolvedParameter
-   :members:
-   :undoc-members:
+During view construction, an instance created from a Cell class
+(``MyCell x:`` in ORD) may not have its ``symbol`` (:class:`SchemInstance`)
+or ``ref`` (:class:`LayoutInstance`) resolved yet. The deferred state (cell,
+parameters, unresolved pin connections) is managed by the view context, not
+by schema nodes; it is resolved at the latest when the view context exits.
 
 Simulation hierarchy
 --------------------

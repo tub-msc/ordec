@@ -546,12 +546,14 @@ def gen_lesson6(g):
 
             Transistors are not drawn by hand: the PDK cells generate their
             layouts, and you place them as *instances*. Writing a cell name
-            inside a layout view instantiates its layout, and constraints
-            position it. Place the NMOS at the `EDIT HERE (devices)`
-            marker:
+            inside a layout view instantiates its layout, `.$name = value`
+            sets the cell's parameters, and constraints position it. Place
+            the NMOS at the `EDIT HERE (devices)` marker:
 
             ```
-            Nmos(w=1u, l=130n) mn:
+            Nmos mn:
+                .$w = 1u
+                .$l = 130n
                 ! .pos == (0, 0)
             ```
 
@@ -566,13 +568,19 @@ def gen_lesson6(g):
             centered on its transistor:
 
             ```
-            Pmos(w=1u, l=130n) mp:
+            Pmos mp:
+                .$w = 1u
+                .$l = 130n
                 ! .pos.x == mn.pos.x
                 ! .pos.y == mn.pos.y + 2500
-            Ptap(l=0.7u, w=0.7u) ptap:
+            Ptap ptap:
+                .$l = 0.7u
+                .$w = 0.7u
                 ! .activ.cx == mn.activ.cx
                 ! .activ.uy + 600 == mn.poly[0].ly
-            Ntap(l=0.7u, w=0.7u) ntap:
+            Ntap ntap:
+                .$l = 0.7u
+                .$w = 0.7u
                 ! .activ.cx == mp.activ.cx
                 ! .activ.ly - 600 == mp.poly[0].uy
             ```
@@ -587,8 +595,8 @@ def gen_lesson6(g):
             rotation angles.*
         """)
 
-        hint_mn = ("Add `Nmos(w=1u, l=130n) mn:` with `! .pos == (0, 0)` "
-            "at the EDIT HERE (devices) marker.")
+        hint_mn = ("Add `Nmos mn:` with `.$w = 1u`, `.$l = 130n` and "
+            "`! .pos == (0, 0)` at the EDIT HERE (devices) marker.")
         try:
             insts = instances_of(g['Inv']().layout, ihp130.Nmos)
             found = (len(insts) == 1
@@ -1090,23 +1098,31 @@ def gen_lesson10(g):
             neighborhood.
 
             **1. Build the matched row** at the `EDIT HERE (row)` marker.
-            The unit cell is prepared as `unit`. Instead of positioning
-            each device by hand, chain them: constraining a device's first
-            source/drain strip onto its neighbor's last one makes the two
-            share one diffusion strip, perfectly aligned by construction:
+            Declare all four unit devices in one statement and set their
+            parameters in one loop - a single source of truth, so the
+            branches cannot drift apart. A device's inner geometry
+            (`.sd`, `.poly`) only takes shape once its parameters are
+            known, so the parameter loop must come first; the placement
+            constraints then follow as standalone statements naming each
+            device, instead of living in the instance blocks as in
+            lesson 6. Rather than positioning each device by hand, chain
+            them: constraining a device's first source/drain strip onto
+            its neighbor's last one makes the two share one diffusion
+            strip, perfectly aligned by construction:
 
             ```
-            unit m1a:
-                ! .pos == (0, 0)
-            unit m2a:
-                ! .sd[0].center == m1a.sd[1].center
-                ! .pos.y == m1a.pos.y
-            unit m2b:
-                ! .sd[0].center == m2a.sd[1].center
-                ! .pos.y == m1a.pos.y
-            unit m1b:
-                ! .sd[0].center == m2b.sd[1].center
-                ! .pos.y == m1a.pos.y
+            Nmos m1a, m2a, m2b, m1b
+            for m in m1a, m2a, m2b, m1b:
+                m.$w = 1u
+                m.$l = 130n
+
+            ! m1a.pos == (0, 0)
+            ! m2a.sd[0].center == m1a.sd[1].center
+            ! m2a.pos.y == m1a.pos.y
+            ! m2b.sd[0].center == m2a.sd[1].center
+            ! m2b.pos.y == m1a.pos.y
+            ! m1b.sd[0].center == m2b.sd[1].center
+            ! m1b.pos.y == m1a.pos.y
             ```
 
             The five strips of the row now alternate between the nets
@@ -1156,8 +1172,8 @@ def gen_lesson10(g):
             downward; it is prepared for you in the next lesson.*
         """)
 
-        hint_row = ("Add the four `unit` blocks from step 1 at the "
-            "EDIT HERE (row) marker.")
+        hint_row = ("Add the unit-device declarations and chaining "
+            "constraints from step 1 at the EDIT HERE (row) marker.")
         try:
             row = diffpair_row(g['DiffPair']().layout)
             found = all(i.ref.cell.w == R('1u') and i.ref.cell.l == R('130n')

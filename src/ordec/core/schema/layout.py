@@ -8,10 +8,14 @@ from ..geoprim import *
 from ..ordb import *
 from ..cell import Cell
 from ..constraints import *
-from ..context import LayoutViewContext
+from ..context import (
+    LayoutViewContext, InstanceParams, InstanceResolutionError,
+    unresolved_instance_ctx,
+)
 from .base import (
     coerce_tuple, AttrProxy, _rect_proxy, GdsLayer, RGBColor, PathEndType,
     MixinPolygonalChain, MixinClosedPolygon, GenericPolyI, PolyVec2I,
+    MixinSourceLoc,
 )
 from .schematic import Symbol, Pin
 
@@ -346,7 +350,7 @@ class LayoutInstanceSubcursor(tuple):
             return inner_ret
 
 @public
-class LayoutInstance(Node):
+class LayoutInstance(Node, MixinSourceLoc):
     """Hierarchical layout instance, equivalent to GDS SRef."""
     in_subgraphs = [Layout]
     wire_id = WIRE_DOMAIN | 10
@@ -354,16 +358,38 @@ class LayoutInstance(Node):
     pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
         placeholder=Vec2LinearTerm)
     orientation = Attr(D4, default=D4.R0)
-    ref = SubgraphRef(Layout, optional=False) #: Can be a Layout or a frame (which is also a Layout)...
+    #: Can be a Layout or a frame (which is also a Layout). None only while
+    #: the instance is unresolved in its view context; resolved at the latest
+    #: in postprocess.
+    ref = SubgraphRef(Layout)
+
+    @property
+    def params(self):
+        return InstanceParams(self)
 
     def subcursor(self):
+        if self.ref is None:
+            ctx = unresolved_instance_ctx(self)
+            if ctx is None:
+                raise InstanceResolutionError(
+                    f"Instance {self.full_path_label()} has no layout "
+                    "reference: it is not an unresolved instance of the "
+                    "active viewgen."
+                )
+            # Nothing on a layout instance is deferrable: resolve now.
+            ctx.resolve_instance(self)
         return LayoutInstanceSubcursor((self, self.ref))
 
     def __getitem__(self, name):
         return self.subcursor()[name]
 
     def __getattr__(self, name):
-        return getattr(self.subcursor(), name)
+        try:
+            return getattr(self.subcursor(), name)
+        except InstanceResolutionError as e:
+            # __getattr__ must raise AttributeError: hasattr() and IPython's
+            # repr probing rely on it (see Node.__getattr__).
+            raise AttributeError(*e.args) from None
 
     def loc_transform(self):
         return self.pos.transl() * self.orientation

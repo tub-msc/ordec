@@ -11,11 +11,16 @@ from ..geoprim import *
 from ..ordb import *
 from ..cell import Cell
 from ..constraints import *
-from ..context import SymbolViewContext, SchematicViewContext
+from ..context import (
+    SymbolViewContext, SchematicViewContext, InstanceParams,
+    InstanceResolutionError, unresolved_instance_ctx,
+)
 from .base import (
-    coerce_tuple, SourceLocInfo, MixinPolygonalChain, GenericPolyR, PolyVec2R,
+    coerce_tuple, SourceLocInfo, MixinSourceLoc, MixinPolygonalChain,
+    GenericPolyR, PolyVec2R,
 )
 
+# wire_ids 11-13 were freed by the removal of the SchemInstanceUnresolved* node types.
 WIRE_DOMAIN = 3 << 16
 
 # Enums
@@ -163,10 +168,6 @@ class Schematic(MixinRenderable, SubgraphRoot):
     cell = LiveRef(Cell)
     default_supply = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
     default_ground = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
-
-    def resolve_instances(self):
-        from ...schematic import resolve_instances
-        resolve_instances(self)
 
     def auto_wire(self):
         from ...schematic import auto_wire
@@ -317,16 +318,6 @@ class SchemInstanceSubcursor(tuple):
             return inner_ret
 
 
-class MixinSourceLoc:
-    """
-    Provides src_loc attribute for Nodes that support back link to source.
-    This enables click-to-source for ORD code in the web UI. Currently, src_loc
-    is None for nodes not built from ORD code.
-    """
-    __slots__=()
-    src_loc = Attr(SourceLocInfo)
-
-
 @public
 class SchemInstance(Node, MixinSourceLoc):
     """
@@ -338,7 +329,10 @@ class SchemInstance(Node, MixinSourceLoc):
     pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
         factory=coerce_tuple(Vec2R, 2))
     orientation = Attr(D4, default=D4.R0)
-    symbol = SubgraphRef(Symbol, optional=False)
+    #: None only while the instance is unresolved in its view context; must be
+    #: resolved before the schematic is finalized (checked in postprocess
+    #: and schem_check).
+    symbol = SubgraphRef(Symbol)
 
     def __new__(cls, connect=None, **kwargs):
         main = super().__new__(cls, **kwargs)
@@ -354,14 +348,32 @@ class SchemInstance(Node, MixinSourceLoc):
         else:
             return pos.transl() * self.orientation
 
+    @property
+    def params(self):
+        return InstanceParams(self)
+
     def subcursor(self):
+        if self.symbol is None:
+            raise InstanceResolutionError(
+                f"Instance {self.full_path_label()} has no symbol: it is "
+                "not an unresolved instance of the active viewgen."
+            )
         return SchemInstanceSubcursor((self, self.symbol))
 
     def __getitem__(self, name):
+        if self.symbol is None and unresolved_instance_ctx(self) is not None:
+            return SchemInstanceUnresolvedSubcursor((self, name))
         return self.subcursor()[name]
 
     def __getattr__(self, name):
-        return getattr(self.subcursor(), name)
+        if self.symbol is None and unresolved_instance_ctx(self) is not None:
+            return SchemInstanceUnresolvedSubcursor((self, name))
+        try:
+            return getattr(self.subcursor(), name)
+        except InstanceResolutionError as e:
+            # __getattr__ must raise AttributeError: hasattr() and IPython's
+            # repr probing rely on it (see Node.__getattr__).
+            raise AttributeError(*e.args) from None
 
     def conns(self):
         return self.subgraph.all(SchemInstanceConn.ref_idx.query(self))
@@ -375,135 +387,79 @@ class SchemInstanceConn(Node):
     ref = LocalRef(SchemInstance, optional=False)
     ref_idx = Index(ref)
 
-    here = LocalRef(Net, optional=False)
+    here = LocalRef(Net, optional=False,
+        factory=lambda v: v.ref if isinstance(v, SchemPort) else v)
     there = ExternalRef(Pin, of_subgraph=lambda c: c.ref.symbol, optional=False) # ExternalRef to Pin in SchemInstance.symbol
 
     ref_pin_idx = CombinedIndex([ref, there], unique=True)
 
 
 class SchemInstanceUnresolvedSubcursor(tuple):
-    """Cursor to go through connections of a unresolved schem instance"""
+    """
+    Cursor recording an access path into the future symbol of an unresolved
+    instance (tuple layout: (instance, *path)). Wire ops record deferred
+    connections in the view context. Any other attribute access requires
+    the resolved symbol: it resolves the instance and replays the recorded
+    path through the resolved subcursor.
+    """
     def __repr__(self):
         return f"{type(self).__name__}{tuple.__repr__(self)}"
 
     def __eq__(self, other):
         return type(self) == type(other) and super().__eq__(other)
 
-    def __getitem__(self, name):
-        return SchemInstanceUnresolvedSubcursor(self+(name,))
-    
+    @property
+    def _inst(self):
+        # tuple.__getitem__ to bypass the path-extending __getitem__ below
+        return tuple.__getitem__(self, 0)
+
+    @property
+    def _path(self):
+        return tuple.__getitem__(self, slice(1, None))
+
+    def __getitem__(self, key):
+        return SchemInstanceUnresolvedSubcursor(self + (key,))
+
     def __getattr__(self, name):
-        # Upgrade cursor on failed attribute access
-        return getattr(self._upgrade_cursor(), name)
+        return getattr(self._resolve_cursor(), name)
 
-    def _upgrade_cursor(self):
+    def _resolve_cursor(self):
         """
-        Convert this unresolved cursor into a resolved SchemInstanceSubcursor.
-        Recorded parameters are passed to the resolver so that geometry
-        matches the symbol that resolve_instances() will produce.
+        Resolves the instance (if still unresolved) and replays the recorded
+        path through the resolved SchemInstanceSubcursor, so geometry values
+        transform to schematic space as on resolved instances.
         """
-        ui = self.instanceunresolved
-        cursor = SchemInstanceSubcursor((ui, ui.resolve_symbol()))
-
-        # Walking the path through a SchemInstanceSubcursor transforms
-        # geometry values to schematic space, as on resolved instances.
-        for step in self.instancepath:
+        inst = self._inst
+        ctx = unresolved_instance_ctx(inst)
+        if ctx is not None:
+            ctx.resolve_instance(inst)
+        cursor = inst.subcursor()
+        for step in self._path:
             if isinstance(step, int):
                 cursor = cursor[step]
             else:
                 cursor = getattr(cursor, step)
         return cursor
 
-    @property
-    def instanceunresolved(self):
-        # self[0], but wihtout calling SchemInstanceUnresolvedCursor.__getitem__
-        return tuple.__getitem__(self, 0)
-
-    @property
-    def instancepath(self):
-        # self[1:], but without calling SchemInstanceUnresolvedCursor.__getitem__
-        return tuple.__getitem__(self, slice(1,None))
-
     def __neg__(self):
         return NegatedWireOperand(self)
 
     def __wire_op__(self, here):
-        conn = self.instanceunresolved % \
-            SchemInstanceUnresolvedConn(here=here, there=self.instancepath)
-        return conn
+        # A SchemPort operand is coerced to its Net by the factory of
+        # SchemInstanceConn.here when the connection is created.
+        inst = self._inst
+        ctx = unresolved_instance_ctx(inst)
+        if ctx is None:
+            # The instance was resolved after this cursor was created;
+            # connect through the resolved subcursor instead.
+            return self._resolve_cursor().__wire_op__(here)
+        ctx.record_unresolved_conn(inst, here, self._path)
 
     def __sub__(self, other):
         if isinstance(other, NegatedWireOperand):
             return self.__wire_op__(other.wrapped)
         return NotImplemented
-    
-@public
-class SchemInstanceUnresolved(Node, MixinSourceLoc):
-    """An instance of a Symbol that is not determined yet."""
 
-    class ParamWrapper:
-        def __init__(self, inst):
-            self._inst = inst
-
-        def __setattr__(self, name, value):
-            if name.startswith("_"):
-                return super().__setattr__(name, value)
-            self._inst % SchemInstanceUnresolvedParameter(name=name, value=value)
-
-    in_subgraphs = [Schematic]
-    wire_id = WIRE_DOMAIN | 11
-
-    pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
-        factory=coerce_tuple(Vec2R, 2))
-    orientation = Attr(D4, default=D4.R0)
-
-    resolver = LiveRef(object)
-
-    @property
-    def params(self):
-        return self.ParamWrapper(self)
-
-    def loc_transform(self):
-        return self.pos.transl() * self.orientation
-
-    def __getitem__(self, name):
-        return self.__getattr__(name)
-
-    def __getattr__(self, name):
-        return SchemInstanceUnresolvedSubcursor((self, name))
-
-    def resolve_symbol(self, remove_params_sgu: 'SubgraphUpdater'=None) -> Symbol:
-        param_dict = {}
-        for param in self.root.all(SchemInstanceUnresolvedParameter.ref_idx.query(self)):
-            param_dict[param.name] = param.value
-            if remove_params_sgu:
-                remove_params_sgu.remove_nid(param.nid)
-
-        return self.resolver(**param_dict)
-
-@public
-class SchemInstanceUnresolvedConn(Node):
-    """Unresolved SchemInstanceConn."""
-    in_subgraphs = [Schematic]
-    wire_id = WIRE_DOMAIN | 12
-
-    ref = LocalRef(SchemInstanceUnresolved, optional=False)
-    ref_idx = Index(ref)
-
-    here = LocalRef(Net, optional=False,
-        factory=lambda v: v.ref if isinstance(v, SchemPort) else v)
-    there = Attr(tuple, optional=False) #: Tuple of str or int = requested path in future symbol
-
-@public
-class SchemInstanceUnresolvedParameter(Node):
-    in_subgraphs = [Schematic]
-    wire_id = WIRE_DOMAIN | 13
-
-    ref = LocalRef(SchemInstanceUnresolved, optional=False)
-    ref_idx = Index(ref)
-
-    name = Attr(str, optional=False)
-    value = Attr(object, optional=False) #: TODO - should be immutable.
 
 @public
 class SchemTapPoint(Node):

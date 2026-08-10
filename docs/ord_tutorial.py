@@ -259,6 +259,11 @@ cell MultibitReg_ArrayOfStructs:
 # In this example, we set the length of the transistors `l` to 100n and the width `w` to 200n.
 # ORD supports all common SI suffixes for cell parameters that use the `Rational` class type {doc}`ref/rational`.
 # (a=atto, f=femto, n=nano, u=micro, m=milli, k=kilo, M=Mega, G=Giga, T=Tera)
+# The `$` operator works the same way in layout viewgens. Parameters can be
+# assigned multiple times (the last assignment wins) until the instance is
+# resolved, which happens on the first access that needs the resolved
+# subcell (e.g. reading its geometry) or at the end of the viewgen;
+# assigning parameters after that raises an error.
 
 # +
 %%ord

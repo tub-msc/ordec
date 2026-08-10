@@ -121,12 +121,11 @@ Transactions, index snapshots and immutability
 
 While a :class:`~ordec.core.ordb.SubgraphUpdater` transaction is open, the
 subgraph's own ``nodes``/``index`` keep showing the pre-transaction state;
-only the updater's views expose uncommitted changes. Real code (e.g.
-``resolve_instances`` in ``src/ordec/schematic/helpers.py``) queries the
-subgraph mid-transaction and depends on this. Additionally, ``index[key]``
-returns an immutable snapshot of the bucket, so callers may iterate a
-query result while removing exactly those nodes (the ``expand_rects``
-pattern). Backends have to get both right
+only the updater's views expose uncommitted changes. Code may query the
+subgraph mid-transaction and rely on seeing the pre-transaction snapshot.
+Additionally, ``index[key]`` returns an immutable snapshot of the bucket,
+so callers may iterate a query result while removing exactly those nodes
+(the ``expand_rects`` pattern). Backends have to get both right
 (:mod:`ordec.core.ordb.backend`); the differential fuzz checks them.
 
 The state mappings a subgraph hands out via ``.nodes``/``.index`` must

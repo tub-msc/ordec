@@ -92,6 +92,16 @@ class SourceLocInfo(NamedTuple):
     line: int
     column: int
 
+
+class MixinSourceLoc:
+    """
+    Provides src_loc attribute for Nodes that support back link to source.
+    This enables click-to-source for ORD code in the web UI. Currently, src_loc
+    is None for nodes not built from ORD code.
+    """
+    __slots__=()
+    src_loc = Attr(SourceLocInfo)
+
 # Generic polygon machinery
 # -------------------------
 
