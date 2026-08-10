@@ -217,6 +217,17 @@ def flatten_schematic(cell, is_leaf):
                 for pin, net in pin_to_net.items():
                     net_terminals.setdefault(net, []).append((iname, pin))
             else:
+                # Check the class rather than the instance, so a schematic
+                # viewgen that exists but raises is not mistaken for a
+                # missing one.
+                if not hasattr(type(subcell), 'schematic'):
+                    raise ValueError(
+                        f"instance {iname!r} is a {type(subcell).__name__}, "
+                        "which is neither a routing leaf nor a composite with "
+                        "a schematic to flatten. The engine places standard "
+                        "cells, so a device-level cell has to be laid out by "
+                        "hand and composed with the placed block at the "
+                        "parent level")
                 recurse(subcell.schematic, iname + '/', pin_to_net)
 
     recurse(cell.schematic, '', {})
@@ -459,6 +470,9 @@ def run_pnr(cell, target, layout=None):
         """
     stack, cfg = target.stack, target.grid
     layout = layout or viewgen_layout_root(cell)
+    if layout is not None:
+        check_layout_empty(layout, cell)
+        check_layout_layers(layout, stack, cell)
     cells, nets = extract(cell, target.pin_rects, target.is_leaf, cfg)
 
     # Rail abutment shorts every VDD rail in the block together (likewise VSS),
@@ -558,9 +572,6 @@ def run_pnr(cell, target, layout=None):
         layout = Layout(ref_layers=stack.layer_set, cell=cell, symbol=cell.symbol)
         own_layout = True
     else:
-        # A viewgen root arrives without layers, since the view context does not
-        # know the PDK. Everything below emits on this stack's layers.
-        layout.ref_layers = stack.layer_set
         own_layout = False
     for name, inst in placed.items():
         setattr(layout, name, LayoutInstance(ref=inst.cell.layout,
@@ -583,6 +594,55 @@ def run_pnr(cell, target, layout=None):
     emit_ports(layout, stack, nets, placed, routing, cfg)
     return PnrResult(layout=layout.freeze() if own_layout else layout, cfg=cfg,
         placed=placed, routing=routing, die_w=die_w, taps=taps)
+
+
+def check_layout_empty(layout, cell):
+    """Refuse to emit into a layout that already holds geometry.
+
+    The router knows nothing about shapes it did not place, so anything
+    already there is merged over without a spacing violation to show for it.
+    DRC stays clean and only LVS catches the short, which is the worst shape a
+    failure can take. Compose hand geometry with the placed block at the
+    parent level instead.
+
+    Args:
+        layout: the :class:`Layout` about to be emitted into.
+        cell: the cell being laid out, for the message.
+
+    Raises:
+        ValueError: the layout holds any node beyond its root.
+    """
+    existing = len(list(layout.subgraph.nodes)) - 1   # the root itself
+    if existing:
+        raise ValueError(
+            f"the layout of {cell} already holds {existing} node(s). "
+            "place_and_route emits into the whole layout and cannot see "
+            "geometry it did not place, so hand geometry belongs in a "
+            "separate cell composed with the placed block at the parent "
+            "level. Calling place_and_route twice fails here too")
+
+
+def check_layout_layers(layout, stack, cell):
+    """Bind the layout to this target's layer set, or reject a foreign one.
+
+    A viewgen root arrives without layers, since the view context does not know
+    the PDK. A root that already carries a different stack would take this
+    engine's geometry on layers from another one.
+
+    Args:
+        layout: the :class:`Layout` about to be emitted into.
+        stack: the :class:`RoutingStack` whose layers the engine emits on.
+        cell: the cell being laid out, for the message.
+
+    Raises:
+        ValueError: the layout is bound to a different layer set.
+    """
+    if layout.ref_layers is None:
+        layout.ref_layers = stack.layer_set
+    elif layout.ref_layers != stack.layer_set:
+        raise ValueError(
+            f"the layout of {cell} is bound to a different layer set than "
+            "the place-and-route target emits on")
 
 
 def place_and_route(cell, target, layout=None):

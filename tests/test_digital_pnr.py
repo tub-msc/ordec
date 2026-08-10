@@ -17,7 +17,8 @@ from dataclasses import replace
 import pytest
 import ordec.importer
 
-from ordec.core import LayoutPin, Rect4I
+from ordec.core import (GdsLayer, Layer, LayerStack, Layout,
+    LayoutPin, R, Rect4I)
 from ordec.layout import compare
 from ordec.layout.digital_pnr import GridConfig, PinAccessError, run_pnr
 from ordec.layout.digital_pnr import place, route
@@ -292,6 +293,45 @@ def test_shared_buses_route_under_congestion():
             if any(r.lx <= x <= r.ux and r.ly <= y <= r.uy
                 for x, y in points)}
         assert len(reached) == 4, f"{bus} reaches {reached}"
+
+
+# --- what the engine refuses ----------------------------------------------
+
+def test_hand_geometry_in_the_viewgen_rejected():
+    """Emitting over shapes the router cannot see would short them.
+
+    DRC would stay clean, since overlapping same-layer shapes need no spacing,
+    so only LVS would catch it. The engine refuses up front instead.
+    """
+    with pytest.raises(ValueError, match="already holds 2 node"):
+        fx.HandGeometry().layout
+
+
+def test_place_and_route_twice_rejected():
+    """The second call sees the first call's geometry, so the same guard
+    catches it."""
+    target = sg13g2_target()
+    result = run_pnr(fx.InvChain(n=2), target)
+    with pytest.raises(ValueError, match="already holds"):
+        run_pnr(fx.InvChain(n=2), target, layout=result.layout.mutable_copy())
+
+
+def test_device_level_instance_rejected():
+    """A bare transistor is neither a routing leaf nor a composite, and the
+    error names the instance rather than failing on a missing attribute."""
+    with pytest.raises(ValueError, match=r"instance 'm0' is a Nmos"):
+        fx.DeviceLeaf().layout
+
+
+def test_foreign_layer_set_rejected():
+    """A layout already bound to another PDK's layers would take this
+    engine's geometry on the wrong ones."""
+    other = LayerStack()
+    other.unit = R("1n")
+    other.SomeMetal = Layer(gdslayer_shapes=GdsLayer(layer=1, data_type=0))
+    foreign = Layout(ref_layers=other.freeze())
+    with pytest.raises(ValueError, match="different layer set"):
+        run_pnr(fx.InvChain(n=2), sg13g2_target(), layout=foreign)
 
 
 def test_run_pnr_reports_its_decisions():

@@ -29,6 +29,7 @@ left its port floating.
 """
 
 from ordec.core import *
+from ordec.lib.ihp130 import SG13G2, Nmos
 from ordec.lib.ihp130_pnr import place_and_route
 from ordec.lib.ihp130_stdcells import extlib
 
@@ -336,6 +337,61 @@ cell MisnamedSupply:
         Inv i0:
             .pos = (10, 10)
             .A -- a; .Y -- y; .VDD -- vcc; .VSS -- vss
+
+    viewgen layout -> Layout:
+        place_and_route(self)
+
+
+cell HandGeometry:
+    """One inverter, with a stray hand-drawn rect in the layout viewgen.
+
+    The router cannot see geometry it did not place, so it would merge over
+    this one. DRC stays clean, since overlapping same-layer shapes need no
+    spacing, and only LVS catches the short. The engine refuses instead.
+    """
+    viewgen symbol -> Symbol:
+        input a:   .align=West
+        output y:  .align=East
+        inout vdd: .align=North
+        inout vss: .align=South
+
+    viewgen schematic -> Schematic:
+        port a:   .align=East; .pos=(0, 10)
+        port y:   .align=West; .pos=(20, 10)
+        port vdd: .align=East; .pos=(0, 18)
+        port vss: .align=East; .pos=(0, 2)
+        Inv i0:
+            .pos = (10, 10)
+            .A -- a; .Y -- y; .VDD -- vdd; .VSS -- vss
+
+    viewgen layout -> Layout:
+        .ref_layers = SG13G2().layers
+        LayoutRect stray:
+            .layer = SG13G2().layers.Metal2
+            .rect = (0, 0, 3000, 3000)
+        place_and_route(self)
+
+
+cell DeviceLeaf:
+    """A bare transistor, which is no standard cell and has no schematic.
+
+    The engine places standard cells, so it has nothing to flatten this into.
+    """
+    viewgen symbol -> Symbol:
+        input g:   .align=West
+        inout d:   .align=East
+        inout vdd: .align=North
+        inout vss: .align=South
+
+    viewgen schematic -> Schematic:
+        port g:   .align=East; .pos=(0, 10)
+        port d:   .align=West; .pos=(20, 10)
+        port vdd: .align=East; .pos=(0, 18)
+        port vss: .align=East; .pos=(0, 2)
+        Nmos m0:
+            .pos = (10, 10)
+            .g -- g; .d -- d; .s -- vss; .b -- vss
+            .$w = 1u; .$l = 130n
 
     viewgen layout -> Layout:
         place_and_route(self)
