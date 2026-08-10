@@ -20,7 +20,8 @@ import ordec.importer
 from ordec.core import (GdsLayer, Layer, LayerStack, Layout,
     LayoutPin, R, Rect4I)
 from ordec.layout import compare
-from ordec.layout.digital_pnr import GridConfig, PinAccessError, run_pnr
+from ordec.layout.digital_pnr import (GridConfig, PinAccessError,
+    place_and_route, run_pnr)
 from ordec.layout.digital_pnr import place, route
 from ordec.layout.digital_pnr.flow import (LeafCell, NetInfo,
     flatten_schematic)
@@ -323,6 +324,26 @@ def test_port_edges_pin_the_escape():
     edges = {edge for _x, edge in result.routing.port_escape.values()
         if _x is not None}
     assert edges == {"top"}
+
+
+def test_port_edges_reach_the_design_facing_call():
+    """place_and_route must forward the pins, since that is the call a
+    design's layout viewgen makes."""
+    cell = fx.DffArray(n=4)
+    pins = {"clk": "top", "rst": "top"}
+    pins |= {f"{p}[{i}]": "top" for p in ("d", "q") for i in range(4)}
+    free = place_and_route(cell, sg13g2_target())
+    pinned = place_and_route(cell, sg13g2_target(), port_edges=pins)
+
+    def lowest_signal_pin(layout):
+        # The supplies leave on the side straps, whose pads sit low by design.
+        return min(p.ref.rect.ly for p in layout.all(LayoutPin)
+            if p.pin.full_path_str() not in ("vdd", "vss"))
+
+    # Unpinned, some ports leave at the bottom and their pads reach below the
+    # bottom rail. Pinned to the top, none does.
+    assert lowest_signal_pin(free) < 0
+    assert lowest_signal_pin(pinned) >= 0
 
 
 def test_escape_row_is_just_inside_the_rail():

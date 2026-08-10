@@ -673,7 +673,7 @@ def place_and_route(cell, target, layout=None, port_edges=None):
         The :class:`Layout`, frozen when this call created it and the caller's
         still-mutable root otherwise.
     """
-    return run_pnr(cell, target, layout).layout
+    return run_pnr(cell, target, layout, port_edges).layout
 
 
 def emit_ports(layout, stack, nets, placed, routing, cfg):
