@@ -122,8 +122,8 @@ def sg13g2_grid() -> GridConfig:
         land_half_h=345,      # 690 nm landing -> Mn min area
         m1_land_half_h=145,   # Metal1 endcap landing under a Via1 (V1.c1)
         min_area_tracks=2,    # 2 * pitch * 210 nm wire >= 0.144 um^2 Mn min area
-        port_pad_below=600,
-        port_pad_above=360,
+        port_pad_inner=600,   # from the edge rail into the block
+        port_pad_outer=360,   # from the edge rail into the parent's channel
         strap_vdd_x=-520,     # left margin; right strap mirrors to die_w + 520
         strap_vss_x=-1080,    # just outside VDD
         rail_ext=150,
@@ -166,7 +166,7 @@ def sg13g2_target(cfg: GridConfig = None) -> PnrTarget:
         pin_rects=lef_pin_rects, is_leaf=is_sg13g2_leaf)
 
 
-def place_and_route(cell, cfg=None, layout=None):
+def place_and_route(cell, cfg=None, layout=None, port_edges=None):
     """Place-and-route ``cell`` with the IHP sg13g2 standard-cell library.
 
         The one-argument form a design's layout view generator calls::
@@ -183,4 +183,4 @@ def place_and_route(cell, cfg=None, layout=None):
         Returns:
             The DRC/LVS-clean :class:`Layout` for ``cell``.
         """
-    return engine_pnr(cell, sg13g2_target(cfg), layout)
+    return engine_pnr(cell, sg13g2_target(cfg), layout, port_edges)

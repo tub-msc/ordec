@@ -35,8 +35,8 @@ GRID = GridConfig(
     via_half=95, encl=10, encl_endcap=50, manufacturing_grid=5,
     vdd_pin='VDD', vss_pin='VSS', vdd_net='vdd', vss_net='vss',
     wire_width=210, wire_ext=150, strap_half_w=105, land_half_h=345,
-    m1_land_half_h=145, min_area_tracks=2, port_pad_below=600,
-    port_pad_above=360, strap_vdd_x=-520, strap_vss_x=-1080, rail_ext=150,
+    m1_land_half_h=145, min_area_tracks=2, port_pad_inner=600,
+    port_pad_outer=360, strap_vdd_x=-520, strap_vss_x=-1080, rail_ext=150,
     mesh_half_w=210)
 
 CELL_W = 1920   # four x-tracks wide
@@ -293,6 +293,46 @@ def test_shared_buses_route_under_congestion():
             if any(r.lx <= x <= r.ux and r.ly <= y <= r.uy
                 for x, y in points)}
         assert len(reached) == 4, f"{bus} reaches {reached}"
+
+
+def test_ports_escape_to_the_nearer_edge():
+    """A port leaves by the edge its terminals sit nearer.
+
+    Escaping everything to the top would make a net driven from the bottom row
+    climb the whole block, only for the parent to bring it straight back down.
+    """
+    result = run_pnr(fx.DffArray(n=8), sg13g2_target())
+    cfg = result.cfg
+    escapes = {name: e for name, e in result.routing.port_escape.items() if e}
+    assert escapes, "the register array should escape its ports to an edge"
+    for name, (_x, edge) in escapes.items():
+        _edges, term_m2 = result.routing.nets[name]
+        mean_y = sum(n[1] for n in term_m2) / len(term_m2)
+        expected = "top" if 2 * mean_y >= cfg.y_track_max else "bottom"
+        assert edge == expected, f"{name} left by {edge}, nearer was {expected}"
+    # A tall array reaches both edges rather than piling onto one.
+    assert {edge for _x, edge in escapes.values()} == {"top", "bottom"}
+
+
+def test_port_edges_pin_the_escape():
+    """A parent that knows its floorplan can override the choice."""
+    cell = fx.DffArray(n=4)
+    pins = {"clk": "top", "rst": "top"}
+    pins |= {f"{p}[{i}]": "top" for p in ("d", "q") for i in range(4)}
+    result = run_pnr(cell, sg13g2_target(), port_edges=pins)
+    edges = {edge for _x, edge in result.routing.port_escape.values()
+        if _x is not None}
+    assert edges == {"top"}
+
+
+def test_escape_row_is_just_inside_the_rail():
+    cfg = replace(GRID, n_rows=3)
+    assert route.escape_row(cfg, "top") == cfg.y_track_max - 1
+    assert route.escape_row(cfg, "bottom") == 1
+    assert cfg.is_signal_track(route.escape_row(cfg, "top"))
+    assert cfg.is_signal_track(route.escape_row(cfg, "bottom"))
+    with pytest.raises(ValueError, match="must be 'top' or 'bottom'"):
+        route.escape_row(cfg, "left")
 
 
 # --- what the engine refuses ----------------------------------------------

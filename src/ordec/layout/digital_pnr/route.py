@@ -70,6 +70,23 @@ class RoutingResult:
     reserved: frozenset
 
 
+def escape_row(cfg, edge):
+    """The signal y-track a port escapes on, just inside the given edge rail.
+
+    Args:
+        cfg: the routing grid (:class:`GridConfig`).
+        edge: ``'top'`` or ``'bottom'``.
+
+    Returns:
+        The y-track index.
+    """
+    if edge == 'top':
+        return cfg.y_track_max - 1
+    if edge == 'bottom':
+        return 1
+    raise ValueError(f"port edge must be 'top' or 'bottom', not {edge!r}")
+
+
 def access_nodes(rects, cfg, allow_rail=False):
     """Find candidate Via1 access points for a pin from its Metal1 rectangles.
 
@@ -705,7 +722,7 @@ class Congestion:
 
 
 def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset(),
-        taps=()):
+        taps=(), port_edges=None):
     """Route the signal nets with negotiated-congestion maze routing.
 
         Each net is decomposed into 2-pin *segments* along an MST over its
@@ -813,35 +830,50 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset()
     # whole grid only if a net can't be realized there.
     corridors = global_route(routed_nets, term_access, cfg, xmax)
 
-    # Every port net gets a unique top-row escape column near the mean x of its
-    # pin candidates, which removes pad contention by construction and keeps
-    # each escape a directed single-goal search. A shared full-width goal row
-    # converges too but pays a fan-out search per escape, and per-net goal
-    # windows do not converge at all. Columns whose top-row Metal4 node is
-    # blocked by a mesh tap cannot host a pad.
-    escape_col = {}
-    if port_nets:
-        ytop = cfg.y_track_max - 1
-        usable = [x for x in range(xmax + 1) if (x, ytop, M4) not in blocked]
-        if len(port_nets) > len(usable):
-            raise PinAccessError(f"{len(port_nets)} port escapes need more "
-                f"top-row columns than the die has free ({len(usable)})")
-        prefs = []
-        for port_name in sorted(port_nets):
-            xs = [n[0] for term in term_access[port_name] for n in term]
-            prefs.append((sum(xs) / len(xs), port_name))
-        prefs.sort()
+    # Every port net gets a unique escape column on its edge, near the mean x
+    # of its pin candidates. Uniqueness removes pad contention by construction
+    # and keeps each escape a directed single-goal search. A shared full-width
+    # goal row converges too but pays a fan-out search per escape, and per-net
+    # goal windows do not converge at all. The two edges allocate
+    # independently, since a top and a bottom pad in one column never meet.
+    # Columns whose edge-row Metal4 node is blocked by a mesh tap cannot host
+    # a pad.
+    def mean_x(port_name):
+        xs = [n[0] for term in term_access[port_name] for n in term]
+        return sum(xs) / len(xs)
+
+    def chosen_edge(port_name):
+        if port_edges and port_name in port_edges:
+            return port_edges[port_name]
+        # Escape to whichever edge the net's terminals sit nearer, so a port
+        # driven from the bottom row does not climb the whole block to leave
+        # it and come straight back down at the parent.
+        ys = [n[1] for term in term_access[port_name] for n in term]
+        mean_y = sum(ys) / len(ys)
+        return 'top' if 2 * mean_y >= cfg.y_track_max else 'bottom'
+
+    escape_col = {}   # port net -> (x track, edge)
+    by_edge = {}
+    for port_name in sorted(port_nets):
+        by_edge.setdefault(chosen_edge(port_name), []).append(port_name)
+    for edge, names in by_edge.items():
+        yrow = escape_row(cfg, edge)
+        usable = [x for x in range(xmax + 1) if (x, yrow, M4) not in blocked]
+        if len(names) > len(usable):
+            raise PinAccessError(f"{len(names)} {edge}-edge port escapes need "
+                f"more columns than the die has free ({len(usable)})")
+        prefs = sorted((mean_x(name), name) for name in names)
         prev = -1
         for k, (pref, port_name) in enumerate(prefs):
             hi = len(usable) - (len(prefs) - k)   # room for the ports right of us
             prev = min(max(prev + 1, bisect.bisect_left(usable, round(pref))), hi)
-            escape_col[port_name] = usable[prev]
+            escape_col[port_name] = (usable[prev], edge)
 
     cong = Congestion()
     # Local aliases for the read-only lookups in the routing closures below.
     history, occupancy = cong.history, cong.occupancy
     node_nets, routes, net_use = cong.node_nets, cong.routes, cong.net_use
-    port_escape = {}      # port net -> x track of its top-edge Metal4 pad (or None)
+    port_escape = {}      # port net -> (x track, edge) of its Metal4 pad, or None
     penalty = [0.5]       # present-congestion penalty, raised each rip-up pass
     adj = GridAdjacency(cfg, xmax, blocked)   # lazy per-run move table for A*
 
@@ -993,17 +1025,19 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset()
                 ((ti, path[0]), (tj, path[-1])), shadows)
 
         if key == 'esc':
-            # Port escape: lift the net to its reserved top-row Metal4 column,
-            # so its pin sits in the channel above the rows. The parent then
-            # connects there, never over the interior. That edge interface is
-            # what keeps the block composable (a placement change can't drop a
-            # parent wire onto an internal net). vdd/vss go to the side straps.
+            # Port escape: lift the net to its reserved Metal4 column on its
+            # edge, so its pin sits in the channel outside the rows. The parent
+            # then connects there, never over the interior. That edge interface
+            # is what keeps the block composable (a placement change can't drop
+            # a parent wire onto an internal net). vdd/vss go to the side
+            # straps.
             tree = set(own_use)
-            ytop = cfg.y_track_max - 1
-            path = astar(tree, [(escape_col[net_name], ytop, M4)],
+            col, edge = escape_col[net_name]
+            yrow = escape_row(cfg, edge)
+            path = astar(tree, [(col, yrow, M4)],
                 cfg, xmax, history, occupancy, own_use, penalty[0], None, adj)
-            if path is None:   # blocked column: any top-row node will do
-                path = astar(tree, [(x, ytop, M4) for x in range(xmax + 1)],
+            if path is None:   # blocked column: any node on that row will do
+                path = astar(tree, [(x, yrow, M4) for x in range(xmax + 1)],
                     cfg, xmax, history, occupancy, own_use, penalty[0], None, adj)
             if path is None:   # last resort: interior pad on the first terminal
                 _ti, node = next(p for seg in routes[net_name].values()
@@ -1012,7 +1046,7 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset()
                 stack = ((xi, yi, M2), (xi, yi, M3), (xi, yi, M4))
                 port_escape[net_name] = None
                 return RouteSeg(tuple(zip(stack, stack[1:])), frozenset(stack), ())
-            port_escape[net_name] = path[-1][0]   # x of the top-edge M4 pad
+            port_escape[net_name] = (path[-1][0], edge)
             return RouteSeg(tuple(zip(path, path[1:])), frozenset(path), ())
 
         # key == 'ext': grow each per-track run of the net to the min-area

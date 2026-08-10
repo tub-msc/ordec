@@ -59,8 +59,8 @@ class GridConfig:
     land_half_h: int         # half the long side of a min-area via landing
     m1_land_half_h: int      # half-height of the Metal1 endcap landing under a Via1
     min_area_tracks: int     # min wire span in track pitches to meet Mn min area
-    port_pad_below: int      # port-pad extent below the top rail
-    port_pad_above: int      # port-pad extent above the top rail
+    port_pad_inner: int      # port-pad extent from its edge rail into the block
+    port_pad_outer: int      # port-pad extent from its edge rail out of the die
     strap_vdd_x: int         # VDD strap x (left margin; the right strap mirrors to die_w - x)
     strap_vss_x: int         # VSS strap x (just outside VDD)
     rail_ext: int            # Metal1 overlap of a strap onto the rail it taps
@@ -442,7 +442,7 @@ class PnrResult:
     taps: tuple
 
 
-def run_pnr(cell, target, layout=None):
+def run_pnr(cell, target, layout=None, port_edges=None):
     """Place + route a cell whose schematic instantiates Metal1-only leaf cells.
 
         Every PDK-specific input arrives in ``target``, so no layer, pitch or DRC
@@ -557,7 +557,8 @@ def run_pnr(cell, target, layout=None):
             taps, blocked = (), frozenset()
         try:
             routing = route.route_nets(
-                signal_nets, placed, cfg, xmax, port_nets, blocked, taps)
+                signal_nets, placed, cfg, xmax, port_nets, blocked, taps,
+                port_edges)
             break
         except PinAccessError:
             raise   # permanent: more rows cannot make a pin reachable
@@ -645,7 +646,7 @@ def check_layout_layers(layout, stack, cell):
             "the place-and-route target emits on")
 
 
-def place_and_route(cell, target, layout=None):
+def place_and_route(cell, target, layout=None, port_edges=None):
     """Place + route ``cell``, returning its DRC/LVS-clean :class:`Layout`.
 
         The design-facing entry point, :func:`run_pnr` without the flow's internals.
@@ -679,23 +680,31 @@ def emit_ports(layout, stack, nets, placed, routing, cfg):
         routing: the :class:`~.route.RoutingResult`, for the signal escapes.
         cfg: the routing grid + emitted geometry (:class:`GridConfig`).
     """
-    # A signal port was escaped to the TOP edge (route_nets): expose its
-    # pin on a Metal4 pad straddling the top rail, up in the channel above the
-    # block, so the parent lands there without ever routing over the interior.
-    # (Fallback: an interior Metal4 pad if the escape could not reach the edge.)
-    # vdd/vss carry by rail abutment, so their port stays a Metal1 rail handle.
+    # A signal port was escaped to the top or the bottom edge (route_nets):
+    # expose its pin on a Metal4 pad straddling that rail, out in the parent's
+    # channel, so the parent lands there without ever routing over the
+    # interior. (Fallback: an interior Metal4 pad if the escape reached no
+    # edge.) vdd/vss carry by rail abutment, so their port stays a Metal1 rail
+    # handle.
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     top_abs = cfg.n_rows * cfg.row_height        # absolute y of the top rail
     for net_name, net in nets.items():
         if net.port_pin is None:
             continue
         if net_name in routing.nets:             # signal port
-            escape_x = routing.port_escape.get(net_name)
-            if escape_x is not None:                   # top-edge pad, above the rows
+            escape = routing.port_escape.get(net_name)
+            if escape is not None:               # edge pad, outside the rows
+                escape_x, edge = escape
                 track_x = escape_x * x_pitch
+                # The pad straddles its edge rail, reaching port_pad_inner into
+                # the block and port_pad_outer into the parent's channel.
+                rail_y = top_abs if edge == 'top' else 0
+                inner, outer = cfg.port_pad_inner, cfg.port_pad_outer
+                lo, hi = ((rail_y - inner, rail_y + outer) if edge == 'top'
+                    else (rail_y - outer, rail_y + inner))
                 port_rect = layout % LayoutRect(layer=stack.m4, rect=Rect4I(
-                    track_x - cfg.strap_half_w, top_abs - cfg.port_pad_below,
-                    track_x + cfg.strap_half_w, top_abs + cfg.port_pad_above))
+                    track_x - cfg.strap_half_w, lo,
+                    track_x + cfg.strap_half_w, hi))
             else:                                # interior fallback pad
                 xi, yi, _ = routing.nets[net_name][1][0]
                 port_rect = layout % LayoutRect(layer=stack.m4, rect=Rect4I(

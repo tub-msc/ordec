@@ -187,6 +187,32 @@ shared rail per supply already ties everything:
 The supply pin and net names (``VDD``, ``vdd`` and so on) are part of the ``GridConfig``
 profile rather than the engine. The sg13g2 conventions live in ``ihp130_pnr.sg13g2_grid()``.
 
+The block interface
+-------------------
+
+Every signal port is routed out to the top or the bottom edge and exposed on a Metal4 pad
+straddling that rail, out in the parent's channel. The parent therefore lands on the pad
+and never routes over the block interior, which is what keeps a composition robust: a
+placement change inside the block cannot drop a parent wire onto an internal net. The
+supplies need no escape, since they leave on the side straps.
+
+Each port takes whichever edge its terminals sit nearer, so a net driven from the bottom
+row does not climb the whole block to leave it and come straight back down at the parent.
+On an 8-bit register array that halves the routed wirelength, from 366 um to 210 um, with
+14 of the 18 ports leaving at the bottom. A parent that knows its own floorplan can
+override the choice with ``place_and_route(cell, port_edges={'clk': 'bottom'})``.
+
+Within an edge, every port gets its own reserved column near the mean x of its pin
+candidates. Uniqueness removes pad contention by construction and keeps each escape a
+directed single-goal search. The two edges allocate independently, since a top and a
+bottom pad in the same column never meet.
+
+The pads sit on Metal4, a vertical layer, which is the usual convention: a wire reaches
+an edge perpendicular to it, so a top or bottom pin wants a vertical layer. Left and
+right pins would want a horizontal one, Metal3 or Metal5, and the mirrored mechanism of
+reserved rows rather than reserved columns. The engine does not implement that today, so
+a block presents two faces rather than four.
+
 Algorithmic fidelity and scope
 ------------------------------
 
