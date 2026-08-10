@@ -1,5 +1,5 @@
 :mod:`ordec.layout.digital_pnr` --- Gridded standard-cell place and route
-========================================================================
+=========================================================================
 
 .. automodule:: ordec.layout.digital_pnr
 
@@ -30,8 +30,7 @@ block. It flattens the schematic to foundry leaf cells, orders and folds them in
 abutted standard-cell rows, routes all signal nets on a fixed track grid, and emits
 geometry that is DRC-clean by construction. The algorithms are textbook ones:
 simulated-annealing placement, flipped-row floorplanning, and negotiated-congestion maze
-routing with A\*. The engine is therefore a faithful miniature of a real flow rather than
-a heuristic stand-in (see `Algorithmic fidelity and scope`_).
+routing with A\* (see `Scope`_).
 
 The name says *digital* because the engine wants a standard-cell library: abutting rails,
 Metal1-only pins, integer-track cell widths. An analog flow would be a sibling package
@@ -132,28 +131,22 @@ when a net cannot be realised there, which keeps the maze search local as blocks
 Because the spacing rules are encoded directly in the conflict model, a converged routing
 is DRC-clean by construction rather than clean by luck.
 
-Geometry, and the DRC details that bite
-----------------------------------------
+Geometry emission
+-----------------
 
-Wires and via stacks are emitted directly as concrete grid coordinates
-(``emit_net_direct``) rather than through ORDeC's constraint solver, which is fast per
-cell but does not scale to the few-hundred-net blocks this targets. The engine reads every
-dimension from the ``GridConfig``. Three sg13g2 DRC specifics set the values in its
-profile (``ihp130_pnr.sg13g2_grid``):
+Wires and via stacks are emitted directly at concrete grid coordinates
+(``emit_net_direct``) rather than through ORDeC's constraint solver, which is fast for a
+single cell but does not scale to the few-hundred-net blocks this engine targets. Every
+dimension the emitter uses comes from the ``GridConfig`` profile. The sg13g2 values and
+the design rules each one derives from are documented field by field in
+``ihp130_pnr.sg13g2_grid``.
 
-* **Pin access uses the LEF rectangles**, not GDS-polygon bounding boxes. ``Nor2``'s Y
-  and B pins overlap *by bounding box*, so a bbox-driven via would short two nets. The
-  clean per-pin LEF rects place the Via1 on exactly the intended pin, with an enclosure
-  test (≥ 10 nm on all sides, ≥ 50 nm on one) so it is never on too narrow a finger.
-* **Min area (0.144 µm²) and the via endcap (50 nm)** cannot be met by an isolated via
-  landing at this pitch, so the *wire* must carry them. Wires are 210 nm, enclosing the
-  190 nm cut by 10 nm, and extend 150 nm past each end for a 50 nm endcap at an end-via.
-  A post-pass (``extend_min_area``) lengthens any too-short segment into free tracks to
-  reach min area.
-* **Metal3 spacing (210 nm)** is exactly one track pitch minus the wire width, so
-  adjacent parallel tracks sit at exactly the minimum spacing. That is legal but has no
-  slack, which is why facing wire-ends conflict and why a too-full channel forces the
-  row-count growth above.
+Two choices matter when writing a profile for another PDK. Pin access works on the clean
+per-pin LEF rectangles, never on GDS bounding boxes, since pins can overlap by bounding
+box (nor2's Y and B do) and a bbox-driven via would short two nets. And the metal
+min-area and via-endcap rules are carried by the wires themselves rather than by
+isolated via landings, which cannot satisfy them at this pitch. That is why every run
+spans a minimum number of tracks (``extend_min_area``) and overhangs its end vias.
 
 Power delivery
 --------------
@@ -230,16 +223,14 @@ right pins would want a horizontal one, Metal3 or Metal5, and the mirrored mecha
 reserved rows rather than reserved columns. The engine does not implement that today, so
 a block presents two faces rather than four.
 
-Algorithmic fidelity and scope
-------------------------------
+Scope
+-----
 
-The algorithms are the real thing. Negotiated-congestion routing, A\* maze routing,
-simulated-annealing placement and flipped-row floorplanning are the same foundational
-techniques production place-and-route tools are built on, and here they run as a complete,
-end-to-end flow that turns a schematic into real silicon geometry, DRC-clean against the
-maximal sign-off rule set and LVS-matched to the source.
-
-What separates it from a production flow is scale and scope, not correctness:
+The techniques are the standard ones production place-and-route tools build on:
+negotiated-congestion routing, A\* maze search, simulated-annealing placement and
+flipped-row floorplanning, run as one flow from schematic to geometry that is DRC-clean
+against the maximal sign-off rule set and LVS-matched to the source. What separates it
+from a production flow is scale and scope:
 
 * **Scale.** It targets blocks of tens of cells, where production tools handle millions.
   At that scale modern placement is *analytical* (electrostatic or quadratic) rather than
@@ -265,12 +256,10 @@ What separates it from a production flow is scale and scope, not correctness:
   upper-metal routes into gate pins are exactly the pattern this router produces, so
   they are checked rather than assumed. The **density** deck stays out, since its 200 µm
   check windows exceed these block sizes, making it intrinsically a chip-assembly concern.
-* **Out of scope by design:** clock-tree synthesis, antenna fixing, fill, multi-Vt and
-  deep routing on 5 to 15 layers.
-
-The result is a compact but genuinely faithful flow. The right algorithms, applied end to
-end, produce sign-off-clean layout for real foundry cells, with production scale and the
-timing and sign-off machinery deliberately left out.
+* **Out of scope by design:** clock-tree synthesis, antenna fixing, fill cells and
+  multi-Vt libraries. Routing stays on Metal2 to Metal5, so sg13g2's thick top metals
+  (TopMetal1, TopMetal2) are never touched and remain free for the assembly above the
+  block.
 
 Public API
 ----------

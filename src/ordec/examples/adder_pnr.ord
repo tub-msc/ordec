@@ -1,0 +1,180 @@
+"""
+4-bit ripple-carry adder built from IHP SG13G2 standard cells, with its layout
+produced by the automatic place-and-route engine (ordec.layout.digital_pnr).
+The testbench counts input A from 0 to 15 against a fixed B and decodes the
+simulated sum bits back into integers.
+"""
+
+from ordec.core import *
+from ordec.lib import ihp130
+from ordec.lib.base import Vpulse, Vdc, Gnd, NoConn
+from ordec.lib.ihp130_pnr import place_and_route
+from ordec.lib.ihp130_stdcells import extlib
+
+Xor = extlib["sg13g2_xor2_1"]
+And = extlib["sg13g2_and2_1"]
+Or = extlib["sg13g2_or2_1"]
+
+N = 4   # adder width in bits
+
+
+cell RippleAdder:
+    """N-bit ripple-carry adder: s = a + b + cin, one full adder per bit."""
+
+    viewgen symbol -> Symbol:
+        input cin: .align=West
+        output cout: .align=East
+        inout vdd: .align=North
+        inout vss: .align=South
+        path a, b, s
+        for i in range(N):
+            input a[i]: .align=West
+            input b[i]: .align=West
+            output s[i]: .align=East
+
+    viewgen schematic -> Schematic:
+        path a, b, s
+        for i in range(N):
+            port a[i]: .align=East; .pos=(0, 20 * i + 17)
+            port b[i]: .align=East; .pos=(0, 20 * i + 7)
+            port s[i]: .align=West; .pos=(54, 20 * i + 16)
+        port cin: .align=East; .pos=(0, 0)
+        port cout: .align=West; .pos=(54, 20 * N - 14)
+        port vdd: .align=East; .pos=(0, 20 * N + 4)
+        port vss: .align=East; .pos=(0, 20 * N + 2)
+
+        # carry[i] is the carry into bit i: carry[0] = cin, carry[N] = cout.
+        path cy
+        carry = [cin]
+        for i in range(N - 1):
+            net cy[i]
+            carry.append(cy[i])
+        carry.append(cout)
+
+        path t, g, p, txor, sxor, gand, pand, cor
+        for i in range(N):
+            base = 20 * i + 4
+            net t[i]
+            net g[i]
+            net p[i]
+            Xor txor[i]:
+                .pos = (10, base + 10)
+                .A -- a[i]; .B -- b[i]; .X -- t[i]
+                .VDD -- vdd; .VSS -- vss
+            And gand[i]:
+                .pos = (10, base)
+                .A -- a[i]; .B -- b[i]; .X -- g[i]
+                .VDD -- vdd; .VSS -- vss
+            And pand[i]:
+                .pos = (25, base)
+                .A -- carry[i]; .B -- t[i]; .X -- p[i]
+                .VDD -- vdd; .VSS -- vss
+            Xor sxor[i]:
+                .pos = (40, base + 10)
+                .A -- carry[i]; .B -- t[i]; .X -- s[i]
+                .VDD -- vdd; .VSS -- vss
+            Or cor[i]:
+                .pos = (40, base)
+                .A -- g[i]; .B -- p[i]; .X -- carry[i + 1]
+                .VDD -- vdd; .VSS -- vss
+
+    viewgen layout -> Layout:
+        place_and_route(self)
+
+    @generate(auto_refresh=False)
+    viewgen drc -> DrcReport:
+        . = ihp130.run_drc(self.layout)
+
+    @generate(auto_refresh=False)
+    viewgen lvs -> LvsReport:
+        . = ihp130.run_lvs(self.layout, self.symbol)
+
+
+cell AdderTb:
+    """Counts A through all 16 codes against B = 5 and watches the sum."""
+
+    viewgen schematic -> Schematic:
+        net vdd, vss, cout
+        path a, s
+        for i in range(N):
+            net a[i]
+            net s[i]
+
+        # B is hardwired to 5 (0b0101).
+        RippleAdder dut:
+            .pos = (76, 8)
+            .cin -- vss
+            .cout -- cout
+            .vdd -- vdd; .vss -- vss
+            .a[0] -- a[0]; .b[0] -- vdd
+            .a[1] -- a[1]; .b[1] -- vss
+            .a[2] -- a[2]; .b[2] -- vdd
+            .a[3] -- a[3]; .b[3] -- vss
+            .s[0] -- s[0]
+            .s[1] -- s[1]
+            .s[2] -- s[2]
+            .s[3] -- s[3]
+
+        # a[i] toggles with period 40 ns * 2^i, so A counts one code every 20 ns.
+        path vp
+        for i in range(N):
+            step = 20 * 2 ** i
+            Vpulse vp[i]:
+                .pos = (40 + 7 * i, 10)
+                .$initial_value = 0
+                .$pulsed_value = '1.2'
+                .$delay_time = f'{step}n'
+                .$rise_time = '1n'
+                .$fall_time = '1n'
+                .$pulse_width = f'{step - 1}n'
+                .$period = f'{2 * step}n'
+                .n -- vss; .p -- a[i]
+
+        Vdc vdd_src: .pos=(35, 20); .$dc='1.2'; .n -- vss; .p -- vdd
+        Gnd gnd: .pos=(35, 2); .p -- vss
+
+        path nc
+        for i in range(N):
+            NoConn nc[i]: .pos=(92, 6 * i + 4); .a -- s[i]
+        NoConn nc_cout: .pos=(92, 6 * N + 4); .a -- cout
+
+    viewgen sim_tran -> Simulation:
+        .simulate().tran(200p, 320n)
+
+    viewgen report_tran -> Report:
+        sim = self.sim_tran
+        a_bits = [list(sim.a[i].voltage) for i in range(N)]
+        s_bits = [list(sim.s[i].voltage) for i in range(N)]
+        s_bits.append(list(sim.cout.voltage))
+        a_dec = [sum(1 << i for i in range(N) if a_bits[i][k] > 0.6)
+            for k in range(len(a_bits[0]))]
+        s_dec = [sum(1 << i for i in range(N + 1) if s_bits[i][k] > 0.6)
+            for k in range(len(s_bits[0]))]
+
+        .markdown("# Ripple-carry adder\n"
+            "A counts from 0 to 15 while B is fixed at 5, so the decoded sum "
+            "tracks A + 5 with cout as bit 4. The brief spikes at the code "
+            "boundaries are transients: the inputs are still switching and "
+            "the carry is still rippling through the adder.")
+        .grp = PlotGroup()
+        .plot2d(
+            x=sim.time,
+            series={"A": a_dec, "S = A + 5": s_dec},
+            xlabel="Time (s)",
+            ylabel="Decoded value",
+            height=240,
+            group=.grp)
+        waves = [(f"a[{i}]", a_bits[i]) for i in reversed(range(N))]
+        waves.append(("cout", s_bits[N]))
+        waves += [(f"s[{i}]", s_bits[i]) for i in reversed(range(N))]
+        stack = {}
+        for j, (label, wave) in enumerate(waves):
+            offset = 2 * (len(waves) - 1 - j)
+            stack[label] = [v + offset for v in wave]
+        .plot2d(
+            x=sim.time,
+            series=stack,
+            xlabel="Time (s)",
+            ylabel="Voltage (V), traces offset by 2 V",
+            height=420,
+            group=.grp)
