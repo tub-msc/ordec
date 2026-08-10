@@ -25,17 +25,17 @@ from .route import HORIZ, M1, M2, M3, M4, M5, PinAccessError, VERT
 class GridConfig:
     """Routing grid and emitted-geometry parameters.
 
-        The engine reads every dimension from here, so retargeting a PDK is a new
-        profile rather than an edit to the engine. The grid and geometry fields have
-        no defaults, since they come from a PDK profile such as
-        :func:`ordec.lib.ihp130_pnr.sg13g2_grid`. Only the flow knobs at the bottom
-        carry universal defaults. All lengths are in nm.
+    The engine reads every dimension from here, so retargeting a PDK is a new
+    profile rather than an edit to the engine. The grid and geometry fields have
+    no defaults, since they come from a PDK profile such as
+    :func:`ordec.lib.ihp130_pnr.sg13g2_grid`. Only the flow knobs at the bottom
+    carry universal defaults. All lengths are in nm.
 
-        Frozen, so a profile is a value the binding can cache and share. The
-        floorplan loop derives one variant per attempt with
-        ``dataclasses.replace(cfg, n_rows=...)``, and a caller overrides a flow knob
-        the same way.
-        """
+    Frozen, so a profile is a value the binding can cache and share. The
+    floorplan loop derives one variant per attempt with
+    ``dataclasses.replace(cfg, n_rows=...)``, and a caller overrides a flow knob
+    the same way.
+    """
     # Routing grid, from the PDK tech LEF:
     x_pitch: int             # vertical (Metal2) track pitch
     y_pitch: int             # horizontal (Metal3) track pitch
@@ -101,12 +101,12 @@ class GridConfig:
 class RoutingStack:
     """Maps the engine's abstract routing stack onto concrete PDK layers.
 
-        The layer counterpart of :class:`GridConfig`. The binding supplies the layer
-        objects, so no PDK layer name is baked into the engine. ``m1`` to ``m5`` and
-        ``via1`` to ``via4`` mirror the like-named internal codes: a Metal1-only
-        pin-access layer, two vertical routing metals (``m2``, ``m4``), two
-        horizontal (``m3``, ``m5``), and a via between each pair.
-        """
+    The layer counterpart of :class:`GridConfig`. The binding supplies the layer
+    objects, so no PDK layer name is baked into the engine. ``m1`` to ``m5`` and
+    ``via1`` to ``via4`` mirror the like-named internal codes: a Metal1-only
+    pin-access layer, two vertical routing metals (``m2``, ``m4``), two
+    horizontal (``m3``, ``m5``), and a via between each pair.
+    """
     layer_set: object   # full PDK layer set, passed through as Layout.ref_layers
     m1: object          # pin-access metal (code M1)
     m2: object          # first vertical routing metal (code M2)
@@ -123,17 +123,17 @@ class RoutingStack:
 class PnrTarget:
     """Everything a PDK must supply for the engine to lay a cell out.
 
-        The four inputs always come from the same binding module, so they travel as
-        one value rather than a calling convention.
+    The four inputs always come from the same binding module, so they travel as
+    one value rather than a calling convention.
 
-        Args:
-            stack: the :class:`RoutingStack` for this PDK's layers.
-            grid: the routing grid + emitted geometry (:class:`GridConfig`).
-            pin_rects: callable ``cell_name -> {pin: [(x0, y0, x1, y1), ...]}``
-                giving a leaf cell's per-pin Metal1 rectangles, in nm.
-            is_leaf: callable ``cell -> bool``, true for a routing leaf placed
-                as-is, false for a composite the engine flattens.
-        """
+    Args:
+        stack: the :class:`RoutingStack` for this PDK's layers.
+        grid: the routing grid + emitted geometry (:class:`GridConfig`).
+        pin_rects: callable ``cell_name -> {pin: [(x0, y0, x1, y1), ...]}``
+            giving a leaf cell's per-pin Metal1 rectangles, in nm.
+        is_leaf: callable ``cell -> bool``, true for a routing leaf placed
+            as-is, false for a composite the engine flattens.
+    """
     stack: RoutingStack
     grid: GridConfig
     pin_rects: object
@@ -186,19 +186,19 @@ def pin_nets(inst):
 def flatten_schematic(cell, is_leaf):
     """Flatten a hierarchical schematic to its foundry leaf instances.
 
-        Sub-cells for which ``is_leaf`` is true are leaves. Any other instance is
-        expanded into its own schematic, with internal nets uniquified by an
-        instance prefix and port nets mapped to the parent's nets.
+    Sub-cells for which ``is_leaf`` is true are leaves. Any other instance is
+    expanded into its own schematic, with internal nets uniquified by an
+    instance prefix and port nets mapped to the parent's nets.
 
-        Args:
-            cell: the top cell whose ``schematic`` view is flattened.
-            is_leaf: predicate ``cell -> bool``, true for a routing leaf cell.
+    Args:
+        cell: the top cell whose ``schematic`` view is flattened.
+        is_leaf: predicate ``cell -> bool``, true for a routing leaf cell.
 
-        Returns:
-            ``(leaf_insts, net_terminals)``, mapping a flat instance name to its
-            leaf Cell and a net name to its ``(flat_inst_name, pin_name)``
-            terminals.
-        """
+    Returns:
+        ``(leaf_insts, net_terminals)``, mapping a flat instance name to its
+        leaf Cell and a net name to its ``(flat_inst_name, pin_name)``
+        terminals.
+    """
     leaf_insts = {}
     net_terminals = {}
 
@@ -238,16 +238,16 @@ def flatten_schematic(cell, is_leaf):
 def extract(cell, pin_rects, is_leaf, cfg):
     """Build the placement and net data for a cell's flattened schematic.
 
-        Args:
-            cell: the top cell to lay out.
-            pin_rects: the PDK's pin-rectangle hook (see :class:`PnrTarget`).
-            is_leaf: the PDK's routing-leaf predicate (see :class:`PnrTarget`).
-            cfg: the :class:`GridConfig`, for the supply pin naming.
+    Args:
+        cell: the top cell to lay out.
+        pin_rects: the PDK's pin-rectangle hook (see :class:`PnrTarget`).
+        is_leaf: the PDK's routing-leaf predicate (see :class:`PnrTarget`).
+        cfg: the :class:`GridConfig`, for the supply pin naming.
 
-        Returns:
-            ``(cells, nets)``, mapping each leaf instance name to a
-            :class:`LeafCell` and each net name to a :class:`NetInfo`.
-        """
+    Returns:
+        ``(cells, nets)``, mapping each leaf instance name to a
+        :class:`LeafCell` and each net name to a :class:`NetInfo`.
+    """
     leaf_insts, net_terminals = flatten_schematic(cell, is_leaf)
 
     cells = {}
@@ -280,24 +280,24 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
         term_via=None, term_land=None):
     """Emit one routed net's geometry directly with concrete coordinates.
 
-        No constraint solver is used, since ORDeC's general solver is fast per cell
-        but takes minutes for a few-hundred-net block. Wire runs become
-        Metal2/3/4/5 paths and each layer change is a via cut. The overlapping wires
-        provide the via landings, and the router's via-access pass keeps every run
-        long enough to meet min area and endcap.
+    No constraint solver is used, since ORDeC's general solver is fast per cell
+    but takes minutes for a few-hundred-net block. Wire runs become
+    Metal2/3/4/5 paths and each layer change is a via cut. The overlapping wires
+    provide the via landings, and the router's via-access pass keeps every run
+    long enough to meet min area and endcap.
 
-        Args:
-            layout: the mutable :class:`Layout` to emit into.
-            stack: the :class:`RoutingStack` for this PDK's layers.
-            edges: the net's routed edges, each a pair of grid nodes.
-            term_m2: the net's Via1 access nodes, its terminal landings on Metal2.
-            cfg: the routing grid + DRC geometry (:class:`GridConfig`).
-            term_via: this net's ``{node: (via_x, via_y)}`` overrides, moving an
-                off-track terminal's Via1 onto the pin. The emitter jogs it back to
-                the track.
-            term_land: this net's ``{node: rect}`` pin-aware Metal1 landings for
-                on-track terminals.
-        """
+    Args:
+        layout: the mutable :class:`Layout` to emit into.
+        stack: the :class:`RoutingStack` for this PDK's layers.
+        edges: the net's routed edges, each a pair of grid nodes.
+        term_m2: the net's Via1 access nodes, its terminal landings on Metal2.
+        cfg: the routing grid + DRC geometry (:class:`GridConfig`).
+        term_via: this net's ``{node: (via_x, via_y)}`` overrides, moving an
+            off-track terminal's Via1 onto the pin. The emitter jogs it back to
+            the track.
+        term_land: this net's ``{node: rect}`` pin-aware Metal1 landings for
+            on-track terminals.
+    """
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     metal_layer = {M2: stack.m2, M3: stack.m3, M4: stack.m4, M5: stack.m5}
     via_layer = {frozenset((M1, M2)): stack.via1, frozenset((M2, M3)): stack.via2,
@@ -393,18 +393,18 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
 def viewgen_layout_root(cell):
     """Return the Layout root of an enclosing ``viewgen layout`` for ``cell``.
 
-        An ORD viewgen body populates a root the view context owns rather than
-        returning one, so the engine emits into that root. :class:`SRouter
-        <ordec.layout.SRouter>` picks up its layout the same way.
+    An ORD viewgen body populates a root the view context owns rather than
+    returning one, so the engine emits into that root. :class:`SRouter
+    <ordec.layout.SRouter>` picks up its layout the same way.
 
-        Args:
-            cell: the cell being laid out.
+    Args:
+        cell: the cell being laid out.
 
-        Returns:
-            The view context's Layout root, or None when there is no enclosing
-            layout viewgen, including when the active viewgen belongs to another
-            cell. Emitting into that parent's root would corrupt it.
-        """
+    Returns:
+        The view context's Layout root, or None when there is no enclosing
+        layout viewgen, including when the active viewgen belongs to another
+        cell. Emitting into that parent's root would corrupt it.
+    """
     from ordec.ord.context import view_context
 
     view_ctx = view_context()
@@ -421,19 +421,19 @@ def viewgen_layout_root(cell):
 class PnrResult:
     """Everything one place-and-route run decided, not just the geometry.
 
-        :func:`place_and_route` hands back the layout alone, which is all a design
-        needs. A test or a report wants the decisions behind it.
+    :func:`place_and_route` hands back the layout alone, which is all a design
+    needs. A test or a report wants the decisions behind it.
 
-        Args:
-            layout: the emitted :class:`Layout`, frozen as :func:`run_pnr` describes.
-            cfg: the :class:`GridConfig` variant the floorplan settled on, with the
-                ``n_rows`` that finally routed.
-            placed: ``{name: PlacedInst}``, every leaf cell's row, position,
-                orientation and absolute pin rectangles.
-            routing: the :class:`~.route.RoutingResult` for the signal nets.
-            die_w: the die width in nm, which the rails are padded flush to.
-            taps: the power-mesh tap columns, empty when no mesh was emitted.
-        """
+    Args:
+        layout: the emitted :class:`Layout`, frozen as :func:`run_pnr` describes.
+        cfg: the :class:`GridConfig` variant the floorplan settled on, with the
+            ``n_rows`` that finally routed.
+        placed: ``{name: PlacedInst}``, every leaf cell's row, position,
+            orientation and absolute pin rectangles.
+        routing: the :class:`~.route.RoutingResult` for the signal nets.
+        die_w: the die width in nm, which the rails are padded flush to.
+        taps: the power-mesh tap columns, empty when no mesh was emitted.
+    """
     layout: object
     cfg: GridConfig
     placed: dict
@@ -445,29 +445,34 @@ class PnrResult:
 def run_pnr(cell, target, layout=None, port_edges=None):
     """Place + route a cell whose schematic instantiates Metal1-only leaf cells.
 
-        Every PDK-specific input arrives in ``target``, so no layer, pitch or DRC
-        dimension is baked into this module.
+    Every PDK-specific input arrives in ``target``, so no layer, pitch or DRC
+    dimension is baked into this module.
 
-        Args:
-            cell: the cell to lay out. Its schematic is flattened to leaf cells.
-            target: the :class:`PnrTarget` for this PDK, e.g.
-                :func:`ordec.lib.ihp130_pnr.sg13g2_target`.
-            layout: the :class:`Layout` to build into. Defaults to the enclosing
-                ``viewgen layout`` root, or to a fresh Layout when there is none.
+    Args:
+        cell: the cell to lay out. Its schematic is flattened to leaf cells.
+        target: the :class:`PnrTarget` for this PDK, e.g.
+            :func:`ordec.lib.ihp130_pnr.sg13g2_target`.
+        layout: the :class:`Layout` to build into. Defaults to the enclosing
+            ``viewgen layout`` root, or to a fresh Layout when there is none.
+        port_edges: ``{port net: 'top' or 'bottom'}`` naming the edge each port
+            leaves by. This is normally the parent's decision, since only the
+            parent knows what sits above and below the block. A net left out
+            falls back to the edge its own terminals sit nearer, which is
+            uninformed about the parent.
 
-        Returns:
-            The :class:`PnrResult`. Its layout is frozen when this call created it,
-            and the caller's still-mutable root otherwise, which the view context
-            freezes.
+    Returns:
+        The :class:`PnrResult`. Its layout is frozen when this call created it,
+        and the caller's still-mutable root otherwise, which the view context
+        freezes.
 
-        Raises:
-            PinAccessError: a pin is unreachable on the grid. This is permanent, so
-                no retry is attempted.
-            ValueError: the netlist breaks a structural assumption, either more than
-                one net on a supply pin or a supply net under the wrong name.
-            RuntimeError: the routing did not converge at the largest floorplan
-                tried.
-        """
+    Raises:
+        PinAccessError: a pin is unreachable on the grid. This is permanent, so
+            no retry is attempted.
+        ValueError: the layout already holds geometry, an instance is no
+            standard cell, or the netlist breaks a supply assumption.
+        RuntimeError: the routing did not converge at the largest floorplan
+            tried.
+    """
     stack, cfg = target.stack, target.grid
     layout = layout or viewgen_layout_root(cell)
     if layout is not None:
@@ -649,23 +654,25 @@ def check_layout_layers(layout, stack, cell):
 def place_and_route(cell, target, layout=None, port_edges=None):
     """Place + route ``cell``, returning its DRC/LVS-clean :class:`Layout`.
 
-        The design-facing entry point, :func:`run_pnr` without the flow's internals.
-        Inside a ``viewgen layout`` body it needs no return statement, since it
-        emits into the root the view context owns::
+    The design-facing entry point, :func:`run_pnr` without the flow's internals.
+    Inside a ``viewgen layout`` body it needs no return statement, since it
+    emits into the root the view context owns::
 
-            viewgen layout -> Layout:
-                place_and_route(self, sg13g2_target())
+        viewgen layout -> Layout:
+            place_and_route(self, sg13g2_target())
 
-        Args:
-            cell: the cell to lay out.
-            target: the :class:`PnrTarget` for this PDK.
-            layout: the :class:`Layout` to build into. Defaults to the enclosing
-                viewgen's root, or to a fresh Layout when there is none.
+    Args:
+        cell: the cell to lay out.
+        target: the :class:`PnrTarget` for this PDK.
+        layout: the :class:`Layout` to build into. Defaults to the enclosing
+            viewgen's root, or to a fresh Layout when there is none.
+        port_edges: ``{port net: 'top' or 'bottom'}`` naming the edge each port
+            leaves by. See :func:`run_pnr`.
 
-        Returns:
-            The :class:`Layout`, frozen when this call created it and the caller's
-            still-mutable root otherwise.
-        """
+    Returns:
+        The :class:`Layout`, frozen when this call created it and the caller's
+        still-mutable root otherwise.
+    """
     return run_pnr(cell, target, layout).layout
 
 
@@ -762,17 +769,17 @@ def largest_rect(rects):
 def supply_rails(placed, pname):
     """Distinct rail spans for one supply, sorted bottom-to-top.
 
-        Rails are deduplicated where the boustrophedon shares one between adjacent
-        rows. A side strap is emitted only when there are two or more, since a
-        single shared rail already ties the whole supply.
+    Rails are deduplicated where the boustrophedon shares one between adjacent
+    rows. A side strap is emitted only when there are two or more, since a
+    single shared rail already ties the whole supply.
 
-        Args:
-            placed: ``{name: PlacedInst}`` from :func:`place_rows`.
-            pname: the supply pin name, e.g. ``'VDD'``.
+    Args:
+        placed: ``{name: PlacedInst}`` from :func:`place_rows`.
+        pname: the supply pin name, e.g. ``'VDD'``.
 
-        Returns:
-            The sorted distinct ``(y0, y1)`` rail spans, in nm.
-        """
+    Returns:
+        The sorted distinct ``(y0, y1)`` rail spans, in nm.
+    """
     rails = set()
     for inst in placed.values():
         if pname in inst.pins:
@@ -785,17 +792,17 @@ def supply_rails(placed, pname):
 def pad_rails(layout, stack, placed, die_w, supply_pins):
     """Extend every row's supply rail rightward to a common die-width edge.
 
-        Like filler cells, this makes the block a flush rectangle and lets the
-        right-side power strap tap every row. Rows come out at slightly different
-        packed widths, so without this the shorter rows would not reach the strap.
+    Like filler cells, this makes the block a flush rectangle and lets the
+    right-side power strap tap every row. Rows come out at slightly different
+    packed widths, so without this the shorter rows would not reach the strap.
 
-        Args:
-            layout: the mutable :class:`Layout` to emit into.
-            stack: the :class:`RoutingStack` for this PDK's layers.
-            placed: ``{name: PlacedInst}`` from :func:`place_rows`.
-            die_w: the die width to pad each rail out to, in nm.
-            supply_pins: the supply pin names (``cfg.supply_pin_names``).
-        """
+    Args:
+        layout: the mutable :class:`Layout` to emit into.
+        stack: the :class:`RoutingStack` for this PDK's layers.
+        placed: ``{name: PlacedInst}`` from :func:`place_rows`.
+        die_w: the die width to pad each rail out to, in nm.
+        supply_pins: the supply pin names (``cfg.supply_pin_names``).
+    """
     rails = {}   # (row, supply) -> [x1, y0, y1]
     for inst in placed.values():
         for supply in supply_pins:
@@ -817,19 +824,19 @@ def pad_rails(layout, stack, placed, die_w, supply_pins):
 def emit_power_straps(layout, stack, placed, cfg, die_w):
     """Form a power ring per supply from a vertical Metal2 strap on each side.
 
-        Each strap sits in the empty margin beside the cell area and taps every rail
-        through a short Metal1 extension and a Via1. The boustrophedon shares a rail
-        between adjacent rows, so the inner rails would otherwise float. The ring
-        ties them and halves rail IR drop. Skipped for a supply with one shared
-        rail, which already ties itself.
+    Each strap sits in the empty margin beside the cell area and taps every rail
+    through a short Metal1 extension and a Via1. The boustrophedon shares a rail
+    between adjacent rows, so the inner rails would otherwise float. The ring
+    ties them and halves rail IR drop. Skipped for a supply with one shared
+    rail, which already ties itself.
 
-        Args:
-            layout: the mutable :class:`Layout` to emit into.
-            stack: the :class:`RoutingStack` for this PDK's layers.
-            placed: ``{name: PlacedInst}`` from :func:`place_rows`.
-            cfg: the routing grid + geometry (:class:`GridConfig`).
-            die_w: the die width in nm. The right strap mirrors to it.
-        """
+    Args:
+        layout: the mutable :class:`Layout` to emit into.
+        stack: the :class:`RoutingStack` for this PDK's layers.
+        placed: ``{name: PlacedInst}`` from :func:`place_rows`.
+        cfg: the routing grid + geometry (:class:`GridConfig`).
+        die_w: the die width in nm. The right strap mirrors to it.
+    """
     via_half = cfg.via_half
     for pname, strap_left_x, strap_right_x in (
             (cfg.vdd_pin, cfg.strap_vdd_x, die_w - cfg.strap_vdd_x),
@@ -858,26 +865,26 @@ def emit_power_straps(layout, stack, placed, cfg, die_w):
 def emit_power_mesh(layout, stack, placed, cfg, die_w, taps):
     """Emit a Metal5 strap over every interior rail, stitched down at the taps.
 
-        With the side straps (:func:`emit_power_straps`) this forms a supply mesh.
-        Rail current no longer flows the full row length on thin Metal1 to reach a
-        side strap, which is what bounds IR drop as blocks grow wider. Interior
-        rails are shared between two abutted rows and carry the most current. The
-        strap sits on the rail line, where no signal can route (see
-        :func:`mesh_blocked_nodes`), so the mesh costs almost no routing capacity.
+    With the side straps (:func:`emit_power_straps`) this forms a supply mesh.
+    Rail current no longer flows the full row length on thin Metal1 to reach a
+    side strap, which is what bounds IR drop as blocks grow wider. Interior
+    rails are shared between two abutted rows and carry the most current. The
+    strap sits on the rail line, where no signal can route (see
+    :func:`mesh_blocked_nodes`), so the mesh costs almost no routing capacity.
 
-        The straps stay strictly within the die. The margins beyond it and the strip
-        above the top rail belong to the block's interface, and the outermost rails
-        are already tied at both ends by the side straps, which the mesh reaches
-        through the rails themselves.
+    The straps stay strictly within the die. The margins beyond it and the strip
+    above the top rail belong to the block's interface, and the outermost rails
+    are already tied at both ends by the side straps, which the mesh reaches
+    through the rails themselves.
 
-        Args:
-            layout: the mutable :class:`Layout` to emit into.
-            stack: the :class:`RoutingStack` for this PDK's layers.
-            placed: ``{name: PlacedInst}`` from :func:`place_rows`.
-            cfg: the routing grid + geometry (:class:`GridConfig`).
-            die_w: the die width in nm.
-            taps: the tap column indices (:func:`mesh_tap_columns`).
-        """
+    Args:
+        layout: the mutable :class:`Layout` to emit into.
+        stack: the :class:`RoutingStack` for this PDK's layers.
+        placed: ``{name: PlacedInst}`` from :func:`place_rows`.
+        cfg: the routing grid + geometry (:class:`GridConfig`).
+        die_w: the die width in nm.
+        taps: the tap column indices (:func:`mesh_tap_columns`).
+    """
     via_half, half_w, land_half = cfg.via_half, cfg.strap_half_w, cfg.land_half_h
     x_pitch = cfg.x_pitch
     core_top = cfg.n_rows * cfg.row_height

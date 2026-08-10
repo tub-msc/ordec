@@ -32,16 +32,16 @@ def lef_macros() -> dict:
 def lef_pin_rects(macro_name: str) -> dict:
     """Read the per-pin Metal1 pin rectangles for one stdcell LEF macro.
 
-        The LEF rectangles are clean, per-pin and non-overlapping, with the foundry
-        pin names kept as-is, so the router can pick a via-access point that lands
-        on exactly the intended pin.
+    The LEF rectangles are clean, per-pin and non-overlapping, with the foundry
+    pin names kept as-is, so the router can pick a via-access point that lands
+    on exactly the intended pin.
 
-        Args:
-            macro_name (str): the LEF macro name, e.g. ``sg13g2_inv_1``.
+    Args:
+        macro_name (str): the LEF macro name, e.g. ``sg13g2_inv_1``.
 
-        Returns:
-            dict: ``{PIN: [(x0, y0, x1, y1), ...]}`` in nm.
-        """
+    Returns:
+        dict: ``{PIN: [(x0, y0, x1, y1), ...]}`` in nm.
+    """
     macro = lef_macros()[macro_name]
     rects = {}
     upper = set()   # non-Metal1 layers in the macro's PIN or OBS geometry
@@ -78,13 +78,13 @@ def lef_pin_rects(macro_name: str) -> dict:
 def is_sg13g2_leaf(cell) -> bool:
     """Test whether a cell is an sg13g2 foundry standard cell.
 
-        Args:
-            cell: the cell to test.
+    Args:
+        cell: the cell to test.
 
-        Returns:
-            bool: true if its name starts with ``sg13g2_``, so it is placed as-is
-            as a routing leaf. Any other cell is flattened.
-        """
+    Returns:
+        bool: true if its name starts with ``sg13g2_``, so it is placed as-is
+        as a routing leaf. Any other cell is flattened.
+    """
     return getattr(cell, "name", "").startswith("sg13g2_")
 
 
@@ -92,14 +92,14 @@ def is_sg13g2_leaf(cell) -> bool:
 def sg13g2_grid() -> GridConfig:
     """Build the sg13g2 routing-grid and emitted-geometry profile.
 
-        Track pitches and row height come from the tech LEF. The wire, via, landing,
-        strap and rail dimensions and the manufacturing grid come from the sign-off
-        DRC rules.
+    Track pitches and row height come from the tech LEF. The wire, via, landing,
+    strap and rail dimensions and the manufacturing grid come from the sign-off
+    DRC rules.
 
-        Returns:
-            GridConfig: the profile, frozen and shared. The engine derives its
-            per-floorplan variants with ``dataclasses.replace``.
-        """
+    Returns:
+        GridConfig: the profile, frozen and shared. The engine derives its
+        per-floorplan variants with ``dataclasses.replace``.
+    """
     return GridConfig(
         # Routing grid (sg13g2 tech LEF):
         x_pitch=480,
@@ -135,12 +135,12 @@ def sg13g2_grid() -> GridConfig:
 def sg13g2_layers() -> RoutingStack:
     """Bind the engine's routing codes to the sg13g2 metal and via layers.
 
-        sg13g2 routes on Metal2 to Metal5, with Metal1 for pin access only and Via1
-        to Via4, so the codes map 1:1 onto the like-numbered PDK layers.
+    sg13g2 routes on Metal2 to Metal5, with Metal1 for pin access only and Via1
+    to Via4, so the codes map 1:1 onto the like-numbered PDK layers.
 
-        Returns:
-            RoutingStack: the sg13g2 layer binding.
-        """
+    Returns:
+        RoutingStack: the sg13g2 layer binding.
+    """
     layers = ihp130.SG13G2().layers
     return RoutingStack(
         layer_set=layers,
@@ -153,15 +153,15 @@ def sg13g2_layers() -> RoutingStack:
 def sg13g2_target(cfg: GridConfig = None) -> PnrTarget:
     """Build the sg13g2 :class:`PnrTarget` for the engine.
 
-        Args:
-            cfg: an optional :class:`GridConfig` to use instead of
-                :func:`sg13g2_grid`, e.g. ``replace(sg13g2_grid(),
-                power_mesh=False)``.
+    Args:
+        cfg: an optional :class:`GridConfig` to use instead of
+            :func:`sg13g2_grid`, e.g. ``replace(sg13g2_grid(),
+            power_mesh=False)``.
 
-        Returns:
-            PnrTarget: the layer stack, grid, LEF pin rectangles and foundry-leaf
-            predicate.
-        """
+    Returns:
+        PnrTarget: the layer stack, grid, LEF pin rectangles and foundry-leaf
+        predicate.
+    """
     return PnrTarget(stack=sg13g2_layers(), grid=cfg or sg13g2_grid(),
         pin_rects=lef_pin_rects, is_leaf=is_sg13g2_leaf)
 
@@ -169,18 +169,21 @@ def sg13g2_target(cfg: GridConfig = None) -> PnrTarget:
 def place_and_route(cell, cfg=None, layout=None, port_edges=None):
     """Place-and-route ``cell`` with the IHP sg13g2 standard-cell library.
 
-        The one-argument form a design's layout view generator calls::
+    The one-argument form a design's layout view generator calls::
 
-            viewgen layout -> Layout:
-                place_and_route(self)
+        viewgen layout -> Layout:
+            place_and_route(self)
 
-        Args:
-            cell: the cell to lay out, whose schematic instantiates sg13g2 leaves.
-            cfg: an optional :class:`GridConfig`, defaulting to :func:`sg13g2_grid`.
-            layout: the :class:`Layout` to build into, defaulting to the enclosing
-                ``viewgen layout`` root.
+    Args:
+        cell: the cell to lay out, whose schematic instantiates sg13g2 leaves.
+        cfg: an optional :class:`GridConfig`, defaulting to :func:`sg13g2_grid`.
+        layout: the :class:`Layout` to build into, defaulting to the enclosing
+            ``viewgen layout`` root.
+        port_edges: ``{port net: 'top' or 'bottom'}`` naming the edge each port
+            leaves by, normally decided by the parent. An unnamed port falls
+            back to the edge its own terminals sit nearer.
 
-        Returns:
-            The DRC/LVS-clean :class:`Layout` for ``cell``.
-        """
+    Returns:
+        The DRC/LVS-clean :class:`Layout` for ``cell``.
+    """
     return engine_pnr(cell, sg13g2_target(cfg), layout, port_edges)

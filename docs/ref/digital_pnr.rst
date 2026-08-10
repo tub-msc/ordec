@@ -196,11 +196,27 @@ and never routes over the block interior, which is what keeps a composition robu
 placement change inside the block cannot drop a parent wire onto an internal net. The
 supplies need no escape, since they leave on the side straps.
 
-Each port takes whichever edge its terminals sit nearer, so a net driven from the bottom
-row does not climb the whole block to leave it and come straight back down at the parent.
-On an 8-bit register array that halves the routed wirelength, from 366 um to 210 um, with
-14 of the 18 ports leaving at the bottom. A parent that knows its own floorplan can
-override the choice with ``place_and_route(cell, port_edges={'clk': 'bottom'})``.
+Which edge a port takes is normally the parent's decision, since only the parent knows
+what sits above and below the block. Pass it in::
+
+    place_and_route(cell, port_edges={'clk': 'bottom', 'done': 'top'})
+
+This is the same constraint a production flow applies at the floorplan stage, where pin
+placement is decided top-down and pushed into each block. A parent's layout view
+generator is the natural place to derive the mapping, since it has already placed the
+block and its neighbours.
+
+A port left out of ``port_edges`` falls back to whichever edge its own terminals sit
+nearer, so a block routed on its own still does something sensible: a net driven from the
+bottom row does not climb the whole block to leave it and come straight back down. On an
+8-bit register array that halves the routed wirelength, from 366 um to 210 um, with 14 of
+the 18 ports leaving at the bottom.
+
+The fallback is worth understanding before relying on it. It sees only the block's own
+terminals, never the parent's connectivity, so it is uninformed about the very thing that
+should decide the answer. A port driven from the bottom row whose consumer sits above the
+block will be sent out of the bottom and make the parent's route longer, not shorter.
+Constrain those ports rather than leaving them to the heuristic.
 
 Within an edge, every port gets its own reserved column near the mean x of its pin
 candidates. Uniqueness removes pad contention by construction and keeps each escape a

@@ -32,19 +32,19 @@ class PlacedInst:
 def order_cells(cells, nets, supply_nets=(), iters=30):
     """Order the cells by iterated barycenter placement.
 
-        Each pass moves every cell toward the mean position of the cells it shares a
-        net with, then re-ranks. Short nets are what make a single-row channel
-        routable.
+    Each pass moves every cell toward the mean position of the cells it shares a
+    net with, then re-ranks. Short nets are what make a single-row channel
+    routable.
 
-        Args:
-            cells: ``{name: LeafCell}`` for the cells to order.
-            nets: ``{name: NetInfo}`` giving the connectivity.
-            supply_nets: power net names to ignore, since they touch every cell.
-            iters: number of barycenter refinement passes.
+    Args:
+        cells: ``{name: LeafCell}`` for the cells to order.
+        nets: ``{name: NetInfo}`` giving the connectivity.
+        supply_nets: power net names to ignore, since they touch every cell.
+        iters: number of barycenter refinement passes.
 
-        Returns:
-            The cell names as a wirelength-ordered list.
-        """
+    Returns:
+        The cell names as a wirelength-ordered list.
+    """
     order = sorted(cells)
     sig_insts = [[t[0] for t in n.terminals] for n in nets.values()
         if n.name not in supply_nets and len(n.terminals) >= 2]
@@ -79,19 +79,19 @@ def order_cells(cells, nets, supply_nets=(), iters=30):
 def fold_rows(cells, order, cfg):
     """Fold the 1-D cell order into ``cfg.n_rows`` rows of minimal max width.
 
-        Both :func:`cell_centers` (scoring an order) and :func:`place_rows`
-        (building the placement) fold here, so the annealer optimises exactly the
-        geometry that gets built.
+    Both :func:`cell_centers` (scoring an order) and :func:`place_rows`
+    (building the placement) fold here, so the annealer optimises exactly the
+    geometry that gets built.
 
-        Args:
-            cells: ``{name: LeafCell}``, for the cell widths.
-            order: the 1-D cell order to fold.
-            cfg: the routing/floorplan :class:`GridConfig`.
+    Args:
+        cells: ``{name: LeafCell}``, for the cell widths.
+        order: the 1-D cell order to fold.
+        cfg: the routing/floorplan :class:`GridConfig`.
 
-        Returns:
-            The rows as lists of cell names, padded with empty rows up to
-            ``cfg.n_rows``. Odd-row mirroring is the caller's concern.
-        """
+    Returns:
+        The rows as lists of cell names, padded with empty rows up to
+        ``cfg.n_rows``. Odd-row mirroring is the caller's concern.
+    """
     max_row_w = partition_width([cells[n].width for n in order], cfg.n_rows)
     rows = [[]]
     row_w = 0
@@ -109,18 +109,18 @@ def fold_rows(cells, order, cfg):
 def cell_centers(cells, order, cfg):
     """Estimate each cell's center for a folded order, to score it cheaply.
 
-        Reuses the fold *and* the odd-row reversal of :func:`place_rows`, since a
-        mirrored row is placed right-to-left. Without mirroring the scored x too,
-        the annealer would mis-score every net touching an odd row.
+    Reuses the fold *and* the odd-row reversal of :func:`place_rows`, since a
+    mirrored row is placed right-to-left. Without mirroring the scored x too,
+    the annealer would mis-score every net touching an odd row.
 
-        Args:
-            cells: ``{name: LeafCell}``, for the cell widths.
-            order: the 1-D cell order to fold into rows.
-            cfg: the routing/floorplan :class:`GridConfig`.
+    Args:
+        cells: ``{name: LeafCell}``, for the cell widths.
+        order: the 1-D cell order to fold into rows.
+        cfg: the routing/floorplan :class:`GridConfig`.
 
-        Returns:
-            ``{name: (x_center, y_center)}`` in nm.
-        """
+    Returns:
+        ``{name: (x_center, y_center)}`` in nm.
+    """
     row_height = cfg.row_height
     center = {}
     for row, row_cells in enumerate(fold_rows(cells, order, cfg)):
@@ -139,29 +139,29 @@ def cell_centers(cells, order, cfg):
 def order_cells_sa(cells, nets, cfg, iters=6000, seed=1, resync=500):
     """Order cells by wirelength using simulated annealing.
 
-        Starts from the barycenter order (:func:`order_cells`) and perturbs the
-        sequence to minimise half-perimeter wirelength, weighting vertical span 2x
-        since a net crossing rows is far harder to route. A single row, or a netlist
-        with no multi-terminal signal nets, returns the barycenter order directly.
+    Starts from the barycenter order (:func:`order_cells`) and perturbs the
+    sequence to minimise half-perimeter wirelength, weighting vertical span 2x
+    since a net crossing rows is far harder to route. A single row, or a netlist
+    with no multi-terminal signal nets, returns the barycenter order directly.
 
-        A swap is scored incrementally: it exchanges the two cells' positions and
-        re-derives only the bboxes of the nets touching them, so a move costs
-        O(degree) rather than a full fold. Unequal cell widths make the slot
-        positions drift from the true fold, so every ``resync`` accepted moves the
-        fold and the bboxes are recomputed exactly.
+    A swap is scored incrementally: it exchanges the two cells' positions and
+    re-derives only the bboxes of the nets touching them, so a move costs
+    O(degree) rather than a full fold. Unequal cell widths make the slot
+    positions drift from the true fold, so every ``resync`` accepted moves the
+    fold and the bboxes are recomputed exactly.
 
-        Args:
-            cells: ``{name: LeafCell}`` for the cells to order.
-            nets: ``{name: NetInfo}`` giving the connectivity.
-            cfg: the routing/floorplan :class:`GridConfig`, whose ``n_rows`` sets
-                the fold.
-            iters: number of annealing moves.
-            seed: RNG seed, fixed so the result is deterministic.
-            resync: accepted moves between exact re-folds, bounding the drift.
+    Args:
+        cells: ``{name: LeafCell}`` for the cells to order.
+        nets: ``{name: NetInfo}`` giving the connectivity.
+        cfg: the routing/floorplan :class:`GridConfig`, whose ``n_rows`` sets
+            the fold.
+        iters: number of annealing moves.
+        seed: RNG seed, fixed so the result is deterministic.
+        resync: accepted moves between exact re-folds, bounding the drift.
 
-        Returns:
-            The cell names as a wirelength-ordered list.
-        """
+    Returns:
+        The cell names as a wirelength-ordered list.
+    """
     net_members = [sorted({t[0] for t in n.terminals}) for n in nets.values()
         if n.name not in cfg.supply_net_names and len(n.terminals) >= 2]
     net_members = [members for members in net_members if len(members) >= 2]
@@ -245,20 +245,20 @@ def order_cells_sa(cells, nets, cfg, iters=6000, seed=1, resync=500):
 
 def partition_width(widths, nrows):
     """Smallest achievable maximum row width when a cell *sequence* is split into
-        at most ``nrows`` contiguous rows.
+    at most ``nrows`` contiguous rows.
 
-        This is the classic "split array largest sum", solved by binary search on
-        the width. Balancing this way stops one row from blowing up the die width,
-        where a fixed per-row target under-fills and dumps the leftover into the
-        last row.
+    This is the classic "split array largest sum", solved by binary search on
+    the width. Balancing this way stops one row from blowing up the die width,
+    where a fixed per-row target under-fills and dumps the leftover into the
+    last row.
 
-        Args:
-            widths: the cell widths in placement order, in nm.
-            nrows: the maximum number of rows.
+    Args:
+        widths: the cell widths in placement order, in nm.
+        nrows: the maximum number of rows.
 
-        Returns:
-            The minimised maximum row width, in nm.
-        """
+    Returns:
+        The minimised maximum row width, in nm.
+    """
     if not widths:
         return 0
     lo, hi = max(widths), sum(widths)
@@ -280,19 +280,19 @@ def partition_width(widths, nrows):
 def place_rows(cells, order, cfg):
     """Fold the 1-D cell order into ``cfg.n_rows`` abutted standard-cell rows.
 
-        Odd rows are mirrored (D4.MX) and reversed, a boustrophedon, so power rails
-        abut between rows and the dataflow stays adjacent across the turn. That is
-        how standard-cell rows are built.
+    Odd rows are mirrored (D4.MX) and reversed, a boustrophedon, so power rails
+    abut between rows and the dataflow stays adjacent across the turn. That is
+    how standard-cell rows are built.
 
-        Args:
-            cells: ``{name: LeafCell}`` for the cells to place.
-            order: the wirelength-ordered names from :func:`order_cells_sa`.
-            cfg: the routing/floorplan :class:`GridConfig`.
+    Args:
+        cells: ``{name: LeafCell}`` for the cells to place.
+        order: the wirelength-ordered names from :func:`order_cells_sa`.
+        cfg: the routing/floorplan :class:`GridConfig`.
 
-        Returns:
-            ``(placed, max_width)``, mapping each name to a :class:`PlacedInst` and
-            giving the widest packed row in nm.
-        """
+    Returns:
+        ``(placed, max_width)``, mapping each name to a :class:`PlacedInst` and
+        giving the widest packed row in nm.
+    """
     row_height = cfg.row_height
 
     # Balanced fold: pack greedily to the minimum max-row-width (the optimal

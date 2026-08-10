@@ -48,21 +48,21 @@ RouteSeg = namedtuple('RouteSeg', 'edges nodes pairs shadows', defaults=((),))
 class RoutingResult:
     """A whole block's routing, as :func:`route_nets` resolved it.
 
-        Every field is keyed by net name, so one record replaces the five parallel
-        dicts a caller would otherwise keep in step.
+    Every field is keyed by net name, so one record replaces the five parallel
+    dicts a caller would otherwise keep in step.
 
-        Args:
-            nets: ``{net: (edges, term_m2)}``, the routed edges and the Via1 access
-                nodes where the net meets its terminals.
-            port_escape: ``{net: x_track}``, the top-edge column each escaped port
-                net's Metal4 pad sits on.
-            term_via: ``{net: {node: (via_x, via_y)}}`` for off-track terminals,
-                whose Via1 sits beside the access node rather than on it.
-            term_land: ``{net: {node: rect}}``, the Metal1 landing an off-track or
-                short pin needs under its Via1.
-            reserved: nodes shadowed by an off-track access bridge. No later wire
-                growth may take them, not even the bridge's own net.
-        """
+    Args:
+        nets: ``{net: (edges, term_m2)}``, the routed edges and the Via1 access
+            nodes where the net meets its terminals.
+        port_escape: ``{net: x_track}``, the top-edge column each escaped port
+            net's Metal4 pad sits on.
+        term_via: ``{net: {node: (via_x, via_y)}}`` for off-track terminals,
+            whose Via1 sits beside the access node rather than on it.
+        term_land: ``{net: {node: rect}}``, the Metal1 landing an off-track or
+            short pin needs under its Via1.
+        reserved: nodes shadowed by an off-track access bridge. No later wire
+            growth may take them, not even the bridge's own net.
+    """
     nets: dict
     port_escape: dict
     term_via: dict
@@ -90,26 +90,26 @@ def escape_row(cfg, edge):
 def access_nodes(rects, cfg, allow_rail=False):
     """Find candidate Via1 access points for a pin from its Metal1 rectangles.
 
-        A pin is reached at the intersection of a vertical track inside its Metal1
-        x-extent and a horizontal track inside its y-extent. Using the clean LEF
-        rects rather than a polygon bbox guarantees the access lands on this pin
-        only. A pin whose metal falls *between* vertical tracks (xor2's Y) has no
-        on-track via and falls back to :func:`union_access`, then
-        :func:`offtrack_access`.
+    A pin is reached at the intersection of a vertical track inside its Metal1
+    x-extent and a horizontal track inside its y-extent. Using the clean LEF
+    rects rather than a polygon bbox guarantees the access lands on this pin
+    only. A pin whose metal falls *between* vertical tracks (xor2's Y) has no
+    on-track via and falls back to :func:`union_access`, then
+    :func:`offtrack_access`.
 
-        Args:
-            rects: the pin's Metal1 rectangles ``[(x0, y0, x1, y1), ...]`` in nm.
-            cfg: the routing grid + DRC geometry (:class:`GridConfig`).
-            allow_rail: true for a power pin, whose wide rail encloses a via
-                anywhere. Signal pins use signal tracks only.
+    Args:
+        rects: the pin's Metal1 rectangles ``[(x0, y0, x1, y1), ...]`` in nm.
+        cfg: the routing grid + DRC geometry (:class:`GridConfig`).
+        allow_rail: true for a power pin, whose wide rail encloses a via
+            anywhere. Signal pins use signal tracks only.
 
-        Returns:
-            ``[(xi, yi, via_x, via_y, land), ...]``, the track node the router
-            connects to, the Via1 position in nm, and its Metal1 endcap landing.
-            ``land`` grows along the axis the pin encloses as a pair so it stays on
-            the pin's metal, and is ``None`` for an off-track via, which takes its
-            endcap from the pin itself.
-        """
+    Returns:
+        ``[(xi, yi, via_x, via_y, land), ...]``, the track node the router
+        connects to, the Via1 position in nm, and its Metal1 endcap landing.
+        ``land`` grows along the axis the pin encloses as a pair so it stays on
+        the pin's metal, and is ``None`` for an off-track via, which takes its
+        endcap from the pin itself.
+    """
     via_half, encl, encl_endcap = cfg.via_half, cfg.encl, cfg.encl_endcap
     half_w, endcap = cfg.strap_half_w, cfg.m1_land_half_h
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
@@ -170,19 +170,19 @@ def access_nodes(rects, cfg, allow_rail=False):
 def offtrack_access(rects, cfg):
     """Access a pin with no on-track via point, dropping the Via1 on the pin.
 
-        The via goes on the pin at a manufacturing-grid x on a signal y-track, and
-        the emitter bridges to the reported vertical track with a short Metal2
-        segment, which is free over the Metal1-only leaf cells. The pin's own metal
-        must give the via its endcap, since off-track vias add no Metal1 landing.
+    The via goes on the pin at a manufacturing-grid x on a signal y-track, and
+    the emitter bridges to the reported vertical track with a short Metal2
+    segment, which is free over the Metal1-only leaf cells. The pin's own metal
+    must give the via its endcap, since off-track vias add no Metal1 landing.
 
-        Args:
-            rects: the pin's Metal1 rectangles ``[(x0, y0, x1, y1), ...]`` in nm.
-            cfg: the routing grid + DRC geometry (:class:`GridConfig`).
+    Args:
+        rects: the pin's Metal1 rectangles ``[(x0, y0, x1, y1), ...]`` in nm.
+        cfg: the routing grid + DRC geometry (:class:`GridConfig`).
 
-        Returns:
-            ``[(xi, yi, via_x, via_y), ...]``, the nearest vertical track and signal
-            y-track, and the on-pin Via1 position in nm.
-        """
+    Returns:
+        ``[(xi, yi, via_x, via_y), ...]``, the nearest vertical track and signal
+        y-track, and the on-pin Via1 position in nm.
+    """
     via_half, encl, mgrid = cfg.via_half, cfg.encl, cfg.manufacturing_grid
     encl_endcap = cfg.encl_endcap
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
@@ -215,19 +215,19 @@ def offtrack_access(rects, cfg):
 def union_access(rects, cfg):
     """On-track access for a staircase pin, enclosed only by its merged rects.
 
-        A pin like nand4's A is enclosed by no single LEF rect, so
-        :func:`access_nodes`'s per-rect test misses it. Center-line ray casts
-        measure how far the merged metal reaches around a track via, and the landing
-        grows along the axis it reaches furthest on, so it stays on real metal.
+    A pin like nand4's A is enclosed by no single LEF rect, so
+    :func:`access_nodes`'s per-rect test misses it. Center-line ray casts
+    measure how far the merged metal reaches around a track via, and the landing
+    grows along the axis it reaches furthest on, so it stays on real metal.
 
-        Args:
-            rects: the pin's Metal1 rectangles ``[(x0, y0, x1, y1), ...]`` in nm.
-            cfg: the routing grid + DRC geometry (:class:`GridConfig`).
+    Args:
+        rects: the pin's Metal1 rectangles ``[(x0, y0, x1, y1), ...]`` in nm.
+        cfg: the routing grid + DRC geometry (:class:`GridConfig`).
 
-        Returns:
-            Candidates in the same form as the on-track branch of
-            :func:`access_nodes`.
-        """
+    Returns:
+        Candidates in the same form as the on-track branch of
+        :func:`access_nodes`.
+    """
     via_half, encl, encl_endcap = cfg.via_half, cfg.encl, cfg.encl_endcap
     half_w, endcap = cfg.strap_half_w, cfg.m1_land_half_h
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
@@ -273,17 +273,17 @@ def union_access(rects, cfg):
 def grid_moves(node, cfg, xmax):
     """Yield the maze-router moves out of one grid node.
 
-        Vertical layers (M2, M4) step in y, horizontal layers (M3, M5) step in x. A
-        layer change costs ``cfg.via_cost`` and is only allowed off the rail tracks.
+    Vertical layers (M2, M4) step in y, horizontal layers (M3, M5) step in x. A
+    layer change costs ``cfg.via_cost`` and is only allowed off the rail tracks.
 
-        Args:
-            node: the current grid node ``(xi, yi, layer)``.
-            cfg: the routing grid + cost knobs (:class:`GridConfig`).
-            xmax: the maximum x track index, the right die edge.
+    Args:
+        node: the current grid node ``(xi, yi, layer)``.
+        cfg: the routing grid + cost knobs (:class:`GridConfig`).
+        xmax: the maximum x track index, the right die edge.
 
-        Yields:
-            ``(neighbor_node, move_cost)`` for each legal move.
-        """
+    Yields:
+        ``(neighbor_node, move_cost)`` for each legal move.
+    """
     xi, yi, layer = node
     on_signal = cfg.is_signal_track(yi)
     via_cost = cfg.via_cost
@@ -347,28 +347,28 @@ def astar(starts, goals, cfg, xmax, history, occupancy, own_use, penalty,
         allowed=None, adj=None):
     """Route one connection by A* from any start node to any goal node.
 
-        The congestion cost is inlined rather than taken from a callback, since
-        these lookups run once per expanded edge, the engine's innermost loop.
+    The congestion cost is inlined rather than taken from a callback, since
+    these lookups run once per expanded edge, the engine's innermost loop.
 
-        Args:
-            starts: the start nodes, a terminal's access nodes or the tree so far.
-            goals: the goal nodes, the next terminal's access nodes.
-            cfg: the routing grid + cost knobs (:class:`GridConfig`).
-            xmax: the maximum x track index.
-            history: ``{node: accumulated congestion cost}``.
-            occupancy: ``{node: number of nets on it}``.
-            own_use: the nodes this net already uses, which cost history only, so
-                its segments share track.
-            penalty: the present-congestion penalty per foreign occupant.
-            allowed: optional ``(xi, yi)`` corridor from global routing, keeping the
-                search local on large layouts.
-            adj: optional :class:`GridAdjacency` move table. Falls back to
-                generating moves per expansion.
+    Args:
+        starts: the start nodes, a terminal's access nodes or the tree so far.
+        goals: the goal nodes, the next terminal's access nodes.
+        cfg: the routing grid + cost knobs (:class:`GridConfig`).
+        xmax: the maximum x track index.
+        history: ``{node: accumulated congestion cost}``.
+        occupancy: ``{node: number of nets on it}``.
+        own_use: the nodes this net already uses, which cost history only, so
+            its segments share track.
+        penalty: the present-congestion penalty per foreign occupant.
+        allowed: optional ``(xi, yi)`` corridor from global routing, keeping the
+            search local on large layouts.
+        adj: optional :class:`GridAdjacency` move table. Falls back to
+            generating moves per expansion.
 
-        Returns:
-            The path from a start to a goal, or ``None`` if none exists within
-            ``allowed``.
-        """
+    Returns:
+        The path from a start to a goal, or ``None`` if none exists within
+        ``allowed``.
+    """
     goal_set = set(goals)
     # Bounding-box heuristic: distance to the goals' bbox is a lower bound on the
     # distance to any goal (admissible) and is O(1) per node. Scanning the goal
@@ -441,16 +441,16 @@ def astar(starts, goals, cfg, xmax, history, occupancy, own_use, penalty,
 def gcell_astar(starts, goal, gcell_xmax, gcell_ymax, gcell_cost):
     """Route on the coarse gcell grid (2-D, 4-connected) for the global router.
 
-        Args:
-            starts: the start gcells, the net's tree so far.
-            goal: the gcell to reach.
-            gcell_xmax: the maximum gcell x index.
-            gcell_ymax: the maximum gcell y index.
-            gcell_cost: callable ``gcell -> float`` giving per-gcell congestion cost.
+    Args:
+        starts: the start gcells, the net's tree so far.
+        goal: the gcell to reach.
+        gcell_xmax: the maximum gcell x index.
+        gcell_ymax: the maximum gcell y index.
+        gcell_cost: callable ``gcell -> float`` giving per-gcell congestion cost.
 
-        Returns:
-            The gcells on the cheapest path from any start to ``goal``.
-        """
+    Returns:
+        The gcells on the cheapest path from any start to ``goal``.
+    """
     frontier = []
     cost = {}
     came_from = {}
@@ -482,24 +482,24 @@ def gcell_astar(starts, goal, gcell_xmax, gcell_ymax, gcell_cost):
 def global_route(routed_nets, term_access, cfg, xmax, gcell_w=5, gcell_h=5):
     """Assign each net a coarse corridor by negotiated-congestion global routing.
 
-        The track grid is tiled into gcells. Each net's terminals are connected by a
-        cheap tree on the gcell grid, with a congestion penalty on per-gcell demand
-        so nets spread off hotspots.
+    The track grid is tiled into gcells. Each net's terminals are connected by a
+    cheap tree on the gcell grid, with a congestion penalty on per-gcell demand
+    so nets spread off hotspots.
 
-        Args:
-            routed_nets: the nets to route, ``{name: NetInfo}``.
-            term_access: per net, the per-terminal candidate access nodes from
-                :func:`route_nets`.
-            cfg: the routing grid (:class:`GridConfig`).
-            xmax: the maximum x track index.
-            gcell_w: gcell width in tracks.
-            gcell_h: gcell height in tracks.
+    Args:
+        routed_nets: the nets to route, ``{name: NetInfo}``.
+        term_access: per net, the per-terminal candidate access nodes from
+            :func:`route_nets`.
+        cfg: the routing grid (:class:`GridConfig`).
+        xmax: the maximum x track index.
+        gcell_w: gcell width in tracks.
+        gcell_h: gcell height in tracks.
 
-        Returns:
-            Per net, the frozenset of ``(xi, yi)`` track positions its detailed
-            routing may use: its gcell tree plus a one-gcell halo, expanded to track
-            positions so the maze router tests membership with a set probe.
-        """
+    Returns:
+        Per net, the frozenset of ``(xi, yi)`` track positions its detailed
+        routing may use: its gcell tree plus a one-gcell halo, expanded to track
+        positions so the maze router tests membership with a set probe.
+    """
     def gcell_of(node):
         return (node[0] // gcell_w, node[1] // gcell_h)
 
@@ -571,17 +571,17 @@ def global_route(routed_nets, term_access, cfg, xmax, gcell_w=5, gcell_h=5):
 def mst_edges(points):
     """Prim's minimum spanning tree over terminal positions (Manhattan metric).
 
-        The MST fixes each multi-terminal net's 2-pin decomposition, since every
-        edge becomes an independently rip-up-able segment. That is what lets the
-        negotiation loop reroute one broken connection of a high-fan-out net instead
-        of the whole tree.
+    The MST fixes each multi-terminal net's 2-pin decomposition, since every
+    edge becomes an independently rip-up-able segment. That is what lets the
+    negotiation loop reroute one broken connection of a high-fan-out net instead
+    of the whole tree.
 
-        Args:
-            points: the terminals' proxy positions ``[(xi, yi), ...]``.
+    Args:
+        points: the terminals' proxy positions ``[(xi, yi), ...]``.
 
-        Returns:
-            The MST as ``[(i, j), ...]`` index pairs into ``points``.
-        """
+    Returns:
+        The MST as ``[(i, j), ...]`` index pairs into ``points``.
+    """
     n = len(points)
     if n <= 1:
         return []
@@ -612,20 +612,20 @@ def mst_edges(points):
 
 def spacing_neighbors(node):
     """Same-layer grid nodes that would violate metal spacing against ``node`` if
-        used by a *different* net.
+    used by a *different* net.
 
-        Only the same-track, facing-ends case matters. The wire-end overhang
-        (``cfg.wire_ext``) puts two facing ends one grid step apart, closer than the
-        min metal spacing. Adjacent-track parallels are a full pitch apart and legal,
-        and must not be flagged, since doing so rejects legal routing and stalls
-        convergence. One step is along x for horizontal layers, along y for vertical.
+    Only the same-track, facing-ends case matters. The wire-end overhang
+    (``cfg.wire_ext``) puts two facing ends one grid step apart, closer than the
+    min metal spacing. Adjacent-track parallels are a full pitch apart and legal,
+    and must not be flagged, since doing so rejects legal routing and stalls
+    convergence. One step is along x for horizontal layers, along y for vertical.
 
-        Args:
-            node: the grid node ``(xi, yi, layer)`` to check around.
+    Args:
+        node: the grid node ``(xi, yi, layer)`` to check around.
 
-        Returns:
-            The conflicting same-layer neighbors, possibly empty.
-        """
+    Returns:
+        The conflicting same-layer neighbors, possibly empty.
+    """
     xi, yi, layer = node
     if layer in HORIZ:
         return ((xi + 1, yi, layer), (xi - 1, yi, layer))
@@ -725,36 +725,40 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset()
         taps=(), port_edges=None):
     """Route the signal nets with negotiated-congestion maze routing.
 
-        Each net is decomposed into 2-pin *segments* along an MST over its
-        terminals, plus min-area-extension and port-escape segments, and
-        rip-up-and-reroute runs at segment granularity. After an initial pass, each
-        iteration reroutes only the segments touching a conflict, raising the cost
-        of the contested nodes until the routing is legal. Two things let this scale
-        to a few hundred cells: rerouting single 2-pin connections rather than whole
-        trees, and a pattern-routing fast path (L then Z shapes) that reserves the
-        corridor-bounded maze search for contested segments.
+    Each net is decomposed into 2-pin *segments* along an MST over its
+    terminals, plus min-area-extension and port-escape segments, and
+    rip-up-and-reroute runs at segment granularity. After an initial pass, each
+    iteration reroutes only the segments touching a conflict, raising the cost
+    of the contested nodes until the routing is legal. Two things let this scale
+    to a few hundred cells: rerouting single 2-pin connections rather than whole
+    trees, and a pattern-routing fast path (L then Z shapes) that reserves the
+    corridor-bounded maze search for contested segments.
 
-        Args:
-            routed_nets: the signal nets to route, ``{name: NetInfo}``.
-            placed: ``{name: PlacedInst}`` from :func:`place_rows`, for the pin rects.
-            cfg: the routing grid + DRC geometry (:class:`GridConfig`).
-            xmax: the maximum x track index, the right die edge.
-            port_nets: the nets needing a top-edge Metal4 escape.
-            blocked: nodes reserved for the power mesh
-                (:func:`mesh_blocked_nodes`). No route, terminal access or escape
-                column may use them.
-            taps: the tap columns behind ``blocked`` (:func:`mesh_tap_columns`),
-                whose rail landings stay clear of off-track access bridges.
+    Args:
+        routed_nets: the signal nets to route, ``{name: NetInfo}``.
+        placed: ``{name: PlacedInst}`` from :func:`place_rows`, for the pin rects.
+        cfg: the routing grid + DRC geometry (:class:`GridConfig`).
+        xmax: the maximum x track index, the right die edge.
+        port_nets: the nets needing a Metal4 escape to an edge.
+        blocked: nodes reserved for the power mesh
+            (:func:`mesh_blocked_nodes`). No route, terminal access or escape
+            column may use them.
+        taps: the tap columns behind ``blocked`` (:func:`mesh_tap_columns`),
+            whose rail landings stay clear of off-track access bridges.
+        port_edges: ``{port net: 'top' or 'bottom'}`` naming the edge each port
+            leaves by, which is normally the parent's decision. A net left out
+            falls back to whichever edge its own terminals sit nearer, which is
+            blind to the parent's connectivity.
 
-        Returns:
-            The :class:`RoutingResult` for the whole block.
+    Returns:
+        The :class:`RoutingResult` for the whole block.
 
-        Raises:
-            PinAccessError: a terminal is unreachable on the grid. This is
-                permanent, so the caller re-raises instead of retrying.
-            RuntimeError: the rip-up loop did not converge, after which the caller
-                grows the floorplan and retries.
-        """
+    Raises:
+        PinAccessError: a terminal is unreachable on the grid. This is
+            permanent, so the caller re-raises instead of retrying.
+        RuntimeError: the rip-up loop did not converge, after which the caller
+            grows the floorplan and retries.
+    """
     # term_access[net] holds each terminal's candidate (xi, yi, M2) access
     # nodes. term_via and term_land hold the off-track Via1 positions and the
     # pin-aware Metal1 landings. Both key on (net, terminal, node): different
@@ -1177,29 +1181,29 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset()
 def tap_avoid_columns(routed_nets, placed, cfg):
     """Find the track columns where a power-mesh tap could strand a pin access.
 
-        A terminal negotiates congestion by retreating to another of its access
-        candidates. A terminal all of whose candidates one tap column would
-        invalidate has no retreat, so a conflict there can never resolve and the
-        rip-up loop deadlocks. A tap invalidates a candidate in two ways:
+    A terminal negotiates congestion by retreating to another of its access
+    candidates. A terminal all of whose candidates one tap column would
+    invalidate has no retreat, so a conflict there can never resolve and the
+    rip-up loop deadlocks. A tap invalidates a candidate in two ways:
 
-        * its blocked rail-adjacent Metal2 nodes fall within the candidate's
-          min-area growth window (only the candidate's own column), pinning the
-          access stub against whatever holds the tracks on its other side,
-        * its rail landing lies within metal spacing of an off-track candidate's
-          access bridge, so route_nets' bridge_clear filter drops the candidate.
+    * its blocked rail-adjacent Metal2 nodes fall within the candidate's
+      min-area growth window (only the candidate's own column), pinning the
+      access stub against whatever holds the tracks on its other side,
+    * its rail landing lies within metal spacing of an off-track candidate's
+      access bridge, so route_nets' bridge_clear filter drops the candidate.
 
-        The growth-window test is deliberately conservative, testing window overlap
-        rather than exact strangulation. A false positive only nudges a tap
-        sideways, while a false negative stalls the router.
+    The growth-window test is deliberately conservative, testing window overlap
+    rather than exact strangulation. A false positive only nudges a tap
+    sideways, while a false negative stalls the router.
 
-        Args:
-            routed_nets: the signal nets that will be routed, ``{name: NetInfo}``.
-            placed: ``{name: PlacedInst}`` from :func:`place_rows`, for the pin rects.
-            cfg: the routing grid + geometry (:class:`GridConfig`).
+    Args:
+        routed_nets: the signal nets that will be routed, ``{name: NetInfo}``.
+        placed: ``{name: PlacedInst}`` from :func:`place_rows`, for the pin rects.
+        cfg: the routing grid + geometry (:class:`GridConfig`).
 
-        Returns:
-            The tap-hostile column indices as a set.
-        """
+    Returns:
+        The tap-hostile column indices as a set.
+    """
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     mat, half_w, land_half = cfg.min_area_tracks, cfg.strap_half_w, cfg.land_half_h
     spacing = y_pitch - cfg.wire_width
@@ -1244,22 +1248,22 @@ def tap_avoid_columns(routed_nets, placed, cfg):
 def mesh_tap_columns(cfg, xmax, avoid=frozenset()):
     """Track columns where the power mesh stitches down to the rails.
 
-        Nominally every ``cfg.mesh_tap_pitch`` tracks. A nominal column in ``avoid``
-        is nudged to the nearest free one, so no tap blocks a pin access that cannot
-        negotiate away. The die-edge columns are excluded, since the mesh ends
-        stitch into the side straps right there and an edge landing would sit closer
-        to the ring-end via stack than the metal spacing allows. A tap with no free
-        column in reach is dropped, since the strap still stitches at every other
-        tap while a hostile column can deadlock the router.
+    Nominally every ``cfg.mesh_tap_pitch`` tracks. A nominal column in ``avoid``
+    is nudged to the nearest free one, so no tap blocks a pin access that cannot
+    negotiate away. The die-edge columns are excluded, since the mesh ends
+    stitch into the side straps right there and an edge landing would sit closer
+    to the ring-end via stack than the metal spacing allows. A tap with no free
+    column in reach is dropped, since the strap still stitches at every other
+    tap while a hostile column can deadlock the router.
 
-        Args:
-            cfg: the routing grid (:class:`GridConfig`).
-            xmax: the maximum x track index.
-            avoid: columns no tap may use (:func:`tap_avoid_columns`).
+    Args:
+        cfg: the routing grid (:class:`GridConfig`).
+        xmax: the maximum x track index.
+        avoid: columns no tap may use (:func:`tap_avoid_columns`).
 
-        Returns:
-            The tap column indices, in increasing order.
-        """
+    Returns:
+        The tap column indices, in increasing order.
+    """
     reach = cfg.mesh_tap_pitch // 2   # stay closer to this tap than its neighbors
     taps = []
     for nominal in range(reach, xmax, cfg.mesh_tap_pitch):
@@ -1276,28 +1280,28 @@ def mesh_tap_columns(cfg, xmax, avoid=frozenset()):
 def mesh_blocked_nodes(cfg, xmax, taps):
     """Grid nodes the power mesh (:func:`emit_power_mesh`) makes unusable.
 
-        Only the *interior* rails carry straps, so only their surroundings are
-        reserved, in two kinds:
+    Only the *interior* rails carry straps, so only their surroundings are
+    reserved, in two kinds:
 
-        * At each tap column, the via stack down to the rail occupies the vertical
-          layers where they cross the rail track. Its min-area landings reach one
-          track beyond the rail on either side, so those neighbors are unusable too,
-          since a wire end there would violate metal spacing.
-        * The strap is wider than a routing wire, so the horizontal top-metal tracks
-          adjacent to a strapped rail sit closer to it than the metal spacing allows
-          and are blocked across the whole die width.
+    * At each tap column, the via stack down to the rail occupies the vertical
+      layers where they cross the rail track. Its min-area landings reach one
+      track beyond the rail on either side, so those neighbors are unusable too,
+      since a wire end there would violate metal spacing.
+    * The strap is wider than a routing wire, so the horizontal top-metal tracks
+      adjacent to a strapped rail sit closer to it than the metal spacing allows
+      and are blocked across the whole die width.
 
-        Metal3 and Metal5 *on* a rail track need no entry here, since a layer change
-        is never allowed on rail tracks and the router cannot reach them.
+    Metal3 and Metal5 *on* a rail track need no entry here, since a layer change
+    is never allowed on rail tracks and the router cannot reach them.
 
-        Args:
-            cfg: the routing grid (:class:`GridConfig`).
-            xmax: the maximum x track index.
-            taps: the tap column indices (:func:`mesh_tap_columns`).
+    Args:
+        cfg: the routing grid (:class:`GridConfig`).
+        xmax: the maximum x track index.
+        taps: the tap column indices (:func:`mesh_tap_columns`).
 
-        Returns:
-            The blocked nodes as a frozenset.
-        """
+    Returns:
+        The blocked nodes as a frozenset.
+    """
     blocked = set()
     for rail_row in range(1, cfg.n_rows):
         rail_yi = rail_row * cfg.tracks_per_row
@@ -1315,20 +1319,20 @@ def mesh_blocked_nodes(cfg, xmax, taps):
 def extend_min_area(result, cfg, xmax, keepout=frozenset()):
     """Post-pass: lengthen any too-short wire so it meets the metal min-area rule.
 
-        A min-width wire must span enough tracks to meet min area and give its
-        end-via the required endcap, so each per-net, per-track run grows into free
-        tracks until it spans ``cfg.min_area_tracks`` steps.
+    A min-width wire must span enough tracks to meet min area and give its
+    end-via the required endcap, so each per-net, per-track run grows into free
+    tracks until it spans ``cfg.min_area_tracks`` steps.
 
-        Args:
-            result: the routing ``{net: (edges, term_m2)}`` to extend in place.
-            cfg: the routing grid + geometry (:class:`GridConfig`).
-            xmax: the maximum x track index.
-            keepout: nodes no extension may grow into, the power-mesh blockages and
-                the off-track access-bridge shadows.
+    Args:
+        result: the routing ``{net: (edges, term_m2)}`` to extend in place.
+        cfg: the routing grid + geometry (:class:`GridConfig`).
+        xmax: the maximum x track index.
+        keepout: nodes no extension may grow into, the power-mesh blockages and
+            the off-track access-bridge shadows.
 
-        Returns:
-            The same ``result`` mapping, mutated in place.
-        """
+    Returns:
+        The same ``result`` mapping, mutated in place.
+    """
     node_net = {}   # (xi, yi, layer) -> net_name
     for net_name, (edges, _term_m2) in result.items():
         for a, b in edges:
