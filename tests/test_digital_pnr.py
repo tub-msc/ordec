@@ -346,6 +346,26 @@ def test_port_edges_reach_the_design_facing_call():
     assert lowest_signal_pin(pinned) >= 0
 
 
+def test_port_edges_rejects_an_unknown_port():
+    """A key that names nothing would otherwise fall back in silence."""
+    with pytest.raises(ValueError, match="no escaped ports"):
+        run_pnr(fx.DffArray(n=4), sg13g2_target(),
+            port_edges={"clock": "top"})     # the port is called clk
+
+
+def test_port_edges_rejects_a_bad_edge():
+    with pytest.raises(ValueError, match="must be 'top' or 'bottom'"):
+        run_pnr(fx.DffArray(n=4), sg13g2_target(), port_edges={"clk": "left"})
+
+
+def test_port_edges_accepts_supply_names():
+    """Passing every pin of the symbol is the natural thing to write, and the
+    supplies leave on the side straps rather than by escape."""
+    result = run_pnr(fx.DffArray(n=4), sg13g2_target(),
+        port_edges={"clk": "top", "vdd": "top", "vss": "top"})
+    assert result.routing.port_escape
+
+
 def test_escape_row_is_just_inside_the_rail():
     cfg = replace(GRID, n_rows=3)
     assert route.escape_row(cfg, "top") == cfg.y_track_max - 1

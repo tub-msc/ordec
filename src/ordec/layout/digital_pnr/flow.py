@@ -458,7 +458,8 @@ def run_pnr(cell, target, layout=None, port_edges=None):
             leaves by. This is normally the parent's decision, since only the
             parent knows what sits above and below the block. A net left out
             falls back to the edge its own terminals sit nearer, which is
-            uninformed about the parent.
+            uninformed about the parent. A key naming no port of this block is
+            rejected rather than ignored.
 
     Returns:
         The :class:`PnrResult`. Its layout is frozen when this call created it,

@@ -40,8 +40,9 @@ rather than a mode of this one.
 The package is one module per phase. ``place`` orders cells and folds them into rows,
 ``route`` does pin access, pattern and maze search and the rip-up loop, and ``flow`` holds
 the ORDeC boundary, the configuration and the entry point. ``place`` and ``route`` import
-nothing from their siblings and nothing from ORDeC, so a placement or a routing problem
-can be built from plain values.
+nothing from their siblings. ``route`` imports nothing from ORDeC at all, and ``place``
+touches only the plain geometry values (``Rect4I``, ``D4``), never a Schematic or a
+Layout, so a placement or a routing problem can be built from plain values.
 
 Standard-cell coverage
 ----------------------

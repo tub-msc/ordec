@@ -181,7 +181,8 @@ def place_and_route(cell, cfg=None, layout=None, port_edges=None):
             ``viewgen layout`` root.
         port_edges: ``{port net: 'top' or 'bottom'}`` naming the edge each port
             leaves by, normally decided by the parent. An unnamed port falls
-            back to the edge its own terminals sit nearer.
+            back to the edge its own terminals sit nearer, and a key naming no
+            port is rejected.
 
     Returns:
         The DRC/LVS-clean :class:`Layout` for ``cell``.

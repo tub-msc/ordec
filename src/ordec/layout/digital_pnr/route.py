@@ -54,8 +54,9 @@ class RoutingResult:
     Args:
         nets: ``{net: (edges, term_m2)}``, the routed edges and the Via1 access
             nodes where the net meets its terminals.
-        port_escape: ``{net: x_track}``, the top-edge column each escaped port
-            net's Metal4 pad sits on.
+        port_escape: ``{net: (x_track, edge)}``, the reserved column and the
+            edge ('top' or 'bottom') of each escaped port net's Metal4 pad, or
+            ``None`` when the escape fell back to an interior pad.
         term_via: ``{net: {node: (via_x, via_y)}}`` for off-track terminals,
             whose Via1 sits beside the access node rather than on it.
         term_land: ``{net: {node: rect}}``, the Metal1 landing an off-track or
@@ -748,7 +749,9 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset()
         port_edges: ``{port net: 'top' or 'bottom'}`` naming the edge each port
             leaves by, which is normally the parent's decision. A net left out
             falls back to whichever edge its own terminals sit nearer, which is
-            blind to the parent's connectivity.
+            blind to the parent's connectivity. A key naming no port of this
+            block is rejected rather than ignored. Supply names are accepted
+            and ignored, since the supplies leave on the side straps.
 
     Returns:
         The :class:`RoutingResult` for the whole block.
@@ -759,6 +762,22 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset()
         RuntimeError: the rip-up loop did not converge, after which the caller
             grows the floorplan and retries.
     """
+    if port_edges:
+        # A key that names nothing is a typo or a stale port name, and left
+        # unchecked it would silently fall back to the nearest edge. Supply
+        # names are accepted and ignored, since the natural thing to pass is
+        # every pin of the symbol and the supplies leave on the side straps.
+        known = set(port_nets) | set(cfg.supply_net_names)
+        unknown = sorted(set(port_edges) - known)
+        if unknown:
+            raise ValueError(
+                f"port_edges names {unknown}, which are no escaped ports of "
+                f"this block. Its ports are {sorted(port_nets)}")
+        bad = sorted(set(port_edges.values()) - {'top', 'bottom'})
+        if bad:
+            raise ValueError(
+                f"port_edges values must be 'top' or 'bottom', not {bad}")
+
     # term_access[net] holds each terminal's candidate (xi, yi, M2) access
     # nodes. term_via and term_land hold the off-track Via1 positions and the
     # pin-aware Metal1 landings. Both key on (net, terminal, node): different
@@ -824,7 +843,7 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset()
                     raise PinAccessError(
                         f"pins {other[1]}.{other[2]} (net {other[0]!r}) and "
                         f"{iname}.{pname} (net {net_name!r}) share their only "
-                        "grid access node; both nets cannot be routed")
+                        "grid access node, so both nets cannot be routed")
                 sole[term[0]] = (net_name, iname, pname)
             cands.append(term)
         term_access[net_name] = cands
@@ -1036,13 +1055,16 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset()
             # a parent wire onto an internal net). vdd/vss go to the side
             # straps.
             tree = set(own_use)
-            col, edge = escape_col[net_name]
-            yrow = escape_row(cfg, edge)
-            path = astar(tree, [(col, yrow, M4)],
-                cfg, xmax, history, occupancy, own_use, penalty[0], None, adj)
-            if path is None:   # blocked column: any node on that row will do
-                path = astar(tree, [(x, yrow, M4) for x in range(xmax + 1)],
+            path = None
+            if cfg.use_upper:   # without Metal4 the edge pad is unreachable
+                col, edge = escape_col[net_name]
+                yrow = escape_row(cfg, edge)
+                path = astar(tree, [(col, yrow, M4)],
                     cfg, xmax, history, occupancy, own_use, penalty[0], None, adj)
+                if path is None:   # blocked column: any node on that row will do
+                    path = astar(tree, [(x, yrow, M4) for x in range(xmax + 1)],
+                        cfg, xmax, history, occupancy, own_use, penalty[0],
+                        None, adj)
             if path is None:   # last resort: interior pad on the first terminal
                 _ti, node = next(p for seg in routes[net_name].values()
                     for p in seg.pairs)
