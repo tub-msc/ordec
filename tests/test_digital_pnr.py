@@ -21,7 +21,8 @@ from ordec.core import LayoutPin, Rect4I
 from ordec.layout import compare
 from ordec.layout.digital_pnr import GridConfig, PinAccessError, run_pnr
 from ordec.layout.digital_pnr import place, route
-from ordec.layout.digital_pnr.flow import LeafCell, NetInfo
+from ordec.layout.digital_pnr.flow import (LeafCell, NetInfo,
+    flatten_schematic)
 from ordec.layout.digital_pnr.route import M2, M3, VERT
 from ordec.lib.ihp130_pnr import sg13g2_target
 from .lib import pnr_cells as fx
@@ -124,9 +125,11 @@ def test_route_nets_connects_every_net():
     for name, net in nets.items():
         edges, term_m2 = result.nets[name]
         assert edges, f"net {name} routed to nothing"
-        # One access node per terminal, all of them on the wire graph.
+        # Every access node is on the wire graph, and there is at most one
+        # per terminal (two terminals may share a node when they agree on the
+        # via geometry).
         nodes = {n for edge in edges for n in edge}
-        assert len(term_m2) == len(net.terminals)
+        assert 1 <= len(set(term_m2)) <= len(net.terminals)
         assert set(term_m2) <= nodes
 
 
@@ -198,9 +201,15 @@ def test_deterministic():
     assert compare(a.layout, b.layout) is None
 
 
-def test_every_terminal_lands_on_its_pin():
+@pytest.mark.parametrize("cell", [
+    fx.RippleAdder(n=2),    # off-track pin access
+    fx.Crossbar(n=4),       # max-fan-out nets
+    fx.TiedReset(n=4),      # signal pins tied to a rail
+    fx.PairChain(n=3),      # flattened composite sub-cells
+], ids=["ripple_adder", "crossbar", "tied_reset", "pair_chain"])
+def test_every_terminal_lands_on_its_pin(cell):
     """Each access node reaches the pin rect it serves, on or off track."""
-    result = run_pnr(fx.RippleAdder(n=2), sg13g2_target())
+    result = run_pnr(cell, sg13g2_target())
     cfg = result.cfg
     pin_rects = [r for inst in result.placed.values()
         for rects in inst.pins.values() for r in rects]
@@ -230,6 +239,59 @@ def test_floorplan_grows_rows():
     assert large.cfg.n_rows > 1
     assert large.die_w >= small.die_w
     assert large.taps, "a multi-row block carries a power mesh"
+
+
+def test_flatten_expands_composites():
+    """A composite sub-cell is replaced by its own leaves, with its internal
+    nets uniquified by the instance prefix and its ports rewired."""
+    from ordec.lib.ihp130_pnr import is_sg13g2_leaf
+    leaves, nets = flatten_schematic(fx.PairChain(n=3), is_sg13g2_leaf)
+
+    # Three InvPairs of two inverters each, none of them composite any more.
+    assert sorted(leaves) == [f"pr[{i}]/i{k}" for i in range(3) for k in (0, 1)]
+    # Each pair's internal net survives as its own, prefixed net.
+    assert {"pr[0]/mid", "pr[1]/mid", "pr[2]/mid"} <= set(nets)
+    assert nets["pr[1]/mid"] == [("pr[1]/i0", "Y"), ("pr[1]/i1", "A")]
+    # The sub-cell ports are gone, rewired onto the parent's nets.
+    assert nets["nd[0]"] == [("pr[0]/i1", "Y"), ("pr[1]/i0", "A")]
+    assert nets["a"] == [("pr[0]/i0", "A")]
+    assert len(nets["vdd"]) == len(leaves)
+
+
+def test_hierarchical_cell_routes():
+    result = run_pnr(fx.PairChain(n=3), sg13g2_target())
+    assert len(result.placed) == 6
+    assert all(edges for edges, _term_m2 in result.routing.nets.values())
+
+
+def test_supply_tied_pin_gets_its_own_net():
+    """A signal pin held at a supply is routed to its cell's rail.
+
+    The rails carry power by abutment rather than by routing, so without the
+    synthesised tie net the input would be left floating.
+    """
+    result = run_pnr(fx.TiedReset(n=4), sg13g2_target())
+    ties = {name: edges for name, (edges, _term_m2)
+        in result.routing.nets.items() if name.startswith("_tie_")}
+    assert set(ties) == {f"_tie_vdd_ff[{i}]_RESET_B" for i in range(4)}
+    assert all(edges for edges in ties.values())
+
+
+def test_shared_buses_route_under_congestion():
+    """Two buses spanning every cell are the max-fan-out case the rip-up
+    negotiation has to resolve."""
+    result = run_pnr(fx.Crossbar(n=4), sg13g2_target())
+    cfg = result.cfg
+    for bus, pin in (("busA", "A0"), ("busB", "A1")):
+        _edges, term_m2 = result.routing.nets[bus]
+        points = [result.routing.term_via.get(bus, {}).get(node)
+            or (node[0] * cfg.x_pitch, node[1] * cfg.y_pitch)
+            for node in term_m2]
+        reached = {name for name, inst in result.placed.items()
+            for r in inst.pins[pin]
+            if any(r.lx <= x <= r.ux and r.ly <= y <= r.uy
+                for x, y in points)}
+        assert len(reached) == 4, f"{bus} reaches {reached}"
 
 
 def test_run_pnr_reports_its_decisions():
