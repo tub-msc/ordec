@@ -260,6 +260,17 @@ class SchematicViewContext(MixinUnresolvedInstances, ViewContext):
         Records a connection of an unresolved instance's future pin (identified
         by path) to Net here. Flushed as SchemInstanceConn on resolution.
         """
+        from .schema import Net, SchemPort
+        # Validate the operand now so that a wiring mistake fails at the --
+        # statement, as it does on resolved instances. This also keeps
+        # _apply_resolution all-or-nothing: an invalid here operand would
+        # only fail there after part of the conns have been inserted.
+        if not isinstance(here, (Net, SchemPort)):
+            raise TypeError(
+                f"Cannot connect {type(here).__name__} to "
+                f"{inst.full_path_label()}: the wire operand must be a "
+                "Net or SchemPort."
+            )
         self.unresolved_instance(inst).conns.append((here, path))
 
     def _apply_resolution(self, inst, entry):
