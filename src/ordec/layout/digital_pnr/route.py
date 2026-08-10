@@ -618,6 +618,92 @@ def spacing_neighbors(node):
 
 
 
+class Congestion:
+    """The rip-up loop's bookkeeping: who occupies which node, and where that
+    conflicts.
+
+    Kept incrementally, since rescanning every occupied node per negotiation
+    pass scales with the total wirelength routed so far and dominated large
+    runs. ``overused`` and ``spacing_bad`` change only when a node gains its
+    first or loses its last net, so :meth:`add_seg` and :meth:`remove_seg`
+    maintain them right there.
+
+    An owner is a net name, or ``('bridge', net)`` for the shadow of an
+    off-track access bridge. Shadows take part in every conflict so that no
+    net can use them, but :meth:`conflicts` never rips one up on its own,
+    since a shadow moves with its terminal.
+    """
+
+    def __init__(self):
+        self.history = {}     # node -> accumulated historical-congestion cost
+        self.occupancy = {}   # node -> number of owners currently using it
+        self.node_nets = {}   # node -> set(owner)
+        self.routes = {}      # net -> {segment key: RouteSeg}
+        self.net_use = {}     # owner -> {node: segments of that owner on it}
+        self.overused = set()
+        self.spacing_bad = set()   # canonical (lower, upper) node pairs
+
+    def update_spacing(self, node):
+        here = self.node_nets.get(node)
+        for neighbor in spacing_neighbors(node):
+            there = self.node_nets.get(neighbor)
+            pair = (node, neighbor) if node < neighbor else (neighbor, node)
+            if here and there and here != there:
+                self.spacing_bad.add(pair)
+            else:
+                self.spacing_bad.discard(pair)
+
+    def add_nodes(self, owner, nodes):
+        use = self.net_use.setdefault(owner, {})
+        for node in nodes:
+            count = use.get(node, 0)
+            use[node] = count + 1
+            if count == 0:   # first segment of this owner on the node
+                occ = self.occupancy.get(node, 0) + 1
+                self.occupancy[node] = occ
+                if occ > 1:
+                    self.overused.add(node)
+                self.node_nets.setdefault(node, set()).add(owner)
+                self.update_spacing(node)
+
+    def remove_nodes(self, owner, nodes):
+        use = self.net_use[owner]
+        for node in nodes:
+            count = use[node] - 1
+            if count:
+                use[node] = count
+            else:
+                del use[node]
+                occ = self.occupancy[node] - 1
+                self.occupancy[node] = occ
+                if occ <= 1:
+                    self.overused.discard(node)
+                self.node_nets[node].discard(owner)
+                self.update_spacing(node)
+
+    def add_seg(self, net_name, key, seg):
+        self.routes[net_name][key] = seg
+        self.add_nodes(net_name, seg.nodes)
+        if seg.shadows:
+            self.add_nodes(('bridge', net_name), seg.shadows)
+
+    def remove_seg(self, net_name, key):
+        seg = self.routes[net_name].pop(key)
+        self.remove_nodes(net_name, seg.nodes)
+        if seg.shadows:
+            self.remove_nodes(('bridge', net_name), seg.shadows)
+
+    def conflicts(self):
+        """The contested nodes and the real nets to rip up, as a pair."""
+        nodes = set(self.overused)
+        for pair in self.spacing_bad:
+            nodes.update(pair)
+        owners = set()
+        for node in nodes:
+            owners.update(self.node_nets.get(node, ()))
+        return nodes, {net for net in owners if net in self.routes}
+
+
 def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset(),
         taps=()):
     """Route the signal nets with negotiated-congestion maze routing.
@@ -751,11 +837,10 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset()
             prev = min(max(prev + 1, bisect.bisect_left(usable, round(pref))), hi)
             escape_col[port_name] = usable[prev]
 
-    history = {}          # node -> accumulated historical-congestion cost
-    occupancy = {}        # node -> number of nets currently using it
-    node_nets = {}        # node -> set(net)
-    routes = {}           # net -> {segment key: RouteSeg}
-    net_use = {}          # net -> {node: number of the net's segments using it}
+    cong = Congestion()
+    # Local aliases for the read-only lookups in the routing closures below.
+    history, occupancy = cong.history, cong.occupancy
+    node_nets, routes, net_use = cong.node_nets, cong.routes, cong.net_use
     port_escape = {}      # port net -> x track of its top-edge Metal4 pad (or None)
     penalty = [0.5]       # present-congestion penalty, raised each rip-up pass
     adj = GridAdjacency(cfg, xmax, blocked)   # lazy per-run move table for A*
@@ -967,80 +1052,7 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset()
             grow(x_tracks, lambda p, Y=yi, L=layer: (p, Y, L), 0, xmax)
         return RouteSeg(tuple(ext_edges), frozenset(ext_nodes), ())
 
-    # Conflicts are tracked incrementally, since scanning every occupied node
-    # per pass scales with the total wirelength routed so far and dominated
-    # large runs. overused holds the nodes shared by more than one net,
-    # spacing_bad the same-layer neighbor pairs owned by different nets. Both
-    # change only when a node gains its first or loses its last net, so
-    # add_seg/remove_seg maintain them there.
-    overused = set()
-    spacing_bad = set()   # canonical (min(node, nbr), max(node, nbr)) pairs
-
-    def update_spacing(node):
-        here = node_nets.get(node)
-        for neighbor in spacing_neighbors(node):
-            there = node_nets.get(neighbor)
-            pair = (node, neighbor) if node < neighbor else (neighbor, node)
-            if here and there and here != there:
-                spacing_bad.add(pair)
-            else:
-                spacing_bad.discard(pair)
-
-    def add_nodes(owner, nodes):
-        use = net_use.setdefault(owner, {})
-        for node in nodes:
-            count = use.get(node, 0)
-            use[node] = count + 1
-            if count == 0:   # first segment of this owner on the node
-                occ = occupancy.get(node, 0) + 1
-                occupancy[node] = occ
-                if occ > 1:
-                    overused.add(node)
-                node_nets.setdefault(node, set()).add(owner)
-                update_spacing(node)
-
-    def remove_nodes(owner, nodes):
-        use = net_use[owner]
-        for node in nodes:
-            count = use[node] - 1
-            if count:
-                use[node] = count
-            else:
-                del use[node]
-                occ = occupancy[node] - 1
-                occupancy[node] = occ
-                if occ <= 1:
-                    overused.discard(node)
-                node_nets[node].discard(owner)
-                update_spacing(node)
-
-    def add_seg(net_name, key, seg):
-        routes[net_name][key] = seg
-        add_nodes(net_name, seg.nodes)
-        if seg.shadows:
-            # Bridge shadows are owned by a pseudo-net, so the conflict
-            # machinery keeps every real net off them, this one included.
-            # conflicts() rips up only real nets, never the shadow itself.
-            add_nodes(('bridge', net_name), seg.shadows)
-
-    def remove_seg(net_name, key):
-        seg = routes[net_name].pop(key)
-        remove_nodes(net_name, seg.nodes)
-        if seg.shadows:
-            remove_nodes(('bridge', net_name), seg.shadows)
-
-    def conflicts():
-        # A conflict is a node shared by >1 net, or two different nets on
-        # spacing-violating neighbor nodes. Returns the offending nodes and the
-        # set of real nets touching them (whose segments are then ripped up --
-        # bridge-shadow pseudo-nets move with their terminal, not on their own).
-        nodes = set(overused)
-        for pair in spacing_bad:
-            nodes.update(pair)
-        bad_nets = set()
-        for node in nodes:
-            bad_nets.update(node_nets.get(node, ()))
-        return nodes, {net for net in bad_nets if net in routes}
+    add_seg, remove_seg, conflicts = cong.add_seg, cong.remove_seg, cong.conflicts
 
     # Initial pass: route every net's segments once in its corridor (each
     # segment falls back to the full grid if the corridor is blocked).
