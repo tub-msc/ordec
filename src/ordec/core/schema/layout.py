@@ -384,7 +384,12 @@ class LayoutInstance(Node, MixinSourceLoc):
         return self.subcursor()[name]
 
     def __getattr__(self, name):
-        return getattr(self.subcursor(), name)
+        try:
+            return getattr(self.subcursor(), name)
+        except InstanceResolutionError as e:
+            # __getattr__ must raise AttributeError: hasattr() and IPython's
+            # repr probing rely on it (see Node.__getattr__).
+            raise AttributeError(*e.args) from None
 
     def loc_transform(self):
         return self.pos.transl() * self.orientation

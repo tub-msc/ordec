@@ -368,7 +368,12 @@ class SchemInstance(Node, MixinSourceLoc):
     def __getattr__(self, name):
         if self.symbol is None and unresolved_instance_ctx(self) is not None:
             return SchemInstanceUnresolvedSubcursor((self, name))
-        return getattr(self.subcursor(), name)
+        try:
+            return getattr(self.subcursor(), name)
+        except InstanceResolutionError as e:
+            # __getattr__ must raise AttributeError: hasattr() and IPython's
+            # repr probing rely on it (see Node.__getattr__).
+            raise AttributeError(*e.args) from None
 
     def conns(self):
         return self.subgraph.all(SchemInstanceConn.ref_idx.query(self))
