@@ -6,7 +6,7 @@ const { LanguageClient } = require("vscode-languageclient/node");
 
 let client;
 
-async function activate() {
+async function startLanguageServer() {
   const config = vscode.workspace.getConfiguration("ord.languageServer");
   if (!config.get("enabled", true)) {
     return;
@@ -46,6 +46,19 @@ async function activate() {
     clientOptions
   );
   await client.start();
+}
+
+async function activate(context) {
+  // In Restricted Mode only the declarative features (grammar and
+  // language configuration) stay active. The server spawns a workspace
+  // configured executable, so it starts only once trust is granted.
+  if (!vscode.workspace.isTrusted) {
+    context.subscriptions.push(
+      vscode.workspace.onDidGrantWorkspaceTrust(() => startLanguageServer())
+    );
+    return;
+  }
+  await startLanguageServer();
 }
 
 async function deactivate() {

@@ -22,6 +22,16 @@
   "activationEvents": [
     "onLanguage:ord"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Syntax highlighting is available without workspace trust. The language server only starts in trusted workspaces.",
+      "restrictedConfigurations": [
+        "ord.languageServer.command",
+        "ord.languageServer.arguments"
+      ]
+    }
+  },
   "scripts": {
     "check": "node --check extension.js && node --test extension.test.js"
   },

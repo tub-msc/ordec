@@ -20,8 +20,15 @@ class FakeLanguageClient {
   }
 }
 
+let trustListener;
+
 const vscode = {
   workspace: {
+    isTrusted: true,
+    onDidGrantWorkspaceTrust(listener) {
+      trustListener = listener;
+      return { dispose() {} };
+    },
     createFileSystemWatcher(pattern) {
       return { pattern };
     },
@@ -59,7 +66,7 @@ const extension = require("./extension");
 Module._load = load;
 
 test("launches ORD-LSP for ORD documents", async () => {
-  await extension.activate();
+  await extension.activate({ subscriptions: [] });
 
   assert.equal(createdClient.id, "ordec-lsp");
   assert.deepEqual(createdClient.serverOptions, {
@@ -79,6 +86,22 @@ test("launches ORD-LSP for ORD documents", async () => {
   assert.equal(stopped, true);
 });
 
+test("defers ORD-LSP start until workspace trust is granted", async () => {
+  createdClient = undefined;
+  vscode.workspace.isTrusted = false;
+  const context = { subscriptions: [] };
+
+  await extension.activate(context);
+  assert.equal(createdClient, undefined);
+  assert.equal(context.subscriptions.length, 1);
+
+  vscode.workspace.isTrusted = true;
+  await trustListener();
+  assert.equal(createdClient.id, "ordec-lsp");
+
+  await extension.deactivate();
+});
+
 test("package manifest wires up the language client", () => {
   const pkg = require("./package.json");
 
@@ -88,4 +111,13 @@ test("package manifest wires up the language client", () => {
   const properties = pkg.contributes.configuration.properties;
   assert.equal(properties["ord.languageServer.command"].default, "ordec-lsp");
   assert.equal(properties["ord.languageServer.enabled"].default, true);
+
+  // Restricted Mode must keep the grammar active and pin the server
+  // command settings to trusted user level values.
+  const untrusted = pkg.capabilities.untrustedWorkspaces;
+  assert.equal(untrusted.supported, "limited");
+  assert.deepEqual(untrusted.restrictedConfigurations, [
+    "ord.languageServer.command",
+    "ord.languageServer.arguments",
+  ]);
 });
