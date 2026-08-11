@@ -820,6 +820,29 @@ def test_python_index_resolves_init_ord_packages(tmp_path, monkeypatch):
     assert installed_index.resolve_module_path("pkg.sub") == sub_path.resolve()
 
 
+def test_python_export_name_ranges_avoid_keywords(tmp_path):
+    (tmp_path / "shortnames.py").write_text(
+        "def f(x):\n"
+        "    return x\n"
+        "\n"
+        "class C:\n"
+        "    def d(self):\n"
+        "        pass\n"
+    )
+    index = PythonModuleIndex(workspace_root=str(tmp_path))
+
+    # A short name must not match inside the def or class keyword.
+    assert index.definition("shortnames", export_name="f")[
+        "selection_range"
+    ].start == AnalysisPosition(line=1, character=5)
+    assert index.definition("shortnames", export_name="C")[
+        "selection_range"
+    ].start == AnalysisPosition(line=4, character=7)
+    assert index.class_members("shortnames", "C")["d"][
+        "selection_range"
+    ].start == AnalysisPosition(line=5, character=9)
+
+
 def test_missing_port_action_survives_stale_analysis():
     session = AnalysisSession(workspace_root="/tmp/workspace")
     uri = "file:///tmp/stale.ord"

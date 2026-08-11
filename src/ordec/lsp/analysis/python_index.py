@@ -5,6 +5,7 @@
 import ast
 import importlib
 import importlib.util
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -271,8 +272,13 @@ class PythonModuleIndex:
         def name_range(node, name):
             line = source_lines[node.lineno - 1] if node.lineno - 1 < len(source_lines) else ""
             start_hint = ast_position(node.lineno, node.col_offset).character - 1
-            start = line.find(name, start_hint)
-            if start < 0:
+            # col_offset points at the def or class keyword, inside which
+            # a plain find() can match a short name such as f. A word
+            # boundary search cannot.
+            match = re.search(r"\b" + re.escape(name) + r"\b", line[start_hint:])
+            if match is not None:
+                start = start_hint + match.start()
+            else:
                 start = start_hint
             return AnalysisRange(
                 start=AnalysisPosition(node.lineno, start + 1),
