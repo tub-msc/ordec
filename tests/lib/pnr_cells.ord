@@ -30,8 +30,7 @@ left its port floating.
 
 from ordec.core import *
 from ordec.lib.ihp130 import SG13G2, Nmos
-from ordec.lib.ihp130_pnr import (is_sg13g2_leaf, lef_pin_rects, sg13g2_grid,
-    sg13g2_layers)
+from ordec.lib.ihp130_pnr import is_sg13g2_leaf, lef_pin_rects, sg13g2_grid
 from ordec.lib.ihp130_stdcells import extlib
 from ordec.layout.digital_pnr import place_and_route
 
@@ -46,8 +45,8 @@ Or   = extlib["sg13g2_or2_1"]
 def pnr(schematic, layout):
     """This library's currying of the engine, as any design is free to write."""
     place_and_route(schematic, layout, grid=sg13g2_grid(),
-        stack=sg13g2_layers(), pin_rects=lef_pin_rects,
-        is_leaf=is_sg13g2_leaf)
+        routing_spec=SG13G2().default_routing_spec,
+        pin_rects=lef_pin_rects, is_leaf=is_sg13g2_leaf)
 
 cell InvChain:
     """n inverters in series: a -> inv0 -> inv1 -> ... -> y."""

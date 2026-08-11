@@ -18,8 +18,7 @@ import ordec.importer
 from ordec.core import Layout
 from ordec.layout.digital_pnr import place_and_route
 from ordec.lib import ihp130
-from ordec.lib.ihp130_pnr import (is_sg13g2_leaf, lef_pin_rects, sg13g2_grid,
-    sg13g2_layers)
+from ordec.lib.ihp130_pnr import is_sg13g2_leaf, lef_pin_rects, sg13g2_grid
 from .lib import pnr_cells as fx
 
 
@@ -27,8 +26,8 @@ def pnr(cell):
     """Run the engine over ``cell`` with the sg13g2 inputs."""
     return place_and_route(cell.schematic,
         Layout(cell=cell, symbol=cell.symbol), grid=sg13g2_grid(),
-        stack=sg13g2_layers(), pin_rects=lef_pin_rects,
-        is_leaf=is_sg13g2_leaf)
+        routing_spec=ihp130.SG13G2().default_routing_spec,
+        pin_rects=lef_pin_rects, is_leaf=is_sg13g2_leaf)
 
 
 def test_lef_pin_rects_inverter():

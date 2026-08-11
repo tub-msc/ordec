@@ -97,26 +97,51 @@ class GridConfig:
         return 0 < yi < self.y_track_max and yi % self.tracks_per_row != 0
 
 
-@dataclass(frozen=True)
-class RoutingStack:
-    """Maps the engine's abstract routing stack onto concrete PDK layers.
+# The engine's routing codes bound to concrete PDK layers: the pin-access
+# metal (M1), two vertical routing metals (m2, m4), two horizontal ones
+# (m3, m5), the via between each pair, and the full layer set that becomes
+# Layout.ref_layers. Derived from a RoutingSpec by stack_from_spec, never
+# hand-built.
+StackLayers = namedtuple('StackLayers',
+    'layer_set m1 m2 m3 m4 m5 via1 via2 via3 via4')
 
-    The layer counterpart of :class:`GridConfig`. The binding supplies the layer
-    objects, so no PDK layer name is baked into the engine. ``m1`` to ``m5`` and
-    ``via1`` to ``via4`` mirror the like-named internal codes: a Metal1-only
-    pin-access layer, two vertical routing metals (``m2``, ``m4``), two
-    horizontal (``m3``, ``m5``), and a via between each pair.
+
+def stack_from_spec(routing_spec):
+    """Bind the engine's routing codes to a :class:`RoutingSpec`'s layers.
+
+    The PDK's RoutingSpec (:mod:`ordec.core.schema`) is the single source of
+    truth for the layer stack: its ``route_id`` order alternates metals (with
+    ``route_wire_width`` set) and vias. The engine routes a fixed five-metal
+    window, so it takes the nine layers with the lowest route_ids, the
+    pin-access metal first. Layers above the window (sg13g2's top metals)
+    are never touched, which leaves them to the assembly above the block.
+
+    Args:
+        routing_spec: the :class:`RoutingSpec` naming the PDK's layer stack.
+
+    Returns:
+        The :class:`StackLayers` the emission code works with.
+
+    Raises:
+        ValueError: the spec holds fewer than nine layers, or its window does
+            not alternate metal and via.
     """
-    layer_set: object   # full PDK layer set, passed through as Layout.ref_layers
-    m1: object          # pin-access metal (code M1)
-    m2: object          # first vertical routing metal (code M2)
-    m3: object          # first horizontal routing metal (code M3)
-    m4: object          # second vertical routing metal (code M4)
-    m5: object          # second horizontal routing metal (code M5)
-    via1: object        # pin metal <-> m2
-    via2: object        # m2 <-> m3
-    via3: object        # m3 <-> m4
-    via4: object        # m4 <-> m5
+    rsls = sorted(routing_spec.all(RoutingSpecLayer), key=lambda l: l.route_id)
+    if len(rsls) < 9:
+        raise ValueError(
+            f"the routing spec holds {len(rsls)} layers, but the engine "
+            "routes a five-metal window and needs nine: the pin-access "
+            "metal, four routing metals and the four vias between them")
+    for i, rsl in enumerate(rsls[:9]):
+        if (rsl.route_wire_width is not None) != (i % 2 == 0):
+            raise ValueError(
+                f"routing spec layer with route_id {rsl.route_id} breaks the "
+                "metal/via alternation the engine's window requires (metals "
+                "carry a route_wire_width, vias do not)")
+    layer = [rsl.layer for rsl in rsls[:9]]
+    return StackLayers(layer_set=routing_spec.ref_layers,
+        m1=layer[0], m2=layer[2], m3=layer[4], m4=layer[6], m5=layer[8],
+        via1=layer[1], via2=layer[3], via3=layer[5], via4=layer[7])
 
 
 @dataclass
@@ -267,7 +292,7 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
 
     Args:
         layout: the mutable :class:`Layout` to emit into.
-        stack: the :class:`RoutingStack` for this PDK's layers.
+        stack: the :class:`StackLayers` for this PDK's layers.
         edges: the net's routed edges, each a pair of grid nodes.
         term_m2: the net's Via1 access nodes, its terminal landings on Metal2.
         cfg: the routing grid + DRC geometry (:class:`GridConfig`).
@@ -392,8 +417,8 @@ class PnrResult:
     taps: tuple
 
 
-def place_and_route(schematic, layout, *, grid, stack, pin_rects, is_leaf,
-        port_edges=None):
+def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
+        is_leaf, port_edges=None):
     """Place + route a schematic of Metal1-only leaf cells into ``layout``.
 
     The caller owns both sides of the boundary: ``schematic`` is read,
@@ -404,8 +429,8 @@ def place_and_route(schematic, layout, *, grid, stack, pin_rects, is_leaf,
 
         viewgen layout -> Layout:
             place_and_route(self.schematic, ., grid=sg13g2_grid(),
-                stack=sg13g2_layers(), pin_rects=lef_pin_rects,
-                is_leaf=is_sg13g2_leaf)
+                routing_spec=SG13G2().default_routing_spec,
+                pin_rects=lef_pin_rects, is_leaf=is_sg13g2_leaf)
 
     Args:
         schematic: the :class:`Schematic` to lay out, flattened to leaf cells.
@@ -413,8 +438,9 @@ def place_and_route(schematic, layout, *, grid, stack, pin_rects, is_leaf,
             into. Freezing it is the caller's (or the view context's) job.
         grid: the routing grid + emitted geometry (:class:`GridConfig`), e.g.
             :func:`ordec.lib.ihp130_pnr.sg13g2_grid`.
-        stack: the :class:`RoutingStack` mapping the engine's routing codes to
-            this PDK's layers.
+        routing_spec: the PDK's :class:`RoutingSpec`. The engine binds its
+            routing codes to the spec's nine lowest ``route_id`` layers (see
+            ``stack_from_spec``) and emits on those.
         pin_rects: callable ``cell_name -> {pin: [(x0, y0, x1, y1), ...]}``
             giving a leaf cell's per-pin Metal1 rectangles, in nm.
         is_leaf: callable ``cell -> bool``, true for a routing leaf placed
@@ -438,6 +464,7 @@ def place_and_route(schematic, layout, *, grid, stack, pin_rects, is_leaf,
             tried.
     """
     cfg = grid
+    stack = stack_from_spec(routing_spec)
     cell = schematic.cell   # for the error messages only
     check_layout_empty(layout, cell)
     check_layout_layers(layout, stack, cell)
@@ -595,7 +622,7 @@ def check_layout_layers(layout, stack, cell):
 
     Args:
         layout: the :class:`Layout` about to be emitted into.
-        stack: the :class:`RoutingStack` whose layers the engine emits on.
+        stack: the :class:`StackLayers` whose layers the engine emits on.
         cell: the cell being laid out, for the message.
 
     Raises:
@@ -614,7 +641,7 @@ def emit_ports(layout, stack, nets, placed, routing, cfg):
 
     Args:
         layout: the mutable :class:`Layout` to emit into.
-        stack: the :class:`RoutingStack` for this PDK.
+        stack: the :class:`StackLayers` for this PDK.
         nets: ``{name: NetInfo}`` for the whole block (ports carry a pin).
         placed: ``{name: PlacedInst}``, for the supply rails.
         routing: the :class:`~.route.RoutingResult`, for the signal escapes.
@@ -731,7 +758,7 @@ def pad_rails(layout, stack, placed, die_w, supply_pins):
 
     Args:
         layout: the mutable :class:`Layout` to emit into.
-        stack: the :class:`RoutingStack` for this PDK's layers.
+        stack: the :class:`StackLayers` for this PDK's layers.
         placed: ``{name: PlacedInst}`` from :func:`place_rows`.
         die_w: the die width to pad each rail out to, in nm.
         supply_pins: the supply pin names (``cfg.supply_pin_names``).
@@ -765,7 +792,7 @@ def emit_power_straps(layout, stack, placed, cfg, die_w):
 
     Args:
         layout: the mutable :class:`Layout` to emit into.
-        stack: the :class:`RoutingStack` for this PDK's layers.
+        stack: the :class:`StackLayers` for this PDK's layers.
         placed: ``{name: PlacedInst}`` from :func:`place_rows`.
         cfg: the routing grid + geometry (:class:`GridConfig`).
         die_w: the die width in nm. The right strap mirrors to it.
@@ -812,7 +839,7 @@ def emit_power_mesh(layout, stack, placed, cfg, die_w, taps):
 
     Args:
         layout: the mutable :class:`Layout` to emit into.
-        stack: the :class:`RoutingStack` for this PDK's layers.
+        stack: the :class:`StackLayers` for this PDK's layers.
         placed: ``{name: PlacedInst}`` from :func:`place_rows`.
         cfg: the routing grid + geometry (:class:`GridConfig`).
         die_w: the die width in nm.

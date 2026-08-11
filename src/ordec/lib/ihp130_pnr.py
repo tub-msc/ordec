@@ -4,12 +4,14 @@
 """
 IHP SG13G2 binding of :mod:`ordec.layout.digital_pnr`.
 
-Every sg13g2 number and layer name lives here rather than in the engine:
-:func:`sg13g2_grid` (grid + emitted geometry), :func:`sg13g2_layers` (layer
-binding), :func:`lef_pin_rects` (per-pin Metal1 rectangles from the stdcell
-LEF) and :func:`is_sg13g2_leaf` (the routing-leaf predicate). A design passes
-them to :func:`ordec.layout.digital_pnr.place_and_route` explicitly. A sibling
-module (``sky130_pnr.py``) would bind the same engine to another PDK.
+Every sg13g2 number lives here rather than in the engine: :func:`sg13g2_grid`
+(grid + emitted geometry), :func:`lef_pin_rects` (per-pin Metal1 rectangles
+from the stdcell LEF) and :func:`is_sg13g2_leaf` (the routing-leaf predicate).
+The layer stack itself comes from ``SG13G2().default_routing_spec``, the PDK's
+:class:`RoutingSpec <ordec.core.RoutingSpec>`, so it has no binding function
+here. A design passes them to :func:`ordec.layout.digital_pnr.place_and_route`
+explicitly. A sibling module (``sky130_pnr.py``) would bind the same engine to
+another PDK.
 
 It sits next to :mod:`ordec.lib.ihp130_stdcells`, the other sg13g2 companion a
 placed-and-routed design imports.
@@ -17,7 +19,7 @@ placed-and-routed design imports.
 
 import functools
 
-from ordec.layout.digital_pnr import GridConfig, RoutingStack
+from ordec.layout.digital_pnr import GridConfig
 from ordec.lib import ihp130
 
 @functools.cache
@@ -129,23 +131,4 @@ def sg13g2_grid() -> GridConfig:
         strap_vss_x=-1080,    # just outside VDD
         rail_ext=150,
         mesh_half_w=210,      # 420 nm Metal5 mesh straps (2x wire width)
-    )
-
-
-@functools.cache
-def sg13g2_layers() -> RoutingStack:
-    """Bind the engine's routing codes to the sg13g2 metal and via layers.
-
-    sg13g2 routes on Metal2 to Metal5, with Metal1 for pin access only and Via1
-    to Via4, so the codes map 1:1 onto the like-numbered PDK layers.
-
-    Returns:
-        RoutingStack: the sg13g2 layer binding.
-    """
-    layers = ihp130.SG13G2().layers
-    return RoutingStack(
-        layer_set=layers,
-        m1=layers.Metal1, m2=layers.Metal2, m3=layers.Metal3,
-        m4=layers.Metal4, m5=layers.Metal5,
-        via1=layers.Via1, via2=layers.Via2, via3=layers.Via3, via4=layers.Via4,
     )

@@ -19,9 +19,9 @@ import heapq
 # Internal layer codes. These are abstract routing-stack positions, not PDK
 # layers. The engine routes on two vertical layers (codes M2, M4) and two
 # horizontal (M3, M5), with M1 reserved for pin access. Doubling the routing
-# layers roughly doubles capacity, as production routers do. A RoutingStack from
-# the PDK binding maps these codes to concrete PDK layers, so no PDK layer name
-# is baked into the engine.
+# layers roughly doubles capacity, as production routers do. The flow binds
+# these codes to concrete PDK layers from the PDK's RoutingSpec
+# (flow.stack_from_spec), so no PDK layer name is baked into the engine.
 M2, M3, M1, M4, M5 = 0, 1, 2, 3, 4
 VERT = (M2, M4)        # vertical routing layers (move in y)
 HORIZ = (M3, M5)       # horizontal routing layers (move in x)

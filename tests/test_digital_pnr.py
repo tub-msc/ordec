@@ -18,16 +18,16 @@ import pytest
 import ordec.importer
 
 from ordec.core import (GdsLayer, Layer, LayerStack, Layout,
-    LayoutPin, R, Rect4I)
+    LayoutPin, R, Rect4I, RoutingSpec, RoutingSpecLayer)
 from ordec.layout import compare
 from ordec.layout.digital_pnr import (GridConfig, PinAccessError,
     place_and_route)
 from ordec.layout.digital_pnr import place, route
 from ordec.layout.digital_pnr.flow import (LeafCell, NetInfo,
-    flatten_schematic)
+    flatten_schematic, stack_from_spec)
 from ordec.layout.digital_pnr.route import M2, M3, VERT
-from ordec.lib.ihp130_pnr import (is_sg13g2_leaf, lef_pin_rects, sg13g2_grid,
-    sg13g2_layers)
+from ordec.lib.ihp130 import SG13G2
+from ordec.lib.ihp130_pnr import is_sg13g2_leaf, lef_pin_rects, sg13g2_grid
 from .lib import pnr_cells as fx
 
 # A grid with the sg13g2 dimensions but no PDK behind it, so the placement and
@@ -50,7 +50,7 @@ def pnr(cell, layout=None, port_edges=None):
     if layout is None:
         layout = Layout(cell=cell, symbol=cell.symbol)
     result = place_and_route(cell.schematic, layout, grid=sg13g2_grid(),
-        stack=sg13g2_layers(), pin_rects=lef_pin_rects,
+        routing_spec=SG13G2().default_routing_spec, pin_rects=lef_pin_rects,
         is_leaf=is_sg13g2_leaf, port_edges=port_edges)
     return layout.freeze(), result
 
@@ -411,6 +411,22 @@ def test_device_level_instance_rejected():
     error names the instance rather than failing on a missing attribute."""
     with pytest.raises(ValueError, match=r"instance 'm0' is a Nmos"):
         fx.DeviceLeaf().layout
+
+
+def test_short_routing_spec_rejected():
+    """A spec without the engine's full five-metal window cannot bind."""
+    layers = LayerStack()
+    layers.unit = R("1n")
+    layers.M1 = Layer(gdslayer_shapes=GdsLayer(layer=1, data_type=0))
+    layers.V1 = Layer(gdslayer_shapes=GdsLayer(layer=2, data_type=0))
+    layers.M2 = Layer(gdslayer_shapes=GdsLayer(layer=3, data_type=0))
+    frozen = layers.freeze()
+    spec = RoutingSpec(ref_layers=frozen)
+    spec % RoutingSpecLayer(layer=frozen.M1, route_id=0, route_wire_width=200)
+    spec % RoutingSpecLayer(layer=frozen.V1, route_id=1)
+    spec % RoutingSpecLayer(layer=frozen.M2, route_id=2, route_wire_width=200)
+    with pytest.raises(ValueError, match="needs nine"):
+        stack_from_spec(spec)
 
 
 def test_foreign_layer_set_rejected():

@@ -5,16 +5,18 @@
 
 The engine is PDK-agnostic. :func:`~ordec.layout.digital_pnr.place_and_route` reads a
 ``Schematic``, writes into a caller-owned mutable ``Layout``, and takes everything a PDK
-must supply as explicit parameters: a :class:`~ordec.layout.digital_pnr.RoutingStack`
-(the engine's abstract routing codes mapped to concrete PDK layers), a
+must supply as explicit parameters: the PDK's
+:class:`~ordec.core.schema.RoutingSpec` (the engine binds its abstract routing codes to
+the spec's nine lowest ``route_id`` layers, so the layer stack has its single source of
+truth in :mod:`ordec.core.schema`, shared with :doc:`SRouter <layout>`), a
 :class:`~ordec.layout.digital_pnr.GridConfig` (the routing grid and the DRC-driven
 emission geometry such as wire, via, landing and strap dimensions), a per-cell LEF
 pin-rectangle lookup and an "is this a routing leaf?" predicate. No PDK layer, pitch or
 design-rule dimension is baked into the engine. It sits alongside :doc:`SRouter <layout>`
 and the :doc:`KLayout integration <layout_klayout>`. :mod:`ordec.lib.ihp130_pnr` supplies
-those inputs for the sg13g2 standard-cell library, with ``sg13g2_grid()`` as its grid and
-geometry profile. In an ORD ``viewgen layout`` body the bare dot passes the view's own
-root as the layout to emit into:
+the sg13g2 grid profile and pin data, and ``SG13G2().default_routing_spec`` supplies the
+layers. In an ORD ``viewgen layout`` body the bare dot passes the view's own root as the
+layout to emit into:
 
 .. code-block:: python
 
@@ -23,8 +25,8 @@ root as the layout to emit into:
 
        viewgen layout -> Layout:
            place_and_route(self.schematic, ., grid=sg13g2_grid(),
-               stack=sg13g2_layers(), pin_rects=lef_pin_rects,
-               is_leaf=is_sg13g2_leaf)
+               routing_spec=SG13G2().default_routing_spec,
+               pin_rects=lef_pin_rects, is_leaf=is_sg13g2_leaf)
 
 ``place_and_route`` runs the same pipeline a production flow does, applied to a single
 block. It flattens the schematic to foundry leaf cells, orders and folds them into
@@ -267,9 +269,6 @@ Public API
 ----------
 
 .. autofunction:: ordec.layout.digital_pnr.place_and_route
-
-.. autoclass:: ordec.layout.digital_pnr.RoutingStack
-   :members:
 
 .. autoclass:: ordec.layout.digital_pnr.GridConfig
    :members:
