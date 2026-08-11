@@ -26,12 +26,14 @@ from .python_index import PythonModuleIndex
 from .rename import RenameMixin
 from .signatures import SignatureHelpMixin
 
-# Dependency directories that never hold workspace design sources. Hidden
-# directories (leading dot) are pruned by name, so .git and .venv need no
-# entries here.
+# Dependency and build-output directories that never hold workspace design
+# sources (build outputs would surface stale duplicates). Hidden directories
+# (leading dot) are pruned by name, so .git and .venv need no entries here.
 WORKSPACE_SCAN_EXCLUDED_DIRS = frozenset({
     "node_modules",
     "__pycache__",
+    "build",
+    "dist",
 })
 
 CORE_TYPE_ALIASES = {

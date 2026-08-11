@@ -1093,10 +1093,10 @@ def test_analysis_session_checked_in_ord_files_have_no_lsp_diagnostics():
         "tests/test_ord_runtime.ord": {"unknown-member"},
     }
 
-    for path in sorted(root_path.rglob("*.ord")):
+    # Enumerate via the session's own scanner so the file set stays in
+    # sync with what the workspace scan actually indexes.
+    for path in session.workspace_ord_paths(root_path):
         relative_path = str(path.relative_to(root_path))
-        if any(part.startswith(".") for part in path.relative_to(root_path).parts):
-            continue
         uri = session.open_path(str(path))
         diagnostics = [
             diagnostic for diagnostic in session.diagnostics(uri)
