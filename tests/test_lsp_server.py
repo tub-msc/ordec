@@ -1010,6 +1010,25 @@ def test_lsp_serve_cancels_queued_requests():
     assert responses[2]["result"] is None
 
 
+def test_lsp_selection_range_missing_document_returns_empty_ranges(tmp_path):
+    server = initialize_server(tmp_path)
+    uri = (tmp_path / "missing.ord").resolve().as_uri()
+    position = {"line": 2, "character": 4}
+
+    selection_ranges = request(
+        server,
+        "textDocument/selectionRange",
+        {
+            "textDocument": text_document(uri),
+            "positions": [position],
+        },
+    )
+
+    # Null items crash vscode-languageclient, so unresolvable positions
+    # yield empty ranges at the requested position instead.
+    assert selection_ranges == [{"range": {"start": position, "end": position}}]
+
+
 def test_lsp_serve_drops_cancels_for_answered_requests():
     def document_symbol_request():
         return {

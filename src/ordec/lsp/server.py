@@ -811,15 +811,21 @@ class OrdLanguageServer:
     def handle_selection_range(self, message):
         params = message.get("params", {})
         uri = self.text_document_uri(params)
+        lsp_positions = params["positions"]
         positions = [
             self.analysis_position(uri, pos)
-            for pos in params["positions"]
+            for pos in lsp_positions
         ]
         selection_ranges = self.session.selection_ranges(uri, positions)
         result = []
-        for chain in selection_ranges:
+        for lsp_position, chain in zip(lsp_positions, selection_ranges):
             if chain is None:
-                result.append(None)
+                # The spec requires one SelectionRange per position and
+                # clients dereference each item, so a position without
+                # a container gets an empty range instead of null.
+                result.append({
+                    "range": {"start": lsp_position, "end": lsp_position},
+                })
                 continue
 
             result.append(self.lsp_selection_range_chain(uri, chain))
