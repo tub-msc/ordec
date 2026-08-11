@@ -929,7 +929,21 @@ device_map = {
 
 
 @public
-def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
+def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True,
+        antenna: bool=True, density: bool=False):
+    """Run the KLayout DRC sign-off decks over a layout.
+
+    Args:
+        l: the Layout to check.
+        variant: 'minimal' runs the main deck alone, 'maximal' also runs the
+            sg13g2_maximal deck.
+        use_tempdir: run in a temporary directory instead of ./drc.
+        antenna: also run the PDK's antenna deck.
+        density: also run the PDK's density deck.
+
+    Returns:
+        The DrcReport holding the violations of every deck that ran.
+    """
     if variant not in ('minimal', 'maximal'):
         raise ValueError("variant must be either 'minimal' or 'maximal'.")
 
@@ -980,10 +994,7 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
                 )
             klayout.parse_rdb(cwd / "maximal.lyrdb", report, directory)
 
-            # The antenna rules live in their own deck; without this, long
-            # upper-metal routes into gate pins would go unchecked. (The
-            # sibling density deck stays out: its 200 um check windows exceed
-            # these block sizes, making it a chip-assembly concern.)
+        if antenna:
             (cwd / 'antenna.log').unlink(missing_ok=True)
             klayout.run(pdk().klayout_drc_decks_dir / 'antenna.drc', cwd,
                 report="antenna.lyrdb",
@@ -991,6 +1002,15 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
                 **klayout_shared_opts
                 )
             klayout.parse_rdb(cwd / "antenna.lyrdb", report, directory)
+
+        if density:
+            (cwd / 'density.log').unlink(missing_ok=True)
+            klayout.run(pdk().klayout_drc_decks_dir / 'density.drc', cwd,
+                report="density.lyrdb",
+                log="density.log",
+                **klayout_shared_opts
+                )
+            klayout.parse_rdb(cwd / "density.lyrdb", report, directory)
 
         return report
 

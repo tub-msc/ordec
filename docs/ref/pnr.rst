@@ -259,10 +259,11 @@ from a production flow is scale and scope:
   result is correct by construction. Full sign-off DRC is hundreds of rules
   (parallel-run-length tables, end-of-line, cut spacing, min-step and more), for which
   the KLayout deck remains the authority. That sign-off (``ihp130.run_drc``) covers the
-  main and maximal rule sets plus the PDK's **antenna** deck. Antenna ratios on long
-  upper-metal routes into gate pins are exactly the pattern this router produces, so
-  they are checked rather than assumed. The **density** deck stays out, since its 200 µm
-  check windows exceed these block sizes, making it intrinsically a chip-assembly concern.
+  main and maximal rule sets plus, by default, the PDK's **antenna** deck. Antenna ratios
+  on long upper-metal routes into gate pins are exactly the pattern this router produces,
+  so they are checked rather than assumed. The **density** deck is off by default
+  (``run_drc(..., density=True)`` enables it), since its 200 µm check windows exceed
+  these block sizes, making it intrinsically a chip-assembly concern.
 * **Out of scope by design:** clock-tree synthesis, antenna fixing, fill cells and
   multi-Vt libraries. Routing stays on Metal2 to Metal5, so sg13g2's thick top metals
   (TopMetal1, TopMetal2) are never touched and remain free for the assembly above the
