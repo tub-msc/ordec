@@ -146,7 +146,11 @@ class AnalysisSymbol(NamedTuple):
 
 
 class AnalysisImport(NamedTuple):
-    """Import statement captured from an ORD document."""
+    """Import statement captured from an ORD document.
+
+    For from-imports, ``export_range`` covers the exported-name token,
+    which differs from ``selection_range`` when the import is aliased.
+    """
     kind: str
     module: str
     export_name: Optional[str]
@@ -154,6 +158,7 @@ class AnalysisImport(NamedTuple):
     range: AnalysisRange
     selection_range: AnalysisRange
     is_alias: bool = False
+    export_range: Optional[AnalysisRange] = None
 
 
 

@@ -287,7 +287,8 @@ def test_lsp_navigation_references_rename_and_symbols(tmp_path):
             "position": position,
         },
     )
-    assert len(references) == 4
+    # Three Stage tokens, the imported Mux2 token, and the definition.
+    assert len(references) == 5
 
     highlights = request(
         server,
@@ -297,7 +298,7 @@ def test_lsp_navigation_references_rename_and_symbols(tmp_path):
             "position": position,
         },
     )
-    assert len(highlights) == 3
+    assert len(highlights) == 4
 
     symbols = request(
         server,

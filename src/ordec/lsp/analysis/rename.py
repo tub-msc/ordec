@@ -112,6 +112,11 @@ class RenameMixin:
 
         changes = dict()
         for reference in references:
+            # Alias tokens of from-imports reference the same definition
+            # under a different name and must keep their spelling.
+            if reference["name"] != definition["name"]:
+                continue
+
             changes.setdefault(reference["uri"], []).append({
                 "range": reference["range"],
                 "new_text": new_name,

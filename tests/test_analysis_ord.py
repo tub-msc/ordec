@@ -488,8 +488,9 @@ def test_analysis_session_navigation_references_highlights_and_rename(tmp_path):
 
     assert session.definition(uri, position)["name"] == "Mux2"
     assert "Mux2" in session.hover(uri, position)["contents"]
-    assert len(session.references(uri, position)) == 4
-    assert len(session.document_highlights(uri, position)) == 3
+    # Three Stage tokens, the imported Mux2 token, and the definition.
+    assert len(session.references(uri, position)) == 5
+    assert len(session.document_highlights(uri, position)) == 4
     assert session.prepare_rename(uri, position)["placeholder"] == "Stage"
     assert uri in session.rename(uri, position, "Driver")
 
@@ -857,6 +858,44 @@ def test_rename_refuses_stale_sources_and_unaliased_dotted_imports(tmp_path):
     assert import_session.prepare_rename(import_uri, alias_position) is not None
     alias_changes = import_session.rename(import_uri, alias_position, "module")
     assert len(alias_changes[import_uri]) == 2
+
+
+def test_rename_preserves_alias_of_aliased_from_import(tmp_path):
+    lib_source = (
+        "cell Inv:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    lib_path = tmp_path / "lib.ord"
+    lib_path.write_text(lib_source)
+    top_source = (
+        "from lib import Inv as I\n"
+        "\n"
+        "cell Top:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        net n1\n"
+        "        I inst:\n"
+        "            .a -- n1\n"
+    )
+    top_path = tmp_path / "top.ord"
+    top_path.write_text(top_source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    lib_uri = session.open_path(str(lib_path))
+    top_uri = session.open_path(str(top_path))
+    export_position = position_at(top_source, "Inv")
+
+    # The exported-name token of an aliased from-import resolves to the
+    # cell definition, like the alias token does.
+    assert session.definition(top_uri, export_position)["uri"] == lib_uri
+
+    # Renaming the cell must rewrite the exported name but keep the alias,
+    # yielding "from lib import Nand as I".
+    changes = session.rename(lib_uri, position_at(lib_source, "Inv"), "Nand")
+    assert set(changes) == {lib_uri, top_uri}
+    assert [change["range"] for change in changes[top_uri]] == [
+        session.name_at_position(top_uri, export_position)["range"],
+    ]
 
 
 def test_node_kind_subtrees_and_comprehensions_track_bindings():

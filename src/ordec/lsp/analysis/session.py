@@ -805,6 +805,16 @@ class AnalysisSession(
                 "name": import_entry.local_name,
                 "range": import_entry.selection_range,
             })
+            # Aliased from-imports carry a second name token for the
+            # exported name, which references and rename must see too.
+            if (
+                import_entry.export_range is not None
+                and import_entry.export_range != import_entry.selection_range
+            ):
+                candidates.append({
+                    "name": import_entry.export_name,
+                    "range": import_entry.export_range,
+                })
 
         for occurrence in analysis.occurrences:
             candidates.append({
@@ -930,14 +940,19 @@ class AnalysisSession(
             return None
 
         for import_entry in self.analyze(uri).import_entries:
-            start = import_entry.selection_range.start
-            end = import_entry.selection_range.end
+            name_ranges = [import_entry.selection_range]
+            if import_entry.export_range is not None:
+                name_ranges.append(import_entry.export_range)
 
-            if start.line != position.line or end.line != position.line:
-                continue
+            for name_range in name_ranges:
+                start = name_range.start
+                end = name_range.end
 
-            if start.character <= position.character < end.character:
-                return import_entry
+                if start.line != position.line or end.line != position.line:
+                    continue
+
+                if start.character <= position.character < end.character:
+                    return import_entry
 
         return None
 
@@ -1749,6 +1764,13 @@ class AnalysisSession(
 
         import_entry = self.import_entry_at_position(uri, position)
         if import_entry is not None:
+            origin_range = import_entry.selection_range
+            if (
+                import_entry.export_range is not None
+                and range_contains(import_entry.export_range, position)
+            ):
+                origin_range = import_entry.export_range
+
             if import_entry.kind == "from":
                 match = self.resolve_from_import(
                     uri,
@@ -1756,18 +1778,12 @@ class AnalysisSession(
                     import_entry.export_name,
                 )
                 if match is not None:
-                    return self.definition_with_origin(
-                        match,
-                        import_entry.selection_range,
-                    )
+                    return self.definition_with_origin(match, origin_range)
 
             else:
                 match = self.module_definition(uri, import_entry.module)
                 if match is not None:
-                    return self.definition_with_origin(
-                        match,
-                        import_entry.selection_range,
-                    )
+                    return self.definition_with_origin(match, origin_range)
 
         name_info = self.name_at_position(uri, position)
         if name_info is None:

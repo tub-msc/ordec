@@ -1083,6 +1083,7 @@ class OrdAnalysisBuilder:
                             range=tree_range(import_node),
                             selection_range=tree_range(selection_node),
                             is_alias=len(value_nodes) == 2,
+                            export_range=tree_range(value_nodes[0]),
                         ))
 
             if names:
