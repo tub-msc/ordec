@@ -16,7 +16,7 @@ import pytest
 import ordec.importer
 
 from ordec.core import Layout
-from ordec.layout.digital_pnr import place_and_route
+from ordec.layout.pnr import place_and_route
 from ordec.lib import ihp130
 from ordec.lib.ihp130 import lef_pin_rects, sg13g2_grid
 from .lib import pnr_cells as fx

@@ -16,7 +16,7 @@ User Reference
    extlibrary
    layout
    layout_klayout
-   digital_pnr
+   pnr
 
 .. _data-schema:
 

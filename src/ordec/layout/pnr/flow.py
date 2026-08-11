@@ -15,6 +15,8 @@ data model.
 from collections import namedtuple
 from dataclasses import dataclass, field, replace
 
+from public import public
+
 from ordec.core import *
 from ordec.extlibrary import ExtLibraryCell
 
@@ -22,6 +24,7 @@ from . import place, route
 from .route import HORIZ, M1, M2, M3, M4, M5, PinAccessError, VERT
 
 
+@public
 @dataclass(frozen=True)
 class GridConfig:
     """Routing grid and emitted-geometry parameters.
@@ -173,6 +176,7 @@ def leaf_name(node):
     return node.full_path_str().split('.')[-1]
 
 
+@public
 def is_extlibrary_leaf(cell):
     """The default routing-leaf test: an external-library cell is placed as-is.
 
@@ -411,6 +415,7 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
 
 
 
+@public
 @dataclass(frozen=True)
 class PnrResult:
     """Everything one place-and-route run decided, beyond the geometry.
@@ -434,6 +439,7 @@ class PnrResult:
     taps: tuple
 
 
+@public
 def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
         is_leaf=is_extlibrary_leaf, port_edges=None):
     """Place + route a schematic of Metal1-only leaf cells into ``layout``.

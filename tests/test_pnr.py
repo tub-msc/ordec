@@ -20,12 +20,12 @@ import ordec.importer
 from ordec.core import (GdsLayer, Layer, LayerStack, Layout,
     LayoutPin, R, Rect4I, RoutingSpec, RoutingSpecLayer)
 from ordec.layout import compare
-from ordec.layout.digital_pnr import (GridConfig, PinAccessError,
+from ordec.layout.pnr import (GridConfig, PinAccessError,
     place_and_route)
-from ordec.layout.digital_pnr import place, route
-from ordec.layout.digital_pnr.flow import (LeafCell, NetInfo,
+from ordec.layout.pnr import place, route
+from ordec.layout.pnr.flow import (LeafCell, NetInfo,
     flatten_schematic, is_extlibrary_leaf, stack_from_spec)
-from ordec.layout.digital_pnr.route import M2, M3, VERT
+from ordec.layout.pnr.route import M2, M3, VERT
 from ordec.lib.ihp130 import SG13G2, lef_pin_rects, sg13g2_grid
 from .lib import pnr_cells as fx
 

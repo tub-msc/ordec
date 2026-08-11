@@ -1,6 +1,6 @@
 """
 4-bit ripple-carry adder built from IHP SG13G2 standard cells, with its layout
-produced by the automatic place-and-route engine (ordec.layout.digital_pnr).
+produced by the automatic place-and-route engine (ordec.layout.pnr).
 The testbench counts input A from 0 to 15 against a fixed B and decodes the
 simulated sum bits back into integers.
 """
@@ -10,7 +10,7 @@ from ordec.extlibrary import ExtLibrary
 from ordec.lib import ihp130
 from ordec.lib.base import Vpulse, Vdc, Gnd, NoConn
 from ordec.lib.ihp130 import lef_pin_rects, sg13g2_grid
-from ordec.layout.digital_pnr import place_and_route
+from ordec.layout.pnr import place_and_route
 
 stdcells = ExtLibrary()
 stdcells.read_lef(ihp130.pdk().stdcell_lef)

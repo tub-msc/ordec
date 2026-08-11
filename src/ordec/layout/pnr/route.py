@@ -15,6 +15,8 @@ from collections import namedtuple
 from dataclasses import dataclass
 import heapq
 
+from public import public
+
 
 # Internal layer codes. These are abstract routing-stack positions, not PDK
 # layers. The engine routes on two vertical layers (codes M2, M4) and two
@@ -27,6 +29,7 @@ VERT = (M2, M4)        # vertical routing layers (move in y)
 HORIZ = (M3, M5)       # horizontal routing layers (move in x)
 
 
+@public
 class PinAccessError(RuntimeError):
     """A terminal cannot be connected on the routing grid.
 

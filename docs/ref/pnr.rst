@@ -1,15 +1,15 @@
-:mod:`ordec.layout.digital_pnr` --- Gridded standard-cell place and route
+:mod:`ordec.layout.pnr` --- Gridded standard-cell place and route
 =========================================================================
 
-.. automodule:: ordec.layout.digital_pnr
+.. automodule:: ordec.layout.pnr
 
-The engine is PDK-agnostic. :func:`~ordec.layout.digital_pnr.place_and_route` reads a
+The engine is PDK-agnostic. :func:`~ordec.layout.pnr.place_and_route` reads a
 ``Schematic``, writes into a caller-owned mutable ``Layout``, and takes everything a PDK
 must supply as explicit parameters: the PDK's
 :class:`~ordec.core.schema.RoutingSpec` (the engine binds its abstract routing codes to
 the spec's nine lowest ``route_id`` layers, so the layer stack has its single source of
 truth in :mod:`ordec.core.schema`, shared with :doc:`SRouter <layout>`), a
-:class:`~ordec.layout.digital_pnr.GridConfig` (the routing grid and the DRC-driven
+:class:`~ordec.layout.pnr.GridConfig` (the routing grid and the DRC-driven
 emission geometry such as wire, via, landing and strap dimensions) and a per-cell LEF
 pin-rectangle lookup. An "is this a routing leaf?" predicate can be passed too, but
 defaults to treating every cell loaded from an
@@ -37,9 +37,9 @@ geometry that is DRC-clean by construction. The algorithms are textbook ones:
 simulated-annealing placement, flipped-row floorplanning, and negotiated-congestion maze
 routing with A\* (see `Scope`_).
 
-The name says *digital* because the engine wants a standard-cell library: abutting rails,
-Metal1-only pins, integer-track cell widths. An analog flow would be a sibling package
-rather than a mode of this one.
+The engine wants a standard-cell library: abutting rails, Metal1-only pins, integer-track
+cell widths. An analog placement flow would be a sibling package rather than a mode of
+this one.
 
 The package is one module per phase. ``place`` orders cells and folds them into rows,
 ``route`` does pin access, pattern and maze search and the rip-up loop, and ``flow`` holds
@@ -271,12 +271,14 @@ from a production flow is scale and scope:
 Public API
 ----------
 
-.. autofunction:: ordec.layout.digital_pnr.place_and_route
+.. autofunction:: ordec.layout.pnr.place_and_route
 
-.. autoclass:: ordec.layout.digital_pnr.GridConfig
+.. autofunction:: ordec.layout.pnr.is_extlibrary_leaf
+
+.. autoclass:: ordec.layout.pnr.GridConfig
    :members:
 
-.. autoclass:: ordec.layout.digital_pnr.PnrResult
+.. autoclass:: ordec.layout.pnr.PnrResult
    :members:
 
-.. autoexception:: ordec.layout.digital_pnr.PinAccessError
+.. autoexception:: ordec.layout.pnr.PinAccessError

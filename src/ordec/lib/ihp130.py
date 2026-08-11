@@ -16,7 +16,7 @@ from . import generic_mos
 from .pdk_common import PdkDict, check_dir, check_file, rundir
 from ..layout import makevias, write_gds
 from ..layout import klayout
-from ..layout.digital_pnr import GridConfig
+from ..layout.pnr import GridConfig
 
 @functools.cache
 def pdk() -> PdkDict:
