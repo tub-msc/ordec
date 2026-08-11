@@ -968,6 +968,18 @@ def test_lsp_subprocess_exit_does_not_abort():
     assert b"Content-Length:" in result.stdout
 
 
+def decode_messages(data):
+    """Decode framed server output into a list of messages."""
+    decoded = []
+    while data:
+        header, separator, rest = data.partition(b"\r\n\r\n")
+        assert separator
+        length = int(header.split(b":")[1])
+        decoded.append(json.loads(rest[:length]))
+        data = rest[length:]
+    return decoded
+
+
 def run_serve(messages):
     """Run serve() over prefilled messages and return the decoded output."""
     message_queue = queue.SimpleQueue()
@@ -977,16 +989,7 @@ def run_serve(messages):
 
     output_stream = io.BytesIO()
     serve(OrdLanguageServer(), message_queue, output_stream)
-
-    decoded = []
-    data = output_stream.getvalue()
-    while data:
-        header, separator, rest = data.partition(b"\r\n\r\n")
-        assert separator
-        length = int(header.split(b":")[1])
-        decoded.append(json.loads(rest[:length]))
-        data = rest[length:]
-    return decoded
+    return decode_messages(output_stream.getvalue())
 
 
 def test_lsp_serve_cancels_queued_requests():
@@ -1005,6 +1008,46 @@ def test_lsp_serve_cancels_queued_requests():
     assert responses[1]["error"]["code"] == -32800
     assert "result" not in responses[1]
     assert responses[2]["result"] is None
+
+
+def test_lsp_serve_drops_cancels_for_answered_requests():
+    def document_symbol_request():
+        return {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "textDocument/documentSymbol",
+            "params": {"textDocument": {"uri": "file:///tmp/missing.ord"}},
+        }
+
+    class BatchedMessageQueue:
+        """Deliver scripted batches so a cancel arrives after dispatch."""
+        def __init__(self, batches):
+            self.batches = batches
+            self.current = []
+
+        def get(self):
+            if not self.current:
+                self.current = self.batches.pop(0)
+            return self.current.pop(0)
+
+        def get_nowait(self):
+            if not self.current:
+                raise queue.Empty
+            return self.current.pop(0)
+
+    message_queue = BatchedMessageQueue([
+        [document_symbol_request()],
+        [{"jsonrpc": "2.0", "method": "$/cancelRequest", "params": {"id": 1}}],
+        [document_symbol_request(), None],
+    ])
+    output_stream = io.BytesIO()
+    serve(OrdLanguageServer(), message_queue, output_stream)
+
+    # The late cancel is dropped, so the request legally reusing id 1
+    # is answered normally instead of being rejected as canceled.
+    responses = decode_messages(output_stream.getvalue())
+    assert [message.get("id") for message in responses] == [1, 1]
+    assert all("error" not in message for message in responses)
 
 
 def test_lsp_serve_coalesces_did_change_bursts():

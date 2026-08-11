@@ -1152,12 +1152,21 @@ def serve(server, message_queue, output_stream):
                 break
 
         # Cancellations apply to queued requests independent of their
-        # position, so collect them from the whole backlog first.
+        # position, so collect them from the whole backlog first. The
+        # reader preserves stream order, so a cancel whose request is
+        # not queued targets an already answered request and is dropped,
+        # as the LSP requires. Keeping it would reject a later request
+        # that legally reuses the id, and would leak the id forever.
+        queued_ids = {
+            message.get("id")
+            for message in pending
+            if isinstance(message, dict) and message.get("id") is not None
+        }
         remaining = deque()
         for message in pending:
             if notification_method(message, "$/cancelRequest"):
                 params = message.get("params")
-                if isinstance(params, dict) and "id" in params:
+                if isinstance(params, dict) and params.get("id") in queued_ids:
                     canceled_ids.add(params["id"])
             else:
                 remaining.append(message)
