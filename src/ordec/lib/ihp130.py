@@ -930,7 +930,7 @@ device_map = {
 
 @public
 def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True,
-        antenna: bool=True, density: bool=False):
+        antenna: bool=True, density: bool=False) -> DrcReport:
     """Run the KLayout DRC sign-off decks over a layout.
 
     Args:
@@ -940,9 +940,6 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True,
         use_tempdir: run in a temporary directory instead of ./drc.
         antenna: also run the PDK's antenna deck.
         density: also run the PDK's density deck.
-
-    Returns:
-        The DrcReport holding the violations of every deck that ran.
     """
     if variant not in ('minimal', 'maximal'):
         raise ValueError("variant must be either 'minimal' or 'maximal'.")
