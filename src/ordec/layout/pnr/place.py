@@ -9,24 +9,17 @@ Works on grid coordinates and pin rectangles only. No Schematic and no Layout
 reach this module, so a placement can be built and checked from plain values.
 """
 
-from dataclasses import dataclass, field
+from collections import namedtuple
 import math
 import random
 
 from ordec.core import *
 
 
-@dataclass
-class PlacedInst:
-    """One leaf cell placed in a row: its absolute position, orientation, and
-    pin rectangles in die coordinates."""
-    name: str
-    cell: object          # the leaf Cell instance
-    width: int            # cell width (nm)
-    pos: tuple = (0, 0)   # LayoutInstance position
-    orient: object = None # LayoutInstance orientation (D4.R0 or D4.MX)
-    row: int = 0          # row index
-    pins: dict = field(default_factory=dict)  # pin name -> [abs rects]
+# One cell's slot in the row fold, the placement decision place_rows makes.
+# The flow applies it to the layout's LayoutInstance, which is the engine's
+# placement representation.
+RowSlot = namedtuple('RowSlot', 'pos orient row')
 
 
 def order_cells(cells, nets, supply_nets=(), iters=30):
@@ -277,6 +270,30 @@ def partition_width(widths, nrows):
 
 
 
+def transform_pins(local_pins, pos, orient):
+    """Transform a leaf's local pin rects into die coordinates.
+
+    The same placement transform a LayoutInstance applies to its ref: R0
+    shifts by ``pos``, MX shifts x and flips y about the position's y. The
+    flow derives the pin geometry from the placed LayoutInstances with this,
+    so the layout is the sole holder of the placement.
+
+    Args:
+        local_pins: ``{pin: [Rect4I]}`` in cell-local coordinates.
+        pos: the instance position ``(x, y)`` in nm.
+        orient: the instance orientation, D4.R0 or D4.MX.
+
+    Returns:
+        ``{pin: [Rect4I]}`` in die coordinates.
+    """
+    x, y = pos
+    if orient == D4.MX:
+        return {pin: [Rect4I(r.lx + x, y - r.uy, r.ux + x, y - r.ly)
+            for r in rects] for pin, rects in local_pins.items()}
+    return {pin: [Rect4I(r.lx + x, r.ly + y, r.ux + x, r.uy + y)
+        for r in rects] for pin, rects in local_pins.items()}
+
+
 def place_rows(cells, order, cfg):
     """Fold the 1-D cell order into ``cfg.n_rows`` abutted standard-cell rows.
 
@@ -290,7 +307,7 @@ def place_rows(cells, order, cfg):
         cfg: the routing/floorplan :class:`GridConfig`.
 
     Returns:
-        ``(placed, max_width)``, mapping each name to a :class:`PlacedInst` and
+        ``(slots, max_width)``, mapping each name to a :class:`RowSlot` and
         giving the widest packed row in nm.
     """
     row_height = cfg.row_height
@@ -299,7 +316,7 @@ def place_rows(cells, order, cfg):
     # contiguous partition), so the rows come out even.
     rows = fold_rows(cells, order, cfg)
 
-    placed = {}
+    slots = {}
     max_w = 0
     for row, row_cells in enumerate(rows):
         mirror = (row % 2 == 1)
@@ -309,14 +326,7 @@ def place_rows(cells, order, cfg):
         orient = D4.MX if mirror else D4.R0
         x = 0
         for name in row_cells:
-            leaf, local_pins, width = cells[name]
-            if mirror:   # MX: shift by x, flip y about row_y
-                abs_pins = {pin: [Rect4I(r.lx + x, row_y - r.uy, r.ux + x, row_y - r.ly)
-                    for r in rects] for pin, rects in local_pins.items()}
-            else:
-                abs_pins = {pin: [Rect4I(r.lx + x, r.ly + row_y, r.ux + x, r.uy + row_y)
-                    for r in rects] for pin, rects in local_pins.items()}
-            placed[name] = PlacedInst(name, leaf, width, (x, row_y), orient, row, abs_pins)
-            x += width
+            slots[name] = RowSlot((x, row_y), orient, row)
+            x += cells[name].width
         max_w = max(max_w, x)
-    return placed, max_w
+    return slots, max_w

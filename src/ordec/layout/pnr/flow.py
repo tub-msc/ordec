@@ -7,9 +7,10 @@ Schematic into the engine's records, place and route on the grid, write the
 result back out as Layout geometry.
 
 Every ORDB access in the package lives here. :func:`extract` is the only code
-that reads a Schematic and the ``emit_*`` functions are the only code that
-writes a Layout, which is what keeps :mod:`.place` and :mod:`.route` free of the
-data model.
+that reads a Schematic, and the Layout is written only here: the placed
+LayoutInstances, which are the engine's placement representation, and the
+``emit_*`` geometry. :mod:`.place` and :mod:`.route` stay free of the data
+model.
 """
 
 from collections import namedtuple
@@ -426,14 +427,15 @@ class PnrResult:
     Args:
         cfg: the :class:`GridConfig` variant the floorplan settled on, with the
             ``n_rows`` that finally routed.
-        placed: ``{name: PlacedInst}``, every leaf cell's row, position,
-            orientation and absolute pin rectangles.
+        pins: ``{inst: {pin: [Rect4I]}}``, the die-coordinate pin rectangles
+            derived from the placed instances. The placement itself lives on
+            the layout's LayoutInstances.
         routing: the :class:`~.route.RoutingResult` for the signal nets.
         die_w: the die width in nm, which the rails are padded flush to.
         taps: the power-mesh tap columns, empty when no mesh was emitted.
     """
     cfg: GridConfig
-    placed: dict
+    pins: dict
     routing: object
     die_w: int
     taps: tuple
@@ -447,8 +449,11 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
     The caller owns both sides of the boundary: ``schematic`` is read,
     ``layout`` is written and never frozen here. Every PDK-specific input is an
     explicit keyword parameter, so no layer, pitch or DRC dimension is baked
-    into this module. In an ORD ``viewgen layout`` body, the bare dot passes
-    the view's own root as the layout::
+    into this module. The layout's LayoutInstances are the engine's placement
+    representation: created once up front, their positions updated on every
+    floorplan attempt, with the pin geometry the router works on derived from them.
+
+    layout::
 
         viewgen layout -> Layout:
             place_and_route(self.schematic, ., grid=sg13g2_grid(),
@@ -541,6 +546,15 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
     port_nets = {net_name for net_name, net in signal_nets.items()
         if net.port_pin is not None}
 
+    # The layout's LayoutInstances are the engine's placement representation:
+    # one node per leaf, created here, its position and orientation updated on
+    # every floorplan attempt below.
+    insts = {}
+    for name, leaf in cells.items():
+        setattr(layout, name, LayoutInstance(ref=leaf.cell.layout,
+            pos=Vec2I(0, 0), orientation=D4.R0))
+        insts[name] = layout[name]
+
     # Floorplan: pick the row count from the target aspect over the core area
     # (cell_area / utilization), then add rows until the channel routes. The die
     # width is max(floorplan target, balanced partition width), so the cells always
@@ -558,7 +572,15 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
     for i, nrows in enumerate(range(base, base + 5)):
         cfg = replace(cfg, n_rows=nrows)
         order = place.order_cells_sa(cells, nets, cfg)
-        placed, packed_w = place.place_rows(cells, order, cfg)
+        slots, packed_w = place.place_rows(cells, order, cfg)
+        for name, slot in slots.items():
+            insts[name].update(pos=Vec2I(*slot.pos), orientation=slot.orient)
+        rows = {name: slot.row for name, slot in slots.items()}
+        # Derived from the placed instances, not from the placer's output, so
+        # the layout stays the sole holder of the placement.
+        pins = {name: place.transform_pins(cells[name].pins,
+            (node.pos.x, node.pos.y), node.orientation)
+            for name, node in insts.items()}
         # Die width: the floorplan target, the widest packed row, or (like a
         # pad-limited chip) the top-edge port pads, one escape column each.
         die_w = -(-max(round(core_area / (nrows * row_height)), packed_w,
@@ -572,13 +594,13 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
         mesh = cfg.power_mesh and nrows >= 2
         if mesh:
             taps = route.mesh_tap_columns(cfg, xmax,
-                route.tap_avoid_columns(signal_nets, placed, cfg))
+                route.tap_avoid_columns(signal_nets, pins, cfg))
             blocked = route.mesh_blocked_nodes(cfg, xmax, taps)
         else:
             taps, blocked = (), frozenset()
         try:
             routing = route.route_nets(
-                signal_nets, placed, cfg, xmax, port_nets, blocked, taps,
+                signal_nets, pins, cfg, xmax, port_nets, blocked, taps,
                 port_edges)
             break
         except PinAccessError:
@@ -590,10 +612,6 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
         route.extend_min_area(routing.nets, cfg, xmax,
             blocked | routing.reserved)
 
-    for name, inst in placed.items():
-        setattr(layout, name, LayoutInstance(ref=inst.cell.layout,
-            pos=Vec2I(*inst.pos), orientation=inst.orient))
-
     # Emit routing directly with concrete coordinates (no constraint solver, so
     # it scales to hundreds of nets).
     for net_name, (edges, term_m2) in routing.nets.items():
@@ -602,14 +620,14 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
 
     # Pad every row's rail out to the die width so the block is a flush rectangle
     # (like filler cells) and the right power strap ties into every rail.
-    pad_rails(layout, stack, placed, die_w, cfg.supply_pin_names)
+    pad_rails(layout, stack, pins, rows, die_w, cfg.supply_pin_names)
     if cfg.n_rows >= 2:
-        emit_power_straps(layout, stack, placed, cfg, die_w)
+        emit_power_straps(layout, stack, pins, cfg, die_w)
     if mesh:
-        emit_power_mesh(layout, stack, placed, cfg, die_w, taps)
+        emit_power_mesh(layout, stack, pins, cfg, die_w, taps)
 
-    emit_ports(layout, stack, nets, placed, routing, cfg)
-    return PnrResult(cfg=cfg, placed=placed, routing=routing, die_w=die_w,
+    emit_ports(layout, stack, nets, pins, routing, cfg)
+    return PnrResult(cfg=cfg, pins=pins, routing=routing, die_w=die_w,
         taps=taps)
 
 
@@ -662,14 +680,14 @@ def check_layout_layers(layout, stack, cell):
             "the place-and-route target emits on")
 
 
-def emit_ports(layout, stack, nets, placed, routing, cfg):
+def emit_ports(layout, stack, nets, pins, routing, cfg):
     """Expose every top-level port of the block as a pin on emitted geometry.
 
     Args:
         layout: the mutable :class:`Layout` to emit into.
         stack: the :class:`StackLayers` for this PDK.
         nets: ``{name: NetInfo}`` for the whole block (ports carry a pin).
-        placed: ``{name: PlacedInst}``, for the supply rails.
+        pins: ``{inst: {pin: [Rect4I]}}``, for the supply rails.
         routing: the :class:`~.route.RoutingResult`, for the signal escapes.
         cfg: the routing grid + emitted geometry (:class:`GridConfig`).
     """
@@ -710,8 +728,8 @@ def emit_ports(layout, stack, nets, placed, routing, cfg):
             # pad off-grid and on the wrong net).
             iname, pname = next((i, p) for i, p in net.terminals
                 if p in cfg.supply_pin_names)
-            rail = largest_rect(placed[iname].pins[pname])
-            if len(supply_rails(placed, pname)) >= 2:
+            rail = largest_rect(pins[iname][pname])
+            if len(supply_rails(pins, pname)) >= 2:
                 # Supply with its own side strap (see emit_power_straps): expose it
                 # on the strap, lifted to Metal4, so a parent lands in the margin and
                 # never stacks onto an interior rail (which carries a block net).
@@ -752,7 +770,7 @@ def largest_rect(rects):
 
 
 
-def supply_rails(placed, pname):
+def supply_rails(pins, pname):
     """Distinct rail spans for one supply, sorted bottom-to-top.
 
     Rails are deduplicated where the boustrophedon shares one between adjacent
@@ -760,22 +778,22 @@ def supply_rails(placed, pname):
     single shared rail already ties the whole supply.
 
     Args:
-        placed: ``{name: PlacedInst}`` from :func:`place_rows`.
+        pins: ``{inst: {pin: [Rect4I]}}`` die-coordinate pin rectangles.
         pname: the supply pin name, e.g. ``'VDD'``.
 
     Returns:
         The sorted distinct ``(y0, y1)`` rail spans, in nm.
     """
     rails = set()
-    for inst in placed.values():
-        if pname in inst.pins:
-            rail = largest_rect(inst.pins[pname])
+    for pin_rects in pins.values():
+        if pname in pin_rects:
+            rail = largest_rect(pin_rects[pname])
             rails.add((rail.ly, rail.uy))
     return sorted(rails)
 
 
 
-def pad_rails(layout, stack, placed, die_w, supply_pins):
+def pad_rails(layout, stack, pins, rows, die_w, supply_pins):
     """Extend every row's supply rail rightward to a common die-width edge.
 
     Like filler cells, this makes the block a flush rectangle and lets the
@@ -785,17 +803,18 @@ def pad_rails(layout, stack, placed, die_w, supply_pins):
     Args:
         layout: the mutable :class:`Layout` to emit into.
         stack: the :class:`StackLayers` for this PDK's layers.
-        placed: ``{name: PlacedInst}`` from :func:`place_rows`.
+        pins: ``{inst: {pin: [Rect4I]}}`` die-coordinate pin rectangles.
+        rows: ``{inst: row index}`` from the fold.
         die_w: the die width to pad each rail out to, in nm.
         supply_pins: the supply pin names (``cfg.supply_pin_names``).
     """
     rails = {}   # (row, supply) -> [x1, y0, y1]
-    for inst in placed.values():
+    for name, pin_rects in pins.items():
         for supply in supply_pins:
-            if supply not in inst.pins:
+            if supply not in pin_rects:
                 continue
-            rect = largest_rect(inst.pins[supply])
-            key = (inst.row, supply)
+            rect = largest_rect(pin_rects[supply])
+            key = (rows[name], supply)
             existing = rails.get(key)
             if existing is None:
                 rails[key] = [rect.ux, rect.ly, rect.uy]
@@ -807,7 +826,7 @@ def pad_rails(layout, stack, placed, die_w, supply_pins):
 
 
 
-def emit_power_straps(layout, stack, placed, cfg, die_w):
+def emit_power_straps(layout, stack, pins, cfg, die_w):
     """Form a power ring per supply from a vertical Metal2 strap on each side.
 
     Each strap sits in the empty margin beside the cell area and taps every rail
@@ -819,7 +838,7 @@ def emit_power_straps(layout, stack, placed, cfg, die_w):
     Args:
         layout: the mutable :class:`Layout` to emit into.
         stack: the :class:`StackLayers` for this PDK's layers.
-        placed: ``{name: PlacedInst}`` from :func:`place_rows`.
+        pins: ``{inst: {pin: [Rect4I]}}`` die-coordinate pin rectangles.
         cfg: the routing grid + geometry (:class:`GridConfig`).
         die_w: the die width in nm. The right strap mirrors to it.
     """
@@ -827,7 +846,7 @@ def emit_power_straps(layout, stack, placed, cfg, die_w):
     for pname, strap_left_x, strap_right_x in (
             (cfg.vdd_pin, cfg.strap_vdd_x, die_w - cfg.strap_vdd_x),
             (cfg.vss_pin, cfg.strap_vss_x, die_w - cfg.strap_vss_x)):
-        rails = supply_rails(placed, pname)
+        rails = supply_rails(pins, pname)
         if len(rails) < 2:
             continue
         strap_y0, strap_y1 = rails[0][0], rails[-1][1]
@@ -848,7 +867,7 @@ def emit_power_straps(layout, stack, placed, cfg, die_w):
 
 
 
-def emit_power_mesh(layout, stack, placed, cfg, die_w, taps):
+def emit_power_mesh(layout, stack, pins, cfg, die_w, taps):
     """Emit a Metal5 strap over every interior rail, stitched down at the taps.
 
     With the side straps (:func:`emit_power_straps`) this forms a supply mesh.
@@ -866,7 +885,7 @@ def emit_power_mesh(layout, stack, placed, cfg, die_w, taps):
     Args:
         layout: the mutable :class:`Layout` to emit into.
         stack: the :class:`StackLayers` for this PDK's layers.
-        placed: ``{name: PlacedInst}`` from :func:`place_rows`.
+        pins: ``{inst: {pin: [Rect4I]}}`` die-coordinate pin rectangles.
         cfg: the routing grid + geometry (:class:`GridConfig`).
         die_w: the die width in nm.
         taps: the tap column indices (:func:`mesh_tap_columns`).
@@ -893,7 +912,7 @@ def emit_power_mesh(layout, stack, placed, cfg, die_w, taps):
         layout % LayoutRect(layer=stack.via4, rect=cut)
 
     for pname in cfg.supply_pin_names:
-        for rail_y0, rail_y1 in supply_rails(placed, pname):
+        for rail_y0, rail_y1 in supply_rails(pins, pname):
             rail_y_center = (rail_y0 + rail_y1) // 2
             if not 0 < rail_y_center < core_top:   # interior rails only
                 continue

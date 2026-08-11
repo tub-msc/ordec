@@ -46,13 +46,6 @@ Xor  = stdcells["sg13g2_xor2_1"]
 And  = stdcells["sg13g2_and2_1"]
 Or   = stdcells["sg13g2_or2_1"]
 
-
-def pnr(schematic, layout):
-    """This library's currying of the engine, as any design is free to write."""
-    place_and_route(schematic, layout, grid=sg13g2_grid(),
-        routing_spec=SG13G2().default_routing_spec,
-        pin_rects=lef_pin_rects)
-
 cell InvChain:
     """n inverters in series: a -> inv0 -> inv1 -> ... -> y."""
     n = Parameter(int, default=8)
@@ -81,7 +74,9 @@ cell InvChain:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        pnr(self.schematic, .)
+        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+            routing_spec=SG13G2().default_routing_spec,
+            pin_rects=lef_pin_rects)
 
 cell DffArray:
     """n flip-flops sharing clk and rst (high fan-out), with per-bit d[i]/q[i]."""
@@ -117,7 +112,9 @@ cell DffArray:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        pnr(self.schematic, .)
+        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+            routing_spec=SG13G2().default_routing_spec,
+            pin_rects=lef_pin_rects)
 
 cell Crossbar:
     """n mux2 cells: y[i] = sel[i] ? busB : busA, with busA/busB shared by all."""
@@ -149,7 +146,9 @@ cell Crossbar:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        pnr(self.schematic, .)
+        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+            routing_spec=SG13G2().default_routing_spec,
+            pin_rects=lef_pin_rects)
 
 cell RippleAdder:
     """n-bit ripple-carry adder with sum[i] = a[i]^b[i]^carry[i] and
@@ -213,7 +212,9 @@ cell RippleAdder:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        pnr(self.schematic, .)
+        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+            routing_spec=SG13G2().default_routing_spec,
+            pin_rects=lef_pin_rects)
 
 cell TiedReset:
     """n flip-flops sharing clk, RESET_B held high on each (no reset port)."""
@@ -246,7 +247,9 @@ cell TiedReset:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        pnr(self.schematic, .)
+        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+            routing_spec=SG13G2().default_routing_spec,
+            pin_rects=lef_pin_rects)
 
 cell InvPair:
     """Two inverters in series (a composite, non-foundry sub-cell)."""
@@ -296,7 +299,9 @@ cell PairChain:
                 .vdd -- vdd; .vss -- vss
 
     viewgen layout -> Layout:
-        pnr(self.schematic, .)
+        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+            routing_spec=SG13G2().default_routing_spec,
+            pin_rects=lef_pin_rects)
 
 
 cell SplitSupply:
@@ -327,7 +332,9 @@ cell SplitSupply:
             .A -- mid; .Y -- y; .VDD -- vdd2; .VSS -- vss
 
     viewgen layout -> Layout:
-        pnr(self.schematic, .)
+        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+            routing_spec=SG13G2().default_routing_spec,
+            pin_rects=lef_pin_rects)
 
 
 cell MisnamedSupply:
@@ -352,7 +359,9 @@ cell MisnamedSupply:
             .A -- a; .Y -- y; .VDD -- vcc; .VSS -- vss
 
     viewgen layout -> Layout:
-        pnr(self.schematic, .)
+        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+            routing_spec=SG13G2().default_routing_spec,
+            pin_rects=lef_pin_rects)
 
 
 cell HandGeometry:
@@ -382,7 +391,9 @@ cell HandGeometry:
         LayoutRect stray:
             .layer = SG13G2().layers.Metal2
             .rect = (0, 0, 3000, 3000)
-        pnr(self.schematic, .)
+        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+            routing_spec=SG13G2().default_routing_spec,
+            pin_rects=lef_pin_rects)
 
 
 cell DeviceLeaf:
@@ -407,4 +418,6 @@ cell DeviceLeaf:
             .$w = 1u; .$l = 130n
 
     viewgen layout -> Layout:
-        pnr(self.schematic, .)
+        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+            routing_spec=SG13G2().default_routing_spec,
+            pin_rects=lef_pin_rects)

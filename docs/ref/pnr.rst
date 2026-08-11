@@ -90,13 +90,17 @@ Placement
 #. **Fold into rows** (``place_rows``) folds the one-dimensional order into *N* abutted
    rows. Odd rows are *mirrored* (D4.MX) *and reversed*, a boustrophedon or snake.
    Mirroring lets adjacent rows share a vdd/vss rail, which is the standard flipped-row
-   layout, and reversing keeps the dataflow adjacent across the turn. Pin rectangles are
-   transformed to match.
+   layout, and reversing keeps the dataflow adjacent across the turn. The result is
+   applied to the layout's ``LayoutInstance`` nodes, which are the engine's placement
+   representation, and the die-coordinate pin rectangles the router works on are derived
+   from them (``transform_pins``).
 #. **Grow rows on failure.** The row count starts near a square aspect ratio and is
    incremented until the router succeeds, since the Metal3 spacing rule limits how many
    nets fit in one channel. Only congestion triggers a retry. A *permanent* failure, a pin
    with no reachable access point (``PinAccessError``), is raised immediately, since more
-   rows cannot fix it.
+   rows cannot fix it. The instances are created once and their positions updated per
+   attempt, so even a run that never converges leaves its last placement in the layout
+   to inspect.
 
 Routing: negotiated congestion
 ------------------------------

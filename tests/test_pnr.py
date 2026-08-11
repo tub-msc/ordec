@@ -17,7 +17,7 @@ from dataclasses import replace
 import pytest
 import ordec.importer
 
-from ordec.core import (GdsLayer, Layer, LayerStack, Layout,
+from ordec.core import (GdsLayer, Layer, LayerStack, Layout, LayoutInstance,
     LayoutPin, R, Rect4I, RoutingSpec, RoutingSpecLayer)
 from ordec.layout import compare
 from ordec.layout.pnr import (GridConfig, PinAccessError,
@@ -78,19 +78,21 @@ def chain(count, **kwargs):
 
 
 def place_chain(count, n_rows=2, **kwargs):
-    """``(cfg, placed, nets, packed_width)`` for a placed chain."""
+    """``(cfg, slots, pins, nets, packed_width)`` for a placed chain."""
     cfg = replace(GRID, n_rows=n_rows)
     cells, nets = chain(count, **kwargs)
     order = place.order_cells_sa(cells, nets, cfg)
-    placed, packed_w = place.place_rows(cells, order, cfg)
-    return cfg, placed, nets, packed_w
+    slots, packed_w = place.place_rows(cells, order, cfg)
+    pins = {name: place.transform_pins(cells[name].pins, slot.pos, slot.orient)
+        for name, slot in slots.items()}
+    return cfg, slots, pins, nets, packed_w
 
 
 def route_chain(count, n_rows=2, **kwargs):
-    """``(cfg, placed, nets, RoutingResult)`` for a placed and routed chain."""
-    cfg, placed, nets, packed_w = place_chain(count, n_rows, **kwargs)
-    result = route.route_nets(nets, placed, cfg, xmax=packed_w // cfg.x_pitch)
-    return cfg, placed, nets, result
+    """``(cfg, pins, nets, RoutingResult)`` for a placed and routed chain."""
+    cfg, _slots, pins, nets, packed_w = place_chain(count, n_rows, **kwargs)
+    result = route.route_nets(nets, pins, cfg, xmax=packed_w // cfg.x_pitch)
+    return cfg, pins, nets, result
 
 
 # --- placement -------------------------------------------------------------
@@ -105,35 +107,35 @@ def test_partition_width():
 
 
 def test_place_rows_boustrophedon():
-    cfg, placed, _nets, packed_w = place_chain(4)
+    cfg, slots, _pins, _nets, packed_w = place_chain(4)
 
     rows = {}
-    for inst in placed.values():
-        rows.setdefault(inst.row, []).append(inst)
+    for slot in slots.values():
+        rows.setdefault(slot.row, []).append(slot)
     assert set(rows) == {0, 1}
     # Odd rows are mirrored, which is what lets adjacent rows share a rail.
-    assert {str(i.orient) for i in rows[0]} == {'D4.R0'}
-    assert {str(i.orient) for i in rows[1]} == {'D4.MX'}
+    assert {str(s.orient) for s in rows[0]} == {'D4.R0'}
+    assert {str(s.orient) for s in rows[1]} == {'D4.MX'}
     # A mirrored row is placed from its top edge, so both rows span rows 0..2.
-    assert {i.pos[1] for i in rows[0]} == {0}
-    assert {i.pos[1] for i in rows[1]} == {2 * cfg.row_height}
+    assert {s.pos[1] for s in rows[0]} == {0}
+    assert {s.pos[1] for s in rows[1]} == {2 * cfg.row_height}
     assert packed_w == 2 * CELL_W
 
 
-def test_place_rows_transforms_pin_rects():
+def test_transform_pins_follows_the_fold():
     """A mirrored row's pin rects follow the cell into die coordinates."""
-    cfg, placed, _nets, _packed_w = place_chain(4)
-    for inst in placed.values():
-        for rects in inst.pins.values():
+    cfg, slots, pins, _nets, _packed_w = place_chain(4)
+    for name, slot in slots.items():
+        for rects in pins[name].values():
             for r in rects:
                 assert 0 <= r.ly and r.uy <= 2 * cfg.row_height
-                assert inst.pos[0] <= r.lx and r.ux <= inst.pos[0] + CELL_W
+                assert slot.pos[0] <= r.lx and r.ux <= slot.pos[0] + CELL_W
 
 
 # --- routing ---------------------------------------------------------------
 
 def test_route_nets_connects_every_net():
-    _cfg, _placed, nets, result = route_chain(4)
+    _cfg, _pins, nets, result = route_chain(4)
     assert set(result.nets) == set(nets)
     for name, net in nets.items():
         edges, term_m2 = result.nets[name]
@@ -147,7 +149,7 @@ def test_route_nets_connects_every_net():
 
 
 def test_route_nets_stays_on_legal_tracks():
-    cfg, _placed, _nets, result = route_chain(4)
+    cfg, _pins, _nets, result = route_chain(4)
     for edges, _term_m2 in result.nets.values():
         for a, b in edges:
             assert 0 <= a[1] <= cfg.y_track_max
@@ -188,13 +190,13 @@ def test_mst_edges_spans_all_terminals():
 
 
 def test_route_nets_avoids_mesh_blockages():
-    cfg, placed, nets, packed_w = place_chain(6)
+    cfg, _slots, pins, nets, packed_w = place_chain(6)
     xmax = packed_w // cfg.x_pitch
     taps = route.mesh_tap_columns(cfg, xmax,
-        route.tap_avoid_columns(nets, placed, cfg))
+        route.tap_avoid_columns(nets, pins, cfg))
     blocked = route.mesh_blocked_nodes(cfg, xmax, taps)
     assert blocked, "the two-row chain should carry a mesh"
-    result = route.route_nets(nets, placed, cfg, xmax, blocked=blocked,
+    result = route.route_nets(nets, pins, cfg, xmax, blocked=blocked,
         taps=taps)
     routed = {n for edges, _term_m2 in result.nets.values()
         for edge in edges for n in edge}
@@ -224,8 +226,8 @@ def test_every_terminal_lands_on_its_pin(cell):
     """Each access node reaches the pin rect it serves, on or off track."""
     _layout, result = pnr(cell)
     cfg = result.cfg
-    pin_rects = [r for inst in result.placed.values()
-        for rects in inst.pins.values() for r in rects]
+    pin_rects = [r for cell_pins in result.pins.values()
+        for rects in cell_pins.values() for r in rects]
     for name, (_edges, term_m2) in result.routing.nets.items():
         for node in term_m2:
             via = result.routing.term_via.get(name, {}).get(node)
@@ -273,7 +275,7 @@ def test_flatten_expands_composites():
 
 def test_hierarchical_cell_routes():
     _layout, result = pnr(fx.PairChain(n=3))
-    assert len(result.placed) == 6
+    assert len(result.pins) == 6
     assert all(edges for edges, _term_m2 in result.routing.nets.values())
 
 
@@ -300,8 +302,8 @@ def test_shared_buses_route_under_congestion():
         points = [result.routing.term_via.get(bus, {}).get(node)
             or (node[0] * cfg.x_pitch, node[1] * cfg.y_pitch)
             for node in term_m2]
-        reached = {name for name, inst in result.placed.items()
-            for r in inst.pins[pin]
+        reached = {name for name, cell_pins in result.pins.items()
+            for r in cell_pins[pin]
             if any(r.lx <= x <= r.ux and r.ly <= y <= r.uy
                 for x, y in points)}
         assert len(reached) == 4, f"{bus} reaches {reached}"
@@ -440,8 +442,10 @@ def test_foreign_layer_set_rejected():
 
 
 def test_result_reports_the_decisions():
-    _layout, result = pnr(fx.InvChain(n=4))
-    assert len(result.placed) == 4
+    layout, result = pnr(fx.InvChain(n=4))
+    assert len(result.pins) == 4
+    # The placement itself lives on the layout's LayoutInstances, one per leaf.
+    assert len(list(layout.all(LayoutInstance))) == 4
     assert set(result.routing.nets)
     assert result.die_w % result.cfg.x_pitch == 0
     assert result.taps == ()    # a single row needs no mesh

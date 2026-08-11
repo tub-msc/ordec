@@ -725,7 +725,7 @@ class Congestion:
         return nodes, {net for net in owners if net in self.routes}
 
 
-def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset(),
+def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
         taps=(), port_edges=None):
     """Route the signal nets with negotiated-congestion maze routing.
 
@@ -740,7 +740,7 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset()
 
     Args:
         routed_nets: the signal nets to route, ``{name: NetInfo}``.
-        placed: ``{name: PlacedInst}`` from :func:`place_rows`, for the pin rects.
+        pins: ``{inst: {pin: [Rect4I]}}`` die-coordinate pin rectangles.
         cfg: the routing grid + DRC geometry (:class:`GridConfig`).
         xmax: the maximum x track index, the right die edge.
         port_nets: the nets needing a Metal4 escape to an edge.
@@ -821,7 +821,7 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset()
         for ti, (iname, pname) in enumerate(net.terminals):
             term = []
             for (xi, yi, via_x, via_y, land) in access_nodes(
-                    placed[iname].pins[pname], cfg,
+                    pins[iname][pname], cfg,
                     pname in cfg.supply_pin_names):
                 node = (xi, yi, M2)
                 if node in blocked:   # reserved for the power mesh
@@ -1203,7 +1203,7 @@ def route_nets(routed_nets, placed, cfg, xmax, port_nets=(), blocked=frozenset()
 
 
 
-def tap_avoid_columns(routed_nets, placed, cfg):
+def tap_avoid_columns(routed_nets, pins, cfg):
     """Find the track columns where a power-mesh tap could strand a pin access.
 
     A terminal negotiates congestion by retreating to another of its access
@@ -1223,7 +1223,7 @@ def tap_avoid_columns(routed_nets, placed, cfg):
 
     Args:
         routed_nets: the signal nets that will be routed, ``{name: NetInfo}``.
-        placed: ``{name: PlacedInst}`` from :func:`place_rows`, for the pin rects.
+        pins: ``{inst: {pin: [Rect4I]}}`` die-coordinate pin rectangles.
         cfg: the routing grid + geometry (:class:`GridConfig`).
 
     Returns:
@@ -1258,7 +1258,7 @@ def tap_avoid_columns(routed_nets, placed, cfg):
         for iname, pname in net.terminals:
             fatal = None   # columns that invalidate EVERY candidate so far
             for (xi, yi, via_x, via_y, _land) in access_nodes(
-                    placed[iname].pins[pname], cfg,
+                    pins[iname][pname], cfg,
                     pname in cfg.supply_pin_names):
                 cols = killer_columns(xi, yi, via_x, via_y)
                 fatal = cols if fatal is None else fatal & cols
