@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-The sg13g2 place-and-route binding (ordec.lib.ihp130_pnr) and its sign-off.
+The sg13g2 place-and-route binding (in ordec.lib.ihp130) and its sign-off.
 
 The pin-rectangle and structural-rejection tests read the PDK but run no
 KLayout. The DRC and LVS pair at the end is the engine's oracle and is the only
@@ -18,7 +18,7 @@ import ordec.importer
 from ordec.core import Layout
 from ordec.layout.digital_pnr import place_and_route
 from ordec.lib import ihp130
-from ordec.lib.ihp130_pnr import is_sg13g2_leaf, lef_pin_rects, sg13g2_grid
+from ordec.lib.ihp130 import lef_pin_rects, sg13g2_grid
 from .lib import pnr_cells as fx
 
 
@@ -27,7 +27,7 @@ def pnr(cell):
     return place_and_route(cell.schematic,
         Layout(cell=cell, symbol=cell.symbol), grid=sg13g2_grid(),
         routing_spec=ihp130.SG13G2().default_routing_spec,
-        pin_rects=lef_pin_rects, is_leaf=is_sg13g2_leaf)
+        pin_rects=lef_pin_rects)
 
 
 def test_lef_pin_rects_inverter():

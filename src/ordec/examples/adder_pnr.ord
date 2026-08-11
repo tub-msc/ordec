@@ -6,15 +6,20 @@ simulated sum bits back into integers.
 """
 
 from ordec.core import *
+from ordec.extlibrary import ExtLibrary
 from ordec.lib import ihp130
 from ordec.lib.base import Vpulse, Vdc, Gnd, NoConn
-from ordec.lib.ihp130_pnr import is_sg13g2_leaf, lef_pin_rects, sg13g2_grid
-from ordec.lib.ihp130_stdcells import extlib
+from ordec.lib.ihp130 import lef_pin_rects, sg13g2_grid
 from ordec.layout.digital_pnr import place_and_route
 
-Xor = extlib["sg13g2_xor2_1"]
-And = extlib["sg13g2_and2_1"]
-Or = extlib["sg13g2_or2_1"]
+stdcells = ExtLibrary()
+stdcells.read_lef(ihp130.pdk().stdcell_lef)
+stdcells.read_gds(ihp130.pdk().stdcell_gds, ihp130.SG13G2().layers)
+stdcells.read_spice(ihp130.pdk().stdcell_spice, device_map=ihp130.device_map)
+
+Xor = stdcells["sg13g2_xor2_1"]
+And = stdcells["sg13g2_and2_1"]
+Or = stdcells["sg13g2_or2_1"]
 
 N = 4   # adder width in bits
 
@@ -82,7 +87,7 @@ cell RippleAdder:
     viewgen layout -> Layout:
         place_and_route(self.schematic, ., grid=sg13g2_grid(),
             routing_spec=ihp130.SG13G2().default_routing_spec,
-            pin_rects=lef_pin_rects, is_leaf=is_sg13g2_leaf)
+            pin_rects=lef_pin_rects)
 
     @generate(auto_refresh=False)
     viewgen drc -> DrcReport:

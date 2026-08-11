@@ -10,10 +10,12 @@ must supply as explicit parameters: the PDK's
 the spec's nine lowest ``route_id`` layers, so the layer stack has its single source of
 truth in :mod:`ordec.core.schema`, shared with :doc:`SRouter <layout>`), a
 :class:`~ordec.layout.digital_pnr.GridConfig` (the routing grid and the DRC-driven
-emission geometry such as wire, via, landing and strap dimensions), a per-cell LEF
-pin-rectangle lookup and an "is this a routing leaf?" predicate. No PDK layer, pitch or
-design-rule dimension is baked into the engine. It sits alongside :doc:`SRouter <layout>`
-and the :doc:`KLayout integration <layout_klayout>`. :mod:`ordec.lib.ihp130_pnr` supplies
+emission geometry such as wire, via, landing and strap dimensions) and a per-cell LEF
+pin-rectangle lookup. An "is this a routing leaf?" predicate can be passed too, but
+defaults to treating every cell loaded from an
+:class:`~ordec.extlibrary.ExtLibrary` as a leaf, which is what a foundry standard cell
+is. No PDK layer, pitch or design-rule dimension is baked into the engine. It sits alongside :doc:`SRouter <layout>`
+and the :doc:`KLayout integration <layout_klayout>`. :mod:`ordec.lib.ihp130` supplies
 the sg13g2 grid profile and pin data, and ``SG13G2().default_routing_spec`` supplies the
 layers. In an ORD ``viewgen layout`` body the bare dot passes the view's own root as the
 layout to emit into:
@@ -26,7 +28,7 @@ layout to emit into:
        viewgen layout -> Layout:
            place_and_route(self.schematic, ., grid=sg13g2_grid(),
                routing_spec=SG13G2().default_routing_spec,
-               pin_rects=lef_pin_rects, is_leaf=is_sg13g2_leaf)
+               pin_rects=lef_pin_rects)
 
 ``place_and_route`` runs the same pipeline a production flow does, applied to a single
 block. It flattens the schematic to foundry leaf cells, orders and folds them into
@@ -61,7 +63,7 @@ The routing grid
 ----------------
 
 Tracks come from the ``GridConfig`` profile, not from the engine. For the sg13g2 binding
-(``ihp130_pnr.sg13g2_grid``) they are the IHP tech-LEF values. Metal2 is vertical on a
+(``ihp130.sg13g2_grid``) they are the IHP tech-LEF values. Metal2 is vertical on a
 0.48 µm pitch, Metal3 is horizontal on 0.42 µm, and the row is 3.78 µm, which is 9 Metal3
 tracks tall. Cells are an integer number of Metal2 tracks wide. Because the foundry leaf
 cells are Metal1-only for signals, Metal2 and Metal3 over them are free, so routing
@@ -73,10 +75,11 @@ Placement
 ---------
 
 #. **Flatten** (``flatten_schematic``) expands the schematic recursively to its foundry
-   leaf cells. Foundry standard cells (``sg13g2_*``, so inverter, mux2, dff and the rest)
-   are leaves and are kept as-is. Any instance that is itself a non-foundry composite is
-   replaced by the contents of its schematic, with internal nets uniquified by an instance
-   prefix and the sub-cell's ports rewired to the parent's nets.
+   leaf cells. Cells loaded from the PDK reference files into an ``ExtLibrary`` (so
+   inverter, mux2, dff and the rest) are leaves and are kept as-is. Any instance that is
+   itself an ORDeC-authored composite is replaced by the contents of its schematic, with
+   internal nets uniquified by an instance prefix and the sub-cell's ports rewired to the
+   parent's nets.
 #. **Order** (``order_cells_sa``) orders cells to minimise wirelength by *simulated
    annealing*, seeded from an iterated-barycenter order. The cost is half-perimeter
    wirelength with the vertical span weighted 2×, since a net that crosses rows is far
@@ -142,7 +145,7 @@ Wires and via stacks are emitted directly at concrete grid coordinates
 single cell but does not scale to the few-hundred-net blocks this engine targets. Every
 dimension the emitter uses comes from the ``GridConfig`` profile. The sg13g2 values and
 the design rules each one derives from are documented field by field in
-``ihp130_pnr.sg13g2_grid``.
+``ihp130.sg13g2_grid``.
 
 Two choices matter when writing a profile for another PDK. Pin access works on the clean
 per-pin LEF rectangles, never on GDS bounding boxes, since pins can overlap by bounding
@@ -182,7 +185,7 @@ shared rail per supply already ties everything:
   off and ``mesh_tap_pitch`` sets the stitch density.
 
 The supply pin and net names (``VDD``, ``vdd`` and so on) are part of the ``GridConfig``
-profile rather than the engine. The sg13g2 conventions live in ``ihp130_pnr.sg13g2_grid()``.
+profile rather than the engine. The sg13g2 conventions live in ``ihp130.sg13g2_grid()``.
 
 The block interface
 -------------------

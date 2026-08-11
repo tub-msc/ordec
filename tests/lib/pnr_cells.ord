@@ -29,24 +29,29 @@ left its port floating.
 """
 
 from ordec.core import *
-from ordec.lib.ihp130 import SG13G2, Nmos
-from ordec.lib.ihp130_pnr import is_sg13g2_leaf, lef_pin_rects, sg13g2_grid
-from ordec.lib.ihp130_stdcells import extlib
+from ordec.extlibrary import ExtLibrary
+from ordec.lib import ihp130
+from ordec.lib.ihp130 import SG13G2, Nmos, lef_pin_rects, sg13g2_grid
 from ordec.layout.digital_pnr import place_and_route
 
-Inv  = extlib["sg13g2_inv_1"]
-Dff  = extlib["sg13g2_dfrbp_1"]
-Mux  = extlib["sg13g2_mux2_1"]
-Xor  = extlib["sg13g2_xor2_1"]
-And  = extlib["sg13g2_and2_1"]
-Or   = extlib["sg13g2_or2_1"]
+stdcells = ExtLibrary()
+stdcells.read_lef(ihp130.pdk().stdcell_lef)
+stdcells.read_gds(ihp130.pdk().stdcell_gds, SG13G2().layers)
+stdcells.read_spice(ihp130.pdk().stdcell_spice, device_map=ihp130.device_map)
+
+Inv  = stdcells["sg13g2_inv_1"]
+Dff  = stdcells["sg13g2_dfrbp_1"]
+Mux  = stdcells["sg13g2_mux2_1"]
+Xor  = stdcells["sg13g2_xor2_1"]
+And  = stdcells["sg13g2_and2_1"]
+Or   = stdcells["sg13g2_or2_1"]
 
 
 def pnr(schematic, layout):
     """This library's currying of the engine, as any design is free to write."""
     place_and_route(schematic, layout, grid=sg13g2_grid(),
         routing_spec=SG13G2().default_routing_spec,
-        pin_rects=lef_pin_rects, is_leaf=is_sg13g2_leaf)
+        pin_rects=lef_pin_rects)
 
 cell InvChain:
     """n inverters in series: a -> inv0 -> inv1 -> ... -> y."""

@@ -16,6 +16,7 @@ from collections import namedtuple
 from dataclasses import dataclass, field, replace
 
 from ordec.core import *
+from ordec.extlibrary import ExtLibraryCell
 
 from . import place, route
 from .route import HORIZ, M1, M2, M3, M4, M5, PinAccessError, VERT
@@ -28,7 +29,7 @@ class GridConfig:
     The engine reads every dimension from here, so retargeting a PDK is a new
     profile rather than an edit to the engine. The grid and geometry fields have
     no defaults, since they come from a PDK profile such as
-    :func:`ordec.lib.ihp130_pnr.sg13g2_grid`. Only the flow knobs at the bottom
+    :func:`ordec.lib.ihp130.sg13g2_grid`. Only the flow knobs at the bottom
     carry universal defaults. All lengths are in nm.
 
     Frozen, so a profile is a value the binding can cache and share. The
@@ -170,6 +171,22 @@ def leaf_name(node):
         str: its name within its parent.
     """
     return node.full_path_str().split('.')[-1]
+
+
+def is_extlibrary_leaf(cell):
+    """The default routing-leaf test: an external-library cell is placed as-is.
+
+    An :class:`~ordec.extlibrary.ExtLibraryCell`'s schematic is transistor
+    level, which the engine must never flatten to, while an ORDeC-authored
+    composite is exactly what it flattens.
+
+    Args:
+        cell: the cell to test.
+
+    Returns:
+        bool: true if the cell comes from an ExtLibrary.
+    """
+    return isinstance(cell, ExtLibraryCell)
 
 
 def pin_nets(inst):
@@ -418,7 +435,7 @@ class PnrResult:
 
 
 def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
-        is_leaf, port_edges=None):
+        is_leaf=is_extlibrary_leaf, port_edges=None):
     """Place + route a schematic of Metal1-only leaf cells into ``layout``.
 
     The caller owns both sides of the boundary: ``schematic`` is read,
@@ -430,21 +447,24 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
         viewgen layout -> Layout:
             place_and_route(self.schematic, ., grid=sg13g2_grid(),
                 routing_spec=SG13G2().default_routing_spec,
-                pin_rects=lef_pin_rects, is_leaf=is_sg13g2_leaf)
+                pin_rects=lef_pin_rects)
 
     Args:
         schematic: the :class:`Schematic` to lay out, flattened to leaf cells.
         layout: the mutable, empty :class:`Layout` the geometry is emitted
             into. Freezing it is the caller's (or the view context's) job.
         grid: the routing grid + emitted geometry (:class:`GridConfig`), e.g.
-            :func:`ordec.lib.ihp130_pnr.sg13g2_grid`.
+            :func:`ordec.lib.ihp130.sg13g2_grid`.
         routing_spec: the PDK's :class:`RoutingSpec`. The engine binds its
             routing codes to the spec's nine lowest ``route_id`` layers (see
             ``stack_from_spec``) and emits on those.
         pin_rects: callable ``cell_name -> {pin: [(x0, y0, x1, y1), ...]}``
             giving a leaf cell's per-pin Metal1 rectangles, in nm.
         is_leaf: callable ``cell -> bool``, true for a routing leaf placed
-            as-is, false for a composite the engine flattens.
+            as-is, false for a composite the engine flattens. Defaults to
+            :func:`is_extlibrary_leaf`, since foundry leaves come from an
+            external library. Pass a predicate only for an unusual setup,
+            e.g. a hand-drawn pin-metal-only cell placed as a leaf.
         port_edges: ``{port net: 'top' or 'bottom'}`` naming the edge each port
             leaves by. This is normally the parent's decision, since only the
             parent knows what sits above and below the block. A net left out
