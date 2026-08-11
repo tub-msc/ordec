@@ -21,12 +21,13 @@ from ordec.core import (GdsLayer, Layer, LayerStack, Layout,
     LayoutPin, R, Rect4I)
 from ordec.layout import compare
 from ordec.layout.digital_pnr import (GridConfig, PinAccessError,
-    place_and_route, run_pnr)
+    place_and_route)
 from ordec.layout.digital_pnr import place, route
 from ordec.layout.digital_pnr.flow import (LeafCell, NetInfo,
     flatten_schematic)
 from ordec.layout.digital_pnr.route import M2, M3, VERT
-from ordec.lib.ihp130_pnr import sg13g2_target
+from ordec.lib.ihp130_pnr import (is_sg13g2_leaf, lef_pin_rects, sg13g2_grid,
+    sg13g2_layers)
 from .lib import pnr_cells as fx
 
 # A grid with the sg13g2 dimensions but no PDK behind it, so the placement and
@@ -41,6 +42,17 @@ GRID = GridConfig(
     mesh_half_w=210)
 
 CELL_W = 1920   # four x-tracks wide
+
+
+def pnr(cell, layout=None, port_edges=None):
+    """Run the engine over ``cell`` with the sg13g2 inputs, the way a design
+    does. Returns the frozen layout and the :class:`PnrResult`."""
+    if layout is None:
+        layout = Layout(cell=cell, symbol=cell.symbol)
+    result = place_and_route(cell.schematic, layout, grid=sg13g2_grid(),
+        stack=sg13g2_layers(), pin_rects=lef_pin_rects,
+        is_leaf=is_sg13g2_leaf, port_edges=port_edges)
+    return layout.freeze(), result
 
 
 def leaf(pin_x=(280, 680), pin_y=(1050, 1650)):
@@ -198,9 +210,9 @@ def test_deterministic():
     The engine uses sets, dicts and an RNG throughout, so this guards against
     an ordering change quietly making the output unstable.
     """
-    a = run_pnr(fx.InvChain(n=8), sg13g2_target())
-    b = run_pnr(fx.InvChain(n=8), sg13g2_target())
-    assert compare(a.layout, b.layout) is None
+    a, _result = pnr(fx.InvChain(n=8))
+    b, _result = pnr(fx.InvChain(n=8))
+    assert compare(a, b) is None
 
 
 @pytest.mark.parametrize("cell", [
@@ -211,7 +223,7 @@ def test_deterministic():
 ], ids=["ripple_adder", "crossbar", "tied_reset", "pair_chain"])
 def test_every_terminal_lands_on_its_pin(cell):
     """Each access node reaches the pin rect it serves, on or off track."""
-    result = run_pnr(cell, sg13g2_target())
+    _layout, result = pnr(cell)
     cfg = result.cfg
     pin_rects = [r for inst in result.placed.values()
         for rects in inst.pins.values() for r in rects]
@@ -226,17 +238,17 @@ def test_every_terminal_lands_on_its_pin(cell):
 
 
 def test_every_port_gets_a_pin():
-    result = run_pnr(fx.InvChain(n=4), sg13g2_target())
+    layout, _result = pnr(fx.InvChain(n=4))
     symbol = fx.InvChain(n=4).symbol
-    pinned = {p.pin.nid for p in result.layout.all(LayoutPin)}
+    pinned = {p.pin.nid for p in layout.all(LayoutPin)}
     assert {symbol.a.nid, symbol.y.nid, symbol.vdd.nid, symbol.vss.nid} \
         <= pinned
 
 
 def test_floorplan_grows_rows():
     """A cell too wide for one row lands on several and still routes."""
-    small = run_pnr(fx.InvChain(n=4), sg13g2_target())
-    large = run_pnr(fx.InvChain(n=32), sg13g2_target())
+    _layout, small = pnr(fx.InvChain(n=4))
+    _layout, large = pnr(fx.InvChain(n=32))
     assert small.cfg.n_rows == 1
     assert large.cfg.n_rows > 1
     assert large.die_w >= small.die_w
@@ -246,8 +258,8 @@ def test_floorplan_grows_rows():
 def test_flatten_expands_composites():
     """A composite sub-cell is replaced by its own leaves, with its internal
     nets uniquified by the instance prefix and its ports rewired."""
-    from ordec.lib.ihp130_pnr import is_sg13g2_leaf
-    leaves, nets = flatten_schematic(fx.PairChain(n=3), is_sg13g2_leaf)
+    leaves, nets = flatten_schematic(fx.PairChain(n=3).schematic,
+        is_sg13g2_leaf)
 
     # Three InvPairs of two inverters each, none of them composite any more.
     assert sorted(leaves) == [f"pr[{i}]/i{k}" for i in range(3) for k in (0, 1)]
@@ -261,7 +273,7 @@ def test_flatten_expands_composites():
 
 
 def test_hierarchical_cell_routes():
-    result = run_pnr(fx.PairChain(n=3), sg13g2_target())
+    _layout, result = pnr(fx.PairChain(n=3))
     assert len(result.placed) == 6
     assert all(edges for edges, _term_m2 in result.routing.nets.values())
 
@@ -272,7 +284,7 @@ def test_supply_tied_pin_gets_its_own_net():
     The rails carry power by abutment rather than by routing, so without the
     synthesised tie net the input would be left floating.
     """
-    result = run_pnr(fx.TiedReset(n=4), sg13g2_target())
+    _layout, result = pnr(fx.TiedReset(n=4))
     ties = {name: edges for name, (edges, _term_m2)
         in result.routing.nets.items() if name.startswith("_tie_")}
     assert set(ties) == {f"_tie_vdd_ff[{i}]_RESET_B" for i in range(4)}
@@ -282,7 +294,7 @@ def test_supply_tied_pin_gets_its_own_net():
 def test_shared_buses_route_under_congestion():
     """Two buses spanning every cell are the max-fan-out case the rip-up
     negotiation has to resolve."""
-    result = run_pnr(fx.Crossbar(n=4), sg13g2_target())
+    _layout, result = pnr(fx.Crossbar(n=4))
     cfg = result.cfg
     for bus, pin in (("busA", "A0"), ("busB", "A1")):
         _edges, term_m2 = result.routing.nets[bus]
@@ -302,7 +314,7 @@ def test_ports_escape_to_the_nearer_edge():
     Escaping everything to the top would make a net driven from the bottom row
     climb the whole block, only for the parent to bring it straight back down.
     """
-    result = run_pnr(fx.DffArray(n=8), sg13g2_target())
+    _layout, result = pnr(fx.DffArray(n=8))
     cfg = result.cfg
     escapes = {name: e for name, e in result.routing.port_escape.items() if e}
     assert escapes, "the register array should escape its ports to an edge"
@@ -320,20 +332,19 @@ def test_port_edges_pin_the_escape():
     cell = fx.DffArray(n=4)
     pins = {"clk": "top", "rst": "top"}
     pins |= {f"{p}[{i}]": "top" for p in ("d", "q") for i in range(4)}
-    result = run_pnr(cell, sg13g2_target(), port_edges=pins)
+    _layout, result = pnr(cell, port_edges=pins)
     edges = {edge for _x, edge in result.routing.port_escape.values()
         if _x is not None}
     assert edges == {"top"}
 
 
-def test_port_edges_reach_the_design_facing_call():
-    """place_and_route must forward the pins, since that is the call a
-    design's layout viewgen makes."""
+def test_port_edges_move_the_emitted_pads():
+    """The escape decision reaches the geometry, not just the bookkeeping."""
     cell = fx.DffArray(n=4)
     pins = {"clk": "top", "rst": "top"}
     pins |= {f"{p}[{i}]": "top" for p in ("d", "q") for i in range(4)}
-    free = place_and_route(cell, sg13g2_target())
-    pinned = place_and_route(cell, sg13g2_target(), port_edges=pins)
+    free, _result = pnr(cell)
+    pinned, _result = pnr(cell, port_edges=pins)
 
     def lowest_signal_pin(layout):
         # The supplies leave on the side straps, whose pads sit low by design.
@@ -349,19 +360,18 @@ def test_port_edges_reach_the_design_facing_call():
 def test_port_edges_rejects_an_unknown_port():
     """A key that names nothing would otherwise fall back in silence."""
     with pytest.raises(ValueError, match="no escaped ports"):
-        run_pnr(fx.DffArray(n=4), sg13g2_target(),
-            port_edges={"clock": "top"})     # the port is called clk
+        pnr(fx.DffArray(n=4), port_edges={"clock": "top"})   # it is called clk
 
 
 def test_port_edges_rejects_a_bad_edge():
     with pytest.raises(ValueError, match="must be 'top' or 'bottom'"):
-        run_pnr(fx.DffArray(n=4), sg13g2_target(), port_edges={"clk": "left"})
+        pnr(fx.DffArray(n=4), port_edges={"clk": "left"})
 
 
 def test_port_edges_accepts_supply_names():
     """Passing every pin of the symbol is the natural thing to write, and the
     supplies leave on the side straps rather than by escape."""
-    result = run_pnr(fx.DffArray(n=4), sg13g2_target(),
+    _layout, result = pnr(fx.DffArray(n=4),
         port_edges={"clk": "top", "vdd": "top", "vss": "top"})
     assert result.routing.port_escape
 
@@ -391,10 +401,9 @@ def test_hand_geometry_in_the_viewgen_rejected():
 def test_place_and_route_twice_rejected():
     """The second call sees the first call's geometry, so the same guard
     catches it."""
-    target = sg13g2_target()
-    result = run_pnr(fx.InvChain(n=2), target)
+    layout, _result = pnr(fx.InvChain(n=2))
     with pytest.raises(ValueError, match="already holds"):
-        run_pnr(fx.InvChain(n=2), target, layout=result.layout.mutable_copy())
+        pnr(fx.InvChain(n=2), layout=layout.mutable_copy())
 
 
 def test_device_level_instance_rejected():
@@ -412,11 +421,11 @@ def test_foreign_layer_set_rejected():
     other.SomeMetal = Layer(gdslayer_shapes=GdsLayer(layer=1, data_type=0))
     foreign = Layout(ref_layers=other.freeze())
     with pytest.raises(ValueError, match="different layer set"):
-        run_pnr(fx.InvChain(n=2), sg13g2_target(), layout=foreign)
+        pnr(fx.InvChain(n=2), layout=foreign)
 
 
-def test_run_pnr_reports_its_decisions():
-    result = run_pnr(fx.InvChain(n=4), sg13g2_target())
+def test_result_reports_the_decisions():
+    _layout, result = pnr(fx.InvChain(n=4))
     assert len(result.placed) == 4
     assert set(result.routing.nets)
     assert result.die_w % result.cfg.x_pitch == 0

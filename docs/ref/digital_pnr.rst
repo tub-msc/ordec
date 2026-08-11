@@ -3,19 +3,18 @@
 
 .. automodule:: ordec.layout.digital_pnr
 
-The engine is PDK-agnostic. :func:`~ordec.layout.digital_pnr.place_and_route` takes a
-:class:`~ordec.layout.digital_pnr.PnrTarget`, which carries everything a PDK must supply:
-a :class:`~ordec.layout.digital_pnr.RoutingStack` (the engine's abstract routing codes
-mapped to concrete PDK layers), a :class:`~ordec.layout.digital_pnr.GridConfig` (the
-routing grid and the DRC-driven emission geometry such as wire, via, landing and strap
-dimensions), a per-cell LEF pin-rectangle lookup and an "is this a routing leaf?"
-predicate. No PDK layer, pitch or design-rule dimension is baked into the engine. It sits
-alongside :doc:`SRouter <layout>` and the :doc:`KLayout integration <layout_klayout>`.
-:mod:`ordec.lib.ihp130_pnr` builds the target for the sg13g2 standard-cell library, with
-``sg13g2_grid()`` as its grid and geometry profile, and exposes a one-argument
-``place_and_route(cell)`` that a design's layout view generator calls directly. Like
-:doc:`SRouter <layout>`, it emits into the root of the enclosing ``viewgen``, so a
-design's layout view is one line:
+The engine is PDK-agnostic. :func:`~ordec.layout.digital_pnr.place_and_route` reads a
+``Schematic``, writes into a caller-owned mutable ``Layout``, and takes everything a PDK
+must supply as explicit parameters: a :class:`~ordec.layout.digital_pnr.RoutingStack`
+(the engine's abstract routing codes mapped to concrete PDK layers), a
+:class:`~ordec.layout.digital_pnr.GridConfig` (the routing grid and the DRC-driven
+emission geometry such as wire, via, landing and strap dimensions), a per-cell LEF
+pin-rectangle lookup and an "is this a routing leaf?" predicate. No PDK layer, pitch or
+design-rule dimension is baked into the engine. It sits alongside :doc:`SRouter <layout>`
+and the :doc:`KLayout integration <layout_klayout>`. :mod:`ordec.lib.ihp130_pnr` supplies
+those inputs for the sg13g2 standard-cell library, with ``sg13g2_grid()`` as its grid and
+geometry profile. In an ORD ``viewgen layout`` body the bare dot passes the view's own
+root as the layout to emit into:
 
 .. code-block:: python
 
@@ -23,7 +22,9 @@ design's layout view is one line:
        # symbol and schematic viewgens ...
 
        viewgen layout -> Layout:
-           place_and_route(self)
+           place_and_route(self.schematic, ., grid=sg13g2_grid(),
+               stack=sg13g2_layers(), pin_rects=lef_pin_rects,
+               is_leaf=is_sg13g2_leaf)
 
 ``place_and_route`` runs the same pipeline a production flow does, applied to a single
 block. It flattens the schematic to foundry leaf cells, orders and folds them into
@@ -193,7 +194,8 @@ supplies need no escape, since they leave on the side straps.
 Which edge a port takes is normally the parent's decision, since only the parent knows
 what sits above and below the block. Pass it in::
 
-    place_and_route(cell, port_edges={'clk': 'bottom', 'done': 'top'})
+    place_and_route(schematic, layout, ...,
+        port_edges={'clk': 'bottom', 'done': 'top'})
 
 This is the same constraint a production flow applies at the floorplan stage, where pin
 placement is decided top-down and pushed into each block. A parent's layout view
@@ -265,11 +267,6 @@ Public API
 ----------
 
 .. autofunction:: ordec.layout.digital_pnr.place_and_route
-
-.. autofunction:: ordec.layout.digital_pnr.run_pnr
-
-.. autoclass:: ordec.layout.digital_pnr.PnrTarget
-   :members:
 
 .. autoclass:: ordec.layout.digital_pnr.RoutingStack
    :members:

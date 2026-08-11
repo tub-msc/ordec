@@ -15,10 +15,20 @@ boustrophedon rails. Deselect them with ``-k "not drc_lvs"``.
 import pytest
 import ordec.importer
 
-from ordec.layout.digital_pnr import run_pnr
+from ordec.core import Layout
+from ordec.layout.digital_pnr import place_and_route
 from ordec.lib import ihp130
-from ordec.lib.ihp130_pnr import lef_pin_rects, sg13g2_grid, sg13g2_target
+from ordec.lib.ihp130_pnr import (is_sg13g2_leaf, lef_pin_rects, sg13g2_grid,
+    sg13g2_layers)
 from .lib import pnr_cells as fx
+
+
+def pnr(cell):
+    """Run the engine over ``cell`` with the sg13g2 inputs."""
+    return place_and_route(cell.schematic,
+        Layout(cell=cell, symbol=cell.symbol), grid=sg13g2_grid(),
+        stack=sg13g2_layers(), pin_rects=lef_pin_rects,
+        is_leaf=is_sg13g2_leaf)
 
 
 def test_lef_pin_rects_inverter():
@@ -61,17 +71,16 @@ def test_grid_profile_is_shared():
     """The profile is a cacheable value, since the engine derives its
     per-floorplan variants rather than mutating it."""
     assert sg13g2_grid() is sg13g2_grid()
-    assert sg13g2_target().grid is sg13g2_grid()
 
 
 def test_split_supply_rejected():
     with pytest.raises(ValueError, match="Rail abutment"):
-        run_pnr(fx.SplitSupply(), sg13g2_target())
+        pnr(fx.SplitSupply())
 
 
 def test_misnamed_supply_rejected():
     with pytest.raises(ValueError, match="requires 'vdd'"):
-        run_pnr(fx.MisnamedSupply(), sg13g2_target())
+        pnr(fx.MisnamedSupply())
 
 
 @pytest.mark.parametrize("cell", [

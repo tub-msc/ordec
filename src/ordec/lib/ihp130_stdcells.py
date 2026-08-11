@@ -17,8 +17,7 @@ importing this module does not require the PDK environment variable
 error from :func:`ordec.lib.ihp130.pdk`.
 
 Place-and-route for these cells lives in :mod:`ordec.lib.ihp130_pnr`
-(``place_and_route``, ``lef_pin_rects``), the PDK binding of the generic
-engine.
+(``sg13g2_grid``, ``lef_pin_rects``), the PDK binding of the generic engine.
 """
 
 import functools

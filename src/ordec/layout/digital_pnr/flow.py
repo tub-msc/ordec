@@ -119,27 +119,6 @@ class RoutingStack:
     via4: object        # m4 <-> m5
 
 
-@dataclass(frozen=True)
-class PnrTarget:
-    """Everything a PDK must supply for the engine to lay a cell out.
-
-    The four inputs always come from the same binding module, so they travel as
-    one value rather than a calling convention.
-
-    Args:
-        stack: the :class:`RoutingStack` for this PDK's layers.
-        grid: the routing grid + emitted geometry (:class:`GridConfig`).
-        pin_rects: callable ``cell_name -> {pin: [(x0, y0, x1, y1), ...]}``
-            giving a leaf cell's per-pin Metal1 rectangles, in nm.
-        is_leaf: callable ``cell -> bool``, true for a routing leaf placed
-            as-is, false for a composite the engine flattens.
-    """
-    stack: RoutingStack
-    grid: GridConfig
-    pin_rects: object
-    is_leaf: object
-
-
 @dataclass
 class NetInfo:
     """A net to route: its terminals (instance pin connections) and, if it is a
@@ -183,7 +162,7 @@ def pin_nets(inst):
 
 
 
-def flatten_schematic(cell, is_leaf):
+def flatten_schematic(schematic, is_leaf):
     """Flatten a hierarchical schematic to its foundry leaf instances.
 
     Sub-cells for which ``is_leaf`` is true are leaves. Any other instance is
@@ -191,7 +170,7 @@ def flatten_schematic(cell, is_leaf):
     instance prefix and port nets mapped to the parent's nets.
 
     Args:
-        cell: the top cell whose ``schematic`` view is flattened.
+        schematic: the Schematic to flatten.
         is_leaf: predicate ``cell -> bool``, true for a routing leaf cell.
 
     Returns:
@@ -230,25 +209,25 @@ def flatten_schematic(cell, is_leaf):
                         "parent level")
                 recurse(subcell.schematic, iname + '/', pin_to_net)
 
-    recurse(cell.schematic, '', {})
+    recurse(schematic, '', {})
     return leaf_insts, net_terminals
 
 
 
-def extract(cell, pin_rects, is_leaf, cfg):
-    """Build the placement and net data for a cell's flattened schematic.
+def extract(schematic, pin_rects, is_leaf, cfg):
+    """Build the placement and net data for a flattened schematic.
 
     Args:
-        cell: the top cell to lay out.
-        pin_rects: the PDK's pin-rectangle hook (see :class:`PnrTarget`).
-        is_leaf: the PDK's routing-leaf predicate (see :class:`PnrTarget`).
+        schematic: the Schematic to lay out.
+        pin_rects: the PDK's pin-rectangle hook (see :func:`place_and_route`).
+        is_leaf: the PDK's routing-leaf predicate (see :func:`place_and_route`).
         cfg: the :class:`GridConfig`, for the supply pin naming.
 
     Returns:
         ``(cells, nets)``, mapping each leaf instance name to a
         :class:`LeafCell` and each net name to a :class:`NetInfo`.
     """
-    leaf_insts, net_terminals = flatten_schematic(cell, is_leaf)
+    leaf_insts, net_terminals = flatten_schematic(schematic, is_leaf)
 
     cells = {}
     for name, leaf in leaf_insts.items():
@@ -265,7 +244,7 @@ def extract(cell, pin_rects, is_leaf, cfg):
         for net_name, terms in net_terminals.items()}
 
     # Mark top-level port nets (Net.pin references a symbol Pin).
-    for net in cell.schematic.all(Net):
+    for net in schematic.all(Net):
         if net.pin is not None:
             net_name = leaf_name(net)
             if net_name in nets:
@@ -390,42 +369,14 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
 
 
 
-def viewgen_layout_root(cell):
-    """Return the Layout root of an enclosing ``viewgen layout`` for ``cell``.
-
-    An ORD viewgen body populates a root the view context owns rather than
-    returning one, so the engine emits into that root. :class:`SRouter
-    <ordec.layout.SRouter>` picks up its layout the same way.
-
-    Args:
-        cell: the cell being laid out.
-
-    Returns:
-        The view context's Layout root, or None when there is no enclosing
-        layout viewgen, including when the active viewgen belongs to another
-        cell. Emitting into that parent's root would corrupt it.
-    """
-    from ordec.ord.context import view_context
-
-    view_ctx = view_context()
-    if view_ctx is None:
-        return None
-    root = view_ctx.root
-    if isinstance(root, Layout) and root.cell == cell:
-        return root
-    return None
-
-
-
 @dataclass(frozen=True)
 class PnrResult:
-    """Everything one place-and-route run decided, not just the geometry.
+    """Everything one place-and-route run decided, beyond the geometry.
 
-    :func:`place_and_route` hands back the layout alone, which is all a design
-    needs. A test or a report wants the decisions behind it.
+    The geometry itself lands in the caller's layout. A test or a report wants
+    the decisions behind it.
 
     Args:
-        layout: the emitted :class:`Layout`, frozen as :func:`run_pnr` describes.
         cfg: the :class:`GridConfig` variant the floorplan settled on, with the
             ``n_rows`` that finally routed.
         placed: ``{name: PlacedInst}``, every leaf cell's row, position,
@@ -434,7 +385,6 @@ class PnrResult:
         die_w: the die width in nm, which the rails are padded flush to.
         taps: the power-mesh tap columns, empty when no mesh was emitted.
     """
-    layout: object
     cfg: GridConfig
     placed: dict
     routing: object
@@ -442,18 +392,33 @@ class PnrResult:
     taps: tuple
 
 
-def run_pnr(cell, target, layout=None, port_edges=None):
-    """Place + route a cell whose schematic instantiates Metal1-only leaf cells.
+def place_and_route(schematic, layout, *, grid, stack, pin_rects, is_leaf,
+        port_edges=None):
+    """Place + route a schematic of Metal1-only leaf cells into ``layout``.
 
-    Every PDK-specific input arrives in ``target``, so no layer, pitch or DRC
-    dimension is baked into this module.
+    The caller owns both sides of the boundary: ``schematic`` is read,
+    ``layout`` is written and never frozen here. Every PDK-specific input is an
+    explicit keyword parameter, so no layer, pitch or DRC dimension is baked
+    into this module. In an ORD ``viewgen layout`` body, the bare dot passes
+    the view's own root as the layout::
+
+        viewgen layout -> Layout:
+            place_and_route(self.schematic, ., grid=sg13g2_grid(),
+                stack=sg13g2_layers(), pin_rects=lef_pin_rects,
+                is_leaf=is_sg13g2_leaf)
 
     Args:
-        cell: the cell to lay out. Its schematic is flattened to leaf cells.
-        target: the :class:`PnrTarget` for this PDK, e.g.
-            :func:`ordec.lib.ihp130_pnr.sg13g2_target`.
-        layout: the :class:`Layout` to build into. Defaults to the enclosing
-            ``viewgen layout`` root, or to a fresh Layout when there is none.
+        schematic: the :class:`Schematic` to lay out, flattened to leaf cells.
+        layout: the mutable, empty :class:`Layout` the geometry is emitted
+            into. Freezing it is the caller's (or the view context's) job.
+        grid: the routing grid + emitted geometry (:class:`GridConfig`), e.g.
+            :func:`ordec.lib.ihp130_pnr.sg13g2_grid`.
+        stack: the :class:`RoutingStack` mapping the engine's routing codes to
+            this PDK's layers.
+        pin_rects: callable ``cell_name -> {pin: [(x0, y0, x1, y1), ...]}``
+            giving a leaf cell's per-pin Metal1 rectangles, in nm.
+        is_leaf: callable ``cell -> bool``, true for a routing leaf placed
+            as-is, false for a composite the engine flattens.
         port_edges: ``{port net: 'top' or 'bottom'}`` naming the edge each port
             leaves by. This is normally the parent's decision, since only the
             parent knows what sits above and below the block. A net left out
@@ -462,9 +427,7 @@ def run_pnr(cell, target, layout=None, port_edges=None):
             rejected rather than ignored.
 
     Returns:
-        The :class:`PnrResult`. Its layout is frozen when this call created it,
-        and the caller's still-mutable root otherwise, which the view context
-        freezes.
+        The :class:`PnrResult` with the run's decisions.
 
     Raises:
         PinAccessError: a pin is unreachable on the grid. This is permanent, so
@@ -474,12 +437,11 @@ def run_pnr(cell, target, layout=None, port_edges=None):
         RuntimeError: the routing did not converge at the largest floorplan
             tried.
     """
-    stack, cfg = target.stack, target.grid
-    layout = layout or viewgen_layout_root(cell)
-    if layout is not None:
-        check_layout_empty(layout, cell)
-        check_layout_layers(layout, stack, cell)
-    cells, nets = extract(cell, target.pin_rects, target.is_leaf, cfg)
+    cfg = grid
+    cell = schematic.cell   # for the error messages only
+    check_layout_empty(layout, cell)
+    check_layout_layers(layout, stack, cell)
+    cells, nets = extract(schematic, pin_rects, is_leaf, cfg)
 
     # Rail abutment shorts every VDD rail in the block together (likewise VSS),
     # so the engine supports exactly one net per supply pin. It must also carry
@@ -575,11 +537,6 @@ def run_pnr(cell, target, layout=None, port_edges=None):
         route.extend_min_area(routing.nets, cfg, xmax,
             blocked | routing.reserved)
 
-    if layout is None:
-        layout = Layout(ref_layers=stack.layer_set, cell=cell, symbol=cell.symbol)
-        own_layout = True
-    else:
-        own_layout = False
     for name, inst in placed.items():
         setattr(layout, name, LayoutInstance(ref=inst.cell.layout,
             pos=Vec2I(*inst.pos), orientation=inst.orient))
@@ -599,8 +556,8 @@ def run_pnr(cell, target, layout=None, port_edges=None):
         emit_power_mesh(layout, stack, placed, cfg, die_w, taps)
 
     emit_ports(layout, stack, nets, placed, routing, cfg)
-    return PnrResult(layout=layout.freeze() if own_layout else layout, cfg=cfg,
-        placed=placed, routing=routing, die_w=die_w, taps=taps)
+    return PnrResult(cfg=cfg, placed=placed, routing=routing, die_w=die_w,
+        taps=taps)
 
 
 def check_layout_empty(layout, cell):
@@ -652,37 +609,12 @@ def check_layout_layers(layout, stack, cell):
             "the place-and-route target emits on")
 
 
-def place_and_route(cell, target, layout=None, port_edges=None):
-    """Place + route ``cell``, returning its DRC/LVS-clean :class:`Layout`.
-
-    The design-facing entry point, :func:`run_pnr` without the flow's internals.
-    Inside a ``viewgen layout`` body it needs no return statement, since it
-    emits into the root the view context owns::
-
-        viewgen layout -> Layout:
-            place_and_route(self, sg13g2_target())
-
-    Args:
-        cell: the cell to lay out.
-        target: the :class:`PnrTarget` for this PDK.
-        layout: the :class:`Layout` to build into. Defaults to the enclosing
-            viewgen's root, or to a fresh Layout when there is none.
-        port_edges: ``{port net: 'top' or 'bottom'}`` naming the edge each port
-            leaves by. See :func:`run_pnr`.
-
-    Returns:
-        The :class:`Layout`, frozen when this call created it and the caller's
-        still-mutable root otherwise.
-    """
-    return run_pnr(cell, target, layout, port_edges).layout
-
-
 def emit_ports(layout, stack, nets, placed, routing, cfg):
     """Expose every top-level port of the block as a pin on emitted geometry.
 
     Args:
         layout: the mutable :class:`Layout` to emit into.
-        stack: the :class:`~.model.RoutingStack` for this PDK.
+        stack: the :class:`RoutingStack` for this PDK.
         nets: ``{name: NetInfo}`` for the whole block (ports carry a pin).
         placed: ``{name: PlacedInst}``, for the supply rails.
         routing: the :class:`~.route.RoutingResult`, for the signal escapes.

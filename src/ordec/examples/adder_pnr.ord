@@ -8,8 +8,10 @@ simulated sum bits back into integers.
 from ordec.core import *
 from ordec.lib import ihp130
 from ordec.lib.base import Vpulse, Vdc, Gnd, NoConn
-from ordec.lib.ihp130_pnr import place_and_route
+from ordec.lib.ihp130_pnr import (is_sg13g2_leaf, lef_pin_rects, sg13g2_grid,
+    sg13g2_layers)
 from ordec.lib.ihp130_stdcells import extlib
+from ordec.layout.digital_pnr import place_and_route
 
 Xor = extlib["sg13g2_xor2_1"]
 And = extlib["sg13g2_and2_1"]
@@ -79,7 +81,9 @@ cell RippleAdder:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self)
+        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+            stack=sg13g2_layers(), pin_rects=lef_pin_rects,
+            is_leaf=is_sg13g2_leaf)
 
     @generate(auto_refresh=False)
     viewgen drc -> DrcReport:

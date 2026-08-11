@@ -4,10 +4,12 @@
 """
 IHP SG13G2 binding of :mod:`ordec.layout.digital_pnr`.
 
-Every sg13g2 number and layer name lives here rather than in the engine, packed
-into the :class:`PnrTarget` the engine takes. :func:`place_and_route` is the
-one-argument form the designs call. A sibling module (``sky130_pnr.py``) would
-bind the same engine to another PDK.
+Every sg13g2 number and layer name lives here rather than in the engine:
+:func:`sg13g2_grid` (grid + emitted geometry), :func:`sg13g2_layers` (layer
+binding), :func:`lef_pin_rects` (per-pin Metal1 rectangles from the stdcell
+LEF) and :func:`is_sg13g2_leaf` (the routing-leaf predicate). A design passes
+them to :func:`ordec.layout.digital_pnr.place_and_route` explicitly. A sibling
+module (``sky130_pnr.py``) would bind the same engine to another PDK.
 
 It sits next to :mod:`ordec.lib.ihp130_stdcells`, the other sg13g2 companion a
 placed-and-routed design imports.
@@ -15,8 +17,7 @@ placed-and-routed design imports.
 
 import functools
 
-from ordec.layout.digital_pnr import (GridConfig, PnrTarget, RoutingStack,
-    place_and_route as engine_pnr)
+from ordec.layout.digital_pnr import GridConfig, RoutingStack
 from ordec.lib import ihp130
 
 @functools.cache
@@ -148,43 +149,3 @@ def sg13g2_layers() -> RoutingStack:
         m4=layers.Metal4, m5=layers.Metal5,
         via1=layers.Via1, via2=layers.Via2, via3=layers.Via3, via4=layers.Via4,
     )
-
-
-def sg13g2_target(cfg: GridConfig = None) -> PnrTarget:
-    """Build the sg13g2 :class:`PnrTarget` for the engine.
-
-    Args:
-        cfg: an optional :class:`GridConfig` to use instead of
-            :func:`sg13g2_grid`, e.g. ``replace(sg13g2_grid(),
-            power_mesh=False)``.
-
-    Returns:
-        PnrTarget: the layer stack, grid, LEF pin rectangles and foundry-leaf
-        predicate.
-    """
-    return PnrTarget(stack=sg13g2_layers(), grid=cfg or sg13g2_grid(),
-        pin_rects=lef_pin_rects, is_leaf=is_sg13g2_leaf)
-
-
-def place_and_route(cell, cfg=None, layout=None, port_edges=None):
-    """Place-and-route ``cell`` with the IHP sg13g2 standard-cell library.
-
-    The one-argument form a design's layout view generator calls::
-
-        viewgen layout -> Layout:
-            place_and_route(self)
-
-    Args:
-        cell: the cell to lay out, whose schematic instantiates sg13g2 leaves.
-        cfg: an optional :class:`GridConfig`, defaulting to :func:`sg13g2_grid`.
-        layout: the :class:`Layout` to build into, defaulting to the enclosing
-            ``viewgen layout`` root.
-        port_edges: ``{port net: 'top' or 'bottom'}`` naming the edge each port
-            leaves by, normally decided by the parent. An unnamed port falls
-            back to the edge its own terminals sit nearer, and a key naming no
-            port is rejected.
-
-    Returns:
-        The DRC/LVS-clean :class:`Layout` for ``cell``.
-    """
-    return engine_pnr(cell, sg13g2_target(cfg), layout, port_edges)

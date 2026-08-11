@@ -30,8 +30,10 @@ left its port floating.
 
 from ordec.core import *
 from ordec.lib.ihp130 import SG13G2, Nmos
-from ordec.lib.ihp130_pnr import place_and_route
+from ordec.lib.ihp130_pnr import (is_sg13g2_leaf, lef_pin_rects, sg13g2_grid,
+    sg13g2_layers)
 from ordec.lib.ihp130_stdcells import extlib
+from ordec.layout.digital_pnr import place_and_route
 
 Inv  = extlib["sg13g2_inv_1"]
 Dff  = extlib["sg13g2_dfrbp_1"]
@@ -39,6 +41,13 @@ Mux  = extlib["sg13g2_mux2_1"]
 Xor  = extlib["sg13g2_xor2_1"]
 And  = extlib["sg13g2_and2_1"]
 Or   = extlib["sg13g2_or2_1"]
+
+
+def pnr(schematic, layout):
+    """This library's currying of the engine, as any design is free to write."""
+    place_and_route(schematic, layout, grid=sg13g2_grid(),
+        stack=sg13g2_layers(), pin_rects=lef_pin_rects,
+        is_leaf=is_sg13g2_leaf)
 
 cell InvChain:
     """n inverters in series: a -> inv0 -> inv1 -> ... -> y."""
@@ -68,7 +77,7 @@ cell InvChain:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self)
+        pnr(self.schematic, .)
 
 cell DffArray:
     """n flip-flops sharing clk and rst (high fan-out), with per-bit d[i]/q[i]."""
@@ -104,7 +113,7 @@ cell DffArray:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self)
+        pnr(self.schematic, .)
 
 cell Crossbar:
     """n mux2 cells: y[i] = sel[i] ? busB : busA, with busA/busB shared by all."""
@@ -136,7 +145,7 @@ cell Crossbar:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self)
+        pnr(self.schematic, .)
 
 cell RippleAdder:
     """n-bit ripple-carry adder with sum[i] = a[i]^b[i]^carry[i] and
@@ -200,7 +209,7 @@ cell RippleAdder:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self)
+        pnr(self.schematic, .)
 
 cell TiedReset:
     """n flip-flops sharing clk, RESET_B held high on each (no reset port)."""
@@ -233,7 +242,7 @@ cell TiedReset:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self)
+        pnr(self.schematic, .)
 
 cell InvPair:
     """Two inverters in series (a composite, non-foundry sub-cell)."""
@@ -283,7 +292,7 @@ cell PairChain:
                 .vdd -- vdd; .vss -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self)
+        pnr(self.schematic, .)
 
 
 cell SplitSupply:
@@ -314,7 +323,7 @@ cell SplitSupply:
             .A -- mid; .Y -- y; .VDD -- vdd2; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self)
+        pnr(self.schematic, .)
 
 
 cell MisnamedSupply:
@@ -339,7 +348,7 @@ cell MisnamedSupply:
             .A -- a; .Y -- y; .VDD -- vcc; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self)
+        pnr(self.schematic, .)
 
 
 cell HandGeometry:
@@ -369,7 +378,7 @@ cell HandGeometry:
         LayoutRect stray:
             .layer = SG13G2().layers.Metal2
             .rect = (0, 0, 3000, 3000)
-        place_and_route(self)
+        pnr(self.schematic, .)
 
 
 cell DeviceLeaf:
@@ -394,4 +403,4 @@ cell DeviceLeaf:
             .$w = 1u; .$l = 130n
 
     viewgen layout -> Layout:
-        place_and_route(self)
+        pnr(self.schematic, .)
