@@ -38,6 +38,39 @@ def file_uri_to_path(uri: str):
     return Path(os.path.abspath(path))
 
 
+def find_module_source(base_path: Path, suffixes, package_only: bool = False):
+    """Return the source file that a module path resolves to, or None.
+
+    The single resolver shared by ORD and Python import resolution, so
+    both sides agree on which files an import names. Package ``__init__``
+    files are probed before same-named module files, matching how Python
+    prefers packages over modules.
+
+    Args:
+        base_path: Filesystem path of the module, without suffix.
+        suffixes: Source suffixes to probe, in order of precedence.
+        package_only: Restrict the probe to packages. A dots-only
+            relative import such as ``from . import x`` names the
+            package itself, never a same-named module file.
+    """
+    for suffix in suffixes:
+        candidate = base_path / ("__init__" + suffix)
+        if candidate.exists():
+            return candidate
+
+    # An empty final component means the import climbed past the
+    # filesystem root, where with_suffix() would raise.
+    if package_only or not base_path.name:
+        return None
+
+    for suffix in suffixes:
+        candidate = base_path.with_suffix(suffix)
+        if candidate.exists():
+            return candidate
+
+    return None
+
+
 def split_source_lines(text: str):
     """Split source text on LSP line breaks only.
 

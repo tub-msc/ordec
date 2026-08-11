@@ -16,6 +16,7 @@ from .model import (
     DocumentAnalysis,
     context_type_names_for_kind,
     file_uri_to_path,
+    find_module_source,
     position_before_or_equal,
     range_contains,
     split_source_lines,
@@ -334,8 +335,6 @@ class AnalysisSession(
         if doc_path is None:
             return None
 
-        workspace_root = Path(self.workspace_root) if self.workspace_root else doc_path.parent
-
         if module_name.startswith("."):
             dot_count = 0
             while dot_count < len(module_name) and module_name[dot_count] == ".":
@@ -348,21 +347,31 @@ class AnalysisSession(
             module_tail = module_name[dot_count:]
             if module_tail:
                 import_path = import_path.joinpath(*module_tail.split("."))
-        else:
-            import_path = workspace_root.joinpath(*module_name.split("."))
 
-        if not import_path.name:
-            # More relative-import dots than path components climb to the
-            # filesystem root, where with_suffix() would raise.
-            return None
+            resolved = find_module_source(
+                import_path,
+                (".ord",),
+                package_only=not module_tail,
+            )
+            return resolved.as_uri() if resolved is not None else None
 
-        module_file_path = import_path.with_suffix(".ord")
-        if module_file_path.exists():
-            return module_file_path.as_uri()
+        # Absolute names resolve against the workspace root first, then
+        # against the importing document's own directory, matching the
+        # runtime importer which searches the script's directory.
+        base_dirs = []
+        if self.workspace_root:
+            base_dirs.append(Path(self.workspace_root))
+        if doc_path.parent not in base_dirs:
+            base_dirs.append(doc_path.parent)
 
-        package_init_path = import_path / "__init__.ord"
-        if package_init_path.exists():
-            return package_init_path.as_uri()
+        module_parts = module_name.split(".")
+        for base_dir in base_dirs:
+            resolved = find_module_source(
+                base_dir.joinpath(*module_parts),
+                (".ord",),
+            )
+            if resolved is not None:
+                return resolved.as_uri()
 
         return None
 

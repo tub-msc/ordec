@@ -15,7 +15,12 @@ from ...ord.parser import ord_to_py
 from .model import AnalysisPosition
 from .model import AnalysisRange
 from .model import file_uri_to_path
+from .model import find_module_source
 from .model import split_source_lines
+
+# Suffix precedence for the Python module index, which resolves both
+# plain Python modules and ORD modules importable through ordec's hook.
+MODULE_SOURCE_SUFFIXES = (".py", ".ord")
 
 
 def expression_text(node, limit: int = 32):
@@ -100,13 +105,9 @@ class PythonModuleIndex:
         if self.workspace_root:
             workspace_root = Path(self.workspace_root).resolve()
             workspace_path = workspace_root.joinpath(*module_name.split("."))
-            for candidate in (
-                workspace_path.with_suffix(".py"),
-                workspace_path.with_suffix(".ord"),
-                workspace_path / "__init__.py",
-            ):
-                if candidate.exists():
-                    return candidate.resolve()
+            candidate = find_module_source(workspace_path, MODULE_SOURCE_SUFFIXES)
+            if candidate is not None:
+                return candidate.resolve()
 
         spec = self.find_spec(module_name)
 
@@ -116,7 +117,7 @@ class PythonModuleIndex:
             if "." in module_name:
                 parent_name, leaf_name = module_name.rsplit(".", 1)
                 parent_path = self.resolve_module_path(parent_name)
-                if parent_path is not None and parent_path.name == "__init__.py":
+                if parent_path is not None and parent_path.stem == "__init__":
                     candidate = parent_path.parent / (leaf_name + ".ord")
                     if candidate.exists():
                         return candidate.resolve()
@@ -138,20 +139,16 @@ class PythonModuleIndex:
             if doc_path is not None and self.workspace_root:
                 workspace_root = Path(self.workspace_root).resolve()
                 import_path = doc_path.parent.joinpath(*module_name.split("."))
-                for candidate in (
-                    import_path.with_suffix(".py"),
-                    import_path.with_suffix(".ord"),
-                    import_path / "__init__.py",
-                ):
-                    if not candidate.exists():
-                        continue
-
+                candidate = find_module_source(import_path, MODULE_SOURCE_SUFFIXES)
+                relative_path = None
+                if candidate is not None:
                     try:
                         relative_path = candidate.resolve().relative_to(workspace_root)
                     except ValueError:
-                        continue
+                        relative_path = None
 
-                    if relative_path.name == "__init__.py":
+                if relative_path is not None:
+                    if relative_path.stem == "__init__":
                         module_parts = relative_path.parent.parts
                     else:
                         module_parts = relative_path.with_suffix("").parts
@@ -207,7 +204,7 @@ class PythonModuleIndex:
                 relative_path = None
 
             if relative_path is not None:
-                if relative_path.name == "__init__.py":
+                if relative_path.stem == "__init__":
                     module_parts = relative_path.parent.parts
                 else:
                     module_parts = relative_path.with_suffix("").parts
@@ -357,7 +354,7 @@ class PythonModuleIndex:
 
             package_name = module_name
             if node.level:
-                if module_path.name == "__init__.py":
+                if module_path.stem == "__init__":
                     package_name = module_name
                 else:
                     package_name = module_name.rsplit(".", 1)[0]

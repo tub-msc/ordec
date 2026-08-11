@@ -752,6 +752,74 @@ def test_import_member_resolves_ord_submodules(tmp_path):
     ).as_uri()
 
 
+def test_absolute_imports_resolve_against_document_directory(tmp_path):
+    sub_path = tmp_path / "sub"
+    sub_path.mkdir()
+    (sub_path / "lib.ord").write_text(
+        "cell Inv:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    top_source = "from lib import Inv\n"
+    top_path = sub_path / "top.ord"
+    top_path.write_text(top_source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    lib_uri = session.open_path(str(sub_path / "lib.ord"))
+    top_uri = session.open_path(str(top_path))
+
+    # The runtime importer searches the script's own directory, so the
+    # sibling import must resolve and appear in the import graph.
+    assert session.diagnostics(top_uri) == []
+    assert session.definition(top_uri, position_at(top_source, "Inv"))["uri"] == lib_uri
+    assert top_uri in session.workspace_dependents(lib_uri)
+
+
+def test_dots_only_import_prefers_package_over_sibling_module(tmp_path):
+    sub_path = tmp_path / "sub"
+    sub_path.mkdir()
+    (tmp_path / "sub.ord").write_text("cell Decoy:\n    pass\n")
+    (sub_path / "__init__.ord").write_text("cell Inner:\n    pass\n")
+    top_source = "from . import Inner\n"
+    top_path = sub_path / "top.ord"
+    top_path.write_text(top_source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    init_uri = session.open_path(str(sub_path / "__init__.ord"))
+    top_uri = session.open_path(str(top_path))
+
+    # "from . import X" names the package, never the sibling sub.ord.
+    assert session.diagnostics(top_uri) == []
+    assert session.definition(top_uri, position_at(top_source, "Inner"))["uri"] == init_uri
+
+
+def test_python_index_resolves_init_ord_packages(tmp_path, monkeypatch):
+    package_path = tmp_path / "pkg"
+    package_path.mkdir()
+    init_path = package_path / "__init__.ord"
+    init_path.write_text("")
+    sub_path = package_path / "sub.ord"
+    sub_path.write_text("cell Inner:\n    pass\n")
+
+    index = PythonModuleIndex(workspace_root=str(tmp_path))
+    assert index.resolve_module_path("pkg") == init_path.resolve()
+    assert index.resolve_module_path("pkg.sub") == sub_path.resolve()
+    assert index.module_exists("pkg.sub")
+
+    # Installed packages rooted by __init__.ord resolve their .ord
+    # modules through the parent package, like __init__.py ones do.
+    class InitOrdSpec:
+        origin = str(init_path)
+
+    installed_index = PythonModuleIndex()
+    monkeypatch.setattr(
+        installed_index,
+        "find_spec",
+        lambda name: InitOrdSpec() if name == "pkg" else None,
+    )
+    assert installed_index.resolve_module_path("pkg.sub") == sub_path.resolve()
+
+
 def test_missing_port_action_survives_stale_analysis():
     session = AnalysisSession(workspace_root="/tmp/workspace")
     uri = "file:///tmp/stale.ord"
