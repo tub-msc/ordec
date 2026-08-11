@@ -928,6 +928,46 @@ def test_rename_refuses_stale_sources_and_unaliased_dotted_imports(tmp_path):
     assert len(alias_changes[import_uri]) == 2
 
 
+def test_dotted_viewgen_return_types_resolve_and_allow_constraints(tmp_path):
+    (tmp_path / "viewlib.py").write_text(
+        "class CustomView:\n"
+        "    def view_context(self):\n"
+        "        pass\n"
+    )
+    source = (
+        "from ordec import core\n"
+        "import viewlib\n"
+        "\n"
+        "cell Top:\n"
+        "    viewgen schematic -> core.Schematic:\n"
+        "        net n1\n"
+        "        net n2\n"
+        "        ! n1 == n2\n"
+        "    viewgen custom -> viewlib.CustomView:\n"
+        "        pass\n"
+    )
+    top_path = tmp_path / "top.ord"
+    top_path.write_text(source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = session.open_path(str(top_path))
+    analysis = session.analyze(uri)
+
+    # The rightmost name is the return type, so the constraint inside
+    # the schematic viewgen is valid and no false error is reported.
+    assert [record["return_type"] for record in analysis.viewgen_returns] == [
+        "Schematic",
+        "CustomView",
+    ]
+    assert session.diagnostics(uri) == []
+
+    # An unresolved base of a qualified return type is still reported.
+    session.open_document(uri, source.replace("import viewlib\n", ""), version=2)
+    assert [diagnostic.code for diagnostic in session.diagnostics(uri)] == [
+        "unresolved-viewgen-return",
+    ]
+
+
 def test_rename_preserves_alias_of_aliased_from_import(tmp_path):
     lib_source = (
         "cell Inv:\n"

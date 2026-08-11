@@ -128,6 +128,20 @@ class DiagnosticsMixin:
             type_name = viewgen["return_type"]
             if viewgen.get("return_binding_id") is not None:
                 continue
+            if viewgen.get("return_base") not in (None, type_name):
+                # Qualified return types such as core.Schematic resolve
+                # through their module, which the bare-name lookup below
+                # cannot see. Only the base name is validated here.
+                if not name_resolves(viewgen["return_base"]):
+                    add_diagnostic(
+                        viewgen["selection_range"],
+                        "error",
+                        "Cannot resolve `{}` in viewgen return type.".format(
+                            viewgen["return_base"]
+                        ),
+                        "unresolved-viewgen-return",
+                    )
+                continue
             type_definition = self.resolve_completion_type(uri, type_name)
             if type_definition is None:
                 add_diagnostic(

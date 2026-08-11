@@ -134,6 +134,30 @@ class OrdAnalysisBuilder:
 
         return child
 
+    def dotted_name_nodes(self, node):
+        """Return the (base, attribute) name nodes of a dotted name chain.
+
+        For a bare name both entries are the name itself. For a chain
+        such as ``core.Schematic`` the base is the leftmost name and the
+        attribute the rightmost one. Returns None for other expressions.
+        """
+        name_node = self.simple_name_node(node)
+        if name_node is not None:
+            return name_node, name_node
+
+        if not isinstance(node, Tree) or node.data != "getattr" or len(node.children) != 2:
+            return None
+
+        attribute_node = node.children[1]
+        if not isinstance(attribute_node, Tree) or attribute_node.data != "name":
+            return None
+
+        inner_nodes = self.dotted_name_nodes(node.children[0])
+        if inner_nodes is None:
+            return None
+
+        return inner_nodes[0], attribute_node
+
     def opens_view_context(self, expression_node):
         """Return whether a with-item expression opens an ORDB view context.
 
@@ -784,13 +808,20 @@ class OrdAnalysisBuilder:
                     for child in node.children:
                         if not isinstance(child, Tree) or child.data in ("name", "suite"):
                             continue
-                        name_node_ret = self.simple_name_node(child)
-                        if name_node_ret is not None:
-                            ret_name = tree_text(name_node_ret)
+                        # A dotted return type such as core.Schematic
+                        # records the rightmost name as the type and
+                        # resolves the leftmost name as its binding.
+                        return_nodes = self.dotted_name_nodes(child)
+                        if return_nodes is not None:
+                            base_node, type_node = return_nodes
                             self.viewgen_returns.append({
                                 "name": name,
-                                "return_type": ret_name,
-                                "return_binding_id": self.resolve_binding(scope_id, ret_name),
+                                "return_type": tree_text(type_node),
+                                "return_base": tree_text(base_node),
+                                "return_binding_id": self.resolve_binding(
+                                    scope_id,
+                                    tree_text(base_node),
+                                ),
                                 "range": tree_range(node),
                                 "selection_range": tree_range(child),
                                 "viewgen_range": tree_range(node),
