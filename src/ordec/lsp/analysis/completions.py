@@ -6,6 +6,7 @@ import re
 
 # ordec imports
 from .model import (
+    NODE_KINDS,
     AnalysisPosition,
     AnalysisRange,
     context_type_names_for_kind,
@@ -98,7 +99,7 @@ class CompletionsMixin:
     def completion_inline_context_type_names(self, text: str):
         """Infer context type names from an inline ORD node statement."""
         match = re.match(
-            r"^\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)\s+[^:]+:\s*",
+            r"^\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s+[^:]+:\s*",
             text,
         )
         if match is None:
@@ -274,19 +275,7 @@ class CompletionsMixin:
                     "detail": detail,
                 })
 
-        for keyword in (
-            "cell",
-            "class",
-            "def",
-            "viewgen",
-            "path",
-            "net",
-            "port",
-            "input",
-            "output",
-            "inout",
-            "return",
-        ):
+        for keyword in ("cell", "class", "def", "viewgen", "return") + NODE_KINDS:
             items.setdefault(keyword, {
                 "label": keyword,
                 "kind": "keyword",

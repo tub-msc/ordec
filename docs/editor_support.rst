@@ -38,7 +38,7 @@ Install it either as a user syntax by copying ``Ord.sublime-syntax`` into
 ``Packages/User/``, or as its own package::
 
     mkdir -p ~/.config/sublime-text/Packages/Ord
-    cp support/editors/sublime/Ord.sublime-syntax ~/.config/sublime-text/Packages/Ord/
+    cp support/editors/sublime/Ord.sublime-syntax ~/.config/sublime-text/Packages/User/
 
 The Sublime packages directory is located at:
 

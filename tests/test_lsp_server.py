@@ -238,6 +238,51 @@ def test_lsp_watched_file_changes_republish_dependent_diagnostics(tmp_path):
     }
 
 
+def test_lsp_deleted_file_with_cold_index_refreshes_open_documents(tmp_path):
+    device_path = tmp_path / "device.ord"
+    device_path.write_text(
+        "cell Device:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    top_source = (
+        "from .device import Device\n"
+        "\n"
+        "cell Top:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        Device inst:\n"
+        "            .a -- net_a\n"
+    )
+    top_path = tmp_path / "top.ord"
+    top_path.write_text(top_source)
+
+    server = initialize_server(tmp_path)
+    top_uri = top_path.resolve().as_uri()
+    device_uri = device_path.resolve().as_uri()
+    assert open_document(server, top_uri, top_source) == []
+
+    # An import graph built only after the deletion has no edge to the
+    # missing file, so the importer must be refreshed regardless.
+    device_path.unlink()
+    server.session.invalidate_workspace_index()
+    responses = notify(
+        server,
+        "workspace/didChangeWatchedFiles",
+        {
+            "changes": [{
+                "uri": device_uri,
+                "type": 3,
+            }],
+        },
+    )
+
+    assert [response["params"]["uri"] for response in responses] == [top_uri]
+    assert "unresolved-import" in {
+        diagnostic["code"]
+        for diagnostic in responses[0]["params"]["diagnostics"]
+    }
+
+
 def test_lsp_navigation_references_rename_and_symbols(tmp_path):
     mux_path = tmp_path / "mux2.ord"
     mux_path.write_text(

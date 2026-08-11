@@ -13,9 +13,10 @@ async function startLanguageServer() {
   }
 
   // config.get only falls back on undefined, so an explicit null or
-  // non-string setting value must not crash activation.
+  // mistyped setting value must not crash activation.
   const command = String(config.get("command", "ordec-lsp") ?? "").trim();
-  const args = config.get("arguments", []);
+  const rawArgs = config.get("arguments", []);
+  const args = Array.isArray(rawArgs) ? rawArgs.map(String) : [];
   if (!command) {
     void vscode.window.showWarningMessage(
       "ORD-LSP is enabled, but ord.languageServer.command is empty."

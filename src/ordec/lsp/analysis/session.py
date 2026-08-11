@@ -829,6 +829,7 @@ class AnalysisSession(
             candidates.append({
                 "name": occurrence["name"],
                 "range": occurrence["range"],
+                "binding_id": occurrence.get("binding_id"),
             })
 
         for occurrence in analysis.member_occurrences:
@@ -1578,8 +1579,12 @@ class AnalysisSession(
         self.evict_closed_documents()
         return result
 
-    def references(self, uri: str, position: AnalysisPosition):
-        """Return references to the definition at a document position."""
+    def references(self, uri: str, position: AnalysisPosition, search_uris=None):
+        """Return references to the definition at a document position.
+
+        search_uris restricts the searched documents. Highlights pass
+        their own document to avoid a workspace-wide search.
+        """
         uri = self.canonical_uri(uri)
         definition = self.definition(uri, position)
         if definition is None:
@@ -1588,14 +1593,27 @@ class AnalysisSession(
         references = []
         seen = set()
         target = self.definition_key(definition)
+        if search_uris is None:
+            search_uris = self.reference_search_uris(uri, definition)
 
-        for ref_uri in self.reference_search_uris(uri, definition):
+        for ref_uri in search_uris:
+            # All tokens of one binding resolve alike, so the verdict is
+            # computed once per binding instead of once per token.
+            binding_matches = {}
             for candidate in self.reference_candidates(ref_uri):
-                resolved = self.definition(ref_uri, candidate["range"].start)
-                if resolved is None:
-                    continue
+                binding_id = candidate.get("binding_id")
+                if binding_id is not None and binding_id in binding_matches:
+                    matches = binding_matches[binding_id]
+                else:
+                    resolved = self.definition(ref_uri, candidate["range"].start)
+                    matches = (
+                        resolved is not None
+                        and self.definition_key(resolved) == target
+                    )
+                    if binding_id is not None:
+                        binding_matches[binding_id] = matches
 
-                if self.definition_key(resolved) != target:
+                if not matches:
                     continue
 
                 key = (
@@ -1669,10 +1687,7 @@ class AnalysisSession(
                 break
 
         highlights = []
-        for reference in self.references(uri, position):
-            if reference["uri"] != uri:
-                continue
-
+        for reference in self.references(uri, position, search_uris=[uri]):
             highlight = {
                 "range": reference["range"],
                 "kind": "read",

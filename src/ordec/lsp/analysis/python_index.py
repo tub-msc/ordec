@@ -590,9 +590,12 @@ class PythonModuleIndex:
         if seen is None:
             seen = set()
 
-        if module_name in seen:
+        # Keyed by module and export so a re-export chain may revisit a
+        # module under a different export name.
+        key = (module_name, export_name)
+        if key in seen:
             return None
-        seen.add(module_name)
+        seen.add(key)
 
         module_info = self.module_info(module_name)
         if module_info is None:
@@ -685,87 +688,6 @@ class PythonModuleIndex:
                 refs.append((module_candidate, member_name))
 
         return refs
-
-    def class_member_definition(
-        self,
-        module_name: str,
-        class_name: str,
-        member_name: str,
-        seen=None,
-    ):
-        """Resolve a Python class member, including inherited members."""
-        if seen is None:
-            seen = set()
-
-        key = (module_name, class_name, member_name)
-        if key in seen:
-            return None
-        seen.add(key)
-
-        module_info = self.module_info(module_name)
-        if module_info is None:
-            return None
-
-        class_info = module_info["classes"].get(class_name)
-        if class_info is None:
-            # The class may only be re-exported here (e.g. a package
-            # __init__.py). Follow the export to its defining module.
-            resolved = self.definition(module_name, export_name=class_name)
-            if resolved is None or "python_module" not in resolved:
-                return None
-            return self.class_member_definition(
-                resolved["python_module"],
-                resolved["python_class"],
-                member_name,
-                seen=seen,
-            )
-
-        match = class_info["members"].get(member_name)
-        if match is not None:
-            return match
-
-        for base_name in class_info["bases"]:
-            if base_name in module_info["classes"]:
-                match = self.class_member_definition(
-                    module_name,
-                    base_name,
-                    member_name,
-                    seen=seen,
-                )
-                if match is not None:
-                    return match
-                continue
-
-            for base_module_name, base_class_name in self.base_class_refs(
-                module_name,
-                module_info,
-                base_name,
-            ):
-                match = self.class_member_definition(
-                    base_module_name,
-                    base_class_name,
-                    member_name,
-                    seen=seen,
-                )
-                if match is not None:
-                    return match
-
-        for source_name in class_info["member_sources"]:
-            for source_module_name, source_class_name in self.base_class_refs(
-                module_name,
-                module_info,
-                source_name,
-            ):
-                match = self.class_member_definition(
-                    source_module_name,
-                    source_class_name,
-                    member_name,
-                    seen=seen,
-                )
-                if match is not None:
-                    return match
-
-        return None
 
     def class_members(self, module_name: str, class_name: str, seen=None):
         """Collect Python class members, including inherited members."""

@@ -8,6 +8,14 @@ from pathlib import Path
 from typing import List, NamedTuple, Optional
 from urllib.parse import unquote, urlparse
 
+# Keywords that declare ORD nodes, grouped by the node type they create.
+# The transformer's node statement handling (ordec.ord.ord_transformer)
+# is the semantic authority these sets must follow.
+PIN_KINDS = ("input", "output", "inout")
+NET_KINDS = ("port", "net")
+PATH_KINDS = ("path",)
+NODE_KINDS = PIN_KINDS + NET_KINDS + PATH_KINDS
+
 
 MISSING = object()
 IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -123,11 +131,11 @@ def normalize_type_names(type_names):
 
 def context_type_names_for_kind(kind_name: str):
     """Map an ORD context keyword to candidate type names."""
-    if kind_name in ("input", "output", "inout"):
+    if kind_name in PIN_KINDS:
         return ["Pin"]
-    if kind_name in ("port", "net"):
+    if kind_name in NET_KINDS:
         return ["Net"]
-    if kind_name == "path":
+    if kind_name in PATH_KINDS:
         return ["PathNode"]
 
     # Dotted kinds such as `lib.Inv` instantiate the trailing class.

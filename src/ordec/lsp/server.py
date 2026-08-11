@@ -86,6 +86,7 @@ SHOW_MESSAGE_SEVERITY_MAP = {
     "info": 3,
     "log": 4,
 }
+FILE_CHANGE_TYPE_DELETED = 3
 
 
 def line_in_range(value_range, line: int):
@@ -393,6 +394,18 @@ class OrdLanguageServer:
             for change in changes
             if self.session.is_ord_uri(change["uri"])
         }
+
+        # An import graph built only after a deletion has no edges to the
+        # missing file, so its dependents cannot be looked up. Deletions
+        # are rare: refresh every open ORD document instead.
+        if self.session.workspace_index is None and any(
+            change.get("type") == FILE_CHANGE_TYPE_DELETED
+            and self.session.is_ord_uri(change["uri"])
+            for change in changes
+        ):
+            affected_uris.update(
+                uri for uri in open_uris if self.session.is_ord_uri(uri)
+            )
 
         for uri in ord_uris:
             if uri in open_uris:

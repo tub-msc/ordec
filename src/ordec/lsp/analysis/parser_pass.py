@@ -162,18 +162,23 @@ class OrdAnalysisBuilder:
         """Return whether a with-item expression opens an ORDB view context.
 
         ``with root.view_context(root):`` and ``with node.ctx():`` execute
-        their bodies inside a view building context, so constraints and node
-        statements are valid there even outside a viewgen.
+        their bodies inside a view building context, so constraints and
+        node statements are valid there even outside a viewgen. Only a
+        call whose callee is the ctx or view_context attribute counts, so
+        an argument such as ``open(cfg.ctx)`` does not open a context.
         """
-        if not isinstance(expression_node, Tree):
+        if not isinstance(expression_node, Tree) or expression_node.data != "funccall":
+            return False
+        if not expression_node.children:
             return False
 
-        for subtree in expression_node.iter_subtrees():
-            if subtree.data != "getattr" or len(subtree.children) != 2:
-                continue
-            if tree_text(subtree.children[1]) in ("view_context", "ctx"):
-                return True
-        return False
+        callee_node = expression_node.children[0]
+        if not isinstance(callee_node, Tree) or callee_node.data != "getattr":
+            return False
+        if len(callee_node.children) != 2:
+            return False
+
+        return tree_text(callee_node.children[1]) in ("view_context", "ctx")
 
     def kind_name_node(self, node):
         """Return the name node for a plain or parameterized node kind."""

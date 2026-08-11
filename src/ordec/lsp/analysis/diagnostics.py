@@ -5,7 +5,13 @@
 import builtins
 
 # ordec imports
-from .model import AnalysisDiagnostic, is_identifier, range_contains
+from .model import (
+    NODE_KINDS,
+    PIN_KINDS,
+    AnalysisDiagnostic,
+    is_identifier,
+    range_contains,
+)
 
 
 class DiagnosticsMixin:
@@ -100,17 +106,9 @@ class DiagnosticsMixin:
                 "unresolved-import-member",
             )
 
-        built_in_node_kinds = {
-            "input",
-            "output",
-            "inout",
-            "port",
-            "net",
-            "path",
-        }
         for statement in analysis.node_statements:
             kind_name = statement["kind_name"]
-            if kind_name in built_in_node_kinds:
+            if kind_name in NODE_KINDS:
                 continue
             if statement.get("kind_binding_id") is not None:
                 continue
@@ -289,7 +287,7 @@ class DiagnosticsMixin:
                 if not is_identifier(target_name):
                     continue
 
-                if kind_name in ("input", "output", "inout") and range_contains(symbol_view.range, symbol.selection_range.start):
+                if kind_name in PIN_KINDS and range_contains(symbol_view.range, symbol.selection_range.start):
                     symbol_pins.add(target_name)
                 elif kind_name == "port" and range_contains(schematic_view.range, symbol.selection_range.start):
                     schematic_ports.append(symbol)
