@@ -33,7 +33,6 @@ import threading
 
 # ordec imports
 from .analysis import AnalysisPosition, AnalysisRange, AnalysisSession, file_uri_to_path, split_source_lines
-from .code_actions import code_actions
 
 
 SEMANTIC_TOKEN_TYPES = [
@@ -87,6 +86,16 @@ SHOW_MESSAGE_SEVERITY_MAP = {
     "info": 3,
     "log": 4,
 }
+
+
+def line_in_range(value_range, line: int):
+    """Return whether a one-based line falls inside an analysis range."""
+    return value_range.start.line <= line <= value_range.end.line
+
+
+def leading_indent(line: str):
+    """Return the run of leading whitespace (spaces and tabs) on a line."""
+    return line[:len(line) - len(line.lstrip(" \t"))]
 
 
 class OrdLanguageServer:
@@ -674,8 +683,108 @@ class OrdLanguageServer:
         diagnostics = params.get("context", {}).get("diagnostics", [])
         return self.result_response(
             message,
-            code_actions(self.session, uri, diagnostics),
+            self.code_actions(uri, diagnostics),
         )
+
+    def code_actions(self, uri: str, diagnostics):
+        """Return LSP code actions for the given diagnostics in one document."""
+        actions = []
+        if uri not in self.session.documents:
+            return actions
+
+        for diagnostic in diagnostics:
+            code = diagnostic.get("code")
+            if code == "unknown-symbol-port":
+                action = self.missing_symbol_port_action(uri, diagnostic)
+                if action is not None:
+                    actions.append(action)
+
+        return actions
+
+    def missing_symbol_port_action(self, uri: str, diagnostic):
+        """Build a quick-fix action that declares a missing port in the symbol view."""
+        data = diagnostic.get("data") or {}
+        port_name = data.get("portName")
+        if not port_name:
+            return None
+
+        diagnostic_position = self.analysis_position(uri, diagnostic["range"]["start"])
+        analysis = self.session.analyze(uri)
+
+        containing_cell = None
+        for symbol in analysis.symbols:
+            if symbol.kind != "class":
+                continue
+            if not line_in_range(symbol.range, diagnostic_position.line):
+                continue
+            containing_cell = symbol
+            break
+
+        if containing_cell is None:
+            return None
+
+        symbol_view = None
+        for symbol in analysis.symbols:
+            if symbol.name != "symbol" or symbol.kind != "function":
+                continue
+            if not line_in_range(containing_cell.range, symbol.selection_range.start.line):
+                continue
+            symbol_view = symbol
+            break
+
+        if symbol_view is None:
+            return None
+
+        indent = self.symbol_body_indent(uri, analysis, symbol_view)
+        insert_position = {
+            "line": symbol_view.range.start.line,
+            "character": 0,
+        }
+        return {
+            "title": "Declare `{}` in symbol view".format(port_name),
+            "kind": "quickfix",
+            "diagnostics": [diagnostic],
+            "edit": {
+                "changes": {
+                    uri: [{
+                        "range": {
+                            "start": insert_position,
+                            "end": insert_position,
+                        },
+                        "newText": "{}input {}\n".format(indent, port_name),
+                    }],
+                },
+            },
+        }
+
+    def symbol_body_indent(self, uri: str, analysis, symbol_view):
+        """Return the indentation to use for a new symbol-view body line.
+
+        Symbol ranges may come from a stale last-good analysis of a longer
+        document, so every line index is bounds-checked against the current
+        document.
+        """
+        lines = self.session.document_lines(uri) or []
+
+        for symbol in analysis.symbols:
+            if symbol.kind != "context":
+                continue
+            if not line_in_range(symbol_view.range, symbol.selection_range.start.line):
+                continue
+            line_index = symbol.selection_range.start.line - 1
+            if 0 <= line_index < len(lines):
+                return leading_indent(lines[line_index])
+
+        start_line_index = symbol_view.range.start.line
+        end_line_index = min(symbol_view.range.end.line, len(lines))
+        for line in lines[start_line_index:end_line_index]:
+            if line.strip():
+                return leading_indent(line)
+
+        header_index = symbol_view.range.start.line - 1
+        if not 0 <= header_index < len(lines):
+            return "    "
+        return leading_indent(lines[header_index]) + "    "
 
     def handle_folding_range(self, message):
         uri = self.message_text_document_uri(message)

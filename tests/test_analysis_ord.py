@@ -12,7 +12,7 @@ from ordec.lsp.analysis import (
     file_uri_to_path,
 )
 from ordec.lsp.analysis.python_index import PythonModuleIndex
-from ordec.lsp.code_actions import missing_symbol_port_action
+from ordec.lsp.server import OrdLanguageServer
 
 
 def position_at(source, needle, occurrence=1):
@@ -773,7 +773,9 @@ def test_missing_port_action_survives_stale_analysis():
         },
         "data": {"portName": "c"},
     }
-    action = missing_symbol_port_action(session, uri, diagnostic)
+    server = OrdLanguageServer()
+    server.session = session
+    action = server.missing_symbol_port_action(uri, diagnostic)
     assert "input c" in action["edit"]["changes"][uri][0]["newText"]
 
 

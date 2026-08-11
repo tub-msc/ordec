@@ -451,15 +451,16 @@ Most language intelligence lives in ``ordec.lsp.analysis``:
   inferred-type records for assignment targets.
 * ``session.py`` is the public analysis facade. It owns open document snapshots,
   last-good analysis caching, file invalidation, ORD import resolution,
-  workspace dependency indexing, and navigation/reference features.
+  workspace dependency indexing, lightweight type resolution, and
+  navigation/reference features.
 * ``python_index.py`` owns shallow Python module indexing. It resolves Python
   imports, parses Python source with ``ast``, caches module information, and
   exposes exported symbols, class members, docstrings, function signatures,
   and cell parameter defaults without importing or executing workspace
   modules.
 * ``completions.py``, ``diagnostics.py``, ``rename.py``, ``signatures.py``,
-  ``hierarchy.py``, and ``typeflow.py`` add feature-specific methods to
-  ``AnalysisSession`` through mixin classes.
+  and ``hierarchy.py`` add feature-specific methods to ``AnalysisSession``
+  through mixin classes.
 
 ``AnalysisSession`` intentionally remains the API boundary used by the LSP
 server and tests. The smaller analysis modules keep implementation details

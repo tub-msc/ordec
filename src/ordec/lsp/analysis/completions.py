@@ -8,6 +8,7 @@ import re
 from .model import (
     AnalysisPosition,
     AnalysisRange,
+    context_type_names_for_kind,
     is_identifier,
     leading_identifier,
 )
@@ -102,7 +103,7 @@ class CompletionsMixin:
         )
         if match is None:
             return []
-        return self.context_type_names_for_kind(match.group(1))
+        return context_type_names_for_kind(match.group(1))
 
     def completion_subject(self, text: str):
         """Extract the expression subject immediately before a completion dot."""

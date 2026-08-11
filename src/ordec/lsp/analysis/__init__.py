@@ -2,12 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from .model import (
-    AnalysisDiagnostic,
-    AnalysisImport,
     AnalysisPosition,
     AnalysisRange,
-    AnalysisSymbol,
-    DocumentAnalysis,
     file_uri_to_path,
     split_source_lines,
 )
