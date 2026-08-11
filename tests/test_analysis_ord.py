@@ -1253,6 +1253,159 @@ def test_new_workspace_file_rebuilds_import_dependents(tmp_path):
     assert session.workspace_dependents(new_uri) == {top_uri}
 
 
+def test_function_headers_use_enclosing_bindings():
+    source = (
+        "T = object\n"
+        "x = [1]\n"
+        "def helper(x: T = x, *args: T, y=x, **kwargs: T) -> T:\n"
+        "    return args, kwargs\n"
+    )
+    session = AnalysisSession()
+    uri = "file:///tmp/header_scopes.ord"
+    session.open_document(uri, source)
+
+    outer_x = session.definition(uri, position_at(source, "x", occurrence=1))
+    parameter_x = session.definition(uri, position_at(source, "x", occurrence=2))
+    assert parameter_x["binding_id"] != outer_x["binding_id"]
+    for occurrence in (3, 4):
+        definition = session.definition(uri, position_at(source, "x", occurrence))
+        assert definition["binding_id"] == outer_x["binding_id"]
+
+    outer_t = session.definition(uri, position_at(source, "T"))
+    for occurrence in range(2, 6):
+        definition = session.definition(uri, position_at(source, "T", occurrence))
+        assert definition["binding_id"] == outer_t["binding_id"]
+
+    for name in ("args", "kwargs"):
+        definition = session.definition(uri, position_at(source, name, occurrence=2))
+        assert definition["kind"] == "parameter"
+
+
+def test_lone_carriage_returns_are_analyzed_as_line_breaks():
+    source = "value = 1\rdef helper():\r    return value\r"
+    session = AnalysisSession()
+    uri = "file:///tmp/lone_cr.ord"
+    session.open_document(uri, source)
+
+    assert session.diagnostics(uri) == []
+    definition = session.definition(uri, AnalysisPosition(3, 12))
+    assert definition["selection_range"].start == AnalysisPosition(1, 1)
+
+
+def test_definition_resolves_local_at_identifier_end():
+    source = (
+        "def helper():\n"
+        "    local = 1\n"
+        "    return local\n"
+    )
+    session = AnalysisSession()
+    uri = "file:///tmp/end_definition.ord"
+    session.open_document(uri, source)
+
+    definition = session.definition(
+        uri,
+        position_after(source, "local", occurrence=2),
+    )
+    assert definition["kind"] == "variable"
+    assert definition["selection_range"].start == position_at(source, "local")
+
+
+def test_rename_rejects_same_scope_collision():
+    source = (
+        "cell Inv:\n"
+        "    pass\n"
+        "\n"
+        "cell Buf:\n"
+        "    pass\n"
+    )
+    session = AnalysisSession()
+    uri = "file:///tmp/rename_collision.ord"
+    session.open_document(uri, source)
+
+    with pytest.raises(ValueError, match="conflicts with existing name"):
+        session.rename(uri, position_at(source, "Inv"), "Buf")
+
+
+def test_chained_implicit_member_completion_has_no_fallback_members():
+    source = (
+        "from ordec.core import *\n"
+        "\n"
+        "cell Stage:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        output d\n"
+        "\n"
+        "cell Top:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        Stage inst:\n"
+        "            .d\n"
+    )
+    session = AnalysisSession()
+    uri = "file:///tmp/implicit_chain.ord"
+    session.open_document(uri, source, version=1)
+    edited = source.replace("            .d\n", "            .d.\n")
+    session.update_document(uri, edited, version=2)
+
+    assert session.completions(uri, position_after(edited, ".d.")) == []
+
+
+@pytest.mark.parametrize("suffix", [".py", ".ord"])
+def test_python_index_unicode_attribute_ranges(tmp_path, suffix):
+    source = (
+        "class Device:\n"
+        "    def build(self):\n"
+        "        root = Symbol()\n"
+        "        root.élé = Pin()\n"
+    )
+    (tmp_path / ("device" + suffix)).write_text(source)
+    member = PythonModuleIndex(workspace_root=str(tmp_path)).class_members(
+        "device",
+        "Device",
+    )["élé"]
+
+    assert member["selection_range"].start == AnalysisPosition(4, 14)
+    assert member["selection_range"].end == AnalysisPosition(4, 17)
+
+
+def test_close_document_preserves_cached_import_index(tmp_path):
+    source = "cell Device:\n    pass\n"
+    path = tmp_path / "device.ord"
+    path.write_text(source)
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = path.as_uri()
+    session.open_document(uri, source, version=1)
+    workspace_index = session.workspace_import_index()
+
+    session.close_document(uri)
+
+    assert session.documents[uri]["is_open"] is False
+    assert session.workspace_import_index() is workspace_index
+
+
+def test_workspace_symbol_requests_reuse_file_scan(tmp_path, monkeypatch):
+    (tmp_path / "first.ord").write_text("cell First:\n    pass\n")
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    original = session.workspace_ord_paths
+    calls = []
+
+    def counted_paths(root_path):
+        calls.append(root_path)
+        yield from original(root_path)
+
+    monkeypatch.setattr(session, "workspace_ord_paths", counted_paths)
+    assert [item["name"] for item in session.workspace_symbols()] == ["First"]
+    assert [item["name"] for item in session.workspace_symbols()] == ["First"]
+    assert len(calls) == 1
+
+    second_path = tmp_path / "second.ord"
+    second_path.write_text("cell Second:\n    pass\n")
+    session.invalidate_path(str(second_path))
+    assert {item["name"] for item in session.workspace_symbols()} == {
+        "First",
+        "Second",
+    }
+    assert len(calls) == 1
+
+
 def test_analysis_session_checked_in_ord_files_have_no_lsp_diagnostics():
     root_path = Path(__file__).resolve().parents[1]
     session = AnalysisSession(workspace_root=str(root_path))

@@ -5,8 +5,17 @@ const vscode = require("vscode");
 const { LanguageClient } = require("vscode-languageclient/node");
 
 let client;
+let startPromise;
 
 async function startLanguageServer() {
+  if (client) {
+    return;
+  }
+  if (startPromise) {
+    await startPromise;
+    return;
+  }
+
   const config = vscode.workspace.getConfiguration("ord.languageServer");
   if (!config.get("enabled", true)) {
     return;
@@ -40,13 +49,19 @@ async function startLanguageServer() {
     },
   };
 
-  client = new LanguageClient(
+  const nextClient = new LanguageClient(
     "ordec-lsp",
     "ORD Language Server",
     serverOptions,
     clientOptions
   );
-  await client.start();
+  startPromise = nextClient.start();
+  try {
+    await startPromise;
+    client = nextClient;
+  } finally {
+    startPromise = undefined;
+  }
 }
 
 async function activate(context) {
@@ -55,7 +70,11 @@ async function activate(context) {
   // configured executable, so it starts only once trust is granted.
   if (!vscode.workspace.isTrusted) {
     context.subscriptions.push(
-      vscode.workspace.onDidGrantWorkspaceTrust(() => startLanguageServer())
+      vscode.workspace.onDidGrantWorkspaceTrust(() => {
+        void startLanguageServer().catch((error) => {
+          void vscode.window.showErrorMessage("ORD-LSP failed to start: " + error);
+        });
+      })
     );
     return;
   }
@@ -63,6 +82,12 @@ async function activate(context) {
 }
 
 async function deactivate() {
+  if (startPromise) {
+    try {
+      await startPromise;
+    } catch {}
+  }
+
   if (client) {
     await client.stop();
     client = undefined;

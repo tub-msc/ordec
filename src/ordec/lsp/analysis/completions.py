@@ -131,7 +131,7 @@ class CompletionsMixin:
             return self.context_type_names_at_position(uri, position)
 
         if base_name.startswith("."):
-            return self.context_type_names_at_position(uri, position)
+            return []
 
         identifier = leading_identifier(base_name)
         if identifier is not None:

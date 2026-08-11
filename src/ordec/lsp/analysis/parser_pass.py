@@ -17,6 +17,7 @@ from .model import (
     AnalysisSymbol,
     DocumentAnalysis,
     context_type_names_for_kind,
+    normalize_line_breaks,
     normalize_type_names,
     trailing_identifier,
 )
@@ -540,65 +541,54 @@ class OrdAnalysisBuilder:
             "binding_id": binding_id,
         })
 
-    def bind_parameters(self, parameters_node, scope_id):
-        """Bind function parameter names in a child scope."""
-        for child in parameters_node.children:
-            if not isinstance(child, Tree):
-                continue
+    def bind_parameters(self, node, outer_scope_id, function_scope_id):
+        """Bind parameters while visiting defaults and annotations outside."""
+        if not isinstance(node, Tree):
+            return
 
-            if child.data == "name":
-                self.add_binding(scope_id, child, "parameter")
-                continue
+        if node.data == "name":
+            self.add_binding(function_scope_id, node, "parameter")
+            return
 
-            if child.data == "typedparam":
-                name_node = None
-                annotation_node = None
-                for value_node in child.children:
-                    if not isinstance(value_node, Tree):
-                        continue
-                    if name_node is None and value_node.data == "name":
-                        name_node = value_node
-                    elif annotation_node is None:
-                        annotation_node = value_node
+        if node.data == "typedparam":
+            children = [child for child in node.children if isinstance(child, Tree)]
+            if not children:
+                return
 
-                type_names = self.type_names_from_annotation(annotation_node)
-                if name_node is not None:
-                    self.add_binding(scope_id, name_node, "parameter", type_names=type_names)
-                if annotation_node is not None:
-                    self.visit(annotation_node, scope_id)
-                continue
+            name_node = children[0]
+            annotation_node = children[1] if len(children) > 1 else None
+            self.add_binding(
+                function_scope_id,
+                name_node,
+                "parameter",
+                type_names=self.type_names_from_annotation(annotation_node),
+            )
+            if annotation_node is not None:
+                self.visit(annotation_node, outer_scope_id)
+            return
 
-            if child.data != "paramvalue":
-                self.visit(child, scope_id)
-                continue
+        if node.data == "paramvalue":
+            children = [child for child in node.children if isinstance(child, Tree)]
+            if not children:
+                return
 
-            name_node = None
-            annotation_node = None
-            for value_node in child.children:
-                if not isinstance(value_node, Tree):
-                    continue
+            self.bind_parameters(children[0], outer_scope_id, function_scope_id)
+            for child in children[1:]:
+                self.visit(child, outer_scope_id)
+            return
 
-                if value_node.data == "typedparam":
-                    for typed_child in value_node.children:
-                        if not isinstance(typed_child, Tree):
-                            continue
-                        if name_node is None and typed_child.data == "name":
-                            name_node = typed_child
-                        elif annotation_node is None:
-                            annotation_node = typed_child
-                    type_names = self.type_names_from_annotation(annotation_node)
-                    if name_node is not None:
-                        self.add_binding(scope_id, name_node, "parameter", type_names=type_names)
-                    if annotation_node is not None:
-                        self.visit(annotation_node, scope_id)
-                    continue
+        if node.data in (
+            "parameters",
+            "starparams",
+            "starparam",
+            "poststarparams",
+            "kwparams",
+        ):
+            for child in node.children:
+                self.bind_parameters(child, outer_scope_id, function_scope_id)
+            return
 
-                if name_node is None and value_node.data == "name":
-                    name_node = value_node
-                    self.add_binding(scope_id, name_node, "parameter")
-                    continue
-
-                self.visit(value_node, scope_id)
+        self.visit(node, outer_scope_id)
 
     def bind_pattern(self, scope_id, pattern_node):
         """Bind names introduced by a match-case pattern."""
@@ -845,9 +835,13 @@ class OrdAnalysisBuilder:
                     if not isinstance(child, Tree) or child is name_node:
                         continue
 
-                    if node.data == "funcdef" and child.data == "parameters":
-                        self.bind_parameters(child, child_scope_id)
-                        continue
+                    if node.data == "funcdef":
+                        if child.data == "parameters":
+                            self.bind_parameters(child, scope_id, child_scope_id)
+                            continue
+                        if child.data != "suite":
+                            self.visit(child, scope_id, context_type_names=context_type_names)
+                            continue
 
                     self.visit(child, child_scope_id, context_type_names=context_type_names)
                 return
@@ -1471,7 +1465,7 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
     """
 
     try:
-        syntax_tree = parser.parse(source_data + "\n")
+        syntax_tree = parser.parse(normalize_line_breaks(source_data) + "\n")
     except UnexpectedToken as exc:
         diagnostic = AnalysisDiagnostic(
             range=AnalysisRange(

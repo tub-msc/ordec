@@ -7,13 +7,19 @@ const test = require("node:test");
 
 let createdClient;
 let stopped = false;
+let startError;
+let errorMessages = [];
 
 class FakeLanguageClient {
   constructor(id, name, serverOptions, clientOptions) {
     createdClient = { id, name, serverOptions, clientOptions };
   }
 
-  async start() {}
+  async start() {
+    if (startError) {
+      throw startError;
+    }
+  }
 
   async stop() {
     stopped = true;
@@ -48,6 +54,9 @@ const vscode = {
   window: {
     showWarningMessage() {
       throw new Error("unexpected warning");
+    },
+    showErrorMessage(message) {
+      errorMessages.push(message);
     },
   },
 };
@@ -100,6 +109,28 @@ test("defers ORD-LSP start until workspace trust is granted", async () => {
   assert.equal(createdClient.id, "ordec-lsp");
 
   await extension.deactivate();
+});
+
+test("reports trust-start failures without stopping an unstarted client", async () => {
+  createdClient = undefined;
+  stopped = false;
+  startError = new Error("missing executable");
+  errorMessages = [];
+  vscode.workspace.isTrusted = false;
+
+  await extension.activate({ subscriptions: [] });
+  vscode.workspace.isTrusted = true;
+  trustListener();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(errorMessages, [
+    "ORD-LSP failed to start: Error: missing executable",
+  ]);
+  await extension.deactivate();
+  assert.equal(stopped, false);
+
+  startError = undefined;
+  vscode.workspace.isTrusted = true;
 });
 
 test("package manifest wires up the language client", () => {

@@ -12,14 +12,15 @@ class RenameMixin:
         if self.analyze(uri).has_errors():
             return None
 
-        if self.member_occurrence_at_position(uri, position) is not None:
-            return None
-
         name_info = self.name_at_position(uri, position)
         if name_info is None:
             return None
 
-        definition = self.definition(uri, position)
+        lookup_position = name_info["range"].start
+        if self.member_occurrence_at_position(uri, lookup_position) is not None:
+            return None
+
+        definition = self.definition(uri, lookup_position)
         if definition is None:
             return None
 
@@ -52,6 +53,35 @@ class RenameMixin:
                 return True
         return False
 
+    def rename_conflict(self, definition, new_name: str):
+        """Return a same-scope binding that conflicts with a rename."""
+        if definition["name"] == new_name:
+            return None
+
+        if self.file_uri_suffix(definition["uri"]) != ".ord":
+            return None
+
+        analysis = self.analyze(definition["uri"])
+        binding = analysis.binding_map.get(definition.get("binding_id"))
+        if binding is None:
+            for candidate in analysis.bindings:
+                if candidate["selection_range"] == definition["selection_range"]:
+                    binding = candidate
+                    break
+        if binding is None:
+            return None
+
+        scope = analysis.scopes.get(binding["scope_id"])
+        if scope is None:
+            return None
+        for binding_id in scope["bindings"]:
+            candidate = analysis.binding_map.get(binding_id)
+            if candidate is None or candidate["id"] == binding["id"]:
+                continue
+            if candidate["name"] == new_name:
+                return candidate
+        return None
+
     def rename(self, uri: str, position: AnalysisPosition, new_name: str):
         """Build workspace edits for renaming the symbol at ``position``.
 
@@ -68,16 +98,20 @@ class RenameMixin:
         if self.analyze(uri).has_errors():
             raise ValueError("Rename requires a document without syntax errors.")
 
-        if self.member_occurrence_at_position(uri, position) is not None:
-            return None
-
         name_info = self.name_at_position(uri, position)
         if name_info is None:
             return None
 
-        definition = self.definition(uri, position)
+        lookup_position = name_info["range"].start
+        if self.member_occurrence_at_position(uri, lookup_position) is not None:
+            return None
+
+        definition = self.definition(uri, lookup_position)
         if definition is None:
             return None
+
+        if self.rename_conflict(definition, new_name) is not None:
+            raise ValueError("Rename conflicts with existing name: {}".format(new_name))
 
         if (
             definition["kind"] == "module"
@@ -85,7 +119,7 @@ class RenameMixin:
         ):
             return None
 
-        references = self.references(uri, position)
+        references = self.references(uri, lookup_position)
         if definition["kind"] == "module" or name_info["name"] != definition["name"]:
             changes = []
             for reference in references:

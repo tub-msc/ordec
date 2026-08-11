@@ -79,6 +79,11 @@ def find_module_source(base_path: Path, suffixes, package_only: bool = False):
     return None
 
 
+def normalize_line_breaks(text: str):
+    """Normalize LSP line breaks to LF."""
+    return LINE_BREAK_RE.sub("\n", text)
+
+
 def split_source_lines(text: str):
     """Split source text on LSP line breaks only.
 

@@ -248,8 +248,12 @@ class PythonModuleIndex:
         imports = dict()
         import_members = dict()
         classes = dict()
+        ast_columns_are_bytes = module_path.suffix == ".py"
 
         def ast_position(lineno, col_offset):
+            if not ast_columns_are_bytes:
+                return AnalysisPosition(lineno, col_offset + 1)
+
             line = source_lines[lineno - 1] if lineno - 1 < len(source_lines) else ""
             consumed = 0
             character = 0
@@ -503,17 +507,21 @@ class PythonModuleIndex:
                             if isinstance(value, ast.Call) and node_name(value.func) == "Pin":
                                 member_kind = "variable"
 
+                            attribute_end = ast_position(
+                                target.end_lineno,
+                                target.end_col_offset,
+                            )
                             class_info["members"].setdefault(target.attr, {
                                 "uri": module_path.as_uri(),
                                 "name": target.attr,
                                 "kind": member_kind,
                                 "range": node_range(target),
                                 "selection_range": AnalysisRange(
-                                    start=ast_position(
-                                        target.end_lineno,
-                                        target.end_col_offset - len(target.attr),
+                                    start=AnalysisPosition(
+                                        attribute_end.line,
+                                        attribute_end.character - len(target.attr),
                                     ),
-                                    end=ast_position(target.end_lineno, target.end_col_offset),
+                                    end=attribute_end,
                                 ),
                             })
 

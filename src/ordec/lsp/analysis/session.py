@@ -84,6 +84,7 @@ class AnalysisSession(
         self.document_access_counter = 0
         self.canonical_uri_cache = dict()
         self.python_index = PythonModuleIndex(workspace_root=self.workspace_root)
+        self.workspace_uri_cache = None
         self.workspace_index = None
         self.workspace_dirty_uris = set()
 
@@ -268,10 +269,21 @@ class AnalysisSession(
         return uri
 
     def close_document(self, uri: str):
-        """Remove a document from the session."""
+        """Close a document and restore its on-disk snapshot."""
         uri = self.canonical_uri(uri)
-        self.documents.pop(uri, None)
-        self.invalidate_workspace_index()
+        document = self.documents.pop(uri, None)
+        if document is None:
+            return
+
+        path = self.file_uri_path(uri)
+        if path is None or not path.is_file():
+            self.mark_workspace_uri_dirty(uri)
+            return
+
+        try:
+            self.open_path(str(path))
+        except (OSError, UnicodeDecodeError):
+            self.mark_workspace_uri_dirty(uri)
 
     def ensure_document(self, uri: str):
         """Load a file-backed document when it is not already tracked."""
@@ -306,6 +318,12 @@ class AnalysisSession(
         # through their parent Python package.
         self.invalidate_python_module_path(path.resolve())
         uri = path.as_uri()
+        if self.workspace_uri_cache is not None and self.uri_in_workspace(uri):
+            if path.is_file():
+                self.workspace_uri_cache.add(uri)
+            else:
+                self.workspace_uri_cache.discard(uri)
+
         doc = self.documents.get(uri)
         if doc is not None and doc.get("is_open"):
             doc["analysis"] = None
@@ -539,21 +557,25 @@ class AnalysisSession(
     def workspace_uris(self):
         """Return ORD file URIs known to the current workspace."""
         if self.workspace_root:
-            root_path = Path(self.workspace_root)
-            if root_path.exists():
-                uris = []
-                for path in self.workspace_ord_paths(root_path):
-                    if not path.is_file():
-                        continue
+            if self.workspace_uri_cache is None:
+                root_path = Path(self.workspace_root)
+                self.workspace_uri_cache = set()
+                if root_path.exists():
+                    self.workspace_uri_cache.update(
+                        path.as_uri()
+                        for path in self.workspace_ord_paths(root_path)
+                        if path.is_file()
+                    )
 
-                    uri = path.as_uri()
-                    if uri not in self.documents:
-                        try:
-                            self.open_path(str(path))
-                        except (OSError, UnicodeDecodeError):
-                            continue
-                    uris.append(uri)
-                return uris
+            uris = []
+            for uri in sorted(self.workspace_uri_cache):
+                if uri not in self.documents:
+                    try:
+                        self.open_path(str(self.file_uri_path(uri)))
+                    except (OSError, UnicodeDecodeError):
+                        continue
+                uris.append(uri)
+            return uris
 
         uris = []
         for uri in sorted(self.documents):
@@ -1766,17 +1788,22 @@ class AnalysisSession(
         if not self.ensure_document(uri):
             return None
 
-        local_definition = self.local_definition(uri, position)
+        name_info = self.name_at_position(uri, position)
+        lookup_position = position
+        if name_info is not None and name_info["range"].end == position:
+            lookup_position = AnalysisPosition(position.line, position.character - 1)
+
+        local_definition = self.local_definition(uri, lookup_position)
         if local_definition is not None:
             return local_definition
 
-        member_definition = self.member_definition(uri, position)
+        member_definition = self.member_definition(uri, lookup_position)
         if member_definition is not None:
             return member_definition
 
         analysis = self.analyze(uri)
         for symbol in analysis.symbols:
-            if range_contains(symbol.selection_range, position):
+            if range_contains(symbol.selection_range, lookup_position):
                 return {
                     "uri": uri,
                     "name": symbol.name,
@@ -1786,12 +1813,12 @@ class AnalysisSession(
                     "origin_range": symbol.selection_range,
                 }
 
-        import_entry = self.import_entry_at_position(uri, position)
+        import_entry = self.import_entry_at_position(uri, lookup_position)
         if import_entry is not None:
             origin_range = import_entry.selection_range
             if (
                 import_entry.export_range is not None
-                and range_contains(import_entry.export_range, position)
+                and range_contains(import_entry.export_range, lookup_position)
             ):
                 origin_range = import_entry.export_range
 
@@ -1809,7 +1836,6 @@ class AnalysisSession(
                 if match is not None:
                     return self.definition_with_origin(match, origin_range)
 
-        name_info = self.name_at_position(uri, position)
         if name_info is None:
             return None
 
