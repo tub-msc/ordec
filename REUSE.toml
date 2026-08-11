@@ -29,6 +29,7 @@ SPDX-License-Identifier = "CC0-1.0"
 [[annotations]]
 # ordec.examples code:
 path = [
+    "src/ordec/examples/adder_pnr.ord",
     "src/ordec/examples/amp.ord",
     "src/ordec/examples/blank.ord",
     "src/ordec/examples/currentmirror.ord",

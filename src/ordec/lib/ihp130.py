@@ -16,6 +16,7 @@ from . import generic_mos
 from .pdk_common import PdkDict, check_dir, check_file, rundir
 from ..layout import makevias, write_gds
 from ..layout import klayout
+from ..layout.pnr import GridConfig
 
 @functools.cache
 def pdk() -> PdkDict:
@@ -29,6 +30,9 @@ def pdk() -> PdkDict:
     pdk.ngspice_models_dir       =  check_dir(pdk.root / "libs.tech/ngspice/models")
     pdk.ngspice_osdi_dir         =  check_dir(pdk.root / "libs.tech/ngspice/osdi")
     pdk.stdcell_spice_dir        =  check_dir(pdk.root / "libs.ref/sg13g2_stdcell/spice")
+    pdk.stdcell_lef              = check_file(pdk.root / "libs.ref/sg13g2_stdcell/lef/sg13g2_stdcell.lef")
+    pdk.stdcell_gds              = check_file(pdk.root / "libs.ref/sg13g2_stdcell/gds/sg13g2_stdcell.gds")
+    pdk.stdcell_spice            = check_file(pdk.root / "libs.ref/sg13g2_stdcell/spice/sg13g2_stdcell.spice")
     pdk.iocell_spice_dir         =  check_dir(pdk.root / "libs.ref/sg13g2_io/spice")
     pdk.klayout_lvs_deck         = check_file(pdk.root / "libs.tech/klayout/tech/lvs/sg13g2.lvs")
     pdk.klayout_drc_main_deck    = check_file(pdk.root / "libs.tech/klayout/tech/drc/ihp-sg13g2.drc")
@@ -925,7 +929,18 @@ device_map = {
 
 
 @public
-def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
+def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True,
+        antenna: bool=True, density: bool=False) -> DrcReport:
+    """Run the KLayout DRC sign-off decks over a layout.
+
+    Args:
+        l: the Layout to check.
+        variant: 'minimal' runs the main deck alone, 'maximal' also runs the
+            sg13g2_maximal deck.
+        use_tempdir: run in a temporary directory instead of ./drc.
+        antenna: also run the PDK's antenna deck.
+        density: also run the PDK's density deck.
+    """
     if variant not in ('minimal', 'maximal'):
         raise ValueError("variant must be either 'minimal' or 'maximal'.")
 
@@ -975,6 +990,24 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True):
                 **klayout_shared_opts
                 )
             klayout.parse_rdb(cwd / "maximal.lyrdb", report, directory)
+
+        if antenna:
+            (cwd / 'antenna.log').unlink(missing_ok=True)
+            klayout.run(pdk().klayout_drc_decks_dir / 'antenna.drc', cwd,
+                report="antenna.lyrdb",
+                log="antenna.log",
+                **klayout_shared_opts
+                )
+            klayout.parse_rdb(cwd / "antenna.lyrdb", report, directory)
+
+        if density:
+            (cwd / 'density.log').unlink(missing_ok=True)
+            klayout.run(pdk().klayout_drc_decks_dir / 'density.drc', cwd,
+                report="density.lyrdb",
+                log="density.log",
+                **klayout_shared_opts
+                )
+            klayout.parse_rdb(cwd / "density.lyrdb", report, directory)
 
         return report
 
@@ -1029,3 +1062,38 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> LvsReport
         log = (cwd / "out.log").read_text()
 
         return klayout.parse_lvsdb(cwd / 'out.lvsdb', layout, schematic, directory)
+
+# The sg13g2 routing-grid and emitted-geometry profile the P&R engine works
+# from. Track pitches and row height come from the tech LEF; the wire, via,
+# landing, strap and rail dimensions and the manufacturing grid come from the
+# sign-off DRC rules. Frozen, so the engine derives its per-floorplan variants
+# with dataclasses.replace rather than mutating it.
+public(grid = GridConfig(
+    # Routing grid (sg13g2 tech LEF):
+    x_pitch=480,
+    y_pitch=420,
+    row_height=3780,
+    tracks_per_row=9,
+    via_half=95,
+    encl=10,
+    encl_endcap=50,
+    manufacturing_grid=5, # sg13g2 layout quantum (MANUFACTURINGGRID)
+    # Supply naming (sg13g2 stdcell library pins + ORDeC net conventions):
+    vdd_pin="VDD",
+    vss_pin="VSS",
+    vdd_net="vdd",
+    vss_net="vss",
+    # Emitted geometry (sg13g2 sign-off DRC rules):
+    wire_width=210,       # Mn min width
+    wire_ext=150,         # via half 95 + 55 endcap (Mn.c1 / V*.c1)
+    strap_half_w=105,     # wire_width / 2
+    land_half_h=345,      # 690 nm landing -> Mn min area
+    m1_land_half_h=145,   # Metal1 endcap landing under a Via1 (V1.c1)
+    min_area_tracks=2,    # 2 * pitch * 210 nm wire >= 0.144 um^2 Mn min area
+    port_pad_inner=600,   # from the edge rail into the block
+    port_pad_outer=360,   # from the edge rail into the parent's channel
+    strap_vdd_x=-520,     # left margin; right strap mirrors to die_w + 520
+    strap_vss_x=-1080,    # just outside VDD
+    rail_ext=150,
+    mesh_half_w=210,      # 420 nm Metal5 mesh straps (2x wire width)
+    ))

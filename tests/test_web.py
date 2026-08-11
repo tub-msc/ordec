@@ -104,6 +104,10 @@ testcases_integrated = {
        "Vco(width='1u',length='500n').drc": [],
        "Vco(width='1u',length='500n').lvs": [],
     },
+    'adder_pnr': {
+        'RippleAdder().layout': [],
+        'AdderTb().report_tran': [],
+    },
     'stdcells': {
         "extlib['sg13g2_inv_1'].layout": [],
         "extlib['sg13g2_inv_1'].schematic": [],
