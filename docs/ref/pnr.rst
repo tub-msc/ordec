@@ -29,8 +29,8 @@ the layout to emit into:
        # symbol and schematic viewgens ...
 
        viewgen layout -> Layout:
-           place_and_route(self.schematic, ., grid=sg13g2_grid(),
-               routing_spec=SG13G2().default_routing_spec,
+           place_and_route(self.schematic, ., grid=ihp130.grid,
+               routing_spec=ihp130.SG13G2().default_routing_spec,
                pin_rects=pin_rects)
 
 ``place_and_route`` runs the same pipeline a production flow does, applied to a single
@@ -67,7 +67,7 @@ The routing grid
 ----------------
 
 Tracks come from the ``GridConfig`` profile, not from the engine. For the sg13g2 binding
-(``ihp130.sg13g2_grid``) they are the IHP tech-LEF values. Metal2 is vertical on a
+(``ihp130.grid``) they are the IHP tech-LEF values. Metal2 is vertical on a
 0.48 µm pitch, Metal3 is horizontal on 0.42 µm, and the row is 3.78 µm, which is 9 Metal3
 tracks tall. Cells are an integer number of Metal2 tracks wide. Because the foundry leaf
 cells are Metal1-only for signals, Metal2 and Metal3 over them are free, so routing
@@ -153,7 +153,7 @@ Wires and via stacks are emitted directly at concrete grid coordinates
 single cell but does not scale to the few-hundred-net blocks this engine targets. Every
 dimension the emitter uses comes from the ``GridConfig`` profile. The sg13g2 values and
 the design rules each one derives from are documented field by field in
-``ihp130.sg13g2_grid``.
+``ihp130.grid``.
 
 Two choices matter when writing a profile for another PDK. Pin access works on the clean
 per-pin LEF rectangles, never on GDS bounding boxes, since pins can overlap by bounding
@@ -193,7 +193,7 @@ shared rail per supply already ties everything:
   off and ``mesh_tap_pitch`` sets the stitch density.
 
 The supply pin and net names (``VDD``, ``vdd`` and so on) are part of the ``GridConfig``
-profile rather than the engine. The sg13g2 conventions live in ``ihp130.sg13g2_grid()``.
+profile rather than the engine. The sg13g2 conventions live in ``ihp130.grid``.
 
 The block interface
 -------------------

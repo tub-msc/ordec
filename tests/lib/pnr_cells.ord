@@ -33,7 +33,7 @@ import functools
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary
 from ordec.lib import ihp130
-from ordec.lib.ihp130 import SG13G2, Nmos, sg13g2_grid
+from ordec.lib.ihp130 import SG13G2, Nmos
 from ordec.layout.pnr import lef_pin_rects, place_and_route
 
 stdcells = ExtLibrary()
@@ -80,7 +80,7 @@ cell InvChain:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+        place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
 
@@ -118,7 +118,7 @@ cell DffArray:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+        place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
 
@@ -152,7 +152,7 @@ cell Crossbar:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+        place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
 
@@ -218,7 +218,7 @@ cell RippleAdder:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+        place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
 
@@ -253,7 +253,7 @@ cell TiedReset:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+        place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
 
@@ -305,7 +305,7 @@ cell PairChain:
                 .vdd -- vdd; .vss -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+        place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
 
@@ -338,7 +338,7 @@ cell SplitSupply:
             .A -- mid; .Y -- y; .VDD -- vdd2; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+        place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
 
@@ -365,7 +365,7 @@ cell MisnamedSupply:
             .A -- a; .Y -- y; .VDD -- vcc; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+        place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
 
@@ -397,7 +397,7 @@ cell HandGeometry:
         LayoutRect stray:
             .layer = SG13G2().layers.Metal2
             .rect = (0, 0, 3000, 3000)
-        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+        place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
 
@@ -424,6 +424,6 @@ cell DeviceLeaf:
             .$w = 1u; .$l = 130n
 
     viewgen layout -> Layout:
-        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+        place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())

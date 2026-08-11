@@ -26,7 +26,8 @@ from ordec.layout.pnr import place, route
 from ordec.layout.pnr.flow import (LeafCell, NetInfo,
     flatten_schematic, is_extlibrary_leaf, stack_from_spec)
 from ordec.layout.pnr.route import M2, M3, VERT
-from ordec.lib.ihp130 import SG13G2, sg13g2_grid
+from ordec.lib import ihp130
+from ordec.lib.ihp130 import SG13G2
 from .lib import pnr_cells as fx
 
 # A grid with the sg13g2 dimensions but no PDK behind it, so the placement and
@@ -48,7 +49,7 @@ def pnr(cell, layout=None, port_edges=None):
     does. Returns the frozen layout and the :class:`PnrResult`."""
     if layout is None:
         layout = Layout(cell=cell, symbol=cell.symbol)
-    result = place_and_route(cell.schematic, layout, grid=sg13g2_grid(),
+    result = place_and_route(cell.schematic, layout, grid=ihp130.grid,
         routing_spec=SG13G2().default_routing_spec,
         pin_rects=fx.pin_rects(), port_edges=port_edges)
     return layout.freeze(), result

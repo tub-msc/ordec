@@ -33,10 +33,10 @@ class GridConfig:
     The engine reads every dimension from here, so retargeting a PDK is a new
     profile rather than an edit to the engine. The grid and geometry fields have
     no defaults, since they come from a PDK profile such as
-    :func:`ordec.lib.ihp130.sg13g2_grid`. Only the flow knobs at the bottom
+    :data:`ordec.lib.ihp130.grid`. Only the flow knobs at the bottom
     carry universal defaults. All lengths are in nm.
 
-    Frozen, so a profile is a value the binding can cache and share. The
+    Frozen, so a profile is a constant the binding defines once and shares. The
     floorplan loop derives one variant per attempt with
     ``dataclasses.replace(cfg, n_rows=...)``, and a caller overrides a flow knob
     the same way.
@@ -534,16 +534,16 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
     layout::
 
         viewgen layout -> Layout:
-            place_and_route(self.schematic, ., grid=sg13g2_grid(),
-                routing_spec=SG13G2().default_routing_spec,
-                pin_rects=lef_pin_rects(pdk().stdcell_lef, "Metal1"))
+            place_and_route(self.schematic, ., grid=ihp130.grid,
+                routing_spec=ihp130.SG13G2().default_routing_spec,
+                pin_rects=lef_pin_rects(ihp130.pdk().stdcell_lef, "Metal1"))
 
     Args:
         schematic: the :class:`Schematic` to lay out, flattened to leaf cells.
         layout: the mutable, empty :class:`Layout` the geometry is emitted
             into. Freezing it is the caller's (or the view context's) job.
         grid: the routing grid + emitted geometry (:class:`GridConfig`), e.g.
-            :func:`ordec.lib.ihp130.sg13g2_grid`.
+            :data:`ordec.lib.ihp130.grid`.
         routing_spec: the PDK's :class:`RoutingSpec`. The engine binds its
             routing codes to the spec's nine lowest ``route_id`` layers (see
             ``stack_from_spec``) and emits on those.

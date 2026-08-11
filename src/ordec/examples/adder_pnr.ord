@@ -9,7 +9,6 @@ from ordec.core import *
 from ordec.extlibrary import ExtLibrary
 from ordec.lib import ihp130
 from ordec.lib.base import Vpulse, Vdc, Gnd, NoConn
-from ordec.lib.ihp130 import sg13g2_grid
 from ordec.layout.pnr import lef_pin_rects, place_and_route
 
 stdcells = ExtLibrary()
@@ -87,7 +86,7 @@ cell RippleAdder:
                 .VDD -- vdd; .VSS -- vss
 
     viewgen layout -> Layout:
-        place_and_route(self.schematic, ., grid=sg13g2_grid(),
+        place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=ihp130.SG13G2().default_routing_spec,
             pin_rects=pin_rects)
 

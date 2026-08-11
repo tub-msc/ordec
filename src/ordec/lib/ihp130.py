@@ -1063,45 +1063,37 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> LvsReport
 
         return klayout.parse_lvsdb(cwd / 'out.lvsdb', layout, schematic, directory)
 
-@public
-@functools.cache
-def sg13g2_grid() -> GridConfig:
-    """Build the sg13g2 routing-grid and emitted-geometry profile.
-
-    Track pitches and row height come from the tech LEF. The wire, via, landing,
-    strap and rail dimensions and the manufacturing grid come from the sign-off
-    DRC rules.
-
-    Returns:
-        GridConfig: the profile, frozen and shared. The engine derives its
-        per-floorplan variants with ``dataclasses.replace``.
-    """
-    return GridConfig(
-        # Routing grid (sg13g2 tech LEF):
-        x_pitch=480,
-        y_pitch=420,
-        row_height=3780,
-        tracks_per_row=9,
-        via_half=95,
-        encl=10,
-        encl_endcap=50,
-        manufacturing_grid=5, # sg13g2 layout quantum (MANUFACTURINGGRID)
-        # Supply naming (sg13g2 stdcell library pins + ORDeC net conventions):
-        vdd_pin="VDD",
-        vss_pin="VSS",
-        vdd_net="vdd",
-        vss_net="vss",
-        # Emitted geometry (sg13g2 sign-off DRC rules):
-        wire_width=210,       # Mn min width
-        wire_ext=150,         # via half 95 + 55 endcap (Mn.c1 / V*.c1)
-        strap_half_w=105,     # wire_width / 2
-        land_half_h=345,      # 690 nm landing -> Mn min area
-        m1_land_half_h=145,   # Metal1 endcap landing under a Via1 (V1.c1)
-        min_area_tracks=2,    # 2 * pitch * 210 nm wire >= 0.144 um^2 Mn min area
-        port_pad_inner=600,   # from the edge rail into the block
-        port_pad_outer=360,   # from the edge rail into the parent's channel
-        strap_vdd_x=-520,     # left margin; right strap mirrors to die_w + 520
-        strap_vss_x=-1080,    # just outside VDD
-        rail_ext=150,
-        mesh_half_w=210,      # 420 nm Metal5 mesh straps (2x wire width)
-    )
+# The sg13g2 routing-grid and emitted-geometry profile the P&R engine works
+# from. Track pitches and row height come from the tech LEF; the wire, via,
+# landing, strap and rail dimensions and the manufacturing grid come from the
+# sign-off DRC rules. Frozen, so the engine derives its per-floorplan variants
+# with dataclasses.replace rather than mutating it.
+public(grid = GridConfig(
+    # Routing grid (sg13g2 tech LEF):
+    x_pitch=480,
+    y_pitch=420,
+    row_height=3780,
+    tracks_per_row=9,
+    via_half=95,
+    encl=10,
+    encl_endcap=50,
+    manufacturing_grid=5, # sg13g2 layout quantum (MANUFACTURINGGRID)
+    # Supply naming (sg13g2 stdcell library pins + ORDeC net conventions):
+    vdd_pin="VDD",
+    vss_pin="VSS",
+    vdd_net="vdd",
+    vss_net="vss",
+    # Emitted geometry (sg13g2 sign-off DRC rules):
+    wire_width=210,       # Mn min width
+    wire_ext=150,         # via half 95 + 55 endcap (Mn.c1 / V*.c1)
+    strap_half_w=105,     # wire_width / 2
+    land_half_h=345,      # 690 nm landing -> Mn min area
+    m1_land_half_h=145,   # Metal1 endcap landing under a Via1 (V1.c1)
+    min_area_tracks=2,    # 2 * pitch * 210 nm wire >= 0.144 um^2 Mn min area
+    port_pad_inner=600,   # from the edge rail into the block
+    port_pad_outer=360,   # from the edge rail into the parent's channel
+    strap_vdd_x=-520,     # left margin; right strap mirrors to die_w + 520
+    strap_vss_x=-1080,    # just outside VDD
+    rail_ext=150,
+    mesh_half_w=210,      # 420 nm Metal5 mesh straps (2x wire width)
+    ))

@@ -18,14 +18,13 @@ import ordec.importer
 from ordec.core import Layout
 from ordec.layout.pnr import place_and_route
 from ordec.lib import ihp130
-from ordec.lib.ihp130 import sg13g2_grid
 from .lib import pnr_cells as fx
 
 
 def pnr(cell):
     """Run the engine over ``cell`` with the sg13g2 inputs."""
     return place_and_route(cell.schematic,
-        Layout(cell=cell, symbol=cell.symbol), grid=sg13g2_grid(),
+        Layout(cell=cell, symbol=cell.symbol), grid=ihp130.grid,
         routing_spec=ihp130.SG13G2().default_routing_spec,
         pin_rects=fx.pin_rects())
 
@@ -64,12 +63,6 @@ def test_upper_metal_leaf_rejected():
     own geometry up there is rejected instead of being silently shorted."""
     with pytest.raises(ValueError, match="Metal1-only leaf cells"):
         fx.pin_rects()["sg13g2_sdfbbp_1"]
-
-
-def test_grid_profile_is_shared():
-    """The profile is a cacheable value, since the engine derives its
-    per-floorplan variants rather than mutating it."""
-    assert sg13g2_grid() is sg13g2_grid()
 
 
 def test_split_supply_rejected():
