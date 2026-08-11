@@ -10,17 +10,20 @@ must supply as explicit parameters: the PDK's
 the spec's nine lowest ``route_id`` layers, so the layer stack has its single source of
 truth in :mod:`ordec.core.schema`, shared with :doc:`SRouter <layout>`), a
 :class:`~ordec.layout.pnr.GridConfig` (the routing grid and the DRC-driven
-emission geometry such as wire, via, landing and strap dimensions) and a per-cell LEF
-pin-rectangle lookup. An "is this a routing leaf?" predicate can be passed too, but
-defaults to treating every cell loaded from an
+emission geometry such as wire, via, landing and strap dimensions) and a per-cell
+pin-rectangle lookup, which :func:`~ordec.layout.pnr.lef_pin_rects` reads out of a
+library LEF for a given pin layer. An "is this a routing leaf?" predicate can be passed
+too, but defaults to treating every cell loaded from an
 :class:`~ordec.extlibrary.ExtLibrary` as a leaf, which is what a foundry standard cell
 is. No PDK layer, pitch or design-rule dimension is baked into the engine. It sits alongside :doc:`SRouter <layout>`
 and the :doc:`KLayout integration <layout_klayout>`. :mod:`ordec.lib.ihp130` supplies
-the sg13g2 grid profile and pin data, and ``SG13G2().default_routing_spec`` supplies the
-layers. In an ORD ``viewgen layout`` body the bare dot passes the view's own root as the
-layout to emit into:
+the sg13g2 grid profile and the LEF path, and ``SG13G2().default_routing_spec`` supplies
+the layers. In an ORD ``viewgen layout`` body the bare dot passes the view's own root as
+the layout to emit into:
 
 .. code-block:: python
+
+   pin_rects = lef_pin_rects(ihp130.pdk().stdcell_lef, "Metal1")
 
    cell Block:
        # symbol and schematic viewgens ...
@@ -28,7 +31,7 @@ layout to emit into:
        viewgen layout -> Layout:
            place_and_route(self.schematic, ., grid=sg13g2_grid(),
                routing_spec=SG13G2().default_routing_spec,
-               pin_rects=lef_pin_rects)
+               pin_rects=pin_rects)
 
 ``place_and_route`` runs the same pipeline a production flow does, applied to a single
 block. It flattens the schematic to foundry leaf cells, orders and folds them into
@@ -52,8 +55,9 @@ Standard-cell coverage
 ----------------------
 
 The engine routes most IHP sg13g2 logic and sequential cells, about 60 of 74. The rest
-fail loudly. A cell with LEF geometry above Metal1 (``sdfbbp``) is rejected with a clear
-exception by the PDK binding, since the engine routes the metals above the leaf cells. A
+fail loudly. A cell with LEF geometry above Metal1 (``sdfbbp``) is left out of the
+pin-rectangle lookup and rejected with a clear exception when the engine looks it up,
+since the engine routes the metals above the leaf cells. A
 few cells with very small or staircase pins (``a21o``, ``dlhrq``) can hit a Via1 endcap
 landing that cannot be satisfied without an M1.b or V1.c1 violation, and fixing those
 would take a polygon-exact via-access engine. Non-logic cells (antenna, fill, decap) are

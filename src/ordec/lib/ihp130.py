@@ -1065,56 +1065,6 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> LvsReport
 
 @public
 @functools.cache
-def lef_pin_rects(macro_name: str) -> dict:
-    """Read the per-pin Metal1 pin rectangles for one stdcell LEF macro.
-
-    The LEF rectangles are clean, per-pin and non-overlapping, with the foundry
-    pin names kept as-is, so the router can pick a via-access point that lands
-    on exactly the intended pin.
-
-    Args:
-        macro_name (str): the LEF macro name, e.g. ``sg13g2_inv_1``.
-
-    Returns:
-        dict: ``{PIN: [(x0, y0, x1, y1), ...]}`` in nm.
-    """
-    import sc_leflib
-
-    macro = sc_leflib.parse(str(pdk().stdcell_lef))["macros"][macro_name]
-    rects = {}
-    upper = set()   # non-Metal1 layers in the macro's PIN or OBS geometry
-    for pin, pin_data in macro["pins"].items():
-        rects[pin] = []
-        for port in pin_data["ports"]:
-            for geom in port["layer_geometries"]:
-                if geom["layer"] != "Metal1":
-                    upper.add(geom["layer"])
-                    continue
-                for shape in geom["shapes"]:
-                    # LEF also allows POLYGON here. The sg13g2 pins are all
-                    # rectangles, and a polygon pin would need a polygon-exact
-                    # via-access engine anyway.
-                    if "rect" not in shape:
-                        continue
-                    x0, y0, x1, y1 = (round(v * 1000) for v in shape["rect"])
-                    rects[pin].append((x0, y0, x1, y1))
-    for port in macro.get("obs") or []:
-        for geom in port:
-            if geom["layer"] != "Metal1":
-                upper.add(geom["layer"])
-    if upper:
-        # The engine routes Metal2..Metal5 freely over the placed cells, so a
-        # cell with its own geometry up there (e.g. sg13g2_sdfbbp_1's Metal2/Via1
-        # pin and obstruction shapes) would be silently shorted or violated.
-        raise ValueError(
-            f"{macro_name}: LEF pin/obstruction geometry on {sorted(upper)}. "
-            "The P&R engine requires Metal1-only leaf cells, since it routes "
-            "on the metals above them")
-    return rects
-
-
-@public
-@functools.cache
 def sg13g2_grid() -> GridConfig:
     """Build the sg13g2 routing-grid and emitted-geometry profile.
 

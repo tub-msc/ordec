@@ -149,6 +149,84 @@ def stack_from_spec(routing_spec):
         via1=layer[1], via2=layer[3], via3=layer[5], via4=layer[7])
 
 
+class PinRects(dict):
+    """``{macro: {pin: [(x0, y0, x1, y1), ...]}}`` read from one LEF file.
+
+    A macro whose pin or obstruction geometry leaves the pin layer is left out
+    rather than mapped to its pin-layer rects alone, since the engine routes
+    the metals above the leaf cells and would silently short or violate that
+    geometry. The rejection has to wait until the macro is looked up: a library
+    LEF holds macros a given design never places, so reading the file must not
+    fail over one of them.
+    """
+    def __init__(self, rects, off_layer, pin_layer):
+        super().__init__(rects)
+        self.off_layer = off_layer   # {macro: [layer, ...]} of the rejects
+        self.pin_layer = pin_layer
+
+    def __missing__(self, macro):
+        if macro not in self.off_layer:
+            raise KeyError(macro)
+        raise ValueError(
+            f"{macro}: LEF pin/obstruction geometry on "
+            f"{self.off_layer[macro]}. The P&R engine requires "
+            f"{self.pin_layer}-only leaf cells, since it routes on the "
+            "metals above them")
+
+
+@public
+def lef_pin_rects(lef_path, pin_layer: str) -> dict[str, dict]:
+    """Read the per-pin pin-layer rectangles of every macro in a LEF file.
+
+    This is the ``pin_rects`` input :func:`place_and_route` takes. The LEF
+    rectangles are clean, per-pin and non-overlapping, with the foundry pin
+    names kept as-is, so the router can pick a via-access point that lands on
+    exactly the intended pin.
+
+    Args:
+        lef_path: the library LEF holding the macros, e.g.
+            ``ordec.lib.ihp130.pdk().stdcell_lef``.
+        pin_layer (str): LEF name of the layer the engine accesses pins on,
+            e.g. ``Metal1``.
+
+    Returns:
+        PinRects: ``{macro: {PIN: [(x0, y0, x1, y1), ...]}}`` in nm, holding
+        every macro the engine can place. A macro with geometry off
+        ``pin_layer`` is rejected when it is looked up.
+    """
+    import sc_leflib
+
+    rects = {}
+    off_layer = {}
+    for macro_name, macro in sc_leflib.parse(str(lef_path))["macros"].items():
+        macro_rects = {}
+        off = set()   # layers other than pin_layer in the PIN or OBS geometry
+        for pin, pin_data in macro["pins"].items():
+            macro_rects[pin] = []
+            for port in pin_data["ports"]:
+                for geom in port["layer_geometries"]:
+                    if geom["layer"] != pin_layer:
+                        off.add(geom["layer"])
+                        continue
+                    for shape in geom["shapes"]:
+                        # LEF also allows POLYGON here. The sg13g2 pins are all
+                        # rectangles, and a polygon pin would need a polygon-exact
+                        # via-access engine anyway.
+                        if "rect" not in shape:
+                            continue
+                        x0, y0, x1, y1 = (round(v * 1000) for v in shape["rect"])
+                        macro_rects[pin].append((x0, y0, x1, y1))
+        for port in macro.get("obs") or []:
+            for geom in port:
+                if geom["layer"] != pin_layer:
+                    off.add(geom["layer"])
+        if off:
+            off_layer[macro_name] = sorted(off)
+        else:
+            rects[macro_name] = macro_rects
+    return PinRects(rects, off_layer, pin_layer)
+
+
 @dataclass
 class NetInfo:
     """A net to route: its terminals (instance pin connections) and, if it is a
@@ -266,7 +344,7 @@ def extract(schematic, pin_rects, is_leaf, cfg):
 
     Args:
         schematic: the Schematic to lay out.
-        pin_rects: the PDK's pin-rectangle hook (see :func:`place_and_route`).
+        pin_rects: the PDK's pin-rectangle lookup (see :func:`place_and_route`).
         is_leaf: the PDK's routing-leaf predicate (see :func:`place_and_route`).
         cfg: the :class:`GridConfig`, for the supply pin naming.
 
@@ -278,11 +356,11 @@ def extract(schematic, pin_rects, is_leaf, cfg):
 
     cells = {}
     for name, leaf in leaf_insts.items():
-        # Wrap the PDK hook's raw nm tuples as Rect4I, so the rest of the engine
+        # Wrap the lookup's raw nm tuples as Rect4I, so the rest of the engine
         # works with named geometry (rect.lx / .cx / .width, vertex-in-rect) rather
         # than positional indexing.
         rects = {pin: [Rect4I(*r) for r in raw]
-            for pin, raw in pin_rects(leaf.name).items()}
+            for pin, raw in pin_rects[leaf.name].items()}
         # Cell pitch = power-rail width (the rail rect spans the whole cell).
         width = max(r.width for r in rects[cfg.vdd_pin])
         cells[name] = LeafCell(leaf, rects, width)
@@ -458,7 +536,7 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
         viewgen layout -> Layout:
             place_and_route(self.schematic, ., grid=sg13g2_grid(),
                 routing_spec=SG13G2().default_routing_spec,
-                pin_rects=lef_pin_rects)
+                pin_rects=lef_pin_rects(pdk().stdcell_lef, "Metal1"))
 
     Args:
         schematic: the :class:`Schematic` to lay out, flattened to leaf cells.
@@ -469,8 +547,9 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
         routing_spec: the PDK's :class:`RoutingSpec`. The engine binds its
             routing codes to the spec's nine lowest ``route_id`` layers (see
             ``stack_from_spec``) and emits on those.
-        pin_rects: callable ``cell_name -> {pin: [(x0, y0, x1, y1), ...]}``
-            giving a leaf cell's per-pin Metal1 rectangles, in nm.
+        pin_rects: ``{cell_name: {pin: [(x0, y0, x1, y1), ...]}}`` giving each
+            leaf cell's per-pin Metal1 rectangles, in nm, e.g. from
+            :func:`lef_pin_rects`.
         is_leaf: callable ``cell -> bool``, true for a routing leaf placed
             as-is, false for a composite the engine flattens. Defaults to
             :func:`is_extlibrary_leaf`, since foundry leaves come from an

@@ -28,16 +28,22 @@ bug: a supply whose boustrophedon rows share a single rail got no strap, which
 left its port floating.
 """
 
+import functools
+
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary
 from ordec.lib import ihp130
-from ordec.lib.ihp130 import SG13G2, Nmos, lef_pin_rects, sg13g2_grid
-from ordec.layout.pnr import place_and_route
+from ordec.lib.ihp130 import SG13G2, Nmos, sg13g2_grid
+from ordec.layout.pnr import lef_pin_rects, place_and_route
 
 stdcells = ExtLibrary()
 stdcells.read_lef(ihp130.pdk().stdcell_lef)
 stdcells.read_gds(ihp130.pdk().stdcell_gds, SG13G2().layers)
 stdcells.read_spice(ihp130.pdk().stdcell_spice, device_map=ihp130.device_map)
+
+@functools.cache
+def pin_rects():
+    return lef_pin_rects(ihp130.pdk().stdcell_lef, "Metal1")
 
 Inv  = stdcells["sg13g2_inv_1"]
 Dff  = stdcells["sg13g2_dfrbp_1"]
@@ -76,7 +82,7 @@ cell InvChain:
     viewgen layout -> Layout:
         place_and_route(self.schematic, ., grid=sg13g2_grid(),
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=lef_pin_rects)
+            pin_rects=pin_rects())
 
 cell DffArray:
     """n flip-flops sharing clk and rst (high fan-out), with per-bit d[i]/q[i]."""
@@ -114,7 +120,7 @@ cell DffArray:
     viewgen layout -> Layout:
         place_and_route(self.schematic, ., grid=sg13g2_grid(),
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=lef_pin_rects)
+            pin_rects=pin_rects())
 
 cell Crossbar:
     """n mux2 cells: y[i] = sel[i] ? busB : busA, with busA/busB shared by all."""
@@ -148,7 +154,7 @@ cell Crossbar:
     viewgen layout -> Layout:
         place_and_route(self.schematic, ., grid=sg13g2_grid(),
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=lef_pin_rects)
+            pin_rects=pin_rects())
 
 cell RippleAdder:
     """n-bit ripple-carry adder with sum[i] = a[i]^b[i]^carry[i] and
@@ -214,7 +220,7 @@ cell RippleAdder:
     viewgen layout -> Layout:
         place_and_route(self.schematic, ., grid=sg13g2_grid(),
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=lef_pin_rects)
+            pin_rects=pin_rects())
 
 cell TiedReset:
     """n flip-flops sharing clk, RESET_B held high on each (no reset port)."""
@@ -249,7 +255,7 @@ cell TiedReset:
     viewgen layout -> Layout:
         place_and_route(self.schematic, ., grid=sg13g2_grid(),
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=lef_pin_rects)
+            pin_rects=pin_rects())
 
 cell InvPair:
     """Two inverters in series (a composite, non-foundry sub-cell)."""
@@ -301,7 +307,7 @@ cell PairChain:
     viewgen layout -> Layout:
         place_and_route(self.schematic, ., grid=sg13g2_grid(),
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=lef_pin_rects)
+            pin_rects=pin_rects())
 
 
 cell SplitSupply:
@@ -334,7 +340,7 @@ cell SplitSupply:
     viewgen layout -> Layout:
         place_and_route(self.schematic, ., grid=sg13g2_grid(),
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=lef_pin_rects)
+            pin_rects=pin_rects())
 
 
 cell MisnamedSupply:
@@ -361,7 +367,7 @@ cell MisnamedSupply:
     viewgen layout -> Layout:
         place_and_route(self.schematic, ., grid=sg13g2_grid(),
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=lef_pin_rects)
+            pin_rects=pin_rects())
 
 
 cell HandGeometry:
@@ -393,7 +399,7 @@ cell HandGeometry:
             .rect = (0, 0, 3000, 3000)
         place_and_route(self.schematic, ., grid=sg13g2_grid(),
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=lef_pin_rects)
+            pin_rects=pin_rects())
 
 
 cell DeviceLeaf:
@@ -420,4 +426,4 @@ cell DeviceLeaf:
     viewgen layout -> Layout:
         place_and_route(self.schematic, ., grid=sg13g2_grid(),
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=lef_pin_rects)
+            pin_rects=pin_rects())

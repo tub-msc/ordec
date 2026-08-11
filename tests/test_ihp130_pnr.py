@@ -18,7 +18,7 @@ import ordec.importer
 from ordec.core import Layout
 from ordec.layout.pnr import place_and_route
 from ordec.lib import ihp130
-from ordec.lib.ihp130 import lef_pin_rects, sg13g2_grid
+from ordec.lib.ihp130 import sg13g2_grid
 from .lib import pnr_cells as fx
 
 
@@ -27,11 +27,11 @@ def pnr(cell):
     return place_and_route(cell.schematic,
         Layout(cell=cell, symbol=cell.symbol), grid=sg13g2_grid(),
         routing_spec=ihp130.SG13G2().default_routing_spec,
-        pin_rects=lef_pin_rects)
+        pin_rects=fx.pin_rects())
 
 
 def test_lef_pin_rects_inverter():
-    rects = lef_pin_rects("sg13g2_inv_1")
+    rects = fx.pin_rects()["sg13g2_inv_1"]
     assert set(rects) == {"A", "Y", "VDD", "VSS"}
     assert rects["A"] == [(310, 1520, 625, 1850)]
     assert rects["Y"] == [(855, 610, 1085, 3175)]
@@ -45,7 +45,7 @@ def test_lef_pin_rects_are_per_pin():
     A bbox-driven via would short the two nets, so the router needs the clean
     per-pin rects to place its access on the intended pin.
     """
-    rects = lef_pin_rects("sg13g2_nor2_1")
+    rects = fx.pin_rects()["sg13g2_nor2_1"]
 
     def bbox(rs):
         return (min(r[0] for r in rs), min(r[1] for r in rs),
@@ -63,7 +63,7 @@ def test_upper_metal_leaf_rejected():
     """The engine routes the metals above the leaf cells, so a leaf with its
     own geometry up there is rejected instead of being silently shorted."""
     with pytest.raises(ValueError, match="Metal1-only leaf cells"):
-        lef_pin_rects("sg13g2_sdfbbp_1")
+        fx.pin_rects()["sg13g2_sdfbbp_1"]
 
 
 def test_grid_profile_is_shared():
