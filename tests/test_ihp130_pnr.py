@@ -2,14 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-The sg13g2 place-and-route binding (in ordec.lib.ihp130) and its sign-off.
-
-The pin-rectangle and structural-rejection tests read the PDK but run no
-KLayout. The DRC and LVS pair at the end is the engine's oracle and is the only
-slow part of the P&R suite, so it covers two cells rather than the whole corpus
-in tests/lib/pnr_cells.ord: a single-row block whose xor2 outputs need off-track
-pin access, and a multi-row block with side straps, a power mesh and the shared
-boustrophedon rails. Deselect them with ``-k "not drc_lvs"``.
+Tests place-and-route using ihp130; runs DRC+LVS on a small result.
 """
 
 import pytest
