@@ -100,7 +100,7 @@ class DiagnosticsMixin:
                 "unresolved-import-member",
             )
 
-        built_in_contexts = {
+        built_in_node_kinds = {
             "input",
             "output",
             "inout",
@@ -108,17 +108,17 @@ class DiagnosticsMixin:
             "net",
             "path",
         }
-        for context in analysis.node_contexts:
-            kind_name = context["kind_name"]
-            if kind_name in built_in_contexts:
+        for statement in analysis.node_statements:
+            kind_name = statement["kind_name"]
+            if kind_name in built_in_node_kinds:
                 continue
-            if context.get("kind_binding_id") is not None:
+            if statement.get("kind_binding_id") is not None:
                 continue
             if not is_identifier(kind_name):
                 continue
             if self.resolve_completion_type(uri, kind_name) is None:
                 add_diagnostic(
-                    context["kind_range"],
+                    statement["kind_range"],
                     "error",
                     "Cannot resolve ORD node type `{}`.".format(kind_name),
                     "unresolved-node-type",

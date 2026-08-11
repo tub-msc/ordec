@@ -447,7 +447,7 @@ Most language intelligence lives in ``ordec.lsp.analysis``:
   records, and ``DocumentAnalysis``.
 * ``parser_pass.py`` parses ORD source and uses an ``OrdAnalysisBuilder`` to
   walk the parse tree and collect scopes, bindings, occurrences, imports, ORD
-  node contexts, view generator return records, constraint records, and
+  node statement records, view generator return records, constraint records, and
   inferred-type records for assignment targets.
 * ``session.py`` is the public analysis facade. It owns open document snapshots,
   last-good analysis caching, file invalidation, ORD import resolution,

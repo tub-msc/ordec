@@ -112,7 +112,7 @@ class OrdAnalysisBuilder:
         self.occurrences = []
         self.member_occurrences = []
         self.viewgen_returns = []
-        self.node_contexts = []
+        self.node_statements = []
         self.constraints = []
         self.type_hints = []
         self.view_context_ranges = []
@@ -151,8 +151,8 @@ class OrdAnalysisBuilder:
                 return True
         return False
 
-    def context_kind_name_node(self, node):
-        """Return the name node for a plain or parameterized context kind."""
+    def kind_name_node(self, node):
+        """Return the name node for a plain or parameterized node kind."""
         name_node = self.simple_name_node(node)
         if name_node is not None:
             return name_node
@@ -820,7 +820,7 @@ class OrdAnalysisBuilder:
             kind_node = node.children[0]
             target_node = node.children[1]
             if isinstance(kind_node, Tree) and isinstance(target_node, Tree):
-                kind_name_node = self.context_kind_name_node(kind_node)
+                kind_name_node = self.kind_name_node(kind_node)
                 kind_name = tree_text(
                     kind_name_node if kind_name_node is not None else kind_node
                 )
@@ -828,7 +828,7 @@ class OrdAnalysisBuilder:
                 kind_binding_id = None
                 if kind_name_node is not None:
                     kind_binding_id = self.resolve_binding(scope_id, tree_text(kind_name_node))
-                self.node_contexts.append({
+                self.node_statements.append({
                     "kind_name": kind_name,
                     "kind_range": tree_range(
                         kind_name_node if kind_name_node is not None else kind_node
@@ -883,7 +883,7 @@ class OrdAnalysisBuilder:
         if node.data in ("node_stmt_nobody", "anon_node_stmt_nobody") and len(node.children) >= 2:
             kind_node = node.children[0]
             if isinstance(kind_node, Tree):
-                kind_name_node = self.context_kind_name_node(kind_node)
+                kind_name_node = self.kind_name_node(kind_node)
                 kind_name = tree_text(
                     kind_name_node if kind_name_node is not None else kind_node
                 )
@@ -905,7 +905,7 @@ class OrdAnalysisBuilder:
                     if not isinstance(target_node, Tree):
                         continue
 
-                    self.node_contexts.append({
+                    self.node_statements.append({
                         "kind_name": kind_name,
                         "kind_range": tree_range(
                             kind_name_node if kind_name_node is not None else kind_node
@@ -952,9 +952,9 @@ class OrdAnalysisBuilder:
                 if selection_node is None:
                     selection_node = child
                 names.append(tree_text(child))
-                # Each declared name is its own node context, so cell
+                # Each declared name is its own node statement record, so cell
                 # member collection sees multi-name declarations too.
-                self.node_contexts.append({
+                self.node_statements.append({
                     "kind_name": node.data[:-5],
                     "kind_range": tree_range(node),
                     "kind_binding_id": None,
@@ -1413,7 +1413,7 @@ class OrdAnalysisBuilder:
             occurrences=self.occurrences,
             member_occurrences=self.member_occurrences,
             viewgen_returns=self.viewgen_returns,
-            node_contexts=self.node_contexts,
+            node_statements=self.node_statements,
             constraints=self.constraints,
             type_hints=self.type_hints,
             view_context_ranges=self.view_context_ranges,

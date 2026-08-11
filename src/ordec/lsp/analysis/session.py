@@ -1168,11 +1168,11 @@ class AnalysisSession(
         # nodes. Only node statement targets become members: plain viewgen
         # locals such as loop counters stay invisible to instances.
         # Multi-name declarations such as `path out_p, out_n` record one
-        # context whose target range spans all bound names, so bindings are
+        # statement whose target range spans all bound names, so bindings are
         # matched by containment rather than range equality.
         node_target_ranges = [
-            context["target_range"]
-            for context in analysis.node_contexts
+            statement["target_range"]
+            for statement in analysis.node_statements
         ]
         for symbol in analysis.symbols:
             if symbol.name not in ("symbol", "layout") or symbol.kind != "function":

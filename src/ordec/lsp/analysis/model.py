@@ -177,7 +177,7 @@ class DocumentAnalysis:
         occurrences=None,
         member_occurrences=None,
         viewgen_returns=None,
-        node_contexts=None,
+        node_statements=None,
         constraints=None,
         type_hints=None,
         view_context_ranges=None,
@@ -197,7 +197,7 @@ class DocumentAnalysis:
             occurrences: Name occurrences built by the parser pass.
             member_occurrences: Member or parameter occurrences.
             viewgen_returns: View generator return type records.
-            node_contexts: ORD node context records.
+            node_statements: ORD node statement records.
             constraints: Constraint syntax records.
             type_hints: Inferred-type records for assignment targets.
             view_context_ranges: Ranges of ``with`` blocks that open an
@@ -218,7 +218,7 @@ class DocumentAnalysis:
             member_occurrences if member_occurrences is not None else []
         )
         self.viewgen_returns = self.copy_records(viewgen_returns if viewgen_returns is not None else [])
-        self.node_contexts = self.copy_records(node_contexts if node_contexts is not None else [])
+        self.node_statements = self.copy_records(node_statements if node_statements is not None else [])
         self.constraints = self.copy_records(constraints if constraints is not None else [])
         self.type_hints = self.copy_records(type_hints if type_hints is not None else [])
         self.view_context_ranges = list(
@@ -272,7 +272,7 @@ class DocumentAnalysis:
             occurrences=self.occurrences,
             member_occurrences=self.member_occurrences,
             viewgen_returns=self.viewgen_returns,
-            node_contexts=self.node_contexts,
+            node_statements=self.node_statements,
             constraints=self.constraints,
             type_hints=self.type_hints,
             view_context_ranges=self.view_context_ranges,
