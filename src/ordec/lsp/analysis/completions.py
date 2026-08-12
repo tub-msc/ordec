@@ -282,7 +282,12 @@ class CompletionsMixin:
                 "detail": "keyword",
             })
 
+        # Rank by kind first so keywords sort below user bindings. The
+        # server derives sortText from this order, so clients keep it.
         result = []
-        for label in sorted(items):
+        for label in sorted(
+            items,
+            key=lambda item_label: self.completion_sort_key(items[item_label]),
+        ):
             result.append(items[label])
         return result

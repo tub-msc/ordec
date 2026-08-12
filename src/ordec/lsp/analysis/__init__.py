@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from .model import (
+    LINE_BREAK_RE,
     AnalysisPosition,
     AnalysisRange,
     file_uri_to_path,

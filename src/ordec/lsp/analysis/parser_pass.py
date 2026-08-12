@@ -931,10 +931,15 @@ class OrdAnalysisBuilder:
                     })
                 self.visit_kind_expression(kind_node, scope_id)
 
+                target_names = []
+                selection_node = None
                 for target_node in node.children[1:]:
                     if not isinstance(target_node, Tree):
                         continue
 
+                    if selection_node is None:
+                        selection_node = target_node
+                    target_names.append(tree_text(target_node))
                     self.node_statements.append({
                         "kind_name": kind_name,
                         "kind_range": tree_range(
@@ -945,13 +950,6 @@ class OrdAnalysisBuilder:
                         "target_range": tree_range(target_node),
                         "range": tree_range(node),
                     })
-                    self.symbols.append(AnalysisSymbol(
-                        name="{} {}".format(kind_name, tree_text(target_node)),
-                        kind="context",
-                        range=tree_range(node),
-                        selection_range=tree_range(target_node),
-                        content_end_line=content_end_line(node),
-                    ))
 
                     name_node = self.simple_name_node(target_node)
                     if name_node is not None:
@@ -969,6 +967,18 @@ class OrdAnalysisBuilder:
                             type_names=context_type_names,
                             context_type_names=context_type_names,
                         )
+
+                # One symbol per statement like path/net: per-target symbols
+                # would share the statement range and read as nested in
+                # hierarchical document outlines.
+                if target_names and selection_node is not None:
+                    self.symbols.append(AnalysisSymbol(
+                        name="{} {}".format(kind_name, ", ".join(target_names)),
+                        kind="context",
+                        range=tree_range(node),
+                        selection_range=tree_range(selection_node),
+                        content_end_line=content_end_line(node),
+                    ))
             return
 
         if node.data in ("path_stmt", "net_stmt"):

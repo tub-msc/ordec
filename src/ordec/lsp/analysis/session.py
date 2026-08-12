@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # standard imports
+from bisect import bisect_right
 import os
 from pathlib import Path
 from typing import Optional
@@ -144,6 +145,13 @@ class AnalysisSession(
             lines = split_source_lines(doc["text"])
             doc["lines"] = lines
         return lines
+
+    def document_version(self, uri: str):
+        """Return the version of a tracked document, or None."""
+        doc = self.documents.get(self.canonical_uri(uri))
+        if doc is None:
+            return None
+        return doc.get("version")
 
     def record_document_access(self, uri: str):
         """Record recent use for closed-document eviction."""
@@ -492,6 +500,20 @@ class AnalysisSession(
                 doc["last_good_analysis"] = analysis
             doc["analysis"] = analysis
         return doc["analysis"]
+
+    def analysis_cache(self, uri: str, analysis):
+        """Return a cache dict scoped to one analysis result of a document.
+
+        The dict lives on the document record and is replaced whenever a
+        different analysis object is served, so entries derived from an
+        analysis never need explicit invalidation.
+        """
+        doc = self.documents[uri]
+        cache = doc.get("analysis_cache")
+        if cache is None or cache.get("analysis") is not analysis:
+            cache = {"analysis": analysis}
+            doc["analysis_cache"] = cache
+        return cache
 
     def diagnostics(self, uri: str):
         """Return parser and semantic diagnostics for a document."""
@@ -1161,14 +1183,60 @@ class AnalysisSession(
 
         return "{} {}".format(kind, name)
 
+    def node_target_binding_ids(self, uri: str, analysis):
+        """Return the ids of bindings that are node statement targets.
+
+        Built once per analysis. Pairing every binding with every node
+        statement is quadratic, so target ranges are sorted and each
+        binding start is checked against its bisection candidate only.
+        Target ranges are disjoint source spans, making that candidate
+        the only one that can contain the binding.
+        """
+        cache = self.analysis_cache(uri, analysis)
+        binding_ids = cache.get("node_target_binding_ids")
+        if binding_ids is not None:
+            return binding_ids
+
+        target_ranges = sorted(
+            (statement["target_range"] for statement in analysis.node_statements),
+            key=lambda target_range: target_range.start,
+        )
+        target_starts = [target_range.start for target_range in target_ranges]
+
+        binding_ids = set()
+        for binding in analysis.bindings:
+            position = binding["selection_range"].start
+            index = bisect_right(target_starts, position) - 1
+            if index >= 0 and range_contains(target_ranges[index], position):
+                binding_ids.add(binding["id"])
+
+        cache["node_target_binding_ids"] = binding_ids
+        return binding_ids
+
     def ord_cell_members(self, cell_uri: str, cell_name: str):
-        """Collect members exposed by an ORD cell."""
+        """Collect members exposed by an ORD cell.
+
+        Runs once per member occurrence during semantic diagnostics, so
+        results are memoized for the lifetime of the document analysis.
+        """
         cell_uri = self.canonical_uri(cell_uri)
         if not self.ensure_document(cell_uri):
             return dict()
 
         analysis = self.analyze(cell_uri)
+        members_by_cell = self.analysis_cache(cell_uri, analysis).setdefault(
+            "cell_members", dict()
+        )
+        if cell_name in members_by_cell:
+            return members_by_cell[cell_name]
 
+        members_by_cell[cell_name] = self.collect_ord_cell_members(
+            cell_uri, analysis, cell_name
+        )
+        return members_by_cell[cell_name]
+
+    def collect_ord_cell_members(self, cell_uri: str, analysis, cell_name: str):
+        """Walk an analysis for the members exposed by one ORD cell."""
         cell_symbol = None
         for symbol in analysis.symbols:
             if symbol.name == cell_name and symbol.kind == "class":
@@ -1216,13 +1284,9 @@ class AnalysisSession(
         # symbol view. Layout instances additionally expose named layout
         # nodes. Only node statement targets become members: plain viewgen
         # locals such as loop counters stay invisible to instances.
-        # Multi-name declarations such as `path out_p, out_n` record one
-        # statement whose target range spans all bound names, so bindings are
-        # matched by containment rather than range equality.
-        node_target_ranges = [
-            statement["target_range"]
-            for statement in analysis.node_statements
-        ]
+        # Bindings are matched to targets by containment rather than range
+        # equality, since a target range may span more than the bound name.
+        node_binding_ids = self.node_target_binding_ids(cell_uri, analysis)
         for symbol in analysis.symbols:
             if symbol.name not in ("symbol", "layout") or symbol.kind != "function":
                 continue
@@ -1232,10 +1296,7 @@ class AnalysisSession(
             for binding in analysis.bindings:
                 if binding["kind"] != "variable":
                     continue
-                if not any(
-                    range_contains(target_range, binding["selection_range"].start)
-                    for target_range in node_target_ranges
-                ):
+                if binding["id"] not in node_binding_ids:
                     continue
                 if not range_contains(symbol.range, binding["selection_range"].start):
                     continue
@@ -1673,17 +1734,20 @@ class AnalysisSession(
             uris.extend(sorted(self.workspace_dependents(target_uri)))
             if not self.workspace_root:
                 uris.extend(sorted(self.analyze_related(uri).keys()))
+        else:
+            # Non-ORD definitions can still be referenced from the
+            # requesting document, which may lie outside the workspace.
+            uris = [uri]
+            uris.extend(self.workspace_uris())
 
-            result = []
-            seen = set()
-            for candidate_uri in uris:
-                if candidate_uri in seen:
-                    continue
-                seen.add(candidate_uri)
-                result.append(candidate_uri)
-            return result
-
-        return self.workspace_uris()
+        result = []
+        seen = set()
+        for candidate_uri in uris:
+            if candidate_uri in seen:
+                continue
+            seen.add(candidate_uri)
+            result.append(candidate_uri)
+        return result
 
     def document_highlights(self, uri: str, position: AnalysisPosition):
         """Return same-document highlights for the symbol at a position."""

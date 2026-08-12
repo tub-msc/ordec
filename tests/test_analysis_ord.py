@@ -843,7 +843,7 @@ def test_python_export_name_ranges_avoid_keywords(tmp_path):
     ].start == AnalysisPosition(line=5, character=9)
 
 
-def test_missing_port_action_survives_stale_analysis():
+def test_missing_port_action_refuses_stale_analysis():
     session = AnalysisSession(workspace_root="/tmp/workspace")
     uri = "file:///tmp/stale.ord"
     session.open_document(
@@ -867,8 +867,10 @@ def test_missing_port_action_survives_stale_analysis():
     }
     server = OrdLanguageServer()
     server.session = session
-    action = server.missing_symbol_port_action(uri, diagnostic)
-    assert "input c" in action["edit"]["changes"][uri][0]["newText"]
+    # The broken document is served from its stale last-good analysis,
+    # whose insert positions may point past the current text, so the
+    # action must refuse like rename does.
+    assert server.missing_symbol_port_action(uri, diagnostic) is None
 
 
 def test_workspace_rename_updates_cell_members_and_refuses_stale_ranges(tmp_path):
@@ -1426,3 +1428,60 @@ def test_analysis_session_checked_in_ord_files_have_no_lsp_diagnostics():
             if diagnostic.code not in expected_codes.get(relative_path, set())
         ]
         assert diagnostics == [], relative_path
+
+
+def test_multi_target_node_statement_yields_one_symbol():
+    analysis = analyze_ord(
+        "cell Inv:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a, b\n"
+    )
+
+    # One symbol per statement like path/net: per-target symbols would
+    # share the statement range and read as nested in document outlines.
+    assert [(symbol.kind, symbol.name) for symbol in analysis.symbols] == [
+        ("class", "Inv"),
+        ("function", "symbol"),
+        ("context", "input a, b"),
+    ]
+    assert [
+        statement["target_name"] for statement in analysis.node_statements
+    ] == ["a", "b"]
+
+
+def test_references_reach_documents_outside_workspace_root(tmp_path):
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = "file:///outside/scratch.ord"
+    source = (
+        "from ordec.lib.generic_mos import Nmos\n"
+        "cell Top:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        Nmos inst:\n"
+        "            .w = 1\n"
+    )
+    session.open_document(uri, source, version=1)
+
+    # Nmos resolves to a Python definition, whose reference search must
+    # still cover the requesting document outside the workspace root.
+    references = session.references(uri, position_at(source, "Nmos inst"))
+    assert len(references) == 2
+    assert all(reference["uri"] == uri for reference in references)
+
+
+def test_global_completions_rank_bindings_before_keywords():
+    session = AnalysisSession()
+    uri = "file:///tmp/complete.ord"
+    source = (
+        "cell Amp:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        net nmos_w\n"
+        "        net outp\n"
+    )
+    session.open_document(uri, source, version=1)
+
+    labels = [
+        item["label"]
+        for item in session.completions(uri, position_after(source, "net outp"))
+    ]
+    assert labels.index("nmos_w") < labels.index("net")
+    assert labels.index("outp") < labels.index("output")

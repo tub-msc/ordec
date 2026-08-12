@@ -64,6 +64,14 @@ async function startLanguageServer() {
   }
 }
 
+function startLanguageServerWithGuidance() {
+  // A missing ordec-lsp executable must not fail activation: syntax
+  // highlighting stays useful without the server.
+  return startLanguageServer().catch((error) => {
+    void vscode.window.showErrorMessage("ORD-LSP failed to start: " + error);
+  });
+}
+
 async function activate(context) {
   // In Restricted Mode only the declarative features (grammar and
   // language configuration) stay active. The server spawns a workspace
@@ -71,14 +79,12 @@ async function activate(context) {
   if (!vscode.workspace.isTrusted) {
     context.subscriptions.push(
       vscode.workspace.onDidGrantWorkspaceTrust(() => {
-        void startLanguageServer().catch((error) => {
-          void vscode.window.showErrorMessage("ORD-LSP failed to start: " + error);
-        });
+        void startLanguageServerWithGuidance();
       })
     );
     return;
   }
-  await startLanguageServer();
+  await startLanguageServerWithGuidance();
 }
 
 async function deactivate() {

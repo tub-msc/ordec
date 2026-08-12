@@ -133,6 +133,24 @@ test("reports trust-start failures without stopping an unstarted client", async 
   vscode.workspace.isTrusted = true;
 });
 
+test("keeps activation alive when the server command is missing", async () => {
+  createdClient = undefined;
+  stopped = false;
+  startError = new Error("spawn ordec-lsp ENOENT");
+  errorMessages = [];
+  vscode.workspace.isTrusted = true;
+
+  await extension.activate({ subscriptions: [] });
+
+  assert.deepEqual(errorMessages, [
+    "ORD-LSP failed to start: Error: spawn ordec-lsp ENOENT",
+  ]);
+  await extension.deactivate();
+  assert.equal(stopped, false);
+
+  startError = undefined;
+});
+
 test("package manifest wires up the language client", () => {
   const pkg = require("./package.json");
 

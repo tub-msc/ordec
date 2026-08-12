@@ -7,7 +7,7 @@ import queue
 import subprocess
 import sys
 
-from ordec.lsp.server import OrdLanguageServer, serve
+from ordec.lsp.server import OrdLanguageServer, read_messages, serve
 
 
 def source_offset(source, needle, occurrence=1):
@@ -1199,3 +1199,66 @@ def test_lsp_serve_keeps_incremental_did_change_bursts():
     assert published[0]["params"]["diagnostics"] != []
     assert published[1]["params"]["diagnostics"] == []
     assert published[2]["params"]["diagnostics"] != []
+
+
+def test_lsp_malformed_frame_reports_parse_error_and_keeps_serving():
+    body = b"{not json}"
+    shutdown = json.dumps(
+        {"jsonrpc": "2.0", "id": 2, "method": "shutdown"}
+    ).encode("utf-8")
+    stream = io.BytesIO(
+        "Content-Length: {}\r\n\r\n".format(len(body)).encode("ascii") + body
+        + "Content-Length: {}\r\n\r\n".format(len(shutdown)).encode("ascii")
+        + shutdown
+    )
+    message_queue = queue.SimpleQueue()
+    read_messages(stream, message_queue)
+
+    output_stream = io.BytesIO()
+    serve(OrdLanguageServer(), message_queue, output_stream)
+
+    # The malformed body is answered with a parse error (id null, as
+    # JSON-RPC prescribes for unknown request ids) and the well-formed
+    # frame behind it is still served instead of shutting down.
+    responses = decode_messages(output_stream.getvalue())
+    assert responses[0]["id"] is None
+    assert responses[0]["error"]["code"] == -32700
+    assert responses[1]["id"] == 2
+
+
+def test_lsp_incremental_change_handles_cr_line_breaks():
+    server = OrdLanguageServer()
+    text = "line0\rline1\rline2\r"
+    change = {
+        "range": {
+            "start": {"line": 2, "character": 0},
+            "end": {"line": 2, "character": 5},
+        },
+        "text": "third",
+    }
+    # Lone \r counts as a line break everywhere else in the package, so
+    # change offsets must agree or the buffer diverges from the editor.
+    assert server.apply_incremental_change(text, change) == "line0\rline1\rthird\r"
+
+
+def test_lsp_did_save_keeps_document_version(tmp_path):
+    server = initialize_server(tmp_path)
+    uri = (tmp_path / "keep.ord").resolve().as_uri()
+    source = (
+        "cell Keep:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    open_document(server, uri, source, version=7)
+
+    responses = notify(
+        server,
+        "textDocument/didSave",
+        {
+            "textDocument": {"uri": uri},
+            "text": source,
+        },
+    )
+    # didSave identifies the document without a version, so the version
+    # from didOpen/didChange must survive the save.
+    assert responses[0]["params"]["version"] == 7

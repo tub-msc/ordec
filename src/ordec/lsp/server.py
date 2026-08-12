@@ -30,9 +30,10 @@ import os.path
 import queue
 import sys
 import threading
+import traceback
 
 # ordec imports
-from .analysis import AnalysisPosition, AnalysisRange, AnalysisSession, file_uri_to_path, split_source_lines
+from .analysis import LINE_BREAK_RE, AnalysisPosition, AnalysisRange, AnalysisSession, file_uri_to_path, split_source_lines
 
 
 SEMANTIC_TOKEN_TYPES = [
@@ -332,20 +333,25 @@ class OrdLanguageServer:
     def change_offset(self, text: str, position):
         """Convert a zero-based LSP position to a character offset in text."""
         line_index = max(0, position["line"])
-        lines = text.split("\n")
-        if line_index >= len(lines):
+
+        # Line starts follow LINE_BREAK_RE like split_source_lines, so
+        # documents with lone \r line breaks stay in sync with the client.
+        line_starts = [0]
+        line_ends = []
+        for line_break in LINE_BREAK_RE.finditer(text):
+            line_ends.append(line_break.start())
+            line_starts.append(line_break.end())
+        line_ends.append(len(text))
+
+        if line_index >= len(line_starts):
             return len(text)
 
-        line = lines[line_index]
+        line = text[line_starts[line_index]:line_ends[line_index]]
         character = max(0, position["character"])
         if self.position_encoding == "utf-16":
             character = self.utf16_offset_to_codepoint_offset(line, character)
         character = min(character, len(line))
-
-        offset = 0
-        for prior_line in lines[:line_index]:
-            offset += len(prior_line) + 1
-        return offset + character
+        return line_starts[line_index] + character
 
     def handle_did_close(self, message):
         uri = self.message_text_document_uri(message)
@@ -361,14 +367,15 @@ class OrdLanguageServer:
 
     def handle_did_save(self, message):
         params = message.get("params", {})
-        text_document = params["textDocument"]
         uri = self.text_document_uri(params)
         if "text" in params:
-            self.session.update_document(
-                uri,
-                params["text"],
-                version=text_document.get("version"),
-            )
+            # didSave identifies the document without a version, so the
+            # one from the last didOpen/didChange is kept unless the
+            # client sends one anyway.
+            version = params["textDocument"].get("version")
+            if version is None:
+                version = self.session.document_version(uri)
+            self.session.update_document(uri, params["text"], version=version)
         else:
             self.session.invalidate_uri(uri)
         return [self.publish_diagnostics(uri)]
@@ -484,7 +491,13 @@ class OrdLanguageServer:
         return root
 
     def range_encloses(self, outer, inner):
-        """Return whether one analysis range fully contains another."""
+        """Return whether one analysis range strictly contains another.
+
+        Symbols with identical ranges are siblings, not nested, or the
+        document symbol tree would show fake hierarchy levels.
+        """
+        if outer == inner:
+            return False
         return outer.start <= inner.start and inner.end <= outer.end
 
     def handle_document_highlight(self, message):
@@ -723,6 +736,11 @@ class OrdLanguageServer:
 
         diagnostic_position = self.analysis_position(uri, diagnostic["range"]["start"])
         analysis = self.session.analyze(uri)
+        # Like rename: a document with syntax errors is served from its
+        # last error-free analysis, whose ranges may not match the current
+        # text, so refuse rather than edit at a wrong position.
+        if analysis.has_errors():
+            return None
 
         containing_cell = None
         for symbol in analysis.symbols:
@@ -1072,6 +1090,10 @@ class OrdLanguageServer:
         return DOCUMENT_HIGHLIGHT_KIND_MAP.get(kind, 1)
 
 
+# Queue marker for a frame whose body was consumed but failed to decode.
+PARSE_ERROR = object()
+
+
 def read_message(input_stream):
     """Read one Content-Length framed JSON-RPC message from a byte stream."""
     headers = dict()
@@ -1091,7 +1113,12 @@ def read_message(input_stream):
     body = input_stream.read(content_length)
     if body == b"":
         return None
-    return json.loads(body.decode("utf-8"))
+    try:
+        return json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        # The full frame was consumed, so the stream stays in sync and
+        # the server can answer with a parse error and keep serving.
+        return PARSE_ERROR
 
 
 def write_message(output_stream, message):
@@ -1108,6 +1135,10 @@ def read_messages(input_stream, message_queue):
         try:
             message = read_message(input_stream)
         except Exception:
+            # A broken header leaves the stream position unknown, so no
+            # resynchronization is possible. Report the reason instead of
+            # mimicking a clean EOF.
+            traceback.print_exc(file=sys.stderr)
             message = None
         message_queue.put(message)
         if message is None:
@@ -1196,6 +1227,17 @@ def serve(server, message_queue, output_stream):
         message = pending.popleft()
         if message is None:
             return
+        if message is PARSE_ERROR:
+            # JSON-RPC prescribes id null when the request id is unknown.
+            write_message(output_stream, {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": -32700,
+                    "message": "Parse error",
+                },
+            })
+            continue
         if not isinstance(message, dict):
             continue
 
