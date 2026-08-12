@@ -1286,17 +1286,18 @@ class AnalysisSession(
         # locals such as loop counters stay invisible to instances.
         # Bindings are matched to targets by containment rather than range
         # equality, since a target range may span more than the bound name.
-        node_binding_ids = self.node_target_binding_ids(cell_uri, analysis)
+        # Ids are assigned in visit order, so sorting keeps document order
+        # and the first declaration of a name wins setdefault as before.
+        node_binding_ids = sorted(self.node_target_binding_ids(cell_uri, analysis))
         for symbol in analysis.symbols:
             if symbol.name not in ("symbol", "layout") or symbol.kind != "function":
                 continue
             if not range_contains(cell_symbol.range, symbol.selection_range.start):
                 continue
 
-            for binding in analysis.bindings:
-                if binding["kind"] != "variable":
-                    continue
-                if binding["id"] not in node_binding_ids:
+            for binding_id in node_binding_ids:
+                binding = analysis.binding_map.get(binding_id)
+                if binding is None or binding["kind"] != "variable":
                     continue
                 if not range_contains(symbol.range, binding["selection_range"].start):
                     continue

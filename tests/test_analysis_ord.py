@@ -156,20 +156,6 @@ def test_python_index_find_spec_failures_are_unresolved(monkeypatch):
     assert not index.module_exists("bad.package")
 
 
-def test_python_index_exports_select_name_ranges(tmp_path):
-    (tmp_path / "devices.py").write_text(
-        "class ExtLib:\n"
-        "    pass\n"
-    )
-
-    definition = PythonModuleIndex(workspace_root=str(tmp_path)).definition(
-        "devices",
-        export_name="ExtLib",
-    )
-
-    assert definition["selection_range"].start.character == 7
-
-
 def test_analysis_session_reports_core_semantic_diagnostics(tmp_path):
     (tmp_path / "helper.ord").write_text(
         "cell Other:\n"
@@ -730,11 +716,13 @@ def test_session_uris_preserve_symlinked_workspace_spelling(tmp_path):
     assert session.workspace_uris() == [uri]
 
 
-def test_import_member_resolves_ord_submodules(tmp_path):
+def test_init_ord_packages_resolve_ord_submodules(tmp_path, monkeypatch):
     package_path = tmp_path / "pkg"
     package_path.mkdir()
-    (package_path / "__init__.ord").write_text("")
-    (package_path / "sub.ord").write_text(
+    init_path = package_path / "__init__.ord"
+    init_path.write_text("")
+    sub_path = package_path / "sub.ord"
+    sub_path.write_text(
         "cell Inner:\n"
         "    viewgen symbol -> Symbol:\n"
         "        input a\n"
@@ -742,64 +730,6 @@ def test_import_member_resolves_ord_submodules(tmp_path):
     top_path = tmp_path / "top.ord"
     source = "from .pkg import sub\n"
     top_path.write_text(source)
-
-    session = AnalysisSession(workspace_root=str(tmp_path))
-    uri = session.open_path(str(top_path))
-
-    assert session.diagnostics(uri) == []
-    assert session.definition(uri, position_at(source, "sub"))["uri"] == (
-        package_path / "sub.ord"
-    ).as_uri()
-
-
-def test_absolute_imports_resolve_against_document_directory(tmp_path):
-    sub_path = tmp_path / "sub"
-    sub_path.mkdir()
-    (sub_path / "lib.ord").write_text(
-        "cell Inv:\n"
-        "    viewgen symbol -> Symbol:\n"
-        "        input a\n"
-    )
-    top_source = "from lib import Inv\n"
-    top_path = sub_path / "top.ord"
-    top_path.write_text(top_source)
-
-    session = AnalysisSession(workspace_root=str(tmp_path))
-    lib_uri = session.open_path(str(sub_path / "lib.ord"))
-    top_uri = session.open_path(str(top_path))
-
-    # The runtime importer searches the script's own directory, so the
-    # sibling import must resolve and appear in the import graph.
-    assert session.diagnostics(top_uri) == []
-    assert session.definition(top_uri, position_at(top_source, "Inv"))["uri"] == lib_uri
-    assert top_uri in session.workspace_dependents(lib_uri)
-
-
-def test_dots_only_import_prefers_package_over_sibling_module(tmp_path):
-    sub_path = tmp_path / "sub"
-    sub_path.mkdir()
-    (tmp_path / "sub.ord").write_text("cell Decoy:\n    pass\n")
-    (sub_path / "__init__.ord").write_text("cell Inner:\n    pass\n")
-    top_source = "from . import Inner\n"
-    top_path = sub_path / "top.ord"
-    top_path.write_text(top_source)
-
-    session = AnalysisSession(workspace_root=str(tmp_path))
-    init_uri = session.open_path(str(sub_path / "__init__.ord"))
-    top_uri = session.open_path(str(top_path))
-
-    # "from . import X" names the package, never the sibling sub.ord.
-    assert session.diagnostics(top_uri) == []
-    assert session.definition(top_uri, position_at(top_source, "Inner"))["uri"] == init_uri
-
-
-def test_python_index_resolves_init_ord_packages(tmp_path, monkeypatch):
-    package_path = tmp_path / "pkg"
-    package_path.mkdir()
-    init_path = package_path / "__init__.ord"
-    init_path.write_text("")
-    sub_path = package_path / "sub.ord"
-    sub_path.write_text("cell Inner:\n    pass\n")
 
     index = PythonModuleIndex(workspace_root=str(tmp_path))
     assert index.resolve_module_path("pkg") == init_path.resolve()
@@ -818,6 +748,44 @@ def test_python_index_resolves_init_ord_packages(tmp_path, monkeypatch):
         lambda name: InitOrdSpec() if name == "pkg" else None,
     )
     assert installed_index.resolve_module_path("pkg.sub") == sub_path.resolve()
+
+    # The session navigates import members through the same resolution.
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    uri = session.open_path(str(top_path))
+    assert session.diagnostics(uri) == []
+    assert session.definition(uri, position_at(source, "sub"))["uri"] == sub_path.as_uri()
+
+
+def test_imports_resolve_like_the_runtime_importer(tmp_path):
+    sub_path = tmp_path / "sub"
+    sub_path.mkdir()
+    (tmp_path / "sub.ord").write_text("cell Decoy:\n    pass\n")
+    (sub_path / "__init__.ord").write_text("cell Inner:\n    pass\n")
+    (sub_path / "lib.ord").write_text(
+        "cell Inv:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        input a\n"
+    )
+    top_source = (
+        "from lib import Inv\n"
+        "from . import Inner\n"
+    )
+    top_path = sub_path / "top.ord"
+    top_path.write_text(top_source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path))
+    init_uri = session.open_path(str(sub_path / "__init__.ord"))
+    lib_uri = session.open_path(str(sub_path / "lib.ord"))
+    top_uri = session.open_path(str(top_path))
+    assert session.diagnostics(top_uri) == []
+
+    # The runtime importer searches the script's own directory, so the
+    # sibling import must resolve and appear in the import graph.
+    assert session.definition(top_uri, position_at(top_source, "Inv"))["uri"] == lib_uri
+    assert top_uri in session.workspace_dependents(lib_uri)
+
+    # "from . import X" names the package, never the sibling sub.ord.
+    assert session.definition(top_uri, position_at(top_source, "Inner"))["uri"] == init_uri
 
 
 def test_python_export_name_ranges_avoid_keywords(tmp_path):
@@ -859,6 +827,7 @@ def test_missing_port_action_refuses_stale_analysis():
     session.analyze(uri)
 
     diagnostic = {
+        "code": "unknown-symbol-port",
         "range": {
             "start": {"line": 0, "character": 0},
             "end": {"line": 0, "character": 0},
@@ -868,9 +837,9 @@ def test_missing_port_action_refuses_stale_analysis():
     server = OrdLanguageServer()
     server.session = session
     # The broken document is served from its stale last-good analysis,
-    # whose insert positions may point past the current text, so the
-    # action must refuse like rename does.
-    assert server.missing_symbol_port_action(uri, diagnostic) is None
+    # whose insert positions may point past the current text, so
+    # code_actions must refuse for every action like rename does.
+    assert server.code_actions(uri, [diagnostic]) == []
 
 
 def test_workspace_rename_updates_cell_members_and_refuses_stale_ranges(tmp_path):
@@ -1430,12 +1399,19 @@ def test_analysis_session_checked_in_ord_files_have_no_lsp_diagnostics():
         assert diagnostics == [], relative_path
 
 
-def test_multi_target_node_statement_yields_one_symbol():
-    analysis = analyze_ord(
+def test_multi_target_node_statement_symbols_and_pin_diagnostics():
+    source = (
         "cell Inv:\n"
         "    viewgen symbol -> Symbol:\n"
         "        input a, b\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        port a\n"
+        "        port b\n"
     )
+    session = AnalysisSession()
+    uri = "file:///tmp/multi_target.ord"
+    session.open_document(uri, source, version=1)
+    analysis = session.analyze(uri)
 
     # One symbol per statement like path/net: per-target symbols would
     # share the statement range and read as nested in document outlines.
@@ -1443,10 +1419,23 @@ def test_multi_target_node_statement_yields_one_symbol():
         ("class", "Inv"),
         ("function", "symbol"),
         ("context", "input a, b"),
+        ("function", "schematic"),
+        ("context", "port a"),
+        ("context", "port b"),
     ]
     assert [
         statement["target_name"] for statement in analysis.node_statements
-    ] == ["a", "b"]
+    ] == ["a", "b", "a", "b"]
+
+    # Pin extraction reads the per-target node statements, so both names
+    # of the combined declaration count as pins for the port check.
+    assert session.diagnostics(uri) == []
+
+    # Dropping a name from the combined declaration is still reported.
+    session.update_document(uri, source.replace("input a, b", "input a"), version=2)
+    assert [diagnostic.code for diagnostic in session.diagnostics(uri)] == [
+        "unknown-symbol-port",
+    ]
 
 
 def test_references_reach_documents_outside_workspace_root(tmp_path):

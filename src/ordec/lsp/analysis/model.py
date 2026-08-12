@@ -98,6 +98,21 @@ def split_source_lines(text: str):
     return lines
 
 
+def source_line_table(text: str):
+    """Return (line_starts, line_ends) offsets per split_source_lines line.
+
+    Line ends exclude the break characters and the last line ends at
+    ``len(text)``, so ``text[line_starts[i]:line_ends[i]]`` is line ``i``.
+    """
+    line_starts = [0]
+    line_ends = []
+    for line_break in LINE_BREAK_RE.finditer(text):
+        line_ends.append(line_break.start())
+        line_starts.append(line_break.end())
+    line_ends.append(len(text))
+    return line_starts, line_ends
+
+
 def is_identifier(value: str):
     """Return whether ``value`` is a single ASCII identifier."""
     return IDENTIFIER_RE.match(value) is not None

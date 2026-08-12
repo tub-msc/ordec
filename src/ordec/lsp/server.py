@@ -33,7 +33,7 @@ import threading
 import traceback
 
 # ordec imports
-from .analysis import LINE_BREAK_RE, AnalysisPosition, AnalysisRange, AnalysisSession, file_uri_to_path, split_source_lines
+from .analysis import AnalysisPosition, AnalysisRange, AnalysisSession, file_uri_to_path, source_line_table, split_source_lines
 
 
 SEMANTIC_TOKEN_TYPES = [
@@ -324,24 +324,24 @@ class OrdLanguageServer:
 
     def apply_incremental_change(self, text: str, change):
         """Apply one range-based LSP content change to document text."""
-        start_offset = self.change_offset(text, change["range"]["start"])
-        end_offset = self.change_offset(text, change["range"]["end"])
+        # One table serves both offset lookups: change_offset would
+        # otherwise scan the whole document once per position.
+        line_table = source_line_table(text)
+        start_offset = self.change_offset(text, change["range"]["start"], line_table)
+        end_offset = self.change_offset(text, change["range"]["end"], line_table)
         if end_offset < start_offset:
             end_offset = start_offset
         return text[:start_offset] + change["text"] + text[end_offset:]
 
-    def change_offset(self, text: str, position):
+    def change_offset(self, text: str, position, line_table=None):
         """Convert a zero-based LSP position to a character offset in text."""
         line_index = max(0, position["line"])
 
-        # Line starts follow LINE_BREAK_RE like split_source_lines, so
+        # The table follows LINE_BREAK_RE like split_source_lines, so
         # documents with lone \r line breaks stay in sync with the client.
-        line_starts = [0]
-        line_ends = []
-        for line_break in LINE_BREAK_RE.finditer(text):
-            line_ends.append(line_break.start())
-            line_starts.append(line_break.end())
-        line_ends.append(len(text))
+        if line_table is None:
+            line_table = source_line_table(text)
+        line_starts, line_ends = line_table
 
         if line_index >= len(line_starts):
             return len(text)
@@ -715,7 +715,14 @@ class OrdLanguageServer:
     def code_actions(self, uri: str, diagnostics):
         """Return LSP code actions for the given diagnostics in one document."""
         actions = []
-        if uri not in self.session.documents:
+        if uri not in self.session.documents or not diagnostics:
+            return actions
+
+        # Every action edits the document based on analysis ranges. Like
+        # rename: a document with syntax errors is served from its last
+        # error-free analysis, whose ranges may not match the current
+        # text, so refuse rather than edit at a wrong position.
+        if self.session.analyze(uri).has_errors():
             return actions
 
         for diagnostic in diagnostics:
@@ -736,11 +743,6 @@ class OrdLanguageServer:
 
         diagnostic_position = self.analysis_position(uri, diagnostic["range"]["start"])
         analysis = self.session.analyze(uri)
-        # Like rename: a document with syntax errors is served from its
-        # last error-free analysis, whose ranges may not match the current
-        # text, so refuse rather than edit at a wrong position.
-        if analysis.has_errors():
-            return None
 
         containing_cell = None
         for symbol in analysis.symbols:

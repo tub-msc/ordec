@@ -274,29 +274,28 @@ class DiagnosticsMixin:
             if symbol_view is None or schematic_view is None:
                 continue
 
+            # Node statements are recorded per target, so multi-name
+            # declarations such as `input a, b` contribute every name
+            # even though their outline symbol is combined.
             symbol_pins = set()
             schematic_ports = []
-            for symbol in analysis.symbols:
-                if symbol.kind != "context":
-                    continue
-
-                parts = symbol.name.split(" ", 1)
-                if len(parts) != 2:
-                    continue
-                kind_name, target_name = parts
+            for statement in analysis.node_statements:
+                target_name = statement["target_name"]
                 if not is_identifier(target_name):
                     continue
 
-                if kind_name in PIN_KINDS and range_contains(symbol_view.range, symbol.selection_range.start):
+                kind_name = statement["kind_name"]
+                target_start = statement["target_range"].start
+                if kind_name in PIN_KINDS and range_contains(symbol_view.range, target_start):
                     symbol_pins.add(target_name)
-                elif kind_name == "port" and range_contains(schematic_view.range, symbol.selection_range.start):
-                    schematic_ports.append(symbol)
+                elif kind_name == "port" and range_contains(schematic_view.range, target_start):
+                    schematic_ports.append(statement)
 
-            for port_symbol in schematic_ports:
-                port_name = port_symbol.name.split(" ", 1)[1]
+            for port_statement in schematic_ports:
+                port_name = port_statement["target_name"]
                 if port_name not in symbol_pins:
                     add_diagnostic(
-                        port_symbol.selection_range,
+                        port_statement["target_range"],
                         "error",
                         "Schematic port `{}` is not declared in the symbol view.".format(port_name),
                         "unknown-symbol-port",
