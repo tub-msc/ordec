@@ -25,6 +25,10 @@ from ...ord.parser import format_error
 from ...ord.parser import parser
 
 
+# Container literals whose element types serve unpacking and loop targets.
+CONTAINER_LITERAL_TYPES = ("tuple", "parenthesized_tuple", "list", "testlist_tuple")
+
+
 def tree_range(node):
     """Return the source range for a Lark token or tree node."""
     if isinstance(node, Token):
@@ -470,7 +474,7 @@ class OrdAnalysisBuilder:
         if name_node is not None:
             return self.binding_type_names(self.resolve_binding(scope_id, tree_text(name_node)))
 
-        if node.data in ("tuple", "parenthesized_tuple", "list", "testlist_tuple"):
+        if node.data in CONTAINER_LITERAL_TYPES:
             type_names = []
             for child in node.children:
                 if not isinstance(child, Tree):
@@ -1153,13 +1157,21 @@ class OrdAnalysisBuilder:
                 )
 
                 for target_node in targets:
+                    # A single name binds the container itself, not its elements.
+                    target_type_names = value_type_names
+                    if (
+                        value_node.data in CONTAINER_LITERAL_TYPES
+                        and self.simple_name_node(target_node) is not None
+                    ):
+                        target_type_names = []
+
                     if self.bind_target(
                         scope_id,
                         target_node,
-                        type_names=value_type_names,
+                        type_names=target_type_names,
                         context_type_names=context_type_names,
                     ):
-                        self.add_type_hint(target_node, value_type_names)
+                        self.add_type_hint(target_node, target_type_names)
                         continue
 
                     self.visit(target_node, scope_id, context_type_names=context_type_names)

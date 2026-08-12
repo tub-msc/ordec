@@ -1438,6 +1438,33 @@ def test_multi_target_node_statement_symbols_and_pin_diagnostics():
     ]
 
 
+def test_container_literal_assignment_keeps_binding_untyped():
+    source = (
+        "cell Adder:\n"
+        "    viewgen schematic -> Schematic:\n"
+        "        port cin\n"
+        "        carry = [cin]\n"
+        "        carry.append(cin)\n"
+    )
+    session = AnalysisSession()
+    uri = "file:///tmp/container.ord"
+    session.open_document(uri, source, version=1)
+
+    assert session.diagnostics(uri) == []
+
+    # Unpacking targets still take the container's element types.
+    unpacked = source.replace(
+        "        carry = [cin]\n"
+        "        carry.append(cin)\n",
+        "        first, second = [cin, cin]\n"
+        "        first.append(cin)\n",
+    )
+    session.update_document(uri, unpacked, version=2)
+    assert [diagnostic.code for diagnostic in session.diagnostics(uri)] == [
+        "unknown-member",
+    ]
+
+
 def test_references_reach_documents_outside_workspace_root(tmp_path):
     session = AnalysisSession(workspace_root=str(tmp_path))
     uri = "file:///outside/scratch.ord"
