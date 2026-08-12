@@ -58,6 +58,7 @@ extra = [
 
 [project.scripts]
 ordec = "ordec.__main__:main"
+ordec-lsp = "ordec.lsp:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -7,6 +7,7 @@ path = [
     "docs/make.bat",
     "web/package-lock.json",
     "support/editors/tree-sitter-ord/package-lock.json",
+    "support/editors/vscode/ord/package-lock.json",
     "tests/renderview_ref/*.svg",
 ]
 SPDX-FileCopyrightText = "NONE"

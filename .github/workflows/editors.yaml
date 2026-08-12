@@ -54,3 +54,7 @@ jobs:
           npx tree-sitter test
       - name: grammar oracle tests
         run: pytest support/editors/tests -v --no-cov -o cache_dir=/tmp/pytestcache
+      - name: vscode extension tests
+        run: |
+          cd support/editors/vscode/ord
+          npm run check

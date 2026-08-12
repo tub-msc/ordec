@@ -5,6 +5,13 @@ The ``support/editors/`` directory of the ORDeC repository contains editor
 support packages for ``.ord`` files, so ORDeC designs can be edited in a
 regular IDE alongside the browser-based viewer.
 
+Editor support has two parts: syntax highlighting packages that teach each
+editor the ORD constructs, and the ORD language server that adds semantic
+features such as diagnostics and navigation on top.
+
+Syntax highlighting
+-------------------
+
 ORD is syntactically close to Python, but adds its own constructs, such as:
 
 - ``cell`` declarations
@@ -22,7 +29,7 @@ JetBrains plugin parses ORD natively as a Python dialect, and
 tree-sitter-based editors.
 
 Sublime Text
-------------
+~~~~~~~~~~~~
 
 ``support/editors/sublime/`` provides a syntax definition that extends
 Sublime Text's built-in Python syntax at runtime.
@@ -31,7 +38,7 @@ Install it either as a user syntax by copying ``Ord.sublime-syntax`` into
 ``Packages/User/``, or as its own package::
 
     mkdir -p ~/.config/sublime-text/Packages/Ord
-    cp support/editors/sublime/Ord.sublime-syntax ~/.config/sublime-text/Packages/Ord/
+    cp support/editors/sublime/Ord.sublime-syntax ~/.config/sublime-text/Packages/User/
 
 The Sublime packages directory is located at:
 
@@ -44,7 +51,7 @@ happen automatically, click the syntax selector in the bottom-right corner
 and choose ``Ord``.
 
 PyCharm / JetBrains IDEs
-------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``support/editors/jetbrains/`` provides an IDE plugin that parses ORD
 natively as a Python dialect, extending the IDE's own Python parser with
@@ -62,16 +69,17 @@ pinned Gradle distribution (checksum-verified) and the IDE SDK::
 Install the archive from ``build/distributions/`` via
 ``Settings > Plugins > (gear icon) > Install Plugin from Disk``, restart,
 and open a ``.ord`` file to verify highlighting and the ORD file icon.
-Everything that is plain Python gets the IDE's usual Python
+Everything that is plain Python gets the usual IDE Python
 intelligence.
 
 VS Code
--------
+~~~~~~~
 
 ``support/editors/vscode/ord/`` provides a VS Code extension with TextMate
 highlighting for ``.ord`` files. Package and install it with::
 
     cd support/editors/vscode/ord
+    npm ci
     npx @vscode/vsce package
     code --install-extension *.vsix
 
@@ -83,7 +91,7 @@ like flow keywords, SI suffixes like CSS units). Every scope keeps an
 via ``editor.tokenColorCustomizations`` in ``settings.json``.
 
 tree-sitter (Neovim, Helix)
----------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``support/editors/tree-sitter-ord/`` provides a tree-sitter grammar for
 ORD, a real parser in contrast to the regex-based Sublime and VS Code
@@ -160,6 +168,7 @@ your editor:
       name = "ord"
       scope = "source.ord"
       file-types = ["ord"]
+      roots = ["pyproject.toml", ".git"]
       comment-token = "#"
       indent = { tab-width = 4, unit = "    " }
 
@@ -193,7 +202,7 @@ your editor:
   changes, rerun ``npm run generate`` and ``hx --grammar build``.
 
 Implementation details
-----------------------
+~~~~~~~~~~~~~~~~~~~~~~
 
 All packages follow one design: since ORD is a superset of Python, each
 package extends its editor's existing Python support instead of
@@ -240,3 +249,236 @@ constructs as the Python tests above. One known limitation: ORD
 statements in the one-line suite of a Python compound statement
 (``if x: net a``) are not recognized, since Python's own suite parsing
 handles those bodies.
+
+Language server
+---------------
+
+ORDeC installs ``ordec-lsp``, a stdio language server providing diagnostics,
+completion, navigation, rename, symbols, and other semantic editor features.
+It does not execute ORD code: source files are parsed and analyzed
+statically, so opening a project in an editor cannot run its designs.
+
+The server ships with the ``ordec`` Python package. Install it in the Python
+environment that should run the server:
+
+.. code-block:: bash
+
+    python -m pip install -e .
+
+Every editor configuration below needs a command that starts the server. The
+examples use **ordec-lsp**. Keep that name if the editor can find the executable
+on its **PATH**. Otherwise replace it with the **full path**, such as
+``/path/to/project/.venv/bin/ordec-lsp`` on Linux or macOS, or
+``C:\path\to\project\.venv\Scripts\ordec-lsp.exe`` on Windows. An editor
+started from the desktop may use a different ``PATH`` than a terminal.
+
+Supported features
+~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 76
+
+   * - Feature
+     - Support
+   * - Diagnostics
+     - ORD syntax errors and semantic issues involving imports, node types,
+       view generator return types, constraint contexts, members, parameters,
+       and schematic ports missing from the symbol view.
+   * - Completion
+     - Local names, members, and parameters with documentation.
+   * - Navigation
+     - Definitions, type definitions, references, and document highlights.
+   * - Symbols
+     - Document and workspace symbols, nested by cell and view generator when
+       the editor supports hierarchical symbols.
+   * - Hover and signatures
+     - Markdown hover information with cell parameter signatures and
+       docstrings, plus signature help for cell instantiations and function
+       calls.
+   * - Rename
+     - Document and workspace rename across the ORD import graph.
+   * - Type information
+     - Inferred-type inlay hints and semantic tokens.
+   * - Code structure
+     - Folding ranges, selection ranges, and a call hierarchy over the cell
+       instantiation graph.
+   * - Code actions
+     - Quick fixes for selected diagnostics.
+   * - Document updates
+     - Incremental synchronization with full-document replacement as a
+       fallback.
+
+The editor subsections below contain the matching launch configurations.
+For an editor with generic LSP support that is not covered, configure:
+
+* command: ``ordec-lsp``
+* transport: stdio
+* file extension: ``*.ord``
+* language id: ``ord``
+* workspace root: the project directory
+
+The workspace root matters: workspace-wide references and rename follow the
+workspace's ORD import graph, so reverse dependencies are only found when
+the project directory is the root. While typing incomplete code, the server
+keeps the last successful structural analysis and reports syntax errors on
+top, so navigation, symbols, and completions stay useful. Saving a file
+refreshes diagnostics and cached import data.
+
+Sublime Text
+~~~~~~~~~~~~
+
+Install the ``LSP`` package from Package Control and merge this client
+entry into ``Packages/User/LSP.sublime-settings``, keeping any other
+servers in an existing ``clients`` object. Open the project directory as a
+Sublime folder so the server receives the correct workspace root::
+
+    {
+      "clients": {
+        "ordec-lsp": {
+          "command": ["ordec-lsp"],
+          "enabled": true,
+          "languageId": "ord",
+          "scopes": ["source.ord"],
+          "syntaxes": ["Packages/User/Ord.sublime-syntax"]
+        }
+      },
+      // Off by default in the LSP package: show the server's
+      // inferred-type hints and semantic tokens.
+      "show_inlay_hints": true,
+      "semantic_highlighting": true
+    }
+
+For troubleshooting, the ``LSP: Toggle Log Panel`` command shows the
+exchanged JSON-RPC messages.
+
+PyCharm / JetBrains IDEs
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ORD plugin itself does not launch ORD-LSP: retaining the 2024.2
+Community build target excludes the built-in JetBrains LSP module, so that
+integration needs a separate compatibility decision.
+
+The LSP4IJ plugin (by Red Hat, available from the JetBrains marketplace)
+provides the connection instead and works alongside the ORD plugin's
+native highlighting. After installing it, add a user-defined server under
+``Settings | Languages & Frameworks | Language Servers``:
+
+* Server: name ``ordec-lsp``, command ``ordec-lsp``
+* Mappings: file name pattern ``*.ord`` with language id ``ord``
+
+The server starts when the first ``.ord`` file opens. For troubleshooting,
+the LSP consoles in the Language Servers tool window show the exchanged
+JSON-RPC messages.
+
+VS Code
+~~~~~~~
+
+The extension starts the server when an ORD file opens. It uses ``ordec-lsp``
+by default. To use a full path, open ``settings.json`` with
+``Preferences: Open User Settings (JSON)`` and add:
+
+.. code-block:: text
+
+    {
+      "ord.languageServer.command": "/absolute/path/to/.venv/bin/ordec-lsp"
+    }
+
+No arguments are required. Disable the server with
+``ord.languageServer.enabled``. For troubleshooting, set
+``"ordec-lsp.trace.server": "verbose"`` and open the ORD Language Server output
+channel.
+
+Neovim
+~~~~~~
+
+With the tree-sitter setup from the syntax highlighting section in place,
+the ``.ord`` filetype mapping already exists. Start ORD-LSP from
+``init.lua`` using the Neovim 0.11+ ``vim.lsp.config`` API::
+
+    vim.lsp.config("ordec", {
+      cmd = { "ordec-lsp" },
+      filetypes = { "ord" },
+      root_markers = { "pyproject.toml", ".git" },
+    })
+    vim.lsp.enable("ordec")
+    vim.lsp.inlay_hint.enable(true)
+
+Semantic tokens are used automatically. Folding follows tree-sitter as
+configured in the syntax highlighting section. To fold via the language
+server instead, set ``foldmethod=expr`` with
+``foldexpr=v:lua.vim.lsp.foldexpr()``.
+
+Helix
+~~~~~
+
+Add the server to the ORD language block created in the syntax
+highlighting section of ``~/.config/helix/languages.toml``::
+
+    [[language]]
+    # ...the ORD language block from the syntax highlighting section...
+    language-servers = ["ordec-lsp"]
+
+    [language-server.ordec-lsp]
+    command = "ordec-lsp"
+
+Implementation details
+~~~~~~~~~~~~~~~~~~~~~~
+
+The installed ``ordec-lsp`` command starts ``ordec.lsp.server``. The
+stdio server uses a method dispatch table: each supported LSP method is
+handled by a small ``handle_*`` method, while shared helpers convert
+between LSP's zero-based positions and the analysis layer's one-based
+positions.
+
+A daemon reader thread frames stdin onto a queue, and a single consumer
+dispatches messages in arrival order, so handlers stay synchronous and the
+analysis session is only ever touched by one thread. Draining the queue
+backlog before dispatching lets ``$/cancelRequest`` cancel still-queued
+requests (error ``-32800``) before they are computed and collapses
+consecutive ``didChange`` bursts for one document onto a newer
+full-document replacement. Incremental changes are never skipped, since
+each one builds on the document state left by its predecessor. A request
+that is already being handled is never interrupted.
+
+Most language intelligence lives in ``ordec.lsp.analysis``:
+
+* ``model.py`` defines shared positions, ranges, diagnostics, symbols, import
+  records, and ``DocumentAnalysis``.
+* ``parser_pass.py`` parses ORD source and uses an ``OrdAnalysisBuilder`` to
+  walk the parse tree and collect scopes, bindings, occurrences, imports, ORD
+  node statement records, view generator return records, constraint records, and
+  inferred-type records for assignment targets.
+* ``session.py`` is the public analysis facade. It owns open document snapshots,
+  last-good analysis caching, file invalidation, ORD import resolution,
+  workspace dependency indexing, lightweight type resolution, and
+  navigation/reference features.
+* ``python_index.py`` owns shallow Python module indexing. It resolves Python
+  imports, parses Python source with ``ast``, caches module information, and
+  exposes exported symbols, class members, docstrings, function signatures,
+  and cell parameter defaults without importing or executing workspace
+  modules.
+* ``completions.py``, ``diagnostics.py``, ``rename.py``, ``signatures.py``,
+  and ``hierarchy.py`` add feature-specific methods to ``AnalysisSession``
+  through mixin classes.
+
+``AnalysisSession`` intentionally remains the API boundary used by the LSP
+server and tests. The smaller analysis modules keep implementation details
+separated while preserving calls such as ``session.definition(...)``,
+``session.completions(...)``, and ``session.python_definition(...)``.
+
+The Python analysis is intentionally lightweight: workspace Python modules
+are parsed without executing them, while resolving installed packages may
+import parent ``__init__.py`` files through ``importlib.util.find_spec``.
+The server is not a full Python type checker, so Python expression types
+are inferred only where the ORD analysis can derive useful local
+information, and completion and diagnostics may be conservative for complex
+Python control flow or dynamic imports. Rename is deliberately restricted
+to identifiers. A rename started at an ORD cell-member declaration updates
+matching ``x.member`` accesses, but cannot be started at a member access or
+at a parameter access such as ``x.$param``. It also refuses symbols whose
+definition lives in Python source, because rewriting the ORD
+references without the Python definition would break the import (renaming
+a local import alias remains possible). Workspace-wide
+features depend on the editor passing the correct workspace root and on
+file watching notifications for changed files.
