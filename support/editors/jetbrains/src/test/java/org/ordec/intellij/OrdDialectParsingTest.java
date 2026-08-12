@@ -82,7 +82,7 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
             "print foo:\n            pass",
         };
         for (String statement : statements) {
-            String source = "cell C:\n    viewgen v -> Schematic:\n        " + statement + "\n";
+            String source = "cell C:\n    viewgen v(self) -> Schematic:\n        " + statement + "\n";
             PsiFile psi = myFixture.configureByText("case.ord", source);
             Collection<PsiErrorElement> errors =
                 PsiTreeUtil.findChildrenOfType(psi, PsiErrorElement.class);
@@ -104,7 +104,7 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
         for (String statement : statements) {
             // the trailing sibling line keeps end-of-file from masking
             // runaway suite parsing
-            String source = "cell C:\n    viewgen v -> Schematic:\n        "
+            String source = "cell C:\n    viewgen v(self) -> Schematic:\n        "
                 + statement + "\n        pass\n";
             PsiFile psi = myFixture.configureByText("case.ord", source);
             Collection<PsiErrorElement> errors =
@@ -131,7 +131,7 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
             "...",
         };
         for (String statement : statements) {
-            String source = "cell C:\n    viewgen v -> Schematic:\n        "
+            String source = "cell C:\n    viewgen v(self) -> Schematic:\n        "
                 + statement + "\n        pass\n";
             PsiFile psi = myFixture.configureByText("case.ord", source);
             Collection<PsiErrorElement> errors =
@@ -146,9 +146,30 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
      */
     public void testDecoratedDefinitions() {
         String[] sources = {
-            "cell C:\n    @generate(auto_refresh=False)\n    viewgen v -> Schematic:\n        pass\n",
+            "cell C:\n    @viewgen(auto_refresh=False)\n    viewgen v(self) -> Schematic:\n        pass\n",
             "@register\ncell D:\n    pass\n",
             "@functools.cache\ndef f():\n    pass\n",
+        };
+        for (String source : sources) {
+            PsiFile psi = myFixture.configureByText("case.ord", source);
+            Collection<PsiErrorElement> errors =
+                PsiTreeUtil.findChildrenOfType(psi, PsiErrorElement.class);
+            assertTrue("parse errors for:\n" + source, errors.isEmpty());
+        }
+    }
+
+    /**
+     * Viewgen header variants: the annotation-less new form, a module-level
+     * viewgen, star parameters, and the legacy parenless form, which still
+     * parses (the compiler rejects it with a fix-it, but the editor must
+     * not shatter old sources).
+     */
+    public void testViewgenHeaderVariants() {
+        String[] sources = {
+            "cell C:\n    viewgen v(self):\n        pass\n",
+            "viewgen v() -> Schematic:\n    pass\n",
+            "cell C:\n    viewgen v(self, **kwargs) -> Schematic:\n        pass\n",
+            "cell C:\n    viewgen v -> Schematic:\n        pass\n",
         };
         for (String source : sources) {
             PsiFile psi = myFixture.configureByText("case.ord", source);
@@ -194,8 +215,8 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
     public void testOrdElementsSatisfyPythonPsiCasts() {
         String source = "@register\n"
             + "cell C:\n"
-            + "    @generate\n"
-            + "    viewgen v -> Schematic:\n"
+            + "    @viewgen(auto_refresh=False)\n"
+            + "    viewgen v(self) -> Schematic:\n"
             + "        net vdd, ring.vx\n"
             + "        path ctr[0]\n"
             + "        Nmos m1:\n"
@@ -250,7 +271,7 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
      */
     public void testOrdElementsReportPythonLanguage() {
         PsiFile psi = myFixture.configureByText("case.ord",
-            "cell C:\n    viewgen v -> Schematic:\n        Nmos m1: .pos = (0, 0)\n");
+            "cell C:\n    viewgen v(self) -> Schematic:\n        Nmos m1: .pos = (0, 0)\n");
         PsiElement cellDefinition = PsiTreeUtil.findChildOfType(
             psi, OrdParserDefinition.OrdStatementPsiElement.class);
         assertNotNull(cellDefinition);
@@ -264,7 +285,7 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
      */
     public void testOrdConstructsAreHighlighted() {
         String source = "cell Nand:\n"
-            + "    viewgen schematic -> Schematic:\n"
+            + "    viewgen schematic(self) -> Schematic:\n"
             + "        output y: .align=East\n"
             + "        net net_conn\n"
             + "        Nmos n1: .$w=1u; .d -- net_conn\n";
@@ -295,7 +316,7 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
             new PyTrailingSemicolonInspection());
         myFixture.configureByText("case.ord",
             "cell C:\n"
-            + "    viewgen v -> Schematic:\n"
+            + "    viewgen v(self) -> Schematic:\n"
             + "        port y: .align=West; .pos=(signal_count * x_spacing,\n"
             + "            y_spacing * ((self.N - 1) // 2))\n"
             + "        Nmos m1\n"

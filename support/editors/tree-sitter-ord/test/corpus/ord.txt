@@ -6,7 +6,7 @@ ORD declarations and SI literals
 ================================================================================
 
 cell Inv:
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         port vdd:
             .align = North
         output y:
@@ -26,6 +26,8 @@ net out
     (block
       (viewgen_definition
         (identifier)
+        (parameters
+          (identifier))
         (type
           (identifier))
         (block
@@ -77,7 +79,7 @@ Call kinds, anonymous and bodyless node statements
 ================================================================================
 
 cell Osc:
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         Nmos(w=1u, l=130n) nmos:
             ! .pos == (0, 0)
         anonymous LayoutRect r:
@@ -93,6 +95,8 @@ cell Osc:
     (block
       (viewgen_definition
         (identifier)
+        (parameters
+          (identifier))
         (type
           (identifier))
         (block
@@ -144,7 +148,7 @@ Inline node bodies, connections and parameter access
 ================================================================================
 
 cell Rc:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         Gnd gnd: .p -- vss; .pos = (0, 0)
         Res res: .$r = 1k; .m -- out; .p -- vin
         for t in transistors:
@@ -158,6 +162,8 @@ cell Rc:
     (block
       (viewgen_definition
         (identifier)
+        (parameters
+          (identifier))
         (type
           (identifier))
         (block
@@ -210,7 +216,7 @@ cell Rc:
 Context paths, subscripts and dotted path targets
 ================================================================================
 
-viewgen symbol -> Symbol:
+viewgen symbol(self) -> Symbol:
     output bus[0].y:
         .align = East
     path ring.vdd, arr[1]
@@ -220,6 +226,8 @@ viewgen symbol -> Symbol:
 (module
   (viewgen_definition
     (identifier)
+    (parameters
+      (identifier))
     (type
       (identifier))
     (block
@@ -247,7 +255,7 @@ viewgen symbol -> Symbol:
 Bare dot expressions
 ================================================================================
 
-viewgen symbol -> Symbol:
+viewgen symbol(self) -> Symbol:
     . % SymbolPoly(vertices=[(0, 2), (1, 2)])
     . = run_lvs(self.layout, self.symbol)
 
@@ -256,6 +264,8 @@ viewgen symbol -> Symbol:
 (module
   (viewgen_definition
     (identifier)
+    (parameters
+      (identifier))
     (type
       (identifier))
     (block
@@ -437,7 +447,7 @@ cell Top:
         .g -- signal_in
 
 @cached
-viewgen layout -> Layout:
+viewgen layout(self) -> Layout:
     pass
 
 --------------------------------------------------------------------------------
@@ -463,6 +473,8 @@ viewgen layout -> Layout:
       (identifier))
     (viewgen_definition
       (identifier)
+      (parameters
+        (identifier))
       (type
         (identifier))
       (block
@@ -473,7 +485,7 @@ Dotted, subscripted and called node kinds, dotted path/net targets
 ================================================================================
 
 cell Top:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         lib.Inv i0:
             pass
         lib.Inv() i1:
@@ -494,6 +506,8 @@ cell Top:
     (block
       (viewgen_definition
         (identifier)
+        (parameters
+          (identifier))
         (type
           (identifier))
         (block
@@ -564,7 +578,7 @@ Dotted viewgen return types and direction pin kinds
 ================================================================================
 
 cell Amp:
-    viewgen layout -> lib.Layout:
+    viewgen layout(self) -> lib.Layout:
         input inp:
             .align = West
         inout io
@@ -578,6 +592,8 @@ cell Amp:
     (block
       (viewgen_definition
         (identifier)
+        (parameters
+          (identifier))
         (type
           (attribute
             (identifier)
@@ -603,3 +619,42 @@ cell Amp:
               (identifier))
             (block
               (pass_statement))))))))
+
+================================================================================
+Viewgen header variants: annotation-less, module-level, legacy parenless
+================================================================================
+
+cell Inv:
+    viewgen schematic(self):
+        pass
+    viewgen layout -> Layout:
+        pass
+
+viewgen top() -> Symbol:
+    pass
+
+--------------------------------------------------------------------------------
+
+(module
+  (cell_definition
+    (identifier)
+    (block
+      (viewgen_definition
+        (identifier)
+        (parameters
+          (identifier))
+        (block
+          (pass_statement)))
+      (viewgen_definition
+        (identifier)
+        (type
+          (identifier))
+        (block
+          (pass_statement)))))
+  (viewgen_definition
+    (identifier)
+    (parameters)
+    (type
+      (identifier))
+    (block
+      (pass_statement))))

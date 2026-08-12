@@ -66,8 +66,8 @@
       ]
     },
     "viewgen-declaration": {
-      "comment": "viewgen name -> ReturnExpr:  (viewgens take no parameter list and the return target may be any expression)",
-      "begin": "(?<![\\w.$])(viewgen)\\b\\s+([_[:alpha:]]\\w*)\\s*(?=->|:|$)",
+      "comment": "viewgen name(params) -> ReturnExpr:  (the parameter list is mandatory in the compiler; the return target may be any expression; -> and : also match alone so legacy sources keep their highlighting)",
+      "begin": "(?<![\\w.$])(viewgen)\\b\\s+([_[:alpha:]]\\w*)\\s*(?=\\(|->|:|$)",
       "beginCaptures": {
         "1": {
           "name": "storage.type.function.ord"

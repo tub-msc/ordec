@@ -123,8 +123,15 @@ module.exports = grammar(python, {
     viewgen_definition: $ => seq(
       'viewgen',
       field('name', $.identifier),
-      '->',
-      field('return_type', $.type),
+      choice(
+        seq(
+          field('parameters', $.parameters),
+          optional(seq('->', field('return_type', $.type))),
+        ),
+        // Legacy parenless spelling. The compiler rejects it with a fix-it,
+        // but parsing it keeps old sources free of ERROR nodes.
+        seq('->', field('return_type', $.type)),
+      ),
       ':',
       field('body', $._suite),
     ),

@@ -5,7 +5,7 @@
 #
 # Extends Python.sublime-syntax from Sublime Text with Ord-specific constructs:
 # - cell definitions (cell Name: suite)
-# - viewgen definitions (viewgen name -> Type: suite)
+# - viewgen definitions (viewgen name(params) -> Type: suite)
 # - Node statements (Type target: suite, Type(args) target: suite,
 #   lib.Type target: suite, rows[i] target: suite,
 #   anonymous Type target: suite, bodyless Type t1, t2)
@@ -64,8 +64,9 @@ contexts:
 
   ord-viewgen-definitions:
     # viewgen is a soft keyword, so only treat it as a declaration when
-    # followed by a name (the return arrow may still be missing while typing)
-    - match: \bviewgen\b(?=[ \t]+{{identifier}}[ \t]*(?:->|:|$))
+    # followed by a name (the parameter list or return arrow may still be
+    # missing while typing)
+    - match: \bviewgen\b(?=[ \t]+{{identifier}}[ \t]*(?:\(|->|:|$))
       scope: keyword.declaration.function.ord
       push: ord-viewgen-name
 
@@ -82,11 +83,28 @@ contexts:
 
   ord-viewgen-return-arrow:
     - meta_scope: meta.function.ord
+    - match: '[ \t]*(\()'
+      captures:
+        1: punctuation.section.parameters.begin.ord
+      push: ord-viewgen-parameters
     - match: '[ \t]*(->)'
       captures:
         1: punctuation.separator.return-type.ord
       set: ord-viewgen-return-type
     - include: immediately-pop
+
+  ord-viewgen-parameters:
+    - meta_scope: meta.function.parameters.ord
+    - match: \)
+      scope: punctuation.section.parameters.end.ord
+      pop: 1
+    - match: '\*{1,2}'
+      scope: keyword.operator.unpacking.ord
+    - match: '{{identifier}}'
+      scope: variable.parameter.ord
+    - match: ','
+      scope: punctuation.separator.parameters.ord
+    - include: line-continuation-or-pop
 
   ord-viewgen-return-type:
     - meta_scope: meta.function.ord

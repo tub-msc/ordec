@@ -61,7 +61,7 @@ ATOM_EXPR_POSITIVES = [
 def wrap_in_viewgen(line, rule):
     """Embed a synthetic statement in a minimal cell/viewgen skeleton."""
     body = '\n            pass' if rule in NODE_RULES else ''
-    return f'cell C:\n    viewgen v -> Schematic:\n        {line}{body}\n'
+    return f'cell C:\n    viewgen v(self) -> Schematic:\n        {line}{body}\n'
 
 
 def test_atom_expr_positives_are_valid_ord():
@@ -398,7 +398,7 @@ def test_tree_sitter_highlight_precedence(ord_tree_sitter_parser):
     # 'member' stands for the per-file property capture name.
     sample = '''\
 cell Inv:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vdd
         input a
         Nmos(w=4u, l=400n) m1:

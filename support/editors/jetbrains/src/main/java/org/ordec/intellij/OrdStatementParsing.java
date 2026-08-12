@@ -113,21 +113,40 @@ public class OrdStatementParsing extends StatementParsing {
         return false;
     }
 
-    // viewgen: "viewgen" name "->" test ":" suite
+    // viewgen: "viewgen" name "(" [parameters] ")" ["->" test] ":" suite,
+    // plus the legacy parenless form "viewgen" name "->" test ":" suite.
+    // The parameter list is consumed as raw tokens: it needs no PSI
+    // structure, and keeping it out of expression PSI leaves the return
+    // type as the first expression child for OrdAnnotator.annotateKind.
     private boolean parseViewgenDefinition() {
         SyntaxTreeBuilder.Marker marker = myBuilder.mark();
         myBuilder.advanceLexer();
         if (myBuilder.getTokenType() == PyTokenTypes.IDENTIFIER) {
             myBuilder.advanceLexer();
-            if (myBuilder.getTokenType() == PyTokenTypes.RARROW) {
+            boolean hasParameters = false;
+            if (myBuilder.getTokenType() == PyTokenTypes.LPAR) {
+                hasParameters = true;
+                int depth = 0;
+                do {
+                    if (myBuilder.getTokenType() == PyTokenTypes.LPAR) {
+                        depth++;
+                    } else if (myBuilder.getTokenType() == PyTokenTypes.RPAR) {
+                        depth--;
+                    }
+                    myBuilder.advanceLexer();
+                } while (depth > 0 && !myBuilder.eof());
+            }
+            boolean hasReturnType = myBuilder.getTokenType() == PyTokenTypes.RARROW;
+            if (hasReturnType) {
                 myBuilder.advanceLexer();
                 myContext.getExpressionParser().parseExpression();
-                if (myBuilder.getTokenType() == PyTokenTypes.COLON) {
-                    myBuilder.advanceLexer();
-                    parseOrdSuite();
-                    marker.done(OrdElementTypes.VIEWGEN_DEFINITION);
-                    return true;
-                }
+            }
+            if ((hasParameters || hasReturnType)
+                    && myBuilder.getTokenType() == PyTokenTypes.COLON) {
+                myBuilder.advanceLexer();
+                parseOrdSuite();
+                marker.done(OrdElementTypes.VIEWGEN_DEFINITION);
+                return true;
             }
         }
         marker.rollbackTo();
