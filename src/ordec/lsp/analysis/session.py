@@ -1310,7 +1310,7 @@ class AnalysisSession(
         type_definition = self.resolve_core_type(type_name)
         if type_definition is None:
             return False
-        return "view_context" in self.type_members(type_definition)
+        return "view_builder" in self.type_members(type_definition)
 
     def resolve_core_type(self, type_name: str):
         """Resolve an ORDeC core type exported by ``ordec.core``."""

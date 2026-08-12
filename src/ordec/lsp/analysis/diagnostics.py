@@ -151,7 +151,7 @@ class DiagnosticsMixin:
                 continue
 
             members = self.type_members(type_definition)
-            if "view_context" not in members:
+            if "view_builder" not in members:
                 add_diagnostic(
                     viewgen["selection_range"],
                     "error",
@@ -174,25 +174,32 @@ class DiagnosticsMixin:
                 "unresolved-name",
             )
 
+        for oldform in analysis.viewgen_oldforms:
+            # Mirrors the compiler's fix-it for the removed parenless form.
+            name = oldform["name"]
+            add_diagnostic(
+                oldform["selection_range"],
+                "error",
+                "viewgen {} declares no parameter list. Write `viewgen {}(self) "
+                "-> T:` inside a cell, or `viewgen {}() -> T:` at module "
+                "level.".format(name, name, name),
+                "viewgen-parameter-list",
+            )
+
         for constraint in analysis.constraints:
             containing_viewgen = None
-            for viewgen in analysis.viewgen_returns:
-                if not range_contains(viewgen["viewgen_range"], constraint["range"].start):
+            for viewgen in analysis.viewgen_ranges:
+                if not range_contains(viewgen["range"], constraint["range"].start):
                     continue
                 containing_viewgen = viewgen
                 break
 
-            if containing_viewgen is None and any(
-                range_contains(context_range, constraint["range"].start)
-                for context_range in analysis.view_context_ranges
-            ):
-                # `with x.view_context(...):` blocks build views outside a
-                # viewgen, so constraints are valid there.
-                continue
-
+            # A viewgen without a return annotation adopts its root via
+            # `. = ...`; its view type is unknown here, so constraints in
+            # its body are given the benefit of the doubt.
             if (
                 containing_viewgen is None
-                or containing_viewgen["return_type"] not in ("Schematic", "Layout")
+                or containing_viewgen["return_type"] not in (None, "Schematic", "Layout")
             ):
                 add_diagnostic(
                     constraint["range"],

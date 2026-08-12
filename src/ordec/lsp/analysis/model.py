@@ -243,10 +243,11 @@ class DocumentAnalysis:
         occurrences=None,
         member_occurrences=None,
         viewgen_returns=None,
+        viewgen_ranges=None,
+        viewgen_oldforms=None,
         node_statements=None,
         constraints=None,
         type_hints=None,
-        view_context_ranges=None,
     ):
         """Initialize a document analysis result.
 
@@ -263,11 +264,13 @@ class DocumentAnalysis:
             occurrences: Name occurrences built by the parser pass.
             member_occurrences: Member or parameter occurrences.
             viewgen_returns: View generator return type records.
+            viewgen_ranges: Body range and return type (None when the
+                annotation is omitted) of every view generator.
+            viewgen_oldforms: Records of legacy parenless viewgen
+                statements, diagnosed as errors.
             node_statements: ORD node statement records.
             constraints: Constraint syntax records.
             type_hints: Inferred-type records for assignment targets.
-            view_context_ranges: Ranges of ``with`` blocks that open an
-                ORDB view context outside a viewgen.
         """
         self.uri = uri
         self.version = version
@@ -284,12 +287,11 @@ class DocumentAnalysis:
             member_occurrences if member_occurrences is not None else []
         )
         self.viewgen_returns = self.copy_records(viewgen_returns if viewgen_returns is not None else [])
+        self.viewgen_ranges = self.copy_records(viewgen_ranges if viewgen_ranges is not None else [])
+        self.viewgen_oldforms = self.copy_records(viewgen_oldforms if viewgen_oldforms is not None else [])
         self.node_statements = self.copy_records(node_statements if node_statements is not None else [])
         self.constraints = self.copy_records(constraints if constraints is not None else [])
         self.type_hints = self.copy_records(type_hints if type_hints is not None else [])
-        self.view_context_ranges = list(
-            view_context_ranges if view_context_ranges is not None else []
-        )
 
     def copy_scopes(self, scopes):
         """Return copied scope records so analysis snapshots do not alias."""
@@ -338,10 +340,11 @@ class DocumentAnalysis:
             occurrences=self.occurrences,
             member_occurrences=self.member_occurrences,
             viewgen_returns=self.viewgen_returns,
+            viewgen_ranges=self.viewgen_ranges,
+            viewgen_oldforms=self.viewgen_oldforms,
             node_statements=self.node_statements,
             constraints=self.constraints,
             type_hints=self.type_hints,
-            view_context_ranges=self.view_context_ranges,
         )
 
 

@@ -117,10 +117,11 @@ class OrdAnalysisBuilder:
         self.occurrences = []
         self.member_occurrences = []
         self.viewgen_returns = []
+        self.viewgen_ranges = []
+        self.viewgen_oldforms = []
         self.node_statements = []
         self.constraints = []
         self.type_hints = []
-        self.view_context_ranges = []
 
     def simple_name_node(self, node):
         """Return the simple name node represented by a parse-tree node."""
@@ -162,28 +163,6 @@ class OrdAnalysisBuilder:
             return None
 
         return inner_nodes[0], attribute_node
-
-    def opens_view_context(self, expression_node):
-        """Return whether a with-item expression opens an ORDB view context.
-
-        ``with root.view_context(root):`` and ``with node.ctx():`` execute
-        their bodies inside a view building context, so constraints and
-        node statements are valid there even outside a viewgen. Only a
-        call whose callee is the ctx or view_context attribute counts, so
-        an argument such as ``open(cfg.ctx)`` does not open a context.
-        """
-        if not isinstance(expression_node, Tree) or expression_node.data != "funccall":
-            return False
-        if not expression_node.children:
-            return False
-
-        callee_node = expression_node.children[0]
-        if not isinstance(callee_node, Tree) or callee_node.data != "getattr":
-            return False
-        if len(callee_node.children) != 2:
-            return False
-
-        return tree_text(callee_node.children[1]) in ("view_context", "ctx")
 
     def kind_name_node(self, node):
         """Return the name node for a plain or parameterized node kind."""
@@ -594,6 +573,47 @@ class OrdAnalysisBuilder:
 
         self.visit(node, outer_scope_id)
 
+    def bind_viewgen_receiver(self, parameters_node, outer_scope_id, viewgen_scope_id):
+        """Attach the enclosing cell's type to a viewgen's receiver parameter.
+
+        The receiver is the first declared parameter (canonically ``self``).
+        Its binding shadows the celldef's synthetic typed ``self``, so the
+        cell type recorded there is copied over to keep member resolution
+        working inside the body.
+        """
+        name_node = self.first_parameter_name_node(parameters_node)
+        if name_node is None:
+            return
+
+        receiver_type_names = self.binding_type_names(
+            self.resolve_binding(outer_scope_id, "self")
+        )
+        if not receiver_type_names:
+            return
+
+        binding_id = self.scope_bindings[viewgen_scope_id].get(tree_text(name_node))
+        if binding_id is None:
+            return
+        existing_type_names = normalize_type_names(self.bindings[binding_id - 1].get("type_names"))
+        self.bindings[binding_id - 1]["type_names"] = normalize_type_names(
+            existing_type_names + receiver_type_names
+        )
+
+    def first_parameter_name_node(self, parameters_node):
+        """Return the name node of the first positional parameter, or None."""
+        node = parameters_node
+        while isinstance(node, Tree):
+            if node.data == "name":
+                return node
+            if node.data in ("parameters", "paramvalue", "typedparam"):
+                children = [child for child in node.children if isinstance(child, Tree)]
+                if not children:
+                    return None
+                node = children[0]
+                continue
+            return None
+        return None
+
     def bind_pattern(self, scope_id, pattern_node):
         """Bind names introduced by a match-case pattern."""
         if isinstance(pattern_node, Token):
@@ -664,17 +684,13 @@ class OrdAnalysisBuilder:
                 continue
             self.bind_lambda_parameters(child, outer_scope_id, lambda_scope_id)
 
-    def visit_with_item(self, node, scope_id, statement_node, context_type_names=None):
+    def visit_with_item(self, node, scope_id, context_type_names=None):
         """Visit one with-item and bind its optional target."""
         children = [child for child in node.children if isinstance(child, Tree)]
         if not children:
             return
 
         expression_node = children[0]
-        if self.opens_view_context(expression_node):
-            context_range = tree_range(statement_node)
-            if context_range not in self.view_context_ranges:
-                self.view_context_ranges.append(context_range)
         self.visit(expression_node, scope_id, context_type_names=context_type_names)
         for target_node in children[1:]:
             if self.bind_target(
@@ -685,7 +701,7 @@ class OrdAnalysisBuilder:
                 continue
             self.visit(target_node, scope_id, context_type_names=context_type_names)
 
-    def visit_with_items(self, node, scope_id, statement_node, context_type_names=None):
+    def visit_with_items(self, node, scope_id, context_type_names=None):
         """Visit a parenthesized or plain collection of with-items."""
         container_names = {
             "with_items",
@@ -700,7 +716,6 @@ class OrdAnalysisBuilder:
                 self.visit_with_item(
                     child,
                     scope_id,
-                    statement_node,
                     context_type_names=context_type_names,
                 )
                 continue
@@ -708,7 +723,6 @@ class OrdAnalysisBuilder:
                 self.visit_with_items(
                     child,
                     scope_id,
-                    statement_node,
                     context_type_names=context_type_names,
                 )
                 continue
@@ -774,6 +788,20 @@ class OrdAnalysisBuilder:
         if not isinstance(node, Tree):
             return
 
+        if node.data == "viewgen_oldform":
+            # Legacy parenless spelling. The grammar still parses it so that
+            # a single targeted diagnostic can mirror the compiler's fix-it;
+            # the body is not analyzed.
+            for child in node.children:
+                if isinstance(child, Tree) and child.data == "name":
+                    self.viewgen_oldforms.append({
+                        "name": tree_text(child),
+                        "range": tree_range(node),
+                        "selection_range": tree_range(child),
+                    })
+                    break
+            return
+
         if node.data in ("celldef", "viewgen", "funcdef", "classdef"):
             name_node = None
             name_nodes = []
@@ -804,8 +832,9 @@ class OrdAnalysisBuilder:
                 if top_level:
                     self.exports.append(name)
                 if node.data == "viewgen":
+                    return_type = None
                     for child in node.children:
-                        if not isinstance(child, Tree) or child.data in ("name", "suite"):
+                        if not isinstance(child, Tree) or child.data in ("name", "parameters", "suite"):
                             continue
                         # A dotted return type such as core.Schematic
                         # records the rightmost name as the type and
@@ -813,9 +842,10 @@ class OrdAnalysisBuilder:
                         return_nodes = self.dotted_name_nodes(child)
                         if return_nodes is not None:
                             base_node, type_node = return_nodes
+                            return_type = tree_text(type_node)
                             self.viewgen_returns.append({
                                 "name": name,
-                                "return_type": tree_text(type_node),
+                                "return_type": return_type,
                                 "return_base": tree_text(base_node),
                                 "return_binding_id": self.resolve_binding(
                                     scope_id,
@@ -826,6 +856,13 @@ class OrdAnalysisBuilder:
                                 "viewgen_range": tree_range(node),
                             })
                         break
+                    # Recorded for every viewgen, annotated or not: the
+                    # constraint diagnostic needs the body range even when
+                    # the return annotation is omitted (`. = ...` adoption).
+                    self.viewgen_ranges.append({
+                        "range": tree_range(node),
+                        "return_type": return_type,
+                    })
                 child_scope_id = self.add_scope(node, scope_id, name_node=name_node)
                 if node.data == "celldef":
                     self.add_synthetic_binding(
@@ -839,9 +876,11 @@ class OrdAnalysisBuilder:
                     if not isinstance(child, Tree) or child is name_node:
                         continue
 
-                    if node.data == "funcdef":
+                    if node.data in ("funcdef", "viewgen"):
                         if child.data == "parameters":
                             self.bind_parameters(child, scope_id, child_scope_id)
+                            if node.data == "viewgen":
+                                self.bind_viewgen_receiver(child, scope_id, child_scope_id)
                             continue
                         if child.data != "suite":
                             self.visit(child, scope_id, context_type_names=context_type_names)
@@ -1293,7 +1332,6 @@ class OrdAnalysisBuilder:
                     self.visit_with_items(
                         child,
                         scope_id,
-                        node,
                         context_type_names=context_type_names,
                     )
                     continue
@@ -1312,14 +1350,11 @@ class OrdAnalysisBuilder:
 
             expression_node = children[0]
             if node.data == "with_parenthesized_expr_as":
-                if self.opens_view_context(expression_node):
-                    self.view_context_ranges.append(tree_range(node))
                 self.visit(expression_node, scope_id, context_type_names=context_type_names)
             else:
                 self.visit_with_items(
                     expression_node,
                     scope_id,
-                    node,
                     context_type_names=context_type_names,
                 )
 
@@ -1466,10 +1501,11 @@ class OrdAnalysisBuilder:
             occurrences=self.occurrences,
             member_occurrences=self.member_occurrences,
             viewgen_returns=self.viewgen_returns,
+            viewgen_ranges=self.viewgen_ranges,
+            viewgen_oldforms=self.viewgen_oldforms,
             node_statements=self.node_statements,
             constraints=self.constraints,
             type_hints=self.type_hints,
-            view_context_ranges=self.view_context_ranges,
         )
 
 

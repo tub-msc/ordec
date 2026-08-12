@@ -179,7 +179,7 @@ def test_lsp_document_lifecycle_and_diagnostics(tmp_path):
     diagnostics = open_document(server, uri, broken_source)
     assert [diagnostic["code"] for diagnostic in diagnostics] == ["unresolved-import"]
 
-    fixed_source = "cell Inv:\n    viewgen symbol -> Symbol:\n        path a\n"
+    fixed_source = "cell Inv:\n    viewgen symbol(self) -> Symbol:\n        path a\n"
     assert change_document(server, uri, fixed_source) == []
 
     close_responses = notify(
@@ -196,14 +196,14 @@ def test_lsp_watched_file_changes_republish_dependent_diagnostics(tmp_path):
     device_path = tmp_path / "device.ord"
     device_path.write_text(
         "cell Device:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     top_source = (
         "from .device import Device\n"
         "\n"
         "cell Top:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        Device inst:\n"
         "            .a -- net_a\n"
     )
@@ -217,7 +217,7 @@ def test_lsp_watched_file_changes_republish_dependent_diagnostics(tmp_path):
 
     device_path.write_text(
         "cell Other:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     responses = notify(
@@ -242,14 +242,14 @@ def test_lsp_deleted_file_with_cold_index_refreshes_open_documents(tmp_path):
     device_path = tmp_path / "device.ord"
     device_path.write_text(
         "cell Device:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     top_source = (
         "from .device import Device\n"
         "\n"
         "cell Top:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        Device inst:\n"
         "            .a -- net_a\n"
     )
@@ -287,7 +287,7 @@ def test_lsp_navigation_references_rename_and_symbols(tmp_path):
     mux_path = tmp_path / "mux2.ord"
     mux_path.write_text(
         "cell Mux2:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        path a\n"
     )
     source = (
@@ -377,7 +377,7 @@ def test_lsp_navigation_references_rename_and_symbols(tmp_path):
 def test_lsp_definition_uses_location_link_when_supported(tmp_path):
     mux_source = (
         "cell Mux2:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        path a\n"
     )
     mux_path = tmp_path / "mux2.ord"
@@ -430,7 +430,7 @@ def test_lsp_positions_use_utf16_offsets(tmp_path):
     mux_path = tmp_path / "mux2.ord"
     mux_path.write_text(
         "cell Mux2:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        path a\n"
     )
     source = (
@@ -465,7 +465,7 @@ def test_lsp_completion_and_code_actions(tmp_path):
         "from ordec.lib.generic_mos import Nmos\n"
         "\n"
         "cell Inv:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        net vss\n"
         "        Nmos pd:\n"
         "            .s -- vss\n"
@@ -498,9 +498,9 @@ def test_lsp_completion_and_code_actions(tmp_path):
 
     broken_symbol = (
         "cell Inv:\n"
-        "  viewgen symbol -> Symbol:\n"
+        "  viewgen symbol(self) -> Symbol:\n"
         "    input a\n"
-        "  viewgen schematic -> Schematic:\n"
+        "  viewgen schematic(self) -> Schematic:\n"
         "    port a\n"
         "    port y\n"
     )
@@ -524,7 +524,7 @@ def test_lsp_completion_and_code_actions(tmp_path):
 def test_lsp_applies_incremental_did_change(tmp_path):
     server = initialize_server(tmp_path)
     uri = (tmp_path / "incremental.ord").resolve().as_uri()
-    source = "cell Inv:\n    viewgen symbol -> Symbol:\n        input a\n"
+    source = "cell Inv:\n    viewgen symbol(self) -> Symbol:\n        input a\n"
     assert open_document(server, uri, source) == []
 
     responses = notify(
@@ -570,7 +570,7 @@ def test_lsp_applies_incremental_did_change(tmp_path):
     assert responses[0]["params"]["diagnostics"] == []
     assert server.session.documents[uri]["text"] == (
         "cell Buf:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
         "        input b\n"
     )
@@ -641,7 +641,7 @@ def test_lsp_hover_markdown_and_completion_documentation(tmp_path):
 def test_lsp_document_symbols_hierarchical_and_flat(tmp_path):
     source = (
         "cell Inv:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
         "        output y\n"
     )
@@ -692,7 +692,7 @@ def test_lsp_signature_help(tmp_path):
         "from ordec.lib.generic_mos import Nmos\n"
         "\n"
         "cell Inv:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        net vss\n"
         "        Nmos(w=4u, l=400n) pd:\n"
         "            .s -- vss\n"
@@ -748,7 +748,7 @@ def test_lsp_signature_help(tmp_path):
 def test_lsp_type_definition_and_inlay_hints(tmp_path):
     device_source = (
         "cell Device:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     (tmp_path / "device.ord").write_text(device_source)
@@ -756,7 +756,7 @@ def test_lsp_type_definition_and_inlay_hints(tmp_path):
         "from .device import Device\n"
         "\n"
         "cell Top:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        net vdd\n"
         "        Device inst:\n"
         "            .a -- vdd\n"
@@ -807,14 +807,14 @@ def test_lsp_type_definition_and_inlay_hints(tmp_path):
 def test_lsp_call_hierarchy(tmp_path):
     (tmp_path / "device.ord").write_text(
         "cell Device:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     top_source = (
         "from .device import Device\n"
         "\n"
         "cell Top:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        net vdd\n"
         "        Device inst:\n"
         "            .a -- vdd\n"
@@ -878,7 +878,7 @@ def test_lsp_workspace_folding_selection_and_semantic_tokens(tmp_path):
         "import math\n"
         "\n"
         "cell Mux2:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        path a\n"
         "\n"
         "def helper():\n"
@@ -950,7 +950,7 @@ def test_lsp_workspace_scan_skips_hidden_and_dependency_dirs(tmp_path):
     def cell_source(name):
         return (
             "cell {}:\n"
-            "    viewgen symbol -> Symbol:\n"
+            "    viewgen symbol(self) -> Symbol:\n"
             "        input a\n"
         ).format(name)
 
@@ -1246,7 +1246,7 @@ def test_lsp_did_save_keeps_document_version(tmp_path):
     uri = (tmp_path / "keep.ord").resolve().as_uri()
     source = (
         "cell Keep:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     open_document(server, uri, source, version=7)

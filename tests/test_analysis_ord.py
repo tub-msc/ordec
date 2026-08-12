@@ -62,7 +62,7 @@ def test_analyze_ord_collects_public_structure_and_syntax_errors():
         "from .helpers import foo as bar\n"
         "\n"
         "cell Inv:\n"
-        "    viewgen layout -> Layout:\n"
+        "    viewgen layout(self) -> Layout:\n"
         "        output bus[0].y:\n"
         "            .align = East\n"
         "        path vdd, vss\n"
@@ -100,7 +100,7 @@ def test_analysis_session_tracks_document_versions_and_last_good_analysis():
     session.open_document(
         uri,
         "cell Inv:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        path a\n",
         version=1,
     )
@@ -126,7 +126,7 @@ def test_analysis_error_snapshots_do_not_alias_last_good_analysis():
     session.open_document(
         uri,
         "cell Inv:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        path a\n",
         version=1,
     )
@@ -159,7 +159,7 @@ def test_python_index_find_spec_failures_are_unresolved(monkeypatch):
 def test_analysis_session_reports_core_semantic_diagnostics(tmp_path):
     (tmp_path / "helper.ord").write_text(
         "cell Other:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     source = (
@@ -168,9 +168,9 @@ def test_analysis_session_reports_core_semantic_diagnostics(tmp_path):
         "from ordec.lib.generic_mos import Nmos\n"
         "\n"
         "cell Inv:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        port b: .align=West\n"
         "        ! b.pos.x == 0\n"
         "        MissingCell inst:\n"
@@ -178,7 +178,7 @@ def test_analysis_session_reports_core_semantic_diagnostics(tmp_path):
         "        Nmos pd:\n"
         "            .missing -- b\n"
         "            .$bogus = 1u\n"
-        "    viewgen bad -> Nmos:\n"
+        "    viewgen bad(self) -> Nmos:\n"
         "        pass\n"
     )
 
@@ -200,14 +200,14 @@ def test_analysis_session_reports_core_semantic_diagnostics(tmp_path):
 def test_analysis_session_resolves_ord_imports_and_exported_symbols(tmp_path):
     (tmp_path / "mux2.ord").write_text(
         "cell Mux2:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     package_path = tmp_path / "ordcells"
     package_path.mkdir()
     (package_path / "__init__.ord").write_text(
         "cell Exported:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     top_source = (
@@ -215,7 +215,7 @@ def test_analysis_session_resolves_ord_imports_and_exported_symbols(tmp_path):
         "from .ordcells import Exported\n"
         "\n"
         "cell Top:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        Stage child:\n"
         "            .a -- net_a\n"
         "        Exported exp:\n"
@@ -242,14 +242,14 @@ def test_analysis_session_resolves_ord_imports_and_exported_symbols(tmp_path):
 def test_analysis_session_resolves_ord_star_imports(tmp_path):
     (tmp_path / "mux2.ord").write_text(
         "cell Mux2:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     star_source = (
         "from .mux2 import *\n"
         "\n"
         "cell Top:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        Mux2 child:\n"
         "            .a -- net_a\n"
     )
@@ -278,7 +278,7 @@ def test_analysis_session_resolves_python_import_variants(tmp_path):
         "from ordec.lib.generic_mos import Nmos\n"
         "\n"
         "cell Top:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        value = math.log(2)\n"
         "        Nmos m:\n"
         "            .d -- net_a\n"
@@ -304,7 +304,7 @@ def test_analysis_session_resolves_python_members_parameters_and_completions():
         "from ordec.lib.generic_mos import Nmos\n"
         "\n"
         "cell Inv:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        net vss\n"
         "        Nmos pd:\n"
         "            .s -- vss\n"
@@ -338,7 +338,7 @@ def test_analysis_session_resolves_parameterized_reused_symbol_members():
         "from ordec.lib.ihp130 import Nmos\n"
         "\n"
         "cell Inv:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        net a, y, vss\n"
         "        Nmos(w=1u, l=130n) pd:\n"
         "            .g -- a\n"
@@ -360,21 +360,21 @@ def test_analysis_session_resolves_ord_cell_members_from_symbol_layout_and_self(
         "from ordec.core import *\n"
         "\n"
         "cell Stage:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        output q\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        return Schematic()\n"
-        "    viewgen layout -> Layout:\n"
+        "    viewgen layout(self) -> Layout:\n"
         "        local = self.schematic\n"
         "        LayoutRect bodybar\n"
         "\n"
         "cell Top:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        net out\n"
         "        Stage inst[0]:\n"
         "            .q -- out\n"
         "        inst[0].q -- out\n"
-        "    viewgen layout -> Layout:\n"
+        "    viewgen layout(self) -> Layout:\n"
         "        Stage lay:\n"
         "            ! .bodybar.width == 1\n"
     )
@@ -412,7 +412,7 @@ def test_analysis_session_resolves_relative_python_cell_instances(tmp_path):
         "\n"
         "cell Reg:\n"
         "    bits = Parameter(int)\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        path d\n"
         "        path I\n"
         "        for i in range(self.bits):\n"
@@ -456,7 +456,7 @@ def test_analysis_session_navigation_references_highlights_and_rename(tmp_path):
     mux_path = tmp_path / "mux2.ord"
     mux_path.write_text(
         "cell Mux2:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        path a\n"
     )
     source = (
@@ -531,7 +531,7 @@ def test_analysis_session_workspace_cache_and_document_features(tmp_path):
         "import math\n"
         "\n"
         "cell Mux2:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        path a\n"
         "\n"
         "def helper():\n"
@@ -560,12 +560,12 @@ def test_analysis_session_workspace_cache_and_document_features(tmp_path):
 def test_analysis_session_refreshes_dirty_workspace_rows_without_rescan(tmp_path, monkeypatch):
     (tmp_path / "a.ord").write_text(
         "cell A:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     (tmp_path / "b.ord").write_text(
         "cell B:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     path = tmp_path / "top.ord"
@@ -573,7 +573,7 @@ def test_analysis_session_refreshes_dirty_workspace_rows_without_rescan(tmp_path
         "from .a import A\n"
         "\n"
         "cell Top:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        A inst:\n"
         "            .a -- net_a\n"
     )
@@ -598,7 +598,7 @@ def test_analysis_session_refreshes_dirty_workspace_rows_without_rescan(tmp_path
 def test_analysis_session_analyzes_unopened_file_uris(tmp_path):
     source = (
         "cell Mux2:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        path a\n"
         "\n"
         "def helper():\n"
@@ -623,7 +623,7 @@ def test_analysis_session_simulation_alias_resolves_like_schema_type():
         "from ordec.core import *\n"
         "\n"
         "cell Tb:\n"
-        "    viewgen sim -> Simulation:\n"
+        "    viewgen sim(self) -> Simulation:\n"
         "        pass\n"
     )
     session = AnalysisSession()
@@ -664,7 +664,7 @@ def test_document_lines_cache_follows_document_updates():
 def test_workspace_scan_skips_undecodable_files(tmp_path):
     (tmp_path / "good.ord").write_text(
         "cell Inv:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     (tmp_path / "bad.ord").write_bytes(b"cell Caf\xe9:\n")
@@ -703,7 +703,7 @@ def test_session_uris_preserve_symlinked_workspace_spelling(tmp_path):
     real_root.mkdir()
     (real_root / "top.ord").write_text(
         "cell Inv:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     linked_root = tmp_path / "linked"
@@ -724,7 +724,7 @@ def test_init_ord_packages_resolve_ord_submodules(tmp_path, monkeypatch):
     sub_path = package_path / "sub.ord"
     sub_path.write_text(
         "cell Inner:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     top_path = tmp_path / "top.ord"
@@ -763,7 +763,7 @@ def test_imports_resolve_like_the_runtime_importer(tmp_path):
     (sub_path / "__init__.ord").write_text("cell Inner:\n    pass\n")
     (sub_path / "lib.ord").write_text(
         "cell Inv:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     top_source = (
@@ -817,7 +817,7 @@ def test_missing_port_action_refuses_stale_analysis():
     session.open_document(
         uri,
         "cell Inv:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
         "        input b\n",
         version=1,
@@ -845,7 +845,7 @@ def test_missing_port_action_refuses_stale_analysis():
 def test_workspace_rename_updates_cell_members_and_refuses_stale_ranges(tmp_path):
     mux_source = (
         "cell Mux2:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     mux_path = tmp_path / "mux2.ord"
@@ -854,7 +854,7 @@ def test_workspace_rename_updates_cell_members_and_refuses_stale_ranges(tmp_path
         "from .mux2 import Mux2\n"
         "\n"
         "cell Top:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        net n1\n"
         "        Mux2 inst:\n"
         "            .a -- n1\n"
@@ -925,19 +925,18 @@ def test_rename_refuses_stale_sources_and_unaliased_dotted_imports(tmp_path):
 def test_dotted_viewgen_return_types_resolve_and_allow_constraints(tmp_path):
     (tmp_path / "viewlib.py").write_text(
         "class CustomView:\n"
-        "    def view_context(self):\n"
-        "        pass\n"
+        "    view_builder = object\n"
     )
     source = (
         "from ordec import core\n"
         "import viewlib\n"
         "\n"
         "cell Top:\n"
-        "    viewgen schematic -> core.Schematic:\n"
+        "    viewgen schematic(self) -> core.Schematic:\n"
         "        net n1\n"
         "        net n2\n"
         "        ! n1 == n2\n"
-        "    viewgen custom -> viewlib.CustomView:\n"
+        "    viewgen custom(self) -> viewlib.CustomView:\n"
         "        pass\n"
     )
     top_path = tmp_path / "top.ord"
@@ -962,10 +961,46 @@ def test_dotted_viewgen_return_types_resolve_and_allow_constraints(tmp_path):
     ]
 
 
+def test_viewgen_oldform_reports_parameter_list_diagnostic():
+    # The legacy parenless spelling gets one targeted diagnostic mirroring
+    # the compiler's fix-it; the body is not analyzed, so the unresolvable
+    # node kind inside it stays unreported.
+    source = (
+        "cell Inv:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        UnknownKind x\n"
+    )
+    session = AnalysisSession()
+    uri = "file:///tmp/oldform.ord"
+    session.open_document(uri, source)
+
+    diagnostics = session.diagnostics(uri)
+    assert [diagnostic.code for diagnostic in diagnostics] == ["viewgen-parameter-list"]
+    assert "viewgen symbol declares no parameter list" in diagnostics[0].message
+
+
+def test_constraint_in_unannotated_viewgen_is_accepted():
+    # Without a return annotation the view type comes from `. = ...` at
+    # runtime, so constraints in the body cannot be validated statically
+    # and must not be flagged.
+    source = (
+        "cell Top:\n"
+        "    viewgen schematic(self):\n"
+        "        net n1\n"
+        "        net n2\n"
+        "        ! n1 == n2\n"
+    )
+    session = AnalysisSession()
+    uri = "file:///tmp/unannotated_viewgen.ord"
+    session.open_document(uri, source)
+
+    assert session.diagnostics(uri) == []
+
+
 def test_rename_preserves_alias_of_aliased_from_import(tmp_path):
     lib_source = (
         "cell Inv:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     lib_path = tmp_path / "lib.ord"
@@ -974,7 +1009,7 @@ def test_rename_preserves_alias_of_aliased_from_import(tmp_path):
         "from lib import Inv as I\n"
         "\n"
         "cell Top:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        net n1\n"
         "        I inst:\n"
         "            .a -- n1\n"
@@ -1029,13 +1064,13 @@ def test_relative_from_imports_resolve_exports_and_submodules(tmp_path):
     package_path.mkdir()
     init_source = (
         "cell Root:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     (package_path / "__init__.ord").write_text(init_source)
     device_source = (
         "cell Device:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     device_path = package_path / "device.ord"
@@ -1088,7 +1123,7 @@ def test_decorated_exports_and_forward_module_constants_resolve(tmp_path):
     library_source = (
         "@decorator\n"
         "cell Decorated:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     (tmp_path / "library.ord").write_text(library_source)
@@ -1096,7 +1131,7 @@ def test_decorated_exports_and_forward_module_constants_resolve(tmp_path):
         "from .library import Decorated\n"
         "\n"
         "cell Top:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        net d[WIDTH]\n"
         "        Decorated inst:\n"
         "            .a -- d[0]\n"
@@ -1117,11 +1152,11 @@ def test_indexed_member_navigation_and_nested_completion_contexts():
         "from ordec.core import *\n"
         "\n"
         "cell Stage:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        output q\n"
         "\n"
         "cell Top:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        net out\n"
         "        path I\n"
         "        Stage I[0]:\n"
@@ -1302,11 +1337,11 @@ def test_chained_implicit_member_completion_has_no_fallback_members():
         "from ordec.core import *\n"
         "\n"
         "cell Stage:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        output d\n"
         "\n"
         "cell Top:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        Stage inst:\n"
         "            .d\n"
     )
@@ -1402,9 +1437,9 @@ def test_analysis_session_checked_in_ord_files_have_no_lsp_diagnostics():
 def test_multi_target_node_statement_symbols_and_pin_diagnostics():
     source = (
         "cell Inv:\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a, b\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        port a\n"
         "        port b\n"
     )
@@ -1441,7 +1476,7 @@ def test_multi_target_node_statement_symbols_and_pin_diagnostics():
 def test_container_literal_assignment_keeps_binding_untyped():
     source = (
         "cell Adder:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        port cin\n"
         "        carry = [cin]\n"
         "        carry.append(cin)\n"
@@ -1471,7 +1506,7 @@ def test_references_reach_documents_outside_workspace_root(tmp_path):
     source = (
         "from ordec.lib.generic_mos import Nmos\n"
         "cell Top:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        Nmos inst:\n"
         "            .w = 1\n"
     )
@@ -1489,7 +1524,7 @@ def test_global_completions_rank_bindings_before_keywords():
     uri = "file:///tmp/complete.ord"
     source = (
         "cell Amp:\n"
-        "    viewgen schematic -> Schematic:\n"
+        "    viewgen schematic(self) -> Schematic:\n"
         "        net nmos_w\n"
         "        net outp\n"
     )
