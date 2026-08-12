@@ -6,7 +6,7 @@ from ordec.lib import Vdc, Gnd
 cell MosCurves:
     vgs = Parameter(R, default=600m)
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vss, vdd, gate, drain_n, drain_p
 
         Gnd gnd: .p -- vss; .pos=(0,0)
@@ -17,16 +17,16 @@ cell MosCurves:
 
         # EDIT HERE (transistors)
 
-    viewgen sim_vgs -> Simulation:
+    viewgen sim_vgs(self) -> Simulation:
         .simulate().dc_sweep(self.schematic.vg_src, 0, 1.2, 61, save_params=True)
 
-    viewgen sim_vds -> Simulation:
+    viewgen sim_vds(self) -> Simulation:
         .simulate().dc_sweep(self.schematic.vdn_src, 0, 1.2, 61, save_params=True)
 
-    viewgen sim_vsd -> Simulation:
+    viewgen sim_vsd(self) -> Simulation:
         .simulate().dc_sweep(self.schematic.vdp_src, 0, 1.2, 61, save_params=True)
 
-    viewgen report_curves -> Report:
+    viewgen report_curves(self) -> Report:
         try:
             self.schematic.mn
             self.schematic.mp

@@ -96,7 +96,7 @@ def netlister_setup(netlister):
 
 @public
 class SG13G2(Cell):
-    @generate
+    @viewgen_noctx
     def layers(self):
         s = LayerStack(cell=self)
 
@@ -247,7 +247,7 @@ class SG13G2(Cell):
 
         return s
 
-    @generate
+    @viewgen_noctx
     def default_routing_spec(self):
         layers = self.layers
         rs = RoutingSpec(ref_layers=layers)
@@ -436,7 +436,7 @@ class Nmos(Mos):
     # generic_mos.Nmos would also drag in its defaulted l/w parameters).
     symbol = generic_mos.Nmos.symbol
 
-    @generate
+    @viewgen_noctx
     def layout(self) -> Layout:
         if self.m != 1:
             raise ParameterError("m != 1 not supported for layout.")
@@ -452,7 +452,7 @@ class Pmos(Mos):
 
     symbol = generic_mos.Pmos.symbol
 
-    @generate
+    @viewgen_noctx
     def layout(self) -> Layout:
         if self.m != 1:
             raise ParameterError("m != 1 not supported for layout.")
@@ -510,7 +510,7 @@ class Ntap(Cell):
     l = Parameter(R)  #: Length
     w = Parameter(R)  #: Width
 
-    @generate
+    @viewgen_noctx
     def layout(self) -> Layout:
         return layoutgen_tap(self, self.l, self.w, nwell=True)
 
@@ -523,7 +523,7 @@ class Ptap(Cell):
     l = Parameter(R)  #: Length
     w = Parameter(R)  #: Width
 
-    @generate
+    @viewgen_noctx
     def layout(self) -> Layout:
         return layoutgen_tap(self, self.l, self.w, nwell=False)
 
@@ -742,7 +742,7 @@ class Res(SimLeafCell):
     def ngspice_current_pins(self):
         return {"i": "p"}
 
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -807,7 +807,7 @@ class Rsil(Res):
     l = Parameter(R, default=R("0.50u"))
     w = Parameter(R, default=R("0.50u"))
 
-    @generate
+    @viewgen_noctx
     def layout(self) -> Layout:
         return _layoutgen_resistor(self, "rsil", add_res=True)
 
@@ -827,7 +827,7 @@ class Rppd(Res):
     l = Parameter(R, default=R("0.50u"))
     w = Parameter(R, default=R("0.50u"))
 
-    @generate
+    @viewgen_noctx
     def layout(self) -> Layout:
         return _layoutgen_resistor(self, "rppd", add_psd=True)
 
@@ -847,7 +847,7 @@ class Rhigh(Res):
     l = Parameter(R, default=R("0.96u"))
     w = Parameter(R, default=R("0.50u"))
 
-    @generate
+    @viewgen_noctx
     def layout(self) -> Layout:
         return _layoutgen_resistor(self, "rhigh", add_psd=True, add_nsd=True)
 
@@ -867,7 +867,7 @@ class Cmim(SimLeafCell):
     def ngspice_current_pins(self):
         return {"i": "p"}
 
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -905,7 +905,7 @@ class Cmim(SimLeafCell):
             *spice_params(params),
         )
 
-    @generate
+    @viewgen_noctx
     def layout(self) -> Layout:
         return _layoutgen_cmim(self)
 

@@ -9,7 +9,7 @@ def test_viewgen_return_string():
     num_viewgen_calls = 0
 
     class MyCell(Cell):
-        @generate
+        @viewgen_noctx
         def hello(self):
             nonlocal num_viewgen_calls
             num_viewgen_calls += 1
@@ -23,7 +23,7 @@ def test_viewgen_return_string():
 
 def test_viewgen_return_nonhashable():
     class MyCell(Cell):
-        @generate
+        @viewgen_noctx
         def hello(self):
             return {}
 
@@ -32,11 +32,11 @@ def test_viewgen_return_nonhashable():
 
 def test_viewgen_freeze():
     class MyCell(Cell):
-        @generate
+        @viewgen_noctx
         def schematic_freeze_implicit(self):
             return Schematic(cell=self)
 
-        @generate
+        @viewgen_noctx
         def schematic_freeze_explicit(self):
             return Schematic(cell=self).freeze()
 
@@ -116,7 +116,7 @@ def test_viewgen_concurrent_waiter_gets_result():
     release = threading.Event()
 
     class MyCell(Cell):
-        @generate
+        @viewgen_noctx
         def slow(self):
             calls.append(threading.get_ident())
             release.wait(timeout=10)
@@ -140,7 +140,7 @@ def test_viewgen_exception_not_cached_and_seen_by_waiter():
     release = threading.Event()
 
     class MyCell(Cell):
-        @generate
+        @viewgen_noctx
         def failing(self):
             calls.append(None)
             if len(calls) == 1:
@@ -173,7 +173,7 @@ def test_viewgen_cancelled_owner_promotes_waiter():
     calls = []
 
     class MyCell(Cell):
-        @generate
+        @viewgen_noctx
         def view(self):
             calls.append(None)
             if len(calls) == 1:
@@ -210,17 +210,17 @@ def test_viewgen_cancelled_owner_promotes_waiter():
 
 def test_viewgen_recursive_evaluation_raises():
     class MyCell(Cell):
-        @generate
+        @viewgen_noctx
         def selfref(self):
             return MyCell().selfref
 
     with pytest.raises(RuntimeError, match="[Rr]ecursive"):
         MyCell().selfref
 
-def test_generate_func_caches_once():
+def test_viewgen_function_form_caches_once():
     calls = []
 
-    @generate_func
+    @viewgen_noctx
     def myview():
         calls.append(None)
         return "value"
@@ -229,23 +229,23 @@ def test_generate_func_caches_once():
     assert myview() == "value"
     assert len(calls) == 1
 
-def test_generate_func_rejected_in_cell_class():
-    # A generate_func is not a descriptor: as a Cell class attribute it
-    # would look like a view method but silently evaluate its
-    # cell-independent view. MetaCell must reject it loudly, both at
-    # class creation and on later assignment.
-    @generate_func
+def test_viewgen_without_receiver_rejected_in_cell_class():
+    # A view generator without a receiver parameter would look like a view
+    # method as a Cell class attribute, but its body could not access the
+    # cell. MetaCell must reject it loudly, both at class creation and on
+    # later assignment.
+    @viewgen_noctx
     def stray():
         return "value"
 
-    with pytest.raises(TypeError, match="function-form view generators"):
+    with pytest.raises(TypeError, match="receiver parameter"):
         class MyCell(Cell):
             stray_view = stray
 
     class OtherCell(Cell):
         pass
 
-    with pytest.raises(TypeError, match="function-form view generators"):
+    with pytest.raises(TypeError, match="receiver parameter"):
         OtherCell.stray_view = stray
 
 def test_discoverable_instances_repr_roundtrip():
@@ -269,3 +269,126 @@ def test_discoverable_instances_repr_roundtrip():
             assert eval(repr(inst), {cls.__name__: cls}) is inst
             checked += 1
     assert checked > 10  # the lib imports above must have been discovered
+
+def test_viewgen_without_receiver_error_names_location():
+    # The MetaCell error points at the generator's definition (file:line).
+    @viewgen_noctx
+    def stray():
+        return "value"
+
+    with pytest.raises(TypeError, match="test_cell.py"):
+        class MyCell(Cell):
+            stray_view = stray
+
+def test_viewgen_with_receiver_called_as_function():
+    @viewgen_noctx
+    def method_form(self):
+        return "value"
+
+    with pytest.raises(TypeError, match="receiver parameter"):
+        method_form()
+
+def test_viewgen_shape_rejected_at_decoration():
+    with pytest.raises(TypeError, match="Cell Parameters"):
+        @viewgen_noctx
+        def two_params(a, b):
+            return "x"
+
+    with pytest.raises(TypeError, match="Cell Parameters"):
+        @viewgen_noctx
+        def defaulted(a=1):
+            return "x"
+
+def test_viewgen_class_getattr_non_evaluating():
+    calls = []
+
+    class MyCell(Cell):
+        @viewgen_noctx
+        def view(self):
+            calls.append(None)
+            return "value"
+
+    # Class-level access returns the generator itself without evaluating.
+    assert isinstance(MyCell.view, viewgen_noctx)
+    assert calls == []
+
+def test_viewgen_no_annotation_no_root():
+    @viewgen
+    def empty():
+        pass
+
+    with pytest.raises(TypeError, match="produced no view"):
+        empty()
+
+def test_viewgen_node_op_without_annotation():
+    from ordec.ord.context import root as ord_root
+
+    @viewgen
+    def bad():
+        ord_root()
+
+    with pytest.raises(TypeError, match="has no view root"):
+        bad()
+
+def test_viewgen_adoption_without_annotation():
+    from ordec.ord.context import set_root
+
+    @viewgen
+    def adopted():
+        sym = set_root(Symbol())
+        sym.a = Pin(pintype=PinType.In)
+
+    view = adopted()
+    assert isinstance(view.a, Pin)
+
+def test_noctx_must_return_view():
+    class MyCell(Cell):
+        @viewgen_noctx
+        def nothing(self):
+            pass
+
+    with pytest.raises(TypeError, match="must return a view"):
+        MyCell().nothing
+
+def test_noctx_annotation_inert():
+    class MyCell(Cell):
+        @viewgen_noctx
+        def hello(self) -> Symbol:
+            return "not a symbol"
+
+    assert MyCell().hello == "not a symbol"
+
+def test_noctx_node_op_rejected_from_helper():
+    # A stray node operation in a @viewgen_noctx body (also indirectly,
+    # from a helper) errors instead of leaking into an outer context.
+    from ordec.ord.context import root as ord_root
+
+    def helper():
+        return ord_root()
+
+    class MyCell(Cell):
+        @viewgen_noctx
+        def bad(self):
+            return helper()
+
+    with pytest.raises(TypeError, match="use @viewgen"):
+        MyCell().bad
+
+def test_viewgen_method_form_per_cell_cache():
+    # The same decorator instance serves as descriptor with a per-cell
+    # cache: two cells with different parameters evaluate independently,
+    # repeated access evaluates once.
+    calls = []
+
+    class MyCell(Cell):
+        x = Parameter(int, optional=True)
+
+        @viewgen_noctx
+        def view(self):
+            calls.append(self.x)
+            return f"view{self.x}"
+
+    assert MyCell(x=1).view == "view1"
+    assert MyCell(x=2).view == "view2"
+    assert MyCell(x=1).view == "view1"
+    assert calls == [1, 2]

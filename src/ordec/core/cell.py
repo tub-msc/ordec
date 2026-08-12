@@ -12,6 +12,7 @@ from public import public
 from .ordb import MutableNode
 from .rational import R
 from .genrun import checkpoint, cancelable_wait, GenCancelled
+from .context import run_viewgen_body, run_noctx_body
 
 class ViewGenerator:
     def __new__(cls, func=None, **kwargs):
@@ -23,37 +24,63 @@ class ViewGenerator:
 
     def __init__(self, func, auto_refresh: bool=True):
         # Re-decorating a ViewGenerator reconfigures it: take over the
-        # wrapped function instead of nesting ViewGenerators. This makes
-        # `@generate(auto_refresh=False)` work on top of an ORD viewgen
-        # (see e.g. the drc/lvs viewgens in vco_pseudodiff.ord).
+        # wrapped function instead of nesting ViewGenerators. The outer
+        # decorator picks the protocol; `@viewgen(auto_refresh=False)` on
+        # top of an ORD viewgen keeps the managed-context protocol (see
+        # e.g. the drc/lvs viewgens in vco_pseudodiff.ord).
         if isinstance(func, ViewGenerator):
             func = func.func
+        code = func.__code__
+        if (code.co_argcount > 1 or code.co_kwonlyargcount
+                or func.__defaults__):
+            raise TypeError(
+                f"{func.__qualname__}: a view generator takes at most a "
+                "receiver parameter; use Cell Parameters for parametrization."
+            )
         self.func = func
         self.auto_refresh = auto_refresh
+        self.cache = {} #: cache for function-form usage (__call__)
+        self.cache_lock = threading.Lock()
         # Use docstring of func instead of docstring of ViewGenerator subclass
         # for instances.
         self.__doc__ = func.__doc__
-
-    @property
-    def view_target(self):
-        return self.func.__annotations__.get('return')
 
     def info_dict(self):
         return {
             'auto_refresh': self.auto_refresh,
         }
 
-    def func_eval(self, *args):
-        # New style: node is generated in method:
-        ret = self.func(*args)
-        # self.func has to attach node.cell, if desired.
+    def __get__(self, obj, owner=None):
+        if obj is None: # for the class: return self
+            return self
+        else: # for instances: create view if not present yet, return view
+            return self.eval_cached(obj.cached_results, obj.cached_results_lock, obj)
 
+    def __set__(self, obj, value):
+        raise TypeError("ViewGenerator cannot be set.")
+
+    def __delete__(self, obj):
+        raise TypeError("ViewGenerator cannot be deleted.")
+
+    def __call__(self):
+        # Preflight before invoking the body, so the error names the actual
+        # misuse instead of surfacing as an arity TypeError from the call.
+        if self.func.__code__.co_argcount == 1:
+            raise TypeError(
+                f"{self.func.__qualname__} declares a receiver parameter, "
+                "which is only for view generators bound as Cell class "
+                "attributes; called as a function, a view generator takes "
+                "no parameters."
+            )
+        return self.eval_cached(self.cache, self.cache_lock)
+
+    def _finalize(self, ret):
         # Freeze if not already frozen:
         if isinstance(ret, MutableNode):
             if ret.nid != 0:
                 raise TypeError("MutableNode returned by ViewGenerator must be SubgraphRoot.")
             ret = ret.freeze()
-    
+
         # ViewGenerator return value must be hashable (not sure whether this is really useful):
         try:
             hash(ret)
@@ -116,49 +143,40 @@ class ViewGenerator:
                 continue  # owner was cancelled, not us: retry as owner
 
 @public
-class generate(ViewGenerator):
+class viewgen(ViewGenerator):
     """
-    Decorator for **view generator methods** defined in :class:`Cell` subclasses.
-    The decorated function cannot have any parameters beyond 'self' (use
-    Cell-level parameters instead).
+    Decorator for view generators with a **managed view context** — what the
+    ORD ``viewgen`` keyword emits.
 
-    Decorated view generator methods are visible in the web UI.
+    The body populates an implicit view root instead of returning one: the
+    root is adopted from a ``. = <root>`` assignment or materialized from the
+    return annotation when first needed. Returning a value is an error.
 
-    ``@generate`` returns a Python Descriptor.
+    Bound as a :class:`Cell` class attribute, the decorated body is a method
+    (its receiver parameter binds the cell instance) and the view is cached
+    per cell instance; used as a plain function, the body must be
+    parameterless and the view is cached on the generator itself.
+
+    Decorated view generators are visible in the web UI.
     """
-    def __get__(self, obj, owner=None):
-        if obj is None: # for the class: return self
-            return self
-        else: # for instances: create view if not present yet, return view
-            return self.eval_cached(obj.cached_results, obj.cached_results_lock, obj)
-
-    def __set__(self, cursor, value):
-        raise TypeError("ViewGenerator cannot be set.")
-
-    def __delete__(self, cursor):
-        raise TypeError("ViewGenerator cannot be deleted.")
+    def func_eval(self, *args):
+        return self._finalize(run_viewgen_body(self.func, *args))
 
 @public
-class generate_func(ViewGenerator):
+class viewgen_noctx(ViewGenerator):
     """
-    Decorator for **view generator functions**. Use for module-level functions
-    outside of :class:`Cell` subclasses. The decorated function cannot have
-    any parameters.
+    Decorator for **plain-function view generators**: the body builds and
+    returns the finished view itself. No view context is installed — a stray
+    node operation or ``. = ...`` in the body raises — and the return
+    annotation is never consulted.
 
-    Decorated view generator functions are visible in the web UI.
+    Supports the same two usage forms as :class:`viewgen` (Cell class
+    attribute with receiver parameter, or parameterless function).
 
-    ``@generate_func`` is provided to simplify small examples. For anything
-    complex, ``@generate`` should be prefered.
-
-    ``@generate_func`` is similar to Python's functools.cache.
+    Decorated view generators are visible in the web UI.
     """
-    def __init__(self, *args, **kwargs):
-        self.cache = {}
-        self.cache_lock = threading.Lock()
-        return super().__init__(*args, **kwargs)
-
-    def __call__(self):
-        return self.eval_cached(self.cache, self.cache_lock)
+    def func_eval(self, *args):
+        return self._finalize(run_noctx_body(self.func, *args))
 
 @public
 class ParameterError(Exception):
@@ -285,18 +303,19 @@ class MetaCell(ABCMeta):
     @staticmethod
     def _check_view_generator(cls_name, attr_name, value):
         """
-        Rejects function-form view generators (@generate_func) as Cell class
-        attributes. A generate_func is not a descriptor, so as a class
-        attribute it would look like a method but silently evaluate its
-        cell-independent view; fail loudly instead.
+        Rejects view generators without a receiver parameter as Cell class
+        attributes. Such a generator would look like a view method but its
+        body could not access the cell; fail loudly at class creation.
         """
-        if isinstance(value, generate_func):
-            raise TypeError(
-                f"{cls_name}.{attr_name}: function-form view generators "
-                "cannot be attached to Cell classes. Use @generate for "
-                "view generator methods; in ORD, define the viewgen "
-                "inside the cell body."
-            )
+        if isinstance(value, ViewGenerator):
+            code = value.func.__code__
+            if code.co_argcount != 1:
+                raise TypeError(
+                    f"{cls_name}.{attr_name} "
+                    f"({code.co_filename}:{code.co_firstlineno}): a view "
+                    "generator bound as a Cell class attribute must declare "
+                    "a receiver parameter (add `self`)."
+                )
 
     def __new__(mcs, name, bases, attrs):
         for k, v in attrs.items():

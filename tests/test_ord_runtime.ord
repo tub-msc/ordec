@@ -93,9 +93,12 @@ def test_multi_name_bodyless_node_stmt():
 
 def test_scheminstance_creation():
     root = Schematic()
-    with root.view_context(root):
+
+    viewgen sch() -> Schematic:
+        . = root
         # Bodyless...
-        # ...using a Cell subclass (unresolved: symbol resolved on context exit):
+        # ...using a Cell subclass (unresolved: symbol resolved when the
+        # viewgen completes):
         Res a
         assert isinstance(a, SchemInstance)
         assert a.symbol is None
@@ -116,18 +119,22 @@ def test_scheminstance_creation():
 
         assert c.pos == d.pos == Vec2R(1,2)
 
-    # Context exit resolved all unresolved instances:
-    assert a.symbol == c.symbol == Res(r='1k').symbol
+    sch()
+
+    # Viewgen completion resolved all unresolved instances:
+    assert root.a.symbol == root.c.symbol == Res(r='1k').symbol
 
 def test_mixed_unresolved_resolved_instances():
     """A schematic with instances from a Cell instance (symbol set
     immediately) and from a Cell class (unresolved symbol, params set via
-    body), wired together. ViewContext resolves all unresolved instances on
-    exit."""
+    body), wired together. All unresolved instances are resolved when the
+    viewgen completes."""
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
-    with root.view_context(root):
+
+    viewgen sch() -> Schematic:
+        . = root
         net vss, mid
 
         # Cell instance -> symbol set immediately
@@ -137,7 +144,7 @@ def test_mixed_unresolved_resolved_instances():
         # Another Cell instance
         Gnd() gnd: .p -- vss; .pos = (0, 0)
 
-        # Before view_context exit: v1 and gnd are resolved, r1 is unresolved
+        # Before viewgen completion: v1 and gnd are resolved, r1 is unresolved
         assert v1.symbol is not None
         assert gnd.symbol is not None
         assert r1.symbol is None
@@ -146,15 +153,17 @@ def test_mixed_unresolved_resolved_instances():
         v1_conns = list(root.all(SchemInstanceConn.ref_idx.query(v1)))
         assert len(v1_conns) == 2
 
-        # r1's wiring is deferred in the view context, not in the graph
+        # r1's wiring is deferred in the view builder, not in the graph
         r1_conns = list(root.all(SchemInstanceConn.ref_idx.query(r1)))
         assert len(r1_conns) == 0
 
-    # After view_context exit: all instances are resolved
+    sch()
+
+    # After viewgen completion: all instances are resolved
     all_instances = list(root.all(SchemInstance))
     assert len(all_instances) == 3
     assert all(inst.symbol is not None for inst in all_instances)
-    assert r1.symbol == Res(r='1k').symbol
+    assert root.r1.symbol == Res(r='1k').symbol
 
     # All connections are now SchemInstanceConn
     all_conns = list(root.all(SchemInstanceConn))
@@ -165,7 +174,9 @@ def test_wire_op():
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
-    with root.view_context(root):
+
+    viewgen sch() -> Schematic:
+        . = root
         net vss, mid
 
         # pin -- net (normal order)
@@ -186,7 +197,9 @@ def test_wire_op():
         gnd_conns = list(root.all(SchemInstanceConn.ref_idx.query(gnd)))
         assert len(gnd_conns) == 1
 
-    # After view_context exit: all connections are SchemInstanceConn
+    sch()
+
+    # After viewgen completion: all connections are SchemInstanceConn
     all_conns = list(root.all(SchemInstanceConn))
     assert len(all_conns) == 5
 
@@ -194,7 +207,9 @@ def test_instance_param_last_wins():
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
-    with root.view_context(root):
+
+    viewgen sch() -> Schematic:
+        . = root
         net vss, mid
         Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
         Res r1: .$r = '1k'; .p -- mid; .n -- vss; .pos = (5, 6)
@@ -203,14 +218,18 @@ def test_instance_param_last_wins():
         # While the parameters are open, assignments overwrite (last wins):
         r1.$r = '2k'
 
-    assert r1.symbol == Res(r='2k').symbol
+    sch()
+
+    assert root.r1.symbol == Res(r='2k').symbol
 
 def test_instance_param_set_after_resolution():
     import pytest
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
-    with root.view_context(root):
+
+    viewgen sch() -> Schematic:
+        . = root
         net vss, mid
         Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
         Res r1: .$r = '1k'; .p -- mid; .n -- vss; .pos = (5, 6)
@@ -221,14 +240,18 @@ def test_instance_param_set_after_resolution():
         with pytest.raises(TypeError):
             r1.$r = '2k'
 
-    assert r1.symbol == Res(r='1k').symbol
+    sch()
+
+    assert root.r1.symbol == Res(r='1k').symbol
 
 def test_instance_param_on_resolved_cell():
     import pytest
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
-    with root.view_context(root):
+
+    viewgen sch() -> Schematic:
+        . = root
         net vss, mid
         # Cell instance form: parameters are fixed at instantiation.
         Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
@@ -238,41 +261,51 @@ def test_instance_param_on_resolved_cell():
         with pytest.raises(TypeError):
             r1.$r = '2k'
 
+    sch()
+
 def test_bad_deferred_conn_path():
     import pytest
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
+
+    viewgen sch() -> Schematic:
+        . = root
+        net vss, mid
+        Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
+        # zzz is not a pin of Res; resolution at viewgen completion fails.
+        Res r1: .$r = '1k'; .p -- mid; .zzz -- vss; .pos = (5, 6)
+        Gnd() gnd: .p -- vss; .pos = (0, 0)
+
     with pytest.raises(QueryException, match="'zzz' not found"):
-        with root.view_context(root):
-            net vss, mid
-            Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
-            # zzz is not a pin of Res; resolution at context exit fails.
-            Res r1: .$r = '1k'; .p -- mid; .zzz -- vss; .pos = (5, 6)
-            Gnd() gnd: .p -- vss; .pos = (0, 0)
+        sch()
 
 def test_bad_deferred_conn_path_on_access():
     import pytest
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
-    # Context exit retries the resolution and must fail with the same
+
+    viewgen sch() -> Schematic:
+        . = root
+        net vss, mid
+        Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
+        Res r1: .$r = '1k'; .p -- mid; .zzz -- vss; .pos = (5, 6)
+        Gnd() gnd: .p -- vss; .pos = (0, 0)
+
+        # Forced resolution fails on the bad path...
+        with pytest.raises(QueryException, match="'zzz' not found"):
+            r1.outline.uy
+        # ...and leaves the instance untouched:
+        assert r1.symbol is None
+        assert len(list(root.all(SchemInstanceConn.ref_idx.query(r1)))) == 0
+
+    # Viewgen completion retries the resolution and must fail with the same
     # clean error as the first attempt: an aborted resolution leaves the
     # instance untouched, so no conns from the first attempt survive to
     # collide on retry.
     with pytest.raises(QueryException, match="'zzz' not found"):
-        with root.view_context(root):
-            net vss, mid
-            Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
-            Res r1: .$r = '1k'; .p -- mid; .zzz -- vss; .pos = (5, 6)
-            Gnd() gnd: .p -- vss; .pos = (0, 0)
-
-            # Forced resolution fails on the bad path...
-            with pytest.raises(QueryException, match="'zzz' not found"):
-                r1.outline.uy
-            # ...and leaves the instance untouched:
-            assert r1.symbol is None
-            assert len(list(root.all(SchemInstanceConn.ref_idx.query(r1)))) == 0
+        sch()
 
 def test_duplicate_deferred_conn():
     import pytest
@@ -280,29 +313,37 @@ def test_duplicate_deferred_conn():
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
+
+    viewgen sch() -> Schematic:
+        . = root
+        net vss, mid
+        Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
+        # r1.p is deferred-wired twice; resolution rejects this before
+        # touching the instance. (On a resolved instance, the second
+        # wire op raises a UniqueViolation directly.)
+        Res r1: .$r = '1k'; .p -- mid; .p -- vss; .n -- vss; .pos = (5, 6)
+        Gnd() gnd: .p -- vss; .pos = (0, 0)
+
     with pytest.raises(SchematicError, match="connected more than once"):
-        with root.view_context(root):
-            net vss, mid
-            Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
-            # r1.p is deferred-wired twice; resolution rejects this before
-            # touching the instance. (On a resolved instance, the second
-            # wire op raises a UniqueViolation directly.)
-            Res r1: .$r = '1k'; .p -- mid; .p -- vss; .n -- vss; .pos = (5, 6)
-            Gnd() gnd: .p -- vss; .pos = (0, 0)
+        sch()
 
 def test_instance_param_missing():
     import pytest
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
+
+    viewgen sch() -> Schematic:
+        . = root
+        net vss, mid
+        Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
+        # r1's mandatory parameter r is never set; resolution at viewgen
+        # completion fails.
+        Res r1: .p -- mid; .n -- vss; .pos = (5, 6)
+        Gnd() gnd: .p -- vss; .pos = (0, 0)
+
     with pytest.raises(ParameterError, match="'r' is missing") as exc_info:
-        with root.view_context(root):
-            net vss, mid
-            Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
-            # r1's mandatory parameter r is never set; resolution at
-            # context exit fails.
-            Res r1: .p -- mid; .n -- vss; .pos = (5, 6)
-            Gnd() gnd: .p -- vss; .pos = (0, 0)
+        sch()
     note, = exc_info.value.__notes__
     assert "instance r1" in note
     assert "test_ord_runtime" in note  # src_loc of the `Res r1` statement
@@ -312,7 +353,9 @@ def test_instance_param_missing_on_access():
     from ordec.lib import Vdc, Gnd
 
     root = Schematic()
-    with root.view_context(root):
+
+    viewgen sch() -> Schematic:
+        . = root
         net vss, mid
         Vdc('1') v1: .p -- mid; .n -- vss; .pos = (0, 6)
         Res r1: .p -- mid; .n -- vss; .pos = (5, 6)
@@ -325,13 +368,15 @@ def test_instance_param_missing_on_access():
         # parameter can still be supplied.
         r1.$r = '1k'
 
-    assert r1.symbol == Res(r='1k').symbol
+    sch()
+
+    assert root.r1.symbol == Res(r='1k').symbol
 
 def test_viewgen_return_target_alias():
     ViewgenAlias = Symbol
 
     cell AliasViewgenReturnCell:
-        viewgen symbol -> ViewgenAlias:
+        viewgen symbol(self) -> ViewgenAlias:
             input alias_pin
 
     view = AliasViewgenReturnCell().symbol
@@ -345,7 +390,7 @@ def test_viewgen_return_target_expression_runtime():
         return Symbol
 
     cell DynamicViewgenReturnCell:
-        viewgen symbol -> choose_view_root():
+        viewgen symbol(self) -> choose_view_root():
             input dynamic_pin
 
     # choose_view_root() should be called at time of class (cell) creation,
@@ -359,14 +404,14 @@ def test_viewgen_return_target_expression_runtime():
 
 def test_viewgen_return_target_conditional_expression():
     cell ConditionalViewgenReturnCell:
-        viewgen symbol -> Symbol if True else Schematic:
+        viewgen symbol(self) -> Symbol if True else Schematic:
             input conditional_pin
 
     view = ConditionalViewgenReturnCell().symbol
     assert isinstance(view.conditional_pin, Pin)
 
 cell LayoutTestCell:
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
         LayoutRect r:
@@ -377,14 +422,14 @@ cell LayoutTestCell:
         ! .r.ly == 0
 
 cell ReportTestCell:
-    viewgen report -> Report:
+    viewgen report(self) -> Report:
         .markdown("hello")
 
 def test_empty_schematic():
     # A cell with an empty schematic and no symbol viewgen must build and
     # render without raising.
     cell EmptySchematic:
-        viewgen schematic -> Schematic:
+        viewgen schematic(self) -> Schematic:
             pass
 
     sch = EmptySchematic().schematic
@@ -418,7 +463,7 @@ def test_layout_instance_shorthand():
 
 cell ParamLayoutCell:
     w = Parameter(int)
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
         LayoutRect r:
@@ -430,24 +475,30 @@ cell ParamLayoutCell:
 
 def test_layout_instance_unresolved():
     root = Layout()
-    with root.view_context(root):
+
+    viewgen lay() -> Layout:
+        . = root
         .ref_layers = SG13G2().layers
         # Cell subclass -> unresolved instance, parametrized via .$ like in
-        # schematics; resolved on context exit.
+        # schematics; resolved when the viewgen completes.
         ParamLayoutCell a:
             .$w = 120
             ! .pos == (0, 0)
         assert isinstance(a, LayoutInstance)
         assert a.ref is None
 
-    assert a.ref == ParamLayoutCell(w=120).layout
-    assert a.r.width == 120
+    lay()
+
+    assert root.a.ref == ParamLayoutCell(w=120).layout
+    assert root.a.r.width == 120
 
 def test_layout_instance_resolved_on_access():
     import pytest
 
     root = Layout()
-    with root.view_context(root):
+
+    viewgen lay() -> Layout:
+        . = root
         .ref_layers = SG13G2().layers
         ParamLayoutCell a:
             .$w = 120
@@ -460,19 +511,25 @@ def test_layout_instance_resolved_on_access():
         with pytest.raises(TypeError):
             a.$w = 240
 
-    assert a.ref == ParamLayoutCell(w=120).layout
+    lay()
+
+    assert root.a.ref == ParamLayoutCell(w=120).layout
 
 def test_layout_instance_param_missing():
     import pytest
 
     root = Layout()
+
+    viewgen lay() -> Layout:
+        . = root
+        .ref_layers = SG13G2().layers
+        # a's mandatory parameter w is never set; resolution at viewgen
+        # completion fails.
+        ParamLayoutCell a:
+            ! .pos == (0, 0)
+
     with pytest.raises(ParameterError, match="'w' is missing") as exc_info:
-        with root.view_context(root):
-            .ref_layers = SG13G2().layers
-            # a's mandatory parameter w is never set; resolution at
-            # context exit fails.
-            ParamLayoutCell a:
-                ! .pos == (0, 0)
+        lay()
     note, = exc_info.value.__notes__
     assert "instance a" in note
     assert "test_ord_runtime" in note  # src_loc of the `ParamLayoutCell a` statement
@@ -481,7 +538,9 @@ def test_layout_instance_param_missing_on_access():
     import pytest
 
     root = Layout()
-    with root.view_context(root):
+
+    viewgen lay() -> Layout:
+        . = root
         .ref_layers = SG13G2().layers
         ParamLayoutCell a:
             ! .pos == (0, 0)
@@ -493,7 +552,9 @@ def test_layout_instance_param_missing_on_access():
         # parameter can still be supplied.
         a.$w = 120
 
-    assert a.ref == ParamLayoutCell(w=120).layout
+    lay()
+
+    assert root.a.ref == ParamLayoutCell(w=120).layout
 
 def test_node_as_context_manager():
     root = Symbol()
@@ -575,8 +636,8 @@ def test_anonymous_as_identifier():
 
 def test_toplevel_viewgen_report():
     # Outside of a cell, a viewgen is a plain cached function (function
-    # form, like @generate_func).
-    viewgen toplevel_report -> Report:
+    # form, like a module-level @viewgen).
+    viewgen toplevel_report() -> Report:
         """A report viewgen outside of a cell."""
         .markdown("toplevel hello")
 
@@ -588,7 +649,7 @@ def test_toplevel_viewgen_report():
     assert toplevel_report.__doc__ == "A report viewgen outside of a cell."
 
 def test_toplevel_viewgen_symbol():
-    viewgen toplevel_symbol -> Symbol:
+    viewgen toplevel_symbol() -> Symbol:
         input a
 
     sym = toplevel_symbol()
@@ -597,12 +658,12 @@ def test_toplevel_viewgen_symbol():
     assert sym.cell is None
 
 def test_viewgen_decorated_auto_refresh():
-    # `@generate(auto_refresh=False)` on top of a viewgen reconfigures it
+    # `@viewgen(auto_refresh=False)` on top of a viewgen reconfigures it
     # (re-decoration takes over the wrapped function; see the drc/lvs
     # viewgens in vco_pseudodiff.ord).
     cell SlowViewCell:
-        @generate(auto_refresh=False)
-        viewgen symbol -> Symbol:
+        @viewgen(auto_refresh=False)
+        viewgen symbol(self) -> Symbol:
             input a
 
     assert isinstance(SlowViewCell().symbol.a, Pin)
@@ -612,7 +673,7 @@ def test_viewgen_early_return():
     # A bare `return` exits the body early. Postprocessing still runs and
     # the view is the context root regardless.
     cell EarlyReturnCell:
-        viewgen symbol -> Symbol:
+        viewgen symbol(self) -> Symbol:
             input a
             if True:
                 return
@@ -629,7 +690,7 @@ def test_viewgen_return_value_rejected():
     import pytest
 
     cell BadReturnCell:
-        viewgen symbol -> Symbol:
+        viewgen symbol(self) -> Symbol:
             input a
             return 42
 
@@ -643,10 +704,10 @@ def test_conditional_viewgen_in_cell():
     for flavor in ("a", "b"):
         cell CondCell:
             if flavor == "a":
-                viewgen symbol -> Symbol:
+                viewgen symbol(self) -> Symbol:
                     input a
             else:
-                viewgen symbol -> Symbol:
+                viewgen symbol(self) -> Symbol:
                     input b
 
         sym = CondCell().symbol
@@ -657,7 +718,7 @@ def test_toplevel_viewgen_schematic_port_rejected():
     # with a clear error instead of an opaque AttributeError.
     import pytest
 
-    viewgen bad_sch -> Schematic:
+    viewgen bad_sch() -> Schematic:
         port vdd
 
     with pytest.raises(TypeError, match="no symbol"):
@@ -667,7 +728,7 @@ def test_viewgen_in_function():
     # A viewgen in a nested scope is a function-form viewgen; a closure
     # can parametrize it (factory pattern).
     def make_report_view(text):
-        viewgen inner -> Report:
+        viewgen inner() -> Report:
             .markdown(text)
         return inner
 
@@ -679,8 +740,79 @@ def test_toplevel_viewgen_sim_rejected():
     # viewgens must fail with a clear error.
     import pytest
 
-    viewgen toplevel_sim -> SimHierarchy:
+    viewgen toplevel_sim() -> SimHierarchy:
         pass
 
     with pytest.raises(TypeError, match="outside of a cell"):
         toplevel_sim()
+
+def test_viewgen_double_root_assignment():
+    # `. =` can establish the view root only once.
+    import pytest
+
+    viewgen bad() -> Schematic:
+        . = Schematic()
+        . = Schematic()
+
+    with pytest.raises(TypeError, match="already established"):
+        bad()
+
+def test_viewgen_root_assignment_after_node_op():
+    # A node operation materializes the root from the annotation; a later
+    # `. =` must fail instead of silently replacing it.
+    import pytest
+
+    viewgen bad() -> Symbol:
+        input a
+        . = Symbol()
+
+    with pytest.raises(TypeError, match="already established"):
+        bad()
+
+def test_nested_viewgen_isolation():
+    # A viewgen evaluated while another viewgen body is running must not
+    # leak its node operations into the outer viewgen's context — even
+    # when it runs before the outer body's first node op, while the outer
+    # context is not yet established.
+    viewgen inner() -> Symbol:
+        input b
+
+    cell OuterCell:
+        viewgen symbol(self) -> Symbol:
+            inner_sym = inner()
+            assert isinstance(inner_sym.b, Pin)
+            input a
+
+    sym = OuterCell().symbol
+    assert isinstance(sym.a, Pin)
+    assert len(list(sym.all(Pin))) == 1
+    assert len(list(inner().all(Pin))) == 1
+
+def test_noctx_on_viewgen_flips_protocol():
+    # Re-decoration takes over the wrapped function, and the outer
+    # decorator picks the protocol: @viewgen_noctx stacked on a
+    # context-style body installs no context, so the body's first node op
+    # fails loudly instead of leaking into an outer context.
+    import pytest
+
+    @viewgen_noctx
+    viewgen bad() -> Symbol:
+        input a
+
+    with pytest.raises(TypeError, match="use @viewgen"):
+        bad()
+
+def test_viewgen_shape_rejected_at_exec():
+    # Extra parameters beyond the receiver fail at decoration time, i.e.
+    # when the compiled module executes.
+    import pytest
+    from ordec.language import compile_ord
+
+    for src in (
+        "cell Foo:\n    viewgen symbol(a, b):\n        pass\n",
+        "cell Foo:\n    viewgen symbol(a=1):\n        pass\n",
+    ):
+        g = {}
+        code = compile_ord(src, g)
+        with pytest.raises(TypeError, match="Cell Parameters"):
+            exec(code, g)

@@ -1359,67 +1359,82 @@ def test_viewgen_docstring():
     # function's docstring, not an inert statement.
     ord_string = (
         "cell Foo:\n"
-        "    viewgen drc -> DrcReport:\n"
+        "    viewgen drc(self) -> DrcReport:\n"
         '        """Run DRC on the layout."""\n'
         "        . = run_drc(self.layout)\n"
     )
     fn = ord_to_py(ord_string).body[0].body[0]
     assert ast.get_docstring(fn) == "Run DRC on the layout."
 
-def test_viewgen_in_cell_is_method_form():
-    # A viewgen that is a direct statement of a cell body compiles to a
-    # method: `self` parameter plus the method-form decorator.
+def test_viewgen_translation_uniform():
+    # The translation is context-free: a viewgen in a cell body and at
+    # module level produce the identical FunctionDef - the user's
+    # parameters verbatim, decorated with __ordec_core__.viewgen. Binding
+    # (method vs. function) is left to Python scoping.
+    in_cell = ord_to_py(
+        "cell Foo:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
+        "        input a\n"
+    ).body[0].body[0]
+    toplevel = ord_to_py(
+        "viewgen symbol(self) -> Symbol:\n"
+        "    input a\n"
+    ).body[0]
+    assert isinstance(in_cell, ast.FunctionDef)
+    assert ast.unparse(in_cell) == ast.unparse(toplevel)
+    assert [a.arg for a in in_cell.args.args] == ["self"]
+    assert ast.unparse(in_cell.decorator_list[-1]) == "__ordec_core__.viewgen"
+
+def test_viewgen_renamed_receiver():
+    # The receiver is an ordinary parameter; any name works.
     ord_string = (
         "cell Foo:\n"
-        "    viewgen symbol -> Symbol:\n"
-        "        input a\n"
+        "    viewgen symbol(s) -> Symbol:\n"
+        "        pass\n"
     )
     fn = ord_to_py(ord_string).body[0].body[0]
-    assert isinstance(fn, ast.FunctionDef)
-    assert [a.arg for a in fn.args.args] == ["self"]
-    assert ast.unparse(fn.decorator_list[-1]) == "__ord_context__.viewgen"
+    assert [a.arg for a in fn.args.args] == ["s"]
 
-def test_viewgen_toplevel_is_function_form():
-    # A viewgen outside of a cell compiles to a no-argument function with
-    # the function-form decorator.
+def test_viewgen_annotation_optional():
     ord_string = (
-        "viewgen top -> Report:\n"
-        "    .markdown('x')\n"
+        "viewgen top():\n"
+        "    pass\n"
     )
     fn = ord_to_py(ord_string).body[0]
     assert isinstance(fn, ast.FunctionDef)
     assert fn.args.args == []
-    assert ast.unparse(fn.decorator_list[-1]) == "__ord_context__.viewgen_func"
+    assert fn.returns is None
+    assert ast.unparse(fn.decorator_list[-1]) == "__ordec_core__.viewgen"
 
-def test_viewgen_nested_in_cell_body_is_method_form():
-    # Like a def in a Python class body, a viewgen nested in a compound
-    # statement of the cell suite still binds in the cell namespace, so it
-    # compiles to method form (conditional method definition).
+def test_viewgen_nested_in_cell_body():
+    # A viewgen nested in a compound statement of the cell suite binds in
+    # the cell namespace via ordinary Python scoping (conditional method
+    # definition); the translation is unchanged.
     ord_string = (
         "cell Foo:\n"
         "    if True:\n"
-        "        viewgen symbol -> Symbol:\n"
+        "        viewgen symbol(self) -> Symbol:\n"
         "            input a\n"
     )
     fn = ord_to_py(ord_string).body[0].body[0].body[0]
     assert isinstance(fn, ast.FunctionDef)
     assert [a.arg for a in fn.args.args] == ["self"]
-    assert ast.unparse(fn.decorator_list[-1]) == "__ord_context__.viewgen"
+    assert ast.unparse(fn.decorator_list[-1]) == "__ordec_core__.viewgen"
 
-def test_viewgen_in_def_inside_cell_body_is_function_form():
-    # A def inside a cell body is its own binding scope: a viewgen there is
-    # a function-form viewgen, as outside of cells.
+def test_viewgen_in_def_inside_cell_body():
+    # A def inside a cell body is its own binding scope: a viewgen there
+    # binds in that scope, as outside of cells (factory pattern).
     ord_string = (
         "cell Foo:\n"
         "    def helper(self):\n"
-        "        viewgen inner -> Report:\n"
+        "        viewgen inner() -> Report:\n"
         "            .markdown('x')\n"
         "        return inner\n"
     )
     fn = ord_to_py(ord_string).body[0].body[0].body[0]
     assert isinstance(fn, ast.FunctionDef)
     assert fn.args.args == []
-    assert ast.unparse(fn.decorator_list[-1]) == "__ord_context__.viewgen_func"
+    assert ast.unparse(fn.decorator_list[-1]) == "__ordec_core__.viewgen"
 
 def test_viewgen_decorated_keeps_own_decorator():
     # User decorators must be prepended, not replace the viewgen's own
@@ -1427,9 +1442,25 @@ def test_viewgen_decorated_keeps_own_decorator():
     ord_string = (
         "cell Foo:\n"
         "    @mydec\n"
-        "    viewgen symbol -> Symbol:\n"
+        "    viewgen symbol(self) -> Symbol:\n"
         "        input a\n"
     )
     fn = ord_to_py(ord_string).body[0].body[0]
     assert ast.unparse(fn.decorator_list[0]) == "mydec"
-    assert ast.unparse(fn.decorator_list[-1]) == "__ord_context__.viewgen"
+    assert ast.unparse(fn.decorator_list[-1]) == "__ordec_core__.viewgen"
+
+def test_viewgen_oldform_rejected():
+    # The parenless spelling is a hard error with a fix-it showing both
+    # spellings (the context-free diagnostic cannot know placement) and
+    # the offending line.
+    ord_string = (
+        "cell Foo:\n"
+        "    viewgen symbol -> Symbol:\n"
+        "        pass\n"
+    )
+    with pytest.raises(SyntaxError) as excinfo:
+        ord_to_py(ord_string)
+    msg = str(excinfo.value)
+    assert "viewgen symbol(self) -> T:" in msg
+    assert "viewgen symbol() -> T:" in msg
+    assert "line 2" in msg

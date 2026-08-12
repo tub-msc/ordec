@@ -17,7 +17,7 @@ class Res(SimLeafCell):
     def ngspice_current_pins(self):
         return {"i": "p"}
     
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -68,7 +68,7 @@ class Cap(SimLeafCell):
         return {"i": "p"}
     ic = Parameter(R, optional=True) #: Initial condition voltage in volt
 
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -106,7 +106,7 @@ class Ind(SimLeafCell):
     def ngspice_current_pins(self):
         return {"branch": "p", "i": "p"}
 
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -140,7 +140,7 @@ class Gnd(SimLeafCell):
     """Global ground connection"""
     def ngspice_current_pins(self):
         return {"branch": "p"}
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -159,7 +159,7 @@ class Gnd(SimLeafCell):
 @public
 class NoConn(SimLeafCell):
     """No connection"""
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -237,7 +237,7 @@ class Vdc(AcStimulusMixin, SimLeafCell):
     ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
     ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -281,7 +281,7 @@ class Idc(AcStimulusMixin, SimLeafCell):
     ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
     ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -354,7 +354,7 @@ class Vpwl(AcStimulusMixin, PwlMixin, SimLeafCell):
     ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
     ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         """ Defines the schematic symbol for the PWL source. """
         s = Symbol(cell=self)
@@ -411,7 +411,7 @@ class Vpulse(AcStimulusMixin, SimLeafCell):
     ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
     ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -474,7 +474,7 @@ class Vsin(AcStimulusMixin, SimLeafCell):
     ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
     ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -526,7 +526,7 @@ class Ipwl(AcStimulusMixin, PwlMixin, SimLeafCell):
     ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
     ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         """ Defines the schematic symbol for the PWL current source. """
         s = Symbol(cell=self)
@@ -590,7 +590,7 @@ class Ipulse(AcStimulusMixin, SimLeafCell):
     ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
     ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -661,7 +661,7 @@ class Isin(AcStimulusMixin, SimLeafCell):
     ac_mag = Parameter(R, optional=True) #: AC magnitude for small-signal (AC) analysis; no AC stimulus if unset.
     ac_phase = Parameter(R, optional=True) #: AC phase in degrees; 0 if unset.
 
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 

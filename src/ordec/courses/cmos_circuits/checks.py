@@ -5,7 +5,7 @@
 Lesson checks for the 'cmos_circuits' course (CMOS Integrated Circuits).
 
 Each gen_lesson* function takes the lesson namespace (globals) and returns the
-lesson() view generator for that lesson: a @generate_func building a Report
+lesson() view generator for that lesson: a @viewgen_noctx building a Report
 whose PassFail elements decide whether the lesson is passed (the course UI
 considers a lesson passed when all its PassFail elements pass). Exceptions
 during checking are converted into failing PassFail elements, so the view never
@@ -185,7 +185,7 @@ def sim_failure_text(structure_ok, what):
 # -------------------------------
 
 def gen_lesson1(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -300,7 +300,7 @@ def gen_lesson1(g):
 # ------------------------
 
 def gen_lesson2(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -404,7 +404,7 @@ def gen_lesson2(g):
 # ---------------------------------
 
 def gen_lesson3(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -497,7 +497,7 @@ def gen_lesson3(g):
 # ---------------------------
 
 def gen_lesson4(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -601,7 +601,7 @@ def gen_lesson4(g):
 # --------------------------------------
 
 def gen_lesson5(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -693,7 +693,7 @@ def gen_lesson5(g):
 # -----------------------
 
 def gen_lesson6(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -805,7 +805,7 @@ def gen_lesson6(g):
 # ------------------------------
 
 def gen_lesson7(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -913,7 +913,7 @@ def gen_lesson8(g):
         a = Parameter(R)
         b = Parameter(R)
 
-        @generate
+        @viewgen_noctx
         def schematic(self):
             s = Schematic(cell=self)
             s.vdd = Net()
@@ -936,7 +936,7 @@ def gen_lesson8(g):
             s.check(add_conn_points=True, add_terminal_taps=True)
             return s
 
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -1044,7 +1044,7 @@ def gen_lesson8(g):
 # ------------------------
 
 def gen_lesson9(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -1156,7 +1156,7 @@ def lfsr_states(sim, bits=4, cycles=24):
 
 
 def gen_lesson10(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""
@@ -1261,7 +1261,7 @@ def gen_lesson10(g):
 # -----------------------------------
 
 def gen_lesson11(g):
-    @generate_func
+    @viewgen_noctx
     def lesson() -> Report:
         report = Report()
         report.markdown("""

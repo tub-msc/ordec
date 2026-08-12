@@ -15,7 +15,7 @@ Syntax highlighting
 ORD is syntactically close to Python, but adds its own constructs, such as:
 
 - ``cell`` declarations
-- ``viewgen`` declarations (``viewgen schematic -> Schematic:``)
+- ``viewgen`` declarations (``viewgen schematic(self) -> Schematic:``)
 - node statements like ``output y:``, ``Nmos m1:``, or ``Nmos(w=4u, l=400n) m1:``
 - ``anonymous`` node statements and bodyless forms like ``Net vdd``
 - ``path`` and ``net`` statements

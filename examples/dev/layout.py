@@ -6,21 +6,21 @@ from ordec.extlibrary import ExtLibrary
 from ordec.layout import expand_geom, makevias
 from ordec.core import *
 
-@generate_func
+@viewgen_noctx
 def layout_xor() -> Layout:
     tech_layers = ihp130.SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(ihp130.pdk().root / "libs.ref/sg13g2_stdcell/gds/sg13g2_stdcell.gds", tech_layers)
     return lib['sg13g2_xor2_1'].layout
 
-@generate_func
+@viewgen_noctx
 def layout_dff() -> Layout:
     tech_layers = ihp130.SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds(ihp130.pdk().root / "libs.ref/sg13g2_stdcell/gds/sg13g2_stdcell.gds", tech_layers)
     return lib['sg13g2_sdfrbpq_2'].layout
 
-@generate_func
+@viewgen_noctx
 def layout_expand_geom() -> Layout:
     layers = ihp130.SG13G2().layers
     
@@ -71,25 +71,25 @@ def layout_expand_geom() -> Layout:
 
     return l
 
-@generate_func
+@viewgen_noctx
 def test_gds_sref() -> Layout:
     tech_layers = ihp130.SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds('tests/layout_gds/test_sref_d4.gds', tech_layers)
     return lib['TOP'].layout
 
-@generate_func
+@viewgen_noctx
 def test_gds_aref() -> Layout:
     tech_layers = ihp130.SG13G2().layers
     lib = ExtLibrary()
     lib.read_gds('tests/layout_gds/test_aref.gds', tech_layers)
     return lib['TOP'].layout
 
-@generate_func
+@viewgen_noctx
 def test_ihp130_nmos() -> Layout:
     return ihp130.Nmos(l="300n", w="200000n", ng=20).layout
 
-@generate_func
+@viewgen_noctx
 def test_makevias() -> Layout:
     layers = ihp130.SG13G2().layers
     
@@ -101,6 +101,6 @@ def test_makevias() -> Layout:
 
     return l
 
-@generate_func
+@viewgen_noctx
 def test_tap() -> Layout:
     return ihp130.Ptap(l="0.97u", w="0.98u").layout

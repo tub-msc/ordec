@@ -15,7 +15,7 @@ cell Xor2Tb:
     a = Parameter(R, default=0)
     b = Parameter(R, default=0)
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net a, b, y, vdd, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
@@ -27,5 +27,5 @@ cell Xor2Tb:
 
         Res rprobe: .$r=1G; .p -- y; .n -- vss; .pos=(28,9)
 
-    viewgen sim_op -> Simulation:
+    viewgen sim_op(self) -> Simulation:
         .simulate().op()

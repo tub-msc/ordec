@@ -5,7 +5,7 @@ from ordec.lib import Res, Cap, Gnd, Vpulse, Vsin
 class RC(Cell):
     pulse_source = True
 
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self)
         s.vdd = Net()
@@ -42,21 +42,21 @@ class RC(Cell):
         s.check(add_conn_points=True, add_terminal_taps=True)
         return s
 
-    @generate(auto_refresh=False)
+    @viewgen_noctx(auto_refresh=False)
     def sim_op(self):
         s = SimHierarchy.from_schematic(self.schematic)
         sim = Simulator(s)
         sim.op()
         return s
 
-    @generate
+    @viewgen_noctx
     def sim_tran(self):
         s = SimHierarchy.from_schematic(self.schematic)
         sim = Simulator(s)
         sim.tran('10u', '50m')
         return s
 
-    @generate
+    @viewgen_noctx
     def sim_ac(self):
         s = SimHierarchy.from_schematic(self.schematic)
         sim = Simulator(s)

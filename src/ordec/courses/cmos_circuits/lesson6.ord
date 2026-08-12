@@ -3,7 +3,7 @@ from ordec.lib import Vdc, Res, Gnd
 from ordec.lib.ihp130 import Nmos, Pmos
 
 cell Inv:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout vdd: .pos=(2, 4); .align=North
         inout vss: .pos=(2, 0)
         input a: .pos=(0, 2)
@@ -16,7 +16,7 @@ cell Inv:
 
         .outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         .outline = Rect4R(lx=0, ly=0, ux=10, uy=14)
 
         port vdd: .pos=(2, 13); .align=East
@@ -27,7 +27,7 @@ cell Inv:
         # EDIT HERE
 
 cell InvTb:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net a, y, vdd, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
@@ -37,5 +37,5 @@ cell InvTb:
         Inv dut: .a -- a; .y -- y; .vdd -- vdd; .vss -- vss; .pos=(12,7)
         Res rprobe: .$r=1G; .p -- y; .n -- vss; .pos=(18,5)
 
-    viewgen sim_dc -> Simulation:
+    viewgen sim_dc(self) -> Simulation:
         .simulate().dc_sweep(self.schematic.vin_src, 0, 1.2, 121)

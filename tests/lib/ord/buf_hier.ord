@@ -5,13 +5,13 @@ from ordec.core import *
 from ordec.lib.generic_mos import Nmos, Pmos
 
 cell Inv:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout vdd: .align=North
         inout vss
         input a
         output y
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port a
         port y
         net vss
@@ -30,13 +30,13 @@ cell Inv:
 cell Buf:
     """Hierarchical example: two Inv stages in a horizontal series chain."""
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout vdd: .align=North
         inout vss
         input a
         output y
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port a
         port y
         port vdd

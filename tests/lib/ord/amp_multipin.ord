@@ -6,7 +6,7 @@ from ordec.lib.generic_mos import Nmos
 
 cell DiffPair:
     """Differential pair block: two pins on the north and west sides."""
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input inp
         input inn
         output outp: .align=North
@@ -15,13 +15,13 @@ cell DiffPair:
 
 cell LoadPair:
     """Active load block: two pins on the south side."""
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout vdd: .align=North
         output outp: .align=South
         output outn: .align=South
 
 cell Amp:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout vdd: .align=North
         inout vss
         input ibias
@@ -30,7 +30,7 @@ cell Amp:
         output outp
         output outn
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port inp
         port inn
         port ibias

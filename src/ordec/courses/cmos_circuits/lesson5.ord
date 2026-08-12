@@ -5,7 +5,7 @@ from ordec.lib.ihp130 import Nmos
 cell DiffPair:
     """The differential pair from the previous lesson, ready to use."""
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input inp
         input inn
         input bias
@@ -14,7 +14,7 @@ cell DiffPair:
         inout vdd: .align=North
         inout vss
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port inp: .pos=(1,9)
         port inn: .align=West; .pos=(19,9)
         port bias: .pos=(1,2)
@@ -32,14 +32,14 @@ cell DiffPair:
         Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- outn; .s -- tail; .b -- vss; .pos=(16,7); .orientation=FlippedSouth
 
 cell RingOsc:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input bias
         output outp
         output outn
         inout vdd: .align=North
         inout vss
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port bias: .pos=(0,15)
         port outp: .pos=(40,10)
         port outn: .pos=(40,11)
@@ -61,7 +61,7 @@ cell RingOsc:
         DiffPair stage2: .inp -- p2; .inn -- n2; .outp -- outp; .outn -- outn; .bias -- bias; .vdd -- vdd; .vss -- vss; .pos=(32,8)
 
 cell RingOscTb:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net bias, outp, outn, vdd, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
@@ -72,10 +72,10 @@ cell RingOscTb:
         NoConn nc0: .a -- outp; .pos=(18,6)
         NoConn nc1: .a -- outn; .pos=(18,12)
 
-    viewgen sim_tran -> Simulation:
+    viewgen sim_tran(self) -> Simulation:
         .simulate().tran(50p, 200n, uic=True)
 
-    viewgen report_tran -> Report:
+    viewgen report_tran(self) -> Report:
         sim = self.sim_tran
         .markdown("Ring oscillator output:")
         .plot2d(

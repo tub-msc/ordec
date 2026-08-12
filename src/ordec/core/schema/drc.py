@@ -5,7 +5,7 @@ from public import public
 
 from ..geoprim import *
 from ..ordb import *
-from ..context import AssignableViewContext
+from ..context import ViewBuilder
 from .base import coerce_tuple, PathEndType, GenericPolyI, PolyVec2I
 from .layout import Layout
 
@@ -14,7 +14,7 @@ WIRE_DOMAIN = 6 << 16
 @public
 class DrcReport(SubgraphRoot):
     """DRC report containing design rule check results."""
-    view_context = AssignableViewContext
+    view_builder = ViewBuilder
     wire_id = WIRE_DOMAIN | 1
 
     ref_layout = SubgraphRef(Layout)

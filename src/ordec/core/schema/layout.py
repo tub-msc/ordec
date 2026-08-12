@@ -9,7 +9,7 @@ from ..ordb import *
 from ..cell import Cell
 from ..constraints import *
 from ..context import (
-    LayoutViewContext, InstanceParams, InstanceResolutionError,
+    LayoutViewBuilder, InstanceParams, InstanceResolutionError,
     unresolved_instance_ctx,
 )
 from .base import (
@@ -127,7 +127,7 @@ class Layout(SubgraphRoot):
     Subgraph containing integrated circuit layout elements, possibly including
     hierarchical instances of other Layout subgraphs.
     """
-    view_context = LayoutViewContext
+    view_builder = LayoutViewBuilder
     wire_id = WIRE_DOMAIN | 5
 
     cell = LiveRef(Cell)

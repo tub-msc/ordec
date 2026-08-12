@@ -9,7 +9,7 @@ Execution of ORD code results in a one-pass compiler step that transforms the
 input into context-based Python code.
 
 This is only made possible by leveraging the power of
-:class:`~ordec.core.context.ViewContext` and
+:class:`~ordec.core.context.ViewGenContext` and
 :class:`~ordec.core.context.NodeContext`, which are explained in a later
 paragraph. The actual ORD grammar is written in Lark. Lark is a well-known and
 efficient Python parsing framework for grammars in EBNF form. The function call
@@ -39,8 +39,9 @@ The dotted syntax of ORD, which accesses the current context element, requires
 having a reference to that element. This structure therefore necessitates that
 statements and expressions inside a context block have a reference to the
 parent even after transformation of ORD back to Python. This logic is
-implemented with :class:`~ordec.core.context.ViewContext` for the active view
-and :class:`~ordec.core.context.NodeContext` for the currently active node.
+implemented with :class:`~ordec.core.context.ViewGenContext` for the running
+viewgen and :class:`~ordec.core.context.NodeContext` for the currently active
+node.
 They use the Python ``with`` environment together with a context variable
 :class:`ContextVar` to always maintain a reference without requiring
 information about the parent during transformation. With ORD, we try to keep
@@ -90,13 +91,13 @@ To demonstrate how the ORD context works and how the conversion from ORD to Pyth
 .. code-block:: 
 
     cell Inv:
-        viewgen symbol -> Symbol:
+        viewgen symbol(self) -> Symbol:
             inout vdd(.align=North)
             inout vss(.align=South)
             input a(.align=West)
             output y(.align=East)
 
-        viewgen schematic -> Schematic:
+        viewgen schematic(self) -> Schematic:
             port vdd(.pos=(2,13); .align=North)
             port vss(.pos=(2,1); .align=South)
             port y (.pos=(9,7); .align=West)
@@ -122,22 +123,59 @@ To demonstrate how the ORD context works and how the conversion from ORD to Pyth
 
 .. note::
 
-    The actual compiled code uses ``__ord_context__`` instead of ``context`` to
-    avoid name collisions with user code. Here we use
+    The actual compiled code uses ``__ord_context__`` instead of ``context``
+    (and ``__ordec_core__`` for core names such as the ``viewgen`` decorator)
+    to avoid name collisions with user code. Here we use
     ``import ordec.ord.context as context`` for readability when calling helper
     functions such as ``add`` and ``root``.
 
-The expression after ``->`` becomes the return annotation of the generated
-function. It is usually a simple name such as ``Symbol`` or ``Schematic``, but
-it can be any ORD expression that evaluates to a view target. Like standard
-Python annotations, it is evaluated at definition time. The generated function
-body is the viewgen suite verbatim; all setup and teardown around it lives in
-the ``context.viewgen`` decorator: it creates a ViewContext from the return
-annotation, runs the body inside it, and returns the context's root (after
-postprocessing such as constraint solving and auto-wiring). Consequently, a
-viewgen body never returns the view itself: a bare ``return`` exits the body
-early, and returning a value raises ``TypeError`` (like a value-returning
-``__init__``).
+.. admonition:: Changed behavior
+
+    ``viewgen`` used to be written without a parameter list
+    (``viewgen symbol -> Symbol:``), with the compiler defining an implicit
+    ``self`` for viewgens placed inside a ``cell`` body. That syntax is now
+    a hard syntax error (with a fix-it), because the implicit variable
+    definition seemed at odds with Python's language design. Now the receiver
+    is declared like in any Python ``def``, the translation is
+    placement-independent, and the ``->`` annotation is now optional.
+
+A viewgen statement declares its receiver explicitly: the parameter list is
+mandatory, and the receiver parameter (conventionally named ``self``) binds
+the cell instance when the viewgen is a cell attribute. The expression after
+``->`` becomes the return annotation of the generated function. It is
+optional, and it is usually a simple name such as ``Symbol`` or
+``Schematic``, but it can be any ORD expression that evaluates to a view
+target. Like standard Python annotations, it is evaluated at definition time.
+The keyword is exact sugar: ``viewgen f(self) -> T: suite`` compiles to
+``@viewgen def f(self) -> T: suite``, with the user's parameters verbatim.
+The translation is context-free — the compiler does no placement analysis,
+and whether the result is a view method or a plain view function follows
+Python's ordinary lexical scoping, like ``def``.
+
+Under :class:`~ordec.core.cell.viewgen`, the body populates an implicit view
+root instead of returning one. The root is established lazily, in one of two
+ways:
+
+- **Adoption**: ``. = <root>`` makes a root built elsewhere (e.g. by
+  ``run_drc()``) the view root. It must come before any node operation and
+  can appear only once. Because adoption bypasses
+  ``ViewBuilder.create_root()``, an adopted ``Schematic`` or ``Layout`` does
+  not automatically reference the cell's symbol — set ``symbol=self.symbol``
+  by hand where needed.
+- **Materialization from the annotation**: the first node operation (or
+  completion of the body, yielding an empty view) creates the root from the
+  return annotation.
+
+Adoption wins if it runs first, so an annotation and ``. = ...`` coexist:
+``-> DrcReport`` stays inert when the body assigns the report itself. With
+neither an established root nor an annotation, node operations and completion
+raise ``TypeError``. As a style convention, annotate even where optional —
+Sphinx and the web UI read the annotation.
+
+After the body, postprocessing (such as constraint solving and auto-wiring)
+runs and the root becomes the view. Consequently, a viewgen body never
+returns the view itself: a bare ``return`` exits the body early, and
+returning a value raises ``TypeError`` (like a value-returning ``__init__``).
 Every node statement saves the created element as a local variable and, if
 the statement has a body, opens a nested node context with ``node.ctx()``. The
 dotted access is converted into ``context.root()``. Accesses outside the context are still possible
@@ -147,9 +185,10 @@ of the example.
 .. code-block:: python
 
     import ordec.ord.context as context
+    from ordec.core import viewgen
 
     class Inv(Cell):
-        @context.viewgen
+        @viewgen
         def symbol(self) -> Symbol:
             vdd = context.add(('vdd',), Pin(pintype=PinType.Inout, align=D4.South))
             with vdd.ctx():
@@ -164,7 +203,7 @@ of the example.
             with y.ctx():
                 context.root().align = East
 
-        @context.viewgen
+        @viewgen
         def schematic(self) -> Schematic:
             vss = context.add_port(('vss',))
             with vss.ctx():
@@ -203,32 +242,30 @@ of the example.
                 instance.g -- a
 
 A ``viewgen`` does not have to live in a cell. Outside of a ``cell`` body — at
-module level, or inside an ordinary function — it compiles to a **no-argument
-function** decorated with ``context.viewgen_func``, the ORD counterpart of
-``@generate_func``: calling it evaluates the view once and caches the result.
-Module-level viewgens appear in the web UI view list like ``@generate_func``
-functions. Since there is no cell, ``self`` is not available in the body,
-view targets that require a cell (such as ``SimHierarchy``) cannot be
-generated, and a cell-less ``Schematic`` cannot declare ports (ports connect
-to the cell symbol's pins):
+module level, or inside an ordinary function — it declares an **empty
+parameter list** and the same decorator serves it as a plain cached function:
+calling it evaluates the view once and caches the result on the generator
+itself. Module-level viewgens appear in the web UI view list. Since there is
+no cell, view targets that require a cell (such as ``SimHierarchy``) cannot
+be generated, and a cell-less ``Schematic`` cannot declare ports (ports
+connect to the cell symbol's pins):
 
 .. code-block::
 
-    viewgen inv_drc -> DrcReport:
+    viewgen inv_drc() -> DrcReport:
         . = ihp130.run_drc(inv.layout, variant="minimal")
 
-``viewgen`` and the ``@generate``/``@generate_func`` decorators are two
-first-class spellings, not old and new: ``viewgen`` is ORD-native and
-populates a context-managed root, while the decorators remain the
-plain-Python style whose body builds and returns the root itself (usable in
-``.ord`` files too, since ORD is a superset of Python).
+The ``viewgen`` keyword and the :class:`~ordec.core.cell.viewgen_noctx`
+decorator are two first-class protocols, not old and new: the keyword (sugar
+for :class:`~ordec.core.cell.viewgen`) populates a context-managed root,
+while ``@viewgen_noctx`` marks a plain function whose body builds and
+returns the view itself — usable in ``.ord`` files too, since ORD is a
+superset of Python. ``@viewgen_noctx`` installs no viewgen context, so a
+stray node operation or ``. = ...`` in such a body raises instead of leaking
+into an enclosing viewgen. See :doc:`cell_and_viewgen` for the decorators.
 
-Whether a ``viewgen`` becomes a method or a function follows Python's lexical
-binding rule for ``def``: lexically within a ``cell`` suite — including nested
-in ``if``, ``for`` or other compound statements, e.g. for conditional method
-definition — it binds in the cell namespace and becomes a view method.
-Within a nested scope (a ``def`` or ``class`` inside the cell body) or outside
-of cells, it is a function-form viewgen.
+Whether a ``viewgen`` becomes a view method or a plain view function follows
+Python's lexical binding rule for ``def`` — nothing more.
 
 
 Anonymous Node Statements
@@ -321,7 +358,7 @@ end of the viewgen body. This is available in layout and schematic views (see
     ! stack.southwest == (3, 1)
 
 Internally, ``! expr`` compiles to ``context.constrain(expr)``, which forwards
-the constraint to the active view context.
+the constraint to the running viewgen's view builder.
 
 
 The following summary shows the most important functions and classes of ORD.
@@ -343,10 +380,13 @@ Contexts
 .. autoclass:: ordec.core.context.NodeContext
     :members:
 
-.. autoclass:: ordec.core.context.ViewContext
+.. autoclass:: ordec.core.context.ViewGenContext
     :members:
 
-.. autoclass:: ordec.core.context.LayoutViewContext
+.. autoclass:: ordec.core.context.ViewBuilder
+    :members:
+
+.. autoclass:: ordec.core.context.LayoutViewBuilder
     :members:
 
 OrdTransformer

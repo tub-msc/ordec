@@ -56,7 +56,7 @@ if ip is not None:
 # ## 1. Cell
 #
 # A `cell` is the **root** of an ORD file. It acts as the base of the design you
-# want to create. The name of the cell should describe the inner behavior of the design {doc}`ref/cell_and_generate`.
+# want to create. The name of the cell should describe the inner behavior of the design {doc}`ref/cell_and_viewgen`.
 
 # + 
 %%ord
@@ -74,7 +74,7 @@ cell Inv:
 # + 
 %%ord 
 cell Inv:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
     	pass
 # -
 
@@ -94,7 +94,7 @@ Inv().symbol
 # + 
 %%ord
 cell Inv:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout vdd: .align=North
         inout vss: .align=South
         input a: .align=West
@@ -114,13 +114,13 @@ Inv().symbol
 from ordec.lib.generic_mos import Nmos, Pmos
 
 cell Inv:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout vdd: .align=North
         inout vss: .align=South
         input a: .align=West
         output y: .align=East
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port vdd: .pos=(2,13); .align=North
         port vss: .pos=(2,1); .align=South
         port y: .pos=(9,7); .align=West
@@ -193,14 +193,14 @@ Inv().schematic
 # + 
 %%ord
 cell Nand:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         output y: .align=East
         input a: .align=West
         input b: .align=West
         inout vdd: .align=North
         inout vss: .align=South
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port y: .align=West; .pos=(25,6)
         port a: .align=East; .pos=(1,4)
         port b: .align=East; .pos=(1,17)
@@ -244,7 +244,7 @@ Nand().schematic
 %%ord
 cell MultibitReg_ArrayOfStructs:
     bits = Parameter(int)
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input vdd: .align=North
         input vss: .align=South
         path bit
@@ -268,13 +268,13 @@ cell MultibitReg_ArrayOfStructs:
 # +
 %%ord
 cell Inv:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout vdd: .align=North
         inout vss: .align=South
         input a: .align=West
         output y: .align=East
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port vdd: .pos=(2,13); .align=North
         port vss: .pos=(2,1); .align=South
         port y : .pos=(9,7); .align=West
@@ -341,14 +341,14 @@ Inv().schematic
 # +
 %%ord
 cell NandPlaced:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         output y: .align=East
         input a: .align=West
         input b: .align=West
         inout vdd: .align=North
         inout vss: .align=South
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port y: .align=West
         port a: .align=East
         port b: .align=East
@@ -395,11 +395,11 @@ NandPlaced().schematic
 from ordec.lib.ihp130 import SG13G2
 
 cell LayoutDemo:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input a: .align=West
         output y: .align=East
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
 
@@ -499,7 +499,7 @@ def add(x, y):
 	return x + y
 
 cell Inv:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout vdd: .align=North
         inout vss: .align=South
         input a: .align=West

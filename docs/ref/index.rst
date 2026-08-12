@@ -7,7 +7,7 @@ User Reference
 
    ordb
    ord
-   cell_and_generate
+   cell_and_viewgen
    schema
    geoprim
    rational

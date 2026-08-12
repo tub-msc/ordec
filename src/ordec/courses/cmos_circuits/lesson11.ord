@@ -3,7 +3,7 @@ from ordec.lib import Vdc, Res, Cap, Gnd
 from ordec.lib.ihp130 import Nmos, Pmos
 
 cell Ota:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input inp
         input inn
         input bias
@@ -11,7 +11,7 @@ cell Ota:
         inout vdd: .align=North
         inout vss
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port inp: .pos=(1,9)
         port inn: .align=West; .pos=(19,9)
         port bias: .pos=(1,2)
@@ -30,7 +30,7 @@ cell Ota:
         Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orientation=FlippedSouth
 
 cell OtaTb:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net inp, inn, bias, out, vdd, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
@@ -42,16 +42,16 @@ cell OtaTb:
         Ota dut: .inp -- inp; .inn -- inn; .bias -- bias; .out -- out; .vdd -- vdd; .vss -- vss; .pos=(24,12)
         Cap cl: .$c=1p; .p -- out; .n -- vss; .pos=(32,8)
 
-    viewgen sim_dc -> Simulation:
+    viewgen sim_dc(self) -> Simulation:
         .simulate().dc_sweep(self.schematic.vinp_src, 0.55, 0.85, 121)
 
-    viewgen sim_op -> Simulation:
+    viewgen sim_op(self) -> Simulation:
         .simulate().op(save_params=True)
 
-    viewgen sim_ac -> Simulation:
+    viewgen sim_ac(self) -> Simulation:
         .simulate().ac('dec', 20, 100, 10G)
 
-    viewgen report_dc -> Report:
+    viewgen report_dc(self) -> Report:
         sim = self.sim_dc
         .markdown("OTA transfer curve:")
         .plot2d(

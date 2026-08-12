@@ -533,7 +533,7 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
 
     layout::
 
-        viewgen layout -> Layout:
+        viewgen layout(self) -> Layout:
             place_and_route(self.schematic, ., grid=ihp130.grid,
                 routing_spec=ihp130.SG13G2().default_routing_spec,
                 pin_rects=lef_pin_rects(ihp130.pdk().stdcell_lef, "Metal1"))
@@ -541,7 +541,7 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
     Args:
         schematic: the :class:`Schematic` to lay out, flattened to leaf cells.
         layout: the mutable, empty :class:`Layout` the geometry is emitted
-            into. Freezing it is the caller's (or the view context's) job.
+            into. Freezing it is the caller's (or the viewgen's) job.
         grid: the routing grid + emitted geometry (:class:`GridConfig`), e.g.
             :data:`ordec.lib.ihp130.grid`.
         routing_spec: the PDK's :class:`RoutingSpec`. The engine binds its
@@ -739,7 +739,7 @@ def check_layout_empty(layout, cell):
 def check_layout_layers(layout, stack, cell):
     """Bind the layout to this target's layer set, or reject a foreign one.
 
-    A viewgen root arrives without layers, since the view context does not know
+    A viewgen root arrives without layers, since the viewgen machinery does not know
     the PDK. A root that already carries a different stack would take this
     engine's geometry on layers from another one.
 

@@ -3,13 +3,13 @@ from ordec.lib.base import Res, Cap, Vdc, Vsin, Gnd, Idc
 from ordec.lib.ihp130 import Nmos, Pmos
 
 cell Amp:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input vin
         input vbias
         output vout
         inout vss
         inout vdd: .align=North
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net m0g
         port vdd: .pos=(15,18)
         port vss: .pos=(15,1)
@@ -24,7 +24,7 @@ cell Amp:
         Pmos m1: .pos=(13,12); .d--vout; .g--vbias; .s--vdd; .b--vdd; .$l=130n; .$w=1u
 
 cell AmpTb:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vin, vout, vdd, vss, vbias
         Amp DUT: .pos=(17,6); .vss--vss; .vdd--vdd; .vin--vin; .vout--vout; .vbias--vbias
 
@@ -36,12 +36,12 @@ cell AmpTb:
         Cap cout: .pos=(22,3); .$c=1p; .p--vout; .n--vss
 
 
-    viewgen sim_ac -> Simulation:
+    viewgen sim_ac(self) -> Simulation:
         .simulate().ac('dec', 10, 1M, 1G)
 
-    viewgen sim_tran -> Simulation:
+    viewgen sim_tran(self) -> Simulation:
         .simulate().tran(1n, 1u)
 
-    viewgen report_ac -> Report:
+    viewgen report_ac(self) -> Report:
         sim = self.sim_ac
         .bode_plot(sim.vin, sim.vout)

@@ -3,13 +3,13 @@ from ordec.lib.ihp130 import SG13G2, Nmos, Pmos, Ntap, Ptap
 from ordec.layout import SRouter
 
 cell Inv:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input a
         output y
         inout vdd: .align=North
         inout vss
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port a: .pos=(1,7)
         port y: .pos=(9,7)
         port vdd: .align=East; .pos=(2,13)
@@ -18,7 +18,7 @@ cell Inv:
         Nmos(w=1u, l=130n) mn: .pos=(3,2); .s -- vss; .b -- vss; .g -- a; .d -- y
         Pmos(w=1u, l=130n) mp: .pos=(3,8); .s -- vdd; .b -- vdd; .g -- a; .d -- y
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
 

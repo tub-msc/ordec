@@ -56,13 +56,13 @@ cell InvChain:
     """n inverters in series: a -> inv0 -> inv1 -> ... -> y."""
     n = Parameter(int, default=8)
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input a:   .align=West
         output y:  .align=East
         inout vdd: .align=North
         inout vss: .align=South
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port a:   .align=East; .pos=(0, 10)
         port y:   .align=West; .pos=(20 + 8 * self.n, 10)
         port vdd: .align=East; .pos=(0, 18)
@@ -79,7 +79,7 @@ cell InvChain:
                 .A -- src; .Y -- dst
                 .VDD -- vdd; .VSS -- vss
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
@@ -88,7 +88,7 @@ cell DffArray:
     """n flip-flops sharing clk and rst (high fan-out), with per-bit d[i]/q[i]."""
     n = Parameter(int, default=4)
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input clk: .align=West
         input rst: .align=West
         inout vdd: .align=North
@@ -98,7 +98,7 @@ cell DffArray:
             input d[i]:  .align=West
             output q[i]: .align=East
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port clk: .align=East; .pos=(0, 48)
         port rst: .align=East; .pos=(0, 44)
         port vdd: .align=East; .pos=(0, 52)
@@ -117,7 +117,7 @@ cell DffArray:
                 .Q -- q[i]; .Q_N -- qn[i]
                 .VDD -- vdd; .VSS -- vss
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
@@ -126,7 +126,7 @@ cell Crossbar:
     """n mux2 cells: y[i] = sel[i] ? busB : busA, with busA/busB shared by all."""
     n = Parameter(int, default=4)
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input busA: .align=West
         input busB: .align=West
         inout vdd:  .align=North
@@ -136,7 +136,7 @@ cell Crossbar:
             input sel[i]: .align=West
             output y[i]:  .align=East
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port vdd:  .align=East; .pos=(0, 0)
         port vss:  .align=East; .pos=(0, 4)
         port busA: .align=East; .pos=(0, 8)
@@ -151,7 +151,7 @@ cell Crossbar:
                 .A0 -- busA; .A1 -- busB; .S -- sel[i]; .X -- y[i]
                 .VDD -- vdd; .VSS -- vss
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
@@ -161,7 +161,7 @@ cell RippleAdder:
     carry[i+1] = (a[i]&b[i]) | (carry[i] & (a[i]^b[i])), with carry[0]=cin."""
     n = Parameter(int, default=4)
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input cin:   .align=West
         output cout: .align=East
         inout vdd:   .align=North
@@ -172,7 +172,7 @@ cell RippleAdder:
             input b[i]:    .align=West
             output sum[i]: .align=East
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         path a, b, sum
         for i in range(self.n):
             port a[i]:   .align=East; .pos=(0, 16 * i)
@@ -217,7 +217,7 @@ cell RippleAdder:
                 .A -- g[i]; .B -- p[i]; .X -- carry[i + 1]
                 .VDD -- vdd; .VSS -- vss
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
@@ -226,7 +226,7 @@ cell TiedReset:
     """n flip-flops sharing clk, RESET_B held high on each (no reset port)."""
     n = Parameter(int, default=4)
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input clk: .align=West
         inout vdd: .align=North
         inout vss: .align=South
@@ -235,7 +235,7 @@ cell TiedReset:
             input d[i]:  .align=West
             output q[i]: .align=East
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port clk: .align=East; .pos=(0, 0)
         port vdd: .align=East; .pos=(0, 4)
         port vss: .align=East; .pos=(0, 8)
@@ -252,20 +252,20 @@ cell TiedReset:
                 .Q -- q[i]; .Q_N -- qn[i]
                 .VDD -- vdd; .VSS -- vss
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
 
 cell InvPair:
     """Two inverters in series (a composite, non-foundry sub-cell)."""
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input a:   .align=West
         output y:  .align=East
         inout vdd: .align=North
         inout vss: .align=South
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port a:   .align=East; .pos=(0, 10)
         port y:   .align=West; .pos=(30, 10)
         port vdd: .align=East; .pos=(0, 18)
@@ -282,13 +282,13 @@ cell PairChain:
     """n InvPairs in series, one level of hierarchy above the leaves."""
     n = Parameter(int, default=3)
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input a:   .align=West
         output y:  .align=East
         inout vdd: .align=North
         inout vss: .align=South
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port a:   .align=East; .pos=(0, 10)
         port y:   .align=West; .pos=(20 + 10 * self.n, 10)
         port vdd: .align=East; .pos=(0, 18)
@@ -304,7 +304,7 @@ cell PairChain:
                 .a -- src; .y -- dst
                 .vdd -- vdd; .vss -- vss
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
@@ -316,14 +316,14 @@ cell SplitSupply:
     Rail abutment shorts every VDD rail in a block, so the engine rejects this
     rather than emitting a layout that silently merges the two supplies.
     """
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input a:     .align=West
         output y:    .align=East
         inout vdd:   .align=North
         inout vdd2:  .align=North
         inout vss:   .align=South
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port a:    .align=East; .pos=(0, 10)
         port y:    .align=West; .pos=(30, 10)
         port vdd:  .align=East; .pos=(0, 18)
@@ -337,7 +337,7 @@ cell SplitSupply:
             .pos = (20, 10)
             .A -- mid; .Y -- y; .VDD -- vdd2; .VSS -- vss
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
@@ -349,13 +349,13 @@ cell MisnamedSupply:
     Supply handling is keyed off the profile's net names, so the engine
     requires them rather than guessing.
     """
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input a:   .align=West
         output y:  .align=East
         inout vcc: .align=North
         inout vss: .align=South
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port a:   .align=East; .pos=(0, 10)
         port y:   .align=West; .pos=(20, 10)
         port vcc: .align=East; .pos=(0, 18)
@@ -364,7 +364,7 @@ cell MisnamedSupply:
             .pos = (10, 10)
             .A -- a; .Y -- y; .VDD -- vcc; .VSS -- vss
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())
@@ -377,13 +377,13 @@ cell HandGeometry:
     this one. DRC stays clean, since overlapping same-layer shapes need no
     spacing, and only LVS catches the short. The engine refuses instead.
     """
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input a:   .align=West
         output y:  .align=East
         inout vdd: .align=North
         inout vss: .align=South
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port a:   .align=East; .pos=(0, 10)
         port y:   .align=West; .pos=(20, 10)
         port vdd: .align=East; .pos=(0, 18)
@@ -392,7 +392,7 @@ cell HandGeometry:
             .pos = (10, 10)
             .A -- a; .Y -- y; .VDD -- vdd; .VSS -- vss
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         LayoutRect stray:
             .layer = SG13G2().layers.Metal2
@@ -407,13 +407,13 @@ cell DeviceLeaf:
 
     The engine places standard cells, so it has nothing to flatten this into.
     """
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input g:   .align=West
         inout d:   .align=East
         inout vdd: .align=North
         inout vss: .align=South
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port g:   .align=East; .pos=(0, 10)
         port d:   .align=West; .pos=(20, 10)
         port vdd: .align=East; .pos=(0, 18)
@@ -423,7 +423,7 @@ cell DeviceLeaf:
             .g -- g; .d -- d; .s -- vss; .b -- vss
             .$w = 1u; .$l = 130n
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
             pin_rects=pin_rects())

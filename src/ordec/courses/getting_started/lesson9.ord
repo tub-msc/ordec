@@ -2,7 +2,7 @@ from ordec.core import *
 from ordec.lib import Res, Cap, Gnd, Vpulse
 
 cell RcChain:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vin, mid, vout, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)

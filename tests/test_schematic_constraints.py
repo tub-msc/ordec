@@ -4,11 +4,11 @@
 import pytest
 from ordec.core import *
 from ordec.core.constraints import LinearTerm, Vec2LinearTerm, Rect4LinearTerm, TD4LinearTerm
-from ordec.core.context import SchematicViewContext
+from ordec.ord.context import set_root, view_builder
 
 
 class SimpleSymbol(Cell):
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 6))
         s.inp = Pin(pos=Vec2R(0, 3), pintype=PinType.In, align=West)
@@ -19,7 +19,7 @@ class SimpleSymbol(Cell):
 class MultiPinSymbol(Cell):
     bits = Parameter(int)
 
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 2 + self.bits))
         s.d = PathNode()
@@ -199,9 +199,13 @@ def test_unresolved_subcursor_uses_recorded_params():
     # default for bits, so this raises if params are dropped). The read also
     # resolves the instance: setting parameters afterwards must raise.
     sch = Schematic()
-    with SchematicViewContext(sch) as ctx:
+
+    @viewgen
+    def build():
+        set_root(sch)
+        builder = view_builder()
         sch.inst1 = SchemInstance(pos=Vec2R(1, 1))
-        ctx.register_unresolved(sch.inst1, MultiPinSymbol)
+        builder.register_unresolved(sch.inst1, MultiPinSymbol)
         sch.inst1.params.bits = 2
 
         assert sch.inst1['q'][1].pos == Vec2R(5, 3)
@@ -209,3 +213,5 @@ def test_unresolved_subcursor_uses_recorded_params():
 
         with pytest.raises(TypeError, match="already resolved"):
             sch.inst1.params.bits = 3
+
+    build()

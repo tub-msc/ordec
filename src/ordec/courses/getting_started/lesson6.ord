@@ -2,7 +2,7 @@ from ordec.core import *
 from ordec.lib import Res, Ind, Cap, Gnd, Vdc
 
 cell Bandstop:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vin, vout, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
@@ -11,10 +11,10 @@ cell Bandstop:
 
         # EDIT HERE
 
-    viewgen sim_ac -> Simulation:
+    viewgen sim_ac(self) -> Simulation:
         .simulate().ac('dec', 500, 100, 10M)
 
-    viewgen bode -> Report:
+    viewgen bode(self) -> Report:
         if self.schematic.has_errors() or self.sim_ac.vout.voltage is None:
             .markdown("The Bode plot will show up here.")
         else:

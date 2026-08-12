@@ -3,7 +3,7 @@ from ordec.lib.generic_mos import Nmos, Pmos
 from ordec.lib import Res, Vdc, Idc, Gnd
 
 cell CurrentMirror:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vss, vdd, l, r
 
         Nmos n0: .pos=(10,6); .d--l; .$w=500n; .orientation=FlippedSouth
@@ -19,5 +19,5 @@ cell CurrentMirror:
         Vdc vsrc: .pos=(0,9); .p -- vdd; .n -- vss; .$dc=5
         Res r0: .pos=(14,12); .p--vdd; .n--r; .$r=10k
 
-    viewgen sim_op -> Simulation:
+    viewgen sim_op(self) -> Simulation:
         .simulate().op(save_params=True)

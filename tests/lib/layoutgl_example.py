@@ -4,7 +4,7 @@
 from ordec.core import *
 from ordec.lib.ihp130 import SG13G2
 
-@generate_func
+@viewgen_noctx
 def layoutgl_example() -> Layout:
     layers = SG13G2().layers
     l = Layout(ref_layers=layers)

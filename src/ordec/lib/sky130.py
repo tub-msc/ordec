@@ -138,7 +138,7 @@ class Pmos(Mos):
 
 @public
 class Inv(Cell):
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -158,7 +158,7 @@ class Inv(Cell):
 
         return s
 
-    @generate
+    @viewgen_noctx
     def schematic(self) -> Schematic:
         s = Schematic(cell=self, symbol=self.symbol)
         s.a = Net(pin=self.symbol.a)
@@ -193,7 +193,7 @@ class Inv(Cell):
 
 @public
 class Ringosc(Cell):
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -204,7 +204,7 @@ class Ringosc(Cell):
         s.place_pins(vpadding=2, hpadding=2)
         return s
 
-    @generate
+    @viewgen_noctx
     def schematic(self) -> Schematic:
         s = Symbol(cell=self, symbol=self.symbol)
 
@@ -243,7 +243,7 @@ class Ringosc(Cell):
 
 @public
 class And2(Cell):
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -264,7 +264,7 @@ class And2(Cell):
 
 @public
 class Or2(Cell):
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 

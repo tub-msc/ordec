@@ -3,12 +3,12 @@ from ordec.lib import Vdc, Idc, Gnd
 from ordec.lib.ihp130 import Nmos
 
 cell CurrentMirror:
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input iin
         output iout
         inout vss
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port iin: .pos=(0,8)
         port iout: .pos=(14,8)
         port vss: .align=East; .pos=(0,2)
@@ -18,7 +18,7 @@ cell CurrentMirror:
         Nmos n1: .pos=(8,3); .$w=1u; .$l=1u; .d -- iout; .g -- iin; .s -- vss; .b -- vss
 
 cell CurrentMirrorTb:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vss, vdd, iin, iout
 
         Gnd gnd: .p -- vss; .pos=(0,0)
@@ -28,5 +28,5 @@ cell CurrentMirrorTb:
 
         CurrentMirror dut: .iin -- iin; .iout -- iout; .vss -- vss; .pos=(12,6)
 
-    viewgen sim_op -> Simulation:
+    viewgen sim_op(self) -> Simulation:
         .simulate().op(save_params=True)

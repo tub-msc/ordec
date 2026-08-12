@@ -2,7 +2,7 @@ from ordec.core import *
 from ordec.lib import Res, Gnd, Vdc
 
 cell RNetworkLoops:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vdd, vss, mid
 
         Gnd gnd: .p -- vss; .pos=(0,0)
@@ -14,5 +14,5 @@ cell RNetworkLoops:
 
         # EDIT HERE
 
-    viewgen sim_op -> Simulation:
+    viewgen sim_op(self) -> Simulation:
         .simulate().op()

@@ -15,7 +15,7 @@ Xnor2 = extlib['sg13g2_xnor2_1']
 Tielo = extlib['sg13g2_tielo']
 
 cell Lfsr:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vdd, vss, clk, rstb, fb
         net q0, q1, q2, q3
 
@@ -32,10 +32,10 @@ cell Lfsr:
         # EDIT HERE
         Tielo tie: .L_LO -- fb; .VDD -- vdd; .VSS -- vss; .pos=(64,14)
 
-    viewgen sim_tran -> Simulation:
+    viewgen sim_tran(self) -> Simulation:
         .simulate().tran(20p, 48n)
 
-    viewgen report_tran -> Report:
+    viewgen report_tran(self) -> Report:
         sim = self.sim_tran
         .markdown("The four register bits over time. After the reset "
             "pulse releases, a working LFSR walks through 15 different "

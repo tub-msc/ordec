@@ -58,7 +58,7 @@ extlib.read_lef(stdcell_lef)
 verilog = synthesize(rtl_sources, rtl_top, stdcell_liberty, enable_slang=True)
 extlib.read_verilog(verilog)
 
-@generate_func
+@viewgen_noctx
 def report_digital_design():
     schematic = extlib['counter'].schematic
     stdcell_count = 0

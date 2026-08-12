@@ -126,7 +126,7 @@ class ExtLibraryCell(Cell):
         # via the shared cell object, not by string comparison.
         return self.name
 
-    @generate
+    @viewgen_noctx
     def layout(self) -> Layout:
         logger.debug("generating layout %s", self.name)
         try:
@@ -135,7 +135,7 @@ class ExtLibraryCell(Cell):
             raise ExtLibraryError(f"No layout source found for cell {self.name!r}.") from None
         return layout_func()
 
-    @generate
+    @viewgen_noctx
     def frame(self) -> Layout:
         logger.debug("generating frame %s", self.name)
         try:
@@ -144,7 +144,7 @@ class ExtLibraryCell(Cell):
             raise ExtLibraryError(f"No layout source found for cell {self.name!r}.") from None
         return frame_func()
 
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         logger.debug("generating symbol %s", self.name)
         try:
@@ -153,7 +153,7 @@ class ExtLibraryCell(Cell):
             raise ExtLibraryError(f"No symbol source found for cell {self.name!r}.") from None
         return symbol_func()
 
-    @generate
+    @viewgen_noctx
     def schematic(self) -> Schematic:
         logger.debug("generating schematic %s", self.name)
         try:

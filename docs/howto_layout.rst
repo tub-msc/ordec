@@ -12,11 +12,11 @@ Complete worked examples to study alongside this howto:
 Basic structure
 ---------------
 
-A layout view generator is a ``viewgen layout -> Layout`` block in ORD (or an equivalent ``@generate`` method in Python that builds and returns a ``Layout`` subgraph). The first thing to set is ``ref_layers``, the technology's layer set:
+A layout view generator is a ``viewgen layout(self) -> Layout`` block in ORD (or an equivalent ``@viewgen_noctx`` method in Python that builds and returns a ``Layout`` subgraph). The first thing to set is ``ref_layers``, the technology's layer set:
 
 .. code-block:: text
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
 
@@ -98,7 +98,7 @@ Routing with SRouter
 * ``layer(layer)`` switches to another metal: the router walks the routing-spec layer stack between the two metals and places a rect on every layer touched — the via cuts plus landing pads on all metals, including the start and destination layers (a wire alone would not satisfy the via enclosure rules) — so a simple ``layer()`` call produces a complete via stack at the current position. The pads at the two ends of the stack are ``route_pad``-sized, barely wider than the wires running into them, which supply the endcap enclosure; the metals in between stand on their own and get the larger ``route_via`` pad.
 * ``push()`` / ``pop()`` save/restore the current position and layer, convenient for branching a route (e.g. a T-junction: route the spine, ``push()`` at the branch point, finish the spine, ``pop()``, route the branch).
 
-In ORD layout viewgens, ``SRouter()`` picks up the current layout and solver from the view context automatically; in plain Python, pass them explicitly (``SRouter(spec, layout=l, solver=s)``).
+In ORD layout viewgens, ``SRouter()`` picks up the current layout and solver from the active view builder automatically; in plain Python, pass them explicitly (``SRouter(spec, layout=l, solver=s)``).
 
 Creating pins
 -------------

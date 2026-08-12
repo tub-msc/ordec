@@ -9,7 +9,7 @@ this module instead.
 
 import pytest
 from ordec.core import *
-from ordec.core.context import SchematicViewContext
+from ordec.core.context import SchematicViewBuilder
 from .lib import schematics as lib_test
 from ordec.lib.base import Res
 from ordec.lib.generic_mos import Nmos
@@ -182,7 +182,7 @@ def test_scheminstance_unresolved_resolution():
     })
 
     s = Schematic()
-    ctx = SchematicViewContext(s)
+    ctx = SchematicViewBuilder(s)
 
     s.g = Net()
     s.s = Net()
@@ -208,7 +208,7 @@ def test_scheminstance_unresolved_resolution():
 
 def test_scheminstance_unresolved_hierarchical_path():
     s = Schematic()
-    ctx = SchematicViewContext(s)
+    ctx = SchematicViewBuilder(s)
 
     s.mynet = Net()
 
@@ -223,7 +223,7 @@ def test_scheminstance_unresolved_hierarchical_path():
     assert conn.here == s.mynet
     assert conn.there == lib_test.MultibitReg_StructOfArrays(bits=4).symbol.data.d[3]
 
-def test_scheminstance_params_without_view_context():
+def test_scheminstance_params_without_viewgen():
     s = Schematic()
     s.myinst = SchemInstance(pos=(0, 0), symbol=Nmos().symbol)
     with pytest.raises(TypeError, match="viewgen body"):

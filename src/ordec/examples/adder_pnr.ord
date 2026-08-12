@@ -28,7 +28,7 @@ N = 4   # adder width in bits
 cell RippleAdder:
     """N-bit ripple-carry adder: s = a + b + cin, one full adder per bit."""
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         input cin: .align=West
         output cout: .align=East
         inout vdd: .align=North
@@ -39,7 +39,7 @@ cell RippleAdder:
             input b[i]: .align=West
             output s[i]: .align=East
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         path a, b, s
         for i in range(N):
             port a[i]: .align=East; .pos=(0, 20 * i + 17)
@@ -85,24 +85,24 @@ cell RippleAdder:
                 .A -- g[i]; .B -- p[i]; .X -- carry[i + 1]
                 .VDD -- vdd; .VSS -- vss
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=ihp130.SG13G2().default_routing_spec,
             pin_rects=pin_rects)
 
-    @generate(auto_refresh=False)
-    viewgen drc -> DrcReport:
+    @viewgen(auto_refresh=False)
+    viewgen drc(self) -> DrcReport:
         . = ihp130.run_drc(self.layout)
 
-    @generate(auto_refresh=False)
-    viewgen lvs -> LvsReport:
+    @viewgen(auto_refresh=False)
+    viewgen lvs(self) -> LvsReport:
         . = ihp130.run_lvs(self.layout, self.symbol)
 
 
 cell AdderTb:
     """Counts A through all 16 codes against B = 5 and watches the sum."""
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vdd, vss, cout
         path a, s
         for i in range(N):
@@ -147,10 +147,10 @@ cell AdderTb:
             NoConn nc[i]: .pos=(92, 6 * i + 4); .a -- s[i]
         NoConn nc_cout: .pos=(92, 6 * N + 4); .a -- cout
 
-    viewgen sim_tran -> Simulation:
+    viewgen sim_tran(self) -> Simulation:
         .simulate().tran(200p, 320n)
 
-    viewgen report_tran -> Report:
+    viewgen report_tran(self) -> Report:
         sim = self.sim_tran
         a_bits = [list(sim.a[i].voltage) for i in range(N)]
         s_bits = [list(sim.s[i].voltage) for i in range(N)]

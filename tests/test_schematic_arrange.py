@@ -3,7 +3,7 @@
 
 """
 Tests for the schematic arrangement pipeline: constraints from ORD `!`
-statements solved in SchematicViewContext.postprocess, arrangement groups
+statements solved in SchematicViewBuilder.postprocess, arrangement groups
 (Col/Row/Series/Parallel) and align-based auto-placement of ports
 (schem_place_ports).
 """
@@ -49,7 +49,7 @@ def test_place_ports_declaration_order_and_stacking():
     # Two ports on the same edge: declaration order, top to bottom,
     # centered on the edge.
     class TwoIn(Cell):
-        @generate
+        @viewgen_noctx
         def symbol(self):
             s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 4))
             s.i0 = Pin(pos=Vec2R(0, 1), pintype=PinType.In, align=West)
@@ -128,7 +128,7 @@ def test_ord_col_group_manual_anchor():
 
 def test_nested_groups_python_api():
     class Box(Cell):
-        @generate
+        @viewgen_noctx
         def symbol(self):
             return Symbol(cell=self, outline=Rect4R(0, 0, 4, 4))
 
@@ -183,7 +183,7 @@ def test_ord_series_auto_connection():
 
 class TwoTop(Cell):
     """Symbol with an ambiguous (two-pin) north side."""
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 4))
         s.a = Pin(pos=Vec2R(1, 4), align=North, pintype=PinType.Inout)
@@ -243,7 +243,7 @@ def test_series_pin_override_and_anonymous_net():
 
 def test_series_horizontal():
     class RSym(Cell):
-        @generate
+        @viewgen_noctx
         def symbol(self):
             s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 2))
             s.l = Pin(pos=Vec2R(0, 1), align=West, pintype=PinType.Inout)
@@ -307,7 +307,7 @@ def test_series_rotated_instance():
 
 def test_parallel_auto_connection():
     class RSym(Cell):
-        @generate
+        @viewgen_noctx
         def symbol(self):
             s = Symbol(cell=self, outline=Rect4R(0, 0, 2, 4))
             s.p = Pin(pos=Vec2R(1, 4), align=North, pintype=PinType.Inout)
@@ -550,22 +550,24 @@ def test_nested_group_orientation_mismatch_error():
 
 
 def test_group_outside_schematic_viewgen_error():
-    from ordec.core.context import SymbolViewContext
-
     # No view context at all.
     with pytest.raises(TypeError, match="schematic viewgen"):
         with Col():
             pass
+
     # A non-schematic view context.
-    with SymbolViewContext(Symbol()):
-        with pytest.raises(TypeError, match="schematic viewgen"):
-            with Col():
-                pass
+    @viewgen
+    def sym() -> Symbol:
+        with Col():
+            pass
+
+    with pytest.raises(TypeError, match="schematic viewgen"):
+        sym()
 
 
 class WideCell(Cell):
     """Non-square symbol (8x4) with two pins on its south side."""
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self, outline=Rect4R(0, 0, 8, 4))
         s.o1 = Pin(pos=Vec2R(2, 0), align=South, pintype=PinType.Inout)
@@ -576,7 +578,7 @@ class WideCell(Cell):
 
 class NarrowCell(Cell):
     """Non-square symbol (3x4) with single north/south pins."""
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self, outline=Rect4R(0, 0, 3, 4))
         s.t = Pin(pos=Vec2R(1, 4), align=North, pintype=PinType.Inout)
@@ -694,7 +696,7 @@ def test_ord_amp_two_multi_pin_symbols():
 
 class WestPinCell(Cell):
     """4x4 symbol with a single west-facing pin."""
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 4))
         s.i = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)
@@ -780,7 +782,7 @@ def test_group_conflict_error_on_anonymous_nets():
 
 def test_place_ports_keeps_defined_positions():
     class OneIn(Cell):
-        @generate
+        @viewgen_noctx
         def symbol(self):
             s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 4))
             s.i0 = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)

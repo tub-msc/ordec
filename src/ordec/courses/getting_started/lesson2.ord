@@ -2,12 +2,12 @@ from ordec.core import *
 from ordec.lib import Res, Gnd, Vdc
 
 cell HelloWorld:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vdd, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
         Vdc vsrc: .$dc=5; .n -- vss; .p -- vdd; .pos=(0,6)
         Res r1: .$r=1k; .n -- vss; .p -- vdd; .pos=(5,6)
 
-    viewgen hello -> Report:
+    viewgen hello(self) -> Report:
         .markdown("Hello world!")

@@ -566,7 +566,7 @@ def test_write_gds():
     layers = SG13G2().layers
 
     class Sub(Cell):
-        @generate
+        @viewgen_noctx
         def layout(self) -> Layout:
             l = Layout(ref_layers=layers, cell=self)
             l % LayoutPoly(layer=layers.Metal2.pin, vertices=[
@@ -574,7 +574,7 @@ def test_write_gds():
             return l
 
     class Sub2(Cell):
-        @generate
+        @viewgen_noctx
         def layout(self) -> Layout:
             l = Layout(ref_layers=layers, cell=self)
             l % LayoutPoly(layer=layers.Metal2.pin, vertices=[
@@ -582,7 +582,7 @@ def test_write_gds():
             return l
 
     class Top(Cell):
-        @generate
+        @viewgen_noctx
         def layout(self) -> Layout:
             l = Layout(ref_layers=layers, cell=self)
             l % LayoutRect(layer=layers.Metal1.pin, rect=(100, 200, 300, 400))

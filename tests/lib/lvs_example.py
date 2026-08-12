@@ -25,7 +25,7 @@ class LvsTestInv(Inv):
     W=1.2u for PMOS instead of W=1u.
     """
 
-    @generate
+    @viewgen_noctx
     def layout(self):
         """Layout with W=1.2u for PMOS (mismatch vs schematic W=1u)."""
         layers = ihp130.SG13G2().layers
@@ -94,19 +94,19 @@ class LvsTestInv(Inv):
         return l
 
 
-@generate_func
+@viewgen_noctx
 def layout() -> Layout:
     """Layout with intentional LVS mismatch."""
     return LvsTestInv().layout
 
 
-@generate_func
+@viewgen_noctx
 def schematic() -> Schematic:
     """Reference schematic for LVS comparison."""
     return LvsTestInv().schematic
 
 
-@generate_func
+@viewgen_noctx
 def lvs_report() -> LvsReport:
     """Run LVS on layout with intentional mismatch.
 

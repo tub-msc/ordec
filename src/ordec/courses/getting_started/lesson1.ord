@@ -2,14 +2,14 @@ from ordec.core import *
 from ordec.lib import Res, Gnd, Vdc
 
 cell Welcome:
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net vdd, vss
 
         Gnd gnd: .p -- vss; .pos=(0,0)
         Vdc vsrc: .$dc=5; .n -- vss; .p -- vdd; .pos=(0,6)
         Res r1: .$r=1k; .n -- vss; .p -- vdd; .pos=(5,6)
 
-    viewgen about -> Report:
+    viewgen about(self) -> Report:
         .markdown("""
             Welcome aboard! This panel shows the `about` view of the
             `Welcome` cell. A cell can have several views, such as the

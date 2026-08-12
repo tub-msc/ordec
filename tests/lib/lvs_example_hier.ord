@@ -39,13 +39,13 @@ L_RS = 2u     # C_Hier.rs, in parallel to the two B_Hier instances
 cell A_Default:
     """Star of three Rsil resistors around internal net c."""
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout x: .align=North
         inout y: .align=East
         inout z
         inout sub: .align=West
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net c  # star center
 
         port x: .pos=(5,18)
@@ -57,7 +57,7 @@ cell A_Default:
         Rsil r2: .$l=L_RY; .pos=(8,12); .orientation=East; .n -- c; .p -- y; .bn -- sub
         Rsil r3: .$l=L_RZ; .pos=(3,9); .orientation=FlippedNorth; .n -- c; .p -- z; .bn -- sub
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
 
@@ -102,12 +102,12 @@ cell A_Default:
 cell B_Hier:
     """Two A_Default instances chained through rp1, with the y-loop through rp2."""
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout x: .align=North
         inout z
         inout sub: .align=West
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         net i1, i2  # z-chain: a1.x -- rp1 -- a2.z
         net y1, y2  # y-loop: a1.y -- rp2 -- a2.y
 
@@ -120,7 +120,7 @@ cell B_Hier:
         A_Default a2: .pos=(4,18); .x -- x; .y -- y2; .z -- i2; .sub -- sub
         Rppd rp2: .$l=L_RP2; .pos=(15,11); .orientation=FlippedSouth; .n -- y1; .p -- y2; .bn -- sub
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
 
@@ -165,12 +165,12 @@ cell B_Hier:
 cell C_Hier:
     """Two B_Hier instances and one Rsil in parallel between ports z and x."""
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout x: .align=North
         inout z
         inout sub: .align=West
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port z: .pos=(1,3); .align=East
         port x: .pos=(1,10); .align=East
         port sub: .pos=(1,6)
@@ -179,7 +179,7 @@ cell C_Hier:
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
         Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
 
@@ -224,11 +224,11 @@ cell C_Hier:
             ! .rect == tap.m1.rect
             .create_pin(self.symbol.sub)
 
-    viewgen drc_report -> DrcReport:
+    viewgen drc_report(self) -> DrcReport:
         """Run IHP130 DRC (maximal rule set) on the layout."""
         . = run_drc(self.layout)
 
-    viewgen lvs_report -> LvsReport:
+    viewgen lvs_report(self) -> LvsReport:
         """Run IHP130 LVS, layout vs. schematic."""
         . = run_lvs(self.layout, self.symbol)
 
@@ -240,12 +240,12 @@ cell C_FlatLayout:
     hierarchy. Star cluster index i = 2*k + j (k: B_Hier copy, j=0: a1, j=1: a2).
     """
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout x: .align=North
         inout z
         inout sub: .align=West
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port z: .pos=(1,3); .align=East
         port x: .pos=(1,10); .align=East
         port sub: .pos=(1,6)
@@ -254,7 +254,7 @@ cell C_FlatLayout:
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
         Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
         sr = SRouter(SG13G2().default_routing_spec)
@@ -331,11 +331,11 @@ cell C_FlatLayout:
             ! .rect == tap.m1.rect
             .create_pin(self.symbol.sub)
 
-    viewgen drc_report -> DrcReport:
+    viewgen drc_report(self) -> DrcReport:
         """Run IHP130 DRC (maximal rule set) on the layout."""
         . = run_drc(self.layout)
 
-    viewgen lvs_report -> LvsReport:
+    viewgen lvs_report(self) -> LvsReport:
         """Run IHP130 LVS, layout vs. schematic."""
         . = run_lvs(self.layout, self.symbol)
 
@@ -347,12 +347,12 @@ cell C_FlatSchematic:
     replace (a1r1[k] = B_Hier copy k, instance a1, resistor r1, etc.).
     """
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout x: .align=North
         inout z
         inout sub: .align=West
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port z: .pos=(1,3); .align=East
         port x: .pos=(1,36); .align=East
         port sub: .pos=(1,20)
@@ -384,7 +384,7 @@ cell C_FlatSchematic:
 
         Rsil rs: .$l=L_RS; .pos=(42,12); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
 
@@ -422,11 +422,11 @@ cell C_FlatSchematic:
             ! .rect == tap.m1.rect
             .create_pin(self.symbol.sub)
 
-    viewgen drc_report -> DrcReport:
+    viewgen drc_report(self) -> DrcReport:
         """Run IHP130 DRC (maximal rule set) on the layout."""
         . = run_drc(self.layout)
 
-    viewgen lvs_report -> LvsReport:
+    viewgen lvs_report(self) -> LvsReport:
         """Run IHP130 LVS, layout vs. schematic."""
         . = run_lvs(self.layout, self.symbol)
 
@@ -438,13 +438,13 @@ cell A_Moved:
     hierarchy, so A_Moved/B_Moved schematics are never netlisted.
     """
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout x: .align=North
         inout c: .align=East
         inout z
         inout sub: .align=West
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
 
@@ -477,12 +477,12 @@ cell B_Moved:
     L_RY resistors live here instead of inside the A_Default instances.
     """
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout x: .align=North
         inout z
         inout sub: .align=West
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
 
@@ -548,12 +548,12 @@ cell C_Moved:
     (a_default/b_hier).
     """
 
-    viewgen symbol -> Symbol:
+    viewgen symbol(self) -> Symbol:
         inout x: .align=North
         inout z
         inout sub: .align=West
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         port z: .pos=(1,3); .align=East
         port x: .pos=(1,10); .align=East
         port sub: .pos=(1,6)
@@ -562,7 +562,7 @@ cell C_Moved:
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
         Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
-    viewgen layout -> Layout:
+    viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
 
@@ -599,10 +599,10 @@ cell C_Moved:
             ! .rect == tap.m1.rect
             .create_pin(self.symbol.sub)
 
-    viewgen drc_report -> DrcReport:
+    viewgen drc_report(self) -> DrcReport:
         """Run IHP130 DRC (maximal rule set) on the layout."""
         . = run_drc(self.layout)
 
-    viewgen lvs_report -> LvsReport:
+    viewgen lvs_report(self) -> LvsReport:
         """Run IHP130 LVS, layout vs. schematic."""
         . = run_lvs(self.layout, self.symbol)

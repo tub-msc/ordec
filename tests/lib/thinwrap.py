@@ -19,7 +19,7 @@ def thin_wrapper_cell(inner: Cell) -> Cell:
     inner_symbol = inner.symbol
 
     class ThinWrapper(Cell):
-        @generate
+        @viewgen_noctx
         def symbol(self):
             s = Symbol(cell=self)
             for lp in inner.layout.all(LayoutPin):
@@ -28,7 +28,7 @@ def thin_wrapper_cell(inner: Cell) -> Cell:
             s.place_pins()
             return s
 
-        @generate
+        @viewgen_noctx
         def schematic(self):
             s = Schematic(cell=self, symbol=self.symbol)
             ports = {lp.pin.npath.name for lp in inner.layout.all(LayoutPin)}
@@ -52,7 +52,7 @@ def thin_wrapper_cell(inner: Cell) -> Cell:
             s.auto_wire()
             return s
 
-        @generate
+        @viewgen_noctx
         def layout(self):
             l = Layout(ref_layers=inner.layout.ref_layers, cell=self,
                 symbol=self.symbol)

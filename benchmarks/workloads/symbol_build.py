@@ -23,7 +23,7 @@ from . import workload, PhaseTimer, WorkloadRun
         'default': dict(m=200, k=8, p=6, v=5),
         'large':   dict(m=5000, k=8, p=6, v=5),
     },
-    mirrors='ordec.lib.base symbol generators (@generate view builds)')
+    mirrors='ordec.lib.base symbol generators (@viewgen_noctx view builds)')
 def symbol_build(params, seed):
     m, k, p, v = params['m'], params['k'], params['p'], params['v']
     rng = Lcg(seed)

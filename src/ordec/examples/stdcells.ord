@@ -24,7 +24,7 @@ inv = extlib["sg13g2_inv_1"]
 cell InvTb:
     """DC voltage-transfer-curve testbench for the inv standard cell."""
 
-    viewgen schematic -> Schematic:
+    viewgen schematic(self) -> Schematic:
         Net vdd
         Net vss
         Net i
@@ -57,10 +57,10 @@ cell InvTb:
             .n -- vss
             .p -- i
 
-    viewgen sim_dc -> SimHierarchy:
+    viewgen sim_dc(self) -> SimHierarchy:
         .simulate().dc_sweep(self.schematic.i_in, 0, self.schematic.i_vdd.cell.dc, 100)
 
-    viewgen report_vtc -> Report:
+    viewgen report_vtc(self) -> Report:
         sim = self.sim_dc
         .markdown("# Inverter voltage transfer curve\n")
         .plot2d(
@@ -70,8 +70,8 @@ cell InvTb:
             ylabel="Vout (V)",
             height=300)
 
-viewgen inv_drc -> DrcReport:
+viewgen inv_drc() -> DrcReport:
     . = ihp130.run_drc(inv.layout, variant="minimal")
 
-viewgen inv_lvs -> LvsReport:
+viewgen inv_lvs() -> LvsReport:
     . = ihp130.run_lvs(inv.layout, inv.symbol)

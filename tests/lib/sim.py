@@ -9,7 +9,7 @@ from ordec.lib import Gnd, NoConn, Res, Vdc, Idc, Cap, Ind, Vsin, Ipwl, Ipulse, 
 from ordec.lib import sky130, ihp130
 
 class ResdivFlatTb(Cell):
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self)
 
@@ -51,18 +51,18 @@ class ResdivFlatTb(Cell):
         Simulator(s, batch=batch).op()
         return s
 
-    @generate
+    @viewgen_noctx
     def sim_op_batch(self):
         return self._sim_op(True)
 
-    @generate
+    @viewgen_noctx
     def sim_op_piped(self):
         return self._sim_op(False)
 
 class ResdivHier2(Cell):
     r = Parameter(R)
 
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self)
 
@@ -73,7 +73,7 @@ class ResdivHier2(Cell):
 
         return s
 
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self, symbol=self.symbol)
 
@@ -106,7 +106,7 @@ class ResdivHier2(Cell):
 
 
 class ResdivHier1(Cell):
-    @generate
+    @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self)
 
@@ -121,7 +121,7 @@ class ResdivHier1(Cell):
 
         return s
 
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self, symbol=self.symbol)
 
@@ -165,7 +165,7 @@ class ResdivHier1(Cell):
 
 
 class ResdivHierTb(Cell):
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self)
 
@@ -206,11 +206,11 @@ class ResdivHierTb(Cell):
         Simulator(s, batch=batch).op()
         return s
 
-    @generate
+    @viewgen_noctx
     def sim_op_batch(self):
         return self._sim_op(True)
 
-    @generate
+    @viewgen_noctx
     def sim_op_piped(self):
         return self._sim_op(False)
 
@@ -219,7 +219,7 @@ class NmosSourceFollowerTb(Cell):
 
     vin = Parameter(R, optional=True, default=2)
 
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self)
 
@@ -260,11 +260,11 @@ class NmosSourceFollowerTb(Cell):
         Simulator(s, batch=batch).op(save_params=True)
         return s
 
-    @generate
+    @viewgen_noctx
     def sim_op_batch(self):
         return self._sim_op(True)
 
-    @generate
+    @viewgen_noctx
     def sim_op_piped(self):
         return self._sim_op(False)
 
@@ -282,7 +282,7 @@ class InvTb(Cell):
         )
         return R(5)
 
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self)
 
@@ -322,11 +322,11 @@ class InvTb(Cell):
         )
         return s
 
-    @generate
+    @viewgen_noctx
     def sim_dc_batch(self):
         return self._sim_dc(True)
 
-    @generate
+    @viewgen_noctx
     def sim_dc_piped(self):
         return self._sim_dc(False)
 
@@ -335,11 +335,11 @@ class InvTb(Cell):
         Simulator(s, batch=batch).op(save_params=True)
         return s
 
-    @generate
+    @viewgen_noctx
     def sim_op_batch(self):
         return self._sim_op(True)
 
-    @generate
+    @viewgen_noctx
     def sim_op_piped(self):
         return self._sim_op(False)
 
@@ -353,7 +353,7 @@ class InvSkyTb(InvTb):
         return R(5)
 
 class IhpInv(Cell):
-    @generate
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
@@ -373,7 +373,7 @@ class IhpInv(Cell):
 
         return s
 
-    @generate
+    @viewgen_noctx
     def schematic(self) -> Schematic:
         s = Schematic(cell=self, symbol=self.symbol)
         s.a = Net(pin=self.symbol.a)
@@ -432,7 +432,7 @@ class InvIhpTb(InvTb):
 
 class AcRC(Cell):
     """RC lowpass driven by the idiomatic AC stimulus: a Vdc with ac_mag."""
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self)
         s.vss = Net()
@@ -458,17 +458,17 @@ class AcRC(Cell):
         Simulator(s, batch=batch).ac('dec', '10', '1', '1G')
         return s
 
-    @generate
+    @viewgen_noctx
     def sim_ac_batch(self):
         return self._sim_ac(True)
 
-    @generate
+    @viewgen_noctx
     def sim_ac_piped(self):
         return self._sim_ac(False)
 
 
 class SineRL(Cell):
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self)
         s.vss = Net()
@@ -498,17 +498,17 @@ class SineRL(Cell):
         Simulator(s, batch=batch).ac('dec', '10', '1', '1G')
         return s
 
-    @generate
+    @viewgen_noctx
     def sim_ac_batch(self):
         return self._sim_ac(True)
 
-    @generate
+    @viewgen_noctx
     def sim_ac_piped(self):
         return self._sim_ac(False)
 
 
 class PulsedRC(Cell):
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self)
         s.vss = Net()
@@ -541,11 +541,11 @@ class PulsedRC(Cell):
         Simulator(s, batch=batch).tran("5u", "250u")
         return s
 
-    @generate
+    @viewgen_noctx
     def sim_tran_batch(self):
         return self._sim_tran(True)
 
-    @generate
+    @viewgen_noctx
     def sim_tran_piped(self):
         return self._sim_tran(False)
 
@@ -562,7 +562,7 @@ class SourceTb(Cell):
     def add_source_instance(self, s: Schematic):
         raise NotImplementedError
 
-    @generate
+    @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self)
         s.vss = Net()
@@ -583,11 +583,11 @@ class SourceTb(Cell):
         Simulator(s, batch=batch).tran("5u", "250u")
         return s
 
-    @generate
+    @viewgen_noctx
     def sim_tran_batch(self):
         return self._sim_tran(True)
 
-    @generate
+    @viewgen_noctx
     def sim_tran_piped(self):
         return self._sim_tran(False)
 
