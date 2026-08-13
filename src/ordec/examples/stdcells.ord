@@ -66,8 +66,7 @@ cell InvTb:
         .plot2d(sim.i.voltage,
             ("Vout", sim.o.voltage),
             xlabel="Vin (V)",
-            ylabel="Vout (V)",
-            height=300)
+            ylabel="Vout (V)")
 
 viewgen inv_drc() -> DrcReport:
     . = ihp130.run_drc(inv.layout, variant="minimal")

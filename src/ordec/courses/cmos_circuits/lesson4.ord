@@ -52,5 +52,4 @@ cell DiffPairTb:
         .plot2d(sim.inp.voltage,
             sim.outp, sim.outn,
             xlabel="Vinp (V), Vinn = 0.7 V",
-            ylabel="Vout (V)",
-            height=300)
+            ylabel="Vout (V)")

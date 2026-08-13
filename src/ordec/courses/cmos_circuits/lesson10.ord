@@ -43,9 +43,7 @@ cell Lfsr:
         PlotGroup grp
         .plot2d(sim.time,
             sim.clk,
-            height=120,
             group=grp)
         .plot2d(sim.time,
             sim.q0, sim.q1, sim.q2, sim.q3,
-            height=260,
             group=grp)

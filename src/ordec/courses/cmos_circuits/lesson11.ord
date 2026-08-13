@@ -57,5 +57,4 @@ cell OtaTb:
         .plot2d(sim.inp.voltage,
             sim.out,
             xlabel="Vinp (V), Vinn = 0.7 V",
-            ylabel="Vout (V)",
-            height=300)
+            ylabel="Vout (V)")

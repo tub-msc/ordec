@@ -50,7 +50,7 @@ def _resolve_signal(signal):
     return name, values
 
 
-def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
+def bode_plot(report, *signals, ref=None, height=300, unwrap=True):
     """
     Append a magnitude(dB)/phase(°) plot pair with a synchronized
     logarithmic frequency axis to a report.

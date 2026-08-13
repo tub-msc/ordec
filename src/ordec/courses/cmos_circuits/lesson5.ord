@@ -79,5 +79,4 @@ cell RingOscTb:
         sim = self.sim_tran
         .markdown("Ring oscillator output:")
         .plot2d(sim.time,
-            sim.outp, sim.outn,
-            height=300)
+            sim.outp, sim.outn)

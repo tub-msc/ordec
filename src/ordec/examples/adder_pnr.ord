@@ -171,7 +171,6 @@ cell AdderTb:
             ("A", a_dec),
             ("S = A + 5", s_dec),
             ylabel="Decoded value",
-            height=240,
             group=.grp)
         waves = [(f"a[{i}]", a_bits[i]) for i in reversed(range(N))]
         waves.append(("cout", s_bits[N]))
@@ -184,5 +183,4 @@ cell AdderTb:
             sim.time,
             *stack,
             ylabel="Voltage (V), traces offset by 2 V",
-            height=420,
             group=.grp)

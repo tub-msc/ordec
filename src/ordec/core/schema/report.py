@@ -67,10 +67,14 @@ class Report(SubgraphRoot):
         voltages, pin currents): xlabel from the quantity of x, ylabel
         when every series' values carry a quantity, joining distinct
         quantity labels with ", ".
+
+        height defaults to 300 pixels; pass height=None to fill the
+        available height instead (for fill_height reports).
         """
         # Resolve all series before touching the subgraph, so that a bad
         # series argument does not leave a partial Plot2D in the report.
         series = [plot2d_series(y) for y in ys]
+        kwargs.setdefault('height', 300)
         if 'xlabel' not in kwargs and isinstance(x, SimColumn) \
                 and x.quantity is not None:
             kwargs['xlabel'] = x.quantity.value
@@ -305,7 +309,7 @@ class Plot2D(ReportElement):
     ylabel = Attr(str, default="", optional=False)
     xscale = Attr(ScaleType, default=ScaleType.Linear, optional=False, factory=ScaleType)
     yscale = Attr(ScaleType, default=ScaleType.Linear, optional=False, factory=ScaleType)
-    height = Attr(float, factory=lambda v: float(v) if v is not None else None) #: plot height in pixels
+    height = Attr(int) #: plot height in pixels; None fills the available height
     group = LocalRef(PlotGroup)
 
     def series(self):
@@ -323,7 +327,7 @@ class Plot2D(ReportElement):
             "ylabel": self.ylabel,
             "xscale": self.xscale.value,
             "yscale": self.yscale.value,
-            "height": f"{self.height:g}px" if self.height is not None else None,
+            "height": f"{self.height}px" if self.height is not None else None,
             "group": self.group.nid if self.group is not None else None,
         }
 

@@ -51,9 +51,7 @@ cell MosCurves:
                     [-float(i) for i in sim_p.mp.params['ids'].value]))
             .plot2d(vds_n, *nmos_series,
                 xlabel="VDS (V)",
-                ylabel="NMOS ID (A)",
-                height=280)
+                ylabel="NMOS ID (A)")
             .plot2d(vds_p, *pmos_series,
                 xlabel="VDS (V)",
-                ylabel="PMOS ID (A)",
-                height=280)
+                ylabel="PMOS ID (A)")

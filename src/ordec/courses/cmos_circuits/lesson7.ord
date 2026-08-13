@@ -49,5 +49,4 @@ cell InvAmpTb:
         .plot2d(sim.freq,
             ("|V(yout)|", [abs(v) for v in sim.yout.voltage]),
             ylabel="Voltage gain",
-            xscale=ScaleType.Log,
-            height=300)
+            xscale=ScaleType.Log)

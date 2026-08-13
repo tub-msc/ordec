@@ -384,6 +384,7 @@ def test_plot2d_simnet_series():
     assert plot["series"][0]["values"] == pytest.approx(list(h.out.voltage))
     assert plot["xlabel"] == "Time (s)"
     assert plot["ylabel"] == "Voltage (V)"
+    assert plot["height"] == "300px"
     # Mixed voltages and currents join the distinct column labels.
     mixed = data["elements"][1]
     assert [s["name"] for s in mixed["series"]] == ["out", "res.p"]

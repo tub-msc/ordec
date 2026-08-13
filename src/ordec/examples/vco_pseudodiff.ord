@@ -871,7 +871,6 @@ cell VcoTb:
             )
         .plot2d(sim.time,
             sim.rst_n, sim.vbias,
-            height=120,
             group=.grp,
         )
         vdd_src_pin = sim.one(SimPin.instance_eref_idx.query(
@@ -879,6 +878,5 @@ cell VcoTb:
         .plot2d(sim.time,
             ('vdd_src', [-x for x in vdd_src_pin.current]),
             ylabel="Current (A)",
-            height=120,
             group=.grp,
         )

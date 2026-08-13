@@ -45,4 +45,4 @@ cell CsAmpTb:
         else:
             ac = self.sim_ac
             .markdown("Input and output over frequency:")
-            .bode_plot(ac.vin, ac.vout, height=200)
+            .bode_plot(ac.vin, ac.vout)

@@ -34,7 +34,6 @@ def report_example() -> Report:
         ("v(out)", vout),
         xlabel="Time (s)",
         ylabel="Voltage (V)",
-        height=220,
         group=report.tran_demo,
     )
     report.plot2d(
@@ -42,7 +41,6 @@ def report_example() -> Report:
         ("v(err)", verr),
         xlabel="Time (s)",
         ylabel="Voltage (V)",
-        height=100,
         group=report.tran_demo,
     )
     report.plot2d(
@@ -51,7 +49,6 @@ def report_example() -> Report:
         xlabel="Frequency (Hz)",
         ylabel="Magnitude (dB)",
         xscale="log",
-        height=220,
         group=report.ac_demo,
     )
     report.plot2d(
@@ -60,7 +57,6 @@ def report_example() -> Report:
         xlabel="Frequency (Hz)",
         ylabel="Phase (deg)",
         xscale="log",
-        height=120,
         group=report.ac_demo,
     )
     report.svg(resdiv.symbol)
