@@ -183,6 +183,14 @@ export class LvsReport {
                     const rowEl = document.createElement('div');
                     rowEl.className = `lvs-item-row ${statusClass}`;
                     rowEl.dataset.nid = item.nid;
+                    // A selection survives a re-render: the highlight it
+                    // placed in the layout/schematic viewers is still
+                    // pending there, so the row it came from stays marked
+                    // and Deselect stays available to clear both.
+                    if (item.nid === this.selectedItemNid) {
+                        rowEl.classList.add('selected');
+                        deselectBtn.disabled = false;
+                    }
                     const objectCell = document.createElement('span');
                     objectCell.append(`${TYPE_ICONS[itemType]} `, labelCell);
                     rowEl.append(
@@ -206,6 +214,12 @@ export class LvsReport {
         });
 
         this.el.replaceChildren(header, body);
+        // The row loop re-marks the selected row (see above). If the
+        // regenerated report no longer contains that item, the selection is
+        // gone with it.
+        if (!this.el.querySelector('.lvs-item-row.selected')) {
+            this.selectedItemNid = null;
+        }
 
         this._attachEventHandlers(itemMap, circuitMap, data);
         this.itemMap = itemMap;

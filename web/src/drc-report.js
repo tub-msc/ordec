@@ -138,6 +138,12 @@ export class DrcReport {
         });
 
         this.el.replaceChildren(header, categoriesEl);
+        // buildItem re-marks the selected row (see below). If the
+        // regenerated report no longer contains that item, the selection is
+        // gone with it.
+        if (!this.el.querySelector('.drc-item.selected')) {
+            this.selectedItemNid = null;
+        }
         this.itemMap = itemMap;
     }
 
@@ -159,6 +165,14 @@ export class DrcReport {
             }
         }
         itemEl.textContent = `#${idx + 1}: ${label}`;
+
+        // A selection survives a re-render: the highlight it placed in the
+        // layout viewer is still pending there, so the row it came from
+        // stays marked and Deselect stays available to clear both.
+        if (item.nid === this.selectedItemNid) {
+            itemEl.classList.add('selected');
+            deselectBtn.disabled = false;
+        }
 
         itemEl.addEventListener('click', () => {
             // An outdated report must not drive navigation or
