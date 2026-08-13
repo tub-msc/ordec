@@ -115,12 +115,15 @@ class SimHierarchy(SubgraphRoot):
     def freq(self):
         if self.sim_data is None or self.freq_field is None:
             return None
-        col = self.sim_data.column(self.freq_field)
         # AC rawfiles store frequency as complex with zero imaginary part;
-        # return real values for consumer convenience.
-        if col and isinstance(col[0], complex):
-            return tuple(v.real for v in col)
-        return col
+        # return a real view for consumer convenience.
+        return self.sim_data.column(self.freq_field).real
+
+    @property
+    def sweep(self):
+        if self.sim_data is None or self.sweep_field is None:
+            return None
+        return self.sim_data.column(self.sweep_field)
 
     def __setitem__(self, k, v):
         raise TypeError("Insert with path not supported in SimHierarchy.")
@@ -243,8 +246,7 @@ class SimHierarchy(SubgraphRoot):
 
         for simpin in self.all(SimPin):
             if simpin.current_field:
-                path_list = simpin.instance.full_path_list() + simpin.eref.full_path_list()
-                path = Node.format_path_list(path_list)
+                path = simpin.full_path_str()
                 field_map[simpin.current_field] = f'{path}.current'
 
         for simparam in self.all(SimParam):
@@ -381,6 +383,9 @@ class SimPin(Node):
             return None
         return sd.column(self.current_field)
 
+    def full_path_list(self) -> list[str|int]:
+        return self.instance.full_path_list() + self.eref.full_path_list()
+
     instance_eref_idx = CombinedIndex([instance, eref], unique=True)
 
 @public
@@ -400,6 +405,9 @@ class SimParam(Node):
         if sd is None or self.field is None:
             return None
         return sd.column(self.field)
+
+    def full_path_list(self) -> list[str|int]:
+        return self.instance.full_path_list() + [self.name]
 
     instance_name_idx = CombinedIndex([instance, name], unique=True)
 
@@ -469,8 +477,5 @@ class SimInstance(Node):
         else:
             parent_path = self.parent_inst.full_path_list()
         return parent_path + self.eref.full_path_list()
-
-    def full_path_str(self) -> str:
-        return '.'.join(str(x) for x in self.full_path_list())
 
 public(Simulation = SimHierarchy)

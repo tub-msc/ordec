@@ -40,7 +40,7 @@ def _resolve_signal(signal):
         name = signal.full_path_str()
         values = signal.voltage
     elif isinstance(signal, SimPin):
-        name = f"{signal.instance.full_path_str()}.{signal.eref.full_path_str()}"
+        name = signal.full_path_str()
         values = signal.current
     else:
         raise TypeError(
@@ -50,7 +50,7 @@ def _resolve_signal(signal):
     return name, values
 
 
-def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
+def bode_plot(report, *signals, ref=None, height=300, unwrap=True):
     """
     Append a magnitude(dB)/phase(°) plot pair with a synchronized
     logarithmic frequency axis to a report.
@@ -65,6 +65,9 @@ def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
         height: per-plot height in pixels, or None to fill the available
             height.
         unwrap: unwrap phase jumps exceeding 180° (see phase_deg).
+
+    Returns:
+        The (magnitude, phase) pair of Plot2D cursors.
     """
     if not signals:
         raise ValueError("bode_plot() requires at least one signal")
@@ -75,9 +78,9 @@ def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
         if s.root != sim:
             raise ValueError(
                 "All signals must come from the same SimHierarchy")
-    if sim.freq is None:
+    freq = sim.freq
+    if freq is None:
         raise ValueError("SimHierarchy contains no AC results")
-    freq = [f.real for f in sim.freq]
 
     if ref is not None:
         _, ref_values = _resolve_signal(ref)
@@ -87,21 +90,20 @@ def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
         ]
 
     grp = report % PlotGroup()
-    report.plot2d(
-        x=freq,
-        series=[(name, mag_db(vals)) for name, vals in named],
-        xlabel="Frequency (Hz)",
+    mag = report.plot2d(
+        freq,
+        *[(name, mag_db(vals)) for name, vals in named],
         ylabel="Magnitude (dB)",
         xscale='log',
         height=height,
         group=grp,
     )
-    report.plot2d(
-        x=freq,
-        series=[(name, phase_deg(vals, unwrap)) for name, vals in named],
-        xlabel="Frequency (Hz)",
+    phase = report.plot2d(
+        freq,
+        *[(name, phase_deg(vals, unwrap)) for name, vals in named],
         ylabel="Phase (°)",
         xscale='log',
         height=height,
         group=grp,
     )
+    return mag, phase

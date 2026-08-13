@@ -63,12 +63,10 @@ cell InvTb:
     viewgen report_vtc(self) -> Report:
         sim = self.sim_dc
         .markdown("# Inverter voltage transfer curve\n")
-        .plot2d(
-            x=list(sim.i.voltage),
-            series={"Vout": list(sim.o.voltage)},
+        .plot2d(sim.i.voltage,
+            ("Vout", sim.o.voltage),
             xlabel="Vin (V)",
-            ylabel="Vout (V)",
-            height=300)
+            ylabel="Vout (V)")
 
 viewgen inv_drc() -> DrcReport:
     . = ihp130.run_drc(inv.layout, variant="minimal")

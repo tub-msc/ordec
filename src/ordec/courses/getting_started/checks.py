@@ -485,7 +485,7 @@ def gen_lesson6(g):
                 instructions="No AC simulation data for vout yet: the "
                 "simulation only runs once the circuit is fully wired.")
         else:
-            freq = [f.real for f in dut.sim_ac.freq]
+            freq = dut.sim_ac.freq
             mag = [abs(v) for v in dut.sim_ac.vout.voltage]
             i_min = min(range(len(mag)), key=lambda i: mag[i])
             f_notch = freq[i_min]
@@ -626,7 +626,7 @@ def gen_lesson7(g):
                 instructions="No AC simulation data for vout yet: the "
                 "simulation only runs once the circuit is fully wired.")
         else:
-            freq = [f.real for f in tb.sim_ac.freq]
+            freq = tb.sim_ac.freq
             mag = [abs(v) for v in tb.sim_ac.vout.voltage]
             i_min = min(range(len(mag)), key=lambda i: mag[i])
             f_notch = freq[i_min]
@@ -802,7 +802,7 @@ def gen_lesson8(g):
                 instructions="No AC simulation data for vout yet: the "
                 "simulation only runs once the circuit is fully wired.")
         else:
-            freq = [f.real for f in tb.sim_ac.freq]
+            freq = tb.sim_ac.freq
             mag = [abs(v) for v in tb.sim_ac.vout.voltage]
             def min_in(lo, hi):
                 return min(m for f, m in zip(freq, mag) if lo <= f <= hi)
@@ -851,11 +851,8 @@ def gen_lesson9(g):
             viewgen report(self) -> Report:
                 sim = self.sim_tran
                 .markdown("Step response of the two RC stages.")
-                .plot2d(x=sim.time, series={'vin': sim.vin.voltage},
-                    xlabel="Time (s)", ylabel="Voltage (V)", height=200)
-                .plot2d(x=sim.time,
-                    series={'mid': sim.mid.voltage, 'vout': sim.vout.voltage},
-                    xlabel="Time (s)", ylabel="Voltage (V)", height=200)
+                .plot2d(sim.time, sim.vin)
+                .plot2d(sim.time, sim.mid, sim.vout)
             ```
 
             Open the new `RcChain().report` view in the empty result
@@ -913,14 +910,14 @@ def gen_lesson9(g):
             found = (ps is not None and len(ps) >= 1
                 and [se.name for se in ps[0].series()] == ['vin'])
             report.passfail(label, found,
-                hint="The first `.plot2d(...)` plots x=sim.time against "
-                "the single series {'vin': sim.vin.voltage}.",
+                hint="The first `.plot2d(...)` plots sim.time against "
+                "the single series sim.vin.",
                 instructions="The report's first plot must show exactly "
                 "one series named vin.")
         except Exception:
             report.passfail(label, False, instructions=exception_text(),
-                hint="The first `.plot2d(...)` plots x=sim.time against "
-                "the single series {'vin': sim.vin.voltage}.")
+                hint="The first `.plot2d(...)` plots sim.time against "
+                "the single series sim.vin.")
 
         label = "Second plot: both stage outputs"
         try:
@@ -930,13 +927,13 @@ def gen_lesson9(g):
                     == ['mid', 'vout'])
             report.passfail(label, found,
                 hint="The second `.plot2d(...)` plots the two series "
-                "{'mid': sim.mid.voltage, 'vout': sim.vout.voltage}.",
+                "sim.mid and sim.vout.",
                 instructions="The report's second plot must show exactly "
                 "the two series mid and vout.")
         except Exception:
             report.passfail(label, False, instructions=exception_text(),
                 hint="The second `.plot2d(...)` plots the two series "
-                "{'mid': sim.mid.voltage, 'vout': sim.vout.voltage}.")
+                "sim.mid and sim.vout.")
 
         label = "Plots linked in a group"
         try:

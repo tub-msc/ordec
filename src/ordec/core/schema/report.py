@@ -8,6 +8,8 @@ from public import public
 
 from ..ordb import *
 from ..context import ReportViewBuilder
+from ..simarray import SimColumn
+from .simhier import SimNet, SimPin, SimParam
 
 WIRE_DOMAIN = 8 << 16
 
@@ -31,37 +33,67 @@ class Report(SubgraphRoot):
             if issubclass(node._cursor_type, ReportElement):
                 yield sg.cursor_at(nid)
 
+    # All element helpers return the inserted element's cursor.
+
     def markdown(self, markdown: str):
         """
         Append a Markdown element. The text is cleaned up docstring-style
         (inspect.cleandoc), so indented triple-quoted strings can be passed
         directly without their indentation turning into markdown code blocks.
         """
-        self % Markdown(markdown=inspect.cleandoc(markdown))
+        return self % Markdown(markdown=inspect.cleandoc(markdown))
 
     def pre(self, text: str):
-        self % PreformattedText(text=text)
+        return self % PreformattedText(text=text)
 
     def html(self, html: str):
-        self % Html(html=html)
+        return self % Html(html=html)
 
     def svg(self, view):
-        self % Svg.from_view(view)
+        return self % Svg.from_view(view)
 
-    def plot2d(self, series, **kwargs):
-        plot = self % Plot2D(**kwargs)
-        if isinstance(series, dict):
-            series = series.items()
-        for name, values in series:
-            plot % Plot2DSeries(name=str(name), values=values)
+    def plot2d(self, x, *ys, **kwargs):
+        """
+        Append a Plot2D element plotting each series in ys against the
+        common x-axis values x. Returns the Plot2D cursor.
+
+        Each series is either a (name, values) pair or a SimNet, SimPin
+        or SimParam node; for nodes, the hierarchical path becomes the
+        series name and the recorded column (voltage, current or value)
+        provides the values.
+
+        Axis labels not given explicitly are inferred from the Quantity
+        carried by result columns (sim.time, sim.freq, sim.sweep, net
+        voltages, pin currents): xlabel from the quantity of x, ylabel
+        when every series' values carry a quantity, joining distinct
+        quantity labels with ", ".
+
+        height defaults to 300 pixels; pass height=None to fill the
+        available height instead (for fill_height reports).
+        """
+        # Resolve all series before touching the subgraph, so that a bad
+        # series argument does not leave a partial Plot2D in the report.
+        series = [plot2d_series(y) for y in ys]
+        kwargs.setdefault('height', 300)
+        if 'xlabel' not in kwargs and isinstance(x, SimColumn) \
+                and x.quantity is not None:
+            kwargs['xlabel'] = x.quantity.value
+        if 'ylabel' not in kwargs and series:
+            quantities = list(dict.fromkeys(q for _, q in series))
+            if None not in quantities:
+                kwargs['ylabel'] = ", ".join(q.value for q in quantities)
+        plot = self % Plot2D(x=x, **kwargs)
+        for node, _ in series:
+            plot % node
+        return plot
 
     def passfail(self, label: str, passed: bool, instructions: str="", hint: str=None):
         # A passing check is stored as a bare pass: instructions and hint
         # only matter while the check fails.
         if passed:
-            self % PassFail(label=label, passed=True)
+            return self % PassFail(label=label, passed=True)
         else:
-            self % PassFail(label=label, passed=False,
+            return self % PassFail(label=label, passed=False,
                 instructions=instructions, hint=hint)
 
     def bode_plot(self, *signals, **kwargs):
@@ -69,9 +101,10 @@ class Report(SubgraphRoot):
         Append a Bode magnitude/phase plot pair from AC simulation results;
         see ordec.sim.helpers.bode_plot for the full signature. Imported
         lazily to keep the core schema independent of the sim subsystem.
+        Returns the (magnitude, phase) pair of Plot2D cursors.
         """
         from ...sim.helpers import bode_plot
-        bode_plot(self, *signals, **kwargs)
+        return bode_plot(self, *signals, **kwargs)
 
     def webdata_static(self):
         return "report", {
@@ -276,7 +309,7 @@ class Plot2D(ReportElement):
     ylabel = Attr(str, default="", optional=False)
     xscale = Attr(ScaleType, default=ScaleType.Linear, optional=False, factory=ScaleType)
     yscale = Attr(ScaleType, default=ScaleType.Linear, optional=False, factory=ScaleType)
-    height = Attr(float, factory=lambda v: float(v) if v is not None else None) #: plot height in pixels
+    height = Attr(int) #: plot height in pixels; None fills the available height
     group = LocalRef(PlotGroup)
 
     def series(self):
@@ -294,12 +327,57 @@ class Plot2D(ReportElement):
             "ylabel": self.ylabel,
             "xscale": self.xscale.value,
             "yscale": self.yscale.value,
-            "height": f"{self.height:g}px" if self.height is not None else None,
+            "height": f"{self.height}px" if self.height is not None else None,
             "group": self.group.nid if self.group is not None else None,
         }
 
+def plot2d_series(y):
+    """
+    Resolve one Report.plot2d series argument to an uninserted
+    Plot2DSeries node plus the Quantity of its values column (None if
+    the values carry no quantity).
+
+    Accepts a (name, values) pair or a SimNet / SimPin / SimParam node.
+    Node names are the hierarchical paths (full_path_str), e.g.
+    "stage[0].m7.d" for a pin or "stage[0].m7.gm" for a parameter.
+    """
+    if isinstance(y, SimNet):
+        name, values = y.full_path_str(), y.voltage
+    elif isinstance(y, SimPin):
+        name, values = y.full_path_str(), y.current
+    elif isinstance(y, SimParam):
+        name, values = y.full_path_str(), y.value
+    elif isinstance(y, (tuple, list)) and len(y) == 2 and isinstance(y[0], str):
+        name, values = y
+    else:
+        raise TypeError(
+            f"plot2d series must be a (name, values) pair or a "
+            f"SimNet/SimPin/SimParam node, got {type(y).__name__}")
+    if values is None:
+        raise ValueError(f"no simulation data recorded for {name}")
+    quantity = values.quantity if isinstance(values, SimColumn) else None
+    # Constructing the node coerces the values (via the values attr
+    # factory) exactly once and raises on bad values before
+    # Report.plot2d mutates the subgraph.
+    return Plot2DSeries(name=name, values=values), quantity
+
 def coerce_plot_values(values):
-    return tuple(float(v) for v in values)
+    try:
+        return tuple(float(v) for v in values)
+    except TypeError:
+        # float() raises TypeError for complex values; those get a hint
+        # towards the proper AC workflows. Any other TypeError (e.g. a
+        # scalar instead of a sequence) keeps its original message.
+        try:
+            has_complex = any(isinstance(v, complex) for v in values)
+        except TypeError:
+            has_complex = False
+        if has_complex:
+            raise TypeError(
+                "Plot2D series values must be real numbers; convert complex "
+                "AC data via abs()/cmath.phase() or use Report.bode_plot()"
+            ) from None
+        raise
 
 @public
 class Plot2DSeries(Node):

@@ -53,7 +53,7 @@ from .ordb.base import (
 )
 from .rational import R
 from .geoprim import Vec2R, Vec2I, Rect4R, Rect4I, TD4R, TD4I, D4
-from .simarray import SimArray, SimArrayField
+from .simarray import SimArray, SimArrayField, Quantity
 from .schema.base import PathEndType, SourceLocInfo, GdsLayer, RGBColor
 from .schema.schematic import PinType, SchemErrorType
 from .schema.report import ScaleType
@@ -90,6 +90,7 @@ ENUM_TAGS = {
     SimType: 390014,
     LvsStatus: 390015,
     LvsItemType: 390016,
+    Quantity: 390017,
 }
 ENUM_BY_TAG = {tag: cls for cls, tag in ENUM_TAGS.items()}
 
@@ -175,7 +176,8 @@ def encode_plain(val):
         # data may be a memoryview (SimArray permits it); force bytes so the
         # encoding is a CBOR byte string either way.
         return cbor2.CBORTag(TAG_SIMARRAY,
-            [[[f.fid, f.dtype] for f in val.fields], bytes(val.data)])
+            [[[f.fid, f.dtype, encode_plain(f.quantity)]
+                for f in val.fields], bytes(val.data)])
     if t is SourceLocInfo:
         return cbor2.CBORTag(TAG_SOURCELOC, list(val))
     if t is GdsLayer:

@@ -230,13 +230,8 @@ courses_testdata = {
                 sim = self.sim_tran
                 .markdown("Step response of the two RC stages.")
                 PlotGroup grp
-                .plot2d(x=sim.time, series={'vin': sim.vin.voltage},
-                    xlabel="Time (s)", ylabel="Voltage (V)", height=200,
-                    group=grp)
-                .plot2d(x=sim.time,
-                    series={'mid': sim.mid.voltage, 'vout': sim.vout.voltage},
-                    xlabel="Time (s)", ylabel="Voltage (V)", height=200,
-                    group=grp)
+                .plot2d(sim.time, sim.vin, group=grp)
+                .plot2d(sim.time, sim.mid, sim.vout, group=grp)
             """),
         ]),
         # Lesson 10: postprocessing.

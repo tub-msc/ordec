@@ -10,8 +10,10 @@ from ordec.core.wire import ExportTable
 
 def test_report_is_ordb_subgraph_root():
     report = Report()
-    report.markdown("hello")
+    md = report.markdown("hello")
 
+    # Element helpers return the inserted element's cursor.
+    assert isinstance(md, Markdown)
     assert isinstance(report, SubgraphRoot)
     assert [element.markdown for element in report.elements()] == ["hello"]
     assert [element.markdown for element in report.all(Markdown)] == ["hello"]
@@ -24,16 +26,19 @@ def test_report_is_ordb_subgraph_root():
 
 
 def test_plot2d_webdata():
+    from ordec.core.schema import Plot2D
+
     report = Report()
     report.tran = PlotGroup()
-    report.plot2d(
-        x=[1.0, 2.0, 3.0],
-        series={"v(out)": [0.1, 0.2, 0.3]},
+    plot = report.plot2d(
+        [1.0, 2.0, 3.0],
+        ("v(out)", [0.1, 0.2, 0.3]),
         xlabel="Time (s)",
         ylabel="Voltage (V)",
         height=180,
         group=report.tran,
     )
+    assert isinstance(plot, Plot2D)
     _, data = report.webdata(ExportTable())
     plot_data = data["elements"][0]
     assert plot_data["element_type"] == "plot2d"
@@ -47,16 +52,31 @@ def test_plot2d_rejects_unsorted_x():
     report = Report()
     with pytest.raises(ValueError):
         report.plot2d(
-            x=[1.0, 0.5, 2.0],
-            series={"v(out)": [0.1, 0.2, 0.3]},
+            [1.0, 0.5, 2.0],
+            ("v(out)", [0.1, 0.2, 0.3]),
         )
+
+
+def test_plot2d_bad_series():
+    report = Report()
+    # A bare values iterable has no name and is rejected; a rejected
+    # series must not leave a partial Plot2D in the report.
+    with pytest.raises(TypeError, match="pair or a"):
+        report.plot2d([1.0, 2.0], [0.1, 0.2, 0.3])
+    with pytest.raises(TypeError, match="real numbers"):
+        report.plot2d([1.0, 2.0], ("v(out)", [1 + 2j, 3 + 4j]))
+    # A scalar instead of a sequence keeps its original error message.
+    with pytest.raises(TypeError, match="not iterable"):
+        report.plot2d([1.0, 2.0], ("v(out)", 5.0))
+    _, data = report.webdata(ExportTable())
+    assert data["elements"] == []
 
 
 def test_plot2d_height_none():
     report = Report()
     report.plot2d(
-        x=[1.0, 2.0, 3.0],
-        series={"v(out)": [0.1, 0.2, 0.3]},
+        [1.0, 2.0, 3.0],
+        ("v(out)", [0.1, 0.2, 0.3]),
         height=None,
     )
     _, data = report.webdata(ExportTable())
@@ -66,10 +86,12 @@ def test_plot2d_height_none():
 def test_passfail_webdata():
     report = Report()
     # A pass is a bare pass: instructions and hint are discarded.
-    report.passfail("Check A", True, instructions="Do the thing.",
+    pf = report.passfail("Check A", True, instructions="Do the thing.",
         hint="Try harder.")
-    report.passfail("Check B", False, instructions="Do the thing.",
+    assert pf.passed is True
+    pf = report.passfail("Check B", False, instructions="Do the thing.",
         hint="Try harder.")
+    assert pf.passed is False
     _, data = report.webdata(ExportTable())
     assert data["elements"][0] == {
         "element_type": "passfail",
