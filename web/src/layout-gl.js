@@ -210,8 +210,7 @@ export class LayoutGL {
             // apply to viewers showing that view: matched by name, or by
             // wire hash for a viewer showing the same subgraph under a
             // different view name.
-            if (data && data.layoutView && data.layoutView !== this.viewName
-                    && !(data.layoutWireHash && data.layoutWireHash === this.wireHash)) {
+            if (data && !this._selectionApplies(data)) {
                 return;
             }
             this.setHighlight(data.shapes);
@@ -224,8 +223,7 @@ export class LayoutGL {
             // Selections targeted at a specific layout view (items of LVS
             // subcircuit pairs) apply to viewers showing that view, matched
             // by name or by wire hash.
-            if (data && data.layoutView && data.layoutView !== this.viewName
-                    && !(data.layoutWireHash && data.layoutWireHash === this.wireHash)) {
+            if (data && !this._selectionApplies(data)) {
                 return;
             }
             this.highlightPos(data.pos);
@@ -315,34 +313,50 @@ export class LayoutGL {
         this.cursorCoordinates.set(x, y);
     }
 
+    // A selection payload applies to this viewer when it is untargeted, or
+    // when it names this view: by view name, or by the wire hash of a viewer
+    // showing the same subgraph under a different view name.
+    _selectionApplies(data) {
+        if (!data.layoutView) return true;
+        if (data.layoutView === this.viewName) return true;
+        return Boolean(data.layoutWireHash && data.layoutWireHash === this.wireHash);
+    }
+
+    // Takes the pending selection captured at construction time, when
+    // viewName was not yet assigned. Clears the slot in any case and returns
+    // the payload only if it applies to this viewer.
+    _takePendingSelection(field) {
+        const pending = this[field];
+        this[field] = null;
+        return pending && this._selectionApplies(pending) ? pending : null;
+    }
+
     update(msgData) {
         this.data = msgData;
 
-        if (this._pendingDrc) {
-            const pendingDrc = this._pendingDrc;
-            this._pendingDrc = null;
-            if (!pendingDrc.layoutView || pendingDrc.layoutView === this.viewName
-                    || (pendingDrc.layoutWireHash && pendingDrc.layoutWireHash === this.wireHash)) {
-                // Zoom to the highlight instead of the full view below.
-                this._pendingHighlight = pendingDrc.shapes;
-                this.setHighlight(pendingDrc.shapes, false); // Don't zoom yet
+        // Pending selections are applied exactly once, without zooming; when
+        // this is the first update, the selection also supplies the zoom
+        // target, so that opening a layout from a DRC/LVS report lands on the
+        // selected item just like a live drc:select/lvs:layout-select does.
+        let zoomToSelection = null;
+        const pendingDrc = this._takePendingSelection('_pendingDrc');
+        if (pendingDrc) {
+            const box = this.setHighlight(pendingDrc.shapes, false);
+            if (box) {
+                zoomToSelection = () => this.zoomToBox(...box, true, 0.25);
             }
         }
-
-        if (this._pendingLvs) {
-            const pendingLvs = this._pendingLvs;
-            this._pendingLvs = null;
-            if (!pendingLvs.layoutView || pendingLvs.layoutView === this.viewName
-                    || (pendingLvs.layoutWireHash && pendingLvs.layoutWireHash === this.wireHash)) {
-                this.highlightPos(pendingLvs.pos, false);
-            }
+        const pendingLvs = this._takePendingSelection('_pendingLvs');
+        if (pendingLvs) {
+            // Applied after the DRC highlight, which it replaces, so its zoom
+            // target wins as well.
+            this.highlightPos(pendingLvs.pos, false);
+            zoomToSelection = () => this.zoomToPos(pendingLvs.pos);
         }
 
         if(!this.initialZoomDone) {
-            if (this._pendingHighlight) {
-                // Zoom to pending highlight instead of full view
-                this.setHighlight(this._pendingHighlight, true);
-                this._pendingHighlight = null;
+            if (zoomToSelection) {
+                zoomToSelection();
                 this.initialZoomDone = true;
             } else if (this.data.extent) {
                 // An empty layout has no extent to fit; leave initialZoomDone
@@ -1000,10 +1014,16 @@ export class LayoutGL {
         this._highlightPos = pos;
         this._updateHighlightPos();
         if (zoomTo) {
-            const r = 2000;
-            const [x, y] = pos;
-            this.zoomToBox(x - r, y - r, x + r, y + r, true, 0.25);
+            this.zoomToPos(pos);
         }
+    }
+
+    // A crosshair position has no extent of its own to fit, so it is framed
+    // by a fixed-size box around it.
+    zoomToPos(pos) {
+        const r = 2000;
+        const [x, y] = pos;
+        this.zoomToBox(x - r, y - r, x + r, y + r, true, 0.25);
     }
 
     _updateHighlightPos() {
@@ -1040,8 +1060,11 @@ export class LayoutGL {
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.DYNAMIC_DRAW);
     }
 
+    // Returns the bounding box [minX, minY, maxX, maxY] of the highlighted
+    // shapes, or null if there is nothing to bound, so that callers passing
+    // zoomTo=false can zoom to it later without re-uploading the buffer.
     setHighlight(shapes, zoomTo = true) {
-        if (!this.gl) return;
+        if (!this.gl) return null;
 
         const vertices = [];
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -1085,11 +1108,13 @@ export class LayoutGL {
         // layout). _uploadHighlightSegments expands each segment into a quad.
         this._uploadHighlightSegments(vertices);
 
-        if (zoomTo && minX !== Infinity) {
-            this.zoomToBox(minX, minY, maxX, maxY, true, 0.25);
+        const box = minX !== Infinity ? [minX, minY, maxX, maxY] : null;
+        if (zoomTo && box) {
+            this.zoomToBox(...box, true, 0.25);
         } else {
             this.drawGL();
         }
+        return box;
     }
 
     clearHighlight() {
@@ -1101,7 +1126,6 @@ export class LayoutGL {
     testState() {
         return {
             highlightNumVertices: this.highlightNumVertices,
-            hasPendingHighlight: !!this._pendingHighlight,
         };
     }
 
