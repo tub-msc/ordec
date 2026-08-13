@@ -115,12 +115,15 @@ class SimHierarchy(SubgraphRoot):
     def freq(self):
         if self.sim_data is None or self.freq_field is None:
             return None
-        col = self.sim_data.column(self.freq_field)
         # AC rawfiles store frequency as complex with zero imaginary part;
-        # return real values for consumer convenience.
-        if col and isinstance(col[0], complex):
-            return tuple(v.real for v in col)
-        return col
+        # return a real view for consumer convenience.
+        return self.sim_data.column(self.freq_field).real
+
+    @property
+    def sweep(self):
+        if self.sim_data is None or self.sweep_field is None:
+            return None
+        return self.sim_data.column(self.sweep_field)
 
     def __setitem__(self, k, v):
         raise TypeError("Insert with path not supported in SimHierarchy.")

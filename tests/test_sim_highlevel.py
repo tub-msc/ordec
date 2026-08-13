@@ -310,6 +310,7 @@ def test_op_save_params(sim_batch):
     h = tb.sim_op_batch if sim_batch else tb.sim_op_piped
     nmos = h.I0
     assert nmos.params['gm'].value[0] > 0
+    assert nmos.params['gm'].value.quantity == Quantity.ADMITTANCE
     assert nmos.params['gds'].value[0] == pytest.approx(0)
 
     # Test SimParam in to_numpy include list (only gm, no other fields)

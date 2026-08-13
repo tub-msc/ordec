@@ -22,7 +22,7 @@ from pathlib import Path
 import subprocess
 from typing import Iterator, NamedTuple, Optional, Literal
 
-from ..core import R, SimArray, SimArrayField
+from ..core import R, Quantity, SimArray, SimArrayField
 from ..core.genrun import progress, checkpoint, cancelable_subprocess
 
 logger = logging.getLogger(__name__)
@@ -93,6 +93,32 @@ def name_print_to_raw(name: str) -> str:
       return f"v({s})"
 
 
+# Quantities for the vector types that ngspice defines with a unit
+# (typesdef.c); used to tag SimArray fields when parsing rawfiles. The
+# unit-less types (notype, pole, zero, s-param) stay untagged, as does
+# phase, whose unit is not recorded in the rawfile (see Quantity).
+RAW_TYPE_QUANTITIES = {
+    'time': Quantity.TIME,
+    'frequency': Quantity.FREQUENCY,
+    'voltage': Quantity.VOLTAGE,
+    'current': Quantity.CURRENT,
+    'voltage-density': Quantity.VOLTAGE_DENSITY,
+    'current-density': Quantity.CURRENT_DENSITY,
+    'voltage^2-density': Quantity.VOLTAGE_SQUARED_DENSITY,
+    'current^2-density': Quantity.CURRENT_SQUARED_DENSITY,
+    'voltage^2': Quantity.VOLTAGE_SQUARED,
+    'current^2': Quantity.CURRENT_SQUARED,
+    'temp-sweep': Quantity.TEMPERATURE,
+    'res-sweep': Quantity.RESISTANCE,
+    'impedance': Quantity.IMPEDANCE,
+    'admittance': Quantity.ADMITTANCE,
+    'power': Quantity.POWER,
+    'decibel': Quantity.DECIBEL,
+    'capacitance': Quantity.CAPACITANCE,
+    'charge': Quantity.CHARGE,
+    'temperature': Quantity.TEMPERATURE,
+}
+
 def parse_raw(fn, use_mmap=True) -> SimArray:
     """Parse a ngspice binary rawfile.
 
@@ -108,6 +134,7 @@ def parse_raw(fn, use_mmap=True) -> SimArray:
     """
     info = {}
     var_names = []
+    var_quantities = []
 
     with open(fn, "rb") as f:
         while True:
@@ -120,9 +147,13 @@ def parse_raw(fn, use_mmap=True) -> SimArray:
                 parts = l.split("\t")
                 if len(parts) < 4:
                     raise ValueError(f"Malformed variable line in rawfile: {l!r}")
-                _, var_idx, var_name = parts[0], parts[1], parts[2]
+                _, var_idx, var_name, var_type = parts[:4]
                 assert int(var_idx) == len(var_names)
                 var_names.append(var_name)
+                # The AC frequency scale is typed "frequency grid=3",
+                # hence the split.
+                var_quantities.append(
+                    RAW_TYPE_QUANTITIES.get(var_type.split(' ', 1)[0]))
             else:
                 if ":" not in l:
                     raise ValueError(f"Malformed header line in rawfile: {l!r}")
@@ -145,8 +176,8 @@ def parse_raw(fn, use_mmap=True) -> SimArray:
         dtype = 'c16' if is_complex else 'f8'
 
         fields = tuple(
-            SimArrayField(name, dtype)
-            for name in var_names
+            SimArrayField(name, dtype, quantity)
+            for name, quantity in zip(var_names, var_quantities)
         )
 
         # Calculate expected bytes per record

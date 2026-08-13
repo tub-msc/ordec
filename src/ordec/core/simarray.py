@@ -2,15 +2,50 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import struct
+from enum import Enum
 from numbers import Integral
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 from public import public
+
+
+@public
+class Quantity(Enum):
+    """Physical quantity of a simulation result column, with the plot
+    axis label as value.
+
+    Mirrors the ngspice vector types that have a defined unit (see
+    typesdef.c).
+
+    Phase types are missing here for now as their unit is ambiguous.
+    """
+    TIME = 'Time (s)'
+    FREQUENCY = 'Frequency (Hz)'
+    VOLTAGE = 'Voltage (V)'
+    CURRENT = 'Current (A)'
+    VOLTAGE_DENSITY = 'Voltage density (V/√Hz)'
+    CURRENT_DENSITY = 'Current density (A/√Hz)'
+    VOLTAGE_SQUARED_DENSITY = 'Voltage² density (V²/Hz)'
+    CURRENT_SQUARED_DENSITY = 'Current² density (A²/Hz)'
+    VOLTAGE_SQUARED = 'Voltage² (V²)'
+    CURRENT_SQUARED = 'Current² (A²)'
+    TEMPERATURE = 'Temperature (°C)'
+    RESISTANCE = 'Resistance (Ω)'
+    IMPEDANCE = 'Impedance (Ω)'
+    ADMITTANCE = 'Admittance (S)'
+    POWER = 'Power (W)'
+    DECIBEL = 'Magnitude (dB)'
+    CAPACITANCE = 'Capacitance (F)'
+    CHARGE = 'Charge (C)'
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
 
 
 @public
 class SimArrayField(NamedTuple):
     fid: str #: Field ID, unique within a SimArray.
     dtype: str  # 'f8' (float64) or 'c16' (complex128)
+    quantity: Optional[Quantity] = None #: Physical quantity, or None if unknown.
 
     @property
     def size(self):
@@ -27,16 +62,34 @@ class SimColumn:
 
     Reads values on demand from the underlying bytes buffer,
     avoiding materializing the entire column as a Python tuple.
+
+    A column may carry the Quantity it holds, taken from its
+    SimArrayField; consumers such as Report.plot2d use it to infer axis
+    labels.
     """
 
-    __slots__ = ('_data', '_offset', '_stride', '_length', '_dtype')
+    __slots__ = ('_data', '_offset', '_stride', '_length', '_dtype', 'quantity')
 
-    def __init__(self, data, offset, stride, length, dtype):
+    def __init__(self, data, offset, stride, length, dtype, quantity):
         self._data = data
         self._offset = offset
         self._stride = stride
         self._length = length
         self._dtype = dtype
+        self.quantity = quantity
+
+    @property
+    def real(self):
+        """Lazy view of the real part of a complex column.
+
+        Complex values are packed as two consecutive float64 (real,
+        imag), so the real part is a float64 view at the same offset
+        and stride. For a real column, returns the column itself.
+        """
+        if self._dtype == 'f8':
+            return self
+        return SimColumn(self._data, self._offset, self._stride,
+            self._length, 'f8', self.quantity)
 
     def __len__(self):
         return self._length
@@ -156,7 +209,8 @@ class SimArray(tuple):
         field = self.fields[idx]
         offset = sum(f.size for f in self.fields[:idx])
 
-        return SimColumn(self.data, offset, self.record_size, len(self), field.dtype)
+        return SimColumn(self.data, offset, self.record_size, len(self),
+            field.dtype, field.quantity)
 
     def __getitem__(self, key):
         if isinstance(key, str):
