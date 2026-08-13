@@ -9,6 +9,7 @@ import { Spotlight } from './spotlight.js';
 
 // controller is the CourseController (used to locate the Course panel and
 // the result viewers); onDone fires when the tour ends via Done or Skip.
+// Returns the Spotlight, so that the caller can cancel a running tour.
 export function startCourseTour(controller, onDone) {
     // The stack (tab bar + content) of the first regular result viewer,
     // e.g. the pre-opened schematic viewer of the welcome lesson.
@@ -108,4 +109,5 @@ export function startCourseTour(controller, onDone) {
         },
     ], onDone);
     spotlight.start();
+    return spotlight;
 }

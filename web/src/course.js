@@ -77,6 +77,10 @@ export class CourseController {
         // Whether the spotlight tour of the current welcome-lesson visit has
         // been finished (in-memory: the tour replays on every visit).
         this.tourDone = false;
+        // Deferred start and running instance of that tour, kept so that
+        // leaving the lesson can cancel either one (see cancelTour).
+        this.tourTimeout = null;
+        this.spotlight = null;
 
         this.state = this.loadState();
     }
@@ -153,6 +157,9 @@ export class CourseController {
     // editor + viewers for lesson i. Mirrors the integrated-mode init
     // sequence in main.js.
     activateLesson(i, { save = true } = {}) {
+        // The tour points at panels that loadLayout below replaces, so it
+        // must not outlive the lesson it was started on.
+        this.cancelTour();
         if (save) {
             this.saveCurrentLesson();
         }
@@ -201,7 +208,7 @@ export class CourseController {
         // first.
         if (this.course.lessons[i].getting_started_lesson_1) {
             this.tourDone = false;
-            window.setTimeout(() => this.startTour(), 0);
+            this.tourTimeout = window.setTimeout(() => this.startTour(), 0);
         }
     }
 
@@ -297,12 +304,23 @@ export class CourseController {
     }
 
     startTour() {
-        startCourseTour(this, () => {
+        this.tourTimeout = null;
+        this.spotlight = startCourseTour(this, () => {
+            this.spotlight = null;
             this.tourDone = true;
             // On the welcome lesson, finishing the tour reveals the callout
             // pointing at the next-lesson button (see desiredCalloutKind).
             this.renderNavigators();
         });
+    }
+
+    // Drops a scheduled tour start and takes down a running tour, without
+    // marking it as done: it is cancelled, not completed.
+    cancelTour() {
+        window.clearTimeout(this.tourTimeout);
+        this.tourTimeout = null;
+        this.spotlight?.cancel();
+        this.spotlight = null;
     }
 
     // -- Report evaluation ---------------------------------------------
