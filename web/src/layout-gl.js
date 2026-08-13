@@ -545,6 +545,9 @@ export class LayoutGL {
         let labelVertices = [];
         let textureCursorX = 0;
         let textureCursorY = 0;
+        // Set on the first label that no longer fits the atlas, so that the
+        // remaining labels are skipped without alerting once per label.
+        let textureFull = false;
      
         this.labelsTextureWidth = 512;
         this.labelsTextureHeight = 512;
@@ -585,7 +588,10 @@ export class LayoutGL {
                     textureCursorY += H;
                 }
                 if(textureCursorY + H > this.labelsTextureHeight) {
-                    alert(`Labels texture is full!`);
+                    if(!textureFull) {
+                        textureFull = true;
+                        alert(`Labels texture is full! Some labels are not displayed.`);
+                    }
                     return undefined;
                 }
 
@@ -609,7 +615,11 @@ export class LayoutGL {
             // halign must be one of: 'left', 'center', 'right'
             // valign must be one of: 'top', 'middle', 'bottom'
             const tex = textOnTexture(text);
-            
+            // Atlas full: drop this label instead of dereferencing undefined.
+            if(tex === undefined) {
+                return;
+            }
+
             const lu = (tex.x) / this.labelsTextureWidth;
             const uu = (tex.x + tex.width) / this.labelsTextureWidth;
             const lv = (tex.y) / this.labelsTextureHeight;
