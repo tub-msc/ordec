@@ -5,7 +5,6 @@ import * as d3 from "d3";
 import { mat4, vec2 } from "gl-matrix";
 import earcut from 'earcut';
 
-import { generateId } from './resultviewer.js';
 import { siFormat } from './siformat.js';
 import { viewEventBus } from './event-bus.js';
 import { CoordinateDisplay } from './viewer-coordinates.js';
@@ -114,10 +113,11 @@ class GLResourceRegistry {
     }
 }
 
-function isConvex(A, B, C) {
-    const x = 0, y = 1;
-    const det = (B[x]-A[x])*(C[y]-A[y]) - (C[x]-A[x])*(B[y]-A[y]);
-    return det > 0;
+// Unique ids for the layer list's checkbox/label pairs.
+let idCounter = 0;
+function generateId() {
+    idCounter += 1;
+    return "idgen" + idCounter;
 }
 
 function calcLayerColor(color, layerId, dampen) {
@@ -178,8 +178,6 @@ export class LayoutGL {
 
         this.zoom = d3.zoom().on( 'zoom',  ({transform}) => {
             this.transform = transform;
-            //this.g.attr("transform", transform);
-            //console.log("zoomed", this.transform);
             this.drawGL();
         });
 
@@ -191,7 +189,6 @@ export class LayoutGL {
             if((this.canvas.clientWidth == 0) || (this.canvas.clientHeight == 0)) {
                 return;
             }
-            console.log('resize', this.canvas.clientWidth, this.canvas.clientHeight);
             this.canvas.width = this.canvas.clientWidth;
             this.canvas.height = this.canvas.clientHeight;
             this.drawGL();
@@ -464,7 +461,7 @@ export class LayoutGL {
         gl.getExtension("EXT_float_blend");
 
         this.glResources = new GLResourceRegistry(gl);
-        this.programInfos = Object();
+        this.programInfos = {};
         let prog;
 
         prog = this.glResources.createProgram(glslShapesVert, glslShapesFrag);
@@ -594,7 +591,6 @@ export class LayoutGL {
             if(!this.labelsTextureMap.get(text)) {
                 // measure text + break line if needed, before rendering text:
                 const m = ctx.measureText(text);
-                console.log(m);
                 let W = Math.ceil(m.width);
                 let H = Math.ceil(m.actualBoundingBoxDescent);
                 if(textureCursorX + W > this.labelsTextureWidth) {
@@ -622,9 +618,7 @@ export class LayoutGL {
             }
             return this.labelsTextureMap.get(text);
         };
-        //console.log("document fonts status B:", font.status);
-        console.log(this.labelsTextureMap);
-        
+
         const addLabel = (x, y, text, halign='left', valign='top') => {
             // halign must be one of: 'left', 'center', 'right'
             // valign must be one of: 'top', 'middle', 'bottom'
@@ -680,9 +674,6 @@ export class LayoutGL {
             );
             this.labelsNumVertices += 6;
         };
-
-        //addLabel(1000, 1000, "Label 1", 'left', 'top');
-        //addLabel(0, 0, "Origin", 'center', 'middle');
 
         this.data.layers.forEach(layer => {
             layer.labelVerticesOffset = this.labelsNumVertices;

@@ -96,7 +96,6 @@ class Editor {
     constructor(container, state) {
         this.refreshTimeout = 500;
         this.container = container;
-        this.resizeWithContainerAutomatically = true;
 
         this.editor = ace.edit(container.element);
         registerAceEditor(this.editor);
@@ -131,7 +130,6 @@ class Editor {
     }
 
     registerChangeHandler(client) {
-        this.client = client;
         this.editor.session.on('change', (delta) => {
             const courseController = getCourseController();
             if (courseController) {

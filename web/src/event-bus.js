@@ -28,11 +28,6 @@ class ViewEventBus {
         }
     }
 
-    hasListeners(event) {
-        const callbacks = this.listeners.get(event);
-        return callbacks && callbacks.size > 0;
-    }
-
     setPending(event, data) {
         this.pending.set(event, data);
     }

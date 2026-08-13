@@ -11,12 +11,6 @@ import { ReportView } from './report-view.js';
 import { DrcReport } from './drc-report.js';
 import { LvsReport } from './lvs-report.js';
 
-let idCounter = 0;
-export function generateId() {
-    idCounter += 1;
-    return "idgen" + idCounter;
-}
-
 // Maps the type field of view messages to the class rendering that view
 // type. Each class lives in its own module; ResultViewer instantiates it
 // with the rescontent element and drives it via update()/destroy().
@@ -55,7 +49,6 @@ export class ResultViewer {
         container.addEventListener('beforeComponentRelease', () => {
             this.view?.destroy?.();
         });
-        this.resizeWithContainerAutomatically = true;
         this.resOverlayRefreshing = container.element.querySelector(".refreshing");
         this.resOverlayRefreshable = container.element.querySelector(".refreshable");
         this.refreshStatus = container.element.querySelector(".refresh-status");
@@ -120,6 +113,8 @@ export class ResultViewer {
             this.viewSelected = state.view;
             this.resEmpty.style.display = 'none';
         } else {
+            // Read once here: the static is set at page load, before any
+            // viewer exists, so the selector kind never changes afterwards.
             this._useHier = ResultViewer.useHierSelector;
             if (this._useHier) {
                 this.hierSelector = new HierSelector(this.resViewHead, {
@@ -313,21 +308,6 @@ export class ResultViewer {
             this.container.setTitle(this.viewSelected);
             this.viewListInitialized = true;
             return;
-        }
-
-        // Check if mode toggled at runtime
-        if (this._useHier !== ResultViewer.useHierSelector) {
-            this._useHier = ResultViewer.useHierSelector;
-            this.resViewHead.replaceChildren();
-            if (this._useHier) {
-                this.viewSelector = null;
-                this.hierSelector = new HierSelector(this.resViewHead, {
-                    onSelect: (viewName) => this._onViewSelected(viewName),
-                });
-            } else {
-                this.hierSelector = null;
-                this._createFlatSelector();
-            }
         }
 
         // In course mode, the lesson() report is shown by the Course panel;

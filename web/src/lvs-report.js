@@ -222,7 +222,6 @@ export class LvsReport {
         }
 
         this._attachEventHandlers(itemMap, circuitMap, data);
-        this.itemMap = itemMap;
     }
 
     _statusIcon(status) {

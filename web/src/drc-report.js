@@ -144,7 +144,6 @@ export class DrcReport {
         if (!this.el.querySelector('.drc-item.selected')) {
             this.selectedItemNid = null;
         }
-        this.itemMap = itemMap;
     }
 
     buildItem(data, item, idx, cellMap, deselectBtn) {
