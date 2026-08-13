@@ -848,7 +848,7 @@ export class LayoutGL {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        gl.uniform1i(programInfo.uniformLocations.uSampler, 0);
+        gl.uniform1i(programInfo.uniformLocations.sampler, 0);
         
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.labelVertices);
         gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 6*4, 0);
@@ -916,7 +916,7 @@ export class LayoutGL {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        gl.uniform1i(programInfo.uniformLocations.uSampler, 0);
+        gl.uniform1i(programInfo.uniformLocations.sampler, 0);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.postVertices);
         gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 4*4, 0);
