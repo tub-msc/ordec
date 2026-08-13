@@ -80,6 +80,4 @@ cell RingOscTb:
         .markdown("Ring oscillator output:")
         .plot2d(sim.time,
             sim.outp, sim.outn,
-            xlabel="Time (s)",
-            ylabel="Voltage (V)",
             height=300)

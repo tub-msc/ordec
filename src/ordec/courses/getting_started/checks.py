@@ -851,10 +851,8 @@ def gen_lesson9(g):
             viewgen report(self) -> Report:
                 sim = self.sim_tran
                 .markdown("Step response of the two RC stages.")
-                .plot2d(sim.time, sim.vin,
-                    xlabel="Time (s)", ylabel="Voltage (V)", height=200)
-                .plot2d(sim.time, sim.mid, sim.vout,
-                    xlabel="Time (s)", ylabel="Voltage (V)", height=200)
+                .plot2d(sim.time, sim.vin, height=200)
+                .plot2d(sim.time, sim.mid, sim.vout, height=200)
             ```
 
             Open the new `RcChain().report` view in the empty result

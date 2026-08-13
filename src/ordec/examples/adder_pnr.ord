@@ -170,7 +170,6 @@ cell AdderTb:
             sim.time,
             ("A", a_dec),
             ("S = A + 5", s_dec),
-            xlabel="Time (s)",
             ylabel="Decoded value",
             height=240,
             group=.grp)
@@ -184,7 +183,6 @@ cell AdderTb:
         .plot2d(
             sim.time,
             *stack,
-            xlabel="Time (s)",
             ylabel="Voltage (V), traces offset by 2 V",
             height=420,
             group=.grp)

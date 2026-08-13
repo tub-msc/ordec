@@ -8,6 +8,7 @@ from public import public
 
 from ..ordb import *
 from ..context import ReportViewBuilder
+from ..simarray import SimColumn
 from .simhier import SimNet, SimPin, SimParam
 
 WIRE_DOMAIN = 8 << 16
@@ -61,19 +62,24 @@ class Report(SubgraphRoot):
         series name and the recorded column (voltage, current or value)
         provides the values.
 
-        When ylabel is not given, it defaults to "Voltage (V)" if all
-        series are SimNets, or "Current (A)" if all are SimPins.
+        Axis labels not given explicitly are inferred from the Quantity
+        carried by result columns (sim.time, sim.freq, sim.sweep, net
+        voltages, pin currents): xlabel from the quantity of x, ylabel
+        when every series' values carry a quantity, joining distinct
+        quantity labels with ", ".
         """
         # Resolve all series before touching the subgraph, so that a bad
         # series argument does not leave a partial Plot2D in the report.
         series = [plot2d_series(y) for y in ys]
-        if 'ylabel' not in kwargs and ys:
-            if all(isinstance(y, SimNet) for y in ys):
-                kwargs['ylabel'] = "Voltage (V)"
-            elif all(isinstance(y, SimPin) for y in ys):
-                kwargs['ylabel'] = "Current (A)"
+        if 'xlabel' not in kwargs and isinstance(x, SimColumn) \
+                and x.quantity is not None:
+            kwargs['xlabel'] = x.quantity.value
+        if 'ylabel' not in kwargs and series:
+            quantities = list(dict.fromkeys(q for _, q in series))
+            if None not in quantities:
+                kwargs['ylabel'] = ", ".join(q.value for q in quantities)
         plot = self % Plot2D(x=x, **kwargs)
-        for node in series:
+        for node, _ in series:
             plot % node
         return plot
 
@@ -324,7 +330,8 @@ class Plot2D(ReportElement):
 def plot2d_series(y):
     """
     Resolve one Report.plot2d series argument to an uninserted
-    Plot2DSeries node.
+    Plot2DSeries node plus the Quantity of its values column (None if
+    the values carry no quantity).
 
     Accepts a (name, values) pair or a SimNet / SimPin / SimParam node.
     Node names follow the field translation in
@@ -346,10 +353,11 @@ def plot2d_series(y):
             f"SimNet/SimPin/SimParam node, got {type(y).__name__}")
     if values is None:
         raise ValueError(f"no simulation data recorded for {name}")
+    quantity = values.quantity if isinstance(values, SimColumn) else None
     # Constructing the node coerces the values (via the values attr
     # factory) exactly once and raises on bad values before
     # Report.plot2d mutates the subgraph.
-    return Plot2DSeries(name=name, values=values)
+    return Plot2DSeries(name=name, values=values), quantity
 
 def coerce_plot_values(values):
     try:

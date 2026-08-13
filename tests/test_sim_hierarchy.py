@@ -366,13 +366,15 @@ def test_bode_plot_ref():
 
 
 def test_plot2d_simnet_series():
-    """Report.plot2d with bare SimNet nodes: names derived from the node
-    paths, values from the voltage column, ylabel inferred."""
+    """Report.plot2d with bare SimNet/SimPin nodes: names derived from the
+    node paths, values from the recorded columns, axis labels inferred
+    from the column labels."""
     from ordec.core.schema import Report
 
     h = lib_test.VpwlTb().sim_tran_batch
     report = Report()
-    report.plot2d(h.time, h.out, xlabel="Time (s)")
+    report.plot2d(h.time, h.out)
+    report.plot2d(h.time, h.out, h.res.p)
     from ordec.core.wire import ExportTable
     _, data = report.webdata(ExportTable())
     plot = data["elements"][0]
@@ -380,7 +382,12 @@ def test_plot2d_simnet_series():
     assert plot["x"] == pytest.approx(list(h.time))
     assert [s["name"] for s in plot["series"]] == ["out"]
     assert plot["series"][0]["values"] == pytest.approx(list(h.out.voltage))
+    assert plot["xlabel"] == "Time (s)"
     assert plot["ylabel"] == "Voltage (V)"
+    # Mixed voltages and currents join the distinct column labels.
+    mixed = data["elements"][1]
+    assert [s["name"] for s in mixed["series"]] == ["out", "res.p"]
+    assert mixed["ylabel"] == "Voltage (V), Current (A)"
 
 
 def test_bode_plot_errors():

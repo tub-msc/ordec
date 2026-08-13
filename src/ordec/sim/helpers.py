@@ -78,9 +78,9 @@ def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
         if s.root != sim:
             raise ValueError(
                 "All signals must come from the same SimHierarchy")
-    if sim.freq is None:
+    freq = sim.freq
+    if freq is None:
         raise ValueError("SimHierarchy contains no AC results")
-    freq = [f.real for f in sim.freq]
 
     if ref is not None:
         _, ref_values = _resolve_signal(ref)
@@ -93,7 +93,6 @@ def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
     mag = report.plot2d(
         freq,
         *[(name, mag_db(vals)) for name, vals in named],
-        xlabel="Frequency (Hz)",
         ylabel="Magnitude (dB)",
         xscale='log',
         height=height,
@@ -102,7 +101,6 @@ def bode_plot(report, *signals, ref=None, height=200, unwrap=True):
     phase = report.plot2d(
         freq,
         *[(name, phase_deg(vals, unwrap)) for name, vals in named],
-        xlabel="Frequency (Hz)",
         ylabel="Phase (°)",
         xscale='log',
         height=height,

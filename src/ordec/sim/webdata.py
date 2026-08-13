@@ -37,30 +37,30 @@ def _fmt_eng(val, unit):
     return x
 
 
-def _plot_signals(sh: SimHierarchy, x, xlabel):
+def _plot_signals(sh: SimHierarchy, x):
     """Build a Report plotting net voltages and pin currents over a shared x-axis."""
-    # plot2d derives series names from the nodes and infers the
-    # Voltage (V) / Current (A) ylabels from the node types.
+    # plot2d derives series names from the nodes and infers the axis
+    # labels from the labeled x and voltage/current columns.
     nets = [sn for sn in sh.all(SimNet) if sn.voltage is not None]
     pins = [sp for sp in sh.all(SimPin) if sp.current is not None]
     report = Report(fill_height=True)
     if nets or pins:
         report.sim = PlotGroup()
     if nets:
-        report.plot2d(x, *nets, xlabel=xlabel, height=None, group=report.sim)
+        report.plot2d(x, *nets, height=None, group=report.sim)
     if pins:
-        report.plot2d(x, *pins, xlabel=xlabel, height=None, group=report.sim)
+        report.plot2d(x, *pins, height=None, group=report.sim)
     return report.webdata_static()
 
 
 def webdata_tran(sh: SimHierarchy):
-    return _plot_signals(sh, tuple(sh.time), 'Time (s)')
+    return _plot_signals(sh, sh.time)
 
 
 def webdata_dcsweep(sh: SimHierarchy):
-    if sh.sim_data is None or sh.sweep_field is None:
+    if sh.sweep is None:
         return Report(fill_height=True).webdata_static()
-    return _plot_signals(sh, tuple(sh.sim_data.column(sh.sweep_field)), sh.sweep_field)
+    return _plot_signals(sh, sh.sweep)
 
 
 def webdata_ac(sh: SimHierarchy):
