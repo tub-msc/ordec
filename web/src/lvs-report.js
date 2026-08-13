@@ -3,6 +3,26 @@
 
 import { viewEventBus } from './event-bus.js';
 
+const TYPE_ORDER = ['pin', 'net', 'device', 'subcircuit'];
+const TYPE_LABELS = {
+    pin: 'Pins', net: 'Nets', device: 'Devices', subcircuit: 'Subcircuits',
+};
+const TYPE_ICONS = { pin: '⇔', net: '↑', device: '▱', subcircuit: '□' };
+const ARROW_BOTH = '↔';
+const ARROW_COLLAPSED = '▶';
+
+function textSpan(text) {
+    const span = document.createElement('span');
+    span.textContent = text;
+    return span;
+}
+
+function toggleSpan() {
+    const span = textSpan(ARROW_COLLAPSED);
+    span.className = 'lvs-toggle';
+    return span;
+}
+
 // LVS Report viewer.
 //
 // Event bus protocol:
@@ -58,21 +78,30 @@ export class LvsReport {
             ? `${mismatchItemCount} mismatch${mismatchItemCount > 1 ? 'es' : ''}`
             : 'All match';
 
-        let html = `<div class="lvs-header ${statusClass}">
-            <span class="lvs-status">${statusText}</span>
-            <span class="lvs-summary">${summaryText}</span>
-            <button class="lvs-deselect" disabled>Deselect</button>
-        </div>`;
-        html += `<div class="lvs-body">
-            <div class="lvs-col-header">
-                <span>Objects</span>
-                <span>Layout</span>
-                <span>Reference</span>
-            </div>`;
+        // Built with createElement/textContent rather than by interpolating
+        // into an HTML string: cell, net, device and pin names are design
+        // data and may contain characters that would break the markup.
+        const header = document.createElement('div');
+        header.className = `lvs-header ${statusClass}`;
+        const status = document.createElement('span');
+        status.className = 'lvs-status';
+        status.textContent = statusText;
+        const summary = document.createElement('span');
+        summary.className = 'lvs-summary';
+        summary.textContent = summaryText;
+        const deselectBtn = document.createElement('button');
+        deselectBtn.className = 'lvs-deselect';
+        deselectBtn.disabled = true;
+        deselectBtn.textContent = 'Deselect';
+        header.append(status, summary, deselectBtn);
 
-        const typeOrder = ['pin', 'net', 'device', 'subcircuit'];
-        const typeLabels = { pin: 'Pins', net: 'Nets', device: 'Devices', subcircuit: 'Subcircuits' };
-        const typeIcons = { pin: '&#8660;', net: '&#8593;', device: '&#9649;', subcircuit: '&#9633;' };
+        const body = document.createElement('div');
+        body.className = 'lvs-body';
+        const colHeader = document.createElement('div');
+        colHeader.className = 'lvs-col-header';
+        colHeader.append(
+            textSpan('Objects'), textSpan('Layout'), textSpan('Reference'));
+        body.appendChild(colHeader);
 
         data.circuits.forEach(circuit => {
             const circuitData = circuitMap.get(circuit.nid);
@@ -81,23 +110,26 @@ export class LvsReport {
 
             if (!hasMismatches && allItems.length === 0) return;
 
-            const circuitStatusIcon = this._statusIcon(circuit.status);
+            const circuitEl = document.createElement('div');
+            circuitEl.className = 'lvs-circuit';
+            circuitEl.dataset.nid = circuit.nid;
+
+            const circuitHeader = document.createElement('div');
+            circuitHeader.className = 'lvs-circuit-header';
+            const circuitLabel = document.createElement('span');
+            circuitLabel.append(toggleSpan(), ' ',
+                this._statusIcon(circuit.status), ' Circuit');
             // Layout/reference cells link to the circuit pair's layout/
             // schematic view if the corresponding ref resolved.
-            const layoutCell = circuit.has_layout_ref
-                ? `<span class="lvs-circuit-link" data-nid="${circuit.nid}" data-kind="layout" title="Open layout">${circuit.layout_name || '?'}</span>`
-                : (circuit.layout_name || '?');
-            const schemCell = circuit.has_schem_ref
-                ? `<span class="lvs-circuit-link" data-nid="${circuit.nid}" data-kind="schem" title="Open schematic">${circuit.schem_name || '?'}</span>`
-                : (circuit.schem_name || '?');
-            html += `<div class="lvs-circuit" data-nid="${circuit.nid}">
-                <div class="lvs-circuit-header">
-                    <span><span class="lvs-toggle">&#9654;</span> ${circuitStatusIcon} Circuit</span>
-                    <span>${layoutCell}</span>
-                    <span>${schemCell}</span>
-                </div>`;
+            circuitHeader.append(
+                circuitLabel,
+                this._circuitCell(circuit, 'layout', circuit.has_layout_ref,
+                    circuit.layout_name, 'Open layout'),
+                this._circuitCell(circuit, 'schem', circuit.has_schem_ref,
+                    circuit.schem_name, 'Open schematic'));
+            circuitEl.appendChild(circuitHeader);
 
-            for (const itemType of typeOrder) {
+            for (const itemType of TYPE_ORDER) {
                 const items = circuitData.itemsByType[itemType];
                 if (items.length === 0) continue;
 
@@ -107,14 +139,21 @@ export class LvsReport {
                     ? this._statusIcon('mismatch')
                     : this._statusIcon(warningCount > 0 ? 'warning' : 'match');
 
-                html += `<div class="lvs-type-group" data-type="${itemType}">
-                    <div class="lvs-type-header">
-                        <span><span class="lvs-toggle">&#9654;</span> ${groupStatusIcon} ${typeLabels[itemType]} (${items.length})</span>
-                        <span></span>
-                        <span></span>
-                    </div>
-                    <div class="lvs-type-items">`;
+                const groupEl = document.createElement('div');
+                groupEl.className = 'lvs-type-group';
+                groupEl.dataset.type = itemType;
 
+                const typeHeader = document.createElement('div');
+                typeHeader.className = 'lvs-type-header';
+                const typeLabel = document.createElement('span');
+                typeLabel.append(toggleSpan(), ' ', groupStatusIcon,
+                    ` ${TYPE_LABELS[itemType]} (${items.length})`);
+                // The two empty cells keep the three-column grid aligned.
+                typeHeader.append(typeLabel, textSpan(''), textSpan(''));
+                groupEl.appendChild(typeHeader);
+
+                const itemsEl = document.createElement('div');
+                itemsEl.className = 'lvs-type-items';
                 for (const item of items) {
                     const statusClass = item.status === 'match'
                         ? 'lvs-status-match'
@@ -130,29 +169,43 @@ export class LvsReport {
                     const highlightTargets = [];
                     if (item.layout_pos !== null && item.layout_pos !== undefined) highlightTargets.push('layout');
                     if (item.schem_nid !== null && item.schem_nid !== undefined) highlightTargets.push('schematic');
-                    const rowLabel = `${layoutName} &#8596; ${schemName}`;
-                    const labelCell = highlightTargets.length > 0
-                        ? `<span class="lvs-item-link" title="Highlight in ${highlightTargets.join(' and ')}">${rowLabel}</span>`
-                        : rowLabel;
+                    const rowLabel = `${layoutName} ${ARROW_BOTH} ${schemName}`;
+                    let labelCell;
+                    if (highlightTargets.length > 0) {
+                        labelCell = textSpan(rowLabel);
+                        labelCell.className = 'lvs-item-link';
+                        labelCell.title =
+                            `Highlight in ${highlightTargets.join(' and ')}`;
+                    } else {
+                        labelCell = document.createTextNode(rowLabel);
+                    }
 
-                    html += `<div class="lvs-item-row ${statusClass}" data-nid="${item.nid}">
-                        <span>${typeIcons[itemType]} ${labelCell}</span>
-                        <span>${layoutName}${layoutParams}</span>
-                        <span>${schemName}${schemParams}</span>
-                    </div>`;
+                    const rowEl = document.createElement('div');
+                    rowEl.className = `lvs-item-row ${statusClass}`;
+                    rowEl.dataset.nid = item.nid;
+                    const objectCell = document.createElement('span');
+                    objectCell.append(`${TYPE_ICONS[itemType]} `, labelCell);
+                    rowEl.append(
+                        objectCell,
+                        textSpan(`${layoutName}${layoutParams}`),
+                        textSpan(`${schemName}${schemParams}`));
+                    itemsEl.appendChild(rowEl);
+
                     if (item.message) {
-                        html += `<div class="lvs-item-msg">${item.message}</div>`;
+                        const msgEl = document.createElement('div');
+                        msgEl.className = 'lvs-item-msg';
+                        msgEl.textContent = item.message;
+                        itemsEl.appendChild(msgEl);
                     }
                 }
-
-                html += `</div></div>`;
+                groupEl.appendChild(itemsEl);
+                circuitEl.appendChild(groupEl);
             }
 
-            html += `</div>`;
+            body.appendChild(circuitEl);
         });
 
-        html += '</div>';
-        this.el.innerHTML = html;
+        this.el.replaceChildren(header, body);
 
         this._attachEventHandlers(itemMap, circuitMap, data);
         this.itemMap = itemMap;
@@ -160,7 +213,29 @@ export class LvsReport {
 
     _statusIcon(status) {
         const cls = status === 'match' ? 'match' : (status === 'warning' ? 'warning' : 'mismatch');
-        return `<span class="lvs-status-icon ${cls}"></span>`;
+        const icon = document.createElement('span');
+        icon.className = `lvs-status-icon ${cls}`;
+        return icon;
+    }
+
+    // One of the two cell-name columns of a circuit header: a click target
+    // opening the pair's layout/schematic view where that ref resolved,
+    // plain text otherwise (see the lvs-circuit-link handler).
+    _circuitCell(circuit, kind, hasRef, name, title) {
+        const cell = document.createElement('span');
+        if (!hasRef) {
+            cell.textContent = name || '?';
+            return cell;
+        }
+        // The link is nested inside the grid cell, so that only the name
+        // itself is underlined and clickable.
+        const link = textSpan(name || '?');
+        link.className = 'lvs-circuit-link';
+        link.dataset.nid = circuit.nid;
+        link.dataset.kind = kind;
+        link.title = title;
+        cell.appendChild(link);
+        return cell;
     }
 
     _formatParams(params) {

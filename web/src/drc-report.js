@@ -3,6 +3,9 @@
 
 import { viewEventBus } from './event-bus.js';
 
+const ARROW_COLLAPSED = '▶';
+const ARROW_EXPANDED = '▼';
+
 // DRC Report viewer.
 //
 // Event bus protocol:
@@ -60,61 +63,20 @@ export class DrcReport {
         const totalCount = data.items.length;
         const catCount = data.categories.length;
 
-        let html = `<div class="drc-header">
-            <span>${totalCount} violations in ${catCount} categories</span>
-            <button class="drc-deselect" disabled>Deselect</button>
-        </div>`;
-        html += '<div class="drc-categories">';
+        // Built with createElement/textContent rather than by interpolating
+        // into an HTML string: category, cell and shape names are design
+        // data and may contain characters that would break the markup.
+        const header = document.createElement('div');
+        header.className = 'drc-header';
+        const summary = document.createElement('span');
+        summary.textContent =
+            `${totalCount} violations in ${catCount} categories`;
+        const deselectBtn = document.createElement('button');
+        deselectBtn.className = 'drc-deselect';
+        deselectBtn.disabled = true;
+        deselectBtn.textContent = 'Deselect';
+        header.append(summary, deselectBtn);
 
-        data.categories.forEach(cat => {
-            const catData = catMap.get(cat.nid);
-            html += `<div class="drc-category" data-nid="${cat.nid}">`;
-            html += `<span class="drc-category-toggle">&#9654;</span> `;
-            html += `<span class="drc-category-name">${cat.name}</span>`;
-            html += ` <span class="drc-category-count">(${catData.count})</span>`;
-            if (cat.description) {
-                html += `<span class="drc-category-desc"> - ${cat.description}</span>`;
-            }
-            html += '<div class="drc-items">';
-            catData.items.forEach((item, idx) => {
-                let label = item.shapes.length > 0
-                    ? item.shapes[0].type
-                    : 'item';
-                const cell = cellMap.get(item.cell_nid);
-                let cls = 'drc-item';
-                let title = '';
-                if (cell && !cell.is_top) {
-                    label += ` (in ${cell.name})`;
-                    cls += ' drc-item-subcell';
-                    if (!cell.has_layout_ref) {
-                        // Cannot be highlighted (see click handler);
-                        // styled non-clickable, with an explanation.
-                        cls += ' drc-item-nohighlight';
-                        title = ` title="Cell '${cell.name}' has no layout view to highlight in"`;
-                    }
-                }
-                html += `<div class="${cls}" data-nid="${item.nid}"${title}>#${idx + 1}: ${label}</div>`;
-            });
-            html += '</div></div>';
-        });
-
-        html += '</div>';
-        this.el.innerHTML = html;
-
-        this.el.querySelectorAll('.drc-category').forEach(catEl => {
-            const toggleCategory = () => {
-                catEl.classList.toggle('expanded');
-                const toggle = catEl.querySelector('.drc-category-toggle');
-                toggle.innerHTML = catEl.classList.contains('expanded') ? '&#9660;' : '&#9654;';
-            };
-            catEl.addEventListener('click', (e) => {
-                if (!e.target.classList.contains('drc-item')) {
-                    toggleCategory();
-                }
-            });
-        });
-
-        const deselectBtn = this.el.querySelector('.drc-deselect');
         const deselect = () => {
             this.el.querySelectorAll('.drc-item.selected').forEach(el => {
                 el.classList.remove('selected');
@@ -126,57 +88,122 @@ export class DrcReport {
         };
         deselectBtn.addEventListener('click', deselect);
 
-        this.el.querySelectorAll('.drc-item').forEach(itemEl => {
-            itemEl.addEventListener('click', () => {
-                // An outdated report must not drive navigation or
-                // highlights: its nids, positions and hashes may not
-                // match the regenerated views.
-                if (this.resultViewer && !this.resultViewer.viewUpToDate) {
-                    this.resultViewer.flashRefreshBar();
+        const categoriesEl = document.createElement('div');
+        categoriesEl.className = 'drc-categories';
+
+        data.categories.forEach(cat => {
+            const catData = catMap.get(cat.nid);
+            const catEl = document.createElement('div');
+            catEl.className = 'drc-category';
+            catEl.dataset.nid = cat.nid;
+
+            const toggle = document.createElement('span');
+            toggle.className = 'drc-category-toggle';
+            toggle.textContent = ARROW_COLLAPSED;
+            const name = document.createElement('span');
+            name.className = 'drc-category-name';
+            name.textContent = cat.name;
+            const count = document.createElement('span');
+            count.className = 'drc-category-count';
+            count.textContent = `(${catData.count})`;
+            // The spaces between the inline spans are the only thing
+            // separating them; the style sheet adds no margins.
+            catEl.append(toggle, ' ', name, ' ', count);
+
+            if (cat.description) {
+                const desc = document.createElement('span');
+                desc.className = 'drc-category-desc';
+                desc.textContent = ` - ${cat.description}`;
+                catEl.appendChild(desc);
+            }
+
+            const itemsEl = document.createElement('div');
+            itemsEl.className = 'drc-items';
+            catData.items.forEach((item, idx) => {
+                itemsEl.appendChild(
+                    this.buildItem(data, item, idx, cellMap, deselectBtn));
+            });
+            catEl.appendChild(itemsEl);
+
+            catEl.addEventListener('click', (e) => {
+                if (e.target.classList.contains('drc-item')) {
                     return;
                 }
-                const nid = parseInt(itemEl.dataset.nid, 10);
-                const item = itemMap.get(nid);
-                if (!item) return;
-                const cell = cellMap.get(item.cell_nid);
-                const isTop = !cell || cell.is_top;
-                // Subcell shapes are in the cell's local coordinate
-                // space; without a resolved ref_layout there is no view
-                // where they could be highlighted correctly.
-                if (!isTop && !cell.has_layout_ref) return;
-
-                this.el.querySelectorAll('.drc-item.selected').forEach(el => {
-                    el.classList.remove('selected');
-                });
-                itemEl.classList.add('selected');
-                deselectBtn.disabled = false;
-                this.selectedItemNid = nid;
-
-                const layoutView = this.viewName
-                    ? (isTop
-                        ? `${this.viewName}.ref_layout`
-                        : `${this.viewName}.subgraph.cursor_at(${item.cell_nid}).ref_layout`)
-                    : null;
-                const layoutWireHash = (isTop ? data.layout_wire_hash : cell.layout_wire_hash) || null;
-                // Clear the previous selection everywhere: its highlight
-                // may sit in a viewer the new selection does not target.
-                viewEventBus.emit('drc:clear');
-                const payload = { shapes: item.shapes, layoutView, layoutWireHash };
-                viewEventBus.setPending('drc:select', payload);
-                viewEventBus.emit('drc:select', payload);
-                if (layoutView) {
-                    // Focuses the target view if open (matched by name
-                    // or wire hash), opens it otherwise.
-                    viewEventBus.emit('layout:request-open', {
-                        view: layoutView,
-                        wireHash: layoutWireHash,
-                        sourceContainer: this.glContainer,
-                    });
-                }
+                catEl.classList.toggle('expanded');
+                toggle.textContent = catEl.classList.contains('expanded')
+                    ? ARROW_EXPANDED : ARROW_COLLAPSED;
             });
+
+            categoriesEl.appendChild(catEl);
         });
 
+        this.el.replaceChildren(header, categoriesEl);
         this.itemMap = itemMap;
+    }
+
+    buildItem(data, item, idx, cellMap, deselectBtn) {
+        let label = item.shapes.length > 0 ? item.shapes[0].type : 'item';
+        const cell = cellMap.get(item.cell_nid);
+        const itemEl = document.createElement('div');
+        itemEl.classList.add('drc-item');
+        itemEl.dataset.nid = item.nid;
+        if (cell && !cell.is_top) {
+            label += ` (in ${cell.name})`;
+            itemEl.classList.add('drc-item-subcell');
+            if (!cell.has_layout_ref) {
+                // Cannot be highlighted (see click handler);
+                // styled non-clickable, with an explanation.
+                itemEl.classList.add('drc-item-nohighlight');
+                itemEl.title =
+                    `Cell '${cell.name}' has no layout view to highlight in`;
+            }
+        }
+        itemEl.textContent = `#${idx + 1}: ${label}`;
+
+        itemEl.addEventListener('click', () => {
+            // An outdated report must not drive navigation or
+            // highlights: its nids, positions and hashes may not
+            // match the regenerated views.
+            if (this.resultViewer && !this.resultViewer.viewUpToDate) {
+                this.resultViewer.flashRefreshBar();
+                return;
+            }
+            const isTop = !cell || cell.is_top;
+            // Subcell shapes are in the cell's local coordinate
+            // space; without a resolved ref_layout there is no view
+            // where they could be highlighted correctly.
+            if (!isTop && !cell.has_layout_ref) return;
+
+            this.el.querySelectorAll('.drc-item.selected').forEach(el => {
+                el.classList.remove('selected');
+            });
+            itemEl.classList.add('selected');
+            deselectBtn.disabled = false;
+            this.selectedItemNid = item.nid;
+
+            const layoutView = this.viewName
+                ? (isTop
+                    ? `${this.viewName}.ref_layout`
+                    : `${this.viewName}.subgraph.cursor_at(${item.cell_nid}).ref_layout`)
+                : null;
+            const layoutWireHash = (isTop ? data.layout_wire_hash : cell.layout_wire_hash) || null;
+            // Clear the previous selection everywhere: its highlight
+            // may sit in a viewer the new selection does not target.
+            viewEventBus.emit('drc:clear');
+            const payload = { shapes: item.shapes, layoutView, layoutWireHash };
+            viewEventBus.setPending('drc:select', payload);
+            viewEventBus.emit('drc:select', payload);
+            if (layoutView) {
+                // Focuses the target view if open (matched by name
+                // or wire hash), opens it otherwise.
+                viewEventBus.emit('layout:request-open', {
+                    view: layoutView,
+                    wireHash: layoutWireHash,
+                    sourceContainer: this.glContainer,
+                });
+            }
+        });
+        return itemEl;
     }
 
     destroy() {
