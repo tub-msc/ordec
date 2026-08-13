@@ -59,6 +59,16 @@ export function registerAceEditor(editor) {
     editor.setTheme(isDark() ? "ace/theme/github_dark" : "ace/theme/github");
 }
 
+// Must be called when an editor is destroyed (see Editor in main.js):
+// applyTheme() would otherwise keep setting the theme on dead instances,
+// and the array would grow with every lesson switch.
+export function unregisterAceEditor(editor) {
+    const i = aceEditors.indexOf(editor);
+    if (i >= 0) {
+        aceEditors.splice(i, 1);
+    }
+}
+
 export function initTheme() {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     const dark = saved === 'dark';

@@ -23,7 +23,7 @@ import { authenticateLocalQuery, initSession, session } from './auth.js';
 
 import { ResultViewer } from "./resultviewer.js";
 import { OrdecClient } from './client.js';
-import { initTheme, registerAceEditor } from './theme.js';
+import { initTheme, registerAceEditor, unregisterAceEditor } from './theme.js';
 import { viewEventBus } from './event-bus.js';
 import { initCourseMode, getCourseController, suppressCloseControls } from './course.js';
 
@@ -107,6 +107,17 @@ class Editor {
             fontFamily: "Inconsolata",
             fontSize: getComputedStyle(document.documentElement)
                 .getPropertyValue('--font-size-code').trim() || "11.5pt"
+        });
+
+        // Teardown when GoldenLayout releases the component, e.g. when
+        // loadLayout() rebuilds the panels on a lesson switch (course.js).
+        // Clearing the timeout is not just hygiene: a pending debounce
+        // would fire after activateLesson() has installed the new lesson's
+        // source and overwrite client.src with the old lesson's text.
+        container.addEventListener('beforeComponentRelease', () => {
+            window.clearTimeout(this.timeout);
+            unregisterAceEditor(this.editor);
+            this.editor.destroy();
         });
 
         // The source editor is movable but not closable in every mode (see
