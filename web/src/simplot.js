@@ -422,6 +422,12 @@ export class SimPlot {
             visible: true,
         }));
         this._updateLegend();
+        // The old crosshair index points into the previous sweep: _render()
+        // would restore it at a stale position, or at NaN if the new data is
+        // shorter. Cleared locally (suppressEvent) so that replacing one
+        // plot's data does not drop the crosshair on the linked plots of its
+        // group, which keep their data.
+        this.clearCrosshair({ suppressEvent: true });
         this.currentTransform = d3.zoomIdentity;
         this._yZoomScale = 1;
         this._yPanOffset = 0;
