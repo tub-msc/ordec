@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from pathlib import Path
+from textwrap import dedent
 
 import pytest
 
@@ -13,6 +14,7 @@ from ordec.lsp.analysis import (
 )
 from ordec.lsp.analysis.python_index import PythonModuleIndex
 from ordec.lsp.server import OrdLanguageServer
+import ordec
 
 
 def position_at(source, needle, occurrence=1):
@@ -56,20 +58,20 @@ def diagnostic_codes(session, uri):
     ]
 
 
-def test_analyze_ord_collects_public_structure_and_syntax_errors():
-    source = (
-        "import math\n"
-        "from .helpers import foo as bar\n"
-        "\n"
-        "cell Inv:\n"
-        "    viewgen layout(self) -> Layout:\n"
-        "        output bus[0].y:\n"
-        "            .align = East\n"
-        "        path vdd, vss\n"
-        "\n"
-        "def helper(x):\n"
-        "    return bar\n"
-    )
+def test_structure_and_syntax_errors():
+    source = dedent("""\
+        import math
+        from .helpers import foo as bar
+
+        cell Inv:
+            viewgen layout(self) -> Layout:
+                output bus[0].y:
+                    .align = East
+                path vdd, vss
+
+        def helper(x):
+            return bar
+        """)
 
     analysis = analyze_ord(source, uri="file:///tmp/test.ord", version=3)
 
@@ -85,30 +87,41 @@ def test_analyze_ord_collects_public_structure_and_syntax_errors():
         ("function", "helper"),
     ]
 
-    broken = analyze_ord("cell Inv:\n    viewgen layout(")
+    broken = analyze_ord(dedent("""\
+        cell Inv:
+            viewgen layout("""))
     assert broken.symbols == []
     assert broken.diagnostics[0].code == "unexpected-token"
 
-    dedented = analyze_ord("cell Inv:\n        path a\n    path b\n")
+    dedented = analyze_ord(dedent("""\
+        cell Inv:
+                path a
+            path b
+        """))
     assert dedented.symbols == []
     assert dedented.diagnostics[0].code == "inconsistent-dedent"
 
 
-def test_analysis_session_tracks_document_versions_and_last_good_analysis():
+def test_document_versions():
     session = AnalysisSession(workspace_root="/tmp/workspace")
     uri = "file:///tmp/test.ord"
     session.open_document(
         uri,
-        "cell Inv:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        path a\n",
+        dedent("""\
+            cell Inv:
+                viewgen symbol(self) -> Symbol:
+                    path a
+            """),
         version=1,
     )
 
     assert session.analyze(uri).version == 1
     assert [symbol.name for symbol in session.analyze(uri).symbols] == ["Inv", "symbol", "a"]
 
-    session.update_document(uri, "cell Inv:\n    viewgen symbol(\n", version=2)
+    session.update_document(uri, dedent("""\
+        cell Inv:
+            viewgen symbol(
+        """), version=2)
 
     analysis = session.analyze(uri)
     assert analysis.version == 2
@@ -120,19 +133,24 @@ def test_analysis_session_tracks_document_versions_and_last_good_analysis():
     assert session.documents == {}
 
 
-def test_analysis_error_snapshots_do_not_alias_last_good_analysis():
+def test_error_snapshots_not_aliased():
     session = AnalysisSession(workspace_root="/tmp/workspace")
     uri = "file:///tmp/snapshot.ord"
     session.open_document(
         uri,
-        "cell Inv:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        path a\n",
+        dedent("""\
+            cell Inv:
+                viewgen symbol(self) -> Symbol:
+                    path a
+            """),
         version=1,
     )
 
     good = session.analyze(uri)
-    session.update_document(uri, "cell Inv:\n    viewgen symbol(\n", version=2)
+    session.update_document(uri, dedent("""\
+        cell Inv:
+            viewgen symbol(
+        """), version=2)
     broken = session.analyze(uri)
     broken.symbols.clear()
 
@@ -144,7 +162,7 @@ def test_analysis_error_snapshots_do_not_alias_last_good_analysis():
     ]
 
 
-def test_python_index_find_spec_failures_are_unresolved(monkeypatch):
+def test_find_spec_failure_unresolved(monkeypatch):
     index = PythonModuleIndex()
 
     def broken_find_spec(module_name):
@@ -156,31 +174,31 @@ def test_python_index_find_spec_failures_are_unresolved(monkeypatch):
     assert not index.module_exists("bad.package")
 
 
-def test_analysis_session_reports_core_semantic_diagnostics(tmp_path):
-    (tmp_path / "helper.ord").write_text(
-        "cell Other:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
-    source = (
-        "from .missing import Foo\n"
-        "from .helper import Missing\n"
-        "from ordec.lib.generic_mos import Nmos\n"
-        "\n"
-        "cell Inv:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        port b: .align=West\n"
-        "        ! b.pos.x == 0\n"
-        "        MissingCell inst:\n"
-        "            .x -- b\n"
-        "        Nmos pd:\n"
-        "            .missing -- b\n"
-        "            .$bogus = 1u\n"
-        "    viewgen bad(self) -> Nmos:\n"
-        "        pass\n"
-    )
+def test_semantic_diagnostics(tmp_path):
+    (tmp_path / "helper.ord").write_text(dedent("""\
+        cell Other:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
+    source = dedent("""\
+        from .missing import Foo
+        from .helper import Missing
+        from ordec.lib.generic_mos import Nmos
+
+        cell Inv:
+            viewgen symbol(self) -> Symbol:
+                input a
+            viewgen schematic(self) -> Schematic:
+                port b: .align=West
+                ! b.pos.x == 0
+                MissingCell inst:
+                    .x -- b
+                Nmos pd:
+                    .missing -- b
+                    .$bogus = 1u
+            viewgen bad(self) -> Nmos:
+                pass
+        """)
 
     session = AnalysisSession(workspace_root=str(tmp_path))
     uri = (tmp_path / "broken.ord").resolve().as_uri()
@@ -197,33 +215,33 @@ def test_analysis_session_reports_core_semantic_diagnostics(tmp_path):
     }
 
 
-def test_analysis_session_resolves_ord_imports_and_exported_symbols(tmp_path):
-    (tmp_path / "mux2.ord").write_text(
-        "cell Mux2:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
+def test_ord_imports(tmp_path):
+    (tmp_path / "mux2.ord").write_text(dedent("""\
+        cell Mux2:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
     package_path = tmp_path / "ordcells"
     package_path.mkdir()
-    (package_path / "__init__.ord").write_text(
-        "cell Exported:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
-    top_source = (
-        "from .mux2 import Mux2 as Stage\n"
-        "from .ordcells import Exported\n"
-        "\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        Stage child:\n"
-        "            .a -- net_a\n"
-        "        Exported exp:\n"
-        "            .a -- net_a\n"
-        "\n"
-        "def helper(x=Stage):\n"
-        "    return x\n"
-    )
+    (package_path / "__init__.ord").write_text(dedent("""\
+        cell Exported:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
+    top_source = dedent("""\
+        from .mux2 import Mux2 as Stage
+        from .ordcells import Exported
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                Stage child:
+                    .a -- net_a
+                Exported exp:
+                    .a -- net_a
+
+        def helper(x=Stage):
+            return x
+        """)
     top_path = tmp_path / "top.ord"
     top_path.write_text(top_source)
 
@@ -239,20 +257,20 @@ def test_analysis_session_resolves_ord_imports_and_exported_symbols(tmp_path):
     assert session.definition(uri, position_at(top_source, "Exported exp"))["name"] == "Exported"
 
 
-def test_analysis_session_resolves_ord_star_imports(tmp_path):
-    (tmp_path / "mux2.ord").write_text(
-        "cell Mux2:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
-    star_source = (
-        "from .mux2 import *\n"
-        "\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        Mux2 child:\n"
-        "            .a -- net_a\n"
-    )
+def test_ord_star_imports(tmp_path):
+    (tmp_path / "mux2.ord").write_text(dedent("""\
+        cell Mux2:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
+    star_source = dedent("""\
+        from .mux2 import *
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                Mux2 child:
+                    .a -- net_a
+        """)
     star_path = tmp_path / "star_user.ord"
     star_path.write_text(star_source)
 
@@ -263,29 +281,29 @@ def test_analysis_session_resolves_ord_star_imports(tmp_path):
     assert session.definition(star_uri, position_at(star_source, "Mux2 child"))["name"] == "Mux2"
 
 
-def test_analysis_session_resolves_python_import_variants(tmp_path):
-    (tmp_path / "counter_yosys.py").write_text(
-        "class ExtLib:\n"
-        "    pass\n"
-        "\n"
-        "def report_digital_design():\n"
-        "    pass\n"
-    )
-    source = (
-        "import math\n"
-        "from counter_yosys import ExtLib, report_digital_design\n"
-        "from ordec.layout import helpers\n"
-        "from ordec.lib.generic_mos import Nmos\n"
-        "\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        value = math.log(2)\n"
-        "        Nmos m:\n"
-        "            .d -- net_a\n"
-        "\n"
-        "def helper(x=ExtLib):\n"
-        "    return helpers, report_digital_design\n"
-    )
+def test_python_import_variants(tmp_path):
+    (tmp_path / "counter_yosys.py").write_text(dedent("""\
+        class ExtLib:
+            pass
+
+        def report_digital_design():
+            pass
+        """))
+    source = dedent("""\
+        import math
+        from counter_yosys import ExtLib, report_digital_design
+        from ordec.layout import helpers
+        from ordec.lib.generic_mos import Nmos
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                value = math.log(2)
+                Nmos m:
+                    .d -- net_a
+
+        def helper(x=ExtLib):
+            return helpers, report_digital_design
+        """)
     path = tmp_path / "top.ord"
     path.write_text(source)
 
@@ -298,21 +316,21 @@ def test_analysis_session_resolves_python_import_variants(tmp_path):
     assert session.definition(uri, position_at(source, "Nmos m"))["name"] == "Nmos"
 
 
-def test_analysis_session_resolves_python_members_parameters_and_completions():
-    source = (
-        "from ordec.core import *\n"
-        "from ordec.lib.generic_mos import Nmos\n"
-        "\n"
-        "cell Inv:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        net vss\n"
-        "        Nmos pd:\n"
-        "            .s -- vss\n"
-        "            .pos = (0, 0)\n"
-        "        pd.$l = 1u\n"
-        "        for inst in (pd,):\n"
-        "            inst.g -- vss\n"
-    )
+def test_python_members_and_completions():
+    source = dedent("""\
+        from ordec.core import *
+        from ordec.lib.generic_mos import Nmos
+
+        cell Inv:
+            viewgen schematic(self) -> Schematic:
+                net vss
+                Nmos pd:
+                    .s -- vss
+                    .pos = (0, 0)
+                pd.$l = 1u
+                for inst in (pd,):
+                    inst.g -- vss
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/python_members.ord"
     session.open_document(uri, source, version=1)
@@ -332,20 +350,20 @@ def test_analysis_session_resolves_python_members_parameters_and_completions():
     )
 
 
-def test_analysis_session_resolves_parameterized_reused_symbol_members():
-    source = (
-        "from ordec.core import *\n"
-        "from ordec.lib.ihp130 import Nmos\n"
-        "\n"
-        "cell Inv:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        net a, y, vss\n"
-        "        Nmos(w=1u, l=130n) pd:\n"
-        "            .g -- a\n"
-        "            .d -- y\n"
-        "            .s -- vss\n"
-        "            .b -- vss\n"
-    )
+def test_reused_symbol_members():
+    source = dedent("""\
+        from ordec.core import *
+        from ordec.lib.ihp130 import Nmos
+
+        cell Inv:
+            viewgen schematic(self) -> Schematic:
+                net a, y, vss
+                Nmos(w=1u, l=130n) pd:
+                    .g -- a
+                    .d -- y
+                    .s -- vss
+                    .b -- vss
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/parameterized_reused_symbol.ord"
     session.open_document(uri, source)
@@ -355,29 +373,29 @@ def test_analysis_session_resolves_parameterized_reused_symbol_members():
     assert session.definition(uri, position_at(source, "g --"))["name"] == "g"
 
 
-def test_analysis_session_resolves_ord_cell_members_from_symbol_layout_and_self():
-    source = (
-        "from ordec.core import *\n"
-        "\n"
-        "cell Stage:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        output q\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        return Schematic()\n"
-        "    viewgen layout(self) -> Layout:\n"
-        "        local = self.schematic\n"
-        "        LayoutRect bodybar\n"
-        "\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        net out\n"
-        "        Stage inst[0]:\n"
-        "            .q -- out\n"
-        "        inst[0].q -- out\n"
-        "    viewgen layout(self) -> Layout:\n"
-        "        Stage lay:\n"
-        "            ! .bodybar.width == 1\n"
-    )
+def test_cell_member_sources():
+    source = dedent("""\
+        from ordec.core import *
+
+        cell Stage:
+            viewgen symbol(self) -> Symbol:
+                output q
+            viewgen schematic(self) -> Schematic:
+                return Schematic()
+            viewgen layout(self) -> Layout:
+                local = self.schematic
+                LayoutRect bodybar
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                net out
+                Stage inst[0]:
+                    .q -- out
+                inst[0].q -- out
+            viewgen layout(self) -> Layout:
+                Stage lay:
+                    ! .bodybar.width == 1
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/ord_members.ord"
     session.open_document(uri, source)
@@ -388,41 +406,41 @@ def test_analysis_session_resolves_ord_cell_members_from_symbol_layout_and_self(
     assert session.definition(uri, position_at(source, "bodybar"))["name"] == "bodybar"
 
 
-def test_analysis_session_resolves_relative_python_cell_instances(tmp_path):
+def test_relative_python_cells(tmp_path):
     package_path = tmp_path / "pkg"
     ord_path = package_path / "ord"
     ord_path.mkdir(parents=True)
     (package_path / "__init__.py").write_text("")
     (ord_path / "__init__.py").write_text("")
-    (package_path / "devices.py").write_text(
-        "from ordec.core import *\n"
-        "\n"
-        "class DFF(Cell):\n"
-        "    @generate\n"
-        "    def symbol(self) -> Symbol:\n"
-        "        s = Symbol(cell=self)\n"
-        "        s.d = Pin()\n"
-        "        s.q = Pin()\n"
-        "        return s\n"
-    )
+    (package_path / "devices.py").write_text(dedent("""\
+        from ordec.core import *
+
+        class DFF(Cell):
+            @generate
+            def symbol(self) -> Symbol:
+                s = Symbol(cell=self)
+                s.d = Pin()
+                s.q = Pin()
+                return s
+        """))
     reg_path = ord_path / "reg.ord"
-    reg_path.write_text(
-        "from ordec.core import *\n"
-        "from ..devices import DFF\n"
-        "\n"
-        "cell Reg:\n"
-        "    bits = Parameter(int)\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        path d\n"
-        "        path I\n"
-        "        for i in range(self.bits):\n"
-        "            net d[i]\n"
-        "            DFF I[i]:\n"
-        "                .d -- d[i]\n"
-        "                .q -- d[i]\n"
-        "            I[i].pos = (6, 3 + 8 * i)\n"
-        "            I[i].q -- d[i]\n"
-    )
+    reg_path.write_text(dedent("""\
+        from ordec.core import *
+        from ..devices import DFF
+
+        cell Reg:
+            bits = Parameter(int)
+            viewgen schematic(self) -> Schematic:
+                path d
+                path I
+                for i in range(self.bits):
+                    net d[i]
+                    DFF I[i]:
+                        .d -- d[i]
+                        .q -- d[i]
+                    I[i].pos = (6, 3 + 8 * i)
+                    I[i].q -- d[i]
+        """))
 
     session = AnalysisSession(workspace_root=str(tmp_path))
     uri = session.open_path(str(reg_path))
@@ -430,21 +448,21 @@ def test_analysis_session_resolves_relative_python_cell_instances(tmp_path):
     assert session.diagnostics(uri) == []
 
 
-def test_analysis_session_accepts_dynamic_ordb_and_factory_members():
-    source = (
-        "from ordec.core import *\n"
-        "from ordec.sim import Simulator\n"
-        "\n"
-        "def helper():\n"
-        "    root = Symbol()\n"
-        "    with root.ctx():\n"
-        "        input a\n"
-        "        assert .a == a\n"
-        "    assert root.a == a\n"
-        "    assert root.all(Pin)\n"
-        "    assert Pin().parent\n"
-        "    return Simulator(SimHierarchy()).netlister\n"
-    )
+def test_dynamic_ordb_members():
+    source = dedent("""\
+        from ordec.core import *
+        from ordec.sim import Simulator
+
+        def helper():
+            root = Symbol()
+            with root.ctx():
+                input a
+                assert .a == a
+            assert root.a == a
+            assert root.all(Pin)
+            assert Pin().parent
+            return Simulator(SimHierarchy()).netlister
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/dynamic_runtime_patterns.ord"
     session.open_document(uri, source)
@@ -452,19 +470,19 @@ def test_analysis_session_accepts_dynamic_ordb_and_factory_members():
     assert session.diagnostics(uri) == []
 
 
-def test_analysis_session_navigation_references_highlights_and_rename(tmp_path):
+def test_navigation_and_rename(tmp_path):
     mux_path = tmp_path / "mux2.ord"
-    mux_path.write_text(
-        "cell Mux2:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        path a\n"
-    )
-    source = (
-        "from .mux2 import Mux2 as Stage\n"
-        "\n"
-        "def helper(x=Stage):\n"
-        "    return Stage\n"
-    )
+    mux_path.write_text(dedent("""\
+        cell Mux2:
+            viewgen symbol(self) -> Symbol:
+                path a
+        """))
+    source = dedent("""\
+        from .mux2 import Mux2 as Stage
+
+        def helper(x=Stage):
+            return Stage
+        """)
     user_path = tmp_path / "user.ord"
     user_path.write_text(source)
 
@@ -481,19 +499,19 @@ def test_analysis_session_navigation_references_highlights_and_rename(tmp_path):
     assert uri in session.rename(uri, position, "Driver")
 
 
-def test_analysis_session_python_scope_constructs_resolve_locally(tmp_path):
-    source = (
-        "def helper(items, value):\n"
-        "    left, right = value\n"
-        "    for idx, pin in items:\n"
-        "        current = pin\n"
-        "    with open('x') as handle:\n"
-        "        data = handle.read()\n"
-        "    try:\n"
-        "        raise ValueError(data)\n"
-        "    except ValueError as exc:\n"
-        "        return left, right, idx, pin, handle, exc\n"
-    )
+def test_python_scopes(tmp_path):
+    source = dedent("""\
+        def helper(items, value):
+            left, right = value
+            for idx, pin in items:
+                current = pin
+            with open('x') as handle:
+                data = handle.read()
+            try:
+                raise ValueError(data)
+            except ValueError as exc:
+                return left, right, idx, pin, handle, exc
+        """)
     path = tmp_path / "scopes.ord"
     path.write_text(source)
 
@@ -508,13 +526,13 @@ def test_analysis_session_python_scope_constructs_resolve_locally(tmp_path):
     assert "current" in completion_labels(session, uri, position_at(source, "return"))
 
 
-def test_analysis_session_assignment_targets_do_not_create_fake_bindings(tmp_path):
-    source = (
-        "def helper(idx, value):\n"
-        "    unknown[idx] = value\n"
-        "    target.field = value\n"
-        "    return idx, unknown, target\n"
-    )
+def test_assignment_targets_not_bindings(tmp_path):
+    source = dedent("""\
+        def helper(idx, value):
+            unknown[idx] = value
+            target.field = value
+            return idx, unknown, target
+        """)
     path = tmp_path / "assignment_targets.ord"
     path.write_text(source)
 
@@ -526,18 +544,18 @@ def test_analysis_session_assignment_targets_do_not_create_fake_bindings(tmp_pat
     assert session.definition(uri, position_at(source, "target", 2)) is None
 
 
-def test_analysis_session_workspace_cache_and_document_features(tmp_path):
-    source = (
-        "import math\n"
-        "\n"
-        "cell Mux2:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        path a\n"
-        "\n"
-        "def helper():\n"
-        "    .align = East\n"
-        "    return math\n"
-    )
+def test_workspace_cache(tmp_path):
+    source = dedent("""\
+        import math
+
+        cell Mux2:
+            viewgen symbol(self) -> Symbol:
+                path a
+
+        def helper():
+            .align = East
+            return math
+        """)
     path = tmp_path / "mux2.ord"
     path.write_text(source)
 
@@ -557,26 +575,26 @@ def test_analysis_session_workspace_cache_and_document_features(tmp_path):
     assert [symbol["name"] for symbol in session.workspace_symbols("mux")] == ["Mux4"]
 
 
-def test_analysis_session_refreshes_dirty_workspace_rows_without_rescan(tmp_path, monkeypatch):
-    (tmp_path / "a.ord").write_text(
-        "cell A:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
-    (tmp_path / "b.ord").write_text(
-        "cell B:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
+def test_dirty_rows_refresh_without_rescan(tmp_path, monkeypatch):
+    (tmp_path / "a.ord").write_text(dedent("""\
+        cell A:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
+    (tmp_path / "b.ord").write_text(dedent("""\
+        cell B:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
     path = tmp_path / "top.ord"
-    source = (
-        "from .a import A\n"
-        "\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        A inst:\n"
-        "            .a -- net_a\n"
-    )
+    source = dedent("""\
+        from .a import A
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                A inst:
+                    .a -- net_a
+        """)
     path.write_text(source)
 
     session = AnalysisSession(workspace_root=str(tmp_path))
@@ -595,15 +613,15 @@ def test_analysis_session_refreshes_dirty_workspace_rows_without_rescan(tmp_path
     assert (tmp_path / "b.ord").resolve().as_uri() in refreshed_index["imports"][uri]
 
 
-def test_analysis_session_analyzes_unopened_file_uris(tmp_path):
-    source = (
-        "cell Mux2:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        path a\n"
-        "\n"
-        "def helper():\n"
-        "    return Mux2\n"
-    )
+def test_unopened_file_uris(tmp_path):
+    source = dedent("""\
+        cell Mux2:
+            viewgen symbol(self) -> Symbol:
+                path a
+
+        def helper():
+            return Mux2
+        """)
     path = tmp_path / "unopened.ord"
     path.write_text(source)
 
@@ -618,14 +636,14 @@ def test_analysis_session_analyzes_unopened_file_uris(tmp_path):
     ]
 
 
-def test_analysis_session_simulation_alias_resolves_like_schema_type():
-    source = (
-        "from ordec.core import *\n"
-        "\n"
-        "cell Tb:\n"
-        "    viewgen sim(self) -> Simulation:\n"
-        "        pass\n"
-    )
+def test_simulation_alias():
+    source = dedent("""\
+        from ordec.core import *
+
+        cell Tb:
+            viewgen sim(self) -> Simulation:
+                pass
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/sim_alias.ord"
     session.open_document(uri, source)
@@ -634,7 +652,7 @@ def test_analysis_session_simulation_alias_resolves_like_schema_type():
     assert session.definition(uri, position_at(source, "Simulation"))["name"] == "SimHierarchy"
 
 
-def test_file_uri_to_path_strips_windows_drive_prefix():
+def test_windows_drive_uri():
     for uri in ("file:///C:/designs/inv.ord", "file:///c%3A/designs/inv.ord"):
         path = file_uri_to_path(uri)
         assert not str(path).startswith(("/C:", "/c:"))
@@ -644,29 +662,39 @@ def test_file_uri_to_path_strips_windows_drive_prefix():
     assert file_uri_to_path("untitled:Untitled-1") is None
 
 
-def test_document_lines_cache_follows_document_updates():
+def test_lines_cache_updates():
     session = AnalysisSession()
     uri = "file:///tmp/lines.ord"
-    session.open_document(uri, "net a\nnet b\n")
+    session.open_document(uri, dedent("""\
+        net a
+        net b
+        """))
 
     lines = session.document_lines(uri)
     assert lines == ["net a", "net b"]
     assert session.document_lines(uri) is lines
 
-    session.update_document(uri, "net a\nnet b\nnet c\n")
+    session.update_document(uri, dedent("""\
+        net a
+        net b
+        net c
+        """))
     assert session.document_lines(uri) == ["net a", "net b", "net c"]
     assert session.document_lines("file:///tmp/untracked.ord") is None
 
-    session.update_document(uri, "net a\u2028b\nnet c\n")
+    session.update_document(uri, dedent("""\
+        net a\u2028b
+        net c
+        """))
     assert session.document_lines(uri) == ["net a\u2028b", "net c"]
 
 
-def test_workspace_scan_skips_undecodable_files(tmp_path):
-    (tmp_path / "good.ord").write_text(
-        "cell Inv:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
+def test_scan_skips_undecodable(tmp_path):
+    (tmp_path / "good.ord").write_text(dedent("""\
+        cell Inv:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
     (tmp_path / "bad.ord").write_bytes(b"cell Caf\xe9:\n")
 
     session = AnalysisSession(workspace_root=str(tmp_path))
@@ -675,17 +703,17 @@ def test_workspace_scan_skips_undecodable_files(tmp_path):
     assert session.ensure_document((tmp_path / "bad.ord").as_uri()) is False
 
 
-def test_rename_refuses_python_defined_symbols(tmp_path):
-    (tmp_path / "extlib.py").write_text(
-        "class Stage:\n"
-        "    pass\n"
-    )
-    source = (
-        "from extlib import Stage\n"
-        "\n"
-        "def helper(x=Stage):\n"
-        "    return x\n"
-    )
+def test_rename_refuses_python_symbols(tmp_path):
+    (tmp_path / "extlib.py").write_text(dedent("""\
+        class Stage:
+            pass
+        """))
+    source = dedent("""\
+        from extlib import Stage
+
+        def helper(x=Stage):
+            return x
+        """)
     path = tmp_path / "top.ord"
     path.write_text(source)
 
@@ -698,14 +726,14 @@ def test_rename_refuses_python_defined_symbols(tmp_path):
     assert session.rename(uri, position, "Driver") is None
 
 
-def test_session_uris_preserve_symlinked_workspace_spelling(tmp_path):
+def test_symlinked_workspace_uris(tmp_path):
     real_root = tmp_path / "real"
     real_root.mkdir()
-    (real_root / "top.ord").write_text(
-        "cell Inv:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
+    (real_root / "top.ord").write_text(dedent("""\
+        cell Inv:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
     linked_root = tmp_path / "linked"
     linked_root.symlink_to(real_root)
 
@@ -716,17 +744,17 @@ def test_session_uris_preserve_symlinked_workspace_spelling(tmp_path):
     assert session.workspace_uris() == [uri]
 
 
-def test_init_ord_packages_resolve_ord_submodules(tmp_path, monkeypatch):
+def test_init_ord_packages(tmp_path, monkeypatch):
     package_path = tmp_path / "pkg"
     package_path.mkdir()
     init_path = package_path / "__init__.ord"
     init_path.write_text("")
     sub_path = package_path / "sub.ord"
-    sub_path.write_text(
-        "cell Inner:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
+    sub_path.write_text(dedent("""\
+        cell Inner:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
     top_path = tmp_path / "top.ord"
     source = "from .pkg import sub\n"
     top_path.write_text(source)
@@ -756,20 +784,26 @@ def test_init_ord_packages_resolve_ord_submodules(tmp_path, monkeypatch):
     assert session.definition(uri, position_at(source, "sub"))["uri"] == sub_path.as_uri()
 
 
-def test_imports_resolve_like_the_runtime_importer(tmp_path):
+def test_imports_match_runtime_importer(tmp_path):
     sub_path = tmp_path / "sub"
     sub_path.mkdir()
-    (tmp_path / "sub.ord").write_text("cell Decoy:\n    pass\n")
-    (sub_path / "__init__.ord").write_text("cell Inner:\n    pass\n")
-    (sub_path / "lib.ord").write_text(
-        "cell Inv:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
-    top_source = (
-        "from lib import Inv\n"
-        "from . import Inner\n"
-    )
+    (tmp_path / "sub.ord").write_text(dedent("""\
+        cell Decoy:
+            pass
+        """))
+    (sub_path / "__init__.ord").write_text(dedent("""\
+        cell Inner:
+            pass
+        """))
+    (sub_path / "lib.ord").write_text(dedent("""\
+        cell Inv:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
+    top_source = dedent("""\
+        from lib import Inv
+        from . import Inner
+        """)
     top_path = sub_path / "top.ord"
     top_path.write_text(top_source)
 
@@ -788,15 +822,15 @@ def test_imports_resolve_like_the_runtime_importer(tmp_path):
     assert session.definition(top_uri, position_at(top_source, "Inner"))["uri"] == init_uri
 
 
-def test_python_export_name_ranges_avoid_keywords(tmp_path):
-    (tmp_path / "shortnames.py").write_text(
-        "def f(x):\n"
-        "    return x\n"
-        "\n"
-        "class C:\n"
-        "    def d(self):\n"
-        "        pass\n"
-    )
+def test_export_ranges_avoid_keywords(tmp_path):
+    (tmp_path / "shortnames.py").write_text(dedent("""\
+        def f(x):
+            return x
+
+        class C:
+            def d(self):
+                pass
+        """))
     index = PythonModuleIndex(workspace_root=str(tmp_path))
 
     # A short name must not match inside the def or class keyword.
@@ -811,19 +845,24 @@ def test_python_export_name_ranges_avoid_keywords(tmp_path):
     ].start == AnalysisPosition(line=5, character=9)
 
 
-def test_missing_port_action_refuses_stale_analysis():
+def test_port_action_refuses_stale():
     session = AnalysisSession(workspace_root="/tmp/workspace")
     uri = "file:///tmp/stale.ord"
     session.open_document(
         uri,
-        "cell Inv:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-        "        input b\n",
+        dedent("""\
+            cell Inv:
+                viewgen symbol(self) -> Symbol:
+                    input a
+                    input b
+            """),
         version=1,
     )
     session.analyze(uri)
-    session.update_document(uri, "cell Inv:\n    viewgen symbol(\n", version=2)
+    session.update_document(uri, dedent("""\
+        cell Inv:
+            viewgen symbol(
+        """), version=2)
     session.analyze(uri)
 
     diagnostic = {
@@ -842,23 +881,23 @@ def test_missing_port_action_refuses_stale_analysis():
     assert server.code_actions(uri, [diagnostic]) == []
 
 
-def test_workspace_rename_updates_cell_members_and_refuses_stale_ranges(tmp_path):
-    mux_source = (
-        "cell Mux2:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
+def test_workspace_rename(tmp_path):
+    mux_source = dedent("""\
+        cell Mux2:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """)
     mux_path = tmp_path / "mux2.ord"
     mux_path.write_text(mux_source)
-    top_source = (
-        "from .mux2 import Mux2\n"
-        "\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        net n1\n"
-        "        Mux2 inst:\n"
-        "            .a -- n1\n"
-    )
+    top_source = dedent("""\
+        from .mux2 import Mux2
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                net n1
+                Mux2 inst:
+                    .a -- n1
+        """)
     top_path = tmp_path / "top.ord"
     top_path.write_text(top_source)
 
@@ -879,14 +918,14 @@ def test_workspace_rename_updates_cell_members_and_refuses_stale_ranges(tmp_path
         session.rename(mux_uri, pin_position, "b")
 
 
-def test_rename_refuses_stale_sources_and_unaliased_dotted_imports(tmp_path):
+def test_rename_refusals(tmp_path):
     session = AnalysisSession()
     uri = "file:///tmp/stale_rename.ord"
-    source = (
-        "def helper():\n"
-        "    value = 1\n"
-        "    return value\n"
-    )
+    source = dedent("""\
+        def helper():
+            value = 1
+            return value
+        """)
     session.open_document(uri, source, version=1)
     session.analyze(uri)
     broken = source + "def broken(\n"
@@ -900,13 +939,13 @@ def test_rename_refuses_stale_sources_and_unaliased_dotted_imports(tmp_path):
     package_path.mkdir()
     (package_path / "__init__.py").write_text("")
     (package_path / "sub.py").write_text("VALUE = 1\n")
-    import_source = (
-        "import pkg.sub\n"
-        "import pkg.sub as module_alias\n"
-        "\n"
-        "def helper():\n"
-        "    return pkg, module_alias\n"
-    )
+    import_source = dedent("""\
+        import pkg.sub
+        import pkg.sub as module_alias
+
+        def helper():
+            return pkg, module_alias
+        """)
     import_path = tmp_path / "imports.ord"
     import_path.write_text(import_source)
     import_session = AnalysisSession(workspace_root=str(tmp_path))
@@ -922,23 +961,23 @@ def test_rename_refuses_stale_sources_and_unaliased_dotted_imports(tmp_path):
     assert len(alias_changes[import_uri]) == 2
 
 
-def test_dotted_viewgen_return_types_resolve_and_allow_constraints(tmp_path):
-    (tmp_path / "viewlib.py").write_text(
-        "class CustomView:\n"
-        "    view_builder = object\n"
-    )
-    source = (
-        "from ordec import core\n"
-        "import viewlib\n"
-        "\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> core.Schematic:\n"
-        "        net n1\n"
-        "        net n2\n"
-        "        ! n1 == n2\n"
-        "    viewgen custom(self) -> viewlib.CustomView:\n"
-        "        pass\n"
-    )
+def test_dotted_viewgen_returns(tmp_path):
+    (tmp_path / "viewlib.py").write_text(dedent("""\
+        class CustomView:
+            view_builder = object
+        """))
+    source = dedent("""\
+        from ordec import core
+        import viewlib
+
+        cell Top:
+            viewgen schematic(self) -> core.Schematic:
+                net n1
+                net n2
+                ! n1 == n2
+            viewgen custom(self) -> viewlib.CustomView:
+                pass
+        """)
     top_path = tmp_path / "top.ord"
     top_path.write_text(source)
 
@@ -961,15 +1000,15 @@ def test_dotted_viewgen_return_types_resolve_and_allow_constraints(tmp_path):
     ]
 
 
-def test_viewgen_oldform_reports_parameter_list_diagnostic():
+def test_viewgen_oldform_diagnostic():
     # The legacy parenless spelling gets one targeted diagnostic mirroring
     # the compiler's fix-it; the body is not analyzed, so the unresolvable
     # node kind inside it stays unreported.
-    source = (
-        "cell Inv:\n"
-        "    viewgen symbol -> Symbol:\n"
-        "        UnknownKind x\n"
-    )
+    source = dedent("""\
+        cell Inv:
+            viewgen symbol -> Symbol:
+                UnknownKind x
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/oldform.ord"
     session.open_document(uri, source)
@@ -979,17 +1018,17 @@ def test_viewgen_oldform_reports_parameter_list_diagnostic():
     assert "viewgen symbol declares no parameter list" in diagnostics[0].message
 
 
-def test_constraint_in_unannotated_viewgen_is_accepted():
+def test_unannotated_viewgen_constraint():
     # Without a return annotation the view type comes from `. = ...` at
     # runtime, so constraints in the body cannot be validated statically
     # and must not be flagged.
-    source = (
-        "cell Top:\n"
-        "    viewgen schematic(self):\n"
-        "        net n1\n"
-        "        net n2\n"
-        "        ! n1 == n2\n"
-    )
+    source = dedent("""\
+        cell Top:
+            viewgen schematic(self):
+                net n1
+                net n2
+                ! n1 == n2
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/unannotated_viewgen.ord"
     session.open_document(uri, source)
@@ -997,23 +1036,23 @@ def test_constraint_in_unannotated_viewgen_is_accepted():
     assert session.diagnostics(uri) == []
 
 
-def test_rename_preserves_alias_of_aliased_from_import(tmp_path):
-    lib_source = (
-        "cell Inv:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
+def test_rename_preserves_import_alias(tmp_path):
+    lib_source = dedent("""\
+        cell Inv:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """)
     lib_path = tmp_path / "lib.ord"
     lib_path.write_text(lib_source)
-    top_source = (
-        "from lib import Inv as I\n"
-        "\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        net n1\n"
-        "        I inst:\n"
-        "            .a -- n1\n"
-    )
+    top_source = dedent("""\
+        from lib import Inv as I
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                net n1
+                I inst:
+                    .a -- n1
+        """)
     top_path = tmp_path / "top.ord"
     top_path.write_text(top_source)
 
@@ -1035,16 +1074,16 @@ def test_rename_preserves_alias_of_aliased_from_import(tmp_path):
     ]
 
 
-def test_node_kind_subtrees_and_comprehensions_track_bindings():
-    source = (
-        "def helper(width, lib, items):\n"
-        "    values = [item for item in items if item]\n"
-        "    Res(r=width) r1:\n"
-        "        pass\n"
-        "    lib.Inv i1:\n"
-        "        pass\n"
-        "    return values\n"
-    )
+def test_subtree_bindings():
+    source = dedent("""\
+        def helper(width, lib, items):
+            values = [item for item in items if item]
+            Res(r=width) r1:
+                pass
+            lib.Inv i1:
+                pass
+            return values
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/node_kinds.ord"
     session.open_document(uri, source)
@@ -1059,29 +1098,29 @@ def test_node_kind_subtrees_and_comprehensions_track_bindings():
     assert any(member["name"] == "Inv" for member in analysis.member_occurrences)
 
 
-def test_relative_from_imports_resolve_exports_and_submodules(tmp_path):
+def test_relative_from_imports(tmp_path):
     package_path = tmp_path / "pkg"
     package_path.mkdir()
-    init_source = (
-        "cell Root:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
+    init_source = dedent("""\
+        cell Root:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """)
     (package_path / "__init__.ord").write_text(init_source)
-    device_source = (
-        "cell Device:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
+    device_source = dedent("""\
+        cell Device:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """)
     device_path = package_path / "device.ord"
     device_path.write_text(device_source)
-    source = (
-        "from . import device\n"
-        "from . import Root\n"
-        "\n"
-        "def helper():\n"
-        "    return device, Root\n"
-    )
+    source = dedent("""\
+        from . import device
+        from . import Root
+
+        def helper():
+            return device, Root
+        """)
     top_path = package_path / "top.ord"
     top_path.write_text(source)
 
@@ -1103,7 +1142,7 @@ def test_relative_from_imports_resolve_exports_and_submodules(tmp_path):
     }
 
 
-def test_unreadable_imports_and_excess_relative_dots_do_not_crash(tmp_path):
+def test_unreadable_imports_no_crash(tmp_path):
     bad_path = tmp_path / "bad.ord"
     bad_path.write_bytes(b"cell Caf\xe9:\n")
     source = "from .bad import Missing\n"
@@ -1119,25 +1158,25 @@ def test_unreadable_imports_and_excess_relative_dots_do_not_crash(tmp_path):
     assert session.resolve_module_uri(uri, "." * 100) is None
 
 
-def test_decorated_exports_and_forward_module_constants_resolve(tmp_path):
-    library_source = (
-        "@decorator\n"
-        "cell Decorated:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
+def test_decorated_exports(tmp_path):
+    library_source = dedent("""\
+        @decorator
+        cell Decorated:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """)
     (tmp_path / "library.ord").write_text(library_source)
-    source = (
-        "from .library import Decorated\n"
-        "\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        net d[WIDTH]\n"
-        "        Decorated inst:\n"
-        "            .a -- d[0]\n"
-        "\n"
-        "WIDTH = 4\n"
-    )
+    source = dedent("""\
+        from .library import Decorated
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                net d[WIDTH]
+                Decorated inst:
+                    .a -- d[0]
+
+        WIDTH = 4
+        """)
     path = tmp_path / "top.ord"
     path.write_text(source)
 
@@ -1147,22 +1186,22 @@ def test_decorated_exports_and_forward_module_constants_resolve(tmp_path):
     assert session.diagnostics(uri) == []
 
 
-def test_indexed_member_navigation_and_nested_completion_contexts():
-    source = (
-        "from ordec.core import *\n"
-        "\n"
-        "cell Stage:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        output q\n"
-        "\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        net out\n"
-        "        path I\n"
-        "        Stage I[0]:\n"
-        "            .q -- out\n"
-        "        I[0].q -- out\n"
-    )
+def test_indexed_member_navigation():
+    source = dedent("""\
+        from ordec.core import *
+
+        cell Stage:
+            viewgen symbol(self) -> Symbol:
+                output q
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                net out
+                path I
+                Stage I[0]:
+                    .q -- out
+                I[0].q -- out
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/indexed_member.ord"
     session.open_document(uri, source, version=1)
@@ -1170,13 +1209,13 @@ def test_indexed_member_navigation_and_nested_completion_contexts():
     definition = session.definition(uri, position_at(source, "q -- out", occurrence=2))
     assert definition["name"] == "q"
 
-    completion_source = (
-        "from ordec.lib.generic_mos import Nmos\n"
-        "\n"
-        "def helper():\n"
-        "    pd = Nmos()\n"
-        "    return pd.d\n"
-    )
+    completion_source = dedent("""\
+        from ordec.lib.generic_mos import Nmos
+
+        def helper():
+            pd = Nmos()
+            return pd.d
+        """)
     completion_uri = "file:///tmp/nested_completion.ord"
     session.open_document(completion_uri, completion_source, version=1)
     edited = completion_source.replace("pd.d\n", "pd.d.\n")
@@ -1188,20 +1227,20 @@ def test_indexed_member_navigation_and_nested_completion_contexts():
     ) == []
 
 
-def test_lambda_parenthesized_with_and_except_star_bindings():
-    source = (
-        "def helper(factory):\n"
-        "    callback = lambda first, *, second=1, **kwargs: first + second + kwargs[\"x\"]\n"
-        "    with (factory()) as handle:\n"
-        "        local = handle\n"
-        "    with (factory() as first_handle, factory()) as group:\n"
-        "        pair = first_handle, group\n"
-        "    try:\n"
-        "        pass\n"
-        "    except* ValueError as grouped:\n"
-        "        error = grouped\n"
-        "    return callback, handle, first_handle, group, grouped\n"
-    )
+def test_lambda_and_with_bindings():
+    source = dedent("""\
+        def helper(factory):
+            callback = lambda first, *, second=1, **kwargs: first + second + kwargs["x"]
+            with (factory()) as handle:
+                local = handle
+            with (factory() as first_handle, factory()) as group:
+                pair = first_handle, group
+            try:
+                pass
+            except* ValueError as grouped:
+                error = grouped
+            return callback, handle, first_handle, group, grouped
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/scope_variants.ord"
     session.open_document(uri, source)
@@ -1214,7 +1253,7 @@ def test_lambda_parenthesized_with_and_except_star_bindings():
         assert session.definition(uri, position_at(source, name, occurrence=2))["name"] == name
 
 
-def test_python_index_parse_errors_reexports_and_ord_invalidation(tmp_path, monkeypatch):
+def test_python_index_edge_cases(tmp_path, monkeypatch):
     (tmp_path / "broken.py").write_text("VALUE = 1\n")
     index = PythonModuleIndex(workspace_root=str(tmp_path))
 
@@ -1226,26 +1265,38 @@ def test_python_index_parse_errors_reexports_and_ord_invalidation(tmp_path, monk
         assert index.module_info("broken") is None
 
     first_path = tmp_path / "first.py"
-    first_path.write_text("class Choice:\n    pass\n")
+    first_path.write_text(dedent("""\
+        class Choice:
+            pass
+        """))
     second_path = tmp_path / "second.py"
-    second_path.write_text("class Choice:\n    pass\n")
-    (tmp_path / "bridge.py").write_text(
-        "from first import Choice as Selected\n"
-        "from second import Choice as Selected\n"
-    )
+    second_path.write_text(dedent("""\
+        class Choice:
+            pass
+        """))
+    (tmp_path / "bridge.py").write_text(dedent("""\
+        from first import Choice as Selected
+        from second import Choice as Selected
+        """))
     index = PythonModuleIndex(workspace_root=str(tmp_path))
     assert index.definition("bridge", export_name="Selected")["uri"] == second_path.as_uri()
 
     ord_path = tmp_path / "celllib.ord"
-    ord_path.write_text("cell Old:\n    pass\n")
+    ord_path.write_text(dedent("""\
+        cell Old:
+            pass
+        """))
     session = AnalysisSession(workspace_root=str(tmp_path))
     assert "Old" in session.python_module_info("celllib")["exports"]
-    ord_path.write_text("cell New:\n    pass\n")
+    ord_path.write_text(dedent("""\
+        cell New:
+            pass
+        """))
     session.invalidate_path(str(ord_path))
     assert set(session.python_module_info("celllib")["exports"]) == {"New"}
 
 
-def test_new_workspace_file_rebuilds_import_dependents(tmp_path):
+def test_new_file_rebuilds_dependents(tmp_path):
     top_path = tmp_path / "top.ord"
     top_path.write_text("from .new_cell import NewCell\n")
     session = AnalysisSession(workspace_root=str(tmp_path))
@@ -1253,19 +1304,22 @@ def test_new_workspace_file_rebuilds_import_dependents(tmp_path):
     assert session.workspace_import_index()["imports"][top_uri] == set()
 
     new_path = tmp_path / "new_cell.ord"
-    new_path.write_text("cell NewCell:\n    pass\n")
+    new_path.write_text(dedent("""\
+        cell NewCell:
+            pass
+        """))
     new_uri = session.invalidate_path(str(new_path))
 
     assert session.workspace_dependents(new_uri) == {top_uri}
 
 
-def test_function_headers_use_enclosing_bindings():
-    source = (
-        "T = object\n"
-        "x = [1]\n"
-        "def helper(x: T = x, *args: T, y=x, **kwargs: T) -> T:\n"
-        "    return args, kwargs\n"
-    )
+def test_function_header_bindings():
+    source = dedent("""\
+        T = object
+        x = [1]
+        def helper(x: T = x, *args: T, y=x, **kwargs: T) -> T:
+            return args, kwargs
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/header_scopes.ord"
     session.open_document(uri, source)
@@ -1287,7 +1341,7 @@ def test_function_headers_use_enclosing_bindings():
         assert definition["kind"] == "parameter"
 
 
-def test_lone_carriage_returns_are_analyzed_as_line_breaks():
+def test_lone_carriage_returns():
     source = "value = 1\rdef helper():\r    return value\r"
     session = AnalysisSession()
     uri = "file:///tmp/lone_cr.ord"
@@ -1298,12 +1352,12 @@ def test_lone_carriage_returns_are_analyzed_as_line_breaks():
     assert definition["selection_range"].start == AnalysisPosition(1, 1)
 
 
-def test_definition_resolves_local_at_identifier_end():
-    source = (
-        "def helper():\n"
-        "    local = 1\n"
-        "    return local\n"
-    )
+def test_definition_at_identifier_end():
+    source = dedent("""\
+        def helper():
+            local = 1
+            return local
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/end_definition.ord"
     session.open_document(uri, source)
@@ -1316,14 +1370,14 @@ def test_definition_resolves_local_at_identifier_end():
     assert definition["selection_range"].start == position_at(source, "local")
 
 
-def test_rename_rejects_same_scope_collision():
-    source = (
-        "cell Inv:\n"
-        "    pass\n"
-        "\n"
-        "cell Buf:\n"
-        "    pass\n"
-    )
+def test_rename_collision():
+    source = dedent("""\
+        cell Inv:
+            pass
+
+        cell Buf:
+            pass
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/rename_collision.ord"
     session.open_document(uri, source)
@@ -1332,19 +1386,19 @@ def test_rename_rejects_same_scope_collision():
         session.rename(uri, position_at(source, "Inv"), "Buf")
 
 
-def test_chained_implicit_member_completion_has_no_fallback_members():
-    source = (
-        "from ordec.core import *\n"
-        "\n"
-        "cell Stage:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        output d\n"
-        "\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        Stage inst:\n"
-        "            .d\n"
-    )
+def test_chained_member_completion():
+    source = dedent("""\
+        from ordec.core import *
+
+        cell Stage:
+            viewgen symbol(self) -> Symbol:
+                output d
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                Stage inst:
+                    .d
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/implicit_chain.ord"
     session.open_document(uri, source, version=1)
@@ -1356,12 +1410,12 @@ def test_chained_implicit_member_completion_has_no_fallback_members():
 
 @pytest.mark.parametrize("suffix", [".py", ".ord"])
 def test_python_index_unicode_attribute_ranges(tmp_path, suffix):
-    source = (
-        "class Device:\n"
-        "    def build(self):\n"
-        "        root = Symbol()\n"
-        "        root.élé = Pin()\n"
-    )
+    source = dedent("""\
+        class Device:
+            def build(self):
+                root = Symbol()
+                root.élé = Pin()
+        """)
     (tmp_path / ("device" + suffix)).write_text(source)
     member = PythonModuleIndex(workspace_root=str(tmp_path)).class_members(
         "device",
@@ -1372,8 +1426,11 @@ def test_python_index_unicode_attribute_ranges(tmp_path, suffix):
     assert member["selection_range"].end == AnalysisPosition(4, 17)
 
 
-def test_close_document_preserves_cached_import_index(tmp_path):
-    source = "cell Device:\n    pass\n"
+def test_close_keeps_import_index(tmp_path):
+    source = dedent("""\
+        cell Device:
+            pass
+        """)
     path = tmp_path / "device.ord"
     path.write_text(source)
     session = AnalysisSession(workspace_root=str(tmp_path))
@@ -1387,8 +1444,11 @@ def test_close_document_preserves_cached_import_index(tmp_path):
     assert session.workspace_import_index() is workspace_index
 
 
-def test_workspace_symbol_requests_reuse_file_scan(tmp_path, monkeypatch):
-    (tmp_path / "first.ord").write_text("cell First:\n    pass\n")
+def test_workspace_symbols_reuse_scan(tmp_path, monkeypatch):
+    (tmp_path / "first.ord").write_text(dedent("""\
+        cell First:
+            pass
+        """))
     session = AnalysisSession(workspace_root=str(tmp_path))
     original = session.workspace_ord_paths
     calls = []
@@ -1403,7 +1463,10 @@ def test_workspace_symbol_requests_reuse_file_scan(tmp_path, monkeypatch):
     assert len(calls) == 1
 
     second_path = tmp_path / "second.ord"
-    second_path.write_text("cell Second:\n    pass\n")
+    second_path.write_text(dedent("""\
+        cell Second:
+            pass
+        """))
     session.invalidate_path(str(second_path))
     assert {item["name"] for item in session.workspace_symbols()} == {
         "First",
@@ -1412,37 +1475,35 @@ def test_workspace_symbol_requests_reuse_file_scan(tmp_path, monkeypatch):
     assert len(calls) == 1
 
 
-def test_analysis_session_checked_in_ord_files_have_no_lsp_diagnostics():
-    root_path = Path(__file__).resolve().parents[1]
-    session = AnalysisSession(workspace_root=str(root_path))
-
-    # Runtime-error tests deliberately contain invalid constructs inside
-    # pytest.raises blocks, which the analyzer rightly diagnoses.
-    expected_codes = {
-        "tests/test_ord_runtime.ord": {"unknown-member"},
-    }
-
-    # Enumerate via the session's own scanner so the file set stays in
-    # sync with what the workspace scan actually indexes.
-    for path in session.workspace_ord_paths(root_path):
-        relative_path = str(path.relative_to(root_path))
-        uri = session.open_path(str(path))
-        diagnostics = [
-            diagnostic for diagnostic in session.diagnostics(uri)
-            if diagnostic.code not in expected_codes.get(relative_path, set())
-        ]
-        assert diagnostics == [], relative_path
+def ord_files_in_ordec_package():
+    """The .ord files inside the imported ordec package, relative to it."""
+    root = Path(ordec.__file__).parent
+    files = sorted(p.relative_to(root) for p in root.rglob("*.ord"))
+    assert files
+    return files
 
 
-def test_multi_target_node_statement_symbols_and_pin_diagnostics():
-    source = (
-        "cell Inv:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a, b\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        port a\n"
-        "        port b\n"
-    )
+@pytest.mark.parametrize("path", ord_files_in_ordec_package(), ids=str)
+def test_ord_file_clean(path):
+    """Every .ord file shipped in the ordec package (courses, examples)
+    must analyze without LSP diagnostics: catches analyzer false
+    positives against real designs and shipped files left behind by
+    language changes."""
+    root = Path(ordec.__file__).parent
+    session = AnalysisSession(workspace_root=str(root))
+    uri = session.open_path(str(root / path))
+    assert session.diagnostics(uri) == []
+
+
+def test_multi_target_node_statements():
+    source = dedent("""\
+        cell Inv:
+            viewgen symbol(self) -> Symbol:
+                input a, b
+            viewgen schematic(self) -> Schematic:
+                port a
+                port b
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/multi_target.ord"
     session.open_document(uri, source, version=1)
@@ -1473,14 +1534,14 @@ def test_multi_target_node_statement_symbols_and_pin_diagnostics():
     ]
 
 
-def test_container_literal_assignment_keeps_binding_untyped():
-    source = (
-        "cell Adder:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        port cin\n"
-        "        carry = [cin]\n"
-        "        carry.append(cin)\n"
-    )
+def test_container_literal_untyped():
+    source = dedent("""\
+        cell Adder:
+            viewgen schematic(self) -> Schematic:
+                port cin
+                carry = [cin]
+                carry.append(cin)
+        """)
     session = AnalysisSession()
     uri = "file:///tmp/container.ord"
     session.open_document(uri, source, version=1)
@@ -1488,28 +1549,25 @@ def test_container_literal_assignment_keeps_binding_untyped():
     assert session.diagnostics(uri) == []
 
     # Unpacking targets still take the container's element types.
-    unpacked = source.replace(
-        "        carry = [cin]\n"
-        "        carry.append(cin)\n",
-        "        first, second = [cin, cin]\n"
-        "        first.append(cin)\n",
-    )
+    unpacked = (source
+        .replace("carry = [cin]", "first, second = [cin, cin]")
+        .replace("carry.append(cin)", "first.append(cin)"))
     session.update_document(uri, unpacked, version=2)
     assert [diagnostic.code for diagnostic in session.diagnostics(uri)] == [
         "unknown-member",
     ]
 
 
-def test_references_reach_documents_outside_workspace_root(tmp_path):
+def test_references_outside_workspace(tmp_path):
     session = AnalysisSession(workspace_root=str(tmp_path))
     uri = "file:///outside/scratch.ord"
-    source = (
-        "from ordec.lib.generic_mos import Nmos\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        Nmos inst:\n"
-        "            .w = 1\n"
-    )
+    source = dedent("""\
+        from ordec.lib.generic_mos import Nmos
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                Nmos inst:
+                    .w = 1
+        """)
     session.open_document(uri, source, version=1)
 
     # Nmos resolves to a Python definition, whose reference search must
@@ -1519,15 +1577,15 @@ def test_references_reach_documents_outside_workspace_root(tmp_path):
     assert all(reference["uri"] == uri for reference in references)
 
 
-def test_global_completions_rank_bindings_before_keywords():
+def test_completion_ranking():
     session = AnalysisSession()
     uri = "file:///tmp/complete.ord"
-    source = (
-        "cell Amp:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        net nmos_w\n"
-        "        net outp\n"
-    )
+    source = dedent("""\
+        cell Amp:
+            viewgen schematic(self) -> Schematic:
+                net nmos_w
+                net outp
+        """)
     session.open_document(uri, source, version=1)
 
     labels = [
