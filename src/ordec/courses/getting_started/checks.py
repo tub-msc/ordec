@@ -485,7 +485,7 @@ def gen_lesson6(g):
                 instructions="No AC simulation data for vout yet: the "
                 "simulation only runs once the circuit is fully wired.")
         else:
-            freq = [f.real for f in dut.sim_ac.freq]
+            freq = dut.sim_ac.freq
             mag = [abs(v) for v in dut.sim_ac.vout.voltage]
             i_min = min(range(len(mag)), key=lambda i: mag[i])
             f_notch = freq[i_min]
@@ -626,7 +626,7 @@ def gen_lesson7(g):
                 instructions="No AC simulation data for vout yet: the "
                 "simulation only runs once the circuit is fully wired.")
         else:
-            freq = [f.real for f in tb.sim_ac.freq]
+            freq = tb.sim_ac.freq
             mag = [abs(v) for v in tb.sim_ac.vout.voltage]
             i_min = min(range(len(mag)), key=lambda i: mag[i])
             f_notch = freq[i_min]
@@ -802,7 +802,7 @@ def gen_lesson8(g):
                 instructions="No AC simulation data for vout yet: the "
                 "simulation only runs once the circuit is fully wired.")
         else:
-            freq = [f.real for f in tb.sim_ac.freq]
+            freq = tb.sim_ac.freq
             mag = [abs(v) for v in tb.sim_ac.vout.voltage]
             def min_in(lo, hi):
                 return min(m for f, m in zip(freq, mag) if lo <= f <= hi)
