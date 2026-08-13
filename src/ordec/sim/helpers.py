@@ -40,7 +40,7 @@ def _resolve_signal(signal):
         name = signal.full_path_str()
         values = signal.voltage
     elif isinstance(signal, SimPin):
-        name = f"{signal.instance.full_path_str()}.{signal.eref.full_path_str()}"
+        name = signal.full_path_str()
         values = signal.current
     else:
         raise TypeError(

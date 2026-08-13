@@ -338,17 +338,15 @@ def plot2d_series(y):
     the values carry no quantity).
 
     Accepts a (name, values) pair or a SimNet / SimPin / SimParam node.
-    Node names follow the field translation in
-    SimHierarchy._build_field_translation_map.
+    Node names are the hierarchical paths (full_path_str), e.g.
+    "stage[0].m7.d" for a pin or "stage[0].m7.gm" for a parameter.
     """
     if isinstance(y, SimNet):
         name, values = y.full_path_str(), y.voltage
     elif isinstance(y, SimPin):
-        name = Node.format_path_list(
-            y.instance.full_path_list() + y.eref.full_path_list())
-        values = y.current
+        name, values = y.full_path_str(), y.current
     elif isinstance(y, SimParam):
-        name, values = f"{y.instance.full_path_str()}.{y.name}", y.value
+        name, values = y.full_path_str(), y.value
     elif isinstance(y, (tuple, list)) and len(y) == 2 and isinstance(y[0], str):
         name, values = y
     else:

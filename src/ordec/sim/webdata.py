@@ -92,10 +92,8 @@ def webdata_op(sh: SimHierarchy):
         c = sp.current
         if c is None:
             continue
-        inst_path = sp.instance.full_path_str()
-        pin_name = sp.eref.full_path_str()
         op_currents.append(
-            f"| {inst_path}.{pin_name} | {_fmt_eng(c[0], 'A')} |"
+            f"| {sp.full_path_str()} | {_fmt_eng(c[0], 'A')} |"
         )
     if op_currents:
         lines = ["| Branch | Current |", "| --- | ---: |"] + op_currents
