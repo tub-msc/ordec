@@ -130,11 +130,18 @@ export class DrcReport extends View {
         });
 
         this.el.replaceChildren(header, categoriesEl);
-        // buildItem re-marks the selected row (see below). If the
-        // regenerated report no longer contains that item, the selection is
-        // gone with it.
-        if (!this.el.querySelector('.drc-item.selected')) {
-            this.selectedItemNid = null;
+        // buildItem re-marks the selected row and keeps Deselect enabled when
+        // the item survived this re-render. Reconcile the cross-viewer highlight
+        // with the fresh data: refresh it for a surviving selection (its
+        // geometry may have changed), or clear it if the item is gone (else the
+        // pending highlight is orphaned in the layout viewer, out of reach of
+        // the now-disabled Deselect button).
+        if (this.selectedItemNid !== null) {
+            if (this.el.querySelector('.drc-item.selected')) {
+                this.emitSelection(itemMap.get(this.selectedItemNid), data, cellMap, false);
+            } else {
+                this.deselect();
+            }
         }
     }
 
@@ -179,30 +186,40 @@ export class DrcReport extends View {
             itemEl.classList.add('selected');
             deselectBtn.disabled = false;
             this.selectedItemNid = item.nid;
-
-            const layoutView = this.viewName
-                ? (isTop
-                    ? `${this.viewName}.ref_layout`
-                    : `${this.viewName}.subgraph.cursor_at(${item.cell_nid}).ref_layout`)
-                : null;
-            const layoutWireHash = (isTop ? data.layout_wire_hash : cell.layout_wire_hash) || null;
-            // Clear the previous selection everywhere: its highlight
-            // may sit in a viewer the new selection does not target.
-            viewEventBus.emit('drc:clear');
-            const payload = { shapes: item.shapes, layoutView, layoutWireHash };
-            viewEventBus.setPending('drc:select', payload);
-            viewEventBus.emit('drc:select', payload);
-            if (layoutView) {
-                // Focuses the target view if open (matched by name
-                // or wire hash), opens it otherwise.
-                viewEventBus.emit('layout:request-open', {
-                    view: layoutView,
-                    wireHash: layoutWireHash,
-                    sourceContainer: this.panelContainer,
-                });
-            }
+            this.emitSelection(item, data, cellMap, true);
         });
         return itemEl;
+    }
+
+    // Pushes the given item's selection to the layout viewer: replaces any
+    // previous highlight with this item's shapes (also stashed as the pending
+    // 'drc:select' so a viewer opened/re-rendered later re-applies it). With
+    // open=true (a fresh click) the target layout view is focused or opened;
+    // on a re-render refresh (open=false) it is left as-is.
+    emitSelection(item, data, cellMap, open) {
+        const cell = cellMap.get(item.cell_nid);
+        const isTop = !cell || cell.is_top;
+        const layoutView = this.viewName
+            ? (isTop
+                ? `${this.viewName}.ref_layout`
+                : `${this.viewName}.subgraph.cursor_at(${item.cell_nid}).ref_layout`)
+            : null;
+        const layoutWireHash = (isTop ? data.layout_wire_hash : cell.layout_wire_hash) || null;
+        // Clear the previous selection everywhere: its highlight may sit in a
+        // viewer the new selection does not target.
+        viewEventBus.emit('drc:clear');
+        const payload = { shapes: item.shapes, layoutView, layoutWireHash };
+        viewEventBus.setPending('drc:select', payload);
+        viewEventBus.emit('drc:select', payload);
+        if (open && layoutView) {
+            // Focuses the target view if open (matched by name or wire hash),
+            // opens it otherwise.
+            viewEventBus.emit('layout:request-open', {
+                view: layoutView,
+                wireHash: layoutWireHash,
+                sourceContainer: this.panelContainer,
+            });
+        }
     }
 
     // Clears the current selection: unmarks the selected row, disables the

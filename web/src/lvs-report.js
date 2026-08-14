@@ -215,11 +215,18 @@ export class LvsReport extends View {
         });
 
         this.el.replaceChildren(header, body);
-        // The row loop re-marks the selected row (see above). If the
-        // regenerated report no longer contains that item, the selection is
-        // gone with it.
-        if (!this.el.querySelector('.lvs-item-row.selected')) {
-            this.selectedItemNid = null;
+        // The row loop re-marks the selected row and keeps Deselect enabled when
+        // the item survived this re-render. Reconcile the cross-viewer highlight
+        // with the fresh data: refresh it for a surviving selection (its
+        // geometry may have changed), or clear it if the item is gone (else the
+        // pending highlight is orphaned in the layout/schematic viewer, out of
+        // reach of the now-disabled Deselect button).
+        if (this.selectedItemNid !== null) {
+            if (this.el.querySelector('.lvs-item-row.selected')) {
+                this.emitSelection(itemMap.get(this.selectedItemNid), circuitMap, data, false);
+            } else {
+                this.deselect();
+            }
         }
 
         this.attachEventHandlers(itemMap, circuitMap, data);
@@ -377,62 +384,69 @@ export class LvsReport extends View {
                 const nid = parseInt(itemEl.dataset.nid, 10);
                 this.selectedItemNid = nid;
                 const item = itemMap.get(nid);
-
                 if (item) {
-                    // Item positions/nids refer to the item's circuit
-                    // pair: report-level views for the top pair,
-                    // per-pair views (addressed by circuit nid) for
-                    // subcircuit pairs.
-                    const circuit = circuitMap.get(item.circuit_nid);
-                    const isTop = !circuit || circuit.is_top;
-                    const viewBase = this.viewName
-                        ? (isTop ? this.viewName : `${this.viewName}.subgraph.cursor_at(${item.circuit_nid})`)
-                        : null;
-                    const layoutView = viewBase ? `${viewBase}.ref_layout` : null;
-                    const schemView = viewBase ? `${viewBase}.ref_schematic` : null;
-                    const layoutWireHash = (isTop ? data.layout_wire_hash : circuit.layout_wire_hash) || null;
-                    const schemWireHash = (isTop ? data.schem_wire_hash : circuit.schem_wire_hash) || null;
-
-                    const payload = {
-                        pos: item.layout_pos,
-                        schem_nid: item.schem_nid,
-                        item_type: item.item_type,
-                        schem_name: item.schem_name || '',
-                        layoutView,
-                        schemView,
-                        layoutWireHash,
-                        schemWireHash,
-                    };
-                    const hasLayoutPos = item.layout_pos !== null && item.layout_pos !== undefined;
-                    const hasSchemNid = item.schem_nid !== undefined && item.schem_nid !== null;
-
-                    // Clear the previous selection everywhere: its
-                    // highlight may sit in a viewer the new selection
-                    // does not target.
-                    viewEventBus.emit('lvs:clear');
-                    viewEventBus.setPending('lvs:select', payload);
-
-                    if (hasLayoutPos) {
-                        viewEventBus.emit('lvs:layout-select', payload);
-                    }
-                    if (hasSchemNid) {
-                        viewEventBus.emit('lvs:schem-select', payload);
-                    }
-
-                    // Focuses the target views if open (matched by name
-                    // or wire hash), opens them otherwise.
-                    if ((hasLayoutPos && layoutView) || (hasSchemNid && schemView)) {
-                        viewEventBus.emit('lvs:request-open-views', {
-                            layoutView: hasLayoutPos ? layoutView : null,
-                            schemView: hasSchemNid ? schemView : null,
-                            layoutWireHash: hasLayoutPos ? layoutWireHash : null,
-                            schemWireHash: hasSchemNid ? schemWireHash : null,
-                            sourceContainer: this.panelContainer,
-                        });
-                    }
+                    this.emitSelection(item, circuitMap, data, true);
                 }
             });
         });
+    }
+
+    // Pushes the given item's selection to the layout/schematic viewers:
+    // replaces any previous highlight with this item's position/net (also
+    // stashed as the pending 'lvs:select' so a viewer opened/re-rendered later
+    // re-applies it). With open=true (a fresh click) the target views are
+    // focused or opened; on a re-render refresh (open=false) they are left
+    // as-is.
+    emitSelection(item, circuitMap, data, open) {
+        // Item positions/nids refer to the item's circuit pair: report-level
+        // views for the top pair, per-pair views (addressed by circuit nid)
+        // for subcircuit pairs.
+        const circuit = circuitMap.get(item.circuit_nid);
+        const isTop = !circuit || circuit.is_top;
+        const viewBase = this.viewName
+            ? (isTop ? this.viewName : `${this.viewName}.subgraph.cursor_at(${item.circuit_nid})`)
+            : null;
+        const layoutView = viewBase ? `${viewBase}.ref_layout` : null;
+        const schemView = viewBase ? `${viewBase}.ref_schematic` : null;
+        const layoutWireHash = (isTop ? data.layout_wire_hash : circuit.layout_wire_hash) || null;
+        const schemWireHash = (isTop ? data.schem_wire_hash : circuit.schem_wire_hash) || null;
+
+        const payload = {
+            pos: item.layout_pos,
+            schem_nid: item.schem_nid,
+            item_type: item.item_type,
+            schem_name: item.schem_name || '',
+            layoutView,
+            schemView,
+            layoutWireHash,
+            schemWireHash,
+        };
+        const hasLayoutPos = item.layout_pos !== null && item.layout_pos !== undefined;
+        const hasSchemNid = item.schem_nid !== undefined && item.schem_nid !== null;
+
+        // Clear the previous selection everywhere: its highlight may sit in a
+        // viewer the new selection does not target.
+        viewEventBus.emit('lvs:clear');
+        viewEventBus.setPending('lvs:select', payload);
+
+        if (hasLayoutPos) {
+            viewEventBus.emit('lvs:layout-select', payload);
+        }
+        if (hasSchemNid) {
+            viewEventBus.emit('lvs:schem-select', payload);
+        }
+
+        // Focuses the target views if open (matched by name or wire hash),
+        // opens them otherwise.
+        if (open && ((hasLayoutPos && layoutView) || (hasSchemNid && schemView))) {
+            viewEventBus.emit('lvs:request-open-views', {
+                layoutView: hasLayoutPos ? layoutView : null,
+                schemView: hasSchemNid ? schemView : null,
+                layoutWireHash: hasLayoutPos ? layoutWireHash : null,
+                schemWireHash: hasSchemNid ? schemWireHash : null,
+                sourceContainer: this.panelContainer,
+            });
+        }
     }
 
     // Clears the current selection: unmarks the selected row, disables the
