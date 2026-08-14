@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { viewEventBus } from './event-bus.js';
+
 // Base class for the result-view renderers. ResultViewer constructs every view
 // with the same (resContent, viewName, resultViewer, panelContainer) signature
 // and drives it via update()/destroy(); resultViewer and panelContainer are part
@@ -13,6 +15,9 @@ export class View {
         this.panelContainer = panelContainer;
         // Wire hash of the subgraph currently shown; set by each update().
         this.wireHash = null;
+        // (event, handler) pairs registered via busSubscribe(), torn down
+        // together by busUnsubscribeAll().
+        this.busSubscriptions = [];
     }
 
     // A selection targeting targetView (optionally carrying a wire hash)
@@ -23,5 +28,40 @@ export class View {
         if (!targetView) return true;
         if (targetView === this.viewName) return true;
         return Boolean(targetWireHash && targetWireHash === this.wireHash);
+    }
+
+    // Subscribes to a view-event-bus event and remembers the (event, handler)
+    // pair. Call busUnsubscribeAll() from destroy() to release every
+    // subscription; a forgotten off() would leak the handler after the view is
+    // replaced.
+    busSubscribe(event, handler) {
+        viewEventBus.on(event, handler);
+        this.busSubscriptions.push([event, handler]);
+    }
+
+    busUnsubscribeAll() {
+        for (const [event, handler] of this.busSubscriptions) {
+            viewEventBus.off(event, handler);
+        }
+        this.busSubscriptions = [];
+    }
+
+    // Reads and clears the named pending-selection slot, returning its payload
+    // only if it still applies to this viewer. Subclasses that use pending
+    // slots map the payload's target fields via pendingApplies().
+    takePendingSelection(field) {
+        const pending = this[field];
+        this[field] = null;
+        return pending && this.pendingApplies(pending) ? pending : null;
+    }
+
+    // True if this view was built against a now-superseded result; also flashes
+    // the refresh bar. An outdated report must not drive navigation or
+    // highlights: its nids, positions and hashes may not match the regenerated
+    // views.
+    viewOutdated() {
+        if (this.resultViewer.viewUpToDate) return false;
+        this.resultViewer.flashRefreshBar();
+        return true;
     }
 }

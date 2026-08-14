@@ -196,14 +196,14 @@ export class LayoutGL extends View {
         });
         this.resizeObserver.observe(this.canvas);
 
-        this._onKeydown = (event) => this.onKeydown(event);
-        this._onMousemove = (event) => this.onMousemove(event);
-        this._onMouseleave = () => this.clearMousePosition();
-        this.resContent.addEventListener("keydown", this._onKeydown);
-        this.canvas.addEventListener("mousemove", this._onMousemove);
-        this.canvas.addEventListener("mouseleave", this._onMouseleave);
+        this.onKeydown = (event) => this.onKeydown(event);
+        this.onMousemove = (event) => this.onMousemove(event);
+        this.onMouseleave = () => this.clearMousePosition();
+        this.resContent.addEventListener("keydown", this.onKeydown);
+        this.canvas.addEventListener("mousemove", this.onMousemove);
+        this.canvas.addEventListener("mouseleave", this.onMouseleave);
 
-        this._onDrcSelect = (data) => {
+        this.onDrcSelect = (data) => {
             // DRC selections target the view of the violation's cell; they
             // apply to viewers showing that view: matched by name, or by
             // wire hash for a viewer showing the same subgraph under a
@@ -213,11 +213,11 @@ export class LayoutGL extends View {
             }
             this.setHighlight(data.shapes);
         };
-        this._onDrcClear = () => this.clearHighlight();
-        viewEventBus.on('drc:select', this._onDrcSelect);
-        viewEventBus.on('drc:clear', this._onDrcClear);
+        this.onDrcClear = () => this.clearHighlight();
+        this.busSubscribe('drc:select', this.onDrcSelect);
+        this.busSubscribe('drc:clear', this.onDrcClear);
 
-        this._onLvsSelect = (data) => {
+        this.onLvsSelect = (data) => {
             // Selections targeted at a specific layout view (items of LVS
             // subcircuit pairs) apply to viewers showing that view, matched
             // by name or by wire hash.
@@ -226,17 +226,17 @@ export class LayoutGL extends View {
             }
             this.highlightPos(data.pos);
         };
-        this._onLvsClear = () => this.clearHighlight();
-        viewEventBus.on('lvs:layout-select', this._onLvsSelect);
-        viewEventBus.on('lvs:clear', this._onLvsClear);
+        this.onLvsClear = () => this.clearHighlight();
+        this.busSubscribe('lvs:layout-select', this.onLvsSelect);
+        this.busSubscribe('lvs:clear', this.onLvsClear);
 
         // Selections made before this view was opened; taken by update(),
         // once there is layout data to highlight in and a wire hash to match.
-        this._pendingDrc = viewEventBus.getPending('drc:select');
-        this._pendingLvs = viewEventBus.getPending('lvs:select');
+        this.pendingDrc = viewEventBus.getPending('drc:select');
+        this.pendingLvs = viewEventBus.getPending('lvs:select');
 
-        this._onPagehide = () => this.destroy();
-        window.addEventListener('pagehide', this._onPagehide);
+        this.onPagehide = () => this.destroy();
+        window.addEventListener('pagehide', this.onPagehide);
     }
 
 
@@ -311,14 +311,8 @@ export class LayoutGL extends View {
         this.cursorCoordinates.set(x, y);
     }
 
-    // Takes the pending selection captured at construction time, when the
-    // wire hash of the shown subgraph was not known yet. Clears the slot in
-    // any case and returns the payload only if it applies to this viewer.
-    _takePendingSelection(field) {
-        const pending = this[field];
-        this[field] = null;
-        return pending && this.selectionApplies(pending.layoutView, pending.layoutWireHash)
-            ? pending : null;
+    pendingApplies(pending) {
+        return this.selectionApplies(pending.layoutView, pending.layoutWireHash);
     }
 
     update(msgData, wireHash) {
@@ -330,14 +324,14 @@ export class LayoutGL extends View {
         // target, so that opening a layout from a DRC/LVS report lands on the
         // selected item just like a live drc:select/lvs:layout-select does.
         let zoomToSelection = null;
-        const pendingDrc = this._takePendingSelection('_pendingDrc');
+        const pendingDrc = this.takePendingSelection('pendingDrc');
         if (pendingDrc) {
             const box = this.setHighlight(pendingDrc.shapes, false);
             if (box) {
                 zoomToSelection = () => this.zoomToBox(...box, true, 0.25);
             }
         }
-        const pendingLvs = this._takePendingSelection('_pendingLvs');
+        const pendingLvs = this.takePendingSelection('pendingLvs');
         if (pendingLvs) {
             // Applied after the DRC highlight, which it replaces, so its zoom
             // target wins as well.
@@ -432,14 +426,11 @@ export class LayoutGL extends View {
     destroy() {
         // Called by ResultViewer when this renderer is being replaced,
         // or on page unload via pagehide event.
-        viewEventBus.off('drc:select', this._onDrcSelect);
-        viewEventBus.off('drc:clear', this._onDrcClear);
-        viewEventBus.off('lvs:layout-select', this._onLvsSelect);
-        viewEventBus.off('lvs:clear', this._onLvsClear);
-        this.resContent.removeEventListener("keydown", this._onKeydown);
-        this.canvas.removeEventListener("mousemove", this._onMousemove);
-        this.canvas.removeEventListener("mouseleave", this._onMouseleave);
-        window.removeEventListener('pagehide', this._onPagehide);
+        this.busUnsubscribeAll();
+        this.resContent.removeEventListener("keydown", this.onKeydown);
+        this.canvas.removeEventListener("mousemove", this.onMousemove);
+        this.canvas.removeEventListener("mouseleave", this.onMouseleave);
+        window.removeEventListener('pagehide', this.onPagehide);
         if (!this.gl) return;
         this.resizeObserver.disconnect();
         this.glResources.destroy();
@@ -992,12 +983,12 @@ export class LayoutGL extends View {
 
     highlightPos(pos, zoomTo = true) {
         if (!pos) {
-            this._highlightPos = null;
+            this.crosshairPos = null;
             this.clearHighlight();
             return;
         }
-        this._highlightPos = pos;
-        this._updateHighlightPos();
+        this.crosshairPos = pos;
+        this.updateCrosshair();
         if (zoomTo) {
             this.zoomToPos(pos);
         }
@@ -1011,14 +1002,14 @@ export class LayoutGL extends View {
         this.zoomToBox(x - r, y - r, x + r, y + r, true, 0.25);
     }
 
-    _updateHighlightPos() {
-        const pos = this._highlightPos;
+    updateCrosshair() {
+        const pos = this.crosshairPos;
         if (!pos) return;
         const [x, y] = pos;
         const arm = 10 / this.transform.k;
         // Two crosshair segments (horizontal + vertical), each as a flat
-        // [x1, y1, x2, y2] segment for _uploadHighlightSegments:
-        this._uploadHighlightSegments([
+        // [x1, y1, x2, y2] segment for uploadHighlightSegments:
+        this.uploadHighlightSegments([
             x - arm, y, x + arm, y,
             x, y - arm, x, y + arm,
         ]);
@@ -1028,7 +1019,7 @@ export class LayoutGL extends View {
     // (every 4 numbers describe one segment: x1, y1, x2, y2). Each segment is
     // expanded into a quad (2 triangles, 6 vertices) so the highlight shader can
     // give it a constant pixel width regardless of zoom.
-    _uploadHighlightSegments(segments) {
+    uploadHighlightSegments(segments) {
         const gl = this.gl;
         if (!gl) return;
         const data = [];
@@ -1090,8 +1081,8 @@ export class LayoutGL extends View {
         });
 
         // `vertices` is a flat list of line-segment endpoint pairs (GL_LINES
-        // layout). _uploadHighlightSegments expands each segment into a quad.
-        this._uploadHighlightSegments(vertices);
+        // layout). uploadHighlightSegments expands each segment into a quad.
+        this.uploadHighlightSegments(vertices);
 
         const box = minX !== Infinity ? [minX, minY, maxX, maxY] : null;
         if (zoomTo && box) {
@@ -1103,7 +1094,7 @@ export class LayoutGL extends View {
     }
 
     clearHighlight() {
-        this._highlightPos = null;
+        this.crosshairPos = null;
         this.highlightNumVertices = 0;
         this.drawGL();
     }
@@ -1132,8 +1123,8 @@ export class LayoutGL extends View {
         gl.uniform2fv(programInfo.uniformLocations.viewport, [this.width, this.height]);
 
         // A crosshair (highlightPos) and shape outlines (setHighlight) are never
-        // shown at the same time, so _highlightPos distinguishes the two widths:
-        const lineWidth = this._highlightPos ? CROSSHAIR_LINE_WIDTH : HIGHLIGHT_LINE_WIDTH;
+        // shown at the same time, so crosshairPos distinguishes the two widths:
+        const lineWidth = this.crosshairPos ? CROSSHAIR_LINE_WIDTH : HIGHLIGHT_LINE_WIDTH;
         gl.uniform1f(programInfo.uniformLocations.halfWidth, lineWidth / 2.0);
 
         const stride = 7 * 4; // 7 floats per vertex
@@ -1162,8 +1153,8 @@ export class LayoutGL extends View {
             this.drawGLShapes();
             this.drawGLPost();
             this.drawGLLabels();
-            if (this._highlightPos) {
-                this._updateHighlightPos();
+            if (this.crosshairPos) {
+                this.updateCrosshair();
             }
             if (this.highlightNumVertices > 0) {
                 this.drawGLHighlight();

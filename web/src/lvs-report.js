@@ -119,14 +119,14 @@ export class LvsReport extends View {
             circuitHeader.className = 'lvs-circuit-header';
             const circuitLabel = document.createElement('span');
             circuitLabel.append(toggleSpan(), ' ',
-                this._statusIcon(circuit.status), ' Circuit');
+                this.statusIcon(circuit.status), ' Circuit');
             // Layout/reference cells link to the circuit pair's layout/
             // schematic view if the corresponding ref resolved.
             circuitHeader.append(
                 circuitLabel,
-                this._circuitCell(circuit, 'layout', circuit.has_layout_ref,
+                this.circuitCell(circuit, 'layout', circuit.has_layout_ref,
                     circuit.layout_name, 'Open layout'),
-                this._circuitCell(circuit, 'schem', circuit.has_schem_ref,
+                this.circuitCell(circuit, 'schem', circuit.has_schem_ref,
                     circuit.schem_name, 'Open schematic'));
             circuitEl.appendChild(circuitHeader);
 
@@ -137,8 +137,8 @@ export class LvsReport extends View {
                 const mismatchCount = items.filter(isMismatch).length;
                 const warningCount = items.filter(i => i.status === 'warning').length;
                 const groupStatusIcon = mismatchCount > 0
-                    ? this._statusIcon('mismatch')
-                    : this._statusIcon(warningCount > 0 ? 'warning' : 'match');
+                    ? this.statusIcon('mismatch')
+                    : this.statusIcon(warningCount > 0 ? 'warning' : 'match');
 
                 const groupEl = document.createElement('div');
                 groupEl.className = 'lvs-type-group';
@@ -161,8 +161,8 @@ export class LvsReport extends View {
                         : (item.status === 'warning' ? 'lvs-status-warning' : 'lvs-status-mismatch');
                     const layoutName = item.layout_name || '?';
                     const schemName = item.schem_name || '?';
-                    const layoutParams = this._formatParams(item.layout_params);
-                    const schemParams = this._formatParams(item.schem_params);
+                    const layoutParams = this.formatParams(item.layout_params);
+                    const schemParams = this.formatParams(item.schem_params);
                     // The whole row is one click target; underline the
                     // first cell as the suggested click target if
                     // selecting the row highlights anything in the
@@ -222,10 +222,10 @@ export class LvsReport extends View {
             this.selectedItemNid = null;
         }
 
-        this._attachEventHandlers(itemMap, circuitMap, data);
+        this.attachEventHandlers(itemMap, circuitMap, data);
     }
 
-    _statusIcon(status) {
+    statusIcon(status) {
         const cls = status === 'match' ? 'match' : (status === 'warning' ? 'warning' : 'mismatch');
         const icon = document.createElement('span');
         icon.className = `lvs-status-icon ${cls}`;
@@ -235,7 +235,7 @@ export class LvsReport extends View {
     // One of the two cell-name columns of a circuit header: a click target
     // opening the pair's layout/schematic view where that ref resolved,
     // plain text otherwise (see the lvs-circuit-link handler).
-    _circuitCell(circuit, kind, hasRef, name, title) {
+    circuitCell(circuit, kind, hasRef, name, title) {
         const cell = document.createElement('span');
         if (!hasRef) {
             cell.textContent = name || '?';
@@ -252,7 +252,7 @@ export class LvsReport extends View {
         return cell;
     }
 
-    _formatParams(params) {
+    formatParams(params) {
         if (!params || Object.keys(params).length === 0) return '';
         const keyParams = ['W', 'L'];
         const parts = [];
@@ -270,7 +270,7 @@ export class LvsReport extends View {
         return parts.length > 0 ? ` [${parts.join(', ')}]` : '';
     }
 
-    _setupColumnResize() {
+    setupColumnResize() {
         const header = this.el.querySelector('.lvs-col-header');
         if (!header) return;
 
@@ -317,8 +317,8 @@ export class LvsReport extends View {
         });
     }
 
-    _attachEventHandlers(itemMap, circuitMap, data) {
-        this._setupColumnResize();
+    attachEventHandlers(itemMap, circuitMap, data) {
+        this.setupColumnResize();
 
         this.el.querySelectorAll('.lvs-circuit-header').forEach(header => {
             header.addEventListener('click', () => {
@@ -336,11 +336,7 @@ export class LvsReport extends View {
         this.el.querySelectorAll('.lvs-circuit-link').forEach(linkEl => {
             linkEl.addEventListener('click', (e) => {
                 e.stopPropagation();  // don't toggle circuit expansion
-                // See the drc-item guard: outdated reports are inert.
-                if (!this.resultViewer.viewUpToDate) {
-                    this.resultViewer.flashRefreshBar();
-                    return;
-                }
+                if (this.viewOutdated()) return;
                 if (!this.viewName) return;
                 const nid = parseInt(linkEl.dataset.nid, 10);
                 const kind = linkEl.dataset.kind;
@@ -379,11 +375,7 @@ export class LvsReport extends View {
         this.el.querySelectorAll('.lvs-item-row').forEach(itemEl => {
             itemEl.addEventListener('click', (e) => {
                 e.stopPropagation();
-                // See the drc-item guard: outdated reports are inert.
-                if (!this.resultViewer.viewUpToDate) {
-                    this.resultViewer.flashRefreshBar();
-                    return;
-                }
+                if (this.viewOutdated()) return;
                 this.el.querySelectorAll('.lvs-item-row.selected').forEach(el => {
                     el.classList.remove('selected');
                 });

@@ -175,13 +175,7 @@ export class DrcReport extends View {
         }
 
         itemEl.addEventListener('click', () => {
-            // An outdated report must not drive navigation or
-            // highlights: its nids, positions and hashes may not
-            // match the regenerated views.
-            if (!this.resultViewer.viewUpToDate) {
-                this.resultViewer.flashRefreshBar();
-                return;
-            }
+            if (this.viewOutdated()) return;
             const isTop = !cell || cell.is_top;
             // Subcell shapes are in the cell's local coordinate
             // space; without a resolved ref_layout there is no view

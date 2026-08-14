@@ -21,25 +21,28 @@ export class SvgView extends View {
         this.baseTransform = null;
         this.resizeObserver = null;
 
-        this._onLvsSelect = (data) => {
+        this.onLvsSelect = (data) => {
             if (data && !this.selectionApplies(data.schemView, data.schemWireHash)) {
                 return;
             }
             this.setHighlight(data);
         };
-        this._onLvsClear = () => this.clearHighlight();
-        viewEventBus.on('lvs:schem-select', this._onLvsSelect);
-        viewEventBus.on('lvs:clear', this._onLvsClear);
+        this.onLvsClear = () => this.clearHighlight();
+        this.busSubscribe('lvs:schem-select', this.onLvsSelect);
+        this.busSubscribe('lvs:clear', this.onLvsClear);
 
         // A selection made before this view was opened; taken by update(),
         // once there is an SVG to highlight in and a wire hash to match.
-        this._pendingHighlight = viewEventBus.getPending('lvs:select') || null;
+        this.pendingHighlight = viewEventBus.getPending('lvs:select') || null;
+    }
+    pendingApplies(pending) {
+        return this.selectionApplies(pending.schemView, pending.schemWireHash);
     }
     zoomed({transform}) {
         this.transform = transform;
         this.g.attr("transform", transform);
     }
-    _sameTransform(a, b) {
+    sameTransform(a, b) {
         return a && b && Math.abs(a.k - b.k) < 1e-9
             && Math.abs(a.x - b.x) < 1e-6
             && Math.abs(a.y - b.y) < 1e-6;
@@ -49,7 +52,7 @@ export class SvgView extends View {
     // panel content is centered. Re-applied whenever the view is at
     // the base, so the cap follows panel resizes; a user zoom is left
     // untouched.
-    _updateBaseTransform() {
+    updateBaseTransform() {
         const rect = this.svgNode.getBoundingClientRect();
         if (!rect.width || !rect.height) {
             return;
@@ -61,11 +64,11 @@ export class SvgView extends View {
             .translate((vx + vw / 2) * (1 - k), (vy + vh / 2) * (1 - k))
             .scale(k);
         const wasAtBase = this.baseTransform
-            ? this._sameTransform(this.transform, this.baseTransform)
-            : this._sameTransform(this.transform, d3.zoomIdentity);
+            ? this.sameTransform(this.transform, this.baseTransform)
+            : this.sameTransform(this.transform, d3.zoomIdentity);
         this.zoom.scaleExtent([k, 12]);
         this.baseTransform = base;
-        if (wasAtBase && !this._sameTransform(this.transform, base)) {
+        if (wasAtBase && !this.sameTransform(this.transform, base)) {
             this.svg.call(this.zoom.transform, base);
         }
     }
@@ -211,7 +214,7 @@ export class SvgView extends View {
 
         // The svg fills the panel; the base zoom transform caps the
         // resting view at the nominal rendered size and centers it
-        // (see _updateBaseTransform). Zooming in from there can use
+        // (see updateBaseTransform). Zooming in from there can use
         // the full panel.
         this.viewbox = viewbox;
         this.nominalScale = parseFloat(msgData.width) / vw;
@@ -269,12 +272,12 @@ export class SvgView extends View {
         // Undebounced on purpose: ResizeObserver fires after layout but
         // before paint, so a synchronous update keeps the resting view
         // pinned at nominal size throughout a resize.
-        this._updateBaseTransform();
+        this.updateBaseTransform();
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
         }
         this.resizeObserver = new ResizeObserver(
-            () => this._updateBaseTransform());
+            () => this.updateBaseTransform());
         this.resizeObserver.observe(this.svgNode);
 
         svg.selectAll('.errorMarker')
@@ -307,15 +310,13 @@ export class SvgView extends View {
                 }
             });
 
-        const pending = this._pendingHighlight;
-        this._pendingHighlight = null;
-        if (pending && this.selectionApplies(pending.schemView, pending.schemWireHash)) {
+        const pending = this.takePendingSelection('pendingHighlight');
+        if (pending) {
             this.setHighlight(pending);
         }
     }
     destroy() {
-        viewEventBus.off('lvs:schem-select', this._onLvsSelect);
-        viewEventBus.off('lvs:clear', this._onLvsClear);
+        this.busUnsubscribeAll();
         this.clearHighlight();
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
