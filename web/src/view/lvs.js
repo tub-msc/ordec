@@ -47,7 +47,7 @@ function toggleSpan() {
 // same subgraph under a different view name: nids/positions are only
 // meaningful in the pair's own subgraphs, and an untargeted broadcast
 // would paint them into unrelated layout/schematic views.
-export class LvsReport extends View {
+export class LvsView extends View {
     constructor(resContent, viewName, resultViewer, panelContainer) {
         super(resContent, viewName, resultViewer, panelContainer);
         this.el = document.createElement('div');

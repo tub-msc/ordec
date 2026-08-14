@@ -67,7 +67,7 @@ export class View {
 }
 
 // Small coordinate-readout widget shared by the spatial viewers (SvgView,
-// LayoutGL) to show the pointer position over the canvas.
+// LayoutView) to show the pointer position over the canvas.
 export class CoordinateDisplay {
     constructor({ tagName = 'span', classNames = [] } = {}) {
         this.element = document.createElement(tagName);

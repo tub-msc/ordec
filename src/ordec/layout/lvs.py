@@ -95,7 +95,7 @@ def webdata(report: LvsReport, ept):
             'message': item.message,
         })
 
-    return 'lvs_report', {
+    return 'lvs', {
         'top_cell': report.top_cell,
         'status': report.status.value,
         'circuits': circuits,

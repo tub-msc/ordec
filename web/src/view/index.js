@@ -3,9 +3,9 @@
 
 import { SvgView } from './svg.js';
 import { ReportView } from './report.js';
-import { LayoutGL } from './layout.js';
-import { DrcReport } from './drc.js';
-import { LvsReport } from './lvs.js';
+import { LayoutView } from './layout.js';
+import { DrcView } from './drc.js';
+import { LvsView } from './lvs.js';
 
 // Maps the type field of view messages to the class rendering that view type.
 // The keys are protocol values sent by the server as msg.type; keep them in
@@ -13,7 +13,7 @@ import { LvsReport } from './lvs.js';
 export const viewClassOf = {
     svg: SvgView,
     report: ReportView,
-    layout_gl: LayoutGL,
-    drc_report: DrcReport,
-    lvs_report: LvsReport,
+    layout: LayoutView,
+    drc: DrcView,
+    lvs: LvsView,
 };

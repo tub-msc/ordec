@@ -84,7 +84,7 @@ def webdata(layout: Layout.Frozen):
     else:
         extent_out = (extent.lx, extent.ly, extent.ux, extent.uy)
 
-    return 'layout_gl', {
+    return 'layout', {
         'layers': weblayers_list,
         'extent': extent_out,
         'unit': float(layout.ref_layers.unit),

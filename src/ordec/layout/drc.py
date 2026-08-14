@@ -88,7 +88,7 @@ def webdata(report: DrcReport, ept):
             'type': 'text', 'pos': [text.pos.x, text.pos.y], 'text': text.text
         })
 
-    return 'drc_report', {
+    return 'drc', {
         'top_cell': report.top_cell_name,
         'categories': categories,
         'cells': cells,

@@ -134,7 +134,7 @@ function calcLayerColor(color, layerId, dampen) {
     ];
 }
 
-export class LayoutGL extends View {
+export class LayoutView extends View {
     constructor(resContent, viewName, resultViewer, panelContainer) {
         super(resContent, viewName, resultViewer, panelContainer);
         this.transform = d3.zoomIdentity.scale(1e-1,1e-1);

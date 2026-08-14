@@ -31,7 +31,7 @@ const ARROW_EXPANDED = '▼';
 // untargeted broadcast would paint them into unrelated layout views.
 // Subcell items whose DrcCell has no resolved ref_layout (e.g. KLayout
 // variant cells) cannot be highlighted anywhere and are not selectable.
-export class DrcReport extends View {
+export class DrcView extends View {
     constructor(resContent, viewName, resultViewer, panelContainer) {
         super(resContent, viewName, resultViewer, panelContainer);
         this.el = document.createElement('div');
