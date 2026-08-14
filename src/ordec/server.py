@@ -482,8 +482,21 @@ class ConnectionHandler:
                     conn_globals = module.__dict__
 
             # Use tracked files - includes all files found even if import failed.
-            # Keep first-seen order, drop duplicates.
-            return conn_globals, list(dict.fromkeys(tracker.files)), exc
+            # Keep first-seen order, drop duplicates. Each file maps to a
+            # (mtime_ns, size) snapshot taken right after the import (None if
+            # it is already gone again): the inotify watches are installed
+            # later, in the connection's watch thread, and modifications in
+            # between produce no events, so background_inotify compares
+            # against this snapshot to catch that window.
+            watch_files = {}
+            for f in dict.fromkeys(tracker.files):
+                try:
+                    st = os.stat(f)
+                except OSError:
+                    watch_files[f] = None
+                else:
+                    watch_files[f] = (st.st_mtime_ns, st.st_size)
+            return conn_globals, watch_files, exc
 
     def handle_connection(self, websocket):
         remote = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
@@ -661,11 +674,40 @@ def background_inotify(watch_files, pipe_inotify_abort_r, websocket, websocket_l
     watch_flags = inotify_simple.flags.DELETE_SELF \
         | inotify_simple.flags.MODIFY \
         | inotify_simple.flags.MOVE_SELF
-    for f in watch_files:
-        #print(f"Watching for changes to file: {f}")
-        inotify.add_watch(f, watch_flags)
-
     try:
+        stale = False
+        for f in watch_files:
+            #print(f"Watching for changes to file: {f}")
+            try:
+                inotify.add_watch(f, watch_flags)
+            except OSError:
+                # The file vanished (e.g. a rename-style save replaced it)
+                # after the import located it.
+                stale = True
+
+        # Modifications between the import reading a file and add_watch above
+        # produce no inotify events. Detect them by comparing against the
+        # post-import snapshot and treat them like a change event, so the
+        # client rebuilds instead of showing the stale build. The watches
+        # stay active either way, for the case that the client does not
+        # reconnect (auto-refresh disabled).
+        if not stale:
+            for f, snapshot in watch_files.items():
+                try:
+                    st = os.stat(f)
+                except OSError:
+                    stale = True
+                    break
+                if (st.st_mtime_ns, st.st_size) != snapshot:
+                    stale = True
+                    break
+        if stale:
+            with websocket_lock:
+                try:
+                    websocket.send(json.dumps({'msg':'localmodule_changed'}))
+                except ConnectionClosed:
+                    return
+
         while True:
             readable, _, _ = select.select([inotify, pipe_inotify_abort_r], [], [])
             if pipe_inotify_abort_r in readable:
