@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2025 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
+// Entry point for app.html, the in-app design workspace. The landing page
+// (index.html) has its own, much lighter entry point in landing-page.js.
+
 import './style.css'
 import './ace-ord-style.css'
 

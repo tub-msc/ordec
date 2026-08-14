@@ -201,6 +201,14 @@
     </style>
   </head>
   <body>
+    <!-- Apply the saved theme before the page renders to avoid a light flash.
+         This must be a classic (non-deferred) script at the top of <body>; the
+         rest of the page logic, including the toggle, lives in src/landing-page.js. -->
+    <script>
+      if (window.localStorage.getItem('ordecTheme') === 'dark') {
+        document.body.classList.add('theme-dark');
+      }
+    </script>
     <header>
       <img id="logo" src="/ordec_logo.svg" alt="ORDeC" />
       <div class="header-actions">
@@ -253,58 +261,7 @@
       <a data-docs-page="">Documentation</a>
     </footer>
 
-    <script>
-      // Apply saved theme preference immediately to avoid flash
-      const dark = window.localStorage.getItem('ordecTheme') === 'dark';
-      if (dark) document.body.classList.add('theme-dark');
-
-      // Theme toggle (mirrors app behavior, shares localStorage key)
-      const btn = document.querySelector('#theme-toggle');
-      function updateToggleBtn(isDark) {
-        btn.textContent = isDark ? '\u2600' : '\u263E';
-        btn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
-      }
-      updateToggleBtn(dark);
-      btn.addEventListener('click', () => {
-        const nowDark = !document.body.classList.contains('theme-dark');
-        document.body.classList.toggle('theme-dark', nowDark);
-        window.localStorage.setItem('ordecTheme', nowDark ? 'dark' : 'light');
-        updateToggleBtn(nowDark);
-      });
-
-      // Version info; documentation links get their href set to the
-      // version-matched URL (see the data-docs-page comment above).
-      // Relative path: Vite only rewrites asset references for base './',
-      // not fetch() literals, and '/api/version' would 404 behind the
-      // /user/<name>/ prefix of JupyterHub.
-      fetch('api/version')
-        .then(r => r.json())
-        .then(data => {
-          document.querySelector('#version').textContent = data['version'];
-          document.querySelectorAll('a[data-docs-page]').forEach(a => {
-            a.href = data['docs_url'] + a.dataset.docsPage;
-          });
-        })
-        .catch(err => console.error('Failed to fetch api/version:', err));
-    </script>
-    <script type="module">
-      // Strip #auth= from the URL and save the token for app.html to read.
-      // initSession() also probes api/token, which behind JupyterHub carries
-      // hubMode and the logout URL; wire the "End session" control from that
-      // (the same wiring lives in src/main.js for the app page — keep in sync).
-      import { initSession, session } from '/src/auth.js';
-      await initSession();
-      if (session.hubMode && session.hubLogoutUrl) {
-        const endSession = document.querySelector('#hubEndSession');
-        endSession.href = session.hubLogoutUrl;
-        endSession.hidden = false;
-        endSession.addEventListener('click', (e) => {
-          if (!window.confirm('End this session? Your container will be '
-              + 'stopped and unsaved work will be lost.')) {
-            e.preventDefault();
-          }
-        });
-      }
-    </script>
+    <!-- Landing-page logic lives in src/landing-page.js (the app page uses src/main.js). -->
+    <script type="module" src="/src/landing-page.js"></script>
   </body>
 </html>
