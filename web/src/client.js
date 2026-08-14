@@ -59,6 +59,9 @@ export class OrdecClient {
     }
 
     wsOnMessage(messageEvent) {
+        if (messageEvent.target !== this.sock) {
+            return;
+        }
         const msg = JSON.parse(messageEvent.data);
         //console.log(msg)
         if (msg['msg'] == 'viewlist') {

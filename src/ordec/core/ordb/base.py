@@ -1781,8 +1781,13 @@ class FrozenSubgraph(Subgraph):
         cached = self._cached_wire_hash
         if cached is not None and cached[0] is ept:
             return cached[1]
-        self.wire_encode(ept) # memoizes the hash, bytes are discarded
-        return self._cached_wire_hash[1]
+        from ..wire import encode_subgraph, hash_wire_bytes
+        h = hash_wire_bytes(encode_subgraph(self, ept))
+        # Returned via the local, not by re-reading the memo slot: a
+        # concurrent wire_hash/wire_encode under another ExportTable may
+        # overwrite the slot in between with that table's hash.
+        self._cached_wire_hash = (ept, h)
+        return h
 
     def wire_deps(self, ept) -> dict:
         """

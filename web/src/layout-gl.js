@@ -555,6 +555,8 @@ export class LayoutGL extends View {
         if(!document.fonts.check(fontSpec) && !isFontSwap) {
             // Font is not yet loaded, font swap needed:
             document.fonts.load(fontSpec).then(() => {
+                // Guard against the font resolving after destroy().
+                if (!this.gl) return;
                 console.log("reloading labels");
                 this.loadLabels(true);
                 this.drawGL();
