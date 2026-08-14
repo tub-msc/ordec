@@ -6,16 +6,18 @@ import { SimPlot } from './simplot.js';
 import renderMathInElement from 'katex/contrib/auto-render';
 import 'katex/dist/katex.min.css';
 
-function simpleReportElementClass(renderNode) {
-    return class {
-        constructor(container) {
-            this.container = container;
-        }
+// Base class for the report element renderers. ReportView constructs every
+// element with the same (container, reportContext) signature, reassigns
+// container when it reuses a renderer across re-renders, and drives it via
+// update()/destroy(); reportContext is part of that shared contract even where
+// a given element does not use it.
+class ReportElement {
+    constructor(container, reportContext) {
+        this.container = container;
+        this.reportContext = reportContext;
+    }
 
-        update(msgData) {
-            this.container.replaceChildren(renderNode(msgData));
-        }
-    };
+    destroy() {}
 }
 
 // Appends plain text to el, turning `...` spans into inline code elements.
@@ -34,51 +36,59 @@ function appendTextWithCode(el, text) {
     });
 }
 
-export const Markdown = simpleReportElementClass((msgData) => {
-    const section = document.createElement('div');
-    section.classList.add('report-markdown');
-    section.innerHTML = msgData.html;
-    // TeX math spans; the backend keeps them out of markdown2's hands
-    // (see schema.py Markdown.element_webdata).
-    renderMathInElement(section, {
-        delimiters: [
-            {left: '$$', right: '$$', display: true},
-            {left: '$', right: '$', display: false},
-        ],
-        throwOnError: false,
-    });
-    return section;
-});
+export class Markdown extends ReportElement {
+    update(msgData) {
+        const section = document.createElement('div');
+        section.classList.add('report-markdown');
+        section.innerHTML = msgData.html;
+        // TeX math spans; the backend keeps them out of markdown2's hands
+        // (see schema.py Markdown.element_webdata).
+        renderMathInElement(section, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false},
+            ],
+            throwOnError: false,
+        });
+        this.container.replaceChildren(section);
+    }
+}
 
-export const Html = simpleReportElementClass((msgData) => {
-    const section = document.createElement('div');
-    section.classList.add('report-html');
-    section.innerHTML = msgData.html;
-    return section;
-});
+export class Html extends ReportElement {
+    update(msgData) {
+        const section = document.createElement('div');
+        section.classList.add('report-html');
+        section.innerHTML = msgData.html;
+        this.container.replaceChildren(section);
+    }
+}
 
-export const PreformattedText = simpleReportElementClass((msgData) => {
-    const pre = document.createElement('pre');
-    pre.classList.add('report-preformatted');
-    pre.innerText = msgData.text;
-    return pre;
-});
+export class PreformattedText extends ReportElement {
+    update(msgData) {
+        const pre = document.createElement('pre');
+        pre.classList.add('report-preformatted');
+        pre.innerText = msgData.text;
+        this.container.replaceChildren(pre);
+    }
+}
 
-export const Svg = simpleReportElementClass((msgData) => {
-    const svg = d3.create("svg")
-        .attr("class", "report-svg")
-        .attr("viewBox", msgData.viewbox);
-    svg.attr("width", msgData.width);
-    svg.attr("height", msgData.height);
-    svg.append("g").html(msgData.inner);
-    return svg.node();
-});
+export class Svg extends ReportElement {
+    update(msgData) {
+        const svg = d3.create("svg")
+            .attr("class", "report-svg")
+            .attr("viewBox", msgData.viewbox);
+        svg.attr("width", msgData.width);
+        svg.attr("height", msgData.height);
+        svg.append("g").html(msgData.inner);
+        this.container.replaceChildren(svg.node());
+    }
+}
 
-// Stateful class (not simpleReportElementClass) so that hint visibility
-// survives report re-renders (renderer instances are reused by index).
-export class PassFail {
-    constructor(container) {
-        this.container = container;
+// Stateful (hintVisible) so that hint visibility survives report re-renders,
+// which reuse renderer instances by index.
+export class PassFail extends ReportElement {
+    constructor(container, reportContext) {
+        super(container, reportContext);
         this.hintVisible = false;
     }
 
@@ -138,10 +148,9 @@ export class PassFail {
     }
 }
 
-export class Plot2d {
+export class Plot2d extends ReportElement {
     constructor(container, reportContext) {
-        this.container = container;
-        this.reportContext = reportContext;
+        super(container, reportContext);
         this.plot = null;
         this.savedHidden = null;
         this.savedZoom = null;

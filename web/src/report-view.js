@@ -141,7 +141,7 @@ export class ReportView extends View {
                 renderer.container = elementRoot;
                 oldRenderers[i] = null;
             } else {
-                old?.destroy?.();
+                old?.destroy();
                 oldRenderers[i] = null;
                 renderer = new elementClass(
                     elementRoot, this.reportContext
@@ -153,7 +153,7 @@ export class ReportView extends View {
 
         // Destroy any leftover old renderers
         for (const r of oldRenderers) {
-            r?.destroy?.();
+            r?.destroy();
         }
 
         this.resContent.replaceChildren(report);
