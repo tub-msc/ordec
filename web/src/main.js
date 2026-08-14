@@ -378,18 +378,16 @@ if(queryLocal) {
 
     document.querySelector("#toolSourcetype").style.display = 'none';
 
-    const controller = await initCourseMode(queryCourse, {
+    client = new OrdecClient(getSourceType(), [], setStatus, showSessionLost);
+
+    const controller = await initCourseMode(queryCourse, client, layout, {
         getResultViewers,
         saveUistate: () => LayoutConfig.fromResolved(layout.saveLayout()),
-        registerChangeHandler: (editor, c) => editor.registerChangeHandler(c),
         setSourceType: (srctype) => { sourceTypeSelect.value = srctype; },
         // debug=true in the URL fragment unlocks all lessons at once.
         debug,
     });
 
-    client = new OrdecClient(getSourceType(), [], setStatus, showSessionLost);
-    controller.client = client;
-    controller.layout = layout;
     controller.activateLesson(controller.currentLesson, { save: false });
 
     // Make the controller easy to access for automated testing & debugging:

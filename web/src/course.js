@@ -55,10 +55,12 @@ function lessonStem(file) {
 }
 
 export class CourseController {
-    constructor(course) {
+    constructor(course, client, layout, deps) {
         this.course = course; // {name, title, lessons: [...]} from /api/course
-        this.client = null; // set by main.js
-        this.layout = null; // set by main.js
+        this.client = client;
+        this.layout = layout;
+        // main.js callbacks: getResultViewers(), saveUistate(), setSourceType().
+        this.deps = deps;
         this.editor = null; // set when the Editor component mounts
         // The special "Course" result viewer that renders lesson() and hosts
         // the navigator toolbar (see resultviewer.js course mode); set when
@@ -199,7 +201,7 @@ export class CourseController {
         this.client.registerResultViewers(this.deps.getResultViewers());
         this.client.connect();
         if (this.editor) {
-            this.deps.registerChangeHandler(this.editor, this.client);
+            this.editor.registerChangeHandler(this.client);
         }
         this.renderNavigators();
 
@@ -761,8 +763,8 @@ export class CourseController {
 
 // Fetches course data and creates the (singleton) CourseController.
 // deps provides main.js callbacks: getResultViewers(), saveUistate(),
-// registerChangeHandler(editor, client).
-export async function initCourseMode(courseName, deps) {
+// setSourceType().
+export async function initCourseMode(courseName, client, layout, deps) {
     const params = new URLSearchParams();
     params.append('name', courseName);
     const response = await fetch('api/course?' + params);
@@ -770,7 +772,6 @@ export async function initCourseMode(courseName, deps) {
         throw new Error(`Response status: ${response.status}`);
     }
     const course = await response.json();
-    courseController = new CourseController(course);
-    courseController.deps = deps;
+    courseController = new CourseController(course, client, layout, deps);
     return courseController;
 }
