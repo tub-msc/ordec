@@ -3,27 +3,27 @@
 
 // Import both Golden Layout themes. Only one will be active at a time;
 // the inactive one is disabled via its stylesheet's .disabled property.
-import glLightUrl from "golden-layout/dist/css/themes/goldenlayout-light-theme.css?url";
-import glDarkUrl from "golden-layout/dist/css/themes/goldenlayout-dark-theme.css?url";
+import goldenLayoutLightCssUrl from "golden-layout/dist/css/themes/goldenlayout-light-theme.css?url";
+import goldenLayoutDarkCssUrl from "golden-layout/dist/css/themes/goldenlayout-dark-theme.css?url";
 
 const STORAGE_KEY = 'ordecTheme';
 
-let glLightLink = null;
-let glDarkLink = null;
+let goldenLayoutLightLink = null;
+let goldenLayoutDarkLink = null;
 let aceEditors = [];
 
-function createGlLinks(dark) {
-    glLightLink = document.createElement('link');
-    glLightLink.rel = 'stylesheet';
-    glLightLink.href = glLightUrl;
-    glLightLink.disabled = dark;
-    document.head.appendChild(glLightLink);
+function createGoldenLayoutLinks(dark) {
+    goldenLayoutLightLink = document.createElement('link');
+    goldenLayoutLightLink.rel = 'stylesheet';
+    goldenLayoutLightLink.href = goldenLayoutLightCssUrl;
+    goldenLayoutLightLink.disabled = dark;
+    document.head.appendChild(goldenLayoutLightLink);
 
-    glDarkLink = document.createElement('link');
-    glDarkLink.rel = 'stylesheet';
-    glDarkLink.href = glDarkUrl;
-    glDarkLink.disabled = !dark;
-    document.head.appendChild(glDarkLink);
+    goldenLayoutDarkLink = document.createElement('link');
+    goldenLayoutDarkLink.rel = 'stylesheet';
+    goldenLayoutDarkLink.href = goldenLayoutDarkCssUrl;
+    goldenLayoutDarkLink.disabled = !dark;
+    document.head.appendChild(goldenLayoutDarkLink);
 }
 
 export function isDark() {
@@ -37,9 +37,9 @@ function applyTheme(dark) {
         document.body.classList.remove('theme-dark');
     }
 
-    if (glLightLink && glDarkLink) {
-        glLightLink.disabled = dark;
-        glDarkLink.disabled = !dark;
+    if (goldenLayoutLightLink && goldenLayoutDarkLink) {
+        goldenLayoutLightLink.disabled = dark;
+        goldenLayoutDarkLink.disabled = !dark;
     }
 
     const aceTheme = dark ? "ace/theme/github_dark" : "ace/theme/github";
@@ -72,7 +72,7 @@ export function unregisterAceEditor(editor) {
 export function initTheme() {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     const dark = saved === 'dark';
-    createGlLinks(dark);
+    createGoldenLayoutLinks(dark);
     applyTheme(dark);
 
     const btn = document.querySelector('#theme-toggle');
