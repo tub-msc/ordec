@@ -1,24 +1,29 @@
 // SPDX-FileCopyrightText: 2025 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
-const urlParams = new URLSearchParams(window.location.hash.substring(1));
-const authParam = urlParams.get('auth');
-if(authParam) {
-    urlParams.delete('auth');
-    window.localStorage.setItem('ordecAuth', authParam);
-    // drop auth parameter from browser url fragment
-    const remaining = urlParams.toString();
-    window.history.pushState({}, document.title, window.location.pathname + (remaining ? '#' + remaining : ''));
-}
-
 export const session = {
-    authKey: window.localStorage.getItem('ordecAuth'),
-    authHmacBypass: window.localStorage.getItem('ordecHmacBypass'),
+    authKey: null,
+    authHmacBypass: null,
     hubMode: false,
     hubLogoutUrl: null,
 };
 
 export async function initSession() {
+    // A fragment-delivered token (standalone servers) is stashed in localStorage
+    // and stripped from the URL so it does not linger in browser history. This
+    // is the sole place session state is populated; the module import has no
+    // side effects.
+    const urlParams = new URLSearchParams(window.location.hash.substring(1));
+    const authParam = urlParams.get('auth');
+    if(authParam) {
+        urlParams.delete('auth');
+        window.localStorage.setItem('ordecAuth', authParam);
+        const remaining = urlParams.toString();
+        window.history.pushState({}, document.title, window.location.pathname + (remaining ? '#' + remaining : ''));
+    }
+    session.authKey = window.localStorage.getItem('ordecAuth');
+    session.authHmacBypass = window.localStorage.getItem('ordecHmacBypass');
+
     // JupyterHub-hosted deployments (see src/ordec/hub.py) deliver the backend
     // auth token via the cookie-gated api/token endpoint instead of the URL
     // fragment. The endpoint's token is authoritative: it always belongs to
