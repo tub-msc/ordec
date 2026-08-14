@@ -329,56 +329,52 @@ document.querySelector("#savejson").onclick = () => {
     dlAnchorElem.click();
 };
 
-let client;
-
-if(queryLocal) {
-    // If queryLocal is set, the web UI is used in **local mode**.
-    // In this case, only a single result view is opened by default.
-
-    // To prevent CSRF attacks, queryLocal is authenticated using the queryHmac
-    // parameter.
-
+// Local mode: only a single result view is opened by default. To prevent CSRF
+// attacks, queryLocal is authenticated using the queryHmac parameter. Returns
+// null (no client) if authentication fails.
+async function initLocalMode() {
     const local = await authenticateLocalQuery(queryLocal, queryHmac);
-
-    if(local) {
-        document.querySelector("#toolSourcetype").style.display='none';
-
-        const uistate = {
-            "content": [
-                {
-                    "type": "row",
-                    "content": [
-                        {
-                            "type": "component",
-                            "title": "Result View",
-                            "componentName": "result",
-                            "componentState": {
-                                "view": local.view,
-                            }
-                        }
-                    ]
-                }
-            ]
-        };
-        uistate.header = {popout: false};
-
-        layout.loadLayout(uistate);
-        // client is initialized only once we have loaded our layout using loadLayout:
-        client = new OrdecClient(getSourceType(), getResultViewers(), setStatus, showSessionLost);
-        client.localModule = local.module;
-        client.connect();
-    } else {
+    if (!local) {
         console.error("HMAC authentication of 'local' parameter failed.");
+        return null;
     }
-} else if (queryCourse) {
-    // If queryCourse is set, the web UI is used in **course mode**.
-    // The CourseController loads sources and per-lesson layouts from the
-    // /api/course endpoint (combined with progress saved in localStorage)
-    // and rebuilds editor + result views on each lesson switch.
 
     document.querySelector("#toolSourcetype").style.display = 'none';
 
-    client = new OrdecClient(getSourceType(), [], setStatus, showSessionLost);
+    const uistate = {
+        "content": [
+            {
+                "type": "row",
+                "content": [
+                    {
+                        "type": "component",
+                        "title": "Result View",
+                        "componentName": "result",
+                        "componentState": {
+                            "view": local.view,
+                        }
+                    }
+                ]
+            }
+        ]
+    };
+    uistate.header = {popout: false};
+
+    layout.loadLayout(uistate);
+    // client is initialized only once we have loaded our layout using loadLayout:
+    const client = new OrdecClient(getSourceType(), getResultViewers(), setStatus, showSessionLost);
+    client.localModule = local.module;
+    client.connect();
+    return client;
+}
+
+// Course mode: the CourseController loads sources and per-lesson layouts from
+// the /api/course endpoint (combined with progress saved in localStorage) and
+// rebuilds editor + result views on each lesson switch.
+async function startCourseMode() {
+    document.querySelector("#toolSourcetype").style.display = 'none';
+
+    const client = new OrdecClient(getSourceType(), [], setStatus, showSessionLost);
 
     const controller = await initCourseMode(queryCourse, client, layout, {
         getResultViewers,
@@ -392,12 +388,13 @@ if(queryLocal) {
 
     // Make the controller easy to access for automated testing & debugging:
     window.courseController = controller;
-} else {
-    // If localModule is null, the web UI is used in **integrated mode**.
-    // In this case, the source code is entered through the web editor.
-    // This editor and zero or more result views are initialized through
-    // the data obtained from the server through getInitData().
+    return client;
+}
 
+// Integrated mode: the source code is entered through the web editor. This
+// editor and zero or more result views are initialized through the data
+// obtained from the server through getInitData().
+async function initIntegratedMode() {
     const initData = await getInitData();
     const restoreData = popRestoreData();
     if (restoreData) {
@@ -409,7 +406,7 @@ if(queryLocal) {
     layout.loadLayout(initData.uistate);
 
     // client is initialized only once we have loaded our layout using loadLayout:
-    client = new OrdecClient(getSourceType(), getResultViewers(), setStatus, showSessionLost);
+    const client = new OrdecClient(getSourceType(), getResultViewers(), setStatus, showSessionLost);
     client.srctype = initData.srctype;
     client.src = initData.src;
 
@@ -420,6 +417,16 @@ if(queryLocal) {
 
     // Starting now, changes of editor source will trigger connect():
     editor.registerChangeHandler(client);
+    return client;
+}
+
+let client;
+if (queryLocal) {
+    client = await initLocalMode();
+} else if (queryCourse) {
+    client = await startCourseMode();
+} else {
+    client = await initIntegratedMode();
 }
 
 layout.addEventListener('stateChanged', () => {
