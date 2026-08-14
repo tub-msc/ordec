@@ -144,6 +144,16 @@ export class CourseController {
         return Boolean(this.lessonState(i).passed);
     }
 
+    // Marks the current lesson as passed and persists progress. Idempotent:
+    // a lesson that has ever passed stays passed (see lessonPassed).
+    markLessonPassed() {
+        if (this.lessonPassed(this.state.currentLesson)) {
+            return;
+        }
+        this.lessonState(this.state.currentLesson).passed = true;
+        this.saveState();
+    }
+
     lessonUnlocked(i) {
         // In debug mode (debug=true in the URL fragment), every lesson is
         // accessible regardless of progress.
@@ -297,10 +307,8 @@ export class CourseController {
             return;
         }
         this.reportStatus = this.lesson2ViewsOpen() ? 'pass' : 'fail';
-        if (this.reportStatus === 'pass'
-            && !this.lessonPassed(this.state.currentLesson)) {
-            this.lessonState(this.state.currentLesson).passed = true;
-            this.saveState();
+        if (this.reportStatus === 'pass') {
+            this.markLessonPassed();
         }
         this.renderNavigators();
     }
@@ -344,18 +352,13 @@ export class CourseController {
             // Task-free lessons (welcome lesson, epilogue) count as solved
             // right away, unlocking the following lesson if any.
             this.reportStatus = 'pass';
-            if (!this.lessonPassed(this.state.currentLesson)) {
-                this.lessonState(this.state.currentLesson).passed = true;
-                this.saveState();
-            }
+            this.markLessonPassed();
         } else if (this.lesson2Flagged()) {
             // The viewer lesson is passed by opening result viewers; its
             // report carries no PassFail elements (see checkLesson2Views).
             this.reportStatus = this.lesson2ViewsOpen() ? 'pass' : 'fail';
-            if (this.reportStatus === 'pass'
-                && !this.lessonPassed(this.state.currentLesson)) {
-                this.lessonState(this.state.currentLesson).passed = true;
-                this.saveState();
+            if (this.reportStatus === 'pass') {
+                this.markLessonPassed();
             }
         } else if (msg.type === 'report') {
             const passfails = (msg.data.elements || [])
@@ -363,9 +366,8 @@ export class CourseController {
             const passed = (passfails.length > 0)
                 && passfails.every(e => e.passed);
             this.reportStatus = passed ? 'pass' : 'fail';
-            if (passed && !this.lessonPassed(this.state.currentLesson)) {
-                this.lessonState(this.state.currentLesson).passed = true;
-                this.saveState();
+            if (passed) {
+                this.markLessonPassed();
             }
         } else {
             console.error('course: unexpected report view type', msg.type);
