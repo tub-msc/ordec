@@ -362,15 +362,7 @@ export class LvsReport extends View {
         });
 
         const deselectBtn = this.el.querySelector('.lvs-deselect');
-        deselectBtn.addEventListener('click', () => {
-            this.el.querySelectorAll('.lvs-item-row.selected').forEach(el => {
-                el.classList.remove('selected');
-            });
-            this.selectedItemNid = null;
-            deselectBtn.disabled = true;
-            viewEventBus.clearPending('lvs:select');
-            viewEventBus.emit('lvs:clear');
-        });
+        deselectBtn.addEventListener('click', () => this.deselect());
 
         this.el.querySelectorAll('.lvs-item-row').forEach(itemEl => {
             itemEl.addEventListener('click', (e) => {
@@ -443,8 +435,24 @@ export class LvsReport extends View {
         });
     }
 
-    destroy() {
+    // Clears the current selection: unmarks the selected row, disables the
+    // Deselect button and drops the pending highlight (both in this report and
+    // in any layout/schematic viewer showing it). Used by the Deselect button
+    // and on destroy.
+    deselect() {
+        this.el.querySelectorAll('.lvs-item-row.selected').forEach(el => {
+            el.classList.remove('selected');
+        });
+        this.selectedItemNid = null;
+        const deselectBtn = this.el.querySelector('.lvs-deselect');
+        if (deselectBtn) {
+            deselectBtn.disabled = true;
+        }
         viewEventBus.clearPending('lvs:select');
         viewEventBus.emit('lvs:clear');
+    }
+
+    destroy() {
+        this.deselect();
     }
 }

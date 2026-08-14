@@ -78,16 +78,7 @@ export class DrcReport extends View {
         deselectBtn.textContent = 'Deselect';
         header.append(summary, deselectBtn);
 
-        const deselect = () => {
-            this.el.querySelectorAll('.drc-item.selected').forEach(el => {
-                el.classList.remove('selected');
-            });
-            this.selectedItemNid = null;
-            deselectBtn.disabled = true;
-            viewEventBus.clearPending('drc:select');
-            viewEventBus.emit('drc:clear');
-        };
-        deselectBtn.addEventListener('click', deselect);
+        deselectBtn.addEventListener('click', () => this.deselect());
 
         const categoriesEl = document.createElement('div');
         categoriesEl.className = 'drc-categories';
@@ -214,8 +205,24 @@ export class DrcReport extends View {
         return itemEl;
     }
 
-    destroy() {
+    // Clears the current selection: unmarks the selected row, disables the
+    // Deselect button and drops the pending highlight (both in this report and
+    // in any layout viewer showing it). Used by the Deselect button and on
+    // destroy.
+    deselect() {
+        this.el.querySelectorAll('.drc-item.selected').forEach(el => {
+            el.classList.remove('selected');
+        });
+        this.selectedItemNid = null;
+        const deselectBtn = this.el.querySelector('.drc-deselect');
+        if (deselectBtn) {
+            deselectBtn.disabled = true;
+        }
         viewEventBus.clearPending('drc:select');
         viewEventBus.emit('drc:clear');
+    }
+
+    destroy() {
+        this.deselect();
     }
 }
