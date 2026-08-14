@@ -59,13 +59,11 @@ import json
 import traceback
 import linecache
 import itertools
-import queue
 from pathlib import Path
 from types import ModuleType
 import mimetypes
 from urllib.parse import urlparse, parse_qs, quote_plus
 import threading
-import signal
 import importlib
 from contextlib import contextmanager
 import importlib.resources
@@ -1163,60 +1161,48 @@ def main():
     else:
         user_url += f"{base_path}#auth={key.token()}"
 
-    # Launch server in separate daemon thread (daemon=True). The connection
-    # threads automatically inherit the daemon property. All daemon threads
-    # are terminated when the main thread terminates. This makes it possible
-    # to terminate the whole thing with a single Ctrl+C.
-    # A future version of the websockets library might make this workaround
-    # unnecessary.
     if args.jobs > 0:
         jobrunner = ThreadedJobRunner(args.jobs)
     else:
         from .jobrunner import InlineJobRunner
         jobrunner = InlineJobRunner()
 
-    startup_queue = queue.Queue(maxsize=1)
-    server_queue = queue.Queue(maxsize=1)
-    thread = threading.Thread(
-        target=server_thread,
-        args=(hostname, port, static_handler, key, startup_queue, server_queue),
-        kwargs={'jobrunner': jobrunner,
-            'on_activity': hub.touch_activity if hub else None},
-        daemon=True,
-    )
-    thread.start()
-
-    # Wait until the server thread has either successfully bound or failed.
-    startup_error = startup_queue.get()
-    if startup_error is not None:
-        if isinstance(startup_error, OSError) and startup_error.errno == errno.EADDRINUSE:
+    # Run the server in the main thread. serve() binds eagerly, so a bind
+    # failure (e.g. EADDRINUSE) surfaces here. serve_forever() then blocks
+    # until Ctrl+C raises KeyboardInterrupt, and the context manager's
+    # shutdown() closes any open connections gracefully (code 1001) and waits
+    # for their handlers, giving a clean single-Ctrl+C exit (websockets >=17.0).
+    c = ConnectionHandler(key=key, sysmodules_orig=sys.modules,
+        jobrunner=jobrunner, on_activity=hub.touch_activity if hub else None)
+    try:
+        server = serve(c.handle_connection, hostname, port,
+            process_request=static_handler.process_request)
+    except OSError as e:
+        if e.errno == errno.EADDRINUSE:
             print(f"ERROR: Address already in use: {hostname}:{port}")
         else:
-            print(f"ERROR: Failed to start server on {hostname}:{port}: {startup_error}")
+            print(f"ERROR: Failed to start server on {hostname}:{port}: {e}")
         raise SystemExit(1)
-    server = server_queue.get()
 
-    if hub:
-        hub.start_activity_reporter()
-    else:
-        print(f"To start ORDeC, navigate to: {user_url}")
+    with server:
+        if hub:
+            hub.start_activity_reporter()
+        else:
+            print(f"To start ORDeC, navigate to: {user_url}")
 
-    if args.no_browser:
-        launch_html = None
-    else:
-        time.sleep(1)
-        launch_html = secure_url_open(user_url)
+        if args.no_browser:
+            launch_html = None
+        else:
+            time.sleep(1)
+            launch_html = secure_url_open(user_url)
 
-    try:
-        while True:
-            signal.pause()
-    except KeyboardInterrupt:
-        print("Terminating.")
-    finally:
-        server.shutdown()
-        thread.join()
-        if launch_html:
-            launch_html.close() # Deletes the temporary file.
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("Terminating.")
+        finally:
+            if launch_html:
+                launch_html.close() # Deletes the temporary file.
 
 def server_thread(hostname, port, static_handler, key, startup_queue, server_queue=None, jobrunner=None, on_activity=None):
     c = ConnectionHandler(key=key, sysmodules_orig=sys.modules,
