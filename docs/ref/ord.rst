@@ -50,11 +50,11 @@ Python to supply the necessary constructs during execution.
 
 .. code-block::
 
-    # Type 1
+    # Indented body
     port xyz:
         .pos=(1,2)
-    # Type 2
-    port xyz(.pos=(1,2))
+    # Inline body
+    port xyz: .pos=(1,2)
 
 Node Statements
 ^^^^^^^^^^^^^^^
@@ -93,16 +93,16 @@ To demonstrate how the ORD context works and how the conversion from ORD to Pyth
 
     cell Inv:
         viewgen symbol(self) -> Symbol:
-            inout vdd(.align=North)
-            inout vss(.align=South)
-            input a(.align=West)
-            output y(.align=East)
+            inout vdd: .align=North
+            inout vss: .align=South
+            input a: .align=West
+            output y: .align=East
 
         viewgen schematic(self) -> Schematic:
-            port vdd(.pos=(2,13); .align=North)
-            port vss(.pos=(2,1); .align=South)
-            port y (.pos=(9,7); .align=West)
-            port a (.pos=(1,7); .align=East)
+            port vdd: .pos=(2,13); .align=North
+            port vss: .pos=(2,1); .align=South
+            port y: .pos=(9,7); .align=West
+            port a: .pos=(1,7); .align=East
 
             Nmos pd:
                 .s -- vss
@@ -206,14 +206,14 @@ of the example.
 
         @viewgen
         def schematic(self) -> Schematic:
-            vss = context.add_port(('vss',))
-            with vss.ctx():
-                context.root().pos = (2,1)
-                context.root().align = South
             vdd = context.add_port(('vdd',))
             with vdd.ctx():
                 context.root().pos = (2,13)
                 context.root().align = North
+            vss = context.add_port(('vss',))
+            with vss.ctx():
+                context.root().pos = (2,1)
+                context.root().align = South
             y = context.add_port(('y',))
             with y.ctx():
                 context.root().pos = (9,7)
