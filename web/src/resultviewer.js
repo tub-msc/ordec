@@ -71,6 +71,9 @@ export class ResultViewer {
         // Set when the server reports a view generation as cancelled;
         // suppresses auto-refresh until the user asks for the view again.
         this.generationCancelled = false;
+        // Set while a cancel request is in flight (Cancel clicked, terminal
+        // message not yet received); suppresses progress updates.
+        this.cancelRequested = false;
         this.showRefreshOverlay(null);
         this.resContent = container.element.querySelector(".rescontent");
         this.resWrapper = container.element.querySelector(".reswrapper");
@@ -155,6 +158,7 @@ export class ResultViewer {
     cancelOnClick() {
         this.refreshStatus.textContent = 'Cancelling…';
         this.refreshCancel.disabled = true;
+        this.cancelRequested = true;
         this.client.cancelView(this);
     }
 
@@ -181,6 +185,7 @@ export class ResultViewer {
             this.refreshPct.textContent = '';
             this.refreshDetail.textContent = '';
             this.refreshCancel.disabled = false;
+            this.cancelRequested = false;
         }
         // When a status bar is shown it occupies a fixed-height strip at the top
         // of the view; this class insets the content below it (see style.css).
@@ -198,6 +203,11 @@ export class ResultViewer {
             // Progress of a request dispatched for a previously selected
             // view (see updateView); it must not overwrite the overlay of
             // the current selection.
+            return;
+        }
+        if (this.cancelRequested) {
+            // The generator may emit further progress until the requested
+            // cancellation takes effect; keep the Cancelling… status.
             return;
         }
         this.refreshStatus.textContent = msg.status;
