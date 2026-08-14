@@ -198,6 +198,43 @@ function popRestoreData() {
     }
 }
 
+// Page overlay shown when a hub-hosted instance is culled and can no longer be
+// reconnected to (OrdecClient calls this via its onSessionLost callback). The
+// restart button stashes the source for popRestoreData to pick up after the
+// reload respawns the instance through the hub.
+function showSessionLost() {
+    if (document.querySelector('#sessionlost')) {
+        return;
+    }
+    const overlay = document.createElement('div');
+    overlay.id = 'sessionlost';
+    const box = document.createElement('div');
+    box.className = 'sessionlost-box';
+    const text = document.createElement('p');
+    text.textContent = 'Your session was stopped (e.g. after being idle '
+        + 'for a while). Restarting starts a fresh session and restores '
+        + 'your editor content.';
+    const button = document.createElement('button');
+    button.className = 'sessionlost-button';
+    button.textContent = 'Restart session';
+    button.onclick = () => {
+        // Integrated-mode source only lives in this page; carry it across the
+        // reload. (Course mode autosaves to localStorage independently of this.)
+        try {
+            window.sessionStorage.setItem('ordecRestore', JSON.stringify({
+                src: client.src,
+                srctype: client.srctype,
+            }));
+        } catch (e) { /* storage full/blocked: reload without restore */ }
+        window.onbeforeunload = null;
+        window.location.reload();
+    };
+    box.appendChild(text);
+    box.appendChild(button);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+}
+
 const layout = new GoldenLayout(document.querySelector("#workspace"));
 layout.layoutConfig.settings.showPopoutIcon = false;
 layout.resizeWithContainerAutomatically = true;
@@ -327,7 +364,7 @@ if(queryLocal) {
 
         layout.loadLayout(uistate);
         // client is initialized only once we have loaded our layout using loadLayout:
-        client = new OrdecClient(getSourceType(), getResultViewers(), setStatus);
+        client = new OrdecClient(getSourceType(), getResultViewers(), setStatus, showSessionLost);
         client.localModule = local.module;
         client.connect();
     } else {
@@ -350,7 +387,7 @@ if(queryLocal) {
         debug,
     });
 
-    client = new OrdecClient(getSourceType(), [], setStatus);
+    client = new OrdecClient(getSourceType(), [], setStatus, showSessionLost);
     controller.client = client;
     controller.layout = layout;
     controller.activateLesson(controller.currentLesson, { save: false });
@@ -374,7 +411,7 @@ if(queryLocal) {
     layout.loadLayout(initData.uistate);
 
     // client is initialized only once we have loaded our layout using loadLayout:
-    client = new OrdecClient(getSourceType(), getResultViewers(), setStatus);
+    client = new OrdecClient(getSourceType(), getResultViewers(), setStatus, showSessionLost);
     client.srctype = initData.srctype;
     client.src = initData.src;
 
