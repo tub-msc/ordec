@@ -79,11 +79,12 @@ export class ResultViewer {
         this.resViewHead = container.element.querySelector(".resviewhead");
         this.viewUpToDate = false;
         this.viewSelected = null;
-        // Wire hash of the currently displayed subgraph view (wire_hash
-        // field of the view message), for hash-based open dedup (see
-        // main.js). Runtime state only: it must never be written into
-        // componentState/uistate.
+        // Wire hash of the currently displayed subgraph view, for result viewer
+        // reuse.
         this.wireHash = null;
+        // Id of the getview request currently in flight for this viewer, or
+        // null before the first one was dispatched.
+        this.currentReq = null;
         this.refreshRequestedByUser = false;
         this.directView = state && state.directView;
         // Course mode: the special "Course" panel (see course.js). It shows a
@@ -218,6 +219,15 @@ export class ResultViewer {
             this.viewInfo().auto_refresh ||
             ResultViewer.refreshAll
             );
+    }
+
+    // Called by the client when it dispatches a getview request for this
+    // viewer, after requestsView() said one is wanted. The displayed content
+    // is stale from here until the terminal view message arrives, so it must
+    // not be hash-matched against (see main.js).
+    beginRequest(req) {
+        this.currentReq = req;
+        this.wireHash = null;
     }
 
     viewInfo() {

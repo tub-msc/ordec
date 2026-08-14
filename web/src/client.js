@@ -208,10 +208,7 @@ export class OrdecClient {
                     return;
                 }
                 const req = ++this.reqCounter;
-                rv.currentReq = req;
-                // Displayed content is stale from here until the terminal
-                // view message arrives; do not hash-match against it.
-                rv.wireHash = null;
+                rv.beginRequest(req);
                 this.inflight.set(req, rv);
                 this.sock.send(JSON.stringify({
                     msg: 'getview',
