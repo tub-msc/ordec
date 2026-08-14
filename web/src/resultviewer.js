@@ -290,7 +290,14 @@ export class ResultViewer {
     }
 
     updateOverlay() {
-        if((!this.viewSelected) || this.viewUpToDate) {
+        if(!this.viewSelected) {
+            this.showRefreshOverlay(null);
+        } else if(this.buildError !== null) {
+            // A build error outranks the up-to-date state: the view message
+            // that carries the exception sets viewUpToDate, but the error strip
+            // must stay up until the next successful build clears buildError.
+            this.showRefreshOverlay("error");
+        } else if(this.viewUpToDate) {
             this.showRefreshOverlay(null);
         } else if(this.generationCancelled) {
             this.refreshableText.textContent = 'View generation cancelled.';
@@ -451,7 +458,7 @@ export class ResultViewer {
         const summary = lines.findLast(
             l => /^[A-Za-z_][\w.]*(Error|Exception)\b/.test(l));
         this.buildErrorText.textContent = summary || lines[lines.length - 1];
-        this.showRefreshOverlay('error');
+        this.updateOverlay();
         // Keep the details open across consecutive failed builds. With no
         // previously rendered report there is nothing to preserve, so open
         // them right away.
@@ -496,8 +503,6 @@ export class ResultViewer {
             if(msg.exception) {
                 // In this case, the exception was generated during view generation:
                 if (this.courseMode) {
-                    // Shows the error strip; updateOverlay() must not run
-                    // here, it would hide the strip again (view up to date).
                     this.showBuildError(msg.exception);
                 } else {
                     this.showException(msg.exception);
