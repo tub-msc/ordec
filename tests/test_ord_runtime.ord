@@ -49,6 +49,25 @@ def test_symbol_pin_creation():
     assert root.d.pintype == PinType.Inout
     assert root.d.align == D4.R180
 
+def test_net_path_statements():
+    root = Schematic()
+    with root.ctx():
+        # Bodyless net statement, with multiple names:
+        net vss, mid
+        # Net statement with body:
+        net clk:
+            .auto_wire = False
+            assert .parent == root
+        # A path statement body opens the path's node context:
+        path grp:
+            net a
+
+    assert isinstance(root.vss, Net)
+    assert isinstance(root.mid, Net)
+    assert root.vss.auto_wire == True
+    assert root.clk.auto_wire == False
+    assert isinstance(root.grp.a, Net)
+
 def test_nested_contexts():
     root1 = Symbol()
     root2 = Symbol()

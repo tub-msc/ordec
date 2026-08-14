@@ -63,13 +63,14 @@ A **node statement** is the ``A B`` construct that creates and names an element 
 
 1. **Node class statements** — the type is a Node subclass, e.g., ``LayoutRect x``
 2. **Node instance statements** — the type is a Cell class or instance, e.g., ``Nmos x``
-3. **Node keyword statements** — the type is a built-in keyword, e.g., ``input x``, ``output y``, ``port z``
+3. **Node keyword statements** — the type is a built-in keyword, e.g., ``input x``, ``output y``, ``port z``, ``net a``, ``path p``
 
-Node keyword statements come with direction-based align defaults: ``input``
+The pin and port keywords come with direction-based align defaults: ``input``
 pins face ``West``, ``output`` pins ``East``, and ``inout`` pins ``South``. A
 ``port`` defaults to the flipped align of its symbol pin, so e.g. a
 West-facing input pin yields an East-facing port. An ``.align=`` assignment
-in the statement body overrides these defaults.
+in the statement body overrides these defaults. ``net`` and ``path`` create a
+``Net`` or ``PathNode``, e.g. ``net clk: .auto_wire = False``.
 
 A node statement may have an optional body (indented block after ``:``) for setting attributes:
 

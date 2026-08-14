@@ -162,7 +162,7 @@ class OrdTransformer(PythonTransformer):
         There are three types of node statements:
         - Node class statements: e.g., LayoutRect x
         - Node instance statements: e.g., Nmos x
-        - Node keyword statements: e.g., input x, port x
+        - Node keyword statements: e.g., input x, port x, net x, path x
         """
         context_type = nodes[0]
         context_name = nodes[1]
@@ -228,6 +228,22 @@ class OrdTransformer(PythonTransformer):
             args = [ast.Tuple(elts=context_name_tuple, ctx=ast.Load())]
             func = self.ast_ord_context("add_port")
             rhs = ast.Call(func=func, args=args, keywords=[])
+
+        # Case for net/path statements
+        elif context_type_name in ("net", "path"):
+            node_type = "Net" if context_type_name == "net" else "PathNode"
+            rhs = ast.Call(
+                func=self.ast_ord_context("add"),
+                args=[
+                    ast.Tuple(elts=context_name_tuple, ctx=ast.Load()),
+                    ast.Call(
+                        func=self.ast_core(node_type),
+                        args=[],
+                        keywords=[]
+                    )
+                ],
+                keywords=[]
+            )
 
         # Case for any other element type (Cell class/instance, Node class/instance)
         else:
@@ -360,41 +376,31 @@ class OrdTransformer(PythonTransformer):
             ), attr, ctx=ctx
         )
 
-    def net_and_path_stmt_helper(self, nodes, stmt):
-        """Helper for similar code from net and path statements"""
-        stmt_list = list()
-        for name in nodes:
-            # Names can be attributes or subscript accesses
-            context_name_tuple = self.extract_path(name)
-            name_length = len(context_name_tuple)
-            rhs = ast.Call(
-                func=self.ast_ord_context("add"),
-                args=[
-                    ast.Tuple(elts=context_name_tuple, ctx=ast.Load()),
-                    ast.Call(
-                        func=self.ast_core(stmt),
-                        keywords=[],
-                        args=[]
-                    )
-                ],
-                keywords=[]
-            )
-            # Path access must not be assigned
-            if name_length > 1:
-                stmt_list.append(ast.Expr(rhs))
-            else:
-                lhs = copy.copy(name)
-                self._set_ctx(lhs, ast.Store())
-                stmt_list.append(ast.Assign([lhs], rhs))
-        return stmt_list
+    @v_args(meta=True)
+    def net_stmt(self, meta, nodes):
+        """ Net statement with body (net x: ...) """
+        return self.node_stmt(meta, ["net", *nodes])
 
-    def net_stmt(self, nodes):
-        """ Add net (net x)"""
-        return self.net_and_path_stmt_helper(nodes, "Net")
+    @v_args(meta=True)
+    def path_stmt(self, meta, nodes):
+        """ Path statement with body (path x: ...) """
+        return self.node_stmt(meta, ["path", *nodes])
 
-    def path_stmt(self, nodes):
-        """ Add path (path x) """
-        return self.net_and_path_stmt_helper(nodes, "PathNode")
+    @v_args(meta=True)
+    def net_stmt_nobody(self, meta, nodes):
+        """ Net statement without body, supports multiple names (net a, b) """
+        result = []
+        for context_target in nodes:
+            result.extend(self.node_stmt(meta, ["net", context_target]))
+        return result
+
+    @v_args(meta=True)
+    def path_stmt_nobody(self, meta, nodes):
+        """ Path statement without body, supports multiple names (path a, b) """
+        result = []
+        for context_target in nodes:
+            result.extend(self.node_stmt(meta, ["path", context_target]))
+        return result
 
     def _flatten(self, items):
         """ Flatten the body of a node statement suite"""

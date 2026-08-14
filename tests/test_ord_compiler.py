@@ -1167,6 +1167,11 @@ def test_name_net_assignment():
     ord_string = "net = 1"
     compare_asts(ord_string)
 
+def test_net_multi_target_with_body():
+    # Like node statements, the bodied form allows only a single target.
+    ord_string = "net a, b: x"
+    compare_syntax_errors(ord_string)
+
 def test_name_viewgen_assignment():
     ord_string = "viewgen = 1"
     compare_asts(ord_string)

@@ -1024,12 +1024,17 @@ class OrdAnalysisBuilder:
                     ))
             return
 
-        if node.data in ("path_stmt", "net_stmt"):
+        if node.data in ("path_stmt", "net_stmt", "path_stmt_nobody", "net_stmt_nobody"):
+            kind_name = "net" if node.data.startswith("net") else "path"
+            type_names = ["Net"] if kind_name == "net" else ["PathNode"]
             names = []
             selection_node = None
-            type_names = ["Net"] if node.data == "net_stmt" else ["PathNode"]
+            body_node = None
             for child in node.children:
                 if not isinstance(child, Tree):
+                    continue
+                if child.data == "context_body":
+                    body_node = child
                     continue
 
                 if selection_node is None:
@@ -1038,7 +1043,7 @@ class OrdAnalysisBuilder:
                 # Each declared name is its own node statement record, so cell
                 # member collection sees multi-name declarations too.
                 self.node_statements.append({
-                    "kind_name": node.data[:-5],
+                    "kind_name": kind_name,
                     "kind_range": tree_range(node),
                     "kind_binding_id": None,
                     "target_name": tree_text(child),
@@ -1065,11 +1070,15 @@ class OrdAnalysisBuilder:
             if names and selection_node is not None:
                 self.symbols.append(AnalysisSymbol(
                     name=", ".join(names),
-                    kind=node.data[:-5],
+                    kind=kind_name,
                     range=tree_range(node),
                     selection_range=tree_range(selection_node),
                     content_end_line=content_end_line(node),
                 ))
+            # Bodied form: analyze the statement body like node_stmt does, so
+            # bindings and references inside it are recorded.
+            if body_node is not None:
+                self.visit(body_node, scope_id, context_type_names=type_names)
             return
 
         if node.data == "import_name":

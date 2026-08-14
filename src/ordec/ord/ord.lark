@@ -96,8 +96,8 @@ lambda_kwparams: "**" name ","?
             | nonlocal_stmt
             | assert_stmt
             | type_alias_stmt
-            | path_stmt
-            | net_stmt
+            | path_stmt_nobody
+            | net_stmt_nobody
             | constrain_stmt
             | node_stmt_nobody | anon_node_stmt_nobody)
 
@@ -137,7 +137,7 @@ assert_stmt: "assert" test ["," test]
 
 ?compound_stmt: if_stmt | while_stmt | for_stmt | try_stmt | match_stmt
               | with_stmt | funcdef | classdef | celldef | decorated | async_stmt | viewgen
-              | node_stmt | anon_node_stmt
+              | node_stmt | anon_node_stmt | net_stmt | path_stmt
 async_stmt: "async" (funcdef | with_stmt | for_stmt)
 if_stmt: "if" test ":" suite elifs ["else" ":" suite]
 elifs: elif_*
@@ -447,6 +447,8 @@ _ANONYMOUS_STMT.3: /anonymous(?![\t \f]*[:=])(?=[\t \f]+)/
                | name -> var
 
 dotted_atom: "." name?
-path_stmt: "path" context_target ("," context_target)*
-net_stmt: "net" context_target ("," context_target)*
+path_stmt: "path" context_target context_body
+path_stmt_nobody: "path" context_target ("," context_target)*
+net_stmt: "net" context_target context_body
+net_stmt_nobody: "net" context_target ("," context_target)*
 // END OF ORD DEFINITIONS
