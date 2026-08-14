@@ -295,6 +295,9 @@ export class SvgView extends View {
 
         // Click-to-source: emit the instance's data-srcline/data-srccol/
         // data-srcfile set in render.py. main.js owns the editor and jumps.
+        // The handler is a plain function so d3 binds `this` to the clicked
+        // element; capture the bus here since `this` is not the view inside.
+        const eventBus = this.eventBus;
         this.g.selectAll('g[data-srcline]')
             .style('cursor', 'pointer')
             .on('click', function(event) {
@@ -304,7 +307,7 @@ export class SvgView extends View {
                 const column = parseInt(el.attr('data-srccol'), 10);
                 const file = el.attr('data-srcfile');
                 if (!Number.isNaN(line)) {
-                    this.eventBus.emit('editor:goto-source', { file, line, column });
+                    eventBus.emit('editor:goto-source', { file, line, column });
                 }
             });
 

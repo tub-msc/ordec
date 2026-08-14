@@ -194,8 +194,8 @@ export class LayoutView extends View {
         });
         this.resizeObserver.observe(this.canvas);
 
-        this.onKeydown = (event) => this.onKeydown(event);
-        this.onMousemove = (event) => this.onMousemove(event);
+        this.onKeydown = this.onKeydown.bind(this);
+        this.onMousemove = this.onMousemove.bind(this);
         this.onMouseleave = () => this.clearMousePosition();
         this.resContent.addEventListener("keydown", this.onKeydown);
         this.canvas.addEventListener("mousemove", this.onMousemove);
