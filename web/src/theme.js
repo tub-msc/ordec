@@ -37,10 +37,10 @@ function applyTheme(dark) {
         document.body.classList.remove('theme-dark');
     }
 
-    if (goldenLayoutLightLink && goldenLayoutDarkLink) {
-        goldenLayoutLightLink.disabled = dark;
-        goldenLayoutDarkLink.disabled = !dark;
-    }
+    // createGoldenLayoutLinks() always runs before the first applyTheme(), so
+    // the link elements exist by the time we get here.
+    goldenLayoutLightLink.disabled = dark;
+    goldenLayoutDarkLink.disabled = !dark;
 
     const aceTheme = dark ? "ace/theme/github_dark" : "ace/theme/github";
     for (const editor of aceEditors) {

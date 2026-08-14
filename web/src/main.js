@@ -282,13 +282,11 @@ function resolveExistingViewer(viewName, wireHash) {
 }
 
 function getEditor() {
-    let ret;
-    layout.root.getAllContentItems().forEach(e => {
-        if(e.componentName == 'editor') {
-            ret = e.component;
-        }
-    });
-    return ret;
+    for (const item of layout.root.getAllContentItems()) {
+        if (!item.isComponent || item.componentName !== 'editor') continue;
+        return item.component;
+    }
+    return null;
 }
 
 document.querySelector("#newresview").onclick = () => {
