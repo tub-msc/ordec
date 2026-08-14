@@ -3,6 +3,7 @@
 
 import { Markdown, Html, PreformattedText, Svg, PassFail,
     Plot2d } from './report-elements.js';
+import { View } from './view.js';
 
 class ReportPlotGroups {
     constructor() {
@@ -92,9 +93,9 @@ const reportElementClassOf = {
     plot2d: Plot2d,
 }
 
-export class ReportView {
+export class ReportView extends View {
     constructor(resContent, viewName, resultViewer, panelContainer) {
-        this.resContent = resContent;
+        super(resContent, viewName, resultViewer, panelContainer);
         this.renderers = [];
         this.reportContext = {
             plotGroups: new ReportPlotGroups(),

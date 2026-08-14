@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { viewEventBus } from './event-bus.js';
+import { View } from './view.js';
 
 const TYPE_ORDER = ['pin', 'net', 'device', 'subcircuit'];
 const TYPE_LABELS = {
@@ -46,12 +47,9 @@ function toggleSpan() {
 // same subgraph under a different view name: nids/positions are only
 // meaningful in the pair's own subgraphs, and an untargeted broadcast
 // would paint them into unrelated layout/schematic views.
-export class LvsReport {
+export class LvsReport extends View {
     constructor(resContent, viewName, resultViewer, panelContainer) {
-        this.resContent = resContent;
-        this.viewName = viewName;
-        this.resultViewer = resultViewer;
-        this.panelContainer = panelContainer;
+        super(resContent, viewName, resultViewer, panelContainer);
         this.el = document.createElement('div');
         this.el.className = 'lvs-viewer';
         this.selectedItemNid = null;

@@ -8,6 +8,7 @@ import earcut from 'earcut';
 import { siFormat } from './siformat.js';
 import { viewEventBus } from './event-bus.js';
 import { CoordinateDisplay } from './viewer-coordinates.js';
+import { View } from './view.js';
 
 // See: https://github.com/mdn/dom-examples/blob/main/webgl-examples/tutorial/sample2/webgl-demo.js
 
@@ -134,12 +135,9 @@ function calcLayerColor(color, layerId, dampen) {
     ];
 }
 
-export class LayoutGL {
+export class LayoutGL extends View {
     constructor(resContent, viewName, resultViewer, panelContainer) {
-        this.resContent = resContent;
-        this.viewName = viewName;
-        // Wire hash of the subgraph currently shown; set by each update().
-        this.wireHash = null;
+        super(resContent, viewName, resultViewer, panelContainer);
         this.transform = d3.zoomIdentity.scale(1e-1,1e-1);
         this.projectionMatrix = mat4.create();
         this.visibility = new Map();
@@ -210,7 +208,7 @@ export class LayoutGL {
             // apply to viewers showing that view: matched by name, or by
             // wire hash for a viewer showing the same subgraph under a
             // different view name.
-            if (data && !this._selectionApplies(data)) {
+            if (data && !this.selectionApplies(data.layoutView, data.layoutWireHash)) {
                 return;
             }
             this.setHighlight(data.shapes);
@@ -223,7 +221,7 @@ export class LayoutGL {
             // Selections targeted at a specific layout view (items of LVS
             // subcircuit pairs) apply to viewers showing that view, matched
             // by name or by wire hash.
-            if (data && !this._selectionApplies(data)) {
+            if (data && !this.selectionApplies(data.layoutView, data.layoutWireHash)) {
                 return;
             }
             this.highlightPos(data.pos);
@@ -313,22 +311,14 @@ export class LayoutGL {
         this.cursorCoordinates.set(x, y);
     }
 
-    // A selection payload applies to this viewer when it is untargeted, or
-    // when it names this view: by view name, or by the wire hash of a viewer
-    // showing the same subgraph under a different view name.
-    _selectionApplies(data) {
-        if (!data.layoutView) return true;
-        if (data.layoutView === this.viewName) return true;
-        return Boolean(data.layoutWireHash && data.layoutWireHash === this.wireHash);
-    }
-
     // Takes the pending selection captured at construction time, when the
     // wire hash of the shown subgraph was not known yet. Clears the slot in
     // any case and returns the payload only if it applies to this viewer.
     _takePendingSelection(field) {
         const pending = this[field];
         this[field] = null;
-        return pending && this._selectionApplies(pending) ? pending : null;
+        return pending && this.selectionApplies(pending.layoutView, pending.layoutWireHash)
+            ? pending : null;
     }
 
     update(msgData, wireHash) {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { viewEventBus } from './event-bus.js';
+import { View } from './view.js';
 
 const ARROW_COLLAPSED = '▶';
 const ARROW_EXPANDED = '▼';
@@ -30,12 +31,9 @@ const ARROW_EXPANDED = '▼';
 // untargeted broadcast would paint them into unrelated layout views.
 // Subcell items whose DrcCell has no resolved ref_layout (e.g. KLayout
 // variant cells) cannot be highlighted anywhere and are not selectable.
-export class DrcReport {
+export class DrcReport extends View {
     constructor(resContent, viewName, resultViewer, panelContainer) {
-        this.resContent = resContent;
-        this.viewName = viewName;
-        this.resultViewer = resultViewer;
-        this.panelContainer = panelContainer;
+        super(resContent, viewName, resultViewer, panelContainer);
         this.el = document.createElement('div');
         this.el.className = 'drc-viewer';
         this.selectedItemNid = null;

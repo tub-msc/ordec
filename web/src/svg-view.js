@@ -4,16 +4,14 @@
 import * as d3 from "d3";
 import { viewEventBus } from './event-bus.js';
 import { CoordinateDisplay } from './viewer-coordinates.js';
+import { View } from './view.js';
 
 // SVG viewer for schematics and symbols.
 // Listens to lvs:schem-select and lvs:clear for LVS highlighting.
 // Also consumes pending 'lvs:select' on init if schematic opened after LVS item selected.
-export class SvgView {
+export class SvgView extends View {
     constructor(resContent, viewName, resultViewer, panelContainer) {
-        this.resContent = resContent;
-        this.viewName = viewName;
-        // Wire hash of the subgraph currently shown; set by each update().
-        this.wireHash = null;
+        super(resContent, viewName, resultViewer, panelContainer);
         this.transform = d3.zoomIdentity;
         this.tooltip = document.createElement('div');
         this.tooltip.classList.add('schem-error-tooltip');
@@ -24,7 +22,7 @@ export class SvgView {
         this.resizeObserver = null;
 
         this._onLvsSelect = (data) => {
-            if (data && !this._selectionApplies(data)) {
+            if (data && !this.selectionApplies(data.schemView, data.schemWireHash)) {
                 return;
             }
             this.setHighlight(data);
@@ -36,14 +34,6 @@ export class SvgView {
         // A selection made before this view was opened; taken by update(),
         // once there is an SVG to highlight in and a wire hash to match.
         this._pendingHighlight = viewEventBus.getPending('lvs:select') || null;
-    }
-    // A selection payload applies to this viewer when it is untargeted, or
-    // when it names this view: by view name, or by the wire hash of a viewer
-    // showing the same subgraph under a different view name.
-    _selectionApplies(data) {
-        if (!data.schemView) return true;
-        if (data.schemView === this.viewName) return true;
-        return Boolean(data.schemWireHash && data.schemWireHash === this.wireHash);
     }
     zoomed({transform}) {
         this.transform = transform;
@@ -319,7 +309,7 @@ export class SvgView {
 
         const pending = this._pendingHighlight;
         this._pendingHighlight = null;
-        if (pending && this._selectionApplies(pending)) {
+        if (pending && this.selectionApplies(pending.schemView, pending.schemWireHash)) {
             this.setHighlight(pending);
         }
     }
