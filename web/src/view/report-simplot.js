@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as d3 from "d3";
-import { isDark } from "./theme.js";
+import { isDark } from "../theme.js";
 
 const MARGIN = { top: 10, right: 15, bottom: 35, left: 60 };
 
@@ -49,7 +49,7 @@ export class SimPlot {
         };
 
         // Group-sync callbacks, set only by setSyncCallbacks() (see the plot
-        // group wiring in report-view.js).
+        // group wiring in report.js).
         this.onXDomainChange = null;
         this.onCrosshairXChange = null;
 

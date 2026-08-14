@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { viewEventBus } from './event-bus.js';
+import { viewEventBus } from '../event-bus.js';
 import { View } from './view.js';
 
 const ARROW_COLLAPSED = '▶';

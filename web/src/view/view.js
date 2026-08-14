@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { viewEventBus } from './event-bus.js';
+import { viewEventBus } from '../event-bus.js';
 
 // Base class for the result-view renderers. ResultViewer constructs every view
 // with the same (resContent, viewName, resultViewer, panelContainer) signature
@@ -63,5 +63,23 @@ export class View {
         if (this.resultViewer.viewUpToDate) return false;
         this.resultViewer.flashRefreshBar();
         return true;
+    }
+}
+
+// Small coordinate-readout widget shared by the spatial viewers (SvgView,
+// LayoutGL) to show the pointer position over the canvas.
+export class CoordinateDisplay {
+    constructor({ tagName = 'span', classNames = [] } = {}) {
+        this.element = document.createElement(tagName);
+        this.element.classList.add('viewer-coordinates', ...classNames);
+        this.clear();
+    }
+
+    clear() {
+        this.element.textContent = 'x=-  y=-';
+    }
+
+    set(x, y) {
+        this.element.textContent = `x=${x}  y=${y}`;
     }
 }

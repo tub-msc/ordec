@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as d3 from "d3";
-import { SimPlot } from './simplot.js';
+import { SimPlot } from './report-simplot.js';
 import renderMathInElement from 'katex/contrib/auto-render';
 import 'katex/dist/katex.min.css';
 

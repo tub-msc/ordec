@@ -3,22 +3,9 @@
 
 // To be improved. Consider the constructor-only classes stubs for future functions.
 
-import { LayoutGL } from './layout-gl.js';
 import { HierSelector } from './hier-selector.js';
 import { getCourseController, suppressCloseControls } from './course.js';
-import { SvgView } from './svg-view.js';
-import { ReportView } from './report-view.js';
-import { DrcReport } from './drc-report.js';
-import { LvsReport } from './lvs-report.js';
-
-// Maps the type field of view messages to the class rendering that view  type:
-const viewClassOf = {
-    svg: SvgView,
-    report: ReportView,
-    layout_gl: LayoutGL,
-    drc_report: DrcReport,
-    lvs_report: LvsReport,
-}
+import { viewClassOf } from './view/index.js';
 
 export class ResultViewer {
     static refreshAll = false;
