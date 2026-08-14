@@ -158,12 +158,23 @@ export class Spotlight {
         caption.style.top = Math.max(8, top) + 'px';
     }
 
-    finish() {
+    // Removes the overlay without reporting the tour as done. Used when the
+    // tour is cancelled from outside, e.g. by a course lesson switch that
+    // replaces the panels the steps point at. Returns whether a running tour
+    // was actually cancelled, so that calling it twice is harmless.
+    cancel() {
+        if (!this.root) {
+            return false;
+        }
         window.removeEventListener('resize', this.onResize);
         this.root.remove();
         this.root = null;
         this.targets = [];
-        if (this.onDone) {
+        return true;
+    }
+
+    finish() {
+        if (this.cancel() && this.onDone) {
             this.onDone();
         }
     }

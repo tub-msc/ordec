@@ -3,6 +3,7 @@
 
 from enum import Enum
 import inspect
+from math import isfinite
 import re
 from public import public
 
@@ -316,11 +317,18 @@ class Plot2D(ReportElement):
         return self.subgraph.all(Plot2DSeries.ref_idx.query(self))
 
     def element_webdata(self) -> dict:
+        # Non-finite values cross the protocol as null: JSON has no
+        # NaN/Infinity, and json.dumps would emit bare NaN tokens that the
+        # frontend's JSON.parse rejects, losing the whole view message.
+        # SimPlot.setData maps null back to NaN for gap rendering.
         return {
             "element_type": "plot2d",
-            "x": list(self.x),
+            "x": [v if isfinite(v) else None for v in self.x],
             "series": [
-                {"name": s.name, "values": list(s.values)}
+                {
+                    "name": s.name,
+                    "values": [v if isfinite(v) else None for v in s.values],
+                }
                 for s in self.series()
             ],
             "xlabel": self.xlabel,

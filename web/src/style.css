@@ -1878,3 +1878,30 @@ body.theme-dark .lm_content {
     grid-column: 1 / -1;
     padding-left: 24px;
 }
+
+/* Session-lost overlay, built in main.js (showSessionLost) when a hub-hosted
+   instance is culled. A modal backdrop over the whole page with a restart
+   prompt. */
+#sessionlost {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.sessionlost-box {
+    background: #fff;
+    color: #333;
+    padding: 24px 32px;
+    border-radius: 6px;
+    max-width: 420px;
+    text-align: center;
+    font-family: Helvetica, sans-serif;
+}
+.sessionlost-button {
+    font-size: 15px;
+    padding: 8px 20px;
+    cursor: pointer;
+}

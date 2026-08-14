@@ -4,7 +4,7 @@
 import { session } from './auth.js';
 
 export class OrdecClient {
-    constructor(srctype, resultViewers, setStatus) {
+    constructor(srctype, resultViewers, setStatus, onSessionLost) {
         this.views = new Map();
         // In-flight view requests: req id -> ResultViewer. Multiple requests
         // may be in flight at once; the server's pass manager decides how
@@ -18,6 +18,9 @@ export class OrdecClient {
         this.checkSrc = null;
         this.registerResultViewers(resultViewers);
         this.setStatus = setStatus;
+        // Called when a hub-hosted instance is culled and cannot be
+        // reconnected to; main.js shows the restart overlay (see showSessionLost).
+        this.onSessionLost = onSessionLost;
         this.localModule = null; // Set to module name when in localModule mode.
         this.autoRefreshEnabled = true;
     }
@@ -56,6 +59,9 @@ export class OrdecClient {
     }
 
     wsOnMessage(messageEvent) {
+        if (messageEvent.target !== this.sock) {
+            return;
+        }
         const msg = JSON.parse(messageEvent.data);
         //console.log(msg)
         if (msg['msg'] == 'viewlist') {
@@ -111,7 +117,7 @@ export class OrdecClient {
             // Hub-hosted and the socket never opened: the server instance
             // was culled or stopped; reconnecting is futile. A page reload
             // goes through the hub, which respawns the instance.
-            this.showSessionLost();
+            this.onSessionLost?.();
         }
         if (!this.exception) {
             //this.exception = "Websocket disconnected.";
@@ -128,45 +134,6 @@ export class OrdecClient {
         if (!this.exception) {
             this.setStatus('disconnected');
         }
-    }
-
-    showSessionLost() {
-        if (document.querySelector('#sessionlost')) {
-            return;
-        }
-        const overlay = document.createElement('div');
-        overlay.id = 'sessionlost';
-        overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;'
-            + 'background:rgba(0,0,0,0.6);display:flex;align-items:center;'
-            + 'justify-content:center;';
-        const box = document.createElement('div');
-        box.style.cssText = 'background:#fff;color:#333;padding:24px 32px;'
-            + 'border-radius:6px;max-width:420px;text-align:center;'
-            + 'font-family:Helvetica,sans-serif;';
-        const text = document.createElement('p');
-        text.textContent = 'Your session was stopped (e.g. after being idle '
-            + 'for a while). Restarting starts a fresh session and restores '
-            + 'your editor content.';
-        const button = document.createElement('button');
-        button.textContent = 'Restart session';
-        button.style.cssText = 'font-size:15px;padding:8px 20px;cursor:pointer;';
-        button.onclick = () => {
-            // Integrated-mode source only lives in this page; carry it
-            // across the reload. (Course mode autosaves to localStorage
-            // independently of this.)
-            try {
-                window.sessionStorage.setItem('ordecRestore', JSON.stringify({
-                    src: this.src,
-                    srctype: this.srctype,
-                }));
-            } catch (e) { /* storage full/blocked: reload without restore */ }
-            window.onbeforeunload = null;
-            window.location.reload();
-        };
-        box.appendChild(text);
-        box.appendChild(button);
-        overlay.appendChild(box);
-        document.body.appendChild(overlay);
     }
 
     wsOnOpen(event) {
@@ -208,10 +175,7 @@ export class OrdecClient {
                     return;
                 }
                 const req = ++this.reqCounter;
-                rv.currentReq = req;
-                // Displayed content is stale from here until the terminal
-                // view message arrives; do not hash-match against it.
-                rv.wireHash = null;
+                rv.beginRequest(req);
                 this.inflight.set(req, rv);
                 this.sock.send(JSON.stringify({
                     msg: 'getview',

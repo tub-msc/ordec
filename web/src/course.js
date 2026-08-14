@@ -55,10 +55,12 @@ function lessonStem(file) {
 }
 
 export class CourseController {
-    constructor(course) {
+    constructor(course, client, layout, deps) {
         this.course = course; // {name, title, lessons: [...]} from /api/course
-        this.client = null; // set by main.js
-        this.layout = null; // set by main.js
+        this.client = client;
+        this.layout = layout;
+        // main.js callbacks: getResultViewers(), saveUistate(), setSourceType().
+        this.deps = deps;
         this.editor = null; // set when the Editor component mounts
         // The special "Course" result viewer that renders lesson() and hosts
         // the navigator toolbar (see resultviewer.js course mode); set when
@@ -77,6 +79,10 @@ export class CourseController {
         // Whether the spotlight tour of the current welcome-lesson visit has
         // been finished (in-memory: the tour replays on every visit).
         this.tourDone = false;
+        // Deferred start and running instance of that tour, kept so that
+        // leaving the lesson can cancel either one (see cancelTour).
+        this.tourTimeout = null;
+        this.spotlight = null;
 
         this.state = this.loadState();
     }
@@ -138,6 +144,16 @@ export class CourseController {
         return Boolean(this.lessonState(i).passed);
     }
 
+    // Marks the current lesson as passed and persists progress. Idempotent:
+    // a lesson that has ever passed stays passed (see lessonPassed).
+    markLessonPassed() {
+        if (this.lessonPassed(this.state.currentLesson)) {
+            return;
+        }
+        this.lessonState(this.state.currentLesson).passed = true;
+        this.saveState();
+    }
+
     lessonUnlocked(i) {
         // In debug mode (debug=true in the URL fragment), every lesson is
         // accessible regardless of progress.
@@ -153,6 +169,9 @@ export class CourseController {
     // editor + viewers for lesson i. Mirrors the integrated-mode init
     // sequence in main.js.
     activateLesson(i, { save = true } = {}) {
+        // The tour points at panels that loadLayout below replaces, so it
+        // must not outlive the lesson it was started on.
+        this.cancelTour();
         if (save) {
             this.saveCurrentLesson();
         }
@@ -192,7 +211,7 @@ export class CourseController {
         this.client.registerResultViewers(this.deps.getResultViewers());
         this.client.connect();
         if (this.editor) {
-            this.deps.registerChangeHandler(this.editor, this.client);
+            this.editor.registerChangeHandler(this.client);
         }
         this.renderNavigators();
 
@@ -201,7 +220,7 @@ export class CourseController {
         // first.
         if (this.course.lessons[i].getting_started_lesson_1) {
             this.tourDone = false;
-            window.setTimeout(() => this.startTour(), 0);
+            this.tourTimeout = window.setTimeout(() => this.startTour(), 0);
         }
     }
 
@@ -288,21 +307,30 @@ export class CourseController {
             return;
         }
         this.reportStatus = this.lesson2ViewsOpen() ? 'pass' : 'fail';
-        if (this.reportStatus === 'pass'
-            && !this.lessonPassed(this.state.currentLesson)) {
-            this.lessonState(this.state.currentLesson).passed = true;
-            this.saveState();
+        if (this.reportStatus === 'pass') {
+            this.markLessonPassed();
         }
         this.renderNavigators();
     }
 
     startTour() {
-        startCourseTour(this, () => {
+        this.tourTimeout = null;
+        this.spotlight = startCourseTour(this, () => {
+            this.spotlight = null;
             this.tourDone = true;
             // On the welcome lesson, finishing the tour reveals the callout
             // pointing at the next-lesson button (see desiredCalloutKind).
             this.renderNavigators();
         });
+    }
+
+    // Drops a scheduled tour start and takes down a running tour, without
+    // marking it as done: it is cancelled, not completed.
+    cancelTour() {
+        window.clearTimeout(this.tourTimeout);
+        this.tourTimeout = null;
+        this.spotlight?.cancel();
+        this.spotlight = null;
     }
 
     // -- Report evaluation ---------------------------------------------
@@ -324,18 +352,13 @@ export class CourseController {
             // Task-free lessons (welcome lesson, epilogue) count as solved
             // right away, unlocking the following lesson if any.
             this.reportStatus = 'pass';
-            if (!this.lessonPassed(this.state.currentLesson)) {
-                this.lessonState(this.state.currentLesson).passed = true;
-                this.saveState();
-            }
+            this.markLessonPassed();
         } else if (this.lesson2Flagged()) {
             // The viewer lesson is passed by opening result viewers; its
             // report carries no PassFail elements (see checkLesson2Views).
             this.reportStatus = this.lesson2ViewsOpen() ? 'pass' : 'fail';
-            if (this.reportStatus === 'pass'
-                && !this.lessonPassed(this.state.currentLesson)) {
-                this.lessonState(this.state.currentLesson).passed = true;
-                this.saveState();
+            if (this.reportStatus === 'pass') {
+                this.markLessonPassed();
             }
         } else if (msg.type === 'report') {
             const passfails = (msg.data.elements || [])
@@ -343,9 +366,8 @@ export class CourseController {
             const passed = (passfails.length > 0)
                 && passfails.every(e => e.passed);
             this.reportStatus = passed ? 'pass' : 'fail';
-            if (passed && !this.lessonPassed(this.state.currentLesson)) {
-                this.lessonState(this.state.currentLesson).passed = true;
-                this.saveState();
+            if (passed) {
+                this.markLessonPassed();
             }
         } else {
             console.error('course: unexpected report view type', msg.type);
@@ -743,8 +765,8 @@ export class CourseController {
 
 // Fetches course data and creates the (singleton) CourseController.
 // deps provides main.js callbacks: getResultViewers(), saveUistate(),
-// registerChangeHandler(editor, client).
-export async function initCourseMode(courseName, deps) {
+// setSourceType().
+export async function initCourseMode(courseName, client, layout, deps) {
     const params = new URLSearchParams();
     params.append('name', courseName);
     const response = await fetch('api/course?' + params);
@@ -752,7 +774,6 @@ export async function initCourseMode(courseName, deps) {
         throw new Error(`Response status: ${response.status}`);
     }
     const course = await response.json();
-    courseController = new CourseController(course);
-    courseController.deps = deps;
+    courseController = new CourseController(course, client, layout, deps);
     return courseController;
 }

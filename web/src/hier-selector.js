@@ -197,7 +197,7 @@ export class HierSelector {
             path = findPath(this.root, selectedView);
         }
 
-        this._renderLevel(this.root, 0, path);
+        this._selectedView = this._renderLevel(this.root, 0, path);
     }
 
     _renderLevel(node, depth, path) {
@@ -246,9 +246,13 @@ export class HierSelector {
             }
         }
 
+        // Resolved leaf view name for this subtree (null if nothing is
+        // selected down this branch); returned to the caller rather than
+        // stashed on the instance.
+        let resolvedView = null;
         if (selectedKey === '__direct__') {
             select.querySelector('option[value="__direct__"]').selected = true;
-            this._selectedView = node.viewName;
+            resolvedView = node.viewName;
         } else if (!selectedKey) {
             placeholder.selected = true;
         }
@@ -260,12 +264,13 @@ export class HierSelector {
         if (selectedKey && selectedKey !== '__direct__' && node.children.has(selectedKey)) {
             const child = node.children.get(selectedKey);
             if (child.children.size > 0) {
-                this._renderLevel(child, depth + 1, path ? path.slice(1) : null);
+                resolvedView = this._renderLevel(child, depth + 1, path ? path.slice(1) : null);
             } else {
                 // It's a leaf — set as selected
-                this._selectedView = child.viewName;
+                resolvedView = child.viewName;
             }
         }
+        return resolvedView;
     }
 
     _onSelectChange(node, select, depth) {
@@ -298,10 +303,10 @@ export class HierSelector {
 
         if (child.children.size > 0) {
             // Non-leaf: try to carry forward previous deeper selections
-            this._selectedView = null;
-            this._renderLevel(child, depth + 1, previousPath.length > 0 ? previousPath : null);
-            if (this._selectedView) {
-                this.onSelect(this._selectedView);
+            const resolvedView = this._renderLevel(child, depth + 1, previousPath.length > 0 ? previousPath : null);
+            this._selectedView = resolvedView;
+            if (resolvedView) {
+                this.onSelect(resolvedView);
             } else {
                 this.onDeselect();
                 this._guideToNextSelect();

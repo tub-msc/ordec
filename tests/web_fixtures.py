@@ -120,8 +120,32 @@ class WebInfo:
         """, self.key.token(), hmac_bypass)
 
     def wait_for_ready(self):
-        WebDriverWait(self.driver, 10).until(
+        WebDriverWait(self.driver, 10, poll_frequency=0.05).until(
             EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
+
+    def wait_until(self, js, timeout=10):
+        """Poll a JS predicate until it returns truthy (else TimeoutException).
+
+        js is a script body run via execute_script; it must return a value. A
+        falsy return keeps polling; the first truthy return is passed through.
+        The 50 ms poll (vs. Selenium's 500 ms default) matches the sub-second
+        UI reactions these tests wait on, trading a few cheap execute_script
+        round-trips for much finer completion latency.
+        """
+        return WebDriverWait(self.driver, timeout, poll_frequency=0.05).until(
+            lambda d: d.execute_script(js))
+
+    def views_opened(self):
+        """viewSelected of each open result viewer, read from the GoldenLayout
+        tree. Unlike client.resultViewers (rebuilt on a throttled stateChanged
+        event), the tree reflects a just-opened viewer synchronously, so a
+        duplicate-viewer regression is visible immediately after the click.
+        """
+        return self.driver.execute_script("""
+            return window.ordecApp.layout.root.getAllContentItems()
+                .filter(i => i.isComponent && i.componentName === 'result')
+                .map(i => i.component.viewSelected);
+        """)
 
     def run_and_wait_for_reload(self, script):
         """

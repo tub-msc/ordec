@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2025 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
+// Entry point for app.html, the in-app design workspace. The landing page
+// (index.html) has its own, much lighter entry point in landing-page.js.
+
 import './style.css'
 import './ace-ord-style.css'
 
@@ -22,9 +25,8 @@ import { OrdMode } from "./ace-ord-mode.js";
 import { authenticateLocalQuery, initSession, session } from './auth.js';
 
 import { ResultViewer } from "./resultviewer.js";
-import { OrdecClient } from './client.js';
-import { initTheme, registerAceEditor } from './theme.js';
-import { viewEventBus } from './event-bus.js';
+import { initTheme, registerAceEditor, unregisterAceEditor } from './theme.js';
+import { OrdecApp } from './app.js';
 import { initCourseMode, getCourseController, suppressCloseControls } from './course.js';
 
 initTheme();
@@ -96,7 +98,6 @@ class Editor {
     constructor(container, state) {
         this.refreshTimeout = 500;
         this.container = container;
-        this.resizeWithContainerAutomatically = true;
 
         this.editor = ace.edit(container.element);
         registerAceEditor(this.editor);
@@ -107,6 +108,17 @@ class Editor {
             fontFamily: "Inconsolata",
             fontSize: getComputedStyle(document.documentElement)
                 .getPropertyValue('--font-size-code').trim() || "11.5pt"
+        });
+
+        // Teardown when GoldenLayout releases the component, e.g. when
+        // loadLayout() rebuilds the panels on a lesson switch (course.js).
+        // Clearing the timeout is not just hygiene: a pending debounce
+        // would fire after activateLesson() has installed the new lesson's
+        // source and overwrite client.src with the old lesson's text.
+        container.addEventListener('beforeComponentRelease', () => {
+            window.clearTimeout(this.timeout);
+            unregisterAceEditor(this.editor);
+            this.editor.destroy();
         });
 
         // The source editor is movable but not closable in every mode (see
@@ -120,7 +132,6 @@ class Editor {
     }
 
     registerChangeHandler(client) {
-        this.client = client;
         this.editor.session.on('change', (delta) => {
             const courseController = getCourseController();
             if (courseController) {
@@ -189,40 +200,72 @@ function popRestoreData() {
     }
 }
 
+// Page overlay shown when a hub-hosted instance is culled and can no longer be
+// reconnected to (OrdecClient calls this via its onSessionLost callback). The
+// restart button stashes the source for popRestoreData to pick up after the
+// reload respawns the instance through the hub.
+function showSessionLost() {
+    if (document.querySelector('#sessionlost')) {
+        return;
+    }
+    const overlay = document.createElement('div');
+    overlay.id = 'sessionlost';
+    const box = document.createElement('div');
+    box.className = 'sessionlost-box';
+    const text = document.createElement('p');
+    text.textContent = 'Your session was stopped (e.g. after being idle '
+        + 'for a while). Restarting starts a fresh session and restores '
+        + 'your editor content.';
+    const button = document.createElement('button');
+    button.className = 'sessionlost-button';
+    button.textContent = 'Restart session';
+    button.onclick = () => {
+        // Integrated-mode source only lives in this page; carry it across the
+        // reload. (Course mode autosaves to localStorage independently of this.)
+        try {
+            window.sessionStorage.setItem('ordecRestore', JSON.stringify({
+                src: app.client.src,
+                srctype: app.client.srctype,
+            }));
+        } catch (e) { /* storage full/blocked: reload without restore */ }
+        window.onbeforeunload = null;
+        window.location.reload();
+    };
+    box.appendChild(text);
+    box.appendChild(button);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+}
+
 const layout = new GoldenLayout(document.querySelector("#workspace"));
 layout.layoutConfig.settings.showPopoutIcon = false;
 layout.resizeWithContainerAutomatically = true;
 layout.registerComponent('editor', Editor);
 layout.registerComponent('result', ResultViewer);
 
+// Owns the frontend's mutable runtime state (event bus, layout, client).
+const app = new OrdecApp({ layout, setStatus, onSessionLost: showSessionLost });
+
+// The GoldenLayout content items that are components of the given name (e.g.
+// 'result' or 'editor'). The layout tree is the source of truth for which
+// viewers/editors currently exist, so all lookups below derive from it live.
+function componentItems(name) {
+    return layout.root.getAllContentItems()
+        .filter(item => item.isComponent && item.componentName === name);
+}
+
 function getResultViewers() {
-    let ret = [];
-    layout.root.getAllContentItems().forEach(e => {
-        if (!e.isComponent) return;
-        if (e.componentName != 'result') return;
-        ret.push(e.component);
-    });
-    return ret;
+    return componentItems('result').map(item => item.component);
 }
 
 function findResultViewerByView(viewName) {
-    for (const item of layout.root.getAllContentItems()) {
-        if (!item.isComponent || item.componentName !== 'result') continue;
-        if (item.component.viewSelected === viewName) {
-            return item;
-        }
-    }
-    return null;
+    return componentItems('result')
+        .find(item => item.component.viewSelected === viewName);
 }
 
 function findResultViewerByWireHash(wireHash) {
-    for (const item of layout.root.getAllContentItems()) {
-        if (!item.isComponent || item.componentName !== 'result') continue;
-        if (item.component.wireHash === wireHash) {
-            return item;
-        }
-    }
-    return null;
+    return componentItems('result')
+        .find(item => item.component.wireHash === wireHash);
 }
 
 function resolveExistingViewer(viewName, wireHash) {
@@ -236,13 +279,7 @@ function resolveExistingViewer(viewName, wireHash) {
 }
 
 function getEditor() {
-    let ret;
-    layout.root.getAllContentItems().forEach(e => {
-        if(e.componentName == 'editor') {
-            ret = e.component;
-        }
-    });
-    return ret;
+    return componentItems('editor')[0]?.component;
 }
 
 document.querySelector("#newresview").onclick = () => {
@@ -283,77 +320,72 @@ document.querySelector("#savejson").onclick = () => {
     dlAnchorElem.click();
 };
 
-let client;
-
-if(queryLocal) {
-    // If queryLocal is set, the web UI is used in **local mode**.
-    // In this case, only a single result view is opened by default.
-
-    // To prevent CSRF attacks, queryLocal is authenticated using the queryHmac
-    // parameter.
-
+// Local mode: only a single result view is opened by default. To prevent CSRF
+// attacks, queryLocal is authenticated using the queryHmac parameter. Returns
+// null (no client) if authentication fails.
+async function initLocalMode() {
     const local = await authenticateLocalQuery(queryLocal, queryHmac);
-
-    if(local) {
-        document.querySelector("#toolSourcetype").style.display='none';
-
-        const uistate = {
-            "content": [
-                {
-                    "type": "row",
-                    "content": [
-                        {
-                            "type": "component",
-                            "title": "Result View",
-                            "componentName": "result",
-                            "componentState": {
-                                "view": local.view,
-                            }
-                        }
-                    ]
-                }
-            ]
-        };
-        uistate.header = {popout: false};
-
-        layout.loadLayout(uistate);
-        // client is initialized only once we have loaded our layout using loadLayout:
-        client = new OrdecClient(getSourceType(), getResultViewers(), setStatus);
-        client.localModule = local.module;
-        client.connect();
-    } else {
+    if (!local) {
         console.error("HMAC authentication of 'local' parameter failed.");
+        return null;
     }
-} else if (queryCourse) {
-    // If queryCourse is set, the web UI is used in **course mode**.
-    // The CourseController loads sources and per-lesson layouts from the
-    // /api/course endpoint (combined with progress saved in localStorage)
-    // and rebuilds editor + result views on each lesson switch.
 
     document.querySelector("#toolSourcetype").style.display = 'none';
 
-    const controller = await initCourseMode(queryCourse, {
+    const uistate = {
+        "content": [
+            {
+                "type": "row",
+                "content": [
+                    {
+                        "type": "component",
+                        "title": "Result View",
+                        "componentName": "result",
+                        "componentState": {
+                            "view": local.view,
+                        }
+                    }
+                ]
+            }
+        ]
+    };
+    uistate.header = {popout: false};
+
+    layout.loadLayout(uistate);
+    // client is initialized only once we have loaded our layout using loadLayout:
+    const client = app.startClient(getSourceType(), getResultViewers());
+    client.localModule = local.module;
+    client.connect();
+    return client;
+}
+
+// Course mode: the CourseController loads sources and per-lesson layouts from
+// the /api/course endpoint (combined with progress saved in localStorage) and
+// rebuilds editor + result views on each lesson switch.
+async function startCourseMode() {
+    document.querySelector("#toolSourcetype").style.display = 'none';
+
+    const client = app.startClient(getSourceType(), []);
+
+    const controller = await initCourseMode(queryCourse, client, layout, {
         getResultViewers,
         saveUistate: () => LayoutConfig.fromResolved(layout.saveLayout()),
-        registerChangeHandler: (editor, c) => editor.registerChangeHandler(c),
         setSourceType: (srctype) => { sourceTypeSelect.value = srctype; },
         // debug=true in the URL fragment unlocks all lessons at once.
         debug,
     });
 
-    client = new OrdecClient(getSourceType(), [], setStatus);
-    controller.client = client;
-    controller.layout = layout;
     controller.activateLesson(controller.currentLesson, { save: false });
 
     // Make the controller easy to access for automated testing & debugging:
     window.courseController = controller;
-} else {
-    // If localModule is null, the web UI is used in **integrated mode**.
-    // In this case, the source code is entered through the web editor.
-    // This editor and zero or more result views are initialized through
-    // the data obtained from the server through getInitData().
+    return client;
+}
 
+// Integrated mode: the source code is entered through the web editor. This
+// editor and zero or more result views are initialized through the data
+// obtained from the server through getInitData().
+async function initIntegratedMode() {
     const initData = await getInitData();
     const restoreData = popRestoreData();
     if (restoreData) {
@@ -365,7 +397,7 @@ if(queryLocal) {
     layout.loadLayout(initData.uistate);
 
     // client is initialized only once we have loaded our layout using loadLayout:
-    client = new OrdecClient(getSourceType(), getResultViewers(), setStatus);
+    const client = app.startClient(getSourceType(), getResultViewers());
     client.srctype = initData.srctype;
     client.src = initData.src;
 
@@ -376,21 +408,30 @@ if(queryLocal) {
 
     // Starting now, changes of editor source will trigger connect():
     editor.registerChangeHandler(client);
+    return client;
+}
+
+if (queryLocal) {
+    await initLocalMode();
+} else if (queryCourse) {
+    await startCourseMode();
+} else {
+    await initIntegratedMode();
 }
 
 layout.addEventListener('stateChanged', () => {
-    client.registerResultViewers(getResultViewers());
+    app.client.registerResultViewers(getResultViewers());
     getCourseController()?.uistateChanged();
 });
 
 function refresh() {
-    if (!client.localModule) {
+    if (!app.client.localModule) {
         const editor = getEditor();
         if (editor) {
-            client.src = editor.editor.getValue();
+            app.client.src = editor.editor.getValue();
         }
     }
-    client.connect();
+    app.client.connect();
 }
 
 const refreshBtn = document.querySelector("#refresh");
@@ -406,25 +447,24 @@ document.addEventListener('keydown', (e) => {
 
 sourceTypeSelect.onchange = () => {
     const sourceType = getSourceType();
-    client.srctype = sourceType;
+    app.client.srctype = sourceType;
 
     getEditor().updateMode();
 
     console.log('ordecClient.connect() triggered by source type selector.');
-    client.connect();
+    app.client.connect();
 };
 
 const autoRefreshToggle = document.querySelector("#autoRefreshToggle");
 autoRefreshToggle.onmousedown = (e) => e.preventDefault();
 autoRefreshToggle.onclick = () => {
-    client.autoRefreshEnabled = !client.autoRefreshEnabled;
-    autoRefreshToggle.classList.toggle('active', client.autoRefreshEnabled);
-    autoRefreshToggle.textContent = client.autoRefreshEnabled ? 'Auto-refresh: on' : 'Auto-refresh: off';
+    app.client.autoRefreshEnabled = !app.client.autoRefreshEnabled;
+    autoRefreshToggle.classList.toggle('active', app.client.autoRefreshEnabled);
+    autoRefreshToggle.textContent = app.client.autoRefreshEnabled ? 'Auto-refresh: on' : 'Auto-refresh: off';
 };
 
-// Make the OrdecClient object easy to access for automated testing & browser-based debugging:
-window.ordecClient = client;
-window.viewEventBus = viewEventBus;
+// Make the OrdecApp object easy to access for automated testing & browser-based debugging:
+window.ordecApp = app;
 
 // Opens itemConfig beside sourceStack by replacing sourceStack in its parent
 // (a column or the ground) with a new row [sourceStack, itemConfig]. When the
@@ -456,6 +496,40 @@ function wrapStackInRow(sourceStack, itemConfig) {
     }
 }
 
+// Opens result viewers for componentConfigs (GoldenLayout 'result' component
+// configs) beside the stack holding sourceContainer: as the next sibling if
+// that stack sits in a row, otherwise by wrapping the stack in a new row (see
+// wrapStackInRow). A single config is placed on its own; several are grouped in
+// a column. With no source stack (e.g. the source is the ground/root), the
+// viewers open as new top-level stacks instead.
+function openViewsBesideSource(sourceContainer, componentConfigs) {
+    if (componentConfigs.length === 0) {
+        return;
+    }
+
+    const sourceStack = sourceContainer?.parent?.parent;
+
+    if (!sourceStack?.isStack) {
+        componentConfigs.forEach(config => {
+            layout.addComponent('result', config.componentState, config.title);
+        });
+        return;
+    }
+
+    const itemToAdd = componentConfigs.length === 1
+        ? componentConfigs[0]
+        : { type: 'column', content: componentConfigs };
+
+    const stackParent = sourceStack.parent;
+
+    if (stackParent.isRow) {
+        const index = stackParent.contentItems.indexOf(sourceStack) + 1;
+        stackParent.addItem(itemToAdd, index);
+    } else {
+        wrapStackInRow(sourceStack, itemToAdd);
+    }
+}
+
 function openOrActivateView(data) {
     const view = data.view;
 
@@ -477,31 +551,15 @@ function openOrActivateView(data) {
         title,
     };
 
-    const sourceContainer = data.sourceContainer;
-    const sourceComponentItem = sourceContainer?.parent;
-    const sourceStack = sourceComponentItem?.parent;
-
-    if (!sourceStack?.isStack) {
-        layout.addComponent('result', componentState, title);
-        return;
-    }
-
-    const stackParent = sourceStack.parent;
-
-    if (stackParent.isRow) {
-        const index = stackParent.contentItems.indexOf(sourceStack) + 1;
-        stackParent.addItem(componentConfig, index);
-    } else {
-        wrapStackInRow(sourceStack, componentConfig);
-    }
+    openViewsBesideSource(data.sourceContainer, [componentConfig]);
 }
 
-viewEventBus.on('layout:request-open', openOrActivateView);
-viewEventBus.on('schematic:request-open', openOrActivateView);
+app.eventBus.on('layout:request-open', openOrActivateView);
+app.eventBus.on('schematic:request-open', openOrActivateView);
 
 // Click-to-source: jump the editor to a clicked instance's definition line.
 // In local mode the user edits files externally, so we just log.
-viewEventBus.on('editor:goto-source', (data) => {
+app.eventBus.on('editor:goto-source', (data) => {
     const editorComponent = getEditor();
     if (editorComponent && data.file === '<webeditor>' && data.line) {
         // ORD columns are 1-based; Ace's gotoLine expects a 0-based column.
@@ -513,7 +571,7 @@ viewEventBus.on('editor:goto-source', (data) => {
     }
 });
 
-viewEventBus.on('lvs:request-open-views', (data) => {
+app.eventBus.on('lvs:request-open-views', (data) => {
     const { layoutView, schemView, layoutWireHash, schemWireHash, sourceContainer } = data;
 
     const layoutExisting = layoutView
@@ -549,31 +607,7 @@ viewEventBus.on('lvs:request-open-views', (data) => {
         }
     }
 
-    if (columnContent.length === 0) {
-        return;
-    }
-
-    const sourceComponentItem = sourceContainer?.parent;
-    const sourceStack = sourceComponentItem?.parent;
-
-    if (!sourceStack?.isStack) {
-        columnContent.forEach(config => {
-            layout.addComponent('result', config.componentState, config.title);
-        });
-        return;
-    }
-
-    const stackParent = sourceStack.parent;
-    const itemToAdd = columnContent.length === 1
-        ? columnContent[0]
-        : { type: 'column', content: columnContent };
-
-    if (stackParent.isRow) {
-        const index = stackParent.contentItems.indexOf(sourceStack) + 1;
-        stackParent.addItem(itemToAdd, index);
-    } else {
-        wrapStackInRow(sourceStack, itemToAdd);
-    }
+    openViewsBesideSource(sourceContainer, columnContent);
 });
 
 document.querySelector("#examples").onclick = () => {
