@@ -26,7 +26,7 @@ function createGlLinks(dark) {
     document.head.appendChild(glDarkLink);
 }
 
-function isDark() {
+export function isDark() {
     return document.body.classList.contains('theme-dark');
 }
 

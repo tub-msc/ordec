@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as d3 from "d3";
+import { isDark } from "./theme.js";
 
 const MARGIN = { top: 10, right: 15, bottom: 35, left: 60 };
 
@@ -29,15 +30,11 @@ const SIGNAL_COLORS_LIGHT = [
     '#17becf', // cyan
 ];
 
-function _isDark() {
-    return document.body.classList.contains('theme-dark');
-}
-
 function signalColor(i) {
-    const palette = _isDark() ? SIGNAL_COLORS_DARK : SIGNAL_COLORS_LIGHT;
+    const palette = isDark() ? SIGNAL_COLORS_DARK : SIGNAL_COLORS_LIGHT;
     if (i < palette.length) return palette[i];
     const hue = (i * 137.508) % 360;
-    const lightness = _isDark() ? 60 : 40;
+    const lightness = isDark() ? 60 : 40;
     return `hsl(${hue}, 80%, ${lightness}%)`;
 }
 
@@ -112,7 +109,7 @@ export class SimPlot {
         this.series.forEach((s, i) => {
             s.color = signalColor(i);
         });
-        this.crosshairLine.attr('stroke', _isDark() ? '#888' : '#999');
+        this.crosshairLine.attr('stroke', isDark() ? '#888' : '#999');
         this._updateLegend();
         this._render();
     }
@@ -153,7 +150,7 @@ export class SimPlot {
             .style('display', 'none');
 
         this.crosshairLine = this.crosshairG.append('line')
-            .attr('stroke', _isDark() ? '#888' : '#999')
+            .attr('stroke', isDark() ? '#888' : '#999')
             .attr('stroke-width', 1)
             .attr('stroke-dasharray', '4,3');
 
