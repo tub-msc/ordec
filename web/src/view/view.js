@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { viewEventBus } from '../event-bus.js';
 
 // Base class for the result-view renderers. ResultViewer constructs every view
 // with the same (resContent, viewName, resultViewer, panelContainer) signature
@@ -13,6 +12,9 @@ export class View {
         this.viewName = viewName;
         this.resultViewer = resultViewer;
         this.panelContainer = panelContainer;
+        // The view-event bus, owned by OrdecApp and reached through the client.
+        // Resolved once here so subclasses (which run after super()) can use it.
+        this.eventBus = resultViewer.client.app.eventBus;
         // Wire hash of the subgraph currently shown; set by each update().
         this.wireHash = null;
         // (event, handler) pairs registered via busSubscribe(), torn down
@@ -35,13 +37,13 @@ export class View {
     // subscription; a forgotten off() would leak the handler after the view is
     // replaced.
     busSubscribe(event, handler) {
-        viewEventBus.on(event, handler);
+        this.eventBus.on(event, handler);
         this.busSubscriptions.push([event, handler]);
     }
 
     busUnsubscribeAll() {
         for (const [event, handler] of this.busSubscriptions) {
-            viewEventBus.off(event, handler);
+            this.eventBus.off(event, handler);
         }
         this.busSubscriptions = [];
     }

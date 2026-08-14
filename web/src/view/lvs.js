@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { viewEventBus } from '../event-bus.js';
 import { View } from './view.js';
 
 const TYPE_ORDER = ['pin', 'net', 'device', 'subcircuit'];
@@ -350,7 +349,7 @@ export class LvsView extends View {
                 const circuit = circuitMap.get(nid);
                 const ref = kind === 'layout' ? 'ref_layout' : 'ref_schematic';
                 const event = kind === 'layout' ? 'layout:request-open' : 'schematic:request-open';
-                viewEventBus.emit(event, {
+                this.eventBus.emit(event, {
                     view: `${this.viewName}.subgraph.cursor_at(${nid}).${ref}`,
                     wireHash: (circuit && (kind === 'layout'
                         ? circuit.layout_wire_hash : circuit.schem_wire_hash)) || null,
@@ -426,20 +425,20 @@ export class LvsView extends View {
 
         // Clear the previous selection everywhere: its highlight may sit in a
         // viewer the new selection does not target.
-        viewEventBus.emit('lvs:clear');
-        viewEventBus.setPending('lvs:select', payload);
+        this.eventBus.emit('lvs:clear');
+        this.eventBus.setPending('lvs:select', payload);
 
         if (hasLayoutPos) {
-            viewEventBus.emit('lvs:layout-select', payload);
+            this.eventBus.emit('lvs:layout-select', payload);
         }
         if (hasSchemNid) {
-            viewEventBus.emit('lvs:schem-select', payload);
+            this.eventBus.emit('lvs:schem-select', payload);
         }
 
         // Focuses the target views if open (matched by name or wire hash),
         // opens them otherwise.
         if (open && ((hasLayoutPos && layoutView) || (hasSchemNid && schemView))) {
-            viewEventBus.emit('lvs:request-open-views', {
+            this.eventBus.emit('lvs:request-open-views', {
                 layoutView: hasLayoutPos ? layoutView : null,
                 schemView: hasSchemNid ? schemView : null,
                 layoutWireHash: hasLayoutPos ? layoutWireHash : null,
@@ -462,8 +461,8 @@ export class LvsView extends View {
         if (deselectBtn) {
             deselectBtn.disabled = true;
         }
-        viewEventBus.clearPending('lvs:select');
-        viewEventBus.emit('lvs:clear');
+        this.eventBus.clearPending('lvs:select');
+        this.eventBus.emit('lvs:clear');
     }
 
     destroy() {

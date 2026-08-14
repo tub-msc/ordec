@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as d3 from "d3";
-import { viewEventBus } from '../event-bus.js';
 import { View, CoordinateDisplay } from './view.js';
 
 // SVG viewer for schematics and symbols.
@@ -32,7 +31,7 @@ export class SvgView extends View {
 
         // A selection made before this view was opened; taken by update(),
         // once there is an SVG to highlight in and a wire hash to match.
-        this.pendingHighlight = viewEventBus.getPending('lvs:select') || null;
+        this.pendingHighlight = this.eventBus.getPending('lvs:select') || null;
     }
     pendingApplies(pending) {
         return this.selectionApplies(pending.schemView, pending.schemWireHash);
@@ -305,7 +304,7 @@ export class SvgView extends View {
                 const column = parseInt(el.attr('data-srccol'), 10);
                 const file = el.attr('data-srcfile');
                 if (!Number.isNaN(line)) {
-                    viewEventBus.emit('editor:goto-source', { file, line, column });
+                    this.eventBus.emit('editor:goto-source', { file, line, column });
                 }
             });
 

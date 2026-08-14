@@ -25,9 +25,8 @@ import { OrdMode } from "./ace-ord-mode.js";
 import { authenticateLocalQuery, initSession, session } from './auth.js';
 
 import { ResultViewer } from "./resultviewer.js";
-import { OrdecClient } from './client.js';
 import { initTheme, registerAceEditor, unregisterAceEditor } from './theme.js';
-import { viewEventBus } from './event-bus.js';
+import { OrdecApp } from './app.js';
 import { initCourseMode, getCourseController, suppressCloseControls } from './course.js';
 
 initTheme();
@@ -225,8 +224,8 @@ function showSessionLost() {
         // reload. (Course mode autosaves to localStorage independently of this.)
         try {
             window.sessionStorage.setItem('ordecRestore', JSON.stringify({
-                src: client.src,
-                srctype: client.srctype,
+                src: app.client.src,
+                srctype: app.client.srctype,
             }));
         } catch (e) { /* storage full/blocked: reload without restore */ }
         window.onbeforeunload = null;
@@ -243,6 +242,9 @@ layout.layoutConfig.settings.showPopoutIcon = false;
 layout.resizeWithContainerAutomatically = true;
 layout.registerComponent('editor', Editor);
 layout.registerComponent('result', ResultViewer);
+
+// Owns the frontend's mutable runtime state (event bus, layout, client).
+const app = new OrdecApp({ layout, setStatus, onSessionLost: showSessionLost });
 
 // The GoldenLayout content items that are components of the given name (e.g.
 // 'result' or 'editor'). The layout tree is the source of truth for which
@@ -351,7 +353,7 @@ async function initLocalMode() {
 
     layout.loadLayout(uistate);
     // client is initialized only once we have loaded our layout using loadLayout:
-    const client = new OrdecClient(getSourceType(), getResultViewers(), setStatus, showSessionLost);
+    const client = app.startClient(getSourceType(), getResultViewers());
     client.localModule = local.module;
     client.connect();
     return client;
@@ -363,7 +365,7 @@ async function initLocalMode() {
 async function startCourseMode() {
     document.querySelector("#toolSourcetype").style.display = 'none';
 
-    const client = new OrdecClient(getSourceType(), [], setStatus, showSessionLost);
+    const client = app.startClient(getSourceType(), []);
 
     const controller = await initCourseMode(queryCourse, client, layout, {
         getResultViewers,
@@ -395,7 +397,7 @@ async function initIntegratedMode() {
     layout.loadLayout(initData.uistate);
 
     // client is initialized only once we have loaded our layout using loadLayout:
-    const client = new OrdecClient(getSourceType(), getResultViewers(), setStatus, showSessionLost);
+    const client = app.startClient(getSourceType(), getResultViewers());
     client.srctype = initData.srctype;
     client.src = initData.src;
 
@@ -409,28 +411,27 @@ async function initIntegratedMode() {
     return client;
 }
 
-let client;
 if (queryLocal) {
-    client = await initLocalMode();
+    await initLocalMode();
 } else if (queryCourse) {
-    client = await startCourseMode();
+    await startCourseMode();
 } else {
-    client = await initIntegratedMode();
+    await initIntegratedMode();
 }
 
 layout.addEventListener('stateChanged', () => {
-    client.registerResultViewers(getResultViewers());
+    app.client.registerResultViewers(getResultViewers());
     getCourseController()?.uistateChanged();
 });
 
 function refresh() {
-    if (!client.localModule) {
+    if (!app.client.localModule) {
         const editor = getEditor();
         if (editor) {
-            client.src = editor.editor.getValue();
+            app.client.src = editor.editor.getValue();
         }
     }
-    client.connect();
+    app.client.connect();
 }
 
 const refreshBtn = document.querySelector("#refresh");
@@ -446,25 +447,24 @@ document.addEventListener('keydown', (e) => {
 
 sourceTypeSelect.onchange = () => {
     const sourceType = getSourceType();
-    client.srctype = sourceType;
+    app.client.srctype = sourceType;
 
     getEditor().updateMode();
 
     console.log('ordecClient.connect() triggered by source type selector.');
-    client.connect();
+    app.client.connect();
 };
 
 const autoRefreshToggle = document.querySelector("#autoRefreshToggle");
 autoRefreshToggle.onmousedown = (e) => e.preventDefault();
 autoRefreshToggle.onclick = () => {
-    client.autoRefreshEnabled = !client.autoRefreshEnabled;
-    autoRefreshToggle.classList.toggle('active', client.autoRefreshEnabled);
-    autoRefreshToggle.textContent = client.autoRefreshEnabled ? 'Auto-refresh: on' : 'Auto-refresh: off';
+    app.client.autoRefreshEnabled = !app.client.autoRefreshEnabled;
+    autoRefreshToggle.classList.toggle('active', app.client.autoRefreshEnabled);
+    autoRefreshToggle.textContent = app.client.autoRefreshEnabled ? 'Auto-refresh: on' : 'Auto-refresh: off';
 };
 
-// Make the OrdecClient object easy to access for automated testing & browser-based debugging:
-window.ordecClient = client;
-window.viewEventBus = viewEventBus;
+// Make the OrdecApp object easy to access for automated testing & browser-based debugging:
+window.ordecApp = app;
 
 // Opens itemConfig beside sourceStack by replacing sourceStack in its parent
 // (a column or the ground) with a new row [sourceStack, itemConfig]. When the
@@ -554,12 +554,12 @@ function openOrActivateView(data) {
     openViewsBesideSource(data.sourceContainer, [componentConfig]);
 }
 
-viewEventBus.on('layout:request-open', openOrActivateView);
-viewEventBus.on('schematic:request-open', openOrActivateView);
+app.eventBus.on('layout:request-open', openOrActivateView);
+app.eventBus.on('schematic:request-open', openOrActivateView);
 
 // Click-to-source: jump the editor to a clicked instance's definition line.
 // In local mode the user edits files externally, so we just log.
-viewEventBus.on('editor:goto-source', (data) => {
+app.eventBus.on('editor:goto-source', (data) => {
     const editorComponent = getEditor();
     if (editorComponent && data.file === '<webeditor>' && data.line) {
         // ORD columns are 1-based; Ace's gotoLine expects a 0-based column.
@@ -571,7 +571,7 @@ viewEventBus.on('editor:goto-source', (data) => {
     }
 });
 
-viewEventBus.on('lvs:request-open-views', (data) => {
+app.eventBus.on('lvs:request-open-views', (data) => {
     const { layoutView, schemView, layoutWireHash, schemWireHash, sourceContainer } = data;
 
     const layoutExisting = layoutView

@@ -12,7 +12,7 @@ import time
 def get_layout_state(web):
     """Query testState() from the layout viewer."""
     return web.driver.execute_script("""
-        const rv = window.ordecClient.resultViewers.find(
+        const rv = window.ordecApp.client.resultViewers.find(
             rv => rv.view && rv.view.testState
         );
         return rv ? rv.view.testState() : null;
@@ -22,14 +22,14 @@ def get_layout_state(web):
 def emit_drc_select(web, shapes):
     """Emit drc:select event with given shapes."""
     web.driver.execute_script(
-        "window.viewEventBus.emit('drc:select', {shapes: arguments[0]});",
+        "window.ordecApp.eventBus.emit('drc:select', {shapes: arguments[0]});",
         shapes
     )
 
 
 def emit_drc_clear(web):
     """Emit drc:clear event."""
-    web.driver.execute_script("window.viewEventBus.emit('drc:clear');")
+    web.driver.execute_script("window.ordecApp.eventBus.emit('drc:clear');")
 
 
 def load_layout_view(web):
@@ -101,14 +101,14 @@ def test_pending_event_applied_on_layout_open(web):
 
     # Set pending drc:select event BEFORE selecting layout view
     web.driver.execute_script("""
-        window.viewEventBus.setPending('drc:select', {
+        window.ordecApp.eventBus.setPending('drc:select', {
             shapes: [{type: 'box', rect: [100, 100, 500, 500]}]
         });
     """)
 
     # Now select the layout view - this should consume pending
     web.driver.execute_script("""
-        const rv = window.ordecClient.resultViewers[0];
+        const rv = window.ordecApp.client.resultViewers[0];
         const sel = rv.viewSelector;
         for (let i = 0; i < sel.options.length; i++) {
             if (sel.options[i].value === 'layoutgl_example()') {
@@ -129,7 +129,7 @@ def test_pending_event_applied_on_layout_open(web):
 
     # The selection stays pending until deselect, like lvs:select.
     pending = web.driver.execute_script(
-        "return window.viewEventBus.getPending('drc:select');"
+        "return window.ordecApp.eventBus.getPending('drc:select');"
     )
     assert pending is not None, "Pending selection should be kept until deselect"
 
@@ -141,7 +141,7 @@ def test_drc_select_targeted_filtering(web):
     load_layout_view(web)
 
     web.driver.execute_script("""
-        window.viewEventBus.emit('drc:select', {
+        window.ordecApp.eventBus.emit('drc:select', {
             shapes: [{type: 'box', rect: [0, 0, 1000, 1000]}],
             layoutView: 'other.ref_layout',
         });
@@ -165,14 +165,14 @@ def test_drc_pending_targeted_not_applied(web):
     web.wait_for_ready()
 
     web.driver.execute_script("""
-        window.viewEventBus.setPending('drc:select', {
+        window.ordecApp.eventBus.setPending('drc:select', {
             shapes: [{type: 'box', rect: [100, 100, 500, 500]}],
             layoutView: 'other.ref_layout',
         });
     """)
 
     web.driver.execute_script("""
-        const rv = window.ordecClient.resultViewers[0];
+        const rv = window.ordecApp.client.resultViewers[0];
         const sel = rv.viewSelector;
         for (let i = 0; i < sel.options.length; i++) {
             if (sel.options[i].value === 'layoutgl_example()') {
@@ -191,7 +191,7 @@ def test_drc_pending_targeted_not_applied(web):
         "Mismatching pending selection must not be applied"
 
     pending = web.driver.execute_script(
-        "return window.viewEventBus.consumePending('drc:select');"
+        "return window.ordecApp.eventBus.consumePending('drc:select');"
     )
     assert pending is not None, \
         "Mismatching pending selection must not be consumed"
@@ -201,7 +201,7 @@ def get_layout_states_by_view(web):
     """viewSelected -> testState() for all rendered layout viewers."""
     return web.driver.execute_script("""
         const states = {};
-        for (const rv of window.ordecClient.resultViewers) {
+        for (const rv of window.ordecApp.client.resultViewers) {
             if (rv.view && rv.view.testState) {
                 states[rv.viewSelected] = rv.view.testState();
             }
@@ -262,7 +262,7 @@ def test_drc_subcell_item_select(web):
 def emit_lvs_layout_select(web, pos):
     """Emit lvs:layout-select event with given pos [x, y]."""
     web.driver.execute_script(
-        "window.viewEventBus.emit('lvs:layout-select', {pos: arguments[0]});",
+        "window.ordecApp.eventBus.emit('lvs:layout-select', {pos: arguments[0]});",
         pos
     )
 
@@ -270,7 +270,7 @@ def emit_lvs_layout_select(web, pos):
 def emit_lvs_schem_select_nid(web, schem_nid, item_type):
     """Emit lvs:schem-select event with given schem_nid and item_type."""
     web.driver.execute_script(
-        "window.viewEventBus.emit('lvs:schem-select', {schem_nid: arguments[0], item_type: arguments[1]});",
+        "window.ordecApp.eventBus.emit('lvs:schem-select', {schem_nid: arguments[0], item_type: arguments[1]});",
         schem_nid, item_type
     )
 
@@ -322,7 +322,7 @@ def get_net_nid(web, net_name):
 
 def emit_lvs_clear(web):
     """Emit lvs:clear event."""
-    web.driver.execute_script("window.viewEventBus.emit('lvs:clear');")
+    web.driver.execute_script("window.ordecApp.eventBus.emit('lvs:clear');")
 
 
 @pytest.mark.web
@@ -559,7 +559,7 @@ def test_lvs_circuit_links_open_views(web):
     time.sleep(0.5)
 
     views = web.driver.execute_script(
-        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
     assert any(v and 'cursor_at' in v and v.endswith('.ref_layout') for v in views), \
         f"Expected a per-circuit ref_layout view, got {views}"
     state = get_layout_state(web)
@@ -572,7 +572,7 @@ def test_lvs_circuit_links_open_views(web):
     time.sleep(0.5)
 
     views = web.driver.execute_script(
-        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
     assert any(v and 'cursor_at' in v and v.endswith('.ref_schematic') for v in views), \
         f"Expected a per-circuit ref_schematic view, got {views}"
     svg_count = web.driver.execute_script(
@@ -589,15 +589,15 @@ def test_lvs_layout_link_dedup(web):
 
     # Open the same Layout under its plain view name first.
     web.driver.execute_script(
-        "window.viewEventBus.emit('layout:request-open', {view: 'layout()'});")
+        "window.ordecApp.eventBus.emit('layout:request-open', {view: 'layout()'});")
     web.wait_for_ready()
     time.sleep(0.5)
 
     views_before = web.driver.execute_script(
-        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
     assert 'layout()' in views_before
     hashes = web.driver.execute_script(
-        "return window.ordecClient.resultViewers.map(rv => rv.wireHash);")
+        "return window.ordecApp.client.resultViewers.map(rv => rv.wireHash);")
     assert any(hashes), f"Expected wire hashes on open panels, got {hashes}"
 
     # The link addresses the same subgraph as an lvs_report()-derived name.
@@ -607,7 +607,7 @@ def test_lvs_layout_link_dedup(web):
     web.wait_for_ready()
 
     views_after = web.driver.execute_script(
-        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
     assert views_after == views_before, \
         f"Layout link must not open a duplicate panel: {views_after}"
 
@@ -624,7 +624,7 @@ def test_lvs_layout_link_dedup(web):
     web.wait_for_ready()
 
     views = web.driver.execute_script(
-        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
     assert not any(v and v.endswith('.ref_layout') for v in views), \
         f"Item select must not open a duplicate layout panel: {views}"
     state = get_layout_state(web)
@@ -661,7 +661,7 @@ def test_lvs_subcircuit_item_select(web):
     time.sleep(0.5)
 
     views = web.driver.execute_script(
-        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
     assert any(v and 'cursor_at' in v and v.endswith('.ref_layout') for v in views), \
         f"Expected the pair's layout view to open, got {views}"
     assert any(v and 'cursor_at' in v and v.endswith('.ref_schematic') for v in views), \
@@ -717,11 +717,11 @@ def test_lvs_stale_report_links_inert(web):
     load_lvs_report_view(web)
 
     views_before = web.driver.execute_script(
-        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
 
     # Mark the report view outdated, as after a source change.
     web.driver.execute_script("""
-        const rv = window.ordecClient.resultViewers.find(
+        const rv = window.ordecApp.client.resultViewers.find(
             rv => rv.viewSelected === 'lvs_report()');
         rv.invalidate();
     """)
@@ -737,7 +737,7 @@ def test_lvs_stale_report_links_inert(web):
     web.wait_for_ready()
 
     views = web.driver.execute_script(
-        "return window.ordecClient.resultViewers.map(rv => rv.viewSelected);")
+        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
     assert views == views_before, \
         f"Stale report clicks must not open views: {views}"
     assert not web.driver.execute_script(

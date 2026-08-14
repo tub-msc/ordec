@@ -6,7 +6,6 @@ import { mat4, vec2 } from "gl-matrix";
 import earcut from 'earcut';
 
 import { siFormat } from './siformat.js';
-import { viewEventBus } from '../event-bus.js';
 import { View, CoordinateDisplay } from './view.js';
 
 // See: https://github.com/mdn/dom-examples/blob/main/webgl-examples/tutorial/sample2/webgl-demo.js
@@ -231,8 +230,8 @@ export class LayoutView extends View {
 
         // Selections made before this view was opened; taken by update(),
         // once there is layout data to highlight in and a wire hash to match.
-        this.pendingDrc = viewEventBus.getPending('drc:select');
-        this.pendingLvs = viewEventBus.getPending('lvs:select');
+        this.pendingDrc = this.eventBus.getPending('drc:select');
+        this.pendingLvs = this.eventBus.getPending('lvs:select');
 
         this.onPagehide = () => this.destroy();
         window.addEventListener('pagehide', this.onPagehide);

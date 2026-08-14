@@ -162,7 +162,7 @@ def request_integrated_example(web, testcase):
 
     res_viewers = web.driver.execute_script("""
         let res = {};
-        window.ordecClient.resultViewers.forEach(function(rv) {
+        window.ordecApp.client.resultViewers.forEach(function(rv) {
             res[rv.viewSelected] = rv.testInfo();
         });
         return res;
@@ -197,7 +197,7 @@ def request_local(web, module, request_views):
 
     for view in request_views:
         found = web.driver.execute_script("""
-            let rv = window.ordecClient.resultViewers[0];
+            let rv = window.ordecApp.client.resultViewers[0];
             let found = false;
             Array.prototype.forEach.call(rv.viewSelector.options, (o) => {
                 if(o.value == arguments[0]) {
@@ -214,7 +214,7 @@ def request_local(web, module, request_views):
         web.wait_for_ready()
 
         v = web.driver.execute_script("""
-            let rv = window.ordecClient.resultViewers[0];
+            let rv = window.ordecApp.client.resultViewers[0];
             return rv.testInfo();
         """)
 
@@ -337,7 +337,7 @@ def test_course(web):
         // Register the new viewers with the client right away instead of
         // relying on GoldenLayout's stateChanged event timing:
         const all = window.courseController.deps.getResultViewers();
-        window.ordecClient.registerResultViewers(all);
+        window.ordecApp.client.registerResultViewers(all);
         const rvs = all.filter(rv => !rv.courseMode && !rv.viewSelected);
         rvs[0]._onViewSelected('HelloWorld().schematic');
         rvs[1]._onViewSelected('HelloWorld().hello');
@@ -702,14 +702,14 @@ def test_progress_and_cancel(web):
 
     # Replace the source with a slow view and reconnect.
     web.driver.execute_script("""
-        window.ordecClient.src = arguments[0];
-        window.ordecClient.connect();
+        window.ordecApp.client.src = arguments[0];
+        window.ordecApp.client.connect();
     """, SLOW_VIEW_SRC)
     web.wait_for_ready()
 
     def rv_js(script):
         return web.driver.execute_script(
-            "let rv = window.ordecClient.resultViewers[0];" + script)
+            "let rv = window.ordecApp.client.resultViewers[0];" + script)
 
     rv_js("rv._onViewSelected('slow()');")
 
@@ -759,12 +759,12 @@ def {name}():
 
     def rv_js(script):
         return web.driver.execute_script(
-            "let rv = window.ordecClient.resultViewers[0];" + script)
+            "let rv = window.ordecApp.client.resultViewers[0];" + script)
 
     def set_src(src):
         web.driver.execute_script("""
-            window.ordecClient.src = arguments[0];
-            window.ordecClient.connect();
+            window.ordecApp.client.src = arguments[0];
+            window.ordecApp.client.connect();
         """, src)
 
     set_src(named_view_src.format(name='before'))
@@ -777,7 +777,7 @@ def {name}():
     # A module build exception keeps the (stale) view list and selection.
     set_src("this is a syntax error(")
     WebDriverWait(web.driver, 10).until(lambda d:
-        web.driver.execute_script("return window.ordecClient.exception;"))
+        web.driver.execute_script("return window.ordecApp.client.exception;"))
     assert rv_js("return rv.viewSelected;") == 'before()'
 
     # "Rename" the view: the fresh viewlist no longer contains before().

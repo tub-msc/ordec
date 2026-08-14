@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { viewEventBus } from '../event-bus.js';
 import { View } from './view.js';
 
 const ARROW_COLLAPSED = '▶';
@@ -207,14 +206,14 @@ export class DrcView extends View {
         const layoutWireHash = (isTop ? data.layout_wire_hash : cell.layout_wire_hash) || null;
         // Clear the previous selection everywhere: its highlight may sit in a
         // viewer the new selection does not target.
-        viewEventBus.emit('drc:clear');
+        this.eventBus.emit('drc:clear');
         const payload = { shapes: item.shapes, layoutView, layoutWireHash };
-        viewEventBus.setPending('drc:select', payload);
-        viewEventBus.emit('drc:select', payload);
+        this.eventBus.setPending('drc:select', payload);
+        this.eventBus.emit('drc:select', payload);
         if (open && layoutView) {
             // Focuses the target view if open (matched by name or wire hash),
             // opens it otherwise.
-            viewEventBus.emit('layout:request-open', {
+            this.eventBus.emit('layout:request-open', {
                 view: layoutView,
                 wireHash: layoutWireHash,
                 sourceContainer: this.panelContainer,
@@ -235,8 +234,8 @@ export class DrcView extends View {
         if (deselectBtn) {
             deselectBtn.disabled = true;
         }
-        viewEventBus.clearPending('drc:select');
-        viewEventBus.emit('drc:clear');
+        this.eventBus.clearPending('drc:select');
+        this.eventBus.emit('drc:clear');
     }
 
     destroy() {
