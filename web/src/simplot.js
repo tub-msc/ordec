@@ -415,9 +415,13 @@ export class SimPlot {
     }
 
     setData(xValues, series) {
-        this.xValues = xValues;
+        // Non-finite values arrive as null (JSON has no NaN/Infinity, see
+        // Plot2D.element_webdata); map them back to NaN so the isFinite gap
+        // handling in the line/crosshair rendering applies.
+        this.xValues = xValues.map(v => v === null ? NaN : v);
         this.series = series.map((s, i) => ({
             ...s,
+            values: s.values.map(v => v === null ? NaN : v),
             color: s.color || signalColor(i),
             visible: true,
         }));
