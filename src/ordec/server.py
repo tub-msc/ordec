@@ -635,12 +635,17 @@ class ConnectionHandler:
                 pipe_inotify_abort_w.flush()
                 # "abort!" is just a dummy message to trigger select() and
                 # stop the inotify thread. See "Gracefully exit a blocking read()"
-                # in the inotify_simple documentation.
+                # in the inotify_simple documentation. Both pipe ends are
+                # owned and closed here, after the join: if the inotify
+                # thread has already exited (its websocket.send failed on a
+                # racing disconnect), the write just lands in the pipe buffer
+                # instead of hitting a closed read end (BrokenPipeError).
 
                 #print("Waiting for inotify thread...")
                 watch_thread.join()
                 #print("Inotify thread finished.")
                 pipe_inotify_abort_w.close()
+                pipe_inotify_abort_r.close()
 
         print(f"{remote}: websocket connection ended")
 
@@ -668,14 +673,20 @@ def background_inotify(watch_files, pipe_inotify_abort_r, websocket, websocket_l
             if inotify in readable:
                 for m in inotify.read(timeout=0):
                     with websocket_lock:
-                        websocket.send(json.dumps({'msg':'localmodule_changed'}))
+                        try:
+                            websocket.send(json.dumps({'msg':'localmodule_changed'}))
+                        except ConnectionClosed:
+                            # The client disconnected while events were
+                            # pending (common on reconnects, which this very
+                            # message triggers); nobody is listening anymore.
+                            return
                     # Currently multiple localmodule_changed messages are
                     # potentially sent to the client. Alternatively, the
                     # background_inotify thread could terminate after the first
                     # message.
     finally:
         inotify.close()
-        pipe_inotify_abort_r.close()
+        # The abort pipe (both ends) is owned and closed by handle_connection.
 
 
 def build_response(status: http.HTTPStatus=http.HTTPStatus.OK, mime_type: str='text/plain', data: bytes=None, extra_headers=None):
