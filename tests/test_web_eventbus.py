@@ -6,7 +6,10 @@ Tests for viewEventBus communication between DRC viewer and layout-gl.
 """
 
 import pytest
-import time
+
+# CSS selector for the schematic LVS highlight overlay group, shared by the
+# highlight-count query and the wait_until predicates below.
+HIGHLIGHT_GROUP = ".rescontent svg .lvs-highlight-group"
 
 
 def get_layout_state(web):
@@ -119,8 +122,11 @@ def test_pending_event_applied_on_layout_open(web):
         }
     """)
 
-    web.wait_for_ready()
-    time.sleep(0.5)
+    web.wait_until("""
+        const rv = window.ordecApp.client.resultViewers.find(
+            rv => rv.view && rv.view.testState);
+        return rv && rv.view.testState().highlightNumVertices > 0;
+    """)
 
     # Verify layout opened and applied the pending event
     state = get_layout_state(web)
@@ -182,8 +188,11 @@ def test_drc_pending_targeted_not_applied(web):
             }
         }
     """)
-    web.wait_for_ready()
-    time.sleep(0.5)
+    web.wait_until("""
+        const rv = window.ordecApp.client.resultViewers.find(
+            rv => rv.view && rv.view.testState);
+        return Boolean(rv);
+    """)
 
     state = get_layout_state(web)
     assert state is not None, "Layout should be open after selecting view"
@@ -218,8 +227,8 @@ def test_drc_subcell_item_select(web):
     qs_local = web.key.query_string_local(
         "tests.lib.drc_example_hier", "Top().drc_report")
     web.navigate(f'app.html#refreshall=true&{qs_local}')
-    web.wait_for_ready()
-    time.sleep(0.5)
+    web.wait_until(
+        "return !!document.querySelector('.drc-item.drc-item-subcell');")
 
     clicked = web.driver.execute_script("""
         const item = document.querySelector('.drc-item.drc-item-subcell');
@@ -228,8 +237,13 @@ def test_drc_subcell_item_select(web):
         return true;
     """)
     assert clicked, "Should find and click the subcell violation item"
-    web.wait_for_ready()
-    time.sleep(0.5)
+    web.wait_until("""
+        return window.ordecApp.client.resultViewers.some(rv =>
+            rv.view && rv.view.testState && rv.viewSelected
+            && rv.viewSelected.includes('cursor_at')
+            && rv.viewSelected.endsWith('.ref_layout')
+            && rv.view.testState().highlightNumVertices > 0);
+    """)
 
     states = get_layout_states_by_view(web)
     sub_views = [v for v in states if 'cursor_at' in v and v.endswith('.ref_layout')]
@@ -247,8 +261,13 @@ def test_drc_subcell_item_select(web):
         return true;
     """)
     assert clicked, "Should find and click the top-level violation item"
-    web.wait_for_ready()
-    time.sleep(0.5)
+    web.wait_until("""
+        return window.ordecApp.client.resultViewers.some(rv =>
+            rv.view && rv.view.testState && rv.viewSelected
+            && !rv.viewSelected.includes('cursor_at')
+            && rv.viewSelected.endsWith('.ref_layout')
+            && rv.view.testState().highlightNumVertices > 0);
+    """)
 
     states = get_layout_states_by_view(web)
     top_views = [v for v in states if 'cursor_at' not in v and v.endswith('.ref_layout')]
@@ -359,18 +378,13 @@ def load_schematic_view(web):
     """Load a schematic view using the lvs_example."""
     qs_local = web.key.query_string_local("tests.lib.lvs_example", "schematic()")
     web.navigate(f'app.html#refreshall=true&{qs_local}')
-    web.wait_for_ready()
-    time.sleep(0.5)
+    web.wait_until("return !!document.querySelector('.rescontent svg');")
 
 
 def get_schematic_highlight_count(web):
     """Check if schematic has lvs highlight overlay."""
-    return web.driver.execute_script("""
-        const svg = document.querySelector('.rescontent svg');
-        if (!svg) return 0;
-        const highlights = svg.querySelectorAll('.lvs-highlight-group rect');
-        return highlights.length;
-    """)
+    return web.driver.execute_script(
+        f"return document.querySelectorAll('{HIGHLIGHT_GROUP} rect').length;")
 
 
 @pytest.mark.web
@@ -386,7 +400,8 @@ def test_lvs_select_highlights_schematic_instance(web):
 
     emit_lvs_schem_select_nid(web, nid, 'device')
 
-    time.sleep(0.3)
+    web.wait_until(
+        f"return document.querySelectorAll('{HIGHLIGHT_GROUP} rect').length > 0;")
     count = get_schematic_highlight_count(web)
     assert count > 0, "Should have highlight after lvs:schem-select with schem_nid"
 
@@ -400,12 +415,14 @@ def test_lvs_clear_removes_schematic_highlight(web):
     assert nid is not None, "Should find instance 'pd'"
 
     emit_lvs_schem_select_nid(web, nid, 'device')
-    time.sleep(0.2)
+    web.wait_until(
+        f"return document.querySelectorAll('{HIGHLIGHT_GROUP} rect').length > 0;")
     count = get_schematic_highlight_count(web)
     assert count > 0, "Precondition: should have highlight"
 
     emit_lvs_clear(web)
-    time.sleep(0.2)
+    web.wait_until(
+        f"return document.querySelectorAll('{HIGHLIGHT_GROUP} rect').length === 0;")
 
     count = get_schematic_highlight_count(web)
     assert count == 0, "Should have no highlight after lvs:clear"
@@ -443,7 +460,7 @@ def test_lvs_select_hightlight_instance_pos(web):
 
     # pd is at y=2, pu is at y=8 in the test schematic
     emit_lvs_schem_select_nid(web, pd_nid, 'device')
-    time.sleep(0.3)
+    web.wait_until(f"return !!document.querySelector('{HIGHLIGHT_GROUP} rect');")
 
     highlight_y = get_highlight_y()
     pd_y = get_instance_y_by_nid(pd_nid)
@@ -459,7 +476,7 @@ def test_lvs_select_hightlight_instance_pos(web):
 
     # Also test pu highlight
     emit_lvs_schem_select_nid(web, pu_nid, 'device')
-    time.sleep(0.3)
+    web.wait_until(f"return !!document.querySelector('{HIGHLIGHT_GROUP} rect');")
 
     highlight_y = get_highlight_y()
     assert highlight_y is not None, "Should have highlight rect for pu"
@@ -488,7 +505,11 @@ def test_lvs_select_highlights_net(web):
     assert nid is not None, "Should find vss net"
 
     emit_lvs_schem_select_nid(web, nid, 'net')
-    time.sleep(0.3)
+    web.wait_until(f"""
+        const g = document.querySelector('{HIGHLIGHT_GROUP}');
+        return g && g.querySelectorAll('path').length
+            + g.querySelectorAll('circle').length > 0;
+    """)
 
     counts = get_net_highlight_count()
     total = counts['paths'] + counts['circles']
@@ -518,7 +539,8 @@ def test_lvs_select_highlights_pin(web):
     assert nid is not None, "Should find vss pin"
 
     emit_lvs_schem_select_nid(web, nid, 'pin')
-    time.sleep(0.3)
+    web.wait_until(
+        f"return document.querySelectorAll('{HIGHLIGHT_GROUP} circle').length > 0;")
 
     counts = get_pin_highlight_count()
     # Pin highlighting should create exactly one circle, no paths or rects
@@ -530,8 +552,7 @@ def load_lvs_report_view(web):
     """Load the LVS report view of the lvs_example in local mode."""
     qs_local = web.key.query_string_local("tests.lib.lvs_example", "lvs_report()")
     web.navigate(f'app.html#refreshall=true&{qs_local}')
-    web.wait_for_ready()
-    time.sleep(0.5)
+    web.wait_until("return !!document.querySelector('.lvs-circuit-link');")
 
 
 @pytest.mark.web
@@ -555,8 +576,12 @@ def test_lvs_circuit_links_open_views(web):
 
     web.driver.execute_script(
         'document.querySelector(\'.lvs-circuit-link[data-kind="layout"]\').click();')
-    web.wait_for_ready()
-    time.sleep(0.5)
+    web.wait_until("""
+        return window.ordecApp.client.resultViewers.some(rv =>
+            rv.view && rv.view.testState && rv.viewSelected
+            && rv.viewSelected.includes('cursor_at')
+            && rv.viewSelected.endsWith('.ref_layout'));
+    """)
 
     views = web.driver.execute_script(
         "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
@@ -568,8 +593,11 @@ def test_lvs_circuit_links_open_views(web):
 
     web.driver.execute_script(
         'document.querySelector(\'.lvs-circuit-link[data-kind="schem"]\').click();')
-    web.wait_for_ready()
-    time.sleep(0.5)
+    web.wait_until("""
+        return window.ordecApp.client.resultViewers.some(rv =>
+            rv.viewSelected && rv.viewSelected.endsWith('.ref_schematic')
+            && rv.viewUpToDate);
+    """)
 
     views = web.driver.execute_script(
         "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
@@ -590,11 +618,12 @@ def test_lvs_layout_link_dedup(web):
     # Open the same Layout under its plain view name first.
     web.driver.execute_script(
         "window.ordecApp.eventBus.emit('layout:request-open', {view: 'layout()'});")
-    web.wait_for_ready()
-    time.sleep(0.5)
+    web.wait_until("""
+        return window.ordecApp.client.resultViewers.some(
+            rv => rv.viewSelected === 'layout()' && rv.wireHash);
+    """)
 
-    views_before = web.driver.execute_script(
-        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
+    views_before = web.views_opened()
     assert 'layout()' in views_before
     hashes = web.driver.execute_script(
         "return window.ordecApp.client.resultViewers.map(rv => rv.wireHash);")
@@ -603,11 +632,8 @@ def test_lvs_layout_link_dedup(web):
     # The link addresses the same subgraph as an lvs_report()-derived name.
     web.driver.execute_script(
         'document.querySelector(\'.lvs-circuit-link[data-kind="layout"]\').click();')
-    time.sleep(0.5)
-    web.wait_for_ready()
 
-    views_after = web.driver.execute_script(
-        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
+    views_after = web.views_opened()
     assert views_after == views_before, \
         f"Layout link must not open a duplicate panel: {views_after}"
 
@@ -620,11 +646,13 @@ def test_lvs_layout_link_dedup(web):
             '.lvs-item-link[title="Highlight in layout and schematic"]')
             .closest('.lvs-item-row').click();
     """)
-    time.sleep(0.5)
-    web.wait_for_ready()
+    web.wait_until("""
+        const rv = window.ordecApp.client.resultViewers.find(
+            rv => rv.view && rv.view.testState);
+        return rv && rv.view.testState().highlightNumVertices > 0;
+    """)
 
-    views = web.driver.execute_script(
-        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
+    views = web.views_opened()
     assert not any(v and v.endswith('.ref_layout') for v in views), \
         f"Item select must not open a duplicate layout panel: {views}"
     state = get_layout_state(web)
@@ -640,8 +668,14 @@ def test_lvs_subcircuit_item_select(web):
     qs_local = web.key.query_string_local(
         "tests.lib.lvs_example_hier", "C_Hier().lvs_report")
     web.navigate(f'app.html#refreshall=true&{qs_local}')
-    web.wait_for_ready()
-    time.sleep(0.5)
+    web.wait_until("""
+        const circuits = Array.from(document.querySelectorAll('.lvs-circuit'));
+        const sub = circuits.find(c =>
+            c.querySelector('.lvs-circuit-header')
+            && c.querySelector('.lvs-circuit-header').textContent.includes('A_Default'));
+        return Boolean(sub && sub.querySelector(
+            '.lvs-item-row .lvs-item-link[title="Highlight in layout and schematic"]'));
+    """)
 
     # Click a device item row of the A_Default subcircuit pair (devices have
     # both layout_pos and schem_nid, so both viewers should open).
@@ -657,8 +691,14 @@ def test_lvs_subcircuit_item_select(web):
         return true;
     """)
     assert clicked, "Should find and click an item row of the A_Default pair"
-    web.wait_for_ready()
-    time.sleep(0.5)
+    web.wait_until("""
+        return window.ordecApp.client.resultViewers.some(rv =>
+            rv.view && rv.view.testState && rv.viewSelected
+            && rv.viewSelected.includes('cursor_at')
+            && rv.viewSelected.endsWith('.ref_layout')
+            && rv.view.testState().highlightNumVertices > 0)
+            && !!document.querySelector('.lvs-highlight-group');
+    """)
 
     views = web.driver.execute_script(
         "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
@@ -697,8 +737,13 @@ def test_lvs_subcircuit_item_select(web):
         return true;
     """)
     assert clicked, "Should find and click an item row of the C_Hier pair"
-    web.wait_for_ready()
-    time.sleep(0.5)
+    web.wait_until("""
+        return window.ordecApp.client.resultViewers.some(rv =>
+            rv.view && rv.view.testState && rv.viewSelected
+            && !rv.viewSelected.includes('cursor_at')
+            && rv.viewSelected.endsWith('.ref_layout')
+            && rv.view.testState().highlightNumVertices > 0);
+    """)
 
     states = get_layout_states_by_view(web)
     top_views = [v for v in states if 'cursor_at' not in v and v.endswith('.ref_layout')]
@@ -716,8 +761,7 @@ def test_lvs_stale_report_links_inert(web):
     regenerated views."""
     load_lvs_report_view(web)
 
-    views_before = web.driver.execute_script(
-        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
+    views_before = web.views_opened()
 
     # Mark the report view outdated, as after a source change.
     web.driver.execute_script("""
@@ -733,11 +777,9 @@ def test_lvs_stale_report_links_inert(web):
             '.lvs-item-link[title="Highlight in layout and schematic"]');
         link.closest('.lvs-item-row').click();
     """)
-    time.sleep(0.5)
-    web.wait_for_ready()
+    web.wait_until("return !!document.querySelector('.refreshbar-flash');")
 
-    views = web.driver.execute_script(
-        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
+    views = web.views_opened()
     assert views == views_before, \
         f"Stale report clicks must not open views: {views}"
     assert not web.driver.execute_script(

@@ -694,8 +694,6 @@ def slow():
 def test_progress_and_cancel(web):
     """Progress bar, cancel button and cancelled-state overlay of a slow
     view generator."""
-    from selenium.webdriver.support.wait import WebDriverWait
-
     web.resize_viewport()
     web.navigate('app.html#example=blank')
     web.wait_for_ready()
@@ -714,17 +712,19 @@ def test_progress_and_cancel(web):
     rv_js("rv._onViewSelected('slow()');")
 
     # Progress message and bar appear.
-    WebDriverWait(web.driver, 10).until(lambda d:
-        rv_js("return rv.refreshStatus.textContent;").startswith("step"))
-    WebDriverWait(web.driver, 10).until(lambda d:
-        rv_js("return parseFloat(rv.refreshProgressFill.style.width) > 0;"))
+    web.wait_until(
+        "return window.ordecApp.client.resultViewers[0]"
+        ".refreshStatus.textContent.startsWith('step');")
+    web.wait_until(
+        "return parseFloat(window.ordecApp.client.resultViewers[0]"
+        ".refreshProgressFill.style.width) > 0;")
 
     # Cancel via the overlay's cancel button. (The transient "Cancelling…"
     # label is not asserted: the cancelled terminal may arrive faster than
     # the next poll.)
     rv_js("rv.refreshCancel.click();")
-    WebDriverWait(web.driver, 10).until(lambda d:
-        rv_js("return rv.generationCancelled;"))
+    web.wait_until(
+        "return window.ordecApp.client.resultViewers[0].generationCancelled;")
     assert rv_js("return rv.refreshableText.textContent;") \
         == "View generation cancelled."
     web.wait_for_ready()  # no re-request of the cancelled view
@@ -732,8 +732,9 @@ def test_progress_and_cancel(web):
     # The overlay's Refresh button retries and the view now loads fully
     # (result is a str, shown as preformatted Report).
     rv_js("rv.resOverlayRefreshable.querySelector('button').click();")
-    WebDriverWait(web.driver, 30).until(lambda d:
-        rv_js("return rv.viewUpToDate;"))
+    web.wait_until(
+        "return window.ordecApp.client.resultViewers[0].viewUpToDate;",
+        timeout=30)
     assert "slow result" in rv_js("return rv.testInfo().html;")
 
 
@@ -743,8 +744,6 @@ def test_view_removed_deselects(web):
     its cell was renamed in the sources) is fully deselected: the stale
     render must not linger behind the "Select a view" placeholder. A build
     exception, in contrast, must keep the selection."""
-    from selenium.webdriver.support.wait import WebDriverWait
-
     named_view_src = '''
 from ordec.core import *
 
@@ -770,21 +769,21 @@ def {name}():
     set_src(named_view_src.format(name='before'))
     web.wait_for_ready()
     rv_js("rv._onViewSelected('before()');")
-    WebDriverWait(web.driver, 30).until(lambda d:
-        rv_js("return rv.viewUpToDate;"))
+    web.wait_until(
+        "return window.ordecApp.client.resultViewers[0].viewUpToDate;",
+        timeout=30)
     assert "before result" in rv_js("return rv.testInfo().html;")
 
     # A module build exception keeps the (stale) view list and selection.
     set_src("this is a syntax error(")
-    WebDriverWait(web.driver, 10).until(lambda d:
-        web.driver.execute_script("return window.ordecApp.client.exception;"))
+    web.wait_until("return window.ordecApp.client.exception;")
     assert rv_js("return rv.viewSelected;") == 'before()'
 
     # "Rename" the view: the fresh viewlist no longer contains before().
     set_src(named_view_src.format(name='after'))
     web.wait_for_ready()
-    WebDriverWait(web.driver, 10).until(lambda d:
-        rv_js("return rv.viewSelected;") is None)
+    web.wait_until(
+        "return window.ordecApp.client.resultViewers[0].viewSelected === null;")
     assert "before result" not in rv_js("return rv.testInfo().html;")
     assert rv_js("return getComputedStyle(rv.resEmpty).display;") != 'none'
     assert rv_js("return rv.restoreSelectedView;") is None
