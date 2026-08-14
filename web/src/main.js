@@ -241,34 +241,26 @@ layout.resizeWithContainerAutomatically = true;
 layout.registerComponent('editor', Editor);
 layout.registerComponent('result', ResultViewer);
 
+// The GoldenLayout content items that are components of the given name (e.g.
+// 'result' or 'editor'). The layout tree is the source of truth for which
+// viewers/editors currently exist, so all lookups below derive from it live.
+function componentItems(name) {
+    return layout.root.getAllContentItems()
+        .filter(item => item.isComponent && item.componentName === name);
+}
+
 function getResultViewers() {
-    let ret = [];
-    layout.root.getAllContentItems().forEach(e => {
-        if (!e.isComponent) return;
-        if (e.componentName != 'result') return;
-        ret.push(e.component);
-    });
-    return ret;
+    return componentItems('result').map(item => item.component);
 }
 
 function findResultViewerByView(viewName) {
-    for (const item of layout.root.getAllContentItems()) {
-        if (!item.isComponent || item.componentName !== 'result') continue;
-        if (item.component.viewSelected === viewName) {
-            return item;
-        }
-    }
-    return null;
+    return componentItems('result')
+        .find(item => item.component.viewSelected === viewName);
 }
 
 function findResultViewerByWireHash(wireHash) {
-    for (const item of layout.root.getAllContentItems()) {
-        if (!item.isComponent || item.componentName !== 'result') continue;
-        if (item.component.wireHash === wireHash) {
-            return item;
-        }
-    }
-    return null;
+    return componentItems('result')
+        .find(item => item.component.wireHash === wireHash);
 }
 
 function resolveExistingViewer(viewName, wireHash) {
@@ -282,11 +274,7 @@ function resolveExistingViewer(viewName, wireHash) {
 }
 
 function getEditor() {
-    for (const item of layout.root.getAllContentItems()) {
-        if (!item.isComponent || item.componentName !== 'editor') continue;
-        return item.component;
-    }
-    return null;
+    return componentItems('editor')[0]?.component;
 }
 
 document.querySelector("#newresview").onclick = () => {
