@@ -5,7 +5,7 @@ import * as d3 from "d3";
 import { mat4, vec2 } from "gl-matrix";
 import earcut from 'earcut';
 
-import { siFormat } from '../siformat.js';
+import { siFormat } from './siformat.js';
 import { viewEventBus } from '../event-bus.js';
 import { View, CoordinateDisplay } from './view.js';
 
