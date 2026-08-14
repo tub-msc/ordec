@@ -93,7 +93,7 @@ const reportElementClassOf = {
 }
 
 export class ReportView {
-    constructor(resContent) {
+    constructor(resContent, viewName, resultViewer, panelContainer) {
         this.resContent = resContent;
         this.renderers = [];
         this.reportContext = {
@@ -101,7 +101,7 @@ export class ReportView {
         };
     }
 
-    update(msgData) {
+    update(msgData, wireHash) {
         const elements = msgData.elements || [];
         const oldRenderers = this.renderers;
         this.renderers = [];

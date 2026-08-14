@@ -135,8 +135,11 @@ function calcLayerColor(color, layerId, dampen) {
 }
 
 export class LayoutGL {
-    constructor(resContent) {
+    constructor(resContent, viewName, resultViewer, panelContainer) {
         this.resContent = resContent;
+        this.viewName = viewName;
+        // Wire hash of the subgraph currently shown; set by each update().
+        this.wireHash = null;
         this.transform = d3.zoomIdentity.scale(1e-1,1e-1);
         this.projectionMatrix = mat4.create();
         this.visibility = new Map();
@@ -229,8 +232,8 @@ export class LayoutGL {
         viewEventBus.on('lvs:layout-select', this._onLvsSelect);
         viewEventBus.on('lvs:clear', this._onLvsClear);
 
-        // Applied in update(): viewName is only assigned after construction,
-        // so targeted pending selections cannot be filtered yet here.
+        // Selections made before this view was opened; taken by update(),
+        // once there is layout data to highlight in and a wire hash to match.
         this._pendingDrc = viewEventBus.getPending('drc:select');
         this._pendingLvs = viewEventBus.getPending('lvs:select');
 
@@ -319,17 +322,18 @@ export class LayoutGL {
         return Boolean(data.layoutWireHash && data.layoutWireHash === this.wireHash);
     }
 
-    // Takes the pending selection captured at construction time, when
-    // viewName was not yet assigned. Clears the slot in any case and returns
-    // the payload only if it applies to this viewer.
+    // Takes the pending selection captured at construction time, when the
+    // wire hash of the shown subgraph was not known yet. Clears the slot in
+    // any case and returns the payload only if it applies to this viewer.
     _takePendingSelection(field) {
         const pending = this[field];
         this[field] = null;
         return pending && this._selectionApplies(pending) ? pending : null;
     }
 
-    update(msgData) {
+    update(msgData, wireHash) {
         this.data = msgData;
+        this.wireHash = wireHash;
 
         // Pending selections are applied exactly once, without zooming; when
         // this is the first update, the selection also supplies the zoom

@@ -11,9 +11,7 @@ import { ReportView } from './report-view.js';
 import { DrcReport } from './drc-report.js';
 import { LvsReport } from './lvs-report.js';
 
-// Maps the type field of view messages to the class rendering that view
-// type. Each class lives in its own module; ResultViewer instantiates it
-// with the rescontent element and drives it via update()/destroy().
+// Maps the type field of view messages to the class rendering that view  type:
 const viewClassOf = {
     svg: SvgView,
     report: ReportView,
@@ -504,16 +502,15 @@ export class ResultViewer {
                     pre.innerText = 'no handler found for type ' + msg.type;
                     this.resContent.replaceChildren(pre);
                 } else if(this.view instanceof viewClass) {
-                    this.view.wireHash = this.wireHash;
-                    this.view.resultViewer = this;
-                    this.view.update(msg.data);
+                    this.view.update(msg.data, this.wireHash);
                 } else {
-                    this.view = new viewClass(this.resContent);
-                    this.view.viewName = this.viewSelected;
-                    this.view.wireHash = this.wireHash;
-                    this.view.resultViewer = this;
-                    this.view.glContainer = this.container;
-                    this.view.update(msg.data);
+                    // A view of another type may still be in place (the view
+                    // generator's result type changed); it holds event bus
+                    // listeners and GL resources that destroy() releases.
+                    this.view?.destroy?.();
+                    this.view = new viewClass(this.resContent,
+                        this.viewSelected, this, this.container);
+                    this.view.update(msg.data, this.wireHash);
                 }
                 this.updateOverlay();
             }

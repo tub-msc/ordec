@@ -47,15 +47,18 @@ function toggleSpan() {
 // meaningful in the pair's own subgraphs, and an untargeted broadcast
 // would paint them into unrelated layout/schematic views.
 export class LvsReport {
-    constructor(resContent) {
+    constructor(resContent, viewName, resultViewer, panelContainer) {
         this.resContent = resContent;
+        this.viewName = viewName;
+        this.resultViewer = resultViewer;
+        this.panelContainer = panelContainer;
         this.el = document.createElement('div');
         this.el.className = 'lvs-viewer';
         this.selectedItemNid = null;
         resContent.appendChild(this.el);
     }
 
-    update(data) {
+    update(data, wireHash) {
         const circuitMap = new Map();
         data.circuits.forEach(circuit => {
             circuitMap.set(circuit.nid, { ...circuit, itemsByType: { pin: [], net: [], device: [], subcircuit: [] } });
@@ -336,7 +339,7 @@ export class LvsReport {
             linkEl.addEventListener('click', (e) => {
                 e.stopPropagation();  // don't toggle circuit expansion
                 // See the drc-item guard: outdated reports are inert.
-                if (this.resultViewer && !this.resultViewer.viewUpToDate) {
+                if (!this.resultViewer.viewUpToDate) {
                     this.resultViewer.flashRefreshBar();
                     return;
                 }
@@ -350,7 +353,7 @@ export class LvsReport {
                     view: `${this.viewName}.subgraph.cursor_at(${nid}).${ref}`,
                     wireHash: (circuit && (kind === 'layout'
                         ? circuit.layout_wire_hash : circuit.schem_wire_hash)) || null,
-                    sourceContainer: this.glContainer,
+                    sourceContainer: this.panelContainer,
                 });
             });
         });
@@ -379,7 +382,7 @@ export class LvsReport {
             itemEl.addEventListener('click', (e) => {
                 e.stopPropagation();
                 // See the drc-item guard: outdated reports are inert.
-                if (this.resultViewer && !this.resultViewer.viewUpToDate) {
+                if (!this.resultViewer.viewUpToDate) {
                     this.resultViewer.flashRefreshBar();
                     return;
                 }
@@ -442,7 +445,7 @@ export class LvsReport {
                             schemView: hasSchemNid ? schemView : null,
                             layoutWireHash: hasLayoutPos ? layoutWireHash : null,
                             schemWireHash: hasSchemNid ? schemWireHash : null,
-                            sourceContainer: this.glContainer,
+                            sourceContainer: this.panelContainer,
                         });
                     }
                 }

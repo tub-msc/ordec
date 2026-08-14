@@ -9,8 +9,11 @@ import { CoordinateDisplay } from './viewer-coordinates.js';
 // Listens to lvs:schem-select and lvs:clear for LVS highlighting.
 // Also consumes pending 'lvs:select' on init if schematic opened after LVS item selected.
 export class SvgView {
-    constructor(resContent) {
+    constructor(resContent, viewName, resultViewer, panelContainer) {
         this.resContent = resContent;
+        this.viewName = viewName;
+        // Wire hash of the subgraph currently shown; set by each update().
+        this.wireHash = null;
         this.transform = d3.zoomIdentity;
         this.tooltip = document.createElement('div');
         this.tooltip.classList.add('schem-error-tooltip');
@@ -21,12 +24,7 @@ export class SvgView {
         this.resizeObserver = null;
 
         this._onLvsSelect = (data) => {
-            // Selections targeted at a specific schematic view (items of
-            // LVS subcircuit pairs) only apply to viewers showing that
-            // view: matched by name, or by wire hash for a viewer that
-            // shows the same subgraph under a different view name.
-            if (data && data.schemView && data.schemView !== this.viewName
-                    && !(data.schemWireHash && data.schemWireHash === this.wireHash)) {
+            if (data && !this._selectionApplies(data)) {
                 return;
             }
             this.setHighlight(data);
@@ -35,10 +33,17 @@ export class SvgView {
         viewEventBus.on('lvs:schem-select', this._onLvsSelect);
         viewEventBus.on('lvs:clear', this._onLvsClear);
 
-        const pending = viewEventBus.getPending('lvs:select');
-        if (pending) {
-            this._pendingHighlight = pending;
-        }
+        // A selection made before this view was opened; taken by update(),
+        // once there is an SVG to highlight in and a wire hash to match.
+        this._pendingHighlight = viewEventBus.getPending('lvs:select') || null;
+    }
+    // A selection payload applies to this viewer when it is untargeted, or
+    // when it names this view: by view name, or by the wire hash of a viewer
+    // showing the same subgraph under a different view name.
+    _selectionApplies(data) {
+        if (!data.schemView) return true;
+        if (data.schemView === this.viewName) return true;
+        return Boolean(data.schemWireHash && data.schemWireHash === this.wireHash);
     }
     zoomed({transform}) {
         this.transform = transform;
@@ -198,7 +203,8 @@ export class SvgView {
             this.highlightOverlay = null;
         }
     }
-    update(msgData) {
+    update(msgData, wireHash) {
+        this.wireHash = wireHash;
         const viewbox = msgData['viewbox'];
         const [vx, vy, vw, vh] = viewbox;
         const zoomExtent = [[vx, vy], [vx + vw, vy + vh]];
@@ -311,15 +317,10 @@ export class SvgView {
                 }
             });
 
-        if (this._pendingHighlight) {
-            const pending = this._pendingHighlight;
-            this._pendingHighlight = null;
-            // viewName is only assigned after construction, so targeted
-            // pending selections are filtered here instead.
-            if (!pending.schemView || pending.schemView === this.viewName
-                    || (pending.schemWireHash && pending.schemWireHash === this.wireHash)) {
-                this.setHighlight(pending);
-            }
+        const pending = this._pendingHighlight;
+        this._pendingHighlight = null;
+        if (pending && this._selectionApplies(pending)) {
+            this.setHighlight(pending);
         }
     }
     destroy() {

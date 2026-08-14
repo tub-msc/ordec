@@ -31,15 +31,18 @@ const ARROW_EXPANDED = '▼';
 // Subcell items whose DrcCell has no resolved ref_layout (e.g. KLayout
 // variant cells) cannot be highlighted anywhere and are not selectable.
 export class DrcReport {
-    constructor(resContent) {
+    constructor(resContent, viewName, resultViewer, panelContainer) {
         this.resContent = resContent;
+        this.viewName = viewName;
+        this.resultViewer = resultViewer;
+        this.panelContainer = panelContainer;
         this.el = document.createElement('div');
         this.el.className = 'drc-viewer';
         this.selectedItemNid = null;
         resContent.appendChild(this.el);
     }
 
-    update(data) {
+    update(data, wireHash) {
         const catMap = new Map();
         data.categories.forEach(cat => {
             catMap.set(cat.nid, { ...cat, items: [], count: 0 });
@@ -177,7 +180,7 @@ export class DrcReport {
             // An outdated report must not drive navigation or
             // highlights: its nids, positions and hashes may not
             // match the regenerated views.
-            if (this.resultViewer && !this.resultViewer.viewUpToDate) {
+            if (!this.resultViewer.viewUpToDate) {
                 this.resultViewer.flashRefreshBar();
                 return;
             }
@@ -212,7 +215,7 @@ export class DrcReport {
                 viewEventBus.emit('layout:request-open', {
                     view: layoutView,
                     wireHash: layoutWireHash,
-                    sourceContainer: this.glContainer,
+                    sourceContainer: this.panelContainer,
                 });
             }
         });
