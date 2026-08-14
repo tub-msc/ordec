@@ -194,6 +194,12 @@ export class ResultViewer {
     }
 
     updateProgress(msg) {
+        if (msg.view !== this.viewSelected) {
+            // Progress of a request dispatched for a previously selected
+            // view (see updateView); it must not overwrite the overlay of
+            // the current selection.
+            return;
+        }
         this.refreshStatus.textContent = msg.status;
         if (msg.fraction != null) {
             this.refreshProgress.style.display = '';
@@ -256,6 +262,10 @@ export class ResultViewer {
     }
 
     _onViewSelected(viewName) {
+        // A request still in flight belongs to the previous selection; its
+        // result will be dropped (see updateView), so cancel the generation
+        // instead of letting the new request wait behind it.
+        this.client.cancelView(this);
         this.viewSelected = viewName;
         this.container.setState({ view: viewName });
         this.container.setTitle(viewName);
@@ -270,6 +280,7 @@ export class ResultViewer {
     }
 
     _onViewDeselected() {
+        this.client.cancelView(this);
         this.viewSelected = null;
         this.viewUpToDate = false;
         this.view?.destroy?.();
@@ -480,6 +491,14 @@ export class ResultViewer {
     }
 
     updateView(msg) {
+        if (msg.view !== this.viewSelected) {
+            // Terminal of a request dispatched for a view that is no longer
+            // selected in this viewer: its content, cancelled state and wire
+            // hash all describe the old selection. Drop it; the client's
+            // requestViews() call following every terminal then dispatches
+            // the request for the current selection.
+            return;
+        }
         if (msg.cancelled) {
             // Terminal state of a cancelled generation: the view stays out
             // of date, but is not re-requested until the user asks for it
