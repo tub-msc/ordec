@@ -46,9 +46,12 @@ export class SimPlot {
             xscale: options.xscale || 'linear',
             yscale: options.yscale || 'linear',
             fixedHeight: options.fixedHeight || null,
-            onXDomainChange: options.onXDomainChange || null,
-            onCrosshairXChange: options.onCrosshairXChange || null,
         };
+
+        // Group-sync callbacks, set only by setSyncCallbacks() (see the plot
+        // group wiring in report-view.js).
+        this.onXDomainChange = null;
+        this.onCrosshairXChange = null;
 
         this.xValues = null;
         this.series = [];
@@ -237,8 +240,8 @@ export class SimPlot {
     }
 
     setSyncCallbacks({ onXDomainChange = null, onCrosshairXChange = null } = {}) {
-        this.options.onXDomainChange = onXDomainChange;
-        this.options.onCrosshairXChange = onCrosshairXChange;
+        this.onXDomainChange = onXDomainChange;
+        this.onCrosshairXChange = onCrosshairXChange;
     }
 
     getXDomain() {
@@ -247,17 +250,17 @@ export class SimPlot {
     }
 
     _emitXDomainChange() {
-        if (this._suppressXDomainChange || !this.options.onXDomainChange || !this._xScale) {
+        if (this._suppressXDomainChange || !this.onXDomainChange || !this._xScale) {
             return;
         }
-        this.options.onXDomainChange(this._xScale.domain().slice());
+        this.onXDomainChange(this._xScale.domain().slice());
     }
 
     _emitCrosshairXChange(xValue) {
-        if (this._suppressCrosshairChange || !this.options.onCrosshairXChange) {
+        if (this._suppressCrosshairChange || !this.onCrosshairXChange) {
             return;
         }
-        this.options.onCrosshairXChange(xValue);
+        this.onCrosshairXChange(xValue);
     }
 
     _nearestXIndex(xValue) {
@@ -479,6 +482,30 @@ export class SimPlot {
     _render() {
         if (!this.xValues || !this.series.length) return;
 
+        const dims = this._renderGeometry();
+        if (!dims) return;
+        const { w, h } = dims;
+
+        const { xScale, xBase } = this._computeXScale(w);
+        const yScale = this._computeYScale(xScale, h);
+
+        this._renderAxesAndGrid(xScale, yScale, w, h);
+        this._renderSeries(xScale, yScale);
+
+        // Store scales/dimensions for crosshair interaction.
+        this._xScale = xScale;
+        this._yScale = yScale;
+        this._xBase = xBase;
+        this._plotW = w;
+        this._plotH = h;
+
+        this._restoreCrosshair();
+    }
+
+    // Sizes the SVG, plot area and clip rect from the current wrapper size.
+    // Returns the inner plot dimensions {w, h}, or null when there is no room
+    // to draw (during teardown or before the first layout).
+    _renderGeometry() {
         const wrapperRect = this.wrapper.getBoundingClientRect();
         const legendH = this.legendEl.getBoundingClientRect().height;
         const svgW = wrapperRect.width;
@@ -486,13 +513,17 @@ export class SimPlot {
         const w = svgW - MARGIN.left - MARGIN.right;
         const h = svgH - MARGIN.top - MARGIN.bottom;
 
-        if (w <= 0 || h <= 0) return;
+        if (w <= 0 || h <= 0) return null;
 
         this.svg.attr('width', svgW).attr('height', svgH);
         this.plotArea.attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
         this.svg.select(`#${this.clipId} rect`).attr('width', w).attr('height', h);
+        return { w, h };
+    }
 
-        // X scale
+    // X scale for the data extent under the current zoom transform. xBase is
+    // the un-zoomed scale, returned for crosshair math.
+    _computeXScale(w) {
         const xDomain = d3.extent(this.xValues);
         let xBase;
         if (this.options.xscale === 'log') {
@@ -502,9 +533,12 @@ export class SimPlot {
         } else {
             xBase = d3.scaleLinear().domain(xDomain).range([0, w]);
         }
-        const xScale = this.currentTransform.rescaleX(xBase);
+        return { xScale: this.currentTransform.rescaleX(xBase), xBase };
+    }
 
-        // Y extent from visible x range for visible series
+    // Y scale fitted to the visible series within the current x range, with the
+    // Y zoom/pan applied (in log space for a log axis).
+    _computeYScale(xScale, h) {
         const [xLo, xHi] = xScale.domain();
         let yMin = Infinity, yMax = -Infinity;
         this.series.filter(s => s.visible).forEach(s => {
@@ -521,27 +555,25 @@ export class SimPlot {
         });
         if (!isFinite(yMin)) { yMin = -1; yMax = 1; }
 
-        // Apply Y zoom/pan, working in log space for log scale
-        let yScale;
         if (this.options.yscale === 'log') {
             const logMin = Math.log10(Math.max(yMin, 1e-30));
             const logMax = Math.log10(Math.max(yMax, 1e-29));
             const logPad = (logMax - logMin) * 0.05 || 0.5;
             const logCenter = (logMin + logMax) / 2 + this._yPanOffset;
             const logHalfRange = ((logMax - logMin) / 2 + logPad) / this._yZoomScale;
-            yScale = d3.scaleLog()
+            return d3.scaleLog()
                 .domain([10 ** (logCenter - logHalfRange), 10 ** (logCenter + logHalfRange)])
                 .range([h, 0]);
-        } else {
-            const yPad = (yMax - yMin) * 0.05 || 0.5;
-            const yCenter = (yMin + yMax) / 2 + this._yPanOffset;
-            const yHalfRange = ((yMax - yMin) / 2 + yPad) / this._yZoomScale;
-            yScale = d3.scaleLinear()
-                .domain([yCenter - yHalfRange, yCenter + yHalfRange])
-                .range([h, 0]);
         }
+        const yPad = (yMax - yMin) * 0.05 || 0.5;
+        const yCenter = (yMin + yMax) / 2 + this._yPanOffset;
+        const yHalfRange = ((yMax - yMin) / 2 + yPad) / this._yZoomScale;
+        return d3.scaleLinear()
+            .domain([yCenter - yHalfRange, yCenter + yHalfRange])
+            .range([h, 0]);
+    }
 
-        // Axes
+    _renderAxesAndGrid(xScale, yScale, w, h) {
         const xTickCount = Math.max(Math.floor(w / 80), 3);
         const yTickCount = Math.max(Math.floor(h / 40), 3);
 
@@ -563,7 +595,6 @@ export class SimPlot {
         }
         this.yAxisG.call(yAxis);
 
-        // Grid lines
         const xGrid = d3.axisBottom(xScale).tickSize(-h).tickFormat('');
         if (this.options.xscale === 'log') {
             xGrid.ticks(xTickCount, "");
@@ -582,11 +613,11 @@ export class SimPlot {
         }
         this.yGridG.call(yGrid);
 
-        // Labels
         this.xLabelEl.attr('x', w / 2).attr('y', h + MARGIN.bottom - 5);
         this.yLabelEl.attr('x', -h / 2).attr('y', -MARGIN.left + 15);
+    }
 
-        // Lines
+    _renderSeries(xScale, yScale) {
         const line = d3.line()
             .defined((d) => isFinite(d))
             .x((d, i) => xScale(this.xValues[i]))
@@ -607,16 +638,12 @@ export class SimPlot {
             .attr('stroke-width', 1.5);
 
         paths.exit().remove();
+    }
 
-        // Store scales for crosshair interaction
-        this._xScale = xScale;
-        this._yScale = yScale;
-        this._xBase = xBase;
-        this._plotW = w;
-        this._plotH = h;
-
-        // Size the hover rect to cover plot area
-        this.hoverRect.attr('width', w).attr('height', h);
+    // Sizes the hover rect to the plot area and re-draws the crosshair at its
+    // stored index, so it survives a re-render (resize, zoom, recolor).
+    _restoreCrosshair() {
+        this.hoverRect.attr('width', this._plotW).attr('height', this._plotH);
         if (this._crosshairIndex !== null) {
             this._showCrosshairAtIndex(this._crosshairIndex);
         }
