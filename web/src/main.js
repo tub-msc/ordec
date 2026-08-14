@@ -507,6 +507,40 @@ function wrapStackInRow(sourceStack, itemConfig) {
     }
 }
 
+// Opens result viewers for componentConfigs (GoldenLayout 'result' component
+// configs) beside the stack holding sourceContainer: as the next sibling if
+// that stack sits in a row, otherwise by wrapping the stack in a new row (see
+// wrapStackInRow). A single config is placed on its own; several are grouped in
+// a column. With no source stack (e.g. the source is the ground/root), the
+// viewers open as new top-level stacks instead.
+function openViewsBesideSource(sourceContainer, componentConfigs) {
+    if (componentConfigs.length === 0) {
+        return;
+    }
+
+    const sourceStack = sourceContainer?.parent?.parent;
+
+    if (!sourceStack?.isStack) {
+        componentConfigs.forEach(config => {
+            layout.addComponent('result', config.componentState, config.title);
+        });
+        return;
+    }
+
+    const itemToAdd = componentConfigs.length === 1
+        ? componentConfigs[0]
+        : { type: 'column', content: componentConfigs };
+
+    const stackParent = sourceStack.parent;
+
+    if (stackParent.isRow) {
+        const index = stackParent.contentItems.indexOf(sourceStack) + 1;
+        stackParent.addItem(itemToAdd, index);
+    } else {
+        wrapStackInRow(sourceStack, itemToAdd);
+    }
+}
+
 function openOrActivateView(data) {
     const view = data.view;
 
@@ -528,23 +562,7 @@ function openOrActivateView(data) {
         title,
     };
 
-    const sourceContainer = data.sourceContainer;
-    const sourceComponentItem = sourceContainer?.parent;
-    const sourceStack = sourceComponentItem?.parent;
-
-    if (!sourceStack?.isStack) {
-        layout.addComponent('result', componentState, title);
-        return;
-    }
-
-    const stackParent = sourceStack.parent;
-
-    if (stackParent.isRow) {
-        const index = stackParent.contentItems.indexOf(sourceStack) + 1;
-        stackParent.addItem(componentConfig, index);
-    } else {
-        wrapStackInRow(sourceStack, componentConfig);
-    }
+    openViewsBesideSource(data.sourceContainer, [componentConfig]);
 }
 
 viewEventBus.on('layout:request-open', openOrActivateView);
@@ -600,31 +618,7 @@ viewEventBus.on('lvs:request-open-views', (data) => {
         }
     }
 
-    if (columnContent.length === 0) {
-        return;
-    }
-
-    const sourceComponentItem = sourceContainer?.parent;
-    const sourceStack = sourceComponentItem?.parent;
-
-    if (!sourceStack?.isStack) {
-        columnContent.forEach(config => {
-            layout.addComponent('result', config.componentState, config.title);
-        });
-        return;
-    }
-
-    const stackParent = sourceStack.parent;
-    const itemToAdd = columnContent.length === 1
-        ? columnContent[0]
-        : { type: 'column', content: columnContent };
-
-    if (stackParent.isRow) {
-        const index = stackParent.contentItems.indexOf(sourceStack) + 1;
-        stackParent.addItem(itemToAdd, index);
-    } else {
-        wrapStackInRow(sourceStack, itemToAdd);
-    }
+    openViewsBesideSource(sourceContainer, columnContent);
 });
 
 document.querySelector("#examples").onclick = () => {
