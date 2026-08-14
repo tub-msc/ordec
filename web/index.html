@@ -308,6 +308,10 @@
         })
         .catch(err => console.error('Failed to fetch api/version:', err));
     </script>
-    <script type="module" src="/src/auth.js"></script>
+    <script type="module">
+      // Strip #auth= from the URL and stash the token for app.html to read.
+      import { initSession } from '/src/auth.js';
+      initSession();
+    </script>
   </body>
 </html>
