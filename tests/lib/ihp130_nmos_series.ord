@@ -13,9 +13,32 @@ only, with no Cont and no Metal1 of its own.
 """
 
 from ordec.core import *
-from ordec.lib.ihp130 import Nmos, Ptap, SG13G2, run_drc
+from ordec.lib.ihp130 import Nmos, Ptap, SG13G2, run_drc, run_lvs
 
 cell SeriesNmos:
+    viewgen symbol(self) -> Symbol:
+        # Two independent gates g1/g2, a shared bottom terminal s (also the
+        # bulk tie), and the top drain d. The middle source/drain node is
+        # internal and has no pin.
+        inout d:  .align=North
+        inout s:  .align=South
+        input g1
+        input g2
+
+    viewgen schematic(self) -> Schematic:
+        net mid  # shared source/drain diffusion between the two devices
+
+        port d:  .pos=(2, 13); .align=East
+        port s:  .pos=(2, 1);  .align=East
+        port g1: .pos=(1, 4)
+        port g2: .pos=(1, 10)
+
+        # m1 (lower device): source and bulk on s, drain on the internal node.
+        # m2 (upper device): source on the internal node, drain on d. Both
+        # bulks tie to s, which the layout realises through the ptap.
+        Nmos(w=1u, l=130n) m1: .pos=(3, 2); .d -- mid; .g -- g1; .s -- s;   .b -- s
+        Nmos(w=1u, l=130n) m2: .pos=(3, 8); .d -- d;   .g -- g2; .s -- mid; .b -- s
+
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
@@ -32,20 +55,61 @@ cell SeriesNmos:
         Ptap(l=0.7u, w=0.7u) ptap
 
         # Source of the lower device tied to the bulk tap, which also places
-        # ptap relative to the devices:
+        # ptap relative to the devices. Carries the s (source/bulk) pin:
         LayoutRect m1_s:
             .layer = layers.Metal1
             ! .southwest == ptap.m1.southeast
             ! .southeast == m1.sd[0].southwest
             ! .height == 160
             ! .width == 800
+            .create_pin(self.symbol.s)
 
-        # Drain of the upper device, extended to meet the Metal1 min. area:
+        # Drain of the upper device, extended to meet the Metal1 min. area.
+        # Carries the d pin:
         LayoutRect m1_d:
             .layer = layers.Metal1
             ! .south == m2.sd[1].north
             ! .width == 160
             ! .height == 500
+            .create_pin(self.symbol.d)
+
+        # Gate contacts. Each gate poly is extended south into the free field
+        # below the devices with a landing pad wide enough for the Cont
+        # enclosure (0.07 um each side), then contacted up to a Metal1 pin.
+        # Routing both gates south keeps them clear of the s/d Metal1 and of
+        # each other (the two 0.32 um pads, 0.51 um apart, keep >= 0.18 um).
+        LayoutRect g1_poly:
+            .layer = layers.GatPoly
+            ! .cx == m1.poly[0].cx
+            ! .north == m1.poly[0].south
+            ! .size == (320, 600)
+        LayoutRect g1_cont:
+            .layer = layers.Cont
+            ! .size == (160, 160)
+            ! .center == g1_poly.center
+        LayoutRect g1_m1:
+            .layer = layers.Metal1
+            ! .center == g1_cont.center
+            ! .size == (320, 400)
+            .create_pin(self.symbol.g1)
+
+        LayoutRect g2_poly:
+            .layer = layers.GatPoly
+            ! .cx == m2.poly[0].cx
+            ! .north == m2.poly[0].south
+            ! .size == (320, 600)
+        LayoutRect g2_cont:
+            .layer = layers.Cont
+            ! .size == (160, 160)
+            ! .center == g2_poly.center
+        LayoutRect g2_m1:
+            .layer = layers.Metal1
+            ! .center == g2_cont.center
+            ! .size == (320, 400)
+            .create_pin(self.symbol.g2)
 
     viewgen drc(self) -> DrcReport:
         . = run_drc(self.layout)
+
+    viewgen lvs(self) -> LvsReport:
+        . = run_lvs(self.layout, self.symbol)

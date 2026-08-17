@@ -45,3 +45,9 @@ def test_drc_violation():
 def test_series_nmos_drc_clean():
     """The uncontacted source/drain needs no Activ of its own to pass DRC."""
     assert SeriesNmos().drc.summary() == {}
+
+
+def test_series_nmos_lvs_clean():
+    """The abutted pair matches its two-transistor series schematic, with the
+    shared bare diffusion as the internal source/drain node."""
+    assert SeriesNmos().lvs.clean()
