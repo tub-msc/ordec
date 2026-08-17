@@ -1,6 +1,9 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import struct
+
+import cbor2
 import pytest
 from ordec.core import *
 from ordec.core import ordb
@@ -49,6 +52,8 @@ class WItem(Node):
     raw = Attr(bytes)
     tup = Attr(tuple)
     loc = Attr(SourceLocInfo)
+    col = Attr(SimColumn)
+    ser = Attr(SimSeries)
 
 class WNoWire(Node):
     in_subgraphs = [WHead]
@@ -186,6 +191,98 @@ def test_unsupported_value(ept):
     orig = WHead(obj=live_obj, blob=frozenset({1})).freeze()
     with pytest.raises(TypeError, match="WHead.blob"):
         orig.subgraph.wire_encode(ept)
+
+def test_tuple_attr_mutable_element():
+    # Caught at insertion time, not first at wire_encode:
+    with pytest.raises(TypeError, match="recursively immutable"):
+        WItem(label='bad', tup=([1, 2], 3))
+
+# SimColumn / SimSeries blob-table encoding
+# -----------------------------------------
+
+def build_sim_array():
+    """Two interleaved point-major columns sharing one buffer."""
+    data = struct.pack('<6d', 0.0, 1.0, 1e-6, 2.0, 2e-6, 3.0)
+    return SimArray([SimArrayField('time', 'f8', Quantity.TIME),
+        SimArrayField('v(out)', 'f8', Quantity.VOLTAGE)], data)
+
+def blob_count(wire_bytes):
+    # Raw structural peek; tags stay CBORTag objects without a hook.
+    return len(cbor2.loads(wire_bytes)[0])
+
+def test_simcolumn_roundtrip(ept):
+    arr = build_sim_array()
+    orig = WHead(obj=live_obj)
+    orig.item = WItem(label='c', col=arr.column('v(out)'))
+    orig = orig.freeze()
+    back = wire_decode(orig.subgraph.wire_encode(ept), ept,
+        orig.subgraph.wire_deps(ept))
+    assert back.subgraph == orig.subgraph
+    col = back.item.col
+    assert list(col) == [1.0, 2.0, 3.0]
+    assert col.name == 'v(out)'
+    assert col.quantity == Quantity.VOLTAGE
+    assert col == arr.column('v(out)')
+
+def test_simseries_roundtrip(ept):
+    arr = build_sim_array()
+    ser = SimSeries(arr.column('v(out)'), [arr.column('time')])
+    orig = WHead(obj=live_obj)
+    orig.item = WItem(label='s', ser=ser)
+    orig = orig.freeze()
+    back = wire_decode(orig.subgraph.wire_encode(ept), ept,
+        orig.subgraph.wire_deps(ept))
+    assert back.item.ser == ser
+    assert list(back.item.ser) == [1.0, 2.0, 3.0]
+    (scale,) = back.item.ser.scales
+    assert scale.quantity == Quantity.TIME
+    assert list(scale) == [0.0, 1e-6, 2e-6]
+    # Values and scale still share one decoded buffer:
+    assert back.item.ser.values._data is scale._data
+
+def test_blob_dedup(ept):
+    # All columns view one buffer: one blob table entry, shipped once.
+    arr = build_sim_array()
+    h = WHead(obj=live_obj)
+    h.a = WItem(label='a', col=arr.column('time'))
+    h.b = WItem(label='b', col=arr.column('v(out)'),
+        ser=SimSeries(arr.column('v(out)'), [arr.column('time')]))
+    data = h.freeze().subgraph.wire_encode(ept)
+    assert blob_count(data) == 1
+
+def test_blob_determinism(ept):
+    def build():
+        arr = build_sim_array()
+        h = WHead(obj=live_obj)
+        h.a = WItem(label='a', col=arr.column('time'))
+        h.b = WItem(label='b', col=arr.column('v(out)'))
+        return h.freeze()
+    assert build().subgraph.wire_encode(ept) == \
+        build().subgraph.wire_encode(ept)
+
+def test_simcolumn_value_vs_wire_identity(ept):
+    # A strided view and a contiguous repack are value-equal, but their
+    # wire bytes differ (blob bytes are representation identity).
+    view = build_sim_array().column('v(out)')
+    copy = SimColumn.from_values(list(view), name=view.name,
+        quantity=view.quantity)
+    assert view == copy
+    assert hash(view) == hash(copy)
+    def encode(c):
+        h = WHead(obj=live_obj)
+        h.item = WItem(label='c', col=c)
+        return h.freeze().subgraph.wire_encode(ept)
+    assert encode(view) != encode(copy)
+
+def test_simcolumn_corrupt_layout(ept):
+    orig = WHead(obj=live_obj)
+    orig.item = WItem(label='c', col=build_sim_array().column('time'))
+    data = orig.freeze().subgraph.wire_encode(ept)
+    # Truncate the blob table: the column layout must fail validation.
+    tree = cbor2.loads(data)
+    tree[0] = [tree[0][0][:8]]
+    with pytest.raises(WireError, match="exceeds blob size"):
+        wire_decode(cbor2.dumps(tree, canonical=True), ept)
 
 # Want/have exchange
 # ------------------

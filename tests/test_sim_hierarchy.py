@@ -109,15 +109,19 @@ def test_export_no_sim_data():
 
 
 def test_to_numpy_all():
-    """Test to_numpy() with all fields (include=None), raw names."""
+    """Test to_numpy() with all node-mapped signals (include=None), raw names."""
     import numpy as np
     tb = lib_test.ResdivHierTb()
     h = tb.sim_op
     arr = h.to_numpy(translate_names=False)
     assert isinstance(arr, np.ndarray)
-    assert len(arr) == len(h.sim_data)
-    for f in h.sim_data.fields:
-        assert f.fid in arr.dtype.names
+    assert len(arr) == len(h.r.voltage)
+    for sn in h.all(SimNet):
+        if sn.voltage is not None:
+            assert sn.voltage.values.name in arr.dtype.names
+    for sp in h.all(SimPin):
+        if sp.current is not None:
+            assert sp.current.values.name in arr.dtype.names
 
 
 def test_to_numpy_include():
@@ -127,9 +131,9 @@ def test_to_numpy_include():
     h = tb.sim_op
     arr = h.to_numpy(include=[h.r, h.I2.p], translate_names=False)
     assert isinstance(arr, np.ndarray)
-    assert len(arr) == len(h.sim_data)
-    assert h.r.voltage_field in arr.dtype.names
-    assert h.I2.p.current_field in arr.dtype.names
+    assert len(arr) == len(h.r.voltage)
+    assert h.r.voltage.values.name in arr.dtype.names
+    assert h.I2.p.current.values.name in arr.dtype.names
     # DC op-point has no independent variable, so just 2 fields
     assert len(arr.dtype.names) == 2
 
@@ -143,7 +147,7 @@ def test_to_numpy_invalid_include():
 
 
 def test_write_csv_all(tmp_path):
-    """Test write_csv() with all fields (include=None), raw names."""
+    """Test write_csv() with all node-mapped signals (include=None), raw names."""
     import csv
     tb = lib_test.ResdivHierTb()
     h = tb.sim_op
@@ -153,9 +157,10 @@ def test_write_csv_all(tmp_path):
         reader = csv.reader(f)
         header = next(reader)
         rows = list(reader)
-    assert len(rows) == len(h.sim_data)
-    for f in h.sim_data.fields:
-        assert f.fid in header
+    assert len(rows) == len(h.r.voltage)
+    for sn in h.all(SimNet):
+        if sn.voltage is not None:
+            assert sn.voltage.values.name in header
 
 
 def test_write_csv_include(tmp_path):
@@ -169,9 +174,9 @@ def test_write_csv_include(tmp_path):
         reader = csv.reader(f)
         header = next(reader)
         rows = list(reader)
-    assert len(rows) == len(h.sim_data)
-    assert h.r.voltage_field in header
-    assert h.I2.p.current_field in header
+    assert len(rows) == len(h.r.voltage)
+    assert h.r.voltage.values.name in header
+    assert h.I2.p.current.values.name in header
     # DC op-point has no independent variable, so just 2 fields
     assert len(header) == 2
 
@@ -181,14 +186,17 @@ def test_to_numpy_with_time_axis():
     import numpy as np
     tb = lib_test.VpwlTb()
     h = tb.sim_tran
-    assert h.time_field is not None
+    assert h.time is not None
+    # The writer shares one scale column object across all series:
+    assert h.out.voltage.scales == (h.time,)
+    assert h.out.voltage.scales[0] is h.time
     arr = h.to_numpy(include=[h.out], translate_names=False)
-    assert h.time_field in arr.dtype.names
-    assert h.out.voltage_field in arr.dtype.names
+    assert h.time.name in arr.dtype.names
+    assert h.out.voltage.values.name in arr.dtype.names
     # time + 1 voltage field
     assert len(arr.dtype.names) == 2
     # First column should be time
-    assert arr.dtype.names[0] == h.time_field
+    assert arr.dtype.names[0] == h.time.name
 
 
 def test_write_csv_with_time_axis(tmp_path):
@@ -196,19 +204,19 @@ def test_write_csv_with_time_axis(tmp_path):
     import csv
     tb = lib_test.VpwlTb()
     h = tb.sim_tran
-    assert h.time_field is not None
+    assert h.time is not None
     outfile = tmp_path / "sim_tran.csv"
     h.write_csv(outfile, include=[h.out], translate_names=False)
     with open(outfile) as f:
         reader = csv.reader(f)
         header = next(reader)
         rows = list(reader)
-    assert h.time_field in header
-    assert h.out.voltage_field in header
+    assert h.time.name in header
+    assert h.out.voltage.values.name in header
     # time + 1 voltage field
     assert len(header) == 2
     # First column should be time
-    assert header[0] == h.time_field
+    assert header[0] == h.time.name
 
 
 def test_to_numpy_ac_complex():
@@ -216,18 +224,22 @@ def test_to_numpy_ac_complex():
     import numpy as np
     tb = lib_test.AcRC()
     h = tb.sim_ac
-    assert h.freq_field is not None
+    assert h.freq is not None
+    # The frequency scale is stored as a real view into the complex buffer:
+    assert h.freq.dtype == 'f8'
+    assert h.freq.quantity == Quantity.FREQUENCY
     arr = h.to_numpy(include=[h.out], translate_names=False)
     # freq + 1 voltage field
     assert len(arr.dtype.names) == 2
-    assert arr.dtype.names[0] == h.freq_field
-    assert h.out.voltage_field in arr.dtype.names
+    assert arr.dtype.names[0] == h.freq.name
+    vname = h.out.voltage.values.name
+    assert vname in arr.dtype.names
     # AC data should be complex
-    assert np.iscomplexobj(arr[h.out.voltage_field])
+    assert np.iscomplexobj(arr[vname])
     # Verify data integrity
-    assert len(arr) == len(h.sim_data)
+    assert len(arr) == len(h.out.voltage)
     for i in range(min(5, len(arr))):
-        assert arr[h.out.voltage_field][i] == h.out.voltage[i]
+        assert arr[vname][i] == h.out.voltage[i]
 
 
 def test_to_numpy_dc_sweep():
@@ -236,18 +248,18 @@ def test_to_numpy_dc_sweep():
     tb = lib_test.InvTb()
     h = tb.sim_dc
     assert h.sim_type == SimType.DCSWEEP
-    assert h.sweep_field is not None
+    assert h.sweep is not None
     arr = h.to_numpy(include=[h.i, h.o], translate_names=False)
     # sweep + 2 voltage fields
     assert len(arr.dtype.names) == 3
-    assert arr.dtype.names[0] == h.sweep_field
-    assert h.i.voltage_field in arr.dtype.names
-    assert h.o.voltage_field in arr.dtype.names
+    assert arr.dtype.names[0] == h.sweep.name
+    assert h.i.voltage.values.name in arr.dtype.names
+    assert h.o.voltage.values.name in arr.dtype.names
     # Verify data integrity
-    assert len(arr) == len(h.sim_data)
+    assert len(arr) == len(h.i.voltage)
     for i in range(min(5, len(arr))):
-        assert arr[h.i.voltage_field][i] == h.i.voltage[i]
-        assert arr[h.o.voltage_field][i] == h.o.voltage[i]
+        assert arr[h.i.voltage.values.name][i] == h.i.voltage[i]
+        assert arr[h.o.voltage.values.name][i] == h.o.voltage[i]
 
 
 def test_translate_names():
@@ -260,7 +272,7 @@ def test_translate_names():
     arr = h.to_numpy(include=[h.r, h.I2.p])
     assert 'r.voltage' in arr.dtype.names
     assert 'I2.p.current' in arr.dtype.names
-    assert h.r.voltage_field not in arr.dtype.names
+    assert h.r.voltage.values.name not in arr.dtype.names
     assert arr['r.voltage'][0] == h.r.voltage[0]
     assert arr['I2.p.current'][0] == h.I2.p.current[0]
 

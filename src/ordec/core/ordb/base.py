@@ -150,10 +150,22 @@ class Attr:
 
         if val is None:
             return val
-            
+
         if not self.typecheck(val):
             raise TypeError(f"Incorrect type {type(val).__name__} for attribute.")
-        
+
+        if type(val) is tuple:
+            # Tuple attr values must be recursively immutable. Hashing
+            # verifies this for builtin containers (a nested list/dict/set
+            # raises TypeError here, at insertion time, instead of only
+            # failing at wire_encode).
+            try:
+                hash(val)
+            except TypeError:
+                raise TypeError(
+                    "Tuple attribute values must be recursively immutable"
+                    " (hashable).") from None
+
         return val
         
     def read_hook(self, value, cursor):

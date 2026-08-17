@@ -59,25 +59,95 @@ class SimArrayField(NamedTuple):
 
 @public
 class SimColumn:
-    """Lazy strided column view into SimArray packed binary data.
+    """Immutable lazy strided column view into packed binary data.
 
     Reads values on demand from the underlying bytes buffer,
     avoiding materializing the entire column as a Python tuple.
 
-    A column may carry the Quantity it holds, taken from its
-    SimArrayField; consumers such as Report.plot2d use it to infer axis
-    labels.
+    A column may carry a name (the raw ngspice fid, kept verbatim for
+    export and debugging) and the Quantity it holds, both taken from its
+    SimArrayField; consumers such as Report.plot2d use the quantity to
+    infer axis labels. Name and quantity participate in equality and
+    hashing: columns with equal values but different names are
+    different things.
+
+    SimColumn is a schema value type (usable in Attr); all fields are
+    set at construction and read-only.
     """
 
-    __slots__ = ('_data', '_offset', '_stride', '_length', '_dtype', 'quantity')
+    __slots__ = ('_data', '_offset', '_stride', '_length', '_dtype',
+        '_name', '_quantity')
 
-    def __init__(self, data, offset, stride, length, dtype, quantity):
+    def __init__(self, data, offset, stride, length, dtype,
+            name=None, quantity=None):
         self._data = data
         self._offset = offset
         self._stride = stride
         self._length = length
         self._dtype = dtype
-        self.quantity = quantity
+        self._name = name
+        self._quantity = quantity
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def quantity(self):
+        return self._quantity
+
+    @property
+    def dtype(self):
+        return self._dtype
+
+    @classmethod
+    def from_values(cls, values, name=None, quantity=None):
+        """Pack an iterable of numbers into a new contiguous column.
+
+        Real values pack as float64; if any value is complex, all
+        values pack as complex128.
+        """
+        values = list(values)
+        if any(isinstance(v, complex) for v in values):
+            parts = []
+            for v in values:
+                v = complex(v)
+                parts.extend((v.real, v.imag))
+            data = struct.pack(f'<{len(parts)}d', *parts)
+            return cls(data, 0, 16, len(values), 'c16', name, quantity)
+        data = struct.pack(f'<{len(values)}d', *[float(v) for v in values])
+        return cls(data, 0, 8, len(values), 'f8', name, quantity)
+
+    @classmethod
+    def coerce(cls, val):
+        """Attr factory: pass None or a SimColumn through unchanged
+        (zero-copy), pack any other iterable of numbers via from_values."""
+        if val is None or isinstance(val, SimColumn):
+            return val
+        return cls.from_values(val)
+
+    def __eq__(self, other):
+        """Value-based equality: element-wise over the unpacked values
+        plus dtype, name and quantity. A strided view and a contiguous
+        copy of the same values compare equal."""
+        if not isinstance(other, SimColumn):
+            return NotImplemented
+        if (self._length != other._length or self._dtype != other._dtype
+                or self._name != other._name
+                or self._quantity != other._quantity):
+            return False
+        # Same buffer and layout: equal without reading the data.
+        if (self._data is other._data and self._offset == other._offset
+                and self._stride == other._stride):
+            return True
+        return all(self._unpack(i) == other._unpack(i)
+            for i in range(self._length))
+
+    def __hash__(self):
+        # Deliberately weak: must not read the (possibly mmap-backed)
+        # buffer, and cannot include len(data), which differs between a
+        # view and a contiguous copy that compare equal.
+        return hash((self._length, self._dtype, self._name, self._quantity))
 
     @property
     def real(self):
@@ -90,7 +160,7 @@ class SimColumn:
         if self._dtype == 'f8':
             return self
         return SimColumn(self._data, self._offset, self._stride,
-            self._length, 'f8', self.quantity)
+            self._length, 'f8', self._name, self._quantity)
 
     def __len__(self):
         return self._length
@@ -128,7 +198,8 @@ class SimColumn:
 
     def __repr__(self):
         dtype_name = 'float64' if self._dtype == 'f8' else 'complex128'
-        return f"SimColumn({self._length} {dtype_name} values)"
+        name = f"{self._name!r}, " if self._name is not None else ""
+        return f"SimColumn({name}{self._length} {dtype_name} values)"
 
     def dump(self):
         """Return a string like '[1.234e-05, 5.678e+00]' for test reference data."""
@@ -138,6 +209,89 @@ class SimColumn:
                 return f"({fmt(v.real)}{sign}{fmt(v.imag)}j)"
             return f"{v:.3e}"
         return '[' + ', '.join(fmt(self._unpack(i)) for i in range(self._length)) + ']'
+
+
+@public
+class SimSeries:
+    """Immutable simulation data series: one dependent values column
+    plus zero or more independent scale columns (the sweep axes).
+
+    The scale count encodes the analysis shape: an operating point has
+    no scales (and a length-1 values column), transient and AC results
+    have one scale (time resp. frequency), nested DC sweeps have one
+    scale per swept variable, ordered outermost first. Scales are
+    identified by their column quantity (e.g. Quantity.TIME); all
+    columns of a series have equal length.
+
+    For consumer convenience, the sequence protocol delegates to the
+    values column (``series[0]``, ``len(series)``, iteration). Equality
+    and hashing are strict over values and scales; a series with scales
+    never equals one without.
+
+    SimSeries is a schema value type (usable in Attr); it is immutable
+    and constructed in one step.
+    """
+
+    __slots__ = ('_values', '_scales')
+
+    def __init__(self, values, scales=()):
+        values = SimColumn.coerce(values)
+        scales = tuple(SimColumn.coerce(s) for s in scales)
+        for s in scales:
+            if len(s) != len(values):
+                raise ValueError(
+                    f"Scale length {len(s)} does not match values"
+                    f" length {len(values)}")
+        self._values = values
+        self._scales = scales
+
+    @property
+    def values(self):
+        return self._values
+
+    @property
+    def scales(self):
+        return self._scales
+
+    @property
+    def quantity(self):
+        """Quantity of the values column."""
+        return self._values.quantity
+
+    @classmethod
+    def coerce(cls, val):
+        """Attr factory: pass None or a SimSeries through unchanged; wrap
+        a SimColumn or iterable of numbers as a scale-less series."""
+        if val is None or isinstance(val, SimSeries):
+            return val
+        return cls(val)
+
+    def __eq__(self, other):
+        if not isinstance(other, SimSeries):
+            return NotImplemented
+        return self._values == other._values and self._scales == other._scales
+
+    def __hash__(self):
+        return hash((self._values, self._scales))
+
+    def __len__(self):
+        return len(self._values)
+
+    def __getitem__(self, key):
+        return self._values[key]
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def __contains__(self, value):
+        return value in self._values
+
+    def __repr__(self):
+        return f"SimSeries({self._values!r}, {len(self._scales)} scales)"
+
+    def dump(self):
+        """Values formatted like SimColumn.dump, for test reference data."""
+        return self._values.dump()
 
 
 @public
@@ -231,7 +385,7 @@ class SimArray(tuple):
 
         field = self.fields[idx]
         return SimColumn(self.data, self._offsets[idx], self.record_size,
-            len(self), field.dtype, field.quantity)
+            len(self), field.dtype, field.fid, field.quantity)
 
     def __getitem__(self, key):
         if isinstance(key, str):

@@ -129,31 +129,36 @@ class Simulator:
                 yield f"@{name}[{param}]"
 
     def _store_results(self, sim_array: SimArray):
-        """Store SimArray and assign field names to SimNet/SimPin/SimParam."""
+        """Assign result series to SimNet/SimPin/SimParam nodes."""
         sim_type = self.simhier.sim_type
-        self.simhier.sim_data = sim_array
+        if not sim_array.fields:
+            raise ValueError("Simulation returned no fields")
 
-        if sim_type == SimType.DCSWEEP:
-            if not sim_array.fields:
-                raise ValueError("DC sweep returned no fields")
-            self.simhier.sweep_field = sim_array.fields[0].fid
+        # The independent variable is field 0 in the rawfile, except for
+        # op results, which have none. Build the scale column once and
+        # share the object across all series: consumers use scale object
+        # identity as a fast path, and it keeps one in-process view.
+        if sim_type == SimType.OP:
+            scales = ()
+            data_fields = list(enumerate(sim_array.fields))
+        else:
+            scale = sim_array.column(0)
+            # AC rawfiles store the frequency scale as complex with zero
+            # imaginary part; .real is a zero-copy f8 view into the same
+            # buffer.
+            if scale.dtype == 'c16':
+                scale = scale.real
+            scales = (scale,)
+            data_fields = list(enumerate(sim_array.fields))[1:]
 
-        for f in sim_array.fields:
+        for i, f in data_fields:
             fid = f.fid
-            if fid == "time":
-                self.simhier.time_field = fid
-                continue
-            if fid.startswith("frequency"):
-                self.simhier.freq_field = fid
-                continue
-            if sim_type == SimType.DCSWEEP and fid == self.simhier.sweep_field:
-                continue
-
+            series = SimSeries(sim_array.column(i), scales)
             node_name, subname = parse_signal_name(fid)
             try:
                 if subname is None:
                     simnet = self.hier_simobj_of_name(node_name)
-                    simnet.voltage_field = fid
+                    simnet.voltage = series
                 else:
                     # Try progressively shorter paths for internal model nodes
                     siminstance = None
@@ -194,7 +199,7 @@ class Simulator:
                                 fid, node_name)
                             continue
                         simpin = self.simhier % SimPin(instance=siminstance, eref=pin)
-                        simpin.current_field = fid
+                        simpin.current = series
                     elif siminstance.schematic is not None and not remaining_path:
                         pin = None
                         try:
@@ -210,7 +215,7 @@ class Simulator:
                         if existing:
                             continue
                         simpin = self.simhier % SimPin(instance=siminstance, eref=pin)
-                        simpin.current_field = fid
+                        simpin.current = series
                     elif ":" in fid:
                         # Port currents (i(inst:port)) that couldn't be mapped to SimPins
                         continue
@@ -223,7 +228,7 @@ class Simulator:
                                 full_subname = subname
                         simparam = self.simhier % SimParam(
                             instance=siminstance, name=full_subname)
-                        simparam.field = fid
+                        simparam.value = series
             except KeyError:
                 continue
 

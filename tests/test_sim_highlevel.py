@@ -324,7 +324,7 @@ def test_op_save_params_nested():
     """
     tb = lib_test.InvTb()
     h = tb.sim_op
-    assert h.i_inv.pd.params['gm'].field == "@m.xi_inv.mpd[gm]"
+    assert h.i_inv.pd.params['gm'].value.values.name == "@m.xi_inv.mpd[gm]"
 
 def test_generic_mos_inv_dc_sweep():
     tb = lib_test.InvTb()
@@ -381,7 +381,7 @@ def test_ihp130_inv_op_save_params():
     """
     tb = lib_test.InvIhpTb()
     h = tb.sim_op
-    assert h.i_inv.pd.params['vth'].field == \
+    assert h.i_inv.pd.params['vth'].value.values.name == \
         "v(@n.xi_inv.xpd.nsg13_lv_nmos[vth])"
     assert h.i_inv.pd.params['vth'].value[0] == pytest.approx(0.4484, abs=1e-3)
     # PSP103 reports the pmos threshold as a magnitude, hence positive:

@@ -247,10 +247,22 @@ Each schema type is a Node subclass with Attr declarations and indexes.
 - Directory tracks node naming
 - Setup functions for PDK-specific initialization
 
-**SimArray** (src/ordec/core/simarray.py): Immutable, hashable structured array for simulation data
-- Tuple subclass holding `(fields, data)` where fields describe columns and data is packed binary
-- Supports `column(name)` to extract a field as a `SimColumn` — a lazy strided view into the packed binary data (supports indexing, slicing, iteration, `len()`); values are unpacked on demand, not materialized as a tuple
+**SimArray/SimColumn/SimSeries** (src/ordec/core/simarray.py):
+- `SimColumn`: immutable lazy strided view into packed binary data (indexing,
+  slicing, iteration, `len()`); values unpack on demand. Carries `name` (the
+  verbatim ngspice fid) and `quantity`; both participate in `__eq__`/`__hash__`
+  (element-wise value equality, weak buffer-free hash). A first-class schema
+  value type (`Attr(SimColumn)`, used by Plot2D).
+- `SimSeries`: immutable schema value type bundling one dependent `values`
+  column with zero or more `scales` columns (independent axes: op = none,
+  tran/ac = one, nested sweeps = several). Sequence protocol delegates to
+  `values`; equality is strict over values plus scales.
+- `SimArray`: I/O-layer container (tuple subclass holding `(fields, data)`),
+  produced by `parse_raw`; no longer a schema attr type. `column(fid)` stamps
+  name/quantity onto the returned `SimColumn`.
 - No numpy dependency for core operations; `to_numpy()` available for convenience
+- On the wire, columns encode as descriptors into a per-subgraph blob table
+  (buffers verbatim, deduped by object identity); see src/ordec/core/wire.py.
 
 **Ngspice** (src/ordec/sim/):
 - `ngspice.py`: Contains `ngspice_batch()` (runs ngspice in batch mode),
@@ -261,17 +273,20 @@ Each schema type is a Node subclass with Attr declarations and indexes.
   ngspice. Also defines `parse_signal_name()` which parses rawfile names like
   `v(a)`, `i(vgnd)`, `@m.xdut.mm2[is]` into `(node_name, subname)`.
 
-**SimHierarchy** (defined entirely in `src/ordec/core/schema.py`):
+**SimHierarchy** (defined in `src/ordec/core/schema/simhier.py`):
 - Flattened simulation hierarchy with SimInstance, SimNet, SimPin, and SimParam nodes.
-- SimHierarchy stores the full simulation result as a single `SimArray` (`sim_data` attr)
-  plus `time_field`/`freq_field` identifying the independent variable column.
-- SimNet stores a single `voltage_field` string naming its column in the shared SimArray;
-  the `voltage` property resolves values on access (returns a `SimColumn`; for op-point
-  results this column has a single element).
-- SimPin tracks per-pin currents on leaf instances via `current_field` and the `current`
-  property. `Cell.ngspice_current_pins()` maps ngspice subnames to pin attrs.
-- SimParam stores arbitrary device parameters (gm, gds, vth, etc.) via `field` and the
-  `value` property. `Cell.ngspice_save_params()` lists saveable parameter names.
+- Result data lives directly on the nodes as `Attr(SimSeries)`: `SimNet.voltage`,
+  `SimPin.current` (leaf-instance pin currents), `SimParam.value` (device
+  parameters like gm, gds, vth). Each series carries its own scale columns;
+  the writer shares one scale column object across all series of a run.
+- The root stores no result data. `time`/`freq`/`sweep` are derived properties
+  that scan the node series and identify scales by `Quantity` (never by name).
+- `to_numpy()`/`write_csv()` export the node-mapped signals (scales first);
+  `translate_names=False` uses the raw ngspice names carried by the columns.
+  Whole-rawfile access (including unmapped internal model nodes) is the I/O
+  layer's job: `ngspice_batch()` + `parse_raw()`.
+- `Cell.ngspice_current_pins()` maps ngspice subnames to pin attrs;
+  `Cell.ngspice_save_params()` lists saveable parameter names.
 
 ### Layout
 

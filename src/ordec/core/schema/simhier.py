@@ -8,7 +8,7 @@ from public import public
 from ..ordb import *
 from ..cell import Cell
 from ..context import SimulationViewBuilder
-from ..simarray import SimArray
+from ..simarray import Quantity, SimSeries
 from .schematic import Symbol, Schematic, Pin, Net, SchemPort, SchemInstance
 
 WIRE_DOMAIN = 5 << 16
@@ -100,30 +100,66 @@ class SimHierarchy(SubgraphRoot):
     schematic = SubgraphRef(Schematic)
     cell = LiveRef(Cell)
     sim_type = Attr(SimType)
-    sim_data = Attr(SimArray) #: Packed simulation result data shared by all SimNet/SimInstance nodes.
-    time_field = Attr(str) #: Column name in sim_data for the time axis (transient), or None.
-    freq_field = Attr(str) #: Column name in sim_data for the frequency axis (AC), or None.
-    sweep_field = Attr(str) #: Column name in sim_data for the DC sweep axis, or None.
+
+    # The independent variables (time, frequency, sweep axes) are not
+    # stored on the root: they live as scale columns inside the SimSeries
+    # of the SimNet/SimPin/SimParam nodes, which are the single source of
+    # truth. The properties below are derived conveniences that scan the
+    # node series and identify scales by their Quantity.
+
+    def _all_series(self):
+        """Iterate all recorded SimSeries of this hierarchy."""
+        for sn in self.all(SimNet):
+            if sn.voltage is not None:
+                yield sn.voltage
+        for sp in self.all(SimPin):
+            if sp.current is not None:
+                yield sp.current
+        for sp in self.all(SimParam):
+            if sp.value is not None:
+                yield sp.value
+
+    def _all_scales(self):
+        """Iterate distinct scale columns of all node series.
+
+        Deduplicated by object identity; the writer shares one scale
+        column object across all series of a run, so this yields each
+        axis once.
+        """
+        seen = set()
+        for series in self._all_series():
+            for scale in series.scales:
+                if id(scale) not in seen:
+                    seen.add(id(scale))
+                    yield scale
 
     @property
     def time(self):
-        if self.sim_data is None or self.time_field is None:
-            return None
-        return self.sim_data.column(self.time_field)
+        """Time scale column of a transient result, or None."""
+        for scale in self._all_scales():
+            if scale.quantity == Quantity.TIME:
+                return scale
+        return None
 
     @property
     def freq(self):
-        if self.sim_data is None or self.freq_field is None:
-            return None
-        # AC rawfiles store frequency as complex with zero imaginary part;
-        # return a real view for consumer convenience.
-        return self.sim_data.column(self.freq_field).real
+        """Frequency scale column of an AC result, or None."""
+        for scale in self._all_scales():
+            if scale.quantity == Quantity.FREQUENCY:
+                return scale
+        return None
 
     @property
     def sweep(self):
-        if self.sim_data is None or self.sweep_field is None:
-            return None
-        return self.sim_data.column(self.sweep_field)
+        """Primary sweep scale column of a DC sweep result, or None.
+
+        The first scale that is neither time nor frequency; for nested
+        sweeps this is the outermost swept variable.
+        """
+        for scale in self._all_scales():
+            if scale.quantity not in (Quantity.TIME, Quantity.FREQUENCY):
+                return scale
+        return None
 
     def __setitem__(self, k, v):
         raise TypeError("Insert with path not supported in SimHierarchy.")
@@ -192,116 +228,92 @@ class SimHierarchy(SubgraphRoot):
         from ...sim.webdata import webdata
         return webdata(self)
 
-    def _collect_fields(self, include):
-        """Collect field names to export, starting with the independent variable.
+    def _export_columns(self, include, translate_names):
+        """Collect (name, column) pairs to export, scales first.
 
         Args:
-            include: None to include all fields, or an iterable of
+            include: None for all node-mapped signals, or an iterable of
                 SimNet/SimPin/SimParam nodes to include.
+            translate_names: True for ORDB-style paths ('time',
+                'r1.voltage'), False for the raw ngspice names carried
+                by the columns ('v(r1)'; hand-assigned series without a
+                name fall back to the translated name).
 
         Returns:
-            List of field names (strings) to export.
+            List of (name, SimColumn) pairs; the independent variables
+            (scale columns) always come first.
         """
-        fields = []
-        for axis in (self.time_field, self.freq_field, self.sweep_field):
-            if axis is not None:
-                fields.append(axis)
+        pairs = []
+        sweep_named = False
+        for scale in self._all_scales():
+            if scale.quantity == Quantity.TIME:
+                tname = 'time'
+            elif scale.quantity == Quantity.FREQUENCY:
+                tname = 'frequency'
+            elif not sweep_named:
+                tname = 'sweep'
+                sweep_named = True
+            else:
+                # Additional swept variables of a nested sweep keep
+                # their raw name.
+                tname = scale.name
+            pairs.append((tname, scale))
 
         if include is None:
-            for f in self.sim_data.fields:
-                if f.fid not in fields:
-                    fields.append(f.fid)
-        else:
-            for node in include:
-                if isinstance(node, SimNet):
-                    if node.voltage_field is not None:
-                        fields.append(node.voltage_field)
-                elif isinstance(node, SimPin):
-                    if node.current_field is not None:
-                        fields.append(node.current_field)
-                elif isinstance(node, SimParam):
-                    if node.field is not None:
-                        fields.append(node.field)
-                else:
-                    raise TypeError(
-                        f"include must contain SimNet, SimPin, or SimParam nodes, got {type(node).__name__}"
-                    )
-        return fields
+            include = [*self.all(SimNet), *self.all(SimPin),
+                *self.all(SimParam)]
+        for node in include:
+            if isinstance(node, SimNet):
+                series, tname = node.voltage, \
+                    f"{node.full_path_str()}.voltage"
+            elif isinstance(node, SimPin):
+                series, tname = node.current, \
+                    f"{node.full_path_str()}.current"
+            elif isinstance(node, SimParam):
+                series, tname = node.value, \
+                    f"{node.instance.full_path_str()}" \
+                    f".params[{node.name!r}].value"
+            else:
+                raise TypeError(
+                    "include must contain SimNet, SimPin, or SimParam"
+                    f" nodes, got {type(node).__name__}")
+            if series is None:
+                continue
+            pairs.append((tname, series.values))
 
-    def _build_field_translation_map(self):
-        """Build mapping from ngspice field names to ORDB-style paths."""
-        field_map = {}
-
-        if self.time_field:
-            field_map[self.time_field] = 'time'
-        if self.freq_field:
-            field_map[self.freq_field] = 'frequency'
-        if self.sweep_field:
-            field_map[self.sweep_field] = 'sweep'
-
-        for simnet in self.all(SimNet):
-            if simnet.voltage_field:
-                path = simnet.full_path_str()
-                field_map[simnet.voltage_field] = f'{path}.voltage'
-
-        for simpin in self.all(SimPin):
-            if simpin.current_field:
-                path = simpin.full_path_str()
-                field_map[simpin.current_field] = f'{path}.current'
-
-        for simparam in self.all(SimParam):
-            if simparam.field:
-                path = simparam.instance.full_path_str()
-                field_map[simparam.field] = f"{path}.params[{simparam.name!r}].value"
-
-        return field_map
-
-    def _translate_fields(self, fields, translate):
-        """Optionally translate field names to ORDB-style paths.
-
-        When translate=True, fields without ORDB mappings (e.g., internal
-        model nodes) are filtered out.
-        """
-        if not translate:
-            return fields, fields
-        field_map = self._build_field_translation_map()
-        raw = [f for f in fields if f in field_map]
-        translated = [field_map[f] for f in raw]
-        return raw, translated
+        if not translate_names:
+            pairs = [(col.name if col.name is not None else name, col)
+                for name, col in pairs]
+        return pairs
 
     def to_numpy(self, include=None, translate_names=True):
         """Convert simulation data to a numpy structured array.
 
         Args:
-            include: None to include all fields, or an iterable of
-                SimNet/SimPin/SimParam nodes. The independent variable
-                (time/freq/sweep) is always included first.
-            translate_names: If True (default), translate ngspice field names
-                to ORDB-style paths. If False, keep raw ngspice names.
+            include: None to include all node-mapped signals, or an
+                iterable of SimNet/SimPin/SimParam nodes. The independent
+                variables (time/freq/sweep) are always included first.
+            translate_names: If True (default), use ORDB-style path names.
+                If False, keep the raw ngspice names.
 
         Returns:
             numpy structured array with requested fields.
         """
         import numpy as np
 
-        if self.sim_data is None:
+        pairs = self._export_columns(include, translate_names)
+        if not pairs:
             raise ValueError("No simulation data available")
 
-        fields = self._collect_fields(include)
-        fields, names = self._translate_fields(fields, translate_names)
-
         dtype_to_np = {'f8': np.float64, 'c16': np.complex128}
-        field_info = {f.fid: f for f in self.sim_data.fields}
-
         dtype = np.dtype({
-            'names': names,
-            'formats': [dtype_to_np[field_info[fid].dtype] for fid in fields],
+            'names': [name for name, _ in pairs],
+            'formats': [dtype_to_np[col.dtype] for _, col in pairs],
         })
 
-        n = len(self.sim_data)
-        arr = np.empty(n, dtype=dtype)
-        for fid, name in zip(fields, names):
-            arr[name] = list(self.sim_data.column(fid))
+        arr = np.empty(len(pairs[0][1]), dtype=dtype)
+        for name, col in pairs:
+            arr[name] = list(col)
         return arr
 
     def write_csv(self, filename, include=None, translate_names=True):
@@ -309,26 +321,23 @@ class SimHierarchy(SubgraphRoot):
 
         Args:
             filename: Path to the output CSV file.
-            include: None to include all fields, or an iterable of
-                SimNet/SimPin/SimParam nodes. The independent variable
-                (time/freq/sweep) is always included first.
-            translate_names: If True (default), translate ngspice field names
-                to ORDB-style paths. If False, keep raw ngspice names.
+            include: None to include all node-mapped signals, or an
+                iterable of SimNet/SimPin/SimParam nodes. The independent
+                variables (time/freq/sweep) are always included first.
+            translate_names: If True (default), use ORDB-style path names.
+                If False, keep the raw ngspice names.
         """
         import csv
 
-        if self.sim_data is None:
+        pairs = self._export_columns(include, translate_names)
+        if not pairs:
             raise ValueError("No simulation data available")
-
-        fields = self._collect_fields(include)
-        fields, names = self._translate_fields(fields, translate_names)
-        n = len(self.sim_data)
 
         with open(filename, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(names)
-            columns = [self.sim_data.column(fid) for fid in fields]
-            for i in range(n):
+            writer.writerow([name for name, _ in pairs])
+            columns = [col for _, col in pairs]
+            for i in range(len(columns[0])):
                 writer.writerow([col[i] for col in columns])
 
 @public
@@ -339,14 +348,9 @@ class SimNet(Node):
     parent_inst = LocalRef('SimInstance', optional=True,
         refcheck_custom=lambda val: issubclass(val, SimInstance))
 
-    voltage_field = Attr(str) #: Column name in root sim_data for voltage.
-
-    @property
-    def voltage(self):
-        sd = self.root.sim_data
-        if sd is None or self.voltage_field is None:
-            return None
-        return sd.column(self.voltage_field)
+    #: Simulated voltage as a SimSeries, or None if not recorded. Op
+    #: results have a single-element series without scales.
+    voltage = Attr(SimSeries, factory=SimSeries.coerce)
 
     eref = ExternalRef(Net|Pin,
         of_subgraph=lambda c: c.root.schematic_or_symbol_at(c.parent_inst),
@@ -374,14 +378,8 @@ class SimPin(Node):
         of_subgraph=lambda c: c.instance.eref.symbol,
         optional=False)
 
-    current_field = Attr(str) #: Column name in root sim_data for current.
-
-    @property
-    def current(self):
-        sd = self.root.sim_data
-        if sd is None or self.current_field is None:
-            return None
-        return sd.column(self.current_field)
+    #: Simulated pin current as a SimSeries, or None if not recorded.
+    current = Attr(SimSeries, factory=SimSeries.coerce)
 
     def full_path_list(self) -> list[str|int]:
         return self.instance.full_path_list() + self.eref.full_path_list()
@@ -397,14 +395,8 @@ class SimParam(Node):
         refcheck_custom=lambda val: issubclass(val, SimInstance))
 
     name = Attr(str) #: Parameter name: "gm", "gds", "vth", "region", etc.
-    field = Attr(str) #: Column name in root sim_data.
-
-    @property
-    def value(self):
-        sd = self.root.sim_data
-        if sd is None or self.field is None:
-            return None
-        return sd.column(self.field)
+    #: Simulated parameter value as a SimSeries, or None if not recorded.
+    value = Attr(SimSeries, factory=SimSeries.coerce)
 
     def full_path_list(self) -> list[str|int]:
         return self.instance.full_path_list() + [self.name]
