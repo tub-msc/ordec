@@ -112,7 +112,7 @@ def test_to_numpy_all():
     """Test to_numpy() with all fields (include=None), raw names."""
     import numpy as np
     tb = lib_test.ResdivHierTb()
-    h = tb.sim_op_batch
+    h = tb.sim_op
     arr = h.to_numpy(translate_names=False)
     assert isinstance(arr, np.ndarray)
     assert len(arr) == len(h.sim_data)
@@ -124,7 +124,7 @@ def test_to_numpy_include():
     """Test to_numpy() with specific nodes in include, raw names."""
     import numpy as np
     tb = lib_test.ResdivHierTb()
-    h = tb.sim_op_batch
+    h = tb.sim_op
     arr = h.to_numpy(include=[h.r, h.I2.p], translate_names=False)
     assert isinstance(arr, np.ndarray)
     assert len(arr) == len(h.sim_data)
@@ -137,7 +137,7 @@ def test_to_numpy_include():
 def test_to_numpy_invalid_include():
     """Test to_numpy() raises TypeError for invalid include nodes."""
     tb = lib_test.ResdivHierTb()
-    h = tb.sim_op_batch
+    h = tb.sim_op
     with pytest.raises(TypeError, match="SimNet, SimPin, or SimParam"):
         h.to_numpy(include=[h.I0])
 
@@ -146,7 +146,7 @@ def test_write_csv_all(tmp_path):
     """Test write_csv() with all fields (include=None), raw names."""
     import csv
     tb = lib_test.ResdivHierTb()
-    h = tb.sim_op_batch
+    h = tb.sim_op
     outfile = tmp_path / "sim_all.csv"
     h.write_csv(outfile, translate_names=False)
     with open(outfile) as f:
@@ -162,7 +162,7 @@ def test_write_csv_include(tmp_path):
     """Test write_csv() with specific nodes in include, raw names."""
     import csv
     tb = lib_test.ResdivHierTb()
-    h = tb.sim_op_batch
+    h = tb.sim_op
     outfile = tmp_path / "sim_include.csv"
     h.write_csv(outfile, include=[h.r, h.I2.p], translate_names=False)
     with open(outfile) as f:
@@ -180,7 +180,7 @@ def test_to_numpy_with_time_axis():
     """Test to_numpy() includes time axis for transient simulation, raw names."""
     import numpy as np
     tb = lib_test.VpwlTb()
-    h = tb.sim_tran_batch
+    h = tb.sim_tran
     assert h.time_field is not None
     arr = h.to_numpy(include=[h.out], translate_names=False)
     assert h.time_field in arr.dtype.names
@@ -195,7 +195,7 @@ def test_write_csv_with_time_axis(tmp_path):
     """Test write_csv() includes time axis for transient simulation, raw names."""
     import csv
     tb = lib_test.VpwlTb()
-    h = tb.sim_tran_batch
+    h = tb.sim_tran
     assert h.time_field is not None
     outfile = tmp_path / "sim_tran.csv"
     h.write_csv(outfile, include=[h.out], translate_names=False)
@@ -215,7 +215,7 @@ def test_to_numpy_ac_complex():
     """Test to_numpy() with AC simulation (complex values), raw names."""
     import numpy as np
     tb = lib_test.AcRC()
-    h = tb.sim_ac_batch
+    h = tb.sim_ac
     assert h.freq_field is not None
     arr = h.to_numpy(include=[h.out], translate_names=False)
     # freq + 1 voltage field
@@ -234,7 +234,7 @@ def test_to_numpy_dc_sweep():
     """Test to_numpy() with DC sweep simulation, raw names."""
     import numpy as np
     tb = lib_test.InvTb()
-    h = tb.sim_dc_batch
+    h = tb.sim_dc
     assert h.sim_type == SimType.DCSWEEP
     assert h.sweep_field is not None
     arr = h.to_numpy(include=[h.i, h.o], translate_names=False)
@@ -254,7 +254,7 @@ def test_translate_names():
     """Test translate_names=True converts ngspice names to ORDB paths."""
     import numpy as np
     tb = lib_test.ResdivHierTb()
-    h = tb.sim_op_batch
+    h = tb.sim_op
 
     # Voltage and current translation
     arr = h.to_numpy(include=[h.r, h.I2.p])
@@ -275,18 +275,18 @@ def test_translate_names_axes(tmp_path):
     import numpy as np
 
     # Transient: time axis
-    h_tran = lib_test.VpwlTb().sim_tran_batch
+    h_tran = lib_test.VpwlTb().sim_tran
     arr = h_tran.to_numpy(include=[h_tran.out])
     assert arr.dtype.names[0] == 'time'
     assert 'out.voltage' in arr.dtype.names
 
     # AC: frequency axis
-    h_ac = lib_test.AcRC().sim_ac_batch
+    h_ac = lib_test.AcRC().sim_ac
     arr = h_ac.to_numpy(include=[h_ac.out])
     assert arr.dtype.names[0] == 'frequency'
 
     # DC sweep: sweep axis
-    h_sweep = lib_test.InvTb().sim_dc_batch
+    h_sweep = lib_test.InvTb().sim_dc
     arr = h_sweep.to_numpy(include=[h_sweep.i])
     assert arr.dtype.names[0] == 'sweep'
 
@@ -320,7 +320,7 @@ def test_bode_plot():
     import cmath
     from ordec.core.schema import Report
 
-    h = lib_test.AcRC().sim_ac_batch
+    h = lib_test.AcRC().sim_ac
     report = Report()
     mag_plot, phase_plot = report.bode_plot(h.inp, h.out)
     assert [s.name for s in mag_plot.series()] == ["inp", "out"]
@@ -351,7 +351,7 @@ def test_bode_plot_ref():
     from ordec.core.schema import Report
     from ordec.sim import bode_plot
 
-    h = lib_test.AcRC().sim_ac_batch
+    h = lib_test.AcRC().sim_ac
     report = Report()
     bode_plot(report, h.out, ref=h.inp)
     from ordec.core.wire import ExportTable
@@ -371,7 +371,7 @@ def test_plot2d_simnet_series():
     from the column labels."""
     from ordec.core.schema import Report
 
-    h = lib_test.VpwlTb().sim_tran_batch
+    h = lib_test.VpwlTb().sim_tran
     report = Report()
     report.plot2d(h.time, h.out)
     report.plot2d(h.time, h.out, h.res.p)
@@ -395,17 +395,17 @@ def test_bode_plot_errors():
     from ordec.core.schema import Report
     from ordec.sim import bode_plot
 
-    h_ac = lib_test.AcRC().sim_ac_batch
+    h_ac = lib_test.AcRC().sim_ac
     report = Report()
     with pytest.raises(ValueError, match="at least one signal"):
         bode_plot(report)
     with pytest.raises(TypeError, match="SimNet or SimPin"):
         bode_plot(report, ("raw", [1.0, 2.0]))
     # Signals from two different SimHierarchies must be rejected.
-    h_other = lib_test.SineRL().sim_ac_batch
+    h_other = lib_test.SineRL().sim_ac
     with pytest.raises(ValueError, match="same SimHierarchy"):
         bode_plot(report, h_ac.out, h_other.out)
     # Non-AC results have no frequency axis.
-    h_tran = lib_test.VpwlTb().sim_tran_batch
+    h_tran = lib_test.VpwlTb().sim_tran
     with pytest.raises(ValueError, match="no AC results"):
         bode_plot(report, h_tran.out)

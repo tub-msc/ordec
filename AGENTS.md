@@ -253,14 +253,13 @@ Each schema type is a Node subclass with Attr declarations and indexes.
 - No numpy dependency for core operations; `to_numpy()` available for convenience
 
 **Ngspice** (src/ordec/sim/):
-- `ngspice.py`: Contains the `Ngspice` class (interactive piped-mode wrapper),
-  `ngspice_batch()` (batch-mode helper), `parse_raw()` (reads binary rawfiles into a
-  `SimArray`, handles real and complex/AC rawfiles), and `name_print_to_raw()`
-  (converts print-style names like `vgnd#branch` to rawfile-style `i(gnd)`).
-- `simulator.py`: High-level `Simulator`, `SimulatorBase`, `SimulatorNgspiceBatch`,
-  and `SimulatorNgspicePiped` classes that bridge ORDB schematics and ngspice. Also
-  defines `parse_signal_name()` which parses rawfile names like `v(a)`, `i(vgnd)`,
-  `@m.xdut.mm2[is]` into `(node_name, subname)`.
+- `ngspice.py`: Contains `ngspice_batch()` (runs ngspice in batch mode),
+  `parse_raw()` (reads binary rawfiles into a `SimArray`, handles real and
+  complex/AC rawfiles), and `name_print_to_raw()` (converts print-style names
+  like `vgnd#branch` to rawfile-style `i(gnd)`).
+- `simulator.py`: High-level `Simulator` class that bridges ORDB schematics and
+  ngspice. Also defines `parse_signal_name()` which parses rawfile names like
+  `v(a)`, `i(vgnd)`, `@m.xdut.mm2[is]` into `(node_name, subname)`.
 
 **SimHierarchy** (defined entirely in `src/ordec/core/schema.py`):
 - Flattened simulation hierarchy with SimInstance, SimNet, SimPin, and SimParam nodes.

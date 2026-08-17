@@ -82,7 +82,7 @@ def test_resistor_op(cell, expected_r):
 
     tb = Tb()
     h = SimHierarchy.from_schematic(tb.schematic)
-    h.simulate(batch=True).op()
+    h.simulate().op()
     # Series loop: the source branch current equals the resistor current. The
     # subckt resistor's own port currents (i(xr:1) ...) are not mapped to a
     # SimPin, so read the 1 V source's branch current instead.
@@ -127,7 +127,7 @@ def test_cmim_ac(cell, expected_c):
 
     tb = Tb()
     h = SimHierarchy.from_schematic(tb.schematic)
-    h.simulate(batch=True).ac("lin", 1, freq, freq)
+    h.simulate().ac("lin", 1, freq, freq)
     # Series loop: the source branch current equals the cap current. The subckt
     # cap's own port currents are not mapped to a SimPin, so read the AC source's
     # complex branch current instead.

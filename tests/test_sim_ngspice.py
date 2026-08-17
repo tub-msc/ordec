@@ -3,7 +3,9 @@
 
 import re
 import pytest
-from ordec.sim.ngspice import Ngspice, ngspice_batch, NgspiceError
+import subprocess
+
+from ordec.sim.ngspice import ngspice_batch, NgspiceError, _ngspice_executable
 from ordec.sim.simulator import parse_signal_name
 
 
@@ -32,62 +34,35 @@ def test_parse_signal_name():
     assert parse_signal_name("time") == ("time", None)
 
 
-def test_ngspice_illegal_netlist_1():
-    with Ngspice.launch() as sim:
-        with pytest.raises(NgspiceError, match=".*Error: Mismatch of .subckt ... .ends statements!.*"):
-            sim.load_netlist(".title test\n.ends\n.end")
-
-def test_ngspice_illegal_netlist_2():
-    with Ngspice.launch() as sim:
-        with pytest.raises(NgspiceError, match=".*unknown subckt: x0 1 2 3 invalid.*"):
-            sim.load_netlist(".title test\nx0 1 2 3 invalid\n.end")
-
-def test_ngspice_illegal_netlist_3():
-    broken_netlist = """.title test
-    MN0 d 0 0 0 N1 w=hello
-    .end
-    """
-    with Ngspice.launch() as sim:
-        with pytest.raises(NgspiceError, match=r"Undefined parameter \[hello\]"):
-            sim.load_netlist(broken_netlist)
-
-# TODO: Currently, not all problems seem to be caught and raised in Python as exception (see sky130 with Rational params).
-
 def test_ngspice_version():
-    with Ngspice.launch() as sim:
-        version_str = sim.command("version -f")
-        version_number = int(re.search(r"\*\* ngspice-([0-9]+)(.[0-9]+)?\s+", version_str).group(1))
-        assert version_number >= 39
+    out = subprocess.run([_ngspice_executable(), "--version"],
+        capture_output=True, text=True, check=True).stdout
+    version_number = int(re.search(r"\*\* ngspice-([0-9]+)", out).group(1))
+    assert version_number >= 39
 
 def test_ngspice_op_no_auto_gnd():
     netlist_voltage_divider = """.title voltage divider netlist
-    V1 in 0 3
-    R1 in a 1k
-    R2 a gnd 1k
-    R3 gnd 0 1k
-    .end
-    """
+V1 in 0 3
+R1 in a 1k
+R2 a gnd 1k
+R3 gnd 0 1k
+.op
+.end
+"""
 
     def voltages(sim_array):
         return {f.fid[2:-1]: sim_array.column(f.fid)[0]
                 for f in sim_array.fields
                 if f.fid.startswith("v(") and f.fid.endswith(")")}
 
-    # Default behavior: net 'gnd' is automatically ground.
-    with Ngspice.launch() as sim:
-        # Reset no_auto_gnd to ensure clean state
-        sim.command("unset no_auto_gnd")
-        sim.load_netlist(netlist_voltage_divider, no_auto_gnd=False)
-        op = voltages(sim.op())
-    assert op['a'] == 1.5
+    # Default ngspice behavior: net 'gnd' is automatically ground.
+    op = voltages(ngspice_batch(netlist_voltage_divider, no_auto_gnd=False))
+    assert op['a'] == pytest.approx(1.5, abs=1e-10)
 
-    # Altered no_auto_gnd behavior
-    with Ngspice.launch() as sim:
-        sim.load_netlist(netlist_voltage_divider, no_auto_gnd=True)
-        op = voltages(sim.op())
-    assert op['a'] == 2.0
-    assert op['gnd'] == 1.0
-
+    # With no_auto_gnd (ORDeC's default), 'gnd' is an ordinary net.
+    op = voltages(ngspice_batch(netlist_voltage_divider, no_auto_gnd=True))
+    assert op['a'] == pytest.approx(2.0, abs=1e-10)
+    assert op['gnd'] == pytest.approx(1.0, abs=1e-10)
 
 
 def test_ngspice_batch_op():

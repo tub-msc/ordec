@@ -46,18 +46,11 @@ class ResdivFlatTb(Cell):
 
         return s
 
-    def _sim_op(self, batch):
+    @viewgen_noctx
+    def sim_op(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s, batch=batch).op()
+        Simulator(s).op()
         return s
-
-    @viewgen_noctx
-    def sim_op_batch(self):
-        return self._sim_op(True)
-
-    @viewgen_noctx
-    def sim_op_piped(self):
-        return self._sim_op(False)
 
 class ResdivHier2(Cell):
     r = Parameter(R)
@@ -201,18 +194,11 @@ class ResdivHierTb(Cell):
         s.check(add_conn_points=True)
         return s
 
-    def _sim_op(self, batch):
+    @viewgen_noctx
+    def sim_op(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s, batch=batch).op()
+        Simulator(s).op()
         return s
-
-    @viewgen_noctx
-    def sim_op_batch(self):
-        return self._sim_op(True)
-
-    @viewgen_noctx
-    def sim_op_piped(self):
-        return self._sim_op(False)
 
 class NmosSourceFollowerTb(Cell):
     """Nmos (generic_mos) source follower with optional parameter vin."""
@@ -255,18 +241,11 @@ class NmosSourceFollowerTb(Cell):
 
         return s
 
-    def _sim_op(self, batch):
+    @viewgen_noctx
+    def sim_op(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s, batch=batch).op(save_params=True)
+        Simulator(s).op(save_params=True)
         return s
-
-    @viewgen_noctx
-    def sim_op_batch(self):
-        return self._sim_op(True)
-
-    @viewgen_noctx
-    def sim_op_piped(self):
-        return self._sim_op(False)
 
 class InvTb(Cell):
 
@@ -312,9 +291,10 @@ class InvTb(Cell):
 
         return s
 
-    def _sim_dc(self, batch):
+    @viewgen_noctx
+    def sim_dc(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s, batch=batch).dc_sweep(
+        Simulator(s).dc_sweep(
             self.schematic.i_in,
             R(0),
             R(self.schematic.i_vdd.symbol.cell.dc),
@@ -323,25 +303,10 @@ class InvTb(Cell):
         return s
 
     @viewgen_noctx
-    def sim_dc_batch(self):
-        return self._sim_dc(True)
-
-    @viewgen_noctx
-    def sim_dc_piped(self):
-        return self._sim_dc(False)
-
-    def _sim_op(self, batch):
+    def sim_op(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s, batch=batch).op(save_params=True)
+        Simulator(s).op(save_params=True)
         return s
-
-    @viewgen_noctx
-    def sim_op_batch(self):
-        return self._sim_op(True)
-
-    @viewgen_noctx
-    def sim_op_piped(self):
-        return self._sim_op(False)
 
 class InvSkyTb(InvTb):
 
@@ -453,18 +418,11 @@ class AcRC(Cell):
         s.check(add_conn_points=True, add_terminal_taps=True)
         return s
 
-    def _sim_ac(self, batch):
+    @viewgen_noctx
+    def sim_ac(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s, batch=batch).ac('dec', '10', '1', '1G')
+        Simulator(s).ac('dec', '10', '1', '1G')
         return s
-
-    @viewgen_noctx
-    def sim_ac_batch(self):
-        return self._sim_ac(True)
-
-    @viewgen_noctx
-    def sim_ac_piped(self):
-        return self._sim_ac(False)
 
 
 class SineRL(Cell):
@@ -493,18 +451,11 @@ class SineRL(Cell):
         s.check(add_conn_points=True, add_terminal_taps=True)
         return s
 
-    def _sim_ac(self, batch):
+    @viewgen_noctx
+    def sim_ac(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s, batch=batch).ac('dec', '10', '1', '1G')
+        Simulator(s).ac('dec', '10', '1', '1G')
         return s
-
-    @viewgen_noctx
-    def sim_ac_batch(self):
-        return self._sim_ac(True)
-
-    @viewgen_noctx
-    def sim_ac_piped(self):
-        return self._sim_ac(False)
 
 
 class PulsedRC(Cell):
@@ -536,18 +487,11 @@ class PulsedRC(Cell):
         s.check(add_conn_points=True, add_terminal_taps=True)
         return s
 
-    def _sim_tran(self, batch):
+    @viewgen_noctx
+    def sim_tran(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s, batch=batch).tran("5u", "250u")
+        Simulator(s).tran("5u", "250u")
         return s
-
-    @viewgen_noctx
-    def sim_tran_batch(self):
-        return self._sim_tran(True)
-
-    @viewgen_noctx
-    def sim_tran_piped(self):
-        return self._sim_tran(False)
 
 class SourceTb(Cell):
     demo_pwl_points = (
@@ -578,18 +522,11 @@ class SourceTb(Cell):
         s.check(add_conn_points=True, add_terminal_taps=True)
         return s
 
-    def _sim_tran(self, batch):
+    @viewgen_noctx
+    def sim_tran(self):
         s = SimHierarchy.from_schematic(self.schematic)
-        Simulator(s, batch=batch).tran("5u", "250u")
+        Simulator(s).tran("5u", "250u")
         return s
-
-    @viewgen_noctx
-    def sim_tran_batch(self):
-        return self._sim_tran(True)
-
-    @viewgen_noctx
-    def sim_tran_piped(self):
-        return self._sim_tran(False)
 
 
 class VpwlTb(SourceTb):

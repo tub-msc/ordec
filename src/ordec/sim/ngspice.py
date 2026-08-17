@@ -3,9 +3,8 @@
 
 """Pure ngspice subprocess wrapper with no ORDB knowledge.
 
-Provides the Ngspice class for launching and controlling an ngspice process,
-running simulations (op, tran, ac, dc), and parsing binary rawfiles into
-SimArray results."""
+Provides ngspice_batch() for running ngspice in batch mode and parsing
+binary rawfiles into SimArray results."""
 
 import mmap
 import os
@@ -16,11 +15,10 @@ import shutil
 import tempfile
 import threading
 import logging
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 import subprocess
-from typing import Iterator, NamedTuple, Optional, Literal
+from typing import Optional
 
 from ..core import R, Quantity, SimArray, SimArrayField
 from ..core.genrun import progress, checkpoint, cancelable_subprocess
@@ -207,13 +205,6 @@ def parse_raw(fn, use_mmap=True) -> SimArray:
             return SimArray(fields, data)
 
 
-class NgspiceVector(NamedTuple):
-    name: str
-    dtype: str
-    length: int
-    rest: str
-
-
 def format_time(t: float) -> str:
     """
     Format a time in seconds for display, e.g. 0.0012345 -> "1.235ms".
@@ -392,203 +383,3 @@ def ngspice_batch(netlist: str, spiceinit_commands: list[str] | None = None,
 
         return parse_raw(rawfile)
 
-
-class Ngspice:
-    """Interactive piped-mode ngspice wrapper.
-
-    Uses ``ngspice -p`` to keep a persistent process. All simulation
-    data accumulates in RAM, so this is not suitable for simulations
-    with very large results. For those, use ``ngspice_batch()`` instead.
-    """
-    @classmethod
-    @contextmanager
-    def launch(cls, env: dict[str, str] | None = None):
-        exe = _ngspice_executable()
-        logger.debug(f"Using ngspice executable: {exe}")
-
-        with tempfile.TemporaryDirectory() as cwd_str:
-            # -n / --no-spiceinit: don't load any .spiceinit config file.
-            # In piped mode the temp cwd has no .spiceinit, so ngspice would
-            # otherwise fall through to the user's ~/.spiceinit. All settings
-            # ORDeC needs are sent explicitly as commands after launch.
-            p = subprocess.Popen([exe, "-n", "-p"],
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                cwd=cwd_str, env=env or None)
-            logger.debug(f"Process started with PID: {p.pid}")
-
-            try:
-                yield cls(p, cwd=Path(cwd_str))
-            finally:
-                logger.debug(f"Cleaning up process {p.pid}")
-                # communicate() closes stdin (giving ngspice EOF, which is the
-                # graceful shutdown for piped mode), drains stdout, and waits.
-                # If ngspice ignores EOF, escalate to SIGKILL — see Python
-                # subprocess docs for this kill-on-timeout pattern.
-                try:
-                    p.communicate(timeout=1.0)
-                except subprocess.TimeoutExpired:
-                    logger.warning(f"ngspice {p.pid} did not exit on EOF, escalating to SIGKILL.")
-                    p.kill()
-                    p.communicate()
-
-    def __init__(self, p: subprocess.Popen, cwd: Path):
-        self.p: subprocess.Popen[bytes] = p
-        self.cwd = cwd
-
-        self._configure_precision()
-
-    def _configure_precision(self) -> None:
-        """Configure ngspice numeric precision settings."""
-
-        logger.debug("Configuring ngspice numeric precision")
-        # Increase the number of digits printed in tabular outputs.
-        self.command("set numdgt=16")
-        # Ensure computed scalar values use the same precision.
-        self.command("set csnumprec=16")
-        # Use binary rawfiles for reliable machine-readable data passing.
-        self.command("set filetype=binary")
-    
-    def command(self, command: str) -> str:
-        """Executes ngspice command and returns string output from ngspice process."""
-        logger.debug(f"Sending command to ngspice ({self.p.pid}): {command}")
-
-        # Send the command followed by echo marker on separate lines.
-        full_input = f"{command}\necho FINISHED\n"
-        logger.debug(f"Writing to stdin: {repr(full_input)}")
-        self.p.stdin.write(full_input.encode("ascii"))
-        self.p.stdin.flush()
-
-        out = []
-        while True:
-            l = self.p.stdout.readline()
-            logger.debug(f"Received line from ngspice: {repr(l)}")
-
-            # Check for EOF first
-            if l == b"":  # readline() returns the empty byte string only on EOF.
-                out_flat = "".join(out)
-                logger.debug("EOF detected, ngspice terminated")
-                raise NgspiceError(f"ngspice terminated abnormally:\n{out_flat}")
-
-            # Strip "ngspice 123 -> " prompt prefix(es).
-            m = re.match(rb"(ngspice [0-9]+ -> )+(.*)$", l, flags=re.DOTALL)
-            if m:
-                l = m.group(2)
-
-            # Check for our finish marker
-            if l.rstrip() == b"FINISHED":
-                logger.debug("Found FINISHED marker, breaking")
-                break
-
-            # Skip empty lines that are just prompts
-            if l.strip() == b"":
-                continue
-
-            line = l.decode("ascii")
-            out.append(line)
-            logger.debug(f"Added to output: {repr(line)}")
-
-            # Some parser errors trigger an interactive ngspice prompt, which
-            # would otherwise hang this reader waiting for FINISHED forever.
-            if l.endswith(b"Run Spice anyway? y/n ?\n"):
-                self.p.stdin.write(b"n\n")
-                self.p.stdin.flush()
-                out_flat = "".join(out)
-                raise NgspiceError(
-                    "ngspice requested interactive input after netlist error:\n"
-                    + out_flat)
-
-
-        out_flat = "".join(out)
-        logger.debug(f"Received result from ngspice ({self.p.pid}): {repr(out_flat)}")
-
-        check_errors(out_flat)
-        return out_flat
-
-    def load_netlist(self, netlist: str, no_auto_gnd: bool = True):
-        netlist_fn = self.cwd / "netlist.sp"
-        netlist_fn.write_text(netlist)
-        logger.debug(f"Written netlist: \n {netlist}")
-        if no_auto_gnd:
-            self.command("set no_auto_gnd")
-        check_errors(self.command(f"source {netlist_fn}"))
-
-    def op(self) -> SimArray:
-        self.command("op")
-        return self._write_raw()
-
-    def _write_raw(self) -> SimArray:
-        """Write current simulation plot to sim.raw.
-
-        Uses explicit non-zero-length vector names to avoid ngspice refusing
-        to write when zero-length vectors (e.g. from .option savecurrents)
-        are present in the current plot.
-        """
-        valid = [v.name for v in self.vector_info() if v.length > 0]
-        if not valid:
-            raise NgspiceError("No simulation data: no non-zero-length vectors found")
-        self.command("write sim.raw " + " ".join(valid))
-        return parse_raw(self.cwd / "sim.raw")
-
-    def tran(self, tstep: R, tstop: R, tstart: R = R(0), tmax: Optional[R] = None, uic: bool = False) -> SimArray:
-        cmd = ['tran',
-            R(tstep).compat_str(),
-            R(tstop).compat_str(),
-            R(tstart).compat_str()]
-        if tmax is not None:
-            cmd.append(R(tmax).compat_str())
-        if uic:
-            cmd.append('uic')
-        self.command(' '.join(cmd))
-        return self._write_raw()
-
-    def ac(self, scheme: Literal["dec", "oct", "lin"], n: int, fstart: R, fstop: R) -> SimArray:
-        """Runs Ngspice's 'ac' command for AC small-signal analysis."""
-        if scheme not in ('dec', 'oct', 'lin'):
-            raise TypeError("scheme must be 'dec', 'oct' or 'lin'.")
-        self.command(" ".join([
-            'ac',
-            scheme,
-            str(n),
-            R(fstart).compat_str(),
-            R(fstop).compat_str(),
-            ]))
-        return self._write_raw()
-
-    def dc(self, source_name: str, vstart: R, vstop: R, vstep: R) -> SimArray:
-        """Runs Ngspice's 'dc' command for a DC voltage sweep. For a
-        single-point DC simulation, use the op() method (operating point)."""
-        self.command(" ".join([
-            'dc',
-            source_name,
-            R(vstart).compat_str(),
-            R(vstop).compat_str(),
-            R(vstep).compat_str(),
-            ]))
-        return self._write_raw()
-
-    def vector_info(self) -> Iterator[NgspiceVector]:
-        """Wrapper for ngspice's "display" command."""
-        display_output = self.command("display")
-        lines = display_output.split("\n")
-
-        in_vectors_section = False
-        for line in lines:
-            if "Here are the vectors currently active:" in line:
-                in_vectors_section = True
-                continue
-
-            if in_vectors_section:
-                if (
-                    len(line) == 0
-                    or line.startswith("Title:")
-                    or line.startswith("Name:")
-                    or line.startswith("Date:")
-                ):
-                    continue
-                res = re.match(
-                    r"\s*([0-9a-zA-Z_.#@\[\]]*)\s*:\s*([a-zA-Z]+),\s*([a-zA-Z]+),\s*([0-9]+) long(.*)",
-                    line,
-                )
-                if res:
-                    name, vtype, dtype, length, rest = res.groups()
-                    yield NgspiceVector(name, dtype, int(length), rest)

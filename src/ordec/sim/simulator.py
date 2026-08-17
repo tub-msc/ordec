@@ -3,20 +3,18 @@
 
 """High-level simulation interface bridging ORDB and ngspice.
 
-Simulator takes a SimHierarchy, netlists it, drives ngspice via the
-low-level Ngspice wrapper, and maps rawfile results back onto SimNet,
-SimPin and SimParam nodes."""
+Simulator takes a SimHierarchy, netlists it, runs ngspice in batch mode,
+and maps rawfile results back onto SimNet, SimPin and SimParam nodes."""
 
 import logging
 import os
-from contextlib import contextmanager
 from typing import Literal
 
 logger = logging.getLogger(__name__)
 
 from ..core import *
 from ..core.context import NodeContext
-from .ngspice import Ngspice, NgspiceSetup, ngspice_batch
+from .ngspice import NgspiceSetup, ngspice_batch
 from ..schematic import Netlister
 
 
@@ -57,27 +55,19 @@ def parse_signal_name(name):
     return (name, None)
 
 
-def Simulator(simhier: SimHierarchy, enable_savecurrents: bool = True,
-              batch: bool = True) -> 'SimulatorBase':
-    """Create a Simulator for the given SimHierarchy.
+class Simulator:
+    """Batch-mode ngspice simulator.
 
-    Prefer the :meth:`SimHierarchy.simulate` convenience method over calling
-    this directly, e.g. ``simhier.simulate(batch=True).op()`` instead of
-    ``Simulator(simhier, batch=True).op()``.
+    Netlists a SimHierarchy, runs ngspice in batch mode (streaming results
+    to disk), and maps rawfile results back onto SimNet, SimPin and
+    SimParam nodes. Prefer the :meth:`SimHierarchy.simulate` convenience
+    method over constructing this directly, e.g. ``simhier.simulate().op()``
+    instead of ``Simulator(simhier).op()``.
 
     Args:
         simhier: The simulation hierarchy to simulate.
         enable_savecurrents: Enable .option savecurrents in the netlist.
-        batch: If True (default), use ngspice batch mode which streams
-            results to disk. If False, use piped mode which keeps all
-            data in RAM.
     """
-    cls = SimulatorNgspiceBatch if batch else SimulatorNgspicePiped
-    return cls(simhier, enable_savecurrents=enable_savecurrents)
-
-
-class SimulatorBase:
-    """Shared netlisting, result storage, and query logic."""
 
     def __init__(self, simhier: SimHierarchy, enable_savecurrents: bool = True):
         self.simhier = simhier
@@ -237,10 +227,6 @@ class SimulatorBase:
             except KeyError:
                 continue
 
-
-class SimulatorNgspiceBatch(SimulatorBase):
-    """Batch-mode simulator: streams results to disk via ``ngspice -b``."""
-
     def _save_all_params(self):
         """Add .save directives to the netlist for device parameters."""
         self.netlister.add(".save all")
@@ -318,61 +304,3 @@ class SimulatorNgspiceBatch(SimulatorBase):
             ".dc", source_name,
             vstart.compat_str(), vstop.compat_str(), vstep.compat_str())
         self._store_results(self._run())
-
-
-class SimulatorNgspicePiped(SimulatorBase):
-    """Piped-mode simulator: keeps a persistent ``ngspice -p`` process.
-
-    All simulation data accumulates in RAM, so this is not suitable
-    for simulations with very large results.
-    """
-
-    @contextmanager
-    def _launch(self, save_params=False):
-        commands, env = self.collect_ngspice_setup()
-        with Ngspice.launch(env=env) as sim:
-            for cmd in commands:
-                sim.command(cmd)
-            sim.load_netlist(self.netlister.out())
-            if save_params:
-                self._save_all_params(sim)
-            yield sim
-
-    def _save_all_params(self, sim):
-        """Issue ngspice save commands for all known device parameters."""
-        sim.command("save all")
-        for directive in self._param_save_directives():
-            sim.command(f"save {directive}")
-
-    def op(self, save_params=False):
-        self.simhier.sim_type = SimType.OP
-        with self._launch(save_params) as sim:
-            self._store_results(sim.op())
-
-    def tran(self, tstep, tstop, tstart=R(0), tmax=None, uic=False,
-             save_params=False):
-        """
-        Run a transient analysis; see SimulatorNgspiceBatch.tran for the
-        meaning of the arguments.
-        """
-        self.simhier.sim_type = SimType.TRAN
-        with self._launch(save_params) as sim:
-            self._store_results(
-                sim.tran(tstep, tstop, tstart=tstart, tmax=tmax, uic=uic))
-
-    def ac(self, scheme: Literal["dec", "oct", "lin"], n: int,
-           fstart: R, fstop: R, save_params=False):
-        self.simhier.sim_type = SimType.AC
-        with self._launch(save_params) as sim:
-            self._store_results(sim.ac(scheme, n, fstart, fstop))
-
-    def dc_sweep(self, source, vstart, vstop, step_count: int, save_params=False):
-        if step_count < 2:
-            raise ValueError("step_count must be >= 2")
-        source_name = self.directory.existing_name_node(source)
-        vstart = R(vstart)
-        vstop = R(vstop)
-        vstep = (vstop - vstart) / R(step_count - 1)
-        self.simhier.sim_type = SimType.DCSWEEP
-        with self._launch(save_params) as sim:
-            self._store_results(sim.dc(source_name, vstart, vstop, vstep))

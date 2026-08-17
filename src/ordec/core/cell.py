@@ -550,6 +550,6 @@ class SimLeafCell(Cell, ABC):
 
         Device parameters live on the inner device, so they must be
         addressed as @<letter>.<path>.<inner>[param] rather than through the
-        subcircuit call (see SimulatorBase._param_save_directives).
+        subcircuit call (see Simulator._param_save_directives).
         """
         return None
