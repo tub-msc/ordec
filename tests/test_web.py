@@ -659,10 +659,18 @@ def test_layoutgl(web):
     
     img = Image.open(io.BytesIO(png))
 
-    wh = (img.width-img.height)/2
+    # The layers sidebar overlays the right edge of the canvas; the layout is
+    # fitted and centered within the remaining (unobstructed) area, so crop
+    # the fitted square relative to that area rather than the full canvas.
+    sidebar_width = web.driver.execute_script(
+        "return document.querySelector('.layout-sidebar').offsetWidth")
+    avail = img.width - sidebar_width
+    fit = min(avail, img.height)
+    left = (avail - fit)/2
+    top = (img.height - fit)/2
     margin = 25
 
-    img = img.crop([wh+margin, margin, img.width-wh-margin, img.height-margin])
+    img = img.crop([left+margin, top+margin, left+fit-margin, top+fit-margin])
     img = img.resize([512, 512], Image.Resampling.NEAREST)
 
     expect_blue  = img.crop((0, 0, 256, 128))

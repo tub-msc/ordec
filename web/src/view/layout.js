@@ -256,16 +256,22 @@ export class LayoutView extends View {
         const w = ux - lx;
         const h = uy - ly;
 
-        const scaleX = this.canvas.width / w;
-        const scaleY = this.canvas.height / h;
+        // The layers sidebar overlays the right edge of the canvas, so fit
+        // into the unobstructed part only. offsetWidth reflects the current
+        // sidebar state: expanded width or the narrow collapsed strip.
+        // canvas.width is set from clientWidth, so both are in CSS pixels.
+        const availWidth = Math.max(this.canvas.width - this.sidebar.offsetWidth, 1);
+        const availHeight = this.canvas.height;
+
+        const scaleX = availWidth / w;
+        const scaleY = availHeight / h;
         const scale = Math.min(scaleX, scaleY);
         let newZoom = new d3.ZoomTransform(scale, -lx*scale, uy*scale);
 
-        if(scaleX > scaleY) {
-            newZoom.x += (this.canvas.width - w*newZoom.k)/2;
-        } else {
-            newZoom.y += (this.canvas.height - h*newZoom.k)/2;
-        }
+        // Center within the available area; the term for the scale-limiting
+        // axis is zero, so both axes can be adjusted unconditionally.
+        newZoom.x += (availWidth - w*newZoom.k)/2;
+        newZoom.y += (availHeight - h*newZoom.k)/2;
 
         if(animate) {
             d3.select(this.canvas).transition().duration(400).call(this.zoom.transform, newZoom);
@@ -317,6 +323,13 @@ export class LayoutView extends View {
         this.data = msgData;
         this.wireHash = wireHash;
 
+        // Populate the sidebar before any zoom-to-fit below, so that its
+        // final width is known when the fit area (the part of the canvas
+        // not covered by the sidebar) is computed.
+        this.loadShapes();
+        this.loadLabels(false);
+        this.updateLayerList();
+
         // Pending selections are applied exactly once, without zooming; when
         // this is the first update, the selection also supplies the zoom
         // target, so that opening a layout from a DRC/LVS report lands on the
@@ -351,9 +364,6 @@ export class LayoutView extends View {
             }
         }
 
-        this.loadShapes();
-        this.loadLabels(false);
-        this.updateLayerList();
         this.updateLayers();
     }
 
