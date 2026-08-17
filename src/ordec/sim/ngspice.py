@@ -372,6 +372,12 @@ def ngspice_batch(netlist: str, spiceinit_commands: list[str] | None = None,
         stdout_text = b"".join(stdout_chunks).decode("ascii", errors="replace")
         logger.debug("ngspice batch stdout:\n%s", stdout_text)
 
+        if p.returncode != 0:
+            # A kill from request_cancel() lands here; report the
+            # cancellation rather than a spurious ngspice failure. Guarded
+            # on returncode so a run that completed just before the cancel
+            # still returns its data.
+            checkpoint()
         check_errors(stdout_text)
         if p.returncode != 0:
             raise NgspiceError(

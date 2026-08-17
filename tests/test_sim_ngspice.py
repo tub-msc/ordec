@@ -220,7 +220,7 @@ C1 out 0 1u
         try:
             with run.activate():
                 ngspice_batch(netlist, tran_tstop=R(10))
-        except (GenCancelled, NgspiceError):
+        except GenCancelled:
             result.append("cancelled")
     t = threading.Thread(target=worker)
     t.start()
