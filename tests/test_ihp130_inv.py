@@ -5,9 +5,12 @@
 Tests basic DRC + LVS in IHP130.
 """
 
+import ordec.importer
+
 from ordec.core.schema import LvsItem, LvsItemType
 from ordec.lib import ihp130
 from .lib.ihp130_inv import Inv
+from .lib.ihp130_nmos_series import SeriesNmos
 
 def test_lvs_clean():
     c = Inv()
@@ -37,3 +40,14 @@ def test_drc_clean():
 def test_drc_violation():
     res = ihp130.run_drc(Inv(variant="thin_m1").layout, use_tempdir=True)
     assert res.summary() == {'M1.a': 2}
+
+
+def test_series_nmos_drc_clean():
+    """The uncontacted source/drain needs no Activ of its own to pass DRC."""
+    assert SeriesNmos().drc.summary() == {}
+
+
+def test_series_nmos_lvs_clean():
+    """The abutted pair matches its two-transistor series schematic, with the
+    shared bare diffusion as the internal source/drain node."""
+    assert SeriesNmos().lvs.clean()

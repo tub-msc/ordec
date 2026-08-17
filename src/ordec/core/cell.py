@@ -458,7 +458,15 @@ class Cell(metaclass=MetaCell):
         pass
 
     def params_list(self, use_repr=False) -> list[str]:
-        param_items = [(k, getattr(self, k)) for k in self._class_params if getattr(self, k) is not None]
+        param_items = []
+        for k in self._class_params:
+            v = getattr(self, k)
+            if v is None:
+                continue
+            # Hide boolean parameters left at their default:
+            if isinstance(v, bool) and v == self._class_params[k].default:
+                continue
+            param_items.append((k, v))
         if use_repr:
             return [f"{k}={self._class_params[k].value_repr(v)}"
                 for k, v in param_items]

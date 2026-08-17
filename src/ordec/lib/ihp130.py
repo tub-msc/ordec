@@ -300,9 +300,17 @@ class SG13G2(Cell):
 
         return rs
 
-def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) -> Layout:
+def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
+    contact_sd_odd: bool=True, contact_sd_even: bool=True) -> Layout:
     """
     Layout generation function shared for Nmos and Pmos cells.
+
+    The num_gates+1 source/drain regions are numbered left to right, starting
+    at 0. contact_sd_odd / contact_sd_even select which of them get a Cont
+    array and a Metal1 strip; the others are left as bare diffusion, which
+    connects the adjacent channels in series. Skipping the odd regions of a
+    device with an even num_gates thus yields a series chain that is only
+    contacted at both ends.
 
     Notice: Placement of Cont vias differs slightly from the foundry-provieded PCell.
 
@@ -320,8 +328,20 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
 
     activ_ext = None
 
+    def sd_contacted(i):
+        return contact_sd_even if i % 2 == 0 else contact_sd_odd
+
     def add_sd(i):
         nonlocal l, s, x_cur, activ_ext
+        if not sd_contacted(i):
+            # Bare diffusion: the region is part of l.activ, so no node of
+            # its own is generated, only the Metal1 pad and the Activ
+            # enlargement (which exists solely for the Cont enclosure) are
+            # omitted. The gate pitch is left unchanged, so the surrounding
+            # geometry does not depend on which regions are contacted, and
+            # devices abutting on the region place it via l.activ.
+            x_cur = x_cur + 160
+            return
         l.sd[i] = LayoutRect(layer=layers.Metal1)
         sd = l.sd[i]
         s.constrain(sd.west == (x_cur, l.activ.cy))
@@ -388,6 +408,8 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
     # the Activ enclosure comes from activ/activ_ext.
     margin_y = 70 if W >= 300 else 0
     for i in range(num_gates + 1):
+        if not sd_contacted(i):
+            continue
         makevias(l, l.sd[i].rect, layers.Cont,
             size=Vec2I(160, 160),
             spacing=Vec2I(180, 180),
@@ -402,6 +424,11 @@ class Mos(SimLeafCell):
     w = Parameter(R)  #: Width
     m = Parameter(int, default=1)  #: Multiplier, i. e. number of devices with separate Activ areas in parallel)
     ng = Parameter(int, default=1)  #: Number of gate fingers
+
+    #: Contact odd-numbered source/drain regions (Cont + Metal1)
+    contact_sd_odd = Parameter(bool, default=True)
+    #: Contact even-numbered source/drain regions (Cont + Metal1)
+    contact_sd_even = Parameter(bool, default=True)
 
     def ngspice_save_params(self):
         # PSP103 (OSDI) operating-point outputs:
@@ -440,7 +467,9 @@ class Nmos(Mos):
     def layout(self) -> Layout:
         if self.m != 1:
             raise ParameterError("m != 1 not supported for layout.")
-        return layoutgen_mos(self, self.l, self.w, self.ng, nwell=False)
+        return layoutgen_mos(self, self.l, self.w, self.ng, nwell=False,
+            contact_sd_odd=self.contact_sd_odd,
+            contact_sd_even=self.contact_sd_even)
 
     @classmethod
     def discoverable_instances(cls):
@@ -456,7 +485,9 @@ class Pmos(Mos):
     def layout(self) -> Layout:
         if self.m != 1:
             raise ParameterError("m != 1 not supported for layout.")
-        return layoutgen_mos(self, self.l, self.w, self.ng, nwell=True)
+        return layoutgen_mos(self, self.l, self.w, self.ng, nwell=True,
+            contact_sd_odd=self.contact_sd_odd,
+            contact_sd_even=self.contact_sd_even)
 
     @classmethod
     def discoverable_instances(cls):
