@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Two NMOS devices in series, abutted on a shared source/drain region (see
+tests/test_ihp130_inv.py).
+
+The two devices share one diffusion strip instead of each getting their own
+Activ island: the lower device leaves its drain bare (contact_sd_odd=False),
+the upper device leaves its source bare (contact_sd_even=False), and the two
+regions are constrained to coincide. The internal node is therefore diffusion
+only, with no Cont and no Metal1 of its own.
+"""
+
+from ordec.core import *
+from ordec.lib.ihp130 import Nmos, Ptap, SG13G2, run_drc
+
+cell SeriesNmos:
+    viewgen layout(self) -> Layout:
+        .ref_layers = SG13G2().layers
+        layers = .ref_layers
+
+        # Lower device: source contacted, drain bare.
+        Nmos(w=1u, l=130n, contact_sd_odd=False) m1:
+            ! .pos == (0, 0)
+        # Upper device: source bare, drain contacted. Overlapping the two
+        # Activ islands by 70 Activ margin + 160 S/D strip + 70 Activ margin
+        # merges the two bare regions into one shared diffusion.
+        Nmos(w=1u, l=130n, contact_sd_even=False) m2:
+            ! .activ.lx == m1.activ.ux - 300
+            ! .activ.cy == m1.activ.cy
+        Ptap(l=0.7u, w=0.7u) ptap
+
+        # Source of the lower device tied to the bulk tap, which also places
+        # ptap relative to the devices:
+        LayoutRect m1_s:
+            .layer = layers.Metal1
+            ! .southwest == ptap.m1.southeast
+            ! .southeast == m1.sd[0].southwest
+            ! .height == 160
+            ! .width == 800
+
+        # Drain of the upper device, extended to meet the Metal1 min. area:
+        LayoutRect m1_d:
+            .layer = layers.Metal1
+            ! .south == m2.sd[1].north
+            ! .width == 160
+            ! .height == 500
+
+    viewgen drc(self) -> DrcReport:
+        . = run_drc(self.layout)
