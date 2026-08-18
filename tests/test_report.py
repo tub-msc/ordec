@@ -50,6 +50,9 @@ def test_plot2d_webdata():
     }]
     assert plot_data["height"] == "180px"
     assert plot_data["group"] == report.tran.nid
+    # Plot2DSeries.x is the derived x-axis accessor (the single scale).
+    s = next(iter(plot.series()))
+    assert list(s.x) == [1.0, 2.0, 3.0]
 
 
 def test_plot2d_rejects_unsorted_x():

@@ -333,8 +333,7 @@ class Plot2D(ReportElement):
             "series": [
                 {
                     "name": s.name,
-                    "x": [v if isfinite(v) else None
-                        for v in s.series.scales[0]],
+                    "x": [v if isfinite(v) else None for v in s.x],
                     "values": [v if isfinite(v) else None
                         for v in s.series.values],
                 }
@@ -464,3 +463,8 @@ class Plot2DSeries(Node):
     ref_idx = Index(ref)
     name = Attr(str, optional=False)
     series = Attr(SimSeries, optional=False, factory=coerce_plot_series)
+
+    @property
+    def x(self):
+        """The series' x axis: its single scale column."""
+        return self.series.scales[0]

@@ -236,6 +236,8 @@ class SimSeries:
 
     def __init__(self, values, scales=()):
         values = SimColumn.coerce(values)
+        if values is None:
+            raise TypeError("SimSeries values must not be None")
         scales = tuple(SimColumn.coerce(s) for s in scales)
         for s in scales:
             if len(s) != len(values):
@@ -265,6 +267,19 @@ class SimSeries:
         if val is None or isinstance(val, SimSeries):
             return val
         return cls(val)
+
+    def map(self, func, quantity=None):
+        """Return a new SimSeries with func applied to each value.
+
+        The scale columns are carried over as the same objects, so the
+        result stays associated with its axes and identity-based scale
+        sharing survives the transform. The result column carries the
+        given quantity and no name: transformed values are no longer
+        the raw ngspice column.
+        """
+        values = SimColumn.from_values(
+            [func(v) for v in self._values], quantity=quantity)
+        return SimSeries(values, self._scales)
 
     def __eq__(self, other):
         if not isinstance(other, SimSeries):

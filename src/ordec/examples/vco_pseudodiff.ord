@@ -873,7 +873,7 @@ cell VcoTb:
         )
         vdd_src_pin = sim.one(SimPin.instance_eref_idx.query(
             (sim.vdd_src, sim.vdd_src.eref.symbol.p)))
-        .plot2d(('vdd_src', sim.time, [-x for x in vdd_src_pin.current]),
+        .plot2d(('vdd_src', vdd_src_pin.current.map(lambda x: -x)),
             ylabel="Current (A)",
             group=.grp,
         )

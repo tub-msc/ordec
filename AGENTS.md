@@ -258,11 +258,15 @@ Each schema type is a Node subclass with Attr declarations and indexes.
   tran/ac = one, nested sweeps = several). Sequence protocol delegates to
   `values`; equality is strict over values plus scales. Also the plot data
   type: `Plot2DSeries.series` is `Attr(SimSeries)` restricted to exactly one
-  scale, which is the series' x axis; `Report.plot2d(*series)` takes nodes,
-  `(name, series)` pairs or `(name, x, y)` triples (the triple pairs two
-  data vectors point-wise, validating that both were recorded over a shared
-  scale; its operands are never nodes, spell out e.g. `net.voltage`), and
-  there is no plot-level x.
+  scale, which is the series' x axis (`Plot2DSeries.x` derived property);
+  `Report.plot2d(*series)` takes nodes, `(name, series)` pairs or
+  `(name, x, y)` triples (the triple pairs two data vectors point-wise,
+  validating that both were recorded over a shared scale; its operands are
+  never nodes, spell out e.g. `net.voltage`), and there is no plot-level x.
+  `SimSeries.map(func, quantity=None)` derives axis-preserving transformed
+  series (scale columns carried over as the same objects); the sim helpers
+  `mag_db`/`phase_deg` are series-in/series-out, so transformed AC data
+  plots as a `(name, series)` pair with no manual freq re-pairing.
 - `SimArray`: I/O-layer container (tuple subclass holding `(fields, data)`),
   produced by `parse_raw`; no longer a schema attr type. `column(fid)` stamps
   name/quantity onto the returned `SimColumn`.

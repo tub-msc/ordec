@@ -310,20 +310,28 @@ def test_translate_names_axes(tmp_path):
     assert header == ['time', 'out.voltage']
 
 def test_bode_helpers():
-    """Test the pure mag_db/phase_deg helpers, including phase unwrap."""
+    """Test the pure mag_db/phase_deg helpers, including phase unwrap.
+    Both are series-in/series-out and keep the scale columns."""
+    from ordec.core.simarray import Quantity, SimSeries
     from ordec.sim import mag_db, phase_deg
 
-    assert mag_db([10, 1, 0.1]) == pytest.approx([20.0, 0.0, -20.0])
-    assert mag_db([0]) == pytest.approx([-6000.0])  # clamped to floor
+    mag = mag_db(SimSeries([10, 1, 0.1], scales=[[1.0, 2.0, 3.0]]))
+    assert list(mag) == pytest.approx([20.0, 0.0, -20.0])
+    assert mag.quantity == Quantity.DECIBEL
+    assert list(mag_db(SimSeries([0]))) == pytest.approx([-6000.0])  # floor
 
     # Response circling through -170deg -> +170deg: raw phase jumps by
     # +340deg; unwrap turns that into a continuous -190deg.
-    vals = [
-        complex(math.cos(math.radians(a)), math.sin(math.radians(a)))
-        for a in (0, -90, -170, 170)
-    ]
-    assert phase_deg(vals, unwrap=False) == pytest.approx([0, -90, -170, 170])
-    assert phase_deg(vals) == pytest.approx([0, -90, -170, -190])
+    vals = SimSeries(
+        [complex(math.cos(math.radians(a)), math.sin(math.radians(a)))
+            for a in (0, -90, -170, 170)],
+        scales=[[1.0, 2.0, 3.0, 4.0]])
+    assert list(phase_deg(vals, unwrap=False)) \
+        == pytest.approx([0, -90, -170, 170])
+    assert list(phase_deg(vals)) == pytest.approx([0, -90, -170, -190])
+    # Axis-preserving: the transformed series carries the identical
+    # scale column objects.
+    assert phase_deg(vals).scales[0] is vals.scales[0]
 
 
 def test_bode_plot():
