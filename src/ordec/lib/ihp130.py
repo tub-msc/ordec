@@ -348,15 +348,23 @@ class SG13G2(Cell):
         addmetal(layers.Metal2)
         addvia(layers.Via2)
         addmetal(layers.Metal3)
-        # Todo: settings about Metal3 not checked yet.
         addvia(layers.Via3)
         addmetal(layers.Metal4)
         addvia(layers.Via4)
-        addmetal(layers.Metal5)
-        addvia(layers.TopVia1)
-        addmetal(layers.TopMetal1)
-        addvia(layers.TopVia2)
-        addmetal(layers.TopMetal2)
+        # The top of the stack has its own, much larger rules. TopVia1 is an
+        # exact 420 nm cut (TV1.a) that Metal5 must enclose by 100 nm (TV1.c)
+        # and TopMetal1 by 420 nm (TV1.d); TopMetal1 is 1640 nm wide at least
+        # (TM1.a). TopVia2 is 900 nm (TV2.a), enclosed by 500 nm on both
+        # sides (TV2.c/d), and TopMetal2 is 2000 nm wide at least (TM2.a).
+        # A Metal5 pad of 620 nm serves both the Via4 below and the TopVia1
+        # above; a TopMetal1 pad between TopVia1 and TopVia2 needs 1900 nm.
+        addmetal(layers.Metal5, route_via=(620, 620), route_pad=(620, 620))
+        addvia(layers.TopVia1, route_via=(420, 420))
+        addmetal(layers.TopMetal1, route_width=1640, route_via=(1900, 1900),
+            route_pad=(1640, 1640))
+        addvia(layers.TopVia2, route_via=(900, 900))
+        addmetal(layers.TopMetal2, route_width=2000, route_via=(2000, 2000),
+            route_pad=(2000, 2000))
 
         return rs
 
