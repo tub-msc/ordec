@@ -122,15 +122,20 @@ class SimHierarchy(SubgraphRoot):
     def _all_scales(self):
         """Iterate distinct scale columns of all node series.
 
-        Deduplicated by object identity; the writer shares one scale
-        column object across all series of a run, so this yields each
-        axis once.
+        Deduplicated by view identity (underlying buffer object plus
+        layout), not by wrapper object identity: after a wire round
+        trip every series decodes its own SimColumn wrapper onto the
+        shared blob, so equal wrappers are plentiful there. The writer
+        still shares one wrapper object per run, but nothing depends
+        on that.
         """
         seen = set()
         for series in self._all_series():
             for scale in series.scales:
-                if id(scale) not in seen:
-                    seen.add(id(scale))
+                key = (id(scale._data), scale._offset, scale._stride,
+                    scale._length, scale._dtype)
+                if key not in seen:
+                    seen.add(key)
                     yield scale
 
     @property

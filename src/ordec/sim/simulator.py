@@ -136,8 +136,9 @@ class Simulator:
 
         # The independent variable is field 0 in the rawfile, except for
         # op results, which have none. Build the scale column once and
-        # share the object across all series: consumers use scale object
-        # identity as a fast path, and it keeps one in-process view.
+        # share the object across all series; consumers never depend on
+        # that identity (it cannot survive a wire round trip), but it
+        # enables identity fast paths and keeps one in-process view.
         if sim_type == SimType.OP:
             scales = ()
             data_fields = list(enumerate(sim_array.fields))
@@ -164,11 +165,11 @@ class Simulator:
                     siminstance = None
                     remaining_path = []
                     parts = node_name.split(".")
-                    for i in range(len(parts), 0, -1):
-                        try_path = ".".join(parts[:i])
+                    for plen in range(len(parts), 0, -1):
+                        try_path = ".".join(parts[:plen])
                         try:
                             siminstance = self.hier_simobj_of_name(try_path)
-                            remaining_path = parts[i:]
+                            remaining_path = parts[plen:]
                             break
                         except KeyError:
                             continue
