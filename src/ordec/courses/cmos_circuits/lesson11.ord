@@ -54,7 +54,6 @@ cell OtaTb:
     viewgen report_dc(self) -> Report:
         sim = self.sim_dc
         .markdown("OTA transfer curve:")
-        .plot2d(sim.inp.voltage,
-            sim.out,
+        .plot2d(("out", sim.inp.voltage, sim.out.voltage),
             xlabel="Vinp (V), Vinn = 0.7 V",
             ylabel="Vout (V)")

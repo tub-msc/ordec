@@ -45,13 +45,13 @@ cell MosCurves:
             for vgs in ('0.6', '0.8', '1.0', '1.2'):
                 sim_n = MosCurves(vgs=R(vgs)).sim_vds
                 sim_p = MosCurves(vgs=R('1.2') - R(vgs)).sim_vsd
-                nmos_series.append(("VGS = " + vgs + " V",
+                nmos_series.append(("VGS = " + vgs + " V", vds_n,
                     [float(i) for i in sim_n.mn.params['ids'].value]))
-                pmos_series.append(("VSG = " + vgs + " V",
+                pmos_series.append(("VSG = " + vgs + " V", vds_p,
                     [-float(i) for i in sim_p.mp.params['ids'].value]))
-            .plot2d(vds_n, *nmos_series,
+            .plot2d(*nmos_series,
                 xlabel="VDS (V)",
                 ylabel="NMOS ID (A)")
-            .plot2d(vds_p, *pmos_series,
+            .plot2d(*pmos_series,
                 xlabel="VDS (V)",
                 ylabel="PMOS ID (A)")

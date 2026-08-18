@@ -175,7 +175,7 @@ export class Plot2d extends ReportElement {
             fixedHeight: msgData.height,
         });
 
-        this.plot.setData(msgData.x, msgData.series);
+        this.plot.setData(msgData.series);
         if (this.savedHidden) {
             this.plot.setHiddenNames(this.savedHidden);
         }

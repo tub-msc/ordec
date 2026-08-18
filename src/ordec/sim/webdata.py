@@ -37,30 +37,22 @@ def _fmt_eng(val, unit):
     return x
 
 
-def _plot_signals(sh: SimHierarchy, x):
-    """Build a Report plotting net voltages and pin currents over a shared x-axis."""
-    # plot2d derives series names from the nodes and infers the axis
-    # labels from the labeled x and voltage/current columns.
+def webdata_signals(sh: SimHierarchy):
+    """Build a Report plotting net voltages and pin currents (tran and
+    dc sweep results)."""
+    # plot2d derives the series names from the nodes, and the x axis
+    # plus the axis labels from the series' scale and values columns.
+    # A hierarchy without recorded series yields an empty report.
     nets = [sn for sn in sh.all(SimNet) if sn.voltage is not None]
     pins = [sp for sp in sh.all(SimPin) if sp.current is not None]
     report = Report(fill_height=True)
     if nets or pins:
         report.sim = PlotGroup()
     if nets:
-        report.plot2d(x, *nets, height=None, group=report.sim)
+        report.plot2d(*nets, height=None, group=report.sim)
     if pins:
-        report.plot2d(x, *pins, height=None, group=report.sim)
+        report.plot2d(*pins, height=None, group=report.sim)
     return report.webdata_static()
-
-
-def webdata_tran(sh: SimHierarchy):
-    return _plot_signals(sh, sh.time)
-
-
-def webdata_dcsweep(sh: SimHierarchy):
-    if sh.sweep is None:
-        return Report(fill_height=True).webdata_static()
-    return _plot_signals(sh, sh.sweep)
 
 
 def webdata_ac(sh: SimHierarchy):
@@ -145,9 +137,9 @@ def webdata(sh: SimHierarchy):
     dispatch = {
         None: webdata_nosim,
         SimType.OP: webdata_op,
-        SimType.TRAN: webdata_tran,
+        SimType.TRAN: webdata_signals,
         SimType.AC: webdata_ac,
-        SimType.DCSWEEP: webdata_dcsweep,
+        SimType.DCSWEEP: webdata_signals,
     }
     try:
         handler = dispatch[sh.sim_type]

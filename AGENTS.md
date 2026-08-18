@@ -252,11 +252,17 @@ Each schema type is a Node subclass with Attr declarations and indexes.
   slicing, iteration, `len()`); values unpack on demand. Carries `name` (the
   verbatim ngspice fid) and `quantity`; both participate in `__eq__`/`__hash__`
   (element-wise value equality, weak buffer-free hash). A first-class schema
-  value type (`Attr(SimColumn)`, used by Plot2D).
+  value type.
 - `SimSeries`: immutable schema value type bundling one dependent `values`
   column with zero or more `scales` columns (independent axes: op = none,
   tran/ac = one, nested sweeps = several). Sequence protocol delegates to
-  `values`; equality is strict over values plus scales.
+  `values`; equality is strict over values plus scales. Also the plot data
+  type: `Plot2DSeries.series` is `Attr(SimSeries)` restricted to exactly one
+  scale, which is the series' x axis; `Report.plot2d(*series)` takes nodes,
+  `(name, series)` pairs or `(name, x, y)` triples (the triple pairs two
+  data vectors point-wise, validating that both were recorded over a shared
+  scale; its operands are never nodes, spell out e.g. `net.voltage`), and
+  there is no plot-level x.
 - `SimArray`: I/O-layer container (tuple subclass holding `(fields, data)`),
   produced by `parse_raw`; no longer a schema attr type. `column(fid)` stamps
   name/quantity onto the returned `SimColumn`.

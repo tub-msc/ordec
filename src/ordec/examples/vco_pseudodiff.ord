@@ -864,19 +864,16 @@ cell VcoTb:
         .grp = PlotGroup()
 
         for i in range(2):
-            .plot2d(sim.time,
-                sim.out_n[i], sim.out_p[i],
+            .plot2d(sim.out_n[i], sim.out_p[i],
                 height=180,
                 group=.grp,
             )
-        .plot2d(sim.time,
-            sim.rst_n, sim.vbias,
+        .plot2d(sim.rst_n, sim.vbias,
             group=.grp,
         )
         vdd_src_pin = sim.one(SimPin.instance_eref_idx.query(
             (sim.vdd_src, sim.vdd_src.eref.symbol.p)))
-        .plot2d(sim.time,
-            ('vdd_src', [-x for x in vdd_src_pin.current]),
+        .plot2d(('vdd_src', sim.time, [-x for x in vdd_src_pin.current]),
             ylabel="Current (A)",
             group=.grp,
         )

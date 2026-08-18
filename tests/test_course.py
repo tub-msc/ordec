@@ -230,8 +230,8 @@ courses_testdata = {
                 sim = self.sim_tran
                 .markdown("Step response of the two RC stages.")
                 PlotGroup grp
-                .plot2d(sim.time, sim.vin, group=grp)
-                .plot2d(sim.time, sim.mid, sim.vout, group=grp)
+                .plot2d(sim.vin, group=grp)
+                .plot2d(sim.mid, sim.vout, group=grp)
             """),
         ]),
         # Lesson 10: postprocessing.

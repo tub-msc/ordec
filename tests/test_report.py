@@ -31,8 +31,7 @@ def test_plot2d_webdata():
     report = Report()
     report.tran = PlotGroup()
     plot = report.plot2d(
-        [1.0, 2.0, 3.0],
-        ("v(out)", [0.1, 0.2, 0.3]),
+        ("v(out)", [1.0, 2.0, 3.0], [0.1, 0.2, 0.3]),
         xlabel="Time (s)",
         ylabel="Voltage (V)",
         height=180,
@@ -42,32 +41,50 @@ def test_plot2d_webdata():
     _, data = report.webdata(ExportTable())
     plot_data = data["elements"][0]
     assert plot_data["element_type"] == "plot2d"
-    assert plot_data["x"] == [1.0, 2.0, 3.0]
-    assert plot_data["series"] == [{"name": "v(out)", "values": [0.1, 0.2, 0.3]}]
+    # Each series carries its own x axis; there is no plot-level x.
+    assert "x" not in plot_data
+    assert plot_data["series"] == [{
+        "name": "v(out)",
+        "x": [1.0, 2.0, 3.0],
+        "values": [0.1, 0.2, 0.3],
+    }]
     assert plot_data["height"] == "180px"
     assert plot_data["group"] == report.tran.nid
 
 
 def test_plot2d_rejects_unsorted_x():
     report = Report()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="sorted"):
         report.plot2d(
-            [1.0, 0.5, 2.0],
-            ("v(out)", [0.1, 0.2, 0.3]),
+            ("v(out)", [1.0, 0.5, 2.0], [0.1, 0.2, 0.3]),
         )
 
 
 def test_plot2d_bad_series():
+    from ordec.core.simarray import SimSeries
+
     report = Report()
     # A bare values iterable has no name and is rejected; a rejected
     # series must not leave a partial Plot2D in the report.
     with pytest.raises(TypeError, match="pair or a"):
-        report.plot2d([1.0, 2.0], [0.1, 0.2, 0.3])
+        report.plot2d([0.1, 0.2, 0.3])
     with pytest.raises(TypeError, match="real numbers"):
-        report.plot2d([1.0, 2.0], ("v(out)", [1 + 2j, 3 + 4j]))
+        report.plot2d(("v(out)", [1.0, 2.0], [1 + 2j, 3 + 4j]))
     # A scalar instead of a sequence keeps its original error message.
     with pytest.raises(TypeError, match="not iterable"):
-        report.plot2d([1.0, 2.0], ("v(out)", 5.0))
+        report.plot2d(("v(out)", [1.0, 2.0], 5.0))
+    # x and values of a triple must be of equal length.
+    with pytest.raises(ValueError, match="length"):
+        report.plot2d(("v(out)", [1.0, 2.0], [0.1, 0.2, 0.3]))
+    # Pairing two series recorded over different axes is rejected.
+    s1 = SimSeries([0.1, 0.2], scales=[[1.0, 2.0]])
+    s2 = SimSeries([0.3, 0.4], scales=[[1.0, 3.0]])
+    with pytest.raises(ValueError, match="common axis"):
+        report.plot2d(("xy", s1, s2))
+    # A series without an x axis (e.g. an operating-point result)
+    # cannot be plotted.
+    with pytest.raises(ValueError, match="exactly one x axis"):
+        report.plot2d(("op", SimSeries([1.0, 2.0])))
     _, data = report.webdata(ExportTable())
     assert data["elements"] == []
 
@@ -75,8 +92,7 @@ def test_plot2d_bad_series():
 def test_plot2d_height_none():
     report = Report()
     report.plot2d(
-        [1.0, 2.0, 3.0],
-        ("v(out)", [0.1, 0.2, 0.3]),
+        ("v(out)", [1.0, 2.0, 3.0], [0.1, 0.2, 0.3]),
         height=None,
     )
     _, data = report.webdata(ExportTable())

@@ -346,7 +346,8 @@ def test_bode_plot():
     for plot in (mag, phase):
         assert plot["element_type"] == "plot2d"
         assert plot["xscale"] == "log"
-        assert plot["x"] == [f.real for f in h.freq]
+        for s in plot["series"]:
+            assert s["x"] == [f.real for f in h.freq]
         assert [s["name"] for s in plot["series"]] == ["inp", "out"]
     # Both plots share one PlotGroup for x-axis synchronization.
     assert mag["group"] == phase["group"] is not None
@@ -385,13 +386,13 @@ def test_plot2d_simnet_series():
 
     h = lib_test.VpwlTb().sim_tran
     report = Report()
-    report.plot2d(h.time, h.out)
-    report.plot2d(h.time, h.out, h.res.p)
+    report.plot2d(h.out)
+    report.plot2d(h.out, h.res.p)
     from ordec.core.wire import ExportTable
     _, data = report.webdata(ExportTable())
     plot = data["elements"][0]
     assert plot["element_type"] == "plot2d"
-    assert plot["x"] == pytest.approx(list(h.time))
+    assert plot["series"][0]["x"] == pytest.approx(list(h.time))
     assert [s["name"] for s in plot["series"]] == ["out"]
     assert plot["series"][0]["values"] == pytest.approx(list(h.out.voltage))
     assert plot["xlabel"] == "Time (s)"
@@ -401,6 +402,10 @@ def test_plot2d_simnet_series():
     mixed = data["elements"][1]
     assert [s["name"] for s in mixed["series"]] == ["out", "res.p"]
     assert mixed["ylabel"] == "Voltage (V), Current (A)"
+    # Triple operands are data vectors, never nodes: which recorded
+    # signal is meant must be spelled out (h.out.voltage).
+    with pytest.raises(TypeError, match="not nodes"):
+        report.plot2d(("xy", h.out, h.res.p))
 
 
 def test_bode_plot_errors():

@@ -851,8 +851,8 @@ def gen_lesson9(g):
             viewgen report(self) -> Report:
                 sim = self.sim_tran
                 .markdown("Step response of the two RC stages.")
-                .plot2d(sim.time, sim.vin)
-                .plot2d(sim.time, sim.mid, sim.vout)
+                .plot2d(sim.vin)
+                .plot2d(sim.mid, sim.vout)
             ```
 
             Open the new `RcChain().report` view in the empty result
@@ -910,14 +910,14 @@ def gen_lesson9(g):
             found = (ps is not None and len(ps) >= 1
                 and [se.name for se in ps[0].series()] == ['vin'])
             report.passfail(label, found,
-                hint="The first `.plot2d(...)` plots sim.time against "
-                "the single series sim.vin.",
+                hint="The first `.plot2d(...)` plots the single series "
+                "sim.vin.",
                 instructions="The report's first plot must show exactly "
                 "one series named vin.")
         except Exception:
             report.passfail(label, False, instructions=exception_text(),
-                hint="The first `.plot2d(...)` plots sim.time against "
-                "the single series sim.vin.")
+                hint="The first `.plot2d(...)` plots the single series "
+                "sim.vin.")
 
         label = "Second plot: both stage outputs"
         try:

@@ -167,9 +167,8 @@ cell AdderTb:
             "the carry is still rippling through the adder.")
         .grp = PlotGroup()
         .plot2d(
-            sim.time,
-            ("A", a_dec),
-            ("S = A + 5", s_dec),
+            ("A", sim.time, a_dec),
+            ("S = A + 5", sim.time, s_dec),
             ylabel="Decoded value",
             group=.grp)
         waves = [(f"a[{i}]", a_bits[i]) for i in reversed(range(N))]
@@ -178,9 +177,8 @@ cell AdderTb:
         stack = []
         for j, (label, wave) in enumerate(waves):
             offset = 2 * (len(waves) - 1 - j)
-            stack.append((label, [v + offset for v in wave]))
+            stack.append((label, sim.time, [v + offset for v in wave]))
         .plot2d(
-            sim.time,
             *stack,
             ylabel="Voltage (V), traces offset by 2 V",
             group=.grp)

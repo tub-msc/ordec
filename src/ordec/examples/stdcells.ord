@@ -63,8 +63,7 @@ cell InvTb:
     viewgen report_vtc(self) -> Report:
         sim = self.sim_dc
         .markdown("# Inverter voltage transfer curve\n")
-        .plot2d(sim.i.voltage,
-            ("Vout", sim.o.voltage),
+        .plot2d(("Vout", sim.i.voltage, sim.o.voltage),
             xlabel="Vin (V)",
             ylabel="Vout (V)")
 

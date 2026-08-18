@@ -29,31 +29,27 @@ def report_example() -> Report:
     report.tran_demo = PlotGroup()
     report.ac_demo = PlotGroup()
     report.plot2d(
-        time,
-        ("v(in)", vin),
-        ("v(out)", vout),
+        ("v(in)", time, vin),
+        ("v(out)", time, vout),
         xlabel="Time (s)",
         ylabel="Voltage (V)",
         group=report.tran_demo,
     )
     report.plot2d(
-        time,
-        ("v(err)", verr),
+        ("v(err)", time, verr),
         xlabel="Time (s)",
         ylabel="Voltage (V)",
         group=report.tran_demo,
     )
     report.plot2d(
-        ac_freq,
-        ("|v(out)| (dB)", ac_mag),
+        ("|v(out)| (dB)", ac_freq, ac_mag),
         xlabel="Frequency (Hz)",
         ylabel="Magnitude (dB)",
         xscale="log",
         group=report.ac_demo,
     )
     report.plot2d(
-        ac_freq,
-        ("phase(v(out))", ac_phase),
+        ("phase(v(out))", ac_freq, ac_phase),
         xlabel="Frequency (Hz)",
         ylabel="Phase (deg)",
         xscale="log",

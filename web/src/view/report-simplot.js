@@ -414,11 +414,16 @@ export class SimPlot {
         this.svg.call(this.zoom.transform, d3.zoomIdentity);
     }
 
-    setData(xValues, series) {
+    setData(series) {
         // Non-finite values arrive as null (JSON has no NaN/Infinity, see
         // Plot2D.element_webdata); map them back to NaN so the isFinite gap
         // handling in the line/crosshair rendering applies.
-        this.xValues = xValues.map(v => v === null ? NaN : v);
+        //
+        // Each series carries its own x array; the renderer still assumes
+        // one shared grid and uses the first series' x for all of them.
+        // All plots the backend currently produces satisfy this; true
+        // per-series x rendering is a planned follow-up.
+        this.xValues = series[0].x.map(v => v === null ? NaN : v);
         this.series = series.map((s, i) => ({
             ...s,
             values: s.values.map(v => v === null ? NaN : v),

@@ -46,7 +46,7 @@ cell InvAmpTb:
             f"v(y) = {float(op.yout.voltage[0]):.3f} V. The input has an "
             "AC magnitude of 1, so the curve below reads directly as the "
             "voltage gain.")
-        .plot2d(sim.freq,
-            ("|V(yout)|", [abs(v) for v in sim.yout.voltage]),
+        .plot2d(
+            ("|V(yout)|", sim.freq, [abs(v) for v in sim.yout.voltage]),
             ylabel="Voltage gain",
             xscale=ScaleType.Log)
