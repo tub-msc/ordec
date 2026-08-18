@@ -33,6 +33,8 @@ KEYWORD_RULES = {
     'viewgen': 'viewgen',
     'path_stmt': 'path_net',
     'net_stmt': 'path_net',
+    'path_stmt_nobody': 'path_net',
+    'net_stmt_nobody': 'path_net',
 }
 
 # Soft keywords as plain names that must not match declarations or node
@@ -53,14 +55,16 @@ ATOM_EXPR_POSITIVES = [
     ('rows[0] r0:', 'node_stmt'),
     ('anonymous lib.Vdc(dc=1) v0:', 'anon_node_stmt'),
     ('lib.Inv i2, i3', 'node_stmt_nobody'),
-    ('net vdd, ring.vx', 'net_stmt'),
-    ('path ctr[0], ctr[1].sub', 'path_stmt'),
+    ('net vdd, ring.vx', 'net_stmt_nobody'),
+    ('path ctr[0], ctr[1].sub', 'path_stmt_nobody'),
+    ('net ring.vx:', 'net_stmt'),
+    ('path ctr[0]:', 'path_stmt'),
 ]
 
 
 def wrap_in_viewgen(line, rule):
     """Embed a synthetic statement in a minimal cell/viewgen skeleton."""
-    body = '\n            pass' if rule in NODE_RULES else ''
+    body = '' if rule.endswith('_nobody') else '\n            pass'
     return f'cell C:\n    viewgen v(self) -> Schematic:\n        {line}{body}\n'
 
 
@@ -306,6 +310,8 @@ TREE_SITTER_RULES = {
     'viewgen': 'viewgen_definition',
     'path_stmt': 'path_net_statement',
     'net_stmt': 'path_net_statement',
+    'path_stmt_nobody': 'path_net_statement',
+    'net_stmt_nobody': 'path_net_statement',
 }
 
 

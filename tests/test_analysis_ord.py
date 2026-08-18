@@ -373,6 +373,30 @@ def test_reused_symbol_members():
     assert session.definition(uri, position_at(source, "g --"))["name"] == "g"
 
 
+def test_net_path_statement_bodies():
+    source = dedent("""\
+        from ordec.core import *
+
+        cell Inv:
+            viewgen schematic(self) -> Schematic:
+                net vss
+                net clk:
+                    .auto_wire = False
+                    vss.auto_wire = False
+                path grp:
+                    net inner
+                clk.auto_wire = True
+        """)
+    session = AnalysisSession()
+    uri = "file:///tmp/net_path_bodies.ord"
+    session.open_document(uri, source)
+
+    assert session.diagnostics(uri) == []
+    # References inside and after a statement body resolve to the net targets.
+    assert session.definition(uri, position_at(source, "vss.auto_wire"))["name"] == "vss"
+    assert session.definition(uri, position_at(source, "clk.auto_wire = True"))["name"] == "clk"
+
+
 def test_cell_member_sources():
     source = dedent("""\
         from ordec.core import *

@@ -50,11 +50,11 @@ Python to supply the necessary constructs during execution.
 
 .. code-block::
 
-    # Type 1
+    # Indented body
     port xyz:
         .pos=(1,2)
-    # Type 2
-    port xyz(.pos=(1,2))
+    # Inline body
+    port xyz: .pos=(1,2)
 
 Node Statements
 ^^^^^^^^^^^^^^^
@@ -63,13 +63,16 @@ A **node statement** is the ``A B`` construct that creates and names an element 
 
 1. **Node class statements** — the type is a Node subclass, e.g., ``LayoutRect x``
 2. **Node instance statements** — the type is a Cell class or instance, e.g., ``Nmos x``
-3. **Node keyword statements** — the type is a built-in keyword, e.g., ``input x``, ``output y``, ``port z``
+3. **Node keyword statements** — the type is a built-in keyword, e.g., ``input x``, ``output y``, ``port z``, ``net a``, ``path p``
 
-Node keyword statements come with direction-based align defaults: ``input``
+The pin and port keywords come with direction-based align defaults: ``input``
 pins face ``West``, ``output`` pins ``East``, and ``inout`` pins ``South``. A
 ``port`` defaults to the flipped align of its symbol pin, so e.g. a
 West-facing input pin yields an East-facing port. An ``.align=`` assignment
 in the statement body overrides these defaults.
+
+The ``net`` and ``path`` keywords create a ``Net`` or ``PathNode``, e.g.
+``net clk: .auto_wire = False``.
 
 A node statement may have an optional body (indented block after ``:``) for setting attributes:
 
@@ -92,16 +95,16 @@ To demonstrate how the ORD context works and how the conversion from ORD to Pyth
 
     cell Inv:
         viewgen symbol(self) -> Symbol:
-            inout vdd(.align=North)
-            inout vss(.align=South)
-            input a(.align=West)
-            output y(.align=East)
+            inout vdd: .align=North
+            inout vss: .align=South
+            input a: .align=West
+            output y: .align=East
 
         viewgen schematic(self) -> Schematic:
-            port vdd(.pos=(2,13); .align=North)
-            port vss(.pos=(2,1); .align=South)
-            port y (.pos=(9,7); .align=West)
-            port a (.pos=(1,7); .align=East)
+            port vdd: .pos=(2,13); .align=North
+            port vss: .pos=(2,1); .align=South
+            port y: .pos=(9,7); .align=West
+            port a: .pos=(1,7); .align=East
 
             Nmos pd:
                 .s -- vss
@@ -205,14 +208,14 @@ of the example.
 
         @viewgen
         def schematic(self) -> Schematic:
-            vss = context.add_port(('vss',))
-            with vss.ctx():
-                context.root().pos = (2,1)
-                context.root().align = South
             vdd = context.add_port(('vdd',))
             with vdd.ctx():
                 context.root().pos = (2,13)
                 context.root().align = North
+            vss = context.add_port(('vss',))
+            with vss.ctx():
+                context.root().pos = (2,1)
+                context.root().align = South
             y = context.add_port(('y',))
             with y.ctx():
                 context.root().pos = (9,7)
