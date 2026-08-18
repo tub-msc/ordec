@@ -169,13 +169,10 @@ class OrdTransformer(PythonTransformer):
         context_body = nodes[2] if len(nodes) > 2 else None
         if isinstance(context_type, str):
             context_type_name = context_type
-            context_type_expr = ast.Name(id=context_type, ctx=ast.Load())
         elif isinstance(context_type, ast.Name):
             context_type_name = context_type.id
-            context_type_expr = context_type
         else:
             context_type_name = None
-            context_type_expr = context_type
         inout = ''
 
         context_name_tuple = self.extract_path(context_name)
@@ -249,7 +246,7 @@ class OrdTransformer(PythonTransformer):
         else:
             args = [
                 ast.Tuple(elts=context_name_tuple, ctx=ast.Load()),
-                context_type_expr
+                context_type
             ]
             func = self.ast_ord_context("add_element")
             rhs = ast.Call(

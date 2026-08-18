@@ -5,9 +5,12 @@ from ordec.ord import ord_to_py
 import ast
 import pytest
 
-def compare_asts(ord_code_string):
+def compare_asts(ord_code_string, py_code_string=None):
+    """Compare compiled ORD code against Python code (itself by default)."""
+    if py_code_string is None:
+        py_code_string = ord_code_string
     ord_ast = ord_to_py(ord_code_string)
-    python_ast = ast.parse(ord_code_string)
+    python_ast = ast.parse(py_code_string)
     assert (ast.dump(ord_ast) ==
             ast.dump(python_ast))
 
@@ -1171,6 +1174,16 @@ def test_net_multi_target_with_body():
     # Like node statements, the bodied form allows only a single target.
     ord_string = "net a, b: x"
     compare_syntax_errors(ord_string)
+
+def test_net_with_body():
+    compare_asts(
+        "net clk:\n"
+        "    .auto_wire = False\n",
+
+        "clk = __ord_context__.add(('clk',), __ordec_core__.Net())\n"
+        "with clk.ctx():\n"
+        "    __ord_context__.root().auto_wire = False\n",
+    )
 
 def test_name_viewgen_assignment():
     ord_string = "viewgen = 1"

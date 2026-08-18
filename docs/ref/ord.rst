@@ -69,8 +69,10 @@ The pin and port keywords come with direction-based align defaults: ``input``
 pins face ``West``, ``output`` pins ``East``, and ``inout`` pins ``South``. A
 ``port`` defaults to the flipped align of its symbol pin, so e.g. a
 West-facing input pin yields an East-facing port. An ``.align=`` assignment
-in the statement body overrides these defaults. ``net`` and ``path`` create a
-``Net`` or ``PathNode``, e.g. ``net clk: .auto_wire = False``.
+in the statement body overrides these defaults.
+
+The ``net`` and ``path`` keywords create a ``Net`` or ``PathNode``, e.g.
+``net clk: .auto_wire = False``.
 
 A node statement may have an optional body (indented block after ``:``) for setting attributes:
 
