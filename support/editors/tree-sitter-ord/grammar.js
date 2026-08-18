@@ -43,6 +43,7 @@ module.exports = grammar(python, {
     [$.cell_definition, $._node_kind],
     [$.viewgen_definition, $._node_kind],
     [$.path_net_statement, $._node_kind],
+    [$.path_net_statement, $._path_net_definition, $._node_kind],
     [$.type_alias_statement, $._node_kind],
     [$.node_statement, $.node_statement_nobody, $.primary_expression],
     [$.node_statement, $.node_statement_nobody, $._node_kind],
@@ -83,6 +84,7 @@ module.exports = grammar(python, {
       $.with_statement,
       $.cell_definition,
       $.viewgen_definition,
+      alias($._path_net_definition, $.path_net_statement),
       $.node_statement,
       $.function_definition,
       $.class_definition,
@@ -164,6 +166,13 @@ module.exports = grammar(python, {
     path_net_statement: $ => prec.dynamic(1, seq(
       field('keyword', choice('path', 'net')),
       commaSep1(field('name', $.context_target)),
+    )),
+
+    _path_net_definition: $ => prec.dynamic(1, seq(
+      field('keyword', choice('path', 'net')),
+      field('name', $.context_target),
+      ':',
+      field('body', $._suite),
     )),
 
     context_target: $ => seq(

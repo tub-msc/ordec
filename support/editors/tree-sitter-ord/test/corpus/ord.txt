@@ -658,3 +658,40 @@ viewgen top() -> Symbol:
       (identifier))
     (block
       (pass_statement))))
+
+================================================================================
+Net and path statements with a body
+================================================================================
+
+viewgen schematic(self) -> Schematic:
+    net clk:
+        .auto_wire = False
+    path grp:
+        net a
+
+--------------------------------------------------------------------------------
+
+(module
+  (viewgen_definition
+    (identifier)
+    (parameters
+      (identifier))
+    (type
+      (identifier))
+    (block
+      (path_net_statement
+        (context_target
+          (identifier))
+        (block
+          (expression_statement
+            (assignment
+              (ord_local_attribute
+                (identifier))
+              (false)))))
+      (path_net_statement
+        (context_target
+          (identifier))
+        (block
+          (path_net_statement
+            (context_target
+              (identifier))))))))

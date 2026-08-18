@@ -153,7 +153,7 @@ public class OrdStatementParsing extends StatementParsing {
         return false;
     }
 
-    // path_stmt/net_stmt: keyword context_target ("," context_target)*
+    // path_stmt/net_stmt: keyword context_target (context_body | ("," context_target)*)
     private boolean parsePathNetStatement() {
         SyntaxTreeBuilder.Marker marker = myBuilder.mark();
         myBuilder.advanceLexer();
@@ -161,14 +161,21 @@ public class OrdStatementParsing extends StatementParsing {
             marker.rollbackTo();
             return false;
         }
-        do {
+        parseContextTarget();
+        if (myBuilder.getTokenType() == PyTokenTypes.COLON) {
+            myBuilder.advanceLexer();
+            parseOrdSuite();
+            marker.done(OrdElementTypes.PATH_NET_STATEMENT);
+            return true;
+        }
+        while (matchToken(PyTokenTypes.COMMA)) {
             // tolerate a trailing comma instead of swallowing whatever
             // token follows it into a context target
             if (myBuilder.getTokenType() != PyTokenTypes.IDENTIFIER) {
                 break;
             }
             parseContextTarget();
-        } while (matchToken(PyTokenTypes.COMMA));
+        }
         endOfLine();
         marker.done(OrdElementTypes.PATH_NET_STATEMENT);
         return true;

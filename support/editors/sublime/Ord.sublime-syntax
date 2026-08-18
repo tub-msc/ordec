@@ -156,6 +156,9 @@ contexts:
   # net ring.vx / path ctr[0]
   ord-path-net-targets:
     - include: comments
+    - match: ':'
+      scope: punctuation.section.block.begin.ord
+      pop: 1
     - match: ';'
       scope: punctuation.terminator.ord
       pop: 1

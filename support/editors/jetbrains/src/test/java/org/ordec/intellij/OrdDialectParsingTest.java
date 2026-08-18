@@ -79,6 +79,8 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
             "net vdd, ring.vx",
             "path ctr[0], ctr[1].sub",
             "path ctr[1:2]",
+            "net clk:\n            .auto_wire = False",
+            "path grp:\n            net a",
             "print foo:\n            pass",
         };
         for (String statement : statements) {
