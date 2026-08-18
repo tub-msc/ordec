@@ -348,15 +348,16 @@ class SG13G2(Cell):
         addmetal(layers.Metal2)
         addvia(layers.Via2)
         addmetal(layers.Metal3)
-        # Todo: settings about Metal3 not checked yet.
         addvia(layers.Via3)
         addmetal(layers.Metal4)
         addvia(layers.Via4)
-        addmetal(layers.Metal5)
-        addvia(layers.TopVia1)
-        addmetal(layers.TopMetal1)
-        addvia(layers.TopVia2)
-        addmetal(layers.TopMetal2)
+        addmetal(layers.Metal5, route_via=(620, 620), route_pad=(620, 620))
+        addvia(layers.TopVia1, route_via=(420, 420))
+        addmetal(layers.TopMetal1, route_width=1640, route_via=(1900, 1900),
+            route_pad=(1640, 1640))
+        addvia(layers.TopVia2, route_via=(900, 900))
+        addmetal(layers.TopMetal2, route_width=2000, route_via=(2000, 2000),
+            route_pad=(2000, 2000))
 
         return rs
 
