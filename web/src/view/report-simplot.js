@@ -53,12 +53,11 @@ export class SimPlot {
         this.onXDomainChange = null;
         this.onCrosshairXChange = null;
 
-        this.xValues = null;
         this.series = [];
         this.currentTransform = d3.zoomIdentity;
         this._yZoomScale = 1;
         this._yPanOffset = 0;
-        this._crosshairIndex = null;
+        this._crosshairX = null;
         this._suppressXDomainChange = false;
         this._suppressCrosshairChange = false;
 
@@ -263,19 +262,31 @@ export class SimPlot {
         this.onCrosshairXChange(xValue);
     }
 
-    _nearestXIndex(xValue) {
+    _nearestIndex(xArr, xValue) {
         const bisect = d3.bisector(d => d).left;
-        let idx = bisect(this.xValues, xValue);
-        if (idx > 0 && idx < this.xValues.length) {
-            if (Math.abs(this.xValues[idx - 1] - xValue) < Math.abs(this.xValues[idx] - xValue)) {
+        let idx = bisect(xArr, xValue);
+        if (idx > 0 && idx < xArr.length) {
+            if (Math.abs(xArr[idx - 1] - xValue) < Math.abs(xArr[idx] - xValue)) {
                 idx = idx - 1;
             }
         }
-        return Math.max(0, Math.min(this.xValues.length - 1, idx));
+        return Math.max(0, Math.min(xArr.length - 1, idx));
     }
 
-    _showCrosshairAtIndex(idx) {
-        if (!this._xScale || !this._yScale || !this.xValues) return;
+    // Snaps an x value onto the sample grid of the first visible series
+    // (the first series when all are hidden). When every series shares one
+    // grid, the common case, this is the grid of all of them.
+    _snapX(xValue) {
+        const ref = this.series.find(s => s.visible) || this.series[0];
+        if (!ref) return null;
+        return ref.x[this._nearestIndex(ref.x, xValue)];
+    }
+
+    // Draws the crosshair at an already-snapped x value. Each series' dot
+    // and tooltip row use that series' own nearest sample, so dots stay on
+    // their curves even when series are sampled on different grids.
+    _showCrosshairAt(xValue) {
+        if (!this._xScale || !this._yScale) return;
         const visibleSeries = this.series.filter(s => s.visible);
         if (!visibleSeries.length) {
             this.crosshairG.style('display', 'none');
@@ -283,35 +294,40 @@ export class SimPlot {
             return;
         }
 
-        this._crosshairIndex = idx;
-        const snappedX = this._xScale(this.xValues[idx]);
+        this._crosshairX = xValue;
+        const lineX = this._xScale(xValue);
 
         this.crosshairG.style('display', null);
         this.crosshairLine
-            .attr('x1', snappedX).attr('y1', 0)
-            .attr('x2', snappedX).attr('y2', this._plotH);
+            .attr('x1', lineX).attr('y1', 0)
+            .attr('x2', lineX).attr('y2', this._plotH);
 
+        const withIdx = visibleSeries.map(s => (
+            { s, idx: this._nearestIndex(s.x, xValue) }));
         const dots = this.crosshairG.selectAll('circle.simplot-dot')
-            .data(visibleSeries, d => d.name);
+            .data(withIdx, d => d.s.name);
 
         dots.enter()
             .append('circle')
             .attr('class', 'simplot-dot')
             .attr('r', 3.5)
             .merge(dots)
-            .attr('cx', snappedX)
+            .attr('cx', d => {
+                const x = d.s.x[d.idx];
+                return isFinite(x) ? this._xScale(x) : -100;
+            })
             .attr('cy', d => {
-                const v = d.values[idx];
+                const v = d.s.values[d.idx];
                 return isFinite(v) ? this._yScale(v) : -100;
             })
-            .attr('fill', d => d.color);
+            .attr('fill', d => d.s.color);
 
         dots.exit().remove();
 
         const fmtX = d3.format('.4~s');
         const fmtY = d3.format('.4~s');
-        let html = `<span class="simplot-tooltip-x">${this.options.xlabel}: ${fmtX(this.xValues[idx])}</span>`;
-        visibleSeries.forEach(s => {
+        let html = `<span class="simplot-tooltip-x">${this.options.xlabel}: ${fmtX(xValue)}</span>`;
+        withIdx.forEach(({ s, idx }) => {
             const v = s.values[idx];
             const vStr = isFinite(v) ? fmtY(v) : '—';
             html += `<span style="color:${s.color}">${s.name}: ${vStr}</span>`;
@@ -321,13 +337,13 @@ export class SimPlot {
     }
 
     _onMouseMove(event) {
-        if (!this._xScale || !this.xValues) return;
+        if (!this._xScale || !this.series.length) return;
 
         const [mx] = d3.pointer(event, this.plotArea.node());
-        const xVal = this._xScale.invert(mx);
-        const idx = this._nearestXIndex(xVal);
-        this._showCrosshairAtIndex(idx);
-        this._emitCrosshairXChange(this.xValues[idx]);
+        const snapped = this._snapX(this._xScale.invert(mx));
+        if (snapped === null) return;
+        this._showCrosshairAt(snapped);
+        this._emitCrosshairXChange(snapped);
     }
 
     _onMouseLeave() {
@@ -375,16 +391,19 @@ export class SimPlot {
     }
 
     setCrosshairX(xValue, { suppressEvent = false } = {}) {
-        if (!this.xValues || !this._xScale) return;
-        const idx = this._nearestXIndex(xValue);
+        if (!this.series.length || !this._xScale) return;
+        // Re-snap the incoming value: linked plots may be sampled on
+        // different grids than the sender.
+        const snapped = this._snapX(xValue);
+        if (snapped === null) return;
         this._withCrosshairSuppression(suppressEvent, () => {
-            this._showCrosshairAtIndex(idx);
-            this._emitCrosshairXChange(this.xValues[idx]);
+            this._showCrosshairAt(snapped);
+            this._emitCrosshairXChange(snapped);
         });
     }
 
     clearCrosshair({ suppressEvent = false } = {}) {
-        this._crosshairIndex = null;
+        this._crosshairX = null;
         this.crosshairG.style('display', 'none');
         this.tooltipEl.style.display = 'none';
         this._withCrosshairSuppression(suppressEvent, () => {
@@ -415,27 +434,23 @@ export class SimPlot {
     }
 
     setData(series) {
+        // Each series carries its own x array (ascending, enforced by the
+        // backend); series of one plot may be sampled on different grids.
         // Non-finite values arrive as null (JSON has no NaN/Infinity, see
         // Plot2D.element_webdata); map them back to NaN so the isFinite gap
         // handling in the line/crosshair rendering applies.
-        //
-        // Each series carries its own x array; the renderer still assumes
-        // one shared grid and uses the first series' x for all of them.
-        // All plots the backend currently produces satisfy this; true
-        // per-series x rendering is a planned follow-up.
-        this.xValues = series[0].x.map(v => v === null ? NaN : v);
         this.series = series.map((s, i) => ({
             ...s,
+            x: s.x.map(v => v === null ? NaN : v),
             values: s.values.map(v => v === null ? NaN : v),
             color: s.color || signalColor(i),
             visible: true,
         }));
         this._updateLegend();
-        // The old crosshair index points into the previous sweep: _render()
-        // would restore it at a stale position, or at NaN if the new data is
-        // shorter. Cleared locally (suppressEvent) so that replacing one
-        // plot's data does not drop the crosshair on the linked plots of its
-        // group, which keep their data.
+        // The old crosshair position belongs to the previous sweep: _render()
+        // would restore it at a stale position. Cleared locally
+        // (suppressEvent) so that replacing one plot's data does not drop the
+        // crosshair on the linked plots of its group, which keep their data.
         this.clearCrosshair({ suppressEvent: true });
         this.currentTransform = d3.zoomIdentity;
         this._yZoomScale = 1;
@@ -489,7 +504,7 @@ export class SimPlot {
     }
 
     _render() {
-        if (!this.xValues || !this.series.length) return;
+        if (!this.series.length) return;
 
         const dims = this._renderGeometry();
         if (!dims) return;
@@ -531,9 +546,18 @@ export class SimPlot {
     }
 
     // X scale for the data extent under the current zoom transform. xBase is
-    // the un-zoomed scale, returned for crosshair math.
+    // the un-zoomed scale, returned for crosshair math. The domain is the
+    // union of all series' x extents (hidden series included, so toggling
+    // visibility does not re-scale the x axis).
     _computeXScale(w) {
-        const xDomain = d3.extent(this.xValues);
+        let xMin = Infinity, xMax = -Infinity;
+        this.series.forEach(s => {
+            const [lo, hi] = d3.extent(s.x);
+            if (lo !== undefined && lo < xMin) xMin = lo;
+            if (hi !== undefined && hi > xMax) xMax = hi;
+        });
+        if (!isFinite(xMin)) { xMin = 0; xMax = 1; }
+        const xDomain = [xMin, xMax];
         let xBase;
         if (this.options.xscale === 'log') {
             xBase = d3.scaleLog()
@@ -552,7 +576,7 @@ export class SimPlot {
         let yMin = Infinity, yMax = -Infinity;
         this.series.filter(s => s.visible).forEach(s => {
             for (let i = 0; i < s.values.length; i++) {
-                const x = this.xValues[i];
+                const x = s.x[i];
                 if (x >= xLo && x <= xHi) {
                     const v = s.values[i];
                     if (isFinite(v)) {
@@ -627,9 +651,11 @@ export class SimPlot {
     }
 
     _renderSeries(xScale, yScale) {
-        const line = d3.line()
-            .defined((d) => isFinite(d))
-            .x((d, i) => xScale(this.xValues[i]))
+        // One line generator per series, closing over that series' own x
+        // array. A non-finite x or y is a gap, not a path corruption.
+        const line = (s) => d3.line()
+            .defined((d, i) => isFinite(d) && isFinite(s.x[i]))
+            .x((d, i) => xScale(s.x[i]))
             .y(d => yScale(d));
 
         const visibleSeries = this.series.filter(s => s.visible);
@@ -641,7 +667,7 @@ export class SimPlot {
             .append('path')
             .attr('class', 'simplot-line')
             .merge(paths)
-            .attr('d', d => line(d.values))
+            .attr('d', d => line(d)(d.values))
             .attr('stroke', d => d.color)
             .attr('fill', 'none')
             .attr('stroke-width', 1.5);
@@ -649,12 +675,13 @@ export class SimPlot {
         paths.exit().remove();
     }
 
-    // Sizes the hover rect to the plot area and re-draws the crosshair at its
-    // stored index, so it survives a re-render (resize, zoom, recolor).
+    // Sizes the hover rect to the plot area and re-draws the crosshair at
+    // its stored x value, so it survives a re-render (resize, zoom,
+    // recolor).
     _restoreCrosshair() {
         this.hoverRect.attr('width', this._plotW).attr('height', this._plotH);
-        if (this._crosshairIndex !== null) {
-            this._showCrosshairAtIndex(this._crosshairIndex);
+        if (this._crosshairX !== null) {
+            this._showCrosshairAt(this._crosshairX);
         }
     }
 
