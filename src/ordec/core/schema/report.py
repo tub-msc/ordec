@@ -58,29 +58,36 @@ class Report(SubgraphRoot):
         Append a Plot2D element plotting each series in ys against the
         common x-axis values x. Returns the Plot2D cursor.
 
-        Each series is either a (name, values) pair or a SimNet, SimPin
-        or SimParam node; for nodes, the hierarchical path becomes the
-        series name and the recorded column (voltage, current or value)
-        provides the values.
+        x and series values are stored as SimColumn values; both accept
+        an existing SimColumn (e.g. sim.time, net.voltage) zero-copy or
+        any iterable of numbers (list, tuple, numpy array), which is
+        packed into a new column. Each series is either a (name, values)
+        pair or a SimNet, SimPin or SimParam node; for nodes, the
+        hierarchical path becomes the series name and the recorded
+        column (voltage, current or value) provides the values. All
+        series must have exactly as many values as x.
 
         Axis labels not given explicitly are inferred from the Quantity
         carried by result columns (sim.time, sim.freq, sim.sweep, net
         voltages, pin currents): xlabel from the quantity of x, ylabel
         when every series' values carry a quantity, joining distinct
-        quantity labels with ", ".
+        quantity labels with ", ". Columns packed from plain iterables
+        carry no quantity and suppress the inference.
 
         height defaults to 300 pixels; pass height=None to fill the
         available height instead (for fill_height reports).
         """
-        # Resolve all series before touching the subgraph, so that a bad
-        # series argument does not leave a partial Plot2D in the report.
-        series = [plot2d_series(y) for y in ys]
+        # Resolve x and all series before touching the subgraph, so that
+        # a bad argument does not leave a partial Plot2D in the report.
+        # The attr factories pass the coerced columns through unchanged.
+        x = coerce_plot_x(x)
+        series = [plot2d_series(y, x) for y in ys]
         kwargs.setdefault('height', 300)
-        if 'xlabel' not in kwargs and isinstance(x, SimColumn) \
-                and x.quantity is not None:
+        if 'xlabel' not in kwargs and x.quantity is not None:
             kwargs['xlabel'] = x.quantity.value
         if 'ylabel' not in kwargs and series:
-            quantities = list(dict.fromkeys(q for _, q in series))
+            quantities = list(dict.fromkeys(
+                col.quantity for _, col in series))
             if None not in quantities:
                 kwargs['ylabel'] = ", ".join(q.value for q in quantities)
         plot = self % Plot2D(x=x, **kwargs)
@@ -287,12 +294,29 @@ class ScaleType(Enum):
         return f'{self.__class__.__name__}.{self.name}'
 
 def coerce_plot_x(x):
-    x = tuple(float(v) for v in x)
+    """Attr factory for Plot2D.x: coerce to a SimColumn (zero-copy for
+    an existing column, packed copy for any other iterable of numbers)
+    and validate the axis: real values, finite, ascending, at least two
+    points."""
+    x = SimColumn.coerce(x)
+    if x is None:
+        return None # rejected at insertion (the attr is non-optional)
+    if x.dtype != 'f8':
+        raise TypeError(
+            "Plot2D x values must be real numbers; complex AC data "
+            "plots via Report.bode_plot() or abs()/cmath.phase()")
     if len(x) < 2:
         raise ValueError("x must contain at least two values")
-    for i in range(1, len(x)):
-        if x[i] < x[i - 1]:
+    # O(n) read through the (possibly strided) column view. The explicit
+    # finiteness check matters: NaN compares false against everything
+    # and would slip through the sortedness check.
+    prev = None
+    for v in x:
+        if not isfinite(v):
+            raise ValueError("x values must be finite")
+        if prev is not None and v < prev:
             raise ValueError("x values must be sorted in ascending order")
+        prev = v
     return x
 
 @public
@@ -305,7 +329,7 @@ class PlotGroup(Node):
 class Plot2D(ReportElement):
     """2D plot element rendered with the frontend simulation plot component."""
     wire_id = WIRE_DOMAIN | 8
-    x = Attr(tuple, optional=False, factory=coerce_plot_x)
+    x = Attr(SimColumn, optional=False, factory=coerce_plot_x)
     xlabel = Attr(str, default="", optional=False)
     ylabel = Attr(str, default="", optional=False)
     xscale = Attr(ScaleType, default=ScaleType.Linear, optional=False, factory=ScaleType)
@@ -339,11 +363,11 @@ class Plot2D(ReportElement):
             "group": self.group.nid if self.group is not None else None,
         }
 
-def plot2d_series(y):
+def plot2d_series(y, x):
     """
     Resolve one Report.plot2d series argument to an uninserted
-    Plot2DSeries node plus the Quantity of its values column (None if
-    the values carry no quantity).
+    Plot2DSeries node plus its coerced values column, validating the
+    values against the plot's (already coerced) x column.
 
     Accepts a (name, values) pair or a SimNet / SimPin / SimParam node.
     Node names are the hierarchical paths (full_path_str), e.g.
@@ -363,29 +387,29 @@ def plot2d_series(y):
             f"SimNet/SimPin/SimParam node, got {type(y).__name__}")
     if values is None:
         raise ValueError(f"no simulation data recorded for {name}")
-    quantity = values.quantity if isinstance(values, SimColumn) else None
-    # Constructing the node coerces the values (via the values attr
-    # factory) exactly once and raises on bad values before
-    # Report.plot2d mutates the subgraph.
-    return Plot2DSeries(name=name, values=values), quantity
+    # Coercing here (rather than leaving it to the values attr factory,
+    # which passes the coerced column through unchanged) raises on bad
+    # values before Report.plot2d mutates the subgraph.
+    values = coerce_plot_values(values)
+    if len(values) != len(x):
+        raise ValueError(
+            f"series {name!r} has {len(values)} values for {len(x)}"
+            f" x values")
+    return Plot2DSeries(name=name, values=values), values
 
 def coerce_plot_values(values):
-    try:
-        return tuple(float(v) for v in values)
-    except TypeError:
-        # float() raises TypeError for complex values; those get a hint
-        # towards the proper AC workflows. Any other TypeError (e.g. a
-        # scalar instead of a sequence) keeps its original message.
-        try:
-            has_complex = any(isinstance(v, complex) for v in values)
-        except TypeError:
-            has_complex = False
-        if has_complex:
-            raise TypeError(
-                "Plot2D series values must be real numbers; convert complex "
-                "AC data via abs()/cmath.phase() or use Report.bode_plot()"
-            ) from None
-        raise
+    """Attr factory for Plot2DSeries.values: coerce to a SimColumn
+    (zero-copy for an existing column, packed copy for any other
+    iterable of numbers). Non-finite values are permitted; they render
+    as gaps. Complex AC data gets a hint towards the proper workflows."""
+    values = SimColumn.coerce(values)
+    if values is None:
+        return None # rejected at insertion (the attr is non-optional)
+    if values.dtype != 'f8':
+        raise TypeError(
+            "Plot2D series values must be real numbers; convert complex "
+            "AC data via abs()/cmath.phase() or use Report.bode_plot()")
+    return values
 
 @public
 class Plot2DSeries(Node):
@@ -395,4 +419,4 @@ class Plot2DSeries(Node):
     ref = LocalRef(Plot2D, optional=False)
     ref_idx = Index(ref)
     name = Attr(str, optional=False)
-    values = Attr(tuple, optional=False, factory=coerce_plot_values)
+    values = Attr(SimColumn, optional=False, factory=coerce_plot_values)

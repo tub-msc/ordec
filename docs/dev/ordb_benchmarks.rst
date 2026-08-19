@@ -175,7 +175,7 @@ Further out, the schema itself amplifies: every polygon vertex is its own
 node, so geometry-heavy subgraphs carry several times the node count and every
 bulk operation pays for it. Running bulk transforms in a single transaction
 rather than one per node is the cheap mitigation; storing vertex arrays as an
-attribute (as :class:`~ordec.core.simarray.SimArray` does for simulation data)
+attribute (as :class:`~ordec.core.simarray.SimColumn` does for simulation data)
 would change the constraint-based layout workflow and is a separate
 discussion.
 
