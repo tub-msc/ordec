@@ -4,6 +4,7 @@
 from ordec.ord import ord_to_py
 import ast
 import pytest
+from textwrap import dedent
 
 def compare_asts(ord_code_string, py_code_string=None):
     """Compare compiled ORD code against Python code (itself by default)."""
@@ -23,31 +24,52 @@ def compare_syntax_errors(ord_code_string):
         ord_to_py(ord_code_string)
 
 def test_class_empty():
-    ord_string = "class A():\n   pass"
+    ord_string = dedent("""\
+        class A():
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_class_inherit():
-    ord_string = "class A(B, C):\n   pass"
+    ord_string = dedent("""\
+        class A(B, C):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_class_keyword():
-    ord_string = "class A(B, metaclass=Meta):\n   pass"
+    ord_string = dedent("""\
+        class A(B, metaclass=Meta):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_funcdef():
-    ord_string = "def f():\n    pass"
+    ord_string = dedent("""\
+        def f():
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_function_with_return():
-    ord_string = "def func():\n    return 1"
+    ord_string = dedent("""\
+        def func():
+            return 1
+        """)
     compare_asts(ord_string)
 
 def test_return_string():
-    ord_string = "def f():\n    return 'Hello'"
+    ord_string = dedent("""\
+        def f():
+            return 'Hello'
+        """)
     compare_asts(ord_string)
 
 def test_funcdef_return_type():
-    ord_string = "def f() -> int:\n    return 1"
+    ord_string = dedent("""\
+        def f() -> int:
+            return 1
+        """)
     compare_asts(ord_string)
 
 def test_funcdef_oneline():
@@ -55,23 +77,38 @@ def test_funcdef_oneline():
     compare_asts(ord_string)
 
 def test_funcdef_posargs():
-    ord_string = "def f(a, /, b):\n    return 'Hello'"
+    ord_string = dedent("""\
+        def f(a, /, b):
+            return 'Hello'
+        """)
     compare_asts(ord_string)
 
 def test_funcdef_star():
-    ord_string = "def func(*, a):\n    pass"
+    ord_string = dedent("""\
+        def func(*, a):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_funcdef_star_args():
-    ord_string = "def f(*args):\n    pass"
+    ord_string = dedent("""\
+        def f(*args):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_funcdef_kwargs():
-    ord_string = "def f(**kwargs):\n    pass"
+    ord_string = dedent("""\
+        def f(**kwargs):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_funcdef_complex():
-    ord_string = "def func(x:int = 2, *argc, **kwargs):\n   pass"
+    ord_string = dedent("""\
+        def func(x:int = 2, *argc, **kwargs):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_async_await():
@@ -79,7 +116,10 @@ def test_async_await():
     compare_asts(ord_string)
 
 def test_funcdef_with_async():
-    ord_string = "async def func():\n    await asyncio.sleep(1)"
+    ord_string = dedent("""\
+        async def func():
+            await asyncio.sleep(1)
+        """)
     compare_asts(ord_string)
 
 def test_funccall_arg():
@@ -111,7 +151,10 @@ def test_funccall_complex():
     compare_asts(ord_string)
 
 def test_function_with_yield():
-    ord_string = "def gen():\n    yield 1"
+    ord_string = dedent("""\
+        def gen():
+            yield 1
+        """)
     compare_asts(ord_string)
 
 def test_function_with_yield_from():
@@ -119,19 +162,36 @@ def test_function_with_yield_from():
     compare_asts(ord_string)
 
 def test_decorator():
-    ord_string = "@decorator\ndef func():\n  pass"
+    ord_string = dedent("""\
+        @decorator
+        def func():
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_decorator_multiple():
-    ord_string = "@decorator\n@test\ndef func():\n  pass"
+    ord_string = dedent("""\
+        @decorator
+        @test
+        def func():
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_decorator_argument():
-    ord_string = "@decorator(1)\ndef func():\n  pass"
+    ord_string = dedent("""\
+        @decorator(1)
+        def func():
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_decorator_keyword():
-    ord_string = "@decorator(x=2)\ndef func():\n  pass"
+    ord_string = dedent("""\
+        @decorator(x=2)
+        def func():
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_simple_stmt():
@@ -159,95 +219,194 @@ def test_dict_star():
     compare_asts(ord_string)
 
 def test_if():
-    ord_string = "if True:\n  pass"
+    ord_string = dedent("""\
+        if True:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_if_else():
-    ord_string = "if True:\n  pass\nelif False:\n  pass"
+    ord_string = dedent("""\
+        if True:
+            pass
+        elif False:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_if_elif_else():
-    ord_string = "if True:\n  pass\nelif False:\n  pass\nelse:\n  pass"
+    ord_string = dedent("""\
+        if True:
+            pass
+        elif False:
+            pass
+        else:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_while_loop():
-    ord_string = "while True:\n  pass\nelse:\n  pass"
+    ord_string = dedent("""\
+        while True:
+            pass
+        else:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_for_loop():
-    ord_string = "for i in range(10):\n  pass\nelse:\n  pass"
+    ord_string = dedent("""\
+        for i in range(10):
+            pass
+        else:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_for_multi_targets():
-    ord_string = "for x, y in val_dict.items():\n pass"
+    ord_string = dedent("""\
+        for x, y in val_dict.items():
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_async_for_loop():
-    ord_string = "async for i in range(10):\n  pass\nelse:\n  pass"
+    ord_string = dedent("""\
+        async for i in range(10):
+            pass
+        else:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_async_with_multiple_items():
-    ord_string = "async with a as x, b as y:\n    pass"
+    ord_string = dedent("""\
+        async with a as x, b as y:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_nested_loops():
-    ord_string = "for i in range(5):\n    while i < 3:\n        i += 1"
+    ord_string = dedent("""\
+        for i in range(5):
+            while i < 3:
+                i += 1
+        """)
     compare_asts(ord_string)
 
 def test_break_continue():
-    ord_string = "for i in range(10):\n    if i == 5:\n        break\n    else:\n        continue"
+    ord_string = dedent("""\
+        for i in range(10):
+            if i == 5:
+                break
+            else:
+                continue
+        """)
     compare_asts(ord_string)
 
 def test_try_finally():
-    ord_string = "try:\n  pass\nfinally:\n  pass"
+    ord_string = dedent("""\
+        try:
+            pass
+        finally:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_try_except():
-    ord_string = "try:\n  pass\nexcept:\n  pass\nelse:\n  pass\nfinally:\n  pass"
+    ord_string = dedent("""\
+        try:
+            pass
+        except:
+            pass
+        else:
+            pass
+        finally:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_try_multiple_except():
-    ord_string = "try:\n    pass\nexcept ValueError:\n    pass\nexcept TypeError:\n    pass"
+    ord_string = dedent("""\
+        try:
+            pass
+        except ValueError:
+            pass
+        except TypeError:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_try_except_as():
-    ord_string = "try:\n    pass\nexcept Exception as e:\n    print(e)"
+    ord_string = dedent("""\
+        try:
+            pass
+        except Exception as e:
+            print(e)
+        """)
     compare_asts(ord_string)
 
 def test_with_stmt():
-    ord_string = "with stmt:\n  pass"
+    ord_string = dedent("""\
+        with stmt:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_with_as():
-    ord_string = "with open('file.txt') as f:\n    data = f.read()"
+    ord_string = dedent("""\
+        with open('file.txt') as f:
+            data = f.read()
+        """)
     compare_asts(ord_string)
 
 def test_with_as_tuple_target():
-    ord_string = "with ctx() as (a, b):\n    pass"
+    ord_string = dedent("""\
+        with ctx() as (a, b):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_with_as_attribute_target():
-    ord_string = "with ctx() as a.b:\n    pass"
+    ord_string = dedent("""\
+        with ctx() as a.b:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_with_as_subscript_target():
-    ord_string = "with ctx() as a[0]:\n    pass"
+    ord_string = dedent("""\
+        with ctx() as a[0]:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_with_as_list_target():
-    ord_string = "with ctx() as [a, *b]:\n    pass"
+    ord_string = dedent("""\
+        with ctx() as [a, *b]:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_with_as_invalid_call_target():
-    ord_string = "with ctx() as f():\n    pass"
+    ord_string = dedent("""\
+        with ctx() as f():
+            pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_with_as_invalid_expression_target():
-    ord_string = "with ctx() as (a + b):\n    pass"
+    ord_string = dedent("""\
+        with ctx() as (a + b):
+            pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_async_with():
-    ord_string = "async with lock:\n    await do_work()"
+    ord_string = dedent("""\
+        async with lock:
+            await do_work()
+        """)
     compare_asts(ord_string)
 
 def test_assert():
@@ -411,7 +570,10 @@ def test_relative_import():
     compare_asts(ord_string)
 
 def test_walrus_operator():
-    ord_string = "if (n := len(items)) > 0:\n    print(n)"
+    ord_string = dedent("""\
+        if (n := len(items)) > 0:
+            print(n)
+        """)
     compare_asts(ord_string)
 
 def test_nonlocal():
@@ -439,7 +601,10 @@ def test_raise_from():
     compare_asts(ord_string)
 
 def test_posonly_args():
-    ord_string = "def f(a, /, b, *, c):\n    pass"
+    ord_string = dedent("""\
+        def f(a, /, b, *, c):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_complex_numbers():
@@ -475,75 +640,149 @@ def test_docstring_module_binary():
     compare_asts(ord_string)
 
 def test_match_case():
-    ord_string = "match x:\n    case 1:\n        pass\n    case _:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case 1:
+                pass
+            case _:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_case_singleton():
-    ord_string = "match x:\n    case True:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case True:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_case_sequence():
-    ord_string = "match x:\n    case 1, 2:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case 1, 2:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_case_or():
-    ord_string = "match x:\n    case 1 | 2:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case 1 | 2:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_case_as():
-    ord_string = "match x:\n    case test as t:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case test as t:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_case_if():
-    ord_string = "match x:\n    case test if False:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case test if False:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_args_pattern():
-    ord_string = "match point:\n    case Point(x, y):\n        pass"
+    ord_string = dedent("""\
+        match point:
+            case Point(x, y):
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_empty_class_pattern():
-    ord_string = "match point:\n    case Point():\n        pass"
+    ord_string = dedent("""\
+        match point:
+            case Point():
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_empty_class_as_pattern():
-    ord_string = "match point:\n    case Point() as p:\n        pass"
+    ord_string = dedent("""\
+        match point:
+            case Point() as p:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_get_pattern():
-    ord_string = "match point:\n    case pointclass.Point(x, y):\n        pass"
+    ord_string = dedent("""\
+        match point:
+            case pointclass.Point(x, y):
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_keywords_pattern():
-    ord_string = "match point:\n    case Point(width=x, height=y):\n        pass"
+    ord_string = dedent("""\
+        match point:
+            case Point(width=x, height=y):
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_arg_keyword_mixed():
-    ord_string = "match point:\n    case Point(x, height=y):\n        pass"
+    ord_string = dedent("""\
+        match point:
+            case Point(x, height=y):
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_list_pattern():
-    ord_string = "match lst:\n    case [first, *rest]:\n        pass"
+    ord_string = dedent("""\
+        match lst:
+            case [first, *rest]:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_binary():
-    ord_string = "match x:\n    case b'test':\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case b'test':
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_unicode():
-    ord_string = "match x:\n    case u'test':\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case u'test':
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_raw():
-    ord_string = "match x:\n    case r'test':\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case r'test':
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_dict():
-    ord_string = "match x:\n    case {'key': value}:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case {'key': value}:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_dict_star_pattern():
-    ord_string = "match x:\n    case {'key': value, **rest}:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case {'key': value, **rest}:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_fstring():
@@ -715,27 +954,47 @@ def test_comment():
     compare_asts(ord_string)
 
 def test_match_mapping_attr_key():
-    ord_string = "match x:\n    case {Color.RED: y}:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case {Color.RED: y}:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_mapping_singleton_keys():
-    ord_string = "match x:\n    case {True: y, None: z}:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case {True: y, None: z}:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_lineno_propagation():
-    code = "x = 1\ny = 2\nz = 3"
+    code = dedent("""\
+        x = 1
+        y = 2
+        z = 3
+        """)
     tree = ord_to_py(code)
     assert tree.body[0].lineno == 1
     assert tree.body[1].lineno == 2
     assert tree.body[2].lineno == 3
 
 def test_lineno_celldef():
-    code = "cell Foo:\n    pass"
+    code = dedent("""\
+        cell Foo:
+            pass
+        """)
     tree = ord_to_py(code)
     assert tree.body[0].lineno == 1
 
 def test_except_star():
-    ord_string = "try:\n    pass\nexcept* ValueError:\n    pass"
+    ord_string = dedent("""\
+        try:
+            pass
+        except* ValueError:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_type_alias_stmt():
@@ -743,43 +1002,78 @@ def test_type_alias_stmt():
     compare_asts(ord_string)
 
 def test_funcdef_type_params():
-    ord_string = "def identity[T](x: T) -> T:\n    return x"
+    ord_string = dedent("""\
+        def identity[T](x: T) -> T:
+            return x
+        """)
     compare_asts(ord_string)
 
 def test_funcdef_type_param_default():
-    ord_string = "def identity[T = int](x: T) -> T:\n    return x"
+    ord_string = dedent("""\
+        def identity[T = int](x: T) -> T:
+            return x
+        """)
     compare_asts(ord_string)
 
 def test_funcdef_bounded_type_param_default():
-    ord_string = "def identity[T: int = bool](x: T) -> T:\n    return x"
+    ord_string = dedent("""\
+        def identity[T: int = bool](x: T) -> T:
+            return x
+        """)
     compare_asts(ord_string)
 
 def test_classdef_type_params():
-    ord_string = "class Box[T]:\n    pass"
+    ord_string = dedent("""\
+        class Box[T]:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_classdef_type_param_defaults():
-    ord_string = "class Box[T = int, *Ts = tuple[int, ...], **P = [int, str]]:\n    pass"
+    ord_string = dedent("""\
+        class Box[T = int, *Ts = tuple[int, ...], **P = [int, str]]:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_decorator_call_expression():
-    ord_string = "@(decorator_factory())\ndef f():\n    pass"
+    ord_string = dedent("""\
+        @(decorator_factory())
+        def f():
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_decorator_subscript_expression():
-    ord_string = "@decorators[0]\ndef f():\n    pass"
+    ord_string = dedent("""\
+        @decorators[0]
+        def f():
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_decorator_dotted_call_ast():
-    ord_string = "@pkg.decorator(arg=1)\ndef f():\n    pass"
+    ord_string = dedent("""\
+        @pkg.decorator(arg=1)
+        def f():
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_decorator_nonconstant_argument():
-    ord_string = "@decorator(x)\ndef f():\n    pass"
+    ord_string = dedent("""\
+        @decorator(x)
+        def f():
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_decorator_kwargs():
-    ord_string = "@decorator(**kw)\ndef f():\n    pass"
+    ord_string = dedent("""\
+        @decorator(**kw)
+        def f():
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_compare_not_in():
@@ -799,15 +1093,24 @@ def test_call_multiple_kwargs_unpacking():
     compare_asts(ord_string)
 
 def test_class_starred_base():
-    ord_string = "class A(*bases):\n    pass"
+    ord_string = dedent("""\
+        class A(*bases):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_class_kwargs_base():
-    ord_string = "class A(**kw):\n    pass"
+    ord_string = dedent("""\
+        class A(**kw):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_parenthesized_with_items():
-    ord_string = "with (a as x, b as y):\n    pass"
+    ord_string = dedent("""\
+        with (a as x, b as y):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_comprehension_filter_before_second_for():
@@ -823,15 +1126,27 @@ def test_uppercase_f_string_prefix():
     compare_asts(ord_string)
 
 def test_match_negative_literal_pattern():
-    ord_string = "match x:\n    case -1:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case -1:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_dotted_value_pattern():
-    ord_string = "match x:\n    case Color.RED:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case Color.RED:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_star_wildcard_pattern():
-    ord_string = "match x:\n    case [*_]:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case [*_]:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_parenthesized_annotation_simple_flag():
@@ -891,15 +1206,24 @@ def test_invalid_del_starred_target():
     compare_syntax_errors(ord_string)
 
 def test_invalid_for_literal_target():
-    ord_string = "for 1 in values:\n    pass"
+    ord_string = dedent("""\
+        for 1 in values:
+            pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_invalid_for_expression_target():
-    ord_string = "for a + b in values:\n    pass"
+    ord_string = dedent("""\
+        for a + b in values:
+            pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_invalid_function_default_order():
-    ord_string = "def f(a=1, b):\n    pass"
+    ord_string = dedent("""\
+        def f(a=1, b):
+            pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_invalid_ur_string_prefix():
@@ -939,35 +1263,59 @@ def test_type_alias_paramspec_default():
     compare_asts(ord_string)
 
 def test_funcdef_typevartuple_annotation():
-    ord_string = "def f[*Ts](*args: *Ts):\n    pass"
+    ord_string = dedent("""\
+        def f[*Ts](*args: *Ts):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_parenthesized_with_bare_items():
-    ord_string = "with (a, b):\n    pass"
+    ord_string = dedent("""\
+        with (a, b):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_parenthesized_with_mixed_items():
-    ord_string = "with (a, b as y):\n    pass"
+    ord_string = dedent("""\
+        with (a, b as y):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_parenthesized_with_single_as_target():
-    ord_string = "with (a) as t:\n    pass"
+    ord_string = dedent("""\
+        with (a) as t:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_parenthesized_tuple_with_as_target():
-    ord_string = "with (a, b) as t:\n    pass"
+    ord_string = dedent("""\
+        with (a, b) as t:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_parenthesized_with_trailing_comma():
-    ord_string = "with (a,):\n    pass"
+    ord_string = dedent("""\
+        with (a,):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_parenthesized_with_as_trailing_comma():
-    ord_string = "with (a as x,):\n    pass"
+    ord_string = dedent("""\
+        with (a as x,):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_invalid_parenthesized_with_item_and_outer_as():
-    ord_string = "with (a as x, b) as t:\n    pass"
+    ord_string = dedent("""\
+        with (a as x, b) as t:
+            pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_invalid_walrus_assignment_rhs():
@@ -975,7 +1323,10 @@ def test_invalid_walrus_assignment_rhs():
     compare_syntax_errors(ord_string)
 
 def test_invalid_walrus_return_value():
-    ord_string = "def f():\n    return x := 1"
+    ord_string = dedent("""\
+        def f():
+            return x := 1
+        """)
     compare_syntax_errors(ord_string)
 
 def test_invalid_walrus_lambda_body():
@@ -987,11 +1338,19 @@ def test_invalid_walrus_keyword_argument():
     compare_syntax_errors(ord_string)
 
 def test_match_complex_literal_pattern():
-    ord_string = "match x:\n    case 1+2j:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case 1+2j:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_match_negative_complex_literal_pattern():
-    ord_string = "match x:\n    case -1-2j:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case -1-2j:
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_invalid_keyword_as_name():
@@ -1003,35 +1362,59 @@ def test_invalid_keyword_in_call_argument_name():
     compare_syntax_errors(ord_string)
 
 def test_invalid_keyword_as_parameter_name():
-    ord_string = "def f(if):\n    pass"
+    ord_string = dedent("""\
+        def f(if):
+            pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_funcdef_stararg_trailing_comma():
-    ord_string = "def f(*args,):\n    pass"
+    ord_string = dedent("""\
+        def f(*args,):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_funcdef_kwonly_trailing_comma():
-    ord_string = "def f(*, a,):\n    pass"
+    ord_string = dedent("""\
+        def f(*, a,):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_funcdef_kwonly_after_arg_trailing_comma():
-    ord_string = "def f(a, *, b,):\n    pass"
+    ord_string = dedent("""\
+        def f(a, *, b,):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_funcdef_kwargs_trailing_comma():
-    ord_string = "def f(**kw,):\n    pass"
+    ord_string = dedent("""\
+        def f(**kw,):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_funcdef_stararg_kwargs_trailing_comma():
-    ord_string = "def f(*args, **kw,):\n    pass"
+    ord_string = dedent("""\
+        def f(*args, **kw,):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_invalid_funcdef_bare_star():
-    ord_string = "def f(*):\n    pass"
+    ord_string = dedent("""\
+        def f(*):
+            pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_invalid_funcdef_kwargs_double_trailing_comma():
-    ord_string = "def f(*args, **kw,,):\n    pass"
+    ord_string = dedent("""\
+        def f(*args, **kw,,):
+            pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_invalid_lambda_bare_star():
@@ -1055,15 +1438,24 @@ def test_invalid_call_stararg_after_kwargs():
     compare_syntax_errors(ord_string)
 
 def test_invalid_class_positional_after_keyword():
-    ord_string = "class A(metaclass=Meta, B):\n    pass"
+    ord_string = dedent("""\
+        class A(metaclass=Meta, B):
+            pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_invalid_class_stararg_after_kwargs():
-    ord_string = "class A(**kw, *bases):\n    pass"
+    ord_string = dedent("""\
+        class A(**kw, *bases):
+            pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_invalid_walrus_function_default():
-    ord_string = "def f(a=x:=1):\n    pass"
+    ord_string = dedent("""\
+        def f(a=x:=1):
+            pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_invalid_walrus_augassign_value():
@@ -1079,11 +1471,17 @@ def test_invalid_walrus_raise_cause():
     compare_syntax_errors(ord_string)
 
 def test_invalid_walrus_with_item():
-    ord_string = "with x := cm():\n    pass"
+    ord_string = dedent("""\
+        with x := cm():
+            pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_invalid_walrus_for_iter():
-    ord_string = "for x in y := z:\n    pass"
+    ord_string = dedent("""\
+        for x in y := z:
+            pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_invalid_walrus_tuple_assignment_value():
@@ -1115,11 +1513,17 @@ def test_walrus_keyword_nested_container():
     compare_asts(ord_string)
 
 def test_walrus_return_nested_container():
-    ord_string = "def f():\n    return [x := 1]"
+    ord_string = dedent("""\
+        def f():
+            return [x := 1]
+        """)
     compare_asts(ord_string)
 
 def test_walrus_class_base():
-    ord_string = "class C(x := Base):\n    pass"
+    ord_string = dedent("""\
+        class C(x := Base):
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_f_string_empty_format_spec():
@@ -1147,11 +1551,19 @@ def test_invalid_f_string_single_close_brace():
     compare_syntax_errors(ord_string)
 
 def test_invalid_match_class_positional_after_keyword():
-    ord_string = "match x:\n    case Point(x=1, y):\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case Point(x=1, y):
+                pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_invalid_match_as_wildcard_target():
-    ord_string = "match x:\n    case y as _:\n        pass"
+    ord_string = dedent("""\
+        match x:
+            case y as _:
+                pass
+        """)
     compare_syntax_errors(ord_string)
 
 def test_name_type_assignment():
@@ -1177,13 +1589,16 @@ def test_net_multi_target_with_body():
 
 def test_net_with_body():
     compare_asts(
-        "net clk:\n"
-        "    .auto_wire = False\n",
-
-        "clk = __ord_context__.add(('clk',), __ordec_core__.Net())\n"
-        "with clk.ctx():\n"
-        "    __ord_context__.root().auto_wire = False\n",
-    )
+        dedent("""\
+            net clk:
+                .auto_wire = False
+            """),
+        dedent("""\
+            clk = __ord_context__.add(('clk',), __ordec_core__.Net())
+            with clk.ctx():
+                __ord_context__.root().auto_wire = False
+            """)
+        )
 
 def test_name_viewgen_assignment():
     ord_string = "viewgen = 1"
@@ -1210,15 +1625,27 @@ def test_fstring_tuple_field():
     compare_asts(ord_string)
 
 def test_with_call_as_name_multi_stmt():
-    ord_string = "with f() as b:\n    x\n    y"
+    ord_string = dedent("""\
+        with f() as b:
+            x
+            y
+        """)
     compare_asts(ord_string)
 
 def test_with_parenthesized_call_as():
-    ord_string = "with (f()) as b:\n    x\n    y"
+    ord_string = dedent("""\
+        with (f()) as b:
+            x
+            y
+        """)
     compare_asts(ord_string)
 
 def test_with_multiple_call_as_items():
-    ord_string = "with f() as b, g() as c:\n    x\n    y"
+    ord_string = dedent("""\
+        with f() as b, g() as c:
+            x
+            y
+        """)
     compare_asts(ord_string)
 
 def test_funcdef_kwargs_trailing_comma_after_param():
@@ -1269,7 +1696,11 @@ def test_raw_fstring_named_escape_is_field():
     compare_asts(ord_string)
 
 def test_match_tuple_subject_trailing_comma():
-    ord_string = "match x,:\n    case y:\n        z = 0"
+    ord_string = dedent("""\
+        match x,:
+            case y:
+                z = 0
+        """)
     compare_asts(ord_string)
 
 def test_match_soft_keyword_as_identifier():
@@ -1277,7 +1708,10 @@ def test_match_soft_keyword_as_identifier():
     compare_asts(ord_string)
 
 def test_for_target_single_elem_tuple():
-    ord_string = "for x, in y:\n    pass"
+    ord_string = dedent("""\
+        for x, in y:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_fstring_format_spec_starting_eq():
@@ -1289,19 +1723,31 @@ def test_string_backslash_newline_continuation():
     compare_asts(ord_string)
 
 def test_return_starred_unparenthesized_tuple():
-    ord_string = "def f():\n    return *a, b"
+    ord_string = dedent("""\
+        def f():
+            return *a, b
+        """)
     compare_asts(ord_string)
 
 def test_return_starred_trailing_comma():
-    ord_string = "def f():\n    return *a,"
+    ord_string = dedent("""\
+        def f():
+            return *a,
+        """)
     compare_asts(ord_string)
 
 def test_yield_starred_unparenthesized_tuple():
-    ord_string = "def g():\n    yield *a, b"
+    ord_string = dedent("""\
+        def g():
+            yield *a, b
+        """)
     compare_asts(ord_string)
 
 def test_return_starred_parenthesized_tuple():
-    ord_string = "def f():\n    return (*a, b)"
+    ord_string = dedent("""\
+        def f():
+            return (*a, b)
+        """)
     compare_asts(ord_string)
 
 def test_assign_starred_unparenthesized_tuple():
@@ -1325,7 +1771,11 @@ def test_path_keyword_as_call_guard():
     compare_asts(ord_string)
 
 def test_case_class_pattern_trailing_comma():
-    ord_string = "match p:\n    case Foo(a,):\n        pass"
+    ord_string = dedent("""\
+        match p:
+            case Foo(a,):
+                pass
+        """)
     compare_asts(ord_string)
 
 def test_fstring_named_escape_after_text():
@@ -1333,11 +1783,17 @@ def test_fstring_named_escape_after_text():
     compare_asts(ord_string)
 
 def test_for_iter_starred_exprs():
-    ord_string = "for x in *a, *b:\n    pass"
+    ord_string = dedent("""\
+        for x in *a, *b:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_with_as_call_subscript_target():
-    ord_string = "with c() as f()[0]:\n    pass"
+    ord_string = dedent("""\
+        with c() as f()[0]:
+            pass
+        """)
     compare_asts(ord_string)
 
 def test_fstring_concat_empty_str_empty_fstring():
@@ -1389,15 +1845,15 @@ def test_viewgen_translation_uniform():
     # module level produce the identical FunctionDef - the user's
     # parameters verbatim, decorated with __ordec_core__.viewgen. Binding
     # (method vs. function) is left to Python scoping.
-    in_cell = ord_to_py(
-        "cell Foo:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    ).body[0].body[0]
-    toplevel = ord_to_py(
-        "viewgen symbol(self) -> Symbol:\n"
-        "    input a\n"
-    ).body[0]
+    in_cell = ord_to_py(dedent("""\
+        cell Foo:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """)).body[0].body[0]
+    toplevel = ord_to_py(dedent("""\
+        viewgen symbol(self) -> Symbol:
+            input a
+        """)).body[0]
     assert isinstance(in_cell, ast.FunctionDef)
     assert ast.unparse(in_cell) == ast.unparse(toplevel)
     assert [a.arg for a in in_cell.args.args] == ["self"]
@@ -1405,19 +1861,19 @@ def test_viewgen_translation_uniform():
 
 def test_viewgen_renamed_receiver():
     # The receiver is an ordinary parameter; any name works.
-    ord_string = (
-        "cell Foo:\n"
-        "    viewgen symbol(s) -> Symbol:\n"
-        "        pass\n"
-    )
+    ord_string = dedent("""\
+        cell Foo:
+            viewgen symbol(s) -> Symbol:
+                pass
+        """)
     fn = ord_to_py(ord_string).body[0].body[0]
     assert [a.arg for a in fn.args.args] == ["s"]
 
 def test_viewgen_annotation_optional():
-    ord_string = (
-        "viewgen top():\n"
-        "    pass\n"
-    )
+    ord_string = dedent("""\
+        viewgen top():
+            pass
+        """)
     fn = ord_to_py(ord_string).body[0]
     assert isinstance(fn, ast.FunctionDef)
     assert fn.args.args == []
@@ -1428,12 +1884,12 @@ def test_viewgen_nested_in_cell_body():
     # A viewgen nested in a compound statement of the cell suite binds in
     # the cell namespace via ordinary Python scoping (conditional method
     # definition); the translation is unchanged.
-    ord_string = (
-        "cell Foo:\n"
-        "    if True:\n"
-        "        viewgen symbol(self) -> Symbol:\n"
-        "            input a\n"
-    )
+    ord_string = dedent("""\
+        cell Foo:
+            if True:
+                viewgen symbol(self) -> Symbol:
+                    input a
+        """)
     fn = ord_to_py(ord_string).body[0].body[0].body[0]
     assert isinstance(fn, ast.FunctionDef)
     assert [a.arg for a in fn.args.args] == ["self"]
@@ -1442,13 +1898,13 @@ def test_viewgen_nested_in_cell_body():
 def test_viewgen_in_def_inside_cell_body():
     # A def inside a cell body is its own binding scope: a viewgen there
     # binds in that scope, as outside of cells (factory pattern).
-    ord_string = (
-        "cell Foo:\n"
-        "    def helper(self):\n"
-        "        viewgen inner() -> Report:\n"
-        "            .markdown('x')\n"
-        "        return inner\n"
-    )
+    ord_string = dedent("""\
+        cell Foo:
+            def helper(self):
+                viewgen inner() -> Report:
+                    .markdown('x')
+                return inner
+        """)
     fn = ord_to_py(ord_string).body[0].body[0].body[0]
     assert isinstance(fn, ast.FunctionDef)
     assert fn.args.args == []
@@ -1457,12 +1913,12 @@ def test_viewgen_in_def_inside_cell_body():
 def test_viewgen_decorated_keeps_own_decorator():
     # User decorators must be prepended, not replace the viewgen's own
     # decorator.
-    ord_string = (
-        "cell Foo:\n"
-        "    @mydec\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
+    ord_string = dedent("""\
+        cell Foo:
+            @mydec
+            viewgen symbol(self) -> Symbol:
+                input a
+        """)
     fn = ord_to_py(ord_string).body[0].body[0]
     assert ast.unparse(fn.decorator_list[0]) == "mydec"
     assert ast.unparse(fn.decorator_list[-1]) == "__ordec_core__.viewgen"
@@ -1471,11 +1927,11 @@ def test_viewgen_oldform_rejected():
     # The parenless spelling is a hard error with a fix-it showing both
     # spellings (the context-free diagnostic cannot know placement) and
     # the offending line.
-    ord_string = (
-        "cell Foo:\n"
-        "    viewgen symbol -> Symbol:\n"
-        "        pass\n"
-    )
+    ord_string = dedent("""\
+        cell Foo:
+            viewgen symbol -> Symbol:
+                pass
+        """)
     with pytest.raises(SyntaxError) as excinfo:
         ord_to_py(ord_string)
     msg = str(excinfo.value)

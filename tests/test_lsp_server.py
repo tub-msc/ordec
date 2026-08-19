@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 from ordec.lsp.server import OrdLanguageServer, read_messages, serve
+from textwrap import dedent
 
 
 def source_offset(source, needle, occurrence=1):
@@ -179,7 +180,11 @@ def test_lsp_document_lifecycle_and_diagnostics(tmp_path):
     diagnostics = open_document(server, uri, broken_source)
     assert [diagnostic["code"] for diagnostic in diagnostics] == ["unresolved-import"]
 
-    fixed_source = "cell Inv:\n    viewgen symbol(self) -> Symbol:\n        path a\n"
+    fixed_source = dedent("""\
+        cell Inv:
+            viewgen symbol(self) -> Symbol:
+                path a
+        """)
     assert change_document(server, uri, fixed_source) == []
 
     close_responses = notify(
@@ -194,19 +199,19 @@ def test_lsp_document_lifecycle_and_diagnostics(tmp_path):
 
 def test_lsp_watched_file_changes_republish_dependent_diagnostics(tmp_path):
     device_path = tmp_path / "device.ord"
-    device_path.write_text(
-        "cell Device:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
-    top_source = (
-        "from .device import Device\n"
-        "\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        Device inst:\n"
-        "            .a -- net_a\n"
-    )
+    device_path.write_text(dedent("""\
+        cell Device:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
+    top_source = dedent("""\
+        from .device import Device
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                Device inst:
+                    .a -- net_a
+        """)
     top_path = tmp_path / "top.ord"
     top_path.write_text(top_source)
 
@@ -215,11 +220,11 @@ def test_lsp_watched_file_changes_republish_dependent_diagnostics(tmp_path):
     device_uri = device_path.resolve().as_uri()
     assert open_document(server, top_uri, top_source) == []
 
-    device_path.write_text(
-        "cell Other:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
+    device_path.write_text(dedent("""\
+        cell Other:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
     responses = notify(
         server,
         "workspace/didChangeWatchedFiles",
@@ -240,19 +245,19 @@ def test_lsp_watched_file_changes_republish_dependent_diagnostics(tmp_path):
 
 def test_lsp_deleted_file_with_cold_index_refreshes_open_documents(tmp_path):
     device_path = tmp_path / "device.ord"
-    device_path.write_text(
-        "cell Device:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
-    top_source = (
-        "from .device import Device\n"
-        "\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        Device inst:\n"
-        "            .a -- net_a\n"
-    )
+    device_path.write_text(dedent("""\
+        cell Device:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
+    top_source = dedent("""\
+        from .device import Device
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                Device inst:
+                    .a -- net_a
+        """)
     top_path = tmp_path / "top.ord"
     top_path.write_text(top_source)
 
@@ -285,17 +290,17 @@ def test_lsp_deleted_file_with_cold_index_refreshes_open_documents(tmp_path):
 
 def test_lsp_navigation_references_rename_and_symbols(tmp_path):
     mux_path = tmp_path / "mux2.ord"
-    mux_path.write_text(
-        "cell Mux2:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        path a\n"
-    )
-    source = (
-        "from .mux2 import Mux2 as Stage\n"
-        "\n"
-        "def helper(x=Stage):\n"
-        "    return Stage\n"
-    )
+    mux_path.write_text(dedent("""\
+        cell Mux2:
+            viewgen symbol(self) -> Symbol:
+                path a
+        """))
+    source = dedent("""\
+        from .mux2 import Mux2 as Stage
+
+        def helper(x=Stage):
+            return Stage
+        """)
     user_path = tmp_path / "user.ord"
     user_path.write_text(source)
 
@@ -375,19 +380,19 @@ def test_lsp_navigation_references_rename_and_symbols(tmp_path):
 
 
 def test_lsp_definition_uses_location_link_when_supported(tmp_path):
-    mux_source = (
-        "cell Mux2:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        path a\n"
-    )
+    mux_source = dedent("""\
+        cell Mux2:
+            viewgen symbol(self) -> Symbol:
+                path a
+        """)
     mux_path = tmp_path / "mux2.ord"
     mux_path.write_text(mux_source)
-    source = (
-        "from .mux2 import Mux2 as Stage\n"
-        "\n"
-        "def helper(x=Stage):\n"
-        "    return Stage\n"
-    )
+    source = dedent("""\
+        from .mux2 import Mux2 as Stage
+
+        def helper(x=Stage):
+            return Stage
+        """)
     user_path = tmp_path / "user.ord"
     user_path.write_text(source)
 
@@ -428,17 +433,17 @@ def test_lsp_definition_uses_location_link_when_supported(tmp_path):
 
 def test_lsp_positions_use_utf16_offsets(tmp_path):
     mux_path = tmp_path / "mux2.ord"
-    mux_path.write_text(
-        "cell Mux2:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        path a\n"
-    )
-    source = (
-        "from .mux2 import Mux2 as Stage\n"
-        "\n"
-        "def helper():\n"
-        "    return \"😀\", Stage\n"
-    )
+    mux_path.write_text(dedent("""\
+        cell Mux2:
+            viewgen symbol(self) -> Symbol:
+                path a
+        """))
+    source = dedent("""\
+        from .mux2 import Mux2 as Stage
+
+        def helper():
+            return "😀", Stage
+        """)
     user_path = tmp_path / "utf16.ord"
     user_path.write_text(source)
 
@@ -460,16 +465,16 @@ def test_lsp_positions_use_utf16_offsets(tmp_path):
 
 
 def test_lsp_completion_and_code_actions(tmp_path):
-    source = (
-        "from ordec.core import *\n"
-        "from ordec.lib.generic_mos import Nmos\n"
-        "\n"
-        "cell Inv:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        net vss\n"
-        "        Nmos pd:\n"
-        "            .s -- vss\n"
-    )
+    source = dedent("""\
+        from ordec.core import *
+        from ordec.lib.generic_mos import Nmos
+
+        cell Inv:
+            viewgen schematic(self) -> Schematic:
+                net vss
+                Nmos pd:
+                    .s -- vss
+        """)
     uri = (tmp_path / "inv.ord").resolve().as_uri()
     server = initialize_server(tmp_path)
     assert open_document(server, uri, source) == []
@@ -496,14 +501,14 @@ def test_lsp_completion_and_code_actions(tmp_path):
         "end": cursor,
     }
 
-    broken_symbol = (
-        "cell Inv:\n"
-        "  viewgen symbol(self) -> Symbol:\n"
-        "    input a\n"
-        "  viewgen schematic(self) -> Schematic:\n"
-        "    port a\n"
-        "    port y\n"
-    )
+    broken_symbol = dedent("""\
+        cell Inv:
+          viewgen symbol(self) -> Symbol:
+            input a
+          viewgen schematic(self) -> Schematic:
+            port a
+            port y
+        """)
     broken_uri = (tmp_path / "missing_symbol_port.ord").resolve().as_uri()
     diagnostics = open_document(server, broken_uri, broken_symbol)
     diagnostics[0]["message"] = "wording changed"
@@ -524,7 +529,11 @@ def test_lsp_completion_and_code_actions(tmp_path):
 def test_lsp_applies_incremental_did_change(tmp_path):
     server = initialize_server(tmp_path)
     uri = (tmp_path / "incremental.ord").resolve().as_uri()
-    source = "cell Inv:\n    viewgen symbol(self) -> Symbol:\n        input a\n"
+    source = dedent("""\
+        cell Inv:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """)
     assert open_document(server, uri, source) == []
 
     responses = notify(
@@ -568,12 +577,12 @@ def test_lsp_applies_incremental_did_change(tmp_path):
 
     assert responses[0]["method"] == "textDocument/publishDiagnostics"
     assert responses[0]["params"]["diagnostics"] == []
-    assert server.session.documents[uri]["text"] == (
-        "cell Buf:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-        "        input b\n"
-    )
+    assert server.session.documents[uri]["text"] == dedent("""\
+        cell Buf:
+            viewgen symbol(self) -> Symbol:
+                input a
+                input b
+        """)
 
 
 def test_lsp_hover_markdown_and_completion_documentation(tmp_path):
@@ -582,12 +591,12 @@ def test_lsp_hover_markdown_and_completion_documentation(tmp_path):
         '    """Scale a value by a factor."""\n'
         '    return value * factor\n'
     )
-    source = (
-        "from helpers import scale\n"
-        "\n"
-        "def wrap():\n"
-        "    return scale\n"
-    )
+    source = dedent("""\
+        from helpers import scale
+
+        def wrap():
+            return scale
+        """)
     user_path = tmp_path / "user.ord"
     user_path.write_text(source)
 
@@ -639,12 +648,12 @@ def test_lsp_hover_markdown_and_completion_documentation(tmp_path):
 
 
 def test_lsp_document_symbols_hierarchical_and_flat(tmp_path):
-    source = (
-        "cell Inv:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-        "        output y\n"
-    )
+    source = dedent("""\
+        cell Inv:
+            viewgen symbol(self) -> Symbol:
+                input a
+                output y
+        """)
     uri = (tmp_path / "inv.ord").resolve().as_uri()
 
     flat_server = initialize_server(tmp_path)
@@ -687,20 +696,20 @@ def test_lsp_document_symbols_hierarchical_and_flat(tmp_path):
 
 
 def test_lsp_signature_help(tmp_path):
-    source = (
-        "from ordec.core import *\n"
-        "from ordec.lib.generic_mos import Nmos\n"
-        "\n"
-        "cell Inv:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        net vss\n"
-        "        Nmos(w=4u, l=400n) pd:\n"
-        "            .s -- vss\n"
-        "        x = helper(4u)\n"
-        "\n"
-        "def helper(gain, offset=1):\n"
-        "    return gain\n"
-    )
+    source = dedent("""\
+        from ordec.core import *
+        from ordec.lib.generic_mos import Nmos
+
+        cell Inv:
+            viewgen schematic(self) -> Schematic:
+                net vss
+                Nmos(w=4u, l=400n) pd:
+                    .s -- vss
+                x = helper(4u)
+
+        def helper(gain, offset=1):
+            return gain
+        """)
     uri = (tmp_path / "inv.ord").resolve().as_uri()
     server = initialize_server(tmp_path)
     assert open_document(server, uri, source) == []
@@ -746,25 +755,25 @@ def test_lsp_signature_help(tmp_path):
 
 
 def test_lsp_type_definition_and_inlay_hints(tmp_path):
-    device_source = (
-        "cell Device:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
+    device_source = dedent("""\
+        cell Device:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """)
     (tmp_path / "device.ord").write_text(device_source)
-    top_source = (
-        "from .device import Device\n"
-        "\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        net vdd\n"
-        "        Device inst:\n"
-        "            .a -- vdd\n"
-        "\n"
-        "def helper():\n"
-        "    d = Device()\n"
-        "    return d\n"
-    )
+    top_source = dedent("""\
+        from .device import Device
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                net vdd
+                Device inst:
+                    .a -- vdd
+
+        def helper():
+            d = Device()
+            return d
+        """)
     (tmp_path / "top.ord").write_text(top_source)
     server = initialize_server(tmp_path)
     top_uri = (tmp_path / "top.ord").resolve().as_uri()
@@ -805,24 +814,24 @@ def test_lsp_type_definition_and_inlay_hints(tmp_path):
 
 
 def test_lsp_call_hierarchy(tmp_path):
-    (tmp_path / "device.ord").write_text(
-        "cell Device:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
-    top_source = (
-        "from .device import Device\n"
-        "\n"
-        "cell Top:\n"
-        "    viewgen schematic(self) -> Schematic:\n"
-        "        net vdd\n"
-        "        Device inst:\n"
-        "            .a -- vdd\n"
-        "\n"
-        "def helper():\n"
-        "    d = Device()\n"
-        "    return d\n"
-    )
+    (tmp_path / "device.ord").write_text(dedent("""\
+        cell Device:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
+    top_source = dedent("""\
+        from .device import Device
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                net vdd
+                Device inst:
+                    .a -- vdd
+
+        def helper():
+            d = Device()
+            return d
+        """)
     (tmp_path / "top.ord").write_text(top_source)
     server = initialize_server(tmp_path)
     top_uri = (tmp_path / "top.ord").resolve().as_uri()
@@ -874,17 +883,17 @@ def test_lsp_call_hierarchy(tmp_path):
 
 
 def test_lsp_workspace_folding_selection_and_semantic_tokens(tmp_path):
-    source = (
-        "import math\n"
-        "\n"
-        "cell Mux2:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        path a\n"
-        "\n"
-        "def helper():\n"
-        "    .align = East\n"
-        "    return math\n"
-    )
+    source = dedent("""\
+        import math
+
+        cell Mux2:
+            viewgen symbol(self) -> Symbol:
+                path a
+
+        def helper():
+            .align = East
+            return math
+        """)
     path = tmp_path / "mux2.ord"
     path.write_text(source)
 
@@ -948,11 +957,11 @@ def test_lsp_workspace_folding_selection_and_semantic_tokens(tmp_path):
 
 def test_lsp_workspace_scan_skips_hidden_and_dependency_dirs(tmp_path):
     def cell_source(name):
-        return (
-            "cell {}:\n"
-            "    viewgen symbol(self) -> Symbol:\n"
-            "        input a\n"
-        ).format(name)
+        return dedent("""\
+            cell {}:
+                viewgen symbol(self) -> Symbol:
+                    input a
+            """).format(name)
 
     (tmp_path / "device.ord").write_text(cell_source("Device"))
     nested = tmp_path / "designs"
@@ -1244,11 +1253,11 @@ def test_lsp_incremental_change_handles_cr_line_breaks():
 def test_lsp_did_save_keeps_document_version(tmp_path):
     server = initialize_server(tmp_path)
     uri = (tmp_path / "keep.ord").resolve().as_uri()
-    source = (
-        "cell Keep:\n"
-        "    viewgen symbol(self) -> Symbol:\n"
-        "        input a\n"
-    )
+    source = dedent("""\
+        cell Keep:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """)
     open_document(server, uri, source, version=7)
 
     responses = notify(
