@@ -95,7 +95,7 @@ Routing with SRouter
 
 * ``move(layer, pos)`` sets the current layer and position without drawing and starts a new path. Positions may be constraint expressions (e.g. shape anchors), so routes stay attached when the placement solution changes.
 * ``wire(pos)``, ``wire_x(x)``, ``wire_y(y)`` draw a wire segment to the new position.
-* ``layer(layer)`` switches to another metal: the router walks the routing-spec layer stack between the two metals and places a rect on every layer touched — the via cuts plus landing pads on all metals, including the start and destination layers (a wire alone would not satisfy the via enclosure rules) — so a simple ``layer()`` call produces a complete via stack at the current position. The pads at the two ends of the stack are ``route_pad``-sized, barely wider than the wires running into them, which supply the endcap enclosure; the metals in between stand on their own and get the larger ``route_via`` pad.
+* ``layer(layer)`` switches to another metal: the router walks the routing-spec layer stack between the two metals and places a rect on every layer touched (the via cuts plus landing pads on all metals, including the start and destination layers, since a wire alone would not satisfy the via enclosure rules), so a simple ``layer()`` call produces a complete via stack at the current position. The pads at the two ends of the stack are ``route_pad``-sized, barely wider than the wires running into them, which supply the endcap enclosure. The metals in between stand on their own and get the larger ``route_via`` pad, as does the start pad when ``layer()`` follows ``layer()`` directly. A route that turns within ``route_pad/2 + route_width/2 + spacing`` of its end pad (415 nm on SG13G2's Metal2) leaves a notch between the pad and the other leg, so keep the final leg longer than that.
 * ``push()`` / ``pop()`` save/restore the current position and layer, convenient for branching a route (e.g. a T-junction: route the spine, ``push()`` at the branch point, finish the spine, ``pop()``, route the branch).
 
 In ORD layout viewgens, ``SRouter()`` picks up the current layout and solver from the active view builder automatically; in plain Python, pass them explicitly (``SRouter(spec, layout=l, solver=s)``).
@@ -116,6 +116,8 @@ Layout pins associate a shape with a symbol pin; they become labeled pin shapes 
     # Form 2: pin on a routed path (the LayoutPath created by the last wire)
     sr.wire_y(r3.term_n.cy)
     sr.path.create_pin(self.symbol.c)
+
+``move()``, ``layer()`` and ``pop()`` end the path, so read ``sr.path`` right after the last ``wire()`` of the segment you want pinned.
 
 In Python syntax, the equivalent is attaching a ``LayoutPin`` node with the ``%`` operator: ``l.m1_vss % LayoutPin(pin=self.symbol.vss)``.
 
