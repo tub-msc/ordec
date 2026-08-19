@@ -1938,3 +1938,24 @@ def test_viewgen_oldform_rejected():
     assert "viewgen symbol(self) -> T:" in msg
     assert "viewgen symbol() -> T:" in msg
     assert "line 2" in msg
+
+def test_parse_error_structured_position():
+    # Parse errors carry lineno/offset/text so Python's standard rendering
+    # draws an aligned caret and the web UI can annotate the editor. The
+    # offending token is underlined via end_offset when it ends on the
+    # error line.
+    with pytest.raises(SyntaxError) as excinfo:
+        ord_to_py("cell Foo:\n    x = 1 $ 2\n")
+    e = excinfo.value
+    assert (e.lineno, e.offset) == (2, 11)
+    assert e.text == "    x = 1 $ 2"
+
+    # Errors at end of input (here: a missing indented block) point at the
+    # end of the last real line, not at the virtual newline appended for
+    # parsing.
+    with pytest.raises(SyntaxError) as excinfo:
+        ord_to_py("cell Foo:")
+    e = excinfo.value
+    assert "unexpected end of input" in e.msg
+    assert (e.lineno, e.offset) == (1, 10)
+    assert e.text == "cell Foo:"

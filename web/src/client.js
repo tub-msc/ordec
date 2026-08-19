@@ -66,6 +66,8 @@ export class OrdecClient {
         //console.log(msg)
         if (msg['msg'] == 'viewlist') {
             this.exception = null;
+            // Successful build: clear the error annotation in the editor.
+            this.app?.eventBus.emit('editor:build-exception', null);
             this.views.clear();
             msg['views'].forEach(view => {
                 this.views.set(view.name, view);
@@ -76,8 +78,12 @@ export class OrdecClient {
             this.resultViewers.forEach(rv => rv.updateViewListAndException(true));
             this.requestViews();
         } else if (msg['msg'] == 'exception') {
+            // Structured exception dict (see server.py
+            // format_user_exception / message_exception).
             this.exception = msg['exception'];
             this.setStatus('exception');
+            // Build errors annotate the failing line in the editor (main.js).
+            this.app?.eventBus.emit('editor:build-exception', this.exception);
             this.resultViewers.forEach(rv => rv.updateViewListAndException());
         } else if (msg['msg'] == 'view') {
             // Terminal message: exactly one per request. Always remove the

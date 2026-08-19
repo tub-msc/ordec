@@ -197,6 +197,14 @@ body {
 /* -- Base layout ------------------------------------------------- */
 *, *::before, *::after { box-sizing: border-box; }
 
+/* Drop the browser's default 1em pre margins. Classed preformatted blocks
+   (.report-preformatted, .report-markdown pre, .exc-frame-line) set their
+   own; the classless fallback pre ("no handler found") relies on this
+   reset. */
+pre {
+    margin: 0px;
+}
+
 body {
     margin: 0px;
     padding: 0px;
@@ -700,14 +708,64 @@ canvas.layoutFit {
 }
 
 /* -- Exception --------------------------------------------------- */
-.exception {
+/* Structured traceback rendering (see resultviewer.js renderException). */
+.exc {
+    font-family: var(--font-sans);
+    font-size: var(--font-size-sm);
+    padding: 6px 8px;
+}
+.exc-head {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-code);
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    margin-bottom: 10px;
+}
+.exc-type {
     color: var(--color-exception);
-    /* Preserve <pre> formatting but wrap long lines instead of overflowing. */
+    font-weight: bold;
+}
+.exc-message {
+    color: var(--color-text);
+}
+.exc-label {
+    color: var(--color-text-muted);
+    margin-bottom: 4px;
+}
+.exc-frame {
+    margin: 0 0 6px 10px;
+    padding-left: 6px;
+    border-left: 2px solid transparent;
+}
+.exc-frame-last {
+    border-left-color: var(--color-exception);
+}
+.exc-frame-loc {
+    color: var(--color-text-secondary);
+}
+.exc-frame-link {
+    text-decoration: underline;
+    cursor: pointer;
+}
+.exc-frame-link:hover {
+    color: var(--color-text);
+}
+.exc-frame-name {
+    font-weight: bold;
+}
+.exc-frame-line {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-code);
+    color: var(--color-text);
+    margin: 2px 0 0 14px;
     white-space: pre-wrap;
     overflow-wrap: break-word;
 }
-pre {
-    margin: 0px;
+.exc-mark {
+    background-color: color-mix(in srgb,
+        var(--color-exception) 18%, transparent);
+    text-decoration: underline wavy var(--color-exception);
+    text-underline-offset: 3px;
 }
 
 /* -- DC table ---------------------------------------------------- */

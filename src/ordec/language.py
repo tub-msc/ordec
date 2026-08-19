@@ -26,7 +26,10 @@ def ord_to_code(source_data: str, filename: str = "<string>"):
         module = ord_to_py(source_data)
     except SyntaxError as e:
         if e.filename is None:
-            e.msg = f"In {filename}:\n{e.msg}"
+            # Parse errors carry position but no filename (see
+            # ordec.ord.parser.syntax_error); stamp it here so the standard
+            # rendering and the web UI point at the right file.
+            e.filename = filename
         raise
     return compile(module, filename, "exec"), ast.unparse(module)
 

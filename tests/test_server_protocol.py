@@ -46,6 +46,10 @@ def with_progress():
 def sym():
     from ordec.lib import Res
     return Res(r=100).symbol
+
+@viewgen_noctx
+def failing():
+    raise ValueError("boom")
 '''
 
 @pytest.fixture(scope="module")
@@ -73,13 +77,19 @@ def proto_server():
 class Client:
     """Minimal protocol client: authenticates, sends the test source,
     consumes the viewlist, then exposes send/recv of JSON messages."""
-    def __init__(self, url, key, src=TEST_SRC):
+    def __init__(self, url, key, src=TEST_SRC, srctype='python',
+            expect_exception=False):
         self.sock = connect(url)
-        self.send({'msg': 'source', 'srctype': 'python', 'src': src,
+        self.send({'msg': 'source', 'srctype': srctype, 'src': src,
             'auth': key.token()})
-        viewlist = self.recv()
-        assert viewlist['msg'] == 'viewlist'
-        self.views = {v['name'] for v in viewlist['views']}
+        first = self.recv()
+        if expect_exception:
+            assert first['msg'] == 'exception'
+            self.exception = first['exception']
+            self.views = set()
+        else:
+            assert first['msg'] == 'viewlist'
+            self.views = {v['name'] for v in first['views']}
 
     def send(self, payload):
         self.sock.send(json.dumps(payload))
@@ -202,3 +212,76 @@ def test_cancel_unknown_req_ignored(proto_server):
         assert 'type' in terminal
     finally:
         c.close()
+
+def test_build_exception_structured(proto_server):
+    """Module-level errors arrive as structured tracebacks (see server.py
+    format_user_exception): frames locating the editor line, plus a
+    plain-text fallback."""
+    url, key = proto_server
+    c = Client(url, key, src="x = 1\ny = 1/0\n", expect_exception=True)
+    try:
+        exc = c.exception
+        assert exc['etype'] == 'ZeroDivisionError'
+        assert 'division' in exc['message']
+        frame = exc['frames'][-1]
+        assert frame['filename'] == '<webeditor>'
+        assert frame['lineno'] == 2
+        assert frame['line'] == 'y = 1/0'
+        assert exc['text'].startswith('Traceback')
+    finally:
+        c.close()
+
+def test_build_syntax_error_pos(proto_server):
+    """Syntax errors (Python and ORD alike) carry a structured position
+    so the frontend can annotate the editor."""
+    url, key = proto_server
+    c = Client(url, key, src="def broken(:\n", expect_exception=True)
+    try:
+        assert c.exception['etype'] == 'SyntaxError'
+        assert c.exception['pos']['filename'] == '<webeditor>'
+        assert c.exception['pos']['lineno'] == 1
+    finally:
+        c.close()
+    c = Client(url, key, src="cell Foo:\n    x = = 1\n", srctype='ord',
+        expect_exception=True)
+    try:
+        exc = c.exception
+        assert exc['etype'] == 'SyntaxError'
+        assert exc['pos'] == {'filename': '<webeditor>', 'lineno': 2,
+            'col': 9, 'end_col': None, 'line': '    x = = 1'}
+    finally:
+        c.close()
+
+def test_view_exception_structured(proto_server):
+    """View-generation errors carry the structured traceback on the
+    terminal message."""
+    url, key = proto_server
+    c = Client(url, key)
+    try:
+        c.getview('failing()', req=60)
+        _, terminal = c.recv_until_terminal(60)
+        exc = terminal['exception']
+        assert exc['etype'] == 'ValueError'
+        assert exc['message'] == 'boom'
+        assert any(f['filename'] == '<webeditor>' and f['name'] == 'failing'
+            for f in exc['frames'])
+    finally:
+        c.close()
+
+def test_auth_error_structured(proto_server):
+    """Operational errors (here: a bad auth token) use the same structured
+    dict shape as tracebacks (see server.py message_exception), so the
+    frontend never has to special-case plain strings."""
+    url, key = proto_server
+    sock = connect(url)
+    try:
+        sock.send(json.dumps({'msg': 'source', 'srctype': 'python',
+            'src': 'x = 1\n', 'auth': 'wrong-token'}))
+        msg = json.loads(sock.recv(timeout=30))
+        assert msg['msg'] == 'exception'
+        exc = msg['exception']
+        assert isinstance(exc, dict)
+        assert exc['frames'] == [] and 'pos' not in exc
+        assert 'auth token' in exc['message']
+    finally:
+        sock.close()

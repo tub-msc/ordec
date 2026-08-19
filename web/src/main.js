@@ -24,7 +24,7 @@ import { OrdMode } from "./ace-ord-mode.js";
 
 import { authenticateLocalQuery, initSession, session } from './auth.js';
 
-import { ResultViewer } from "./resultviewer.js";
+import { ResultViewer, excSummary } from "./resultviewer.js";
 import { initTheme, registerAceEditor, unregisterAceEditor } from './theme.js';
 import { OrdecApp } from './app.js';
 import { initCourseMode, getCourseController, suppressCloseControls } from './course.js';
@@ -569,6 +569,42 @@ app.eventBus.on('editor:goto-source', (data) => {
     } else if (data.line) {
         console.info(`Instance defined at ${data.file}:${data.line}`);
     }
+});
+
+// The exception's location within the integrated editor's source, to point
+// an annotation at: the syntax error position if it lies there, otherwise
+// the deepest traceback frame that does. Returns {lineno, col} (1-based,
+// col may be null) or null if the exception has no location in the editor.
+// ('<webeditor>' is the filename the server stamps on such frames/positions.)
+function excEditorLocation(exc) {
+    if (!exc) {
+        return null;
+    }
+    if (exc.pos && exc.pos.filename === '<webeditor>') {
+        return { lineno: exc.pos.lineno, col: exc.pos.col };
+    }
+    const frame = (exc.frames || []).findLast(
+        f => f.filename === '<webeditor>');
+    return frame ? { lineno: frame.lineno, col: null } : null;
+}
+
+// Build errors mark the failing line in the editor with a red gutter
+// annotation: the syntax error position if there is one, otherwise the
+// deepest traceback frame in the editor source. Cleared again by the
+// null emitted on the next successful build (client.js). Operational
+// errors (auth, protocol) carry no position and just clear the annotation.
+app.eventBus.on('editor:build-exception', (exc) => {
+    const editorComponent = getEditor();
+    if (!editorComponent) {
+        return;
+    }
+    const loc = excEditorLocation(exc);
+    editorComponent.editor.session.setAnnotations(loc ? [{
+        row: loc.lineno - 1,
+        column: (loc.col || 1) - 1,
+        type: 'error',
+        text: excSummary(exc),
+    }] : []);
 });
 
 app.eventBus.on('lvs:request-open-views', (data) => {

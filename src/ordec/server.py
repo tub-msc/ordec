@@ -344,7 +344,24 @@ def progress_sender(send_msg, req, view_name, min_interval=0.1):
     return on_progress
 
 def format_user_exception(exc):
-    """Format exception for the web UI, keeping only user-relevant frames."""
+    """
+    Format an exception for the web UI, keeping only user-relevant frames.
+
+    Returns a JSON-compatible dict rendered by the frontend
+    (resultviewer.js renderException):
+
+    - etype, message: exception class name and message
+    - frames: traceback frames (most recent call last), each with
+      filename, lineno, name and the stripped source line (if available)
+    - pos: error position of syntax errors (filename, lineno, col,
+      end_col, line), so the editor can be pointed at it
+    - text: plain-text traceback, as fallback rendering
+
+    Operational errors that are not caught Python exceptions (auth,
+    protocol, internal errors) use the same dict shape via
+    message_exception, so every 'exception' value in the protocol is a
+    structured dict.
+    """
     all_frames = traceback.extract_tb(exc.__traceback__)
     frames = list(itertools.dropwhile(
         lambda f: is_internal_frame(f.filename), all_frames
@@ -353,7 +370,43 @@ def format_user_exception(exc):
     if frames:
         parts += traceback.format_list(frames)
     parts += traceback.format_exception_only(type(exc), exc)
-    return ''.join(parts)
+    result = {
+        'text': ''.join(parts),
+        'etype': type(exc).__name__,
+        'message': str(exc),
+        'frames': [{
+            'filename': f.filename,
+            'lineno': f.lineno,
+            'name': f.name,
+            'line': f.line,
+        } for f in frames],
+    }
+    if isinstance(exc, SyntaxError):
+        # str() would duplicate the position ("msg (file, line N)"),
+        # which the pos entry carries in structured form.
+        result['message'] = exc.msg or result['message']
+        if exc.lineno is not None:
+            result['pos'] = {
+                'filename': exc.filename,
+                'lineno': exc.lineno,
+                'col': exc.offset,
+                'end_col': exc.end_offset,
+                'line': (exc.text or '').rstrip('\n') or None,
+            }
+    return result
+
+def message_exception(message, etype='Error'):
+    """
+    Structured exception dict (same shape as format_user_exception) for an
+    operational error that is not a caught Python exception, e.g. an auth,
+    protocol or internal server error. Carries no frames or position.
+    """
+    return {
+        'text': message,
+        'etype': etype,
+        'message': message,
+        'frames': [],
+    }
 
 class ConnectionHandler:
     def __init__(self, key, sysmodules_orig, jobrunner=None, on_activity=None):
@@ -504,7 +557,7 @@ class ConnectionHandler:
         def send_exception_info(reason):
             websocket.send(json.dumps({
                 'msg': 'exception',
-                'exception': reason,
+                'exception': message_exception(reason),
             }))
 
         # Validate auth_token to prevent code execution from untrusted connections:
@@ -600,7 +653,8 @@ class ConnectionHandler:
                 elif result is None:
                     # Job crashed outside query_view (already logged).
                     result = {'msg': 'view', 'view': view_name,
-                        'exception': 'internal error during view generation'}
+                        'exception': message_exception(
+                            'internal error during view generation')}
                 send_msg(dict(result, req=req))
 
             with jobs_lock:
