@@ -447,17 +447,11 @@ export class ResultViewer {
         }
     }
 
-    // Renders an exception for display. Structured tracebacks (dicts from
-    // server.py format_user_exception) get a highlighted header, the frame
-    // list with clickable editor locations, and the syntax error position;
-    // plain strings (e.g. auth errors) render as preformatted text.
+    // Renders an exception for display. Exceptions are structured dicts
+    // (server.py format_user_exception / message_exception): a highlighted
+    // header, the frame list with clickable editor locations, and the
+    // syntax error position (frames/pos are absent for operational errors).
     renderException(exc) {
-        if (typeof exc !== 'object') {
-            const pre = document.createElement("pre");
-            pre.innerText = exc;
-            pre.classList.add('exception');
-            return pre;
-        }
         const root = document.createElement('div');
         root.className = 'exc';
 
@@ -567,19 +561,8 @@ export class ResultViewer {
     showBuildError(exc) {
         this.buildError = exc;
         // Summary for the strip, e.g. "SyntaxError: invalid syntax".
-        let summary;
-        if (typeof exc === 'object') {
-            summary = exc.message
-                ? `${exc.etype}: ${exc.message.split('\n')[0]}` : exc.etype;
-        } else {
-            // Plain-string exception: use the last line that looks like a
-            // traceback's exception line, or just the last line.
-            const lines = exc.trim().split('\n');
-            summary = lines.findLast(
-                l => /^[A-Za-z_][\w.]*(Error|Exception)\b/.test(l))
-                || lines[lines.length - 1];
-        }
-        this.buildErrorText.textContent = summary;
+        this.buildErrorText.textContent = exc.message
+            ? `${exc.etype}: ${exc.message.split('\n')[0]}` : exc.etype;
         this.updateOverlay();
         // Keep the details open across consecutive failed builds. With no
         // previously rendered report there is nothing to preserve, so open

@@ -78,8 +78,8 @@ export class OrdecClient {
             this.resultViewers.forEach(rv => rv.updateViewListAndException(true));
             this.requestViews();
         } else if (msg['msg'] == 'exception') {
-            // Structured traceback dict (see server.py
-            // format_user_exception) or a plain string (e.g. auth errors).
+            // Structured exception dict (see server.py
+            // format_user_exception / message_exception).
             this.exception = msg['exception'];
             this.setStatus('exception');
             // Build errors annotate the failing line in the editor (main.js).

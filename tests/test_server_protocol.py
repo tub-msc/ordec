@@ -267,3 +267,21 @@ def test_view_exception_structured(proto_server):
             for f in exc['frames'])
     finally:
         c.close()
+
+def test_auth_error_structured(proto_server):
+    """Operational errors (here: a bad auth token) use the same structured
+    dict shape as tracebacks (see server.py message_exception), so the
+    frontend never has to special-case plain strings."""
+    url, key = proto_server
+    sock = connect(url)
+    try:
+        sock.send(json.dumps({'msg': 'source', 'srctype': 'python',
+            'src': 'x = 1\n', 'auth': 'wrong-token'}))
+        msg = json.loads(sock.recv(timeout=30))
+        assert msg['msg'] == 'exception'
+        exc = msg['exception']
+        assert isinstance(exc, dict)
+        assert exc['frames'] == [] and 'pos' not in exc
+        assert 'auth token' in exc['message']
+    finally:
+        sock.close()

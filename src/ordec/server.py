@@ -357,8 +357,10 @@ def format_user_exception(exc):
       end_col, line), so the editor can be pointed at it
     - text: plain-text traceback, as fallback rendering
 
-    Elsewhere in the protocol, 'exception' values may also be plain
-    strings (e.g. auth errors); the frontend accepts both.
+    Operational errors that are not caught Python exceptions (auth,
+    protocol, internal errors) use the same dict shape via
+    message_exception, so every 'exception' value in the protocol is a
+    structured dict.
     """
     all_frames = traceback.extract_tb(exc.__traceback__)
     frames = list(itertools.dropwhile(
@@ -392,6 +394,19 @@ def format_user_exception(exc):
                 'line': (exc.text or '').rstrip('\n') or None,
             }
     return result
+
+def message_exception(message, etype='Error'):
+    """
+    Structured exception dict (same shape as format_user_exception) for an
+    operational error that is not a caught Python exception, e.g. an auth,
+    protocol or internal server error. Carries no frames or position.
+    """
+    return {
+        'text': message,
+        'etype': etype,
+        'message': message,
+        'frames': [],
+    }
 
 class ConnectionHandler:
     def __init__(self, key, sysmodules_orig, jobrunner=None, on_activity=None):
@@ -542,7 +557,7 @@ class ConnectionHandler:
         def send_exception_info(reason):
             websocket.send(json.dumps({
                 'msg': 'exception',
-                'exception': reason,
+                'exception': message_exception(reason),
             }))
 
         # Validate auth_token to prevent code execution from untrusted connections:
@@ -638,7 +653,8 @@ class ConnectionHandler:
                 elif result is None:
                     # Job crashed outside query_view (already logged).
                     result = {'msg': 'view', 'view': view_name,
-                        'exception': 'internal error during view generation'}
+                        'exception': message_exception(
+                            'internal error during view generation')}
                 send_msg(dict(result, req=req))
 
             with jobs_lock:

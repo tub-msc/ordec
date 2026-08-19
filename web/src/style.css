@@ -199,8 +199,8 @@ body {
 
 /* Drop the browser's default 1em pre margins. Classed preformatted blocks
    (.report-preformatted, .report-markdown pre, .exc-frame-line) set their
-   own; the classless fallback pres (pre.exception, "no handler found")
-   rely on this reset. */
+   own; the classless fallback pre ("no handler found") relies on this
+   reset. */
 pre {
     margin: 0px;
 }
@@ -708,14 +708,7 @@ canvas.layoutFit {
 }
 
 /* -- Exception --------------------------------------------------- */
-/* Plain-string fallback rendering (see resultviewer.js renderException). */
-.exception {
-    color: var(--color-exception);
-    /* Preserve <pre> formatting but wrap long lines instead of overflowing. */
-    white-space: pre-wrap;
-    overflow-wrap: break-word;
-}
-/* Structured traceback rendering. */
+/* Structured traceback rendering (see resultviewer.js renderException). */
 .exc {
     font-family: var(--font-sans);
     font-size: var(--font-size-sm);
