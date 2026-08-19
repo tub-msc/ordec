@@ -247,10 +247,20 @@ Each schema type is a Node subclass with Attr declarations and indexes.
 - Directory tracks node naming
 - Setup functions for PDK-specific initialization
 
-**SimArray** (src/ordec/core/simarray.py): Immutable, hashable structured array for simulation data
-- Tuple subclass holding `(fields, data)` where fields describe columns and data is packed binary
-- Supports `column(name)` to extract a field as a `SimColumn` — a lazy strided view into the packed binary data (supports indexing, slicing, iteration, `len()`); values are unpacked on demand, not materialized as a tuple
+**SimArray/SimColumn** (src/ordec/core/simarray.py):
+- `SimColumn`: immutable lazy strided view into packed binary data (indexing,
+  slicing, iteration, `len()`); values unpack on demand. Carries `name` (the
+  verbatim ngspice fid) and `quantity`; both participate in `__eq__`/`__hash__`
+  (element-wise value equality, weak buffer-free hash). A first-class schema
+  value type: `Plot2D.x` and `Plot2DSeries.values` store SimColumn values
+  (zero-copy views into the run's data buffer; plain iterables are packed
+  via `SimColumn.from_values`).
+- `SimArray`: immutable, hashable structured array (tuple subclass holding
+  `(fields, data)` with packed binary records); `column(fid)` stamps
+  name/quantity onto the returned `SimColumn`.
 - No numpy dependency for core operations; `to_numpy()` available for convenience
+- On the wire, columns encode as descriptors into a per-subgraph blob table
+  (buffers verbatim, deduped by object identity); see src/ordec/core/wire.py.
 
 **Ngspice** (src/ordec/sim/):
 - `ngspice.py`: Contains `ngspice_batch()` (runs ngspice in batch mode),

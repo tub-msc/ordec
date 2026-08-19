@@ -29,11 +29,22 @@ SubgraphRefs always hold fully materialized subgraphs.
 
 Wire format (format version is the digit in HASH_DOMAIN)::
 
-    wire_bytes(sg) = canonical CBOR of [ {wire_id: [[nid, v0, ..., vN], ...]},
+    wire_bytes(sg) = canonical CBOR of [ [blob0, blob1, ...],
+                                         {wire_id: [[nid, v0, ..., vN], ...]},
                                          nid_alloc.start ]
                      with rows ascending by nid and row values in
                      NodeTuple._layout order
     wire_hash(sg)  = SHA256(HASH_DOMAIN + wire_bytes(sg))
+
+The blob table holds the data buffers referenced by SimColumn values,
+verbatim (no repacking or transpose), deduplicated by buffer object
+identity and indexed in first-reference order; a SimColumn encodes as a
+small descriptor referencing its blob. Columns of one simulation run
+typically all view into the same rawfile buffer, so the table
+degenerates to a single entry. Blob bytes participate in the hash, so
+wire identity is
+representation identity: a strided view and a repacked copy of the same
+values are value-equal but not wire-hash-equal.
 
 This module imports ordb and the schema modules; it must never be imported by
 them (or by core/__init__), so its top-level schema imports stay cycle-free.
@@ -53,7 +64,7 @@ from .ordb.base import (
 )
 from .rational import R
 from .geoprim import Vec2R, Vec2I, Rect4R, Rect4I, TD4R, TD4I, D4
-from .simarray import SimArray, SimArrayField, Quantity
+from .simarray import SimArray, SimArrayField, SimColumn, Quantity
 from .schema.base import PathEndType, SourceLocInfo, GdsLayer, RGBColor
 from .schema.schematic import PinType, SchemErrorType
 from .schema.report import ScaleType
@@ -75,6 +86,7 @@ TAG_SIMARRAY = 390020
 TAG_SOURCELOC = 390021
 TAG_GDSLAYER = 390022
 TAG_RGBCOLOR = 390023
+TAG_SIMCOLUMN = 390024
 TAG_LOCALREF = 390030
 TAG_EXTERNALREF = 390031
 TAG_SUBGRAPHREF = 390032
@@ -149,7 +161,39 @@ def as_frozen(x) -> FrozenSubgraph:
 # Encoding
 # --------
 
-def encode_plain(val):
+class BlobTable:
+    """
+    Collects the data buffers referenced by SimColumn values during one
+    subgraph encoding: verbatim bytes, deduplicated by buffer object
+    identity, indexed in first-reference order (deterministic because
+    rows are encoded with nids ascending and attrs in layout order).
+    """
+    def __init__(self):
+        self.blobs = []
+        self._index = {} # id(buffer) -> index
+        self._pinned = [] # keep buffers alive so ids stay unique
+
+    def add(self, buf) -> int:
+        key = id(buf)
+        idx = self._index.get(key)
+        if idx is None:
+            idx = len(self.blobs)
+            self._index[key] = idx
+            self._pinned.append(buf)
+            # The single copy at the wire boundary (memoryview/mmap-backed
+            # buffers become bytes here; bytes pass through uncopied).
+            self.blobs.append(bytes(buf))
+        return idx
+
+def encode_simcolumn(col: SimColumn, blobs: BlobTable):
+    if blobs is None:
+        raise TypeError("SimColumn is only serializable as part of a"
+            " subgraph (a blob table is required).")
+    return cbor2.CBORTag(TAG_SIMCOLUMN, [blobs.add(col._data), col._offset,
+        col._stride, col._length, col._dtype, col._name,
+        encode_plain(col._quantity)])
+
+def encode_plain(val, blobs: BlobTable=None):
     t = type(val)
     if val is None or t in (bool, int, str, bytes, float):
         return val
@@ -178,6 +222,8 @@ def encode_plain(val):
         return cbor2.CBORTag(TAG_SIMARRAY,
             [[[f.fid, f.dtype, encode_plain(f.quantity)]
                 for f in val.fields], bytes(val.data)])
+    if t is SimColumn:
+        return encode_simcolumn(val, blobs)
     if t is SourceLocInfo:
         return cbor2.CBORTag(TAG_SOURCELOC, list(val))
     if t is GdsLayer:
@@ -185,10 +231,10 @@ def encode_plain(val):
     if t is RGBColor:
         return cbor2.CBORTag(TAG_RGBCOLOR, list(val))
     if t is tuple:
-        return [encode_plain(v) for v in val]
+        return [encode_plain(v, blobs) for v in val]
     raise TypeError(f"Type {t.__name__} is not wire-serializable.")
 
-def encode_row_value(val, attr, ept: ExportTable):
+def encode_row_value(val, attr, ept: ExportTable, blobs: BlobTable):
     if val is None:
         return None
     if isinstance(attr, LocalRef):
@@ -204,7 +250,7 @@ def encode_row_value(val, attr, ept: ExportTable):
             return cbor2.CBORTag(TAG_LIVEREF,
                 [val.endpoint_id, val.obj_id, val.name])
         return cbor2.CBORTag(TAG_LIVEREF, list(ept.export(val)))
-    return encode_plain(val)
+    return encode_plain(val, blobs)
 
 def encode_subgraph(sg: FrozenSubgraph, ept: ExportTable) -> bytes:
     """
@@ -213,6 +259,7 @@ def encode_subgraph(sg: FrozenSubgraph, ept: ExportTable) -> bytes:
     subgraphs for transmission via FrozenSubgraph.wire_deps(). Backend of
     FrozenSubgraph.wire_encode().
     """
+    blobs = BlobTable()
     rows_by_wid = {}
     for nid in sorted(sg.nodes):
         node = sg.nodes[nid]
@@ -224,11 +271,13 @@ def encode_subgraph(sg: FrozenSubgraph, ept: ExportTable) -> bytes:
         row = [nid]
         for ad in node._layout:
             try:
-                row.append(encode_row_value(node[ad.index], ad.attr, ept))
+                row.append(encode_row_value(node[ad.index], ad.attr, ept,
+                    blobs))
             except TypeError as e:
                 raise TypeError(f"{cls.__name__}.{ad.name}: {e}") from None
         rows_by_wid.setdefault(wid, []).append(row)
-    return cbor2.dumps([rows_by_wid, sg.nid_alloc.start], canonical=True)
+    return cbor2.dumps([blobs.blobs, rows_by_wid, sg.nid_alloc.start],
+        canonical=True)
 
 def hash_wire_bytes(data: bytes) -> bytes:
     """
@@ -282,7 +331,10 @@ class RefMarker:
 def tag_hook(tag, shareable):
     t = tag.tag
     v = tag.value
-    if t in (TAG_LOCALREF, TAG_EXTERNALREF, TAG_SUBGRAPHREF, TAG_LIVEREF):
+    if t in (TAG_LOCALREF, TAG_EXTERNALREF, TAG_SUBGRAPHREF, TAG_LIVEREF,
+            TAG_SIMCOLUMN):
+        # Refs need deps/ept, columns need the blob table; both are only
+        # in scope after the full tree is decoded.
         return RefMarker(t, v)
     if t == TAG_VEC2R:
         return Vec2R(R(v[0]), R(v[1]))
@@ -308,17 +360,42 @@ def tag_hook(tag, shareable):
         return RGBColor(*v)
     raise WireError(f"Unknown wire tag {t}.")
 
-def fix_plain(val):
+def decode_simcolumn(payload, blobs):
+    # cbor2 decodes arrays nested inside tags as tuples.
+    if not (isinstance(payload, (list, tuple)) and len(payload) == 7):
+        raise WireError("Malformed SimColumn encoding.")
+    bi, offset, stride, length, dtype, name, quantity = payload
+    if dtype not in ('f8', 'c16'):
+        raise WireError(f"Unknown SimColumn dtype {dtype!r}.")
+    if not (isinstance(bi, int) and 0 <= bi < len(blobs)):
+        raise WireError(f"SimColumn references invalid blob index {bi!r}.")
+    if not all(isinstance(v, int) and v >= 0
+            for v in (offset, stride, length)):
+        raise WireError("Malformed SimColumn layout.")
+    buf = blobs[bi]
+    itemsize = 8 if dtype == 'f8' else 16
+    if length > 0 and offset + (length - 1) * stride + itemsize > len(buf):
+        raise WireError("SimColumn layout exceeds blob size.")
+    if not (name is None or isinstance(name, str)) \
+            or not (quantity is None or isinstance(quantity, Quantity)):
+        raise WireError("Malformed SimColumn name/quantity.")
+    return SimColumn(buf, offset, stride, length, dtype, name, quantity)
+
+def fix_plain(val, blobs):
     # cbor2 auto-decodes tag 30 to Fraction before the tag_hook runs, and
     # plain CBOR arrays (encoded tuples) decode as lists.
     if type(val) is Fraction:
         return R(val)
+    if isinstance(val, RefMarker):
+        if val.tag == TAG_SIMCOLUMN:
+            return decode_simcolumn(val.value, blobs)
+        raise WireError(f"Unexpected nested ref tag {val.tag}.")
     if type(val) in (list, tuple):
-        return tuple(fix_plain(v) for v in val)
+        return tuple(fix_plain(v, blobs) for v in val)
     return val
 
-def resolve_row_value(val, deps, ept):
-    if isinstance(val, RefMarker):
+def resolve_row_value(val, deps, ept, blobs):
+    if isinstance(val, RefMarker) and val.tag != TAG_SIMCOLUMN:
         if val.tag in (TAG_LOCALREF, TAG_EXTERNALREF):
             return val.value # stored nid
         if val.tag == TAG_SUBGRAPHREF:
@@ -333,7 +410,7 @@ def resolve_row_value(val, deps, ept):
         if endpoint_id == ept.endpoint_id:
             return ept.resolve(obj_id)
         return FarRef(endpoint_id, obj_id, name)
-    return fix_plain(val)
+    return fix_plain(val, blobs)
 
 @public
 def wire_decode(data: bytes, ept: ExportTable, deps=None) -> Node:
@@ -355,10 +432,14 @@ def wire_decode(data: bytes, ept: ExportTable, deps=None) -> Node:
         tree = cbor2.loads(data, tag_hook=tag_hook)
     except cbor2.CBORDecodeError as e:
         raise WireError(f"CBOR decode failed: {e}") from e
-    if not (isinstance(tree, list) and len(tree) == 2
-            and isinstance(tree[0], dict) and isinstance(tree[1], int)):
-        raise WireError("Malformed wire data (expected [rows, nid_start]).")
-    rows_by_wid, nid_start = tree
+    if not (isinstance(tree, list) and len(tree) == 3
+            and isinstance(tree[0], list) and isinstance(tree[1], dict)
+            and isinstance(tree[2], int)):
+        raise WireError(
+            "Malformed wire data (expected [blobs, rows, nid_start]).")
+    blobs, rows_by_wid, nid_start = tree
+    if not all(isinstance(b, bytes) for b in blobs):
+        raise WireError("Malformed blob table.")
 
     items = []
     for wid, rows in rows_by_wid.items():
@@ -377,7 +458,7 @@ def wire_decode(data: bytes, ept: ExportTable, deps=None) -> Node:
         for nid, cls, values in items:
             kwargs = {}
             for ad, val in zip(cls.Tuple._layout, values):
-                kwargs[ad.name] = resolve_row_value(val, deps, ept)
+                kwargs[ad.name] = resolve_row_value(val, deps, ept, blobs)
             u.add_single(cls.Tuple(**kwargs), nid=nid)
     # The updater clamps nid_alloc.start to max_nid+1; restore the encoded
     # start (they differ when top nids were deleted before serialization).
