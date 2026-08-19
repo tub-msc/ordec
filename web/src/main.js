@@ -571,6 +571,38 @@ app.eventBus.on('editor:goto-source', (data) => {
     }
 });
 
+// Build errors mark the failing line in the editor with a red gutter
+// annotation: the syntax error position if there is one, otherwise the
+// deepest traceback frame in the editor source. Cleared again by the
+// null emitted on the next successful build (client.js). Only structured
+// exceptions (objects, see server.py format_user_exception) carry
+// positions; plain-string exceptions just clear the annotation.
+app.eventBus.on('editor:build-exception', (exc) => {
+    const editorComponent = getEditor();
+    if (!editorComponent) {
+        return;
+    }
+    let row = null, column = 0;
+    if (exc && typeof exc === 'object') {
+        if (exc.pos && exc.pos.filename === '<webeditor>') {
+            row = exc.pos.lineno - 1;
+            column = (exc.pos.col || 1) - 1;
+        } else {
+            const frame = (exc.frames || []).findLast(
+                f => f.filename === '<webeditor>');
+            if (frame) {
+                row = frame.lineno - 1;
+            }
+        }
+    }
+    editorComponent.editor.session.setAnnotations((row === null) ? [] : [{
+        row,
+        column,
+        type: 'error',
+        text: exc.message ? `${exc.etype}: ${exc.message}` : exc.etype,
+    }]);
+});
+
 app.eventBus.on('lvs:request-open-views', (data) => {
     const { layoutView, schemView, layoutWireHash, schemWireHash, sourceContainer } = data;
 

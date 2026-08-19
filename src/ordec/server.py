@@ -344,7 +344,22 @@ def progress_sender(send_msg, req, view_name, min_interval=0.1):
     return on_progress
 
 def format_user_exception(exc):
-    """Format exception for the web UI, keeping only user-relevant frames."""
+    """
+    Format an exception for the web UI, keeping only user-relevant frames.
+
+    Returns a JSON-compatible dict rendered by the frontend
+    (resultviewer.js renderException):
+
+    - etype, message: exception class name and message
+    - frames: traceback frames (most recent call last), each with
+      filename, lineno, name and the stripped source line (if available)
+    - pos: error position of syntax errors (filename, lineno, col,
+      end_col, line), so the editor can be pointed at it
+    - text: plain-text traceback, as fallback rendering
+
+    Elsewhere in the protocol, 'exception' values may also be plain
+    strings (e.g. auth errors); the frontend accepts both.
+    """
     all_frames = traceback.extract_tb(exc.__traceback__)
     frames = list(itertools.dropwhile(
         lambda f: is_internal_frame(f.filename), all_frames
@@ -353,7 +368,30 @@ def format_user_exception(exc):
     if frames:
         parts += traceback.format_list(frames)
     parts += traceback.format_exception_only(type(exc), exc)
-    return ''.join(parts)
+    result = {
+        'text': ''.join(parts),
+        'etype': type(exc).__name__,
+        'message': str(exc),
+        'frames': [{
+            'filename': f.filename,
+            'lineno': f.lineno,
+            'name': f.name,
+            'line': f.line,
+        } for f in frames],
+    }
+    if isinstance(exc, SyntaxError):
+        # str() would duplicate the position ("msg (file, line N)"),
+        # which the pos entry carries in structured form.
+        result['message'] = exc.msg or result['message']
+        if exc.lineno is not None:
+            result['pos'] = {
+                'filename': exc.filename,
+                'lineno': exc.lineno,
+                'col': exc.offset,
+                'end_col': exc.end_offset,
+                'line': (exc.text or '').rstrip('\n') or None,
+            }
+    return result
 
 class ConnectionHandler:
     def __init__(self, key, sysmodules_orig, jobrunner=None, on_activity=None):

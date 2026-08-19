@@ -795,3 +795,42 @@ def {name}():
     assert "before result" not in rv_js("return rv.testInfo().html;")
     assert rv_js("return getComputedStyle(rv.resEmpty).display;") != 'none'
     assert rv_js("return rv.restoreSelectedView;") is None
+
+@pytest.mark.web
+def test_structured_traceback(web):
+    """Build errors annotate the failing line in the editor's gutter, the
+    structured traceback's frame links jump the editor to the frame's line,
+    and a successful rebuild clears the annotation again."""
+    web.resize_viewport()
+    web.navigate('app.html#example=blank')
+    web.wait_for_ready()
+
+    def editor_js(script, *args):
+        return web.driver.execute_script("""
+            const ed = window.ordecApp.layout.root.getAllContentItems()
+                .find(i => i.isComponent && i.componentName === 'editor')
+                .component.editor;
+        """ + script, *args)
+
+    # Set the source through the editor (not client.src directly): the
+    # frame links must jump within the document the editor actually shows.
+    def set_src(src):
+        editor_js("ed.setValue(arguments[0]); ed.clearSelection();", src)
+
+    set_src("def boom():\n    raise ValueError('nope')\nboom()\n")
+    web.wait_until("return window.ordecApp.client.exception;")
+    assert editor_js("return ed.session.getAnnotations();") == [
+        {'row': 1, 'column': 0, 'type': 'error', 'text': 'ValueError: nope'}]
+
+    # Two frames (module level and boom()); clicking the first jumps the
+    # editor cursor to its line 3 (row 2).
+    web.wait_until(
+        "return document.querySelectorAll('.exc-frame-link').length;")
+    web.driver.execute_script(
+        "document.querySelector('.exc-frame-link').click();")
+    assert editor_js("return ed.getCursorPosition().row;") == 2
+
+    set_src("x = 1\n")
+    web.wait_until("return !window.ordecApp.client.exception;")
+    web.wait_for_ready()
+    assert editor_js("return ed.session.getAnnotations();") == []

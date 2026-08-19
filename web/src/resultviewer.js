@@ -437,17 +437,126 @@ export class ResultViewer {
         this.updateViewList();
     }
 
-    showException(text) {
-        this.resException.style.display = text?'':'none';
-        this.resContent.style.display = text?'none':'';
-        this.resEmpty.style.display = (text || this.viewSelected) ? 'none' : '';
+    showException(exc) {
+        this.resException.style.display = exc?'':'none';
+        this.resContent.style.display = exc?'none':'';
+        this.resEmpty.style.display = (exc || this.viewSelected) ? 'none' : '';
 
-        if(text) {
-            let pre = document.createElement("pre");
-            pre.innerText = text;
-            pre.classList.add('exception');
-            this.resException.replaceChildren(pre);
+        if(exc) {
+            this.resException.replaceChildren(this.renderException(exc));
         }
+    }
+
+    // Renders an exception for display. Structured tracebacks (dicts from
+    // server.py format_user_exception) get a highlighted header, the frame
+    // list with clickable editor locations, and the syntax error position;
+    // plain strings (e.g. auth errors) render as preformatted text.
+    renderException(exc) {
+        if (typeof exc !== 'object') {
+            const pre = document.createElement("pre");
+            pre.innerText = exc;
+            pre.classList.add('exception');
+            return pre;
+        }
+        const root = document.createElement('div');
+        root.className = 'exc';
+
+        const head = document.createElement('div');
+        head.className = 'exc-head';
+        const etype = document.createElement('span');
+        etype.className = 'exc-type';
+        etype.textContent = exc.etype;
+        head.appendChild(etype);
+        if (exc.message) {
+            const message = document.createElement('span');
+            message.className = 'exc-message';
+            message.textContent = ': ' + exc.message;
+            head.appendChild(message);
+        }
+        root.appendChild(head);
+
+        const frames = exc.frames || [];
+        if (frames.length || exc.pos) {
+            const label = document.createElement('div');
+            label.className = 'exc-label';
+            label.textContent = 'Traceback (most recent call last):';
+            root.appendChild(label);
+        }
+        frames.forEach((f, i) => {
+            root.appendChild(this.renderExcFrame({
+                filename: f.filename,
+                lineno: f.lineno,
+                context: f.name,
+                line: f.line,
+                last: (i === frames.length - 1) && !exc.pos,
+            }));
+        });
+        if (exc.pos) {
+            // Syntax error position, rendered like the deepest frame but
+            // with the offending column marked in the source line.
+            root.appendChild(this.renderExcFrame({
+                filename: exc.pos.filename,
+                lineno: exc.pos.lineno,
+                col: exc.pos.col,
+                endCol: exc.pos.end_col,
+                line: exc.pos.line,
+                last: true,
+            }));
+        }
+        return root;
+    }
+
+    renderExcFrame({filename, lineno, col, endCol, context, line, last}) {
+        const frame = document.createElement('div');
+        frame.className = 'exc-frame' + (last ? ' exc-frame-last' : '');
+
+        const loc = document.createElement('div');
+        loc.className = 'exc-frame-loc';
+        const place = document.createElement('span');
+        place.textContent = `${filename}, line ${lineno}`;
+        if (filename === '<webeditor>' && lineno) {
+            // Frame in the integrated editor's source: clicking jumps
+            // there (same event as schematic click-to-source, see main.js).
+            place.classList.add('exc-frame-link');
+            place.title = 'Jump to this line in the editor';
+            place.onclick = () => this.client.app.eventBus.emit(
+                'editor:goto-source',
+                { file: filename, line: lineno, column: col });
+        }
+        loc.appendChild(place);
+        if (context) {
+            loc.appendChild(document.createTextNode(', in '));
+            const name = document.createElement('span');
+            name.className = 'exc-frame-name';
+            name.textContent = context;
+            loc.appendChild(name);
+        }
+        frame.appendChild(loc);
+
+        if (line) {
+            const src = document.createElement('pre');
+            src.className = 'exc-frame-line';
+            // Server-side frame lines arrive stripped; the syntax error
+            // line does not, and its col refers to the unstripped line.
+            const stripped = line.replace(/^\s+/, '');
+            if (col) {
+                let idx = col - 1 - (line.length - stripped.length);
+                idx = Math.max(0, Math.min(idx, stripped.length));
+                let end = (endCol && endCol > col) ? idx + (endCol - col)
+                    : idx + 1;
+                end = Math.min(end, stripped.length);
+                const mark = document.createElement('span');
+                mark.className = 'exc-mark';
+                // At end of line, mark a padding space instead of nothing.
+                mark.textContent = stripped.slice(idx, end) || ' ';
+                src.append(stripped.slice(0, idx), mark,
+                    stripped.slice(Math.max(end, idx)));
+            } else {
+                src.textContent = stripped;
+            }
+            frame.appendChild(src);
+        }
+        return frame;
     }
 
     // Course viewer only: non-destructive error display. A build or check
@@ -455,17 +564,22 @@ export class ResultViewer {
     // common case is a transient syntax error while typing), so the last good
     // report stays visible and the error appears as a strip; the full
     // traceback expands over the report on demand.
-    showBuildError(text) {
-        this.buildError = text;
-        // Summary for the strip: the traceback's exception line, e.g.
-        // "SyntaxError: invalid syntax (<webeditor>, line 12)". Usually the
-        // last line, but exceptions with multi-line messages (e.g. ORD syntax
-        // errors) have the message's remaining lines after it, so search for
-        // the last line that looks like an exception line.
-        const lines = text.trim().split('\n');
-        const summary = lines.findLast(
-            l => /^[A-Za-z_][\w.]*(Error|Exception)\b/.test(l));
-        this.buildErrorText.textContent = summary || lines[lines.length - 1];
+    showBuildError(exc) {
+        this.buildError = exc;
+        // Summary for the strip, e.g. "SyntaxError: invalid syntax".
+        let summary;
+        if (typeof exc === 'object') {
+            summary = exc.message
+                ? `${exc.etype}: ${exc.message.split('\n')[0]}` : exc.etype;
+        } else {
+            // Plain-string exception: use the last line that looks like a
+            // traceback's exception line, or just the last line.
+            const lines = exc.trim().split('\n');
+            summary = lines.findLast(
+                l => /^[A-Za-z_][\w.]*(Error|Exception)\b/.test(l))
+                || lines[lines.length - 1];
+        }
+        this.buildErrorText.textContent = summary;
         this.updateOverlay();
         // Keep the details open across consecutive failed builds. With no
         // previously rendered report there is nothing to preserve, so open
