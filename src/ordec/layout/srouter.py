@@ -27,47 +27,63 @@ class SRouter:
         self.routing_spec = routing_spec
         self.cur_layer = None
         self.cur_pos = None
-        self.path = None
+        self._path = None
         self.path_order = 0
         self.stack = []
+        # True right after layer(): the current position is the top of a
+        # via stack and nothing supplies the endcap enclosure of a pad
+        # placed there, so the next layer() must use a full-size pad.
+        self.on_stack_top = False
+
+    @property
+    def path(self) -> LayoutPath:
+        """The LayoutPath of the current wire. move(), layer() and pop()
+        end it, so read path right after the last wire() of a segment."""
+        if self._path is None:
+            raise SRouterException(
+                "No open wire path: move(), layer() and pop() end the path. "
+                "Read sr.path right after the last wire()/wire_x()/wire_y() "
+                "of the segment.")
+        return self._path
 
     def _rsl(self) -> RoutingSpecLayer:
         """Look up the RoutingSpecLayer for the current layer."""
         return self.routing_spec.one(RoutingSpecLayer.layer_index.query(self.cur_layer))
 
     def push(self):
-        self.stack.append((self.cur_pos, self.cur_layer))
+        self.stack.append((self.cur_pos, self.cur_layer, self.on_stack_top))
 
     def pop(self):
-        self.path = None
+        self._path = None
         self.path_order = 0
-        self.cur_pos, self.cur_layer = self.stack.pop()
+        self.cur_pos, self.cur_layer, self.on_stack_top = self.stack.pop()
 
     def _check_initialized(self):
         if self.cur_layer is None:
             raise SRouterException("Must call move() before wire/layer operations.")
 
     def _add_vertex(self):
-        v = self.path % PolyVec2I(order=self.path_order)
+        v = self._path % PolyVec2I(order=self.path_order)
         self.solver.constrain(v.pos==self.cur_pos)
         self.path_order += 1
 
     def move(self, layer: Layer, pos: Vec2LinearTerm):
         """Set position and layer without drawing (like SVG 'M')."""
-        self.path = None
+        self._path = None
         self.path_order = 0
         self.cur_pos = pos
         self.cur_layer = layer
+        self.on_stack_top = False
 
     def wire(self, pos: Vec2LinearTerm):
         """Draw a wire to pos (like SVG 'L')."""
         self._check_initialized()
-        if self.path is None:
+        if self._path is None:
             rsl = self._rsl()
             if None in (rsl.route_wire_width, rsl.route_wire_ext):
                 raise SRouterException("Cannot draw wire on layer where"
                     " route_wire_width or route_wire_ext is None.")
-            self.path = self.layout % LayoutPath(
+            self._path = self.layout % LayoutPath(
                 layer=self.cur_layer,
                 width=rsl.route_wire_width,
                 endtype=PathEndType.Custom,
@@ -78,6 +94,7 @@ class SRouter:
 
         self.cur_pos = pos
         self._add_vertex()
+        self.on_stack_top = False
 
     def wire_x(self, x):
         """Draw a horizontal wire (like SVG 'H')."""
@@ -100,7 +117,8 @@ class SRouter:
         so the pad only has to cover the enclosure required on all sides and
         stays at the smaller route_pad size, barely widening the wire. The
         metals in the middle of a stack stand on their own and need the
-        larger route_via size.
+        larger route_via size, as does a start pad on top of a previous
+        stack (layer() directly after layer()).
         """
         rsl = self._rsl()
         if None in (rsl.route_via_width, rsl.route_via_height):
@@ -113,7 +131,7 @@ class SRouter:
         r = self.layout % LayoutRect(layer=self.cur_layer)
         self.solver.constrain(r.center == self.cur_pos)
         self.solver.constrain(r.size == size)
-        self.path = None
+        self._path = None
         self.path_order = 0
 
     def layer(self, layer: Layer):
@@ -125,14 +143,16 @@ class SRouter:
         route runs into them, on the start layer through the wire or the
         geometry it came from, on the destination layer through the wire it
         is expected to continue with. Only the metals in between stand on
-        their own and get a full route_via pad.
+        their own and get a full route_via pad, as does the start pad when
+        layer() follows layer() directly: the previous stack's top pad does
+        not supply the endcap enclosure.
         """
         self._check_initialized()
         if self.cur_layer == layer:
             return
         start = True
         while self.cur_layer != layer:
-            self._end_path(stack_end=start)
+            self._end_path(stack_end=start and not self.on_stack_top)
             start = False
             rsl = self._rsl()
             if rsl.route_id < self.routing_spec.one(
@@ -146,3 +166,4 @@ class SRouter:
 
         # Landing pad on the destination layer:
         self._end_path(stack_end=True)
+        self.on_stack_top = True
