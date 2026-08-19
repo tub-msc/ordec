@@ -104,7 +104,9 @@ def format_error(code, line, column, window=2):
         prefix = ">" if i == error_line else " "
         error.append(f"{prefix} {i+1:4} | {lines[i]}")
         if i == error_line:
-            error.append(f"     | {'':{column-1}}^")
+            # Gutter must be as wide as the "> NNNN " prefix above so the
+            # pipes line up and the caret points at the right column.
+            error.append(f"{'':6} | {'':{column-1}}^")
     return "\n".join(error)
 
 
