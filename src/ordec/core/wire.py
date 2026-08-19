@@ -27,7 +27,8 @@ between two endpoints while retransmitting only subgraphs the receiver does
 not already hold in its store; laziness exists on the wire only, in-memory
 SubgraphRefs always hold fully materialized subgraphs.
 
-Wire format (format version is the digit in HASH_DOMAIN)::
+Wire format (the digit in HASH_DOMAIN is a manual format identifier; see
+HASH_DOMAIN)::
 
     wire_bytes(sg) = canonical CBOR of [ [blob0, blob1, ...],
                                          {wire_id: [[nid, v0, ..., vN], ...]},
@@ -71,6 +72,12 @@ from .schema.report import ScaleType
 from .schema.simhier import SimType
 from .schema.lvs import LvsStatus, LvsItemType
 
+# Hash-domain separator. The trailing digit is a manual format identifier,
+# not an auto-incremented version: wire data is fully ephemeral (regenerated
+# each session and never stored to disk or compared across versions), so we
+# really only need to bump this once we at some point decide to store
+# wire-serialized data to disk or we add wire-based data exchange with software
+# that is versioned outside this repo.
 HASH_DOMAIN = b'ordec-sg-0:'
 
 # CBOR tag assignments. Tag 30 is the standard rational tag, used for R
