@@ -356,15 +356,22 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
             s.constrain(activ_ext.size == (300, 300))
         x_cur = sd.ux
 
+    # Cont to GatPoly spacing (Cnt_f, 110). For W < 300, the 300x300 activ_ext
+    # patch around each contact reaches 70 beyond the Cont in x, so the
+    # spacing must grow to Cnt_c + Gat_d = 140 to keep GatPoly 70 (Gat.d)
+    # away from that patch. Same case split as the foundry PCell
+    # (smallw_gatpoly_cont_dist in nmos_code.py/pmos_code.py).
+    sd_poly_dist = 110 if W >= 300 else 140
+
     def add_poly(i):
         nonlocal l, s, x_cur
-        x_cur += 110
+        x_cur += sd_poly_dist
         l.poly[i] = LayoutRect(layer=layers.GatPoly)
         poly = l.poly[i]
         s.constrain(poly.west == (x_cur, l.activ.cy))
         s.constrain(poly.size == (L, l.activ.height + 360))
         s.constrain(poly.ly == 0)
-        x_cur = poly.ux + 110
+        x_cur = poly.ux + sd_poly_dist
 
     l.activ = LayoutRect(layer=layers.Activ)
     s.constrain(l.activ.height == W)
